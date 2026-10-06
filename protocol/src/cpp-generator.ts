@@ -23,6 +23,22 @@ function enumDeclaration(name: string, values: Record<string, number>): string {
   ].join("\n");
 }
 
+// Names indexed by value, for readable JSON (values are 0..count-1 in declaration order).
+function enumNamesDeclaration(
+  name: string,
+  values: Record<string, number>,
+): string {
+  const names = Object.entries(values)
+    .sort(([, a], [, b]) => a - b)
+    .map(([key]) => `    "${key}",`)
+    .join("\n");
+  return [
+    `inline constexpr std::array<std::string_view, ${constant(name)}Count> ${constant(name)}Names = {`,
+    names,
+    "};",
+  ].join("\n");
+}
+
 function enumValueCount(name: EnumName): number {
   return Object.keys(enums[name]).length;
 }
@@ -50,6 +66,10 @@ function settingRange(setting: Setting): {
   }
 }
 
+function valueNames(setting: Setting): string {
+  return setting.kind === "number" ? "{}" : `${constant(setting.values)}Names`;
+}
+
 function settingsDeclaration(): string {
   const entries = Object.entries(settings as Record<string, Setting>);
   const ids = entries.map(([name]) => `    ${constant(name)},`).join("\n");
@@ -60,7 +80,7 @@ function settingsDeclaration(): string {
       return (
         `    {SettingId::${constant(name)}, "${name}", SettingKind::${kind}, ` +
         `${String(range.minimum)}, ${String(range.maximum)}, ${String(setting.defaultValue)}, ` +
-        `${String(range.logarithmic)}},`
+        `${String(range.logarithmic)}, ${valueNames(setting)}},`
       );
     })
     .join("\n");
@@ -79,6 +99,7 @@ function settingsDeclaration(): string {
     "};",
     "",
     "// Enum settings hold an index; flags settings hold a non-empty bit mask.",
+    "// valueNames names the values of enum and flags settings and is empty for numbers.",
     "struct SettingDescriptor",
     "{",
     "    SettingId id;",
@@ -88,6 +109,7 @@ function settingsDeclaration(): string {
     "    double maximum;",
     "    double defaultValue;",
     "    bool logarithmic;",
+    "    std::span<const std::string_view> valueNames;",
     "};",
     "",
     "inline constexpr std::array<SettingDescriptor, kSettingCount> kSettings = {{",
@@ -129,8 +151,9 @@ function frameDeclaration(): string {
 }
 
 export function generateCppHeader(): string {
-  const enumBlocks = Object.entries(enums).map(([name, values]) =>
-    enumDeclaration(name, values),
+  const enumBlocks = Object.entries(enums).map(
+    ([name, values]) =>
+      `${enumDeclaration(name, values)}\n${enumNamesDeclaration(name, values)}`,
   );
   return [
     "// Generated from protocol/src by protocol/scripts/generate-cpp.ts. Do not edit.",
@@ -139,6 +162,7 @@ export function generateCppHeader(): string {
     "#include <array>",
     "#include <cstddef>",
     "#include <cstdint>",
+    "#include <span>",
     "#include <string_view>",
     "",
     "namespace orizon::protocol {",

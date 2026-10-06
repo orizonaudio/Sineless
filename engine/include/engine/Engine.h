@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/CaptureRing.h"
+#include "engine/Settings.h"
 
 namespace orizon::engine {
 
@@ -14,8 +15,12 @@ public:
     [[nodiscard]] CaptureRing& captureRing() { return ring; }
     [[nodiscard]] const CaptureRing& captureRing() const { return ring; }
 
+    [[nodiscard]] SettingsStore& settings() { return settingsStore; }
+    [[nodiscard]] const SettingsStore& settings() const { return settingsStore; }
+
 private:
     CaptureRing ring;
+    SettingsStore settingsStore;
 };
 
 } // namespace orizon::engine

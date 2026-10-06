@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "settings": {
+    "timeSpan": 0.5,
+    "verticalScale": -12,
+    "channelViews": ["mid", "side"],
+    "viewLayout": "stacked",
+    "triggerMode": "normal",
+    "triggerSource": "side",
+    "triggerSlope": "falling",
+    "triggerLevel": -0.25,
+    "triggerHysteresis": 0.05,
+    "triggerHoldOff": 0.1
+  }
+}

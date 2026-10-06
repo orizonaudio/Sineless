@@ -21,7 +21,11 @@ set_target_properties(Oscilloscope PROPERTIES
 )
 
 if(BUILD_TESTING)
-    add_executable(plugin_tests tests/EngineLinkTests.cpp tests/ProcessorTests.cpp)
+    add_executable(plugin_tests
+        tests/EngineLinkTests.cpp tests/ProcessorTests.cpp tests/StateTests.cpp)
+    # The SDK ships MemoryStream (a host-side IBStream) as a source file only.
+    target_sources(plugin_tests
+        PRIVATE ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/memorystream.cpp)
     target_link_libraries(plugin_tests
         PRIVATE plugin sdk_hosting engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(plugin_tests)

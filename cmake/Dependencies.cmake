@@ -22,6 +22,12 @@ FetchContent_Declare(googletest
     SYSTEM
 )
 
-FetchContent_MakeAvailable(vst3sdk googletest)
+FetchContent_Declare(nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+    SYSTEM
+)
+
+FetchContent_MakeAvailable(vst3sdk googletest nlohmann_json)
 smtg_enable_vst3_sdk()
 include(GoogleTest)

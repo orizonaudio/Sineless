@@ -16,13 +16,19 @@ describe("C++ generator", () => {
 
   test("emits one descriptor per setting with its range and default", () => {
     expect(header).toContain(
-      '{SettingId::kTimeSpan, "timeSpan", SettingKind::kNumber, 0.0005, 4, 0.02, true},',
+      '{SettingId::kTimeSpan, "timeSpan", SettingKind::kNumber, 0.0005, 4, 0.02, true, {}},',
     );
     expect(header).toContain(
-      '{SettingId::kChannelViews, "channelViews", SettingKind::kFlags, 1, 15, 3, false},',
+      '{SettingId::kChannelViews, "channelViews", SettingKind::kFlags, 1, 15, 3, false, kChannelViewNames},',
     );
     expect(header).toContain(
-      '{SettingId::kTriggerMode, "triggerMode", SettingKind::kEnum, 0, 3, 0, false},',
+      '{SettingId::kTriggerMode, "triggerMode", SettingKind::kEnum, 0, 3, 0, false, kTriggerModeNames},',
+    );
+  });
+
+  test("emits enum value names in value order", () => {
+    expect(header).toContain(
+      'kTriggerModeNames = {\n    "auto",\n    "normal",\n    "free",\n    "single",\n};',
     );
   });
 

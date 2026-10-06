@@ -2,10 +2,13 @@
 
 #include "EngineRegistry.h"
 #include "PluginIds.h"
+#include "engine/State.h"
+#include "pluginterfaces/base/ibstream.h"
 
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <string>
 
 namespace orizon::plugin {
 
@@ -46,6 +49,23 @@ void capture(engine::CaptureRing& ring, Sample** channels, int32 numChannels, ui
     ring.write(sources.data(), count, numSamples);
 }
 
+// Saved states are a few hundred bytes; anything far larger is not ours.
+constexpr std::size_t kMaxStateSize = std::size_t{1} << 20U;
+
+std::string readAll(IBStream* stream)
+{
+    std::string text;
+    std::array<char, 4096> buffer{};
+    int32 bytesRead = 0;
+    while (text.size() < kMaxStateSize &&
+           stream->read(buffer.data(), static_cast<int32>(buffer.size()), &bytesRead) ==
+               kResultOk &&
+           bytesRead > 0) {
+        text.append(buffer.data(), static_cast<std::size_t>(bytesRead));
+    }
+    return text;
+}
+
 } // namespace
 
 Processor::Processor()
@@ -77,6 +97,34 @@ tresult PLUGIN_API Processor::terminate()
     engineToken = 0;
     engineState.reset();
     return AudioEffect::terminate();
+}
+
+tresult PLUGIN_API Processor::getState(IBStream* state)
+{
+    if (state == nullptr || !engineState) {
+        return kInvalidArgument;
+    }
+    try {
+        const std::string text = engine::serializeState(engineState->settings().get());
+        int32 bytesWritten = 0;
+        return state->write(const_cast<char*>(text.data()), static_cast<int32>(text.size()),
+                            &bytesWritten);
+    } catch (...) {
+        return kInternalError;
+    }
+}
+
+tresult PLUGIN_API Processor::setState(IBStream* state)
+{
+    if (state == nullptr || !engineState) {
+        return kInvalidArgument;
+    }
+    try {
+        engineState->settings().replace(engine::deserializeState(readAll(state)));
+        return kResultOk;
+    } catch (...) {
+        return kInternalError;
+    }
 }
 
 tresult PLUGIN_API Processor::connect(IConnectionPoint* other)

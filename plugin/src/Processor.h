@@ -20,6 +20,9 @@ public:
 
     Steinberg::tresult PLUGIN_API initialize(Steinberg::FUnknown* context) override;
     Steinberg::tresult PLUGIN_API terminate() override;
+    // Saved state (DESIGN 8.4). Called on a non-audio host thread; never throws.
+    Steinberg::tresult PLUGIN_API getState(Steinberg::IBStream* state) override;
+    Steinberg::tresult PLUGIN_API setState(Steinberg::IBStream* state) override;
     // Sends the controller the token of this instance's engine (AD-10).
     Steinberg::tresult PLUGIN_API connect(Steinberg::Vst::IConnectionPoint* other) override;
     Steinberg::tresult PLUGIN_API setBusArrangements(Steinberg::Vst::SpeakerArrangement* inputs,
