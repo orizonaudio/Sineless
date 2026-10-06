@@ -30,6 +30,17 @@
         "ORIZON_REALTIME_SANITIZER": "ON",
         "SMTG_RUN_VST_VALIDATOR": "OFF"
       }
+    },
+    {
+      "name": "tsan",
+      "displayName": "Engine tests under ThreadSanitizer",
+      "binaryDir": "${sourceDir}/build/tsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "ORIZON_THREAD_SANITIZER": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -45,6 +56,11 @@
       "name": "rtsan",
       "configurePreset": "rtsan",
       "targets": ["plugin_tests"]
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "targets": ["engine_tests"]
     }
   ],
   "testPresets": [
@@ -64,6 +80,18 @@
       "filter": {
         "include": {
           "name": "PassThrough|Processor"
+        }
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "CaptureRing|AnalysisWorker"
         }
       }
     }

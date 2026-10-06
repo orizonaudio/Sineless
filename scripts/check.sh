@@ -48,6 +48,11 @@ cmake --preset rtsan
 cmake --build --preset rtsan -j "$(sysctl -n hw.ncpu)"
 ctest --preset rtsan
 
+step "Concurrency (ThreadSanitizer build)"
+cmake --preset tsan
+cmake --build --preset tsan -j "$(sysctl -n hw.ncpu)"
+TSAN_OPTIONS=halt_on_error=1 ctest --preset tsan
+
 step "C++ lint"
 # clang-tidy cannot handle universal-binary commands (two -arch flags); lint the arm64 slice.
 mkdir -p build/lint

@@ -10,6 +10,12 @@ if(ORIZON_HAS_FUNCTION_EFFECTS)
 endif()
 
 # Run-time check: RealtimeSanitizer aborts when a nonblocking function allocates, locks or blocks.
+option(ORIZON_THREAD_SANITIZER "Build with ThreadSanitizer" OFF)
+if(ORIZON_THREAD_SANITIZER)
+    add_compile_options(-fsanitize=thread)
+    add_link_options(-fsanitize=thread)
+endif()
+
 option(ORIZON_REALTIME_SANITIZER "Build with RealtimeSanitizer (needs Clang 20+, not AppleClang)" OFF)
 if(ORIZON_REALTIME_SANITIZER)
     add_compile_options(-fsanitize=realtime)
