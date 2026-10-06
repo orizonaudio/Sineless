@@ -80,7 +80,7 @@ const char* superclassMethodTypes(Class superclass, SEL selector)
 
 class WebViewMac final : public WebView
 {
-  public:
+public:
     WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage);
     ~WebViewMac() override;
     WebViewMac(const WebViewMac&) = delete;
@@ -94,7 +94,7 @@ class WebViewMac final : public WebView
     void receive(WKScriptMessage* message);
     [[nodiscard]] bool editableFocused() const { return isEditableFocused; }
 
-  private:
+private:
     void evaluate(NSString* script);
 
     MessageHandler onMessage;

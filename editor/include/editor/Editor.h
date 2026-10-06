@@ -10,7 +10,7 @@ namespace orizon::editor {
 // The VST3 editor view: a WebView filling the host's editor window.
 class Editor : public Steinberg::CPluginView
 {
-  public:
+public:
     static constexpr int kDefaultWidth = 800;
     static constexpr int kDefaultHeight = 500;
     static constexpr int kMinimumWidth = 400;
@@ -28,7 +28,7 @@ class Editor : public Steinberg::CPluginView
     // The live webview while attached, otherwise null. For tests.
     [[nodiscard]] WebView* webView() const { return view.get(); }
 
-  private:
+private:
     WebView::MessageHandler onMessage;
     std::unique_ptr<WebView> view;
 };

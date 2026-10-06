@@ -67,7 +67,7 @@ void respondToPing(WebView& view, std::string_view message)
 
 class EditorTest : public ::testing::Test
 {
-  protected:
+protected:
     static void SetUpTestSuite() { [NSApplication sharedApplication]; }
 
     NSWindow* makeWindow(NSView* content)

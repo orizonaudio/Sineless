@@ -14,3 +14,4 @@ NamespaceIndentation: None
 PointerAlignment: Left
 IncludeBlocks: Regroup
 SortIncludes: CaseSensitive
+AccessModifierOffset: -4

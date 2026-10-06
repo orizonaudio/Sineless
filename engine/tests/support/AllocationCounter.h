@@ -8,7 +8,7 @@ namespace orizon::testing {
 // Linking this library replaces the global allocation operators of the test binary.
 class AllocationCounter
 {
-  public:
+public:
     AllocationCounter();
     ~AllocationCounter();
     AllocationCounter(const AllocationCounter&) = delete;

@@ -199,6 +199,67 @@ TEST(Processor, AcceptsFlushCallWithoutBuffers)
     EXPECT_EQ(processor->process(data), kResultOk);
 }
 
+TEST(Processor, CapturesInputIntoTheRing)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
+    std::vector<Sample32> left(kBlockSize);
+    std::vector<Sample32> right(kBlockSize);
+    for (size_t i = 0; i < left.size(); ++i) {
+        left[i] = static_cast<float>(i);
+        right[i] = -static_cast<float>(i);
+    }
+    std::array<Sample32*, 2> channels = {left.data(), right.data()};
+    AudioBusBuffers input{};
+    input.numChannels = 2;
+    input.channelBuffers32 = channels.data();
+    AudioBusBuffers output = input;
+
+    ProcessData data{};
+    data.symbolicSampleSize = kSample32;
+    data.numSamples = kBlockSize;
+    data.numInputs = 1;
+    data.numOutputs = 1;
+    data.inputs = &input;
+    data.outputs = &output;
+    ASSERT_EQ(processor->process(data), kResultOk);
+
+    const engine::CaptureRing* ring = processor->captureRing();
+    ASSERT_NE(ring, nullptr);
+    EXPECT_EQ(ring->writeIndex(), static_cast<uint64>(kBlockSize));
+    std::vector<float> captured(kBlockSize);
+    ASSERT_TRUE(ring->read(0, 0, captured));
+    EXPECT_EQ(captured, left);
+    ASSERT_TRUE(ring->read(1, 0, captured));
+    EXPECT_EQ(captured, right);
+}
+
+TEST(Processor, CapturesSilentChannelsAsZeros)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
+    std::vector<Sample32> garbage(kBlockSize, 0.75f);
+    std::array<Sample32*, 2> channels = {garbage.data(), garbage.data()};
+    AudioBusBuffers input{};
+    input.numChannels = 2;
+    input.silenceFlags = 0b10; // Right channel flagged silent.
+    input.channelBuffers32 = channels.data();
+    AudioBusBuffers output = input;
+
+    ProcessData data{};
+    data.symbolicSampleSize = kSample32;
+    data.numSamples = kBlockSize;
+    data.numInputs = 1;
+    data.numOutputs = 1;
+    data.inputs = &input;
+    data.outputs = &output;
+    ASSERT_EQ(processor->process(data), kResultOk);
+
+    std::vector<float> captured(kBlockSize);
+    ASSERT_TRUE(processor->captureRing()->read(0, 0, captured));
+    EXPECT_EQ(captured, garbage);
+    ASSERT_TRUE(processor->captureRing()->read(1, 0, captured));
+    EXPECT_EQ(captured, std::vector<float>(kBlockSize, 0.0f));
+}
+
 TEST(Controller, DeclaresNoParameters)
 {
     auto controller = owned(new Controller());

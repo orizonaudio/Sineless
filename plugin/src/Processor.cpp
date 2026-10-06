@@ -3,6 +3,7 @@
 #include "PluginIds.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 
 namespace orizon::plugin {
@@ -29,6 +30,21 @@ void copyChannels(Sample** source, Sample** destination, int32 numChannels,
     }
 }
 
+// Records the input into the ring. Channels flagged silent are recorded as zeros, whatever
+// their buffers hold.
+template <typename Sample>
+void capture(engine::CaptureRing& ring, Sample** channels, int32 numChannels, uint64 silenceFlags,
+             int32 numSamples) noexcept ORIZON_NONBLOCKING
+{
+    std::array<const Sample*, engine::CaptureRing::kMaxChannels> sources{};
+    const int32 count = std::min(numChannels, int32{engine::CaptureRing::kMaxChannels});
+    for (int32 channel = 0; channel < count; ++channel) {
+        const bool silent = (silenceFlags & (uint64{1} << static_cast<uint64>(channel))) != 0;
+        sources[static_cast<size_t>(channel)] = silent ? nullptr : channels[channel];
+    }
+    ring.write(sources.data(), count, numSamples);
+}
+
 } // namespace
 
 Processor::Processor()
@@ -47,6 +63,7 @@ tresult PLUGIN_API Processor::initialize(FUnknown* context)
     if (result != kResultOk) {
         return result;
     }
+    ring = std::make_unique<engine::CaptureRing>();
     addAudioInput(STR16("Input"), SpeakerArr::kStereo);
     addAudioOutput(STR16("Output"), SpeakerArr::kStereo);
     return kResultOk;
@@ -79,8 +96,16 @@ tresult PLUGIN_API Processor::process(ProcessData& data) noexcept ORIZON_NONBLOC
 
     if (data.symbolicSampleSize == kSample64) {
         copyChannels(input.channelBuffers64, output.channelBuffers64, numChannels, data.numSamples);
+        if (ring) {
+            capture(*ring, input.channelBuffers64, input.numChannels, input.silenceFlags,
+                    data.numSamples);
+        }
     } else {
         copyChannels(input.channelBuffers32, output.channelBuffers32, numChannels, data.numSamples);
+        if (ring) {
+            capture(*ring, input.channelBuffers32, input.numChannels, input.silenceFlags,
+                    data.numSamples);
+        }
     }
     output.silenceFlags = input.silenceFlags;
     return kResultOk;

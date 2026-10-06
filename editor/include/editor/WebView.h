@@ -11,7 +11,7 @@ namespace orizon::editor {
 // Native webview that hosts the UI inside the host's editor window (C-5, AD-4).
 class WebView
 {
-  public:
+public:
     // Called on the UI thread for every message the page sends over the native channel.
     using MessageHandler = std::function<void(WebView& view, std::string_view message)>;
 
