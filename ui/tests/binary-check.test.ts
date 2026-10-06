@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { decodeBase64, hasTestPattern } from "../src/spike/binary-check";
+import { decodeBase64, hasTestPattern } from "../src/spike/binary-check.ts";
 
 describe("binary check", () => {
   test("decodes base64 into bytes", () => {

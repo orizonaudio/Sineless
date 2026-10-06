@@ -1,6 +1,6 @@
 // T-005 spike page: proves the native message channel, binary delivery and keyboard routing.
-import { decodeBase64, hasTestPattern } from "./spike/binary-check";
-import { FrameRateMeter } from "./spike/frame-rate";
+import { decodeBase64, hasTestPattern } from "./spike/binary-check.ts";
+import { FrameRateMeter } from "./spike/frame-rate.ts";
 
 interface NativeChannel {
   postMessage(message: string): void;

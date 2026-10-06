@@ -9,6 +9,8 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "composite": true,

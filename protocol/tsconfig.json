@@ -2,7 +2,8 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022"],
+    "types": ["node"],
     "outDir": "../build/tsc/protocol"
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "scripts"]
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { FrameRateMeter } from "../src/spike/frame-rate";
+import { FrameRateMeter } from "../src/spike/frame-rate.ts";
 
 test("reports 60 fps for frames every 1/60 s", () => {
   const meter = new FrameRateMeter();

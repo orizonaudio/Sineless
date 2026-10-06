@@ -54,6 +54,11 @@ export default tseslint.config(
           format: ["camelCase", "PascalCase"],
         },
         { selector: "import", format: ["camelCase", "PascalCase"] },
+        // Keys may mirror PascalCase type names, e.g. a registry of enum-like objects.
+        {
+          selector: "objectLiteralProperty",
+          format: ["camelCase", "PascalCase"],
+        },
         {
           selector: "objectLiteralProperty",
           modifiers: ["requiresQuotes"],

@@ -15,6 +15,7 @@ include(cmake/ProjectOptions.cmake)
 include(cmake/Dependencies.cmake)
 
 # Module order follows DESIGN 5.1: each module may depend only on modules added before it.
+add_subdirectory(protocol)
 add_subdirectory(engine)
 add_subdirectory(editor)
 add_subdirectory(plugin)

@@ -6,7 +6,7 @@ add_library(engine STATIC
     src/Version.cpp
 )
 target_include_directories(engine PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/include)
-target_link_libraries(engine PRIVATE orizon_warnings)
+target_link_libraries(engine PUBLIC protocol PRIVATE orizon_warnings)
 
 if(BUILD_TESTING)
     # Test-only library that replaces the global allocation operators (QG-1, DESIGN 8.2).
