@@ -1,6 +1,7 @@
 #include "AllocationCounter.h"
 #include "Controller.h"
 #include "Processor.h"
+#include "pluginterfaces/vst/ivstprocesscontext.h"
 
 #include <array>
 #include <bit>
@@ -282,6 +283,43 @@ TEST(Processor, CapturesSilentChannelsAsZeros)
     EXPECT_EQ(captured, garbage);
     ASSERT_TRUE(processor->engine()->captureRing().read(1, 0, captured));
     EXPECT_EQ(captured, std::vector<float>(kBlockSize, 0.0f));
+}
+
+TEST(Processor, AdvancesTheTimelineFromTheProcessContext)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
+    std::vector<Sample32> silence(kBlockSize, 0.0f);
+    std::array<Sample32*, 2> channels = {silence.data(), silence.data()};
+    AudioBusBuffers input{};
+    input.numChannels = 2;
+    input.channelBuffers32 = channels.data();
+    AudioBusBuffers output = input;
+    ProcessContext context{};
+    context.state = static_cast<uint32>(ProcessContext::kPlaying) |
+                    static_cast<uint32>(ProcessContext::kProjectTimeMusicValid) |
+                    static_cast<uint32>(ProcessContext::kTempoValid) |
+                    static_cast<uint32>(ProcessContext::kTimeSigValid);
+    context.projectTimeMusic = 32.0;
+    context.tempo = 140.0;
+    context.timeSigNumerator = 7;
+    context.timeSigDenominator = 8;
+
+    ProcessData data{};
+    data.symbolicSampleSize = kSample32;
+    data.numSamples = kBlockSize;
+    data.numInputs = 1;
+    data.numOutputs = 1;
+    data.inputs = &input;
+    data.outputs = &output;
+    data.processContext = &context;
+    ASSERT_EQ(processor->process(data), kResultOk);
+
+    const engine::MusicalStamp stamp = processor->engine()->timeline().latest();
+    EXPECT_TRUE(stamp.playing);
+    EXPECT_EQ(stamp.quarterNotes, 32.0);
+    EXPECT_EQ(stamp.tempo, 140.0);
+    EXPECT_EQ(stamp.numerator, 7);
+    EXPECT_EQ(stamp.denominator, 8);
 }
 
 TEST(Controller, DeclaresNoParameters)

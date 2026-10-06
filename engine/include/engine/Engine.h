@@ -2,6 +2,7 @@
 
 #include "engine/CaptureRing.h"
 #include "engine/Settings.h"
+#include "engine/Timeline.h"
 
 #include <atomic>
 
@@ -16,6 +17,9 @@ public:
 
     [[nodiscard]] CaptureRing& captureRing() { return ring; }
     [[nodiscard]] const CaptureRing& captureRing() const { return ring; }
+
+    [[nodiscard]] Timeline& timeline() { return timelineState; }
+    [[nodiscard]] const Timeline& timeline() const { return timelineState; }
 
     [[nodiscard]] SettingsStore& settings() { return settingsStore; }
     [[nodiscard]] const SettingsStore& settings() const { return settingsStore; }
@@ -39,6 +43,7 @@ private:
     std::atomic<double> sampleRateValue{48000.0};
     std::atomic<int> inputChannelCount{2};
     SettingsStore settingsStore;
+    Timeline timelineState;
 };
 
 } // namespace orizon::engine

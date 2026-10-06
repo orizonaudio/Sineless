@@ -13,6 +13,7 @@ add_library(engine STATIC
     src/SettingJson.cpp
     src/Settings.cpp
     src/State.cpp
+    src/Timeline.cpp
     src/Trigger.cpp
     src/Version.cpp
 )
@@ -42,6 +43,7 @@ if(BUILD_TESTING)
         tests/RollTests.cpp
         tests/SettingsTests.cpp
         tests/StateTests.cpp
+        tests/TimelineTests.cpp
         tests/TriggerTests.cpp
         tests/VersionTests.cpp
     )

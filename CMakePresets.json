@@ -91,7 +91,7 @@
       },
       "filter": {
         "include": {
-          "name": "CaptureRing|AnalysisWorker"
+          "name": "CaptureRing|AnalysisWorker|Timeline"
         }
       }
     }

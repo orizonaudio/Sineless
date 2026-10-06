@@ -4,6 +4,7 @@
 #include "PluginIds.h"
 #include "engine/State.h"
 #include "pluginterfaces/base/ibstream.h"
+#include "pluginterfaces/vst/ivstprocesscontext.h"
 
 #include <algorithm>
 #include <array>
@@ -47,6 +48,24 @@ void capture(engine::CaptureRing& ring, Sample** channels, int32 numChannels, ui
         sources[static_cast<size_t>(channel)] = silent ? nullptr : channels[channel];
     }
     ring.write(sources.data(), count, numSamples);
+}
+
+// The host's musical position for the block, as far as the process context says it is valid.
+engine::HostTimeline hostTimeline(const ProcessContext* context) noexcept ORIZON_NONBLOCKING
+{
+    engine::HostTimeline host;
+    if (context == nullptr) {
+        return host;
+    }
+    host.playing = (context->state & ProcessContext::kPlaying) != 0;
+    host.positionValid = (context->state & ProcessContext::kProjectTimeMusicValid) != 0;
+    host.quarterNotes = context->projectTimeMusic;
+    host.tempoValid = (context->state & ProcessContext::kTempoValid) != 0;
+    host.tempo = context->tempo;
+    host.timeSignatureValid = (context->state & ProcessContext::kTimeSigValid) != 0;
+    host.numerator = context->timeSigNumerator;
+    host.denominator = context->timeSigDenominator;
+    return host;
 }
 
 // Saved states are a few hundred bytes; anything far larger is not ours.
@@ -192,6 +211,10 @@ tresult PLUGIN_API Processor::process(ProcessData& data) noexcept ORIZON_NONBLOC
         }
     }
     output.silenceFlags = input.silenceFlags;
+    if (engineState) {
+        engineState->timeline().advance(hostTimeline(data.processContext), data.numSamples,
+                                        processSetup.sampleRate);
+    }
     return kResultOk;
 }
 
