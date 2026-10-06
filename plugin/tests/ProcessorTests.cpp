@@ -152,6 +152,18 @@ TEST(Processor, AcceptsOnlyMatchingMonoOrStereoBuses)
     EXPECT_EQ(processor->setBusArrangements(twoStereo.data(), 2, &stereo, 1), kResultFalse);
 }
 
+TEST(Processor, PassesTheInputChannelCountToTheEngine)
+{
+    auto processor = owned(new Processor());
+    ASSERT_EQ(processor->initialize(nullptr), kResultOk);
+    SpeakerArrangement mono = SpeakerArr::kMono;
+    ASSERT_EQ(processor->setBusArrangements(&mono, 1, &mono, 1), kResultTrue);
+    EXPECT_EQ(processor->engine()->inputChannels(), 1);
+    SpeakerArrangement stereo = SpeakerArr::kStereo;
+    ASSERT_EQ(processor->setBusArrangements(&stereo, 1, &stereo, 1), kResultTrue);
+    EXPECT_EQ(processor->engine()->inputChannels(), 2);
+}
+
 TEST(Processor, Supports32And64BitProcessing)
 {
     auto processor = owned(new Processor());

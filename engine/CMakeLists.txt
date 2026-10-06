@@ -3,6 +3,7 @@ configure_file(include/engine/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/e
 add_library(engine STATIC
     src/AnalysisWorker.cpp
     src/CaptureRing.cpp
+    src/ChannelViews.cpp
     src/HoldBuffer.cpp
     src/Reducer.cpp
     src/Roll.cpp
@@ -29,6 +30,7 @@ if(BUILD_TESTING)
     add_executable(engine_tests
         tests/AnalysisWorkerTests.cpp
         tests/CaptureRingTests.cpp
+        tests/ChannelViewsTests.cpp
         tests/HoldBufferTests.cpp
         tests/ReducerTests.cpp
         tests/RollTests.cpp

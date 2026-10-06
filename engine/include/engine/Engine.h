@@ -20,6 +20,13 @@ public:
     [[nodiscard]] SettingsStore& settings() { return settingsStore; }
     [[nodiscard]] const SettingsStore& settings() const { return settingsStore; }
 
+    // Main input channel count (1 or 2), set by the processor on bus negotiation (FR-1).
+    void setInputChannels(int count) { inputChannelCount.store(count, std::memory_order_relaxed); }
+    [[nodiscard]] int inputChannels() const
+    {
+        return inputChannelCount.load(std::memory_order_relaxed);
+    }
+
     // Set by the processor in setupProcessing; read by the analysis worker.
     void setSampleRate(double rate) { sampleRateValue.store(rate, std::memory_order_relaxed); }
     [[nodiscard]] double sampleRate() const
@@ -30,6 +37,7 @@ public:
 private:
     CaptureRing ring;
     std::atomic<double> sampleRateValue{48000.0};
+    std::atomic<int> inputChannelCount{2};
     SettingsStore settingsStore;
 };
 

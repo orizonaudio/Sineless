@@ -156,7 +156,11 @@ tresult PLUGIN_API Processor::setBusArrangements(SpeakerArrangement* inputs, int
         !isSupportedArrangement(inputs[0])) {
         return kResultFalse;
     }
-    return AudioEffect::setBusArrangements(inputs, numIns, outputs, numOuts);
+    const tresult result = AudioEffect::setBusArrangements(inputs, numIns, outputs, numOuts);
+    if (result == kResultTrue && engineState) {
+        engineState->setInputChannels(SpeakerArr::getChannelCount(inputs[0]));
+    }
+    return result;
 }
 
 tresult PLUGIN_API Processor::canProcessSampleSize(int32 symbolicSampleSize)
