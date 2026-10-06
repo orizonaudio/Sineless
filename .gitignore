@@ -1,0 +1,13 @@
+# OS
+.DS_Store
+
+# Build outputs
+/build/
+/out/
+dist/
+
+# Node
+node_modules/
+
+# Local research material (not part of the repository)
+/Research Topics/
