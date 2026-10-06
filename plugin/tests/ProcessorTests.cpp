@@ -1,3 +1,4 @@
+#include "AllocationCounter.h"
 #include "Controller.h"
 #include "Processor.h"
 
@@ -90,7 +91,19 @@ template <typename Sample> void expectBitExactPassThrough(int32 numChannels, boo
     data.numOutputs = 1;
     data.inputs = &input;
     data.outputs = &output;
-    ASSERT_EQ(processor->process(data), kResultOk);
+
+    tresult result = kResultFalse;
+    std::size_t allocations = 0;
+    std::size_t deallocations = 0;
+    {
+        testing::AllocationCounter counter;
+        result = processor->process(data);
+        allocations = counter.allocations();
+        deallocations = counter.deallocations();
+    }
+    ASSERT_EQ(result, kResultOk);
+    EXPECT_EQ(allocations, 0u) << "process() must not allocate (QG-1)";
+    EXPECT_EQ(deallocations, 0u) << "process() must not deallocate (QG-1)";
 
     using Bits = std::conditional_t<sizeof(Sample) == sizeof(uint64_t), uint64_t, uint32_t>;
     const auto channelCount = static_cast<size_t>(numChannels);

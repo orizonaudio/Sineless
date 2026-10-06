@@ -2,6 +2,20 @@
 add_library(orizon_warnings INTERFACE)
 target_compile_options(orizon_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
 
+# Compile-time check of functions marked ORIZON_NONBLOCKING (QG-1).
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Wfunction-effects ORIZON_HAS_FUNCTION_EFFECTS)
+if(ORIZON_HAS_FUNCTION_EFFECTS)
+    target_compile_options(orizon_warnings INTERFACE -Wfunction-effects)
+endif()
+
+# Run-time check: RealtimeSanitizer aborts when a nonblocking function allocates, locks or blocks.
+option(ORIZON_REALTIME_SANITIZER "Build with RealtimeSanitizer (needs Clang 20+, not AppleClang)" OFF)
+if(ORIZON_REALTIME_SANITIZER)
+    add_compile_options(-fsanitize=realtime)
+    add_link_options(-fsanitize=realtime)
+endif()
+
 # Fails configuration if <target> links any of the given targets, directly or transitively.
 function(orizon_forbid_dependencies target)
     set(pending ${target})

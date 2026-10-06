@@ -18,7 +18,8 @@ bool isSupportedArrangement(SpeakerArrangement arrangement)
 }
 
 template <typename Sample>
-void copyChannels(Sample** source, Sample** destination, int32 numChannels, int32 numSamples)
+void copyChannels(Sample** source, Sample** destination, int32 numChannels,
+                  int32 numSamples) noexcept ORIZON_NONBLOCKING
 {
     for (int32 channel = 0; channel < numChannels; ++channel) {
         if (source[channel] != destination[channel]) {
@@ -67,7 +68,7 @@ tresult PLUGIN_API Processor::canProcessSampleSize(int32 symbolicSampleSize)
                                                                               : kResultFalse;
 }
 
-tresult PLUGIN_API Processor::process(ProcessData& data)
+tresult PLUGIN_API Processor::process(ProcessData& data) noexcept ORIZON_NONBLOCKING
 {
     if (data.numInputs == 0 || data.numOutputs == 0 || data.numSamples <= 0) {
         return kResultOk;

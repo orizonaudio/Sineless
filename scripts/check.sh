@@ -43,6 +43,11 @@ cmake --build --preset "$PRESET" -j "$(sysctl -n hw.ncpu)"
 step "C++ tests"
 ctest --preset "$PRESET"
 
+step "Real-time safety (RealtimeSanitizer build)"
+cmake --preset rtsan
+cmake --build --preset rtsan -j "$(sysctl -n hw.ncpu)"
+ctest --preset rtsan
+
 step "C++ lint"
 # clang-tidy cannot handle universal-binary commands (two -arch flags); lint the arm64 slice.
 mkdir -p build/lint

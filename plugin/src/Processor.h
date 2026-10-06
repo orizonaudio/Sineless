@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/RealtimeSafety.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
 
 namespace orizon::plugin {
@@ -19,7 +20,8 @@ class Processor : public Steinberg::Vst::AudioEffect
                                                      Steinberg::int32 numOuts) override;
     Steinberg::tresult PLUGIN_API
     canProcessSampleSize(Steinberg::int32 symbolicSampleSize) override;
-    Steinberg::tresult PLUGIN_API process(Steinberg::Vst::ProcessData& data) override;
+    Steinberg::tresult PLUGIN_API
+    process(Steinberg::Vst::ProcessData& data) noexcept ORIZON_NONBLOCKING override;
 };
 
 } // namespace orizon::plugin

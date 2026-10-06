@@ -21,6 +21,7 @@ set_target_properties(Oscilloscope PROPERTIES
 
 if(BUILD_TESTING)
     add_executable(plugin_tests tests/ProcessorTests.cpp)
-    target_link_libraries(plugin_tests PRIVATE plugin orizon_warnings GTest::gtest_main)
+    target_link_libraries(plugin_tests
+        PRIVATE plugin engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(plugin_tests)
 endif()

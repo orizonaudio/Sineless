@@ -5,7 +5,9 @@
       "name": "dev",
       "displayName": "Debug build with tests",
       "binaryDir": "${sourceDir}/build/dev",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
     },
     {
       "name": "release",
@@ -15,17 +17,55 @@
         "CMAKE_BUILD_TYPE": "Release",
         "BUILD_TESTING": "OFF"
       }
+    },
+    {
+      "name": "rtsan",
+      "displayName": "Tests under RealtimeSanitizer (Homebrew LLVM)",
+      "binaryDir": "${sourceDir}/build/rtsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm/bin/clang",
+        "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm/bin/clang++",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "ORIZON_REALTIME_SANITIZER": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev" },
-    { "name": "release", "configurePreset": "release" }
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "rtsan",
+      "configurePreset": "rtsan",
+      "targets": ["plugin_tests"]
+    }
   ],
   "testPresets": [
     {
       "name": "dev",
       "configurePreset": "dev",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "rtsan",
+      "configurePreset": "rtsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "PassThrough|Processor"
+        }
+      }
     }
   ]
 }

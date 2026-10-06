@@ -11,8 +11,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
-include(cmake/Dependencies.cmake)
 include(cmake/ProjectOptions.cmake)
+include(cmake/Dependencies.cmake)
 
 # Module order follows DESIGN 5.1: each module may depend only on modules added before it.
 add_subdirectory(engine)
