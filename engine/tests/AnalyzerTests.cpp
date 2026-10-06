@@ -30,6 +30,7 @@ struct DecodedFrame
     float peak = 0.0f;
     float rms = 0.0f;
     float frequency = 0.0f;
+    float cursor = -1.0f;
     std::vector<float> data;
 
     [[nodiscard]] bool has(FrameFlag value) const
@@ -58,6 +59,7 @@ DecodedFrame decode(const std::vector<std::byte>& bytes)
     frame.peak = get<float>(bytes, FrameHeader::kPeakOffset);
     frame.rms = get<float>(bytes, FrameHeader::kRmsOffset);
     frame.frequency = get<float>(bytes, FrameHeader::kFrequencyOffset);
+    frame.cursor = get<float>(bytes, FrameHeader::kCursorOffset);
     frame.data.resize((bytes.size() - FrameHeader::kSize) / sizeof(float));
     std::memcpy(frame.data.data(), bytes.data() + FrameHeader::kSize,
                 frame.data.size() * sizeof(float));
@@ -252,6 +254,91 @@ TEST_F(AnalyzerTest, MonoInputProducesASingleView)
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->views, 0b0001);
     EXPECT_NEAR(frame->peak, 0.5f, 1e-3f) << "the trigger source is the mono channel itself";
+}
+
+// Tempo sync (FR-9): audio and the host clock advance together at 120 BPM, 4/4.
+class SweepTest : public AnalyzerTest
+{
+protected:
+    void SetUp() override
+    {
+        AnalyzerTest::SetUp();
+        engine.settings().set(SettingId::kTimeBase, 1.0); // Beats.
+        engine.settings().set(
+            SettingId::kBeatSpan,
+            static_cast<double>(protocol::BeatSpan::kQuarterBeat)); // 6000 samples.
+        engine.settings().set(SettingId::kChannelViews, 0b0001);
+        analyzer.setColumns(8000); // More columns than samples: raw points, exact values.
+    }
+
+    // Writes `count` samples whose left channel holds their own sample index.
+    void play(std::uint64_t count, bool playing = true)
+    {
+        constexpr std::uint64_t kBlock = 480;
+        for (std::uint64_t done = 0; done < count; done += kBlock) {
+            const std::uint64_t start = engine.captureRing().writeIndex();
+            std::vector<float> ramp(kBlock);
+            for (std::uint64_t i = 0; i < kBlock; ++i) {
+                ramp[i] = static_cast<float>(start + i);
+            }
+            std::array<const float*, 2> channels{ramp.data(), ramp.data()};
+            engine.captureRing().write(channels.data(), 2, static_cast<int>(kBlock));
+            engine.timeline().advance({.playing = playing,
+                                       .positionValid = true,
+                                       .quarterNotes = static_cast<double>(start) / 24000.0,
+                                       .tempoValid = true,
+                                       .tempo = 120.0},
+                                      static_cast<int>(kBlock), kSampleRate);
+        }
+    }
+};
+
+TEST_F(SweepTest, StartsTheScreenAtTheCycleStart)
+{
+    play(9600); // 0.4 beats: the quarter-beat cycle started at sample 6000.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(frame->has(FrameFlag::kSynced));
+    EXPECT_FALSE(frame->has(FrameFlag::kTriggered));
+    ASSERT_EQ(frame->pointCount, 6000u);
+    EXPECT_EQ(frame->data.front(), 6000.0f) << "cycle start at the left edge";
+    EXPECT_EQ(frame->data[3599], 9599.0f) << "newest sample just left of the cursor";
+    EXPECT_EQ(frame->data[3600], 3600.0f) << "previous cycle continues right of the cursor";
+    EXPECT_EQ(frame->data.back(), 5999.0f);
+    EXPECT_NEAR(frame->cursor, 0.6f, 1e-6f);
+}
+
+TEST_F(SweepTest, KeepsSweepingWithTheTransportStopped)
+{
+    play(9600);
+    ASSERT_TRUE(produce());
+    play(1440, false); // Three blocks.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_NEAR(frame->cursor, 0.84f, 1e-6f) << "the cursor advanced while stopped";
+}
+
+TEST_F(SweepTest, ProducesNothingNewWithoutNewAudio)
+{
+    play(9600);
+    ASSERT_TRUE(produce());
+    EXPECT_FALSE(produce());
+}
+
+TEST_F(SweepTest, FreezesTheWholeSweep)
+{
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    EXPECT_TRUE(frozen->has(FrameFlag::kFrozen));
+    play(48000);
+    engine.settings().set(SettingId::kChannelViews, 0b0011);
+    const auto redrawn = produce();
+    ASSERT_TRUE(redrawn);
+    EXPECT_EQ(redrawn->data.front(), 6000.0f) << "still the sweep held at freeze time";
+    EXPECT_NEAR(redrawn->cursor, 0.6f, 1e-6f);
 }
 
 TEST_F(AnalyzerTest, NumbersFramesSequentially)

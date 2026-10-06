@@ -49,10 +49,15 @@ private:
         double span = 0.0;
         bool triggered = false;
         bool roll = false;
+        // Tempo-synced sweep (FR-9): samples rotated left by `rotation`; cursor in 0 to 1.
+        bool synced = false;
+        bool limited = false;
+        std::uint64_t rotation = 0;
+        double cursor = -1.0;
     };
 
     Commands takeCommands();
-    bool freeze(double sampleRate);
+    bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
     bool render(const SampleSource& source, const Settings& settings, double sampleRate,
                 const Window& window, std::uint64_t sampleCount, double samplesPerColumn,
                 std::size_t columns, std::vector<std::byte>& frame);
@@ -73,6 +78,10 @@ private:
     double lastPan = 0.0;
     bool lastFrozen = false;
     std::uint32_t sequence = 0;
+    // Tempo sync: the clock and capture end when frozen, and the capture end of the last frame.
+    MusicalStamp frozenStamp;
+    std::uint64_t frozenEnd = 0;
+    std::uint64_t lastEnd = 0;
     std::vector<float> triggerSamples;
     std::vector<float> viewSamples;
     std::vector<float> scratch;

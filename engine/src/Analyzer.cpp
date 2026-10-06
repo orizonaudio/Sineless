@@ -5,6 +5,7 @@
 #include "engine/Readouts.h"
 #include "engine/Reducer.h"
 #include "engine/Roll.h"
+#include "engine/Sweep.h"
 
 #include <algorithm>
 #include <bit>
@@ -70,9 +71,12 @@ Analyzer::Commands Analyzer::takeCommands()
     return taken;
 }
 
-bool Analyzer::freeze(double sampleRate)
+bool Analyzer::freeze(double sampleRate, std::uint64_t minimumSamples)
 {
-    if (!hold.capture(engine.captureRing(), hold.holdLength(sampleRate))) {
+    frozenStamp = engine.timeline().latest();
+    frozenEnd = engine.captureRing().endIndex();
+    const auto length = std::max<std::uint64_t>(hold.holdLength(sampleRate), minimumSamples);
+    if (!hold.capture(engine.captureRing(), static_cast<std::size_t>(length))) {
         return false; // The writer outran the copy; try again on the next step.
     }
     isFrozen = true;
@@ -89,7 +93,10 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     if (command.armRequested) {
         trigger.arm();
     }
-    if (command.frozen && !isFrozen && !freeze(sampleRate)) {
+    const bool synced =
+        settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
+    if (command.frozen && !isFrozen &&
+        !freeze(sampleRate, synced && lastLive ? static_cast<std::uint64_t>(lastLive->span) : 0)) {
         return false;
     }
     if (!command.frozen) {
@@ -112,7 +119,31 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     const SampleSource& source =
         isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing();
 
-    if (isFrozen) {
+    if (synced) {
+        // Tempo-synced sweep (FR-9). While frozen, the sweep is rebuilt from the clock and
+        // capture end at the moment of freezing, so views and span still apply.
+        const CaptureRing& ring = engine.captureRing();
+        const std::uint64_t end = isFrozen ? frozenEnd : ring.endIndex();
+        if (!changed && end == lastEnd) {
+            return false;
+        }
+        const auto maxSamples = static_cast<std::uint64_t>(ring.capacity() - ring.capacity() / 8);
+        const auto sweep =
+            sweepWindow(isFrozen ? frozenStamp : engine.timeline().latest(), end, sampleRate,
+                        settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan), maxSamples);
+        if (!sweep) {
+            return false;
+        }
+        window = {.start = static_cast<double>(sweep->start),
+                  .span = static_cast<double>(sweep->sampleCount),
+                  .synced = true,
+                  .limited = sweep->limited,
+                  .rotation = sweep->rotation,
+                  .cursor = sweep->cursor};
+        sampleCount = sweep->sampleCount;
+        samplesPerColumn = window.span / static_cast<double>(command.columns);
+        lastEnd = end;
+    } else if (isFrozen) {
         if (!changed) {
             return false;
         }
@@ -201,9 +232,12 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         .sequence = sequence,
         .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
                                            (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
-                                           (window.roll ? flag(FrameFlag::kRoll) : 0U)),
+                                           (window.roll ? flag(FrameFlag::kRoll) : 0U) |
+                                           (window.synced ? flag(FrameFlag::kSynced) : 0U) |
+                                           (window.limited ? flag(FrameFlag::kLimited) : 0U)),
         .views = views,
-        .startFraction = static_cast<float>(window.start - first)};
+        .startFraction = static_cast<float>(window.start - first),
+        .cursor = static_cast<float>(window.cursor)};
     frameData.clear();
     for (std::size_t index = 0; index < protocol::kChannelViewCount; ++index) {
         if ((views & (1U << index)) == 0) {
@@ -212,6 +246,10 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         if (!readView(source, inputChannels, static_cast<ChannelView>(index), start, viewSamples,
                       scratch)) {
             return false;
+        }
+        if (window.rotation > 0) {
+            std::ranges::rotate(viewSamples,
+                                viewSamples.begin() + static_cast<std::ptrdiff_t>(window.rotation));
         }
         header.mode = reduceToColumns(viewSamples, columns, reduced);
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
