@@ -7,7 +7,12 @@ import type {
   StateChangedMessage,
 } from "../../protocol/src/messages.ts";
 import { protocolVersion } from "../../protocol/src/version.ts";
-import { NativeTransport, type NativeReceiver } from "./bridge/transport.ts";
+import { MockTransport } from "./bridge/mock-transport.ts";
+import {
+  NativeTransport,
+  type NativeReceiver,
+  type Transport,
+} from "./bridge/transport.ts";
 
 declare global {
   interface Window {
@@ -36,10 +41,12 @@ status.textContent = "Connecting...";
 const debug: NonNullable<Window["orizonDebug"]> = { frameCount: 0 };
 window.orizonDebug = debug;
 
-const transport = new NativeTransport({
-  channel: window.webkit?.messageHandlers["orizon"],
-  receiver: window,
-});
+// Inside the plugin the native channel exists; in a desktop browser the mock stands in.
+const channel = window.webkit?.messageHandlers["orizon"];
+const transport: Transport =
+  channel !== undefined
+    ? new NativeTransport({ channel, receiver: window })
+    : new MockTransport();
 
 transport.onMessage((message) => {
   if (message.type === "snapshot") {
