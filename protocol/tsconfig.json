@@ -5,5 +5,5 @@
     "types": ["node"],
     "outDir": "../build/tsc/protocol"
   },
-  "include": ["src", "tests", "scripts"]
+  "include": ["src", "tests", "tests/data/*.json", "scripts"]
 }

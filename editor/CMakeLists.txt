@@ -24,6 +24,7 @@ add_custom_command(
 add_library(editor STATIC
     src/Editor.cpp
     src/EmbeddedAssets.cpp
+    src/Transport.cpp
     src/mac/WebViewMac.mm
     ${embeddedAssetData}
 )
@@ -35,7 +36,8 @@ target_link_libraries(editor
 set_source_files_properties(src/mac/WebViewMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 
 if(BUILD_TESTING)
-    add_executable(editor_tests tests/EditorTests.mm tests/EmbeddedAssetsTests.cpp)
+    add_executable(editor_tests
+        tests/EditorTests.mm tests/EmbeddedAssetsTests.cpp tests/TransportTests.cpp)
     target_include_directories(editor_tests PRIVATE src)
     target_link_libraries(editor_tests
         PRIVATE editor orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework WebKit")
