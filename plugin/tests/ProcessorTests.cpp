@@ -233,6 +233,18 @@ TEST(Processor, CapturesInputIntoTheRing)
     EXPECT_EQ(captured, right);
 }
 
+TEST(Processor, PassesTheSampleRateToTheEngine)
+{
+    auto processor = owned(new Processor());
+    ASSERT_EQ(processor->initialize(nullptr), kResultOk);
+    ProcessSetup setup{.processMode = kRealtime,
+                       .symbolicSampleSize = kSample32,
+                       .maxSamplesPerBlock = kBlockSize,
+                       .sampleRate = 96000.0};
+    ASSERT_EQ(processor->setupProcessing(setup), kResultOk);
+    EXPECT_EQ(processor->engine()->sampleRate(), 96000.0);
+}
+
 TEST(Processor, CapturesSilentChannelsAsZeros)
 {
     auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);

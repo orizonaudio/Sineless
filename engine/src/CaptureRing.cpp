@@ -62,6 +62,12 @@ std::uint64_t CaptureRing::writeIndex() const noexcept
     return publishedIndex.load(std::memory_order_acquire);
 }
 
+std::uint64_t CaptureRing::beginIndex() const
+{
+    const std::uint64_t end = writeIndex();
+    return end > capacityValue ? end - capacityValue : 0;
+}
+
 bool CaptureRing::read(int channel, std::uint64_t start, std::span<float> destination) const
 {
     if (channel < 0 || channel >= kMaxChannels || destination.size() > capacityValue) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/RealtimeSafety.h"
+#include "engine/SampleSource.h"
 
 #include <atomic>
 #include <cstddef>
@@ -16,7 +17,7 @@ namespace orizon::engine {
 // Samples are addressed by a monotonic 64-bit index: the n-th sample ever written has index n.
 // A read fails, rather than returning mixed data, if the writer overwrote any part of the range
 // while it was being copied.
-class CaptureRing
+class CaptureRing final : public SampleSource
 {
 public:
     // 2^20 samples per channel: 5.46 s at 192 kHz. Covers the 4 s maximum span (FR-2) plus a
@@ -38,9 +39,13 @@ public:
     // Index one past the newest sample published by the writer.
     [[nodiscard]] std::uint64_t writeIndex() const noexcept;
 
+    [[nodiscard]] std::uint64_t endIndex() const override { return writeIndex(); }
+    [[nodiscard]] std::uint64_t beginIndex() const override;
+
     // Copies `destination.size()` samples of `channel`, starting at sample index `start`.
     // Returns false if any of them is not yet written or was overwritten before the copy ended.
-    [[nodiscard]] bool read(int channel, std::uint64_t start, std::span<float> destination) const;
+    [[nodiscard]] bool read(int channel, std::uint64_t start,
+                            std::span<float> destination) const override;
 
     [[nodiscard]] std::size_t capacity() const noexcept { return capacityValue; }
 

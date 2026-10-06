@@ -99,6 +99,14 @@ tresult PLUGIN_API Processor::terminate()
     return AudioEffect::terminate();
 }
 
+tresult PLUGIN_API Processor::setupProcessing(ProcessSetup& setup)
+{
+    if (engineState) {
+        engineState->setSampleRate(setup.sampleRate);
+    }
+    return AudioEffect::setupProcessing(setup);
+}
+
 tresult PLUGIN_API Processor::getState(IBStream* state)
 {
     if (state == nullptr || !engineState) {

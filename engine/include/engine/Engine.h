@@ -3,6 +3,8 @@
 #include "engine/CaptureRing.h"
 #include "engine/Settings.h"
 
+#include <atomic>
+
 namespace orizon::engine {
 
 // Everything one plugin instance shares between its audio thread and its editor (DESIGN 5.2).
@@ -18,8 +20,16 @@ public:
     [[nodiscard]] SettingsStore& settings() { return settingsStore; }
     [[nodiscard]] const SettingsStore& settings() const { return settingsStore; }
 
+    // Set by the processor in setupProcessing; read by the analysis worker.
+    void setSampleRate(double rate) { sampleRateValue.store(rate, std::memory_order_relaxed); }
+    [[nodiscard]] double sampleRate() const
+    {
+        return sampleRateValue.load(std::memory_order_relaxed);
+    }
+
 private:
     CaptureRing ring;
+    std::atomic<double> sampleRateValue{48000.0};
     SettingsStore settingsStore;
 };
 
