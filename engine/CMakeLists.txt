@@ -8,6 +8,7 @@ add_library(engine STATIC
     src/SettingJson.cpp
     src/Settings.cpp
     src/State.cpp
+    src/Trigger.cpp
     src/Version.cpp
 )
 target_include_directories(engine PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/include)
@@ -31,6 +32,7 @@ if(BUILD_TESTING)
         tests/ReducerTests.cpp
         tests/SettingsTests.cpp
         tests/StateTests.cpp
+        tests/TriggerTests.cpp
         tests/VersionTests.cpp
     )
     target_compile_definitions(engine_tests
