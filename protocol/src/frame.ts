@@ -5,7 +5,8 @@
 //
 // `samplesPerPoint` is the number of samples each point covers. The visible span starts
 // `startFraction` samples after the first point (sub-sample trigger alignment). Readouts are
-// those of FR-7; `frequency` is 0 when unavailable.
+// those of FR-7; `frequency` is 0 when unavailable. In a tempo-synced sweep (FR-9), `cursor` is
+// the playhead's position across the screen (0 to 1), and -1 otherwise.
 
 export type FieldType = "u8" | "u16" | "u32" | "f32";
 
@@ -26,12 +27,20 @@ export const frameHeaderFields = [
   { name: "peak", type: "f32" },
   { name: "rms", type: "f32" },
   { name: "frequency", type: "f32" },
+  { name: "cursor", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];
 
 // Bits of the `flags` field.
-export const FrameFlag = { triggered: 1, frozen: 2, roll: 4 } as const;
+// `synced`: a tempo-synced sweep. `limited`: the span was shortened to what the capture holds.
+export const FrameFlag = {
+  triggered: 1,
+  frozen: 2,
+  roll: 4,
+  synced: 8,
+  limited: 16,
+} as const;
 
 const fieldSizes: Record<FieldType, number> = { u8: 1, u16: 2, u32: 4, f32: 4 };
 

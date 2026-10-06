@@ -22,6 +22,7 @@ struct FrameHeaderValues
     float peak = 0.0f;
     float rms = 0.0f;
     float frequency = 0.0f; // 0 when unavailable.
+    float cursor = -1.0f;   // Sweep playhead position (0 to 1), or -1 (FR-9).
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order) little-endian into

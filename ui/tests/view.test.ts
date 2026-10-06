@@ -138,6 +138,9 @@ describe("status chips", () => {
     peak: 0,
     rms: 0,
     frequency: undefined,
+    synced: false,
+    limited: false,
+    cursor: undefined,
     views: new Map(),
     ...overrides,
   });

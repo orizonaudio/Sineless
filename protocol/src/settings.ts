@@ -1,7 +1,9 @@
 // The settings table of DESIGN 1.2. Times are in seconds. The engine validates against these
 // ranges, and the UI builds its controls from them.
 import {
+  BeatSpan,
   ChannelView,
+  TimeBase,
   TriggerMode,
   TriggerSlope,
   ViewLayout,
@@ -95,6 +97,12 @@ export const settings = {
     defaultValue: 0,
     logarithmic: false,
   },
+  timeBase: {
+    kind: "enum",
+    values: "TimeBase",
+    defaultValue: TimeBase.seconds,
+  },
+  beatSpan: { kind: "enum", values: "BeatSpan", defaultValue: BeatSpan.oneBar },
 } as const satisfies Record<string, Setting>;
 
 export type SettingName = keyof typeof settings;

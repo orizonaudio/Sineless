@@ -28,6 +28,9 @@ describe("frame decoder", () => {
     expect(frame.peak).toBe(golden.header.peak);
     expect(frame.rms).toBe(golden.header.rms);
     expect(frame.frequency).toBe(golden.header.frequency);
+    expect(frame.cursor).toBeUndefined();
+    expect(frame.synced).toBe(false);
+    expect(frame.limited).toBe(false);
     expect([...frame.views.keys()]).toEqual([
       ChannelView.left,
       ChannelView.mid,

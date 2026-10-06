@@ -14,6 +14,10 @@ export interface Frame {
   readonly peak: number;
   readonly rms: number;
   readonly frequency: number | undefined;
+  readonly synced: boolean;
+  readonly limited: boolean;
+  // Playhead position across the screen in a tempo-synced sweep (FR-9).
+  readonly cursor: number | undefined;
   // Points of each view present, keyed by ChannelView; min/max pairs in FrameMode.minMax.
   readonly views: ReadonlyMap<ChannelView, Float32Array>;
 }
@@ -56,6 +60,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
   }
 
   const frequency = f32("frequency");
+  const cursor = f32("cursor");
   return {
     sequence: u32("sequence"),
     mode,
@@ -68,6 +73,9 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     peak: f32("peak"),
     rms: f32("rms"),
     frequency: frequency > 0 ? frequency : undefined,
+    synced: (flags & FrameFlag.synced) !== 0,
+    limited: (flags & FrameFlag.limited) !== 0,
+    cursor: cursor >= 0 ? cursor : undefined,
     views,
   };
 }

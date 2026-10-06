@@ -33,6 +33,7 @@ void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewDat
     put(output, Layout::kPeakOffset, header.peak);
     put(output, Layout::kRmsOffset, header.rms);
     put(output, Layout::kFrequencyOffset, header.frequency);
+    put(output, Layout::kCursorOffset, header.cursor);
     if (!viewData.empty()) {
         std::memcpy(output.data() + Layout::kSize, viewData.data(), viewData.size_bytes());
     }

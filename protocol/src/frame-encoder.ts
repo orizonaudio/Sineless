@@ -15,6 +15,9 @@ export interface FrameContent {
   readonly peak: number;
   readonly rms: number;
   readonly frequency: number | undefined;
+  readonly synced?: boolean;
+  readonly limited?: boolean;
+  readonly cursor?: number | undefined;
   readonly views: ReadonlyMap<ChannelView, ArrayLike<number>>;
 }
 
@@ -35,7 +38,9 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   const flags =
     (content.triggered ? FrameFlag.triggered : 0) |
     (content.frozen ? FrameFlag.frozen : 0) |
-    (content.roll ? FrameFlag.roll : 0);
+    (content.roll ? FrameFlag.roll : 0) |
+    (content.synced === true ? FrameFlag.synced : 0) |
+    (content.limited === true ? FrameFlag.limited : 0);
   header.setUint32(offsets.sequence, content.sequence, true);
   header.setUint8(offsets.mode, content.mode);
   header.setUint8(offsets.flags, flags);
@@ -50,6 +55,7 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setFloat32(offsets.peak, content.peak, true);
   header.setFloat32(offsets.rms, content.rms, true);
   header.setFloat32(offsets.frequency, content.frequency ?? 0, true);
+  header.setFloat32(offsets.cursor, content.cursor ?? -1, true);
 
   const data = new Float32Array(buffer, frameHeader.size, dataLength);
   let offset = 0;

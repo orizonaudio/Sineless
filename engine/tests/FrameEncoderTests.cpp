@@ -40,6 +40,7 @@ TEST(FrameEncoder, MatchesTheGoldenFrame)
         .peak = header["peak"].get<float>(),
         .rms = header["rms"].get<float>(),
         .frequency = header["frequency"].get<float>(),
+        .cursor = header["cursor"].get<float>(),
     };
     std::vector<float> data = golden["views"]["left"].get<std::vector<float>>();
     const auto mid = golden["views"]["mid"].get<std::vector<float>>();
