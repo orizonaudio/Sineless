@@ -5,6 +5,8 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <os/log.h>
+#include <string>
 
 namespace orizon::plugin {
 
@@ -18,8 +20,16 @@ FUnknown* Controller::createInstance(void* /*context*/)
 namespace {
 
 // T-005 spike: answers "ping" with "pong" and a 4096-byte test pattern (byte i == i mod 256).
+// T-006 spike: logs requestAnimationFrame rate samples.
 void handleSpikeMessage(editor::WebView& view, std::string_view message)
 {
+    if (message.starts_with("raf:")) {
+        // T-006: frame-rate samples, read back with `log show --predicate 'eventMessage
+        // CONTAINS "OrizonRaf"'`.
+        const std::string sample(message);
+        os_log(OS_LOG_DEFAULT, "OrizonRaf %{public}s", sample.c_str());
+        return;
+    }
     if (message != "ping") {
         return;
     }
