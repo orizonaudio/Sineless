@@ -22,6 +22,11 @@ struct SweepWindow
     std::uint64_t rotation = 0;
     double cursor = 0.0;
     bool limited = false; // The requested span did not fit in `maxSamples`; a shorter one is used.
+    // Musical context, in quarter notes: the left edge's project position, the span shown and
+    // the bar length.
+    double cycleStart = 0.0;
+    double spanQuarterNotes = 0.0;
+    double barQuarterNotes = 4.0;
 };
 
 // Cycles align to multiples of the span from the project start, i.e. to bars for bar spans.

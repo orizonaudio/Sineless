@@ -89,6 +89,19 @@ describe("mock back end", () => {
     ]);
   });
 
+  test("sweeps in sync with a simulated transport in Beats mode", () => {
+    const { transport, frames } = connect(); // now = 1 s: 2 beats into bar 1 at 120 BPM.
+    transport.send({ type: "setSetting", name: "timeBase", value: "beats" });
+    transport.send({ type: "setSetting", name: "beatSpan", value: "oneBar" });
+    transport.send({ type: "credit" });
+    const frame = frames.at(-1);
+    expect(frame?.synced).toBe(true);
+    expect(frame?.cursor).toBeCloseTo(0.5);
+    expect(frame?.cycleStart).toBe(0);
+    expect(frame?.spanQuarterNotes).toBe(4);
+    expect(frame?.barQuarterNotes).toBe(4);
+  });
+
   test("rolls long spans and reports freeze", () => {
     const { transport, frames } = connect();
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });

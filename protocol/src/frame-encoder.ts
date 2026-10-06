@@ -18,6 +18,9 @@ export interface FrameContent {
   readonly synced?: boolean;
   readonly limited?: boolean;
   readonly cursor?: number | undefined;
+  readonly cycleStart?: number;
+  readonly spanQuarterNotes?: number;
+  readonly barQuarterNotes?: number;
   readonly views: ReadonlyMap<ChannelView, ArrayLike<number>>;
 }
 
@@ -56,6 +59,17 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setFloat32(offsets.rms, content.rms, true);
   header.setFloat32(offsets.frequency, content.frequency ?? 0, true);
   header.setFloat32(offsets.cursor, content.cursor ?? -1, true);
+  header.setFloat32(offsets.cycleStart, content.cycleStart ?? 0, true);
+  header.setFloat32(
+    offsets.spanQuarterNotes,
+    content.spanQuarterNotes ?? 0,
+    true,
+  );
+  header.setFloat32(
+    offsets.barQuarterNotes,
+    content.barQuarterNotes ?? 0,
+    true,
+  );
 
   const data = new Float32Array(buffer, frameHeader.size, dataLength);
   let offset = 0;

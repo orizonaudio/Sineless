@@ -6,7 +6,11 @@ import type {
   ErrorMessage,
   SettingValue,
 } from "../../protocol/src/messages.ts";
-import { settingNames, settingOf } from "../../protocol/src/setting-values.ts";
+import {
+  settingNames,
+  settingOf,
+  valueNames,
+} from "../../protocol/src/setting-values.ts";
 import type {
   NumberSetting,
   SettingName,
@@ -28,6 +32,7 @@ import {
   signed,
 } from "./view/format.ts";
 import { drawGrid } from "./view/grid.ts";
+import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
 import { statusChips } from "./view/status.ts";
 import {
   holdOffSteps,
@@ -52,6 +57,8 @@ const viewColorTokens: Record<ViewName, string> = {
 };
 // Below this screen height (CSS px) only the outer and zero amplitude labels fit.
 const compactScreenHeight = 140;
+// Room taken by the amplitude labels at the left edge (CSS px).
+const amplitudeLabelWidth = 48;
 const readoutInterval = 100; // ms: readouts stay legible while frames arrive at display rate.
 
 function element(id: string): HTMLElement {
@@ -106,6 +113,9 @@ export class OscilloscopeApp {
   private readonly fields = new Map<SettingName, DragField>();
   private readonly segmented = new Map<SettingName, Segmented>();
   private readonly viewToggles = new Map<ViewName, HTMLButtonElement>();
+  private beatSpanField: DragField | undefined;
+  private beatSpanNames: string[] = [];
+  private cycleKey = "";
 
   constructor(backend: Backend, store: SettingsStore, debug: DebugState) {
     this.backend = backend;
@@ -135,7 +145,12 @@ export class OscilloscopeApp {
     );
     this.loop = new RenderLoop(
       (callback) => requestAnimationFrame(callback),
-      this.renderer,
+      {
+        draw: (frame) => {
+          this.renderer.draw(frame);
+          this.showSweep(frame);
+        },
+      },
       () => {
         backend.credit();
       },
@@ -202,6 +217,33 @@ export class OscilloscopeApp {
   }
 
   private buildControls(): void {
+    // Tempo sync (FR-9): the beat span steps through its named values.
+    const beatSpanNames = valueNames("BeatSpan");
+    const beatSpanField = new DragField({
+      label: "Beat span",
+      format: (index) => beatSpanLabels[index] ?? "",
+      parse: (text) => {
+        const index = beatSpanLabels.findIndex(
+          (label) => label === text.trim().toLowerCase(),
+        );
+        return index < 0 ? undefined : index;
+      },
+      step: (index, delta) =>
+        Math.min(
+          beatSpanNames.length - 1,
+          Math.max(0, Math.round(index) + delta),
+        ),
+      onRequest: (index) => {
+        const name = beatSpanNames[Math.round(index)];
+        if (name !== undefined) {
+          this.request("beatSpan", name);
+        }
+      },
+    });
+    element("beat-span-field").append(beatSpanField.element);
+    this.beatSpanField = beatSpanField;
+    this.beatSpanNames = beatSpanNames;
+
     this.numberField(
       "timeSpan",
       "span-field",
@@ -287,6 +329,10 @@ export class OscilloscopeApp {
         ),
       );
     };
+    segment("timeBase", "time-base", [
+      ["seconds", "Sec"],
+      ["beats", "Beats"],
+    ]);
     segment("viewLayout", "layout", [
       ["overlaid", "Overlay"],
       ["stacked", "Stack"],
@@ -352,6 +398,15 @@ export class OscilloscopeApp {
     if (name === "triggerMode") {
       (element("arm") as HTMLButtonElement).disabled = value !== "single";
     }
+    if (name === "beatSpan" && typeof value === "string") {
+      this.beatSpanField?.show(this.beatSpanNames.indexOf(value));
+    }
+    if (name === "timeBase") {
+      const beats = value === "beats";
+      element("span-field").hidden = beats;
+      element("beat-span-field").hidden = !beats;
+      element("trigger-group").classList.toggle("inactive", beats);
+    }
     this.updateTriggerSummary();
     // Settings that move the grid, labels or trigger line; the engine's next frame follows.
     const screenSettings: SettingName[] = [
@@ -360,6 +415,7 @@ export class OscilloscopeApp {
       "channelViews",
       "timeSpan",
       "triggerMode",
+      "timeBase",
     ];
     if (screenSettings.includes(name)) {
       this.drawScreen();
@@ -394,12 +450,51 @@ export class OscilloscopeApp {
       : 1;
   }
 
+  private beatsMode(): boolean {
+    return this.store.get("timeBase") === "beats";
+  }
+
+  // The musical grid of the last synced frame, when in Beats mode.
+  private musicalLayout(): ReturnType<typeof musicalGrid> | undefined {
+    const frame = this.lastFrame;
+    if (!this.beatsMode() || frame?.synced !== true) {
+      return undefined;
+    }
+    return musicalGrid(
+      frame.cycleStart,
+      frame.spanQuarterNotes,
+      frame.barQuarterNotes,
+    );
+  }
+
   private drawScreen(): void {
-    drawGrid(this.gridCanvas, this.laneCount(), {
-      grid: token("--grid"),
-      axis: token("--grid-axis"),
-    });
+    drawGrid(
+      this.gridCanvas,
+      this.laneCount(),
+      { grid: token("--grid"), axis: token("--grid-axis") },
+      this.musicalLayout()?.lines,
+    );
     this.placeLabels();
+  }
+
+  // Moves the sweep cursor, and redraws grid and labels when a new cycle starts (FR-9).
+  private showSweep(frame: Frame): void {
+    const cursor = element("sweep-cursor");
+    const previous = element("sweep-previous");
+    const synced = frame.synced && frame.cursor !== undefined;
+    cursor.hidden = !synced;
+    previous.hidden = !synced;
+    if (!synced) {
+      return;
+    }
+    const percent = `${String(frame.cursor * 100)}%`;
+    cursor.style.left = percent;
+    previous.style.left = percent;
+    const key = `${String(frame.cycleStart)}/${String(frame.spanQuarterNotes)}/${String(frame.barQuarterNotes)}`;
+    if (key !== this.cycleKey) {
+      this.cycleKey = key;
+      this.drawScreen();
+    }
   }
 
   private placeLabels(): void {
@@ -422,17 +517,19 @@ export class OscilloscopeApp {
       node.style.top = `${String(Math.min(height - 14, Math.max(2, label.position * height - 6)))}px`;
       labels.push(node);
     }
-    for (const label of timeLabels(span, roll)) {
+    for (const label of this.musicalLayout()?.labels ??
+      timeLabels(span, roll)) {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;
-      node.style.left = `${String(label.position * width + 4)}px`;
+      // The left edge label sits clear of the amplitude labels.
+      node.style.left = `${String(Math.max(label.position * width + 4, label.position === 0 ? amplitudeLabelWidth : 0))}px`;
       node.style.bottom = "3px";
       labels.push(node);
     }
     container.replaceChildren(...labels);
     element("trigger-line").hidden =
-      roll || this.store.get("triggerMode") === "free";
+      roll || this.store.get("triggerMode") === "free" || this.beatsMode();
   }
 
   // The level marker sits in the lane of the trigger source when stacked, else on the full height.
@@ -458,7 +555,8 @@ export class OscilloscopeApp {
     const marker = element("trigger-marker");
     const hidden =
       this.store.number("timeSpan") > 1 ||
-      this.store.get("triggerMode") === "free";
+      this.store.get("triggerMode") === "free" ||
+      this.beatsMode();
     marker.hidden = hidden;
     if (hidden) {
       return;
@@ -500,7 +598,8 @@ export class OscilloscopeApp {
 
     // While frozen, a horizontal drag pans back through the held data (FR-6).
     this.screen.addEventListener("pointerdown", (event) => {
-      if (this.lastFrame?.frozen !== true) {
+      // A frozen sweep keeps its cycle; panning applies to time-based views only.
+      if (this.lastFrame?.frozen !== true || this.lastFrame.synced) {
         return;
       }
       this.screen.setPointerCapture(event.pointerId);

@@ -25,6 +25,13 @@ export function statusChips(
     }
     return chips;
   }
+  if (frame?.synced === true) {
+    chips.push({ text: "Sync", tone: "ok" });
+    if (frame.limited) {
+      chips.push({ text: "Span limited", tone: "warn" });
+    }
+    return chips;
+  }
   if (frame?.roll === true) {
     return [{ text: "Roll", tone: "neutral" }];
   }

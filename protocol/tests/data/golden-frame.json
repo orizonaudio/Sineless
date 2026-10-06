@@ -1,5 +1,5 @@
 {
-  "description": "A frame encoded by Python's struct module, independently of both implementations. Mode 0 is minMax; flags 1 is triggered; views 5 is left + mid; cursor -1 means no sweep cursor.",
+  "description": "A frame encoded by Python's struct module, independently of both implementations. Mode 0 is minMax; flags 1 is triggered; views 5 is left + mid; cursor -1 and zero musical fields mean no tempo-synced sweep.",
   "header": {
     "sequence": 7,
     "mode": 0,
@@ -11,11 +11,14 @@
     "peak": 0.75,
     "rms": 0.5,
     "frequency": 440.0,
-    "cursor": -1.0
+    "cursor": -1.0,
+    "cycleStart": 0.0,
+    "spanQuarterNotes": 0.0,
+    "barQuarterNotes": 0.0
   },
   "views": {
     "left": [-0.5, 0.5, -0.25, 0.75],
     "mid": [0.0, 0.125, -1.0, 1.0]
   },
-  "hex": "0700000000010500020000000000c03f0000803e0000403f0000003f0000dc43000080bf000000bf0000003f000080be0000403f000000000000003e000080bf0000803f"
+  "hex": "0700000000010500020000000000c03f0000803e0000403f0000003f0000dc43000080bf000000000000000000000000000000bf0000003f000080be0000403f000000000000003e000080bf0000803f"
 }

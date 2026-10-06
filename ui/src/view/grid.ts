@@ -2,10 +2,18 @@
 // canvas behind the traces. Redrawn only when the size or the lanes change.
 import { gridColumns, gridRows } from "./axis-labels.ts";
 
+// Vertical lines at the given positions (fractions of the width), e.g. on beats in a tempo-synced
+// sweep; strong lines use the axis colour. Without them, the 10 equal divisions are drawn.
+export interface VerticalLine {
+  readonly position: number;
+  readonly strong: boolean;
+}
+
 export function drawGrid(
   canvas: HTMLCanvasElement,
   laneCount: number,
   colors: { grid: string; axis: string },
+  verticalLines?: readonly VerticalLine[],
 ): void {
   const context = canvas.getContext("2d");
   if (context === null) {
@@ -20,11 +28,18 @@ export function drawGrid(
     context.lineTo(x1, y1);
     context.stroke();
   };
-  context.strokeStyle = colors.grid;
-  for (let column = 1; column < gridColumns; column++) {
-    const x = Math.round((width * column) / gridColumns) + 0.5;
+  const columns =
+    verticalLines ??
+    Array.from({ length: gridColumns - 1 }, (_, index) => ({
+      position: (index + 1) / gridColumns,
+      strong: false,
+    }));
+  for (const column of columns) {
+    context.strokeStyle = column.strong ? colors.axis : colors.grid;
+    const x = Math.round(width * column.position) + 0.5;
     line(x, 0, x, height);
   }
+  context.strokeStyle = colors.grid;
   for (let row = 1; row < gridRows; row++) {
     const y = Math.round((height * row) / gridRows) + 0.5;
     line(0, y, width, y);

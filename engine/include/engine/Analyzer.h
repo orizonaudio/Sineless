@@ -54,6 +54,9 @@ private:
         bool limited = false;
         std::uint64_t rotation = 0;
         double cursor = -1.0;
+        double cycleStart = 0.0;
+        double spanQuarterNotes = 0.0;
+        double barQuarterNotes = 0.0;
     };
 
     Commands takeCommands();

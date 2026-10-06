@@ -23,6 +23,10 @@ struct FrameHeaderValues
     float rms = 0.0f;
     float frequency = 0.0f; // 0 when unavailable.
     float cursor = -1.0f;   // Sweep playhead position (0 to 1), or -1 (FR-9).
+    // Musical context of a synced sweep in quarter notes; 0 otherwise (FR-9).
+    float cycleStart = 0.0f;
+    float spanQuarterNotes = 0.0f;
+    float barQuarterNotes = 0.0f;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order) little-endian into

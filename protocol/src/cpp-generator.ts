@@ -1,6 +1,6 @@
 // Generates the C++ header that mirrors this schema (DESIGN 5.1). Names follow DESIGN 8.3:
 // enumerators and constants become kPascalCase.
-import { enums, type EnumName } from "./enums.ts";
+import { beatSpanLengths, enums, type EnumName } from "./enums.ts";
 import { frameHeader, FrameFlag } from "./frame.ts";
 import { MessageType } from "./messages.ts";
 import { settings, type Setting } from "./settings.ts";
@@ -150,6 +150,26 @@ function frameDeclaration(): string {
   ].join("\n");
 }
 
+function beatSpanDeclaration(): string {
+  const entries = beatSpanLengths
+    .map(
+      (length) => `    {${String(length.amount)}, ${String(length.inBars)}},`,
+    )
+    .join("\n");
+  return [
+    "// Length of each BeatSpan: an amount of quarter notes, or of bars (FR-9).",
+    "struct BeatSpanLength",
+    "{",
+    "    double amount;",
+    "    bool inBars;",
+    "};",
+    "",
+    "inline constexpr std::array<BeatSpanLength, kBeatSpanCount> kBeatSpanLengths = {{",
+    entries,
+    "}};",
+  ].join("\n");
+}
+
 export function generateCppHeader(): string {
   const enumBlocks = Object.entries(enums).map(
     ([name, values]) =>
@@ -176,6 +196,8 @@ export function generateCppHeader(): string {
     settingsDeclaration(),
     "",
     frameDeclaration(),
+    "",
+    beatSpanDeclaration(),
     "",
     "} // namespace orizon::protocol",
     "",

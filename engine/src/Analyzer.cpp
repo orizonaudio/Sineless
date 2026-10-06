@@ -139,7 +139,10 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
                   .synced = true,
                   .limited = sweep->limited,
                   .rotation = sweep->rotation,
-                  .cursor = sweep->cursor};
+                  .cursor = sweep->cursor,
+                  .cycleStart = sweep->cycleStart,
+                  .spanQuarterNotes = sweep->spanQuarterNotes,
+                  .barQuarterNotes = sweep->barQuarterNotes};
         sampleCount = sweep->sampleCount;
         samplesPerColumn = window.span / static_cast<double>(command.columns);
         lastEnd = end;
@@ -237,7 +240,10 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                                            (window.limited ? flag(FrameFlag::kLimited) : 0U)),
         .views = views,
         .startFraction = static_cast<float>(window.start - first),
-        .cursor = static_cast<float>(window.cursor)};
+        .cursor = static_cast<float>(window.cursor),
+        .cycleStart = static_cast<float>(window.cycleStart),
+        .spanQuarterNotes = static_cast<float>(window.spanQuarterNotes),
+        .barQuarterNotes = static_cast<float>(window.barQuarterNotes)};
     frameData.clear();
     for (std::size_t index = 0; index < protocol::kChannelViewCount; ++index) {
         if ((views & (1U << index)) == 0) {

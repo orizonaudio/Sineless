@@ -1,7 +1,12 @@
 // A back end that runs without the plugin (DESIGN 5.1): it answers the session protocol like
 // the engine and synthesises frames in the real binary format, so the UI can be developed in a
 // browser through the Vite dev server.
-import { ChannelView, FrameMode } from "../../../protocol/src/enums.ts";
+import {
+  BeatSpan,
+  beatSpanQuarterNotes,
+  ChannelView,
+  FrameMode,
+} from "../../../protocol/src/enums.ts";
 import { encodeFrame } from "../../../protocol/src/frame-encoder.ts";
 import type { SettingValue } from "../../../protocol/src/messages.ts";
 import {
@@ -17,6 +22,9 @@ export const mockSampleRate = 48000;
 // The synthetic signal: L is a 220 Hz tone, R adds its octave, so every view repeats every
 // 220 Hz period and the display stays as steady as a triggered one.
 export const mockFundamental = 220;
+// The simulated transport (FR-9): 120 BPM in 4/4.
+export const mockTempo = 120;
+const mockBarQuarterNotes = 4;
 const triggerPosition = 0.1;
 const rollThresholdSeconds = 1;
 
@@ -147,16 +155,41 @@ export class MockTransport implements Transport {
     if (this.columns === 0) {
       return;
     }
-    const span = this.setting("timeSpan") as number;
-    const roll = span > rollThresholdSeconds;
     const time = this.frozenAt ?? this.now();
-    // Triggered spans start one trigger offset before a period boundary; roll spans end now.
-    const period = 1 / mockFundamental;
-    const start = roll
-      ? time - span
-      : Math.floor((time - span) / period) * period - triggerPosition * span;
+    const synced = this.setting("timeBase") === "beats";
+    let span = this.setting("timeSpan") as number;
+    let timeOf: (fraction: number) => number;
+    let cursor: number | undefined;
+    let cycleStart = 0;
+    let spanQuarterNotes = 0;
+    const roll = !synced && span > rollThresholdSeconds;
+    if (synced) {
+      // A transport playing at the mock tempo since start-up (FR-9).
+      const name = this.setting("beatSpan") as keyof typeof BeatSpan;
+      spanQuarterNotes = beatSpanQuarterNotes(
+        BeatSpan[name],
+        mockBarQuarterNotes,
+      );
+      const secondsPerQuarterNote = 60 / mockTempo;
+      span = spanQuarterNotes * secondsPerQuarterNote;
+      const playhead = time / secondsPerQuarterNote;
+      cycleStart = Math.floor(playhead / spanQuarterNotes) * spanQuarterNotes;
+      const phase = (playhead - cycleStart) / spanQuarterNotes;
+      const cycleTime = cycleStart * secondsPerQuarterNote;
+      cursor = phase;
+      timeOf = (fraction) =>
+        (fraction < phase ? cycleTime : cycleTime - span) + fraction * span;
+    } else {
+      // Triggered spans start one trigger offset before a period boundary; roll spans end now.
+      const period = 1 / mockFundamental;
+      const start = roll
+        ? time - span
+        : Math.floor((time - span) / period) * period - triggerPosition * span;
+      timeOf = (fraction) => start + fraction * span;
+    }
 
-    const sampleCount = Math.round(span * mockSampleRate);
+    const sampleCount = Math.max(1, Math.round(span * mockSampleRate));
+    const sampleTime = (sample: number) => timeOf(sample / sampleCount);
     const minMax = sampleCount > this.columns;
     const pointCount = minMax ? this.columns : sampleCount;
     const samplesPerPoint = sampleCount / pointCount;
@@ -169,15 +202,17 @@ export class MockTransport implements Transport {
       const points = new Float32Array(minMax ? pointCount * 2 : pointCount);
       for (let point = 0; point < pointCount; point++) {
         if (!minMax) {
-          points[point] = viewSample(view, start + point / mockSampleRate);
+          points[point] = viewSample(view, sampleTime(point));
           continue;
         }
         let low = Infinity;
         let high = -Infinity;
         const first = Math.floor(point * samplesPerPoint);
         const last = Math.floor((point + 1) * samplesPerPoint);
-        for (let sample = first; sample < last; sample++) {
-          const value = viewSample(view, start + sample / mockSampleRate);
+        // Long spans: sample each column sparsely, enough for a mock.
+        const stride = Math.max(1, Math.floor((last - first) / 64));
+        for (let sample = first; sample < last; sample += stride) {
+          const value = viewSample(view, sampleTime(sample));
           low = Math.min(low, value);
           high = Math.max(high, value);
         }
@@ -191,24 +226,32 @@ export class MockTransport implements Transport {
       ChannelView[this.setting("triggerSource") as keyof typeof ChannelView];
     let sumOfSquares = 0;
     let peak = 0;
-    for (let sample = 0; sample < sampleCount; sample++) {
-      const value = viewSample(source, start + sample / mockSampleRate);
+    const readoutStride = Math.max(1, Math.floor(sampleCount / 4096));
+    let readoutSamples = 0;
+    for (let sample = 0; sample < sampleCount; sample += readoutStride) {
+      const value = viewSample(source, sampleTime(sample));
       sumOfSquares += value * value;
       peak = Math.max(peak, Math.abs(value));
+      readoutSamples++;
     }
 
     this.frameHandler?.(
       encodeFrame({
         sequence: this.sequence++,
         mode: minMax ? FrameMode.minMax : FrameMode.raw,
-        triggered: !roll,
+        triggered: !roll && !synced,
         frozen: this.frozenAt !== undefined,
         roll,
+        synced,
+        cursor,
+        cycleStart,
+        spanQuarterNotes,
+        barQuarterNotes: synced ? mockBarQuarterNotes : 0,
         pointCount,
         samplesPerPoint: minMax ? samplesPerPoint : 1,
         startFraction: 0,
         peak,
-        rms: Math.sqrt(sumOfSquares / Math.max(sampleCount, 1)),
+        rms: Math.sqrt(sumOfSquares / Math.max(readoutSamples, 1)),
         frequency: mockFundamental,
         views,
       }),

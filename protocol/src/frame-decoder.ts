@@ -18,6 +18,10 @@ export interface Frame {
   readonly limited: boolean;
   // Playhead position across the screen in a tempo-synced sweep (FR-9).
   readonly cursor: number | undefined;
+  // Musical context of a synced sweep, in quarter notes (FR-9).
+  readonly cycleStart: number;
+  readonly spanQuarterNotes: number;
+  readonly barQuarterNotes: number;
   // Points of each view present, keyed by ChannelView; min/max pairs in FrameMode.minMax.
   readonly views: ReadonlyMap<ChannelView, Float32Array>;
 }
@@ -76,6 +80,9 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     synced: (flags & FrameFlag.synced) !== 0,
     limited: (flags & FrameFlag.limited) !== 0,
     cursor: cursor >= 0 ? cursor : undefined,
+    cycleStart: f32("cycleStart"),
+    spanQuarterNotes: f32("spanQuarterNotes"),
+    barQuarterNotes: f32("barQuarterNotes"),
     views,
   };
 }

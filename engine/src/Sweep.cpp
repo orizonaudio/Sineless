@@ -1,6 +1,5 @@
 #include "engine/Sweep.h"
 
-#include <array>
 #include <cmath>
 #include <cstddef>
 
@@ -10,11 +9,9 @@ using protocol::BeatSpan;
 
 double beatSpanQuarterNotes(BeatSpan span, double barQuarterNotes)
 {
-    static constexpr std::array<double, protocol::kBeatSpanCount> kQuarterNotes = {
-        1.0 / 16, 1.0 / 8, 1.0 / 4, 1.0 / 2, 1.0, 2.0, 1.0, 2.0, 4.0,
-    };
-    const double length = kQuarterNotes.at(static_cast<std::size_t>(span));
-    return span >= BeatSpan::kOneBar ? length * barQuarterNotes : length;
+    const protocol::BeatSpanLength& length =
+        protocol::kBeatSpanLengths.at(static_cast<std::size_t>(span));
+    return length.inBars ? length.amount * barQuarterNotes : length.amount;
 }
 
 std::optional<SweepWindow> sweepWindow(const MusicalStamp& stamp, std::uint64_t end,
@@ -50,7 +47,10 @@ std::optional<SweepWindow> sweepWindow(const MusicalStamp& stamp, std::uint64_t 
                        .cursor = rotation == 0 ? 1.0
                                                : 1.0 - static_cast<double>(rotation) /
                                                            static_cast<double>(count),
-                       .limited = limited};
+                       .limited = limited,
+                       .cycleStart = cycleStart,
+                       .spanQuarterNotes = length,
+                       .barQuarterNotes = bar};
 }
 
 } // namespace orizon::engine

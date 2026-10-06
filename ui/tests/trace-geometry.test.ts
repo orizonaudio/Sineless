@@ -42,6 +42,9 @@ function frame(
     synced: false,
     limited: false,
     cursor: undefined,
+    cycleStart: 0,
+    spanQuarterNotes: 0,
+    barQuarterNotes: 0,
     views: new Map(
       views.map(([view, values]) => [view, new Float32Array(values)]),
     ),

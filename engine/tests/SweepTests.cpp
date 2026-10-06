@@ -34,6 +34,9 @@ TEST(Sweep, PutsTheCycleStartAtTheLeftEdge)
     EXPECT_EQ(window->rotation, 48000u) << "sample 96000 moves to the left edge";
     EXPECT_DOUBLE_EQ(window->cursor, 0.5);
     EXPECT_FALSE(window->limited);
+    EXPECT_DOUBLE_EQ(window->cycleStart, 4.0) << "bar 2 starts at quarter note 4";
+    EXPECT_DOUBLE_EQ(window->spanQuarterNotes, 4.0);
+    EXPECT_DOUBLE_EQ(window->barQuarterNotes, 4.0);
 }
 
 TEST(Sweep, AlignsTwoBarCyclesToOddBars)

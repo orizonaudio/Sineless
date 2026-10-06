@@ -29,6 +29,8 @@
       <main class="screen" id="screen">
         <canvas class="grid" id="grid"></canvas>
         <canvas class="trace" id="trace"></canvas>
+        <div class="sweep-previous" id="sweep-previous" hidden></div>
+        <div class="sweep-cursor" id="sweep-cursor" hidden></div>
         <div class="labels" id="labels"></div>
         <div class="trigger-line" id="trigger-line"></div>
         <div
@@ -44,7 +46,11 @@
       <footer class="controls">
         <section class="group" id="time-group">
           <div class="group-label">Time</div>
-          <div id="span-field"></div>
+          <div class="row">
+            <div id="span-field"></div>
+            <div id="beat-span-field" hidden></div>
+          </div>
+          <div class="segmented" id="time-base"></div>
         </section>
         <section class="group" id="vertical-group">
           <div class="group-label">Vertical</div>

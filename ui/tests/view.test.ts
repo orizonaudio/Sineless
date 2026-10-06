@@ -141,6 +141,9 @@ describe("status chips", () => {
     synced: false,
     limited: false,
     cursor: undefined,
+    cycleStart: 0,
+    spanQuarterNotes: 0,
+    barQuarterNotes: 0,
     views: new Map(),
     ...overrides,
   });
@@ -159,6 +162,18 @@ describe("status chips", () => {
     expect(statusChips(frame({ triggered: true }), "auto", 1, 0)[0]?.text).toBe(
       "Trig’d",
     );
+  });
+
+  test("shows sync, and a shortened span", () => {
+    expect(statusChips(frame({ synced: true }), "auto", 0, 0)).toEqual([
+      { text: "Sync", tone: "ok" },
+    ]);
+    expect(
+      statusChips(frame({ synced: true, limited: true }), "auto", 0, 0)[1],
+    ).toEqual({
+      text: "Span limited",
+      tone: "warn",
+    });
   });
 
   test("shows roll and frozen with the pan offset", () => {

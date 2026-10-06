@@ -32,6 +32,11 @@ describe("C++ generator", () => {
     );
   });
 
+  test("emits the beat span lengths", () => {
+    expect(header).toContain("kBeatSpanLengths = {{\n    {0.0625, false},");
+    expect(header).toContain("    {4, true},\n}};");
+  });
+
   test("emits message type names", () => {
     expect(header).toContain('"setSetting",');
   });

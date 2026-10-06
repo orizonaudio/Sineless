@@ -29,6 +29,31 @@ export const BeatSpan = {
 } as const;
 export type BeatSpan = (typeof BeatSpan)[keyof typeof BeatSpan];
 
+// Length of each beat span: an amount of beats (quarter notes), or of bars, which follow the
+// host time signature. Indexed by BeatSpan value.
+export const beatSpanLengths: readonly {
+  readonly amount: number;
+  readonly inBars: boolean;
+}[] = [
+  { amount: 1 / 16, inBars: false },
+  { amount: 1 / 8, inBars: false },
+  { amount: 1 / 4, inBars: false },
+  { amount: 1 / 2, inBars: false },
+  { amount: 1, inBars: false },
+  { amount: 2, inBars: false },
+  { amount: 1, inBars: true },
+  { amount: 2, inBars: true },
+  { amount: 4, inBars: true },
+];
+
+export function beatSpanQuarterNotes(
+  span: BeatSpan,
+  barQuarterNotes: number,
+): number {
+  const length = beatSpanLengths[span] ?? { amount: 1, inBars: true };
+  return length.inBars ? length.amount * barQuarterNotes : length.amount;
+}
+
 export const FrameMode = { minMax: 0, raw: 1 } as const;
 export type FrameMode = (typeof FrameMode)[keyof typeof FrameMode];
 

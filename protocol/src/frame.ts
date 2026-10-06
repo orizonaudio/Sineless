@@ -6,7 +6,9 @@
 // `samplesPerPoint` is the number of samples each point covers. The visible span starts
 // `startFraction` samples after the first point (sub-sample trigger alignment). Readouts are
 // those of FR-7; `frequency` is 0 when unavailable. In a tempo-synced sweep (FR-9), `cursor` is
-// the playhead's position across the screen (0 to 1), and -1 otherwise.
+// the playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
+// project position of the left edge, `spanQuarterNotes` the span shown and `barQuarterNotes` the
+// bar length, all in quarter notes (0 when not synced).
 
 export type FieldType = "u8" | "u16" | "u32" | "f32";
 
@@ -28,6 +30,9 @@ export const frameHeaderFields = [
   { name: "rms", type: "f32" },
   { name: "frequency", type: "f32" },
   { name: "cursor", type: "f32" },
+  { name: "cycleStart", type: "f32" },
+  { name: "spanQuarterNotes", type: "f32" },
+  { name: "barQuarterNotes", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];
