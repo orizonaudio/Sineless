@@ -1,6 +1,9 @@
 #include "Controller.h"
 #include "Processor.h"
 
+#include <array>
+#include <bit>
+#include <cstdint>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <random>
@@ -20,7 +23,10 @@ IPtr<Processor> makeProcessor(SpeakerArrangement arrangement, int32 sampleSize)
     auto processor = owned(new Processor());
     EXPECT_EQ(processor->initialize(nullptr), kResultOk);
     EXPECT_EQ(processor->setBusArrangements(&arrangement, 1, &arrangement, 1), kResultTrue);
-    ProcessSetup setup{kRealtime, sampleSize, kBlockSize, 48000.0};
+    ProcessSetup setup{.processMode = kRealtime,
+                       .symbolicSampleSize = sampleSize,
+                       .maxSamplesPerBlock = kBlockSize,
+                       .sampleRate = 48000.0};
     EXPECT_EQ(processor->setupProcessing(setup), kResultOk);
     EXPECT_EQ(processor->setActive(true), kResultOk);
     // The SDK default returns kNotImplemented, which the VST3 spec allows.
@@ -86,12 +92,15 @@ template <typename Sample> void expectBitExactPassThrough(int32 numChannels, boo
     data.outputs = &output;
     ASSERT_EQ(processor->process(data), kResultOk);
 
-    for (int32 channel = 0; channel < numChannels; ++channel) {
-        EXPECT_EQ(std::memcmp(outputPointers[static_cast<size_t>(channel)],
-                              expected[static_cast<size_t>(channel)].data(),
-                              kBlockSize * sizeof(Sample)),
-                  0)
-            << "channel " << channel;
+    using Bits = std::conditional_t<sizeof(Sample) == sizeof(uint64_t), uint64_t, uint32_t>;
+    const auto channelCount = static_cast<size_t>(numChannels);
+    const auto sampleCount = static_cast<size_t>(kBlockSize);
+    for (size_t channel = 0; channel < channelCount; ++channel) {
+        for (size_t index = 0; index < sampleCount; ++index) {
+            ASSERT_EQ(std::bit_cast<Bits>(outputPointers[channel][index]),
+                      std::bit_cast<Bits>(expected[channel][index]))
+                << "channel " << channel << ", sample " << index;
+        }
     }
 }
 
@@ -121,13 +130,13 @@ TEST(Processor, AcceptsOnlyMatchingMonoOrStereoBuses)
     SpeakerArrangement mono = SpeakerArr::kMono;
     SpeakerArrangement stereo = SpeakerArr::kStereo;
     SpeakerArrangement surround = SpeakerArr::k51;
-    SpeakerArrangement twoStereo[] = {SpeakerArr::kStereo, SpeakerArr::kStereo};
+    std::array<SpeakerArrangement, 2> twoStereo = {SpeakerArr::kStereo, SpeakerArr::kStereo};
 
     EXPECT_EQ(processor->setBusArrangements(&mono, 1, &mono, 1), kResultTrue);
     EXPECT_EQ(processor->setBusArrangements(&stereo, 1, &stereo, 1), kResultTrue);
     EXPECT_EQ(processor->setBusArrangements(&mono, 1, &stereo, 1), kResultFalse);
     EXPECT_EQ(processor->setBusArrangements(&surround, 1, &surround, 1), kResultFalse);
-    EXPECT_EQ(processor->setBusArrangements(twoStereo, 2, &stereo, 1), kResultFalse);
+    EXPECT_EQ(processor->setBusArrangements(twoStereo.data(), 2, &stereo, 1), kResultFalse);
 }
 
 TEST(Processor, Supports32And64BitProcessing)
@@ -148,15 +157,15 @@ TEST(Processor, PropagatesSilenceFlags)
     auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
     std::vector<Sample32> left(kBlockSize, 0.0f);
     std::vector<Sample32> right(kBlockSize, 0.0f);
-    Sample32* channels[] = {left.data(), right.data()};
+    std::array<Sample32*, 2> channels = {left.data(), right.data()};
 
     AudioBusBuffers input{};
     input.numChannels = 2;
     input.silenceFlags = 0b11;
-    input.channelBuffers32 = channels;
+    input.channelBuffers32 = channels.data();
     AudioBusBuffers output{};
     output.numChannels = 2;
-    output.channelBuffers32 = channels;
+    output.channelBuffers32 = channels.data();
 
     ProcessData data{};
     data.symbolicSampleSize = kSample32;

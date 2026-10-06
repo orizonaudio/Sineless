@@ -8,7 +8,7 @@ namespace {
 
 TEST(Version, LinkedVersionMatchesHeader)
 {
-    EXPECT_EQ(linkedVersion(), kVersionString);
+    EXPECT_EQ(linkedVersion(), std::string_view(kVersionString));
 }
 
 TEST(Version, StringIsMajorMinorPatch)

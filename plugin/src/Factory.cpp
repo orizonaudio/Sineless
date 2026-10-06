@@ -11,11 +11,11 @@ BEGIN_FACTORY_DEF(plugin::kVendorName, plugin::kVendorUrl, plugin::kVendorEmail,
 // Class flags are 0, not kDistributable: the controller shares the processor's engine
 // in-process (AD-10).
 DEF_CLASS(plugin::kProcessorUid, Steinberg::PClassInfo::kManyInstances, kVstAudioEffectClass,
-          plugin::kProductName, 0, plugin::kSubCategories, engine::kVersionString.data(),
+          plugin::kProductName, 0, plugin::kSubCategories, engine::kVersionString,
           kVstVersionString, plugin::Processor::createInstance, nullptr)
 
 DEF_CLASS(plugin::kControllerUid, Steinberg::PClassInfo::kManyInstances,
-          kVstComponentControllerClass, plugin::kProductName, 0, "", engine::kVersionString.data(),
+          kVstComponentControllerClass, plugin::kProductName, 0, "", engine::kVersionString,
           kVstVersionString, plugin::Controller::createInstance, nullptr)
 
 END_FACTORY

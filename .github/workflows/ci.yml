@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install LLVM
+        run: brew install llvm
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Run all checks
+        run: scripts/check.sh

@@ -4,6 +4,7 @@ Checks: >
   performance-*,
   modernize-*,
   -modernize-use-trailing-return-type,
+  -bugprone-easily-swappable-parameters,
   readability-identifier-naming
 WarningsAsErrors: "*"
 HeaderFilterRegex: "(engine|editor|plugin)/"

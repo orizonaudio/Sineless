@@ -7,7 +7,7 @@ namespace orizon::engine {
 constexpr int kVersionMajor = @PROJECT_VERSION_MAJOR@;
 constexpr int kVersionMinor = @PROJECT_VERSION_MINOR@;
 constexpr int kVersionPatch = @PROJECT_VERSION_PATCH@;
-constexpr std::string_view kVersionString = "@PROJECT_VERSION@";
+constexpr const char* kVersionString = "@PROJECT_VERSION@";
 
 // Version of the engine library this binary was linked against.
 std::string_view linkedVersion();
