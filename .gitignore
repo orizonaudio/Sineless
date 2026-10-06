@@ -11,3 +11,6 @@ node_modules/
 
 # Local research material (not part of the repository)
 /Research Topics/
+
+# Machine-specific CMake settings
+CMakeUserPresets.json

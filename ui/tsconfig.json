@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "outDir": "../build/tsc/ui"
+  },
+  "include": ["src", "tests", "vite.config.ts"],
+  "references": [{ "path": "../protocol" }]
+}
