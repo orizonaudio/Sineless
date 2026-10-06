@@ -3,6 +3,7 @@
 #include "pluginterfaces/gui/iplugview.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <utility>
 
@@ -11,6 +12,9 @@ namespace orizon::editor {
 using namespace Steinberg;
 
 namespace {
+
+// How often host state changes (setState) are reported to the page.
+constexpr std::chrono::milliseconds kStateSyncInterval{100};
 
 bool isSupportedPlatform(FIDString type)
 {
@@ -42,17 +46,28 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
     if (engineState) {
         analyzer = std::make_unique<engine::Analyzer>(*engineState);
         transport = std::make_unique<WebViewTransport>(*view);
-        session = std::make_unique<Session>(*engineState, *analyzer, *transport);
-        // Frames reach the page once the credit-based flow is in place (T-023).
-        worker = std::make_unique<engine::AnalysisWorker>([] {});
+        dispatcher = UiDispatcher::create();
+        frameFlow = std::make_unique<FrameFlow>(
+            *analyzer, *dispatcher,
+            [this](std::span<const std::byte> frame) { transport->sendFrame(frame); });
+        session = std::make_unique<Session>(*engineState, *analyzer, *transport, [this] {
+            frameFlow->grantCredit();
+            if (worker) {
+                worker->wake();
+            }
+        });
+        dispatcher->every(kStateSyncInterval, [this] { session->syncSettings(); });
+        worker = std::make_unique<engine::AnalysisWorker>([this] { frameFlow->step(); });
     }
     return CPluginView::attached(parent, type);
 }
 
 tresult PLUGIN_API Editor::removed()
 {
-    worker.reset(); // Joins the thread before the state and view it uses go away.
+    worker.reset();     // Joins the thread before the state and view it uses go away.
+    dispatcher.reset(); // Drops queued deliveries and the state-sync timer.
     session.reset();
+    frameFlow.reset();
     transport.reset();
     analyzer.reset();
     view.reset();

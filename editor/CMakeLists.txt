@@ -24,8 +24,10 @@ add_custom_command(
 add_library(editor STATIC
     src/Editor.cpp
     src/EmbeddedAssets.cpp
+    src/FrameFlow.cpp
     src/Session.cpp
     src/Transport.cpp
+    src/mac/UiDispatcherMac.mm
     src/mac/WebViewMac.mm
     ${embeddedAssetData}
 )
@@ -40,6 +42,7 @@ if(BUILD_TESTING)
     add_executable(editor_tests
         tests/EditorTests.mm
         tests/EmbeddedAssetsTests.cpp
+        tests/FrameFlowTests.cpp
         tests/SessionTests.cpp
         tests/TransportTests.cpp
     )

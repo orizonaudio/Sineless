@@ -1,7 +1,9 @@
 #pragma once
 
+#include "editor/FrameFlow.h"
 #include "editor/Session.h"
 #include "editor/Transport.h"
+#include "editor/UiDispatcher.h"
 #include "editor/WebView.h"
 #include "engine/AnalysisWorker.h"
 #include "engine/Analyzer.h"
@@ -54,6 +56,8 @@ private:
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;
     std::unique_ptr<WebViewTransport> transport;
+    std::unique_ptr<UiDispatcher> dispatcher;
+    std::unique_ptr<FrameFlow> frameFlow;
     std::unique_ptr<Session> session;
     std::unique_ptr<engine::Analyzer> analyzer;
     std::unique_ptr<engine::AnalysisWorker> worker; // Declared last: stopped before the rest.

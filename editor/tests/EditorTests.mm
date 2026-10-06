@@ -44,7 +44,7 @@ using namespace Steinberg;
 
 constexpr std::chrono::seconds kPageTimeout{15};
 
-bool pumpUntil(const std::function<bool()>& condition, std::chrono::seconds timeout)
+bool pumpUntil(const std::function<bool()>& condition, std::chrono::milliseconds timeout)
 {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (!condition() && std::chrono::steady_clock::now() < deadline) {
@@ -140,6 +140,61 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
     auto editor = owned(new Editor(nullptr));
     ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
     EXPECT_FALSE(editor->workerRunning());
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
+// Frames flow while credits return, and host state changes reach the page (AD-12, DESIGN 6.1).
+// Test windows are occluded (an unbundled test process never becomes a foreground app), so
+// WebKit pauses requestAnimationFrame here; the test returns credits itself, through the page's
+// real native channel. rAF pacing in a host was measured in T-006.
+TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
+{
+    auto engine = std::make_shared<engine::Engine>();
+    engine->setSampleRate(48000.0);
+    engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per credit.
+    std::vector<float> tone(96000);
+    for (std::size_t i = 0; i < tone.size(); ++i) {
+        tone[i] = (i / 50) % 2 == 0 ? 0.5f : -0.5f;
+    }
+    std::array<const float*, 2> channels{tone.data(), tone.data()};
+    engine->captureRing().write(channels.data(), 2, static_cast<int>(tone.size()));
+
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    std::vector<std::string> received;
+    auto editor = makeEditor(received, engine);
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+
+    const auto frameCount = [&] {
+        return std::stoi("0" + evaluate(webView, @"String(window.orizonDebug?.frameCount ?? 0)"));
+    };
+    ASSERT_TRUE(pumpUntil([&] { return frameCount() == 1; }, kPageTimeout))
+        << "the first frame needs no credit";
+    pumpUntil([] { return false; }, std::chrono::milliseconds(200));
+    EXPECT_EQ(frameCount(), 1) << "no second frame without a credit";
+
+    for (int expected = 2; expected <= 5; ++expected) {
+        engine->captureRing().write(channels.data(), 2, 480); // New audio, as a host would.
+        evaluate(webView, @"window.webkit.messageHandlers.orizon.postMessage("
+                          @"JSON.stringify({type: 'credit'})); ''");
+        ASSERT_TRUE(pumpUntil([&] { return frameCount() == expected; }, std::chrono::seconds(5)))
+            << "one frame per credit";
+    }
+    EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.lastFrame.views.size)"), "2");
+
+    engine::Settings restored;
+    restored.set(protocol::SettingId::kTriggerLevel, 0.5);
+    engine->settings().replace(restored);
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            return evaluate(webView, @"String(window.orizonDebug?.lastState?.name ?? '')") ==
+                   "triggerLevel";
+        },
+        std::chrono::seconds(5)))
+        << "a host setState change should reach the page";
+
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
 }

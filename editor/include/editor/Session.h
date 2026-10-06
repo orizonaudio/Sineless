@@ -5,6 +5,7 @@
 #include "engine/Engine.h"
 #include "engine/Settings.h"
 
+#include <functional>
 #include <nlohmann/json.hpp>
 #include <optional>
 
@@ -16,7 +17,10 @@ namespace orizon::editor {
 class Session
 {
 public:
-    Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport);
+    // `onCredit` runs when the UI may receive another frame: on a successful hello and for every
+    // credit message (AD-12).
+    Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport,
+            std::function<void()> onCredit = {});
 
     // Handles one message from the page. Before a successful hello only hello is accepted.
     void receive(const nlohmann::json& message);
@@ -35,6 +39,7 @@ private:
     engine::Engine& engine;
     engine::Analyzer& analyzer;
     Transport& transport;
+    std::function<void()> onCredit;
     bool isStarted = false;
     std::optional<engine::Settings> lastSent;
 };

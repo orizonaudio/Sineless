@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <string>
+#include <utility>
 
 namespace orizon::editor {
 
@@ -50,8 +51,9 @@ std::optional<protocol::SettingId> settingId(const nlohmann::json& name)
 
 } // namespace
 
-Session::Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport)
-    : engine(engine), analyzer(analyzer), transport(transport)
+Session::Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport,
+                 std::function<void()> onCredit)
+    : engine(engine), analyzer(analyzer), transport(transport), onCredit(std::move(onCredit))
 {}
 
 void Session::receive(const nlohmann::json& message)
@@ -87,8 +89,13 @@ void Session::receive(const nlohmann::json& message)
     case MessageType::kArm:
         analyzer.arm();
         break;
+    case MessageType::kCredit:
+        if (onCredit) {
+            onCredit();
+        }
+        break;
     default:
-        break; // Engine-to-UI types, and credit, which the frame flow handles (T-023).
+        break; // Engine-to-UI types.
     }
 }
 
@@ -122,6 +129,9 @@ void Session::hello(const nlohmann::json& message)
                            {"inputChannels", engine.inputChannels()}});
     lastSent = settings;
     isStarted = true;
+    if (onCredit) {
+        onCredit(); // The first frame needs no credit message.
+    }
 }
 
 void Session::setSetting(const nlohmann::json& message)
