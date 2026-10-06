@@ -19,8 +19,8 @@ bool isSupportedPlatform(FIDString type)
 
 } // namespace
 
-Editor::Editor(WebView::MessageHandler onMessage, std::shared_ptr<engine::Engine> engine)
-    : onMessage(std::move(onMessage)), engineState(std::move(engine))
+Editor::Editor(std::shared_ptr<engine::Engine> engine, MessageObserver observer)
+    : observer(std::move(observer)), engineState(std::move(engine))
 {
     ViewRect initial(0, 0, kDefaultWidth, kDefaultHeight);
     setRect(initial);
@@ -36,9 +36,13 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
     if (parent == nullptr || !isSupportedPlatform(type)) {
         return kResultFalse;
     }
-    view = WebView::create(parent, getRect().getWidth(), getRect().getHeight(), onMessage);
+    view =
+        WebView::create(parent, getRect().getWidth(), getRect().getHeight(),
+                        [this](WebView& /*view*/, std::string_view message) { receive(message); });
     if (engineState) {
         analyzer = std::make_unique<engine::Analyzer>(*engineState);
+        transport = std::make_unique<WebViewTransport>(*view);
+        session = std::make_unique<Session>(*engineState, *analyzer, *transport);
         // Frames reach the page once the credit-based flow is in place (T-023).
         worker = std::make_unique<engine::AnalysisWorker>([] {});
     }
@@ -48,9 +52,23 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
 tresult PLUGIN_API Editor::removed()
 {
     worker.reset(); // Joins the thread before the state and view it uses go away.
+    session.reset();
+    transport.reset();
     analyzer.reset();
     view.reset();
     return CPluginView::removed();
+}
+
+void Editor::receive(std::string_view message)
+{
+    if (observer) {
+        observer(message);
+    }
+    if (session) {
+        if (const auto parsed = WebViewTransport::parse(message)) {
+            session->receive(*parsed);
+        }
+    }
 }
 
 tresult PLUGIN_API Editor::onSize(ViewRect* newSize)

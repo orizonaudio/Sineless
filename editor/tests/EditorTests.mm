@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <functional>
 #include <gtest/gtest.h>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -52,19 +53,6 @@ bool pumpUntil(const std::function<bool()>& condition, std::chrono::seconds time
     return condition();
 }
 
-void respondToPing(WebView& view, std::string_view message)
-{
-    if (message != "ping") {
-        return;
-    }
-    view.postMessage("pong");
-    std::array<std::byte, 4096> pattern{};
-    for (std::size_t i = 0; i < pattern.size(); ++i) {
-        pattern[i] = static_cast<std::byte>(i % 256);
-    }
-    view.postBinary(pattern);
-}
-
 class EditorTest : public ::testing::Test
 {
 protected:
@@ -82,19 +70,46 @@ protected:
         return window;
     }
 
-    IPtr<Editor> makeEditor(std::vector<std::string>& received)
+    IPtr<Editor>
+    makeEditor(std::vector<std::string>& received,
+               std::shared_ptr<engine::Engine> engine = std::make_shared<engine::Engine>())
     {
-        return owned(new Editor(
-            [&received](WebView& view, std::string_view message) {
-                received.emplace_back(message);
-                respondToPing(view, message);
-            },
-            nullptr));
+        return owned(new Editor(std::move(engine), [&received](std::string_view message) {
+            received.emplace_back(message);
+        }));
     }
 
-    static bool contains(const std::vector<std::string>& messages, const std::string& wanted)
+    // Evaluates `script` in the page and returns its result as a string ("" if none yet).
+    static std::string evaluate(WKWebView* webView, NSString* script)
     {
-        return std::ranges::find(messages, wanted) != messages.end();
+        struct Result
+        {
+            bool done = false;
+            std::string value;
+        };
+        auto result = std::make_shared<Result>();
+        [webView evaluateJavaScript:script
+                  completionHandler:^(id value, NSError* /*error*/) {
+                    if ([value isKindOfClass:[NSString class]]) {
+                        result->value = [value UTF8String];
+                    }
+                    result->done = true;
+                  }];
+        pumpUntil([&] { return result->done; }, std::chrono::seconds(5));
+        return result->value;
+    }
+
+    static bool hasSnapshot(WKWebView* webView)
+    {
+        return evaluate(webView, @"String(window.orizonDebug?.snapshot?.type ?? '')") == "snapshot";
+    }
+
+    // Whether any raw page message has the given type.
+    static bool saw(const std::vector<std::string>& messages, const std::string& type)
+    {
+        return std::ranges::any_of(messages, [&](const std::string& message) {
+            return message.find(R"("type":")" + type + "\"") != std::string::npos;
+        });
     }
 };
 
@@ -105,7 +120,7 @@ TEST_F(EditorTest, RunsTheWorkerOnlyWhileAttachedWithAnEngine)
         @autoreleasepool {
             NSView* parent = [[NSView alloc] init];
             NSWindow* window = makeWindow(parent);
-            auto editor = owned(new Editor([](WebView&, std::string_view) {}, engine));
+            auto editor = owned(new Editor(engine));
             EXPECT_FALSE(editor->workerRunning()) << "no worker before the editor opens";
             ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
             EXPECT_TRUE(editor->workerRunning());
@@ -122,7 +137,7 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
 {
     NSView* parent = [[NSView alloc] init];
     NSWindow* window = makeWindow(parent);
-    auto editor = owned(new Editor([](WebView&, std::string_view) {}, nullptr));
+    auto editor = owned(new Editor(nullptr));
     ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
     EXPECT_FALSE(editor->workerRunning());
     EXPECT_EQ(editor->removed(), kResultOk);
@@ -147,8 +162,8 @@ TEST_F(EditorTest, EnforcesMinimumSize)
     EXPECT_EQ(rect.getHeight(), Editor::kMinimumHeight);
 }
 
-// T-005: the page loads from the embedded UI, messages round-trip, and a binary payload
-// arrives intact, across 50 open/close cycles.
+// The page loads from the embedded UI and completes the session handshake (DESIGN 6.1) across
+// 50 open/close cycles.
 TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
 {
     constexpr int kCycles = 50;
@@ -160,10 +175,10 @@ TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
             auto editor = makeEditor(received);
 
             ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
-            ASSERT_TRUE(
-                pumpUntil([&] { return contains(received, "binary-ok:4096"); }, kPageTimeout))
-                << "cycle " << cycle << ": page did not verify the binary payload";
-            EXPECT_TRUE(contains(received, "ping"));
+            auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+            ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout))
+                << "cycle " << cycle << ": the page did not receive the session snapshot";
+            EXPECT_TRUE(saw(received, "hello"));
             EXPECT_EQ(editor->removed(), kResultOk);
             EXPECT_EQ(editor->webView(), nullptr);
             EXPECT_EQ(parent.subviews.count, 0u);
@@ -179,9 +194,10 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
     std::vector<std::string> received;
     auto editor = makeEditor(received);
     ASSERT_EQ(editor->attached((__bridge void*)host, kPlatformTypeNSView), kResultTrue);
-    ASSERT_TRUE(pumpUntil([&] { return contains(received, "binary-ok:4096"); }, kPageTimeout));
-
     auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+    evaluate(webView, @"(() => { const input = document.createElement('input');"
+                      @" input.id = 'test-input'; document.body.append(input); return ''; })()");
     NSEvent* key = [NSEvent keyEventWithType:NSEventTypeKeyDown
                                     location:NSZeroPoint
                                modifierFlags:0
@@ -203,13 +219,13 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
     [webView keyDown:key];
     EXPECT_EQ([host keyDownCount], 1) << "key should reach the host while nothing is focused";
 
-    [webView evaluateJavaScript:@"document.getElementById('spike-input').focus()"
+    [webView evaluateJavaScript:@"document.getElementById('test-input').focus()"
               completionHandler:nil];
     pumpUntil([] { return false; }, std::chrono::seconds(1));
     [webView keyDown:key];
     EXPECT_EQ([host keyDownCount], 1) << "key should stay in the page while an input is focused";
 
-    [webView evaluateJavaScript:@"document.getElementById('spike-input').blur()"
+    [webView evaluateJavaScript:@"document.getElementById('test-input').blur()"
               completionHandler:nil];
     pumpUntil([] { return false; }, std::chrono::seconds(1));
     [webView keyDown:key];

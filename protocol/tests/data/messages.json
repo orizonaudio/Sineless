@@ -1,0 +1,29 @@
+{
+  "description": "One example of every UI-to-engine message, checked against the TypeScript types and parsed by the C++ session tests, so field names cannot drift.",
+  "hello": {
+    "type": "hello",
+    "protocolVersion": 1,
+    "viewWidth": 640,
+    "pixelRatio": 2
+  },
+  "setSetting": {
+    "type": "setSetting",
+    "name": "triggerMode",
+    "value": "normal"
+  },
+  "setSettingFlags": {
+    "type": "setSetting",
+    "name": "channelViews",
+    "value": ["mid", "side"]
+  },
+  "setSettingNumber": {
+    "type": "setSetting",
+    "name": "timeSpan",
+    "value": 0.5
+  },
+  "credit": { "type": "credit" },
+  "viewport": { "type": "viewport", "viewWidth": 500, "pixelRatio": 1.5 },
+  "freeze": { "type": "freeze", "frozen": true },
+  "pan": { "type": "pan", "seconds": 0.25 },
+  "arm": { "type": "arm" }
+}

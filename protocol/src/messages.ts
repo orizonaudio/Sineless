@@ -1,5 +1,7 @@
-// Control message types exchanged as JSON over the native channel (AD-3, DESIGN 6.1).
-// Every message is an object with a `type` field holding one of these values.
+// Control messages exchanged as JSON over the native channel (AD-3, DESIGN 6.1). Every message
+// is an object whose `type` holds one of the MessageType values; the payloads are below.
+// Setting values use the JSON form of their kind: numbers, enum value names, or arrays of names.
+import type { SettingName } from "./settings.ts";
 
 export const MessageType = {
   hello: "hello",
@@ -8,5 +10,93 @@ export const MessageType = {
   stateChanged: "stateChanged",
   error: "error",
   credit: "credit",
+  viewport: "viewport",
+  freeze: "freeze",
+  pan: "pan",
+  arm: "arm",
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
+
+export const ErrorCode = { protocolMismatch: "protocolMismatch" } as const;
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+export type SettingValue = number | string | readonly string[];
+
+// UI to engine. Starts (or restarts) a session; `viewWidth` is the trace area in CSS pixels.
+export interface HelloMessage {
+  readonly type: "hello";
+  readonly protocolVersion: number;
+  readonly viewWidth: number;
+  readonly pixelRatio: number;
+}
+
+// Engine to UI. The full state, in reply to hello.
+export interface SnapshotMessage {
+  readonly type: "snapshot";
+  readonly protocolVersion: number;
+  readonly settings: Readonly<Record<SettingName, SettingValue>>;
+  readonly sampleRate: number;
+  readonly inputChannels: number;
+}
+
+// UI to engine. The engine always answers with stateChanged holding the value it kept.
+export interface SetSettingMessage {
+  readonly type: "setSetting";
+  readonly name: SettingName;
+  readonly value: SettingValue;
+}
+
+// Engine to UI. A setting's current value, after setSetting or a host state change.
+export interface StateChangedMessage {
+  readonly type: "stateChanged";
+  readonly name: SettingName;
+  readonly value: SettingValue;
+}
+
+// Engine to UI.
+export interface ErrorMessage {
+  readonly type: "error";
+  readonly code: ErrorCode;
+  readonly message: string;
+}
+
+// UI to engine. Permission to send the next frame (AD-12).
+export interface CreditMessage {
+  readonly type: "credit";
+}
+
+// UI to engine. The trace area was resized.
+export interface ViewportMessage {
+  readonly type: "viewport";
+  readonly viewWidth: number;
+  readonly pixelRatio: number;
+}
+
+// UI to engine. Freeze or resume the display (FR-6).
+export interface FreezeMessage {
+  readonly type: "freeze";
+  readonly frozen: boolean;
+}
+
+// UI to engine. While frozen, how far back to move the view, in seconds (FR-6).
+export interface PanMessage {
+  readonly type: "pan";
+  readonly seconds: number;
+}
+
+// UI to engine. Single mode: wait for the next trigger again (FR-3).
+export interface ArmMessage {
+  readonly type: "arm";
+}
+
+export type UiToEngineMessage =
+  | HelloMessage
+  | SetSettingMessage
+  | CreditMessage
+  | ViewportMessage
+  | FreezeMessage
+  | PanMessage
+  | ArmMessage;
+
+export type EngineToUiMessage =
+  SnapshotMessage | StateChangedMessage | ErrorMessage;

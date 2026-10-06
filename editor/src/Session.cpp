@@ -1,0 +1,178 @@
+#include "editor/Session.h"
+
+#include "engine/SettingJson.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <string>
+
+namespace orizon::editor {
+
+using protocol::MessageType;
+
+namespace {
+
+// Widest trace area accepted, in device pixels.
+constexpr double kMaxColumns = 16384.0;
+
+std::optional<MessageType> messageType(const nlohmann::json& message)
+{
+    const auto& name = message["type"].get_ref<const std::string&>();
+    const auto found = std::ranges::find(protocol::kMessageTypeNames, name);
+    if (found == protocol::kMessageTypeNames.end()) {
+        return std::nullopt;
+    }
+    return static_cast<MessageType>(found - protocol::kMessageTypeNames.begin());
+}
+
+std::optional<double> number(const nlohmann::json& message, const char* field)
+{
+    const auto found = message.find(field);
+    if (found == message.end() || !found->is_number() || !std::isfinite(found->get<double>())) {
+        return std::nullopt;
+    }
+    return found->get<double>();
+}
+
+std::optional<protocol::SettingId> settingId(const nlohmann::json& name)
+{
+    if (!name.is_string()) {
+        return std::nullopt;
+    }
+    for (const auto& setting : protocol::kSettings) {
+        if (setting.name == name.get_ref<const std::string&>()) {
+            return setting.id;
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+Session::Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport)
+    : engine(engine), analyzer(analyzer), transport(transport)
+{}
+
+void Session::receive(const nlohmann::json& message)
+{
+    const auto type = messageType(message);
+    if (!type) {
+        return;
+    }
+    if (*type == MessageType::kHello) {
+        hello(message);
+        return;
+    }
+    if (!isStarted) {
+        return;
+    }
+    switch (*type) {
+    case MessageType::kSetSetting:
+        setSetting(message);
+        break;
+    case MessageType::kViewport:
+        setViewport(message);
+        break;
+    case MessageType::kFreeze:
+        if (message.contains("frozen") && message["frozen"].is_boolean()) {
+            analyzer.setFrozen(message["frozen"].get<bool>());
+        }
+        break;
+    case MessageType::kPan:
+        if (const auto seconds = number(message, "seconds")) {
+            analyzer.setPan(*seconds);
+        }
+        break;
+    case MessageType::kArm:
+        analyzer.arm();
+        break;
+    default:
+        break; // Engine-to-UI types, and credit, which the frame flow handles (T-023).
+    }
+}
+
+void Session::hello(const nlohmann::json& message)
+{
+    const auto version = number(message, "protocolVersion");
+    if (!version || *version != protocol::kProtocolVersion) {
+        isStarted = false;
+        transport.sendMessage(
+            {{"type", "error"},
+             {"code", "protocolMismatch"},
+             {"message", "The UI speaks protocol version " +
+                             (version ? std::to_string(static_cast<long long>(*version))
+                                      : std::string("unknown")) +
+                             "; the engine speaks version " +
+                             std::to_string(protocol::kProtocolVersion) + "."}});
+        return;
+    }
+    setViewport(message);
+
+    const engine::Settings settings = engine.settings().get();
+    nlohmann::json values = nlohmann::json::object();
+    for (const auto& setting : protocol::kSettings) {
+        values[std::string(setting.name)] =
+            engine::settingToJson(setting.id, settings.value(setting.id));
+    }
+    transport.sendMessage({{"type", "snapshot"},
+                           {"protocolVersion", protocol::kProtocolVersion},
+                           {"settings", values},
+                           {"sampleRate", engine.sampleRate()},
+                           {"inputChannels", engine.inputChannels()}});
+    lastSent = settings;
+    isStarted = true;
+}
+
+void Session::setSetting(const nlohmann::json& message)
+{
+    const auto id = settingId(message.value("name", nlohmann::json()));
+    if (!id) {
+        return;
+    }
+    if (message.contains("value")) {
+        if (const auto value = engine::settingFromJson(*id, message["value"])) {
+            engine.settings().set(*id, *value);
+        }
+    }
+    // Always answer, so that a rejected value snaps the UI control back.
+    sendState(*id, engine.settings().get().value(*id));
+}
+
+void Session::setViewport(const nlohmann::json& message)
+{
+    const auto width = number(message, "viewWidth");
+    const auto ratio = number(message, "pixelRatio");
+    if (!width || !ratio || *width <= 0.0 || *ratio <= 0.0) {
+        return;
+    }
+    analyzer.setColumns(
+        static_cast<std::size_t>(std::clamp(std::round(*width * *ratio), 1.0, kMaxColumns)));
+}
+
+void Session::syncSettings()
+{
+    if (!isStarted) {
+        return;
+    }
+    const engine::Settings settings = engine.settings().get();
+    for (const auto& setting : protocol::kSettings) {
+        if (!lastSent || lastSent->value(setting.id) != settings.value(setting.id)) {
+            sendState(setting.id, settings.value(setting.id));
+        }
+    }
+}
+
+void Session::sendState(protocol::SettingId id, double value)
+{
+    transport.sendMessage(
+        {{"type", "stateChanged"},
+         {"name", std::string(protocol::kSettings.at(static_cast<std::size_t>(id)).name)},
+         {"value", engine::settingToJson(id, value)}});
+    if (!lastSent) {
+        lastSent = engine::Settings();
+    }
+    lastSent->set(id, value);
+}
+
+} // namespace orizon::editor

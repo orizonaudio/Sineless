@@ -1,12 +1,16 @@
 #pragma once
 
+#include "editor/Session.h"
+#include "editor/Transport.h"
 #include "editor/WebView.h"
 #include "engine/AnalysisWorker.h"
 #include "engine/Analyzer.h"
 #include "engine/Engine.h"
 #include "public.sdk/source/common/pluginview.h"
 
+#include <functional>
 #include <memory>
+#include <string_view>
 
 namespace orizon::editor {
 
@@ -19,8 +23,11 @@ public:
     static constexpr int kMinimumWidth = 400;
     static constexpr int kMinimumHeight = 250;
 
+    // Sees every raw message from the page before the session handles it. For tests.
+    using MessageObserver = std::function<void(std::string_view message)>;
+
     // `engine` is null when the controller could not reach the processor's engine (AD-10).
-    Editor(WebView::MessageHandler onMessage, std::shared_ptr<engine::Engine> engine);
+    explicit Editor(std::shared_ptr<engine::Engine> engine, MessageObserver observer = {});
 
     Steinberg::tresult PLUGIN_API isPlatformTypeSupported(Steinberg::FIDString type) override;
     Steinberg::tresult PLUGIN_API attached(void* parent, Steinberg::FIDString type) override;
@@ -41,9 +48,13 @@ public:
     [[nodiscard]] WebView* webView() const { return view.get(); }
 
 private:
-    WebView::MessageHandler onMessage;
+    void receive(std::string_view message);
+
+    MessageObserver observer;
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;
+    std::unique_ptr<WebViewTransport> transport;
+    std::unique_ptr<Session> session;
     std::unique_ptr<engine::Analyzer> analyzer;
     std::unique_ptr<engine::AnalysisWorker> worker; // Declared last: stopped before the rest.
 };

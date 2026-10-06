@@ -1,67 +1,52 @@
-// T-005 spike page: proves the native message channel, binary delivery and keyboard routing.
-import { decodeBase64, hasTestPattern } from "./spike/binary-check.ts";
-import { FrameRateMeter } from "./spike/frame-rate.ts";
-
-interface NativeChannel {
-  postMessage(message: string): void;
-}
+// Minimal session client until the UI proper arrives (M3): says hello and shows the snapshot.
+import type {
+  ErrorMessage,
+  SnapshotMessage,
+} from "../../protocol/src/messages.ts";
+import { protocolVersion } from "../../protocol/src/version.ts";
+import { NativeTransport, type NativeReceiver } from "./bridge/transport.ts";
 
 declare global {
   interface Window {
-    orizonBridge?: {
-      receive(message: string): void;
-      receiveBinary(base64: string): void;
+    webkit?: {
+      messageHandlers: Record<
+        string,
+        { postMessage(text: string): void } | undefined
+      >;
     };
-    webkit?: { messageHandlers: Record<string, NativeChannel | undefined> };
+    orizonBridge?: NativeReceiver;
+    // Session state exposed for the editor's automated tests.
+    orizonDebug?: { snapshot?: SnapshotMessage; error?: ErrorMessage };
   }
 }
 
 const status = document.createElement("p");
-const frameRate = document.createElement("p");
-const keyboardHint = document.createElement("label");
-const input = document.createElement("input");
-input.id = "spike-input";
-keyboardHint.textContent =
-  "Typing here goes to the page; elsewhere, keys go to the host: ";
-keyboardHint.append(input);
-document.body.append(status, frameRate, keyboardHint);
+document.body.append(status);
+status.textContent = "Connecting...";
 
-function setStatus(text: string): void {
-  status.textContent = text;
-}
+const debug: NonNullable<Window["orizonDebug"]> = {};
+window.orizonDebug = debug;
 
-function send(message: string): void {
-  window.webkit?.messageHandlers["orizon"]?.postMessage(message);
-}
+const transport = new NativeTransport({
+  channel: window.webkit?.messageHandlers["orizon"],
+  receiver: window,
+});
 
-window.orizonBridge = {
-  receive(message) {
-    setStatus(`Received: ${message}`);
-  },
-  receiveBinary(base64) {
-    const bytes = decodeBase64(base64);
-    const ok = hasTestPattern(bytes);
-    setStatus(
-      ok
-        ? `Bridge OK: ${String(bytes.length)} bytes verified`
-        : "Binary payload corrupt",
-    );
-    send(`${ok ? "binary-ok" : "binary-bad"}:${String(bytes.length)}`);
-  },
-};
-
-setStatus("Waiting for native side...");
-send("ping");
-
-// T-006: report the requestAnimationFrame rate once per second with the page's visibility.
-const meter = new FrameRateMeter();
-function onFrame(timestamp: number): void {
-  const rate = meter.tick(timestamp);
-  if (rate !== undefined) {
-    const state = `${document.visibilityState} focus=${String(document.hasFocus())}`;
-    frameRate.textContent = `requestAnimationFrame: ${rate.toFixed(1)} fps (${state})`;
-    send(`raf:${rate.toFixed(1)}:${state}`);
+transport.onMessage((message) => {
+  if (message.type === "snapshot") {
+    const snapshot = message as unknown as SnapshotMessage;
+    debug.snapshot = snapshot;
+    status.textContent = `Connected: ${String(snapshot.sampleRate)} Hz, ${String(snapshot.inputChannels)} channel(s)`;
+  } else if (message.type === "error") {
+    const error = message as unknown as ErrorMessage;
+    debug.error = error;
+    status.textContent = error.message;
   }
-  requestAnimationFrame(onFrame);
-}
-requestAnimationFrame(onFrame);
+});
+
+transport.send({
+  type: "hello",
+  protocolVersion,
+  viewWidth: document.documentElement.clientWidth,
+  pixelRatio: window.devicePixelRatio,
+});
