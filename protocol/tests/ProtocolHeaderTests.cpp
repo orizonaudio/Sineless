@@ -31,7 +31,7 @@ TEST(ProtocolHeader, LaysOutTheFrameHeaderWithNaturalAlignment)
 {
     EXPECT_EQ(FrameHeader::kSequenceOffset, 0u);
     EXPECT_EQ(FrameHeader::kPointCountOffset % 4, 0u);
-    EXPECT_EQ(FrameHeader::kSize, 16u);
+    EXPECT_EQ(FrameHeader::kSize, 32u);
 }
 
 TEST(ProtocolHeader, NamesMessageTypesInEnumOrder)

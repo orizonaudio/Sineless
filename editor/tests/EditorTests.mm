@@ -109,8 +109,10 @@ TEST_F(EditorTest, RunsTheWorkerOnlyWhileAttachedWithAnEngine)
             EXPECT_FALSE(editor->workerRunning()) << "no worker before the editor opens";
             ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
             EXPECT_TRUE(editor->workerRunning());
+            EXPECT_TRUE(editor->analyzerAllocated());
             EXPECT_EQ(editor->removed(), kResultOk);
             EXPECT_FALSE(editor->workerRunning()) << "no worker after the editor closes";
+            EXPECT_FALSE(editor->analyzerAllocated()) << "hold buffer released on close";
             [window close];
         }
     }

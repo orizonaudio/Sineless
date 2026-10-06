@@ -2,8 +2,10 @@ configure_file(include/engine/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/e
 
 add_library(engine STATIC
     src/AnalysisWorker.cpp
+    src/Analyzer.cpp
     src/CaptureRing.cpp
     src/ChannelViews.cpp
+    src/FrameEncoder.cpp
     src/HoldBuffer.cpp
     src/Readouts.cpp
     src/Reducer.cpp
@@ -30,8 +32,10 @@ if(BUILD_TESTING)
 
     add_executable(engine_tests
         tests/AnalysisWorkerTests.cpp
+        tests/AnalyzerTests.cpp
         tests/CaptureRingTests.cpp
         tests/ChannelViewsTests.cpp
+        tests/FrameEncoderTests.cpp
         tests/HoldBufferTests.cpp
         tests/ReadoutsTests.cpp
         tests/ReducerTests.cpp
@@ -42,7 +46,8 @@ if(BUILD_TESTING)
         tests/VersionTests.cpp
     )
     target_compile_definitions(engine_tests
-        PRIVATE ORIZON_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+        PRIVATE ORIZON_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
+                ORIZON_PROTOCOL_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data")
     target_link_libraries(engine_tests
         PRIVATE engine engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(engine_tests)

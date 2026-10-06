@@ -1,0 +1,20 @@
+{
+  "description": "A frame encoded by Python's struct module, independently of both implementations. Mode 0 is minMax; flags 1 is triggered; views 5 is left + mid.",
+  "header": {
+    "sequence": 7,
+    "mode": 0,
+    "flags": 1,
+    "views": 5,
+    "pointCount": 2,
+    "samplesPerPoint": 1.5,
+    "startFraction": 0.25,
+    "peak": 0.75,
+    "rms": 0.5,
+    "frequency": 440.0
+  },
+  "views": {
+    "left": [-0.5, 0.5, -0.25, 0.75],
+    "mid": [0.0, 0.125, -1.0, 1.0]
+  },
+  "hex": "0700000000010500020000000000c03f0000803e0000403f0000003f0000dc43000000bf0000003f000080be0000403f000000000000003e000080bf0000803f"
+}

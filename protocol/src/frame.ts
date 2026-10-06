@@ -1,6 +1,11 @@
 // Binary layout of a display frame (AD-3): a little-endian header, then float32 data for each
-// view present in `views`, in ChannelView order. Each view holds `pointCount` points: a min/max
-// pair per point in FrameMode.minMax, one sample per point in FrameMode.raw.
+// view present in `views` (a ChannelView bit mask), in ChannelView order. Each view holds
+// `pointCount` points: a min/max pair per point in FrameMode.minMax, one sample per point in
+// FrameMode.raw.
+//
+// `samplesPerPoint` is the number of samples each point covers. The visible span starts
+// `startFraction` samples after the first point (sub-sample trigger alignment). Readouts are
+// those of FR-7; `frequency` is 0 when unavailable.
 
 export type FieldType = "u8" | "u16" | "u32" | "f32";
 
@@ -17,6 +22,10 @@ export const frameHeaderFields = [
   { name: "reserved", type: "u8" },
   { name: "pointCount", type: "u32" },
   { name: "samplesPerPoint", type: "f32" },
+  { name: "startFraction", type: "f32" },
+  { name: "peak", type: "f32" },
+  { name: "rms", type: "f32" },
+  { name: "frequency", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

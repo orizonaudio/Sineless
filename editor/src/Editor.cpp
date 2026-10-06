@@ -38,7 +38,8 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
     }
     view = WebView::create(parent, getRect().getWidth(), getRect().getHeight(), onMessage);
     if (engineState) {
-        // Analysis steps arrive with T-014 onwards; the worker's lifecycle is in place now.
+        analyzer = std::make_unique<engine::Analyzer>(*engineState);
+        // Frames reach the page once the credit-based flow is in place (T-023).
         worker = std::make_unique<engine::AnalysisWorker>([] {});
     }
     return CPluginView::attached(parent, type);
@@ -46,7 +47,8 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
 
 tresult PLUGIN_API Editor::removed()
 {
-    worker.reset(); // Joins the thread before the view it may report to goes away.
+    worker.reset(); // Joins the thread before the state and view it uses go away.
+    analyzer.reset();
     view.reset();
     return CPluginView::removed();
 }
