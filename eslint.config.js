@@ -41,6 +41,12 @@ export default tseslint.config(
         "error",
         { selector: "default", format: ["camelCase"] },
         { selector: "typeLike", format: ["PascalCase"] },
+        // A leading underscore marks an intentionally unused parameter.
+        {
+          selector: "parameter",
+          format: ["camelCase"],
+          leadingUnderscore: "allow",
+        },
         // Enum-like `as const` objects are PascalCase.
         {
           selector: "variable",

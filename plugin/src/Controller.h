@@ -11,6 +11,7 @@ class Controller : public Steinberg::Vst::EditController
     static Steinberg::FUnknown* createInstance(void* context);
 
     Steinberg::tresult PLUGIN_API setComponentState(Steinberg::IBStream* state) override;
+    Steinberg::IPlugView* PLUGIN_API createView(Steinberg::FIDString name) override;
 };
 
 } // namespace orizon::plugin

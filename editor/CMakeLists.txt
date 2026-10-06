@@ -1,3 +1,44 @@
-# The webview editor (DESIGN 5.1). Sources arrive with T-005.
-add_library(editor INTERFACE)
-target_link_libraries(editor INTERFACE engine pluginterfaces)
+# The webview editor (DESIGN 5.1).
+
+# Build the UI with Vite and embed it in the binary (AD-11).
+find_program(NPM_EXECUTABLE npm REQUIRED)
+set(uiOutputDir ${CMAKE_CURRENT_BINARY_DIR}/ui-dist)
+set(embeddedAssetData ${CMAKE_CURRENT_BINARY_DIR}/generated/EmbeddedAssetData.cpp)
+file(GLOB_RECURSE uiInputs CONFIGURE_DEPENDS
+    ${PROJECT_SOURCE_DIR}/ui/src/*
+    ${PROJECT_SOURCE_DIR}/protocol/src/*
+)
+list(APPEND uiInputs ${PROJECT_SOURCE_DIR}/ui/index.html ${PROJECT_SOURCE_DIR}/ui/vite.config.ts)
+add_custom_command(
+    OUTPUT ${embeddedAssetData}
+    COMMAND ${NPM_EXECUTABLE} exec -- vite build ui --outDir ${uiOutputDir} --emptyOutDir
+            --logLevel warn
+    COMMAND ${CMAKE_COMMAND} -DINPUT_DIR=${uiOutputDir} -DOUTPUT_FILE=${embeddedAssetData}
+            -P ${PROJECT_SOURCE_DIR}/cmake/EmbedAssets.cmake
+    DEPENDS ${uiInputs} ${PROJECT_SOURCE_DIR}/cmake/EmbedAssets.cmake
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Building and embedding the UI"
+    VERBATIM
+)
+
+add_library(editor STATIC
+    src/Editor.cpp
+    src/EmbeddedAssets.cpp
+    src/mac/WebViewMac.mm
+    ${embeddedAssetData}
+)
+target_include_directories(editor PUBLIC include PRIVATE src)
+target_link_libraries(editor
+    PUBLIC engine sdk
+    PRIVATE orizon_warnings "-framework Cocoa" "-framework WebKit"
+)
+set_source_files_properties(src/mac/WebViewMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+
+if(BUILD_TESTING)
+    add_executable(editor_tests tests/EditorTests.mm tests/EmbeddedAssetsTests.cpp)
+    target_include_directories(editor_tests PRIVATE src)
+    target_link_libraries(editor_tests
+        PRIVATE editor orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework WebKit")
+    set_source_files_properties(tests/EditorTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30)
+endif()
