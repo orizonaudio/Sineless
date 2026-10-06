@@ -1,0 +1,2 @@
+# CMake templates contain @VAR@ placeholders that clang-format would break.
+**/*.in

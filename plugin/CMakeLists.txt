@@ -1,3 +1,26 @@
-# The VST3 processor, controller and factory (DESIGN 5.1). Sources arrive with T-002.
-add_library(plugin INTERFACE)
-target_link_libraries(plugin INTERFACE engine editor sdk)
+# The VST3 processor, controller and factory (DESIGN 5.1).
+add_library(plugin STATIC
+    src/Controller.cpp
+    src/Processor.cpp
+)
+target_include_directories(plugin PUBLIC src)
+target_link_libraries(plugin
+    PUBLIC engine editor sdk "$<$<PLATFORM_ID:Darwin>:-framework CoreFoundation>"
+    PRIVATE orizon_warnings
+)
+
+smtg_add_vst3plugin(Oscilloscope src/Factory.cpp)
+target_link_libraries(Oscilloscope PRIVATE plugin orizon_warnings)
+set_target_properties(Oscilloscope PROPERTIES
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resource/Info.plist.in
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.oscilloscope
+    MACOSX_BUNDLE_BUNDLE_NAME Oscilloscope
+    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+)
+
+if(BUILD_TESTING)
+    add_executable(plugin_tests tests/ProcessorTests.cpp)
+    target_link_libraries(plugin_tests PRIVATE plugin orizon_warnings GTest::gtest_main)
+    gtest_discover_tests(plugin_tests)
+endif()

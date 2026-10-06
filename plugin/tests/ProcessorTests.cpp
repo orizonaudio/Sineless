@@ -1,0 +1,189 @@
+#include "Controller.h"
+#include "Processor.h"
+
+#include <cstring>
+#include <gtest/gtest.h>
+#include <random>
+#include <tuple>
+#include <vector>
+
+namespace orizon::plugin {
+namespace {
+
+using namespace Steinberg;
+using namespace Steinberg::Vst;
+
+constexpr int32 kBlockSize = 512;
+
+IPtr<Processor> makeProcessor(SpeakerArrangement arrangement, int32 sampleSize)
+{
+    auto processor = owned(new Processor());
+    EXPECT_EQ(processor->initialize(nullptr), kResultOk);
+    EXPECT_EQ(processor->setBusArrangements(&arrangement, 1, &arrangement, 1), kResultTrue);
+    ProcessSetup setup{kRealtime, sampleSize, kBlockSize, 48000.0};
+    EXPECT_EQ(processor->setupProcessing(setup), kResultOk);
+    EXPECT_EQ(processor->setActive(true), kResultOk);
+    // The SDK default returns kNotImplemented, which the VST3 spec allows.
+    processor->setProcessing(true);
+    return processor;
+}
+
+// Random bit patterns, including NaNs, infinities and denormals, so that any
+// arithmetic on the signal path would show up as a mismatch.
+template <typename Sample> std::vector<Sample> randomBits(size_t count, unsigned seed)
+{
+    std::vector<Sample> samples(count);
+    std::mt19937_64 random(seed);
+    for (Sample& sample : samples) {
+        const uint64_t bits = random();
+        std::memcpy(&sample, &bits, sizeof(Sample));
+    }
+    return samples;
+}
+
+template <typename Sample> void expectBitExactPassThrough(int32 numChannels, bool inPlace)
+{
+    const SpeakerArrangement arrangement =
+        numChannels == 1 ? SpeakerArr::kMono : SpeakerArr::kStereo;
+    const int32 sampleSize = sizeof(Sample) == sizeof(Sample64) ? kSample64 : kSample32;
+    auto processor = makeProcessor(arrangement, sampleSize);
+
+    std::vector<std::vector<Sample>> inputChannels;
+    std::vector<std::vector<Sample>> outputChannels;
+    std::vector<Sample*> inputPointers;
+    std::vector<Sample*> outputPointers;
+    for (int32 channel = 0; channel < numChannels; ++channel) {
+        inputChannels.push_back(
+            randomBits<Sample>(kBlockSize, 17u + static_cast<unsigned>(channel)));
+        outputChannels.emplace_back(kBlockSize, Sample{});
+    }
+    const auto expected = inputChannels;
+    for (int32 channel = 0; channel < numChannels; ++channel) {
+        inputPointers.push_back(inputChannels[static_cast<size_t>(channel)].data());
+        outputPointers.push_back(inPlace ? inputPointers.back()
+                                         : outputChannels[static_cast<size_t>(channel)].data());
+    }
+
+    AudioBusBuffers input{};
+    AudioBusBuffers output{};
+    input.numChannels = numChannels;
+    output.numChannels = numChannels;
+    if constexpr (sizeof(Sample) == sizeof(Sample64)) {
+        input.channelBuffers64 = inputPointers.data();
+        output.channelBuffers64 = outputPointers.data();
+    } else {
+        input.channelBuffers32 = inputPointers.data();
+        output.channelBuffers32 = outputPointers.data();
+    }
+
+    ProcessData data{};
+    data.processMode = kRealtime;
+    data.symbolicSampleSize = sampleSize;
+    data.numSamples = kBlockSize;
+    data.numInputs = 1;
+    data.numOutputs = 1;
+    data.inputs = &input;
+    data.outputs = &output;
+    ASSERT_EQ(processor->process(data), kResultOk);
+
+    for (int32 channel = 0; channel < numChannels; ++channel) {
+        EXPECT_EQ(std::memcmp(outputPointers[static_cast<size_t>(channel)],
+                              expected[static_cast<size_t>(channel)].data(),
+                              kBlockSize * sizeof(Sample)),
+                  0)
+            << "channel " << channel;
+    }
+}
+
+class PassThrough : public ::testing::TestWithParam<std::tuple<bool, int32, bool>>
+{
+};
+
+TEST_P(PassThrough, IsBitExact)
+{
+    const auto [is64Bit, numChannels, inPlace] = GetParam();
+    if (is64Bit) {
+        expectBitExactPassThrough<Sample64>(numChannels, inPlace);
+    } else {
+        expectBitExactPassThrough<Sample32>(numChannels, inPlace);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(AllLayouts, PassThrough,
+                         ::testing::Combine(::testing::Bool(), ::testing::Values(1, 2),
+                                            ::testing::Bool()));
+
+TEST(Processor, AcceptsOnlyMatchingMonoOrStereoBuses)
+{
+    auto processor = owned(new Processor());
+    ASSERT_EQ(processor->initialize(nullptr), kResultOk);
+
+    SpeakerArrangement mono = SpeakerArr::kMono;
+    SpeakerArrangement stereo = SpeakerArr::kStereo;
+    SpeakerArrangement surround = SpeakerArr::k51;
+    SpeakerArrangement twoStereo[] = {SpeakerArr::kStereo, SpeakerArr::kStereo};
+
+    EXPECT_EQ(processor->setBusArrangements(&mono, 1, &mono, 1), kResultTrue);
+    EXPECT_EQ(processor->setBusArrangements(&stereo, 1, &stereo, 1), kResultTrue);
+    EXPECT_EQ(processor->setBusArrangements(&mono, 1, &stereo, 1), kResultFalse);
+    EXPECT_EQ(processor->setBusArrangements(&surround, 1, &surround, 1), kResultFalse);
+    EXPECT_EQ(processor->setBusArrangements(twoStereo, 2, &stereo, 1), kResultFalse);
+}
+
+TEST(Processor, Supports32And64BitProcessing)
+{
+    auto processor = owned(new Processor());
+    EXPECT_EQ(processor->canProcessSampleSize(kSample32), kResultTrue);
+    EXPECT_EQ(processor->canProcessSampleSize(kSample64), kResultTrue);
+}
+
+TEST(Processor, ReportsZeroLatency)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
+    EXPECT_EQ(processor->getLatencySamples(), 0u);
+}
+
+TEST(Processor, PropagatesSilenceFlags)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
+    std::vector<Sample32> left(kBlockSize, 0.0f);
+    std::vector<Sample32> right(kBlockSize, 0.0f);
+    Sample32* channels[] = {left.data(), right.data()};
+
+    AudioBusBuffers input{};
+    input.numChannels = 2;
+    input.silenceFlags = 0b11;
+    input.channelBuffers32 = channels;
+    AudioBusBuffers output{};
+    output.numChannels = 2;
+    output.channelBuffers32 = channels;
+
+    ProcessData data{};
+    data.symbolicSampleSize = kSample32;
+    data.numSamples = kBlockSize;
+    data.numInputs = 1;
+    data.numOutputs = 1;
+    data.inputs = &input;
+    data.outputs = &output;
+    ASSERT_EQ(processor->process(data), kResultOk);
+    EXPECT_EQ(output.silenceFlags, 0b11u);
+}
+
+TEST(Processor, AcceptsFlushCallWithoutBuffers)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
+    ProcessData data{};
+    data.symbolicSampleSize = kSample32;
+    EXPECT_EQ(processor->process(data), kResultOk);
+}
+
+TEST(Controller, DeclaresNoParameters)
+{
+    auto controller = owned(new Controller());
+    ASSERT_EQ(controller->initialize(nullptr), kResultOk);
+    EXPECT_EQ(controller->getParameterCount(), 0);
+    EXPECT_EQ(controller->terminate(), kResultOk);
+}
+
+} // namespace
+} // namespace orizon::plugin

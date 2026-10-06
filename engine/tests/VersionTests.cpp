@@ -1,7 +1,6 @@
 #include "engine/Version.h"
 
 #include <gtest/gtest.h>
-
 #include <string>
 
 namespace orizon::engine {
@@ -14,8 +13,9 @@ TEST(Version, LinkedVersionMatchesHeader)
 
 TEST(Version, StringIsMajorMinorPatch)
 {
-    const std::string expected = std::to_string(kVersionMajor) + "." + std::to_string(kVersionMinor) +
-                                 "." + std::to_string(kVersionPatch);
+    const std::string expected = std::to_string(kVersionMajor) + "." +
+                                 std::to_string(kVersionMinor) + "." +
+                                 std::to_string(kVersionPatch);
     EXPECT_EQ(kVersionString, expected);
 }
 
