@@ -98,6 +98,35 @@ protected:
     }
 };
 
+TEST_F(EditorTest, RunsTheWorkerOnlyWhileAttachedWithAnEngine)
+{
+    auto engine = std::make_shared<engine::Engine>();
+    for (int cycle = 0; cycle < 10; ++cycle) {
+        @autoreleasepool {
+            NSView* parent = [[NSView alloc] init];
+            NSWindow* window = makeWindow(parent);
+            auto editor = owned(new Editor([](WebView&, std::string_view) {}, engine));
+            EXPECT_FALSE(editor->workerRunning()) << "no worker before the editor opens";
+            ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+            EXPECT_TRUE(editor->workerRunning());
+            EXPECT_EQ(editor->removed(), kResultOk);
+            EXPECT_FALSE(editor->workerRunning()) << "no worker after the editor closes";
+            [window close];
+        }
+    }
+}
+
+TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    auto editor = owned(new Editor([](WebView&, std::string_view) {}, nullptr));
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    EXPECT_FALSE(editor->workerRunning());
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
 TEST_F(EditorTest, SupportsOnlyNSView)
 {
     std::vector<std::string> received;

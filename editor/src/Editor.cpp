@@ -37,11 +37,16 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
         return kResultFalse;
     }
     view = WebView::create(parent, getRect().getWidth(), getRect().getHeight(), onMessage);
+    if (engineState) {
+        // Analysis steps arrive with T-014 onwards; the worker's lifecycle is in place now.
+        worker = std::make_unique<engine::AnalysisWorker>([] {});
+    }
     return CPluginView::attached(parent, type);
 }
 
 tresult PLUGIN_API Editor::removed()
 {
+    worker.reset(); // Joins the thread before the view it may report to goes away.
     view.reset();
     return CPluginView::removed();
 }

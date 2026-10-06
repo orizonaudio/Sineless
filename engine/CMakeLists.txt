@@ -1,6 +1,7 @@
 configure_file(include/engine/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/engine/Version.h @ONLY)
 
 add_library(engine STATIC
+    src/AnalysisWorker.cpp
     src/CaptureRing.cpp
     src/Version.cpp
 )
@@ -18,7 +19,8 @@ if(BUILD_TESTING)
         PRIVATE engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(engine_test_support_tests)
 
-    add_executable(engine_tests tests/CaptureRingTests.cpp tests/VersionTests.cpp)
+    add_executable(engine_tests
+        tests/AnalysisWorkerTests.cpp tests/CaptureRingTests.cpp tests/VersionTests.cpp)
     target_link_libraries(engine_tests
         PRIVATE engine engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(engine_tests)

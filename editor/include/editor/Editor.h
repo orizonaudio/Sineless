@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor/WebView.h"
+#include "engine/AnalysisWorker.h"
 #include "engine/Engine.h"
 #include "public.sdk/source/common/pluginview.h"
 
@@ -30,6 +31,9 @@ public:
     // False when the editor must show the "unavailable" state (AD-10).
     [[nodiscard]] bool engineAvailable() const { return engineState != nullptr; }
 
+    // True while attached with an engine: the analysis worker runs only while the editor is open.
+    [[nodiscard]] bool workerRunning() const { return worker != nullptr; }
+
     // The live webview while attached, otherwise null. For tests.
     [[nodiscard]] WebView* webView() const { return view.get(); }
 
@@ -37,6 +41,7 @@ private:
     WebView::MessageHandler onMessage;
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;
+    std::unique_ptr<engine::AnalysisWorker> worker;
 };
 
 } // namespace orizon::editor
