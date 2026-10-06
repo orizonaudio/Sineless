@@ -22,7 +22,11 @@ import { RenderLoop } from "./render/render-loop.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
 import { TraceRenderer, type Rgba } from "./render/trace-renderer.ts";
 import type { SettingsStore } from "./store/settings-store.ts";
-import { amplitudeLabels, timeLabels } from "./view/axis-labels.ts";
+import {
+  amplitudeLabels,
+  timeLabels,
+  triggerPosition,
+} from "./view/axis-labels.ts";
 import {
   formatDb,
   formatDbfs,
@@ -34,6 +38,16 @@ import {
 import { drawGrid } from "./view/grid.ts";
 import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
 import { statusChips } from "./view/status.ts";
+import {
+  fullView,
+  isZoomed,
+  panBy,
+  toScreen,
+  zoomAround,
+  zoomFactor,
+  zoomTo,
+  type ViewWindow,
+} from "./view/zoom.ts";
 import {
   holdOffSteps,
   spanSteps,
@@ -57,6 +71,17 @@ const viewColorTokens: Record<ViewName, string> = {
 };
 // Below this screen height (CSS px) only the outer and zero amplitude labels fit.
 const compactScreenHeight = 140;
+// How fast ⌘ + scroll and pinch zoom, per wheel delta unit (FR-10).
+const wheelZoomRate = 0.01;
+// A drag shorter than this (CSS px) is a click, not a zoom selection.
+const minimumSelectionPixels = 4;
+
+// WebKit's trackpad pinch event; not in the standard DOM types.
+interface GestureEvent extends UIEvent {
+  readonly scale: number;
+  readonly clientX: number;
+}
+
 // Room taken by the amplitude labels at the left edge (CSS px).
 const amplitudeLabelWidth = 48;
 const readoutInterval = 100; // ms: readouts stay legible while frames arrive at display rate.
@@ -116,6 +141,7 @@ export class OscilloscopeApp {
   private beatSpanField: DragField | undefined;
   private beatSpanNames: string[] = [];
   private cycleKey = "";
+  private view: ViewWindow = fullView;
 
   constructor(backend: Backend, store: SettingsStore, debug: DebugState) {
     this.backend = backend;
@@ -141,6 +167,7 @@ export class OscilloscopeApp {
         verticalScaleDb: store.number("verticalScale"),
         layout: this.layout(),
         dim: this.waiting,
+        view: this.view,
       }),
     );
     this.loop = new RenderLoop(
@@ -408,6 +435,13 @@ export class OscilloscopeApp {
       element("trigger-group").classList.toggle("inactive", beats);
     }
     this.updateTriggerSummary();
+    // Zoom is a temporary view of one span; a new span starts unzoomed (FR-10).
+    if (
+      (name === "timeSpan" || name === "timeBase" || name === "beatSpan") &&
+      isZoomed(this.view)
+    ) {
+      this.setView(fullView);
+    }
     // Settings that move the grid, labels or trigger line; the engine's next frame follows.
     const screenSettings: SettingName[] = [
       "verticalScale",
@@ -464,6 +498,7 @@ export class OscilloscopeApp {
       frame.cycleStart,
       frame.spanQuarterNotes,
       frame.barQuarterNotes,
+      this.view,
     );
   }
 
@@ -487,7 +522,9 @@ export class OscilloscopeApp {
     if (!synced) {
       return;
     }
-    const percent = `${String(frame.cursor * 100)}%`;
+    const position = toScreen(this.view, frame.cursor);
+    cursor.hidden = position < 0 || position > 1;
+    const percent = `${String(Math.min(1, Math.max(0, position)) * 100)}%`;
     cursor.style.left = percent;
     previous.style.left = percent;
     const key = `${String(frame.cycleStart)}/${String(frame.spanQuarterNotes)}/${String(frame.barQuarterNotes)}`;
@@ -518,7 +555,7 @@ export class OscilloscopeApp {
       labels.push(node);
     }
     for (const label of this.musicalLayout()?.labels ??
-      timeLabels(span, roll)) {
+      timeLabels(span, roll, this.view)) {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;
@@ -528,8 +565,15 @@ export class OscilloscopeApp {
       labels.push(node);
     }
     container.replaceChildren(...labels);
-    element("trigger-line").hidden =
-      roll || this.store.get("triggerMode") === "free" || this.beatsMode();
+    const triggerLine = element("trigger-line");
+    const triggerX = toScreen(this.view, triggerPosition);
+    triggerLine.style.left = `${String(triggerX * 100)}%`;
+    triggerLine.hidden =
+      roll ||
+      this.store.get("triggerMode") === "free" ||
+      this.beatsMode() ||
+      triggerX < 0 ||
+      triggerX > 1;
   }
 
   // The level marker sits in the lane of the trigger source when stacked, else on the full height.
@@ -596,31 +640,100 @@ export class OscilloscopeApp {
       marker.addEventListener("pointerup", up);
     });
 
-    // While frozen, a horizontal drag pans back through the held data (FR-6).
+    // View zoom (FR-10), DESIGN 8.5: ⌘ + scroll or pinch zooms around the pointer, a horizontal
+    // swipe pans, dragging zooms to the selection, double-click resets.
+    const screenPosition = (clientX: number) => {
+      const rectangle = this.screen.getBoundingClientRect();
+      return Math.min(
+        1,
+        Math.max(0, (clientX - rectangle.left) / rectangle.width),
+      );
+    };
+    this.screen.addEventListener(
+      "wheel",
+      (event) => {
+        if (event.metaKey || event.ctrlKey) {
+          // Trackpad pinches arrive as wheel events with ctrlKey set.
+          event.preventDefault();
+          const factor = Math.exp(-event.deltaY * wheelZoomRate);
+          this.setView(
+            zoomAround(this.view, screenPosition(event.clientX), factor),
+          );
+        } else if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+          event.preventDefault();
+          this.swipe(event.deltaX / this.screen.clientWidth);
+        }
+      },
+      { passive: false },
+    );
+    // WebKit reports trackpad pinches as gesture events.
+    let gestureScale = 1;
+    let gestureAnchor = 0.5;
+    this.screen.addEventListener("gesturestart", (event) => {
+      event.preventDefault();
+      gestureScale = 1;
+      gestureAnchor = screenPosition((event as GestureEvent).clientX);
+    });
+    this.screen.addEventListener("gesturechange", (event) => {
+      event.preventDefault();
+      const scale = (event as GestureEvent).scale;
+      this.setView(zoomAround(this.view, gestureAnchor, scale / gestureScale));
+      gestureScale = scale;
+    });
+
+    const selection = element("selection");
     this.screen.addEventListener("pointerdown", (event) => {
-      // A frozen sweep keeps its cycle; panning applies to time-based views only.
-      if (this.lastFrame?.frozen !== true || this.lastFrame.synced) {
+      if (event.button !== 0) {
         return;
       }
+      const from = screenPosition(event.clientX);
+      let to = from;
       this.screen.setPointerCapture(event.pointerId);
-      this.screen.classList.add("panning");
-      const startX = event.clientX;
-      const startPan = this.panSeconds;
       const move = (moveEvent: PointerEvent) => {
-        const seconds =
-          ((moveEvent.clientX - startX) / this.screen.clientWidth) *
-          this.store.number("timeSpan");
-        this.panSeconds = Math.max(0, startPan + seconds);
-        this.backend.pan(this.panSeconds);
+        to = screenPosition(moveEvent.clientX);
+        const dragged =
+          Math.abs(to - from) * this.screen.clientWidth >=
+          minimumSelectionPixels;
+        selection.hidden = !dragged;
+        selection.style.left = `${String(Math.min(from, to) * 100)}%`;
+        selection.style.width = `${String(Math.abs(to - from) * 100)}%`;
       };
       const up = () => {
-        this.screen.classList.remove("panning");
+        if (!selection.hidden) {
+          this.setView(zoomTo(this.view, from, to));
+        }
+        selection.hidden = true;
         this.screen.removeEventListener("pointermove", move);
         this.screen.removeEventListener("pointerup", up);
       };
       this.screen.addEventListener("pointermove", move);
       this.screen.addEventListener("pointerup", up);
     });
+    this.screen.addEventListener("dblclick", () => {
+      this.setView(fullView);
+    });
+  }
+
+  // A horizontal swipe of `screenWidths`: pans the zoomed view, or, frozen and not zoomed, pans
+  // back through the held data (FR-6). A frozen sweep keeps its cycle.
+  private swipe(screenWidths: number): void {
+    if (isZoomed(this.view)) {
+      this.setView(panBy(this.view, screenWidths));
+    } else if (this.lastFrame?.frozen === true && !this.lastFrame.synced) {
+      const seconds = screenWidths * this.store.number("timeSpan");
+      this.panSeconds = Math.max(0, this.panSeconds - seconds);
+      this.backend.pan(this.panSeconds);
+    }
+  }
+
+  private setView(view: ViewWindow): void {
+    this.view = view;
+    this.drawScreen();
+    this.loop.invalidate();
+    if (this.lastFrame !== undefined) {
+      this.showSweep(this.lastFrame);
+    }
+    this.updateStatus();
   }
 
   // ----- Engine events -----
@@ -662,6 +775,12 @@ export class OscilloscopeApp {
     if (waiting !== this.waiting) {
       this.waiting = waiting;
       this.loop.invalidate();
+    }
+    if (isZoomed(this.view)) {
+      chips.push({
+        text: `Zoom \u00d7${zoomFactor(this.view).toFixed(1)}`,
+        tone: "neutral",
+      });
     }
     element("chips").replaceChildren(
       ...chips.map((chip) => {

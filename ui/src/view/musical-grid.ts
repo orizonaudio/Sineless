@@ -1,6 +1,7 @@
 // Grid lines and labels of a tempo-synced sweep (DESIGN 8.5). Positions are fractions of the
 // screen from the left; musical positions are in quarter notes from the project start.
 import type { AxisLabel } from "./axis-labels.ts";
+import { fullView, type ViewWindow } from "./zoom.ts";
 
 export interface GridLine {
   readonly position: number;
@@ -46,41 +47,62 @@ function beatFraction(quarterNotes: number): string {
   return `+${String(sixtyFourths / divisor)}/${String(64 / divisor)}`;
 }
 
+// Lines and labels over the visible part of a sweep. `cycleStart` and `span` (quarter notes)
+// describe the whole frame; `view` the part on screen (FR-10). Lines sit on absolute musical
+// positions, so they refine as the view narrows: beats with stronger bars, then sixteenths with
+// stronger beats, then binary fractions of a beat.
 export function musicalGrid(
   cycleStart: number,
   span: number,
   barQuarterNotes: number,
+  view: ViewWindow = fullView,
 ): { lines: GridLine[]; labels: AxisLabel[] } {
   if (span <= 0 || barQuarterNotes <= 0) {
     return { lines: [], labels: [] };
   }
-  // Beats with stronger bars; sixteenths with stronger beats; quarters of a sub-beat span.
-  const step = span >= barQuarterNotes ? 1 : span >= 1 ? 0.25 : span / 4;
+  const visibleStart = cycleStart + view.start * span;
+  const visibleSpan = (view.end - view.start) * span;
+  let step = visibleSpan >= barQuarterNotes ? 1 : 0.25;
+  while (visibleSpan < 4 * step && step > 1 / 1024) {
+    step /= 2;
+  }
   const strongEvery =
-    span >= barQuarterNotes ? barQuarterNotes : span >= 1 ? 1 : Infinity;
+    visibleSpan >= barQuarterNotes ? barQuarterNotes : step < 0.25 ? 0.25 : 1;
+  const isMultiple = (value: number, of: number) =>
+    Math.abs(value / of - Math.round(value / of)) < epsilon;
+  const position = (quarterNotes: number) =>
+    (quarterNotes - visibleStart) / visibleSpan;
+
   const lines: GridLine[] = [];
-  const count = Math.round(span / step);
-  for (let index = 1; index < count; index++) {
-    const offset = index * step;
-    const absolute = cycleStart + offset;
-    const strong =
-      Number.isFinite(strongEvery) &&
-      Math.abs(absolute / strongEvery - Math.round(absolute / strongEvery)) <
-        epsilon;
-    lines.push({ position: offset / span, strong });
+  for (
+    let index = Math.floor(visibleStart / step) + 1;
+    index * step < visibleStart + visibleSpan - epsilon;
+    index++
+  ) {
+    const quarterNotes = index * step;
+    if (quarterNotes > visibleStart + epsilon) {
+      lines.push({
+        position: position(quarterNotes),
+        strong: isMultiple(quarterNotes, strongEvery),
+      });
+    }
   }
 
   let labelStep = step;
-  while (span / labelStep > maximumLabels) {
+  while (visibleSpan / labelStep > maximumLabels) {
     labelStep *= 2;
   }
   const labels: AxisLabel[] = [];
-  for (let offset = 0; offset < span - epsilon; offset += labelStep) {
-    const text =
-      span < 1 && offset > 0
-        ? beatFraction(offset)
-        : musicalPosition(cycleStart + offset, barQuarterNotes);
-    labels.push({ text, position: offset / span });
+  for (
+    let index = Math.ceil(visibleStart / labelStep - epsilon);
+    index * labelStep < visibleStart + visibleSpan - epsilon;
+    index++
+  ) {
+    const quarterNotes = index * labelStep;
+    const text = isMultiple(quarterNotes, 0.25)
+      ? musicalPosition(quarterNotes, barQuarterNotes)
+      : beatFraction(quarterNotes - Math.floor(quarterNotes + epsilon));
+    labels.push({ text, position: position(quarterNotes) });
   }
   return { lines, labels };
 }

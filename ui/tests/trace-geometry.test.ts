@@ -57,6 +57,17 @@ const xs = (vertices: Float32Array) =>
   vertices.filter((_, index) => index % 2 === 0);
 
 describe("trace geometry", () => {
+  test("magnifies the visible part of the frame (FR-10)", () => {
+    const vertices = traceGeometry(
+      frame(FrameMode.minMax, [[ChannelView.left, [0, 0, 0, 0, 0, 0, 0, 0]]]),
+      { ...layout, view: { start: 0.25, end: 0.5 } },
+    ).get(ChannelView.left);
+    // Column 1 of 4 spans frame 0.25 to 0.5, which now fills the screen.
+    const column = xs(vertices?.subarray(12, 24) ?? new Float32Array());
+    expect(Math.min(...column)).toBeCloseTo(-1);
+    expect(Math.max(...column)).toBeCloseTo(1);
+  });
+
   test("draws one quad per min/max column spanning min to max", () => {
     const geometry = traceGeometry(
       frame(FrameMode.minMax, [[ChannelView.left, [-0.5, 0.5, -1, 1]]]),

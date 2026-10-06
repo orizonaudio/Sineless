@@ -6,6 +6,7 @@ import {
   ViewLayout,
 } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+import { fullView, type ViewWindow } from "../view/zoom.ts";
 
 export interface TraceLayout {
   readonly widthPixels: number; // Device pixels.
@@ -13,6 +14,13 @@ export interface TraceLayout {
   readonly verticalScaleDb: number; // dBFS at the top of the screen (DESIGN 1.2).
   readonly layout: ViewLayout;
   readonly lineWidthPixels: number;
+  // The part of the frame on screen (FR-10); the whole frame when absent.
+  readonly view?: ViewWindow;
+}
+
+// Clip-space x of a frame position (0 to 1) under the view zoom.
+function screenX(frameFraction: number, view: ViewWindow): number {
+  return -1 + (2 * (frameFraction - view.start)) / (view.end - view.start);
 }
 
 // Vertical placement of one view: overlaid views share the screen, stacked views get a lane each.
@@ -60,7 +68,7 @@ function minMaxBand(
   layout: TraceLayout,
 ): Float32Array {
   const out: number[] = [];
-  const columnWidth = 2 / frame.pointCount;
+  const view = layout.view ?? fullView;
   const minimumHalf = layout.lineWidthPixels / layout.heightPixels;
   for (let column = 0; column < frame.pointCount; column++) {
     let low =
@@ -72,8 +80,8 @@ function minMaxBand(
       low = middle - minimumHalf;
       high = middle + minimumHalf;
     }
-    const left = -1 + column * columnWidth;
-    const right = left + columnWidth;
+    const left = screenX(column / frame.pointCount, view);
+    const right = screenX((column + 1) / frame.pointCount, view);
     pushQuad(out, left, low, left, high, right, low, right, high);
   }
   return new Float32Array(out);
@@ -91,8 +99,9 @@ function rawLine(
   const toPixelsX = layout.widthPixels / 2;
   const toPixelsY = layout.heightPixels / 2;
   const halfWidth = layout.lineWidthPixels / 2;
+  const view = layout.view ?? fullView;
   const x = (index: number) =>
-    -1 + (2 * (index - frame.startFraction)) / frame.pointCount;
+    screenX((index - frame.startFraction) / frame.pointCount, view);
   const y = (index: number) =>
     lane.center + ((values[index] ?? 0) / scale) * lane.halfHeight;
   for (let index = 0; index + 1 < frame.pointCount; index++) {

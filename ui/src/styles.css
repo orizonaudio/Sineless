@@ -193,6 +193,16 @@ body {
   pointer-events: none;
 }
 
+/* Drag-to-zoom selection (FR-10). */
+.selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--hold) 18%, transparent);
+  border-inline: 1px solid var(--hold);
+  pointer-events: none;
+}
+
 .group.inactive > :not(.group-label) {
   opacity: 0.4;
 }

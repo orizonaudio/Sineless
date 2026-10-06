@@ -1,6 +1,7 @@
 // Hand-written WebGL2 renderer for the traces (AD-5). Grid, labels and controls are DOM.
 import type { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+import type { ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
 import { traceGeometry } from "./trace-geometry.ts";
 
@@ -17,6 +18,8 @@ export interface TraceView {
   readonly layout: ViewLayout;
   // Shows the trace as stale, e.g. while Normal mode waits for a trigger.
   readonly dim?: boolean;
+  // The part of the frame on screen (FR-10).
+  readonly view?: ViewWindow;
 }
 
 const vertexShader = `#version 300 es
@@ -105,6 +108,7 @@ export class TraceRenderer implements FrameRenderer {
       verticalScaleDb: view.verticalScaleDb,
       layout: view.layout,
       lineWidthPixels: this.style.lineWidthPixels,
+      ...(view.view === undefined ? {} : { view: view.view }),
     });
     const colors = this.style.colors();
     for (const [channelView, vertices] of geometry) {
