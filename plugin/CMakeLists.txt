@@ -1,6 +1,7 @@
 # The VST3 processor, controller and factory (DESIGN 5.1).
 add_library(plugin STATIC
     src/Controller.cpp
+    src/EngineRegistry.cpp
     src/Processor.cpp
 )
 target_include_directories(plugin PUBLIC src)
@@ -20,8 +21,8 @@ set_target_properties(Oscilloscope PROPERTIES
 )
 
 if(BUILD_TESTING)
-    add_executable(plugin_tests tests/ProcessorTests.cpp)
+    add_executable(plugin_tests tests/EngineLinkTests.cpp tests/ProcessorTests.cpp)
     target_link_libraries(plugin_tests
-        PRIVATE plugin engine_test_support orizon_warnings GTest::gtest_main)
+        PRIVATE plugin sdk_hosting engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(plugin_tests)
 endif()

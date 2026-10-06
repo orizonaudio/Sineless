@@ -84,10 +84,12 @@ protected:
 
     IPtr<Editor> makeEditor(std::vector<std::string>& received)
     {
-        return owned(new Editor([&received](WebView& view, std::string_view message) {
-            received.emplace_back(message);
-            respondToPing(view, message);
-        }));
+        return owned(new Editor(
+            [&received](WebView& view, std::string_view message) {
+                received.emplace_back(message);
+                respondToPing(view, message);
+            },
+            nullptr));
     }
 
     static bool contains(const std::vector<std::string>& messages, const std::string& wanted)

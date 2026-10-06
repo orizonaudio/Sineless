@@ -19,7 +19,8 @@ bool isSupportedPlatform(FIDString type)
 
 } // namespace
 
-Editor::Editor(WebView::MessageHandler onMessage) : onMessage(std::move(onMessage))
+Editor::Editor(WebView::MessageHandler onMessage, std::shared_ptr<engine::Engine> engine)
+    : onMessage(std::move(onMessage)), engineState(std::move(engine))
 {
     ViewRect initial(0, 0, kDefaultWidth, kDefaultHeight);
     setRect(initial);

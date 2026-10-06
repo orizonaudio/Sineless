@@ -223,8 +223,8 @@ TEST(Processor, CapturesInputIntoTheRing)
     data.outputs = &output;
     ASSERT_EQ(processor->process(data), kResultOk);
 
-    const engine::CaptureRing* ring = processor->captureRing();
-    ASSERT_NE(ring, nullptr);
+    ASSERT_NE(processor->engine(), nullptr);
+    const engine::CaptureRing* ring = &processor->engine()->captureRing();
     EXPECT_EQ(ring->writeIndex(), static_cast<uint64>(kBlockSize));
     std::vector<float> captured(kBlockSize);
     ASSERT_TRUE(ring->read(0, 0, captured));
@@ -254,9 +254,9 @@ TEST(Processor, CapturesSilentChannelsAsZeros)
     ASSERT_EQ(processor->process(data), kResultOk);
 
     std::vector<float> captured(kBlockSize);
-    ASSERT_TRUE(processor->captureRing()->read(0, 0, captured));
+    ASSERT_TRUE(processor->engine()->captureRing().read(0, 0, captured));
     EXPECT_EQ(captured, garbage);
-    ASSERT_TRUE(processor->captureRing()->read(1, 0, captured));
+    ASSERT_TRUE(processor->engine()->captureRing().read(1, 0, captured));
     EXPECT_EQ(captured, std::vector<float>(kBlockSize, 0.0f));
 }
 

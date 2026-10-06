@@ -1,5 +1,6 @@
 #include "Processor.h"
 
+#include "EngineRegistry.h"
 #include "PluginIds.h"
 
 #include <algorithm>
@@ -63,9 +64,32 @@ tresult PLUGIN_API Processor::initialize(FUnknown* context)
     if (result != kResultOk) {
         return result;
     }
-    ring = std::make_unique<engine::CaptureRing>();
+    engineState = std::make_shared<engine::Engine>();
+    engineToken = EngineRegistry::add(engineState);
     addAudioInput(STR16("Input"), SpeakerArr::kStereo);
     addAudioOutput(STR16("Output"), SpeakerArr::kStereo);
+    return kResultOk;
+}
+
+tresult PLUGIN_API Processor::terminate()
+{
+    EngineRegistry::remove(engineToken);
+    engineToken = 0;
+    engineState.reset();
+    return AudioEffect::terminate();
+}
+
+tresult PLUGIN_API Processor::connect(IConnectionPoint* other)
+{
+    const tresult result = AudioEffect::connect(other);
+    if (result != kResultOk || engineToken == 0) {
+        return result;
+    }
+    if (IPtr<IMessage> message = owned(allocateMessage())) {
+        message->setMessageID(kEngineTokenMessage);
+        message->getAttributes()->setInt(kEngineTokenAttribute, engineToken);
+        sendMessage(message);
+    }
     return kResultOk;
 }
 
@@ -96,15 +120,15 @@ tresult PLUGIN_API Processor::process(ProcessData& data) noexcept ORIZON_NONBLOC
 
     if (data.symbolicSampleSize == kSample64) {
         copyChannels(input.channelBuffers64, output.channelBuffers64, numChannels, data.numSamples);
-        if (ring) {
-            capture(*ring, input.channelBuffers64, input.numChannels, input.silenceFlags,
-                    data.numSamples);
+        if (engineState) {
+            capture(engineState->captureRing(), input.channelBuffers64, input.numChannels,
+                    input.silenceFlags, data.numSamples);
         }
     } else {
         copyChannels(input.channelBuffers32, output.channelBuffers32, numChannels, data.numSamples);
-        if (ring) {
-            capture(*ring, input.channelBuffers32, input.numChannels, input.silenceFlags,
-                    data.numSamples);
+        if (engineState) {
+            capture(engineState->captureRing(), input.channelBuffers32, input.numChannels,
+                    input.silenceFlags, data.numSamples);
         }
     }
     output.silenceFlags = input.silenceFlags;

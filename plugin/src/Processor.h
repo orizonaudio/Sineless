@@ -1,9 +1,10 @@
 #pragma once
 
-#include "engine/CaptureRing.h"
+#include "engine/Engine.h"
 #include "engine/RealtimeSafety.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
 
+#include <cstdint>
 #include <memory>
 
 namespace orizon::plugin {
@@ -18,6 +19,9 @@ public:
     static Steinberg::FUnknown* createInstance(void* context);
 
     Steinberg::tresult PLUGIN_API initialize(Steinberg::FUnknown* context) override;
+    Steinberg::tresult PLUGIN_API terminate() override;
+    // Sends the controller the token of this instance's engine (AD-10).
+    Steinberg::tresult PLUGIN_API connect(Steinberg::Vst::IConnectionPoint* other) override;
     Steinberg::tresult PLUGIN_API setBusArrangements(Steinberg::Vst::SpeakerArrangement* inputs,
                                                      Steinberg::int32 numIns,
                                                      Steinberg::Vst::SpeakerArrangement* outputs,
@@ -27,11 +31,12 @@ public:
     Steinberg::tresult PLUGIN_API
     process(Steinberg::Vst::ProcessData& data) noexcept ORIZON_NONBLOCKING override;
 
-    // Null until initialize(); then lives as long as the processor.
-    [[nodiscard]] const engine::CaptureRing* captureRing() const { return ring.get(); }
+    // Null outside initialize()/terminate().
+    [[nodiscard]] const std::shared_ptr<engine::Engine>& engine() const { return engineState; }
 
 private:
-    std::unique_ptr<engine::CaptureRing> ring;
+    std::shared_ptr<engine::Engine> engineState;
+    std::int64_t engineToken = 0;
 };
 
 } // namespace orizon::plugin
