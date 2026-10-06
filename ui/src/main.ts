@@ -1,18 +1,19 @@
-// Minimal session client until the UI proper arrives (M3): says hello, receives frames and
-// returns a credit after each animation frame (AD-12).
-import { decodeFrame, type Frame } from "../../protocol/src/frame-decoder.ts";
+// Entry point: connects the backend, the settings store and the render loop.
+import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import type {
   ErrorMessage,
   SnapshotMessage,
   StateChangedMessage,
 } from "../../protocol/src/messages.ts";
-import { protocolVersion } from "../../protocol/src/version.ts";
+import { Backend } from "./bridge/backend.ts";
 import { MockTransport } from "./bridge/mock-transport.ts";
 import {
   NativeTransport,
   type NativeReceiver,
   type Transport,
 } from "./bridge/transport.ts";
+import { RenderLoop, type FrameRenderer } from "./render/render-loop.ts";
+import { SettingsStore } from "./store/settings-store.ts";
 
 declare global {
   interface Window {
@@ -34,44 +35,56 @@ declare global {
   }
 }
 
-const status = document.createElement("p");
-document.body.append(status);
-status.textContent = "Connecting...";
-
-const debug: NonNullable<Window["orizonDebug"]> = { frameCount: 0 };
-window.orizonDebug = debug;
-
 // Inside the plugin the native channel exists; in a desktop browser the mock stands in.
 const channel = window.webkit?.messageHandlers["orizon"];
 const transport: Transport =
   channel !== undefined
     ? new NativeTransport({ channel, receiver: window })
     : new MockTransport();
+const backend = new Backend(transport);
+const store = new SettingsStore();
 
-transport.onMessage((message) => {
-  if (message.type === "snapshot") {
-    debug.snapshot = message as unknown as SnapshotMessage;
-  } else if (message.type === "stateChanged") {
-    debug.lastState = message as unknown as StateChangedMessage;
-  } else if (message.type === "error") {
-    debug.error = message as unknown as ErrorMessage;
-    status.textContent = debug.error.message;
-  }
+const status = document.createElement("p");
+document.body.append(status);
+status.textContent = "Connecting...";
+
+// Placeholder until the WebGL2 trace renderer (T-031).
+const renderer: FrameRenderer = {
+  draw(frame) {
+    status.textContent = `Frame ${String(frame.sequence)}: ${String(frame.pointCount)} points`;
+  },
+};
+const loop = new RenderLoop(
+  (callback) => requestAnimationFrame(callback),
+  renderer,
+  () => {
+    backend.credit();
+  },
+);
+
+const debug: NonNullable<Window["orizonDebug"]> = { frameCount: 0 };
+window.orizonDebug = debug;
+
+backend.on("snapshot", (message) => {
+  debug.snapshot = message;
+  store.applySnapshot(message);
 });
-
-transport.onFrame((buffer) => {
-  const frame = decodeFrame(buffer);
+backend.on("stateChanged", (message) => {
+  debug.lastState = message;
+  store.applyState(message.name, message.value);
+});
+backend.on("error", (message) => {
+  debug.error = message;
+  status.textContent = message.message;
+});
+backend.on("frame", (frame) => {
   debug.lastFrame = frame;
   debug.frameCount++;
-  requestAnimationFrame(() => {
-    status.textContent = `Frame ${String(frame.sequence)}: ${String(frame.pointCount)} points`;
-    transport.send({ type: "credit" });
-  });
+  loop.submit(frame);
 });
 
-transport.send({
-  type: "hello",
-  protocolVersion,
-  viewWidth: document.documentElement.clientWidth,
-  pixelRatio: window.devicePixelRatio,
+const traceWidth = (): number => document.documentElement.clientWidth;
+backend.hello(traceWidth(), window.devicePixelRatio);
+window.addEventListener("resize", () => {
+  backend.setViewport(traceWidth(), window.devicePixelRatio);
 });
