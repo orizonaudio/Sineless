@@ -5,6 +5,7 @@ add_library(engine STATIC
     src/CaptureRing.cpp
     src/HoldBuffer.cpp
     src/Reducer.cpp
+    src/Roll.cpp
     src/SettingJson.cpp
     src/Settings.cpp
     src/State.cpp
@@ -30,6 +31,7 @@ if(BUILD_TESTING)
         tests/CaptureRingTests.cpp
         tests/HoldBufferTests.cpp
         tests/ReducerTests.cpp
+        tests/RollTests.cpp
         tests/SettingsTests.cpp
         tests/StateTests.cpp
         tests/TriggerTests.cpp

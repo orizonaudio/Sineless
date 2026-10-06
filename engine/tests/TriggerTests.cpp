@@ -175,6 +175,17 @@ TEST_F(TriggerModes, HoldOffSpacesSuccessiveTriggers)
     EXPECT_NEAR(std::fmod(gap, 300.0), 0.0, 1e-3);
 }
 
+// Switching back from a roll span (FR-4): the last trigger is far behind the new search region
+// and must not hold the display or constrain the hold-off chain.
+TEST_F(TriggerModes, ResumesImmediatelyAfterARollPeriod)
+{
+    ASSERT_EQ(decide(sine(1000, 0.3), TriggerMode::kNormal).action, Action::kDraw);
+    const auto decision = decide(sine(1000, 0.3), TriggerMode::kNormal,
+                                 {.hysteresis = 0.01, .holdOffSamples = 1e9}, 5'000'000);
+    EXPECT_EQ(decision.action, Action::kDraw);
+    EXPECT_TRUE(decision.triggered);
+}
+
 TEST(TriggerRegion, CoversTheSpanAndTimeoutWithinTheReadableRange)
 {
     const auto [first, end] = TriggerState::searchRegion(0, 100'000, 200.0, 150.0);
