@@ -13,3 +13,11 @@ Every task, in addition to its own acceptance criteria:
 - [ ] Any new dependency was added to DESIGN.md 8.1 after a decision.
 - [ ] DESIGN.md is updated if a requirement, decision or documented behaviour changed.
 - [ ] The work is committed with the task ID in the message, and BOARD.md is updated.
+
+## Releasing
+
+1. Set the version in `project(... VERSION x.y.z ...)` in `CMakeLists.txt`.
+2. Run `scripts/check.sh`. Every check must pass.
+3. Run `scripts/package.sh`. It builds the Release bundle, verifies both architectures and the macOS 13 minimum, and writes `build/release/Oscilloscope-<version>-macOS.zip`.
+4. Install the zipped bundle and do the manual test pass in Ableton Live (DESIGN 8.2).
+5. Tag the commit `vx.y.z` and attach the zip to a GitHub release.
