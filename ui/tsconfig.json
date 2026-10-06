@@ -2,6 +2,7 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
     "outDir": "../build/tsc/ui"
   },
   "include": ["src", "tests", "vite.config.ts"],

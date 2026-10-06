@@ -140,6 +140,14 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
     auto editor = owned(new Editor(nullptr));
     ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
     EXPECT_FALSE(editor->workerRunning());
+    // The page is told why it gets no data, so it can show the unavailable state (AD-10).
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            return evaluate(webView, @"String(window.orizonDebug?.error?.code ?? '')") ==
+                   "engineUnavailable";
+        },
+        kPageTimeout));
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
 }

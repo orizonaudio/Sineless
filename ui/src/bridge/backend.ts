@@ -23,7 +23,14 @@ export interface BackendEvents {
 
 export class Backend {
   private readonly transport: Transport;
-  private readonly events: Partial<BackendEvents> = {};
+  private readonly handlers: {
+    [Event in keyof BackendEvents]: BackendEvents[Event][];
+  } = {
+    snapshot: [],
+    stateChanged: [],
+    error: [],
+    frame: [],
+  };
 
   constructor(transport: Transport) {
     this.transport = transport;
@@ -31,15 +38,19 @@ export class Backend {
       this.dispatch(message);
     });
     transport.onFrame((buffer) => {
-      this.events.frame?.(decodeFrame(buffer));
+      const frame = decodeFrame(buffer);
+      for (const handler of this.handlers.frame) {
+        handler(frame);
+      }
     });
   }
 
+  // Adds a handler; handlers run in the order they were added.
   on<Event extends keyof BackendEvents>(
     event: Event,
     handler: BackendEvents[Event],
   ): void {
-    this.events[event] = handler;
+    this.handlers[event].push(handler);
   }
 
   hello(viewWidth: number, pixelRatio: number): void {
@@ -78,13 +89,19 @@ export class Backend {
   private dispatch(message: ControlMessage): void {
     switch (message.type) {
       case "snapshot":
-        this.events.snapshot?.(message as unknown as SnapshotMessage);
+        for (const handler of this.handlers.snapshot) {
+          handler(message as unknown as SnapshotMessage);
+        }
         break;
       case "stateChanged":
-        this.events.stateChanged?.(message as unknown as StateChangedMessage);
+        for (const handler of this.handlers.stateChanged) {
+          handler(message as unknown as StateChangedMessage);
+        }
         break;
       case "error":
-        this.events.error?.(message as unknown as ErrorMessage);
+        for (const handler of this.handlers.error) {
+          handler(message as unknown as ErrorMessage);
+        }
         break;
       default:
         break;

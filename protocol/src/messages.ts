@@ -17,7 +17,11 @@ export const MessageType = {
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
-export const ErrorCode = { protocolMismatch: "protocolMismatch" } as const;
+export const ErrorCode = {
+  protocolMismatch: "protocolMismatch",
+  // The editor cannot reach the processor's engine (AD-10).
+  engineUnavailable: "engineUnavailable",
+} as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 export type SettingValue = number | string | readonly string[];

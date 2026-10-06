@@ -7,13 +7,16 @@ import { traceGeometry } from "./trace-geometry.ts";
 export type Rgba = readonly [number, number, number, number];
 
 export interface TraceStyle {
-  readonly colors: ReadonlyMap<ChannelView, Rgba>;
+  // Resolved at draw time, so colours can come from a stylesheet that loads after start-up.
+  readonly colors: () => ReadonlyMap<ChannelView, Rgba>;
   readonly lineWidthPixels: number;
 }
 
 export interface TraceView {
   readonly verticalScaleDb: number;
   readonly layout: ViewLayout;
+  // Shows the trace as stale, e.g. while Normal mode waits for a trigger.
+  readonly dim?: boolean;
 }
 
 const vertexShader = `#version 300 es
@@ -103,9 +106,11 @@ export class TraceRenderer implements FrameRenderer {
       layout: view.layout,
       lineWidthPixels: this.style.lineWidthPixels,
     });
+    const colors = this.style.colors();
     for (const [channelView, vertices] of geometry) {
-      const color = this.style.colors.get(channelView) ?? [1, 1, 1, 1];
-      gl.uniform4f(this.colorLocation, color[0], color[1], color[2], color[3]);
+      const color = colors.get(channelView) ?? [1, 1, 1, 1];
+      const alpha = view.dim === true ? color[3] * 0.45 : color[3];
+      gl.uniform4f(this.colorLocation, color[0], color[1], color[2], alpha);
       gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
       gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 2);
     }

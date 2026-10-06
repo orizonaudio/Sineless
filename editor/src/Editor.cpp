@@ -43,9 +43,9 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
     view =
         WebView::create(parent, getRect().getWidth(), getRect().getHeight(),
                         [this](WebView& /*view*/, std::string_view message) { receive(message); });
+    transport = std::make_unique<WebViewTransport>(*view);
     if (engineState) {
         analyzer = std::make_unique<engine::Analyzer>(*engineState);
-        transport = std::make_unique<WebViewTransport>(*view);
         dispatcher = UiDispatcher::create();
         frameFlow = std::make_unique<FrameFlow>(
             *analyzer, *dispatcher,
@@ -79,10 +79,17 @@ void Editor::receive(std::string_view message)
     if (observer) {
         observer(message);
     }
+    const auto parsed = WebViewTransport::parse(message);
+    if (!parsed) {
+        return;
+    }
     if (session) {
-        if (const auto parsed = WebViewTransport::parse(message)) {
-            session->receive(*parsed);
-        }
+        session->receive(*parsed);
+    } else if ((*parsed)["type"] == "hello" && transport) {
+        // No engine (AD-10): tell the page, so it can explain instead of waiting forever.
+        transport->sendMessage({{"type", "error"},
+                                {"code", "engineUnavailable"},
+                                {"message", "The editor cannot reach the plugin's engine."}});
     }
 }
 

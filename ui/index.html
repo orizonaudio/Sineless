@@ -2,32 +2,102 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Oscilloscope</title>
-    <style>
-      html,
-      body {
-        height: 100%;
-        margin: 0;
-        background: #0d0f10;
-        color: #ddd;
-        font-family: system-ui, sans-serif;
-        overflow: hidden;
-      }
-      .trace {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-      .status {
-        position: absolute;
-        top: 8px;
-        left: 12px;
-        margin: 0;
-        font-size: 12px;
-      }
-    </style>
+    <link rel="icon" href="data:," />
   </head>
   <body>
+    <div class="app">
+      <header class="bar">
+        <div class="wordmark">Oscilloscope <span>· Orizon</span></div>
+        <div class="chips" id="chips"></div>
+        <div
+          class="readouts"
+          title="Indicative readouts of the trigger channel over the visible span, not standards-compliant metering"
+        >
+          <div class="readout">
+            <b>Peak</b><span id="peak">—</span><small>dBFS</small>
+          </div>
+          <div class="readout">
+            <b>RMS</b><span id="rms">—</span><small>dBFS</small>
+          </div>
+          <div class="readout">
+            <b>Freq</b><span id="frequency">—</span><small>Hz</small>
+          </div>
+        </div>
+      </header>
+      <main class="screen" id="screen">
+        <canvas class="grid" id="grid"></canvas>
+        <canvas class="trace" id="trace"></canvas>
+        <div class="labels" id="labels"></div>
+        <div class="trigger-line" id="trigger-line"></div>
+        <div
+          class="trigger-marker"
+          id="trigger-marker"
+          title="Drag to set the trigger level"
+        ></div>
+        <div class="message" id="message" hidden>
+          <strong id="message-title"></strong>
+          <span id="message-text"></span>
+        </div>
+      </main>
+      <footer class="controls">
+        <section class="group" id="time-group">
+          <div class="group-label">Time</div>
+          <div id="span-field"></div>
+        </section>
+        <section class="group" id="vertical-group">
+          <div class="group-label">Vertical</div>
+          <div id="scale-field"></div>
+        </section>
+        <section class="group" id="views-group">
+          <div class="group-label">Views</div>
+          <div class="row" id="views"></div>
+          <div class="segmented" id="layout"></div>
+        </section>
+        <section class="group" id="trigger-group">
+          <button
+            class="group-label group-button"
+            id="trigger-details"
+            aria-expanded="false"
+          >
+            Trigger <span id="trigger-summary"></span>
+          </button>
+          <div class="segmented" id="mode"></div>
+          <div class="row" id="arm-row">
+            <button class="action" id="arm" disabled>Re-arm</button>
+          </div>
+        </section>
+        <section class="group push" id="display-group">
+          <div class="group-label">Display</div>
+          <button class="action" id="freeze" aria-pressed="false">
+            Freeze
+          </button>
+        </section>
+        <div class="popover" id="trigger-popover" hidden>
+          <div class="popover-row">
+            <span>Source</span>
+            <div class="segmented" id="source"></div>
+          </div>
+          <div class="popover-row">
+            <span>Slope</span>
+            <div class="segmented" id="slope"></div>
+          </div>
+          <div class="popover-row">
+            <span>Level</span>
+            <div id="level-field"></div>
+          </div>
+          <div class="popover-row">
+            <span>Hysteresis</span>
+            <div id="hysteresis-field"></div>
+          </div>
+          <div class="popover-row">
+            <span>Hold-off</span>
+            <div id="hold-off-field"></div>
+          </div>
+        </div>
+      </footer>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
