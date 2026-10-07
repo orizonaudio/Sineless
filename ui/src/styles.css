@@ -110,6 +110,59 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* The help switch, and the tooltips it turns on. */
+.help-toggle {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-family: var(--font-label);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.help-toggle:hover {
+  color: var(--ink);
+}
+
+.help-toggle[aria-pressed="true"] {
+  color: var(--panel);
+  background: var(--hold);
+  border-color: var(--hold);
+}
+
+.help-tip {
+  position: fixed;
+  z-index: 10;
+  display: grid;
+  gap: 4px;
+  max-width: 260px;
+  padding: 8px 10px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+.help-tip strong {
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
 .readout {
   display: flex;
   gap: 6px;

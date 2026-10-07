@@ -17,6 +17,7 @@ import type {
 } from "../../protocol/src/settings.ts";
 import type { Backend } from "./bridge/backend.ts";
 import { DragField } from "./components/drag-field.ts";
+import { HelpTips } from "./components/help-tips.ts";
 import { Segmented } from "./components/segmented.ts";
 import { RenderLoop } from "./render/render-loop.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
@@ -45,6 +46,7 @@ import {
   type LevelPair,
 } from "./view/cursors.ts";
 import { drawGrid } from "./view/grid.ts";
+import type { HelpTopic } from "./view/help.ts";
 import {
   extremePositions,
   levelTargets,
@@ -73,6 +75,12 @@ import {
 
 const viewOrder = ["left", "right", "mid", "side"] as const;
 type ViewName = (typeof viewOrder)[number];
+const viewHelp: Record<ViewName, HelpTopic> = {
+  left: "viewLeft",
+  right: "viewRight",
+  mid: "viewMid",
+  side: "viewSide",
+};
 const viewLabels: Record<ViewName, string> = {
   left: "L",
   right: "R",
@@ -338,6 +346,7 @@ export class OscilloscopeApp {
       const button = document.createElement("button");
       button.className = "toggle";
       button.textContent = viewLabels[name];
+      button.dataset["help"] = viewHelp[name];
       button.style.setProperty("--color", `var(${viewColorTokens[name]})`);
       button.setAttribute("aria-pressed", "false");
       button.addEventListener("click", () => {
@@ -361,16 +370,22 @@ export class OscilloscopeApp {
     const segment = (
       name: SettingName,
       host: string,
-      choices: [value: string, label: string, short?: string][],
+      choices: [
+        value: string,
+        label: string,
+        short?: string,
+        help?: HelpTopic,
+      ][],
     ) => {
       this.segmented.set(
         name,
         new Segmented(
           element(host),
-          choices.map(([value, label, short]) => ({
+          choices.map(([value, label, short, help]) => ({
             value,
             label,
             ...(short === undefined ? {} : { short }),
+            ...(help === undefined ? {} : { help }),
           })),
           (value) => {
             this.request(name, value);
@@ -387,10 +402,10 @@ export class OscilloscopeApp {
       ["stacked", "Stack"],
     ]);
     segment("triggerMode", "mode", [
-      ["auto", "Auto", "A"],
-      ["normal", "Normal", "N"],
-      ["free", "Free", "F"],
-      ["single", "Single", "S"],
+      ["auto", "Auto", "A", "modeAuto"],
+      ["normal", "Normal", "N", "modeNormal"],
+      ["free", "Free", "F", "modeFree"],
+      ["single", "Single", "S", "modeSingle"],
     ]);
     segment(
       "triggerSource",
@@ -425,6 +440,12 @@ export class OscilloscopeApp {
       const frozen = this.lastFrame?.frozen !== true;
       this.panSeconds = 0;
       this.backend.freeze(frozen);
+    });
+    const help = new HelpTips(element("help-tip"));
+    element("help").addEventListener("click", () => {
+      const on = element("help").getAttribute("aria-pressed") !== "true";
+      element("help").setAttribute("aria-pressed", String(on));
+      help.setEnabled(on);
     });
     element("time-cursors").addEventListener("click", () => {
       this.timeCursors =
@@ -465,7 +486,6 @@ export class OscilloscopeApp {
     const beats = this.beatsMode();
     const group = element("trigger-group");
     group.classList.toggle("inactive", beats);
-    group.title = beats ? "The trigger does not apply in Beats mode" : "";
     for (const button of group.querySelectorAll("button")) {
       button.disabled =
         beats ||
@@ -768,8 +788,7 @@ export class OscilloscopeApp {
           line.className = "level-cursor";
           line.dataset["lane"] = String(lane);
           line.dataset["key"] = key;
-          line.title =
-            "Drag to move this level cursor; hold Option to place it freely";
+          line.dataset["help"] = "levelCursor" satisfies HelpTopic;
           const label = document.createElement("span");
           label.textContent = key === "first" ? "1" : "2";
           line.append(label);

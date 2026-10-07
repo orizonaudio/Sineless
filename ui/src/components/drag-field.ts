@@ -27,7 +27,6 @@ export class DragField {
     this.element.tabIndex = 0;
     this.element.setAttribute("role", "spinbutton");
     this.element.setAttribute("aria-label", options.label);
-    this.element.title = "Drag or scroll to change; double-click to type";
     this.display = document.createElement("span");
     this.element.append(this.display);
     this.listen();

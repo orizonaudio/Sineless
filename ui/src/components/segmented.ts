@@ -5,6 +5,8 @@ export interface Choice {
   readonly label: string;
   // Shown instead of the label in the narrowest window.
   readonly short?: string;
+  // Help topic of this choice; otherwise the container's applies.
+  readonly help?: string;
 }
 
 export class Segmented {
@@ -24,7 +26,10 @@ export class Segmented {
       short.className = "short";
       short.textContent = choice.short ?? choice.label;
       button.append(long, short);
-      button.title = choice.label;
+      button.setAttribute("aria-label", choice.label);
+      if (choice.help !== undefined) {
+        button.dataset["help"] = choice.help;
+      }
       button.setAttribute("aria-pressed", "false");
       button.addEventListener("click", () => {
         onRequest(choice.value);

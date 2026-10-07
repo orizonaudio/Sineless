@@ -10,23 +10,29 @@
     <div class="app">
       <header class="bar">
         <div class="wordmark">O-Scope <span>· Orizon</span></div>
-        <div class="chips" id="chips"></div>
-        <div
-          class="readouts"
-          title="Indicative readouts of the trigger channel over the visible span, not standards-compliant metering"
-        >
-          <div class="readout">
+        <div class="chips" id="chips" data-help="status"></div>
+        <div class="readouts">
+          <div class="readout" data-help="peak">
             <b>Peak</b><span id="peak">—</span><small>dBFS</small>
           </div>
-          <div class="readout">
+          <div class="readout" data-help="rms">
             <b>RMS</b><span id="rms">—</span><small>dBFS</small>
           </div>
-          <div class="readout">
+          <div class="readout" data-help="frequency">
             <b>Freq</b><span id="frequency">—</span><small>Hz</small>
           </div>
         </div>
+        <button
+          class="help-toggle"
+          id="help"
+          aria-pressed="false"
+          aria-label="Help"
+          data-help="help"
+        >
+          ?
+        </button>
       </header>
-      <main class="screen" id="screen">
+      <main class="screen" id="screen" data-help="screen">
         <canvas class="grid" id="grid"></canvas>
         <canvas class="trace" id="trace"></canvas>
         <div class="sweep-previous" id="sweep-previous" hidden></div>
@@ -34,20 +40,10 @@
         <div class="labels" id="labels"></div>
         <div class="selection" id="selection" hidden></div>
         <div class="trigger-line" id="trigger-line"></div>
-        <div
-          class="time-cursor"
-          id="cursor-a"
-          title="Drag to move cursor A"
-          hidden
-        >
+        <div class="time-cursor" id="cursor-a" data-help="timeCursor" hidden>
           <span>A</span>
         </div>
-        <div
-          class="time-cursor"
-          id="cursor-b"
-          title="Drag to move cursor B"
-          hidden
-        >
+        <div class="time-cursor" id="cursor-b" data-help="timeCursor" hidden>
           <span>B</span>
         </div>
         <div class="level-cursor-lines" id="level-cursor-lines"></div>
@@ -55,7 +51,7 @@
         <div
           class="trigger-marker"
           id="trigger-marker"
-          title="Drag to set the trigger level"
+          data-help="triggerMarker"
         ></div>
         <div class="message" id="message" hidden>
           <strong id="message-title"></strong>
@@ -66,21 +62,21 @@
         <section class="group" id="time-group">
           <div class="group-label">Time</div>
           <div class="row">
-            <div id="span-field"></div>
-            <div id="beat-span-field" hidden></div>
+            <div id="span-field" data-help="timeSpan"></div>
+            <div id="beat-span-field" data-help="beatSpan" hidden></div>
           </div>
-          <div class="segmented" id="time-base"></div>
+          <div class="segmented" id="time-base" data-help="timeBase"></div>
         </section>
         <section class="group" id="vertical-group">
           <div class="group-label">Vertical</div>
-          <div id="scale-field"></div>
+          <div id="scale-field" data-help="verticalScale"></div>
         </section>
         <section class="group" id="views-group">
           <div class="group-label">Views</div>
           <div class="row" id="views"></div>
-          <div class="segmented" id="layout"></div>
+          <div class="segmented" id="layout" data-help="layout"></div>
         </section>
-        <section class="group" id="trigger-group">
+        <section class="group" id="trigger-group" data-help="trigger">
           <button
             class="group-label group-button"
             id="trigger-details"
@@ -90,20 +86,27 @@
           </button>
           <div class="segmented" id="mode"></div>
           <div class="row" id="arm-row">
-            <button class="action" id="arm" disabled>Re-arm</button>
+            <button class="action" id="arm" data-help="rearm" disabled>
+              Re-arm
+            </button>
           </div>
         </section>
         <section class="group push" id="display-group">
           <div class="group-label">Display</div>
           <div class="row">
-            <button class="action" id="freeze" aria-pressed="false">
+            <button
+              class="action"
+              id="freeze"
+              aria-pressed="false"
+              data-help="freeze"
+            >
               Freeze
             </button>
             <button
               class="action"
               id="auto-freeze"
               aria-pressed="false"
-              title="Freeze when the host stops, and resume when it plays again"
+              data-help="autoFreeze"
             >
               Auto-freeze
             </button>
@@ -113,7 +116,7 @@
               class="action"
               id="time-cursors"
               aria-pressed="false"
-              title="Time cursors: drag them to measure time and frequency. They snap to zero crossings; hold Option to place freely."
+              data-help="timeCursors"
             >
               Time
             </button>
@@ -121,36 +124,37 @@
               class="action"
               id="level-cursors"
               aria-pressed="false"
-              title="Level cursors: drag them to measure levels in dB. They snap to the peaks and to zero; hold Option to place freely."
+              data-help="levelCursors"
             >
               Level
             </button>
           </div>
         </section>
         <div class="popover" id="trigger-popover" hidden>
-          <div class="popover-row">
+          <div class="popover-row" data-help="triggerSource">
             <span>Source</span>
             <div class="segmented" id="source"></div>
           </div>
-          <div class="popover-row">
+          <div class="popover-row" data-help="triggerSlope">
             <span>Slope</span>
             <div class="segmented" id="slope"></div>
           </div>
-          <div class="popover-row">
+          <div class="popover-row" data-help="triggerLevel">
             <span>Level</span>
             <div id="level-field"></div>
           </div>
-          <div class="popover-row">
+          <div class="popover-row" data-help="triggerHysteresis">
             <span>Hysteresis</span>
             <div id="hysteresis-field"></div>
           </div>
-          <div class="popover-row">
+          <div class="popover-row" data-help="triggerHoldOff">
             <span>Hold-off</span>
             <div id="hold-off-field"></div>
           </div>
         </div>
       </footer>
     </div>
+    <div class="help-tip" id="help-tip" role="tooltip" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
