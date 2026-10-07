@@ -4,7 +4,7 @@
 
 Every change:
 
-- [ ] `scripts/check.sh` passes. Until a remote CI exists, it is run locally.
+- [ ] `scripts/check.sh` passes locally. CI runs the same script, on demand.
 - [ ] New or changed behaviour is covered by tests.
 - [ ] Code follows the naming conventions and is formatted and linted.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.

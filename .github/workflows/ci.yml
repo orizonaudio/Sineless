@@ -1,8 +1,9 @@
 name: CI
 
+# Manual only while the repository is private: macOS runner minutes count tenfold against
+# the free allowance. Run it from the Actions tab.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   macos:
