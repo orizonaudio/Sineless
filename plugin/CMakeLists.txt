@@ -10,12 +10,12 @@ target_link_libraries(plugin
     PRIVATE orizon_warnings
 )
 
-smtg_add_vst3plugin(Oscilloscope src/Factory.cpp)
-target_link_libraries(Oscilloscope PRIVATE plugin orizon_warnings)
-set_target_properties(Oscilloscope PROPERTIES
+smtg_add_vst3plugin(O-Scope src/Factory.cpp)
+target_link_libraries(O-Scope PRIVATE plugin orizon_warnings)
+set_target_properties(O-Scope PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resource/Info.plist.in
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.oscilloscope
-    MACOSX_BUNDLE_BUNDLE_NAME Oscilloscope
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.o-scope
+    MACOSX_BUNDLE_BUNDLE_NAME O-Scope
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
 )

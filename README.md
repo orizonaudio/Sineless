@@ -1,4 +1,4 @@
-# Oscilloscope
+# O-Scope
 
 An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its track in real time and passes it through unchanged, with zero latency.
 
@@ -17,15 +17,15 @@ Windows support is planned.
 
 ## Install
 
-1. Download `Oscilloscope-<version>-macOS.zip` from the releases page and unzip it.
-2. Move `Oscilloscope.vst3` to `~/Library/Audio/Plug-Ins/VST3/`.
+1. Download `O-Scope-<version>-macOS.zip` from the releases page and unzip it.
+2. Move `O-Scope.vst3` to `~/Library/Audio/Plug-Ins/VST3/`.
 3. Releases are not signed with an Apple Developer ID yet, so macOS quarantines the download. Clear the quarantine flag in Terminal:
 
    ```bash
-   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Oscilloscope.vst3
+   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/O-Scope.vst3
    ```
 
-4. Rescan plugins in your host. Oscilloscope appears under Orizon Audio.
+4. Rescan plugins in your host. O-Scope appears under Orizon Audio.
 
 ## Build from source
 
@@ -37,7 +37,7 @@ cmake --preset dev
 cmake --build --preset dev
 ```
 
-The plugin is built at `build/dev/VST3/Debug/Oscilloscope.vst3`. To work on the interface in a browser, without the plugin, run `npm run dev`; a built-in mock replaces the audio engine.
+The plugin is built at `build/dev/VST3/Debug/O-Scope.vst3`. To work on the interface in a browser, without the plugin, run `npm run dev`; a built-in mock replaces the audio engine.
 
 `scripts/check.sh` runs every check that CI runs. It also needs Homebrew LLVM (`brew install llvm`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [docs/DESIGN.md](docs/DESIGN.md) for the architecture.
 

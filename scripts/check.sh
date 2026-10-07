@@ -69,7 +69,7 @@ if [[ ! -x "$pluginval" ]]; then
     unzip -oq "$toolsDir/pluginval_macOS.zip" -d "$toolsDir"
 fi
 "$pluginval" --strictness-level 10 --validate-in-process \
-    --validate "$buildDir/VST3/Debug/Oscilloscope.vst3"
+    --validate "$buildDir/VST3/Debug/O-Scope.vst3"
 
 step "TypeScript"
 [[ -d node_modules ]] || npm ci
