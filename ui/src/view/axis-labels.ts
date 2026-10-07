@@ -2,52 +2,80 @@
 // screen: `x` from the left, `y` from the top.
 import { lanes } from "../render/trace-geometry.ts";
 import { ViewLayout } from "../../../protocol/src/enums.ts";
-import { formatSeconds, signed } from "./format.ts";
+import { formatDb, formatDbValue, formatSeconds } from "./format.ts";
 import { fullView, toFrame, type ViewWindow } from "./zoom.ts";
 
 export const gridColumns = 10;
-export const gridRows = 8;
 export const triggerPosition = 0.1;
+
+// Level lines sit every 3 dB down from the top of a lane, at most four below it. The trace is
+// linear, so a line `step` steps down sits at 10^(-3 * step / 20) of the half-lane height.
+const levelStepDb = 3;
+const levelsBelowTop = 4;
+// Closest spacing (CSS px) between drawn level lines, and between level labels.
+export const minimumLineGap = 8;
+export const minimumLabelGap = 14;
+
+export function levelFraction(step: number): number {
+  return 10 ** ((-levelStepDb * step) / 20);
+}
+
+// The steps below the top (0 is the top itself) shown in a half-lane `halfLanePx` tall: every
+// 3 dB, else every 6 dB, else the top only, else none, so that neighbours stay `minimumGap`
+// apart.
+export function levelSteps(halfLanePx: number, minimumGap: number): number[] {
+  for (const stride of [1, 2]) {
+    const steps: number[] = [];
+    for (let step = 0; step <= levelsBelowTop; step += stride) {
+      steps.push(step);
+    }
+    // Each line's distance to the next one down; the last one's to the zero line.
+    const fits = steps.every((step) => {
+      const below =
+        step + stride <= levelsBelowTop ? levelFraction(step + stride) : 0;
+      return (levelFraction(step) - below) * halfLanePx >= minimumGap;
+    });
+    if (fits) {
+      return steps;
+    }
+  }
+  return halfLanePx >= minimumGap ? [0] : [];
+}
 
 export interface AxisLabel {
   readonly text: string;
   readonly position: number;
 }
 
-function amplitudeText(value: number, fullScale: number): string {
-  if (value === 0) {
-    return "0";
-  }
-  const decimals = fullScale >= 0.1 ? 2 : fullScale >= 0.01 ? 3 : 4;
-  return signed(value, decimals);
-}
-
-// Amplitude labels at the top, middle and bottom of each lane; overlaid views share one lane.
-// `compact` (a short screen) keeps only the top, zero and bottom labels.
+// Level labels in dB at the level lines of each lane: the top carries the unit, the zero line
+// reads minus infinity. Overlaid views share one lane. A single lane is labelled on both halves;
+// stacked lanes only above their zero line, so that labels at a lane boundary never collide.
 export function amplitudeLabels(
-  fullScale: number,
+  topDb: number,
   laneCount: number,
   layout: ViewLayout,
-  compact = false,
+  screenHeight: number,
 ): AxisLabel[] {
   const labels: AxisLabel[] = [];
   const viewLanes =
     layout === ViewLayout.stacked ? lanes(laneCount, layout) : lanes(1, layout);
-  const fractions =
-    viewLanes.length > 2
-      ? [0]
-      : viewLanes.length > 1
-        ? [1, 0]
-        : compact
-          ? [1, 0, -1]
-          : [1, 0.5, 0, -0.5, -1];
   for (const lane of viewLanes) {
-    for (const fraction of fractions) {
-      const y = (1 - (lane.center + fraction * lane.halfHeight)) / 2;
-      labels.push({
-        text: amplitudeText(fraction * fullScale, fullScale),
-        position: y,
-      });
+    const steps = levelSteps(
+      (lane.halfHeight * screenHeight) / 2,
+      minimumLabelGap,
+    );
+    const at = (fraction: number) =>
+      (1 - (lane.center + fraction * lane.halfHeight)) / 2;
+    const text = (step: number) =>
+      step === 0 ? formatDb(topDb) : formatDbValue(topDb - levelStepDb * step);
+    for (const step of steps) {
+      labels.push({ text: text(step), position: at(levelFraction(step)) });
+    }
+    labels.push({ text: "\u2212\u221e", position: at(0) });
+    if (viewLanes.length === 1) {
+      for (const step of [...steps].reverse()) {
+        labels.push({ text: text(step), position: at(-levelFraction(step)) });
+      }
     }
   }
   return labels;

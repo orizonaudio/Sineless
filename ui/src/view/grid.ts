@@ -1,6 +1,14 @@
-// The screen grid: 10 × 8 divisions and a brighter zero line per lane, drawn on a 2D
-// canvas behind the traces. Redrawn only when the size or the lanes change.
-import { gridColumns, gridRows } from "./axis-labels.ts";
+// The screen grid: 10 time divisions, level lines every 3 dB down from the top of each lane and
+// a brighter zero line per lane, drawn on a 2D canvas behind the traces. Redrawn only when the
+// size or the lanes change; level lines do not depend on the vertical scale.
+import { ViewLayout } from "../../../protocol/src/enums.ts";
+import { lanes, type Lane } from "../render/trace-geometry.ts";
+import {
+  gridColumns,
+  levelFraction,
+  levelSteps,
+  minimumLineGap,
+} from "./axis-labels.ts";
 
 // Vertical lines at the given positions (fractions of the width), e.g. on beats in a tempo-synced
 // sweep; strong lines use the axis colour. Without them, the 10 equal divisions are drawn.
@@ -39,14 +47,25 @@ export function drawGrid(
     const x = Math.round(width * column.position) + 0.5;
     line(x, 0, x, height);
   }
+  const laneList = lanes(laneCount, ViewLayout.stacked);
+  const rowY = (lane: Lane, fraction: number) =>
+    Math.round(
+      ((1 - (lane.center + fraction * lane.halfHeight)) / 2) * height,
+    ) + 0.5;
   context.strokeStyle = colors.grid;
-  for (let row = 1; row < gridRows; row++) {
-    const y = Math.round((height * row) / gridRows) + 0.5;
-    line(0, y, width, y);
+  for (const lane of laneList) {
+    const halfLaneCss =
+      (lane.halfHeight * height) / 2 / Math.max(1, window.devicePixelRatio);
+    for (const step of levelSteps(halfLaneCss, minimumLineGap)) {
+      for (const sign of [1, -1]) {
+        const y = rowY(lane, sign * levelFraction(step));
+        line(0, y, width, y);
+      }
+    }
   }
   context.strokeStyle = colors.axis;
-  for (let lane = 0; lane < laneCount; lane++) {
-    const y = Math.round(((lane + 0.5) * height) / laneCount) + 0.5;
+  for (const lane of laneList) {
+    const y = rowY(lane, 0);
     line(0, y, width, y);
   }
 }

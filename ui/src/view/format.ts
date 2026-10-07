@@ -36,8 +36,16 @@ export function formatDbfs(linear: number): string {
   return db < 0 ? `${minus}${Math.abs(db).toFixed(1)}` : db.toFixed(1);
 }
 
+// A level in dB without the unit: "0", "+3", "−7.5".
+export function formatDbValue(db: number): string {
+  const rounded = Math.round(db * 10) / 10;
+  return rounded === 0
+    ? "0"
+    : signed(rounded, Number.isInteger(rounded) ? 0 : 1);
+}
+
 export function formatDb(db: number): string {
-  return `${db === 0 ? "0" : signed(db, Number.isInteger(db) ? 0 : 1)} dB`;
+  return `${formatDbValue(db)} dB`;
 }
 
 // Frequency readout: approximate, or a dash when unavailable.

@@ -69,8 +69,6 @@ const viewColorTokens: Record<ViewName, string> = {
   mid: "--mid",
   side: "--side",
 };
-// Below this screen height (CSS px) only the outer and zero amplitude labels fit.
-const compactScreenHeight = 140;
 // How fast ⌘ + scroll and pinch zoom, per wheel delta unit.
 const wheelZoomRate = 0.01;
 // A drag shorter than this (CSS px) is a click, not a zoom selection.
@@ -83,7 +81,7 @@ interface GestureEvent extends UIEvent {
 }
 
 // Room taken by the amplitude labels at the left edge (CSS px).
-const amplitudeLabelWidth = 48;
+const amplitudeLabelWidth = 56;
 const readoutInterval = 100; // ms: readouts stay legible while frames arrive at display rate.
 
 function element(id: string): HTMLElement {
@@ -542,15 +540,16 @@ export class OscilloscopeApp {
     const roll = span > 1;
     const labels: HTMLElement[] = [];
     for (const label of amplitudeLabels(
-      fullScale(this.store.number("verticalScale")),
+      this.store.number("verticalScale"),
       this.laneCount(),
       this.layout(),
-      height < compactScreenHeight,
+      height,
     )) {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;
-      node.style.left = "5px";
+      // Clear of the trigger level marker, which sits on the left edge.
+      node.style.left = "13px";
       node.style.top = `${String(Math.min(height - 14, Math.max(2, label.position * height - 6)))}px`;
       labels.push(node);
     }

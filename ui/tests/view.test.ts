@@ -2,9 +2,15 @@ import { describe, expect, test } from "vitest";
 
 import { FrameMode, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
-import { amplitudeLabels, timeLabels } from "../src/view/axis-labels.ts";
+import {
+  amplitudeLabels,
+  levelFraction,
+  levelSteps,
+  timeLabels,
+} from "../src/view/axis-labels.ts";
 import {
   formatDb,
+  formatDbValue,
   formatDbfs,
   formatFrequency,
   formatSeconds,
@@ -32,6 +38,9 @@ describe("format", () => {
     expect(formatDb(0)).toBe("0 dB");
     expect(formatDb(-12)).toBe(`${minus}12 dB`);
     expect(formatDb(6)).toBe("+6 dB");
+    expect(formatDbValue(-10.5)).toBe(`${minus}10.5`);
+    expect(formatDbValue(-7.3 - 3)).toBe(`${minus}10.3`);
+    expect(formatDbValue(0)).toBe("0");
   });
 
   test("marks frequency as approximate or unavailable", () => {
@@ -75,38 +84,91 @@ describe("steps", () => {
 });
 
 describe("axis labels", () => {
-  test("labels a single lane at full, half and zero", () => {
-    const labels = amplitudeLabels(1, 2, ViewLayout.overlaid);
+  test("steps level lines by 3 dB, then 6 dB, then the top only as lanes shrink", () => {
+    expect(levelSteps(200, 8)).toEqual([0, 1, 2, 3, 4]);
+    // The 3 dB lines nearest the zero line are 0.103 of the half-lane apart.
+    expect(levelSteps(70, 8)).toEqual([0, 2, 4]);
+    expect(levelSteps(20, 8)).toEqual([0]);
+    expect(levelSteps(5, 8)).toEqual([]);
+  });
+
+  test("places level lines where the linear trace reaches them", () => {
+    expect(levelFraction(0)).toBe(1);
+    expect(levelFraction(2)).toBeCloseTo(0.501, 3); // -6 dB
+    expect(levelFraction(4)).toBeCloseTo(0.251, 3); // -12 dB
+  });
+
+  test("labels a single lane in dB on both halves", () => {
+    const labels = amplitudeLabels(0, 2, ViewLayout.overlaid, 600);
     expect(labels.map((label) => label.text)).toEqual([
-      "+1.00",
-      "+0.50",
-      "0",
-      `${minus}0.50`,
-      `${minus}1.00`,
+      "0 dB",
+      `${minus}3`,
+      `${minus}6`,
+      `${minus}9`,
+      `${minus}12`,
+      `${minus}∞`,
+      `${minus}12`,
+      `${minus}9`,
+      `${minus}6`,
+      `${minus}3`,
+      "0 dB",
     ]);
-    expect(labels.map((label) => label.position)).toEqual([
-      0, 0.25, 0.5, 0.75, 1,
+    const positions = labels.map((label) => label.position);
+    expect(positions[0]).toBe(0);
+    expect(positions[2]).toBeCloseTo((1 - 0.501) / 2, 3);
+    expect(positions[5]).toBe(0.5);
+    expect(positions[10]).toBe(1);
+  });
+
+  test("counts down from the top in 3 dB steps", () => {
+    const texts = (topDb: number) =>
+      amplitudeLabels(topDb, 1, ViewLayout.overlaid, 600)
+        .slice(0, 5)
+        .map((label) => label.text);
+    expect(texts(3)).toEqual([
+      "+3 dB",
+      "0",
+      `${minus}3`,
+      `${minus}6`,
+      `${minus}9`,
+    ]);
+    expect(texts(-1)).toEqual([
+      `${minus}1 dB`,
+      `${minus}4`,
+      `${minus}7`,
+      `${minus}10`,
+      `${minus}13`,
+    ]);
+    expect(texts(-7.5)[1]).toBe(`${minus}10.5`);
+  });
+
+  test("labels every 6 dB on a short screen", () => {
+    const labels = amplitudeLabels(0, 1, ViewLayout.overlaid, 200);
+    expect(labels.map((label) => label.text)).toEqual([
+      "0 dB",
+      `${minus}6`,
+      `${minus}12`,
+      `${minus}∞`,
+      `${minus}12`,
+      `${minus}6`,
+      "0 dB",
     ]);
   });
 
-  test("keeps only the outer and zero labels on a short screen", () => {
-    const labels = amplitudeLabels(1, 1, ViewLayout.overlaid, true);
+  test("labels stacked lanes above their zero line only", () => {
+    const labels = amplitudeLabels(0, 2, ViewLayout.stacked, 400);
     expect(labels.map((label) => label.text)).toEqual([
-      "+1.00",
-      "0",
-      `${minus}1.00`,
+      "0 dB",
+      `${minus}6`,
+      `${minus}12`,
+      `${minus}∞`,
+      "0 dB",
+      `${minus}6`,
+      `${minus}12`,
+      `${minus}∞`,
     ]);
-  });
-
-  test("labels each stacked lane", () => {
-    const labels = amplitudeLabels(0.5, 2, ViewLayout.stacked);
-    expect(labels.map((label) => label.text)).toEqual([
-      "+0.50",
-      "0",
-      "+0.50",
-      "0",
-    ]);
-    expect(labels.map((label) => label.position)).toEqual([0, 0.25, 0.5, 0.75]);
+    expect(labels[3]?.position).toBe(0.25);
+    expect(labels[4]?.position).toBe(0.5);
   });
 
   test("counts time from the trigger point, or back from now when rolling", () => {
