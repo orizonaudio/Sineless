@@ -45,7 +45,12 @@ import {
   type LevelPair,
 } from "./view/cursors.ts";
 import { drawGrid } from "./view/grid.ts";
-import { levelTargets, snap, zeroCrossings } from "./view/snap.ts";
+import {
+  extremePositions,
+  levelTargets,
+  snap,
+  zeroCrossings,
+} from "./view/snap.ts";
 import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
 import { statusChips } from "./view/status.ts";
 import {
@@ -871,7 +876,14 @@ export class OscilloscopeApp {
             const radius =
               (snapRadius / rectangle.width) *
               (this.view.end - this.view.start);
-            position = snap(position, zeroCrossings(frame, values), radius);
+            position = snap(
+              position,
+              [
+                ...zeroCrossings(frame, values),
+                ...extremePositions(frame, values),
+              ],
+              radius,
+            );
           }
           this.timeCursors = { ...this.timeCursors, [key]: position };
           this.placeCursors();

@@ -1,5 +1,5 @@
-// Snap targets for cursors, taken from the frame on screen: zero crossings for time cursors,
-// the trace's extremes and zero for level cursors.
+// Snap targets for cursors, taken from the frame on screen: zero crossings and the positions of
+// the trace's extremes for time cursors, the extremes' values and zero for level cursors.
 import { FrameMode } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { columnPosition, pointPosition } from "../render/trace-geometry.ts";
@@ -26,6 +26,32 @@ export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
     }
   }
   return crossings;
+}
+
+// Span positions of the highest and of the lowest point of `values` (one view of `frame`): the
+// first raw point or min/max column centre that reaches each.
+export function extremePositions(frame: Frame, values: Float32Array): number[] {
+  if (frame.pointCount === 0) {
+    return [];
+  }
+  const minMax = frame.mode === FrameMode.minMax;
+  let highest = 0;
+  let lowest = 0;
+  for (let index = 1; index < frame.pointCount; index++) {
+    const high = minMax ? values[index * 2 + 1] : values[index];
+    const low = minMax ? values[index * 2] : values[index];
+    const bestHigh = minMax ? values[highest * 2 + 1] : values[highest];
+    const bestLow = minMax ? values[lowest * 2] : values[lowest];
+    if ((high ?? 0) > (bestHigh ?? 0)) {
+      highest = index;
+    }
+    if ((low ?? 0) < (bestLow ?? 0)) {
+      lowest = index;
+    }
+  }
+  const position = (index: number) =>
+    minMax ? columnPosition(frame, index + 0.5) : pointPosition(frame, index);
+  return [position(highest), position(lowest)];
 }
 
 // Levels a level cursor snaps to: the highest and lowest value of `values`, and zero.

@@ -2,7 +2,12 @@ import { describe, expect, test } from "vitest";
 
 import { FrameMode } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
-import { levelTargets, snap, zeroCrossings } from "../src/view/snap.ts";
+import {
+  extremePositions,
+  levelTargets,
+  snap,
+  zeroCrossings,
+} from "../src/view/snap.ts";
 
 // A frame of the whole span with the given points; other fields do not matter here.
 function frameOf(mode: FrameMode, pointCount: number): Frame {
@@ -45,6 +50,22 @@ describe("cursor snapping", () => {
     expect(zeroCrossings(frameOf(FrameMode.minMax, 4), values)).toEqual([
       1.5 / 4,
       3.5 / 4,
+    ]);
+  });
+
+  test("finds where raw points reach their highest and lowest", () => {
+    const values = new Float32Array([0.1, 0.8, 0.2, -0.5, -0.9, 0]);
+    expect(extremePositions(frameOf(FrameMode.raw, 6), values)).toEqual([
+      1 / 6,
+      4 / 6,
+    ]);
+  });
+
+  test("finds the min/max columns holding the extremes, at their centre", () => {
+    const values = new Float32Array([-0.2, 0.3, -0.7, 0.1, -0.1, 0.9, 0, 0.2]);
+    expect(extremePositions(frameOf(FrameMode.minMax, 4), values)).toEqual([
+      2.5 / 4,
+      1.5 / 4,
     ]);
   });
 
