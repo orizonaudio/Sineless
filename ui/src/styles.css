@@ -207,6 +207,11 @@ body {
   opacity: 0.4;
 }
 
+/* Disabled controls ignore the pointer, so hovering shows the group's explanation instead. */
+.group.inactive button {
+  pointer-events: none;
+}
+
 .trigger-line {
   position: absolute;
   top: 0;

@@ -417,6 +417,24 @@ export class OscilloscopeApp {
     });
   }
 
+  // A tempo-synced sweep is not triggered: in Beats mode the trigger controls are disabled, and
+  // the popover closes. Re-arm applies to Single mode only.
+  private updateTriggerControls(): void {
+    const beats = this.beatsMode();
+    const group = element("trigger-group");
+    group.classList.toggle("inactive", beats);
+    group.title = beats ? "The trigger does not apply in Beats mode" : "";
+    for (const button of group.querySelectorAll("button")) {
+      button.disabled =
+        beats ||
+        (button.id === "arm" && this.store.get("triggerMode") !== "single");
+    }
+    if (beats) {
+      element("trigger-popover").hidden = true;
+      element("trigger-details").setAttribute("aria-expanded", "false");
+    }
+  }
+
   // Opens the trigger popover above the Trigger group, aligned with its left edge, kept inside
   // the window.
   private placeTriggerPopover(): void {
@@ -463,8 +481,8 @@ export class OscilloscopeApp {
         button.setAttribute("aria-pressed", String(shown.includes(view)));
       }
     }
-    if (name === "triggerMode") {
-      (element("arm") as HTMLButtonElement).disabled = value !== "single";
+    if (name === "triggerMode" || name === "timeBase") {
+      this.updateTriggerControls();
     }
     if (name === "autoFreeze") {
       element("auto-freeze").setAttribute(
@@ -479,7 +497,6 @@ export class OscilloscopeApp {
       const beats = value === "beats";
       element("span-field").hidden = beats;
       element("beat-span-field").hidden = !beats;
-      element("trigger-group").classList.toggle("inactive", beats);
     }
     this.updateTriggerSummary();
     // A value of another width can change which fit the strip needs, and with it the screen size.
