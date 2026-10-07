@@ -13,7 +13,7 @@ namespace orizon::plugin {
 class EngineRegistry
 {
 public:
-    [[nodiscard]] static std::int64_t add(std::shared_ptr<engine::Engine> engine);
+    [[nodiscard]] static std::int64_t add(const std::shared_ptr<engine::Engine>& engine);
     static void remove(std::int64_t token);
     [[nodiscard]] static std::shared_ptr<engine::Engine> find(std::int64_t token);
 };

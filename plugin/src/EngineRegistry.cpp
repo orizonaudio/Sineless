@@ -23,7 +23,7 @@ Registry& registry()
 
 } // namespace
 
-std::int64_t EngineRegistry::add(std::shared_ptr<engine::Engine> engine)
+std::int64_t EngineRegistry::add(const std::shared_ptr<engine::Engine>& engine)
 {
     Registry& state = registry();
     const std::scoped_lock lock(state.mutex);
@@ -31,7 +31,7 @@ std::int64_t EngineRegistry::add(std::shared_ptr<engine::Engine> engine)
     do {
         token = static_cast<std::int64_t>(state.random());
     } while (token == 0 || state.engines.contains(token));
-    state.engines.emplace(token, std::move(engine));
+    state.engines.emplace(token, engine);
     return token;
 }
 
