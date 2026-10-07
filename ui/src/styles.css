@@ -45,6 +45,8 @@ body {
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr) auto;
   height: 100%;
+  /* The editor's minimum width (Editor::kMinimumWidth): the whole control strip fits. */
+  min-width: 820px;
 }
 
 .bar {
@@ -69,9 +71,12 @@ body {
   color: var(--ink-faint);
 }
 
+/* Gives way first when the top bar runs short of room. */
 .chips {
   display: flex;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chip {
@@ -401,8 +406,6 @@ body {
   gap: 8px;
   padding: 8px;
   align-items: stretch;
-  /* Held to the window width, so that content too wide for it shows as overflow. */
-  min-width: 0;
 }
 
 .controls > * {
@@ -575,65 +578,4 @@ button:focus-visible,
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-faint);
-}
-
-/* Narrow windows: the strip wraps; at the minimum size only the essentials stay. */
-@media (max-width: 639px) {
-  .wordmark span,
-  .readout small {
-    display: none;
-  }
-}
-
-.segmented .short {
-  display: none;
-}
-
-@media (max-width: 479px) {
-  .wordmark {
-    display: none;
-  }
-
-  .readouts {
-    gap: 10px;
-  }
-}
-
-/* The control strip never wraps. The UI picks the first fit that stays on one row: full labels,
-   then one-letter labels ("compact"), then only Span, Views, Mode and Freeze ("minimal"). */
-.controls:is([data-fit="compact"], [data-fit="minimal"]) .segmented .long {
-  display: none;
-}
-
-.controls:is([data-fit="compact"], [data-fit="minimal"]) .segmented .short {
-  display: inline;
-}
-
-.controls[data-fit="minimal"] {
-  gap: 4px;
-  padding: 4px 6px 6px;
-}
-
-.controls[data-fit="minimal"]
-  :is(
-    #vertical-group,
-    #layout,
-    #trigger-details,
-    #arm-row,
-    #auto-freeze,
-    #time-cursors,
-    #level-cursors,
-    .group-label
-  ) {
-  display: none;
-}
-
-.controls[data-fit="minimal"] .group {
-  padding: 0;
-  border: 0;
-}
-
-.controls[data-fit="minimal"] .field {
-  min-width: 0;
-  padding-inline: 5px;
 }

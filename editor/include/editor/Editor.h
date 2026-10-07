@@ -20,9 +20,11 @@ namespace orizon::editor {
 class Editor : public Steinberg::CPluginView
 {
 public:
-    static constexpr int kDefaultWidth = 800;
+    static constexpr int kDefaultWidth = 900;
     static constexpr int kDefaultHeight = 500;
-    static constexpr int kMinimumWidth = 400;
+    // The narrowest window that fits the whole control strip (781 px when measured), with room
+    // for font differences. The UI's .app min-width matches it.
+    static constexpr int kMinimumWidth = 820;
     static constexpr int kMinimumHeight = 250;
 
     // Sees every raw message from the page before the session handles it. For tests.

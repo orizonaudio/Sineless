@@ -3,8 +3,6 @@
 export interface Choice {
   readonly value: string;
   readonly label: string;
-  // Shown instead of the label in the narrowest window.
-  readonly short?: string;
   // Help topic of this choice; otherwise the container's applies.
   readonly help?: string;
 }
@@ -19,14 +17,7 @@ export class Segmented {
   ) {
     for (const choice of choices) {
       const button = document.createElement("button");
-      const long = document.createElement("span");
-      long.className = "long";
-      long.textContent = choice.label;
-      const short = document.createElement("span");
-      short.className = "short";
-      short.textContent = choice.short ?? choice.label;
-      button.append(long, short);
-      button.setAttribute("aria-label", choice.label);
+      button.textContent = choice.label;
       if (choice.help !== undefined) {
         button.dataset["help"] = choice.help;
       }

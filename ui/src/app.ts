@@ -95,8 +95,6 @@ const viewColorTokens: Record<ViewName, string> = {
 };
 // How fast ⌘ + scroll and pinch zoom, per wheel delta unit.
 const wheelZoomRate = 0.01;
-// Layouts of the control strip, from the widest to the narrowest (see styles.css).
-const controlFits = ["full", "compact", "minimal"] as const;
 // Cursors snap to a target within this distance (CSS px) unless Option is held.
 const snapRadius = 10;
 // A drag shorter than this (CSS px) is a click, not a zoom selection.
@@ -370,21 +368,15 @@ export class OscilloscopeApp {
     const segment = (
       name: SettingName,
       host: string,
-      choices: [
-        value: string,
-        label: string,
-        short?: string,
-        help?: HelpTopic,
-      ][],
+      choices: [value: string, label: string, help?: HelpTopic][],
     ) => {
       this.segmented.set(
         name,
         new Segmented(
           element(host),
-          choices.map(([value, label, short, help]) => ({
+          choices.map(([value, label, help]) => ({
             value,
             label,
-            ...(short === undefined ? {} : { short }),
             ...(help === undefined ? {} : { help }),
           })),
           (value) => {
@@ -402,10 +394,10 @@ export class OscilloscopeApp {
       ["stacked", "Stack"],
     ]);
     segment("triggerMode", "mode", [
-      ["auto", "Auto", "A", "modeAuto"],
-      ["normal", "Normal", "N", "modeNormal"],
-      ["free", "Free", "F", "modeFree"],
-      ["single", "Single", "S", "modeSingle"],
+      ["auto", "Auto", "modeAuto"],
+      ["normal", "Normal", "modeNormal"],
+      ["free", "Free", "modeFree"],
+      ["single", "Single", "modeSingle"],
     ]);
     segment(
       "triggerSource",
@@ -514,23 +506,6 @@ export class OscilloscopeApp {
     popover.style.left = `${String(Math.max(margin, left))}px`;
   }
 
-  // Keeps the control strip on one row: the first fit, from full labels down to the essential
-  // controls, whose content does not overflow. Returns whether the fit changed.
-  private fitControls(): boolean {
-    const controls = document.querySelector<HTMLElement>(".controls");
-    if (controls === null) {
-      return false;
-    }
-    const before = controls.dataset["fit"];
-    for (const fit of controlFits) {
-      controls.dataset["fit"] = fit;
-      if (controls.scrollWidth <= controls.clientWidth) {
-        break;
-      }
-    }
-    return controls.dataset["fit"] !== before;
-  }
-
   private showSetting(name: SettingName, value: SettingValue): void {
     if (typeof value === "number") {
       this.fields.get(name)?.show(value);
@@ -569,10 +544,6 @@ export class OscilloscopeApp {
       element("beat-span-field").hidden = !beats;
     }
     this.updateTriggerSummary();
-    // A value of another width can change which fit the strip needs, and with it the screen size.
-    if (this.fitControls()) {
-      this.resize();
-    }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
     if (
       (name === "timeSpan" || name === "timeBase" || name === "beatSpan") &&
@@ -606,7 +577,6 @@ export class OscilloscopeApp {
   // ----- Screen -----
 
   private resize(): void {
-    this.fitControls();
     this.placeTriggerPopover();
     this.placeCursors();
     const ratio = window.devicePixelRatio;
