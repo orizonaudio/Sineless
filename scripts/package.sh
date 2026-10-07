@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the release bundle and zips it for GitHub Releases (DESIGN 7). Unsigned; the VST3 SDK's
-# build applies only an ad-hoc signature, which macOS requires to load arm64 code.
+# Builds the release bundle and zips it for GitHub Releases (DESIGN 7). It has no Developer ID
+# signature; it is signed ad hoc, which seals the whole bundle (the linker only signs the binary).
 #
 # Output: build/release/O-Scope-<version>-macOS.zip
 set -euo pipefail
@@ -21,6 +21,9 @@ for arch in arm64 x86_64; do
 done
 minimum="$(vtool -show-build "$binary" | awk '/minos/ { print $2; exit }')"
 [[ "$minimum" == "13.0" ]] || { echo "Minimum macOS is $minimum, expected 13.0" >&2; exit 1; }
+
+codesign --force --sign - "$bundle"
+codesign --verify --strict "$bundle"
 
 archive="build/release/O-Scope-$version-macOS.zip"
 rm -f "$archive"
