@@ -22,14 +22,14 @@ export interface TraceLayout {
 // Span position (0 to 1) of a min/max column edge or a raw point. A frame covers the part
 // viewStart to viewEnd of the span; one rendered for an older view is thereby stretched
 // into place until a frame for the current view arrives.
-function columnPosition(frame: Frame, column: number): number {
+export function columnPosition(frame: Frame, column: number): number {
   return (
     frame.viewStart +
     (column / frame.pointCount) * (frame.viewEnd - frame.viewStart)
   );
 }
 
-function pointPosition(frame: Frame, index: number): number {
+export function pointPosition(frame: Frame, index: number): number {
   const samples =
     frame.visibleSamples > 0 ? frame.visibleSamples : frame.pointCount;
   return (

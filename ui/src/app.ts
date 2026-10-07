@@ -45,6 +45,7 @@ import {
   type LevelPair,
 } from "./view/cursors.ts";
 import { drawGrid } from "./view/grid.ts";
+import { levelTargets, snap, zeroCrossings } from "./view/snap.ts";
 import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
 import { statusChips } from "./view/status.ts";
 import {
@@ -83,6 +84,8 @@ const viewColorTokens: Record<ViewName, string> = {
 const wheelZoomRate = 0.01;
 // Layouts of the control strip, from the widest to the narrowest (see styles.css).
 const controlFits = ["full", "compact", "minimal"] as const;
+// Cursors snap to a target within this distance (CSS px) unless Option is held.
+const snapRadius = 10;
 // A drag shorter than this (CSS px) is a click, not a zoom selection.
 const minimumSelectionPixels = 4;
 
@@ -760,7 +763,8 @@ export class OscilloscopeApp {
           line.className = "level-cursor";
           line.dataset["lane"] = String(lane);
           line.dataset["key"] = key;
-          line.title = "Drag to move this level cursor";
+          line.title =
+            "Drag to move this level cursor; hold Option to place it freely";
           const label = document.createElement("span");
           label.textContent = key === "first" ? "1" : "2";
           line.append(label);
@@ -784,6 +788,22 @@ export class OscilloscopeApp {
         line.style.top = `${String(((1 - (lane.center + relative * lane.halfHeight)) / 2) * height)}px`;
       }
     }
+  }
+
+  // The view whose trace cursors snap to: the one in `lane` when stacked, otherwise the trigger
+  // source when shown, or the first view shown.
+  private snapValues(lane?: number): Float32Array | undefined {
+    const frame = this.lastFrame;
+    if (frame === undefined) {
+      return undefined;
+    }
+    const views = [...frame.views.values()];
+    if (lane !== undefined && this.layout() === ViewLayout.stacked) {
+      return views[lane];
+    }
+    const source =
+      ChannelView[this.store.get("triggerSource") as keyof typeof ChannelView];
+    return frame.views.get(source) ?? views[0];
   }
 
   private updateCursorReadout(): void {
@@ -832,6 +852,8 @@ export class OscilloscopeApp {
         event.stopPropagation();
         line.setPointerCapture(event.pointerId);
         const move = (moveEvent: PointerEvent) => {
+          const frame = this.lastFrame;
+          const values = this.snapValues();
           if (this.timeCursors === undefined) {
             return;
           }
@@ -840,10 +862,18 @@ export class OscilloscopeApp {
             1,
             Math.max(0, (moveEvent.clientX - rectangle.left) / rectangle.width),
           );
-          this.timeCursors = {
-            ...this.timeCursors,
-            [key]: toFrame(this.view, x),
-          };
+          let position = toFrame(this.view, x);
+          if (
+            !moveEvent.altKey &&
+            frame !== undefined &&
+            values !== undefined
+          ) {
+            const radius =
+              (snapRadius / rectangle.width) *
+              (this.view.end - this.view.start);
+            position = snap(position, zeroCrossings(frame, values), radius);
+          }
+          this.timeCursors = { ...this.timeCursors, [key]: position };
           this.placeCursors();
         };
         const up = () => {
@@ -886,7 +916,16 @@ export class OscilloscopeApp {
             (center - (moveEvent.clientY - rectangle.top)) / halfHeight,
           ),
         );
-        this.levelCursors = { ...this.levelCursors, [key]: relative * scale };
+        let level = relative * scale;
+        const values = this.snapValues(laneIndex);
+        if (!moveEvent.altKey && values !== undefined) {
+          level = snap(
+            level,
+            levelTargets(values),
+            (snapRadius / halfHeight) * scale,
+          );
+        }
+        this.levelCursors = { ...this.levelCursors, [key]: level };
         this.placeCursors();
       };
       const up = () => {
