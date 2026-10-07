@@ -8,7 +8,7 @@
 namespace orizon::plugin {
 
 // Lets the controller find its processor's engine by token, so that no raw pointer travels
-// through host messages (AD-10). Tokens are random 64-bit values: a controller in a different
+// through host messages. Tokens are random 64-bit values: a controller in a different
 // process, whose registry does not hold the token, finds nothing instead of a wrong engine.
 class EngineRegistry
 {

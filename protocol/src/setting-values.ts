@@ -1,4 +1,4 @@
-// JSON values of settings (AD-9), mirroring the engine's SettingJson: numbers for number
+// JSON values of settings, mirroring the engine's SettingJson: numbers for number
 // settings, value names for enum settings, arrays of names for flags settings.
 import { enums, type EnumName } from "./enums.ts";
 import type { SettingValue } from "./messages.ts";

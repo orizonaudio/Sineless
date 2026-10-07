@@ -10,7 +10,7 @@
 
 namespace orizon::editor {
 
-// Engine-to-UI delivery (AD-3): JSON control messages and binary display frames. Every message
+// Engine-to-UI delivery: JSON control messages and binary display frames. Every message
 // is a JSON object with a string `type` (protocol MessageType). Called on the UI thread.
 class Transport
 {

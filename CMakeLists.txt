@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
-set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version (DESIGN C-2)")
-set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary (DESIGN C-2)")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
 project(OrizonOscilloscope VERSION 0.1.0 LANGUAGES CXX OBJCXX)
 
@@ -14,7 +14,7 @@ include(CTest)
 include(cmake/ProjectOptions.cmake)
 include(cmake/Dependencies.cmake)
 
-# Module order follows DESIGN 5.1: each module may depend only on modules added before it.
+# Module order: each module may depend only on modules added before it.
 add_subdirectory(protocol)
 add_subdirectory(engine)
 add_subdirectory(editor)

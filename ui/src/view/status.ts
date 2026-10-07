@@ -1,4 +1,4 @@
-// Status chips of the top bar (DESIGN 8.5), derived from the latest frame and the trigger mode.
+// Status chips of the top bar, derived from the latest frame and the trigger mode.
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 
 export type Tone = "neutral" | "ok" | "hold" | "warn";

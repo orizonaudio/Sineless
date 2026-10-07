@@ -9,11 +9,11 @@
 
 namespace orizon::engine {
 
-// Edge trigger and trigger modes (FR-3). Positions are absolute, fractional sample indices.
+// Edge trigger and trigger modes. Positions are absolute, fractional sample indices.
 
-// The trigger point sits this fraction of the span from the left edge (FR-3).
+// The trigger point sits this fraction of the span from the left edge.
 inline constexpr double kTriggerPosition = 0.1;
-// Auto mode draws untriggered once no trigger arrived for max(span, this) (FR-3).
+// Auto mode draws untriggered once no trigger arrived for max(span, this).
 inline constexpr double kAutoTimeoutSeconds = 0.1;
 
 struct TriggerParameters

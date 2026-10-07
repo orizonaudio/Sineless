@@ -140,7 +140,7 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
     auto editor = owned(new Editor(nullptr));
     ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
     EXPECT_FALSE(editor->workerRunning());
-    // The page is told why it gets no data, so it can show the unavailable state (AD-10).
+    // The page is told why it gets no data, so it can show the unavailable state.
     auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
     EXPECT_TRUE(pumpUntil(
         [&] {
@@ -152,10 +152,10 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
     [window close];
 }
 
-// Frames flow while credits return, and host state changes reach the page (AD-12, DESIGN 6.1).
+// Frames flow while credits return, and host state changes reach the page.
 // Test windows are occluded (an unbundled test process never becomes a foreground app), so
 // WebKit pauses requestAnimationFrame here; the test returns credits itself, through the page's
-// real native channel. rAF pacing in a host was measured in T-006.
+// real native channel.
 TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
 {
     auto engine = std::make_shared<engine::Engine>();
@@ -225,7 +225,7 @@ TEST_F(EditorTest, EnforcesMinimumSize)
     EXPECT_EQ(rect.getHeight(), Editor::kMinimumHeight);
 }
 
-// The page loads from the embedded UI and completes the session handshake (DESIGN 6.1) across
+// The page loads from the embedded UI and completes the session handshake across
 // 50 open/close cycles.
 TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
 {
@@ -277,7 +277,7 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
                          [@(engine::kVersionString) stringByReplacingOccurrencesOfString:@"."
                                                                               withString:@"_"]];
     EXPECT_TRUE([NSStringFromClass([webView class]) hasPrefix:expectedPrefix])
-        << "class name must include product and build version (AD-4)";
+        << "class name must include product and build version";
 
     [webView keyDown:key];
     EXPECT_EQ([host keyDownCount], 1) << "key should reach the host while nothing is focused";

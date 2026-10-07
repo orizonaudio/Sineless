@@ -1,4 +1,4 @@
-# Generates a C++ source that embeds every file under INPUT_DIR (AD-11).
+# Generates a C++ source that embeds every file under INPUT_DIR.
 # Usage: cmake -DINPUT_DIR=<dir> -DOUTPUT_FILE=<file.cpp> -P EmbedAssets.cmake
 file(GLOB_RECURSE files RELATIVE "${INPUT_DIR}" "${INPUT_DIR}/*")
 list(SORT files)

@@ -1,4 +1,4 @@
-// Hand-written WebGL2 renderer for the traces (AD-5). Grid, labels and controls are DOM.
+// Hand-written WebGL2 renderer for the traces. Grid, labels and controls are DOM.
 import type { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import type { ViewWindow } from "../view/zoom.ts";
@@ -18,7 +18,7 @@ export interface TraceView {
   readonly layout: ViewLayout;
   // Shows the trace as stale, e.g. while Normal mode waits for a trigger.
   readonly dim?: boolean;
-  // The part of the frame on screen (FR-10).
+  // The part of the frame on screen.
   readonly view?: ViewWindow;
 }
 
@@ -58,7 +58,7 @@ export class TraceRenderer implements FrameRenderer {
   private readonly buffer: WebGLBuffer;
   private readonly style: TraceStyle;
   private readonly view: () => TraceView;
-  // Average CPU time of draw(), in milliseconds, for profiling (T-031).
+  // Average CPU time of draw(), in milliseconds, for profiling.
   drawMilliseconds = 0;
 
   constructor(

@@ -11,16 +11,16 @@ import { fullView, type ViewWindow } from "../view/zoom.ts";
 export interface TraceLayout {
   readonly widthPixels: number; // Device pixels.
   readonly heightPixels: number;
-  readonly verticalScaleDb: number; // dBFS at the top of the screen (DESIGN 1.2).
+  readonly verticalScaleDb: number; // dBFS at the top of the screen.
   readonly layout: ViewLayout;
   readonly lineWidthPixels: number;
-  // The part of the frame on screen (FR-10); the whole frame when absent.
+  // The part of the frame on screen; the whole frame when absent.
   readonly view?: ViewWindow;
 }
 
 // Clip-space x of a frame position (0 to 1) under the view zoom.
 // Span position (0 to 1) of a min/max column edge or a raw point. A frame covers the part
-// viewStart to viewEnd of the span (FR-10); one rendered for an older view is thereby stretched
+// viewStart to viewEnd of the span; one rendered for an older view is thereby stretched
 // into place until a frame for the current view arrives.
 function columnPosition(frame: Frame, column: number): number {
   return (

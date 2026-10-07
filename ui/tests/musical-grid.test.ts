@@ -38,7 +38,7 @@ describe("musical grid", () => {
     ]);
   });
 
-  test("refines the grid inside a zoomed view (FR-10)", () => {
+  test("refines the grid inside a zoomed view", () => {
     // One bar from bar 2, zoomed to its second beat: sixteenth lines, beat-relative labels.
     const { lines, labels } = musicalGrid(4, 4, 4, { start: 0.25, end: 0.5 });
     expect(lines.map((line) => line.position)).toEqual([0.25, 0.5, 0.75]);

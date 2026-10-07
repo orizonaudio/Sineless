@@ -1,4 +1,4 @@
-// The UI side of the engine/UI transport (AD-3): JSON control messages out, JSON control
+// The UI side of the engine/UI transport: JSON control messages out, JSON control
 // messages and binary frames in. Components never touch the native channel directly.
 import type { MessageType } from "../../../protocol/src/messages.ts";
 

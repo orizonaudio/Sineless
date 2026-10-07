@@ -86,7 +86,7 @@ void Editor::receive(std::string_view message)
     if (session) {
         session->receive(*parsed);
     } else if ((*parsed)["type"] == "hello" && transport) {
-        // No engine (AD-10): tell the page, so it can explain instead of waiting forever.
+        // No engine: tell the page, so it can explain instead of waiting forever.
         transport->sendMessage({{"type", "error"},
                                 {"code", "engineUnavailable"},
                                 {"message", "The editor cannot reach the plugin's engine."}});

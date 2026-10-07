@@ -6,7 +6,7 @@
 
 namespace orizon::editor {
 
-// Runs work on the UI thread, which owns the webview (DESIGN 5.1). Work posted or scheduled
+// Runs work on the UI thread, which owns the webview. Work posted or scheduled
 // through a dispatcher never runs after the dispatcher is destroyed, so it may safely refer to
 // objects that the editor destroys together with it.
 class UiDispatcher

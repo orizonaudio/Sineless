@@ -88,7 +88,7 @@ describe("render loop", () => {
     expect(credits()).toBe(1);
   });
 
-  // While the page is hidden, requestAnimationFrame stops: no draws, no credits (AD-12).
+  // While the page is hidden, requestAnimationFrame stops: no draws, no credits.
   test("waits for the clock while it is paused", () => {
     const { loop, drawn, credits } = setup();
     loop.submit(frame(1));

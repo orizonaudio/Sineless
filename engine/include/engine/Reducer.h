@@ -8,7 +8,7 @@
 
 namespace orizon::engine {
 
-// Reduces the visible span of one channel to the UI's device-pixel resolution (AD-2, FR-2).
+// Reduces the visible span of one channel to the UI's device-pixel resolution.
 //
 // With more samples than columns, column c covers samples [c * n / columns, (c + 1) * n / columns)
 // and contributes a (min, max) pair, so every sample lands in exactly one column and no peak is

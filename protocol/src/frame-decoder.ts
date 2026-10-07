@@ -16,13 +16,13 @@ export interface Frame {
   readonly frequency: number | undefined;
   readonly synced: boolean;
   readonly limited: boolean;
-  // Playhead position across the screen in a tempo-synced sweep (FR-9).
+  // Playhead position across the screen in a tempo-synced sweep.
   readonly cursor: number | undefined;
-  // Musical context of a synced sweep, in quarter notes (FR-9).
+  // Musical context of a synced sweep, in quarter notes.
   readonly cycleStart: number;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
-  // The part of the span this frame covers, and its length in samples (FR-10).
+  // The part of the span this frame covers, and its length in samples.
   readonly viewStart: number;
   readonly viewEnd: number;
   readonly visibleSamples: number;

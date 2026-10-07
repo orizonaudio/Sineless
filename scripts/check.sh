@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs every check in DESIGN 8.2. Exits non-zero on the first failure.
+# Runs every check. Exits non-zero on the first failure.
 #
 # Environment:
 #   PRESET    CMake preset to use (default: dev-local if CMakeUserPresets.json exists, else dev)

@@ -13,7 +13,7 @@
 
 namespace orizon::engine {
 
-// Per-editor-session analysis (AD-2, DESIGN 5.2): turns the capture into display frames. It is
+// Per-editor-session analysis: turns the capture into display frames. It is
 // created when the editor opens, so the hold buffer is allocated only then.
 //
 // Commands may come from any non-audio thread; produce() runs on the analysis worker.
@@ -25,11 +25,11 @@ public:
     // Device-pixel width of the trace area; no frames are produced while it is 0.
     void setColumns(std::size_t columns);
     void setFrozen(bool frozen);
-    // While frozen: how far back to move the view, in seconds (FR-6).
+    // While frozen: how far back to move the view, in seconds.
     void setPan(double seconds);
     // Single mode: wait for the next trigger again.
     void arm();
-    // View zoom (FR-10): the part of the span on screen, as fractions. Out-of-range or reversed
+    // View zoom: the part of the span on screen, as fractions. Out-of-range or reversed
     // values are ignored. Only that part is reduced to screen columns.
     void setView(double start, double end);
 
@@ -54,7 +54,7 @@ private:
         double span = 0.0;
         bool triggered = false;
         bool roll = false;
-        // Tempo-synced sweep (FR-9): samples rotated left by `rotation`; cursor in 0 to 1.
+        // Tempo-synced sweep: samples rotated left by `rotation`; cursor in 0 to 1.
         bool synced = false;
         bool limited = false;
         std::uint64_t rotation = 0;

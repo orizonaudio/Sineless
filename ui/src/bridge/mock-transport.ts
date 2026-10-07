@@ -1,4 +1,4 @@
-// A back end that runs without the plugin (DESIGN 5.1): it answers the session protocol like
+// A back end that runs without the plugin: it answers the session protocol like
 // the engine and synthesises frames in the real binary format, so the UI can be developed in a
 // browser through the Vite dev server.
 import {
@@ -22,7 +22,7 @@ export const mockSampleRate = 48000;
 // The synthetic signal: L is a 220 Hz tone, R adds its octave, so every view repeats every
 // 220 Hz period and the display stays as steady as a triggered one.
 export const mockFundamental = 220;
-// The simulated transport (FR-9): 120 BPM in 4/4.
+// The simulated transport: 120 BPM in 4/4.
 export const mockTempo = 120;
 const mockBarQuarterNotes = 4;
 const triggerPosition = 0.1;
@@ -65,7 +65,7 @@ export class MockTransport implements Transport {
   private readonly schedule: (work: () => void) => void;
   private columns = 0;
   private frozenAt: number | undefined;
-  // The part of the span on screen (FR-10); only that part is synthesised.
+  // The part of the span on screen; only that part is synthesised.
   private view = { start: 0, end: 1 };
   private sequence = 0;
 
@@ -104,7 +104,7 @@ export class MockTransport implements Transport {
           sampleRate: mockSampleRate,
           inputChannels: 2,
         });
-        this.sendFrame(); // The first frame needs no credit (AD-12).
+        this.sendFrame(); // The first frame needs no credit.
         break;
       case "setSetting":
         this.setSetting(message["name"], message["value"]);
@@ -180,7 +180,7 @@ export class MockTransport implements Transport {
     let spanQuarterNotes = 0;
     const roll = !synced && span > rollThresholdSeconds;
     if (synced) {
-      // A transport playing at the mock tempo since start-up (FR-9).
+      // A transport playing at the mock tempo since start-up.
       const name = this.setting("beatSpan") as keyof typeof BeatSpan;
       spanQuarterNotes = beatSpanQuarterNotes(
         BeatSpan[name],

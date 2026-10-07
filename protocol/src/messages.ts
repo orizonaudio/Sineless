@@ -1,4 +1,4 @@
-// Control messages exchanged as JSON over the native channel (AD-3, DESIGN 6.1). Every message
+// Control messages exchanged as JSON over the native channel. Every message
 // is an object whose `type` holds one of the MessageType values; the payloads are below.
 // Setting values use the JSON form of their kind: numbers, enum value names, or arrays of names.
 import type { SettingName } from "./settings.ts";
@@ -20,7 +20,7 @@ export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 export const ErrorCode = {
   protocolMismatch: "protocolMismatch",
-  // The editor cannot reach the processor's engine (AD-10).
+  // The editor cannot reach the processor's engine.
   engineUnavailable: "engineUnavailable",
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -65,7 +65,7 @@ export interface ErrorMessage {
   readonly message: string;
 }
 
-// UI to engine. Permission to send the next frame (AD-12).
+// UI to engine. Permission to send the next frame.
 export interface CreditMessage {
   readonly type: "credit";
 }
@@ -77,24 +77,24 @@ export interface ViewportMessage {
   readonly pixelRatio: number;
 }
 
-// UI to engine. Freeze or resume the display (FR-6).
+// UI to engine. Freeze or resume the display.
 export interface FreezeMessage {
   readonly type: "freeze";
   readonly frozen: boolean;
 }
 
-// UI to engine. While frozen, how far back to move the view, in seconds (FR-6).
+// UI to engine. While frozen, how far back to move the view, in seconds.
 export interface PanMessage {
   readonly type: "pan";
   readonly seconds: number;
 }
 
-// UI to engine. Single mode: wait for the next trigger again (FR-3).
+// UI to engine. Single mode: wait for the next trigger again.
 export interface ArmMessage {
   readonly type: "arm";
 }
 
-// UI to engine. The part of the span on screen, as fractions (FR-10); a temporary view, not a
+// UI to engine. The part of the span on screen, as fractions; a temporary view, not a
 // setting. The whole span is { start: 0, end: 1 }.
 export interface ViewMessage {
   readonly type: "view";

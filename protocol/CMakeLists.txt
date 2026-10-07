@@ -1,4 +1,4 @@
-# Generates the C++ header from the TypeScript protocol schema (DESIGN 5.1). It is generated at
+# Generates the C++ header from the TypeScript protocol schema. It is generated at
 # build time and never committed, so the C++ build cannot use a header that is out of date.
 find_program(NODE_EXECUTABLE node REQUIRED)
 execute_process(COMMAND ${NODE_EXECUTABLE} --version OUTPUT_VARIABLE nodeVersion

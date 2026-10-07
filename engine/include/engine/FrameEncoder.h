@@ -22,12 +22,12 @@ struct FrameHeaderValues
     float peak = 0.0f;
     float rms = 0.0f;
     float frequency = 0.0f; // 0 when unavailable.
-    float cursor = -1.0f;   // Sweep playhead position (0 to 1), or -1 (FR-9).
-    // Musical context of a synced sweep in quarter notes; 0 otherwise (FR-9).
+    float cursor = -1.0f;   // Sweep playhead position (0 to 1), or -1.
+    // Musical context of a synced sweep in quarter notes; 0 otherwise.
     float cycleStart = 0.0f;
     float spanQuarterNotes = 0.0f;
     float barQuarterNotes = 0.0f;
-    // The part of the span covered, and its length in samples (FR-10).
+    // The part of the span covered, and its length in samples.
     float viewStart = 0.0f;
     float viewEnd = 1.0f;
     float visibleSamples = 0.0f;

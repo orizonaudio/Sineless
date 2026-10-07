@@ -11,7 +11,7 @@
 
 namespace orizon::engine {
 
-// Per-instance history of the input signal (DESIGN 5.2). The audio thread is the only writer;
+// Per-instance history of the input signal. The audio thread is the only writer;
 // any number of non-real-time readers copy ranges out of it without locks.
 //
 // Samples are addressed by a monotonic 64-bit index: the n-th sample ever written has index n.
@@ -20,8 +20,8 @@ namespace orizon::engine {
 class CaptureRing final : public SampleSource
 {
 public:
-    // 2^20 samples per channel: 5.46 s at 192 kHz. Covers the 4 s maximum span (FR-2) plus a
-    // 1.46 s margin for the trigger search of spans up to 1 s (FR-3) and for readers copying while
+    // 2^20 samples per channel: 5.46 s at 192 kHz. Covers the 4 s maximum span plus a
+    // 1.46 s margin for the trigger search of spans up to 1 s and for readers copying while
     // the audio thread keeps writing.
     static constexpr std::size_t kDefaultCapacity = std::size_t{1} << 20U;
     static constexpr int kMaxChannels = 2;

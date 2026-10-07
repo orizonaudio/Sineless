@@ -11,14 +11,14 @@
 
 namespace orizon::editor {
 
-// The engine side of a UI session (DESIGN 6.1). C++ is the store of record: the UI changes a
+// The engine side of a UI session. C++ is the store of record: the UI changes a
 // setting only by asking, and applies only the values this session reports back.
 // Used on the UI thread.
 class Session
 {
 public:
     // `onCredit` runs when the UI may receive another frame: on a successful hello and for every
-    // credit message (AD-12).
+    // credit message.
     Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport,
             std::function<void()> onCredit = {});
 

@@ -1,4 +1,4 @@
-// Lint rules; naming rules encode DESIGN 8.3.
+// Lint and naming rules.
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 

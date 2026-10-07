@@ -7,7 +7,7 @@
 
 namespace orizon::engine {
 
-// JSON form of a setting value, shared by saved state and control messages (AD-9): numbers as
+// JSON form of a setting value, shared by saved state and control messages: numbers as
 // numbers, enum values by name, flags as an array of names in value order.
 [[nodiscard]] nlohmann::json settingToJson(protocol::SettingId id, double value);
 

@@ -20,7 +20,7 @@ struct HostTimeline
     int denominator = 4;
 };
 
-// The musical position at one capture sample index (AD-13).
+// The musical position at one capture sample index.
 struct MusicalStamp
 {
     std::uint64_t sampleIndex = 0;
@@ -31,7 +31,7 @@ struct MusicalStamp
     bool playing = false;
 };
 
-// The musical clock of an instance (FR-9). The audio thread advances it once per block; any
+// The musical clock of an instance. The audio thread advances it once per block; any
 // other thread reads the latest stamp without locks.
 //
 // While the host plays and reports a position, the clock follows it exactly. Otherwise it keeps

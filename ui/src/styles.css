@@ -1,4 +1,4 @@
-/* Approved in the M3 design review (DESIGN 8.5). Fonts are ones macOS ships, so the plugin
+/* Fonts are ones macOS ships, so the plugin
    needs no network and bundles no font files. */
 :root {
   color-scheme: dark;
@@ -175,7 +175,7 @@ body {
   white-space: nowrap;
 }
 
-/* Tempo-synced sweep: the playhead, and the previous cycle to its right, dimmed (FR-9). */
+/* Tempo-synced sweep: the playhead, and the previous cycle to its right, dimmed. */
 .sweep-cursor {
   position: absolute;
   top: 0;
@@ -193,7 +193,7 @@ body {
   pointer-events: none;
 }
 
-/* Drag-to-zoom selection (FR-10). */
+/* Drag-to-zoom selection. */
 .selection {
   position: absolute;
   top: 0;
@@ -439,7 +439,7 @@ button:focus-visible,
   color: var(--ink-faint);
 }
 
-/* Narrow windows: the strip wraps; at the minimum size only the essentials stay (DESIGN 8.5). */
+/* Narrow windows: the strip wraps; at the minimum size only the essentials stay. */
 @media (max-width: 639px) {
   .wordmark span,
   .readout small {
@@ -465,7 +465,7 @@ button:focus-visible,
     gap: 10px;
   }
 
-  /* One row: Span, Views, Mode and Freeze (DESIGN 8.5). */
+  /* One row: Span, Views, Mode and Freeze. */
   .controls {
     flex-wrap: nowrap;
     gap: 4px;

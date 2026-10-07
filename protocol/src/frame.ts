@@ -1,16 +1,16 @@
-// Binary layout of a display frame (AD-3): a little-endian header, then float32 data for each
+// Binary layout of a display frame: a little-endian header, then float32 data for each
 // view present in `views` (a ChannelView bit mask), in ChannelView order. Each view holds
 // `pointCount` points: a min/max pair per point in FrameMode.minMax, one sample per point in
 // FrameMode.raw.
 //
 // `samplesPerPoint` is the number of samples each point covers. The visible span starts
-// `startFraction` samples after the first point (sub-sample trigger alignment). Readouts are
-// those of FR-7; `frequency` is 0 when unavailable. In a tempo-synced sweep (FR-9), `cursor` is
+// `startFraction` samples after the first point (sub-sample trigger alignment). Readouts cover
+// the trigger channel; `frequency` is 0 when unavailable. In a tempo-synced sweep, `cursor` is
 // the playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
 // project position of the left edge, `spanQuarterNotes` the span shown and `barQuarterNotes` the
 // bar length, all in quarter notes (0 when not synced).
 //
-// View zoom (FR-10): the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
+// View zoom: the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
 // 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
 // viewStart + (k - startFraction) / visibleSamples * (viewEnd - viewStart); min/max columns
 // divide the covered part evenly.

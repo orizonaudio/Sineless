@@ -1,4 +1,4 @@
-// View zoom (FR-10): which part of the frame the screen shows, as fractions of the frame's width.
+// View zoom: which part of the frame the screen shows, as fractions of the frame's width.
 // Temporary display state only; it never changes a setting.
 
 export interface ViewWindow {

@@ -28,7 +28,7 @@ public:
     // Sees every raw message from the page before the session handles it. For tests.
     using MessageObserver = std::function<void(std::string_view message)>;
 
-    // `engine` is null when the controller could not reach the processor's engine (AD-10).
+    // `engine` is null when the controller could not reach the processor's engine.
     explicit Editor(std::shared_ptr<engine::Engine> engine, MessageObserver observer = {});
 
     Steinberg::tresult PLUGIN_API isPlatformTypeSupported(Steinberg::FIDString type) override;
@@ -38,7 +38,7 @@ public:
     Steinberg::tresult PLUGIN_API canResize() override;
     Steinberg::tresult PLUGIN_API checkSizeConstraint(Steinberg::ViewRect* rect) override;
 
-    // False when the editor must show the "unavailable" state (AD-10).
+    // False when the editor must show the "unavailable" state.
     [[nodiscard]] bool engineAvailable() const { return engineState != nullptr; }
 
     // True while attached with an engine: the analysis worker and its per-session state exist

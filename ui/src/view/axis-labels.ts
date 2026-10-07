@@ -1,4 +1,4 @@
-// Positions and texts of the screen's axis labels (DESIGN 8.5). Positions are fractions of the
+// Positions and texts of the screen's axis labels. Positions are fractions of the
 // screen: `x` from the left, `y` from the top.
 import { lanes } from "../render/trace-geometry.ts";
 import { ViewLayout } from "../../../protocol/src/enums.ts";
@@ -54,7 +54,7 @@ export function amplitudeLabels(
 }
 
 // Time labels every second grid division: relative to the trigger point, or back from now
-// while rolling. Under view zoom (FR-10) they show the times at those screen positions.
+// while rolling. Under view zoom they show the times at those screen positions.
 export function timeLabels(
   spanSeconds: number,
   roll: boolean,

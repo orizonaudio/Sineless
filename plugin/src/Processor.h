@@ -9,8 +9,8 @@
 
 namespace orizon::plugin {
 
-// Audio side of the plugin: passes the main input to the output unchanged (FR-1, QG-2) and
-// records it into the capture ring on every block (DESIGN 5.2).
+// Audio side of the plugin: passes the main input to the output unchanged and
+// records it into the capture ring on every block.
 class Processor : public Steinberg::Vst::AudioEffect
 {
 public:
@@ -21,10 +21,10 @@ public:
     Steinberg::tresult PLUGIN_API initialize(Steinberg::FUnknown* context) override;
     Steinberg::tresult PLUGIN_API terminate() override;
     Steinberg::tresult PLUGIN_API setupProcessing(Steinberg::Vst::ProcessSetup& setup) override;
-    // Saved state (DESIGN 8.4). Called on a non-audio host thread; never throws.
+    // Saved state. Called on a non-audio host thread; never throws.
     Steinberg::tresult PLUGIN_API getState(Steinberg::IBStream* state) override;
     Steinberg::tresult PLUGIN_API setState(Steinberg::IBStream* state) override;
-    // Sends the controller the token of this instance's engine (AD-10).
+    // Sends the controller the token of this instance's engine.
     Steinberg::tresult PLUGIN_API connect(Steinberg::Vst::IConnectionPoint* other) override;
     Steinberg::tresult PLUGIN_API setBusArrangements(Steinberg::Vst::SpeakerArrangement* inputs,
                                                      Steinberg::int32 numIns,

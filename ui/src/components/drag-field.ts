@@ -1,4 +1,4 @@
-// A numeric field (DESIGN 8.5): drag vertically or scroll to step, double-click to type. It shows
+// A numeric field: drag vertically or scroll to step, double-click to type. It shows
 // only values set with show(), i.e. values the engine reported; requests go through onRequest.
 
 export interface DragFieldOptions {

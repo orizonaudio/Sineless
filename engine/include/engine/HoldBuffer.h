@@ -9,13 +9,13 @@
 
 namespace orizon::engine {
 
-// Copy of the newest samples taken on freeze (FR-6). Analysis reads it through SampleSource
+// Copy of the newest samples taken on freeze. Analysis reads it through SampleSource
 // exactly like the live ring, so scale, views, panning and readouts keep working while frozen.
 // Allocated when the editor opens; used only by the analysis worker.
 class HoldBuffer final : public SampleSource
 {
 public:
-    // The span held on freeze: the 4 s maximum visible span (FR-2).
+    // The span held on freeze: the 4 s maximum visible span.
     static constexpr double kHoldSeconds = 4.0;
 
     explicit HoldBuffer(std::size_t capacity = CaptureRing::kDefaultCapacity);

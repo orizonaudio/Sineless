@@ -22,7 +22,7 @@ target_include_directories(engine PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/inc
 target_link_libraries(engine PUBLIC protocol nlohmann_json::nlohmann_json PRIVATE orizon_warnings)
 
 if(BUILD_TESTING)
-    # Test-only library that replaces the global allocation operators (QG-1, DESIGN 8.2).
+    # Test-only library that replaces the global allocation operators.
     add_library(engine_test_support STATIC tests/support/AllocationCounter.cpp)
     target_include_directories(engine_test_support PUBLIC tests/support)
     target_link_libraries(engine_test_support PRIVATE orizon_warnings)

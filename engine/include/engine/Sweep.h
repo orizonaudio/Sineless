@@ -8,10 +8,10 @@
 
 namespace orizon::engine {
 
-// Length of a beat span in quarter notes; bars follow the time signature (FR-9).
+// Length of a beat span in quarter notes; bars follow the time signature.
 [[nodiscard]] double beatSpanQuarterNotes(protocol::BeatSpan span, double barQuarterNotes);
 
-// The samples a tempo-synced sweep shows (FR-9): the newest `sampleCount` samples, rotated left
+// The samples a tempo-synced sweep shows: the newest `sampleCount` samples, rotated left
 // by `rotation` so that the current cycle's start is at the left edge. The cycle so far then
 // fills the screen up to `cursor` (a 0 to 1 fraction), and the end of the previous cycle fills
 // the rest.

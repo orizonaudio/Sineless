@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the release bundle and zips it for GitHub Releases (DESIGN 7). It has no Developer ID
+# Builds the release bundle and zips it for GitHub Releases. It has no Developer ID
 # signature; it is signed ad hoc, which seals the whole bundle (the linker only signs the binary).
 #
 # Output: build/release/O-Scope-<version>-macOS.zip

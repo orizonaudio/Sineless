@@ -19,7 +19,7 @@ using protocol::SettingId;
 
 namespace {
 
-// The narrowest view accepted, matching the UI's 256-fold maximum zoom (FR-10).
+// The narrowest view accepted, matching the UI's 256-fold maximum zoom.
 constexpr double kMinimumViewWidth = 1.0 / 512;
 
 constexpr std::uint8_t flag(FrameFlag value)
@@ -139,7 +139,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing();
 
     if (synced) {
-        // Tempo-synced sweep (FR-9). While frozen, the sweep is rebuilt from the clock and
+        // Tempo-synced sweep. While frozen, the sweep is rebuilt from the clock and
         // capture end at the moment of freezing, so views and span still apply.
         const CaptureRing& ring = engine.captureRing();
         const std::uint64_t end = isFrozen ? frozenEnd : ring.endIndex();
@@ -272,7 +272,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         settings.enumValue<ChannelView>(SettingId::kTriggerSource), inputChannels);
 
     // The visible part of the window, in samples from its first one, with one extra point
-    // beyond each edge so a raw trace reaches the screen edges (FR-10).
+    // beyond each edge so a raw trace reaches the screen edges.
     const auto count = static_cast<double>(sampleCount);
     const double fraction = window.start - first;
     const double visibleFrom = fraction + window.cropStart * count;

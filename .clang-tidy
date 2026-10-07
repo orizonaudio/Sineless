@@ -1,4 +1,4 @@
-# Naming rules encode DESIGN 8.3.
+# Static analysis and naming rules.
 Checks: >
   bugprone-*,
   performance-*,

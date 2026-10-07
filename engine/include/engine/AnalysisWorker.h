@@ -8,7 +8,7 @@
 
 namespace orizon::engine {
 
-// The per-instance analysis thread (AD-2, DESIGN 5.2). It exists only while an editor is open:
+// The per-instance analysis thread. It exists only while an editor is open:
 // construction starts it, destruction stops and joins it. The task runs repeatedly, every
 // `interval` or as soon as wake() is called, and is never interrupted mid-run.
 class AnalysisWorker

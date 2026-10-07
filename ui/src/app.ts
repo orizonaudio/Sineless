@@ -1,4 +1,4 @@
-// The oscilloscope UI (DESIGN 8.5): wires the controls, screen and readouts to the backend and
+// The oscilloscope UI: wires the controls, screen and readouts to the backend and
 // the settings store. Controls show only engine-reported values and send requests.
 import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
@@ -71,7 +71,7 @@ const viewColorTokens: Record<ViewName, string> = {
 };
 // Below this screen height (CSS px) only the outer and zero amplitude labels fit.
 const compactScreenHeight = 140;
-// How fast ⌘ + scroll and pinch zoom, per wheel delta unit (FR-10).
+// How fast ⌘ + scroll and pinch zoom, per wheel delta unit.
 const wheelZoomRate = 0.01;
 // A drag shorter than this (CSS px) is a click, not a zoom selection.
 const minimumSelectionPixels = 4;
@@ -244,7 +244,7 @@ export class OscilloscopeApp {
   }
 
   private buildControls(): void {
-    // Tempo sync (FR-9): the beat span steps through its named values.
+    // Tempo sync: the beat span steps through its named values.
     const beatSpanNames = valueNames("BeatSpan");
     const beatSpanField = new DragField({
       label: "Beat span",
@@ -435,7 +435,7 @@ export class OscilloscopeApp {
       element("trigger-group").classList.toggle("inactive", beats);
     }
     this.updateTriggerSummary();
-    // Zoom is a temporary view of one span; a new span starts unzoomed (FR-10).
+    // Zoom is a temporary view of one span; a new span starts unzoomed.
     if (
       (name === "timeSpan" || name === "timeBase" || name === "beatSpan") &&
       isZoomed(this.view)
@@ -512,7 +512,7 @@ export class OscilloscopeApp {
     this.placeLabels();
   }
 
-  // Moves the sweep cursor, and redraws grid and labels when a new cycle starts (FR-9).
+  // Moves the sweep cursor, and redraws grid and labels when a new cycle starts.
   private showSweep(frame: Frame): void {
     const cursor = element("sweep-cursor");
     const previous = element("sweep-previous");
@@ -640,7 +640,7 @@ export class OscilloscopeApp {
       marker.addEventListener("pointerup", up);
     });
 
-    // View zoom (FR-10), DESIGN 8.5: ⌘ + scroll or pinch zooms around the pointer, a horizontal
+    // View zoom: ⌘ + scroll or pinch zooms around the pointer, a horizontal
     // swipe pans, dragging zooms to the selection, double-click resets.
     const screenPosition = (clientX: number) => {
       const rectangle = this.screen.getBoundingClientRect();
@@ -715,7 +715,7 @@ export class OscilloscopeApp {
   }
 
   // A horizontal swipe of `screenWidths`: pans the zoomed view, or, frozen and not zoomed, pans
-  // back through the held data (FR-6). A frozen sweep keeps its cycle.
+  // back through the held data. A frozen sweep keeps its cycle.
   private swipe(screenWidths: number): void {
     if (isZoomed(this.view)) {
       this.setView(panBy(this.view, screenWidths));

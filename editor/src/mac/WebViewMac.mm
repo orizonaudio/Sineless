@@ -14,7 +14,7 @@
 
 // Objective-C classes are created at run time under names that include the product, the build
 // version and an id unique to this loaded image, so that several copies or versions of the
-// plugin in one host process never share a class (DESIGN AD-4).
+// plugin in one host process never share a class.
 
 namespace orizon::editor {
 namespace {
@@ -129,7 +129,7 @@ Class messageHandlerClass()
     return cls;
 }
 
-// ----- URL scheme handler serving the embedded UI (AD-11) -----
+// ----- URL scheme handler serving the embedded UI -----
 
 void startUrlSchemeTask(id /*self*/, SEL /*cmd*/, WKWebView* /*webView*/, id<WKURLSchemeTask> task)
 {

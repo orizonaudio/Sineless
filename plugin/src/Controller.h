@@ -7,8 +7,8 @@
 
 namespace orizon::plugin {
 
-// Edit-controller side of the plugin. It declares no parameters (AD-6) and reaches the
-// processor's engine through the token the processor sends on connect (AD-10).
+// Edit-controller side of the plugin. It declares no parameters and reaches the
+// processor's engine through the token the processor sends on connect.
 class Controller : public Steinberg::Vst::EditController
 {
 public:

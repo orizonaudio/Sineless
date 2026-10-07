@@ -5,7 +5,7 @@
 
 namespace orizon::engine {
 
-// Indicative readouts of the trigger channel over the visible span (FR-7). Not standards-
+// Indicative readouts of the trigger channel over the visible span. Not standards-
 // compliant metering: sample peak only, and frequency from level crossings.
 struct Readouts
 {

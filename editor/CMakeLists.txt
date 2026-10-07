@@ -1,6 +1,6 @@
-# The webview editor (DESIGN 5.1).
+# The webview editor.
 
-# Build the UI with Vite and embed it in the binary (AD-11).
+# Build the UI with Vite and embed it in the binary.
 find_program(NPM_EXECUTABLE npm REQUIRED)
 set(uiOutputDir ${CMAKE_CURRENT_BINARY_DIR}/ui-dist)
 set(embeddedAssetData ${CMAKE_CURRENT_BINARY_DIR}/generated/EmbeddedAssetData.cpp)

@@ -40,7 +40,7 @@ export function formatDb(db: number): string {
   return `${db === 0 ? "0" : signed(db, Number.isInteger(db) ? 0 : 1)} dB`;
 }
 
-// Frequency readout: approximate, or a dash when unavailable (FR-7).
+// Frequency readout: approximate, or a dash when unavailable.
 export function formatFrequency(hertz: number | undefined): string {
   if (hertz === undefined) {
     return "—";

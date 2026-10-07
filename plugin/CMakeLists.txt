@@ -1,4 +1,4 @@
-# The VST3 processor, controller and factory (DESIGN 5.1).
+# The VST3 processor, controller and factory.
 add_library(plugin STATIC
     src/Controller.cpp
     src/EngineRegistry.cpp

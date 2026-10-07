@@ -1,4 +1,4 @@
-// The UI's mirror of the engine's settings (DESIGN 5.1). C++ is the store of record: the store
+// The UI's mirror of the engine's settings. C++ is the store of record: the store
 // changes only when the engine reports a value (snapshot or stateChanged), never when the UI asks
 // for one, so it cannot drift from the engine.
 import type {

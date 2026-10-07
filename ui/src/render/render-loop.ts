@@ -1,6 +1,6 @@
-// The draw loop (DESIGN 5.1): requestAnimationFrame is the only draw clock. Arriving frames only
+// The draw loop: requestAnimationFrame is the only draw clock. Arriving frames only
 // replace the latest-frame slot; each tick draws the newest frame once and then returns the
-// credit, so the engine sends at most one frame per drawn frame (AD-12).
+// credit, so the engine sends at most one frame per drawn frame.
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 
 // The draw clock: requestAnimationFrame in the page, a manual clock in tests.

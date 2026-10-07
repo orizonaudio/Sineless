@@ -60,7 +60,7 @@ const xs = (vertices: Float32Array) =>
   vertices.filter((_, index) => index % 2 === 0);
 
 describe("trace geometry", () => {
-  test("magnifies the visible part of the frame (FR-10)", () => {
+  test("magnifies the visible part of the frame", () => {
     const vertices = traceGeometry(
       frame(FrameMode.minMax, [[ChannelView.left, [0, 0, 0, 0, 0, 0, 0, 0]]]),
       { ...layout, view: { start: 0.25, end: 0.5 } },

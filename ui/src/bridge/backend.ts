@@ -1,4 +1,4 @@
-// The UI's only way to the engine (DESIGN 5.1): typed calls out, typed events in. Components use
+// The UI's only way to the engine: typed calls out, typed events in. Components use
 // this interface and never touch the transport.
 import {
   decodeFrame,
@@ -78,7 +78,7 @@ export class Backend {
     this.transport.send({ type: "pan", seconds });
   }
 
-  // The part of the span on screen (FR-10).
+  // The part of the span on screen.
   setView(start: number, end: number): void {
     this.transport.send({ type: "view", start, end });
   }

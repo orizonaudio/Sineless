@@ -8,7 +8,7 @@
 
 namespace orizon::engine {
 
-// Channel views (FR-5), derived from the captured L/R channels: L, R, Mid = (L + R) / 2 and
+// Channel views, derived from the captured L/R channels: L, R, Mid = (L + R) / 2 and
 // Side = (L - R) / 2, so every view shares the full-scale range. With mono input there is one
 // channel, and every view is that channel.
 

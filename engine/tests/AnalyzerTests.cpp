@@ -201,7 +201,7 @@ TEST_F(AnalyzerTest, FreezeKeepsShowingHeldDataWhileViewsStillChange)
     const auto rescaled = produce();
     ASSERT_TRUE(rescaled);
     EXPECT_TRUE(rescaled->has(FrameFlag::kFrozen));
-    EXPECT_NEAR(rescaled->peak, 0.375f, 1e-3f) << "readouts work on held data (FR-6)";
+    EXPECT_NEAR(rescaled->peak, 0.375f, 1e-3f) << "readouts work on held data";
     EXPECT_NEAR(rescaled->frequency, 440.0f, 1.0f);
 
     analyzer.setFrozen(false);
@@ -262,7 +262,7 @@ TEST_F(AnalyzerTest, MonoInputProducesASingleView)
     EXPECT_NEAR(frame->peak, 0.5f, 1e-3f) << "the trigger source is the mono channel itself";
 }
 
-// View zoom (FR-10): the left channel holds each sample's own index, so a zoomed frame's
+// View zoom: the left channel holds each sample's own index, so a zoomed frame's
 // contents can be checked exactly.
 class ZoomTest : public AnalyzerTest
 {
@@ -371,7 +371,7 @@ TEST_F(ZoomTest, IgnoresInvalidViews)
     EXPECT_EQ(frame->viewEnd, 1.0f);
 }
 
-// Tempo sync (FR-9): audio and the host clock advance together at 120 BPM, 4/4.
+// Tempo sync: audio and the host clock advance together at 120 BPM, 4/4.
 class SweepTest : public AnalyzerTest
 {
 protected:

@@ -15,7 +15,7 @@ export type TriggerSlope = (typeof TriggerSlope)[keyof typeof TriggerSlope];
 export const TimeBase = { seconds: 0, beats: 1 } as const;
 export type TimeBase = (typeof TimeBase)[keyof typeof TimeBase];
 
-// Tempo-synced spans (FR-9): fractions of a beat (a quarter note), then bars.
+// Tempo-synced spans: fractions of a beat (a quarter note), then bars.
 export const BeatSpan = {
   sixteenthBeat: 0,
   eighthBeat: 1,

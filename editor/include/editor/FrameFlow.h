@@ -11,7 +11,7 @@
 
 namespace orizon::editor {
 
-// Credit-based frame flow (AD-12): the worker produces a frame only while it holds the single
+// Credit-based frame flow: the worker produces a frame only while it holds the single
 // credit, which the UI returns after drawing. Production therefore follows the display rate, no
 // backlog can build up, and nothing is produced while the page is hidden.
 class FrameFlow

@@ -1,4 +1,4 @@
-// The settings table of DESIGN 1.2. Times are in seconds. The engine validates against these
+// The plugin's settings. Times are in seconds. The engine validates against these
 // ranges, and the UI builds its controls from them.
 import {
   BeatSpan,

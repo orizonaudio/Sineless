@@ -6,7 +6,7 @@
 namespace orizon::engine {
 
 // Read access to captured samples by absolute sample index: the live capture ring, or the hold
-// buffer while frozen (FR-6). Analysis reads through this interface and works on either.
+// buffer while frozen. Analysis reads through this interface and works on either.
 class SampleSource
 {
 public:

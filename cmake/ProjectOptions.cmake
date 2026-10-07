@@ -2,7 +2,7 @@
 add_library(orizon_warnings INTERFACE)
 target_compile_options(orizon_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
 
-# Compile-time check of functions marked ORIZON_NONBLOCKING (QG-1).
+# Compile-time check of functions marked ORIZON_NONBLOCKING.
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag(-Wfunction-effects ORIZON_HAS_FUNCTION_EFFECTS)
 if(ORIZON_HAS_FUNCTION_EFFECTS)
@@ -36,7 +36,7 @@ function(orizon_forbid_dependencies target)
         get_target_property(interfaceLinks ${current} INTERFACE_LINK_LIBRARIES)
         foreach(link IN LISTS links interfaceLinks)
             if(link IN_LIST ARGN)
-                message(FATAL_ERROR "Module '${target}' must not depend on '${link}' (DESIGN 5.1)")
+                message(FATAL_ERROR "Module '${target}' must not depend on '${link}'")
             endif()
             list(APPEND pending ${link})
         endforeach()

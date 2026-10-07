@@ -9,8 +9,9 @@ dist/
 # Node
 node_modules/
 
-# Local research material (not part of the repository)
+# Local research and planning material (not part of the repository)
 /Research Topics/
+/docs/
 
 # Machine-specific CMake settings
 CMakeUserPresets.json

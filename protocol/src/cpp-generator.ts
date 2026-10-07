@@ -1,5 +1,4 @@
-// Generates the C++ header that mirrors this schema (DESIGN 5.1). Names follow DESIGN 8.3:
-// enumerators and constants become kPascalCase.
+// Generates the C++ header that mirrors this schema. Enumerators and constants become kPascalCase.
 import { beatSpanLengths, enums, type EnumName } from "./enums.ts";
 import { frameHeader, FrameFlag } from "./frame.ts";
 import { MessageType } from "./messages.ts";
@@ -157,7 +156,7 @@ function beatSpanDeclaration(): string {
     )
     .join("\n");
   return [
-    "// Length of each BeatSpan: an amount of quarter notes, or of bars (FR-9).",
+    "// Length of each BeatSpan: an amount of quarter notes, or of bars.",
     "struct BeatSpanLength",
     "{",
     "    double amount;",

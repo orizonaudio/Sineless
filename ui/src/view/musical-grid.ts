@@ -1,4 +1,4 @@
-// Grid lines and labels of a tempo-synced sweep (DESIGN 8.5). Positions are fractions of the
+// Grid lines and labels of a tempo-synced sweep. Positions are fractions of the
 // screen from the left; musical positions are in quarter notes from the project start.
 import type { AxisLabel } from "./axis-labels.ts";
 import { fullView, type ViewWindow } from "./zoom.ts";
@@ -48,7 +48,7 @@ function beatFraction(quarterNotes: number): string {
 }
 
 // Lines and labels over the visible part of a sweep. `cycleStart` and `span` (quarter notes)
-// describe the whole frame; `view` the part on screen (FR-10). Lines sit on absolute musical
+// describe the whole frame; `view` the part on screen. Lines sit on absolute musical
 // positions, so they refine as the view narrows: beats with stronger bars, then sixteenths with
 // stronger beats, then binary fractions of a beat.
 export function musicalGrid(

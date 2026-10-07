@@ -42,7 +42,7 @@ tresult PLUGIN_API Controller::notify(Vst::IMessage* message)
 
 tresult PLUGIN_API Controller::setComponentState(IBStream* /*state*/)
 {
-    // All settings live in the processor's engine (DESIGN 5.1); the controller keeps no copy.
+    // All settings live in the processor's engine; the controller keeps no copy.
     return kResultOk;
 }
 

@@ -11,7 +11,7 @@ namespace {
 TEST(Roll, AppliesToSpansAboveOneSecond)
 {
     EXPECT_FALSE(isRollSpan(0.5));
-    EXPECT_FALSE(isRollSpan(1.0)) << "1 s itself is still triggered (FR-3)";
+    EXPECT_FALSE(isRollSpan(1.0)) << "1 s itself is still triggered";
     EXPECT_TRUE(isRollSpan(1.001));
     EXPECT_TRUE(isRollSpan(4.0));
 }

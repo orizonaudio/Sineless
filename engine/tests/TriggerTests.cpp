@@ -175,7 +175,7 @@ TEST_F(TriggerModes, HoldOffSpacesSuccessiveTriggers)
     EXPECT_NEAR(std::fmod(gap, 300.0), 0.0, 1e-3);
 }
 
-// Switching back from a roll span (FR-4): the last trigger is far behind the new search region
+// Switching back from a roll span: the last trigger is far behind the new search region
 // and must not hold the display or constrain the hold-off chain.
 TEST_F(TriggerModes, ResumesImmediatelyAfterARollPeriod)
 {

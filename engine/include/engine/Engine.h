@@ -8,8 +8,8 @@
 
 namespace orizon::engine {
 
-// Everything one plugin instance shares between its audio thread and its editor (DESIGN 5.2).
-// The processor creates it; the controller reaches it through an in-process handle (AD-10).
+// Everything one plugin instance shares between its audio thread and its editor.
+// The processor creates it; the controller reaches it through an in-process handle.
 class Engine
 {
 public:
@@ -24,7 +24,7 @@ public:
     [[nodiscard]] SettingsStore& settings() { return settingsStore; }
     [[nodiscard]] const SettingsStore& settings() const { return settingsStore; }
 
-    // Main input channel count (1 or 2), set by the processor on bus negotiation (FR-1).
+    // Main input channel count (1 or 2), set by the processor on bus negotiation.
     void setInputChannels(int count) { inputChannelCount.store(count, std::memory_order_relaxed); }
     [[nodiscard]] int inputChannels() const
     {

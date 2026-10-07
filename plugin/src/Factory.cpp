@@ -9,7 +9,7 @@ using namespace orizon;
 BEGIN_FACTORY_DEF(plugin::kVendorName, plugin::kVendorUrl, plugin::kVendorEmail, 2)
 
 // Class flags are 0, not kDistributable: the controller shares the processor's engine
-// in-process (AD-10).
+// in-process.
 DEF_CLASS(plugin::kProcessorUid, Steinberg::PClassInfo::kManyInstances, kVstAudioEffectClass,
           plugin::kProductName, 0, plugin::kSubCategories, engine::kVersionString,
           kVstVersionString, plugin::Processor::createInstance, nullptr)

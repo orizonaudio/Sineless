@@ -1,4 +1,4 @@
-// The screen grid (DESIGN 8.5): 10 × 8 divisions and a brighter zero line per lane, drawn on a 2D
+// The screen grid: 10 × 8 divisions and a brighter zero line per lane, drawn on a 2D
 // canvas behind the traces. Redrawn only when the size or the lanes change.
 import { gridColumns, gridRows } from "./axis-labels.ts";
 

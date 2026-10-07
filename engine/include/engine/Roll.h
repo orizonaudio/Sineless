@@ -5,7 +5,7 @@
 
 namespace orizon::engine {
 
-// Spans above this scroll continuously instead of being triggered (FR-4).
+// Spans above this scroll continuously instead of being triggered.
 inline constexpr double kRollThresholdSeconds = 1.0;
 
 [[nodiscard]] constexpr bool isRollSpan(double spanSeconds)

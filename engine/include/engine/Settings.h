@@ -8,7 +8,7 @@
 
 namespace orizon::engine {
 
-// One value per setting of DESIGN 1.2, as described by protocol::kSettings. Enum settings hold
+// One value per setting, as described by protocol::kSettings. Enum settings hold
 // the value index and flags settings a bit mask, both as whole numbers.
 class Settings
 {
@@ -34,7 +34,7 @@ private:
     std::array<double, protocol::kSettingCount> values{};
 };
 
-// The store of record for the settings (DESIGN 5.1). Safe to use from any thread except the
+// The store of record for the settings. Safe to use from any thread except the
 // audio thread, which never reads settings.
 class SettingsStore
 {

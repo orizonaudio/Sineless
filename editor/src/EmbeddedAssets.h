@@ -6,7 +6,7 @@
 
 namespace orizon::editor {
 
-// One file of the built UI, compiled into the binary (AD-11).
+// One file of the built UI, compiled into the binary.
 struct EmbeddedAsset
 {
     std::string_view path; // Relative to the UI root, e.g. "index.html".

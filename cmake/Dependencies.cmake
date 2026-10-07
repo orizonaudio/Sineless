@@ -1,4 +1,4 @@
-# Third-party C++ dependencies, pinned (DESIGN 8.1).
+# Third-party C++ dependencies, pinned.
 include(FetchContent)
 
 # VST3 SDK: only the submodules needed for a plugin without VSTGUI.

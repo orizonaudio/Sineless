@@ -44,7 +44,7 @@ TEST(State, WritesTheVersionEnvelope)
     EXPECT_EQ(json["settings"]["triggerMode"], "auto");
 }
 
-// One golden file per released state version proves that old projects still load (DESIGN 8.4).
+// One golden file per released state version proves that old projects still load.
 TEST(State, LoadsTheVersion1GoldenFile)
 {
     const Settings settings = deserializeState(readTestFile("state-v1.json"));
@@ -58,7 +58,7 @@ TEST(State, LoadsTheVersion1GoldenFile)
     EXPECT_EQ(settings.value(SettingId::kTriggerLevel), -0.25);
     EXPECT_EQ(settings.value(SettingId::kTriggerHysteresis), 0.05);
     EXPECT_EQ(settings.value(SettingId::kTriggerHoldOff), 0.1);
-    // Settings added after version 1 (tempo sync, FR-9) take their defaults.
+    // Settings added after version 1 (tempo sync) take their defaults.
     EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
               protocol::TimeBase::kSeconds);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
