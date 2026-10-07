@@ -85,6 +85,29 @@ Analyzer::Commands Analyzer::takeCommands()
     return taken;
 }
 
+void Analyzer::followTransport(const Settings& settings, Commands& command)
+{
+    const bool playing = engine.timeline().latest().playing;
+    const bool enabled =
+        settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze) == protocol::Toggle::kOn;
+    if (!enabled || !command.frozen) {
+        autoFrozen = false;
+    }
+    if (enabled && lastPlaying.has_value()) {
+        if (*lastPlaying && !playing && !command.frozen) {
+            setFrozen(true);
+            command.frozen = true;
+            autoFrozen = true;
+        } else if (!*lastPlaying && playing && autoFrozen) {
+            setFrozen(false);
+            command.frozen = false;
+            command.panSeconds = 0.0;
+            autoFrozen = false;
+        }
+    }
+    lastPlaying = playing;
+}
+
 bool Analyzer::freeze(double sampleRate, std::uint64_t minimumSamples)
 {
     frozenStamp = engine.timeline().latest();
@@ -101,8 +124,9 @@ bool Analyzer::freeze(double sampleRate, std::uint64_t minimumSamples)
 
 bool Analyzer::produce(std::vector<std::byte>& frame)
 {
-    const Commands command = takeCommands();
+    Commands command = takeCommands();
     const Settings settings = engine.settings().get();
+    followTransport(settings, command);
     const double sampleRate = engine.sampleRate();
     if (command.armRequested) {
         trigger.arm();

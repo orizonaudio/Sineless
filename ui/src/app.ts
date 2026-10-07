@@ -401,6 +401,12 @@ export class OscilloscopeApp {
       this.panSeconds = 0;
       this.backend.freeze(frozen);
     });
+    element("auto-freeze").addEventListener("click", () => {
+      this.request(
+        "autoFreeze",
+        this.store.get("autoFreeze") === "on" ? "off" : "on",
+      );
+    });
     element("arm").addEventListener("click", () => {
       this.panSeconds = 0;
       this.backend.arm();
@@ -422,6 +428,12 @@ export class OscilloscopeApp {
     }
     if (name === "triggerMode") {
       (element("arm") as HTMLButtonElement).disabled = value !== "single";
+    }
+    if (name === "autoFreeze") {
+      element("auto-freeze").setAttribute(
+        "aria-pressed",
+        String(value === "on"),
+      );
     }
     if (name === "beatSpan" && typeof value === "string") {
       this.beatSpanField?.show(this.beatSpanNames.indexOf(value));
@@ -750,6 +762,10 @@ export class OscilloscopeApp {
         this.waiting = false;
       }
       element("freeze").setAttribute("aria-pressed", String(frame.frozen));
+      // The engine may resume on its own (auto-freeze); a new freeze starts unpanned.
+      if (!frame.frozen) {
+        this.panSeconds = 0;
+      }
       this.loop.submit(frame);
       if (this.lastFrameTime - this.lastReadoutTime >= readoutInterval) {
         this.updateStatus();

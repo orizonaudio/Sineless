@@ -5,7 +5,7 @@ An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its trac
 - Triggered display from 0.5 ms to 1 s, with Auto, Normal, Free and Single trigger modes; spans up to 4 s scroll continuously.
 - Tempo-synced sweep: a span in beats or bars, aligned to the host's bar lines, with a beat grid and playhead.
 - Left, right, mid and side views, overlaid or stacked.
-- Freeze, then pan back through the last 4 seconds.
+- Freeze, then pan back through the last 4 seconds; optionally freeze automatically when the transport stops.
 - Zoom in down to individual samples with ⌘ + scroll, pinch or drag.
 - Indicative peak, RMS and frequency readouts.
 - Settings are saved with your project.

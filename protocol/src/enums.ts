@@ -54,6 +54,9 @@ export function beatSpanQuarterNotes(
   return length.inBars ? length.amount * barQuarterNotes : length.amount;
 }
 
+export const Toggle = { off: 0, on: 1 } as const;
+export type Toggle = (typeof Toggle)[keyof typeof Toggle];
+
 export const FrameMode = { minMax: 0, raw: 1 } as const;
 export type FrameMode = (typeof FrameMode)[keyof typeof FrameMode];
 
@@ -65,6 +68,7 @@ export const enums = {
   TriggerSlope,
   TimeBase,
   BeatSpan,
+  Toggle,
   FrameMode,
 } as const;
 export type EnumName = keyof typeof enums;

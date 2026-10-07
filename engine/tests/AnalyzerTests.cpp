@@ -481,6 +481,71 @@ TEST_F(SweepTest, ZoomsIntoTheSweep)
     EXPECT_NEAR(frame->cursor, 0.6f, 1e-6f) << "the cursor stays a fraction of the whole cycle";
 }
 
+// Auto-freeze follows the transport. A frozen sweep sends no new frames by itself, so each check
+// changes the width to force one.
+class AutoFreezeTest : public SweepTest
+{
+protected:
+    void SetUp() override
+    {
+        SweepTest::SetUp();
+        engine.settings().set(SettingId::kAutoFreeze, static_cast<double>(protocol::Toggle::kOn));
+    }
+
+    bool frozen()
+    {
+        columns = columns == 8000 ? 7999 : 8000;
+        analyzer.setColumns(columns);
+        const auto frame = produce();
+        EXPECT_TRUE(frame);
+        return frame && frame->has(FrameFlag::kFrozen);
+    }
+
+    std::size_t columns = 8000;
+};
+
+TEST_F(AutoFreezeTest, FreezesOnStopAndResumesOnPlay)
+{
+    play(9600);
+    EXPECT_FALSE(frozen());
+    play(480, false);
+    EXPECT_TRUE(frozen()) << "the stop froze the display";
+    play(1440, false);
+    EXPECT_TRUE(frozen()) << "still frozen while stopped";
+    play(480);
+    EXPECT_FALSE(frozen()) << "playing again resumed it";
+}
+
+TEST_F(AutoFreezeTest, KeepsAFreezeByTheUser)
+{
+    play(9600);
+    analyzer.setFrozen(true);
+    EXPECT_TRUE(frozen());
+    play(480, false);
+    play(480);
+    EXPECT_TRUE(frozen()) << "playing does not end a freeze the user made";
+}
+
+TEST_F(AutoFreezeTest, LeavesTheDisplayAloneWhenOff)
+{
+    engine.settings().set(SettingId::kAutoFreeze, static_cast<double>(protocol::Toggle::kOff));
+    play(9600);
+    EXPECT_FALSE(frozen());
+    play(480, false);
+    EXPECT_FALSE(frozen());
+}
+
+TEST_F(AutoFreezeTest, StaysLiveWhenResumedByTheUserWhileStopped)
+{
+    play(9600);
+    EXPECT_FALSE(frozen());
+    play(480, false);
+    EXPECT_TRUE(frozen());
+    analyzer.setFrozen(false);
+    play(480, false);
+    EXPECT_FALSE(frozen()) << "no new stop, no new freeze";
+}
+
 TEST_F(SweepTest, ProducesNothingNewWithoutNewAudio)
 {
     play(9600);

@@ -74,6 +74,8 @@ private:
     };
 
     Commands takeCommands();
+    // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
+    void followTransport(const Settings& settings, Commands& command);
     bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
     bool render(const SampleSource& source, const Settings& settings, double sampleRate,
                 const Window& window, std::uint64_t sampleCount, double samplesPerColumn,
@@ -96,6 +98,10 @@ private:
     double lastViewStart = 0.0;
     double lastViewEnd = 1.0;
     bool lastFrozen = false;
+    // Auto-freeze: the transport state of the previous step, and whether the current freeze came
+    // from a stop (only such a freeze ends when the transport plays again).
+    std::optional<bool> lastPlaying;
+    bool autoFrozen = false;
     std::uint32_t sequence = 0;
     // Tempo sync: the clock and capture end when frozen, and the capture end of the last frame.
     MusicalStamp frozenStamp;

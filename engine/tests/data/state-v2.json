@@ -12,6 +12,7 @@
     "triggerHysteresis": 0.02,
     "triggerHoldOff": 0,
     "timeBase": "seconds",
-    "beatSpan": "twoBars"
+    "beatSpan": "twoBars",
+    "autoFreeze": "on"
   }
 }

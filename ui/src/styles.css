@@ -456,6 +456,7 @@ button:focus-visible,
   #layout,
   #trigger-details,
   #arm-row,
+  #auto-freeze,
   .wordmark,
   .group-label {
     display: none;

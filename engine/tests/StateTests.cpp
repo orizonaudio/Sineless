@@ -64,6 +64,7 @@ TEST(State, LoadsTheVersion1GoldenFile)
               protocol::TimeBase::kSeconds);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kOneBar);
+    EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOff);
 }
 
 TEST(State, LoadsTheVersion2GoldenFile)
@@ -75,6 +76,7 @@ TEST(State, LoadsTheVersion2GoldenFile)
               protocol::TimeBase::kSeconds);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kTwoBars);
+    EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOn);
 }
 
 TEST(State, DefaultsToABeatsSweepOfOneBar)
@@ -84,6 +86,7 @@ TEST(State, DefaultsToABeatsSweepOfOneBar)
               protocol::TimeBase::kBeats);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kOneBar);
+    EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOff);
 }
 
 TEST(State, KeepsDefaultsForMissingAndInvalidFieldsOnly)
