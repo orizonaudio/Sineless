@@ -16,6 +16,7 @@
   --side: #c48be0;
   --ok: #7fcf8f;
   --hold: #7fa8e8;
+  --cursor: #f0708a;
   --warn: #e8a35a;
   --font-label:
     "Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
@@ -209,6 +210,51 @@ body {
 
 /* Disabled controls ignore the pointer, so hovering shows the group's explanation instead. */
 .group.inactive button {
+  pointer-events: none;
+}
+
+/* Time cursors: a line with a wider grab area, labelled at the top. */
+.time-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  margin-left: -4px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.time-cursor::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  border-left: 1px solid var(--cursor);
+}
+
+.time-cursor span {
+  position: absolute;
+  top: 3px;
+  left: 8px;
+  font-family: var(--font-value);
+  font-size: 11px;
+  color: var(--cursor);
+}
+
+.cursor-readout {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: grid;
+  gap: 2px;
+  padding: 5px 8px;
+  font-family: var(--font-value);
+  font-size: 11px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 3px;
   pointer-events: none;
 }
 
@@ -493,6 +539,7 @@ button:focus-visible,
     #trigger-details,
     #arm-row,
     #auto-freeze,
+    #cursors,
     .group-label
   ) {
   display: none;

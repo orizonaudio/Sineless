@@ -35,6 +35,23 @@
         <div class="selection" id="selection" hidden></div>
         <div class="trigger-line" id="trigger-line"></div>
         <div
+          class="time-cursor"
+          id="cursor-a"
+          title="Drag to move cursor A"
+          hidden
+        >
+          <span>A</span>
+        </div>
+        <div
+          class="time-cursor"
+          id="cursor-b"
+          title="Drag to move cursor B"
+          hidden
+        >
+          <span>B</span>
+        </div>
+        <div class="cursor-readout" id="cursor-readout" hidden></div>
+        <div
           class="trigger-marker"
           id="trigger-marker"
           title="Drag to set the trigger level"
@@ -77,16 +94,26 @@
         </section>
         <section class="group push" id="display-group">
           <div class="group-label">Display</div>
-          <button class="action" id="freeze" aria-pressed="false">
-            Freeze
-          </button>
+          <div class="row">
+            <button class="action" id="freeze" aria-pressed="false">
+              Freeze
+            </button>
+            <button
+              class="action"
+              id="auto-freeze"
+              aria-pressed="false"
+              title="Freeze when the host stops, and resume when it plays again"
+            >
+              Auto-freeze
+            </button>
+          </div>
           <button
             class="action"
-            id="auto-freeze"
+            id="cursors"
             aria-pressed="false"
-            title="Freeze when the host stops, and resume when it plays again"
+            title="Two time cursors: drag them to measure time and frequency"
           >
-            Auto-freeze
+            Cursors
           </button>
         </section>
         <div class="popover" id="trigger-popover" hidden>

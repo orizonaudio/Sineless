@@ -35,6 +35,12 @@ import {
   parseQuantity,
   signed,
 } from "./view/format.ts";
+import {
+  cursorReadout,
+  initialCursors,
+  measure,
+  type CursorPair,
+} from "./view/cursors.ts";
 import { drawGrid } from "./view/grid.ts";
 import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
 import { statusChips } from "./view/status.ts";
@@ -42,6 +48,7 @@ import {
   fullView,
   isZoomed,
   panBy,
+  toFrame,
   toScreen,
   zoomAround,
   zoomFactor,
@@ -142,6 +149,9 @@ export class OscilloscopeApp {
   private beatSpanNames: string[] = [];
   private cycleKey = "";
   private view: ViewWindow = fullView;
+  // Time cursors, while shown; temporary like the view.
+  private cursors: CursorPair | undefined;
+  private sampleRate = 48000;
 
   constructor(backend: Backend, store: SettingsStore, debug: DebugState) {
     this.backend = backend;
@@ -404,6 +414,15 @@ export class OscilloscopeApp {
       this.panSeconds = 0;
       this.backend.freeze(frozen);
     });
+    element("cursors").addEventListener("click", () => {
+      this.cursors =
+        this.cursors === undefined ? initialCursors(this.view) : undefined;
+      element("cursors").setAttribute(
+        "aria-pressed",
+        String(this.cursors !== undefined),
+      );
+      this.placeCursors();
+    });
     element("auto-freeze").addEventListener("click", () => {
       this.request(
         "autoFreeze",
@@ -538,6 +557,7 @@ export class OscilloscopeApp {
   private resize(): void {
     this.fitControls();
     this.placeTriggerPopover();
+    this.placeCursors();
     const ratio = window.devicePixelRatio;
     for (const canvas of [this.gridCanvas, this.traceCanvas]) {
       canvas.width = Math.round(this.screen.clientWidth * ratio);
@@ -687,7 +707,79 @@ export class OscilloscopeApp {
     );
   }
 
+  // Positions the time cursors where their frame positions are on screen, and their readout.
+  private placeCursors(): void {
+    for (const [id, position] of [
+      ["cursor-a", this.cursors?.a],
+      ["cursor-b", this.cursors?.b],
+    ] as const) {
+      const line = element(id);
+      const x = position === undefined ? -1 : toScreen(this.view, position);
+      line.hidden = x < 0 || x > 1;
+      line.style.left = `${String(x * 100)}%`;
+    }
+    this.updateCursorReadout();
+  }
+
+  private updateCursorReadout(): void {
+    const readout = element("cursor-readout");
+    const frame = this.lastFrame;
+    const spanSamples =
+      frame === undefined
+        ? 0
+        : frame.visibleSamples / (frame.viewEnd - frame.viewStart);
+    readout.hidden =
+      this.cursors === undefined || frame === undefined || !(spanSamples > 0);
+    if (readout.hidden || this.cursors === undefined || frame === undefined) {
+      return;
+    }
+    const measurement = measure(
+      this.cursors,
+      spanSamples / this.sampleRate,
+      frame.synced ? frame.spanQuarterNotes : undefined,
+    );
+    readout.replaceChildren(
+      ...cursorReadout(measurement).map((text) => {
+        const line = document.createElement("div");
+        line.textContent = text;
+        return line;
+      }),
+    );
+  }
+
   private listenToScreen(): void {
+    for (const [id, key] of [
+      ["cursor-a", "a"],
+      ["cursor-b", "b"],
+    ] as const) {
+      const line = element(id);
+      line.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+        line.setPointerCapture(event.pointerId);
+        const move = (moveEvent: PointerEvent) => {
+          if (this.cursors === undefined) {
+            return;
+          }
+          const rectangle = this.screen.getBoundingClientRect();
+          const x = Math.min(
+            1,
+            Math.max(0, (moveEvent.clientX - rectangle.left) / rectangle.width),
+          );
+          this.cursors = { ...this.cursors, [key]: toFrame(this.view, x) };
+          this.placeCursors();
+        };
+        const up = () => {
+          line.removeEventListener("pointermove", move);
+          line.removeEventListener("pointerup", up);
+        };
+        line.addEventListener("pointermove", move);
+        line.addEventListener("pointerup", up);
+      });
+      // A double-click on a cursor must not reset the zoom.
+      line.addEventListener("dblclick", (event) => {
+        event.stopPropagation();
+      });
+    }
     const marker = element("trigger-marker");
     marker.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
@@ -807,6 +899,7 @@ export class OscilloscopeApp {
     if (this.lastFrame !== undefined) {
       this.showSweep(this.lastFrame);
     }
+    this.placeCursors();
     this.updateStatus();
   }
 
@@ -834,8 +927,9 @@ export class OscilloscopeApp {
     this.backend.on("error", (message) => {
       this.showError(message);
     });
-    this.backend.on("snapshot", () => {
+    this.backend.on("snapshot", (message) => {
       element("message").hidden = true;
+      this.sampleRate = message.sampleRate;
     });
   }
 
@@ -868,6 +962,7 @@ export class OscilloscopeApp {
         return node;
       }),
     );
+    this.updateCursorReadout();
     const frame = this.lastFrame;
     if (frame !== undefined) {
       this.lastReadoutTime = now;
