@@ -22,6 +22,10 @@ export interface Frame {
   readonly cycleStart: number;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
+  // The part of the span this frame covers, and its length in samples (FR-10).
+  readonly viewStart: number;
+  readonly viewEnd: number;
+  readonly visibleSamples: number;
   // Points of each view present, keyed by ChannelView; min/max pairs in FrameMode.minMax.
   readonly views: ReadonlyMap<ChannelView, Float32Array>;
 }
@@ -83,6 +87,9 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     cycleStart: f32("cycleStart"),
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
+    viewStart: f32("viewStart"),
+    viewEnd: f32("viewEnd"),
+    visibleSamples: f32("visibleSamples"),
     views,
   };
 }

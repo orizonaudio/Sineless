@@ -78,6 +78,11 @@ export class Backend {
     this.transport.send({ type: "pan", seconds });
   }
 
+  // The part of the span on screen (FR-10).
+  setView(start: number, end: number): void {
+    this.transport.send({ type: "view", start, end });
+  }
+
   arm(): void {
     this.transport.send({ type: "arm" });
   }

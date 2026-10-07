@@ -21,9 +21,28 @@
     "name": "timeSpan",
     "value": 0.5
   },
-  "credit": { "type": "credit" },
-  "viewport": { "type": "viewport", "viewWidth": 500, "pixelRatio": 1.5 },
-  "freeze": { "type": "freeze", "frozen": true },
-  "pan": { "type": "pan", "seconds": 0.25 },
-  "arm": { "type": "arm" }
+  "credit": {
+    "type": "credit"
+  },
+  "viewport": {
+    "type": "viewport",
+    "viewWidth": 500,
+    "pixelRatio": 1.5
+  },
+  "freeze": {
+    "type": "freeze",
+    "frozen": true
+  },
+  "pan": {
+    "type": "pan",
+    "seconds": 0.25
+  },
+  "arm": {
+    "type": "arm"
+  },
+  "view": {
+    "type": "view",
+    "start": 0.25,
+    "end": 0.5
+  }
 }

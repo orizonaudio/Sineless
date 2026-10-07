@@ -45,6 +45,9 @@ function frame(
     cycleStart: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
+    viewStart: 0,
+    viewEnd: 1,
+    visibleSamples: 0,
     views: new Map(
       views.map(([view, values]) => [view, new Float32Array(values)]),
     ),
@@ -68,6 +71,32 @@ describe("trace geometry", () => {
     expect(Math.max(...column)).toBeCloseTo(1);
   });
 
+  test("places a zoomed frame by the part of the span it covers", () => {
+    // A frame rendered for the second quarter of the span, shown with that quarter on screen.
+    const zoomed = {
+      ...frame(FrameMode.raw, [[ChannelView.left, [0, 0, 0, 0, 0]]]),
+      viewStart: 0.25,
+      viewEnd: 0.5,
+      visibleSamples: 4,
+    };
+    const vertices = traceGeometry(zoomed, {
+      ...layout,
+      view: { start: 0.25, end: 0.5 },
+    }).get(ChannelView.left);
+    expect(Math.min(...xs(vertices ?? new Float32Array()))).toBeCloseTo(-1, 2);
+    expect(Math.max(...xs(vertices ?? new Float32Array()))).toBeCloseTo(1, 2);
+  });
+
+  test("stretches a frame rendered for an older view into the current one", () => {
+    // Rendered for the whole span, shown zoomed to its first half: the frame's right half
+    // lies beyond the screen's right edge.
+    const vertices = traceGeometry(
+      frame(FrameMode.minMax, [[ChannelView.left, [0, 0, 0, 0]]]),
+      { ...layout, view: { start: 0, end: 0.5 } },
+    ).get(ChannelView.left);
+    expect(Math.max(...xs(vertices ?? new Float32Array()))).toBeCloseTo(3);
+  });
+
   test("draws one quad per min/max column spanning min to max", () => {
     const geometry = traceGeometry(
       frame(FrameMode.minMax, [[ChannelView.left, [-0.5, 0.5, -1, 1]]]),
@@ -80,6 +109,27 @@ describe("trace geometry", () => {
     expect(Math.max(...firstColumn)).toBeCloseTo(0.5);
     expect(Math.min(...xs(vertices ?? new Float32Array()))).toBeCloseTo(-1);
     expect(Math.max(...xs(vertices ?? new Float32Array()))).toBeCloseTo(1);
+  });
+
+  test("joins columns that hold too few samples to overlap", () => {
+    // A steep rise sampled once per column: each column is a single value.
+    const vertices = traceGeometry(
+      frame(FrameMode.minMax, [
+        [ChannelView.left, [-0.6, -0.6, -0.2, -0.2, 0.2, 0.2, 0.6, 0.6]],
+      ]),
+      layout,
+    ).get(ChannelView.left);
+    const columnYs = (column: number) =>
+      ys(
+        vertices?.subarray(column * 12, column * 12 + 12) ?? new Float32Array(),
+      );
+    const values = [-0.6, -0.2, 0.2, 0.6];
+    for (let column = 1; column < 4; column++) {
+      // Each column reaches down to the previous column's value, so the trace is continuous.
+      expect(Math.min(...columnYs(column))).toBeCloseTo(
+        values[column - 1] ?? 0,
+      );
+    }
   });
 
   test("keeps silent columns at least a line width tall", () => {

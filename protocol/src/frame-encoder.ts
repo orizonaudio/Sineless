@@ -21,6 +21,9 @@ export interface FrameContent {
   readonly cycleStart?: number;
   readonly spanQuarterNotes?: number;
   readonly barQuarterNotes?: number;
+  readonly viewStart?: number;
+  readonly viewEnd?: number;
+  readonly visibleSamples?: number;
   readonly views: ReadonlyMap<ChannelView, ArrayLike<number>>;
 }
 
@@ -68,6 +71,13 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setFloat32(
     offsets.barQuarterNotes,
     content.barQuarterNotes ?? 0,
+    true,
+  );
+  header.setFloat32(offsets.viewStart, content.viewStart ?? 0, true);
+  header.setFloat32(offsets.viewEnd, content.viewEnd ?? 1, true);
+  header.setFloat32(
+    offsets.visibleSamples,
+    content.visibleSamples ?? content.pointCount,
     true,
   );
 

@@ -37,6 +37,9 @@ void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewDat
     put(output, Layout::kCycleStartOffset, header.cycleStart);
     put(output, Layout::kSpanQuarterNotesOffset, header.spanQuarterNotes);
     put(output, Layout::kBarQuarterNotesOffset, header.barQuarterNotes);
+    put(output, Layout::kViewStartOffset, header.viewStart);
+    put(output, Layout::kViewEndOffset, header.viewEnd);
+    put(output, Layout::kVisibleSamplesOffset, header.visibleSamples);
     if (!viewData.empty()) {
         std::memcpy(output.data() + Layout::kSize, viewData.data(), viewData.size_bytes());
     }

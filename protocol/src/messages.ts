@@ -14,6 +14,7 @@ export const MessageType = {
   freeze: "freeze",
   pan: "pan",
   arm: "arm",
+  view: "view",
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
@@ -93,6 +94,14 @@ export interface ArmMessage {
   readonly type: "arm";
 }
 
+// UI to engine. The part of the span on screen, as fractions (FR-10); a temporary view, not a
+// setting. The whole span is { start: 0, end: 1 }.
+export interface ViewMessage {
+  readonly type: "view";
+  readonly start: number;
+  readonly end: number;
+}
+
 export type UiToEngineMessage =
   | HelloMessage
   | SetSettingMessage
@@ -100,7 +109,8 @@ export type UiToEngineMessage =
   | ViewportMessage
   | FreezeMessage
   | PanMessage
-  | ArmMessage;
+  | ArmMessage
+  | ViewMessage;
 
 export type EngineToUiMessage =
   SnapshotMessage | StateChangedMessage | ErrorMessage;

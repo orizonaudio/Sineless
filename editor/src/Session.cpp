@@ -89,6 +89,13 @@ void Session::receive(const nlohmann::json& message)
     case MessageType::kArm:
         analyzer.arm();
         break;
+    case MessageType::kView:
+        if (const auto start = number(message, "start")) {
+            if (const auto end = number(message, "end")) {
+                analyzer.setView(*start, *end);
+            }
+        }
+        break;
     case MessageType::kCredit:
         if (onCredit) {
             onCredit();

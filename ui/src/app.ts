@@ -728,6 +728,9 @@ export class OscilloscopeApp {
 
   private setView(view: ViewWindow): void {
     this.view = view;
+    // The engine renders the visible part at full resolution; until that frame arrives, the
+    // last one is stretched into place.
+    this.backend.setView(view.start, view.end);
     this.drawScreen();
     this.loop.invalidate();
     if (this.lastFrame !== undefined) {

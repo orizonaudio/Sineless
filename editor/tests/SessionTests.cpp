@@ -175,6 +175,19 @@ TEST_F(SessionTest, ForwardsViewCommandsToTheAnalyzer)
     EXPECT_NE(flags & static_cast<std::uint8_t>(protocol::FrameFlag::kFrozen), 0);
 }
 
+TEST_F(SessionTest, ForwardsTheViewToTheAnalyzer)
+{
+    engine.settings().set(SettingId::kTimeSpan, 0.1);
+    session.receive(example("hello"));
+    session.receive(example("view")); // A quarter of the span.
+    std::vector<std::byte> frame;
+    ASSERT_TRUE(analyzer.produce(frame));
+    float visibleSamples = 0.0f;
+    std::memcpy(&visibleSamples, frame.data() + FrameHeader::kVisibleSamplesOffset,
+                sizeof(visibleSamples));
+    EXPECT_EQ(visibleSamples, 1200.0f);
+}
+
 TEST_F(SessionTest, CanBeRestartedWithAnotherHello)
 {
     session.receive(example("hello"));

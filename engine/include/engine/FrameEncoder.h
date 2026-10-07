@@ -27,6 +27,10 @@ struct FrameHeaderValues
     float cycleStart = 0.0f;
     float spanQuarterNotes = 0.0f;
     float barQuarterNotes = 0.0f;
+    // The part of the span covered, and its length in samples (FR-10).
+    float viewStart = 0.0f;
+    float viewEnd = 1.0f;
+    float visibleSamples = 0.0f;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order) little-endian into

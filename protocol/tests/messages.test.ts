@@ -8,6 +8,7 @@ import {
   type HelloMessage,
   type PanMessage,
   type SetSettingMessage,
+  type ViewMessage,
   type ViewportMessage,
 } from "../src/messages.ts";
 
@@ -35,6 +36,7 @@ const typed = {
   freeze: examples.freeze satisfies Shape<FreezeMessage>,
   pan: examples.pan satisfies Shape<PanMessage>,
   arm: examples.arm satisfies Shape<ArmMessage>,
+  view: examples.view satisfies Shape<ViewMessage>,
 };
 
 test("every example names a known message type", () => {

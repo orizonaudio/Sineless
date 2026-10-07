@@ -44,6 +44,9 @@ TEST(FrameEncoder, MatchesTheGoldenFrame)
         .cycleStart = header["cycleStart"].get<float>(),
         .spanQuarterNotes = header["spanQuarterNotes"].get<float>(),
         .barQuarterNotes = header["barQuarterNotes"].get<float>(),
+        .viewStart = header["viewStart"].get<float>(),
+        .viewEnd = header["viewEnd"].get<float>(),
+        .visibleSamples = header["visibleSamples"].get<float>(),
     };
     std::vector<float> data = golden["views"]["left"].get<std::vector<float>>();
     const auto mid = golden["views"]["mid"].get<std::vector<float>>();

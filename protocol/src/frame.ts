@@ -9,6 +9,11 @@
 // the playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
 // project position of the left edge, `spanQuarterNotes` the span shown and `barQuarterNotes` the
 // bar length, all in quarter notes (0 when not synced).
+//
+// View zoom (FR-10): the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
+// 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
+// viewStart + (k - startFraction) / visibleSamples * (viewEnd - viewStart); min/max columns
+// divide the covered part evenly.
 
 export type FieldType = "u8" | "u16" | "u32" | "f32";
 
@@ -33,6 +38,9 @@ export const frameHeaderFields = [
   { name: "cycleStart", type: "f32" },
   { name: "spanQuarterNotes", type: "f32" },
   { name: "barQuarterNotes", type: "f32" },
+  { name: "viewStart", type: "f32" },
+  { name: "viewEnd", type: "f32" },
+  { name: "visibleSamples", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

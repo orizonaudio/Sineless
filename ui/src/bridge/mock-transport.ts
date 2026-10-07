@@ -65,6 +65,8 @@ export class MockTransport implements Transport {
   private readonly schedule: (work: () => void) => void;
   private columns = 0;
   private frozenAt: number | undefined;
+  // The part of the span on screen (FR-10); only that part is synthesised.
+  private view = { start: 0, end: 1 };
   private sequence = 0;
 
   constructor(options: MockOptions = {}) {
@@ -116,6 +118,20 @@ export class MockTransport implements Transport {
             ? (this.frozenAt ?? this.now())
             : undefined;
         break;
+      case "view": {
+        const start = message["start"];
+        const end = message["end"];
+        if (
+          typeof start === "number" &&
+          typeof end === "number" &&
+          start >= 0 &&
+          end <= 1 &&
+          end > start
+        ) {
+          this.view = { start, end };
+        }
+        break;
+      }
       case "credit":
         this.sendFrame();
         break;
@@ -188,8 +204,13 @@ export class MockTransport implements Transport {
       timeOf = (fraction) => start + fraction * span;
     }
 
-    const sampleCount = Math.max(1, Math.round(span * mockSampleRate));
-    const sampleTime = (sample: number) => timeOf(sample / sampleCount);
+    const visibleWidth = this.view.end - this.view.start;
+    const sampleCount = Math.max(
+      1,
+      Math.round(span * visibleWidth * mockSampleRate),
+    );
+    const sampleTime = (sample: number) =>
+      timeOf(this.view.start + (sample / sampleCount) * visibleWidth);
     const minMax = sampleCount > this.columns;
     const pointCount = minMax ? this.columns : sampleCount;
     const samplesPerPoint = sampleCount / pointCount;
@@ -247,6 +268,9 @@ export class MockTransport implements Transport {
         cycleStart,
         spanQuarterNotes,
         barQuarterNotes: synced ? mockBarQuarterNotes : 0,
+        viewStart: this.view.start,
+        viewEnd: this.view.end,
+        visibleSamples: sampleCount,
         pointCount,
         samplesPerPoint: minMax ? samplesPerPoint : 1,
         startFraction: 0,

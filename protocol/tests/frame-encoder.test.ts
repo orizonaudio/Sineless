@@ -25,6 +25,9 @@ test("encodes the golden frame byte for byte", () => {
     peak: golden.header.peak,
     rms: golden.header.rms,
     frequency: golden.header.frequency,
+    viewStart: golden.header.viewStart,
+    viewEnd: golden.header.viewEnd,
+    visibleSamples: golden.header.visibleSamples,
     views: new Map([
       [ChannelView.mid, golden.views.mid],
       [ChannelView.left, golden.views.left],

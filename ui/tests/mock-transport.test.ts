@@ -102,6 +102,17 @@ describe("mock back end", () => {
     expect(frame?.barQuarterNotes).toBe(4);
   });
 
+  test("synthesises only the visible part at full resolution", () => {
+    const { transport, frames } = connect();
+    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    transport.send({ type: "view", start: 0.5, end: 0.6 });
+    transport.send({ type: "credit" });
+    const frame = frames.at(-1);
+    expect(frame?.viewStart).toBe(0.5);
+    expect(frame?.visibleSamples).toBe(480);
+    expect(frame?.mode).toBe(FrameMode.raw); // 480 samples fit in 800 columns.
+  });
+
   test("rolls long spans and reports freeze", () => {
     const { transport, frames } = connect();
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });

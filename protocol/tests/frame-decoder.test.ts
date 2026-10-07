@@ -54,7 +54,7 @@ describe("frame decoder", () => {
     expect(() => decodeFrame(buffer.slice(0, 16))).toThrow(
       /shorter than its header/,
     );
-    expect(() => decodeFrame(buffer.slice(0, 56))).toThrow(
+    expect(() => decodeFrame(buffer.slice(0, 68))).toThrow(
       /shorter than its header announces/,
     );
   });

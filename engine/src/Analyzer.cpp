@@ -19,6 +19,9 @@ using protocol::SettingId;
 
 namespace {
 
+// The narrowest view accepted, matching the UI's 256-fold maximum zoom (FR-10).
+constexpr double kMinimumViewWidth = 1.0 / 512;
+
 constexpr std::uint8_t flag(FrameFlag value)
 {
     return static_cast<std::uint8_t>(value);
@@ -55,6 +58,17 @@ void Analyzer::setPan(double seconds)
 {
     const std::scoped_lock lock(commandMutex);
     commands.panSeconds = std::max(seconds, 0.0);
+}
+
+void Analyzer::setView(double start, double end)
+{
+    if (!std::isfinite(start) || !std::isfinite(end) || start < 0.0 || end > 1.0 ||
+        end - start < kMinimumViewWidth) {
+        return;
+    }
+    const std::scoped_lock lock(commandMutex);
+    commands.viewStart = start;
+    commands.viewEnd = end;
 }
 
 void Analyzer::arm()
@@ -95,8 +109,12 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     }
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
-    if (command.frozen && !isFrozen &&
-        !freeze(sampleRate, synced && lastLive ? static_cast<std::uint64_t>(lastLive->span) : 0)) {
+    // The longest sweep the capture can hold; a frozen sweep keeps that much, so a longer beat
+    // span chosen while frozen still has its audio.
+    const CaptureRing& captureRing = engine.captureRing();
+    const auto longestSweep =
+        static_cast<std::uint64_t>(captureRing.capacity() - captureRing.capacity() / 8);
+    if (command.frozen && !isFrozen && !freeze(sampleRate, synced ? longestSweep : 0)) {
         return false;
     }
     if (!command.frozen) {
@@ -110,7 +128,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     const double span = spanSeconds * sampleRate;
     const bool roll = isRollSpan(spanSeconds);
     const bool changed = settings != lastSettings || command.columns != lastColumns ||
-                         command.panSeconds != lastPan || isFrozen != lastFrozen;
+                         command.panSeconds != lastPan || isFrozen != lastFrozen ||
+                         command.viewStart != lastViewStart || command.viewEnd != lastViewEnd;
 
     Window window{.span = span, .roll = roll};
     auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
@@ -127,7 +146,9 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         if (!changed && end == lastEnd) {
             return false;
         }
-        const auto maxSamples = static_cast<std::uint64_t>(ring.capacity() - ring.capacity() / 8);
+        // Frozen, only what was held can be shown; longer spans step down and are flagged.
+        const std::uint64_t maxSamples =
+            isFrozen ? std::min(longestSweep, frozenEnd - hold.beginIndex()) : longestSweep;
         const auto sweep =
             sweepWindow(isFrozen ? frozenStamp : engine.timeline().latest(), end, sampleRate,
                         settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan), maxSamples);
@@ -164,9 +185,20 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
                                   earliestStart, std::max(earliestStart, latestStart));
         window.triggered = lastLive && lastLive->triggered;
     } else if (roll) {
+        // Zoomed, the roll window covers only the visible part, so its columns keep fixed
+        // sample boundaries and do not shimmer; readouts still cover the whole span.
+        const std::uint64_t end = engine.captureRing().endIndex();
+        const RollWindow whole = rollWindow(end, span, command.columns);
+        const auto visibleEnd = static_cast<std::uint64_t>(
+            std::llround(static_cast<double>(end) - (1.0 - command.viewEnd) * span));
         const RollWindow rolled =
-            rollWindow(engine.captureRing().endIndex(), span, command.columns);
+            rollWindow(std::min(visibleEnd, end), (command.viewEnd - command.viewStart) * span,
+                       command.columns);
         window.start = static_cast<double>(rolled.start);
+        window.cropStart = 0.0;
+        window.cropEnd = 1.0;
+        window.readoutStart = whole.start;
+        window.readoutCount = whole.sampleCount;
         sampleCount = rolled.sampleCount;
         samplesPerColumn = static_cast<double>(rolled.samplesPerColumn);
     } else {
@@ -197,6 +229,12 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         }
     }
 
+    window.viewStart = command.viewStart;
+    window.viewEnd = command.viewEnd;
+    if (!roll || window.synced || isFrozen) {
+        window.cropStart = command.viewStart;
+        window.cropEnd = command.viewEnd;
+    }
     if (!render(source, settings, sampleRate, window, sampleCount, samplesPerColumn,
                 command.columns, frame)) {
         return false;
@@ -208,6 +246,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     lastSettings = settings;
     lastColumns = command.columns;
     lastPan = command.panSeconds;
+    lastViewStart = command.viewStart;
+    lastViewEnd = command.viewEnd;
     lastFrozen = isFrozen;
     if (freezeAfterRender) {
         freeze(sampleRate);
@@ -231,6 +271,18 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const ChannelView triggerView = effectiveTriggerSource(
         settings.enumValue<ChannelView>(SettingId::kTriggerSource), inputChannels);
 
+    // The visible part of the window, in samples from its first one, with one extra point
+    // beyond each edge so a raw trace reaches the screen edges (FR-10).
+    const auto count = static_cast<double>(sampleCount);
+    const double fraction = window.start - first;
+    const double visibleFrom = fraction + window.cropStart * count;
+    const double visibleTo = fraction + window.cropEnd * count;
+    const auto cropFirst = static_cast<std::size_t>(
+        std::clamp(std::floor(visibleFrom), 0.0, std::max(count - 1.0, 0.0)));
+    const auto cropEnd = static_cast<std::size_t>(
+        std::clamp(std::ceil(visibleTo) + 1.0, static_cast<double>(cropFirst) + 1.0, count));
+    const double visibleSamples = (window.cropEnd - window.cropStart) * count;
+
     FrameHeaderValues header{
         .sequence = sequence,
         .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
@@ -239,12 +291,16 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                                            (window.synced ? flag(FrameFlag::kSynced) : 0U) |
                                            (window.limited ? flag(FrameFlag::kLimited) : 0U)),
         .views = views,
-        .startFraction = static_cast<float>(window.start - first),
+        .startFraction = static_cast<float>(visibleFrom - static_cast<double>(cropFirst)),
         .cursor = static_cast<float>(window.cursor),
         .cycleStart = static_cast<float>(window.cycleStart),
         .spanQuarterNotes = static_cast<float>(window.spanQuarterNotes),
-        .barQuarterNotes = static_cast<float>(window.barQuarterNotes)};
+        .barQuarterNotes = static_cast<float>(window.barQuarterNotes),
+        .viewStart = static_cast<float>(window.viewStart),
+        .viewEnd = static_cast<float>(window.viewEnd),
+        .visibleSamples = static_cast<float>(visibleSamples)};
     frameData.clear();
+    std::size_t pointCount = 0;
     for (std::size_t index = 0; index < protocol::kChannelViewCount; ++index) {
         if ((views & (1U << index)) == 0) {
             continue;
@@ -257,15 +313,26 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             std::ranges::rotate(viewSamples,
                                 viewSamples.begin() + static_cast<std::ptrdiff_t>(window.rotation));
         }
-        header.mode = reduceToColumns(viewSamples, columns, reduced);
+        const std::span<const float> visible =
+            std::span(viewSamples).subspan(cropFirst, cropEnd - cropFirst);
+        header.mode = reduceToColumns(visible, columns, reduced);
+        pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
-    header.pointCount = static_cast<std::uint32_t>(
-        header.mode == protocol::FrameMode::kMinMax ? columns : viewSamples.size());
-    header.samplesPerPoint =
-        header.mode == protocol::FrameMode::kMinMax ? static_cast<float>(samplesPerColumn) : 1.0f;
+    header.pointCount = static_cast<std::uint32_t>(pointCount);
+    const double croppedSamplesPerColumn = window.cropEnd - window.cropStart < 1.0
+                                               ? visibleSamples / static_cast<double>(columns)
+                                               : samplesPerColumn;
+    header.samplesPerPoint = header.mode == protocol::FrameMode::kMinMax
+                                 ? static_cast<float>(croppedSamplesPerColumn)
+                                 : 1.0f;
 
-    if (!readView(source, inputChannels, triggerView, start, viewSamples, scratch)) {
+    // Readouts cover the whole span, whatever part is on screen.
+    const std::uint64_t readoutStart = window.readoutCount > 0 ? window.readoutStart : start;
+    const std::uint64_t readoutCount = window.readoutCount > 0 ? window.readoutCount : sampleCount;
+    viewSamples.resize(static_cast<std::size_t>(readoutCount));
+    scratch.resize(std::max(scratch.size(), viewSamples.size()));
+    if (!readView(source, inputChannels, triggerView, readoutStart, viewSamples, scratch)) {
         return false;
     }
     const Readouts readouts = computeReadouts(viewSamples, sampleRate);

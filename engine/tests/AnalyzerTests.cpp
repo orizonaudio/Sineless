@@ -31,6 +31,9 @@ struct DecodedFrame
     float rms = 0.0f;
     float frequency = 0.0f;
     float cursor = -1.0f;
+    float viewStart = 0.0f;
+    float viewEnd = 1.0f;
+    float visibleSamples = 0.0f;
     std::vector<float> data;
 
     [[nodiscard]] bool has(FrameFlag value) const
@@ -60,6 +63,9 @@ DecodedFrame decode(const std::vector<std::byte>& bytes)
     frame.rms = get<float>(bytes, FrameHeader::kRmsOffset);
     frame.frequency = get<float>(bytes, FrameHeader::kFrequencyOffset);
     frame.cursor = get<float>(bytes, FrameHeader::kCursorOffset);
+    frame.viewStart = get<float>(bytes, FrameHeader::kViewStartOffset);
+    frame.viewEnd = get<float>(bytes, FrameHeader::kViewEndOffset);
+    frame.visibleSamples = get<float>(bytes, FrameHeader::kVisibleSamplesOffset);
     frame.data.resize((bytes.size() - FrameHeader::kSize) / sizeof(float));
     std::memcpy(frame.data.data(), bytes.data() + FrameHeader::kSize,
                 frame.data.size() * sizeof(float));
@@ -256,6 +262,115 @@ TEST_F(AnalyzerTest, MonoInputProducesASingleView)
     EXPECT_NEAR(frame->peak, 0.5f, 1e-3f) << "the trigger source is the mono channel itself";
 }
 
+// View zoom (FR-10): the left channel holds each sample's own index, so a zoomed frame's
+// contents can be checked exactly.
+class ZoomTest : public AnalyzerTest
+{
+protected:
+    void SetUp() override
+    {
+        AnalyzerTest::SetUp();
+        engine.settings().set(SettingId::kTriggerMode, 2.0); // Free: the newest span.
+        engine.settings().set(SettingId::kChannelViews, 0b0001);
+    }
+
+    void writeRamp(std::uint64_t count)
+    {
+        const std::uint64_t start = engine.captureRing().writeIndex();
+        std::vector<float> ramp(count);
+        for (std::uint64_t i = 0; i < count; ++i) {
+            ramp[i] = static_cast<float>(start + i);
+        }
+        std::array<const float*, 2> channels{ramp.data(), ramp.data()};
+        engine.captureRing().write(channels.data(), 2, static_cast<int>(count));
+    }
+};
+
+TEST_F(ZoomTest, RendersOnlyTheVisiblePartAsRawSamples)
+{
+    writeRamp(48000);
+    analyzer.setColumns(8000);
+    analyzer.setView(0.25, 0.5); // 20 ms span = 960 samples; samples 240 to 480 of the window.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->mode, FrameMode::kRaw);
+    const float windowStart = 48000.0f - 960.0f;
+    EXPECT_EQ(frame->data.front(), windowStart + 240.0f);
+    EXPECT_EQ(frame->data.back(), windowStart + 480.0f) << "one point past the right edge";
+    EXPECT_EQ(frame->viewStart, 0.25f);
+    EXPECT_EQ(frame->viewEnd, 0.5f);
+    EXPECT_EQ(frame->visibleSamples, 240.0f);
+    EXPECT_EQ(frame->startFraction, 0.0f);
+}
+
+TEST_F(ZoomTest, ReducesTheVisiblePartAtFullResolution)
+{
+    writeRamp(48000);
+    engine.settings().set(SettingId::kTimeSpan, 0.1); // 4800 samples over 400 columns: 12 each.
+    analyzer.setColumns(400);
+    analyzer.setView(0.0, 0.1); // 480 visible samples: 1.2 per column.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+    EXPECT_NEAR(frame->samplesPerPoint, 1.2f, 1e-6f);
+    EXPECT_EQ(frame->data[0], 48000.0f - 4800.0f) << "first column starts at the window start";
+}
+
+TEST_F(ZoomTest, KeepsReadoutsOverTheWholeSpan)
+{
+    writeTone(440.0, 0.5, 0.5);
+    engine.settings().set(SettingId::kChannelViews, 0b0011);
+    analyzer.setColumns(400);
+    const auto whole = produce();
+    analyzer.setView(0.0, 0.05);
+    writeTone(440.0, 0.01, 0.5);
+    const auto zoomed = produce();
+    ASSERT_TRUE(whole && zoomed);
+    EXPECT_NEAR(zoomed->rms, whole->rms, 0.01f);
+    EXPECT_NEAR(zoomed->frequency, 440.0f, 1.0f);
+}
+
+TEST_F(ZoomTest, RedrawsWhenOnlyTheViewChanges)
+{
+    writeRamp(48000);
+    engine.settings().set(SettingId::kTriggerMode, 1.0); // Normal: holds without new edges.
+    analyzer.setColumns(8000);
+    EXPECT_FALSE(produce()) << "a ramp never crosses the trigger level";
+    engine.settings().set(SettingId::kTriggerMode, 2.0);
+    ASSERT_TRUE(produce());
+    analyzer.setView(0.5, 1.0);
+    const auto frame = produce();
+    ASSERT_TRUE(frame) << "a new view is drawn without waiting for new audio";
+    EXPECT_EQ(frame->viewStart, 0.5f);
+}
+
+TEST_F(ZoomTest, KeepsRollColumnsOnFixedBoundaries)
+{
+    writeRamp(200000);
+    engine.settings().set(SettingId::kTimeSpan, 2.0); // 96000 samples.
+    analyzer.setColumns(500);
+    analyzer.setView(0.5, 1.0); // The newest 48000 samples: 96 per column.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(frame->has(FrameFlag::kRoll));
+    EXPECT_EQ(frame->samplesPerPoint, 96.0f);
+    const float firstColumnMinimum = frame->data[0];
+    EXPECT_EQ(static_cast<std::uint64_t>(firstColumnMinimum) % 96, 0u);
+}
+
+TEST_F(ZoomTest, IgnoresInvalidViews)
+{
+    writeRamp(48000);
+    analyzer.setColumns(8000);
+    analyzer.setView(0.6, 0.4);
+    analyzer.setView(-0.1, 0.5);
+    analyzer.setView(0.5, 1.5);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->viewStart, 0.0f);
+    EXPECT_EQ(frame->viewEnd, 1.0f);
+}
+
 // Tempo sync (FR-9): audio and the host clock advance together at 120 BPM, 4/4.
 class SweepTest : public AnalyzerTest
 {
@@ -316,6 +431,47 @@ TEST_F(SweepTest, KeepsSweepingWithTheTransportStopped)
     const auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_NEAR(frame->cursor, 0.84f, 1e-6f) << "the cursor advanced while stopped";
+}
+
+// Freezing at 1 bar, then choosing a longer span, still renders the held audio.
+TEST_F(SweepTest, ShowsALongerSpanChosenWhileFrozen)
+{
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
+    play(500160); // More than four bars (384000 samples at 120 BPM).
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    ASSERT_TRUE(produce());
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
+    const auto frame = produce();
+    ASSERT_TRUE(frame) << "the frozen sweep must not go blank";
+    EXPECT_EQ(frame->visibleSamples, 384000.0f);
+    EXPECT_FALSE(frame->has(FrameFlag::kLimited));
+}
+
+// When less audio was held than a newly chosen span needs, the longest span that fits is shown.
+TEST_F(SweepTest, LimitsAFrozenSweepToWhatWasHeld)
+{
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
+    play(200160); // About two bars in total.
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    ASSERT_TRUE(produce());
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(frame->has(FrameFlag::kLimited));
+    EXPECT_EQ(frame->visibleSamples, 192000.0f) << "two bars";
+}
+
+TEST_F(SweepTest, ZoomsIntoTheSweep)
+{
+    play(9600);
+    analyzer.setView(0.0, 0.5); // The first half of the cycle, from its start.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->data.front(), 6000.0f) << "still the cycle start at the left edge";
+    EXPECT_EQ(frame->visibleSamples, 3000.0f);
+    EXPECT_NEAR(frame->cursor, 0.6f, 1e-6f) << "the cursor stays a fraction of the whole cycle";
 }
 
 TEST_F(SweepTest, ProducesNothingNewWithoutNewAudio)

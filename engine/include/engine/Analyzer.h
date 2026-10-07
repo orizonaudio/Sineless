@@ -29,6 +29,9 @@ public:
     void setPan(double seconds);
     // Single mode: wait for the next trigger again.
     void arm();
+    // View zoom (FR-10): the part of the span on screen, as fractions. Out-of-range or reversed
+    // values are ignored. Only that part is reduced to screen columns.
+    void setView(double start, double end);
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
     bool produce(std::vector<std::byte>& frame);
@@ -40,6 +43,8 @@ private:
         bool frozen = false;
         double panSeconds = 0.0;
         bool armRequested = false;
+        double viewStart = 0.0;
+        double viewEnd = 1.0;
     };
 
     // The last window shown while live, which a freeze holds on to.
@@ -57,6 +62,15 @@ private:
         double cycleStart = 0.0;
         double spanQuarterNotes = 0.0;
         double barQuarterNotes = 0.0;
+        // View zoom: the part of the window reduced into the frame (`crop`, fractions of the
+        // window) and the part the frame reports covering (`view`, fractions of the span).
+        double cropStart = 0.0;
+        double cropEnd = 1.0;
+        double viewStart = 0.0;
+        double viewEnd = 1.0;
+        // Readouts always cover the whole span; 0 means the window itself.
+        std::uint64_t readoutStart = 0;
+        std::uint64_t readoutCount = 0;
     };
 
     Commands takeCommands();
@@ -79,6 +93,8 @@ private:
     std::optional<Settings> lastSettings;
     std::size_t lastColumns = 0;
     double lastPan = 0.0;
+    double lastViewStart = 0.0;
+    double lastViewEnd = 1.0;
     bool lastFrozen = false;
     std::uint32_t sequence = 0;
     // Tempo sync: the clock and capture end when frozen, and the capture end of the last frame.

@@ -19,6 +19,26 @@ export interface TraceLayout {
 }
 
 // Clip-space x of a frame position (0 to 1) under the view zoom.
+// Span position (0 to 1) of a min/max column edge or a raw point. A frame covers the part
+// viewStart to viewEnd of the span (FR-10); one rendered for an older view is thereby stretched
+// into place until a frame for the current view arrives.
+function columnPosition(frame: Frame, column: number): number {
+  return (
+    frame.viewStart +
+    (column / frame.pointCount) * (frame.viewEnd - frame.viewStart)
+  );
+}
+
+function pointPosition(frame: Frame, index: number): number {
+  const samples =
+    frame.visibleSamples > 0 ? frame.visibleSamples : frame.pointCount;
+  return (
+    frame.viewStart +
+    ((index - frame.startFraction) / samples) *
+      (frame.viewEnd - frame.viewStart)
+  );
+}
+
 function screenX(frameFraction: number, view: ViewWindow): number {
   return -1 + (2 * (frameFraction - view.start)) / (view.end - view.start);
 }
@@ -59,7 +79,10 @@ function pushQuad(
   out.push(x0, y0, x1, y1, x2, y2, x2, y2, x1, y1, x3, y3);
 }
 
-// One quad per column from min to max, at least one line width tall.
+// One quad per column from min to max, at least one line width tall. A column lying wholly
+// above or below its predecessor is extended to meet it: the signal passes through that gap
+// between the two columns' samples, and without the join, columns holding only one or two
+// samples would show as separate dots.
 function minMaxBand(
   values: Float32Array,
   frame: Frame,
@@ -70,18 +93,29 @@ function minMaxBand(
   const out: number[] = [];
   const view = layout.view ?? fullView;
   const minimumHalf = layout.lineWidthPixels / layout.heightPixels;
+  let previousLow = Number.NaN;
+  let previousHigh = Number.NaN;
   for (let column = 0; column < frame.pointCount; column++) {
     let low =
       lane.center + ((values[column * 2] ?? 0) / scale) * lane.halfHeight;
     let high =
       lane.center + ((values[column * 2 + 1] ?? 0) / scale) * lane.halfHeight;
+    const sampleLow = low;
+    const sampleHigh = high;
+    if (low > previousHigh) {
+      low = previousHigh;
+    } else if (high < previousLow) {
+      high = previousLow;
+    }
+    previousLow = sampleLow;
+    previousHigh = sampleHigh;
     if (high - low < 2 * minimumHalf) {
       const middle = (low + high) / 2;
       low = middle - minimumHalf;
       high = middle + minimumHalf;
     }
-    const left = screenX(column / frame.pointCount, view);
-    const right = screenX((column + 1) / frame.pointCount, view);
+    const left = screenX(columnPosition(frame, column), view);
+    const right = screenX(columnPosition(frame, column + 1), view);
     pushQuad(out, left, low, left, high, right, low, right, high);
   }
   return new Float32Array(out);
@@ -100,8 +134,7 @@ function rawLine(
   const toPixelsY = layout.heightPixels / 2;
   const halfWidth = layout.lineWidthPixels / 2;
   const view = layout.view ?? fullView;
-  const x = (index: number) =>
-    screenX((index - frame.startFraction) / frame.pointCount, view);
+  const x = (index: number) => screenX(pointPosition(frame, index), view);
   const y = (index: number) =>
     lane.center + ((values[index] ?? 0) / scale) * lane.halfHeight;
   for (let index = 0; index + 1 < frame.pointCount; index++) {

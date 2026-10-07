@@ -144,6 +144,9 @@ describe("status chips", () => {
     cycleStart: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
+    viewStart: 0,
+    viewEnd: 1,
+    visibleSamples: 0,
     views: new Map(),
     ...overrides,
   });
