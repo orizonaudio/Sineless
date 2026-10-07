@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import {
   cursorReadout,
   initialCursors,
+  initialLevels,
+  levelReadout,
   measure,
   noteName,
 } from "../src/view/cursors.ts";
@@ -60,6 +62,25 @@ describe("time cursors", () => {
     expect(cursorReadout(measure({ a: 0.5, b: 0.5 }, 1, 4))).toEqual([
       "Δt 0 ms",
       "0 beats",
+    ]);
+  });
+});
+
+describe("level cursors", () => {
+  test("start 6 and 12 dB below the top", () => {
+    expect(initialLevels(1)).toEqual({ first: 0.5, second: 0.25 });
+  });
+
+  test("read out each level and the difference, on either side of zero", () => {
+    expect(levelReadout({ first: 0.5, second: -0.25 })).toEqual([
+      `1 ${minus}6.0 dBFS`,
+      `2 ${minus}12.0 dBFS`,
+      "Δ 6.0 dB",
+    ]);
+    expect(levelReadout({ first: 0, second: 1 })).toEqual([
+      `1 ${minus}∞ dBFS`,
+      "2 0.0 dBFS",
+      "Δ — dB",
     ]);
   });
 });

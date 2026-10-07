@@ -50,6 +50,7 @@
         >
           <span>B</span>
         </div>
+        <div class="level-cursor-lines" id="level-cursor-lines"></div>
         <div class="cursor-readout" id="cursor-readout" hidden></div>
         <div
           class="trigger-marker"
@@ -107,14 +108,24 @@
               Auto-freeze
             </button>
           </div>
-          <button
-            class="action"
-            id="cursors"
-            aria-pressed="false"
-            title="Two time cursors: drag them to measure time and frequency"
-          >
-            Cursors
-          </button>
+          <div class="row">
+            <button
+              class="action"
+              id="time-cursors"
+              aria-pressed="false"
+              title="Time cursors: drag them to measure time and frequency."
+            >
+              Time
+            </button>
+            <button
+              class="action"
+              id="level-cursors"
+              aria-pressed="false"
+              title="Level cursors: drag them to measure levels in dB."
+            >
+              Level
+            </button>
+          </div>
         </section>
         <div class="popover" id="trigger-popover" hidden>
           <div class="popover-row">

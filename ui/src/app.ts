@@ -38,8 +38,11 @@ import {
 import {
   cursorReadout,
   initialCursors,
+  initialLevels,
+  levelReadout,
   measure,
   type CursorPair,
+  type LevelPair,
 } from "./view/cursors.ts";
 import { drawGrid } from "./view/grid.ts";
 import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
@@ -149,8 +152,9 @@ export class OscilloscopeApp {
   private beatSpanNames: string[] = [];
   private cycleKey = "";
   private view: ViewWindow = fullView;
-  // Time cursors, while shown; temporary like the view.
-  private cursors: CursorPair | undefined;
+  // Time and level cursors, while shown; temporary like the view.
+  private timeCursors: CursorPair | undefined;
+  private levelCursors: LevelPair | undefined;
   private sampleRate = 48000;
 
   constructor(backend: Backend, store: SettingsStore, debug: DebugState) {
@@ -414,12 +418,23 @@ export class OscilloscopeApp {
       this.panSeconds = 0;
       this.backend.freeze(frozen);
     });
-    element("cursors").addEventListener("click", () => {
-      this.cursors =
-        this.cursors === undefined ? initialCursors(this.view) : undefined;
-      element("cursors").setAttribute(
+    element("time-cursors").addEventListener("click", () => {
+      this.timeCursors =
+        this.timeCursors === undefined ? initialCursors(this.view) : undefined;
+      element("time-cursors").setAttribute(
         "aria-pressed",
-        String(this.cursors !== undefined),
+        String(this.timeCursors !== undefined),
+      );
+      this.placeCursors();
+    });
+    element("level-cursors").addEventListener("click", () => {
+      this.levelCursors =
+        this.levelCursors === undefined
+          ? initialLevels(fullScale(this.store.number("verticalScale")))
+          : undefined;
+      element("level-cursors").setAttribute(
+        "aria-pressed",
+        String(this.levelCursors !== undefined),
       );
       this.placeCursors();
     });
@@ -502,6 +517,14 @@ export class OscilloscopeApp {
     }
     if (name === "triggerMode" || name === "timeBase") {
       this.updateTriggerControls();
+    }
+    // Level cursors are drawn at their level in each lane.
+    if (
+      name === "verticalScale" ||
+      name === "viewLayout" ||
+      name === "channelViews"
+    ) {
+      this.placeCursors();
     }
     if (name === "autoFreeze") {
       element("auto-freeze").setAttribute(
@@ -707,18 +730,60 @@ export class OscilloscopeApp {
     );
   }
 
-  // Positions the time cursors where their frame positions are on screen, and their readout.
+  // Positions the cursors where their frame positions and levels are on screen, and their
+  // readout.
   private placeCursors(): void {
     for (const [id, position] of [
-      ["cursor-a", this.cursors?.a],
-      ["cursor-b", this.cursors?.b],
+      ["cursor-a", this.timeCursors?.a],
+      ["cursor-b", this.timeCursors?.b],
     ] as const) {
       const line = element(id);
       const x = position === undefined ? -1 : toScreen(this.view, position);
       line.hidden = x < 0 || x > 1;
       line.style.left = `${String(x * 100)}%`;
     }
+    this.placeLevelCursors();
     this.updateCursorReadout();
+  }
+
+  // Level cursors are drawn in every lane. Their elements are only rebuilt when the number of
+  // lanes changes, so that a drag in progress keeps its element.
+  private placeLevelCursors(): void {
+    const container = element("level-cursor-lines");
+    const laneList = lanes(this.laneCount(), this.layout());
+    const wanted = this.levelCursors === undefined ? 0 : laneList.length * 2;
+    if (container.children.length !== wanted) {
+      const lines: HTMLElement[] = [];
+      laneList.forEach((_, lane) => {
+        for (const key of ["first", "second"] as const) {
+          const line = document.createElement("div");
+          line.className = "level-cursor";
+          line.dataset["lane"] = String(lane);
+          line.dataset["key"] = key;
+          line.title = "Drag to move this level cursor";
+          const label = document.createElement("span");
+          label.textContent = key === "first" ? "1" : "2";
+          line.append(label);
+          lines.push(line);
+        }
+      });
+      container.replaceChildren(...lines);
+    }
+    const levels = this.levelCursors;
+    if (levels === undefined) {
+      return;
+    }
+    const scale = fullScale(this.store.number("verticalScale"));
+    const height = this.screen.clientHeight;
+    for (const line of container.children as HTMLCollectionOf<HTMLElement>) {
+      const lane = laneList[Number(line.dataset["lane"])] ?? laneList[0];
+      const relative =
+        levels[line.dataset["key"] === "first" ? "first" : "second"] / scale;
+      line.hidden = lane === undefined || Math.abs(relative) > 1;
+      if (lane !== undefined) {
+        line.style.top = `${String(((1 - (lane.center + relative * lane.halfHeight)) / 2) * height)}px`;
+      }
+    }
   }
 
   private updateCursorReadout(): void {
@@ -728,18 +793,28 @@ export class OscilloscopeApp {
       frame === undefined
         ? 0
         : frame.visibleSamples / (frame.viewEnd - frame.viewStart);
-    readout.hidden =
-      this.cursors === undefined || frame === undefined || !(spanSamples > 0);
-    if (readout.hidden || this.cursors === undefined || frame === undefined) {
-      return;
+    const lines: string[] = [];
+    if (
+      this.timeCursors !== undefined &&
+      frame !== undefined &&
+      spanSamples > 0
+    ) {
+      lines.push(
+        ...cursorReadout(
+          measure(
+            this.timeCursors,
+            spanSamples / this.sampleRate,
+            frame.synced ? frame.spanQuarterNotes : undefined,
+          ),
+        ),
+      );
     }
-    const measurement = measure(
-      this.cursors,
-      spanSamples / this.sampleRate,
-      frame.synced ? frame.spanQuarterNotes : undefined,
-    );
+    if (this.levelCursors !== undefined) {
+      lines.push(...levelReadout(this.levelCursors));
+    }
+    readout.hidden = lines.length === 0;
     readout.replaceChildren(
-      ...cursorReadout(measurement).map((text) => {
+      ...lines.map((text) => {
         const line = document.createElement("div");
         line.textContent = text;
         return line;
@@ -757,7 +832,7 @@ export class OscilloscopeApp {
         event.stopPropagation();
         line.setPointerCapture(event.pointerId);
         const move = (moveEvent: PointerEvent) => {
-          if (this.cursors === undefined) {
+          if (this.timeCursors === undefined) {
             return;
           }
           const rectangle = this.screen.getBoundingClientRect();
@@ -765,7 +840,10 @@ export class OscilloscopeApp {
             1,
             Math.max(0, (moveEvent.clientX - rectangle.left) / rectangle.width),
           );
-          this.cursors = { ...this.cursors, [key]: toFrame(this.view, x) };
+          this.timeCursors = {
+            ...this.timeCursors,
+            [key]: toFrame(this.view, x),
+          };
           this.placeCursors();
         };
         const up = () => {
@@ -780,6 +858,47 @@ export class OscilloscopeApp {
         event.stopPropagation();
       });
     }
+    const levelLines = element("level-cursor-lines");
+    levelLines.addEventListener("pointerdown", (event) => {
+      const line = (event.target as Element).closest<HTMLElement>(
+        ".level-cursor",
+      );
+      if (line === null) {
+        return;
+      }
+      event.stopPropagation();
+      line.setPointerCapture(event.pointerId);
+      const laneIndex = Number(line.dataset["lane"]);
+      const key = line.dataset["key"] === "first" ? "first" : "second";
+      const move = (moveEvent: PointerEvent) => {
+        const lane = lanes(this.laneCount(), this.layout())[laneIndex];
+        if (this.levelCursors === undefined || lane === undefined) {
+          return;
+        }
+        const rectangle = this.screen.getBoundingClientRect();
+        const center = ((1 - lane.center) / 2) * rectangle.height;
+        const halfHeight = (lane.halfHeight / 2) * rectangle.height;
+        const scale = fullScale(this.store.number("verticalScale"));
+        const relative = Math.max(
+          -1,
+          Math.min(
+            1,
+            (center - (moveEvent.clientY - rectangle.top)) / halfHeight,
+          ),
+        );
+        this.levelCursors = { ...this.levelCursors, [key]: relative * scale };
+        this.placeCursors();
+      };
+      const up = () => {
+        line.removeEventListener("pointermove", move);
+        line.removeEventListener("pointerup", up);
+      };
+      line.addEventListener("pointermove", move);
+      line.addEventListener("pointerup", up);
+    });
+    levelLines.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+    });
     const marker = element("trigger-marker");
     marker.addEventListener("pointerdown", (event) => {
       event.stopPropagation();

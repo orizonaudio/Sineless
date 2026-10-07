@@ -1,7 +1,8 @@
-// Time cursors: two vertical lines, A and B, at positions in the frame (fractions of the span),
-// so that they move with the waveform when the view zooms or pans. Temporary display state only;
-// they are never saved.
-import { formatFrequency, formatSeconds } from "./format.ts";
+// Cursors. Time cursors are two vertical lines, A and B, at positions in the frame (fractions of
+// the span), so that they move with the waveform when the view zooms or pans. Level cursors are
+// two horizontal lines, 1 and 2, at sample values, so that they follow the vertical scale.
+// Temporary display state only; they are never saved.
+import { formatDbfs, formatFrequency, formatSeconds } from "./format.ts";
 import { toFrame, type ViewWindow } from "./zoom.ts";
 
 export interface CursorPair {
@@ -84,4 +85,26 @@ export function cursorReadout(measurement: CursorMeasurement): string[] {
     lines.push(`${String(beats)} ${beats === 1 ? "beat" : "beats"}`);
   }
   return lines;
+}
+
+export interface LevelPair {
+  readonly first: number;
+  readonly second: number;
+}
+
+// New level cursors sit at half and a quarter of full scale: 6 and 12 dB below the top.
+export function initialLevels(fullScale: number): LevelPair {
+  return { first: fullScale / 2, second: fullScale / 4 };
+}
+
+// The readout lines: each level in dBFS, and the difference between them in dB.
+export function levelReadout(levels: LevelPair): string[] {
+  const first = 20 * Math.log10(Math.abs(levels.first));
+  const second = 20 * Math.log10(Math.abs(levels.second));
+  const difference = Math.abs(first - second);
+  return [
+    `1 ${formatDbfs(Math.abs(levels.first))} dBFS`,
+    `2 ${formatDbfs(Math.abs(levels.second))} dBFS`,
+    `\u0394 ${Number.isFinite(difference) ? difference.toFixed(1) : "\u2014"} dB`,
+  ];
 }

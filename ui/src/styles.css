@@ -242,6 +242,35 @@ body {
   color: var(--cursor);
 }
 
+/* Level cursors: one line per lane, labelled at the right edge. */
+.level-cursor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 9px;
+  margin-top: -4px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.level-cursor::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 4px;
+  border-top: 1px dashed var(--cursor);
+}
+
+.level-cursor span {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font-family: var(--font-value);
+  font-size: 11px;
+  color: var(--cursor);
+}
+
 .cursor-readout {
   position: absolute;
   top: 6px;
@@ -539,7 +568,8 @@ button:focus-visible,
     #trigger-details,
     #arm-row,
     #auto-freeze,
-    #cursors,
+    #time-cursors,
+    #level-cursors,
     .group-label
   ) {
   display: none;
