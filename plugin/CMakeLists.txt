@@ -19,6 +19,13 @@ set_target_properties(O-Scope PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
 )
+# Finder shows the bundle as one item only when it has a PkgInfo file, which the SDK writes
+# for the Xcode generator alone.
+add_custom_command(TARGET O-Scope POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/resource/PkgInfo
+        $<TARGET_BUNDLE_CONTENT_DIR:O-Scope>/PkgInfo
+    VERBATIM
+)
 
 if(BUILD_TESTING)
     add_executable(plugin_tests
