@@ -264,10 +264,16 @@ body {
 .controls {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   padding: 8px;
   align-items: stretch;
+  /* Held to the window width, so that content too wide for it shows as overflow. */
+  min-width: 0;
+}
+
+.controls > * {
+  flex-shrink: 0;
 }
 
 .group {
@@ -452,42 +458,48 @@ button:focus-visible,
 }
 
 @media (max-width: 479px) {
-  #vertical-group,
-  #layout,
-  #trigger-details,
-  #arm-row,
-  #auto-freeze,
-  .wordmark,
-  .group-label {
+  .wordmark {
     display: none;
   }
 
   .readouts {
     gap: 10px;
   }
+}
 
-  /* One row: Span, Views, Mode and Freeze. */
-  .controls {
-    flex-wrap: nowrap;
-    gap: 4px;
-    padding: 4px 6px 6px;
-  }
+/* The control strip never wraps. The UI picks the first fit that stays on one row: full labels,
+   then one-letter labels ("compact"), then only Span, Views, Mode and Freeze ("minimal"). */
+.controls:is([data-fit="compact"], [data-fit="minimal"]) .segmented .long {
+  display: none;
+}
 
-  .group {
-    padding: 0;
-    border: 0;
-  }
+.controls:is([data-fit="compact"], [data-fit="minimal"]) .segmented .short {
+  display: inline;
+}
 
-  .field {
-    min-width: 0;
-    padding-inline: 5px;
-  }
+.controls[data-fit="minimal"] {
+  gap: 4px;
+  padding: 4px 6px 6px;
+}
 
-  .segmented .long {
-    display: none;
-  }
+.controls[data-fit="minimal"]
+  :is(
+    #vertical-group,
+    #layout,
+    #trigger-details,
+    #arm-row,
+    #auto-freeze,
+    .group-label
+  ) {
+  display: none;
+}
 
-  .segmented .short {
-    display: inline;
-  }
+.controls[data-fit="minimal"] .group {
+  padding: 0;
+  border: 0;
+}
+
+.controls[data-fit="minimal"] .field {
+  min-width: 0;
+  padding-inline: 5px;
 }
