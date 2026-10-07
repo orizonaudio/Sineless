@@ -2,6 +2,8 @@
 
 An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its track in real time and passes it through unchanged, with zero latency.
 
+![O-Scope frozen on a kick drum in Beats mode, with the left and right channels stacked](assets/o-scope.png)
+
 - Triggered display from 0.5 ms to 1 s, with Auto, Normal, Free and Single trigger modes; spans up to 4 s scroll continuously.
 - Tempo-synced sweep: a span in beats or bars, aligned to the host's bar lines, with a beat grid and playhead.
 - Left, right, mid and side views, overlaid or stacked, on a vertical scale in dB.
