@@ -3,6 +3,7 @@
 #include "engine/Engine.h"
 #include "engine/HoldBuffer.h"
 #include "engine/Settings.h"
+#include "engine/SweepImage.h"
 #include "engine/Trigger.h"
 
 #include <cstddef>
@@ -54,10 +55,9 @@ private:
         double span = 0.0;
         bool triggered = false;
         bool roll = false;
-        // Tempo-synced sweep: samples rotated left by `rotation`; cursor in 0 to 1.
+        // Tempo-synced sweep, read from the sweep image; cursor in 0 to 1.
         bool synced = false;
         bool limited = false;
-        std::uint64_t rotation = 0;
         double cursor = -1.0;
         double cycleStart = 0.0;
         double spanQuarterNotes = 0.0;
@@ -83,6 +83,7 @@ private:
 
     Engine& engine;
     HoldBuffer hold;
+    SweepImage image;
     TriggerState trigger;
 
     std::mutex commandMutex;

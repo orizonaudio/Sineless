@@ -394,7 +394,8 @@ protected:
     }
 
     // Writes `count` samples whose left channel holds their own sample index.
-    void play(std::uint64_t count, bool playing = true)
+    // `offset` moves the host position, in quarter notes, as a relocation of the transport does.
+    void play(std::uint64_t count, bool playing = true, double offset = 0.0)
     {
         constexpr std::uint64_t kBlock = 480;
         for (std::uint64_t done = 0; done < count; done += kBlock) {
@@ -405,12 +406,13 @@ protected:
             }
             std::array<const float*, 2> channels{ramp.data(), ramp.data()};
             engine.captureRing().write(channels.data(), 2, static_cast<int>(kBlock));
-            engine.timeline().advance({.playing = playing,
-                                       .positionValid = true,
-                                       .quarterNotes = static_cast<double>(start) / 24000.0,
-                                       .tempoValid = true,
-                                       .tempo = 120.0},
-                                      static_cast<int>(kBlock), kSampleRate);
+            engine.timeline().advance(
+                {.playing = playing,
+                 .positionValid = true,
+                 .quarterNotes = static_cast<double>(start) / 24000.0 + offset,
+                 .tempoValid = true,
+                 .tempo = 120.0},
+                static_cast<int>(kBlock), kSampleRate);
         }
     }
 };
@@ -438,6 +440,24 @@ TEST_F(SweepTest, KeepsSweepingWithTheTransportStopped)
     const auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_NEAR(frame->cursor, 0.84f, 1e-6f) << "the cursor advanced while stopped";
+}
+
+// Stopping and playing again makes Live restart the clock from the play position. What was
+// already drawn stays where it was; only new audio follows the new position.
+TEST_F(SweepTest, KeepsEarlierDrawingWhenTheTransportJumps)
+{
+    play(9600); // Cursor at 3600: this cycle's 6000 to 9599, then the previous one's 3600 to 5999.
+    ASSERT_TRUE(produce());
+    play(480, true, 0.6); // Sample 9600 is now at 1 quarter note: a new cycle starts there.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->pointCount, 6000u);
+    EXPECT_EQ(frame->data[0], 9600.0f) << "the new cycle at the left edge";
+    EXPECT_EQ(frame->data[479], 10079.0f);
+    EXPECT_EQ(frame->data[480], 6480.0f) << "earlier drawing did not shift";
+    EXPECT_EQ(frame->data[3599], 9599.0f);
+    EXPECT_EQ(frame->data[3600], 3600.0f);
+    EXPECT_NEAR(frame->cursor, 0.08f, 1e-6f);
 }
 
 // Freezing at 1 bar, then choosing a longer span, still renders the held audio.

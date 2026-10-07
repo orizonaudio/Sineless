@@ -159,8 +159,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
     double samplesPerColumn = span / static_cast<double>(command.columns);
     bool freezeAfterRender = false;
-    const SampleSource& source =
-        isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing();
+    const SampleSource* source =
+        isFrozen ? static_cast<const SampleSource*>(&hold) : &engine.captureRing();
 
     if (synced) {
         // Tempo-synced sweep. While frozen, the sweep is rebuilt from the clock and
@@ -179,11 +179,19 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         if (!sweep) {
             return false;
         }
-        window = {.start = static_cast<double>(sweep->start),
+        // Live, only new samples are placed. Frozen, the screen stays as it was, unless the
+        // span changed: then it is rebuilt from the held audio.
+        const bool placed =
+            isFrozen ? sweep->sampleCount == image.length() || image.update(hold, *sweep, true)
+                     : image.update(ring, *sweep, false);
+        if (!placed) {
+            return false;
+        }
+        source = &image;
+        window = {.start = 0.0,
                   .span = static_cast<double>(sweep->sampleCount),
                   .synced = true,
                   .limited = sweep->limited,
-                  .rotation = sweep->rotation,
                   .cursor = sweep->cursor,
                   .cycleStart = sweep->cycleStart,
                   .spanQuarterNotes = sweep->spanQuarterNotes,
@@ -259,7 +267,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         window.cropStart = command.viewStart;
         window.cropEnd = command.viewEnd;
     }
-    if (!render(source, settings, sampleRate, window, sampleCount, samplesPerColumn,
+    if (!render(*source, settings, sampleRate, window, sampleCount, samplesPerColumn,
                 command.columns, frame)) {
         return false;
     }
@@ -332,10 +340,6 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         if (!readView(source, inputChannels, static_cast<ChannelView>(index), start, viewSamples,
                       scratch)) {
             return false;
-        }
-        if (window.rotation > 0) {
-            std::ranges::rotate(viewSamples,
-                                viewSamples.begin() + static_cast<std::ptrdiff_t>(window.rotation));
         }
         const std::span<const float> visible =
             std::span(viewSamples).subspan(cropFirst, cropEnd - cropFirst);

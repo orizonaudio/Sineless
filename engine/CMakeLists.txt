@@ -14,6 +14,7 @@ add_library(engine STATIC
     src/Settings.cpp
     src/State.cpp
     src/Sweep.cpp
+    src/SweepImage.cpp
     src/Timeline.cpp
     src/Trigger.cpp
     src/Version.cpp
@@ -45,6 +46,7 @@ if(BUILD_TESTING)
         tests/SettingsTests.cpp
         tests/StateTests.cpp
         tests/SweepTests.cpp
+        tests/SweepImageTests.cpp
         tests/TimelineTests.cpp
         tests/TriggerTests.cpp
         tests/VersionTests.cpp
