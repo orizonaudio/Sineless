@@ -19,7 +19,7 @@ TEST(ProtocolHeader, MatchesTheApprovedSettingsTable)
 {
     const auto& timeSpan = kSettings[static_cast<std::size_t>(SettingId::kTimeSpan)];
     EXPECT_EQ(timeSpan.name, "timeSpan");
-    EXPECT_EQ(timeSpan.defaultValue, 0.02);
+    EXPECT_EQ(timeSpan.defaultValue, 1.0);
     EXPECT_TRUE(timeSpan.logarithmic);
 
     const auto& source = kSettings[static_cast<std::size_t>(SettingId::kTriggerSource)];

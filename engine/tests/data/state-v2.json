@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "settings": {
+    "timeSpan": 0.05,
+    "verticalScale": 3,
+    "channelViews": ["left"],
+    "viewLayout": "overlaid",
+    "triggerMode": "free",
+    "triggerSource": "left",
+    "triggerSlope": "rising",
+    "triggerLevel": 0.1,
+    "triggerHysteresis": 0.02,
+    "triggerHoldOff": 0,
+    "timeBase": "seconds",
+    "beatSpan": "twoBars"
+  }
+}

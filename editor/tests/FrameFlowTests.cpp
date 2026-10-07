@@ -33,6 +33,9 @@ protected:
     void SetUp() override
     {
         engine.setSampleRate(48000.0);
+        // These tests use the seconds time base; Beats is the default.
+        engine.settings().set(protocol::SettingId::kTimeBase,
+                              static_cast<double>(protocol::TimeBase::kSeconds));
         engine.settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: always a frame.
         writeSamples(48000);
         analyzer.setColumns(200);

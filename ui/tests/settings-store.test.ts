@@ -19,7 +19,7 @@ describe("settings store", () => {
     const store = new SettingsStore();
     expect(store.connected).toBe(false);
     expect(store.get("triggerMode")).toBe("auto");
-    expect(store.number("timeSpan")).toBe(0.02);
+    expect(store.number("timeSpan")).toBe(1);
   });
 
   test("takes every value from the snapshot", () => {

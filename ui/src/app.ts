@@ -355,8 +355,8 @@ export class OscilloscopeApp {
       );
     };
     segment("timeBase", "time-base", [
-      ["seconds", "Sec"],
       ["beats", "Beats"],
+      ["seconds", "Sec"],
     ]);
     segment("viewLayout", "layout", [
       ["overlaid", "Overlay"],

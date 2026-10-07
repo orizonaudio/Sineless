@@ -5,18 +5,26 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <functional>
 #include <nlohmann/json.hpp>
 
 namespace orizon::engine {
 
 namespace {
 
-using Migration = std::function<void(nlohmann::json& settings)>;
+using Migration = void (*)(nlohmann::json& settings);
+
+// Version 2 made Beats the default time base. A version 1 state without one predates tempo sync,
+// so it keeps the seconds time base it was made with.
+void migrateToVersion2(nlohmann::json& settings)
+{
+    if (!settings.contains("timeBase")) {
+        settings["timeBase"] = "seconds";
+    }
+}
 
 // kMigrations[n - 1] upgrades the settings object of state version n to version n + 1.
 // Add an entry, and a golden state file, whenever kStateVersion is raised.
-const std::array<Migration, kStateVersion - 1> kMigrations{};
+constexpr std::array<Migration, kStateVersion - 1> kMigrations{&migrateToVersion2};
 
 } // namespace
 

@@ -58,9 +58,30 @@ TEST(State, LoadsTheVersion1GoldenFile)
     EXPECT_EQ(settings.value(SettingId::kTriggerLevel), -0.25);
     EXPECT_EQ(settings.value(SettingId::kTriggerHysteresis), 0.05);
     EXPECT_EQ(settings.value(SettingId::kTriggerHoldOff), 0.1);
-    // Settings added after version 1 (tempo sync) take their defaults.
+    // A version 1 state without a time base predates tempo sync and keeps seconds; other
+    // settings added later take their defaults.
     EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
               protocol::TimeBase::kSeconds);
+    EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
+              protocol::BeatSpan::kOneBar);
+}
+
+TEST(State, LoadsTheVersion2GoldenFile)
+{
+    const Settings settings = deserializeState(readTestFile("state-v2.json"));
+    EXPECT_EQ(settings.value(SettingId::kTimeSpan), 0.05);
+    EXPECT_EQ(settings.value(SettingId::kVerticalScale), 3.0);
+    EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
+              protocol::TimeBase::kSeconds);
+    EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
+              protocol::BeatSpan::kTwoBars);
+}
+
+TEST(State, DefaultsToABeatsSweepOfOneBar)
+{
+    const Settings settings = deserializeState(R"({"version": 2, "settings": {}})");
+    EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
+              protocol::TimeBase::kBeats);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kOneBar);
 }

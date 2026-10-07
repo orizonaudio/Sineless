@@ -46,6 +46,9 @@ protected:
     void SetUp() override
     {
         engine.setSampleRate(48000.0);
+        // These tests use the seconds time base; Beats is the default.
+        engine.settings().set(protocol::SettingId::kTimeBase,
+                              static_cast<double>(protocol::TimeBase::kSeconds));
         std::vector<float> tone(48000);
         for (std::size_t i = 0; i < tone.size(); ++i) {
             tone[i] = (i / 50) % 2 == 0 ? 0.5f : -0.5f;
@@ -134,7 +137,7 @@ TEST_F(SessionTest, AnswersAnInvalidValueWithTheValueKept)
     session.receive({{"type", "setSetting"}, {"name", "timeSpan"}, {"value", 99.0}});
     const auto echoes = transport.ofType("stateChanged");
     ASSERT_EQ(echoes.size(), 1u);
-    EXPECT_EQ(echoes[0]["value"], 0.02) << "the control snaps back to the stored value";
+    EXPECT_EQ(echoes[0]["value"], 1.0) << "the control snaps back to the stored value";
 }
 
 TEST_F(SessionTest, IgnoresUnknownSettingsAndMessageTypes)
@@ -150,7 +153,7 @@ TEST_F(SessionTest, ReportsHostStateChanges)
 {
     session.receive(example("hello"));
     transport.messages.clear();
-    engine::Settings restored;
+    engine::Settings restored = engine.settings().get();
     restored.set(SettingId::kTriggerLevel, 0.5);
     engine.settings().replace(restored);
     session.syncSettings();

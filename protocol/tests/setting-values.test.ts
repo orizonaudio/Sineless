@@ -9,7 +9,7 @@ import {
 describe("setting values", () => {
   test("defaults follow the settings table", () => {
     const defaults = defaultSettingValues();
-    expect(defaults.timeSpan).toBe(0.02);
+    expect(defaults.timeSpan).toBe(1);
     expect(defaults.channelViews).toEqual(["left", "right"]);
     expect(defaults.triggerMode).toBe("auto");
     expect(defaults.triggerSource).toBe("mid");

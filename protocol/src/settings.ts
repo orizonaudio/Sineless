@@ -41,7 +41,7 @@ export const settings = {
     kind: "number",
     minimum: 0.0005,
     maximum: 4,
-    defaultValue: 0.02,
+    defaultValue: 1,
     logarithmic: true,
   },
   verticalScale: {
@@ -100,7 +100,7 @@ export const settings = {
   timeBase: {
     kind: "enum",
     values: "TimeBase",
-    defaultValue: TimeBase.seconds,
+    defaultValue: TimeBase.beats,
   },
   beatSpan: { kind: "enum", values: "BeatSpan", defaultValue: BeatSpan.oneBar },
 } as const satisfies Record<string, Setting>;

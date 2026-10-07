@@ -36,6 +36,11 @@ function connect(): {
   return { transport, messages, frames };
 }
 
+// Beats is the default time base; these tests use seconds.
+function useSeconds(transport: MockTransport): void {
+  transport.send({ type: "setSetting", name: "timeBase", value: "seconds" });
+}
+
 describe("mock back end", () => {
   test("answers hello with a snapshot and a first frame", () => {
     const { messages, frames } = connect();
@@ -57,6 +62,7 @@ describe("mock back end", () => {
 
   test("synthesises frames in the real format for the selected views", () => {
     const { transport, frames } = connect();
+    useSeconds(transport);
     transport.send({
       type: "setSetting",
       name: "channelViews",
@@ -85,7 +91,7 @@ describe("mock back end", () => {
     transport.send({ type: "setSetting", name: "timeSpan", value: 99 });
     expect(messages.slice(1)).toEqual([
       { type: "stateChanged", name: "triggerMode", value: "normal" },
-      { type: "stateChanged", name: "timeSpan", value: 0.02 },
+      { type: "stateChanged", name: "timeSpan", value: 1 },
     ]);
   });
 
@@ -104,6 +110,7 @@ describe("mock back end", () => {
 
   test("synthesises only the visible part at full resolution", () => {
     const { transport, frames } = connect();
+    useSeconds(transport);
     transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
     transport.send({ type: "view", start: 0.5, end: 0.6 });
     transport.send({ type: "credit" });
@@ -115,6 +122,7 @@ describe("mock back end", () => {
 
   test("rolls long spans and reports freeze", () => {
     const { transport, frames } = connect();
+    useSeconds(transport);
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
     transport.send({ type: "freeze", frozen: true });
     transport.send({ type: "credit" });

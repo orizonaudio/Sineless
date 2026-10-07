@@ -75,7 +75,14 @@ DecodedFrame decode(const std::vector<std::byte>& bytes)
 class AnalyzerTest : public ::testing::Test
 {
 protected:
-    void SetUp() override { engine.setSampleRate(kSampleRate); }
+    void SetUp() override
+    {
+        engine.setSampleRate(kSampleRate);
+        // These tests use the seconds time base at a 20 ms span unless they set another.
+        engine.settings().set(SettingId::kTimeBase,
+                              static_cast<double>(protocol::TimeBase::kSeconds));
+        engine.settings().set(SettingId::kTimeSpan, 0.02);
+    }
 
     // Appends a tone on L and the same tone at half amplitude on R.
     void writeTone(double frequency, double seconds, double amplitude)

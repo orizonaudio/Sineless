@@ -16,7 +16,7 @@ describe("C++ generator", () => {
 
   test("emits one descriptor per setting with its range and default", () => {
     expect(header).toContain(
-      '{SettingId::kTimeSpan, "timeSpan", SettingKind::kNumber, 0.0005, 4, 0.02, true, {}},',
+      '{SettingId::kTimeSpan, "timeSpan", SettingKind::kNumber, 0.0005, 4, 1, true, {}},',
     );
     expect(header).toContain(
       '{SettingId::kChannelViews, "channelViews", SettingKind::kFlags, 1, 15, 3, false, kChannelViewNames},',
