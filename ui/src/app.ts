@@ -385,6 +385,7 @@ export class OscilloscopeApp {
     details.addEventListener("click", () => {
       popover.hidden = !popover.hidden;
       details.setAttribute("aria-expanded", String(!popover.hidden));
+      this.placeTriggerPopover();
     });
     document.addEventListener("pointerdown", (event) => {
       const target = event.target as Node;
@@ -414,6 +415,23 @@ export class OscilloscopeApp {
       this.backend.arm();
       this.backend.freeze(false);
     });
+  }
+
+  // Opens the trigger popover above the Trigger group, aligned with its left edge, kept inside
+  // the window.
+  private placeTriggerPopover(): void {
+    const popover = element("trigger-popover");
+    if (popover.hidden) {
+      return;
+    }
+    const group = element("trigger-group");
+    const strip = popover.offsetParent?.clientWidth ?? window.innerWidth;
+    const margin = 8;
+    const left = Math.min(
+      group.offsetLeft,
+      strip - popover.offsetWidth - margin,
+    );
+    popover.style.left = `${String(Math.max(margin, left))}px`;
   }
 
   // Keeps the control strip on one row: the first fit, from full labels down to the essential
@@ -502,6 +520,7 @@ export class OscilloscopeApp {
 
   private resize(): void {
     this.fitControls();
+    this.placeTriggerPopover();
     const ratio = window.devicePixelRatio;
     for (const canvas of [this.gridCanvas, this.traceCanvas]) {
       canvas.width = Math.round(this.screen.clientWidth * ratio);

@@ -418,7 +418,6 @@ button:focus-visible,
 .popover {
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 8px;
   display: grid;
   gap: 8px;
   padding: 10px 12px;
