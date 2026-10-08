@@ -1,6 +1,11 @@
 // Decodes a display frame encoded in the layout of frame.ts (little-endian).
 import { ChannelView, FrameMode } from "./enums.ts";
-import { FrameFlag, frameHeader, type FrameHeaderFieldName } from "./frame.ts";
+import {
+  FrameFlag,
+  frameHeader,
+  matchValues,
+  type FrameHeaderFieldName,
+} from "./frame.ts";
 
 export interface Frame {
   readonly sequence: number;
@@ -32,16 +37,24 @@ export interface Frame {
   // with the same laneSet.
   readonly lanes: readonly Float32Array[];
   readonly laneSet: number;
-  // Compare frames: the analysis of this track and its partner.
+  // Compare frames: the analysis of the compared tracks; their sum is the last lane.
   readonly comparison: Comparison | undefined;
 }
 
 export interface Comparison {
   readonly sumGain: number;
-  readonly correlation: number;
-  readonly offset: number;
-  readonly inverted: boolean;
   readonly fixedGain: number;
+  // One per track lane, in lane order; zeros for tracks not compared and for this track.
+  readonly matches: readonly Match[];
+}
+
+// How a track lines up with this track. Unrelated tracks match nowhere clearly: not `related`,
+// with no offset and not inverted.
+export interface Match {
+  readonly correlation: number;
+  readonly related: boolean;
+  readonly offset: number; // Samples the track lags this track (negative: it leads).
+  readonly inverted: boolean;
 }
 
 const offsets = Object.fromEntries(
@@ -84,6 +97,24 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     }
   }
   const lanes = Array.from({ length: u8("laneCount") }, next);
+  const compared = (flags & FrameFlag.compared) !== 0;
+  const matches: Match[] = [];
+  if (compared) {
+    const count = Math.max(lanes.length - 1, 0);
+    if (offset + count * matchValues * 4 > buffer.byteLength) {
+      throw new Error("Frame data is shorter than its header announces");
+    }
+    const values = new Float32Array(buffer, offset, count * matchValues);
+    for (let i = 0; i < count; i++) {
+      const polarity = values[i * matchValues + 2] ?? 0;
+      matches.push({
+        correlation: values[i * matchValues] ?? 0,
+        related: polarity !== 0,
+        offset: values[i * matchValues + 1] ?? 0,
+        inverted: polarity < 0,
+      });
+    }
+  }
 
   const frequency = f32("frequency");
   const cursor = f32("cursor");
@@ -111,15 +142,8 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     views,
     lanes,
     laneSet: u32("laneSet"),
-    comparison:
-      (flags & FrameFlag.compared) === 0
-        ? undefined
-        : {
-            sumGain: f32("sumGain"),
-            correlation: f32("correlation"),
-            offset: f32("offset"),
-            inverted: (flags & FrameFlag.inverted) !== 0,
-            fixedGain: f32("fixedGain"),
-          },
+    comparison: compared
+      ? { sumGain: f32("sumGain"), fixedGain: f32("fixedGain"), matches }
+      : undefined,
   };
 }

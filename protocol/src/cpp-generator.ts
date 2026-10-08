@@ -1,6 +1,6 @@
 // Generates the C++ header that mirrors this schema. Enumerators and constants become kPascalCase.
 import { beatSpanLengths, enums, type EnumName } from "./enums.ts";
-import { frameHeader, FrameFlag } from "./frame.ts";
+import { frameHeader, FrameFlag, matchValues } from "./frame.ts";
 import { MessageType } from "./messages.ts";
 import { settings, type Setting } from "./settings.ts";
 import { protocolVersion } from "./version.ts";
@@ -146,6 +146,9 @@ function frameDeclaration(): string {
     "};",
     "",
     enumDeclaration("FrameFlag", FrameFlag),
+    "",
+    "// Values per track in a Compare frame's matches, after the lane data.",
+    `inline constexpr std::size_t kMatchValues = ${String(matchValues)};`,
   ].join("\n");
 }
 

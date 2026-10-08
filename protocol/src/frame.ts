@@ -6,11 +6,15 @@
 // Multi-track frames have `laneCount` above 0 and no views: the data holds that many lanes, one
 // per track, in the order of the `lanes` message whose `laneSet` matches the frame's.
 //
-// Compare frames (flag `compared`) hold three lanes: this track, the partner and their sum. Over
-// the visible part, `sumGain` is the sum's level against the level two unrelated signals of the
-// same levels would give, in dB (0 harmless, below 0 cancelling); `correlation` runs from -1 to
-// +1; `offset` is how many samples the partner lags this track (negative: it leads), flag
-// `inverted` when its polarity is opposite; `fixedGain` is the summing gain with that corrected.
+// Compare frames (flag `compared`) hold one lane per track and then the sum of the compared
+// tracks (those whose lanes entry has `compared`), so `laneCount` is the track count plus one.
+// Over the visible part, `sumGain` is the sum's level against the level the same tracks would
+// give if unrelated, in dB (0 harmless, below 0 cancelling), and `fixedGain` the same with every
+// compared track corrected as found. After the lane data comes one match per track, in lane
+// order, of three float32 values each: the correlation with this track (-1 to +1), the offset in
+// samples by which the track lags this track (negative: it leads), and its polarity: 1 when it
+// matches this track best as it is, -1 when flipped, 0 when it matches nowhere clearly (unrelated
+// sounds; the offset is then 0). Tracks that are not compared, and this track, have zeros.
 //
 // `samplesPerPoint` is the number of samples each point covers. The visible span starts
 // `startFraction` samples after the first point (sub-sample trigger alignment). Readouts cover
@@ -52,8 +56,6 @@ export const frameHeaderFields = [
   { name: "visibleSamples", type: "f32" },
   { name: "laneSet", type: "u32" },
   { name: "sumGain", type: "f32" },
-  { name: "correlation", type: "f32" },
-  { name: "offset", type: "f32" },
   { name: "fixedGain", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
@@ -68,8 +70,10 @@ export const FrameFlag = {
   synced: 8,
   limited: 16,
   compared: 32,
-  inverted: 64,
 } as const;
+
+// Values per track in a Compare frame's matches: correlation, offset and polarity.
+export const matchValues = 3;
 
 const fieldSizes: Record<FieldType, number> = { u8: 1, u16: 2, u32: 4, f32: 4 };
 

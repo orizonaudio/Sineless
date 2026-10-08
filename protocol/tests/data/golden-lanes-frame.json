@@ -1,9 +1,9 @@
 {
-  "description": "A Compare frame encoded by Python's struct module, independently of both implementations. Mode 1 is raw; flags 104 is synced (8), compared (32) and inverted (64); views 0 and laneCount 3: this track, the partner and their sum follow the 80-byte header, in the order of the lanes message with laneSet 42. The partner lags by 62.5 samples with opposite polarity; the sum is 6.5 dB below unrelated, 2.75 dB above with the fix.",
+  "description": "A Compare frame encoded by Python's struct module, independently of both implementations. Mode 1 is raw; flags 40 is synced (8) and compared (32); views 0 and laneCount 3: this track, one other track and the sum of the compared tracks follow the 72-byte header, in the order of the lanes message with laneSet 42, then one match per track. This track's match is zeros; the other track correlates at -0.75 and lags by 62.5 samples with opposite polarity (-1). The sum is 6.5 dB below unrelated, 2.75 dB above with the fix.",
   "header": {
     "sequence": 11,
     "mode": 1,
-    "flags": 104,
+    "flags": 40,
     "views": 0,
     "laneCount": 3,
     "pointCount": 2,
@@ -21,8 +21,6 @@
     "visibleSamples": 2.0,
     "laneSet": 42,
     "sumGain": -6.5,
-    "correlation": -0.75,
-    "offset": 62.5,
     "fixedGain": 2.75
   },
   "lanes": [
@@ -30,5 +28,19 @@
     [0.5, 0.0],
     [-1.0, 1.0]
   ],
-  "hex": "0b00000001680003020000000000803f000000000000003f0000803e000000000000003f000080410000804000008040000000000000803f000000402a0000000000d0c0000040bf00007a42000030400000803e000080be0000003f00000000000080bf0000803f"
+  "hex": "0b00000001280003020000000000803f000000000000003f0000803e000000000000003f000080410000804000008040000000000000803f000000402a0000000000d0c0000030400000803e000080be0000003f00000000000080bf0000803f000000000000000000000000000040bf00007a42000080bf",
+  "matches": [
+    {
+      "correlation": 0.0,
+      "related": false,
+      "offset": 0.0,
+      "inverted": false
+    },
+    {
+      "correlation": -0.75,
+      "related": true,
+      "offset": 62.5,
+      "inverted": true
+    }
+  ]
 }

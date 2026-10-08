@@ -28,12 +28,16 @@ export interface FrameContent {
   // Multi-track frames: lanes instead of views.
   readonly lanes?: readonly ArrayLike<number>[];
   readonly laneSet?: number;
+  // Compare frames: the last lane is the sum, and there is one match per other lane.
   readonly comparison?: {
     readonly sumGain: number;
-    readonly correlation: number;
-    readonly offset: number;
-    readonly inverted: boolean;
     readonly fixedGain: number;
+    readonly matches: readonly {
+      readonly correlation: number;
+      readonly related: boolean;
+      readonly offset: number;
+      readonly inverted: boolean;
+    }[];
   };
 }
 
@@ -48,6 +52,11 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   const blocks = [
     ...ordered.map((view) => content.views.get(view) ?? []),
     ...(content.lanes ?? []),
+    ...(content.comparison?.matches.map((match) => [
+      match.correlation,
+      match.offset,
+      match.related ? (match.inverted ? -1 : 1) : 0,
+    ]) ?? []),
   ];
   const dataLength = blocks.reduce<number>(
     (sum, values) => sum + values.length,
@@ -61,8 +70,7 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     (content.roll ? FrameFlag.roll : 0) |
     (content.synced === true ? FrameFlag.synced : 0) |
     (content.limited === true ? FrameFlag.limited : 0) |
-    (content.comparison === undefined ? 0 : FrameFlag.compared) |
-    (content.comparison?.inverted === true ? FrameFlag.inverted : 0);
+    (content.comparison === undefined ? 0 : FrameFlag.compared);
   header.setUint32(offsets.sequence, content.sequence, true);
   header.setUint8(offsets.mode, content.mode);
   header.setUint8(offsets.flags, flags);
@@ -98,12 +106,6 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   );
   header.setUint32(offsets.laneSet, content.laneSet ?? 0, true);
   header.setFloat32(offsets.sumGain, content.comparison?.sumGain ?? 0, true);
-  header.setFloat32(
-    offsets.correlation,
-    content.comparison?.correlation ?? 0,
-    true,
-  );
-  header.setFloat32(offsets.offset, content.comparison?.offset ?? 0, true);
   header.setFloat32(
     offsets.fixedGain,
     content.comparison?.fixedGain ?? 0,

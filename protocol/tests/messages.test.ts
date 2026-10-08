@@ -3,11 +3,11 @@ import { expect, test } from "vitest";
 import {
   MessageType,
   type ArmMessage,
+  type CompareMessage,
   type CreditMessage,
   type FreezeMessage,
   type HelloMessage,
   type PanMessage,
-  type PartnerMessage,
   type PreviewFixMessage,
   type SetSettingMessage,
   type ViewMessage,
@@ -39,7 +39,7 @@ const typed = {
   pan: examples.pan satisfies Shape<PanMessage>,
   arm: examples.arm satisfies Shape<ArmMessage>,
   view: examples.view satisfies Shape<ViewMessage>,
-  partner: examples.partner satisfies Shape<PartnerMessage>,
+  compare: examples.compare satisfies Shape<CompareMessage>,
   previewFix: examples.previewFix satisfies Shape<PreviewFixMessage>,
 };
 

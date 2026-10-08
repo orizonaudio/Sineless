@@ -63,10 +63,8 @@ test("encodes the golden lanes frame byte for byte", () => {
     laneSet: header.laneSet,
     comparison: {
       sumGain: header.sumGain,
-      correlation: header.correlation,
-      offset: header.offset,
-      inverted: true,
       fixedGain: header.fixedGain,
+      matches: goldenLanes.matches,
     },
   });
   expect(toHex(buffer)).toBe(goldenLanes.hex);

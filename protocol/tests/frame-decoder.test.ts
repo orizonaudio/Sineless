@@ -55,10 +55,8 @@ describe("frame decoder", () => {
     );
     expect(frame.comparison).toEqual({
       sumGain: goldenLanes.header.sumGain,
-      correlation: goldenLanes.header.correlation,
-      offset: goldenLanes.header.offset,
-      inverted: true,
       fixedGain: goldenLanes.header.fixedGain,
+      matches: goldenLanes.matches,
     });
   });
 
@@ -80,7 +78,11 @@ describe("frame decoder", () => {
     expect(() => decodeFrame(buffer.slice(0, 16))).toThrow(
       /shorter than its header/,
     );
-    expect(() => decodeFrame(buffer.slice(0, 88))).toThrow(
+    expect(() => decodeFrame(buffer.slice(0, 80))).toThrow(
+      /shorter than its header announces/,
+    );
+    const lanes = fromHex(goldenLanes.hex);
+    expect(() => decodeFrame(lanes.slice(0, lanes.byteLength - 4))).toThrow(
       /shorter than its header announces/,
     );
   });

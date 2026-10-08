@@ -48,6 +48,7 @@ describe("C++ generator", () => {
     expect(header).toContain(
       "static constexpr std::size_t kSamplesPerPointOffset = 12;",
     );
+    expect(header).toContain("inline constexpr std::size_t kMatchValues = 3;");
   });
 });
 

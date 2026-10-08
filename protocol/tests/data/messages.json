@@ -45,9 +45,9 @@
     "start": 0.25,
     "end": 0.5
   },
-  "partner": {
-    "type": "partner",
-    "id": 3
+  "compare": {
+    "type": "compare",
+    "ids": [3, 5]
   },
   "previewFix": {
     "type": "previewFix",

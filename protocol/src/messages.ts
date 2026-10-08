@@ -16,7 +16,7 @@ export const MessageType = {
   arm: "arm",
   view: "view",
   lanes: "lanes",
-  partner: "partner",
+  compare: "compare",
   previewFix: "previewFix",
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -107,33 +107,34 @@ export interface ViewMessage {
 
 // One track of the multi-track view. `id` is stable while the track exists; `name` is empty and
 // `colour` null when the host reports none; `own` marks the instance whose window shows the lanes.
+// In the Compare view, `compared` marks the tracks summed and measured against this one (this
+// track included whenever another is).
 export interface LaneLabel {
   readonly id: number;
   readonly name: string;
   readonly colour: number | null; // 0xRRGGBB
   readonly own: boolean;
+  readonly compared: boolean;
 }
 
 // Engine to UI. The tracks behind the lanes of frames whose laneSet matches, in lane order, and
-// how many more tracks of the group are not drawn. In the Compare view, `candidates` lists the
-// group's other tracks, to choose the partner from (empty otherwise). Sent when the set changes.
+// how many more tracks of the group are not drawn. Sent when the set changes.
 export interface LanesMessage {
   readonly type: "lanes";
   readonly laneSet: number;
   readonly lanes: readonly LaneLabel[];
   readonly hidden: number;
-  readonly candidates: readonly LaneLabel[];
 }
 
-// UI to engine. Compare view: the partner track, by the id of its lanes entry. Temporary, not a
-// setting.
-export interface PartnerMessage {
-  readonly type: "partner";
-  readonly id: number;
+// UI to engine. Compare view: the other tracks to compare with this one, by the ids of their
+// lanes entries. Temporary, not a setting.
+export interface CompareMessage {
+  readonly type: "compare";
+  readonly ids: readonly number[];
 }
 
-// UI to engine. Compare view: draw the sum as if the partner were shifted and flipped as the
-// analysis suggests. Temporary, not a setting.
+// UI to engine. Compare view: draw the sum as if every compared track were shifted and flipped
+// as the analysis suggests. Temporary, not a setting.
 export interface PreviewFixMessage {
   readonly type: "previewFix";
   readonly on: boolean;
@@ -148,7 +149,7 @@ export type UiToEngineMessage =
   | PanMessage
   | ArmMessage
   | ViewMessage
-  | PartnerMessage
+  | CompareMessage
   | PreviewFixMessage;
 
 export type EngineToUiMessage =
