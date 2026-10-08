@@ -115,12 +115,14 @@ export interface LaneLabel {
 }
 
 // Engine to UI. The tracks behind the lanes of frames whose laneSet matches, in lane order, and
-// how many more tracks of the group are not drawn. Sent when the set changes.
+// how many more tracks of the group are not drawn. In the Compare view, `candidates` lists the
+// group's other tracks, to choose the partner from (empty otherwise). Sent when the set changes.
 export interface LanesMessage {
   readonly type: "lanes";
   readonly laneSet: number;
   readonly lanes: readonly LaneLabel[];
   readonly hidden: number;
+  readonly candidates: readonly LaneLabel[];
 }
 
 // UI to engine. Compare view: the partner track, by the id of its lanes entry. Temporary, not a

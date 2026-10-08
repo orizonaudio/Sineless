@@ -9,6 +9,7 @@ add_library(engine STATIC
     src/HoldBuffer.cpp
     src/InstanceRegistry.cpp
     src/LaneHold.cpp
+    src/PairAnalysis.cpp
     src/Readouts.cpp
     src/Reducer.cpp
     src/Roll.cpp
@@ -43,6 +44,7 @@ if(BUILD_TESTING)
         tests/FrameEncoderTests.cpp
         tests/HoldBufferTests.cpp
         tests/InstanceRegistryTests.cpp
+        tests/PairAnalysisTests.cpp
         tests/ReadoutsTests.cpp
         tests/ReducerTests.cpp
         tests/RollTests.cpp

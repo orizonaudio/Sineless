@@ -1,9 +1,11 @@
 #pragma once
 
 #include "engine/Engine.h"
+#include "engine/FrameEncoder.h"
 #include "engine/HoldBuffer.h"
 #include "engine/InstanceRegistry.h"
 #include "engine/LaneHold.h"
+#include "engine/PairAnalysis.h"
 #include "engine/Settings.h"
 #include "engine/SweepImage.h"
 #include "engine/Trigger.h"
@@ -34,12 +36,14 @@ struct LaneLabel
 };
 
 // The tracks behind the lanes of frames whose laneSet is `id`, in lane order, and how many more
-// tracks of the group are not drawn.
+// tracks of the group are not drawn. In the Compare view, `candidates` lists the group's other
+// tracks, from which the partner is chosen.
 struct LaneSet
 {
     std::uint32_t id = 0;
     std::vector<LaneLabel> lanes;
     std::size_t hidden = 0;
+    std::vector<LaneLabel> candidates;
 };
 
 // Per-editor-session analysis: turns the capture into display frames. It is
@@ -123,12 +127,15 @@ private:
     };
 
     Commands takeCommands();
-    std::uint64_t selectLanes(const Settings& settings);
+    std::uint64_t selectLanes(const Settings& settings, const Commands& command);
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,
-                     std::size_t columns, std::vector<std::byte>& frame);
-    void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
+                     const Commands& command, std::vector<std::byte>& frame);
+    void renderPair(FrameHeaderValues header, std::size_t first, std::size_t end,
+                    std::size_t columns, bool previewFix, std::vector<std::byte>& frame);
+    void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden,
+                      std::vector<LaneLabel> candidates);
     // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
     void followTransport(const Settings& settings, Commands& command);
     bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
@@ -168,6 +175,13 @@ private:
     std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;
     std::vector<std::uint64_t> laneOrder;
     std::uint64_t ownLane = 0; // Serial of this instance's lane.
+    // Compare view: the partner shown last, and whether this frame compares a pair.
+    std::optional<std::uint64_t> lastPartner;
+    bool comparing = false;
+    bool lastPreviewFix = false;
+    std::vector<float> pairA;
+    std::vector<float> pairB;
+    std::vector<float> pairSum;
     std::uint32_t lastLaneSet = 0;
     mutable std::mutex laneMutex;
     LaneSet published;

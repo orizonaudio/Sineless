@@ -81,6 +81,7 @@ describe("backend", () => {
       laneSet: 3,
       lanes: [{ id: 1, name: "Kick", colour: null, own: true }],
       hidden: 0,
+      candidates: [],
     });
     const bytes = new Uint8Array(golden.hex.length / 2);
     for (let i = 0; i < bytes.length; i++) {

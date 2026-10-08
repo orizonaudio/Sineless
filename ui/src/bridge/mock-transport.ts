@@ -224,6 +224,7 @@ export class MockTransport implements Transport {
         own,
       })),
       hidden: 0,
+      candidates: [],
     });
   }
 

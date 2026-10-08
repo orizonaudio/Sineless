@@ -199,15 +199,22 @@ void Session::syncLanes()
     if (lanes.id == 0 || lanes.id == lastLaneSet) {
         return;
     }
-    nlohmann::json labels = nlohmann::json::array();
-    for (const engine::LaneLabel& lane : lanes.lanes) {
-        labels.push_back({{"id", lane.id},
-                          {"name", lane.name},
-                          {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
-                          {"own", lane.own}});
-    }
-    transport.sendMessage(
-        {{"type", "lanes"}, {"laneSet", lanes.id}, {"lanes", labels}, {"hidden", lanes.hidden}});
+    const auto labels = [](const std::vector<engine::LaneLabel>& entries) {
+        nlohmann::json list = nlohmann::json::array();
+        for (const engine::LaneLabel& lane : entries) {
+            list.push_back(
+                {{"id", lane.id},
+                 {"name", lane.name},
+                 {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
+                 {"own", lane.own}});
+        }
+        return list;
+    };
+    transport.sendMessage({{"type", "lanes"},
+                           {"laneSet", lanes.id},
+                           {"lanes", labels(lanes.lanes)},
+                           {"hidden", lanes.hidden},
+                           {"candidates", labels(lanes.candidates)}});
     lastLaneSet = lanes.id;
 }
 

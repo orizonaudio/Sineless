@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <gtest/gtest.h>
 #include <numbers>
 #include <vector>
@@ -622,15 +623,26 @@ protected:
         analyzer->setColumns(8000); // More columns than samples: raw points, exact values.
     }
 
+    // A track's audio, as a function of the host time in samples.
+    using Signal = std::function<float(std::uint64_t)>;
+    static float hostTime(std::uint64_t sample) { return static_cast<float>(sample); }
+
     // A new instance whose audio is `value` everywhere, or the host time when `value` is unset.
     std::shared_ptr<Engine> join(std::optional<float> value = std::nullopt,
                                  protocol::Group group = protocol::Group::kA)
+    {
+        return joinWith(value ? Signal([level = *value](std::uint64_t) { return level; })
+                              : Signal(hostTime),
+                        group);
+    }
+
+    std::shared_ptr<Engine> joinWith(Signal signal, protocol::Group group = protocol::Group::kA)
     {
         auto engine = std::make_shared<Engine>();
         engine->setSampleRate(kSampleRate);
         engine->settings().set(SettingId::kGroup, static_cast<double>(group));
         registry.add(engine);
-        tracks.emplace_back(engine, value);
+        tracks.emplace_back(engine, std::move(signal));
         return engine;
     }
 
@@ -639,10 +651,10 @@ protected:
     {
         constexpr std::uint64_t kBlock = 480;
         for (std::uint64_t done = 0; done < count; done += kBlock) {
-            for (const auto& [engine, value] : tracks) {
+            for (const auto& [engine, signal] : tracks) {
                 std::vector<float> block(kBlock);
                 for (std::uint64_t i = 0; i < kBlock; ++i) {
-                    block[i] = value.value_or(static_cast<float>(hostSample + i));
+                    block[i] = signal(hostSample + i);
                 }
                 std::array<const float*, 2> channels{block.data(), block.data()};
                 engine->captureRing().write(channels.data(), 2, static_cast<int>(kBlock));
@@ -660,11 +672,10 @@ protected:
 
     std::optional<DecodedFrame> produce()
     {
-        std::vector<std::byte> bytes;
-        if (!analyzer->produce(bytes)) {
+        if (!analyzer->produce(analyzerBytes)) {
             return std::nullopt;
         }
-        return decode(bytes);
+        return decode(analyzerBytes);
     }
 
     static std::vector<float> lane(const DecodedFrame& frame, std::size_t index)
@@ -675,9 +686,10 @@ protected:
     }
 
     InstanceRegistry registry;
-    std::vector<std::pair<std::shared_ptr<Engine>, std::optional<float>>> tracks;
+    std::vector<std::pair<std::shared_ptr<Engine>, Signal>> tracks;
     std::shared_ptr<Engine> own;
     std::unique_ptr<Analyzer> analyzer;
+    std::vector<std::byte> analyzerBytes; // The last frame, for header fields the decoder skips.
     std::uint64_t hostSample = 0;
 };
 
@@ -707,7 +719,7 @@ TEST_F(MultiTrackTest, DrawsOneMidLanePerTrackOfTheGroup)
 
 TEST_F(MultiTrackTest, AlignsTracksThatStartedAtDifferentTimesOnTheClock)
 {
-    tracks.front().second = std::nullopt; // The own track records the host time too.
+    tracks.front().second = hostTime; // The own track records the host time too.
     play(3360);
     join(); // Its capture starts 3360 samples later, at a different index.
     play(9600);
@@ -724,7 +736,8 @@ TEST_F(MultiTrackTest, KeepsTheOwnTrackWithinTheLaneLimit)
     for (int track = 0; track < 9; ++track) {
         auto engine = std::make_shared<Engine>();
         crowded.add(engine);
-        tracks.emplace_back(engine, static_cast<float>(track + 10));
+        tracks.emplace_back(
+            engine, [level = static_cast<float>(track + 10)](std::uint64_t) { return level; });
     }
     crowded.add(own); // Created last: it would be the tenth lane.
     Analyzer lanes(*own, crowded);
@@ -791,7 +804,7 @@ TEST_F(MultiTrackTest, DrawsChannelViewsInSingleMode)
 
 TEST_F(MultiTrackTest, HoldsEveryLaneWhileFrozen)
 {
-    tracks.front().second = std::nullopt;
+    tracks.front().second = hostTime;
     join();
     play(9600);
     const auto live = produce();
@@ -810,7 +823,7 @@ TEST_F(MultiTrackTest, HoldsEveryLaneWhileFrozen)
 
 TEST_F(MultiTrackTest, ZoomsEveryLaneAtFullResolution)
 {
-    tracks.front().second = std::nullopt;
+    tracks.front().second = hostTime;
     join();
     play(9600);
     analyzer->setView(0.25, 0.5);
@@ -826,7 +839,7 @@ TEST_F(MultiTrackTest, ZoomsEveryLaneAtFullResolution)
 // Freezing holds every lane's audio, so a longer beat span chosen while frozen shows it.
 TEST_F(MultiTrackTest, ShowsALongerSpanChosenWhileFrozenInEveryLane)
 {
-    tracks.front().second = std::nullopt;
+    tracks.front().second = hostTime;
     join();
     play(30000);
     const auto frozenAt = static_cast<float>(hostSample);
@@ -857,7 +870,7 @@ protected:
         own->settings().set(SettingId::kTimeSpan, 0.1); // 4800 samples.
         own->settings().set(SettingId::kTriggerMode,
                             static_cast<double>(protocol::TriggerMode::kFree));
-        tracks.front().second = std::nullopt; // Every track records the host time.
+        tracks.front().second = hostTime; // Every track records the host time.
     }
 };
 
@@ -892,6 +905,130 @@ TEST_F(SecondsLanesTest, HoldsEveryLaneAtTheFreeze)
     EXPECT_EQ(lane(*frame, 1), lane(*frame, 0));
     const std::vector<float> held = lane(*frame, 0);
     EXPECT_EQ(held.back(), frozenAt - 1.0f) << "the newest sample before the freeze";
+}
+
+// The Compare view: this track, a partner and their sum. Tracks carry deterministic noise of the
+// host time, so a partner can be the same signal inverted, delayed, or unrelated.
+float noiseAt(std::uint64_t sample, std::uint64_t seed)
+{
+    std::uint64_t x = sample * 0x9E3779B97F4A7C15ULL + seed * 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 30U;
+    x *= 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 27U;
+    return static_cast<float>(x >> 40U) / static_cast<float>(1U << 24U) - 0.5f;
+}
+
+class CompareTest : public MultiTrackTest
+{
+protected:
+    void SetUp() override
+    {
+        MultiTrackTest::SetUp();
+        own->settings().set(SettingId::kDisplayMode,
+                            static_cast<double>(protocol::DisplayMode::kCompare));
+        tracks.front().second = [](std::uint64_t sample) { return noiseAt(sample, 1); };
+    }
+
+    std::uint64_t idOf(const std::shared_ptr<Engine>& engine) const
+    {
+        for (const GroupMember& member : registry.members(protocol::Group::kA)) {
+            if (member.engine == engine) {
+                return member.serial;
+            }
+        }
+        return 0;
+    }
+};
+
+TEST_F(CompareTest, ComparesThisTrackWithTheFirstOtherTrack)
+{
+    const auto inverted = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    const auto other = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 3) << "this track, the partner and their sum";
+    EXPECT_TRUE(frame->has(FrameFlag::kCompared));
+    EXPECT_TRUE(frame->has(FrameFlag::kInverted));
+    const auto sumGain = get<float>(analyzerBytes, FrameHeader::kSumGainOffset);
+    EXPECT_LT(sumGain, -60.0f) << "an inverted copy cancels";
+    const std::vector<float> sum = lane(*frame, 2);
+    EXPECT_LT(*std::ranges::max_element(sum, {}, [](float v) { return std::abs(v); }), 1e-6f);
+
+    const LaneSet lanes = analyzer->laneSet();
+    ASSERT_EQ(lanes.lanes.size(), 2u);
+    EXPECT_TRUE(lanes.lanes[0].own);
+    EXPECT_EQ(lanes.lanes[1].id, idOf(inverted));
+    ASSERT_EQ(lanes.candidates.size(), 2u);
+    EXPECT_EQ(lanes.candidates[1].id, idOf(other));
+}
+
+TEST_F(CompareTest, SwitchesToTheRequestedPartner)
+{
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    const auto unrelated = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
+    play(9600);
+    analyzer->setPartner(idOf(unrelated));
+    ASSERT_TRUE(produce());
+    EXPECT_EQ(analyzer->laneSet().lanes[1].id, idOf(unrelated));
+    EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kSumGainOffset), 0.0f, 0.5f)
+        << "unrelated tracks sum harmlessly";
+
+    analyzer->setPartner(12345); // No such track: the last partner stays.
+    play(480);
+    ASSERT_TRUE(produce());
+    EXPECT_EQ(analyzer->laneSet().lanes[1].id, idOf(unrelated));
+}
+
+TEST_F(CompareTest, PreviewsTheFixForALatePartner)
+{
+    joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
+    play(9600);
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_FLOAT_EQ(get<float>(analyzerBytes, FrameHeader::kOffsetOffset), 37.0f) << "37 late";
+    EXPECT_FALSE(frame->has(FrameFlag::kInverted));
+    EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kFixedGainOffset), 3.0f, 0.1f);
+
+    analyzer->setPreviewFix(true);
+    frame = produce();
+    ASSERT_TRUE(frame);
+    const std::vector<float> a = lane(*frame, 0);
+    const std::vector<float> sum = lane(*frame, 2);
+    // The sweep's seam at the playhead joins two cycles; a shifted partner crosses it there.
+    const auto seam = static_cast<std::ptrdiff_t>(frame->cursor * static_cast<float>(a.size()));
+    for (std::size_t i = 0; i + 37 < a.size(); ++i) {
+        if (std::abs(static_cast<std::ptrdiff_t>(i) - seam) <= 37) {
+            continue;
+        }
+        ASSERT_NEAR(sum[i], 2.0f * a[i], 1e-5f) << "lined up, the partner doubles this track";
+    }
+}
+
+TEST_F(CompareTest, ShowsThisTrackAloneWithoutAPartner)
+{
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->laneCount, 1);
+    EXPECT_FALSE(frame->has(FrameFlag::kCompared));
+    EXPECT_TRUE(analyzer->laneSet().candidates.empty());
+}
+
+TEST_F(CompareTest, ComparesInSecondsModeToo)
+{
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    own->settings().set(SettingId::kTimeSpan, 0.1);
+    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    play(3360);
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); }); // Starts later.
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 3);
+    EXPECT_FALSE(frame->has(FrameFlag::kSynced));
+    EXPECT_TRUE(frame->has(FrameFlag::kInverted));
+    EXPECT_LT(get<float>(analyzerBytes, FrameHeader::kSumGainOffset), -60.0f);
 }
 
 } // namespace
