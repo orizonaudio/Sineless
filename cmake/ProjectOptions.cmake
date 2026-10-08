@@ -16,6 +16,12 @@ if(ORIZON_THREAD_SANITIZER)
     add_link_options(-fsanitize=thread)
 endif()
 
+option(ORIZON_ADDRESS_SANITIZER "Build with AddressSanitizer (memory errors and leaks)" OFF)
+if(ORIZON_ADDRESS_SANITIZER)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 option(ORIZON_REALTIME_SANITIZER "Build with RealtimeSanitizer (needs Clang 20+, not AppleClang)" OFF)
 if(ORIZON_REALTIME_SANITIZER)
     add_compile_options(-fsanitize=realtime)
@@ -43,4 +49,4 @@ function(orizon_forbid_dependencies target)
     endwhile()
 endfunction()
 
-option(ORIZON_BENCH "Build the editor performance benchmark (perf_bench)" OFF)
+option(ORIZON_BENCH "Build the performance benchmarks (perf_bench, process_bench)" OFF)

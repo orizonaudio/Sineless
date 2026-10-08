@@ -37,3 +37,9 @@ if(BUILD_TESTING)
         PRIVATE plugin sdk_hosting engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(plugin_tests)
 endif()
+
+# The audio-thread benchmark: process() timed against the block deadline. See bench/ProcessBench.cpp.
+if(ORIZON_BENCH)
+    add_executable(process_bench bench/ProcessBench.cpp)
+    target_link_libraries(process_bench PRIVATE plugin orizon_warnings)
+endif()

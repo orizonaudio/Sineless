@@ -4,6 +4,7 @@
 # Environment:
 #   PRESET    CMake preset to use (default: dev-local if CMakeUserPresets.json exists, else dev)
 #   LLVM_BIN  Directory with clang-format and clang-tidy (default: Homebrew LLVM)
+#   SKIP_PERFORMANCE=1  Skip the performance limits (they need a logged-in desktop session)
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -53,6 +54,11 @@ cmake --preset tsan
 cmake --build --preset tsan -j "$(sysctl -n hw.ncpu)"
 TSAN_OPTIONS=halt_on_error=1 ctest --preset tsan
 
+step "Memory errors (AddressSanitizer build)"
+cmake --preset asan
+cmake --build --preset asan -j "$(sysctl -n hw.ncpu)"
+ASAN_OPTIONS=halt_on_error=1 ctest --preset asan
+
 step "C++ lint"
 # clang-tidy cannot handle universal-binary commands (two -arch flags); lint the arm64 slice.
 mkdir -p build/lint
@@ -70,6 +76,24 @@ if [[ ! -x "$pluginval" ]]; then
 fi
 "$pluginval" --strictness-level 10 --validate-in-process \
     --validate "$buildDir/VST3/Debug/O-Scope.vst3"
+
+if [[ "${SKIP_PERFORMANCE:-}" != 1 ]]; then
+    step "Performance limits (optimised benchmark build)"
+    cmake --preset bench
+    cmake --build --preset bench -j "$(sysctl -n hw.ncpu)"
+    bench="build/bench/bin/Release"
+    # The audio thread: 8 instances together within 5% of every block's deadline at p99.9.
+    "$bench/process_bench" --instances=8 --seconds=30 --max-share=0.05 | tail -1
+    # The editor at full rate with seven tracks. CPU in % of one core, about 20 points above what
+    # an M-series Mac measures: room for noise, not for a real regression.
+    "$bench/perf_bench" --mode=multi --lanes=7 --beatspan=fourBars --warmup=10 --duration=5 \
+        --min-fps=45 --max-analysis=10 --max-total=65 | grep -E '^limit|^total'
+    "$bench/perf_bench" --mode=compare --lanes=7 --beatspan=fourBars --warmup=10 --duration=5 \
+        --min-fps=45 --max-analysis=30 --max-total=75 | grep -E '^limit|^total'
+    # Opening and closing the editor leaves nothing behind.
+    "$bench/perf_bench" --mode=multi --lanes=7 --warmup=5 --reopen=50 --min-fps=45 \
+        --max-memory-growth=20 | grep -E '^limit|^reopen'
+fi
 
 step "TypeScript"
 [[ -d node_modules ]] || npm ci

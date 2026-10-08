@@ -43,6 +43,17 @@
       }
     },
     {
+      "name": "asan",
+      "displayName": "Tests under AddressSanitizer",
+      "binaryDir": "${sourceDir}/build/asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "ORIZON_ADDRESS_SANITIZER": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      }
+    },
+    {
       "name": "bench",
       "displayName": "Optimised build of the performance benchmark",
       "binaryDir": "${sourceDir}/build/bench",
@@ -87,14 +98,18 @@
       "targets": ["engine_tests"]
     },
     {
+      "name": "asan",
+      "configurePreset": "asan"
+    },
+    {
       "name": "bench",
       "configurePreset": "bench",
-      "targets": ["perf_bench"]
+      "targets": ["perf_bench", "process_bench"]
     },
     {
       "name": "bench-debug",
       "configurePreset": "bench-debug",
-      "targets": ["perf_bench"]
+      "targets": ["perf_bench", "process_bench"]
     }
   ],
   "testPresets": [
@@ -127,6 +142,13 @@
         "include": {
           "name": "CaptureRing|AnalysisWorker|Timeline|InstanceRegistry"
         }
+      }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": {
+        "outputOnFailure": true
       }
     }
   ]
