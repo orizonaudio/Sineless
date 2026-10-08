@@ -7,6 +7,7 @@ add_library(engine STATIC
     src/ChannelViews.cpp
     src/FrameEncoder.cpp
     src/HoldBuffer.cpp
+    src/InstanceRegistry.cpp
     src/Readouts.cpp
     src/Reducer.cpp
     src/Roll.cpp
@@ -40,6 +41,7 @@ if(BUILD_TESTING)
         tests/ChannelViewsTests.cpp
         tests/FrameEncoderTests.cpp
         tests/HoldBufferTests.cpp
+        tests/InstanceRegistryTests.cpp
         tests/ReadoutsTests.cpp
         tests/ReducerTests.cpp
         tests/RollTests.cpp

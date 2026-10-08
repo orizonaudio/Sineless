@@ -3,6 +3,8 @@
 import {
   BeatSpan,
   ChannelView,
+  DisplayMode,
+  Group,
   TimeBase,
   Toggle,
   TriggerMode,
@@ -106,6 +108,12 @@ export const settings = {
   beatSpan: { kind: "enum", values: "BeatSpan", defaultValue: BeatSpan.oneBar },
   // Freeze when the host transport stops, and resume when it plays again.
   autoFreeze: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
+  displayMode: {
+    kind: "enum",
+    values: "DisplayMode",
+    defaultValue: DisplayMode.single,
+  },
+  group: { kind: "enum", values: "Group", defaultValue: Group.a },
 } as const satisfies Record<string, Setting>;
 
 export type SettingName = keyof typeof settings;

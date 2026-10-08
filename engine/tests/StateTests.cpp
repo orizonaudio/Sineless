@@ -77,6 +77,10 @@ TEST(State, LoadsTheVersion2GoldenFile)
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kTwoBars);
     EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOn);
+    // Settings added after this state was saved take their defaults.
+    EXPECT_EQ(settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
+              protocol::DisplayMode::kSingle);
+    EXPECT_EQ(settings.enumValue<protocol::Group>(SettingId::kGroup), protocol::Group::kA);
 }
 
 TEST(State, DefaultsToABeatsSweepOfOneBar)

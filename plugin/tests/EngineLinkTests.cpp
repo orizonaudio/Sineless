@@ -2,8 +2,10 @@
 #include "EngineRegistry.h"
 #include "Processor.h"
 #include "editor/Editor.h"
+#include "engine/InstanceRegistry.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
 
+#include <algorithm>
 #include <gtest/gtest.h>
 
 namespace orizon::plugin {
@@ -87,6 +89,24 @@ TEST_F(EngineLink, ControllerKeepsTheEngineAliveAfterProcessorTerminates)
     EXPECT_EQ(processor->engine(), nullptr);
     EXPECT_EQ(controller->engine(), engine);
     EXPECT_NE(controller->engine(), nullptr);
+}
+
+// Every processor is listed in its group for the multi-track view until it is terminated.
+TEST_F(EngineLink, ProcessorJoinsItsGroupUntilTerminated)
+{
+    const auto listed = [&] {
+        const auto members = engine::InstanceRegistry::shared().members(protocol::Group::kA);
+        return std::ranges::any_of(members, [&](const engine::GroupMember& member) {
+            return member.engine == processor->engine();
+        });
+    };
+    ASSERT_NE(processor->engine(), nullptr);
+    EXPECT_TRUE(listed());
+    const std::shared_ptr<engine::Engine> engine = processor->engine();
+    processor->terminate();
+    EXPECT_FALSE(std::ranges::any_of(
+        engine::InstanceRegistry::shared().members(protocol::Group::kA),
+        [&](const engine::GroupMember& member) { return member.engine == engine; }));
 }
 
 TEST(EngineRegistry, ForgetsRemovedTokens)

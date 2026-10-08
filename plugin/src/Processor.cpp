@@ -2,6 +2,7 @@
 
 #include "EngineRegistry.h"
 #include "PluginIds.h"
+#include "engine/InstanceRegistry.h"
 #include "engine/State.h"
 #include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
@@ -105,6 +106,7 @@ tresult PLUGIN_API Processor::initialize(FUnknown* context)
     }
     engineState = std::make_shared<engine::Engine>();
     engineToken = EngineRegistry::add(engineState);
+    engine::InstanceRegistry::shared().add(engineState);
     addAudioInput(STR16("Input"), SpeakerArr::kStereo);
     addAudioOutput(STR16("Output"), SpeakerArr::kStereo);
     return kResultOk;
@@ -114,6 +116,9 @@ tresult PLUGIN_API Processor::terminate()
 {
     EngineRegistry::remove(engineToken);
     engineToken = 0;
+    if (engineState) {
+        engine::InstanceRegistry::shared().remove(*engineState);
+    }
     engineState.reset();
     return AudioEffect::terminate();
 }

@@ -57,6 +57,14 @@ export function beatSpanQuarterNotes(
 export const Toggle = { off: 0, on: 1 } as const;
 export type Toggle = (typeof Toggle)[keyof typeof Toggle];
 
+// Single shows this track's channels; Multi shows every track of the instance's group.
+export const DisplayMode = { single: 0, multi: 1 } as const;
+export type DisplayMode = (typeof DisplayMode)[keyof typeof DisplayMode];
+
+// Instances in the same group appear together in the multi-track view.
+export const Group = { a: 0, b: 1, c: 2, d: 3 } as const;
+export type Group = (typeof Group)[keyof typeof Group];
+
 export const FrameMode = { minMax: 0, raw: 1 } as const;
 export type FrameMode = (typeof FrameMode)[keyof typeof FrameMode];
 
@@ -69,6 +77,8 @@ export const enums = {
   TimeBase,
   BeatSpan,
   Toggle,
+  DisplayMode,
+  Group,
   FrameMode,
 } as const;
 export type EnumName = keyof typeof enums;
