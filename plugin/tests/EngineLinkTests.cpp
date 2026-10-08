@@ -138,10 +138,30 @@ TEST(TrackInfo, KeepsOnlyWhatTheHostReports)
 {
     IPtr<IAttributeList> list = HostAttributeList::make();
     list->setString(ChannelContext::kChannelNameKey, u"Bass");
-    const engine::TrackInfo track = trackInfoFrom(*list);
+    const engine::TrackInfo track = mergeTrackInfo({}, *list);
     EXPECT_EQ(track.name, "Bass");
     EXPECT_FALSE(track.colour.has_value());
     EXPECT_FALSE(track.index.has_value());
+}
+
+// Live reports a new track in three calls: an empty name, the name, then the colour with an
+// empty name again. The name must survive the third.
+TEST_F(EngineLink, CombinesTrackDetailsReportedSeparately)
+{
+    connect();
+    IPtr<IAttributeList> first = HostAttributeList::make();
+    first->setString(ChannelContext::kChannelNameKey, u"");
+    IPtr<IAttributeList> second = HostAttributeList::make();
+    second->setString(ChannelContext::kChannelNameKey, u"1-Kick");
+    IPtr<IAttributeList> third = HostAttributeList::make();
+    third->setString(ChannelContext::kChannelNameKey, u"");
+    third->setInt(ChannelContext::kChannelColorKey, 0xffe03030);
+    for (const auto& list : {first, second, third}) {
+        ASSERT_EQ(controller->setChannelContextInfos(list), kResultTrue);
+    }
+    const engine::TrackInfo track = processor->engine()->trackInfo();
+    EXPECT_EQ(track.name, "1-Kick");
+    EXPECT_EQ(track.colour, 0xe03030u);
 }
 
 TEST(EngineRegistry, ForgetsRemovedTokens)

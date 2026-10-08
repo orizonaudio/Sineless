@@ -11,13 +11,14 @@ namespace orizon::plugin {
 
 using namespace Steinberg;
 
-engine::TrackInfo trackInfoFrom(Vst::IAttributeList& list)
+engine::TrackInfo mergeTrackInfo(engine::TrackInfo known, Vst::IAttributeList& list)
 {
     namespace context = Vst::ChannelContext;
-    engine::TrackInfo info;
+    engine::TrackInfo info = std::move(known);
     std::array<Vst::TChar, 256> name{};
     if (list.getString(context::kChannelNameKey, name.data(),
-                       static_cast<uint32>(name.size() * sizeof(Vst::TChar))) == kResultTrue) {
+                       static_cast<uint32>(name.size() * sizeof(Vst::TChar))) == kResultTrue &&
+        name.front() != 0) {
         name.back() = 0;
         info.name = Vst::StringConvert::convert(name.data());
     }
@@ -54,7 +55,7 @@ tresult PLUGIN_API Controller::setChannelContextInfos(Vst::IAttributeList* list)
     if (list == nullptr) {
         return kInvalidArgument;
     }
-    track = trackInfoFrom(*list);
+    track = mergeTrackInfo(track.value_or(engine::TrackInfo{}), *list);
     if (engineState) {
         engineState->setTrackInfo(*track);
     }

@@ -9,8 +9,11 @@
 
 namespace orizon::plugin {
 
-// The track details a host reports, as the multi-track view labels them.
-[[nodiscard]] engine::TrackInfo trackInfoFrom(Steinberg::Vst::IAttributeList& list);
+// `known` updated with the track details in one host report. Hosts may split their details over
+// several reports (Live sends the name and the colour separately, each with an empty name in the
+// other), so only details present in `list` change, and an empty name counts as not reported.
+[[nodiscard]] engine::TrackInfo mergeTrackInfo(engine::TrackInfo known,
+                                               Steinberg::Vst::IAttributeList& list);
 
 // Edit-controller side of the plugin. It declares no parameters and reaches the
 // processor's engine through the token the processor sends on connect. It also passes on what
