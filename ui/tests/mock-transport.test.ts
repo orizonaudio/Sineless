@@ -89,10 +89,34 @@ describe("mock back end", () => {
       value: "normal",
     });
     transport.send({ type: "setSetting", name: "timeSpan", value: 99 });
-    expect(messages.slice(1)).toEqual([
+    expect(
+      messages.filter((message) => message.type === "stateChanged"),
+    ).toEqual([
       { type: "stateChanged", name: "triggerMode", value: "normal" },
       { type: "stateChanged", name: "timeSpan", value: 1 },
     ]);
+  });
+
+  test("draws the simulated group's tracks as lanes in Multi mode", () => {
+    const { transport, messages, frames } = connect();
+    const lanes = () => messages.filter((message) => message.type === "lanes");
+    expect(lanes()).toHaveLength(1);
+    expect(lanes()[0]).toMatchObject({ laneSet: 1, hidden: 0 });
+    transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
+    transport.send({ type: "credit" });
+    const frame = frames.at(-1);
+    expect(frame?.views.size).toBe(0);
+    expect(frame?.lanes).toHaveLength(3);
+    expect(frame?.laneSet).toBe(1);
+
+    transport.send({ type: "setSetting", name: "group", value: "b" });
+    transport.send({ type: "credit" });
+    expect(lanes()).toHaveLength(2);
+    expect(lanes()[1]).toMatchObject({
+      laneSet: 2,
+      lanes: [{ name: "Kick", own: true }],
+    });
+    expect(frames.at(-1)?.lanes).toHaveLength(1);
   });
 
   test("sweeps in sync with a simulated transport in Beats mode", () => {

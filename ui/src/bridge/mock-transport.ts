@@ -8,7 +8,10 @@ import {
   FrameMode,
 } from "../../../protocol/src/enums.ts";
 import { encodeFrame } from "../../../protocol/src/frame-encoder.ts";
-import type { SettingValue } from "../../../protocol/src/messages.ts";
+import type {
+  LaneLabel,
+  SettingValue,
+} from "../../../protocol/src/messages.ts";
 import {
   defaultSettingValues,
   isSettingName,
@@ -50,6 +53,46 @@ function viewSample(view: ChannelView, time: number): number {
   }
 }
 
+// Tracks of the simulated multi-track view, all in group A: this instance's kick on every beat,
+// a bass line, and unnamed hi-hats on the eighths without a host colour.
+const beatSeconds = 60 / 120;
+function decaying(time: number, every: number, rate: number): number {
+  const since = ((time % every) + every) % every;
+  return Math.exp(-since * rate);
+}
+export const mockTracks: readonly (LaneLabel & {
+  readonly sample: (time: number) => number;
+})[] = [
+  {
+    name: "Kick",
+    colour: 0xe0533d,
+    own: true,
+    sample: (time) =>
+      0.9 *
+      decaying(time, beatSeconds, 9) *
+      Math.sin(2 * Math.PI * 52 * (time % beatSeconds)),
+  },
+  {
+    name: "Bass",
+    colour: 0x4f8fe6,
+    own: false,
+    sample: (time) =>
+      0.45 *
+      (1 - 0.8 * decaying(time, beatSeconds, 6)) *
+      Math.sin(2 * Math.PI * 55 * time),
+  },
+  {
+    name: "",
+    colour: null,
+    own: false,
+    sample: (time) =>
+      0.35 *
+      decaying(time, beatSeconds / 2, 40) *
+      Math.sin(2 * Math.PI * 6100 * time) *
+      Math.sin(2 * Math.PI * 9300 * time),
+  },
+];
+
 export interface MockOptions {
   // Seconds since start; real time by default.
   readonly now?: () => number;
@@ -68,6 +111,8 @@ export class MockTransport implements Transport {
   // The part of the span on screen; only that part is synthesised.
   private view = { start: 0, end: 1 };
   private sequence = 0;
+  private laneSet = 0;
+  private lanesKey = "";
 
   constructor(options: MockOptions = {}) {
     const start = performance.now();
@@ -104,6 +149,8 @@ export class MockTransport implements Transport {
           sampleRate: mockSampleRate,
           inputChannels: 2,
         });
+        this.lanesKey = "";
+        this.sendLanes();
         this.sendFrame(); // The first frame needs no credit.
         break;
       case "setSetting":
@@ -148,6 +195,32 @@ export class MockTransport implements Transport {
       this.settings[name] = value;
     }
     this.reply({ type: "stateChanged", name, value: this.settings[name] });
+    this.sendLanes();
+  }
+
+  // The simulated group: every track in group A, only this instance's track in the others.
+  private groupTracks(): typeof mockTracks {
+    return this.setting("group") === "a"
+      ? mockTracks
+      : mockTracks.filter((track) => track.own);
+  }
+
+  private sendLanes(): void {
+    const key = String(this.setting("group"));
+    if (key === this.lanesKey) {
+      return;
+    }
+    this.lanesKey = key;
+    this.reply({
+      type: "lanes",
+      laneSet: ++this.laneSet,
+      lanes: this.groupTracks().map(({ name, colour, own }) => ({
+        name,
+        colour,
+        own,
+      })),
+      hidden: 0,
+    });
   }
 
   private setViewport(message: ControlMessage): void {
@@ -214,16 +287,11 @@ export class MockTransport implements Transport {
     const minMax = sampleCount > this.columns;
     const pointCount = minMax ? this.columns : sampleCount;
     const samplesPerPoint = sampleCount / pointCount;
-    const names = this.setting("channelViews") as readonly string[];
-    const views = new Map<ChannelView, Float32Array>();
-    for (const [name, view] of Object.entries(ChannelView)) {
-      if (!names.includes(name)) {
-        continue;
-      }
-      const points = new Float32Array(minMax ? pointCount * 2 : pointCount);
+    const points = (signalAt: (time: number) => number): Float32Array => {
+      const values = new Float32Array(minMax ? pointCount * 2 : pointCount);
       for (let point = 0; point < pointCount; point++) {
         if (!minMax) {
-          points[point] = viewSample(view, sampleTime(point));
+          values[point] = signalAt(sampleTime(point));
           continue;
         }
         let low = Infinity;
@@ -233,24 +301,46 @@ export class MockTransport implements Transport {
         // Long spans: sample each column sparsely, enough for a mock.
         const stride = Math.max(1, Math.floor((last - first) / 64));
         for (let sample = first; sample < last; sample += stride) {
-          const value = viewSample(view, sampleTime(sample));
+          const value = signalAt(sampleTime(sample));
           low = Math.min(low, value);
           high = Math.max(high, value);
         }
-        points[point * 2] = low;
-        points[point * 2 + 1] = high;
+        values[point * 2] = low;
+        values[point * 2 + 1] = high;
       }
-      views.set(view, points);
-    }
+      return values;
+    };
 
+    // The multi-track view draws the group's tracks in Beats mode; readouts measure this one.
+    const multi = synced && this.setting("displayMode") === "multi";
+    const views = new Map<ChannelView, Float32Array>();
+    const lanes: Float32Array[] = [];
     const source =
       ChannelView[this.setting("triggerSource") as keyof typeof ChannelView];
+    let readoutSignal = (time: number) => viewSample(source, time);
+    if (multi) {
+      for (const track of this.groupTracks()) {
+        lanes.push(points(track.sample));
+      }
+      readoutSignal = mockTracks[0]?.sample ?? readoutSignal;
+    } else {
+      const names = this.setting("channelViews") as readonly string[];
+      for (const [name, view] of Object.entries(ChannelView)) {
+        if (names.includes(name)) {
+          views.set(
+            view,
+            points((time) => viewSample(view, time)),
+          );
+        }
+      }
+    }
+
     let sumOfSquares = 0;
     let peak = 0;
     const readoutStride = Math.max(1, Math.floor(sampleCount / 4096));
     let readoutSamples = 0;
     for (let sample = 0; sample < sampleCount; sample += readoutStride) {
-      const value = viewSample(source, sampleTime(sample));
+      const value = readoutSignal(sampleTime(sample));
       sumOfSquares += value * value;
       peak = Math.max(peak, Math.abs(value));
       readoutSamples++;
@@ -276,8 +366,10 @@ export class MockTransport implements Transport {
         startFraction: 0,
         peak,
         rms: Math.sqrt(sumOfSquares / Math.max(readoutSamples, 1)),
-        frequency: mockFundamental,
+        frequency: multi ? undefined : mockFundamental,
         views,
+        lanes,
+        laneSet: multi ? this.laneSet : 0,
       }),
     );
   }

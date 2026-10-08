@@ -52,7 +52,7 @@ body {
 .bar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding-inline: 12px;
   border-bottom: 1px solid var(--line);
   min-width: 0;
@@ -71,8 +71,15 @@ body {
   color: var(--ink-faint);
 }
 
-/* Gives way first when the top bar runs short of room. */
-.chips {
+/* Everything in the top bar keeps its size except the chips, which give way when it runs short
+   of room. */
+.bar > * {
+  flex: none;
+  white-space: nowrap;
+}
+
+.bar > .chips {
+  flex: 0 1 auto;
   display: flex;
   gap: 6px;
   min-width: 0;
@@ -110,7 +117,7 @@ body {
 .readouts {
   margin-left: auto;
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: baseline;
   font-variant-numeric: tabular-nums;
 }
@@ -267,8 +274,58 @@ body {
 }
 
 /* Disabled controls ignore the pointer, so hovering shows the group's explanation instead. */
-.group.inactive button {
+.group.inactive button,
+.inactive > button {
   pointer-events: none;
+}
+
+.row.inactive,
+.segmented.inactive {
+  opacity: 0.4;
+}
+
+/* Single | Multi and the group in the top bar: compact versions of the strip's switches. */
+.bar-switch button {
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+/* Multi-track lane names: one per stacked lane, or a legend when overlaid. */
+.lane-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lane-label {
+  position: absolute;
+  display: flex;
+  gap: 12px;
+  font-family: var(--font-label);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+}
+
+.lane-label span::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--swatch);
+}
+
+.lane-label .own {
+  color: var(--ink);
+}
+
+.lane-label .own::after {
+  content: " · this track";
+  font-weight: 500;
+  color: var(--ink-faint);
 }
 
 /* Time cursors: a line with a wider grab area, labelled at the top. */
@@ -578,4 +635,11 @@ button:focus-visible,
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-faint);
+}
+
+/* Near the minimum width the top bar is full: the wordmark drops its maker's name. */
+@media (max-width: 899px) {
+  .wordmark span {
+    display: none;
+  }
 }

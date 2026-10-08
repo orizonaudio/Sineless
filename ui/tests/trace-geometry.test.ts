@@ -8,6 +8,7 @@ import {
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   fullScale,
+  laneGeometry,
   lanes,
   traceGeometry,
   type TraceLayout,
@@ -186,5 +187,31 @@ describe("trace geometry", () => {
       2 *
       (layout.heightPixels / 2);
     expect(thickness).toBeCloseTo(layout.lineWidthPixels);
+  });
+});
+
+describe("lane geometry", () => {
+  test("stacks the lanes of a multi-track frame in lane order", () => {
+    const multi = {
+      ...frame(FrameMode.raw, [[ChannelView.left, [0, 0]]]),
+      views: new Map(),
+      lanes: [new Float32Array([1, 1]), new Float32Array([-1, -1])],
+    };
+    const geometry = laneGeometry(multi, {
+      widthPixels: 200,
+      heightPixels: 100,
+      verticalScaleDb: 0,
+      layout: ViewLayout.stacked,
+      lineWidthPixels: 1,
+    });
+    expect(geometry).toHaveLength(2);
+    // Top lane spans clip y 0 to 1; a full-scale line sits at its top, near y = 1.
+    expect(Math.max(...ys(geometry[0] ?? new Float32Array()))).toBeGreaterThan(
+      0.95,
+    );
+    // Bottom lane spans -1 to 0; a negative full-scale line sits at its bottom.
+    expect(Math.min(...ys(geometry[1] ?? new Float32Array()))).toBeLessThan(
+      -0.95,
+    );
   });
 });

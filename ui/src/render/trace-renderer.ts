@@ -3,13 +3,15 @@ import type { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import type { ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
-import { traceGeometry } from "./trace-geometry.ts";
+import { laneGeometry, traceGeometry } from "./trace-geometry.ts";
 
 export type Rgba = readonly [number, number, number, number];
 
 export interface TraceStyle {
   // Resolved at draw time, so colours can come from a stylesheet that loads after start-up.
   readonly colors: () => ReadonlyMap<ChannelView, Rgba>;
+  // Multi-track frames: one colour per lane, in lane order.
+  readonly laneColors: () => readonly Rgba[];
   readonly lineWidthPixels: number;
 }
 
@@ -102,17 +104,32 @@ export class TraceRenderer implements FrameRenderer {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     const view = this.view();
-    const geometry = traceGeometry(frame, {
+    const layout = {
       widthPixels: this.canvas.width,
       heightPixels: this.canvas.height,
       verticalScaleDb: view.verticalScaleDb,
       layout: view.layout,
       lineWidthPixels: this.style.lineWidthPixels,
       ...(view.view === undefined ? {} : { view: view.view }),
-    });
-    const colors = this.style.colors();
-    for (const [channelView, vertices] of geometry) {
-      const color = colors.get(channelView) ?? [1, 1, 1, 1];
+    };
+    const white: Rgba = [1, 1, 1, 1];
+    let traces: [Float32Array, Rgba][];
+    if (frame.lanes.length > 0) {
+      const colors = this.style.laneColors();
+      traces = laneGeometry(frame, layout).map((vertices, index) => [
+        vertices,
+        colors[index] ?? white,
+      ]);
+    } else {
+      const colors = this.style.colors();
+      traces = [...traceGeometry(frame, layout)].map(
+        ([channelView, vertices]) => [
+          vertices,
+          colors.get(channelView) ?? white,
+        ],
+      );
+    }
+    for (const [vertices, color] of traces) {
       const alpha = view.dim === true ? color[3] * 0.45 : color[3];
       gl.uniform4f(this.colorLocation, color[0], color[1], color[2], alpha);
       gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);

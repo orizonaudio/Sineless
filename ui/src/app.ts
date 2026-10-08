@@ -46,6 +46,7 @@ import {
   type LevelPair,
 } from "./view/cursors.ts";
 import { drawGrid } from "./view/grid.ts";
+import { cssColour, laneStyles, type LaneStyle } from "./view/lanes.ts";
 import type { HelpTopic } from "./view/help.ts";
 import {
   extremePositions,
@@ -170,6 +171,12 @@ export class OscilloscopeApp {
   private timeCursors: CursorPair | undefined;
   private levelCursors: LevelPair | undefined;
   private sampleRate = 48000;
+  // Multi-track lanes by lane set, as the lanes messages describe them; a few are kept, so a
+  // frame drawn just before or after a change finds its own.
+  private readonly laneSets = new Map<number, LaneStyle[]>();
+  private latestLaneSet = 0;
+  private hiddenTracks = 0;
+  private drawnLaneCount = 0;
 
   constructor(backend: Backend, store: SettingsStore, debug: DebugState) {
     this.backend = backend;
@@ -190,7 +197,14 @@ export class OscilloscopeApp {
     };
     this.renderer = new TraceRenderer(
       this.traceCanvas,
-      { colors: resolveColors, lineWidthPixels: 1.5 * window.devicePixelRatio },
+      {
+        colors: resolveColors,
+        laneColors: () =>
+          this.lanesOf(this.lastFrame).map((lane) =>
+            rgba(cssColour(lane.colour)),
+          ),
+        lineWidthPixels: 1.5 * window.devicePixelRatio,
+      },
       () => ({
         verticalScaleDb: store.number("verticalScale"),
         layout: this.layout(),
@@ -385,6 +399,16 @@ export class OscilloscopeApp {
         ),
       );
     };
+    segment("displayMode", "display-mode", [
+      ["single", "Single"],
+      ["multi", "Multi"],
+    ]);
+    segment("group", "group", [
+      ["a", "A"],
+      ["b", "B"],
+      ["c", "C"],
+      ["d", "D"],
+    ]);
     segment("timeBase", "time-base", [
       ["beats", "Beats"],
       ["seconds", "Sec"],
@@ -474,6 +498,19 @@ export class OscilloscopeApp {
 
   // A tempo-synced sweep is not triggered: in Beats mode the trigger controls are disabled, and
   // the popover closes. Re-arm applies to Single mode only.
+  // Multi mode shows each track's Mid: the channel views and the trigger source do not apply.
+  private updateMultiControls(): void {
+    const multi = this.multiMode();
+    for (const id of ["views", "source"]) {
+      const container = element(id);
+      container.classList.toggle("inactive", multi);
+      for (const button of container.querySelectorAll("button")) {
+        button.disabled = multi;
+      }
+    }
+    this.updateStatus();
+  }
+
   private updateTriggerControls(): void {
     const beats = this.beatsMode();
     const group = element("trigger-group");
@@ -520,6 +557,9 @@ export class OscilloscopeApp {
     }
     if (name === "triggerMode" || name === "timeBase") {
       this.updateTriggerControls();
+    }
+    if (name === "displayMode") {
+      this.updateMultiControls();
     }
     // Level cursors are drawn at their level in each lane.
     if (
@@ -590,9 +630,79 @@ export class OscilloscopeApp {
   }
 
   private laneCount(): number {
-    return this.layout() === ViewLayout.stacked
-      ? Math.max(1, this.shownViews().length)
-      : 1;
+    if (this.layout() !== ViewLayout.stacked) {
+      return 1;
+    }
+    const lanes = this.lastFrame?.lanes.length ?? 0;
+    return Math.max(1, lanes > 0 ? lanes : this.shownViews().length);
+  }
+
+  private multiMode(): boolean {
+    return this.store.get("displayMode") === "multi";
+  }
+
+  // The names and colours of a multi-track frame's lanes: its own lane set, or the latest.
+  private lanesOf(frame: Frame | undefined): LaneStyle[] {
+    const count = frame?.lanes.length ?? 0;
+    if (count === 0) {
+      return [];
+    }
+    const styles =
+      this.laneSets.get(frame?.laneSet ?? 0) ??
+      this.laneSets.get(this.latestLaneSet) ??
+      [];
+    // A set that does not match the frame's lanes yet: fallback names and colours by position.
+    return styles.length === count
+      ? styles
+      : laneStyles(
+          Array.from({ length: count }, () => ({
+            name: "",
+            colour: null,
+            own: false,
+          })),
+        );
+  }
+
+  // Lane names: at the top of each stacked lane, or as a legend when overlaid, after the top
+  // level label.
+  private placeLaneLabels(): void {
+    const container = element("lane-labels");
+    const styles = this.lanesOf(this.lastFrame);
+    const height = this.screen.clientHeight;
+    const name = (style: LaneStyle) => {
+      const node = document.createElement("span");
+      node.textContent = style.name;
+      node.style.setProperty("--swatch", cssColour(style.colour));
+      node.classList.toggle("own", style.own);
+      return node;
+    };
+    const place = (node: HTMLElement, top: number) => {
+      node.className = "lane-label";
+      node.style.left = `${String(amplitudeLabelWidth + 10)}px`;
+      node.style.top = `${String(top)}px`;
+      return node;
+    };
+    if (this.layout() === ViewLayout.stacked) {
+      container.replaceChildren(
+        ...lanes(styles.length, ViewLayout.stacked).map((lane, index) => {
+          const node = document.createElement("div");
+          const style = styles[index];
+          if (style !== undefined) {
+            node.append(name(style));
+          }
+          return place(
+            node,
+            ((1 - (lane.center + lane.halfHeight)) / 2) * height + 3,
+          );
+        }),
+      );
+    } else {
+      const legend = document.createElement("div");
+      legend.append(...styles.map(name));
+      container.replaceChildren(
+        ...(styles.length > 0 ? [place(legend, 3)] : []),
+      );
+    }
   }
 
   private beatsMode(): boolean {
@@ -620,7 +730,9 @@ export class OscilloscopeApp {
       { grid: token("--grid"), axis: token("--grid-axis") },
       this.musicalLayout()?.lines,
     );
+    this.drawnLaneCount = this.lastFrame?.lanes.length ?? 0;
     this.placeLabels();
+    this.placeLaneLabels();
   }
 
   // Moves the sweep cursor, and redraws grid and labels when a new cycle starts.
@@ -790,6 +902,15 @@ export class OscilloscopeApp {
     const frame = this.lastFrame;
     if (frame === undefined) {
       return undefined;
+    }
+    if (frame.lanes.length > 0) {
+      const own = Math.max(
+        0,
+        this.lanesOf(frame).findIndex((style) => style.own),
+      );
+      return frame.lanes[
+        lane !== undefined && this.layout() === ViewLayout.stacked ? lane : own
+      ];
     }
     const views = [...frame.views.values()];
     if (lane !== undefined && this.layout() === ViewLayout.stacked) {
@@ -1079,12 +1200,30 @@ export class OscilloscopeApp {
         this.panSeconds = 0;
       }
       this.loop.submit(frame);
+      // A track joined or left: lanes, grid and labels change with it.
+      if (frame.lanes.length !== this.drawnLaneCount) {
+        this.drawScreen();
+        this.placeCursors();
+      }
       if (this.lastFrameTime - this.lastReadoutTime >= readoutInterval) {
         this.updateStatus();
       }
     });
     this.backend.on("error", (message) => {
       this.showError(message);
+    });
+    this.backend.on("lanes", (message) => {
+      this.laneSets.set(message.laneSet, laneStyles(message.lanes));
+      for (const old of [...this.laneSets.keys()]) {
+        if (old < message.laneSet - 3) {
+          this.laneSets.delete(old);
+        }
+      }
+      this.latestLaneSet = message.laneSet;
+      this.hiddenTracks = message.hidden;
+      this.placeLaneLabels();
+      this.loop.invalidate();
+      this.updateStatus();
     });
     this.backend.on("snapshot", (message) => {
       element("message").hidden = true;
@@ -1106,6 +1245,14 @@ export class OscilloscopeApp {
     if (waiting !== this.waiting) {
       this.waiting = waiting;
       this.loop.invalidate();
+    }
+    if (this.multiMode() && !this.beatsMode()) {
+      chips.push({ text: "Multi needs Beats", tone: "warn" });
+    } else if (this.multiMode() && this.hiddenTracks > 0) {
+      chips.push({
+        text: `+${String(this.hiddenTracks)} hidden`,
+        tone: "warn",
+      });
     }
     if (isZoomed(this.view)) {
       chips.push({

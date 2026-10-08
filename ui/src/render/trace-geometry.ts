@@ -163,22 +163,41 @@ function rawLine(
   return new Float32Array(out);
 }
 
+// One array per block of points (a view or a lane), each in its lane.
+function blockGeometry(
+  blocks: readonly Float32Array[],
+  frame: Frame,
+  layout: TraceLayout,
+): Float32Array[] {
+  const blockLanes = lanes(blocks.length, layout.layout);
+  const scale = fullScale(layout.verticalScaleDb);
+  return blocks.map((values, index) => {
+    const lane = blockLanes[index] ?? { center: 0, halfHeight: 1 };
+    return frame.mode === FrameMode.minMax
+      ? minMaxBand(values, frame, lane, scale, layout)
+      : rawLine(values, frame, lane, scale, layout);
+  });
+}
+
 export function traceGeometry(
   frame: Frame,
   layout: TraceLayout,
 ): Map<ChannelView, Float32Array> {
   const views = [...frame.views.entries()];
-  const viewLanes = lanes(views.length, layout.layout);
-  const scale = fullScale(layout.verticalScaleDb);
-  const geometry = new Map<ChannelView, Float32Array>();
-  views.forEach(([view, values], index) => {
-    const lane = viewLanes[index] ?? { center: 0, halfHeight: 1 };
-    geometry.set(
-      view,
-      frame.mode === FrameMode.minMax
-        ? minMaxBand(values, frame, lane, scale, layout)
-        : rawLine(values, frame, lane, scale, layout),
-    );
-  });
-  return geometry;
+  const geometry = blockGeometry(
+    views.map(([, values]) => values),
+    frame,
+    layout,
+  );
+  return new Map(
+    views.map(([view], index) => [view, geometry[index] ?? new Float32Array()]),
+  );
+}
+
+// Multi-track frames: one array per lane, in lane order.
+export function laneGeometry(
+  frame: Frame,
+  layout: TraceLayout,
+): Float32Array[] {
+  return blockGeometry(frame.lanes, frame, layout);
 }

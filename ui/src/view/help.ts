@@ -11,6 +11,18 @@ export const helpTexts = {
     title: "Help",
     text: "Turns help on or off. While it is on, resting the pointer on any control explains what it is, what it does and how to use it.",
   },
+  displayMode: {
+    title: "Single or Multi",
+    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 8, in Beats mode. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
+  },
+  group: {
+    title: "Group",
+    text: "Instances in the same group appear together in Multi mode. Use different groups to keep separate comparisons apart, such as drums in A and bass in B. Every instance belongs to a group, whatever its own mode.",
+  },
+  channelViews: {
+    title: "Views",
+    text: "Which channels this track shows. In Multi mode every track shows its Mid, so these apply in Single mode.",
+  },
   status: {
     title: "Status",
     text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, and Roll, Sync, Frozen or Zoom for the current mode.",
@@ -105,7 +117,7 @@ export const helpTexts = {
   },
   triggerSource: {
     title: "Trigger source",
-    text: "Which signal the trigger watches. Readouts and cursor snapping use it too.",
+    text: "Which signal the trigger watches. Readouts and cursor snapping use it too. Not used in Multi mode, which shows each track's Mid.",
   },
   triggerSlope: {
     title: "Slope",

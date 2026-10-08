@@ -10,6 +10,12 @@
     <div class="app">
       <header class="bar">
         <div class="wordmark">O-Scope <span>· Orizon</span></div>
+        <div
+          class="segmented bar-switch"
+          id="display-mode"
+          data-help="displayMode"
+        ></div>
+        <div class="segmented bar-switch" id="group" data-help="group"></div>
         <div class="chips" id="chips" data-help="status"></div>
         <div class="readouts">
           <div class="readout" data-help="peak">
@@ -38,6 +44,7 @@
         <div class="sweep-previous" id="sweep-previous" hidden></div>
         <div class="sweep-cursor" id="sweep-cursor" hidden></div>
         <div class="labels" id="labels"></div>
+        <div class="lane-labels" id="lane-labels"></div>
         <div class="selection" id="selection" hidden></div>
         <div class="trigger-line" id="trigger-line"></div>
         <div class="time-cursor" id="cursor-a" data-help="timeCursor" hidden>
@@ -73,7 +80,7 @@
         </section>
         <section class="group" id="views-group">
           <div class="group-label">Views</div>
-          <div class="row" id="views"></div>
+          <div class="row" id="views" data-help="channelViews"></div>
           <div class="segmented" id="layout" data-help="layout"></div>
         </section>
         <section class="group" id="trigger-group" data-help="trigger">
