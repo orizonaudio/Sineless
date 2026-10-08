@@ -469,6 +469,7 @@ export class MockTransport implements Transport {
         synced,
         cursor,
         cycleStart,
+        cycleSeconds: (cycleStart * 60) / mockTempo,
         spanQuarterNotes,
         barQuarterNotes: synced ? mockBarQuarterNotes : 0,
         viewStart: this.view.start,

@@ -55,4 +55,14 @@ describe("musical grid", () => {
       "+3/16",
     ]);
   });
+
+  test("label the project time under each label when timed", () => {
+    // Two bars from bar 3 at 120 BPM: bar 3 starts 4 s into the project.
+    const { labels } = musicalGrid(8, 8, 4, undefined, {
+      cycleSeconds: 4,
+      secondsPerQuarter: 0.5,
+    });
+    expect(labels[0]).toMatchObject({ text: "3.1", detail: "0:04.000" });
+    expect(labels.at(-1)?.detail).toBe("0:07.000");
+  });
 });

@@ -107,6 +107,7 @@ private:
         double cycleStart = 0.0;
         double spanQuarterNotes = 0.0;
         double barQuarterNotes = 0.0;
+        double cycleSeconds = 0.0;
         // View zoom: the part of the window reduced into the frame (`crop`, fractions of the
         // window) and the part the frame reports covering (`view`, fractions of the span).
         double cropStart = 0.0;

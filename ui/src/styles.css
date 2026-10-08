@@ -261,6 +261,13 @@ body {
   white-space: nowrap;
 }
 
+/* Under a bar.beat label, its project time. */
+.axis-detail {
+  display: block;
+  font-size: 9px;
+  opacity: 0.75;
+}
+
 /* Tempo-synced sweep: the playhead, and the previous cycle to its right, dimmed. */
 .sweep-cursor {
   position: absolute;
@@ -536,6 +543,33 @@ body {
   font-family: var(--font-value);
   font-size: 11px;
   color: var(--cursor);
+}
+
+/* What lies under the pointer, beside it. */
+.hover-readout {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  gap: 1px;
+  padding: 5px 8px;
+  font-family: var(--font-value);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.hover-readout strong {
+  font-family: var(--font-label);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
 }
 
 .cursor-readout {

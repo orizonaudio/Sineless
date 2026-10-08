@@ -28,6 +28,7 @@ struct FrameHeaderValues
     float cycleStart = 0.0f;
     float spanQuarterNotes = 0.0f;
     float barQuarterNotes = 0.0f;
+    float cycleSeconds = 0.0f; // The left edge's project time.
     // The part of the span covered, and its length in samples.
     float viewStart = 0.0f;
     float viewEnd = 1.0f;

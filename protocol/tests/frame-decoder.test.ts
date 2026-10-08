@@ -50,6 +50,7 @@ describe("frame decoder", () => {
     expect(frame.laneSet).toBe(goldenLanes.header.laneSet);
     expect(frame.synced).toBe(true);
     expect(frame.cursor).toBe(goldenLanes.header.cursor);
+    expect(frame.cycleSeconds).toBe(goldenLanes.header.cycleSeconds);
     expect(frame.lanes.map((lane) => Array.from(lane))).toEqual(
       goldenLanes.lanes,
     );

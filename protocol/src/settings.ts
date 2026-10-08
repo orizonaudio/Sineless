@@ -114,6 +114,16 @@ export const settings = {
     defaultValue: DisplayMode.single,
   },
   group: { kind: "enum", values: "Group", defaultValue: Group.a },
+  // The readout beside the pointer over the traces.
+  hoverReadout: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
+  // The pitch of A4 that note names refer to, in Hz.
+  concertPitch: {
+    kind: "number",
+    minimum: 400,
+    maximum: 500,
+    defaultValue: 440,
+    logarithmic: false,
+  },
 } as const satisfies Record<string, Setting>;
 
 export type SettingName = keyof typeof settings;

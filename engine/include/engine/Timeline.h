@@ -18,6 +18,8 @@ struct HostTimeline
     bool timeSignatureValid = false;
     int numerator = 4;
     int denominator = 4;
+    bool secondsValid = false;
+    double seconds = 0.0; // Project time at the block start.
 };
 
 // The musical position at one capture sample index.
@@ -25,6 +27,7 @@ struct MusicalStamp
 {
     std::uint64_t sampleIndex = 0;
     double quarterNotes = 0.0;
+    double seconds = 0.0; // Project time, in seconds.
     double tempo = 120.0;
     int numerator = 4;
     int denominator = 4;
@@ -52,6 +55,8 @@ public:
                                                double sampleRate);
     [[nodiscard]] static double sampleIndexAt(const MusicalStamp& stamp, double quarterNotes,
                                               double sampleRate);
+    // The project time at `quarterNotes`, at the stamp's tempo.
+    [[nodiscard]] static double secondsAt(const MusicalStamp& stamp, double quarterNotes);
 
     // Length of one bar in quarter notes for the stamp's time signature.
     [[nodiscard]] static double barQuarterNotes(const MusicalStamp& stamp);
@@ -68,6 +73,7 @@ private:
     std::atomic<std::uint64_t> version{0};
     std::atomic<std::uint64_t> sampleIndexValue{0};
     std::atomic<double> quarterNotesValue{0.0};
+    std::atomic<double> secondsValue{0.0};
     std::atomic<double> tempoValue{120.0};
     std::atomic<int> numeratorValue{4};
     std::atomic<int> denominatorValue{4};

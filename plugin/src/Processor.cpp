@@ -66,6 +66,10 @@ engine::HostTimeline hostTimeline(const ProcessContext* context) noexcept ORIZON
     host.timeSignatureValid = (context->state & ProcessContext::kTimeSigValid) != 0;
     host.numerator = context->timeSigNumerator;
     host.denominator = context->timeSigDenominator;
+    host.secondsValid = context->sampleRate > 0.0;
+    host.seconds = host.secondsValid
+                       ? static_cast<double>(context->projectTimeSamples) / context->sampleRate
+                       : 0.0;
     return host;
 }
 

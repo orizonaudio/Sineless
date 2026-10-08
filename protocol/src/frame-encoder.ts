@@ -19,6 +19,7 @@ export interface FrameContent {
   readonly limited?: boolean;
   readonly cursor?: number | undefined;
   readonly cycleStart?: number;
+  readonly cycleSeconds?: number;
   readonly spanQuarterNotes?: number;
   readonly barQuarterNotes?: number;
   readonly viewStart?: number;
@@ -87,6 +88,7 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setFloat32(offsets.frequency, content.frequency ?? 0, true);
   header.setFloat32(offsets.cursor, content.cursor ?? -1, true);
   header.setFloat32(offsets.cycleStart, content.cycleStart ?? 0, true);
+  header.setFloat32(offsets.cycleSeconds, content.cycleSeconds ?? 0, true);
   header.setFloat32(
     offsets.spanQuarterNotes,
     content.spanQuarterNotes ?? 0,

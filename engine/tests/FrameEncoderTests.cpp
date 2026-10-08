@@ -46,6 +46,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .cycleStart = header["cycleStart"].get<float>(),
         .spanQuarterNotes = header["spanQuarterNotes"].get<float>(),
         .barQuarterNotes = header["barQuarterNotes"].get<float>(),
+        .cycleSeconds = header["cycleSeconds"].get<float>(),
         .viewStart = header["viewStart"].get<float>(),
         .viewEnd = header["viewEnd"].get<float>(),
         .visibleSamples = header["visibleSamples"].get<float>(),

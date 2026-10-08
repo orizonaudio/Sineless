@@ -33,7 +33,7 @@ TEST(ProtocolHeader, LaysOutTheFrameHeaderWithNaturalAlignment)
     EXPECT_EQ(FrameHeader::kPointCountOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kLaneSetOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kFixedGainOffset % 4, 0u);
-    EXPECT_EQ(FrameHeader::kSize, 72u);
+    EXPECT_EQ(FrameHeader::kSize, 76u);
     EXPECT_EQ(kMatchValues, 3u);
 }
 

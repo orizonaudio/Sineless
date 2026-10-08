@@ -50,7 +50,8 @@ std::optional<SweepWindow> sweepWindow(const MusicalStamp& stamp, std::uint64_t 
                        .limited = limited,
                        .cycleStart = cycleStart,
                        .spanQuarterNotes = length,
-                       .barQuarterNotes = bar};
+                       .barQuarterNotes = bar,
+                       .cycleSeconds = Timeline::secondsAt(stamp, cycleStart)};
 }
 
 } // namespace orizon::engine

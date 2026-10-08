@@ -1,6 +1,7 @@
 // Grid lines and labels of a tempo-synced sweep. Positions are fractions of the
 // screen from the left; musical positions are in quarter notes from the project start.
 import type { AxisLabel } from "./axis-labels.ts";
+import { formatClock } from "./format.ts";
 import { fullView, type ViewWindow } from "./zoom.ts";
 
 export interface GridLine {
@@ -50,12 +51,17 @@ function beatFraction(quarterNotes: number): string {
 // Lines and labels over the visible part of a sweep. `cycleStart` and `span` (quarter notes)
 // describe the whole frame; `view` the part on screen. Lines sit on absolute musical
 // positions, so they refine as the view narrows: beats with stronger bars, then sixteenths with
-// stronger beats, then binary fractions of a beat.
+// stronger beats, then binary fractions of a beat. With `timing` (the left edge's project time and
+// the seconds per quarter note), labels carry their project time too.
 export function musicalGrid(
   cycleStart: number,
   span: number,
   barQuarterNotes: number,
   view: ViewWindow = fullView,
+  timing?: {
+    readonly cycleSeconds: number;
+    readonly secondsPerQuarter: number;
+  },
 ): { lines: GridLine[]; labels: AxisLabel[] } {
   if (span <= 0 || barQuarterNotes <= 0) {
     return { lines: [], labels: [] };
@@ -102,7 +108,18 @@ export function musicalGrid(
     const text = isMultiple(quarterNotes, 0.25)
       ? musicalPosition(quarterNotes, barQuarterNotes)
       : beatFraction(quarterNotes - Math.floor(quarterNotes + epsilon));
-    labels.push({ text, position: position(quarterNotes) });
+    labels.push({
+      text,
+      position: position(quarterNotes),
+      ...(timing === undefined
+        ? {}
+        : {
+            detail: formatClock(
+              timing.cycleSeconds +
+                (quarterNotes - cycleStart) * timing.secondsPerQuarter,
+            ),
+          }),
+    });
   }
   return { lines, labels };
 }

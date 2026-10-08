@@ -46,7 +46,17 @@ describe("time cursors", () => {
     expect(noteName(261.63)).toBe("C4");
     expect(noteName(55 * 2 ** (-30 / 1200))).toBe(`A1 ${minus}30 ct`);
     expect(noteName(10)).toBeUndefined();
+    expect(noteName(432, 432)).toBe("A4");
+    expect(noteName(440, 432)).toBe("A4 +32 ct");
     expect(noteName(25000)).toBeUndefined();
+  });
+
+  test("read out the time in samples too", () => {
+    expect(cursorReadout(measure({ a: 0.25, b: 0.75 }, 0.01), 48000)).toEqual([
+      "Δt 5 ms",
+      "240.0 samples",
+      "≈ 200.0 Hz · G3 +35 ct",
+    ]);
   });
 
   test("read out time, frequency with note, and beats", () => {

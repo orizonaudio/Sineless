@@ -36,6 +36,25 @@ TEST(Timeline, FollowsTheHostWhilePlaying)
     EXPECT_DOUBLE_EQ(Timeline::barQuarterNotes(stamp), 3.0);
 }
 
+TEST(Timeline, KnowsTheProjectTime)
+{
+    Timeline timeline;
+    HostTimeline host = playingAt(8.0); // 4 s at 120 BPM.
+    host.secondsValid = true;
+    host.seconds = 4.0;
+    timeline.advance(host, kBlock, kRate);
+    MusicalStamp stamp = timeline.latest();
+    EXPECT_DOUBLE_EQ(stamp.seconds, 4.0);
+    EXPECT_DOUBLE_EQ(Timeline::secondsAt(stamp, 10.0), 5.0) << "two beats later at 2 beats/s";
+
+    host.playing = false;
+    for (int block = 0; block < 100; ++block) {
+        timeline.advance(host, kBlock, kRate);
+    }
+    stamp = timeline.latest();
+    EXPECT_NEAR(stamp.seconds, 5.0, 1e-9) << "stopped, it runs on with the clock";
+}
+
 TEST(Timeline, KeepsRunningAtTheLastTempoWhileStopped)
 {
     Timeline timeline;

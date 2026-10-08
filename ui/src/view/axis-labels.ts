@@ -45,6 +45,8 @@ export function levelSteps(halfLanePx: number, minimumGap: number): number[] {
 export interface AxisLabel {
   readonly text: string;
   readonly position: number;
+  // A second, fainter line, such as the project time under a bar.beat label.
+  readonly detail?: string;
 }
 
 // Level labels in dB at the level lines of each lane: the top carries the unit, the zero line

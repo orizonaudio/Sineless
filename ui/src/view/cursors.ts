@@ -2,7 +2,12 @@
 // the span), so that they move with the waveform when the view zooms or pans. Level cursors are
 // two horizontal lines, 1 and 2, at sample values, so that they follow the vertical scale.
 // Temporary display state only; they are never saved.
-import { formatDbfs, formatFrequency, formatSeconds } from "./format.ts";
+import {
+  formatDbfs,
+  formatFrequency,
+  formatSamples,
+  formatSeconds,
+} from "./format.ts";
 import { toFrame, type ViewWindow } from "./zoom.ts";
 
 export interface CursorPair {
@@ -55,13 +60,13 @@ const noteNames = [
   "B",
 ];
 
-// The nearest equal-tempered note (A4 = 440 Hz) and the offset from it in cents, e.g. "A3 +2 ct".
-// Undefined outside the audible range.
-export function noteName(hertz: number): string | undefined {
+// The nearest equal-tempered note, tuned to `a4` Hz, and the offset from it in cents, e.g.
+// "A3 +2 ct". Undefined outside the audible range.
+export function noteName(hertz: number, a4 = 440): string | undefined {
   if (!(hertz >= 20 && hertz <= 20000)) {
     return undefined;
   }
-  const semitones = 69 + 12 * Math.log2(hertz / 440);
+  const semitones = 69 + 12 * Math.log2(hertz / a4);
   const note = Math.round(semitones);
   const cents = Math.round((semitones - note) * 100);
   const name = `${noteNames[note % 12] ?? ""}${String(Math.floor(note / 12) - 1)}`;
@@ -71,11 +76,19 @@ export function noteName(hertz: number): string | undefined {
   return `${name} ${cents > 0 ? "+" : "−"}${String(Math.abs(cents))} ct`;
 }
 
-// The readout lines: the distance, its frequency with the nearest note, and the distance in beats.
-export function cursorReadout(measurement: CursorMeasurement): string[] {
+// The readout lines: the distance, in samples at `sampleRate` too, its frequency with the nearest
+// note (tuned to `a4`), and the distance in beats.
+export function cursorReadout(
+  measurement: CursorMeasurement,
+  sampleRate?: number,
+  a4 = 440,
+): string[] {
   const lines = [`Δt ${formatSeconds(measurement.seconds)}`];
+  if (sampleRate !== undefined) {
+    lines.push(formatSamples(measurement.seconds * sampleRate));
+  }
   if (measurement.hertz !== undefined) {
-    const note = noteName(measurement.hertz);
+    const note = noteName(measurement.hertz, a4);
     lines.push(
       `${formatFrequency(measurement.hertz)} Hz${note === undefined ? "" : ` · ${note}`}`,
     );

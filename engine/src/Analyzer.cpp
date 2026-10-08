@@ -269,7 +269,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
                   .cursor = sweep->cursor,
                   .cycleStart = sweep->cycleStart,
                   .spanQuarterNotes = sweep->spanQuarterNotes,
-                  .barQuarterNotes = sweep->barQuarterNotes};
+                  .barQuarterNotes = sweep->barQuarterNotes,
+                  .cycleSeconds = sweep->cycleSeconds};
         sampleCount = sweep->sampleCount;
         samplesPerColumn = window.span / static_cast<double>(command.columns);
         lastEnd = end;
@@ -401,6 +402,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         .cycleStart = static_cast<float>(window.cycleStart),
         .spanQuarterNotes = static_cast<float>(window.spanQuarterNotes),
         .barQuarterNotes = static_cast<float>(window.barQuarterNotes),
+        .cycleSeconds = static_cast<float>(window.cycleSeconds),
         .viewStart = static_cast<float>(window.viewStart),
         .viewEnd = static_cast<float>(window.viewEnd),
         .visibleSamples = static_cast<float>(visibleSamples)};
@@ -603,6 +605,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         .cycleStart = static_cast<float>(window.cycleStart),
         .spanQuarterNotes = static_cast<float>(window.spanQuarterNotes),
         .barQuarterNotes = static_cast<float>(window.barQuarterNotes),
+        .cycleSeconds = static_cast<float>(window.cycleSeconds),
         .viewStart = static_cast<float>(command.viewStart),
         .viewEnd = static_cast<float>(command.viewEnd),
         .visibleSamples = static_cast<float>(crop.visibleSamples),

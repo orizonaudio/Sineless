@@ -151,6 +151,18 @@ export const helpTexts = {
     title: "Hold-off",
     text: "The least time between triggers. Use it to lock onto the start of a repeating pattern instead of a hit inside it.",
   },
+  hoverReadout: {
+    title: "Hover readout",
+    text: "When on, resting the pointer on a trace shows, beside it, the position there, the level, and the length, frequency and note of the cycle around it.",
+  },
+  displayOptions: {
+    title: "Display options",
+    text: "Click the title for further display settings, such as the concert pitch that note names refer to.",
+  },
+  concertPitch: {
+    title: "Concert pitch",
+    text: "The pitch of A4 that note names in the readouts refer to, from 400 to 500 Hz. Drag up or down or scroll to change it (Shift for 0.1 Hz); double-click to type.",
+  },
   freeze: {
     title: "Freeze",
     text: "Holds the display so you can study it. Scale, views, zoom and cursors keep working, and you can swipe to look back. Click again to go live.",

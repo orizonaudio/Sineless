@@ -57,6 +57,7 @@ test("encodes the golden lanes frame byte for byte", () => {
     cycleStart: header.cycleStart,
     spanQuarterNotes: header.spanQuarterNotes,
     barQuarterNotes: header.barQuarterNotes,
+    cycleSeconds: header.cycleSeconds,
     visibleSamples: header.visibleSamples,
     views: new Map(),
     lanes: goldenLanes.lanes,

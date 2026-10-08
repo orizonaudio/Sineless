@@ -25,6 +25,7 @@ export interface Frame {
   readonly cursor: number | undefined;
   // Musical context of a synced sweep, in quarter notes.
   readonly cycleStart: number;
+  readonly cycleSeconds: number; // The left edge's project time.
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
   // The part of the span this frame covers, and its length in samples.
@@ -134,6 +135,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     limited: (flags & FrameFlag.limited) !== 0,
     cursor: cursor >= 0 ? cursor : undefined,
     cycleStart: f32("cycleStart"),
+    cycleSeconds: f32("cycleSeconds"),
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
     viewStart: f32("viewStart"),

@@ -26,13 +26,16 @@ void Timeline::advance(const HostTimeline& host, int numSamples,
     stamp.playing = host.playing && host.positionValid;
     if (stamp.playing) {
         stamp.quarterNotes = host.quarterNotes;
+        stamp.seconds = host.secondsValid ? host.seconds : stamp.seconds;
     } else if (started) {
         // Free-run: continue from the previous block at the previous tempo.
+        const auto elapsed = static_cast<double>(nextSampleIndex - current.sampleIndex);
         stamp.quarterNotes =
-            current.quarterNotes + static_cast<double>(nextSampleIndex - current.sampleIndex) *
-                                       current.tempo / (kSecondsPerMinute * sampleRate);
+            current.quarterNotes + elapsed * current.tempo / (kSecondsPerMinute * sampleRate);
+        stamp.seconds = current.seconds + elapsed / sampleRate;
     } else {
         stamp.quarterNotes = host.positionValid ? host.quarterNotes : 0.0;
+        stamp.seconds = host.secondsValid ? host.seconds : 0.0;
     }
     current = stamp;
     started = true;
@@ -47,6 +50,7 @@ void Timeline::publish(const MusicalStamp& stamp) noexcept ORIZON_NONBLOCKING
     std::atomic_thread_fence(std::memory_order_release);
     sampleIndexValue.store(stamp.sampleIndex, std::memory_order_relaxed);
     quarterNotesValue.store(stamp.quarterNotes, std::memory_order_relaxed);
+    secondsValue.store(stamp.seconds, std::memory_order_relaxed);
     tempoValue.store(stamp.tempo, std::memory_order_relaxed);
     numeratorValue.store(stamp.numerator, std::memory_order_relaxed);
     denominatorValue.store(stamp.denominator, std::memory_order_relaxed);
@@ -64,6 +68,7 @@ MusicalStamp Timeline::latest() const
         }
         stamp.sampleIndex = sampleIndexValue.load(std::memory_order_relaxed);
         stamp.quarterNotes = quarterNotesValue.load(std::memory_order_relaxed);
+        stamp.seconds = secondsValue.load(std::memory_order_relaxed);
         stamp.tempo = tempoValue.load(std::memory_order_relaxed);
         stamp.numerator = numeratorValue.load(std::memory_order_relaxed);
         stamp.denominator = denominatorValue.load(std::memory_order_relaxed);
@@ -87,6 +92,11 @@ double Timeline::sampleIndexAt(const MusicalStamp& stamp, double quarterNotes, d
 {
     return static_cast<double>(stamp.sampleIndex) +
            (quarterNotes - stamp.quarterNotes) * kSecondsPerMinute * sampleRate / stamp.tempo;
+}
+
+double Timeline::secondsAt(const MusicalStamp& stamp, double quarterNotes)
+{
+    return stamp.seconds + (quarterNotes - stamp.quarterNotes) * kSecondsPerMinute / stamp.tempo;
 }
 
 double Timeline::barQuarterNotes(const MusicalStamp& stamp)

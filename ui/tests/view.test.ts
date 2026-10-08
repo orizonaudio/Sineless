@@ -13,6 +13,8 @@ import {
   formatDbValue,
   formatDbfs,
   formatFrequency,
+  formatClock,
+  formatSamples,
   formatSeconds,
   parseQuantity,
   signed,
@@ -29,6 +31,11 @@ describe("format", () => {
     expect(formatSeconds(0.25)).toBe("250 ms");
     expect(formatSeconds(1.5)).toBe("1.5 s");
     expect(formatSeconds(4)).toBe("4 s");
+    expect(formatClock(64.5124)).toBe("1:04.512");
+    expect(formatClock(0)).toBe("0:00.000");
+    expect(formatClock(-0.25)).toBe("−0:00.250");
+    expect(formatSamples(218.24)).toBe("218.2 samples");
+    expect(formatSamples(48000)).toBe("48000 samples");
   });
 
   test("formats dBFS readouts", () => {
@@ -204,6 +211,7 @@ describe("status chips", () => {
     limited: false,
     cursor: undefined,
     cycleStart: 0,
+    cycleSeconds: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

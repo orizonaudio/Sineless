@@ -27,6 +27,7 @@ struct SweepWindow
     double cycleStart = 0.0;
     double spanQuarterNotes = 0.0;
     double barQuarterNotes = 4.0;
+    double cycleSeconds = 0.0; // The left edge's project time.
 };
 
 // Cycles align to multiples of the span from the project start, i.e. to bars for bar spans.

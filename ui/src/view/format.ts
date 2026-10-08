@@ -27,6 +27,20 @@ export function formatSeconds(seconds: number): string {
   return `${trim(seconds.toPrecision(3))} s`;
 }
 
+// Project time as "m:ss.mmm", e.g. "1:04.512".
+export function formatClock(seconds: number): string {
+  const milliseconds = Math.round(Math.abs(seconds) * 1000);
+  const minutes = Math.floor(milliseconds / 60000);
+  const rest = (milliseconds % 60000) / 1000;
+  const text = `${String(minutes)}:${rest.toFixed(3).padStart(6, "0")}`;
+  return seconds < 0 && milliseconds > 0 ? `${minus}${text}` : text;
+}
+
+// A sample count: one decimal below 10000, e.g. "218.2 samples", "48000 samples".
+export function formatSamples(samples: number): string {
+  return `${samples < 10000 ? samples.toFixed(1) : samples.toFixed(0)} samples`;
+}
+
 // Linear amplitude as dBFS with one decimal; silence is minus infinity.
 export function formatDbfs(linear: number): string {
   if (linear <= 0) {

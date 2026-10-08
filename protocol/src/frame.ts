@@ -21,7 +21,8 @@
 // the trigger channel; `frequency` is 0 when unavailable. In a tempo-synced sweep, `cursor` is
 // the playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
 // project position of the left edge, `spanQuarterNotes` the span shown and `barQuarterNotes` the
-// bar length, all in quarter notes (0 when not synced).
+// bar length, all in quarter notes (0 when not synced); `cycleSeconds` is the left edge's project
+// time in seconds.
 //
 // View zoom: the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
 // 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
@@ -57,6 +58,7 @@ export const frameHeaderFields = [
   { name: "laneSet", type: "u32" },
   { name: "sumGain", type: "f32" },
   { name: "fixedGain", type: "f32" },
+  { name: "cycleSeconds", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

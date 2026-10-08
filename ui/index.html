@@ -53,6 +53,7 @@
           <span>B</span>
         </div>
         <div class="level-cursor-lines" id="level-cursor-lines"></div>
+        <div class="hover-readout" id="hover-readout" hidden></div>
         <div class="screen-corner">
           <div class="chips" id="chips" data-help="status"></div>
           <div class="cursor-readout" id="cursor-readout" hidden></div>
@@ -101,7 +102,14 @@
           </div>
         </section>
         <section class="group push" id="display-group">
-          <div class="group-label">Display</div>
+          <button
+            class="group-label group-button"
+            id="display-details"
+            aria-expanded="false"
+            data-help="displayOptions"
+          >
+            Display <span id="display-summary"></span>
+          </button>
           <div class="row">
             <button
               class="action"
@@ -137,8 +145,22 @@
             >
               Level
             </button>
+            <button
+              class="action"
+              id="hover-toggle"
+              aria-pressed="false"
+              data-help="hoverReadout"
+            >
+              Hover
+            </button>
           </div>
         </section>
+        <div class="popover" id="display-popover" hidden>
+          <div class="popover-row" data-help="concertPitch">
+            <span>A4</span>
+            <div id="concert-pitch-field"></div>
+          </div>
+        </div>
         <div class="popover" id="trigger-popover" hidden>
           <div class="popover-row" data-help="triggerSource">
             <span>Source</span>

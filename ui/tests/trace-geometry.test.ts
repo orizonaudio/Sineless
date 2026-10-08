@@ -45,6 +45,7 @@ function frame(
     limited: false,
     cursor: undefined,
     cycleStart: 0,
+    cycleSeconds: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

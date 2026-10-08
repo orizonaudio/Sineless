@@ -46,6 +46,11 @@ import {
   type LevelPair,
 } from "./view/cursors.ts";
 import { drawGrid } from "./view/grid.ts";
+import {
+  hoverReadout,
+  type HoverContext,
+  type HoverTrace,
+} from "./view/hover.ts";
 import { cssColour, laneStyles, type LaneStyle } from "./view/lanes.ts";
 import type { HelpTopic } from "./view/help.ts";
 import {
@@ -88,6 +93,12 @@ const viewLabels: Record<ViewName, string> = {
   mid: "M",
   side: "S",
 };
+const viewNames: Record<ChannelView, string> = {
+  [ChannelView.left]: "Left",
+  [ChannelView.right]: "Right",
+  [ChannelView.mid]: "Mid",
+  [ChannelView.side]: "Side",
+};
 const viewColorTokens: Record<ViewName, string> = {
   left: "--left",
   right: "--right",
@@ -113,6 +124,13 @@ interface GestureEvent extends UIEvent {
 // Room taken by the amplitude labels at the left edge (CSS px).
 const amplitudeLabelWidth = 56;
 const readoutInterval = 100; // ms: readouts stay legible while frames arrive at display rate.
+// Group titles that open a popover: the group, its title button and the popover.
+const popovers = [
+  ["trigger-group", "trigger-details", "trigger-popover"],
+  ["display-group", "display-details", "display-popover"],
+] as const;
+// The hover readout keeps this far (CSS px) from the pointer.
+const hoverOffset = 14;
 
 function element(id: string): HTMLElement {
   const found = document.getElementById(id);
@@ -172,6 +190,8 @@ export class OscilloscopeApp {
   private view: ViewWindow = fullView;
   // Time and level cursors, while shown; temporary like the view.
   private timeCursors: CursorPair | undefined;
+  // The pointer over the traces, as fractions of the screen, for the hover readout.
+  private hover: { x: number; y: number } | undefined;
   private levelCursors: LevelPair | undefined;
   private sampleRate = 48000;
   // The Compare view: the fix preview, and the lane labels' readouts of each compared track (by
@@ -457,24 +477,35 @@ export class OscilloscopeApp {
       ["falling", "Falling"],
     ]);
 
-    const details = element("trigger-details");
-    const popover = element("trigger-popover");
-    details.addEventListener("click", () => {
-      popover.hidden = !popover.hidden;
-      details.setAttribute("aria-expanded", String(!popover.hidden));
-      this.placeTriggerPopover();
-    });
-    document.addEventListener("pointerdown", (event) => {
-      const target = event.target as Node;
-      if (
-        !popover.hidden &&
-        !popover.contains(target) &&
-        !details.contains(target)
-      ) {
-        popover.hidden = true;
-        details.setAttribute("aria-expanded", "false");
-      }
-    });
+    this.numberField(
+      "concertPitch",
+      "concert-pitch-field",
+      "Concert pitch",
+      (value) => `${String(Number(value.toFixed(1)))} Hz`,
+      (value, delta, fine) => value + delta * (fine ? 0.1 : 1),
+    );
+
+    // A group's title opens its popover of further settings; a press elsewhere closes it.
+    for (const [group, button, id] of popovers) {
+      const details = element(button);
+      const popover = element(id);
+      details.addEventListener("click", () => {
+        popover.hidden = !popover.hidden;
+        details.setAttribute("aria-expanded", String(!popover.hidden));
+        this.placePopover(id, group);
+      });
+      document.addEventListener("pointerdown", (event) => {
+        const target = event.target as Node;
+        if (
+          !popover.hidden &&
+          !popover.contains(target) &&
+          !details.contains(target)
+        ) {
+          popover.hidden = true;
+          details.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
 
     element("freeze").addEventListener("click", () => {
       const frozen = this.lastFrame?.frozen !== true;
@@ -506,6 +537,12 @@ export class OscilloscopeApp {
         String(this.levelCursors !== undefined),
       );
       this.placeCursors();
+    });
+    element("hover-toggle").addEventListener("click", () => {
+      this.request(
+        "hoverReadout",
+        this.store.get("hoverReadout") === "on" ? "off" : "on",
+      );
     });
     element("auto-freeze").addEventListener("click", () => {
       this.request(
@@ -552,12 +589,13 @@ export class OscilloscopeApp {
 
   // Opens the trigger popover above the Trigger group, aligned with its left edge, kept inside
   // the window.
-  private placeTriggerPopover(): void {
-    const popover = element("trigger-popover");
+  // Above its group, left-aligned with it as far as the strip allows.
+  private placePopover(id: string, groupId: string): void {
+    const popover = element(id);
     if (popover.hidden) {
       return;
     }
-    const group = element("trigger-group");
+    const group = element(groupId);
     const strip = popover.offsetParent?.clientWidth ?? window.innerWidth;
     const margin = 8;
     const left = Math.min(
@@ -597,6 +635,13 @@ export class OscilloscopeApp {
     ) {
       this.placeCursors();
     }
+    if (name === "hoverReadout") {
+      element("hover-toggle").setAttribute(
+        "aria-pressed",
+        String(value === "on"),
+      );
+      this.updateHover();
+    }
     if (name === "autoFreeze") {
       element("auto-freeze").setAttribute(
         "aria-pressed",
@@ -612,6 +657,11 @@ export class OscilloscopeApp {
       element("beat-span-field").hidden = !beats;
     }
     this.updateTriggerSummary();
+    if (name === "concertPitch" && typeof value === "number") {
+      element("display-summary").textContent =
+        `A4 ${String(Number(value.toFixed(1)))}`;
+      this.updateCursorReadout();
+    }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
     if (
       (name === "timeSpan" || name === "timeBase" || name === "beatSpan") &&
@@ -645,7 +695,9 @@ export class OscilloscopeApp {
   // ----- Screen -----
 
   private resize(): void {
-    this.placeTriggerPopover();
+    for (const [group, , id] of popovers) {
+      this.placePopover(id, group);
+    }
     this.placeCursors();
     const ratio = window.devicePixelRatio;
     for (const canvas of [this.gridCanvas, this.traceCanvas]) {
@@ -871,11 +923,20 @@ export class OscilloscopeApp {
     if (!this.beatsMode() || frame?.synced !== true) {
       return undefined;
     }
+    const covered = frame.viewEnd - frame.viewStart;
+    const spanSeconds =
+      covered > 0 ? frame.visibleSamples / this.sampleRate / covered : 0;
     return musicalGrid(
       frame.cycleStart,
       frame.spanQuarterNotes,
       frame.barQuarterNotes,
       this.view,
+      frame.spanQuarterNotes > 0 && spanSeconds > 0
+        ? {
+            cycleSeconds: frame.cycleSeconds,
+            secondsPerQuarter: spanSeconds / frame.spanQuarterNotes,
+          }
+        : undefined,
     );
   }
 
@@ -906,7 +967,7 @@ export class OscilloscopeApp {
     const percent = `${String(Math.min(1, Math.max(0, position)) * 100)}%`;
     cursor.style.left = percent;
     previous.style.left = percent;
-    const key = `${String(frame.cycleStart)}/${String(frame.spanQuarterNotes)}/${String(frame.barQuarterNotes)}`;
+    const key = `${String(frame.cycleStart)}/${String(frame.spanQuarterNotes)}/${String(frame.barQuarterNotes)}/${frame.cycleSeconds.toFixed(3)}`;
     if (key !== this.cycleKey) {
       this.cycleKey = key;
       this.drawScreen();
@@ -939,6 +1000,12 @@ export class OscilloscopeApp {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;
+      if (label.detail !== undefined) {
+        const detail = document.createElement("span");
+        detail.className = "axis-detail";
+        detail.textContent = label.detail;
+        node.append(detail);
+      }
       // The left edge label sits clear of the amplitude labels.
       node.style.left = `${String(Math.max(label.position * width + 4, label.position === 0 ? amplitudeLabelWidth : 0))}px`;
       node.style.bottom = "3px";
@@ -1087,6 +1154,88 @@ export class OscilloscopeApp {
     return frame.views.get(source) ?? views[0];
   }
 
+  // The traces as the hover readout sees them, in lane order, named.
+  private hoverContext(frame: Frame): HoverContext {
+    let traces: HoverTrace[];
+    let overlaid = 0;
+    if (frame.lanes.length > 0) {
+      const styles = this.lanesOf(frame);
+      traces = frame.lanes.map((values, index) => ({
+        name: styles[index]?.name ?? `Track ${String(index + 1)}`,
+        values,
+      }));
+      overlaid = Math.max(
+        0,
+        styles.findIndex((style) => style.own),
+      );
+    } else {
+      const source =
+        ChannelView[
+          this.store.get("triggerSource") as keyof typeof ChannelView
+        ];
+      traces = [];
+      for (const [view, values] of frame.views) {
+        if (view === source) {
+          overlaid = traces.length;
+        }
+        traces.push({ name: viewNames[view], values });
+      }
+    }
+    return {
+      frame,
+      traces,
+      overlaid,
+      layout: this.layout(),
+      view: this.view,
+      sampleRate: this.sampleRate,
+      a4: this.store.number("concertPitch"),
+      roll: frame.roll,
+    };
+  }
+
+  // Shows what lies under the pointer, beside it; hidden while a help tooltip shows.
+  private updateHover(): void {
+    const node = element("hover-readout");
+    const frame = this.lastFrame;
+    const readout =
+      this.store.get("hoverReadout") === "on" &&
+      this.hover !== undefined &&
+      frame !== undefined &&
+      element("help-tip").hidden
+        ? hoverReadout(this.hoverContext(frame), this.hover.x, this.hover.y)
+        : undefined;
+    if (readout === undefined || this.hover === undefined) {
+      node.hidden = true;
+      return;
+    }
+    const title = document.createElement("strong");
+    title.textContent = readout.title;
+    node.replaceChildren(
+      title,
+      ...readout.lines.map((text) => {
+        const line = document.createElement("div");
+        line.textContent = text;
+        return line;
+      }),
+    );
+    node.hidden = false;
+    // Below and right of the pointer, flipped where the screen ends.
+    const width = this.screen.clientWidth;
+    const height = this.screen.clientHeight;
+    const x = this.hover.x * width;
+    const y = this.hover.y * height;
+    const left =
+      x + hoverOffset + node.offsetWidth <= width
+        ? x + hoverOffset
+        : x - hoverOffset - node.offsetWidth;
+    const top =
+      y + hoverOffset + node.offsetHeight <= height
+        ? y + hoverOffset
+        : y - hoverOffset - node.offsetHeight;
+    node.style.left = `${String(Math.max(0, left))}px`;
+    node.style.top = `${String(Math.max(0, top))}px`;
+  }
+
   private updateCursorReadout(): void {
     const readout = element("cursor-readout");
     const frame = this.lastFrame;
@@ -1107,6 +1256,8 @@ export class OscilloscopeApp {
             spanSamples / this.sampleRate,
             frame.synced ? frame.spanQuarterNotes : undefined,
           ),
+          this.sampleRate,
+          this.store.number("concertPitch"),
         ),
       );
     }
@@ -1124,6 +1275,28 @@ export class OscilloscopeApp {
   }
 
   private listenToScreen(): void {
+    // The hover readout follows the pointer over the traces while no button is held.
+    this.screen.addEventListener("pointermove", (event) => {
+      const rectangle = this.screen.getBoundingClientRect();
+      this.hover =
+        event.buttons === 0 && event.target instanceof HTMLCanvasElement
+          ? {
+              x: (event.clientX - rectangle.left) / rectangle.width,
+              y: (event.clientY - rectangle.top) / rectangle.height,
+            }
+          : undefined;
+      this.updateHover();
+    });
+    for (const type of ["pointerleave", "pointerdown", "wheel"] as const) {
+      this.screen.addEventListener(
+        type,
+        () => {
+          this.hover = undefined;
+          this.updateHover();
+        },
+        { passive: true },
+      );
+    }
     // Buttons on the screen (the Compare view's check boxes and fix preview) take their own
     // clicks: the screen would otherwise claim the pointer for a zoom drag, or reset the zoom.
     const overlay = element("lane-labels");
@@ -1448,6 +1621,7 @@ export class OscilloscopeApp {
       }),
     );
     this.updateCursorReadout();
+    this.updateHover(); // Live data changes under a resting pointer.
     const frame = this.lastFrame;
     if (frame !== undefined) {
       this.lastReadoutTime = now;
