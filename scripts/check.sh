@@ -90,6 +90,10 @@ if [[ "${SKIP_PERFORMANCE:-}" != 1 ]]; then
         --min-fps=45 --max-analysis=10 --max-total=65 | grep -E '^limit|^total'
     "$bench/perf_bench" --mode=compare --lanes=7 --beatspan=fourBars --warmup=10 --duration=5 \
         --min-fps=45 --max-analysis=30 --max-total=75 | grep -E '^limit|^total'
+    # The worst case: fifteen tracks over sixteen bars at 60 BPM and 96 kHz, a 64 s sweep that
+    # takes over a minute to fill.
+    "$bench/perf_bench" --mode=multi --lanes=15 --beatspan=sixteenBars --rate=96000 --tempo=60 \
+        --warmup=70 --duration=5 --min-fps=45 --max-analysis=20 --max-total=90 | grep -E '^limit|^total'
     # Opening and closing the editor leaves nothing behind.
     "$bench/perf_bench" --mode=multi --lanes=7 --warmup=5 --reopen=50 --min-fps=45 \
         --max-memory-growth=20 | grep -E '^limit|^reopen'

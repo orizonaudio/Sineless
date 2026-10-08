@@ -60,7 +60,10 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
             *analyzer, *dispatcher,
             [this](std::span<const std::byte> frame) { transport->sendFrame(frame); });
         session = std::make_unique<Session>(*engineState, *analyzer, *transport);
-        dispatcher->every(kStateSyncInterval, [this] { session->sync(); });
+        dispatcher->every(kStateSyncInterval, [this] {
+            session->sync();
+            requestMinimumHeight();
+        });
         worker = std::make_unique<engine::AnalysisWorker>([this] { frameFlow->step(); });
     }
     return CPluginView::attached(parent, type);
@@ -120,8 +123,42 @@ tresult PLUGIN_API Editor::checkSizeConstraint(ViewRect* rect)
         return kInvalidArgument;
     }
     rect->right = rect->left + std::max(rect->getWidth(), kMinimumWidth);
-    rect->bottom = rect->top + std::max(rect->getHeight(), kMinimumHeight);
+    rect->bottom = rect->top + std::max(rect->getHeight(), minimumHeight());
     return kResultTrue;
+}
+
+int Editor::minimumHeight() const
+{
+    if (!analyzer || !engineState) {
+        return kMinimumHeight;
+    }
+    using protocol::SettingId;
+    const engine::Settings settings = engineState->settings().get();
+    const auto mode = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode);
+    const bool stacked = settings.enumValue<protocol::ViewLayout>(SettingId::kViewLayout) ==
+                         protocol::ViewLayout::kStacked;
+    if (mode == protocol::DisplayMode::kSingle || !stacked) {
+        return kMinimumHeight;
+    }
+    // The tracks on show, and the sum lane in the Compare view.
+    const auto lanes = static_cast<int>(analyzer->laneSet().lanes.size()) +
+                       (mode == protocol::DisplayMode::kCompare ? 1 : 0);
+    return std::max(kMinimumHeight, kChromeHeight + lanes * kMinimumLaneHeight);
+}
+
+void Editor::requestMinimumHeight()
+{
+    const int minimum = minimumHeight();
+    if (minimum == lastMinimumHeight) {
+        return;
+    }
+    lastMinimumHeight = minimum;
+    if (plugFrame == nullptr || getRect().getHeight() >= minimum) {
+        return;
+    }
+    ViewRect wanted = getRect();
+    wanted.bottom = wanted.top + minimum;
+    plugFrame->resizeView(this, &wanted); // The host answers with onSize, or declines.
 }
 
 } // namespace orizon::editor

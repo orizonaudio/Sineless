@@ -5,7 +5,7 @@ An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its trac
 ![O-Scope's multi-track view, frozen in Beats mode: kick, clap, hi-hat and bass lanes stacked in their track colours](assets/o-scope.png)
 
 - Triggered display from 0.5 ms to 1 s, with Auto, Normal, Free and Single trigger modes; spans up to 4 s scroll continuously.
-- Tempo-synced sweep: a span in beats or bars, aligned to the host's bar lines, with a beat grid and playhead.
+- Tempo-synced sweep: a span in beats or bars, up to 16 bars, aligned to the host's bar lines, with a beat grid and playhead.
 - Left, right, mid and side views, overlaid or stacked, on a vertical scale in dB.
 - Multi-track view: every track with O-Scope inserted, each in its own lane in its track colour and lined up in time, or overlaid. Groups A–D keep separate comparisons apart.
 - Freeze, then pan back through the last 4 seconds; optionally freeze automatically when the transport stops.

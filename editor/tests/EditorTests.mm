@@ -224,6 +224,81 @@ TEST_F(EditorTest, EnforcesMinimumSize)
     EXPECT_EQ(rect.getHeight(), Editor::kMinimumHeight);
 }
 
+// Stands in for the host's window: records the sizes the editor asks for, and grants them.
+class TestFrame final : public IPlugFrame
+{
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override
+    {
+        if (FUnknownPrivate::iidEqual(iid, IPlugFrame::iid) ||
+            FUnknownPrivate::iidEqual(iid, FUnknown::iid)) {
+            *obj = this;
+            return kResultOk;
+        }
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+    tresult PLUGIN_API resizeView(IPlugView* view, ViewRect* newSize) override
+    {
+        requested = *newSize;
+        ++requests;
+        return view->onSize(newSize);
+    }
+
+    ViewRect requested;
+    int requests = 0;
+};
+
+// With stacked lanes on show, the minimum height grows so that every lane fits its label, and the
+// editor asks the host for the room once per change.
+TEST_F(EditorTest, GrowsTheMinimumHeightWithStackedLanes)
+{
+    auto own = std::make_shared<engine::Engine>();
+    own->settings().set(protocol::SettingId::kDisplayMode,
+                        static_cast<double>(protocol::DisplayMode::kMulti));
+    own->settings().set(protocol::SettingId::kViewLayout,
+                        static_cast<double>(protocol::ViewLayout::kStacked));
+    // Sixteen tracks: more than the default window's height fits.
+    std::vector<std::shared_ptr<engine::Engine>> group{own};
+    for (int track = 1; track < 16; ++track) {
+        group.push_back(std::make_shared<engine::Engine>());
+    }
+    for (const auto& engine : group) {
+        engine::InstanceRegistry::shared().add(engine);
+    }
+    TestFrame frame; // Outlives the editor, which keeps a pointer to it.
+    std::vector<std::string> received;
+    auto editor = makeEditor(received, own);
+    editor->setFrame(&frame);
+    NSView* content = [[OrizonTestKeyRecorder alloc] initWithFrame:NSMakeRect(0, 0, 900, 500)];
+    NSWindow* window = makeWindow(content);
+    ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+
+    const int wanted = Editor::kChromeHeight + 16 * Editor::kMinimumLaneHeight;
+    ASSERT_TRUE(pumpUntil([&] { return frame.requests > 0; }, kPageTimeout))
+        << "the editor asks for the height its sixteen lanes need";
+    EXPECT_EQ(frame.requested.getHeight(), wanted);
+    EXPECT_EQ(editor->getRect().getHeight(), wanted) << "granted";
+    ViewRect rect(0, 0, 100, 100);
+    EXPECT_EQ(editor->checkSizeConstraint(&rect), kResultTrue);
+    EXPECT_EQ(rect.getHeight(), wanted);
+
+    own->settings().set(protocol::SettingId::kViewLayout,
+                        static_cast<double>(protocol::ViewLayout::kOverlaid));
+    ASSERT_TRUE(
+        pumpUntil([&] { return editor->minimumHeight() == Editor::kMinimumHeight; }, kPageTimeout))
+        << "overlaid lanes share the screen";
+    EXPECT_EQ(frame.requests, 1) << "no request to shrink";
+
+    editor->removed();
+    [window close];
+    for (const auto& engine : group) {
+        engine::InstanceRegistry::shared().remove(*engine);
+    }
+}
+
 // The page loads from the embedded UI and completes the session handshake across
 // 50 open/close cycles.
 TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)

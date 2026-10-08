@@ -33,12 +33,15 @@ buffer unless a step says otherwise. Note anything unexpected in the row's notes
 5. **Editor.** Open and close the editor many times while playing, resize it to the minimum and
    larger: nothing is cropped, and the host's CPU returns to where it was once it is closed.
 6. **Multi.** Insert on five or more tracks in group A and two in group B: lanes show the right
-   names and colours, in order, and line up in time. Rename and recolour a track: its lane
-   follows. In hosts with plugin isolation, check both modes and note what Multi shows.
+   names and colours, in order, and line up in time, and the window grows so that every stacked
+   lane fits its label. Rename and recolour a track: its lane follows. In hosts with plugin
+   isolation, check both modes and note what Multi shows.
 7. **Compare.** Check and uncheck tracks, an inverted copy reads Ø and cancels, Preview fix.
 8. **State.** Save the project, close and reopen it: every setting is restored; an older
    project opens.
 9. **Rates and buffers.** Repeat steps 2 and 6 briefly at 44.1 and 96 kHz, and at 64 and 1024
    samples.
 10. **Load.** With the editor open on seven tracks over four bars, the host's CPU meter stays
-    calm and playback has no dropouts.
+    calm and playback has no dropouts. Then the worst case: fifteen tracks over sixteen bars at
+    60 BPM and 96 kHz. The sweep fills in over its first pass ("Filling"), the CPU meter stays
+    calm, and the host reports well under a gigabyte more memory.

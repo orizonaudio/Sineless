@@ -26,6 +26,11 @@ public:
     // status chips (measured), with room for font differences. The UI's .app min-width matches.
     static constexpr int kMinimumWidth = 890;
     static constexpr int kMinimumHeight = 250;
+    // Stacked lanes of the multi-track view need this much height each, for their label chip
+    // and a clear trace, above the top bar and control strip (kChromeHeight, measured): the
+    // minimum height grows with the lanes shown, and the editor asks the host for the room.
+    static constexpr int kMinimumLaneHeight = 40;
+    static constexpr int kChromeHeight = 140;
 
     // Sees every raw message from the page before the session handles it. For tests.
     using MessageObserver = std::function<void(std::string_view message)>;
@@ -40,6 +45,9 @@ public:
     Steinberg::tresult PLUGIN_API canResize() override;
     Steinberg::tresult PLUGIN_API checkSizeConstraint(Steinberg::ViewRect* rect) override;
 
+    // The minimum height now: kMinimumHeight, or more with stacked lanes on show.
+    [[nodiscard]] int minimumHeight() const;
+
     // False when the editor must show the "unavailable" state.
     [[nodiscard]] bool engineAvailable() const { return engineState != nullptr; }
 
@@ -53,8 +61,11 @@ public:
 
 private:
     void receive(std::string_view message);
+    // Asks the host for more height when the lanes on show no longer fit, once per change.
+    void requestMinimumHeight();
 
     MessageObserver observer;
+    int lastMinimumHeight = kMinimumHeight;
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;
     std::unique_ptr<WebViewTransport> transport;
