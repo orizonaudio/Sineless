@@ -3,6 +3,9 @@
 // `pointCount` points: a min/max pair per point in FrameMode.minMax, one sample per point in
 // FrameMode.raw.
 //
+// Multi-track frames have `laneCount` above 0 and no views: the data holds that many lanes, one
+// per track, in the order of the `lanes` message whose `laneSet` matches the frame's.
+//
 // `samplesPerPoint` is the number of samples each point covers. The visible span starts
 // `startFraction` samples after the first point (sub-sample trigger alignment). Readouts cover
 // the trigger channel; `frequency` is 0 when unavailable. In a tempo-synced sweep, `cursor` is
@@ -27,7 +30,7 @@ export const frameHeaderFields = [
   { name: "mode", type: "u8" },
   { name: "flags", type: "u8" },
   { name: "views", type: "u8" },
-  { name: "reserved", type: "u8" },
+  { name: "laneCount", type: "u8" },
   { name: "pointCount", type: "u32" },
   { name: "samplesPerPoint", type: "f32" },
   { name: "startFraction", type: "f32" },
@@ -41,6 +44,7 @@ export const frameHeaderFields = [
   { name: "viewStart", type: "f32" },
   { name: "viewEnd", type: "f32" },
   { name: "visibleSamples", type: "f32" },
+  { name: "laneSet", type: "u32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

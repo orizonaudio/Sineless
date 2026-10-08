@@ -56,7 +56,7 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
                 worker->wake();
             }
         });
-        dispatcher->every(kStateSyncInterval, [this] { session->syncSettings(); });
+        dispatcher->every(kStateSyncInterval, [this] { session->sync(); });
         worker = std::make_unique<engine::AnalysisWorker>([this] { frameFlow->step(); });
     }
     return CPluginView::attached(parent, type);

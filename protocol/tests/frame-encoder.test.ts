@@ -5,6 +5,7 @@ import { decodeFrame } from "../src/frame-decoder.ts";
 import { encodeFrame } from "../src/frame-encoder.ts";
 
 import golden from "./data/golden-frame.json" with { type: "json" };
+import goldenLanes from "./data/golden-lanes-frame.json" with { type: "json" };
 
 function toHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer), (byte) =>
@@ -35,4 +36,31 @@ test("encodes the golden frame byte for byte", () => {
   });
   expect(toHex(buffer)).toBe(golden.hex);
   expect(decodeFrame(buffer).pointCount).toBe(golden.header.pointCount);
+});
+
+test("encodes the golden lanes frame byte for byte", () => {
+  const { header } = goldenLanes;
+  const buffer = encodeFrame({
+    sequence: header.sequence,
+    mode: FrameMode.raw,
+    triggered: false,
+    frozen: false,
+    roll: false,
+    synced: true,
+    pointCount: header.pointCount,
+    samplesPerPoint: header.samplesPerPoint,
+    startFraction: header.startFraction,
+    peak: header.peak,
+    rms: header.rms,
+    frequency: undefined,
+    cursor: header.cursor,
+    cycleStart: header.cycleStart,
+    spanQuarterNotes: header.spanQuarterNotes,
+    barQuarterNotes: header.barQuarterNotes,
+    visibleSamples: header.visibleSamples,
+    views: new Map(),
+    lanes: goldenLanes.lanes,
+    laneSet: header.laneSet,
+  });
+  expect(toHex(buffer)).toBe(goldenLanes.hex);
 });

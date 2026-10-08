@@ -5,6 +5,7 @@
 #include "engine/Engine.h"
 #include "engine/Settings.h"
 
+#include <cstdint>
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -25,8 +26,9 @@ public:
     // Handles one message from the page. Before a successful hello only hello is accepted.
     void receive(const nlohmann::json& message);
 
-    // Reports settings changed outside the session (the host's setState) as stateChanged.
-    void syncSettings();
+    // Reports what changed outside the session: settings (the host's setState) as stateChanged,
+    // and a new multi-track lane set as lanes.
+    void sync();
 
     [[nodiscard]] bool started() const { return isStarted; }
 
@@ -35,6 +37,7 @@ private:
     void setSetting(const nlohmann::json& message);
     void setViewport(const nlohmann::json& message);
     void sendState(protocol::SettingId id, double value);
+    void syncLanes();
 
     engine::Engine& engine;
     engine::Analyzer& analyzer;
@@ -42,6 +45,7 @@ private:
     std::function<void()> onCredit;
     bool isStarted = false;
     std::optional<engine::Settings> lastSent;
+    std::uint32_t lastLaneSet = 0;
 };
 
 } // namespace orizon::editor

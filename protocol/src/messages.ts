@@ -15,6 +15,7 @@ export const MessageType = {
   pan: "pan",
   arm: "arm",
   view: "view",
+  lanes: "lanes",
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
@@ -102,6 +103,23 @@ export interface ViewMessage {
   readonly end: number;
 }
 
+// One track of the multi-track view. `name` is empty and `colour` null when the host reports
+// none; `own` marks the instance whose window shows the lanes.
+export interface LaneLabel {
+  readonly name: string;
+  readonly colour: number | null; // 0xRRGGBB
+  readonly own: boolean;
+}
+
+// Engine to UI. The tracks behind the lanes of frames whose laneSet matches, in lane order, and
+// how many more tracks of the group are not drawn. Sent when the set changes.
+export interface LanesMessage {
+  readonly type: "lanes";
+  readonly laneSet: number;
+  readonly lanes: readonly LaneLabel[];
+  readonly hidden: number;
+}
+
 export type UiToEngineMessage =
   | HelloMessage
   | SetSettingMessage
@@ -113,4 +131,4 @@ export type UiToEngineMessage =
   | ViewMessage;
 
 export type EngineToUiMessage =
-  SnapshotMessage | StateChangedMessage | ErrorMessage;
+  SnapshotMessage | StateChangedMessage | ErrorMessage | LanesMessage;

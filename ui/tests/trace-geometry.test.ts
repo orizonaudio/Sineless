@@ -51,6 +51,8 @@ function frame(
     views: new Map(
       views.map(([view, values]) => [view, new Float32Array(values)]),
     ),
+    lanes: [],
+    laneSet: 0,
   };
 }
 

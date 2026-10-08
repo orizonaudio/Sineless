@@ -156,12 +156,45 @@ TEST_F(SessionTest, ReportsHostStateChanges)
     engine::Settings restored = engine.settings().get();
     restored.set(SettingId::kTriggerLevel, 0.5);
     engine.settings().replace(restored);
-    session.syncSettings();
+    session.sync();
     const auto echoes = transport.ofType("stateChanged");
     ASSERT_EQ(echoes.size(), 1u) << "only the changed setting";
     EXPECT_EQ(echoes[0]["name"], "triggerLevel");
-    session.syncSettings();
+    session.sync();
     EXPECT_EQ(transport.ofType("stateChanged").size(), 1u) << "nothing new the second time";
+}
+
+// The multi-track view's lanes reach the page once, and again whenever they change.
+TEST_F(SessionTest, ReportsTheMultiTrackLanes)
+{
+    engine.settings().set(protocol::SettingId::kTimeBase,
+                          static_cast<double>(protocol::TimeBase::kBeats));
+    engine.settings().set(protocol::SettingId::kBeatSpan,
+                          static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+    engine.settings().set(protocol::SettingId::kDisplayMode,
+                          static_cast<double>(protocol::DisplayMode::kMulti));
+    engine.setTrackInfo({.name = "Kick", .colour = 0xe03030, .index = std::nullopt});
+    session.receive(example("hello"));
+    ASSERT_GT(producedPointCount(), 0u);
+    session.sync();
+    auto lanes = transport.ofType("lanes");
+    ASSERT_EQ(lanes.size(), 1u);
+    EXPECT_EQ(lanes[0]["laneSet"], analyzer.laneSet().id);
+    EXPECT_EQ(lanes[0]["hidden"], 0);
+    ASSERT_EQ(lanes[0]["lanes"].size(), 1u);
+    EXPECT_EQ(lanes[0]["lanes"][0]["name"], "Kick");
+    EXPECT_EQ(lanes[0]["lanes"][0]["colour"], 0xe03030);
+    EXPECT_EQ(lanes[0]["lanes"][0]["own"], true);
+
+    session.sync();
+    EXPECT_EQ(transport.ofType("lanes").size(), 1u) << "nothing new";
+    engine.setTrackInfo({.name = "Kick 2", .colour = std::nullopt, .index = std::nullopt});
+    producedPointCount();
+    session.sync();
+    lanes = transport.ofType("lanes");
+    ASSERT_EQ(lanes.size(), 2u);
+    EXPECT_EQ(lanes[1]["lanes"][0]["name"], "Kick 2");
+    EXPECT_TRUE(lanes[1]["lanes"][0]["colour"].is_null());
 }
 
 TEST_F(SessionTest, ForwardsViewCommandsToTheAnalyzer)

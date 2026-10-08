@@ -25,6 +25,9 @@ export interface FrameContent {
   readonly viewEnd?: number;
   readonly visibleSamples?: number;
   readonly views: ReadonlyMap<ChannelView, ArrayLike<number>>;
+  // Multi-track frames: lanes instead of views.
+  readonly lanes?: readonly ArrayLike<number>[];
+  readonly laneSet?: number;
 }
 
 const offsets = Object.fromEntries(
@@ -35,8 +38,12 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   const ordered = Object.values(ChannelView).filter((view) =>
     content.views.has(view),
   );
-  const dataLength = ordered.reduce<number>(
-    (sum, view) => sum + (content.views.get(view)?.length ?? 0),
+  const blocks = [
+    ...ordered.map((view) => content.views.get(view) ?? []),
+    ...(content.lanes ?? []),
+  ];
+  const dataLength = blocks.reduce<number>(
+    (sum, values) => sum + values.length,
     0,
   );
   const buffer = new ArrayBuffer(frameHeader.size + dataLength * 4);
@@ -54,7 +61,7 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     offsets.views,
     ordered.reduce<number>((mask, view) => mask | (1 << view), 0),
   );
-  header.setUint8(offsets.reserved, 0);
+  header.setUint8(offsets.laneCount, content.lanes?.length ?? 0);
   header.setUint32(offsets.pointCount, content.pointCount, true);
   header.setFloat32(offsets.samplesPerPoint, content.samplesPerPoint, true);
   header.setFloat32(offsets.startFraction, content.startFraction, true);
@@ -80,11 +87,11 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     content.visibleSamples ?? content.pointCount,
     true,
   );
+  header.setUint32(offsets.laneSet, content.laneSet ?? 0, true);
 
   const data = new Float32Array(buffer, frameHeader.size, dataLength);
   let offset = 0;
-  for (const view of ordered) {
-    const values = content.views.get(view) ?? [];
+  for (const values of blocks) {
     data.set(Array.from(values), offset);
     offset += values.length;
   }

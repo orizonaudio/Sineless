@@ -24,6 +24,8 @@ struct DecodedFrame
     FrameMode mode = FrameMode::kRaw;
     std::uint8_t flags = 0;
     std::uint8_t views = 0;
+    std::uint8_t laneCount = 0;
+    std::uint32_t laneSet = 0;
     std::uint32_t pointCount = 0;
     float samplesPerPoint = 0.0f;
     float startFraction = 0.0f;
@@ -56,6 +58,8 @@ DecodedFrame decode(const std::vector<std::byte>& bytes)
     frame.mode = static_cast<FrameMode>(get<std::uint8_t>(bytes, FrameHeader::kModeOffset));
     frame.flags = get<std::uint8_t>(bytes, FrameHeader::kFlagsOffset);
     frame.views = get<std::uint8_t>(bytes, FrameHeader::kViewsOffset);
+    frame.laneCount = get<std::uint8_t>(bytes, FrameHeader::kLaneCountOffset);
+    frame.laneSet = get<std::uint32_t>(bytes, FrameHeader::kLaneSetOffset);
     frame.pointCount = get<std::uint32_t>(bytes, FrameHeader::kPointCountOffset);
     frame.samplesPerPoint = get<float>(bytes, FrameHeader::kSamplesPerPointOffset);
     frame.startFraction = get<float>(bytes, FrameHeader::kStartFractionOffset);
@@ -600,6 +604,223 @@ TEST_F(AnalyzerTest, NumbersFramesSequentially)
     ASSERT_TRUE(first);
     ASSERT_TRUE(second);
     EXPECT_EQ(second->sequence, first->sequence + 1);
+}
+
+// The multi-track view: several engines on one host clock, at 120 BPM in 4/4, with a quarter-
+// beat sweep (6000 samples). Each engine's lane is its Mid.
+class MultiTrackTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        own = join(1.0f);
+        own->settings().set(SettingId::kDisplayMode,
+                            static_cast<double>(protocol::DisplayMode::kMulti));
+        own->settings().set(SettingId::kBeatSpan,
+                            static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+        analyzer = std::make_unique<Analyzer>(*own, registry);
+        analyzer->setColumns(8000); // More columns than samples: raw points, exact values.
+    }
+
+    // A new instance whose audio is `value` everywhere, or the host time when `value` is unset.
+    std::shared_ptr<Engine> join(std::optional<float> value = std::nullopt,
+                                 protocol::Group group = protocol::Group::kA)
+    {
+        auto engine = std::make_shared<Engine>();
+        engine->setSampleRate(kSampleRate);
+        engine->settings().set(SettingId::kGroup, static_cast<double>(group));
+        registry.add(engine);
+        tracks.emplace_back(engine, value);
+        return engine;
+    }
+
+    // Advances the host by `count` samples; every engine records its block on the same clock.
+    void play(std::uint64_t count)
+    {
+        constexpr std::uint64_t kBlock = 480;
+        for (std::uint64_t done = 0; done < count; done += kBlock) {
+            for (const auto& [engine, value] : tracks) {
+                std::vector<float> block(kBlock);
+                for (std::uint64_t i = 0; i < kBlock; ++i) {
+                    block[i] = value.value_or(static_cast<float>(hostSample + i));
+                }
+                std::array<const float*, 2> channels{block.data(), block.data()};
+                engine->captureRing().write(channels.data(), 2, static_cast<int>(kBlock));
+                engine->timeline().advance(
+                    {.playing = true,
+                     .positionValid = true,
+                     .quarterNotes = static_cast<double>(hostSample) / 24000.0,
+                     .tempoValid = true,
+                     .tempo = 120.0},
+                    static_cast<int>(kBlock), kSampleRate);
+            }
+            hostSample += kBlock;
+        }
+    }
+
+    std::optional<DecodedFrame> produce()
+    {
+        std::vector<std::byte> bytes;
+        if (!analyzer->produce(bytes)) {
+            return std::nullopt;
+        }
+        return decode(bytes);
+    }
+
+    static std::vector<float> lane(const DecodedFrame& frame, std::size_t index)
+    {
+        const auto begin =
+            frame.data.begin() + static_cast<std::ptrdiff_t>(index * frame.pointCount);
+        return {begin, begin + static_cast<std::ptrdiff_t>(frame.pointCount)};
+    }
+
+    InstanceRegistry registry;
+    std::vector<std::pair<std::shared_ptr<Engine>, std::optional<float>>> tracks;
+    std::shared_ptr<Engine> own;
+    std::unique_ptr<Analyzer> analyzer;
+    std::uint64_t hostSample = 0;
+};
+
+TEST_F(MultiTrackTest, DrawsOneMidLanePerTrackOfTheGroup)
+{
+    join(2.0f);
+    join(9.0f, protocol::Group::kB);
+    join(3.0f);
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->views, 0);
+    ASSERT_EQ(frame->laneCount, 3) << "group B's track is not drawn";
+    ASSERT_EQ(frame->pointCount, 6000u);
+    EXPECT_TRUE(frame->has(FrameFlag::kSynced));
+    EXPECT_EQ(lane(*frame, 0), std::vector<float>(6000, 1.0f)) << "creation order";
+    EXPECT_EQ(lane(*frame, 1), std::vector<float>(6000, 2.0f));
+    EXPECT_EQ(lane(*frame, 2), std::vector<float>(6000, 3.0f));
+
+    const LaneSet lanes = analyzer->laneSet();
+    EXPECT_EQ(frame->laneSet, lanes.id);
+    ASSERT_EQ(lanes.lanes.size(), 3u);
+    EXPECT_TRUE(lanes.lanes[0].own);
+    EXPECT_FALSE(lanes.lanes[1].own);
+    EXPECT_EQ(lanes.hidden, 0u);
+}
+
+TEST_F(MultiTrackTest, AlignsTracksThatStartedAtDifferentTimesOnTheClock)
+{
+    tracks.front().second = std::nullopt; // The own track records the host time too.
+    play(3360);
+    join(); // Its capture starts 3360 samples later, at a different index.
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 2);
+    EXPECT_EQ(lane(*frame, 0), lane(*frame, 1)) << "the same host moment at every position";
+    EXPECT_EQ(lane(*frame, 0).front(), 12000.0f) << "the cycle starts on the beat grid";
+}
+
+TEST_F(MultiTrackTest, KeepsTheOwnTrackWithinTheLaneLimit)
+{
+    InstanceRegistry crowded;
+    for (int track = 0; track < 9; ++track) {
+        auto engine = std::make_shared<Engine>();
+        crowded.add(engine);
+        tracks.emplace_back(engine, static_cast<float>(track + 10));
+    }
+    crowded.add(own); // Created last: it would be the tenth lane.
+    Analyzer lanes(*own, crowded);
+    lanes.setColumns(8000);
+    play(9600);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(lanes.produce(bytes));
+    const DecodedFrame frame = decode(bytes);
+    ASSERT_EQ(frame.laneCount, kMaxLanes);
+    EXPECT_EQ(lane(frame, kMaxLanes - 1).front(), 1.0f) << "the own track takes the last lane";
+    EXPECT_EQ(lanes.laneSet().hidden, 2u);
+    EXPECT_TRUE(lanes.laneSet().lanes.back().own);
+}
+
+TEST_F(MultiTrackTest, StartsANewLaneSetWhenTracksChange)
+{
+    play(9600);
+    ASSERT_TRUE(produce());
+    const std::uint32_t first = analyzer->laneSet().id;
+    play(480);
+    ASSERT_TRUE(produce());
+    EXPECT_EQ(analyzer->laneSet().id, first) << "nothing changed";
+
+    const auto bass = join(2.0f);
+    play(480);
+    ASSERT_TRUE(produce());
+    const std::uint32_t joined = analyzer->laneSet().id;
+    EXPECT_GT(joined, first);
+
+    bass->setTrackInfo({.name = "Bass", .colour = 0x3060e0, .index = std::nullopt});
+    play(480);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_GT(analyzer->laneSet().id, joined);
+    EXPECT_EQ(frame->laneSet, analyzer->laneSet().id);
+    EXPECT_EQ(analyzer->laneSet().lanes[1].name, "Bass");
+    EXPECT_EQ(analyzer->laneSet().lanes[1].colour, 0x3060e0u);
+}
+
+TEST_F(MultiTrackTest, ShowsTheOwnTrackAloneWhenNotRegistered)
+{
+    join(2.0f);
+    const InstanceRegistry empty;
+    Analyzer alone(*own, empty);
+    alone.setColumns(8000);
+    play(9600);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(alone.produce(bytes));
+    EXPECT_EQ(decode(bytes).laneCount, 1);
+    EXPECT_TRUE(alone.laneSet().lanes.front().own);
+}
+
+TEST_F(MultiTrackTest, DrawsChannelViewsInSingleMode)
+{
+    join(2.0f);
+    own->settings().set(SettingId::kDisplayMode,
+                        static_cast<double>(protocol::DisplayMode::kSingle));
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->laneCount, 0);
+    EXPECT_NE(frame->views, 0);
+}
+
+TEST_F(MultiTrackTest, HoldsEveryLaneWhileFrozen)
+{
+    tracks.front().second = std::nullopt;
+    join();
+    play(9600);
+    const auto live = produce();
+    ASSERT_TRUE(live);
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    play(2400);
+    analyzer->setColumns(7999); // Forces a frame.
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    EXPECT_TRUE(frozen->has(FrameFlag::kFrozen));
+    ASSERT_EQ(frozen->laneCount, 2);
+    EXPECT_EQ(lane(*frozen, 1), lane(*frozen, 0)) << "both lanes hold the same moment";
+    EXPECT_EQ(frozen->cursor, live->cursor) << "the sweep stopped";
+}
+
+TEST_F(MultiTrackTest, ZoomsEveryLaneAtFullResolution)
+{
+    tracks.front().second = std::nullopt;
+    join();
+    play(9600);
+    analyzer->setView(0.25, 0.5);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 2);
+    EXPECT_EQ(frame->pointCount, 1501u) << "the visible quarter, with one point beyond an edge";
+    EXPECT_EQ(lane(*frame, 0), lane(*frame, 1));
+    EXPECT_EQ(lane(*frame, 0).front(), 7500.0f) << "a quarter into the cycle starting at 6000";
+    EXPECT_FLOAT_EQ(frame->viewStart, 0.25f);
 }
 
 } // namespace

@@ -1,0 +1,30 @@
+{
+  "description": "A multi-track frame encoded by Python's struct module, independently of both implementations. Mode 1 is raw; flags 8 is synced; views 0 and laneCount 3: three lanes of pointCount raw points follow the 64-byte header, in the order of the lanes message with laneSet 42.",
+  "header": {
+    "sequence": 11,
+    "mode": 1,
+    "flags": 8,
+    "views": 0,
+    "laneCount": 3,
+    "pointCount": 2,
+    "samplesPerPoint": 1.0,
+    "startFraction": 0.0,
+    "peak": 0.5,
+    "rms": 0.25,
+    "frequency": 0.0,
+    "cursor": 0.5,
+    "cycleStart": 16.0,
+    "spanQuarterNotes": 4.0,
+    "barQuarterNotes": 4.0,
+    "viewStart": 0.0,
+    "viewEnd": 1.0,
+    "visibleSamples": 2.0,
+    "laneSet": 42
+  },
+  "lanes": [
+    [0.25, -0.25],
+    [0.5, 0.0],
+    [-1.0, 1.0]
+  ],
+  "hex": "0b00000001080003020000000000803f000000000000003f0000803e000000000000003f000080410000804000008040000000000000803f000000402a0000000000803e000080be0000003f00000000000080bf0000803f"
+}

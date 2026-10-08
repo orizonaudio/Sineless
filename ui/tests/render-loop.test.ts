@@ -27,6 +27,8 @@ function frame(sequence: number): Frame {
     viewEnd: 1,
     visibleSamples: 0,
     views: new Map(),
+    lanes: [],
+    laneSet: 0,
   };
 }
 

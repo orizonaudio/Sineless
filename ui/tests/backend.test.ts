@@ -54,6 +54,9 @@ describe("backend", () => {
       events.push(`state:${message.name}`),
     );
     backend.on("error", (message) => events.push(`error:${message.code}`));
+    backend.on("lanes", (message) =>
+      events.push(`lanes:${String(message.laneSet)}`),
+    );
     backend.on("frame", (frame) =>
       events.push(`frame:${String(frame.sequence)}`),
     );
@@ -67,6 +70,12 @@ describe("backend", () => {
       code: "protocolMismatch",
       message: "",
     });
+    transport.messageHandler?.({
+      type: "lanes",
+      laneSet: 3,
+      lanes: [{ name: "Kick", colour: null, own: true }],
+      hidden: 0,
+    });
     const bytes = new Uint8Array(golden.hex.length / 2);
     for (let i = 0; i < bytes.length; i++) {
       bytes[i] = parseInt(golden.hex.slice(i * 2, i * 2 + 2), 16);
@@ -75,6 +84,7 @@ describe("backend", () => {
     expect(events).toEqual([
       "state:timeSpan",
       "error:protocolMismatch",
+      "lanes:3",
       "frame:7",
     ]);
   });

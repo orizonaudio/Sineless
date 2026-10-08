@@ -135,7 +135,9 @@ void Session::hello(const nlohmann::json& message)
                            {"sampleRate", engine.sampleRate()},
                            {"inputChannels", engine.inputChannels()}});
     lastSent = settings;
+    lastLaneSet = 0;
     isStarted = true;
+    syncLanes();
     if (onCredit) {
         onCredit(); // The first frame needs no credit message.
     }
@@ -167,7 +169,7 @@ void Session::setViewport(const nlohmann::json& message)
         static_cast<std::size_t>(std::clamp(std::round(*width * *ratio), 1.0, kMaxColumns)));
 }
 
-void Session::syncSettings()
+void Session::sync()
 {
     if (!isStarted) {
         return;
@@ -178,6 +180,24 @@ void Session::syncSettings()
             sendState(setting.id, settings.value(setting.id));
         }
     }
+    syncLanes();
+}
+
+void Session::syncLanes()
+{
+    const engine::LaneSet lanes = analyzer.laneSet();
+    if (lanes.id == 0 || lanes.id == lastLaneSet) {
+        return;
+    }
+    nlohmann::json labels = nlohmann::json::array();
+    for (const engine::LaneLabel& lane : lanes.lanes) {
+        labels.push_back({{"name", lane.name},
+                          {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
+                          {"own", lane.own}});
+    }
+    transport.sendMessage(
+        {{"type", "lanes"}, {"laneSet", lanes.id}, {"lanes", labels}, {"hidden", lanes.hidden}});
+    lastLaneSet = lanes.id;
 }
 
 void Session::sendState(protocol::SettingId id, double value)

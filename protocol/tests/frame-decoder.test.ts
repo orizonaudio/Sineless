@@ -4,6 +4,7 @@ import { ChannelView, FrameMode } from "../src/enums.ts";
 import { decodeFrame } from "../src/frame-decoder.ts";
 
 import golden from "./data/golden-frame.json" with { type: "json" };
+import goldenLanes from "./data/golden-lanes-frame.json" with { type: "json" };
 
 function fromHex(hex: string): ArrayBuffer {
   const bytes = new Uint8Array(hex.length / 2);
@@ -41,6 +42,23 @@ describe("frame decoder", () => {
     expect(Array.from(frame.views.get(ChannelView.mid) ?? [])).toEqual(
       golden.views.mid,
     );
+  });
+
+  test("decodes the golden lanes frame", () => {
+    const frame = decodeFrame(fromHex(goldenLanes.hex));
+    expect(frame.views.size).toBe(0);
+    expect(frame.laneSet).toBe(goldenLanes.header.laneSet);
+    expect(frame.synced).toBe(true);
+    expect(frame.cursor).toBe(goldenLanes.header.cursor);
+    expect(frame.lanes.map((lane) => Array.from(lane))).toEqual(
+      goldenLanes.lanes,
+    );
+  });
+
+  test("has no lanes in a single-track frame", () => {
+    const frame = decodeFrame(fromHex(golden.hex));
+    expect(frame.lanes).toEqual([]);
+    expect(frame.laneSet).toBe(0);
   });
 
   test("reports an unavailable frequency as undefined", () => {

@@ -28,6 +28,10 @@ export interface Frame {
   readonly visibleSamples: number;
   // Points of each view present, keyed by ChannelView; min/max pairs in FrameMode.minMax.
   readonly views: ReadonlyMap<ChannelView, Float32Array>;
+  // Multi-track frames: one lane per track instead of views, described by the lanes message
+  // with the same laneSet.
+  readonly lanes: readonly Float32Array[];
+  readonly laneSet: number;
 }
 
 const offsets = Object.fromEntries(
@@ -54,18 +58,22 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
   const pointCount = u32("pointCount");
   const valuesPerView = pointCount * (mode === FrameMode.minMax ? 2 : 1);
 
-  const views = new Map<ChannelView, Float32Array>();
   let offset = frameHeader.size;
-  for (const view of Object.values(ChannelView)) {
-    if ((viewMask & (1 << view)) === 0) {
-      continue;
-    }
+  const next = (): Float32Array => {
     if (offset + valuesPerView * 4 > buffer.byteLength) {
       throw new Error("Frame data is shorter than its header announces");
     }
-    views.set(view, new Float32Array(buffer, offset, valuesPerView));
+    const values = new Float32Array(buffer, offset, valuesPerView);
     offset += valuesPerView * 4;
+    return values;
+  };
+  const views = new Map<ChannelView, Float32Array>();
+  for (const view of Object.values(ChannelView)) {
+    if ((viewMask & (1 << view)) !== 0) {
+      views.set(view, next());
+    }
   }
+  const lanes = Array.from({ length: u8("laneCount") }, next);
 
   const frequency = f32("frequency");
   const cursor = f32("cursor");
@@ -91,5 +99,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     viewEnd: f32("viewEnd"),
     visibleSamples: f32("visibleSamples"),
     views,
+    lanes,
+    laneSet: u32("laneSet"),
   };
 }

@@ -14,8 +14,9 @@ struct FrameHeaderValues
 {
     std::uint32_t sequence = 0;
     protocol::FrameMode mode = protocol::FrameMode::kRaw;
-    std::uint8_t flags = 0; // protocol::FrameFlag bits.
-    std::uint8_t views = 0; // protocol::ChannelView bit mask.
+    std::uint8_t flags = 0;     // protocol::FrameFlag bits.
+    std::uint8_t views = 0;     // protocol::ChannelView bit mask.
+    std::uint8_t laneCount = 0; // Multi-track frames: lanes instead of views.
     std::uint32_t pointCount = 0;
     float samplesPerPoint = 1.0f;
     float startFraction = 0.0f;
@@ -31,10 +32,12 @@ struct FrameHeaderValues
     float viewStart = 0.0f;
     float viewEnd = 1.0f;
     float visibleSamples = 0.0f;
+    // The lanes message that describes this frame's lanes.
+    std::uint32_t laneSet = 0;
 };
 
-// Writes the header and `viewData` (each view's points, in ChannelView order) little-endian into
-// `output`, which keeps its capacity across calls.
+// Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's)
+// little-endian into `output`, which keeps its capacity across calls.
 void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewData,
                  std::vector<std::byte>& output);
 

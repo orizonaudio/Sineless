@@ -6,6 +6,7 @@ import {
 } from "../../../protocol/src/frame-decoder.ts";
 import type {
   ErrorMessage,
+  LanesMessage,
   SettingValue,
   SnapshotMessage,
   StateChangedMessage,
@@ -18,6 +19,7 @@ export interface BackendEvents {
   snapshot(message: SnapshotMessage): void;
   stateChanged(message: StateChangedMessage): void;
   error(message: ErrorMessage): void;
+  lanes(message: LanesMessage): void;
   frame(frame: Frame): void;
 }
 
@@ -29,6 +31,7 @@ export class Backend {
     snapshot: [],
     stateChanged: [],
     error: [],
+    lanes: [],
     frame: [],
   };
 
@@ -106,6 +109,11 @@ export class Backend {
       case "error":
         for (const handler of this.handlers.error) {
           handler(message as unknown as ErrorMessage);
+        }
+        break;
+      case "lanes":
+        for (const handler of this.handlers.lanes) {
+          handler(message as unknown as LanesMessage);
         }
         break;
       default:

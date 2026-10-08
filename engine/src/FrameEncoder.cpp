@@ -26,7 +26,7 @@ void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewDat
     put(output, Layout::kModeOffset, static_cast<std::uint8_t>(header.mode));
     put(output, Layout::kFlagsOffset, header.flags);
     put(output, Layout::kViewsOffset, header.views);
-    put(output, Layout::kReservedOffset, std::uint8_t{0});
+    put(output, Layout::kLaneCountOffset, header.laneCount);
     put(output, Layout::kPointCountOffset, header.pointCount);
     put(output, Layout::kSamplesPerPointOffset, header.samplesPerPoint);
     put(output, Layout::kStartFractionOffset, header.startFraction);
@@ -40,6 +40,7 @@ void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewDat
     put(output, Layout::kViewStartOffset, header.viewStart);
     put(output, Layout::kViewEndOffset, header.viewEnd);
     put(output, Layout::kVisibleSamplesOffset, header.visibleSamples);
+    put(output, Layout::kLaneSetOffset, header.laneSet);
     if (!viewData.empty()) {
         std::memcpy(output.data() + Layout::kSize, viewData.data(), viewData.size_bytes());
     }

@@ -2,26 +2,55 @@
 
 #include "engine/Engine.h"
 #include "engine/HoldBuffer.h"
+#include "engine/InstanceRegistry.h"
 #include "engine/Settings.h"
 #include "engine/SweepImage.h"
 #include "engine/Trigger.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace orizon::engine {
 
+// At most this many tracks are drawn in the multi-track view.
+inline constexpr std::size_t kMaxLanes = 8;
+
+// One track of the multi-track view, as the UI labels it.
+struct LaneLabel
+{
+    std::string name;
+    std::optional<std::uint32_t> colour;
+    bool own = false; // The instance whose editor shows the lanes.
+
+    bool operator==(const LaneLabel&) const = default;
+};
+
+// The tracks behind the lanes of frames whose laneSet is `id`, in lane order, and how many more
+// tracks of the group are not drawn.
+struct LaneSet
+{
+    std::uint32_t id = 0;
+    std::vector<LaneLabel> lanes;
+    std::size_t hidden = 0;
+};
+
 // Per-editor-session analysis: turns the capture into display frames. It is
 // created when the editor opens, so the hold buffer is allocated only then.
+//
+// In the multi-track view it reads the other instances of its group from `registry`.
 //
 // Commands may come from any non-audio thread; produce() runs on the analysis worker.
 class Analyzer
 {
 public:
-    explicit Analyzer(Engine& engine);
+    explicit Analyzer(Engine& engine,
+                      const InstanceRegistry& registry = InstanceRegistry::shared());
 
     // Device-pixel width of the trace area; no frames are produced while it is 0.
     void setColumns(std::size_t columns);
@@ -36,6 +65,9 @@ public:
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
     bool produce(std::vector<std::byte>& frame);
+
+    // The lanes of the latest multi-track frames; the id changes whenever they do. Any thread.
+    [[nodiscard]] LaneSet laneSet() const;
 
 private:
     struct Commands
@@ -73,7 +105,19 @@ private:
         std::uint64_t readoutCount = 0;
     };
 
+    // One track of the multi-track view: its own persistent sweep.
+    struct Lane
+    {
+        std::shared_ptr<Engine> engine;
+        SweepImage image;
+        std::optional<SweepWindow> window;
+        std::uint64_t end = 0; // Capture end of the last update.
+    };
+
     Commands takeCommands();
+    bool produceLanes(const Settings& settings, const Commands& command,
+                      std::vector<std::byte>& frame);
+    void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
     // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
     void followTransport(const Settings& settings, Commands& command);
     bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
@@ -82,6 +126,7 @@ private:
                 std::size_t columns, std::vector<std::byte>& frame);
 
     Engine& engine;
+    const InstanceRegistry& registry;
     HoldBuffer hold;
     SweepImage image;
     TriggerState trigger;
@@ -108,6 +153,12 @@ private:
     MusicalStamp frozenStamp;
     std::uint64_t frozenEnd = 0;
     std::uint64_t lastEnd = 0;
+    // Multi-track view: lanes by member serial, and their order on screen.
+    std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;
+    std::vector<std::uint64_t> laneOrder;
+    std::uint32_t lastLaneSet = 0;
+    mutable std::mutex laneMutex;
+    LaneSet published;
     std::vector<float> triggerSamples;
     std::vector<float> viewSamples;
     std::vector<float> scratch;
