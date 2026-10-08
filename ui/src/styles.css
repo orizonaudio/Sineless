@@ -71,32 +71,52 @@ body {
   color: var(--ink-faint);
 }
 
-/* Everything in the top bar keeps its size except the chips, which give way when it runs short
-   of room. */
+/* Everything in the top bar keeps its size; the minimum window width fits all of it. */
 .bar > * {
   flex: none;
   white-space: nowrap;
 }
 
-.bar > .chips {
-  flex: 0 1 auto;
+/* The screen's top-right corner: the status chips, and below them the cursor readout. The chips
+   wrap within a fixed width, which the lane labels keep clear, so nothing moves when they change. */
+.screen {
+  --corner-width: 150px;
+}
+
+.screen-corner {
+  position: absolute;
+  top: 6px;
+  right: 8px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 6px;
-  min-width: 0;
-  overflow: hidden;
+  pointer-events: none;
+}
+
+.screen-corner .chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: var(--corner-width);
+  pointer-events: auto;
 }
 
 .chip {
   font-family: var(--font-label);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 1px 7px;
+  padding: 1px 6px;
   border-radius: 3px;
   border: 1px solid var(--line);
   color: var(--ink-dim);
   white-space: nowrap;
+  background: color-mix(in srgb, var(--screen) 85%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
 
 .chip.ok {
@@ -315,7 +335,7 @@ body {
 
 .lane-label {
   position: absolute;
-  right: 8px;
+  right: calc(var(--corner-width) + 16px);
   display: flex;
   flex-wrap: wrap;
   gap: 4px 6px;
@@ -519,9 +539,6 @@ body {
 }
 
 .cursor-readout {
-  position: absolute;
-  top: 6px;
-  right: 8px;
   display: grid;
   gap: 2px;
   padding: 5px 8px;
@@ -767,11 +784,4 @@ button:focus-visible,
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-faint);
-}
-
-/* Near the minimum width the top bar is full: the wordmark drops its maker's name. */
-@media (max-width: 899px) {
-  .wordmark span {
-    display: none;
-  }
 }
