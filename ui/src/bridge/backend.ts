@@ -86,6 +86,15 @@ export class Backend {
     this.transport.send({ type: "view", start, end });
   }
 
+  // Compare view: the partner track, by the id of its lanes entry.
+  partner(id: number): void {
+    this.transport.send({ type: "partner", id });
+  }
+
+  previewFix(on: boolean): void {
+    this.transport.send({ type: "previewFix", on });
+  }
+
   arm(): void {
     this.transport.send({ type: "arm" });
   }

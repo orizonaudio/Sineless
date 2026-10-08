@@ -28,6 +28,13 @@ export interface FrameContent {
   // Multi-track frames: lanes instead of views.
   readonly lanes?: readonly ArrayLike<number>[];
   readonly laneSet?: number;
+  readonly comparison?: {
+    readonly sumGain: number;
+    readonly correlation: number;
+    readonly offset: number;
+    readonly inverted: boolean;
+    readonly fixedGain: number;
+  };
 }
 
 const offsets = Object.fromEntries(
@@ -53,7 +60,9 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     (content.frozen ? FrameFlag.frozen : 0) |
     (content.roll ? FrameFlag.roll : 0) |
     (content.synced === true ? FrameFlag.synced : 0) |
-    (content.limited === true ? FrameFlag.limited : 0);
+    (content.limited === true ? FrameFlag.limited : 0) |
+    (content.comparison === undefined ? 0 : FrameFlag.compared) |
+    (content.comparison?.inverted === true ? FrameFlag.inverted : 0);
   header.setUint32(offsets.sequence, content.sequence, true);
   header.setUint8(offsets.mode, content.mode);
   header.setUint8(offsets.flags, flags);
@@ -88,6 +97,18 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     true,
   );
   header.setUint32(offsets.laneSet, content.laneSet ?? 0, true);
+  header.setFloat32(offsets.sumGain, content.comparison?.sumGain ?? 0, true);
+  header.setFloat32(
+    offsets.correlation,
+    content.comparison?.correlation ?? 0,
+    true,
+  );
+  header.setFloat32(offsets.offset, content.comparison?.offset ?? 0, true);
+  header.setFloat32(
+    offsets.fixedGain,
+    content.comparison?.fixedGain ?? 0,
+    true,
+  );
 
   const data = new Float32Array(buffer, frameHeader.size, dataLength);
   let offset = 0;

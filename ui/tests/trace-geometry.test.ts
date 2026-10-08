@@ -54,6 +54,7 @@ function frame(
     ),
     lanes: [],
     laneSet: 0,
+    comparison: undefined,
   };
 }
 

@@ -34,6 +34,11 @@ struct FrameHeaderValues
     float visibleSamples = 0.0f;
     // The lanes message that describes this frame's lanes.
     std::uint32_t laneSet = 0;
+    // Compare frames (flags kCompared, kInverted): the pair's analysis.
+    float sumGain = 0.0f;
+    float correlation = 0.0f;
+    float offset = 0.0f;
+    float fixedGain = 0.0f;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's)

@@ -96,6 +96,16 @@ void Session::receive(const nlohmann::json& message)
             }
         }
         break;
+    case MessageType::kPartner:
+        if (const auto id = number(message, "id"); id && *id >= 0.0) {
+            analyzer.setPartner(static_cast<std::uint64_t>(*id));
+        }
+        break;
+    case MessageType::kPreviewFix:
+        if (message.contains("on") && message["on"].is_boolean()) {
+            analyzer.setPreviewFix(message["on"].get<bool>());
+        }
+        break;
     case MessageType::kCredit:
         if (onCredit) {
             onCredit();
@@ -191,7 +201,8 @@ void Session::syncLanes()
     }
     nlohmann::json labels = nlohmann::json::array();
     for (const engine::LaneLabel& lane : lanes.lanes) {
-        labels.push_back({{"name", lane.name},
+        labels.push_back({{"id", lane.id},
+                          {"name", lane.name},
                           {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
                           {"own", lane.own}});
     }

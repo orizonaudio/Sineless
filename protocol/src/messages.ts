@@ -16,6 +16,8 @@ export const MessageType = {
   arm: "arm",
   view: "view",
   lanes: "lanes",
+  partner: "partner",
+  previewFix: "previewFix",
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
@@ -103,9 +105,10 @@ export interface ViewMessage {
   readonly end: number;
 }
 
-// One track of the multi-track view. `name` is empty and `colour` null when the host reports
-// none; `own` marks the instance whose window shows the lanes.
+// One track of the multi-track view. `id` is stable while the track exists; `name` is empty and
+// `colour` null when the host reports none; `own` marks the instance whose window shows the lanes.
 export interface LaneLabel {
+  readonly id: number;
   readonly name: string;
   readonly colour: number | null; // 0xRRGGBB
   readonly own: boolean;
@@ -120,6 +123,20 @@ export interface LanesMessage {
   readonly hidden: number;
 }
 
+// UI to engine. Compare view: the partner track, by the id of its lanes entry. Temporary, not a
+// setting.
+export interface PartnerMessage {
+  readonly type: "partner";
+  readonly id: number;
+}
+
+// UI to engine. Compare view: draw the sum as if the partner were shifted and flipped as the
+// analysis suggests. Temporary, not a setting.
+export interface PreviewFixMessage {
+  readonly type: "previewFix";
+  readonly on: boolean;
+}
+
 export type UiToEngineMessage =
   | HelloMessage
   | SetSettingMessage
@@ -128,7 +145,9 @@ export type UiToEngineMessage =
   | FreezeMessage
   | PanMessage
   | ArmMessage
-  | ViewMessage;
+  | ViewMessage
+  | PartnerMessage
+  | PreviewFixMessage;
 
 export type EngineToUiMessage =
   SnapshotMessage | StateChangedMessage | ErrorMessage | LanesMessage;

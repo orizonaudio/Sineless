@@ -25,6 +25,7 @@ inline constexpr std::size_t kMaxLanes = 8;
 // One track of the multi-track view, as the UI labels it.
 struct LaneLabel
 {
+    std::uint64_t id = 0; // Stable while the track exists; the UI names a partner by it.
     std::string name;
     std::optional<std::uint32_t> colour;
     bool own = false; // The instance whose editor shows the lanes.
@@ -63,6 +64,9 @@ public:
     // View zoom: the part of the span on screen, as fractions. Out-of-range or reversed
     // values are ignored. Only that part is reduced to screen columns.
     void setView(double start, double end);
+    // Compare view: the partner track, by lane id, and whether the sum previews the fix.
+    void setPartner(std::uint64_t id);
+    void setPreviewFix(bool on);
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
     bool produce(std::vector<std::byte>& frame);
@@ -79,6 +83,8 @@ private:
         bool armRequested = false;
         double viewStart = 0.0;
         double viewEnd = 1.0;
+        std::optional<std::uint64_t> partner;
+        bool previewFix = false;
     };
 
     // The last window shown while live, which a freeze holds on to.

@@ -32,6 +32,16 @@ export interface Frame {
   // with the same laneSet.
   readonly lanes: readonly Float32Array[];
   readonly laneSet: number;
+  // Compare frames: the analysis of this track and its partner.
+  readonly comparison: Comparison | undefined;
+}
+
+export interface Comparison {
+  readonly sumGain: number;
+  readonly correlation: number;
+  readonly offset: number;
+  readonly inverted: boolean;
+  readonly fixedGain: number;
 }
 
 const offsets = Object.fromEntries(
@@ -101,5 +111,15 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     views,
     lanes,
     laneSet: u32("laneSet"),
+    comparison:
+      (flags & FrameFlag.compared) === 0
+        ? undefined
+        : {
+            sumGain: f32("sumGain"),
+            correlation: f32("correlation"),
+            offset: f32("offset"),
+            inverted: (flags & FrameFlag.inverted) !== 0,
+            fixedGain: f32("fixedGain"),
+          },
   };
 }

@@ -64,6 +64,7 @@ export const mockTracks: readonly (LaneLabel & {
   readonly sample: (time: number) => number;
 })[] = [
   {
+    id: 1,
     name: "Kick",
     colour: 0xe0533d,
     own: true,
@@ -73,6 +74,7 @@ export const mockTracks: readonly (LaneLabel & {
       Math.sin(2 * Math.PI * 52 * (time % beatSeconds)),
   },
   {
+    id: 2,
     name: "Bass",
     colour: 0x4f8fe6,
     own: false,
@@ -82,6 +84,7 @@ export const mockTracks: readonly (LaneLabel & {
       Math.sin(2 * Math.PI * 55 * time),
   },
   {
+    id: 3,
     name: "",
     colour: null,
     own: false,
@@ -214,7 +217,8 @@ export class MockTransport implements Transport {
     this.reply({
       type: "lanes",
       laneSet: ++this.laneSet,
-      lanes: this.groupTracks().map(({ name, colour, own }) => ({
+      lanes: this.groupTracks().map(({ id, name, colour, own }) => ({
+        id,
         name,
         colour,
         own,

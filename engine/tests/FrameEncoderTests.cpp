@@ -50,6 +50,10 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .viewEnd = header["viewEnd"].get<float>(),
         .visibleSamples = header["visibleSamples"].get<float>(),
         .laneSet = header["laneSet"].get<std::uint32_t>(),
+        .sumGain = header["sumGain"].get<float>(),
+        .correlation = header["correlation"].get<float>(),
+        .offset = header["offset"].get<float>(),
+        .fixedGain = header["fixedGain"].get<float>(),
     };
 }
 

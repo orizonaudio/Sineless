@@ -44,5 +44,13 @@
     "type": "view",
     "start": 0.25,
     "end": 0.5
+  },
+  "partner": {
+    "type": "partner",
+    "id": 3
+  },
+  "previewFix": {
+    "type": "previewFix",
+    "on": true
   }
 }

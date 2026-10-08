@@ -29,6 +29,7 @@ function frame(sequence: number): Frame {
     views: new Map(),
     lanes: [],
     laneSet: 0,
+    comparison: undefined,
   };
 }
 

@@ -7,6 +7,8 @@ import {
   type FreezeMessage,
   type HelloMessage,
   type PanMessage,
+  type PartnerMessage,
+  type PreviewFixMessage,
   type SetSettingMessage,
   type ViewMessage,
   type ViewportMessage,
@@ -37,6 +39,8 @@ const typed = {
   pan: examples.pan satisfies Shape<PanMessage>,
   arm: examples.arm satisfies Shape<ArmMessage>,
   view: examples.view satisfies Shape<ViewMessage>,
+  partner: examples.partner satisfies Shape<PartnerMessage>,
+  previewFix: examples.previewFix satisfies Shape<PreviewFixMessage>,
 };
 
 test("every example names a known message type", () => {

@@ -53,12 +53,20 @@ describe("frame decoder", () => {
     expect(frame.lanes.map((lane) => Array.from(lane))).toEqual(
       goldenLanes.lanes,
     );
+    expect(frame.comparison).toEqual({
+      sumGain: goldenLanes.header.sumGain,
+      correlation: goldenLanes.header.correlation,
+      offset: goldenLanes.header.offset,
+      inverted: true,
+      fixedGain: goldenLanes.header.fixedGain,
+    });
   });
 
   test("has no lanes in a single-track frame", () => {
     const frame = decodeFrame(fromHex(golden.hex));
     expect(frame.lanes).toEqual([]);
     expect(frame.laneSet).toBe(0);
+    expect(frame.comparison).toBeUndefined();
   });
 
   test("reports an unavailable frequency as undefined", () => {
@@ -72,7 +80,7 @@ describe("frame decoder", () => {
     expect(() => decodeFrame(buffer.slice(0, 16))).toThrow(
       /shorter than its header/,
     );
-    expect(() => decodeFrame(buffer.slice(0, 68))).toThrow(
+    expect(() => decodeFrame(buffer.slice(0, 88))).toThrow(
       /shorter than its header announces/,
     );
   });

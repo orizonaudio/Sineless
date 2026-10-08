@@ -185,6 +185,7 @@ TEST_F(SessionTest, ReportsTheMultiTrackLanes)
     EXPECT_EQ(lanes[0]["lanes"][0]["name"], "Kick");
     EXPECT_EQ(lanes[0]["lanes"][0]["colour"], 0xe03030);
     EXPECT_EQ(lanes[0]["lanes"][0]["own"], true);
+    EXPECT_EQ(lanes[0]["lanes"][0]["id"], 0) << "an unregistered engine's own lane";
 
     session.sync();
     EXPECT_EQ(transport.ofType("lanes").size(), 1u) << "nothing new";

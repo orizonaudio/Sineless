@@ -212,6 +212,7 @@ describe("status chips", () => {
     views: new Map(),
     lanes: [],
     laneSet: 0,
+    comparison: undefined,
     ...overrides,
   });
 

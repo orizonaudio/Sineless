@@ -655,7 +655,8 @@ export class OscilloscopeApp {
     return styles.length === count
       ? styles
       : laneStyles(
-          Array.from({ length: count }, () => ({
+          Array.from({ length: count }, (_, index) => ({
+            id: -1 - index,
             name: "",
             colour: null,
             own: false,

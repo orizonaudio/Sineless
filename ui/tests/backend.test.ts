@@ -30,6 +30,8 @@ describe("backend", () => {
     backend.arm();
     backend.credit();
     backend.setViewport(500, 1);
+    backend.partner(3);
+    backend.previewFix(true);
     expect(transport.sent.map((message) => message.type)).toEqual([
       "hello",
       "setSetting",
@@ -38,7 +40,11 @@ describe("backend", () => {
       "arm",
       "credit",
       "viewport",
+      "partner",
+      "previewFix",
     ]);
+    expect(transport.sent.at(-2)).toMatchObject({ id: 3 });
+    expect(transport.sent.at(-1)).toMatchObject({ on: true });
     expect(transport.sent[0]).toMatchObject({
       protocolVersion: 1,
       viewWidth: 640,
@@ -73,7 +79,7 @@ describe("backend", () => {
     transport.messageHandler?.({
       type: "lanes",
       laneSet: 3,
-      lanes: [{ name: "Kick", colour: null, own: true }],
+      lanes: [{ id: 1, name: "Kick", colour: null, own: true }],
       hidden: 0,
     });
     const bytes = new Uint8Array(golden.hex.length / 2);

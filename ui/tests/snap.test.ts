@@ -35,6 +35,7 @@ function frameOf(mode: FrameMode, pointCount: number): Frame {
     views: new Map(),
     lanes: [],
     laneSet: 0,
+    comparison: undefined,
   };
 }
 

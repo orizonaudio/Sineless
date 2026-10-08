@@ -8,6 +8,7 @@ export const fallbackPalette = [
 ] as const;
 
 export interface LaneStyle {
+  readonly id: number;
   readonly name: string;
   readonly colour: number; // 0xRRGGBB
   readonly own: boolean;
@@ -15,6 +16,7 @@ export interface LaneStyle {
 
 export function laneStyles(labels: readonly LaneLabel[]): LaneStyle[] {
   return labels.map((label, index) => ({
+    id: label.id,
     name: label.name === "" ? `Track ${String(index + 1)}` : label.name,
     colour:
       label.colour ??

@@ -15,7 +15,7 @@ struct GroupMember
 {
     std::shared_ptr<Engine> engine; // Kept alive while the member is held.
     TrackInfo track;
-    std::uint64_t serial = 0; // Creation order within the process.
+    std::uint64_t serial = 0; // Creation order within the process, from 1.
 };
 
 // The O-Scope instances of this process, so that one instance's editor can show the others.
@@ -46,7 +46,7 @@ private:
 
     mutable std::mutex mutex;
     std::vector<Entry> entries;
-    std::uint64_t nextSerial = 0;
+    std::uint64_t nextSerial = 1;
 };
 
 } // namespace orizon::engine

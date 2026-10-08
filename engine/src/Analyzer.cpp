@@ -114,6 +114,18 @@ void Analyzer::setView(double start, double end)
     commands.viewEnd = end;
 }
 
+void Analyzer::setPartner(std::uint64_t id)
+{
+    const std::scoped_lock lock(commandMutex);
+    commands.partner = id;
+}
+
+void Analyzer::setPreviewFix(bool on)
+{
+    const std::scoped_lock lock(commandMutex);
+    commands.previewFix = on;
+}
+
 void Analyzer::arm()
 {
     const std::scoped_lock lock(commandMutex);
@@ -439,7 +451,7 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
         members.insert(members.begin(),
                        {.engine = std::shared_ptr<Engine>(std::shared_ptr<Engine>(), &engine),
                         .track = engine.trackInfo(),
-                        .serial = ~std::uint64_t{0}});
+                        .serial = 0});
         own = members.begin();
     }
     const std::uint64_t ownSerial = own->serial;
@@ -454,7 +466,8 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
     std::vector<LaneLabel> labels;
     labels.reserve(members.size());
     for (const GroupMember& member : members) {
-        labels.push_back({.name = member.track.name,
+        labels.push_back({.id = member.serial,
+                          .name = member.track.name,
                           .colour = member.track.colour,
                           .own = member.serial == ownSerial});
     }
