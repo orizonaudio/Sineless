@@ -21,6 +21,7 @@ export interface Frame {
   readonly frequency: number | undefined;
   readonly synced: boolean;
   readonly limited: boolean;
+  readonly partial: boolean; // The sweep's first pass is still filling in.
   // Playhead position across the screen in a tempo-synced sweep.
   readonly cursor: number | undefined;
   // Musical context of a synced sweep, in quarter notes.
@@ -133,6 +134,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     frequency: frequency > 0 ? frequency : undefined,
     synced: (flags & FrameFlag.synced) !== 0,
     limited: (flags & FrameFlag.limited) !== 0,
+    partial: (flags & FrameFlag.partial) !== 0,
     cursor: cursor >= 0 ? cursor : undefined,
     cycleStart: f32("cycleStart"),
     cycleSeconds: f32("cycleSeconds"),

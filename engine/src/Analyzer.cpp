@@ -74,14 +74,24 @@ std::size_t statsBlock(double sampleRate)
         1, static_cast<std::size_t>(std::lround(kStatsBlockSeconds * sampleRate)));
 }
 
-// Peak and RMS over a whole span, from its levels per block.
-Readouts levelsOf(const BlockStats& stats)
+// Peak and RMS over samples [first, end) of a span, from its levels per block: those of the
+// blocks holding them.
+Readouts levelsOf(const BlockStats& stats, std::size_t first, std::size_t end)
 {
     Readouts readouts;
-    readouts.peak = stats.peak();
-    if (stats.sampleCount() > 0) {
-        readouts.rms = static_cast<float>(
-            std::sqrt(stats.sumSquares() / static_cast<double>(stats.sampleCount())));
+    const std::size_t block = stats.blockSamples();
+    const std::span<const BlockStats::Block> blocks = stats.blocks();
+    const std::size_t firstBlock = std::min(first / block, blocks.size());
+    const std::size_t endBlock = std::min((end + block - 1) / block, blocks.size());
+    double sumSquares = 0.0;
+    for (std::size_t index = firstBlock; index < endBlock; ++index) {
+        readouts.peak = std::max(readouts.peak, blocks[index].peak);
+        sumSquares += blocks[index].sumSquares;
+    }
+    const std::size_t samples = std::min(endBlock * block, stats.sampleCount()) -
+                                std::min(firstBlock * block, stats.sampleCount());
+    if (samples > 0) {
+        readouts.rms = static_cast<float>(std::sqrt(sumSquares / static_cast<double>(samples)));
     }
     return readouts;
 }
@@ -244,12 +254,12 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     }
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
-    // The longest sweep the capture can hold; a frozen sweep keeps that much, so a longer beat
-    // span chosen while frozen still has its audio.
+    // A freeze holds the newest audio the capture can spare (a margin for the audio thread,
+    // which writes on), so that a longer beat span chosen while frozen has its audio.
     const CaptureRing& captureRing = engine.captureRing();
-    const auto longestSweep =
+    const auto heldSamples =
         static_cast<std::uint64_t>(captureRing.capacity() - captureRing.capacity() / 8);
-    if (command.frozen && !isFrozen && !freeze(sampleRate, synced ? longestSweep : 0)) {
+    if (command.frozen && !isFrozen && !freeze(sampleRate, synced ? heldSamples : 0)) {
         return false;
     }
     if (!command.frozen) {
@@ -288,43 +298,57 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         isFrozen ? static_cast<const SampleSource*>(&hold) : &engine.captureRing();
 
     if (synced) {
-        // Tempo-synced sweep. While frozen, the sweep is rebuilt from the clock and
-        // capture end at the moment of freezing, so views and span still apply.
+        // Tempo-synced sweep. Live, the capture's new samples are placed. Frozen, the sweep stays
+        // as it is: a shorter span is cropped from it, and a longer one rebuilt from the held
+        // audio, stepping down if it does not fit.
         const CaptureRing& ring = engine.captureRing();
         const std::uint64_t end = isFrozen ? frozenEnd : ring.endIndex();
         if (!changed && end == lastEnd) {
             return false;
         }
-        // Frozen, only what was held can be shown; longer spans step down and are flagged.
-        const std::uint64_t maxSamples =
-            isFrozen ? std::min(longestSweep, frozenEnd - hold.beginIndex()) : longestSweep;
-        const auto sweep =
-            sweepWindow(isFrozen ? frozenStamp : engine.timeline().latest(), end, sampleRate,
-                        settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan), maxSamples);
-        if (!sweep) {
-            return false;
-        }
-        // Live, only new samples are placed. Frozen, the screen stays as it was, unless the
-        // span changed: then it is rebuilt from the held audio.
-        const bool placed =
-            isFrozen ? sweep->sampleCount == image.length() || image.update(hold, *sweep, true)
-                     : image.update(ring, *sweep, false);
-        if (!placed) {
-            return false;
+        const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
+        const int channels = engine.inputChannels();
+        SweepWindow sweep;
+        if (isFrozen) {
+            const auto frozen = frozenSweep(frozenStamp, frozenEnd, sampleRate, beatSpan,
+                                            imageWindow, image.length());
+            if (!frozen) {
+                return false;
+            }
+            if (frozen->rebuild) {
+                if (!image.update(hold, frozen->window, true, channels)) {
+                    return false;
+                }
+                imageWindow = frozen->window;
+            }
+            sweep = frozen->window;
+            window.subStart = frozen->start;
+            window.subEnd = frozen->end;
+        } else {
+            const auto live = sweepWindow(engine.timeline().latest(), end, sampleRate, beatSpan,
+                                          kMaxSweepSamples);
+            if (!live || !image.update(ring, *live, false, channels)) {
+                return false;
+            }
+            imageWindow = live;
+            sweep = *live;
         }
         source = &image;
-        window = {.start = 0.0,
-                  .span = static_cast<double>(sweep->sampleCount),
-                  .synced = true,
-                  .limited = sweep->limited,
-                  .cursor = sweep->cursor,
-                  .cycleStart = sweep->cycleStart,
-                  .spanQuarterNotes = sweep->spanQuarterNotes,
-                  .barQuarterNotes = sweep->barQuarterNotes,
-                  .cycleSeconds = sweep->cycleSeconds};
-        sampleCount = sweep->sampleCount;
+        window.start = 0.0;
+        window.span = static_cast<double>(image.length());
+        window.roll = false;
+        window.synced = true;
+        window.limited = sweep.limited;
+        window.partial = !image.complete();
+        window.cursor = sweep.cursor;
+        window.cycleStart = sweep.cycleStart;
+        window.spanQuarterNotes = sweep.spanQuarterNotes;
+        window.barQuarterNotes = sweep.barQuarterNotes;
+        window.cycleSeconds = sweep.cycleSeconds;
+        sampleCount = image.length();
         samplesPerColumn = window.span / static_cast<double>(command.columns);
         lastEnd = end;
+
     } else if (isFrozen) {
         if (!changed) {
             return false;
@@ -394,8 +418,9 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     window.viewStart = command.viewStart;
     window.viewEnd = command.viewEnd;
     if (!roll || window.synced || isFrozen) {
-        window.cropStart = command.viewStart;
-        window.cropEnd = command.viewEnd;
+        const double shown = window.subEnd - window.subStart;
+        window.cropStart = window.subStart + command.viewStart * shown;
+        window.cropEnd = window.subStart + command.viewEnd * shown;
     }
     if (multi ? !renderLanes(*source, window, sampleCount, command, frame)
               : !render(*source, settings, sampleRate, window, sampleCount, samplesPerColumn,
@@ -446,7 +471,8 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                                            (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
                                            (window.roll ? flag(FrameFlag::kRoll) : 0U) |
                                            (window.synced ? flag(FrameFlag::kSynced) : 0U) |
-                                           (window.limited ? flag(FrameFlag::kLimited) : 0U)),
+                                           (window.limited ? flag(FrameFlag::kLimited) : 0U) |
+                                           (window.partial ? flag(FrameFlag::kPartial) : 0U)),
         .views = views,
         .startFraction = static_cast<float>(crop.startFraction),
         .cursor = static_cast<float>(window.cursor),
@@ -562,9 +588,11 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const std::uint64_t end = engine.captureRing().endIndex();
     if (readoutsDue(end)) {
         if (synced) {
+            const auto shown = static_cast<double>(sampleCount);
             Readouts readouts;
             if (measureSweepReadouts(
-                    sweepStats,
+                    sweepStats, static_cast<std::size_t>(std::llround(window.subStart * shown)),
+                    static_cast<std::size_t>(std::llround(window.subEnd * shown)),
                     isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing(),
                     isFrozen ? hold.endIndex() : end, triggerView, inputChannels, readouts)) {
                 storeReadouts(readouts, end);
@@ -610,22 +638,21 @@ bool Analyzer::updateStats(BlockStats& stats, const SweepImage& image, ChannelVi
     return measured;
 }
 
-bool Analyzer::measureSweepReadouts(const BlockStats& stats, const SampleSource& live,
-                                    std::uint64_t end, ChannelView view, int channels,
-                                    Readouts& readouts)
+bool Analyzer::measureSweepReadouts(const BlockStats& stats, std::size_t first, std::size_t end,
+                                    const SampleSource& live, std::uint64_t liveEnd,
+                                    ChannelView view, int channels, Readouts& readouts)
 {
     const double sampleRate = engine.sampleRate();
     const std::uint64_t begin = live.beginIndex();
-    const std::uint64_t available = end > begin ? end - begin : 0;
+    const std::uint64_t available = liveEnd > begin ? liveEnd - begin : 0;
     const std::size_t window = frequencyWindow(
-        static_cast<std::size_t>(std::min<std::uint64_t>(available, stats.sampleCount())),
-        sampleRate);
+        static_cast<std::size_t>(std::min<std::uint64_t>(available, end - first)), sampleRate);
     viewSamples.resize(window);
     scratch.resize(std::max(scratch.size(), viewSamples.size()));
-    if (!readView(live, channels, view, end - window, viewSamples, scratch)) {
+    if (!readView(live, channels, view, liveEnd - window, viewSamples, scratch)) {
         return false;
     }
-    readouts = levelsOf(stats);
+    readouts = levelsOf(stats, first, end);
     readouts.frequencyHz = estimateFrequency(viewSamples, sampleRate);
     return true;
 }
@@ -715,6 +742,55 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& co
     return ownSerial;
 }
 
+Analyzer::Commands Analyzer::peekCommands()
+{
+    const std::scoped_lock lock(commandMutex);
+    return commands;
+}
+
+bool Analyzer::placeLanes(const Settings& settings, protocol::BeatSpan span)
+{
+    bool fresh = false;
+    for (const std::uint64_t serial : laneOrder) {
+        Lane& lane = *lanes.at(serial);
+        const CaptureRing& ring = lane.engine->captureRing();
+        const std::uint64_t end = ring.endIndex();
+        if (end != lane.end || !lane.window || settings != lastSettings) {
+            const auto sweep = sweepWindow(lane.engine->timeline().latest(), end,
+                                           lane.engine->sampleRate(), span, kMaxSweepSamples);
+            if (sweep && lane.image.update(ring, *sweep, false, lane.engine->inputChannels())) {
+                lane.window = sweep;
+                fresh = true;
+            }
+            lane.end = end;
+        }
+    }
+    return fresh;
+}
+
+void Analyzer::advance()
+{
+    const Settings settings = engine.settings().get();
+    const bool synced =
+        settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
+    if (isFrozen || !synced) {
+        return; // Frozen sweeps stay as they are; windows are placed when a frame is made.
+    }
+    const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
+    if (settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
+        protocol::DisplayMode::kSingle) {
+        selectLanes(settings, peekCommands());
+        placeLanes(settings, beatSpan);
+        return;
+    }
+    const CaptureRing& ring = engine.captureRing();
+    const auto sweep = sweepWindow(engine.timeline().latest(), ring.endIndex(), engine.sampleRate(),
+                                   beatSpan, kMaxSweepSamples);
+    if (sweep && image.update(ring, *sweep, false, engine.inputChannels())) {
+        imageWindow = sweep;
+    }
+}
+
 // The multi-track view in Beats mode: one lane per track of the group, each the track's Mid as a
 // persistent sweep on its own musical clock, so that lanes line up on bar lines. While frozen
 // the lanes are not updated, so all of them hold the same moment.
@@ -724,41 +800,53 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     const std::uint64_t ownSerial = selectLanes(settings, command);
     const std::uint32_t laneSetId = laneSet().id;
 
-    // Each lane follows its own capture and clock; only new audio is placed. Frozen, each lane
-    // is rebuilt from its held audio when the span changes.
-    const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
-    bool fresh = false;
-    for (const std::uint64_t serial : laneOrder) {
-        Lane& lane = *lanes.at(serial);
-        const CaptureRing& ring = lane.engine->captureRing();
-        const std::uint64_t end = ring.endIndex();
-        if (isFrozen) {
-            const LaneHold& hold = lane.hold;
-            const auto sweep =
-                hold.held() ? sweepWindow(hold.clock(), hold.endIndex(), lane.engine->sampleRate(),
-                                          beatSpan, hold.endIndex() - hold.beginIndex())
-                            : std::nullopt;
-            if (sweep && (!lane.window || sweep->sampleCount != lane.image.length()) &&
-                lane.image.update(hold, *sweep, true)) {
-                lane.window = sweep;
-                fresh = true;
-            }
-        } else if (end != lane.end || !lane.window || settings != lastSettings) {
-            const auto longestSweep = ring.capacity() - ring.capacity() / 8;
-            const auto sweep = sweepWindow(lane.engine->timeline().latest(), end,
-                                           lane.engine->sampleRate(), beatSpan, longestSweep);
-            if (sweep && lane.image.update(ring, *sweep, false)) {
-                lane.window = sweep;
-                fresh = true;
-            }
-            lane.end = end;
-        }
+    if (image.length() > 0) {
+        image.clear(); // Single mode's sweep is not needed here; free its memory.
+        imageWindow.reset();
     }
-
+    const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
     const Lane& ownLane = *lanes.at(ownSerial);
-    if (!ownLane.window) {
+
+    // Live, each lane follows its own capture and clock, and only new audio is placed. Frozen,
+    // the lanes stay as they are; the own lane decides, as in Single mode, whether a span is
+    // cropped from them or rebuilt from each lane's held audio.
+    bool fresh = false;
+    std::optional<SweepWindow> shown;
+    double subStart = 0.0;
+    double subEnd = 1.0;
+    if (!isFrozen) {
+        fresh = placeLanes(settings, beatSpan);
+        shown = ownLane.window;
+    } else if (ownLane.hold.held()) {
+        const auto frozen =
+            frozenSweep(ownLane.hold.clock(), ownLane.hold.endIndex(), ownLane.engine->sampleRate(),
+                        beatSpan, ownLane.window, ownLane.image.length());
+        if (frozen && frozen->rebuild) {
+            for (const std::uint64_t serial : laneOrder) {
+                Lane& lane = *lanes.at(serial);
+                const LaneHold& hold = lane.hold;
+                const auto held =
+                    hold.held() ? sweepWindow(hold.clock(), hold.endIndex(),
+                                              lane.engine->sampleRate(), beatSpan, kMaxSweepSamples)
+                                : std::nullopt;
+                if (held && lane.image.update(hold, *held, true, lane.engine->inputChannels())) {
+                    lane.window = held;
+                    fresh = true;
+                }
+            }
+            shown = ownLane.window;
+        } else if (frozen) {
+            shown = frozen->window;
+            subStart = frozen->start;
+            subEnd = frozen->end;
+        }
+    } else {
+        shown = ownLane.window;
+    }
+    if (!shown) {
         return false;
     }
+
     const bool changed = fresh || settings != lastSettings || command.columns != lastColumns ||
                          isFrozen != lastFrozen || command.viewStart != lastViewStart ||
                          command.viewEnd != lastViewEnd || laneSetId != lastLaneSet ||
@@ -769,9 +857,12 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
 
     // Lanes share the own track's window. A lane whose sweep differs in length for a moment (a
     // tempo change reaching it a block later) is drawn silent until it catches up.
-    const SweepWindow& window = *ownLane.window;
-    const std::uint64_t count = window.sampleCount;
-    const Crop crop = cropOf(static_cast<double>(count), 0.0, command.viewStart, command.viewEnd);
+    const SweepWindow& window = *shown;
+    const std::uint64_t count = ownLane.image.length();
+    const double shownPart = subEnd - subStart;
+    const Crop crop =
+        cropOf(static_cast<double>(count), 0.0, subStart + command.viewStart * shownPart,
+               subStart + command.viewEnd * shownPart);
     const std::size_t columns = command.columns;
     const std::size_t block = statsBlock(engine.sampleRate());
     frameData.clear();
@@ -795,6 +886,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     // the last frame are reduced again.
     const std::size_t visibleCount = crop.end - crop.first;
     std::size_t pointCount = 0;
+    bool partial = false;
     frameChanges.clear();
     for (const std::uint64_t serial : laneOrder) {
         Lane& lane = *lanes.at(serial);
@@ -802,8 +894,8 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         const int channels = lane.engine->inputChannels();
         const auto read = [&](std::size_t first, std::span<float> destination) {
             readScratch.resize(std::max(readScratch.size(), destination.size()));
-            return readView(lane.image, channels, ChannelView::kMid, crop.first + first,
-                            destination, readScratch);
+            return readView(lane.image, lane.image.channels(), ChannelView::kMid,
+                            crop.first + first, destination, readScratch);
         };
         bool reduced = false;
         if (lane.image.length() == count) {
@@ -827,10 +919,11 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                 }
             }
             // The lane's levels per block, for readouts and summing gains.
-            updateStats(lane.stats, lane.image, ChannelView::kMid, channels,
+            updateStats(lane.stats, lane.image, ChannelView::kMid, lane.image.channels(),
                         !lane.stats.fits(static_cast<std::size_t>(count), block) ||
                             lane.statsChannels != channels);
             lane.statsChannels = channels;
+            partial = partial || !lane.image.complete();
             if (comparing && lane.compared) {
                 frameChanges.insert(frameChanges.end(), lane.image.changes().begin(),
                                     lane.image.changes().end());
@@ -852,6 +945,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
             ? static_cast<float>(crop.visibleSamples / static_cast<double>(columns))
             : 1.0f;
 
+    if (partial) {
+        header.flags = static_cast<std::uint8_t>(header.flags | flag(FrameFlag::kPartial));
+    }
     if (comparing) {
         appendComparison(header, crop.first, crop.end, count, columns, command.previewFix);
     }
@@ -861,11 +957,14 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     const std::uint64_t ownEnd = ownLane.engine->captureRing().endIndex();
     if (readoutsDue(ownEnd) && ownLane.stats.fits(static_cast<std::size_t>(count), block)) {
         Readouts readouts;
-        if (measureSweepReadouts(ownLane.stats,
-                                 isFrozen ? static_cast<const SampleSource&>(ownLane.hold)
-                                          : ownLane.engine->captureRing(),
-                                 isFrozen ? ownLane.hold.endIndex() : ownEnd, ChannelView::kMid,
-                                 engine.inputChannels(), readouts)) {
+        if (measureSweepReadouts(
+                ownLane.stats,
+                static_cast<std::size_t>(std::llround(subStart * static_cast<double>(count))),
+                static_cast<std::size_t>(std::llround(subEnd * static_cast<double>(count))),
+                isFrozen ? static_cast<const SampleSource&>(ownLane.hold)
+                         : ownLane.engine->captureRing(),
+                isFrozen ? ownLane.hold.endIndex() : ownEnd, ChannelView::kMid,
+                engine.inputChannels(), readouts)) {
             storeReadouts(readouts, ownEnd);
         }
     }
@@ -1006,8 +1105,8 @@ void Analyzer::readLaneImage(std::size_t index, std::size_t length, std::uint64_
 {
     const Lane& lane = *lanes.at(laneOrder[index]);
     readScratch.resize(std::max(readScratch.size(), into.size()));
-    if (lane.image.length() != length || !readView(lane.image, lane.engine->inputChannels(),
-                                                   ChannelView::kMid, from, into, readScratch)) {
+    if (lane.image.length() != length ||
+        !readView(lane.image, lane.image.channels(), ChannelView::kMid, from, into, readScratch)) {
         std::ranges::fill(into, 0.0f);
     }
 }

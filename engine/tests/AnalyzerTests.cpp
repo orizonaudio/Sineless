@@ -468,13 +468,95 @@ protected:
             engine.timeline().advance(
                 {.playing = playing,
                  .positionValid = true,
-                 .quarterNotes = static_cast<double>(start) / 24000.0 + offset,
+                 .quarterNotes = static_cast<double>(start) * tempo / (60.0 * kSampleRate) + offset,
                  .tempoValid = true,
-                 .tempo = 120.0},
+                 .tempo = tempo},
                 static_cast<int>(kBlock), kSampleRate);
         }
     }
+
+    double tempo = 120.0;
 };
+
+// At 20 BPM four bars are 48 s: more than the capture holds. The sweep starts from what the
+// capture holds and fills in over its first pass, and the frame says so meanwhile.
+TEST_F(SweepTest, FillsASweepLongerThanTheCaptureAsItPlays)
+{
+    tempo = 20.0;
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
+    analyzer.setColumns(1000); // 2304 samples per column.
+    play(1200000);             // 25 s: the capture holds the newest 21.8 s.
+    const auto filling = produce();
+    ASSERT_TRUE(filling);
+    EXPECT_TRUE(filling->has(FrameFlag::kPartial));
+    EXPECT_FALSE(filling->has(FrameFlag::kLimited));
+    ASSERT_EQ(filling->mode, FrameMode::kMinMax);
+    ASSERT_EQ(filling->pointCount, 1000u);
+    EXPECT_NEAR(filling->cursor, 1200000.0f / 2304000.0f, 1e-4f);
+    EXPECT_EQ(filling->data[0], 0.0f) << "not captured: silent";
+    EXPECT_EQ(filling->data[1], 0.0f);
+    EXPECT_EQ(filling->data[200], 230400.0f) << "column 100 holds what the capture held";
+    EXPECT_EQ(filling->data[2 * 520 + 1], 1199999.0f) << "the newest sample, left of the cursor";
+
+    std::optional<DecodedFrame> filled;
+    for (int chunk = 0; chunk < 50; ++chunk) { // 50 s with frames: more than a whole pass.
+        play(48000);
+        filled = produce();
+    }
+    ASSERT_TRUE(filled);
+    EXPECT_FALSE(filled->has(FrameFlag::kPartial));
+    EXPECT_EQ(filled->data[0], 2304000.0f) << "the second cycle's first sample";
+}
+
+// Without frames (the page hidden), the worker still places the audio as it arrives, so a sweep
+// longer than the capture misses nothing.
+TEST_F(SweepTest, AdvancesTheSweepBetweenFrames)
+{
+    tempo = 20.0;
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
+    analyzer.setColumns(1000);
+    for (int chunk = 0; chunk < 60; ++chunk) { // 60 s: more than a pass.
+        play(48000);
+        analyzer.advance();
+    }
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_FALSE(frame->has(FrameFlag::kPartial)) << "every sample was placed as it arrived";
+    EXPECT_EQ(frame->data[0], 2304000.0f);
+}
+
+TEST_F(SweepTest, CropsAShorterSpanFromAFrozenSweepAndRebuildsALongerOne)
+{
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
+    analyzer.setColumns(96000); // Raw points.
+    play(120000);               // 1.25 bars: bar 2 began at sample 96000.
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    ASSERT_TRUE(produce());
+    play(48000); // After the freeze: must not show.
+
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kTwoBeats));
+    const auto cropped = produce();
+    ASSERT_TRUE(cropped);
+    EXPECT_TRUE(cropped->has(FrameFlag::kFrozen));
+    EXPECT_FALSE(cropped->has(FrameFlag::kLimited));
+    ASSERT_EQ(cropped->pointCount, 48001u) << "two beats cropped from the bar held, plus an edge";
+    EXPECT_EQ(cropped->data.front(), 96000.0f) << "the cycle of quarter notes 4 to 6";
+    EXPECT_EQ(cropped->data[23999], 119999.0f) << "the newest sample before the freeze";
+    EXPECT_EQ(cropped->data[24000], 24000.0f) << "the previous cycle, as drawn in the bar";
+    EXPECT_NEAR(cropped->cursor, 0.5f, 1e-6f);
+
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kTwoBars));
+    analyzer.setColumns(192000);
+    const auto longer = produce();
+    ASSERT_TRUE(longer);
+    ASSERT_EQ(longer->pointCount, 192000u) << "two bars, from the audio held at the freeze";
+    EXPECT_EQ(longer->data.front(), 0.0f);
+    EXPECT_EQ(longer->data[119999], 119999.0f);
+    EXPECT_EQ(longer->data[120000], 0.0f) << "not captured before the freeze";
+    EXPECT_TRUE(longer->has(FrameFlag::kPartial));
+    EXPECT_NEAR(longer->cursor, 0.625f, 1e-6f);
+}
 
 TEST_F(SweepTest, StartsTheScreenAtTheCycleStart)
 {
@@ -535,7 +617,7 @@ TEST_F(SweepTest, ShowsALongerSpanChosenWhileFrozen)
 }
 
 // When less audio was held than a newly chosen span needs, the longest span that fits is shown.
-TEST_F(SweepTest, LimitsAFrozenSweepToWhatWasHeld)
+TEST_F(SweepTest, ShowsALongerSpanChosenWhileFrozenAsFarAsHeld)
 {
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
     play(200160); // About two bars in total.
@@ -545,8 +627,9 @@ TEST_F(SweepTest, LimitsAFrozenSweepToWhatWasHeld)
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
     const auto frame = produce();
     ASSERT_TRUE(frame);
-    EXPECT_TRUE(frame->has(FrameFlag::kLimited));
-    EXPECT_EQ(frame->visibleSamples, 192000.0f) << "two bars";
+    EXPECT_FALSE(frame->has(FrameFlag::kLimited));
+    EXPECT_TRUE(frame->has(FrameFlag::kPartial)) << "the held two bars fill half of the four";
+    EXPECT_EQ(frame->visibleSamples, 384000.0f) << "four bars";
 }
 
 TEST_F(SweepTest, ZoomsIntoTheSweep)
@@ -910,6 +993,30 @@ TEST_F(MultiTrackTest, ZoomsEveryLaneAtFullResolution)
     EXPECT_FLOAT_EQ(frame->viewStart, 0.25f);
 }
 
+TEST_F(MultiTrackTest, CropsAShorterSpanFromFrozenLanes)
+{
+    tracks.front().second = hostTime;
+    join();
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    play(26880); // 1.12 beats: the beat began at sample 24000.
+    ASSERT_TRUE(produce());
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    play(4800);
+    own->settings().set(SettingId::kBeatSpan,
+                        static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 2);
+    ASSERT_EQ(frame->pointCount, 6001u) << "a quarter beat cropped from the beat held";
+    EXPECT_EQ(lane(*frame, 0), lane(*frame, 1));
+    const std::vector<float> held = lane(*frame, 0);
+    EXPECT_EQ(held.front(), 24000.0f) << "the quarter-beat cycle that held the freeze";
+    EXPECT_EQ(held[2879], 26879.0f) << "the newest sample before the freeze";
+    EXPECT_EQ(held[2880], 2880.0f) << "the previous cycle, as drawn in the beat";
+    EXPECT_NEAR(frame->cursor, 0.48f, 1e-6f);
+}
+
 // Freezing holds every lane's audio, so a longer beat span chosen while frozen shows it.
 TEST_F(MultiTrackTest, ShowsALongerSpanChosenWhileFrozenInEveryLane)
 {
@@ -1165,11 +1272,14 @@ TEST_F(CompareTest, KeepsGainsInStepWithAFreshMeasurement)
     const std::vector<std::uint64_t> compared{idOf(copy), idOf(quiet), idOf(inverted)};
     analyzer->setCompared(compared);
     analyzer->setView(0.3, 0.6);
-    for (int step = 0; step < 40; ++step) {
+    // Frames start before the sweep is fully captured, and a match searched on a sweep still
+    // filling is searched again half a second later: play past that, then 100 ms more, so the
+    // last frame measures the gains again.
+    for (int step = 0; step < 80; ++step) {
         play(480);
         produce();
     }
-    own->settings().set(SettingId::kVerticalScale, -6.0); // Measures again now.
+    play(4800);
     ASSERT_TRUE(produce());
     const float incremental = sumGain();
     const auto incrementalFixed = get<float>(analyzerBytes, FrameHeader::kFixedGainOffset);

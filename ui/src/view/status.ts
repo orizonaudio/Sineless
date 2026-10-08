@@ -23,12 +23,18 @@ export function statusChips(
     if (panSeconds > 0) {
       chips.push({ text: `−${panSeconds.toFixed(2)} s`, tone: "neutral" });
     }
+    if (frame.partial) {
+      chips.push({ text: "Partial", tone: "neutral" });
+    }
     return chips;
   }
   if (frame?.synced === true) {
     chips.push({ text: "Sync", tone: "ok" });
     if (frame.limited) {
       chips.push({ text: "Span limited", tone: "warn" });
+    }
+    if (frame.partial) {
+      chips.push({ text: "Filling", tone: "neutral" });
     }
     return chips;
   }

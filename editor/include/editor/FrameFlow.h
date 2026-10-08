@@ -13,7 +13,8 @@ namespace orizon::editor {
 
 // Credit-based frame flow: the worker produces a frame only while it holds the single
 // credit, which the UI returns after drawing. Production therefore follows the display rate, no
-// backlog can build up, and nothing is produced while the page is hidden.
+// backlog can build up, and nothing is produced while the page is hidden; the analyzer still
+// advances its sweeps then, so they miss nothing.
 class FrameFlow
 {
 public:

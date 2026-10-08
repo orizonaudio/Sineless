@@ -52,11 +52,46 @@ protected:
     engine::Analyzer analyzer{engine};
     ManualDispatcher dispatcher;
     int delivered = 0;
+    std::uint8_t lastFlags = 0;
     FrameFlow flow{analyzer, dispatcher, [this](std::span<const std::byte> frame) {
                        EXPECT_GE(frame.size(), protocol::FrameHeader::kSize);
+                       lastFlags =
+                           static_cast<std::uint8_t>(frame[protocol::FrameHeader::kFlagsOffset]);
                        ++delivered;
                    }};
 };
+
+// Without a credit (the page hidden), the worker still advances tempo-synced sweeps, so a sweep
+// longer than the capture misses nothing meanwhile.
+TEST_F(FrameFlowTest, AdvancesSweepsWithoutACredit)
+{
+    engine.settings().set(protocol::SettingId::kTimeBase,
+                          static_cast<double>(protocol::TimeBase::kBeats));
+    engine.settings().set(protocol::SettingId::kBeatSpan,
+                          static_cast<double>(protocol::BeatSpan::kFourBars));
+    // At 20 BPM four bars are 48 s, more than the capture holds; play 60 s in 10 ms blocks.
+    std::uint64_t sample = 0;
+    for (int block = 0; block < 6000; ++block) {
+        writeSamples(480);
+        engine.timeline().advance({.playing = true,
+                                   .positionValid = true,
+                                   .quarterNotes = static_cast<double>(sample) / 144000.0,
+                                   .tempoValid = true,
+                                   .tempo = 20.0},
+                                  480, 48000.0);
+        sample += 480;
+        if (block % 100 == 0) {
+            flow.step();
+        }
+    }
+    EXPECT_EQ(delivered, 0);
+    flow.grantCredit();
+    flow.step();
+    dispatcher.runAll();
+    ASSERT_EQ(delivered, 1);
+    EXPECT_EQ(lastFlags & static_cast<std::uint8_t>(protocol::FrameFlag::kPartial), 0)
+        << "the whole sweep was placed while no frame was wanted";
+}
 
 TEST_F(FrameFlowTest, ProducesNothingWithoutACredit)
 {

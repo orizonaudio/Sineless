@@ -80,6 +80,44 @@ TEST_F(SweepImageTest, RedrawsEverythingAfterAGapOfAWholeSweep)
     EXPECT_EQ(screen(), (std::vector<float>{193, 194, 195, 196, 197, 198, 199, 190, 191, 192}));
 }
 
+TEST_F(SweepImageTest, FillsWhatTheSourceHoldsAndCompletesOverAPass)
+{
+    writeUpTo(2000); // The ring of 1024 holds samples 976 to 1999.
+    ASSERT_TRUE(image.update(ring, {.start = 800, .sampleCount = 1200, .rotation = 0}, false));
+    EXPECT_FALSE(image.complete());
+    EXPECT_EQ(screen()[0], 0.0f) << "not held by the ring: silent until the playhead passes";
+    EXPECT_EQ(screen()[176], 976.0f) << "the oldest sample held";
+    EXPECT_EQ(screen()[1199], 1999.0f);
+
+    writeUpTo(2400);
+    ASSERT_TRUE(image.update(ring, {.start = 1200, .sampleCount = 1200, .rotation = 0}, false));
+    EXPECT_TRUE(image.complete()) << "one whole pass has been drawn";
+    EXPECT_EQ(screen()[799], 1599.0f) << "earlier drawing stays";
+    EXPECT_EQ(screen()[800], 2000.0f) << "the new samples";
+    EXPECT_EQ(screen()[1199], 2399.0f);
+}
+
+TEST_F(SweepImageTest, HoldsTheMidWithOneChannel)
+{
+    std::vector<float> left(100);
+    std::vector<float> right(100);
+    for (std::size_t i = 0; i < 100; ++i) {
+        left[i] = static_cast<float>(i);
+        right[i] = 3.0f * static_cast<float>(i); // Mid: twice the index.
+    }
+    std::array<const float*, 2> channels{left.data(), right.data()};
+    ring.write(channels.data(), 2, 100);
+    SweepImage mono(1);
+    ASSERT_TRUE(mono.update(ring, {.start = 90, .sampleCount = 10, .rotation = 6}, false, 2));
+    std::vector<float> samples(10);
+    ASSERT_TRUE(mono.read(0, 0, samples));
+    EXPECT_EQ(samples, (std::vector<float>{192, 194, 196, 198, 180, 182, 184, 186, 188, 190}));
+    EXPECT_FALSE(mono.read(1, 0, samples)) << "one channel only";
+    EXPECT_EQ(mono.channels(), 1);
+    mono.clear();
+    EXPECT_EQ(mono.length(), 0u);
+}
+
 TEST_F(SweepImageTest, RefusesReadsBeyondTheScreen)
 {
     writeUpTo(100);

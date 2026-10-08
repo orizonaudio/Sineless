@@ -30,7 +30,7 @@ TEST(Sweep, PutsTheCycleStartAtTheLeftEdge)
     const auto window = sweepWindow(clockAt120(), 144000, kRate, BeatSpan::kOneBar, kUnlimited);
     ASSERT_TRUE(window);
     EXPECT_EQ(window->sampleCount, 96000u);
-    EXPECT_EQ(window->start, 48000u);
+    EXPECT_EQ(window->start, 48000);
     EXPECT_EQ(window->rotation, 48000u) << "sample 96000 moves to the left edge";
     EXPECT_DOUBLE_EQ(window->cursor, 0.5);
     EXPECT_FALSE(window->limited);
@@ -44,7 +44,7 @@ TEST(Sweep, AlignsTwoBarCyclesToOddBars)
     // 3.25 bars: a 2-bar cycle started at bar 3 (sample 192000), 1.25 bars ago.
     const auto window = sweepWindow(clockAt120(), 312000, kRate, BeatSpan::kTwoBars, kUnlimited);
     ASSERT_TRUE(window);
-    EXPECT_EQ(window->start + window->rotation, 192000u);
+    EXPECT_EQ(window->start + static_cast<std::int64_t>(window->rotation), 192000);
     EXPECT_DOUBLE_EQ(window->cursor, 0.625);
 }
 
@@ -57,9 +57,66 @@ TEST(Sweep, ShortensSpansThatDoNotFit)
     EXPECT_EQ(window->sampleCount, 192000u);
 }
 
-TEST(Sweep, WaitsUntilTheSpanIsCaptured)
+TEST(Sweep, StartsBeforeTheCaptureCoversTheSpan)
 {
-    EXPECT_FALSE(sweepWindow(clockAt120(), 50000, kRate, BeatSpan::kOneBar, kUnlimited));
+    // Half a bar captured: the window starts before the capture, with the playhead halfway.
+    const auto window = sweepWindow(clockAt120(), 48000, kRate, BeatSpan::kOneBar, kUnlimited);
+    ASSERT_TRUE(window);
+    EXPECT_EQ(window->start, -48000);
+    EXPECT_EQ(window->rotation, 48000u) << "the cycle start, sample 0, moves to the left edge";
+    EXPECT_DOUBLE_EQ(window->cursor, 0.5);
+}
+
+// A bar sweep held at 1.25 bars: its cycle is bar 2, quarter notes 4 to 8.
+std::optional<SweepWindow> barImage()
+{
+    return sweepWindow(clockAt120(), 120000, kRate, BeatSpan::kOneBar, kUnlimited);
+}
+
+TEST(FrozenSweep, KeepsTheImageForTheSameSpan)
+{
+    const auto frozen =
+        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kOneBar, barImage(), 96000);
+    ASSERT_TRUE(frozen);
+    EXPECT_FALSE(frozen->rebuild);
+    EXPECT_DOUBLE_EQ(frozen->start, 0.0);
+    EXPECT_DOUBLE_EQ(frozen->end, 1.0);
+    EXPECT_EQ(frozen->window.sampleCount, 96000u);
+}
+
+TEST(FrozenSweep, CropsAShorterSpanThatDividesTheImage)
+{
+    // Two beats at 1.25 bars: the cycle of quarter notes 4 to 6, the first half of the bar.
+    const auto frozen =
+        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kTwoBeats, barImage(), 96000);
+    ASSERT_TRUE(frozen);
+    EXPECT_FALSE(frozen->rebuild);
+    EXPECT_DOUBLE_EQ(frozen->start, 0.0);
+    EXPECT_DOUBLE_EQ(frozen->end, 0.5);
+    EXPECT_DOUBLE_EQ(frozen->window.cycleStart, 4.0);
+    EXPECT_DOUBLE_EQ(frozen->window.cursor, 0.5);
+    EXPECT_EQ(frozen->window.sampleCount, 48000u);
+}
+
+TEST(FrozenSweep, RebuildsOtherSpansFromTheHeldAudio)
+{
+    // Two bars do not fit the image: the whole span, filled as far as the held audio goes.
+    const auto longer =
+        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kTwoBars, barImage(), 96000);
+    ASSERT_TRUE(longer);
+    EXPECT_TRUE(longer->rebuild);
+    EXPECT_EQ(longer->window.sampleCount, 192000u);
+    EXPECT_FALSE(longer->window.limited);
+    EXPECT_EQ(longer->window.start, 120000 - 192000);
+    // Two beats do not divide a 3/4 bar: rebuilt too.
+    MusicalStamp waltz = clockAt120();
+    waltz.numerator = 3;
+    const auto waltzBar = sweepWindow(waltz, 120000, kRate, BeatSpan::kOneBar, kUnlimited);
+    ASSERT_TRUE(waltzBar);
+    const auto odd =
+        frozenSweep(waltz, 120000, kRate, BeatSpan::kTwoBeats, waltzBar, waltzBar->sampleCount);
+    ASSERT_TRUE(odd);
+    EXPECT_TRUE(odd->rebuild);
 }
 
 TEST(Sweep, FollowsTheClockFromAnyStamp)

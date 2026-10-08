@@ -30,6 +30,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     frequency: undefined,
     synced: false,
     limited: false,
+    partial: false,
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,

@@ -64,7 +64,8 @@ export const frameHeaderFields = [
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];
 
 // Bits of the `flags` field.
-// `synced`: a tempo-synced sweep. `limited`: the span was shortened to what the capture holds.
+// `synced`: a tempo-synced sweep. `limited`: the span was shortened to what can be kept.
+// `partial`: a sweep longer than what the capture held is still filling in its first pass.
 export const FrameFlag = {
   triggered: 1,
   frozen: 2,
@@ -72,6 +73,7 @@ export const FrameFlag = {
   synced: 8,
   limited: 16,
   compared: 32,
+  partial: 64,
 } as const;
 
 // Values per track in a Compare frame's matches: correlation, offset and polarity.

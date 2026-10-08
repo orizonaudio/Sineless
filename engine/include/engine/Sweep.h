@@ -8,6 +8,10 @@
 
 namespace orizon::engine {
 
+// The longest tempo-synced sweep kept per lane, in samples: 32 MB per channel of audio in screen
+// order, 87 s at 96 kHz and 44 s at 192 kHz. Longer spans step down (see sweepWindow).
+inline constexpr std::uint64_t kMaxSweepSamples = std::uint64_t{1} << 23U;
+
 // Length of a beat span in quarter notes; bars follow the time signature.
 [[nodiscard]] double beatSpanQuarterNotes(protocol::BeatSpan span, double barQuarterNotes);
 
@@ -17,7 +21,9 @@ namespace orizon::engine {
 // the rest.
 struct SweepWindow
 {
-    std::uint64_t start = 0;
+    // The source index of the first sample shown: before the capture began (negative) while the
+    // capture does not cover the span yet.
+    std::int64_t start = 0;
     std::uint64_t sampleCount = 0;
     std::uint64_t rotation = 0;
     double cursor = 0.0;
@@ -31,9 +37,27 @@ struct SweepWindow
 };
 
 // Cycles align to multiples of the span from the project start, i.e. to bars for bar spans.
-// Returns nothing until `end` samples cover the span.
+// Nothing only for an empty span: a window the capture does not cover yet starts before the
+// capture, and the sweep image shows what the capture holds.
 [[nodiscard]] std::optional<SweepWindow> sweepWindow(const MusicalStamp& stamp, std::uint64_t end,
                                                      double sampleRate, protocol::BeatSpan span,
                                                      std::uint64_t maxSamples);
+
+// What a frozen sweep shows for `span`, given the sweep image held (`image`, the window it was
+// built for, of `imageLength` samples): the image as it is for the same span; the part of it
+// holding the span's current cycle for a shorter span that divides the image's; otherwise a
+// sweep rebuilt from the audio held on freeze, as far as that goes.
+struct FrozenSweep
+{
+    SweepWindow window;
+    double start = 0.0; // The part of the image shown, as fractions of it.
+    double end = 1.0;
+    bool rebuild = false; // The image must be rebuilt from the held audio for `window`.
+};
+
+[[nodiscard]] std::optional<FrozenSweep> frozenSweep(const MusicalStamp& stamp, std::uint64_t end,
+                                                     double sampleRate, protocol::BeatSpan span,
+                                                     const std::optional<SweepWindow>& image,
+                                                     std::uint64_t imageLength);
 
 } // namespace orizon::engine

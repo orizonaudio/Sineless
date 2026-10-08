@@ -89,6 +89,10 @@ public:
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
     bool produce(std::vector<std::byte>& frame);
+    // Places the audio captured since the last frame into the tempo-synced sweeps without
+    // producing a frame: for when no frame is wanted, so that nothing is missed meanwhile however
+    // short the capture. Runs on the analysis worker, like produce().
+    void advance();
 
     // The lanes of the latest multi-track frames; the id changes whenever they do. Any thread.
     [[nodiscard]] LaneSet laneSet() const;
@@ -121,6 +125,11 @@ private:
         double spanQuarterNotes = 0.0;
         double barQuarterNotes = 0.0;
         double cycleSeconds = 0.0;
+        bool partial = false; // The sweep's first pass is still filling in.
+        // The part of the source holding the span shown: less than all of it while frozen on a
+        // shorter span cropped from a longer sweep.
+        double subStart = 0.0;
+        double subEnd = 1.0;
         // View zoom: the part of the window reduced into the frame (`crop`, fractions of the
         // window) and the part the frame reports covering (`view`, fractions of the span).
         double cropStart = 0.0;
@@ -136,7 +145,7 @@ private:
     struct Lane
     {
         std::shared_ptr<Engine> engine;
-        SweepImage image;
+        SweepImage image{1}; // The track's Mid.
         std::optional<SweepWindow> window;
         std::uint64_t end = 0; // Capture end of the last update.
         LaneHold hold;
@@ -155,7 +164,10 @@ private:
     struct SumPart;
 
     Commands takeCommands();
+    Commands peekCommands();
     std::uint64_t selectLanes(const Settings& settings, const Commands& command);
+    // Live: places each lane's new audio into its sweep. True if any lane changed.
+    bool placeLanes(const Settings& settings, protocol::BeatSpan span);
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,
@@ -173,10 +185,11 @@ private:
     // since the last frame; all of them when `fresh`. False if the image could not be read.
     bool updateStats(BlockStats& stats, const SweepImage& image, protocol::ChannelView view,
                      int channels, bool fresh);
-    // Readouts of a sweep: its levels from `stats`, and the frequency over the newest second of
-    // `view` in `live` (the capture, or what was held on freeze) ending at `end`. False, with
-    // `readouts` untouched, if that audio is gone.
-    bool measureSweepReadouts(const BlockStats& stats, const SampleSource& live, std::uint64_t end,
+    // Readouts of samples [first, end) of a sweep: their levels from `stats`, and the frequency
+    // over the newest second of `view` in `live` (the capture, or what was held on freeze) ending
+    // at `liveEnd`. False, with `readouts` untouched, if that audio is gone.
+    bool measureSweepReadouts(const BlockStats& stats, std::size_t first, std::size_t end,
+                              const SampleSource& live, std::uint64_t liveEnd,
                               protocol::ChannelView view, int channels, Readouts& readouts);
     // Tempo-synced Compare frames, over screen positions of the sweep of `length` samples: lane
     // `index`'s Mid from `from` (silent while the lane is not on that length), and the sum of
@@ -205,6 +218,7 @@ private:
     const InstanceRegistry& registry;
     HoldBuffer hold;
     SweepImage image;
+    std::optional<SweepWindow> imageWindow; // The window `image` was built for.
     TriggerState trigger;
 
     std::mutex commandMutex;

@@ -16,11 +16,14 @@ void FrameFlow::grantCredit()
 
 void FrameFlow::step()
 {
+    bool credit = false;
     {
         const std::scoped_lock lock(mutex);
-        if (!hasCredit) {
-            return;
-        }
+        credit = hasCredit;
+    }
+    if (!credit) {
+        analyzer.advance(); // No frame wanted: keep the sweeps current meanwhile.
+        return;
     }
     if (!analyzer.produce(producing)) {
         return; // Nothing new: keep the credit for the next step.

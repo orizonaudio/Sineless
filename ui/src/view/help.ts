@@ -41,7 +41,7 @@ export const helpTexts = {
   },
   status: {
     title: "Status",
-    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, and Roll, Sync, Frozen or Zoom for the current mode.",
+    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, Roll, Sync, Frozen or Zoom for the current mode, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did).",
   },
   peak: {
     title: "Peak",

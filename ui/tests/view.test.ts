@@ -209,6 +209,7 @@ describe("status chips", () => {
     frequency: undefined,
     synced: false,
     limited: false,
+    partial: false,
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,
@@ -240,10 +241,13 @@ describe("status chips", () => {
     );
   });
 
-  test("shows sync, and a shortened span", () => {
+  test("shows sync, a shortened span, and a sweep still filling", () => {
     expect(statusChips(frame({ synced: true }), "auto", 0, 0)).toEqual([
       { text: "Sync", tone: "ok" },
     ]);
+    expect(
+      statusChips(frame({ synced: true, partial: true }), "auto", 0, 0)[1],
+    ).toEqual({ text: "Filling", tone: "neutral" });
     expect(
       statusChips(frame({ synced: true, limited: true }), "auto", 0, 0)[1],
     ).toEqual({
@@ -260,5 +264,8 @@ describe("status chips", () => {
       { text: "Frozen", tone: "hold" },
       { text: "−0.12 s", tone: "neutral" },
     ]);
+    expect(
+      statusChips(frame({ frozen: true, partial: true }), "auto", 5, 0)[1],
+    ).toEqual({ text: "Partial", tone: "neutral" });
   });
 });

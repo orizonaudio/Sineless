@@ -34,6 +34,7 @@ function frame(
     frequency: undefined,
     synced: false,
     limited: false,
+    partial: false,
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,

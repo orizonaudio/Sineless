@@ -32,6 +32,7 @@ describe("frame decoder", () => {
     expect(frame.cursor).toBeUndefined();
     expect(frame.synced).toBe(false);
     expect(frame.limited).toBe(false);
+    expect(frame.partial).toBe(false);
     expect([...frame.views.keys()]).toEqual([
       ChannelView.left,
       ChannelView.mid,
