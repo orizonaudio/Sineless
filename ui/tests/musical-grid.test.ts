@@ -24,6 +24,20 @@ describe("musical grid", () => {
     ]);
   });
 
+  test("draws bar lines with stronger four-bar groups over sixteen bars", () => {
+    const { lines, labels } = musicalGrid(0, 64, 4);
+    expect(lines).toHaveLength(15);
+    expect(lines.filter((line) => line.strong)).toHaveLength(3);
+    expect(lines[0]).toEqual({ position: 1 / 16, strong: false });
+    expect(lines[3]).toEqual({ position: 4 / 16, strong: true });
+    expect(labels.map((label) => label.text)).toEqual([
+      "1.1",
+      "5.1",
+      "9.1",
+      "13.1",
+    ]);
+  });
+
   test("draws sixteenth lines with stronger beats within a bar", () => {
     const { lines, labels } = musicalGrid(4, 2, 4); // Two beats from bar 2.
     expect(lines).toHaveLength(7);

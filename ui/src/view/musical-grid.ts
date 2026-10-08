@@ -19,6 +19,8 @@ export const beatSpanLabels = [
   "1 bar",
   "2 bars",
   "4 bars",
+  "8 bars",
+  "16 bars",
 ] as const;
 
 const maximumLabels = 5;
@@ -50,9 +52,10 @@ function beatFraction(quarterNotes: number): string {
 
 // Lines and labels over the visible part of a sweep. `cycleStart` and `span` (quarter notes)
 // describe the whole frame; `view` the part on screen. Lines sit on absolute musical
-// positions, so they refine as the view narrows: beats with stronger bars, then sixteenths with
-// stronger beats, then binary fractions of a beat. With `timing` (the left edge's project time and
-// the seconds per quarter note), labels carry their project time too.
+// positions, so they refine as the view narrows: bars with stronger four-bar groups over eight
+// bars or more, then beats with stronger bars, then sixteenths with stronger beats, then binary
+// fractions of a beat. With `timing` (the left edge's project time and the seconds per quarter
+// note), labels carry their project time too.
 export function musicalGrid(
   cycleStart: number,
   span: number,
@@ -68,12 +71,22 @@ export function musicalGrid(
   }
   const visibleStart = cycleStart + view.start * span;
   const visibleSpan = (view.end - view.start) * span;
-  let step = visibleSpan >= barQuarterNotes ? 1 : 0.25;
+  const longView = visibleSpan >= 8 * barQuarterNotes;
+  let step = longView
+    ? barQuarterNotes
+    : visibleSpan >= barQuarterNotes
+      ? 1
+      : 0.25;
   while (visibleSpan < 4 * step && step > 1 / 1024) {
     step /= 2;
   }
-  const strongEvery =
-    visibleSpan >= barQuarterNotes ? barQuarterNotes : step < 0.25 ? 0.25 : 1;
+  const strongEvery = longView
+    ? 4 * barQuarterNotes
+    : visibleSpan >= barQuarterNotes
+      ? barQuarterNotes
+      : step < 0.25
+        ? 0.25
+        : 1;
   const isMultiple = (value: number, of: number) =>
     Math.abs(value / of - Math.round(value / of)) < epsilon;
   const position = (quarterNotes: number) =>

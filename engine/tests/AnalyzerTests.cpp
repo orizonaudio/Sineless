@@ -890,7 +890,7 @@ TEST_F(MultiTrackTest, AlignsTracksThatStartedAtDifferentTimesOnTheClock)
 TEST_F(MultiTrackTest, KeepsTheOwnTrackWithinTheLaneLimit)
 {
     InstanceRegistry crowded;
-    for (int track = 0; track < 9; ++track) {
+    for (std::size_t track = 0; track < kMaxLanes + 1; ++track) {
         auto engine = std::make_shared<Engine>();
         crowded.add(engine);
         tracks.emplace_back(
@@ -1168,8 +1168,9 @@ protected:
     // A track's match against this track, after the lanes (the tracks and their sum).
     static Match match(const DecodedFrame& frame, std::size_t track)
     {
-        const std::size_t at =
-            std::size_t{frame.laneCount} * frame.pointCount + track * protocol::kMatchValues;
+        const std::size_t perPoint = frame.mode == FrameMode::kMinMax ? 2 : 1;
+        const std::size_t at = std::size_t{frame.laneCount} * frame.pointCount * perPoint +
+                               track * protocol::kMatchValues;
         return {.correlation = frame.data.at(at),
                 .offset = frame.data.at(at + 1),
                 .polarity = frame.data.at(at + 2)};
@@ -1261,6 +1262,48 @@ TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)
     EXPECT_EQ(frame->laneCount, 3);
 }
 
+// Sixteen bars at 120 BPM are a 32 s sweep. The other track is this one inverted for the first
+// 14 s, then as it is: the match follows the newest 8 s before the playhead, not the whole view.
+TEST_F(CompareTest, SearchesTheMatchOverTheNewestPartOfTheView)
+{
+    constexpr std::uint64_t kFlipAt = std::uint64_t{14} * 48000;
+    joinWith([](std::uint64_t sample) {
+        return sample < kFlipAt ? -noiseAt(sample, 1) : noiseAt(sample, 1);
+    });
+    own->settings().set(SettingId::kBeatSpan,
+                        static_cast<double>(protocol::BeatSpan::kSixteenBars));
+    analyzer->setColumns(1000);
+    play(std::uint64_t{24} * 48000);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 3);
+    EXPECT_NEAR(frame->cursor, 0.75f, 1e-3f) << "the playhead at 24 of 32 s";
+    EXPECT_EQ(match(*frame, 1).offset, 0.0f);
+    EXPECT_NE(match(*frame, 1).polarity, 0.0f) << "related";
+    EXPECT_FALSE(match(*frame, 1).inverted());
+    EXPECT_NEAR(match(*frame, 1).correlation, 1.0f, 1e-3f);
+}
+
+// A change of the view makes every match due again; until each is searched again, one per
+// frame, it stays on show.
+TEST_F(CompareTest, KeepsMatchesOnShowWhileTheViewChanges)
+{
+    const auto copy = joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
+    const auto inverted = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    analyzer->setCompared({idOf(copy), idOf(inverted)});
+    play(9600);
+    for (int step = 0; step < 3; ++step) {
+        play(480);
+        ASSERT_TRUE(produce());
+    }
+    analyzer->setView(0.25, 0.75);
+    play(480);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(match(*frame, 1).polarity, 1.0f) << "kept on show while due again";
+    EXPECT_TRUE(match(*frame, 2).inverted());
+}
+
 // The summing gains come from levels kept per block of each lane and of the sums, so a long view
 // is never scanned whole: frame by frame they equal a fresh measurement, also over a zoomed part
 // that starts and ends inside blocks.
@@ -1279,17 +1322,23 @@ TEST_F(CompareTest, KeepsGainsInStepWithAFreshMeasurement)
         play(480);
         produce();
     }
-    play(4800);
-    ASSERT_TRUE(produce());
-    const float incremental = sumGain();
-    const auto incrementalFixed = get<float>(analyzerBytes, FrameHeader::kFixedGainOffset);
-
+    // A fresh analyzer searches one match per frame: it gets a few frames, on the same audio,
+    // then both measure the gains again after 100 ms more.
     Analyzer fresh(*own, registry);
     fresh.setColumns(8000);
     fresh.setCompared(compared);
     fresh.setView(0.3, 0.6);
     std::vector<std::byte> bytes;
+    for (int step = 0; step < 4; ++step) {
+        play(480);
+        produce();
+        ASSERT_TRUE(fresh.produce(bytes));
+    }
+    play(4800);
+    ASSERT_TRUE(produce());
     ASSERT_TRUE(fresh.produce(bytes));
+    const float incremental = sumGain();
+    const auto incrementalFixed = get<float>(analyzerBytes, FrameHeader::kFixedGainOffset);
     EXPECT_NEAR(incremental, get<float>(bytes, FrameHeader::kSumGainOffset), 1e-4f);
     EXPECT_NEAR(incrementalFixed, get<float>(bytes, FrameHeader::kFixedGainOffset), 1e-4f);
     // The copy and the inverted copy cancel: the sum is this track plus the quiet one, against
@@ -1351,21 +1400,26 @@ TEST_F(CompareTest, KeepsTheSumLaneInStepWithAFreshSum)
     for (const bool preview : {false, true}) {
         analyzer->setCompared({idOf(tracks[1].first), idOf(other)});
         analyzer->setPreviewFix(preview);
-        std::optional<DecodedFrame> frame;
-        for (int step = 0; step < 30; ++step) {
+        // Frames start before the sweep is captured whole, and a match found then is searched
+        // again half a second later: play past that. A fresh analyzer searches one match per
+        // frame, so it gets a few frames, on the same audio.
+        for (int step = 0; step < 70; ++step) {
             play(480);
-            if (auto produced = produce()) {
-                frame = std::move(produced);
-            }
+            produce();
         }
-        ASSERT_TRUE(frame);
-        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
         Analyzer fresh(*own, registry);
         fresh.setColumns(300);
         fresh.setCompared({idOf(tracks[1].first), idOf(other)});
         fresh.setPreviewFix(preview);
+        std::optional<DecodedFrame> frame;
         std::vector<std::byte> bytes;
-        ASSERT_TRUE(fresh.produce(bytes));
+        for (int step = 0; step < 3; ++step) {
+            play(480);
+            frame = produce();
+            ASSERT_TRUE(fresh.produce(bytes));
+        }
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
         const DecodedFrame expected = decode(bytes);
         const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;
         ASSERT_EQ(expected.laneCount, frame->laneCount);
@@ -1389,7 +1443,7 @@ TEST_F(CompareTest, ShowsThisTrackAloneWithoutOtherTracks)
 
 TEST_F(CompareTest, LeavesALaneForTheSum)
 {
-    for (int i = 0; i < 8; ++i) {
+    for (std::size_t i = 0; i < kMaxLanes; ++i) {
         join(static_cast<float>(i));
     }
     play(9600);

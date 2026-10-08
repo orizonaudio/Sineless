@@ -26,9 +26,14 @@
 
 namespace orizon::engine {
 
-// Each compared track's match is searched again at most this often (seconds of audio), one track
-// per frame: a search over a long view is costly, and a track's alignment rarely changes faster.
+// A compared track's match is searched over the newest kMatchWindowSeconds of the view, where the
+// playhead is: a match is a property of the routing, not of the whole span, and a search over a
+// long view would stall the frames. Each track's match is searched again at most every
+// kMatchRefreshSeconds of audio, one track per frame and at most one every kMatchSpacingSeconds,
+// so that many tracks share the analysis thread.
+inline constexpr double kMatchWindowSeconds = 8.0;
 inline constexpr double kMatchRefreshSeconds = 0.5;
+inline constexpr double kMatchSpacingSeconds = 0.1;
 
 // Levels (peak and energy) are kept per block of this many seconds of audio, so that readouts and
 // summing gains cost a pass over blocks; the Compare view judges per block whether tracks sound
@@ -37,7 +42,7 @@ inline constexpr double kStatsBlockSeconds = 0.01;
 
 // At most this many lanes are drawn in the multi-track view: tracks, and in the Compare view
 // their sum.
-inline constexpr std::size_t kMaxLanes = 8;
+inline constexpr std::size_t kMaxLanes = 16;
 
 // One track of the multi-track view, as the UI labels it.
 struct LaneLabel
@@ -174,8 +179,14 @@ private:
                      const Commands& command, std::vector<std::byte>& frame);
     void renderCompare(FrameHeaderValues header, std::size_t first, std::size_t end,
                        std::size_t columns, bool previewFix, std::vector<std::byte>& frame);
+    // `playhead` is the sweep's playhead as a screen position, where the newest audio is.
     void appendComparison(FrameHeaderValues& header, std::size_t first, std::size_t end,
-                          std::uint64_t count, std::size_t columns, bool previewFix);
+                          std::uint64_t count, std::size_t columns, bool previewFix,
+                          std::size_t playhead);
+    // The compared track whose match to search this frame, as a lane index, if any.
+    std::optional<std::size_t> matchToSearch(std::uint32_t laneSet, std::size_t first,
+                                             std::size_t end, std::size_t length,
+                                             std::uint64_t now);
     void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
     [[nodiscard]] bool readoutsDue(std::uint64_t end) const;
     void storeReadouts(const Readouts& values, std::uint64_t end);
@@ -266,6 +277,8 @@ private:
         std::uint64_t analysedAt = 0;
     };
     std::map<std::uint64_t, MatchState> matchStates;
+    std::uint64_t lastMatchSearch = 0; // Capture end of the last search.
+    bool matchesPending = false;       // Matches remain to search: frames go on meanwhile.
     // Tempo-synced Compare frames: screen positions where compared tracks changed this frame, the
     // sum lane's columns with what they sum (each compared lane, shifted and signed as previewed),
     // and the latest matches and summing gains.

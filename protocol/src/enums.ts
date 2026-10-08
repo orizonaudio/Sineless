@@ -26,6 +26,8 @@ export const BeatSpan = {
   oneBar: 6,
   twoBars: 7,
   fourBars: 8,
+  eightBars: 9,
+  sixteenBars: 10,
 } as const;
 export type BeatSpan = (typeof BeatSpan)[keyof typeof BeatSpan];
 
@@ -44,6 +46,8 @@ export const beatSpanLengths: readonly {
   { amount: 1, inBars: true },
   { amount: 2, inBars: true },
   { amount: 4, inBars: true },
+  { amount: 8, inBars: true },
+  { amount: 16, inBars: true },
 ];
 
 export function beatSpanQuarterNotes(

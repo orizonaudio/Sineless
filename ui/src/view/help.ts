@@ -13,7 +13,7 @@ export const helpTexts = {
   },
   displayMode: {
     title: "Single, Multi or Compare",
-    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 8. Compare (in beta) shows the same tracks, at most 7, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
+    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 16. Compare (in beta) shows the same tracks, at most 15, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
   },
   compareTrack: {
     title: "Compare",
@@ -29,7 +29,7 @@ export const helpTexts = {
   },
   match: {
     title: "Against this track",
-    text: "How late this track is against yours, within 10 ms (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.",
+    text: "How late this track is against yours, within 10 ms (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the last 8 seconds shown. Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.",
   },
   group: {
     title: "Group",

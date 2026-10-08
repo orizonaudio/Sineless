@@ -19,6 +19,12 @@ scenarios=(
     "single-1bar      --mode=single --timebase=beats --beatspan=oneBar"
     "single-trig-20ms --mode=single --timebase=seconds --span=0.02"
     "multi-7-4bars-60bpm-96k --mode=multi --lanes=7 --timebase=beats --beatspan=fourBars --rate=96000 --tempo=60"
+    # The worst case: fifteen tracks over sixteen bars at 60 BPM and 96 kHz, a 64 s sweep, which
+    # takes over a minute to fill.
+    "multi-15-16bars-60bpm-96k --mode=multi --lanes=15 --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70"
+    "compare-15-16bars-60bpm-96k --mode=compare --lanes=15 --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70"
+    "single-16bars-60bpm-96k --mode=single --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70"
+    "compare-15-roll-4s-96k --mode=compare --lanes=15 --timebase=seconds --span=4 --rate=96000"
 )
 
 printf "%-25s %9s %6s %7s %7s %8s %8s %8s\n" scenario analysis main webkit total "frames/s" "MB" \
@@ -26,7 +32,7 @@ printf "%-25s %9s %6s %7s %7s %8s %8s %8s\n" scenario analysis main webkit total
 for scenario in "${scenarios[@]}"; do
     read -r name arguments <<<"$scenario"
     # shellcheck disable=SC2086 # Arguments are split on purpose.
-    output="$("$bench" $arguments --warmup=10 --duration="$duration" 2>&1)"
+    output="$("$bench" --warmup=10 --duration="$duration" $arguments 2>&1)"
     pick() { grep -E "$1" <<<"$output" | head -1 | sed -E "s|$2|\1|"; }
     analysis="$(pick "thread O-Scope analysis" '.* ([0-9.]+)%.*')"
     main="$(pick "thread main" '.* ([0-9.]+)%.*')"
