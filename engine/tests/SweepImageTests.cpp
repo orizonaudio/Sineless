@@ -118,6 +118,26 @@ TEST_F(SweepImageTest, HoldsTheMidWithOneChannel)
     EXPECT_EQ(mono.length(), 0u);
 }
 
+TEST_F(SweepImageTest, KeepsItsLengthThroughASmallTempoChange)
+{
+    writeUpTo(3024); // The ring holds samples 2000 to 3023.
+    // A 1024-sample sweep whose cycle began at 2500.
+    ASSERT_TRUE(image.update(ring, {.start = 2000, .sampleCount = 1024, .rotation = 500}, false));
+    EXPECT_EQ(screen()[0], 2500.0f);
+    EXPECT_EQ(screen()[524], 2000.0f);
+    writeUpTo(3074);
+    // The tempo moved the length by one sample: no rebuild, and the new samples follow the cycle.
+    ASSERT_TRUE(image.update(ring, {.start = 2049, .sampleCount = 1025, .rotation = 451}, false));
+    EXPECT_EQ(image.length(), 1024u);
+    EXPECT_EQ(screen()[0], 2500.0f);
+    EXPECT_EQ(screen()[524], 3024.0f) << "placed relative to the cycle start";
+    EXPECT_EQ(screen()[573], 3073.0f);
+    EXPECT_EQ(screen()[574], 2050.0f) << "earlier drawing stays";
+    // A larger change rebuilds.
+    ASSERT_TRUE(image.update(ring, {.start = 2034, .sampleCount = 1040, .rotation = 466}, false));
+    EXPECT_EQ(image.length(), 1040u);
+}
+
 TEST_F(SweepImageTest, RefusesReadsBeyondTheScreen)
 {
     writeUpTo(100);

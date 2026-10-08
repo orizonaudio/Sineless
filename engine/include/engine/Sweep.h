@@ -3,6 +3,7 @@
 #include "engine/Timeline.h"
 #include "protocol/Protocol.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 
@@ -35,6 +36,15 @@ struct SweepWindow
     double barQuarterNotes = 4.0;
     double cycleSeconds = 0.0; // The left edge's project time.
 };
+
+// Whether two sweep lengths differ by no more than a thousandth: a tempo change moves the length
+// a little from block to block, which no screen column resolves, so a sweep image keeps its length
+// through it instead of being rebuilt.
+[[nodiscard]] constexpr bool sweepLengthsSimilar(std::uint64_t a, std::uint64_t b)
+{
+    const std::uint64_t larger = std::max(a, b);
+    return (larger - std::min(a, b)) <= larger / 1024;
+}
 
 // Cycles align to multiples of the span from the project start, i.e. to bars for bar spans.
 // Nothing only for an empty span: a window the capture does not cover yet starts before the

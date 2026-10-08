@@ -78,7 +78,7 @@ std::optional<FrozenSweep> frozenSweep(const MusicalStamp& stamp, std::uint64_t 
         return std::nullopt;
     }
     if (image && imageLength > 0) {
-        if (requested->sampleCount == imageLength &&
+        if (sweepLengthsSimilar(requested->sampleCount, imageLength) &&
             std::abs(requested->spanQuarterNotes - image->spanQuarterNotes) < kEpsilon) {
             return FrozenSweep{.window = *requested};
         }

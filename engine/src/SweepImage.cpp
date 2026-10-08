@@ -22,7 +22,7 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
 {
     const std::uint64_t length = window.sampleCount;
     const std::int64_t end = window.start + static_cast<std::int64_t>(length);
-    if (rebuild || length != count) {
+    if (rebuild || !sweepLengthsSimilar(length, count)) {
         count = length;
         samples.assign(static_cast<std::size_t>(count) * static_cast<std::size_t>(channelCount),
                        0.0f);
@@ -40,16 +40,20 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
     if (first >= end) {
         return true;
     }
-    // Source sample i shows at screen position (i - start - rotation) mod count; the new samples
-    // fill one run of positions, wrapping at the right edge at most once. They are read in
-    // chunks, so the working space stays small however long the sweep.
+    // Source sample i shows at screen position (i - cycleStart) mod count, where the cycle start
+    // is `start + rotation` (the image's length may differ a little from the window's); the new
+    // samples fill one run of positions, wrapping at the right edge at most once. They are read
+    // in chunks, so the working space stays small however long the sweep.
+    const std::int64_t cycleStart = window.start + static_cast<std::int64_t>(window.rotation);
+    const auto signedCount = static_cast<std::int64_t>(count);
     const auto total = static_cast<std::uint64_t>(end - first);
     for (std::uint64_t done = 0; done < total;) {
         const auto chunkFirst = static_cast<std::uint64_t>(first) + done;
-        const std::uint64_t chunk = std::min(kChunkSamples, total - done);
-        const auto intoWindow =
-            static_cast<std::uint64_t>(static_cast<std::int64_t>(chunkFirst) - window.start);
-        const std::uint64_t position = (intoWindow + count - window.rotation) % count;
+        const std::uint64_t chunk = std::min({kChunkSamples, total - done, count});
+        const std::int64_t fromCycle =
+            (static_cast<std::int64_t>(chunkFirst) - cycleStart) % signedCount;
+        const auto position =
+            static_cast<std::uint64_t>(fromCycle < 0 ? fromCycle + signedCount : fromCycle);
         const std::uint64_t beforeWrap = std::min(chunk, count - position);
         scratch.resize(static_cast<std::size_t>(chunk));
         for (int channel = 0; channel < channelCount; ++channel) {

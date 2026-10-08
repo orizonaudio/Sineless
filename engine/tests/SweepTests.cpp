@@ -57,6 +57,15 @@ TEST(Sweep, ShortensSpansThatDoNotFit)
     EXPECT_EQ(window->sampleCount, 192000u);
 }
 
+TEST(Sweep, TellsSimilarLengthsApartFromChangedOnes)
+{
+    EXPECT_TRUE(sweepLengthsSimilar(2000, 2000));
+    EXPECT_TRUE(sweepLengthsSimilar(2000, 2001));
+    EXPECT_TRUE(sweepLengthsSimilar(1024000, 1025000));
+    EXPECT_FALSE(sweepLengthsSimilar(2000, 2010));
+    EXPECT_FALSE(sweepLengthsSimilar(500, 501)) << "short sweeps allow no drift";
+}
+
 TEST(Sweep, StartsBeforeTheCaptureCoversTheSpan)
 {
     // Half a bar captured: the window starts before the capture, with the playhead halfway.

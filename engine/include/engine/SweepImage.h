@@ -26,9 +26,10 @@ public:
     explicit SweepImage(int channels = CaptureRing::kMaxChannels);
 
     // Places the samples of `window` from `source` that are not on screen yet, as far as the
-    // source still holds them: all of them when the length changed or `rebuild` is set. The Mid
-    // of a one-channel image is read from `inputChannels` captured channels. False if the source
-    // overwrote samples during the copy; the image is then rebuilt on the next update.
+    // source still holds them: all of them when the length changed (beyond what a tempo change
+    // moves it, see sweepLengthsSimilar) or `rebuild` is set. The Mid of a one-channel image is
+    // read from `inputChannels` captured channels. False if the source overwrote samples during
+    // the copy; the image is then rebuilt on the next update.
     bool update(const SampleSource& source, const SweepWindow& window, bool rebuild,
                 int inputChannels = CaptureRing::kMaxChannels);
     // Forgets the sweep and frees its memory.
