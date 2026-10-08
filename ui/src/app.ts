@@ -801,13 +801,20 @@ export class OscilloscopeApp {
   }
 
   // The level marker sits in the lane of the trigger source when stacked, else on the full height.
+  // In the multi-track view the own track triggers, so the marker sits in its lane.
   private markerGeometry(): { center: number; halfHeight: number } {
     const shown = this.shownViews();
     const source = this.store.get("triggerSource") as ViewName;
+    const ownLane = Math.max(
+      0,
+      this.lanesOf(this.lastFrame).findIndex((style) => style.own),
+    );
     const index =
-      this.layout() === ViewLayout.stacked
-        ? Math.max(0, shown.indexOf(source))
-        : 0;
+      this.layout() !== ViewLayout.stacked
+        ? 0
+        : (this.lastFrame?.lanes.length ?? 0) > 0
+          ? ownLane
+          : Math.max(0, shown.indexOf(source));
     const lane = lanes(this.laneCount(), this.layout())[index] ?? {
       center: 0,
       halfHeight: 1,
@@ -834,9 +841,12 @@ export class OscilloscopeApp {
       this.store.number("triggerLevel") /
       fullScale(this.store.number("verticalScale"));
     marker.style.top = `${String(center - Math.max(-1, Math.min(1, level)) * halfHeight)}px`;
+    const ownStyle = this.lanesOf(this.lastFrame).find((style) => style.own);
     marker.style.setProperty(
       "--marker",
-      `var(${viewColorTokens[this.store.get("triggerSource") as ViewName]})`,
+      ownStyle !== undefined
+        ? cssColour(ownStyle.colour)
+        : `var(${viewColorTokens[this.store.get("triggerSource") as ViewName]})`,
     );
   }
 
@@ -1221,7 +1231,7 @@ export class OscilloscopeApp {
       }
       this.latestLaneSet = message.laneSet;
       this.hiddenTracks = message.hidden;
-      this.placeLaneLabels();
+      this.drawScreen();
       this.loop.invalidate();
       this.updateStatus();
     });
@@ -1246,9 +1256,7 @@ export class OscilloscopeApp {
       this.waiting = waiting;
       this.loop.invalidate();
     }
-    if (this.multiMode() && !this.beatsMode()) {
-      chips.push({ text: "Multi needs Beats", tone: "warn" });
-    } else if (this.multiMode() && this.hiddenTracks > 0) {
+    if (this.multiMode() && this.hiddenTracks > 0) {
       chips.push({
         text: `+${String(this.hiddenTracks)} hidden`,
         tone: "warn",

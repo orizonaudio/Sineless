@@ -311,8 +311,8 @@ export class MockTransport implements Transport {
       return values;
     };
 
-    // The multi-track view draws the group's tracks in Beats mode; readouts measure this one.
-    const multi = synced && this.setting("displayMode") === "multi";
+    // The multi-track view draws the group's tracks; readouts measure this one.
+    const multi = this.setting("displayMode") === "multi";
     const views = new Map<ChannelView, Float32Array>();
     const lanes: Float32Array[] = [];
     const source =

@@ -845,5 +845,54 @@ TEST_F(MultiTrackTest, ShowsALongerSpanChosenWhileFrozenInEveryLane)
     EXPECT_LT(*std::ranges::max_element(held), frozenAt) << "nothing after the freeze";
 }
 
+// Seconds mode: every lane shows the own track's window at the same host moments.
+class SecondsLanesTest : public MultiTrackTest
+{
+protected:
+    void SetUp() override
+    {
+        MultiTrackTest::SetUp();
+        own->settings().set(SettingId::kTimeBase,
+                            static_cast<double>(protocol::TimeBase::kSeconds));
+        own->settings().set(SettingId::kTimeSpan, 0.1); // 4800 samples.
+        own->settings().set(SettingId::kTriggerMode,
+                            static_cast<double>(protocol::TriggerMode::kFree));
+        tracks.front().second = std::nullopt; // Every track records the host time.
+    }
+};
+
+TEST_F(SecondsLanesTest, ShowsTheSameMomentsInEveryLane)
+{
+    play(3360);
+    join(); // Its capture starts 3360 samples later.
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 2);
+    EXPECT_FALSE(frame->has(FrameFlag::kSynced));
+    ASSERT_GE(frame->pointCount, 4800u);
+    EXPECT_EQ(lane(*frame, 1), lane(*frame, 0)) << "the same host moment at every position";
+    EXPECT_EQ(lane(*frame, 0).back(), static_cast<float>(hostSample - 1))
+        << "Free mode shows the newest span";
+}
+
+TEST_F(SecondsLanesTest, HoldsEveryLaneAtTheFreeze)
+{
+    join();
+    play(9600);
+    const auto frozenAt = static_cast<float>(hostSample);
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    play(4800);
+    analyzer->setColumns(7999); // Forces a frame.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    ASSERT_EQ(frame->laneCount, 2);
+    EXPECT_EQ(lane(*frame, 1), lane(*frame, 0));
+    const std::vector<float> held = lane(*frame, 0);
+    EXPECT_EQ(held.back(), frozenAt - 1.0f) << "the newest sample before the freeze";
+}
+
 } // namespace
 } // namespace orizon::engine

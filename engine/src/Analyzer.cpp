@@ -190,11 +190,16 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     if (command.columns == 0) {
         return false;
     }
-    if (synced && settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) ==
-                      protocol::DisplayMode::kMulti) {
+    const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) ==
+                       protocol::DisplayMode::kMulti;
+    if (multi && synced) {
         return produceLanes(settings, command, frame);
     }
-    lanes.clear(); // Frees the lanes' sweeps outside the multi-track view.
+    if (multi) {
+        selectLanes(settings);
+    } else {
+        lanes.clear(); // Frees the lanes' sweeps and holds outside the multi-track view.
+    }
 
     const double spanSeconds = settings.value(SettingId::kTimeSpan);
     const double span = spanSeconds * sampleRate;
@@ -288,8 +293,12 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
             TriggerState::searchRegion(ring.beginIndex(), ring.endIndex(), span, timeout);
         triggerSamples.resize(static_cast<std::size_t>(end - first));
         scratch.resize(std::max(scratch.size(), triggerSamples.size()));
-        const ChannelView triggerView = effectiveTriggerSource(
-            settings.enumValue<ChannelView>(SettingId::kTriggerSource), engine.inputChannels());
+        // The multi-track view shows each track's Mid, and triggers on this track's.
+        const ChannelView triggerView =
+            multi
+                ? ChannelView::kMid
+                : effectiveTriggerSource(settings.enumValue<ChannelView>(SettingId::kTriggerSource),
+                                         engine.inputChannels());
         if (!readView(ring, engine.inputChannels(), triggerView, first, triggerSamples, scratch)) {
             return false;
         }
@@ -315,8 +324,9 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         window.cropStart = command.viewStart;
         window.cropEnd = command.viewEnd;
     }
-    if (!render(*source, settings, sampleRate, window, sampleCount, samplesPerColumn,
-                command.columns, frame)) {
+    if (multi ? !renderLanes(*source, window, sampleCount, command.columns, frame)
+              : !render(*source, settings, sampleRate, window, sampleCount, samplesPerColumn,
+                        command.columns, frame)) {
         return false;
     }
     if (!isFrozen) {
@@ -413,11 +423,10 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     return true;
 }
 
-// The multi-track view in Beats mode: one lane per track of the group, each the track's Mid as a
-// persistent sweep on its own musical clock, so that lanes line up on bar lines. While frozen
-// the lanes are not updated, so all of them hold the same moment.
-bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
-                            std::vector<std::byte>& frame)
+// The tracks of the multi-track view: the group in order, at most kMaxLanes, always including
+// this instance's own. Publishes their labels, keeps each lane's state across frames, and holds
+// each lane's audio while frozen. Returns the own lane's serial.
+std::uint64_t Analyzer::selectLanes(const Settings& settings)
 {
     // The group in order, at most kMaxLanes tracks, always including this instance's own.
     std::vector<GroupMember> members =
@@ -450,13 +459,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                           .own = member.serial == ownSerial});
     }
     publishLanes(std::move(labels), hidden);
-    const std::uint32_t laneSetId = laneSet().id;
 
-    // Each lane follows its own capture and clock; only new audio is placed. Frozen, each lane
-    // holds its audio from the moment of freezing (or of joining), and is rebuilt from it when the
-    // span changes.
-    const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
-    bool fresh = false;
     std::map<std::uint64_t, std::unique_ptr<Lane>> next;
     laneOrder.clear();
     for (GroupMember& member : members) {
@@ -464,40 +467,58 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         auto lane = found != lanes.end() ? std::move(found->second) : std::make_unique<Lane>();
         lane->engine = std::move(member.engine);
         const CaptureRing& ring = lane->engine->captureRing();
-        const std::uint64_t end = ring.endIndex();
-        const auto longestSweep = ring.capacity() - ring.capacity() / 8;
-        if (isFrozen) {
-            if (!lane->hold.held()) {
-                lane->hold.capture(*lane->engine, longestSweep, scratch);
-            }
-            const LaneHold& hold = lane->hold;
-            const auto sweep =
-                hold.held() ? sweepWindow(hold.clock(), hold.endIndex(), lane->engine->sampleRate(),
-                                          beatSpan, hold.endIndex() - hold.beginIndex())
-                            : std::nullopt;
-            if (sweep && (!lane->window || sweep->sampleCount != lane->image.length()) &&
-                lane->image.update(hold, *sweep, true)) {
-                lane->window = sweep;
-                fresh = true;
-            }
-        } else {
-            if (lane->hold.held()) {
-                lane->hold.release();
-            }
-            if (end != lane->end || !lane->window || settings != lastSettings) {
-                const auto sweep = sweepWindow(lane->engine->timeline().latest(), end,
-                                               lane->engine->sampleRate(), beatSpan, longestSweep);
-                if (sweep && lane->image.update(ring, *sweep, false)) {
-                    lane->window = sweep;
-                    fresh = true;
-                }
-                lane->end = end;
-            }
+        if (isFrozen && !lane->hold.held()) {
+            lane->hold.capture(*lane->engine, ring.capacity() - ring.capacity() / 8, scratch);
+        } else if (!isFrozen && lane->hold.held()) {
+            lane->hold.release();
         }
         laneOrder.push_back(member.serial);
         next.insert_or_assign(member.serial, std::move(lane));
     }
     lanes = std::move(next);
+    ownLane = ownSerial;
+    return ownSerial;
+}
+
+// The multi-track view in Beats mode: one lane per track of the group, each the track's Mid as a
+// persistent sweep on its own musical clock, so that lanes line up on bar lines. While frozen
+// the lanes are not updated, so all of them hold the same moment.
+bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
+                            std::vector<std::byte>& frame)
+{
+    const std::uint64_t ownSerial = selectLanes(settings);
+    const std::uint32_t laneSetId = laneSet().id;
+
+    // Each lane follows its own capture and clock; only new audio is placed. Frozen, each lane
+    // is rebuilt from its held audio when the span changes.
+    const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
+    bool fresh = false;
+    for (const std::uint64_t serial : laneOrder) {
+        Lane& lane = *lanes.at(serial);
+        const CaptureRing& ring = lane.engine->captureRing();
+        const std::uint64_t end = ring.endIndex();
+        if (isFrozen) {
+            const LaneHold& hold = lane.hold;
+            const auto sweep =
+                hold.held() ? sweepWindow(hold.clock(), hold.endIndex(), lane.engine->sampleRate(),
+                                          beatSpan, hold.endIndex() - hold.beginIndex())
+                            : std::nullopt;
+            if (sweep && (!lane.window || sweep->sampleCount != lane.image.length()) &&
+                lane.image.update(hold, *sweep, true)) {
+                lane.window = sweep;
+                fresh = true;
+            }
+        } else if (end != lane.end || !lane.window || settings != lastSettings) {
+            const auto longestSweep = ring.capacity() - ring.capacity() / 8;
+            const auto sweep = sweepWindow(lane.engine->timeline().latest(), end,
+                                           lane.engine->sampleRate(), beatSpan, longestSweep);
+            if (sweep && lane.image.update(ring, *sweep, false)) {
+                lane.window = sweep;
+                fresh = true;
+            }
+            lane.end = end;
+        }
+    }
 
     const Lane& ownLane = *lanes.at(ownSerial);
     if (!ownLane.window) {
@@ -570,6 +591,82 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     lastViewEnd = command.viewEnd;
     lastFrozen = isFrozen;
     lastLaneSet = laneSetId;
+    return true;
+}
+
+// The multi-track view with the seconds time base: every lane shows this track's window (its
+// trigger, roll or frozen window), placed in each other track's capture through the musical
+// clock that all instances share with the host.
+bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
+                           std::uint64_t sampleCount, std::size_t columns,
+                           std::vector<std::byte>& frame)
+{
+    const double sampleRate = engine.sampleRate();
+    const double first = std::floor(window.start);
+    const auto start = static_cast<std::uint64_t>(std::max(first, 0.0));
+    const MusicalStamp ownClock = isFrozen ? frozenStamp : engine.timeline().latest();
+    const double startQuarterNotes = Timeline::quarterNotesAt(ownClock, start, sampleRate);
+    const Crop crop = cropOf(static_cast<double>(sampleCount), window.start - first,
+                             window.cropStart, window.cropEnd);
+    viewSamples.resize(static_cast<std::size_t>(sampleCount));
+    scratch.resize(std::max(scratch.size(), viewSamples.size()));
+
+    FrameHeaderValues header{
+        .sequence = sequence,
+        .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
+                                           (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
+                                           (window.roll ? flag(FrameFlag::kRoll) : 0U)),
+        .laneCount = static_cast<std::uint8_t>(laneOrder.size()),
+        .startFraction = static_cast<float>(crop.startFraction),
+        .viewStart = static_cast<float>(window.viewStart),
+        .viewEnd = static_cast<float>(window.viewEnd),
+        .visibleSamples = static_cast<float>(crop.visibleSamples),
+        .laneSet = laneSet().id};
+    frameData.clear();
+    std::size_t pointCount = 0;
+    for (const std::uint64_t serial : laneOrder) {
+        const Lane& lane = *lanes.at(serial);
+        const SampleSource* source = &ownSource;
+        std::uint64_t laneStart = start;
+        if (serial != ownLane) {
+            const MusicalStamp clock =
+                isFrozen ? lane.hold.clock() : lane.engine->timeline().latest();
+            source = isFrozen ? static_cast<const SampleSource*>(&lane.hold)
+                              : &lane.engine->captureRing();
+            laneStart = static_cast<std::uint64_t>(std::max(
+                std::round(Timeline::sampleIndexAt(clock, startQuarterNotes, sampleRate)), 0.0));
+        }
+        if (!readView(*source, lane.engine->inputChannels(), ChannelView::kMid, laneStart,
+                      viewSamples, scratch)) {
+            std::ranges::fill(viewSamples, 0.0f); // Not captured (yet, or any more).
+        }
+        const std::span<const float> visible =
+            std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
+        header.mode = reduceToColumns(visible, columns, reduced);
+        pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
+        frameData.insert(frameData.end(), reduced.begin(), reduced.end());
+    }
+    header.pointCount = static_cast<std::uint32_t>(pointCount);
+    header.samplesPerPoint =
+        header.mode == protocol::FrameMode::kMinMax
+            ? static_cast<float>(crop.visibleSamples / static_cast<double>(columns))
+            : 1.0f;
+
+    // Readouts measure this track's Mid over the whole span.
+    const std::uint64_t readoutStart = window.readoutCount > 0 ? window.readoutStart : start;
+    const std::uint64_t readoutCount = window.readoutCount > 0 ? window.readoutCount : sampleCount;
+    viewSamples.resize(static_cast<std::size_t>(readoutCount));
+    scratch.resize(std::max(scratch.size(), viewSamples.size()));
+    if (readView(ownSource, engine.inputChannels(), ChannelView::kMid, readoutStart, viewSamples,
+                 scratch)) {
+        const Readouts readouts = computeReadouts(viewSamples, sampleRate);
+        header.peak = readouts.peak;
+        header.rms = readouts.rms;
+        header.frequency = static_cast<float>(readouts.frequencyHz.value_or(0.0));
+    }
+
+    encodeFrame(header, frameData, frame);
+    ++sequence;
     return true;
 }
 

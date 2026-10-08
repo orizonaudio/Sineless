@@ -13,7 +13,7 @@ export const helpTexts = {
   },
   displayMode: {
     title: "Single or Multi",
-    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 8, in Beats mode. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
+    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 8. In Sec mode this track triggers and every lane shows the same moment. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
   },
   group: {
     title: "Group",

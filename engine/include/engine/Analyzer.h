@@ -117,8 +117,11 @@ private:
     };
 
     Commands takeCommands();
+    std::uint64_t selectLanes(const Settings& settings);
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
+    bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,
+                     std::size_t columns, std::vector<std::byte>& frame);
     void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
     // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
     void followTransport(const Settings& settings, Commands& command);
@@ -158,6 +161,7 @@ private:
     // Multi-track view: lanes by member serial, and their order on screen.
     std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;
     std::vector<std::uint64_t> laneOrder;
+    std::uint64_t ownLane = 0; // Serial of this instance's lane.
     std::uint32_t lastLaneSet = 0;
     mutable std::mutex laneMutex;
     LaneSet published;
