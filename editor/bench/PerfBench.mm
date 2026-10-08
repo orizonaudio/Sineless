@@ -4,8 +4,9 @@
 // time per frame.
 //
 //   perf_bench [--lanes=7] [--mode=multi|compare|single] [--timebase=beats|seconds]
-//              [--beatspan=fourBars] [--span=4] [--layout=stacked|overlaid]
-//              [--width=1400] [--height=800] [--warmup=3] [--duration=10] [--idle]
+//              [--beatspan=fourBars] [--span=4] [--rate=48000] [--tempo=120]
+//              [--layout=stacked|overlaid] [--width=1400] [--height=800]
+//              [--warmup=3] [--duration=10] [--idle]
 //              [--soak-interval=SECONDS] [--reopen=COUNT]
 //              [--min-fps=N] [--max-total=PERCENT] [--max-analysis=PERCENT]
 //              [--max-memory-growth=MB] [--max-memory-rate=MB_PER_MINUTE]
@@ -55,6 +56,8 @@ struct Options
     std::string timeBase = "beats";
     std::string beatSpan = "fourBars";
     double span = 4.0;
+    double rate = 48000.0; // The host's sample rate.
+    double tempo = 120.0;  // Beats per minute.
     std::string layout = "stacked";
     int width = 1400;
     int height = 800;
@@ -89,6 +92,10 @@ Options parse(std::span<const char* const> arguments)
             options.beatSpan = value;
         } else if (key == "--span") {
             options.span = std::stod(value);
+        } else if (key == "--rate") {
+            options.rate = std::stod(value);
+        } else if (key == "--tempo") {
+            options.tempo = std::stod(value);
         } else if (key == "--layout") {
             options.layout = value;
         } else if (key == "--width") {
@@ -120,14 +127,10 @@ Options parse(std::span<const char* const> arguments)
     return options;
 }
 
-constexpr double kRate = 48000.0;
-constexpr int kBlock = 480; // 10 ms, as a host block.
-constexpr double kTempo = 120.0;
-
 // Track n's signal at host time `t` (seconds): kicks, bass, hats, noise beds and tones.
-float signalOf(int track, double t)
+float signalOf(int track, double t, double tempo)
 {
-    const double beat = 60.0 / kTempo;
+    const double beat = 60.0 / tempo;
     const double inBeat = std::fmod(t, beat);
     const double pi = std::numbers::pi;
     switch (track % 5) {
@@ -150,12 +153,14 @@ float signalOf(int track, double t)
     }
 }
 
-// Plays every track in real time: one block per engine every 10 ms, on one host clock.
+// Plays every track in real time: one block per engine every 10 ms, on one host clock at `rate`
+// and `tempo`.
 class Host
 {
 public:
-    explicit Host(std::vector<std::shared_ptr<engine::Engine>> engines)
-        : engines(std::move(engines)), thread([this] { run(); })
+    Host(std::vector<std::shared_ptr<engine::Engine>> engines, double rate, double tempo)
+        : engines(std::move(engines)), rate(rate), tempo(tempo),
+          block(static_cast<int>(std::lround(rate / 100.0))), thread([this] { run(); })
     {}
     ~Host()
     {
@@ -169,41 +174,44 @@ private:
     void run()
     {
         pthread_setname_np("bench host");
-        std::vector<float> left(kBlock);
-        std::vector<float> right(kBlock);
+        std::vector<float> left(static_cast<std::size_t>(block));
+        std::vector<float> right(static_cast<std::size_t>(block));
         std::uint64_t sample = 0;
         auto next = std::chrono::steady_clock::now();
         while (!stopping) {
             for (std::size_t track = 0; track < engines.size(); ++track) {
-                for (int i = 0; i < kBlock; ++i) {
+                for (int i = 0; i < block; ++i) {
                     const double t =
-                        static_cast<double>(sample + static_cast<std::uint64_t>(i)) / kRate;
-                    left[static_cast<std::size_t>(i)] = signalOf(static_cast<int>(track), t);
+                        static_cast<double>(sample + static_cast<std::uint64_t>(i)) / rate;
+                    left[static_cast<std::size_t>(i)] = signalOf(static_cast<int>(track), t, tempo);
                     right[static_cast<std::size_t>(i)] = 0.8f * left[static_cast<std::size_t>(i)];
                 }
                 std::array<const float*, 2> channels{left.data(), right.data()};
                 engine::Engine& engine = *engines[track];
-                engine.captureRing().write(channels.data(), 2, kBlock);
-                const double seconds = static_cast<double>(sample) / kRate;
+                engine.captureRing().write(channels.data(), 2, block);
+                const double seconds = static_cast<double>(sample) / rate;
                 engine.timeline().advance({.playing = true,
                                            .positionValid = true,
-                                           .quarterNotes = seconds * kTempo / 60.0,
+                                           .quarterNotes = seconds * tempo / 60.0,
                                            .tempoValid = true,
-                                           .tempo = kTempo,
+                                           .tempo = tempo,
                                            .timeSignatureValid = true,
                                            .numerator = 4,
                                            .denominator = 4,
                                            .secondsValid = true,
                                            .seconds = seconds},
-                                          kBlock, kRate);
+                                          block, rate);
             }
-            sample += kBlock;
+            sample += static_cast<std::uint64_t>(block);
             next += std::chrono::microseconds(10000);
             std::this_thread::sleep_until(next);
         }
     }
 
     std::vector<std::shared_ptr<engine::Engine>> engines;
+    double rate;
+    double tempo;
+    int block; // Samples per block: 10 ms.
     std::atomic<bool> stopping{false};
     std::thread thread;
 };
@@ -429,7 +437,7 @@ int run(const Options& options)
         const int tracks = options.mode == "single" ? 1 : options.lanes;
         for (int i = 0; i < tracks; ++i) {
             auto engine = std::make_shared<engine::Engine>();
-            engine->setSampleRate(kRate);
+            engine->setSampleRate(options.rate);
             engine->setTrackInfo(
                 {.name = "Track " + std::to_string(i + 1), .colour = std::nullopt, .index = i});
             engine::InstanceRegistry::shared().add(engine);
@@ -446,7 +454,8 @@ int run(const Options& options)
         if (options.mode == "single") {
             own.settings().set(SettingId::kChannelViews, 15.0); // L, R, M and S.
         }
-        const std::unique_ptr<Host> host = options.idle ? nullptr : std::make_unique<Host>(engines);
+        const std::unique_ptr<Host> host =
+            options.idle ? nullptr : std::make_unique<Host>(engines, options.rate, options.tempo);
 
         const auto before = webKitTimes();
         NSWindow* window =
@@ -517,11 +526,12 @@ int run(const Options& options)
             return interval;
         };
 
-        std::printf("config: %s, %d track(s), %s, %s, %s, %dx%d, Debug=%d\n", options.mode.c_str(),
-                    tracks, options.timeBase.c_str(),
+        std::printf("config: %s, %d track(s), %s, %s, %s, %dx%d, %.0f Hz, %.0f BPM, Debug=%d\n",
+                    options.mode.c_str(), tracks, options.timeBase.c_str(),
                     options.timeBase == "beats" ? options.beatSpan.c_str()
                                                 : (std::to_string(options.span) + " s").c_str(),
-                    options.layout.c_str(), options.width, options.height,
+                    options.layout.c_str(), options.width, options.height, options.rate,
+                    options.tempo,
 #ifdef NDEBUG
                     0
 #else
