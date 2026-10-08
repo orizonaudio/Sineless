@@ -6,10 +6,13 @@
 #include "engine/InstanceRegistry.h"
 #include "engine/LaneHold.h"
 #include "engine/PairAnalysis.h"
+#include "engine/Readouts.h"
+#include "engine/Reducer.h"
 #include "engine/Settings.h"
 #include "engine/SweepImage.h"
 #include "engine/Trigger.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -21,6 +24,10 @@
 #include <vector>
 
 namespace orizon::engine {
+
+// Each compared track's match is searched again at most this often (seconds of audio), one track
+// per frame: a search over a long view is costly, and a track's alignment rarely changes faster.
+inline constexpr double kMatchRefreshSeconds = 0.5;
 
 // At most this many lanes are drawn in the multi-track view: tracks, and in the Compare view
 // their sum.
@@ -128,6 +135,12 @@ private:
         std::uint64_t end = 0; // Capture end of the last update.
         LaneHold hold;
         bool compared = false;
+        // The lane's screen columns, and the part of the sweep and channel count they reduce.
+        ColumnReduction reduction;
+        std::size_t reducedFirst = 0;
+        int reducedChannels = 0;
+        // Seconds mode, rolling: the lane's columns, kept as they scroll.
+        RollColumns roll;
     };
 
     Commands takeCommands();
@@ -138,7 +151,13 @@ private:
                      const Commands& command, std::vector<std::byte>& frame);
     void renderCompare(FrameHeaderValues header, std::size_t first, std::size_t end,
                        std::size_t columns, bool previewFix, std::vector<std::byte>& frame);
+    void appendComparison(FrameHeaderValues& header, std::size_t first, std::size_t end,
+                          std::uint64_t count, std::size_t columns, bool previewFix);
     void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
+    [[nodiscard]] bool readoutsDue(std::uint64_t end) const;
+    void storeReadouts(const Readouts& values, std::uint64_t end);
+    // Puts the latest readouts in `header`, and notes what they were measured under.
+    void applyReadouts(FrameHeaderValues& header);
     // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
     void followTransport(const Settings& settings, Commands& command);
     bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
@@ -197,6 +216,30 @@ private:
         std::uint64_t analysedAt = 0;
     };
     std::map<std::uint64_t, MatchState> matchStates;
+    // Tempo-synced Compare frames: screen positions where compared tracks changed this frame, the
+    // sum lane's columns with what they sum (each compared lane, shifted and signed as previewed),
+    // and the latest matches and summing gains.
+    struct SumPart
+    {
+        std::size_t lane = 0;
+        std::ptrdiff_t offset = 0;
+        float sign = 1.0f;
+    };
+    struct ComparisonCache
+    {
+        std::vector<float> matches;
+        float sumGain = 0.0f;
+        float fixedGain = 0.0f;
+        std::uint64_t at = 0;
+        bool valid = false;
+    };
+    std::vector<SweepImage::Range> frameChanges;
+    ColumnReduction sumReduction;
+    std::vector<SumPart> sumParts;
+    std::vector<std::int64_t> sumKey;
+    std::vector<std::int64_t> lastSumKey;
+    std::vector<float> sumScratch;
+    ComparisonCache comparisonCache;
     std::uint32_t matchLaneSet = 0;
     std::size_t matchFirst = 0;
     std::size_t matchEnd = 0;
@@ -204,6 +247,29 @@ private:
     std::uint32_t lastLaneSet = 0;
     mutable std::mutex laneMutex;
     LaneSet published;
+    // The last readouts of the multi-track view and the capture end they were measured at.
+    struct ReadoutCache
+    {
+        Readouts values;
+        std::uint64_t end = 0;
+        bool valid = false;
+        // What they were measured under: frames with other settings or freezing measure again.
+        std::optional<Settings> settings;
+        bool frozen = false;
+    };
+    ReadoutCache readoutCache;
+    // Single mode: each view's columns (tempo-synced sweep, or roll), and what they reduce.
+    std::array<ColumnReduction, protocol::kChannelViewCount> viewReductions;
+    std::array<RollColumns, protocol::kChannelViewCount> viewRolls;
+    struct ViewReduction
+    {
+        std::size_t first = 0;
+        int channels = 0;
+        std::uint8_t views = 0;
+    };
+    ViewReduction viewReduction;
+    Settings frameSettings; // The settings of the frame being produced.
+    std::vector<float> readScratch;
     std::vector<float> triggerSamples;
     std::vector<float> viewSamples;
     std::vector<float> scratch;

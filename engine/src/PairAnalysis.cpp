@@ -17,6 +17,29 @@ constexpr double kRelatedMatch = 0.3;
 constexpr double kTogether = 0.01;
 constexpr double kAudible = 1e-6;
 
+// The dot product of a[0, count) and b[0, count). Eight independent float sums, so the compiler
+// can run them as vector lanes; each sums an eighth of the terms, which keeps float rounding far
+// below what a correlation needs.
+double dot(const float* a, const float* b, std::size_t count)
+{
+    constexpr std::size_t kLanes = 8;
+    std::array<float, kLanes> sums{};
+    std::size_t i = 0;
+    for (; i + kLanes <= count; i += kLanes) {
+        for (std::size_t lane = 0; lane < kLanes; ++lane) {
+            sums[lane] += a[i + lane] * b[i + lane];
+        }
+    }
+    double total = 0.0;
+    for (const float sum : sums) {
+        total += sum;
+    }
+    for (; i < count; ++i) {
+        total += static_cast<double>(a[i]) * b[i];
+    }
+    return total;
+}
+
 // Normalised cross-correlation of a[i] with b[i + offset], over the samples both have.
 double correlationAt(std::span<const float> a, std::span<const float> b, std::ptrdiff_t offset,
                      double norm)
@@ -24,12 +47,12 @@ double correlationAt(std::span<const float> a, std::span<const float> b, std::pt
     const auto size = static_cast<std::ptrdiff_t>(a.size());
     const std::ptrdiff_t first = std::max<std::ptrdiff_t>(0, -offset);
     const std::ptrdiff_t last = std::min(size, size - offset);
-    double total = 0.0;
-    for (std::ptrdiff_t i = first; i < last; ++i) {
-        total += static_cast<double>(a[static_cast<std::size_t>(i)]) *
-                 b[static_cast<std::size_t>(i + offset)];
+    if (last <= first || norm <= 0.0) {
+        return 0.0;
     }
-    return norm > 0.0 ? total / norm : 0.0;
+    return dot(a.data() + first, b.data() + first + offset,
+               static_cast<std::size_t>(last - first)) /
+           norm;
 }
 
 struct Match

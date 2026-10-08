@@ -25,6 +25,16 @@ public:
 
     [[nodiscard]] std::uint64_t length() const { return count; }
 
+    // Screen positions [first, end) written since the last clearChanges(), so that only those
+    // need reducing again. Everything after a rebuild.
+    struct Range
+    {
+        std::uint64_t first = 0;
+        std::uint64_t end = 0;
+    };
+    [[nodiscard]] const std::vector<Range>& changes() const { return changed; }
+    void clearChanges() { changed.clear(); }
+
     [[nodiscard]] std::uint64_t endIndex() const override { return count; }
     [[nodiscard]] std::uint64_t beginIndex() const override { return 0; }
     [[nodiscard]] bool read(int channel, std::uint64_t start,
@@ -34,6 +44,9 @@ private:
     std::vector<float> samples; // CaptureRing::kMaxChannels blocks of `count` samples.
     std::uint64_t count = 0;
     std::uint64_t placedEnd = 0; // One past the newest source sample placed.
+    std::vector<Range> changed;
+
+    void markChanged(std::uint64_t first, std::uint64_t end);
 };
 
 } // namespace orizon::engine

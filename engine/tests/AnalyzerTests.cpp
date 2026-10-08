@@ -121,6 +121,60 @@ protected:
     Analyzer analyzer{engine};
 };
 
+// Views keep their columns from frame to frame; what they show must equal a fresh reduction.
+TEST_F(AnalyzerTest, KeepsRollColumnsInStepWithAFreshReduction)
+{
+    engine.settings().set(SettingId::kTimeSpan, 2.0);        // Rolls.
+    engine.settings().set(SettingId::kChannelViews, 0b0101); // L and M.
+    analyzer.setColumns(400);
+    writeTone(220.0, 2.5, 0.5);
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 30; ++step) {
+        writeTone(220.0 + step, 0.01, 0.5);
+        if (auto produced = produce()) {
+            frame = std::move(produced);
+        }
+    }
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(FrameFlag::kRoll));
+    Analyzer fresh(engine);
+    fresh.setColumns(400);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(fresh.produce(bytes));
+    EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
+}
+
+TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
+{
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    engine.settings().set(SettingId::kChannelViews, 0b0011);
+    analyzer.setColumns(300);
+    std::uint64_t written = 0;
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 80; ++step) {
+        writeTone(330.0 + step, 0.01, 0.5);
+        engine.timeline().advance({.playing = true,
+                                   .positionValid = true,
+                                   .quarterNotes = static_cast<double>(written) / 24000.0,
+                                   .tempoValid = true,
+                                   .tempo = 120.0},
+                                  480, kSampleRate);
+        written += 480;
+        if (auto produced = produce()) {
+            frame = std::move(produced);
+        }
+    }
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(FrameFlag::kSynced));
+    ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+    Analyzer fresh(engine);
+    fresh.setColumns(300);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(fresh.produce(bytes));
+    EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
+}
+
 TEST_F(AnalyzerTest, ProducesNothingUntilTheWidthIsKnown)
 {
     writeTone(440.0, 0.5, 0.5);
@@ -693,6 +747,26 @@ protected:
     std::uint64_t hostSample = 0;
 };
 
+TEST_F(MultiTrackTest, KeepsReducedLanesInStepWithAFreshReduction)
+{
+    joinWith([](std::uint64_t sample) { return std::sin(static_cast<float>(sample) * 0.01f); });
+    analyzer->setColumns(300); // Fewer columns than samples: min/max pairs.
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 40; ++step) {
+        play(480);
+        if (auto produced = produce()) {
+            frame = std::move(produced);
+        }
+    }
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+    Analyzer fresh(*own, registry);
+    fresh.setColumns(300);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(fresh.produce(bytes));
+    EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
+}
+
 TEST_F(MultiTrackTest, DrawsOneMidLanePerTrackOfTheGroup)
 {
     join(2.0f);
@@ -1079,10 +1153,49 @@ TEST_F(CompareTest, RefreshesAMatchWhilePlaying)
     auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_EQ(match(*frame, 1).polarity, 1.0f);
-    play(12000); // The whole quarter-beat sweep is now past the change.
+    play(12000); // The whole quarter-beat sweep is now past the change, but too soon to search.
     frame = produce();
     ASSERT_TRUE(frame);
-    EXPECT_EQ(match(*frame, 1).polarity, -1.0f) << "searched again after 100 ms of audio";
+    EXPECT_EQ(match(*frame, 1).polarity, 1.0f) << "not searched again within 0.5 s";
+    play(12480);
+    frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(match(*frame, 1).polarity, -1.0f) << "searched again after 0.5 s of audio";
+}
+
+TEST_F(CompareTest, KeepsTheSumLaneInStepWithAFreshSum)
+{
+    joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
+    const auto other = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    analyzer->setColumns(300); // Min/max columns, as on a real screen.
+    for (const bool preview : {false, true}) {
+        analyzer->setCompared({idOf(tracks[1].first), idOf(other)});
+        analyzer->setPreviewFix(preview);
+        std::optional<DecodedFrame> frame;
+        for (int step = 0; step < 30; ++step) {
+            play(480);
+            if (auto produced = produce()) {
+                frame = std::move(produced);
+            }
+        }
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+        Analyzer fresh(*own, registry);
+        fresh.setColumns(300);
+        fresh.setCompared({idOf(tracks[1].first), idOf(other)});
+        fresh.setPreviewFix(preview);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(fresh.produce(bytes));
+        const DecodedFrame expected = decode(bytes);
+        const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;
+        ASSERT_EQ(expected.laneCount, frame->laneCount);
+        EXPECT_EQ(
+            std::vector<float>(frame->data.begin(),
+                               frame->data.begin() + static_cast<std::ptrdiff_t>(laneValues)),
+            std::vector<float>(expected.data.begin(),
+                               expected.data.begin() + static_cast<std::ptrdiff_t>(laneValues)))
+            << "lanes and sum, frame by frame, equal all at once; preview " << preview;
+    }
 }
 
 TEST_F(CompareTest, ShowsThisTrackAloneWithoutOtherTracks)

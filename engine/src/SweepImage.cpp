@@ -15,6 +15,8 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
         count = length;
         samples.assign(static_cast<std::size_t>(count) * CaptureRing::kMaxChannels, 0.0f);
         placedEnd = 0;
+        changed.clear();
+        markChanged(0, count);
     }
     const std::uint64_t first = std::max(placedEnd, window.start);
     if (first >= end) {
@@ -36,7 +38,23 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
         }
     }
     placedEnd = end;
+    markChanged(position, position + beforeWrap);
+    markChanged(0, total - beforeWrap);
     return true;
+}
+
+// Ranges pile up only while no frame is taken; past a few, the whole screen counts as changed.
+void SweepImage::markChanged(std::uint64_t first, std::uint64_t end)
+{
+    constexpr std::size_t kMaxRanges = 8;
+    if (first >= end) {
+        return;
+    }
+    if (changed.size() >= kMaxRanges) {
+        changed.assign(1, {.first = 0, .end = count});
+        return;
+    }
+    changed.push_back({.first = first, .end = end});
 }
 
 bool SweepImage::read(int channel, std::uint64_t start, std::span<float> destination) const

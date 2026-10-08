@@ -24,6 +24,9 @@ add_library(engine STATIC
 )
 target_include_directories(engine PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_link_libraries(engine PUBLIC protocol nlohmann_json::nlohmann_json PRIVATE orizon_warnings)
+# The engine's loops run per sample, and the development build is the one tried in hosts: it is
+# optimised even in Debug builds (debug information stays).
+target_compile_options(engine PRIVATE $<$<CONFIG:Debug>:-O2>)
 
 if(BUILD_TESTING)
     # Test-only library that replaces the global allocation operators.
