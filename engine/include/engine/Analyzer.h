@@ -177,8 +177,12 @@ private:
                       std::vector<std::byte>& frame);
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,
                      const Commands& command, std::vector<std::byte>& frame);
-    void renderCompare(FrameHeaderValues header, std::size_t first, std::size_t end,
-                       std::size_t columns, bool previewFix, std::vector<std::byte>& frame);
+    // Seconds mode: the Compare frame of `window` (`sampleCount` samples from `start` of this
+    // track, visible over [first, end), `rolling` on fixed column boundaries), from the lanes'
+    // sources in `laneSources`.
+    void renderCompare(FrameHeaderValues header, const Window& window, std::uint64_t start,
+                       std::uint64_t sampleCount, std::size_t first, std::size_t end, bool rolling,
+                       const Commands& command, std::vector<std::byte>& frame);
     // `playhead` is the sweep's playhead as a screen position, where the newest audio is.
     void appendComparison(FrameHeaderValues& header, std::size_t first, std::size_t end,
                           std::uint64_t count, std::size_t columns, bool previewFix,
@@ -258,17 +262,18 @@ private:
     std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;
     std::vector<std::uint64_t> laneOrder;
     std::uint64_t ownLane = 0; // Serial of this instance's lane.
-    // Compare view: whether this frame compares tracks, and each lane's raw Mid samples of the
-    // window, in lane order, with the sums of the compared ones as they are and as fixed.
+    // Compare view: whether this frame compares tracks; in Seconds mode, each lane's source and
+    // where this frame's window starts in it, the sum lane's columns as the window rolls, and
+    // the compared lanes' visible samples, as recorded and as fixed, for the gains.
     bool comparing = false;
     bool lastPreviewFix = false;
+    std::vector<std::pair<const SampleSource*, std::uint64_t>> laneSources;
+    RollColumns sumRoll;
+    std::vector<float> sumSamples;
     std::vector<std::vector<float>> laneSamples;
     std::vector<std::vector<float>> fixedLanes;
     std::vector<std::span<const float>> rawTracks;
     std::vector<std::span<const float>> fixedTracks;
-    std::vector<float> rawSum;
-    std::vector<float> fixedSum;
-    std::vector<float> matches;
     // Each compared track's last match by serial, with the capture end when it was searched, and
     // the lanes and visible part it was searched over.
     struct MatchState

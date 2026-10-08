@@ -1455,6 +1455,51 @@ TEST_F(CompareTest, LeavesALaneForTheSum)
     EXPECT_EQ(lanes.hidden, 2u);
 }
 
+// Rolling in Seconds mode, the Compare frame keeps each lane's and the sum's columns and reduces
+// only those that scrolled in: frame by frame they equal a fresh reduction, with and without the
+// fix.
+TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
+{
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    own->settings().set(SettingId::kTimeSpan, 2.0); // 96000 samples: 320 per column.
+    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
+    const auto other = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    analyzer->setColumns(300);
+    for (const bool preview : {false, true}) {
+        analyzer->setCompared({idOf(tracks[1].first), idOf(other)});
+        analyzer->setPreviewFix(preview);
+        for (int step = 0; step < 70; ++step) {
+            play(480);
+            produce();
+        }
+        Analyzer fresh(*own, registry);
+        fresh.setColumns(300);
+        fresh.setCompared({idOf(tracks[1].first), idOf(other)});
+        fresh.setPreviewFix(preview);
+        std::optional<DecodedFrame> frame;
+        std::vector<std::byte> bytes;
+        for (int step = 0; step < 3; ++step) {
+            play(480);
+            frame = produce();
+            ASSERT_TRUE(fresh.produce(bytes));
+        }
+        ASSERT_TRUE(frame);
+        ASSERT_TRUE(frame->has(FrameFlag::kRoll));
+        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+        const DecodedFrame expected = decode(bytes);
+        const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;
+        ASSERT_EQ(expected.laneCount, frame->laneCount);
+        EXPECT_EQ(
+            std::vector<float>(frame->data.begin(),
+                               frame->data.begin() + static_cast<std::ptrdiff_t>(laneValues)),
+            std::vector<float>(expected.data.begin(),
+                               expected.data.begin() + static_cast<std::ptrdiff_t>(laneValues)))
+            << "lanes and sum, frame by frame, equal all at once; preview " << preview;
+        EXPECT_EQ(match(*frame, 2).polarity, -1.0f) << "the inverted track";
+    }
+}
+
 TEST_F(CompareTest, ComparesInSecondsModeToo)
 {
     own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
