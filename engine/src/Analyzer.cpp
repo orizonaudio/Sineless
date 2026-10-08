@@ -8,6 +8,7 @@
 #include "engine/Sweep.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <utility>
@@ -64,6 +65,25 @@ TriggerParameters triggerParameters(const Settings& settings, double sampleRate)
             .hysteresis = settings.value(SettingId::kTriggerHysteresis),
             .slope = settings.enumValue<protocol::TriggerSlope>(SettingId::kTriggerSlope),
             .holdOffSamples = settings.value(SettingId::kTriggerHoldOff) * sampleRate};
+}
+
+// Samples per block of levels: kStatsBlockSeconds of audio.
+std::size_t statsBlock(double sampleRate)
+{
+    return std::max<std::size_t>(
+        1, static_cast<std::size_t>(std::lround(kStatsBlockSeconds * sampleRate)));
+}
+
+// Peak and RMS over a whole span, from its levels per block.
+Readouts levelsOf(const BlockStats& stats)
+{
+    Readouts readouts;
+    readouts.peak = stats.peak();
+    if (stats.sampleCount() > 0) {
+        readouts.rms = static_cast<float>(
+            std::sqrt(stats.sumSquares() / static_cast<double>(stats.sampleCount())));
+    }
+    return readouts;
 }
 
 } // namespace
@@ -512,6 +532,15 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
     if (synced) {
+        // The trigger view's levels per block, for readouts, kept in step with the sweep.
+        const bool fresh =
+            !sweepStats.fits(static_cast<std::size_t>(sampleCount), statsBlock(sampleRate)) ||
+            sweepStatsView != triggerView || sweepStatsChannels != inputChannels;
+        sweepStatsView = triggerView;
+        sweepStatsChannels = inputChannels;
+        if (!updateStats(sweepStats, image, triggerView, inputChannels, fresh)) {
+            return false;
+        }
         image.clearChanges();
         viewReduction = {.first = crop.first, .channels = inputChannels, .views = views};
     } else {
@@ -528,23 +557,76 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                                  ? static_cast<float>(croppedSamplesPerColumn)
                                  : 1.0f;
 
-    // Readouts cover the whole span, whatever part is on screen, at most every 100 ms of audio.
+    // Readouts cover the whole span, whatever part is on screen, at most every 100 ms of audio:
+    // a sweep's from its levels per block, a window's from its samples.
     const std::uint64_t end = engine.captureRing().endIndex();
     if (readoutsDue(end)) {
-        const std::uint64_t readoutStart = window.readoutCount > 0 ? window.readoutStart : start;
-        const std::uint64_t readoutCount =
-            window.readoutCount > 0 ? window.readoutCount : sampleCount;
-        viewSamples.resize(static_cast<std::size_t>(readoutCount));
-        scratch.resize(std::max(scratch.size(), viewSamples.size()));
-        if (!readView(source, inputChannels, triggerView, readoutStart, viewSamples, scratch)) {
-            return false;
+        if (synced) {
+            Readouts readouts;
+            if (measureSweepReadouts(
+                    sweepStats,
+                    isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing(),
+                    isFrozen ? hold.endIndex() : end, triggerView, inputChannels, readouts)) {
+                storeReadouts(readouts, end);
+            }
+        } else {
+            const std::uint64_t readoutStart =
+                window.readoutCount > 0 ? window.readoutStart : start;
+            const std::uint64_t readoutCount =
+                window.readoutCount > 0 ? window.readoutCount : sampleCount;
+            viewSamples.resize(static_cast<std::size_t>(readoutCount));
+            scratch.resize(std::max(scratch.size(), viewSamples.size()));
+            if (!readView(source, inputChannels, triggerView, readoutStart, viewSamples, scratch)) {
+                return false;
+            }
+            storeReadouts(computeReadouts(viewSamples, sampleRate), end);
         }
-        storeReadouts(computeReadouts(viewSamples, sampleRate), end);
     }
     applyReadouts(header);
 
     encodeFrame(header, frameData, frame);
     ++sequence;
+    return true;
+}
+
+bool Analyzer::updateStats(BlockStats& stats, const SweepImage& image, ChannelView view,
+                           int channels, bool fresh)
+{
+    const auto read = [&](std::size_t first, std::span<float> destination) {
+        readScratch.resize(std::max(readScratch.size(), destination.size()));
+        return readView(image, channels, view, first, destination, readScratch);
+    };
+    const auto length = static_cast<std::size_t>(image.length());
+    if (fresh) {
+        stats.reset(length, statsBlock(engine.sampleRate()));
+        return stats.update(0, length, read);
+    }
+    bool measured = true;
+    for (const SweepImage::Range& range : image.changes()) {
+        measured = stats.update(static_cast<std::size_t>(range.first),
+                                static_cast<std::size_t>(range.end), read) &&
+                   measured;
+    }
+    return measured;
+}
+
+bool Analyzer::measureSweepReadouts(const BlockStats& stats, const SampleSource& live,
+                                    std::uint64_t end, ChannelView view, int channels,
+                                    Readouts& readouts)
+{
+    const double sampleRate = engine.sampleRate();
+    const std::uint64_t begin = live.beginIndex();
+    const std::uint64_t available = end > begin ? end - begin : 0;
+    const std::size_t window = frequencyWindow(
+        static_cast<std::size_t>(std::min<std::uint64_t>(available, stats.sampleCount())),
+        sampleRate);
+    viewSamples.resize(window);
+    scratch.resize(std::max(scratch.size(), viewSamples.size()));
+    if (!readView(live, channels, view, end - window, viewSamples, scratch)) {
+        return false;
+    }
+    readouts = levelsOf(stats);
+    readouts.frequencyHz = estimateFrequency(viewSamples, sampleRate);
     return true;
 }
 
@@ -691,8 +773,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     const std::uint64_t count = window.sampleCount;
     const Crop crop = cropOf(static_cast<double>(count), 0.0, command.viewStart, command.viewEnd);
     const std::size_t columns = command.columns;
-    viewSamples.resize(static_cast<std::size_t>(count));
-    scratch.resize(std::max(scratch.size(), viewSamples.size()));
+    const std::size_t block = statsBlock(engine.sampleRate());
     frameData.clear();
     FrameHeaderValues header{
         .sequence = sequence,
@@ -745,6 +826,11 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                     }
                 }
             }
+            // The lane's levels per block, for readouts and summing gains.
+            updateStats(lane.stats, lane.image, ChannelView::kMid, channels,
+                        !lane.stats.fits(static_cast<std::size_t>(count), block) ||
+                            lane.statsChannels != channels);
+            lane.statsChannels = channels;
             if (comparing && lane.compared) {
                 frameChanges.insert(frameChanges.end(), lane.image.changes().begin(),
                                     lane.image.changes().end());
@@ -770,11 +856,18 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         appendComparison(header, crop.first, crop.end, count, columns, command.previewFix);
     }
 
-    // Readouts measure the own track's Mid over the whole span, at most every 100 ms of audio.
+    // Readouts measure the own track's Mid: peak and RMS over the whole span from its levels per
+    // block, the frequency over the newest second, at most every 100 ms of audio.
     const std::uint64_t ownEnd = ownLane.engine->captureRing().endIndex();
-    if (readoutsDue(ownEnd) && readView(ownLane.image, engine.inputChannels(), ChannelView::kMid, 0,
-                                        viewSamples, scratch)) {
-        storeReadouts(computeReadouts(viewSamples, engine.sampleRate()), ownEnd);
+    if (readoutsDue(ownEnd) && ownLane.stats.fits(static_cast<std::size_t>(count), block)) {
+        Readouts readouts;
+        if (measureSweepReadouts(ownLane.stats,
+                                 isFrozen ? static_cast<const SampleSource&>(ownLane.hold)
+                                          : ownLane.engine->captureRing(),
+                                 isFrozen ? ownLane.hold.endIndex() : ownEnd, ChannelView::kMid,
+                                 engine.inputChannels(), readouts)) {
+            storeReadouts(readouts, ownEnd);
+        }
     }
     applyReadouts(header);
 
@@ -908,32 +1001,150 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     return true;
 }
 
+void Analyzer::readLaneImage(std::size_t index, std::size_t length, std::uint64_t from,
+                             std::span<float> into)
+{
+    const Lane& lane = *lanes.at(laneOrder[index]);
+    readScratch.resize(std::max(readScratch.size(), into.size()));
+    if (lane.image.length() != length || !readView(lane.image, lane.engine->inputChannels(),
+                                                   ChannelView::kMid, from, into, readScratch)) {
+        std::ranges::fill(into, 0.0f);
+    }
+}
+
+void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, std::size_t position,
+                       std::span<float> into)
+{
+    std::ranges::fill(into, 0.0f);
+    for (const SumPart& part : parts) {
+        // Positions position + i show this track's sample at position + i + offset.
+        const std::ptrdiff_t source = static_cast<std::ptrdiff_t>(position) + part.offset;
+        const std::ptrdiff_t begin = std::max<std::ptrdiff_t>(0, -source);
+        const std::ptrdiff_t stop = std::min<std::ptrdiff_t>(
+            static_cast<std::ptrdiff_t>(into.size()), static_cast<std::ptrdiff_t>(length) - source);
+        if (begin >= stop) {
+            continue;
+        }
+        sumScratch.resize(static_cast<std::size_t>(stop - begin));
+        const std::ptrdiff_t from = source + begin;
+        readLaneImage(part.lane, length, static_cast<std::uint64_t>(from), sumScratch);
+        for (std::ptrdiff_t i = begin; i < stop; ++i) {
+            into[static_cast<std::size_t>(i)] +=
+                part.sign * sumScratch[static_cast<std::size_t>(i - begin)];
+        }
+    }
+}
+
+void Analyzer::updateSumStats(BlockStats& stats, const std::vector<std::int64_t>& key,
+                              std::vector<std::int64_t>& lastKey, const std::vector<SumPart>& parts,
+                              std::size_t reach, std::size_t length, std::size_t block)
+{
+    const auto read = [&](std::size_t from, std::span<float> into) {
+        readSum(parts, length, from, into);
+        return true;
+    };
+    if (key != lastKey || !stats.fits(length, block)) {
+        stats.reset(length, block);
+        stats.update(0, length, read);
+        lastKey = key;
+        return;
+    }
+    for (const SweepImage::Range& range : frameChanges) {
+        const auto from = static_cast<std::size_t>(range.first > reach ? range.first - reach : 0);
+        const auto to =
+            static_cast<std::size_t>(std::min<std::uint64_t>(range.end + reach, length));
+        if (from < to) {
+            stats.update(from, to, read);
+        }
+    }
+}
+
+void Analyzer::collectEnergies(std::size_t first, std::size_t end, std::size_t length,
+                               std::size_t block)
+{
+    const std::size_t firstBlock = (first + block - 1) / block;
+    const std::size_t endBlock = end / block;
+    const bool wholeBlocks = endBlock > firstBlock;
+    // The pieces of blocks at the edges of the visible part, measured from their samples.
+    struct Piece
+    {
+        std::size_t first = 0;
+        std::size_t end = 0;
+    };
+    std::array<Piece, 2> pieces{};
+    std::size_t pieceCount = 0;
+    if (!wholeBlocks) {
+        pieces[pieceCount++] = {.first = first, .end = end};
+    } else {
+        if (first < firstBlock * block) {
+            pieces[pieceCount++] = {.first = first, .end = firstBlock * block};
+        }
+        if (endBlock * block < end) {
+            pieces[pieceCount++] = {.first = endBlock * block, .end = end};
+        }
+    }
+    const auto appendPieces = [&](std::vector<double>& into, const auto& read) {
+        for (std::size_t piece = 0; piece < pieceCount; ++piece) {
+            pieceScratch.resize(pieces[piece].end - pieces[piece].first);
+            read(pieces[piece].first, std::span<float>(pieceScratch));
+            into.push_back(measureBlock(pieceScratch).sumSquares);
+        }
+    };
+    trackEnergies.resize(rawParts.size());
+    energySpans.clear();
+    for (std::size_t part = 0; part < rawParts.size(); ++part) {
+        const std::size_t lane = rawParts[part].lane;
+        const Lane& track = *lanes.at(laneOrder[lane]);
+        std::vector<double>& energies = trackEnergies[part];
+        energies.clear();
+        const bool measured = track.stats.fits(length, block);
+        if (wholeBlocks) {
+            for (std::size_t index = firstBlock; index < endBlock; ++index) {
+                energies.push_back(measured ? track.stats.blocks()[index].sumSquares : 0.0);
+            }
+        }
+        appendPieces(energies, [&](std::size_t from, std::span<float> into) {
+            readLaneImage(lane, length, from, into);
+        });
+    }
+    for (const std::vector<double>& energies : trackEnergies) {
+        energySpans.emplace_back(energies);
+    }
+    const auto collectSum = [&](const BlockStats& stats, const std::vector<SumPart>& parts,
+                                std::vector<double>& into) {
+        into.clear();
+        if (wholeBlocks) {
+            for (std::size_t index = firstBlock; index < endBlock; ++index) {
+                into.push_back(stats.blocks()[index].sumSquares);
+            }
+        }
+        appendPieces(into, [&](std::size_t from, std::span<float> piece) {
+            readSum(parts, length, from, piece);
+        });
+    };
+    collectSum(rawSumStats, rawParts, sumEnergies);
+    collectSum(fixedSumStats, fixedParts, fixedSumEnergies);
+}
+
 // The Compare part of a tempo-synced frame whose track lanes are already in `frameData`: the sum
 // of the compared tracks as one more lane, then each track's match. Like the track lanes, the sum
 // lane keeps its columns, and only those where compared tracks changed (moved by the largest
 // correction while the fix is previewed) are summed again; all of them when a correction
-// changes. Matches are searched only when due (see kMatchRefreshSeconds), and the summing gains,
-// which need every compared track whole, are measured with them or at most every 100 ms of audio.
+// changes. The sums' levels per block are kept the same way, so the summing gains, measured with
+// the matches or at most every 100 ms of audio, cost a pass over blocks. Matches are searched
+// only when due (see kMatchRefreshSeconds).
 void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, std::size_t end,
                                 std::uint64_t count, std::size_t columns, bool previewFix)
 {
     const double sampleRate = engine.sampleRate();
     const auto maxOffset = static_cast<std::size_t>(std::lround(0.01 * sampleRate));
-    const auto block = static_cast<std::size_t>(std::lround(0.01 * sampleRate)); // Overlap blocks.
+    const std::size_t block = statsBlock(sampleRate);
     const std::uint64_t now = engine.captureRing().endIndex();
     const auto length = static_cast<std::size_t>(count);
     const auto ownIndex =
         static_cast<std::size_t>(std::ranges::find(laneOrder, ownLane) - laneOrder.begin());
-    const auto readLane = [&](std::size_t index, std::uint64_t from, std::span<float> into) {
-        const Lane& lane = *lanes.at(laneOrder[index]);
-        readScratch.resize(std::max(readScratch.size(), into.size()));
-        if (lane.image.length() != count || !readView(lane.image, lane.engine->inputChannels(),
-                                                      ChannelView::kMid, from, into, readScratch)) {
-            std::ranges::fill(into, 0.0f);
-        }
-    };
 
-    // Matches and gains, when due.
+    // Which matches to search now.
     if (isFrozen || header.laneSet != matchLaneSet || first != matchFirst || end != matchEnd ||
         length != matchCount) {
         matchStates.clear();
@@ -958,109 +1169,95 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
             stalest = serial;
         }
     }
-    const auto gainInterval = static_cast<std::uint64_t>(0.1 * sampleRate);
-    if (missing || stalest || !comparisonCache.valid || now < comparisonCache.at ||
-        now - comparisonCache.at >= gainInterval) {
-        laneSamples.resize(laneOrder.size());
-        fixedLanes.resize(laneOrder.size());
-        laneSamples[ownIndex].resize(length);
-        readLane(ownIndex, 0, laneSamples[ownIndex]);
-        const std::span<const float> own =
-            std::span<const float>(laneSamples[ownIndex]).subspan(first, end - first);
-        std::vector<float>& matchValues = comparisonCache.matches;
-        matchValues.assign(laneOrder.size() * protocol::kMatchValues, 0.0f);
-        rawTracks.clear();
-        fixedTracks.clear();
+    // Each track searched is matched against this one over the visible part.
+    if (missing || stalest) {
+        matchOwn.resize(end - first);
+        readLaneImage(ownIndex, length, first, matchOwn);
         for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
             const std::uint64_t serial = laneOrder[lane];
-            if (!lanes.at(serial)->compared) {
+            if (lane == ownIndex || !lanes.at(serial)->compared ||
+                (matchStates.contains(serial) && stalest != serial)) {
                 continue;
             }
-            std::vector<float>& samples = laneSamples[lane];
-            if (lane != ownIndex) {
-                samples.resize(length);
-                readLane(lane, 0, samples);
-            }
-            std::vector<float>& fixed = fixedLanes[lane];
-            fixed.resize(length);
-            const std::span<const float> visible =
-                std::span<const float>(samples).subspan(first, end - first);
-            if (lane == ownIndex) {
-                std::ranges::copy(samples, fixed.begin());
-            } else {
-                if (!matchStates.contains(serial) || stalest == serial) {
-                    matchStates[serial] = {.analysis =
-                                               analysePair(own, visible, maxOffset, block, scratch),
-                                           .analysedAt = now};
-                }
-                const PairAnalysis& match = matchStates.at(serial).analysis;
-                applyFix(samples, match.offset, match.inverted, fixed);
-                float* const values = matchValues.data() + lane * protocol::kMatchValues;
-                values[0] = static_cast<float>(match.correlation);
-                values[1] = static_cast<float>(match.offset);
-                values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
-            }
-            rawTracks.push_back(visible);
-            fixedTracks.push_back(std::span<const float>(fixed).subspan(first, end - first));
+            matchTrack.resize(end - first);
+            readLaneImage(lane, length, first, matchTrack);
+            matchStates[serial] = {.analysis =
+                                       analysePair(matchOwn, matchTrack, maxOffset, block, scratch),
+                                   .analysedAt = now};
         }
-        comparisonCache.sumGain = static_cast<float>(overlapGain(rawTracks, block));
-        comparisonCache.fixedGain = static_cast<float>(overlapGain(fixedTracks, block));
-        comparisonCache.at = now;
-        comparisonCache.valid = true;
     }
     std::erase_if(matchStates, [&](const auto& entry) {
         return std::ranges::find(laneOrder, entry.first) == laneOrder.end();
     });
 
-    // The sum lane. Its key: the span, and each compared track with its correction if previewed.
-    sumKey.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
-                   static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns),
-                   previewFix ? 1 : 0});
-    std::vector<SumPart>& parts = sumParts;
-    parts.clear();
+    // The compared tracks as parts of the sum: as recorded, and shifted and flipped as matched.
+    rawParts.clear();
+    fixedParts.clear();
+    rawSumKey.assign({static_cast<std::int64_t>(length)});
+    fixedSumKey.assign({static_cast<std::int64_t>(length)});
     for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
         const std::uint64_t serial = laneOrder[lane];
         if (!lanes.at(serial)->compared) {
             continue;
         }
-        SumPart part{.lane = lane};
-        const auto found = matchStates.find(serial);
-        if (previewFix && found != matchStates.end()) {
-            part.offset = found->second.analysis.offset;
-            part.sign = found->second.analysis.inverted ? -1.0f : 1.0f;
+        SumPart fixed{.lane = lane};
+        if (const auto found = matchStates.find(serial); found != matchStates.end()) {
+            fixed.offset = found->second.analysis.offset;
+            fixed.sign = found->second.analysis.inverted ? -1.0f : 1.0f;
         }
-        parts.push_back(part);
-        sumKey.push_back(static_cast<std::int64_t>(serial));
-        sumKey.push_back(part.offset);
-        sumKey.push_back(part.sign < 0.0f ? 1 : 0);
+        rawParts.push_back({.lane = lane});
+        fixedParts.push_back(fixed);
+        rawSumKey.push_back(static_cast<std::int64_t>(serial));
+        fixedSumKey.insert(fixedSumKey.end(), {static_cast<std::int64_t>(serial), fixed.offset,
+                                               fixed.sign < 0.0f ? 1 : 0});
     }
-    const auto readSum = [&](std::size_t from, std::span<float> into) {
-        std::ranges::fill(into, 0.0f);
-        const auto position = static_cast<std::ptrdiff_t>(first + from);
-        for (const SumPart& part : parts) {
-            // Positions position + i show this track's sample at position + i + offset.
-            const std::ptrdiff_t source = position + part.offset;
-            const std::ptrdiff_t begin = std::max<std::ptrdiff_t>(0, -source);
-            const std::ptrdiff_t stop =
-                std::min<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(into.size()),
-                                         static_cast<std::ptrdiff_t>(length) - source);
-            if (begin >= stop) {
-                continue;
+    updateSumStats(rawSumStats, rawSumKey, lastRawSumKey, rawParts, 0, length, block);
+    updateSumStats(fixedSumStats, fixedSumKey, lastFixedSumKey, fixedParts, maxOffset, length,
+                   block);
+
+    // The matches' values and the gains, when due.
+    const auto gainInterval = static_cast<std::uint64_t>(0.1 * sampleRate);
+    if (missing || stalest || !comparisonCache.valid || now < comparisonCache.at ||
+        now - comparisonCache.at >= gainInterval) {
+        std::vector<float>& matchValues = comparisonCache.matches;
+        matchValues.assign(laneOrder.size() * protocol::kMatchValues, 0.0f);
+        for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
+            const std::uint64_t serial = laneOrder[lane];
+            const auto found = matchStates.find(serial);
+            if (!lanes.at(serial)->compared || found == matchStates.end()) {
+                continue; // This track, and tracks not compared, have zeros.
             }
-            sumScratch.resize(static_cast<std::size_t>(stop - begin));
-            const std::ptrdiff_t from = source + begin;
-            readLane(part.lane, static_cast<std::uint64_t>(from), sumScratch);
-            for (std::ptrdiff_t i = begin; i < stop; ++i) {
-                into[static_cast<std::size_t>(i)] +=
-                    part.sign * sumScratch[static_cast<std::size_t>(i - begin)];
-            }
+            const PairAnalysis& match = found->second.analysis;
+            float* const values = matchValues.data() + lane * protocol::kMatchValues;
+            values[0] = static_cast<float>(match.correlation);
+            values[1] = static_cast<float>(match.offset);
+            values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
         }
+        collectEnergies(first, end, length, block);
+        comparisonCache.sumGain = static_cast<float>(overlapGainOfBlocks(energySpans, sumEnergies));
+        comparisonCache.fixedGain =
+            static_cast<float>(overlapGainOfBlocks(energySpans, fixedSumEnergies));
+        comparisonCache.at = now;
+        comparisonCache.valid = true;
+    }
+
+    // The sum lane, with its parts as previewed. Its key: the span and visible part, the columns,
+    // and each part as summed.
+    const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
+    sumKey.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
+                   static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns)});
+    for (const SumPart& part : parts) {
+        sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
+                                     part.sign < 0.0f ? 1 : 0});
+    }
+    const auto readVisibleSum = [&](std::size_t from, std::span<float> into) {
+        readSum(parts, length, first + from, into);
         return true;
     };
     const std::size_t visibleCount = end - first;
     if (sumKey != lastSumKey || !sumReduction.fits(visibleCount, columns)) {
         sumReduction.reset(visibleCount, columns);
-        sumReduction.update(0, visibleCount, readSum);
+        sumReduction.update(0, visibleCount, readVisibleSum);
         lastSumKey = sumKey;
     } else {
         const std::size_t reach = previewFix ? maxOffset : 0;
@@ -1070,7 +1267,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
             const std::uint64_t to = std::min<std::uint64_t>(range.end + reach, end);
             if (from < to) {
                 sumReduction.update(static_cast<std::size_t>(from) - first,
-                                    static_cast<std::size_t>(to) - first, readSum);
+                                    static_cast<std::size_t>(to) - first, readVisibleSum);
             }
         }
     }

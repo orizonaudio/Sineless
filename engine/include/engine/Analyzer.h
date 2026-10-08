@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/BlockStats.h"
 #include "engine/Engine.h"
 #include "engine/FrameEncoder.h"
 #include "engine/HoldBuffer.h"
@@ -28,6 +29,11 @@ namespace orizon::engine {
 // Each compared track's match is searched again at most this often (seconds of audio), one track
 // per frame: a search over a long view is costly, and a track's alignment rarely changes faster.
 inline constexpr double kMatchRefreshSeconds = 0.5;
+
+// Levels (peak and energy) are kept per block of this many seconds of audio, so that readouts and
+// summing gains cost a pass over blocks; the Compare view judges per block whether tracks sound
+// together.
+inline constexpr double kStatsBlockSeconds = 0.01;
 
 // At most this many lanes are drawn in the multi-track view: tracks, and in the Compare view
 // their sum.
@@ -141,7 +147,12 @@ private:
         int reducedChannels = 0;
         // Seconds mode, rolling: the lane's columns, kept as they scroll.
         RollColumns roll;
+        // The lane's levels per block of its sweep, for readouts and summing gains, and the
+        // channel count they were measured for.
+        BlockStats stats;
+        int statsChannels = 0;
     };
+    struct SumPart;
 
     Commands takeCommands();
     std::uint64_t selectLanes(const Settings& settings, const Commands& command);
@@ -158,6 +169,31 @@ private:
     void storeReadouts(const Readouts& values, std::uint64_t end);
     // Puts the latest readouts in `header`, and notes what they were measured under.
     void applyReadouts(FrameHeaderValues& header);
+    // Keeps `stats`, the levels of `view` of `image` per block, in step with the samples placed
+    // since the last frame; all of them when `fresh`. False if the image could not be read.
+    bool updateStats(BlockStats& stats, const SweepImage& image, protocol::ChannelView view,
+                     int channels, bool fresh);
+    // Readouts of a sweep: its levels from `stats`, and the frequency over the newest second of
+    // `view` in `live` (the capture, or what was held on freeze) ending at `end`. False, with
+    // `readouts` untouched, if that audio is gone.
+    bool measureSweepReadouts(const BlockStats& stats, const SampleSource& live, std::uint64_t end,
+                              protocol::ChannelView view, int channels, Readouts& readouts);
+    // Tempo-synced Compare frames, over screen positions of the sweep of `length` samples: lane
+    // `index`'s Mid from `from` (silent while the lane is not on that length), and the sum of
+    // `parts` from `position`.
+    void readLaneImage(std::size_t index, std::size_t length, std::uint64_t from,
+                       std::span<float> into);
+    void readSum(const std::vector<SumPart>& parts, std::size_t length, std::size_t position,
+                 std::span<float> into);
+    // Keeps `stats`, the levels of the sum of `parts` per block, in step: all of them when `key`
+    // differs from `lastKey`, else where compared tracks changed this frame, widened by `reach`.
+    void updateSumStats(BlockStats& stats, const std::vector<std::int64_t>& key,
+                        std::vector<std::int64_t>& lastKey, const std::vector<SumPart>& parts,
+                        std::size_t reach, std::size_t length, std::size_t block);
+    // The energies the summing gains over screen positions [first, end) need: each compared
+    // lane's, then the sums' as recorded and as fixed, per block inside the part and per piece of
+    // a block at its edges, so that the gains cover exactly the visible part.
+    void collectEnergies(std::size_t first, std::size_t end, std::size_t length, std::size_t block);
     // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
     void followTransport(const Settings& settings, Commands& command);
     bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
@@ -235,10 +271,26 @@ private:
     };
     std::vector<SweepImage::Range> frameChanges;
     ColumnReduction sumReduction;
-    std::vector<SumPart> sumParts;
+    std::vector<SumPart> rawParts;   // The compared tracks as recorded...
+    std::vector<SumPart> fixedParts; // ...and shifted and flipped as matched.
     std::vector<std::int64_t> sumKey;
     std::vector<std::int64_t> lastSumKey;
     std::vector<float> sumScratch;
+    // The sums' levels per block, and the parts they were measured for.
+    BlockStats rawSumStats;
+    BlockStats fixedSumStats;
+    std::vector<std::int64_t> rawSumKey;
+    std::vector<std::int64_t> lastRawSumKey;
+    std::vector<std::int64_t> fixedSumKey;
+    std::vector<std::int64_t> lastFixedSumKey;
+    // The match search's copies of the visible part, and the gains' energies.
+    std::vector<float> matchOwn;
+    std::vector<float> matchTrack;
+    std::vector<float> pieceScratch;
+    std::vector<std::vector<double>> trackEnergies;
+    std::vector<std::span<const double>> energySpans;
+    std::vector<double> sumEnergies;
+    std::vector<double> fixedSumEnergies;
     ComparisonCache comparisonCache;
     std::uint32_t matchLaneSet = 0;
     std::size_t matchFirst = 0;
@@ -268,6 +320,11 @@ private:
         std::uint8_t views = 0;
     };
     ViewReduction viewReduction;
+    // Single mode: the trigger view's levels per block of the tempo-synced sweep, for readouts,
+    // and what they were measured for.
+    BlockStats sweepStats;
+    protocol::ChannelView sweepStatsView = protocol::ChannelView::kMid;
+    int sweepStatsChannels = 0;
     Settings frameSettings; // The settings of the frame being produced.
     std::vector<float> readScratch;
     std::vector<float> triggerSamples;

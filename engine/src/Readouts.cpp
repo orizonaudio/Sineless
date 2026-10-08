@@ -1,5 +1,6 @@
 #include "engine/Readouts.h"
 
+#include "engine/BlockStats.h"
 #include "engine/Trigger.h"
 
 #include <algorithm>
@@ -14,31 +15,30 @@ constexpr double kMinimumRange = 1e-6; // Below this the signal is treated as fl
 
 } // namespace
 
-Readouts computeReadouts(std::span<const float> samples, double sampleRate)
+std::size_t frequencyWindow(std::size_t count, double sampleRate)
 {
-    Readouts readouts;
+    const double window = std::max(kFrequencyWindowSeconds * sampleRate, 0.0);
+    return std::min(count, static_cast<std::size_t>(std::llround(window)));
+}
+
+std::optional<double> estimateFrequency(std::span<const float> samples, double sampleRate)
+{
     if (samples.empty()) {
-        return readouts;
+        return std::nullopt;
     }
     double sum = 0.0;
-    double sumOfSquares = 0.0;
     float minimum = samples.front();
     float maximum = samples.front();
-    for (float sample : samples) {
+    for (const float sample : samples) {
         sum += sample;
-        sumOfSquares += static_cast<double>(sample) * sample;
         minimum = std::min(minimum, sample);
         maximum = std::max(maximum, sample);
     }
-    const auto count = static_cast<double>(samples.size());
-    readouts.peak = std::max(std::abs(minimum), std::abs(maximum));
-    readouts.rms = static_cast<float>(std::sqrt(sumOfSquares / count));
-
     const double range = static_cast<double>(maximum) - minimum;
     if (range < kMinimumRange) {
-        return readouts;
+        return std::nullopt;
     }
-    const TriggerParameters crossing{.level = sum / count,
+    const TriggerParameters crossing{.level = sum / static_cast<double>(samples.size()),
                                      .hysteresis = kHysteresisFraction * range};
     int edgeCount = 0;
     double firstEdge = 0.0;
@@ -49,9 +49,24 @@ Readouts computeReadouts(std::span<const float> samples, double sampleRate)
         }
         lastEdge = edge;
     });
-    if (edgeCount >= 2) {
-        readouts.frequencyHz = (edgeCount - 1) * sampleRate / (lastEdge - firstEdge);
+    if (edgeCount < 2) {
+        return std::nullopt;
     }
+    return (edgeCount - 1) * sampleRate / (lastEdge - firstEdge);
+}
+
+Readouts computeReadouts(std::span<const float> samples, double sampleRate)
+{
+    Readouts readouts;
+    if (samples.empty()) {
+        return readouts;
+    }
+    const BlockStats::Block levels = measureBlock(samples);
+    readouts.peak = levels.peak;
+    readouts.rms =
+        static_cast<float>(std::sqrt(levels.sumSquares / static_cast<double>(samples.size())));
+    readouts.frequencyHz =
+        estimateFrequency(samples.last(frequencyWindow(samples.size(), sampleRate)), sampleRate);
     return readouts;
 }
 

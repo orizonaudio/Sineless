@@ -48,6 +48,11 @@ struct PairAnalysis
 // below the loudest block. 0 when they never sound together.
 [[nodiscard]] double overlapGain(std::span<const std::span<const float>> tracks, std::size_t block);
 
+// The same gain from energies kept per block: `tracks` holds each track's energy (sum of squares)
+// per block, and `sums` the energy of the tracks' sum per block, over the same blocks.
+[[nodiscard]] double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
+                                         std::span<const double> sums);
+
 // `b` as the analysis suggests fixing it: shifted earlier by `offset` and flipped if `inverted`,
 // silent where it has no samples.
 void applyFix(std::span<const float> b, std::ptrdiff_t offset, bool inverted,

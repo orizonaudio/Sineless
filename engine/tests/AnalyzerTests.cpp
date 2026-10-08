@@ -932,6 +932,42 @@ TEST_F(MultiTrackTest, ShowsALongerSpanChosenWhileFrozenInEveryLane)
     EXPECT_LT(*std::ranges::max_element(held), frozenAt) << "nothing after the freeze";
 }
 
+// Readouts of a tempo-synced sweep come from levels kept per block, so a long sweep is never
+// scanned whole for a reading: frame by frame they equal a fresh measurement, in Multi mode (the
+// own lane's Mid) and in Single mode (the trigger view).
+TEST_F(MultiTrackTest, KeepsSweepReadoutsInStepWithAFreshMeasurement)
+{
+    constexpr float kRadiansPerSample = 0.1f;
+    tracks.front().second = [](std::uint64_t sample) {
+        return 0.5f * std::sin(static_cast<float>(sample) * kRadiansPerSample);
+    };
+    for (const auto mode : {protocol::DisplayMode::kMulti, protocol::DisplayMode::kSingle}) {
+        own->settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
+        for (int step = 0; step < 40; ++step) {
+            play(480);
+            produce();
+        }
+        own->settings().set(SettingId::kVerticalScale, mode == protocol::DisplayMode::kMulti
+                                                           ? -6.0
+                                                           : -12.0); // Measures again now.
+        const auto frame = produce();
+        ASSERT_TRUE(frame);
+        Analyzer fresh(*own, registry);
+        fresh.setColumns(8000);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(fresh.produce(bytes));
+        const DecodedFrame expected = decode(bytes);
+        EXPECT_EQ(frame->peak, expected.peak) << "mode " << static_cast<int>(mode);
+        EXPECT_EQ(frame->rms, expected.rms) << "mode " << static_cast<int>(mode);
+        EXPECT_NEAR(frame->peak, 0.5f, 1e-3f);
+        EXPECT_NEAR(frame->rms, 0.5f / std::numbers::sqrt2_v<float>, 0.01f);
+        EXPECT_NEAR(frame->frequency,
+                    kRadiansPerSample * static_cast<float>(kSampleRate) /
+                        (2.0f * std::numbers::pi_v<float>),
+                    1.0f);
+    }
+}
+
 // Seconds mode: every lane shows the own track's window at the same host moments.
 class SecondsLanesTest : public MultiTrackTest
 {
@@ -1116,6 +1152,40 @@ TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)
     frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->laneCount, 3);
+}
+
+// The summing gains come from levels kept per block of each lane and of the sums, so a long view
+// is never scanned whole: frame by frame they equal a fresh measurement, also over a zoomed part
+// that starts and ends inside blocks.
+TEST_F(CompareTest, KeepsGainsInStepWithAFreshMeasurement)
+{
+    const auto copy = joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
+    const auto quiet = joinWith([](std::uint64_t sample) { return 0.5f * noiseAt(sample, 2); });
+    const auto inverted = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    const std::vector<std::uint64_t> compared{idOf(copy), idOf(quiet), idOf(inverted)};
+    analyzer->setCompared(compared);
+    analyzer->setView(0.3, 0.6);
+    for (int step = 0; step < 40; ++step) {
+        play(480);
+        produce();
+    }
+    own->settings().set(SettingId::kVerticalScale, -6.0); // Measures again now.
+    ASSERT_TRUE(produce());
+    const float incremental = sumGain();
+    const auto incrementalFixed = get<float>(analyzerBytes, FrameHeader::kFixedGainOffset);
+
+    Analyzer fresh(*own, registry);
+    fresh.setColumns(8000);
+    fresh.setCompared(compared);
+    fresh.setView(0.3, 0.6);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(fresh.produce(bytes));
+    EXPECT_NEAR(incremental, get<float>(bytes, FrameHeader::kSumGainOffset), 1e-4f);
+    EXPECT_NEAR(incrementalFixed, get<float>(bytes, FrameHeader::kFixedGainOffset), 1e-4f);
+    // The copy and the inverted copy cancel: the sum is this track plus the quiet one, against
+    // four parts of 1, 1, 1/4 and 1 energy. With the fix, the inverted copy adds instead.
+    EXPECT_NEAR(incremental, 10.0f * std::log10(1.25f / 3.25f), 0.3f);
+    EXPECT_NEAR(incrementalFixed, 10.0f * std::log10(9.25f / 3.25f), 0.3f);
 }
 
 TEST_F(CompareTest, PreviewsTheFixForALateTrack)

@@ -93,27 +93,44 @@ void decimate(std::span<const float> values, std::span<float> out)
     }
 }
 
-// Which blocks of `block` samples hold at least two of `tracks` (equal length) sounding together:
-// the second-loudest within 20 dB of the loudest, and not more than 60 dB below the loudest block.
-// Empty when there are fewer than two tracks.
-std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, std::size_t block)
+// Each track's energy per block of `block` samples.
+std::vector<std::vector<double>> blockEnergies(std::span<const std::span<const float>> tracks,
+                                               std::size_t block)
 {
-    if (tracks.size() < 2 || block == 0) {
+    std::vector<std::vector<double>> energies(tracks.size());
+    for (std::size_t track = 0; track < tracks.size(); ++track) {
+        const std::span<const float> samples = tracks[track];
+        const std::size_t blocks = (samples.size() + block - 1) / block;
+        energies[track].assign(blocks, 0.0);
+        for (std::size_t index = 0; index < blocks; ++index) {
+            const std::size_t first = index * block;
+            energies[track][index] =
+                energyOf(samples.subspan(first, std::min(block, samples.size() - first)));
+        }
+    }
+    return energies;
+}
+
+std::vector<std::span<const double>> spansOf(const std::vector<std::vector<double>>& energies)
+{
+    return {energies.begin(), energies.end()};
+}
+
+// Which blocks hold at least two tracks sounding together, from each track's energy per block
+// (equal lengths): the second-loudest within 20 dB of the loudest, and not more than 60 dB below
+// the loudest block. Empty when there are fewer than two tracks.
+std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energies)
+{
+    if (energies.size() < 2) {
         return {};
     }
-    const std::size_t length = tracks.front().size();
-    const std::size_t blocks = (length + block - 1) / block;
+    const std::size_t blocks = energies.front().size();
     std::vector<double> loudest(blocks, 0.0);
     std::vector<double> second(blocks, 0.0);
     double loudestBlock = 0.0;
     for (std::size_t index = 0; index < blocks; ++index) {
-        const std::size_t first = index * block;
-        const std::size_t count = std::min(block, length - first);
-        for (const std::span<const float> track : tracks) {
-            double level = 0.0;
-            for (const float value : track.subspan(first, count)) {
-                level += static_cast<double>(value) * value;
-            }
+        for (const std::span<const double> track : energies) {
+            const double level = track[index];
             if (level > loudest[index]) {
                 second[index] = loudest[index];
                 loudest[index] = level;
@@ -129,6 +146,15 @@ std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, 
             loudest[index] > kAudible * loudestBlock && second[index] >= kTogether * loudest[index];
     }
     return together;
+}
+
+// Which blocks of `block` samples hold at least two of `tracks` (equal length) sounding together.
+std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, std::size_t block)
+{
+    if (tracks.size() < 2 || block == 0) {
+        return {};
+    }
+    return togetherBlocks(spansOf(blockEnergies(tracks, block)));
 }
 
 } // namespace
@@ -228,26 +254,39 @@ PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std
 
 double overlapGain(std::span<const std::span<const float>> tracks, std::size_t block)
 {
-    const std::vector<bool> together = overlapBlocks(tracks, block);
-    if (together.empty()) {
+    if (tracks.size() < 2 || block == 0) {
         return 0.0;
     }
-    double sum = 0.0;
-    double parts = 0.0;
     const std::size_t length = tracks.front().size();
-    for (std::size_t index = 0; index < together.size(); ++index) {
-        if (!together[index]) {
-            continue;
-        }
+    const std::size_t blocks = (length + block - 1) / block;
+    std::vector<double> sums(blocks, 0.0);
+    for (std::size_t index = 0; index < blocks; ++index) {
         const std::size_t first = index * block;
         const std::size_t last = std::min(first + block, length);
         for (std::size_t i = first; i < last; ++i) {
             double total = 0.0;
             for (const std::span<const float> track : tracks) {
                 total += track[i];
-                parts += static_cast<double>(track[i]) * track[i];
             }
-            sum += total * total;
+            sums[index] += total * total;
+        }
+    }
+    return overlapGainOfBlocks(spansOf(blockEnergies(tracks, block)), sums);
+}
+
+double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
+                           std::span<const double> sums)
+{
+    const std::vector<bool> together = togetherBlocks(tracks);
+    double sum = 0.0;
+    double parts = 0.0;
+    for (std::size_t index = 0; index < together.size(); ++index) {
+        if (!together[index]) {
+            continue;
+        }
+        sum += sums[index];
+        for (const std::span<const double> track : tracks) {
+            parts += track[index];
         }
     }
     return summingGain(sum, parts);

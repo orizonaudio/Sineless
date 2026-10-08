@@ -184,6 +184,31 @@ TEST(PairAnalysis, CountsTheSummingGainWhereTracksOverlap)
     EXPECT_EQ(overlapGain(alone, kBlock), 0.0);
 }
 
+TEST(PairAnalysis, ComputesTheSummingGainFromBlockEnergies)
+{
+    const auto a = noise(11);
+    std::vector<float> b(kLength, 0.0f);
+    for (std::size_t i = 0; i < 12 * kBlock; ++i) {
+        b[i] = -0.5f * a[i];
+    }
+    const std::array<std::span<const float>, 2> tracks{a, b};
+    const std::size_t blocks = kLength / kBlock;
+    std::vector<double> energyA(blocks);
+    std::vector<double> energyB(blocks);
+    std::vector<double> sums(blocks);
+    for (std::size_t index = 0; index < blocks; ++index) {
+        for (std::size_t i = index * kBlock; i < (index + 1) * kBlock; ++i) {
+            energyA[index] += static_cast<double>(a[i]) * a[i];
+            energyB[index] += static_cast<double>(b[i]) * b[i];
+            sums[index] += static_cast<double>(a[i] + b[i]) * (a[i] + b[i]);
+        }
+    }
+    const std::array<std::span<const double>, 2> energies{energyA, energyB};
+    EXPECT_NEAR(overlapGainOfBlocks(energies, sums), overlapGain(tracks, kBlock), 1e-9);
+    EXPECT_NEAR(overlapGainOfBlocks(energies, sums), 10.0 * std::log10(0.25 / 1.25), 0.01)
+        << "half the level, inverted: where they meet the sum is a quarter of the energy";
+}
+
 TEST(PairAnalysis, AppliesTheFix)
 {
     const std::vector<float> b{1.0f, 2.0f, 3.0f, 4.0f};

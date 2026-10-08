@@ -53,7 +53,7 @@ export const helpTexts = {
   },
   frequency: {
     title: "Frequency",
-    text: "An estimate of the trigger channel's pitch, from how often it rises through its average. A dash means no steady repetition was found.",
+    text: "An estimate of the trigger channel's pitch over the last second, from how often it rises through its average. A dash means no steady repetition was found.",
   },
   screen: {
     title: "Screen",
