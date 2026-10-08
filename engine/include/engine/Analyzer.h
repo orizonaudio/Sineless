@@ -3,6 +3,7 @@
 #include "engine/Engine.h"
 #include "engine/HoldBuffer.h"
 #include "engine/InstanceRegistry.h"
+#include "engine/LaneHold.h"
 #include "engine/Settings.h"
 #include "engine/SweepImage.h"
 #include "engine/Trigger.h"
@@ -105,13 +106,14 @@ private:
         std::uint64_t readoutCount = 0;
     };
 
-    // One track of the multi-track view: its own persistent sweep.
+    // One track of the multi-track view: its own persistent sweep, and its audio while frozen.
     struct Lane
     {
         std::shared_ptr<Engine> engine;
         SweepImage image;
         std::optional<SweepWindow> window;
         std::uint64_t end = 0; // Capture end of the last update.
+        LaneHold hold;
     };
 
     Commands takeCommands();

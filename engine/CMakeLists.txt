@@ -8,6 +8,7 @@ add_library(engine STATIC
     src/FrameEncoder.cpp
     src/HoldBuffer.cpp
     src/InstanceRegistry.cpp
+    src/LaneHold.cpp
     src/Readouts.cpp
     src/Reducer.cpp
     src/Roll.cpp

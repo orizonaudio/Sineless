@@ -823,5 +823,27 @@ TEST_F(MultiTrackTest, ZoomsEveryLaneAtFullResolution)
     EXPECT_FLOAT_EQ(frame->viewStart, 0.25f);
 }
 
+// Freezing holds every lane's audio, so a longer beat span chosen while frozen shows it.
+TEST_F(MultiTrackTest, ShowsALongerSpanChosenWhileFrozenInEveryLane)
+{
+    tracks.front().second = std::nullopt;
+    join();
+    play(30000);
+    const auto frozenAt = static_cast<float>(hostSample);
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    play(4800); // Audio after the freeze must not appear.
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kHalfBeat));
+    analyzer->setColumns(12000); // Raw points for the longer span too.
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 2);
+    ASSERT_EQ(frame->pointCount, 12000u) << "half a beat";
+    EXPECT_EQ(lane(*frame, 0), lane(*frame, 1)) << "both lanes from their held audio";
+    const std::vector<float> held = lane(*frame, 0);
+    EXPECT_EQ(held.front(), 24000.0f) << "the half-beat cycle that held the freeze";
+    EXPECT_LT(*std::ranges::max_element(held), frozenAt) << "nothing after the freeze";
+}
+
 } // namespace
 } // namespace orizon::engine

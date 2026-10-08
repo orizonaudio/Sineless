@@ -452,7 +452,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     publishLanes(std::move(labels), hidden);
     const std::uint32_t laneSetId = laneSet().id;
 
-    // Each lane follows its own capture and clock; only new audio is placed.
+    // Each lane follows its own capture and clock; only new audio is placed. Frozen, each lane
+    // holds its audio from the moment of freezing (or of joining), and is rebuilt from it when the
+    // span changes.
     const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
     bool fresh = false;
     std::map<std::uint64_t, std::unique_ptr<Lane>> next;
@@ -463,15 +465,34 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         lane->engine = std::move(member.engine);
         const CaptureRing& ring = lane->engine->captureRing();
         const std::uint64_t end = ring.endIndex();
-        if (!isFrozen && (end != lane->end || !lane->window || settings != lastSettings)) {
-            const auto longestSweep = ring.capacity() - ring.capacity() / 8;
-            const auto sweep = sweepWindow(lane->engine->timeline().latest(), end,
-                                           lane->engine->sampleRate(), beatSpan, longestSweep);
-            if (sweep && lane->image.update(ring, *sweep, false)) {
+        const auto longestSweep = ring.capacity() - ring.capacity() / 8;
+        if (isFrozen) {
+            if (!lane->hold.held()) {
+                lane->hold.capture(*lane->engine, longestSweep, scratch);
+            }
+            const LaneHold& hold = lane->hold;
+            const auto sweep =
+                hold.held() ? sweepWindow(hold.clock(), hold.endIndex(), lane->engine->sampleRate(),
+                                          beatSpan, hold.endIndex() - hold.beginIndex())
+                            : std::nullopt;
+            if (sweep && (!lane->window || sweep->sampleCount != lane->image.length()) &&
+                lane->image.update(hold, *sweep, true)) {
                 lane->window = sweep;
                 fresh = true;
             }
-            lane->end = end;
+        } else {
+            if (lane->hold.held()) {
+                lane->hold.release();
+            }
+            if (end != lane->end || !lane->window || settings != lastSettings) {
+                const auto sweep = sweepWindow(lane->engine->timeline().latest(), end,
+                                               lane->engine->sampleRate(), beatSpan, longestSweep);
+                if (sweep && lane->image.update(ring, *sweep, false)) {
+                    lane->window = sweep;
+                    fresh = true;
+                }
+                lane->end = end;
+            }
         }
         laneOrder.push_back(member.serial);
         next.insert_or_assign(member.serial, std::move(lane));
