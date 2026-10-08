@@ -13,6 +13,7 @@ import {
   type NativeReceiver,
   type Transport,
 } from "./bridge/transport.ts";
+import { perf, type Perf } from "./perf.ts";
 import { SettingsStore } from "./store/settings-store.ts";
 import "./styles.css";
 
@@ -31,6 +32,8 @@ declare global {
       error?: ErrorMessage;
       lastState?: StateChangedMessage;
       lastFrame?: Frame;
+      perf?: Perf;
+      requestFrame?: () => void;
     };
   }
 }
@@ -44,7 +47,14 @@ const transport: Transport =
 const backend = new Backend(transport);
 const store = new SettingsStore();
 
-const debug: NonNullable<Window["orizonDebug"]> = { frameCount: 0 };
+const debug: NonNullable<Window["orizonDebug"]> = {
+  frameCount: 0,
+  perf,
+  // For the editor's tests, where WebKit pauses the draw loop that normally asks.
+  requestFrame: () => {
+    backend.requestFrame();
+  },
+};
 window.orizonDebug = debug;
 
 // The store hears engine values first; the app's own handlers run after these.

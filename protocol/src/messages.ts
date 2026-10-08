@@ -9,7 +9,6 @@ export const MessageType = {
   setSetting: "setSetting",
   stateChanged: "stateChanged",
   error: "error",
-  credit: "credit",
   viewport: "viewport",
   freeze: "freeze",
   pan: "pan",
@@ -66,11 +65,6 @@ export interface ErrorMessage {
   readonly type: "error";
   readonly code: ErrorCode;
   readonly message: string;
-}
-
-// UI to engine. Permission to send the next frame.
-export interface CreditMessage {
-  readonly type: "credit";
 }
 
 // UI to engine. The trace area was resized.
@@ -143,7 +137,6 @@ export interface PreviewFixMessage {
 export type UiToEngineMessage =
   | HelloMessage
   | SetSettingMessage
-  | CreditMessage
   | ViewportMessage
   | FreezeMessage
   | PanMessage

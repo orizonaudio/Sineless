@@ -6,10 +6,14 @@ import type { ControlMessage, Transport } from "../src/bridge/transport.ts";
 
 class FakeTransport implements Transport {
   sent: ControlMessage[] = [];
+  frameRequests = 0;
   messageHandler: ((message: ControlMessage) => void) | undefined;
   frameHandler: ((frame: ArrayBuffer) => void) | undefined;
   send(message: ControlMessage): void {
     this.sent.push(message);
+  }
+  requestFrame(): void {
+    this.frameRequests++;
   }
   onMessage(handler: (message: ControlMessage) => void): void {
     this.messageHandler = handler;
@@ -20,6 +24,12 @@ class FakeTransport implements Transport {
 }
 
 describe("backend", () => {
+  test("asks the transport for frames", () => {
+    const transport = new FakeTransport();
+    new Backend(transport).requestFrame();
+    expect(transport.frameRequests).toBe(1);
+  });
+
   test("sends typed messages", () => {
     const transport = new FakeTransport();
     const backend = new Backend(transport);
@@ -28,7 +38,6 @@ describe("backend", () => {
     backend.freeze(true);
     backend.pan(0.5);
     backend.arm();
-    backend.credit();
     backend.setViewport(500, 1);
     backend.compare([3, 5]);
     backend.previewFix(true);
@@ -38,7 +47,6 @@ describe("backend", () => {
       "freeze",
       "pan",
       "arm",
-      "credit",
       "viewport",
       "compare",
       "previewFix",

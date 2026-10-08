@@ -99,8 +99,9 @@ export class Backend {
     this.transport.send({ type: "arm" });
   }
 
-  credit(): void {
-    this.transport.send({ type: "credit" });
+  // Asks for the next display frame: once at the start, then after each frame drawn.
+  requestFrame(): void {
+    this.transport.requestFrame();
   }
 
   private dispatch(message: ControlMessage): void {

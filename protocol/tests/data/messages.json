@@ -21,9 +21,6 @@
     "name": "timeSpan",
     "value": 0.5
   },
-  "credit": {
-    "type": "credit"
-  },
   "viewport": {
     "type": "viewport",
     "viewWidth": 500,

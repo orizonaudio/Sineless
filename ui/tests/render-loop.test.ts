@@ -55,6 +55,30 @@ function setup() {
 }
 
 describe("render loop", () => {
+  test("draws engine frames no more often than the minimum interval", () => {
+    const pending: ((timestamp: number) => void)[] = [];
+    const drawn: number[] = [];
+    const loop = new RenderLoop(
+      (callback) => pending.push(callback),
+      { draw: (drawnFrame) => drawn.push(drawnFrame.sequence) },
+      () => undefined,
+      15,
+    );
+    const tickAt = (timestamp: number) => {
+      for (const callback of pending.splice(0)) {
+        callback(timestamp);
+      }
+    };
+    loop.submit(frame(1));
+    tickAt(100);
+    loop.submit(frame(2));
+    tickAt(108); // 120 Hz: too soon.
+    expect(drawn).toEqual([1]);
+    expect(pending).toHaveLength(1);
+    tickAt(116);
+    expect(drawn).toEqual([1, 2]);
+  });
+
   test("draws on the next tick, then returns the credit", () => {
     const { loop, drawn, tick, credits } = setup();
     loop.submit(frame(1));

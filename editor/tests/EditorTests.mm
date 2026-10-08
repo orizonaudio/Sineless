@@ -152,15 +152,15 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
     [window close];
 }
 
-// Frames flow while credits return, and host state changes reach the page.
+// Frames flow while the page asks for them, and host state changes reach the page.
 // Test windows are occluded (an unbundled test process never becomes a foreground app), so
-// WebKit pauses requestAnimationFrame here; the test returns credits itself, through the page's
-// real native channel.
+// WebKit pauses requestAnimationFrame here; the test asks for frames itself, through the page's
+// real frame requests.
 TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
 {
     auto engine = std::make_shared<engine::Engine>();
     engine->setSampleRate(48000.0);
-    engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per credit.
+    engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per request.
     std::vector<float> tone(96000);
     for (std::size_t i = 0; i < tone.size(); ++i) {
         tone[i] = (i / 50) % 2 == 0 ? 0.5f : -0.5f;
@@ -179,16 +179,15 @@ TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
         return std::stoi("0" + evaluate(webView, @"String(window.orizonDebug?.frameCount ?? 0)"));
     };
     ASSERT_TRUE(pumpUntil([&] { return frameCount() == 1; }, kPageTimeout))
-        << "the first frame needs no credit";
+        << "the page asks for its first frame on start";
     pumpUntil([] { return false; }, std::chrono::milliseconds(200));
-    EXPECT_EQ(frameCount(), 1) << "no second frame without a credit";
+    EXPECT_EQ(frameCount(), 1) << "no second frame without a request";
 
     for (int expected = 2; expected <= 5; ++expected) {
         engine->captureRing().write(channels.data(), 2, 480); // New audio, as a host would.
-        evaluate(webView, @"window.webkit.messageHandlers.orizon.postMessage("
-                          @"JSON.stringify({type: 'credit'})); ''");
+        evaluate(webView, @"window.orizonDebug.requestFrame(); ''");
         ASSERT_TRUE(pumpUntil([&] { return frameCount() == expected; }, std::chrono::seconds(5)))
-            << "one frame per credit";
+            << "one frame per request";
     }
     EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.lastFrame.views.size)"), "2");
 

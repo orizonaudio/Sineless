@@ -176,6 +176,12 @@ export class MockTransport implements Transport {
     });
   }
 
+  requestFrame(): void {
+    this.schedule(() => {
+      this.sendFrame();
+    });
+  }
+
   private reply(message: ControlMessage): void {
     this.messageHandler?.(message);
   }
@@ -193,7 +199,6 @@ export class MockTransport implements Transport {
         });
         this.lanesKey = "";
         this.sendLanes();
-        this.sendFrame(); // The first frame needs no credit.
         break;
       case "setSetting":
         this.setSetting(message["name"], message["value"]);
@@ -231,9 +236,6 @@ export class MockTransport implements Transport {
       }
       case "previewFix":
         this.previewFix = message["on"] === true;
-        break;
-      case "credit":
-        this.sendFrame();
         break;
       default:
         break;

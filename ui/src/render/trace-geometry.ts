@@ -1,10 +1,8 @@
-// Turns a frame into clip-space triangles, one array per view (x, y pairs; 6 per quad). Pure
-// functions, so the geometry is unit-tested without a GPU.
-import {
-  ChannelView,
-  FrameMode,
-  ViewLayout,
-} from "../../../protocol/src/enums.ts";
+// Where traces sit on the screen: span positions of a frame's points, the lanes of stacked views,
+// the vertical scale, and the cancellation shading of Compare frames as clip-space triangles
+// (x, y pairs; 6 per quad). Pure functions, unit-tested without a GPU; the traces themselves are
+// built by the renderer's shaders on the same rules.
+import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { fullView, type ViewWindow } from "../view/zoom.ts";
 
@@ -77,129 +75,6 @@ function pushQuad(
 ): void {
   // Two triangles: (0, 1, 2) and (2, 1, 3).
   out.push(x0, y0, x1, y1, x2, y2, x2, y2, x1, y1, x3, y3);
-}
-
-// One quad per column from min to max, at least one line width tall. A column lying wholly
-// above or below its predecessor is extended to meet it: the signal passes through that gap
-// between the two columns' samples, and without the join, columns holding only one or two
-// samples would show as separate dots.
-function minMaxBand(
-  values: Float32Array,
-  frame: Frame,
-  lane: Lane,
-  scale: number,
-  layout: TraceLayout,
-): Float32Array {
-  const out: number[] = [];
-  const view = layout.view ?? fullView;
-  const minimumHalf = layout.lineWidthPixels / layout.heightPixels;
-  let previousLow = Number.NaN;
-  let previousHigh = Number.NaN;
-  for (let column = 0; column < frame.pointCount; column++) {
-    let low =
-      lane.center + ((values[column * 2] ?? 0) / scale) * lane.halfHeight;
-    let high =
-      lane.center + ((values[column * 2 + 1] ?? 0) / scale) * lane.halfHeight;
-    const sampleLow = low;
-    const sampleHigh = high;
-    if (low > previousHigh) {
-      low = previousHigh;
-    } else if (high < previousLow) {
-      high = previousLow;
-    }
-    previousLow = sampleLow;
-    previousHigh = sampleHigh;
-    if (high - low < 2 * minimumHalf) {
-      const middle = (low + high) / 2;
-      low = middle - minimumHalf;
-      high = middle + minimumHalf;
-    }
-    const left = screenX(columnPosition(frame, column), view);
-    const right = screenX(columnPosition(frame, column + 1), view);
-    pushQuad(out, left, low, left, high, right, low, right, high);
-  }
-  return new Float32Array(out);
-}
-
-// A polyline through the samples, one quad per segment, `lineWidthPixels` thick.
-function rawLine(
-  values: Float32Array,
-  frame: Frame,
-  lane: Lane,
-  scale: number,
-  layout: TraceLayout,
-): Float32Array {
-  const out: number[] = [];
-  const toPixelsX = layout.widthPixels / 2;
-  const toPixelsY = layout.heightPixels / 2;
-  const halfWidth = layout.lineWidthPixels / 2;
-  const view = layout.view ?? fullView;
-  const x = (index: number) => screenX(pointPosition(frame, index), view);
-  const y = (index: number) =>
-    lane.center + ((values[index] ?? 0) / scale) * lane.halfHeight;
-  for (let index = 0; index + 1 < frame.pointCount; index++) {
-    const x0 = x(index);
-    const y0 = y(index);
-    const x1 = x(index + 1);
-    const y1 = y(index + 1);
-    // Offset perpendicular to the segment, computed in pixels so the width is even.
-    const dx = (x1 - x0) * toPixelsX;
-    const dy = (y1 - y0) * toPixelsY;
-    const length = Math.hypot(dx, dy) || 1;
-    const offsetX = ((-dy / length) * halfWidth) / toPixelsX;
-    const offsetY = ((dx / length) * halfWidth) / toPixelsY;
-    pushQuad(
-      out,
-      x0 - offsetX,
-      y0 - offsetY,
-      x0 + offsetX,
-      y0 + offsetY,
-      x1 - offsetX,
-      y1 - offsetY,
-      x1 + offsetX,
-      y1 + offsetY,
-    );
-  }
-  return new Float32Array(out);
-}
-
-// One array per block of points (a view or a lane), each in its lane.
-function blockGeometry(
-  blocks: readonly Float32Array[],
-  frame: Frame,
-  layout: TraceLayout,
-): Float32Array[] {
-  const blockLanes = lanes(blocks.length, layout.layout);
-  const scale = fullScale(layout.verticalScaleDb);
-  return blocks.map((values, index) => {
-    const lane = blockLanes[index] ?? { center: 0, halfHeight: 1 };
-    return frame.mode === FrameMode.minMax
-      ? minMaxBand(values, frame, lane, scale, layout)
-      : rawLine(values, frame, lane, scale, layout);
-  });
-}
-
-export function traceGeometry(
-  frame: Frame,
-  layout: TraceLayout,
-): Map<ChannelView, Float32Array> {
-  const views = [...frame.views.entries()];
-  const geometry = blockGeometry(
-    views.map(([, values]) => values),
-    frame,
-    layout,
-  );
-  return new Map(
-    views.map(([view], index) => [view, geometry[index] ?? new Float32Array()]),
-  );
-}
-
-// Multi-track frames: one array per lane, in lane order.
-export function laneGeometry(
-  frame: Frame,
-  layout: TraceLayout,
-): Float32Array[] {
-  return blockGeometry(frame.lanes, frame, layout);
 }
 
 // Compare frames hold the group's tracks and then the sum of the compared ones. Where the sum's

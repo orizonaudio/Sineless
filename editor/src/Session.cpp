@@ -52,9 +52,8 @@ std::optional<protocol::SettingId> settingId(const nlohmann::json& name)
 
 } // namespace
 
-Session::Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport,
-                 std::function<void()> onCredit)
-    : engine(engine), analyzer(analyzer), transport(transport), onCredit(std::move(onCredit))
+Session::Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport)
+    : engine(engine), analyzer(analyzer), transport(transport)
 {}
 
 void Session::receive(const nlohmann::json& message)
@@ -113,11 +112,6 @@ void Session::receive(const nlohmann::json& message)
             analyzer.setPreviewFix(message["on"].get<bool>());
         }
         break;
-    case MessageType::kCredit:
-        if (onCredit) {
-            onCredit();
-        }
-        break;
     default:
         break; // Engine-to-UI types.
     }
@@ -155,9 +149,6 @@ void Session::hello(const nlohmann::json& message)
     lastLaneSet = 0;
     isStarted = true;
     syncLanes();
-    if (onCredit) {
-        onCredit(); // The first frame needs no credit message.
-    }
 }
 
 void Session::setSetting(const nlohmann::json& message)

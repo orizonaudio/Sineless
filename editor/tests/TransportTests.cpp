@@ -12,9 +12,9 @@ class RecordingWebView final : public WebView
 public:
     void setSize(int /*width*/, int /*height*/) override {}
     void postMessage(std::string_view message) override { messages.emplace_back(message); }
-    void postBinary(std::span<const std::byte> payload) override
+    void sendFrame(std::span<const std::byte> frame) override
     {
-        frames.emplace_back(payload.begin(), payload.end());
+        frames.emplace_back(frame.begin(), frame.end());
     }
     [[nodiscard]] void* nativeView() const override { return nullptr; }
 

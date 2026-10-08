@@ -9,7 +9,7 @@ void WebViewTransport::sendMessage(const nlohmann::json& message)
 
 void WebViewTransport::sendFrame(std::span<const std::byte> frame)
 {
-    view.postBinary(frame);
+    view.sendFrame(frame);
 }
 
 std::optional<nlohmann::json> WebViewTransport::parse(std::string_view text)

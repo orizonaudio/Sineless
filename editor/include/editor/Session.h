@@ -18,10 +18,8 @@ namespace orizon::editor {
 class Session
 {
 public:
-    // `onCredit` runs when the UI may receive another frame: on a successful hello and for every
-    // credit message.
-    Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport,
-            std::function<void()> onCredit = {});
+    // Display frames do not pass through the session: the page fetches them (see WebView).
+    Session(engine::Engine& engine, engine::Analyzer& analyzer, Transport& transport);
 
     // Handles one message from the page. Before a successful hello only hello is accepted.
     void receive(const nlohmann::json& message);
@@ -42,7 +40,6 @@ private:
     engine::Engine& engine;
     engine::Analyzer& analyzer;
     Transport& transport;
-    std::function<void()> onCredit;
     bool isStarted = false;
     std::optional<engine::Settings> lastSent;
     std::uint32_t lastLaneSet = 0;

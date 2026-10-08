@@ -37,21 +37,45 @@ describe("native transport", () => {
     expect(received).toEqual([{ type: "snapshot", sampleRate: 48000 }]);
   });
 
-  test("decodes binary frames from base64", () => {
-    const { host } = makeHost();
+  test("fetches one binary frame per request", async () => {
+    let fetches = 0;
+    const host: NativeHost = {
+      channel: undefined,
+      receiver: {},
+      fetchFrame: () => {
+        fetches++;
+        return Promise.resolve(new Uint8Array([0, 1, 2, 255]).buffer);
+      },
+    };
     const transport = new NativeTransport(host);
     const frames: ArrayBuffer[] = [];
     transport.onFrame((frame) => frames.push(frame));
-    host.receiver.orizonBridge?.receiveBinary("AAEC/w==");
+    transport.requestFrame();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetches).toBe(1);
     expect(frames.map((frame) => Array.from(new Uint8Array(frame)))).toEqual([
       [0, 1, 2, 255],
     ]);
   });
 
+  test("drops an empty answer to a superseded request", async () => {
+    const host: NativeHost = {
+      channel: undefined,
+      receiver: {},
+      fetchFrame: () => Promise.resolve(new ArrayBuffer(0)),
+    };
+    const transport = new NativeTransport(host);
+    const frames: ArrayBuffer[] = [];
+    transport.onFrame((frame) => frames.push(frame));
+    transport.requestFrame();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(frames).toEqual([]);
+  });
+
   test("does nothing when the page runs without a native channel", () => {
     const host: NativeHost = { channel: undefined, receiver: {} };
     expect(() => {
-      new NativeTransport(host).send({ type: "credit" });
+      new NativeTransport(host).send({ type: "arm" });
     }).not.toThrow();
   });
 });

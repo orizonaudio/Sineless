@@ -124,6 +124,9 @@ interface GestureEvent extends UIEvent {
 // Room taken by the amplitude labels at the left edge (CSS px).
 const amplitudeLabelWidth = 56;
 const readoutInterval = 100; // ms: readouts stay legible while frames arrive at display rate.
+// At most 60 engine frames a second (with room for timer jitter), on any display rate: more
+// would cost work in every part of the pipeline for motion the eye barely tells apart.
+const minimumFrameInterval = 1000 / 60 - 2;
 // Group titles that open a popover: the group, its title button and the popover.
 const popovers = [
   ["trigger-group", "trigger-details", "trigger-popover"],
@@ -190,6 +193,7 @@ export class OscilloscopeApp {
   private view: ViewWindow = fullView;
   // Time and level cursors, while shown; temporary like the view.
   private timeCursors: CursorPair | undefined;
+  private shownFrozen: boolean | undefined;
   // The pointer over the traces, as fractions of the screen, for the hover readout.
   private hover: { x: number; y: number } | undefined;
   private levelCursors: LevelPair | undefined;
@@ -240,6 +244,10 @@ export class OscilloscopeApp {
         },
         comparedLanes: () =>
           this.lanesOf(this.lastFrame).map((lane) => lane.compared),
+        sweepColors: () => {
+          const [r, g, b] = rgba(token("--screen"));
+          return { cursor: rgba(token("--ink")), previous: [r, g, b, 0.5] };
+        },
         lineWidthPixels: 1.5 * window.devicePixelRatio,
       },
       () => ({
@@ -258,8 +266,9 @@ export class OscilloscopeApp {
         },
       },
       () => {
-        backend.credit();
+        backend.requestFrame();
       },
+      minimumFrameInterval,
     );
     this.buildControls();
     this.listenToScreen();
@@ -281,6 +290,7 @@ export class OscilloscopeApp {
 
   start(): void {
     this.backend.hello(this.screen.clientWidth, window.devicePixelRatio);
+    this.backend.requestFrame();
   }
 
   private layout(): ViewLayout {
@@ -953,20 +963,12 @@ export class OscilloscopeApp {
   }
 
   // Moves the sweep cursor, and redraws grid and labels when a new cycle starts.
+  // Redraws grid and labels when a tempo-synced sweep starts a new cycle. The playhead itself is
+  // drawn with the traces.
   private showSweep(frame: Frame): void {
-    const cursor = element("sweep-cursor");
-    const previous = element("sweep-previous");
-    const synced = frame.synced && frame.cursor !== undefined;
-    cursor.hidden = !synced;
-    previous.hidden = !synced;
-    if (!synced) {
+    if (!frame.synced || frame.cursor === undefined) {
       return;
     }
-    const position = toScreen(this.view, frame.cursor);
-    cursor.hidden = position < 0 || position > 1;
-    const percent = `${String(Math.min(1, Math.max(0, position)) * 100)}%`;
-    cursor.style.left = percent;
-    previous.style.left = percent;
     const key = `${String(frame.cycleStart)}/${String(frame.spanQuarterNotes)}/${String(frame.barQuarterNotes)}/${frame.cycleSeconds.toFixed(3)}`;
     if (key !== this.cycleKey) {
       this.cycleKey = key;
@@ -1543,7 +1545,11 @@ export class OscilloscopeApp {
       if (this.waiting) {
         this.waiting = false;
       }
-      element("freeze").setAttribute("aria-pressed", String(frame.frozen));
+      // Only changes touch the page: each one costs the page work to restyle.
+      if (frame.frozen !== this.shownFrozen) {
+        this.shownFrozen = frame.frozen;
+        element("freeze").setAttribute("aria-pressed", String(frame.frozen));
+      }
       // The engine may resume on its own (auto-freeze); a new freeze starts unpanned.
       if (!frame.frozen) {
         this.panSeconds = 0;

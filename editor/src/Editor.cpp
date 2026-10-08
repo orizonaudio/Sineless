@@ -40,9 +40,18 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
     if (parent == nullptr || !isSupportedPlatform(type)) {
         return kResultFalse;
     }
-    view =
-        WebView::create(parent, getRect().getWidth(), getRect().getHeight(),
-                        [this](WebView& /*view*/, std::string_view message) { receive(message); });
+    // Each frame request from the page is its credit for one frame.
+    view = WebView::create(
+        parent, getRect().getWidth(), getRect().getHeight(),
+        [this](WebView& /*view*/, std::string_view message) { receive(message); },
+        [this](WebView& /*view*/) {
+            if (frameFlow) {
+                frameFlow->grantCredit();
+            }
+            if (worker) {
+                worker->wake();
+            }
+        });
     transport = std::make_unique<WebViewTransport>(*view);
     if (engineState) {
         analyzer = std::make_unique<engine::Analyzer>(*engineState);
@@ -50,12 +59,7 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
         frameFlow = std::make_unique<FrameFlow>(
             *analyzer, *dispatcher,
             [this](std::span<const std::byte> frame) { transport->sendFrame(frame); });
-        session = std::make_unique<Session>(*engineState, *analyzer, *transport, [this] {
-            frameFlow->grantCredit();
-            if (worker) {
-                worker->wake();
-            }
-        });
+        session = std::make_unique<Session>(*engineState, *analyzer, *transport);
         dispatcher->every(kStateSyncInterval, [this] { session->sync(); });
         worker = std::make_unique<engine::AnalysisWorker>([this] { frameFlow->step(); });
     }

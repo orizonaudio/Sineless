@@ -4,7 +4,6 @@ import {
   MessageType,
   type ArmMessage,
   type CompareMessage,
-  type CreditMessage,
   type FreezeMessage,
   type HelloMessage,
   type PanMessage,
@@ -33,7 +32,6 @@ const typed = {
   setSettingNumber: examples.setSettingNumber satisfies Shape<
     Omit<SetSettingMessage, "name">
   >,
-  credit: examples.credit satisfies Shape<CreditMessage>,
   viewport: examples.viewport satisfies Shape<ViewportMessage>,
   freeze: examples.freeze satisfies Shape<FreezeMessage>,
   pan: examples.pan satisfies Shape<PanMessage>,

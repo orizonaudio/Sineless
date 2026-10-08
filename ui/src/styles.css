@@ -268,24 +268,6 @@ body {
   opacity: 0.75;
 }
 
-/* Tempo-synced sweep: the playhead, and the previous cycle to its right, dimmed. */
-.sweep-cursor {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-left: 1px solid var(--ink);
-  pointer-events: none;
-}
-
-.sweep-previous {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  background: color-mix(in srgb, var(--screen) 50%, transparent);
-  pointer-events: none;
-}
-
 /* Drag-to-zoom selection. */
 .selection {
   position: absolute;

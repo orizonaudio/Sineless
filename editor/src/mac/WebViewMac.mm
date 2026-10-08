@@ -23,6 +23,8 @@ NSString* const kSchemeName = @"orizon";
 NSString* const kStartUrl = @"orizon://ui/index.html";
 NSString* const kMessageHandlerName = @"orizon";
 NSString* const kFocusHandlerName = @"orizonFocus";
+// The page fetches each display frame from here; the request is held until a frame is ready.
+NSString* const kFramePath = @"/frame";
 
 // Reports to native code whether an editable element has focus, so that keystrokes go to the
 // host unless the user is typing into the page.
@@ -81,26 +83,35 @@ const char* superclassMethodTypes(Class superclass, SEL selector)
 class WebViewMac final : public WebView
 {
 public:
-    WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage);
+    WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage,
+               FrameRequestHandler onFrameRequest);
     ~WebViewMac() override;
     WebViewMac(const WebViewMac&) = delete;
     WebViewMac& operator=(const WebViewMac&) = delete;
 
     void setSize(int width, int height) override;
     void postMessage(std::string_view message) override;
-    void postBinary(std::span<const std::byte> payload) override;
+    void sendFrame(std::span<const std::byte> frame) override;
     [[nodiscard]] void* nativeView() const override { return (__bridge void*)webView; }
 
     void receive(WKScriptMessage* message);
+    void requestFrame(id<WKURLSchemeTask> task);
+    void cancelFrameRequest(id<WKURLSchemeTask> task);
     [[nodiscard]] bool editableFocused() const { return isEditableFocused; }
 
 private:
     void evaluate(NSString* script);
+    static void answer(id<WKURLSchemeTask> task, NSData* frame);
 
     MessageHandler onMessage;
+    FrameRequestHandler onFrameRequest;
     WKWebView* webView = nil;
     id messageHandler = nil;
+    id schemeHandler = nil;
     bool isEditableFocused = false;
+    // The page's open frame request, and a frame produced while none was open.
+    id<WKURLSchemeTask> frameTask = nil;
+    NSData* heldFrame = nil;
 };
 
 // ----- Script message handler (page to native) -----
@@ -131,9 +142,15 @@ Class messageHandlerClass()
 
 // ----- URL scheme handler serving the embedded UI -----
 
-void startUrlSchemeTask(id /*self*/, SEL /*cmd*/, WKWebView* /*webView*/, id<WKURLSchemeTask> task)
+void startUrlSchemeTask(id self, SEL /*cmd*/, WKWebView* /*webView*/, id<WKURLSchemeTask> task)
 {
     NSURL* url = task.request.URL;
+    if ([url.path isEqualToString:kFramePath]) {
+        if (WebViewMac* owner = ownerOf(self)) {
+            owner->requestFrame(task);
+        }
+        return;
+    }
     std::string path = url.path.length > 1 ? std::string(url.path.UTF8String).substr(1)
                                            : std::string("index.html");
     const EmbeddedAsset* asset = findEmbeddedAsset(path);
@@ -163,10 +180,12 @@ void startUrlSchemeTask(id /*self*/, SEL /*cmd*/, WKWebView* /*webView*/, id<WKU
     [task didFinish];
 }
 
-void stopUrlSchemeTask(id /*self*/, SEL /*cmd*/, WKWebView* /*webView*/,
-                       id<WKURLSchemeTask> /*task*/)
+void stopUrlSchemeTask(id self, SEL /*cmd*/, WKWebView* /*webView*/, id<WKURLSchemeTask> task)
 {
-    // Tasks complete synchronously in startUrlSchemeTask, so there is nothing to cancel.
+    // Asset tasks complete synchronously in startUrlSchemeTask; only a frame request stays open.
+    if (WebViewMac* owner = ownerOf(self)) {
+        owner->cancelFrameRequest(task);
+    }
 }
 
 Class schemeHandlerClass()
@@ -244,12 +263,14 @@ Class webViewClass()
 
 // ----- WebViewMac -----
 
-WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage)
-    : onMessage(std::move(onMessage))
+WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage,
+                       FrameRequestHandler onFrameRequest)
+    : onMessage(std::move(onMessage)), onFrameRequest(std::move(onFrameRequest))
 {
     WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
-    [configuration setURLSchemeHandler:[[schemeHandlerClass() alloc] init]
-                          forURLScheme:kSchemeName];
+    schemeHandler = [[schemeHandlerClass() alloc] init];
+    setOwner(schemeHandler, this);
+    [configuration setURLSchemeHandler:schemeHandler forURLScheme:kSchemeName];
 
     messageHandler = [[messageHandlerClass() alloc] init];
     setOwner(messageHandler, this);
@@ -278,6 +299,7 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
 WebViewMac::~WebViewMac()
 {
     // Detach every path back into this object before the webview can outlive it.
+    setOwner(schemeHandler, nullptr);
     setOwner(messageHandler, nullptr);
     setOwner(webView, nullptr);
     [webView.configuration.userContentController removeAllScriptMessageHandlers];
@@ -304,11 +326,54 @@ void WebViewMac::postMessage(std::string_view message)
     evaluate([NSString stringWithFormat:@"window.orizonBridge?.receive(%@)", literal]);
 }
 
-void WebViewMac::postBinary(std::span<const std::byte> payload)
+// Frames travel as the binary body of the page's fetch: no text encoding on either side.
+void WebViewMac::sendFrame(std::span<const std::byte> frame)
 {
-    NSData* data = [NSData dataWithBytes:payload.data() length:payload.size()];
-    NSString* base64 = [data base64EncodedStringWithOptions:0];
-    evaluate([NSString stringWithFormat:@"window.orizonBridge?.receiveBinary(\"%@\")", base64]);
+    NSData* data = [NSData dataWithBytes:frame.data() length:frame.size()];
+    if (frameTask == nil) {
+        heldFrame = data;
+        return;
+    }
+    answer(frameTask, data);
+    frameTask = nil;
+}
+
+void WebViewMac::requestFrame(id<WKURLSchemeTask> task)
+{
+    if (frameTask != nil) {
+        answer(frameTask, [NSData data]); // Superseded; the page asks for one frame at a time.
+    }
+    frameTask = task;
+    if (heldFrame != nil) {
+        answer(frameTask, heldFrame);
+        frameTask = nil;
+        heldFrame = nil;
+    }
+    if (onFrameRequest) {
+        onFrameRequest(*this);
+    }
+}
+
+void WebViewMac::cancelFrameRequest(id<WKURLSchemeTask> task)
+{
+    if (task == frameTask) {
+        frameTask = nil;
+    }
+}
+
+void WebViewMac::answer(id<WKURLSchemeTask> task, NSData* frame)
+{
+    NSDictionary* headers = @{
+        @"Content-Type" : @"application/octet-stream",
+        @"Content-Length" : [NSString stringWithFormat:@"%lu", (unsigned long)frame.length],
+        @"Cache-Control" : @"no-store",
+    };
+    [task didReceiveResponse:[[NSHTTPURLResponse alloc] initWithURL:task.request.URL
+                                                         statusCode:200
+                                                        HTTPVersion:@"HTTP/1.1"
+                                                       headerFields:headers]];
+    [task didReceiveData:frame];
+    [task didFinish];
 }
 
 void WebViewMac::evaluate(NSString* script)
@@ -334,10 +399,11 @@ void WebViewMac::receive(WKScriptMessage* message)
 } // namespace
 
 std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
-                                         MessageHandler onMessage)
+                                         MessageHandler onMessage,
+                                         FrameRequestHandler onFrameRequest)
 {
     return std::make_unique<WebViewMac>((__bridge NSView*)parent, width, height,
-                                        std::move(onMessage));
+                                        std::move(onMessage), std::move(onFrameRequest));
 }
 
 } // namespace orizon::editor

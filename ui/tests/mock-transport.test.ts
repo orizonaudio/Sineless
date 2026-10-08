@@ -33,6 +33,7 @@ function connect(): {
     viewWidth: 400,
     pixelRatio: 2,
   });
+  transport.requestFrame();
   return { transport, messages, frames };
 }
 
@@ -42,7 +43,7 @@ function useSeconds(transport: MockTransport): void {
 }
 
 describe("mock back end", () => {
-  test("answers hello with a snapshot and a first frame", () => {
+  test("answers hello with a snapshot, and the first request with a frame", () => {
     const { messages, frames } = connect();
     expect(messages[0]).toMatchObject({
       type: "snapshot",
@@ -52,10 +53,10 @@ describe("mock back end", () => {
     expect(frames).toHaveLength(1);
   });
 
-  test("sends one frame per credit and none without", () => {
+  test("sends one frame per request and none without", () => {
     const { transport, frames } = connect();
-    transport.send({ type: "credit" });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
+    transport.requestFrame();
     expect(frames).toHaveLength(3);
     expect(frames.map((frame) => frame.sequence)).toEqual([0, 1, 2]);
   });
@@ -69,7 +70,7 @@ describe("mock back end", () => {
       value: ["mid", "side"],
     });
     transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     const frame = frames.at(-1);
     expect(frame?.mode).toBe(FrameMode.minMax);
     expect(frame?.pointCount).toBe(800);
@@ -103,14 +104,14 @@ describe("mock back end", () => {
     expect(lanes()).toHaveLength(1);
     expect(lanes()[0]).toMatchObject({ laneSet: 1, hidden: 0 });
     transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     const frame = frames.at(-1);
     expect(frame?.views.size).toBe(0);
     expect(frame?.lanes).toHaveLength(4);
     expect(frame?.laneSet).toBe(1);
 
     transport.send({ type: "setSetting", name: "group", value: "b" });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     expect(lanes()).toHaveLength(2);
     expect(lanes()[1]).toMatchObject({
       laneSet: 2,
@@ -126,7 +127,7 @@ describe("mock back end", () => {
       name: "displayMode",
       value: "compare",
     });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     const lanes = messages.filter((message) => message.type === "lanes").at(-1);
     expect(lanes).toMatchObject({
       lanes: [
@@ -140,7 +141,7 @@ describe("mock back end", () => {
     expect(frames.at(-1)?.comparison?.matches).toHaveLength(4);
 
     transport.send({ type: "compare", ids: [4] });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     const cancelling = frames.at(-1);
     expect(cancelling?.comparison?.matches[3]).toMatchObject({
       inverted: true,
@@ -149,14 +150,14 @@ describe("mock back end", () => {
     expect(cancelling?.comparison?.fixedGain).toBeGreaterThan(2);
 
     transport.send({ type: "previewFix", on: true });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     const fixed = frames.at(-1);
     const peak = (values: Float32Array | undefined) =>
       Math.max(...Array.from(values ?? [], Math.abs));
     expect(peak(fixed?.lanes[4])).toBeGreaterThan(peak(cancelling?.lanes[4]));
 
     transport.send({ type: "compare", ids: [] });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     expect(frames.at(-1)?.lanes).toHaveLength(5); // The sum of this track alone.
     expect(frames.at(-1)?.comparison?.sumGain).toBeCloseTo(0);
   });
@@ -165,7 +166,7 @@ describe("mock back end", () => {
     const { transport, frames } = connect(); // now = 1 s: 2 beats into bar 1 at 120 BPM.
     transport.send({ type: "setSetting", name: "timeBase", value: "beats" });
     transport.send({ type: "setSetting", name: "beatSpan", value: "oneBar" });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     const frame = frames.at(-1);
     expect(frame?.synced).toBe(true);
     expect(frame?.cursor).toBeCloseTo(0.5);
@@ -179,7 +180,7 @@ describe("mock back end", () => {
     useSeconds(transport);
     transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
     transport.send({ type: "view", start: 0.5, end: 0.6 });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     const frame = frames.at(-1);
     expect(frame?.viewStart).toBe(0.5);
     expect(frame?.visibleSamples).toBe(480);
@@ -191,7 +192,7 @@ describe("mock back end", () => {
     useSeconds(transport);
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
     transport.send({ type: "freeze", frozen: true });
-    transport.send({ type: "credit" });
+    transport.requestFrame();
     expect(frames.at(-1)?.roll).toBe(true);
     expect(frames.at(-1)?.frozen).toBe(true);
   });
