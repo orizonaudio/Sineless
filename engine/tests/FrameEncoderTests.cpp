@@ -51,8 +51,6 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .visibleSamples = header["visibleSamples"].get<float>(),
         .laneSet = header["laneSet"].get<std::uint32_t>(),
         .sumGain = header["sumGain"].get<float>(),
-        .correlation = header["correlation"].get<float>(),
-        .offset = header["offset"].get<float>(),
         .fixedGain = header["fixedGain"].get<float>(),
     };
 }
@@ -77,6 +75,12 @@ TEST(FrameEncoder, MatchesTheGoldenLanesFrame)
     for (const auto& lane : golden["lanes"]) {
         const auto values = lane.get<std::vector<float>>();
         data.insert(data.end(), values.begin(), values.end());
+    }
+    for (const auto& match : golden["matches"]) {
+        data.push_back(match["correlation"].get<float>());
+        data.push_back(match["offset"].get<float>());
+        const bool inverted = match["inverted"].get<bool>();
+        data.push_back(match["related"].get<bool>() ? (inverted ? -1.0f : 1.0f) : 0.0f);
     }
 
     std::vector<std::byte> output;

@@ -53,6 +53,11 @@ Crop cropOf(double count, double fraction, double cropStart, double cropEnd)
             .visibleSamples = (cropEnd - cropStart) * count};
 }
 
+bool contains(const std::vector<std::uint64_t>& ids, std::uint64_t id)
+{
+    return std::ranges::find(ids, id) != ids.end();
+}
+
 TriggerParameters triggerParameters(const Settings& settings, double sampleRate)
 {
     return {.level = settings.value(SettingId::kTriggerLevel),
@@ -73,18 +78,13 @@ LaneSet Analyzer::laneSet() const
     return published;
 }
 
-void Analyzer::publishLanes(std::vector<LaneLabel> labels, std::size_t hidden,
-                            std::vector<LaneLabel> candidates)
+void Analyzer::publishLanes(std::vector<LaneLabel> labels, std::size_t hidden)
 {
     const std::scoped_lock lock(laneMutex);
-    if (published.id != 0 && published.lanes == labels && published.hidden == hidden &&
-        published.candidates == candidates) {
+    if (published.id != 0 && published.lanes == labels && published.hidden == hidden) {
         return;
     }
-    published = {.id = published.id + 1,
-                 .lanes = std::move(labels),
-                 .hidden = hidden,
-                 .candidates = std::move(candidates)};
+    published = {.id = published.id + 1, .lanes = std::move(labels), .hidden = hidden};
 }
 
 void Analyzer::setColumns(std::size_t columns)
@@ -119,10 +119,10 @@ void Analyzer::setView(double start, double end)
     commands.viewEnd = end;
 }
 
-void Analyzer::setPartner(std::uint64_t id)
+void Analyzer::setCompared(std::vector<std::uint64_t> ids)
 {
     const std::scoped_lock lock(commandMutex);
-    commands.partner = id;
+    commands.compared = std::move(ids);
 }
 
 void Analyzer::setPreviewFix(bool on)
@@ -222,9 +222,12 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     const double spanSeconds = settings.value(SettingId::kTimeSpan);
     const double span = spanSeconds * sampleRate;
     const bool roll = isRollSpan(spanSeconds);
+    // Other lanes, or other tracks compared, change the frame too.
+    const std::uint32_t laneSetId = multi ? laneSet().id : 0;
     const bool changed = settings != lastSettings || command.columns != lastColumns ||
                          command.panSeconds != lastPan || isFrozen != lastFrozen ||
-                         command.viewStart != lastViewStart || command.viewEnd != lastViewEnd;
+                         command.viewStart != lastViewStart || command.viewEnd != lastViewEnd ||
+                         laneSetId != lastLaneSet || command.previewFix != lastPreviewFix;
 
     Window window{.span = span, .roll = roll};
     auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
@@ -357,6 +360,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     lastViewStart = command.viewStart;
     lastViewEnd = command.viewEnd;
     lastFrozen = isFrozen;
+    lastLaneSet = laneSetId;
+    lastPreviewFix = command.previewFix;
     if (freezeAfterRender) {
         freeze(sampleRate);
         lastFrozen = isFrozen; // The frame just sent already shows the held window.
@@ -441,10 +446,10 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     return true;
 }
 
-// The tracks of the multi-track view: the group in order, at most kMaxLanes, always including
-// this instance's own; in the Compare view, this track and its partner. Publishes their labels,
-// keeps each lane's state across frames, and holds each lane's audio while frozen. Returns the
-// own lane's serial.
+// The tracks of the multi-track view: the group in order, at most kMaxLanes (one fewer in the
+// Compare view, which adds their sum), always including this instance's own. Publishes their
+// labels, keeps each lane's state across frames, and holds each lane's audio while frozen.
+// Returns the own lane's serial.
 std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& command)
 {
     std::vector<GroupMember> members =
@@ -461,57 +466,49 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& co
         own = members.begin();
     }
     const std::uint64_t ownSerial = own->serial;
-    const auto labelOf = [&](const GroupMember& member) {
-        return LaneLabel{.id = member.serial,
-                         .name = member.track.name,
-                         .colour = member.track.colour,
-                         .own = member.serial == ownSerial};
-    };
+    const bool compare = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) ==
+                         protocol::DisplayMode::kCompare;
+    const std::size_t maxTracks = compare ? kMaxLanes - 1 : kMaxLanes;
     std::size_t hidden = 0;
-    std::vector<LaneLabel> candidates;
-    comparing = false;
-    if (settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) ==
-        protocol::DisplayMode::kCompare) {
-        // The partner: the one asked for, else the last one, else the group's first other track.
+    if (members.size() > maxTracks) {
+        hidden = members.size() - maxTracks;
+        if (std::cmp_greater_equal(std::distance(members.begin(), own), maxTracks)) {
+            std::rotate(members.begin() + static_cast<std::ptrdiff_t>(maxTracks - 1), own, own + 1);
+        }
+        members.resize(maxTracks);
+    }
+
+    // Compare view: this track, with the others asked for that are drawn (until asked, the first
+    // other track). With no other track checked the sum is this track alone; with no other track
+    // in the group there is nothing to compare.
+    std::vector<std::uint64_t> compared;
+    if (compare) {
         for (const GroupMember& member : members) {
-            if (member.serial != ownSerial) {
-                candidates.push_back(labelOf(member));
+            if (member.serial == ownSerial) {
+                continue;
+            }
+            const bool asked =
+                command.compared ? contains(*command.compared, member.serial) : compared.empty();
+            if (asked) {
+                compared.push_back(member.serial);
             }
         }
-        const auto isCandidate = [&](std::optional<std::uint64_t> id) {
-            return id && std::ranges::any_of(candidates, [&](const LaneLabel& candidate) {
-                       return candidate.id == *id;
-                   });
-        };
-        std::optional<std::uint64_t> partner;
-        if (isCandidate(command.partner)) {
-            partner = command.partner;
-        } else if (isCandidate(lastPartner)) {
-            partner = lastPartner;
-        } else if (!candidates.empty()) {
-            partner = candidates.front().id;
-        }
-        lastPartner = partner;
-        std::erase_if(members, [&](const GroupMember& member) {
-            return member.serial != ownSerial && member.serial != partner;
-        });
-        // This track first, then the partner.
-        std::ranges::stable_partition(
-            members, [&](const GroupMember& member) { return member.serial == ownSerial; });
-        comparing = members.size() == 2;
-    } else if (members.size() > kMaxLanes) {
-        hidden = members.size() - kMaxLanes;
-        if (std::cmp_greater_equal(std::distance(members.begin(), own), kMaxLanes)) {
-            std::rotate(members.begin() + static_cast<std::ptrdiff_t>(kMaxLanes - 1), own, own + 1);
-        }
-        members.resize(kMaxLanes);
     }
+    comparing = compare && members.size() > 1;
+    const auto isCompared = [&](std::uint64_t serial) {
+        return comparing && (serial == ownSerial || contains(compared, serial));
+    };
+
     std::vector<LaneLabel> labels;
     labels.reserve(members.size());
     for (const GroupMember& member : members) {
-        labels.push_back(labelOf(member));
+        labels.push_back({.id = member.serial,
+                          .name = member.track.name,
+                          .colour = member.track.colour,
+                          .own = member.serial == ownSerial,
+                          .compared = isCompared(member.serial)});
     }
-    publishLanes(std::move(labels), hidden, std::move(candidates));
+    publishLanes(std::move(labels), hidden);
 
     std::map<std::uint64_t, std::unique_ptr<Lane>> next;
     laneOrder.clear();
@@ -525,6 +522,7 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& co
         } else if (!isFrozen && lane->hold.held()) {
             lane->hold.release();
         }
+        lane->compared = isCompared(member.serial);
         laneOrder.push_back(member.serial);
         next.insert_or_assign(member.serial, std::move(lane));
     }
@@ -610,17 +608,18 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         .visibleSamples = static_cast<float>(crop.visibleSamples),
         .laneSet = laneSetId};
     if (comparing) {
-        // This track and its partner, each read whole from its sweep.
-        const auto read = [&](const Lane& lane, std::vector<float>& into) {
+        // Every lane, read whole from its sweep.
+        laneSamples.resize(laneOrder.size());
+        for (std::size_t i = 0; i < laneOrder.size(); ++i) {
+            const Lane& lane = *lanes.at(laneOrder[i]);
+            std::vector<float>& into = laneSamples[i];
             into.resize(static_cast<std::size_t>(count));
             if (lane.image.length() != count || !readView(lane.image, lane.engine->inputChannels(),
                                                           ChannelView::kMid, 0, into, scratch)) {
                 std::ranges::fill(into, 0.0f);
             }
-        };
-        read(ownLane, pairA);
-        read(*lanes.at(laneOrder.back()), pairB);
-        renderPair(header, crop.first, crop.end, columns, command.previewFix, frame);
+        }
+        renderCompare(header, crop.first, crop.end, columns, command.previewFix, frame);
         lastSettings = settings;
         lastColumns = command.columns;
         lastViewStart = command.viewStart;
@@ -714,18 +713,18 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
                 std::round(Timeline::sampleIndexAt(clock, startQuarterNotes, sampleRate)), 0.0))};
     };
     if (comparing) {
-        const auto read = [&](std::uint64_t serial, std::vector<float>& into) {
+        laneSamples.resize(laneOrder.size());
+        for (std::size_t i = 0; i < laneOrder.size(); ++i) {
+            const std::uint64_t serial = laneOrder[i];
             const auto [source, laneStart] = sourceOf(serial);
+            std::vector<float>& into = laneSamples[i];
             into.resize(static_cast<std::size_t>(sampleCount));
             if (!readView(*source, lanes.at(serial)->engine->inputChannels(), ChannelView::kMid,
                           laneStart, into, scratch)) {
                 std::ranges::fill(into, 0.0f);
             }
-        };
-        read(ownLane, pairA);
-        read(laneOrder.back(), pairB);
-        renderPair(header, crop.first, crop.end, columns, command.previewFix, frame);
-        lastPreviewFix = command.previewFix;
+        }
+        renderCompare(header, crop.first, crop.end, columns, command.previewFix, frame);
         return true;
     }
     frameData.clear();
@@ -776,44 +775,107 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     return true;
 }
 
-// A Compare frame: this track, its partner and their sum as three lanes, from `pairA` and `pairB`
-// (raw Mid samples of the window), with the pair's analysis over the visible part [first, end).
-// With the preview, the sum uses the partner shifted and flipped as the analysis suggests.
-void Analyzer::renderPair(FrameHeaderValues header, std::size_t first, std::size_t end,
-                          std::size_t columns, bool previewFix, std::vector<std::byte>& frame)
+// A Compare frame: every track's lane from `laneSamples` (raw Mid samples of the window), then
+// the sum of the compared tracks, then each track's match against this track over the visible
+// part [first, end). With the preview, the sum uses every compared track shifted and flipped as
+// its match suggests.
+//
+// Matches are searched over the whole visible part, which is costly, so live they are refreshed
+// one track per frame, each at most every 100 ms of audio; frozen, or when the tracks or the
+// visible part change, all of them at once. The summing gains count only where tracks overlap.
+void Analyzer::renderCompare(FrameHeaderValues header, std::size_t first, std::size_t end,
+                             std::size_t columns, bool previewFix, std::vector<std::byte>& frame)
 {
     const double sampleRate = engine.sampleRate();
     const auto maxOffset = static_cast<std::size_t>(std::lround(0.01 * sampleRate));
-    const std::span<const float> visibleA = std::span(pairA).subspan(first, end - first);
-    const std::span<const float> visibleB = std::span(pairB).subspan(first, end - first);
-    const PairAnalysis analysis = analysePair(visibleA, visibleB, maxOffset, scratch);
+    const auto block = static_cast<std::size_t>(std::lround(0.01 * sampleRate)); // Overlap blocks.
+    const auto ownIndex =
+        static_cast<std::size_t>(std::ranges::find(laneOrder, ownLane) - laneOrder.begin());
+    const std::vector<float>& own = laneSamples.at(ownIndex);
+    const std::size_t count = own.size();
+    const auto visible = [&](std::span<const float> values) {
+        return values.subspan(first, end - first);
+    };
 
-    pairSum.resize(pairA.size());
-    if (previewFix) {
-        applyFix(pairB, analysis.offset, analysis.inverted, pairSum);
-    } else {
-        std::ranges::copy(pairB, pairSum.begin());
+    // Which matches to search now.
+    const std::uint64_t now = engine.captureRing().endIndex();
+    const auto refresh = static_cast<std::uint64_t>(std::lround(0.1 * sampleRate));
+    if (isFrozen || header.laneSet != matchLaneSet || first != matchFirst || end != matchEnd ||
+        count != matchCount) {
+        matchStates.clear();
     }
-    for (std::size_t i = 0; i < pairSum.size(); ++i) {
-        pairSum[i] += pairA[i];
+    matchLaneSet = header.laneSet;
+    matchFirst = first;
+    matchEnd = end;
+    matchCount = count;
+    std::optional<std::uint64_t> stalest;
+    for (const std::uint64_t serial : laneOrder) {
+        const auto found = matchStates.find(serial);
+        if (serial == ownLane || !lanes.at(serial)->compared || found == matchStates.end() ||
+            now - found->second.analysedAt < refresh) {
+            continue;
+        }
+        if (!stalest || found->second.analysedAt < matchStates.at(*stalest).analysedAt) {
+            stalest = serial;
+        }
     }
 
-    header.laneCount = 3;
-    const unsigned compared =
-        flag(FrameFlag::kCompared) | (analysis.inverted ? flag(FrameFlag::kInverted) : 0U);
-    header.flags = static_cast<std::uint8_t>(static_cast<unsigned>(header.flags) | compared);
-    header.sumGain = static_cast<float>(analysis.sumGain);
-    header.correlation = static_cast<float>(analysis.correlation);
-    header.offset = static_cast<float>(analysis.offset);
-    header.fixedGain = static_cast<float>(analysis.fixedGain);
+    rawSum.assign(count, 0.0f);
+    fixedSum.assign(count, 0.0f);
+    fixedLanes.resize(laneOrder.size());
+    matches.assign(laneOrder.size() * protocol::kMatchValues, 0.0f);
+    rawTracks.clear();
+    fixedTracks.clear();
+    for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
+        const std::uint64_t serial = laneOrder[lane];
+        if (!lanes.at(serial)->compared) {
+            continue;
+        }
+        const std::vector<float>& samples = laneSamples[lane];
+        std::vector<float>& fixed = fixedLanes[lane];
+        fixed.resize(count);
+        if (lane == ownIndex) {
+            std::ranges::copy(samples, fixed.begin());
+        } else {
+            if (!matchStates.contains(serial) || stalest == serial) {
+                matchStates[serial] = {.analysis = analysePair(visible(own), visible(samples),
+                                                               maxOffset, block, scratch),
+                                       .analysedAt = now};
+            }
+            const PairAnalysis& match = matchStates.at(serial).analysis;
+            applyFix(samples, match.offset, match.inverted, fixed);
+            float* const values = matches.data() + lane * protocol::kMatchValues;
+            values[0] = static_cast<float>(match.correlation);
+            values[1] = static_cast<float>(match.offset);
+            values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            rawSum[i] += samples[i];
+            fixedSum[i] += fixed[i];
+        }
+        rawTracks.push_back(visible(samples));
+        fixedTracks.push_back(visible(fixed));
+    }
+    std::erase_if(matchStates, [&](const auto& entry) {
+        return std::ranges::find(laneOrder, entry.first) == laneOrder.end();
+    });
+
+    header.laneCount = static_cast<std::uint8_t>(laneOrder.size() + 1);
+    header.flags = static_cast<std::uint8_t>(header.flags | flag(FrameFlag::kCompared));
+    header.sumGain = static_cast<float>(overlapGain(rawTracks, block));
+    header.fixedGain = static_cast<float>(overlapGain(fixedTracks, block));
     frameData.clear();
     std::size_t pointCount = 0;
-    for (const std::vector<float>* lane : {&pairA, &pairB, &pairSum}) {
-        const std::span<const float> visible = std::span(*lane).subspan(first, end - first);
-        header.mode = reduceToColumns(visible, columns, reduced);
-        pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
+    const auto addLane = [&](std::span<const float> values) {
+        header.mode = reduceToColumns(visible(values), columns, reduced);
+        pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : end - first;
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
+    };
+    for (const std::vector<float>& samples : laneSamples) {
+        addLane(samples);
     }
+    addLane(previewFix ? fixedSum : rawSum);
+    frameData.insert(frameData.end(), matches.begin(), matches.end());
     header.pointCount = static_cast<std::uint32_t>(pointCount);
     header.samplesPerPoint = header.mode == protocol::FrameMode::kMinMax
                                  ? static_cast<float>(static_cast<double>(header.visibleSamples) /
@@ -821,7 +883,7 @@ void Analyzer::renderPair(FrameHeaderValues header, std::size_t first, std::size
                                  : 1.0f;
 
     // Readouts measure this track over the whole window.
-    const Readouts readouts = computeReadouts(pairA, sampleRate);
+    const Readouts readouts = computeReadouts(own, sampleRate);
     header.peak = readouts.peak;
     header.rms = readouts.rms;
     header.frequency = static_cast<float>(readouts.frequencyHz.value_or(0.0));

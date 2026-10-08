@@ -34,15 +34,14 @@ struct FrameHeaderValues
     float visibleSamples = 0.0f;
     // The lanes message that describes this frame's lanes.
     std::uint32_t laneSet = 0;
-    // Compare frames (flags kCompared, kInverted): the pair's analysis.
+    // Compare frames (flag kCompared): the summing gain of the compared tracks, and with the fix.
     float sumGain = 0.0f;
-    float correlation = 0.0f;
-    float offset = 0.0f;
     float fixedGain = 0.0f;
 };
 
-// Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's)
-// little-endian into `output`, which keeps its capacity across calls.
+// Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,
+// then a Compare frame's matches) little-endian into `output`, which keeps its capacity across
+// calls.
 void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewData,
                  std::vector<std::byte>& output);
 

@@ -42,8 +42,6 @@ void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewDat
     put(output, Layout::kVisibleSamplesOffset, header.visibleSamples);
     put(output, Layout::kLaneSetOffset, header.laneSet);
     put(output, Layout::kSumGainOffset, header.sumGain);
-    put(output, Layout::kCorrelationOffset, header.correlation);
-    put(output, Layout::kOffsetOffset, header.offset);
     put(output, Layout::kFixedGainOffset, header.fixedGain);
     if (!viewData.empty()) {
         std::memcpy(output.data() + Layout::kSize, viewData.data(), viewData.size_bytes());

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace orizon::editor {
 
@@ -96,9 +97,15 @@ void Session::receive(const nlohmann::json& message)
             }
         }
         break;
-    case MessageType::kPartner:
-        if (const auto id = number(message, "id"); id && *id >= 0.0) {
-            analyzer.setPartner(static_cast<std::uint64_t>(*id));
+    case MessageType::kCompare:
+        if (message.contains("ids") && message["ids"].is_array()) {
+            std::vector<std::uint64_t> ids;
+            for (const nlohmann::json& id : message["ids"]) {
+                if (id.is_number_unsigned()) {
+                    ids.push_back(id.get<std::uint64_t>());
+                }
+            }
+            analyzer.setCompared(std::move(ids));
         }
         break;
     case MessageType::kPreviewFix:
@@ -199,22 +206,16 @@ void Session::syncLanes()
     if (lanes.id == 0 || lanes.id == lastLaneSet) {
         return;
     }
-    const auto labels = [](const std::vector<engine::LaneLabel>& entries) {
-        nlohmann::json list = nlohmann::json::array();
-        for (const engine::LaneLabel& lane : entries) {
-            list.push_back(
-                {{"id", lane.id},
-                 {"name", lane.name},
-                 {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
-                 {"own", lane.own}});
-        }
-        return list;
-    };
-    transport.sendMessage({{"type", "lanes"},
-                           {"laneSet", lanes.id},
-                           {"lanes", labels(lanes.lanes)},
-                           {"hidden", lanes.hidden},
-                           {"candidates", labels(lanes.candidates)}});
+    nlohmann::json labels = nlohmann::json::array();
+    for (const engine::LaneLabel& lane : lanes.lanes) {
+        labels.push_back({{"id", lane.id},
+                          {"name", lane.name},
+                          {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
+                          {"own", lane.own},
+                          {"compared", lane.compared}});
+    }
+    transport.sendMessage(
+        {{"type", "lanes"}, {"laneSet", lanes.id}, {"lanes", labels}, {"hidden", lanes.hidden}});
     lastLaneSet = lanes.id;
 }
 

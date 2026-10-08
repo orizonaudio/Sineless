@@ -1,6 +1,7 @@
 #include "engine/PairAnalysis.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -8,18 +9,13 @@ namespace orizon::engine {
 
 namespace {
 
-constexpr std::size_t kMaxAnalysed = 32768;
 constexpr std::size_t kDecimation = 8;
 constexpr double kPreferSmallerShift = 0.98;
-
-double energy(std::span<const float> values)
-{
-    double total = 0.0;
-    for (const float value : values) {
-        total += static_cast<double>(value) * value;
-    }
-    return total;
-}
+// The weakest best match that still counts as the same sound arriving twice.
+constexpr double kRelatedMatch = 0.3;
+// Overlap: tracks sound together within 20 dB of each other, and above 60 dB below the loudest.
+constexpr double kTogether = 0.01;
+constexpr double kAudible = 1e-6;
 
 // Normalised cross-correlation of a[i] with b[i + offset], over the samples both have.
 double correlationAt(std::span<const float> a, std::span<const float> b, std::ptrdiff_t offset,
@@ -74,26 +70,84 @@ void decimate(std::span<const float> values, std::span<float> out)
     }
 }
 
-double gainDb(double sumEnergy, double unrelatedEnergy)
+// Which blocks of `block` samples hold at least two of `tracks` (equal length) sounding together:
+// the second-loudest within 20 dB of the loudest, and not more than 60 dB below the loudest block.
+// Empty when there are fewer than two tracks.
+std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, std::size_t block)
 {
-    if (unrelatedEnergy <= 0.0) {
-        return 0.0;
+    if (tracks.size() < 2 || block == 0) {
+        return {};
     }
-    return 10.0 * std::log10(std::max(sumEnergy, 1e-30) / unrelatedEnergy);
+    const std::size_t length = tracks.front().size();
+    const std::size_t blocks = (length + block - 1) / block;
+    std::vector<double> loudest(blocks, 0.0);
+    std::vector<double> second(blocks, 0.0);
+    double loudestBlock = 0.0;
+    for (std::size_t index = 0; index < blocks; ++index) {
+        const std::size_t first = index * block;
+        const std::size_t count = std::min(block, length - first);
+        for (const std::span<const float> track : tracks) {
+            double level = 0.0;
+            for (const float value : track.subspan(first, count)) {
+                level += static_cast<double>(value) * value;
+            }
+            if (level > loudest[index]) {
+                second[index] = loudest[index];
+                loudest[index] = level;
+            } else if (level > second[index]) {
+                second[index] = level;
+            }
+        }
+        loudestBlock = std::max(loudestBlock, loudest[index]);
+    }
+    std::vector<bool> together(blocks);
+    for (std::size_t index = 0; index < blocks; ++index) {
+        together[index] =
+            loudest[index] > kAudible * loudestBlock && second[index] >= kTogether * loudest[index];
+    }
+    return together;
 }
 
 } // namespace
 
-PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
-                         std::vector<float>& scratch)
+double energyOf(std::span<const float> values)
 {
-    const std::size_t size = std::min(a.size(), b.size());
-    const std::size_t length = std::min(size, kMaxAnalysed);
-    const std::size_t start = (size - length) / 2;
-    a = a.subspan(start, length);
-    b = b.subspan(start, length);
-    const double energyA = energy(a);
-    const double energyB = energy(b);
+    double total = 0.0;
+    for (const float value : values) {
+        total += static_cast<double>(value) * value;
+    }
+    return total;
+}
+
+double summingGain(double sumEnergy, double partsEnergy)
+{
+    if (partsEnergy <= 0.0) {
+        return 0.0;
+    }
+    return 10.0 * std::log10(std::max(sumEnergy, 1e-30) / partsEnergy);
+}
+
+PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
+                         std::size_t block, std::vector<float>& scratch)
+{
+    // Only where both sound: elsewhere a sample of one meets silence in the other, which would
+    // water the correlation down.
+    const std::size_t length = std::min(a.size(), b.size());
+    const std::size_t coarseLength = length / kDecimation;
+    scratch.resize(2 * length + 2 * coarseLength);
+    const std::span<float> maskedA(scratch.data(), length);
+    const std::span<float> maskedB(scratch.data() + length, length);
+    const std::array<std::span<const float>, 2> pair{a.first(length), b.first(length)};
+    const std::vector<bool> together = overlapBlocks(pair, block == 0 ? length : block);
+    for (std::size_t i = 0; i < length; ++i) {
+        const bool keep = !together.empty() && together[i / (block == 0 ? length : block)];
+        maskedA[i] = keep ? a[i] : 0.0f;
+        maskedB[i] = keep ? b[i] : 0.0f;
+    }
+    a = maskedA;
+    b = maskedB;
+    const double energyA = energyOf(a);
+    const double energyB = energyOf(b);
     const double norm = std::sqrt(energyA * energyB);
     PairAnalysis result;
     if (norm <= 0.0) {
@@ -104,19 +158,17 @@ PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std
         const double sum = static_cast<double>(a[i]) + b[i];
         sumEnergy += sum * sum;
     }
-    result.sumGain = gainDb(sumEnergy, energyA + energyB);
+    result.sumGain = summingGain(sumEnergy, energyA + energyB);
     result.correlation = correlationAt(a, b, 0, norm);
 
     // Coarse search on decimated copies, then a fine one around the coarse match.
     const auto reach = static_cast<std::ptrdiff_t>(std::min(maxOffset, length / 2));
-    const std::size_t coarseLength = length / kDecimation;
-    scratch.resize(coarseLength * 2);
-    const std::span<float> coarseA(scratch.data(), coarseLength);
-    const std::span<float> coarseB(scratch.data() + coarseLength, coarseLength);
+    const std::span<float> coarseA(scratch.data() + 2 * length, coarseLength);
+    const std::span<float> coarseB(scratch.data() + 2 * length + coarseLength, coarseLength);
     decimate(a, coarseA);
     decimate(b, coarseB);
     const auto coarseReach = reach / static_cast<std::ptrdiff_t>(kDecimation);
-    const double coarseNorm = std::sqrt(energy(coarseA) * energy(coarseB));
+    const double coarseNorm = std::sqrt(energyOf(coarseA) * energyOf(coarseB));
     const Match coarse = bestMatch(coarseA, coarseB, -coarseReach, coarseReach, coarseNorm);
     const auto centre = coarse.offset * static_cast<std::ptrdiff_t>(kDecimation);
     const auto span = static_cast<std::ptrdiff_t>(kDecimation);
@@ -125,6 +177,11 @@ PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std
     // A shift that is not clearly better than none is not worth suggesting.
     if (std::abs(fine.value) * kPreferSmallerShift <= std::abs(result.correlation)) {
         fine = {.offset = 0, .value = result.correlation};
+    }
+    result.related = std::abs(fine.value) >= kRelatedMatch;
+    if (!result.related) {
+        result.fixedGain = result.sumGain;
+        return result;
     }
     result.offset = fine.offset;
     result.inverted = fine.value < 0.0;
@@ -142,8 +199,35 @@ PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std
         fixedA += valueA * valueA;
         fixedB += valueB * valueB;
     }
-    result.fixedGain = gainDb(fixedEnergy, fixedA + fixedB);
+    result.fixedGain = summingGain(fixedEnergy, fixedA + fixedB);
     return result;
+}
+
+double overlapGain(std::span<const std::span<const float>> tracks, std::size_t block)
+{
+    const std::vector<bool> together = overlapBlocks(tracks, block);
+    if (together.empty()) {
+        return 0.0;
+    }
+    double sum = 0.0;
+    double parts = 0.0;
+    const std::size_t length = tracks.front().size();
+    for (std::size_t index = 0; index < together.size(); ++index) {
+        if (!together[index]) {
+            continue;
+        }
+        const std::size_t first = index * block;
+        const std::size_t last = std::min(first + block, length);
+        for (std::size_t i = first; i < last; ++i) {
+            double total = 0.0;
+            for (const std::span<const float> track : tracks) {
+                total += track[i];
+                parts += static_cast<double>(track[i]) * track[i];
+            }
+            sum += total * total;
+        }
+    }
+    return summingGain(sum, parts);
 }
 
 void applyFix(std::span<const float> b, std::ptrdiff_t offset, bool inverted,

@@ -907,8 +907,9 @@ TEST_F(SecondsLanesTest, HoldsEveryLaneAtTheFreeze)
     EXPECT_EQ(held.back(), frozenAt - 1.0f) << "the newest sample before the freeze";
 }
 
-// The Compare view: this track, a partner and their sum. Tracks carry deterministic noise of the
-// host time, so a partner can be the same signal inverted, delayed, or unrelated.
+// The Compare view: the group's tracks, with the sum of the compared ones. Tracks carry
+// deterministic noise of the host time, so a track can be this one's signal inverted, delayed, or
+// unrelated.
 float noiseAt(std::uint64_t sample, std::uint64_t seed)
 {
     std::uint64_t x = sample * 0x9E3779B97F4A7C15ULL + seed * 0xBF58476D1CE4E5B9ULL;
@@ -938,56 +939,119 @@ protected:
         }
         return 0;
     }
+
+    struct Match
+    {
+        float correlation = 0.0f;
+        float offset = 0.0f;
+        float polarity = 0.0f;
+        [[nodiscard]] bool inverted() const { return polarity < 0.0f; }
+    };
+
+    // A track's match against this track, after the lanes (the tracks and their sum).
+    static Match match(const DecodedFrame& frame, std::size_t track)
+    {
+        const std::size_t at =
+            std::size_t{frame.laneCount} * frame.pointCount + track * protocol::kMatchValues;
+        return {.correlation = frame.data.at(at),
+                .offset = frame.data.at(at + 1),
+                .polarity = frame.data.at(at + 2)};
+    }
+
+    float sumGain() const { return get<float>(analyzerBytes, FrameHeader::kSumGainOffset); }
+
+    static float loudest(const std::vector<float>& values)
+    {
+        float result = 0.0f;
+        for (const float value : values) {
+            result = std::max(result, std::abs(value));
+        }
+        return result;
+    }
 };
 
-TEST_F(CompareTest, ComparesThisTrackWithTheFirstOtherTrack)
+TEST_F(CompareTest, ComparesThisTrackWithTheFirstOtherTrackUntilAsked)
 {
     const auto inverted = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     const auto other = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
     play(9600);
     const auto frame = produce();
     ASSERT_TRUE(frame);
-    ASSERT_EQ(frame->laneCount, 3) << "this track, the partner and their sum";
+    ASSERT_EQ(frame->laneCount, 4) << "the three tracks and the sum";
+    ASSERT_EQ(frame->data.size(), std::size_t{4} * frame->pointCount + 3 * protocol::kMatchValues);
     EXPECT_TRUE(frame->has(FrameFlag::kCompared));
-    EXPECT_TRUE(frame->has(FrameFlag::kInverted));
-    const auto sumGain = get<float>(analyzerBytes, FrameHeader::kSumGainOffset);
-    EXPECT_LT(sumGain, -60.0f) << "an inverted copy cancels";
-    const std::vector<float> sum = lane(*frame, 2);
-    EXPECT_LT(*std::ranges::max_element(sum, {}, [](float v) { return std::abs(v); }), 1e-6f);
+    EXPECT_LT(sumGain(), -60.0f) << "an inverted copy cancels";
+    EXPECT_LT(loudest(lane(*frame, 3)), 1e-6f);
+    EXPECT_TRUE(match(*frame, 1).inverted());
+    EXPECT_NEAR(match(*frame, 1).correlation, -1.0f, 1e-4f);
+    EXPECT_EQ(match(*frame, 2).correlation, 0.0f) << "not compared";
 
     const LaneSet lanes = analyzer->laneSet();
-    ASSERT_EQ(lanes.lanes.size(), 2u);
+    ASSERT_EQ(lanes.lanes.size(), 3u);
     EXPECT_TRUE(lanes.lanes[0].own);
+    EXPECT_TRUE(lanes.lanes[0].compared);
     EXPECT_EQ(lanes.lanes[1].id, idOf(inverted));
-    ASSERT_EQ(lanes.candidates.size(), 2u);
-    EXPECT_EQ(lanes.candidates[1].id, idOf(other));
+    EXPECT_TRUE(lanes.lanes[1].compared);
+    EXPECT_EQ(lanes.lanes[2].id, idOf(other));
+    EXPECT_FALSE(lanes.lanes[2].compared);
 }
 
-TEST_F(CompareTest, SwitchesToTheRequestedPartner)
+TEST_F(CompareTest, SumsEveryComparedTrack)
+{
+    const auto copy = joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
+    const auto unrelated = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    play(9600);
+    analyzer->setCompared({idOf(copy), idOf(unrelated)});
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 5);
+    const std::vector<float> own = lane(*frame, 0);
+    const std::vector<float> other = lane(*frame, 2);
+    const std::vector<float> sum = lane(*frame, 4);
+    for (std::size_t i = 0; i < sum.size(); ++i) {
+        ASSERT_NEAR(sum[i], 2.0f * own[i] + other[i], 1e-5f) << "the inverted track is left out";
+    }
+    // Three equal levels, two of them alike: 10 log10(5 / 3).
+    EXPECT_NEAR(sumGain(), 2.2f, 0.2f);
+    EXPECT_NEAR(match(*frame, 1).correlation, 1.0f, 1e-4f);
+    EXPECT_EQ(match(*frame, 1).polarity, 1.0f);
+    EXPECT_NEAR(match(*frame, 2).correlation, 0.0f, 0.05f);
+    EXPECT_EQ(match(*frame, 2).polarity, 0.0f) << "unrelated: no clear match";
+    EXPECT_EQ(match(*frame, 3).correlation, 0.0f) << "not compared";
+}
+
+TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)
 {
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
-    const auto unrelated = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
     play(9600);
-    analyzer->setPartner(idOf(unrelated));
-    ASSERT_TRUE(produce());
-    EXPECT_EQ(analyzer->laneSet().lanes[1].id, idOf(unrelated));
-    EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kSumGainOffset), 0.0f, 0.5f)
-        << "unrelated tracks sum harmlessly";
+    analyzer->setCompared({});
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 3) << "the sum lane stays";
+    EXPECT_TRUE(frame->has(FrameFlag::kCompared));
+    EXPECT_EQ(lane(*frame, 2), lane(*frame, 0)) << "the sum is this track";
+    EXPECT_NEAR(sumGain(), 0.0f, 1e-3f);
+    EXPECT_EQ(match(*frame, 1).correlation, 0.0f) << "not compared";
+    const LaneSet lanes = analyzer->laneSet();
+    EXPECT_TRUE(lanes.lanes[0].compared);
+    EXPECT_FALSE(lanes.lanes[1].compared);
 
-    analyzer->setPartner(12345); // No such track: the last partner stays.
+    analyzer->setCompared({12345}); // No such track.
     play(480);
-    ASSERT_TRUE(produce());
-    EXPECT_EQ(analyzer->laneSet().lanes[1].id, idOf(unrelated));
+    frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->laneCount, 3);
 }
 
-TEST_F(CompareTest, PreviewsTheFixForALatePartner)
+TEST_F(CompareTest, PreviewsTheFixForALateTrack)
 {
     joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
     play(9600);
     auto frame = produce();
     ASSERT_TRUE(frame);
-    EXPECT_FLOAT_EQ(get<float>(analyzerBytes, FrameHeader::kOffsetOffset), 37.0f) << "37 late";
-    EXPECT_FALSE(frame->has(FrameFlag::kInverted));
+    EXPECT_FLOAT_EQ(match(*frame, 1).offset, 37.0f) << "37 late";
+    EXPECT_FALSE(match(*frame, 1).inverted());
     EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kFixedGainOffset), 3.0f, 0.1f);
 
     analyzer->setPreviewFix(true);
@@ -995,24 +1059,53 @@ TEST_F(CompareTest, PreviewsTheFixForALatePartner)
     ASSERT_TRUE(frame);
     const std::vector<float> a = lane(*frame, 0);
     const std::vector<float> sum = lane(*frame, 2);
-    // The sweep's seam at the playhead joins two cycles; a shifted partner crosses it there.
+    // The sweep's seam at the playhead joins two cycles; a shifted track crosses it there.
     const auto seam = static_cast<std::ptrdiff_t>(frame->cursor * static_cast<float>(a.size()));
     for (std::size_t i = 0; i + 37 < a.size(); ++i) {
         if (std::abs(static_cast<std::ptrdiff_t>(i) - seam) <= 37) {
             continue;
         }
-        ASSERT_NEAR(sum[i], 2.0f * a[i], 1e-5f) << "lined up, the partner doubles this track";
+        ASSERT_NEAR(sum[i], 2.0f * a[i], 1e-5f) << "lined up, the track doubles this one";
     }
 }
 
-TEST_F(CompareTest, ShowsThisTrackAloneWithoutAPartner)
+TEST_F(CompareTest, RefreshesAMatchWhilePlaying)
+{
+    // In step until host sample 12000, inverted after.
+    joinWith([](std::uint64_t sample) {
+        return sample < 12000 ? noiseAt(sample, 1) : -noiseAt(sample, 1);
+    });
+    play(9600);
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(match(*frame, 1).polarity, 1.0f);
+    play(12000); // The whole quarter-beat sweep is now past the change.
+    frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(match(*frame, 1).polarity, -1.0f) << "searched again after 100 ms of audio";
+}
+
+TEST_F(CompareTest, ShowsThisTrackAloneWithoutOtherTracks)
 {
     play(9600);
     const auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->laneCount, 1);
     EXPECT_FALSE(frame->has(FrameFlag::kCompared));
-    EXPECT_TRUE(analyzer->laneSet().candidates.empty());
+}
+
+TEST_F(CompareTest, LeavesALaneForTheSum)
+{
+    for (int i = 0; i < 8; ++i) {
+        join(static_cast<float>(i));
+    }
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->laneCount, kMaxLanes);
+    const LaneSet lanes = analyzer->laneSet();
+    EXPECT_EQ(lanes.lanes.size(), kMaxLanes - 1);
+    EXPECT_EQ(lanes.hidden, 2u);
 }
 
 TEST_F(CompareTest, ComparesInSecondsModeToo)
@@ -1027,8 +1120,28 @@ TEST_F(CompareTest, ComparesInSecondsModeToo)
     ASSERT_TRUE(frame);
     ASSERT_EQ(frame->laneCount, 3);
     EXPECT_FALSE(frame->has(FrameFlag::kSynced));
-    EXPECT_TRUE(frame->has(FrameFlag::kInverted));
-    EXPECT_LT(get<float>(analyzerBytes, FrameHeader::kSumGainOffset), -60.0f);
+    EXPECT_TRUE(match(*frame, 1).inverted());
+    EXPECT_LT(sumGain(), -60.0f);
+}
+
+TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
+{
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    own->settings().set(SettingId::kTimeSpan, 0.1);
+    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    play(9600);
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    ASSERT_FALSE(produce()) << "nothing new while frozen";
+
+    analyzer->setPreviewFix(true);
+    ASSERT_TRUE(produce());
+    analyzer->setCompared({});
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_NEAR(sumGain(), 0.0f, 1e-3f) << "this track alone";
 }
 
 } // namespace

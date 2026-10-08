@@ -16,34 +16,35 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace orizon::engine {
 
-// At most this many tracks are drawn in the multi-track view.
+// At most this many lanes are drawn in the multi-track view: tracks, and in the Compare view
+// their sum.
 inline constexpr std::size_t kMaxLanes = 8;
 
 // One track of the multi-track view, as the UI labels it.
 struct LaneLabel
 {
-    std::uint64_t id = 0; // Stable while the track exists; the UI names a partner by it.
+    std::uint64_t id = 0; // Stable while the track exists; the UI names tracks by it.
     std::string name;
     std::optional<std::uint32_t> colour;
-    bool own = false; // The instance whose editor shows the lanes.
+    bool own = false;      // The instance whose editor shows the lanes.
+    bool compared = false; // Compare view: summed and measured against this track.
 
     bool operator==(const LaneLabel&) const = default;
 };
 
 // The tracks behind the lanes of frames whose laneSet is `id`, in lane order, and how many more
-// tracks of the group are not drawn. In the Compare view, `candidates` lists the group's other
-// tracks, from which the partner is chosen.
+// tracks of the group are not drawn.
 struct LaneSet
 {
     std::uint32_t id = 0;
     std::vector<LaneLabel> lanes;
     std::size_t hidden = 0;
-    std::vector<LaneLabel> candidates;
 };
 
 // Per-editor-session analysis: turns the capture into display frames. It is
@@ -68,8 +69,9 @@ public:
     // View zoom: the part of the span on screen, as fractions. Out-of-range or reversed
     // values are ignored. Only that part is reduced to screen columns.
     void setView(double start, double end);
-    // Compare view: the partner track, by lane id, and whether the sum previews the fix.
-    void setPartner(std::uint64_t id);
+    // Compare view: the other tracks compared with this one, by lane id, and whether the sum
+    // previews the fix. Until set, the group's first other track is compared.
+    void setCompared(std::vector<std::uint64_t> ids);
     void setPreviewFix(bool on);
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
@@ -87,7 +89,7 @@ private:
         bool armRequested = false;
         double viewStart = 0.0;
         double viewEnd = 1.0;
-        std::optional<std::uint64_t> partner;
+        std::optional<std::vector<std::uint64_t>> compared;
         bool previewFix = false;
     };
 
@@ -124,6 +126,7 @@ private:
         std::optional<SweepWindow> window;
         std::uint64_t end = 0; // Capture end of the last update.
         LaneHold hold;
+        bool compared = false;
     };
 
     Commands takeCommands();
@@ -132,10 +135,9 @@ private:
                       std::vector<std::byte>& frame);
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,
                      const Commands& command, std::vector<std::byte>& frame);
-    void renderPair(FrameHeaderValues header, std::size_t first, std::size_t end,
-                    std::size_t columns, bool previewFix, std::vector<std::byte>& frame);
-    void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden,
-                      std::vector<LaneLabel> candidates);
+    void renderCompare(FrameHeaderValues header, std::size_t first, std::size_t end,
+                       std::size_t columns, bool previewFix, std::vector<std::byte>& frame);
+    void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
     // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
     void followTransport(const Settings& settings, Commands& command);
     bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
@@ -175,13 +177,29 @@ private:
     std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;
     std::vector<std::uint64_t> laneOrder;
     std::uint64_t ownLane = 0; // Serial of this instance's lane.
-    // Compare view: the partner shown last, and whether this frame compares a pair.
-    std::optional<std::uint64_t> lastPartner;
+    // Compare view: whether this frame compares tracks, and each lane's raw Mid samples of the
+    // window, in lane order, with the sums of the compared ones as they are and as fixed.
     bool comparing = false;
     bool lastPreviewFix = false;
-    std::vector<float> pairA;
-    std::vector<float> pairB;
-    std::vector<float> pairSum;
+    std::vector<std::vector<float>> laneSamples;
+    std::vector<std::vector<float>> fixedLanes;
+    std::vector<std::span<const float>> rawTracks;
+    std::vector<std::span<const float>> fixedTracks;
+    std::vector<float> rawSum;
+    std::vector<float> fixedSum;
+    std::vector<float> matches;
+    // Each compared track's last match by serial, with the capture end when it was searched, and
+    // the lanes and visible part it was searched over.
+    struct MatchState
+    {
+        PairAnalysis analysis;
+        std::uint64_t analysedAt = 0;
+    };
+    std::map<std::uint64_t, MatchState> matchStates;
+    std::uint32_t matchLaneSet = 0;
+    std::size_t matchFirst = 0;
+    std::size_t matchEnd = 0;
+    std::size_t matchCount = 0;
     std::uint32_t lastLaneSet = 0;
     mutable std::mutex laneMutex;
     LaneSet published;

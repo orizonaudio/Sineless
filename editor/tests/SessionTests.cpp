@@ -181,12 +181,12 @@ TEST_F(SessionTest, ReportsTheMultiTrackLanes)
     ASSERT_EQ(lanes.size(), 1u);
     EXPECT_EQ(lanes[0]["laneSet"], analyzer.laneSet().id);
     EXPECT_EQ(lanes[0]["hidden"], 0);
-    EXPECT_TRUE(lanes[0]["candidates"].empty()) << "only the Compare view lists candidates";
     ASSERT_EQ(lanes[0]["lanes"].size(), 1u);
     EXPECT_EQ(lanes[0]["lanes"][0]["name"], "Kick");
     EXPECT_EQ(lanes[0]["lanes"][0]["colour"], 0xe03030);
     EXPECT_EQ(lanes[0]["lanes"][0]["own"], true);
     EXPECT_EQ(lanes[0]["lanes"][0]["id"], 0) << "an unregistered engine's own lane";
+    EXPECT_EQ(lanes[0]["lanes"][0]["compared"], false) << "only the Compare view compares";
 
     session.sync();
     EXPECT_EQ(transport.ofType("lanes").size(), 1u) << "nothing new";
