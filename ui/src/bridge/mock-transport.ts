@@ -7,6 +7,7 @@ import {
   ChannelView,
   FrameMode,
 } from "../../../protocol/src/enums.ts";
+import type { Comparison } from "../../../protocol/src/frame-decoder.ts";
 import { encodeFrame } from "../../../protocol/src/frame-encoder.ts";
 import type {
   LaneLabel,
@@ -54,24 +55,42 @@ function viewSample(view: ChannelView, time: number): number {
 }
 
 // Tracks of the simulated multi-track view, all in group A: this instance's kick on every beat,
-// a bass line, and unnamed hi-hats on the eighths without a host colour.
+// a bass line, unnamed hi-hats on the eighths without a host colour, and a second kick mic that
+// is inverted and 1.3 ms late. Each carries what the Compare view would find against the kick,
+// and the signal as the fix would correct it.
 const beatSeconds = 60 / 120;
 function decaying(time: number, every: number, rate: number): number {
   const since = ((time % every) + every) % every;
   return Math.exp(-since * rate);
 }
+function kick(time: number): number {
+  return (
+    0.9 *
+    decaying(time, beatSeconds, 9) *
+    Math.sin(
+      2 * Math.PI * 52 * (((time % beatSeconds) + beatSeconds) % beatSeconds),
+    )
+  );
+}
+const kickMicDelay = 0.0013;
+const harmless = {
+  sumGain: 0.1,
+  correlation: 0.01,
+  offset: 0,
+  inverted: false,
+  fixedGain: 0.1,
+};
 export const mockTracks: readonly (LaneLabel & {
   readonly sample: (time: number) => number;
+  readonly fixed?: (time: number) => number;
+  readonly comparison?: Comparison;
 })[] = [
   {
     id: 1,
     name: "Kick",
     colour: 0xe0533d,
     own: true,
-    sample: (time) =>
-      0.9 *
-      decaying(time, beatSeconds, 9) *
-      Math.sin(2 * Math.PI * 52 * (time % beatSeconds)),
+    sample: kick,
   },
   {
     id: 2,
@@ -93,6 +112,21 @@ export const mockTracks: readonly (LaneLabel & {
       decaying(time, beatSeconds / 2, 40) *
       Math.sin(2 * Math.PI * 6100 * time) *
       Math.sin(2 * Math.PI * 9300 * time),
+  },
+  {
+    id: 4,
+    name: "Kick 2",
+    colour: 0xe8a35a,
+    own: false,
+    sample: (time) => -0.8 * kick(time - kickMicDelay),
+    fixed: (time) => 0.8 * kick(time),
+    comparison: {
+      sumGain: -9.4,
+      correlation: -0.93,
+      offset: Math.round(kickMicDelay * mockSampleRate),
+      inverted: true,
+      fixedGain: 2.8,
+    },
   },
 ];
 
@@ -116,6 +150,9 @@ export class MockTransport implements Transport {
   private sequence = 0;
   private laneSet = 0;
   private lanesKey = "";
+  // The Compare view's partner, by track id, and whether the sum previews the fix.
+  private partner: number | undefined;
+  private previewFix = false;
 
   constructor(options: MockOptions = {}) {
     const start = performance.now();
@@ -182,6 +219,15 @@ export class MockTransport implements Transport {
         }
         break;
       }
+      case "partner":
+        if (typeof message["id"] === "number") {
+          this.partner = message["id"];
+          this.sendLanes();
+        }
+        break;
+      case "previewFix":
+        this.previewFix = message["on"] === true;
+        break;
       case "credit":
         this.sendFrame();
         break;
@@ -208,23 +254,44 @@ export class MockTransport implements Transport {
       : mockTracks.filter((track) => track.own);
   }
 
+  // The Compare partner: the one asked for, else the group's first other track.
+  private partnerTrack(): (typeof mockTracks)[number] | undefined {
+    const others = this.groupTracks().filter((track) => !track.own);
+    return others.find((track) => track.id === this.partner) ?? others[0];
+  }
+
+  // The tracks drawn: the group, or in the Compare view this track and its partner.
+  private shownTracks(): typeof mockTracks {
+    if (this.setting("displayMode") !== "compare") {
+      return this.groupTracks();
+    }
+    const partner = this.partnerTrack();
+    return mockTracks.filter((track) => track.own || track === partner);
+  }
+
   private sendLanes(): void {
-    const key = String(this.setting("group"));
+    const compare = this.setting("displayMode") === "compare";
+    const key = `${String(this.setting("group"))}/${String(compare)}/${String(this.partnerTrack()?.id)}`;
     if (key === this.lanesKey) {
       return;
     }
     this.lanesKey = key;
+    const label = ({ id, name, colour, own }: LaneLabel) => ({
+      id,
+      name,
+      colour,
+      own,
+    });
     this.reply({
       type: "lanes",
       laneSet: ++this.laneSet,
-      lanes: this.groupTracks().map(({ id, name, colour, own }) => ({
-        id,
-        name,
-        colour,
-        own,
-      })),
+      lanes: this.shownTracks().map(label),
       hidden: 0,
-      candidates: [],
+      candidates: compare
+        ? this.groupTracks()
+            .filter((track) => !track.own)
+            .map(label)
+        : [],
     });
   }
 
@@ -316,18 +383,33 @@ export class MockTransport implements Transport {
       return values;
     };
 
-    // The multi-track view draws the group's tracks; readouts measure this one.
-    const multi = this.setting("displayMode") === "multi";
+    // The multi-track view draws the group's tracks; readouts measure this one. The Compare view
+    // draws this track, its partner and their sum.
+    const multi = this.setting("displayMode") !== "single";
+    const partner =
+      this.setting("displayMode") === "compare"
+        ? this.partnerTrack()
+        : undefined;
     const views = new Map<ChannelView, Float32Array>();
     const lanes: Float32Array[] = [];
     const source =
       ChannelView[this.setting("triggerSource") as keyof typeof ChannelView];
     let readoutSignal = (time: number) => viewSample(source, time);
-    if (multi) {
-      for (const track of this.groupTracks()) {
+    if (partner !== undefined) {
+      const corrected = this.previewFix
+        ? (partner.fixed ?? partner.sample)
+        : partner.sample;
+      lanes.push(
+        points(kick),
+        points(partner.sample),
+        points((time) => kick(time) + corrected(time)),
+      );
+      readoutSignal = kick;
+    } else if (multi) {
+      for (const track of this.shownTracks()) {
         lanes.push(points(track.sample));
       }
-      readoutSignal = mockTracks[0]?.sample ?? readoutSignal;
+      readoutSignal = kick;
     } else {
       const names = this.setting("channelViews") as readonly string[];
       for (const [name, view] of Object.entries(ChannelView)) {
@@ -375,6 +457,9 @@ export class MockTransport implements Transport {
         views,
         lanes,
         laneSet: multi ? this.laneSet : 0,
+        ...(partner === undefined
+          ? {}
+          : { comparison: partner.comparison ?? harmless }),
       }),
     );
   }

@@ -8,6 +8,7 @@ import {
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   fullScale,
+  cancellationBands,
   laneGeometry,
   lanes,
   traceGeometry,
@@ -214,5 +215,72 @@ describe("lane geometry", () => {
     expect(Math.min(...ys(geometry[1] ?? new Float32Array()))).toBeLessThan(
       -0.95,
     );
+  });
+});
+
+describe("cancellation bands", () => {
+  const layout = {
+    widthPixels: 400,
+    heightPixels: 300,
+    verticalScaleDb: 0,
+    layout: ViewLayout.stacked,
+    lineWidthPixels: 1,
+  };
+  const compareFrame = (sum: number[]) => ({
+    ...frame(FrameMode.minMax, [[ChannelView.left, [0, 0, 0, 0, 0, 0, 0, 0]]]),
+    views: new Map(),
+    lanes: [
+      new Float32Array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5]),
+      new Float32Array([-0.4, 0.4, -0.4, 0.4, -0.4, 0.4, -0.4, 0.4]),
+      new Float32Array(sum),
+    ],
+    comparison: {
+      sumGain: -3,
+      correlation: -0.5,
+      offset: 0,
+      inverted: true,
+      fixedGain: 3,
+    },
+  });
+
+  test("shade where the sum falls 3 dB below the louder track", () => {
+    // Columns 1 and 2 cancel (0.1 against 0.5); 0 and 3 do not.
+    const bands = cancellationBands(
+      compareFrame([-0.9, 0.9, -0.1, 0.1, -0.1, 0.1, -0.9, 0.9]),
+      layout,
+    );
+    expect(bands).toHaveLength(12); // One quad: the two adjacent columns merge.
+    const x = xs(bands);
+    expect(Math.min(...x)).toBeCloseTo(-0.5); // Column 1 starts a quarter across.
+    expect(Math.max(...x)).toBeCloseTo(0.5);
+    const y = ys(bands);
+    expect(Math.max(...y)).toBeCloseTo(-1 / 3); // In the bottom of three lanes.
+    expect(Math.min(...y)).toBeCloseTo(-1);
+  });
+
+  test("ignore quiet stretches and bridge short gaps", () => {
+    const quietFrame = compareFrame([
+      -0.1, 0.1, -0.1, 0.1, -0.1, 0.1, -0.1, 0.1,
+    ]);
+    const quiet = {
+      ...quietFrame,
+      lanes: [
+        new Float32Array([-0.5, 0.5, -0.01, 0.01, -0.5, 0.5, -0.5, 0.5]),
+        new Float32Array([-0.4, 0.4, -0.01, 0.01, -0.4, 0.4, -0.4, 0.4]),
+        quietFrame.lanes[2] ?? new Float32Array(),
+      ],
+    };
+    // Column 1 is quiet, but bridges columns 0 and 2 into one stretch with column 3.
+    const bands = cancellationBands(quiet, layout);
+    expect(bands).toHaveLength(12);
+    expect(Math.min(...xs(bands))).toBeCloseTo(-1);
+    expect(Math.max(...xs(bands))).toBeCloseTo(1);
+  });
+
+  test("shade nothing outside the Compare view", () => {
+    const plain = compareFrame([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(
+      cancellationBands({ ...plain, comparison: undefined }, layout),
+    ).toHaveLength(0);
   });
 });

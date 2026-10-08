@@ -201,3 +201,94 @@ export function laneGeometry(
 ): Float32Array[] {
   return blockGeometry(frame.lanes, frame, layout);
 }
+
+// Compare frames hold this track, its partner and their sum. Where the sum's peak level falls more
+// than 3 dB below the louder of the two, they cancel: these spans of the sum's lane, as quads.
+const cancellationRatio = 0.708; // -3 dB.
+const quietRatio = 0.05; // About -26 dB.
+const bridgedGap = 3; // Points.
+
+function peaks(frame: Frame, values: Float32Array): Float32Array {
+  const out = new Float32Array(frame.pointCount);
+  for (let point = 0; point < frame.pointCount; point++) {
+    out[point] =
+      frame.mode === FrameMode.minMax
+        ? Math.max(
+            Math.abs(values[point * 2] ?? 0),
+            Math.abs(values[point * 2 + 1] ?? 0),
+          )
+        : Math.abs(values[point] ?? 0);
+  }
+  // Min/max columns already hold their peaks; raw points cross zero every cycle, so their levels
+  // are compared over a short window.
+  const reach =
+    frame.mode === FrameMode.minMax ? 0 : Math.max(1, frame.pointCount >> 7);
+  const smoothed = new Float32Array(out.length);
+  for (let point = 0; point < out.length; point++) {
+    let peak = 0;
+    for (
+      let near = Math.max(0, point - reach);
+      near <= Math.min(out.length - 1, point + reach);
+      near++
+    ) {
+      peak = Math.max(peak, out[near] ?? 0);
+    }
+    smoothed[point] = peak;
+  }
+  return smoothed;
+}
+
+export function cancellationBands(
+  frame: Frame,
+  layout: TraceLayout,
+): Float32Array {
+  const [a, b, sum] = frame.lanes;
+  if (frame.comparison === undefined || !a || !b || !sum) {
+    return new Float32Array();
+  }
+  const levelA = peaks(frame, a);
+  const levelB = peaks(frame, b);
+  const levelSum = peaks(frame, sum);
+  const louder = levelA.map((level, point) =>
+    Math.max(level, levelB[point] ?? 0),
+  );
+  // Quiet stretches (more than about 26 dB below the loudest moment) cancel nothing audible.
+  const audible = quietRatio * Math.max(0, ...louder);
+  const cancelling = Array.from(
+    louder,
+    (level, point) =>
+      level > audible && (levelSum[point] ?? 0) < cancellationRatio * level,
+  );
+  // Short gaps inside a cancelling stretch belong to it.
+  for (let point = 1; point < cancelling.length; point++) {
+    if (cancelling[point] === true || cancelling[point - 1] !== true) {
+      continue;
+    }
+    const resume = cancelling.indexOf(true, point);
+    if (resume > point && resume - point <= bridgedGap) {
+      cancelling.fill(true, point, resume);
+    }
+  }
+  const lane = lanes(3, layout.layout)[2] ?? { center: 0, halfHeight: 1 };
+  const view = layout.view ?? fullView;
+  const position = (point: number) =>
+    frame.mode === FrameMode.minMax
+      ? columnPosition(frame, point)
+      : pointPosition(frame, point);
+  const out: number[] = [];
+  const bottom = lane.center - lane.halfHeight;
+  const top = lane.center + lane.halfHeight;
+  let start = -1;
+  for (let point = 0; point <= cancelling.length; point++) {
+    const here = cancelling[point] === true;
+    if (here && start < 0) {
+      start = point;
+    } else if (!here && start >= 0) {
+      const x0 = screenX(position(start), view);
+      const x1 = screenX(position(point), view);
+      pushQuad(out, x0, bottom, x1, bottom, x0, top, x1, top);
+      start = -1;
+    }
+  }
+  return new Float32Array(out);
+}

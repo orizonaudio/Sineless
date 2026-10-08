@@ -12,8 +12,28 @@ export const helpTexts = {
     text: "Turns help on or off. While it is on, resting the pointer on any control explains what it is, what it does and how to use it.",
   },
   displayMode: {
-    title: "Single or Multi",
-    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 8. In Sec mode this track triggers and every lane shows the same moment. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
+    title: "Single, Multi or Compare",
+    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 8. Compare shows this track, one partner and their sum, to find where they cancel. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
+  },
+  comparePartner: {
+    title: "Partner",
+    text: "The track this one is compared with. Use the arrows to step through the group's other tracks, or click the name for a list.",
+  },
+  previewFix: {
+    title: "Preview fix",
+    text: "Redraws the sum as if the partner were moved by the offset found and, if needed, flipped in polarity. Apply it in your host, with track delay and a phase or polarity switch.",
+  },
+  sumGain: {
+    title: "Summing gain",
+    text: "How loud the two tracks are together, against two unrelated signals of the same levels. 0 dB is harmless, around +3 dB they reinforce, below 0 dB they cancel. Measured over the visible part, so zoom into a hit to measure that hit.",
+  },
+  correlation: {
+    title: "Correlation",
+    text: "How alike the two tracks move, from +1 (in step) through 0 (unrelated) to -1 (opposite).",
+  },
+  offset: {
+    title: "Offset",
+    text: "How late the partner is against this track, within 10 ms (negative: early). Ø means its polarity is opposite. Preview fix shows the sum with both corrected.",
   },
   group: {
     title: "Group",

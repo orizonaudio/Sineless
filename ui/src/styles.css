@@ -45,8 +45,8 @@ body {
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr) auto;
   height: 100%;
-  /* The editor's minimum width (Editor::kMinimumWidth): the whole control strip fits. */
-  min-width: 820px;
+  /* The editor's minimum width (Editor::kMinimumWidth): the strip and top bar fit. */
+  min-width: 890px;
 }
 
 .bar {
@@ -320,6 +320,106 @@ body {
 
 .lane-label .own {
   color: var(--ink);
+}
+
+/* The Compare view's labels: A and B badges, the partner picker and the fix preview. */
+.lane-label span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lane-label button {
+  pointer-events: auto;
+  padding: 0 4px;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.lane-label button:hover {
+  border-color: var(--line);
+}
+
+.lane-label .preview-fix {
+  margin-left: 8px;
+  border-color: var(--line);
+}
+
+.lane-label .preview-fix[aria-pressed="true"] {
+  color: var(--panel);
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.pair-badge {
+  padding: 0 4px;
+  font-size: 10px;
+  color: var(--panel);
+  background: var(--swatch);
+  border-radius: 3px;
+}
+
+.compare-note {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.partner-menu {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+}
+
+.partner-menu button {
+  padding: 4px 8px;
+  font-family: var(--font-label);
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.partner-menu button::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--swatch);
+}
+
+.partner-menu button:hover,
+.partner-menu button[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--line);
+}
+
+/* Compare readouts: the summing gain coloured by what the pair does. */
+.readout .cancels {
+  color: var(--warn);
+}
+
+.readout .reinforces {
+  color: var(--ok);
 }
 
 .lane-label .own::after {

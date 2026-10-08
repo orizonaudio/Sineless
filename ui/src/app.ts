@@ -96,6 +96,9 @@ const viewColorTokens: Record<ViewName, string> = {
 };
 // How fast ⌘ + scroll and pinch zoom, per wheel delta unit.
 const wheelZoomRate = 0.01;
+// The Compare view's sum lane: an id no track has, and a neutral colour.
+const sumLaneId = -100;
+const sumLaneColour = 0xe6e2d8;
 // Cursors snap to a target within this distance (CSS px) unless Option is held.
 const snapRadius = 10;
 // A drag shorter than this (CSS px) is a click, not a zoom selection.
@@ -171,12 +174,18 @@ export class OscilloscopeApp {
   private timeCursors: CursorPair | undefined;
   private levelCursors: LevelPair | undefined;
   private sampleRate = 48000;
+  // The Compare view: the group's other tracks, the partner shown, and the fix preview.
+  private candidates: LaneStyle[] = [];
+  private partnerId: number | undefined;
+  private previewFix = false;
+  private laneLabelsKey = "";
   // Multi-track lanes by lane set, as the lanes messages describe them; a few are kept, so a
   // frame drawn just before or after a change finds its own.
   private readonly laneSets = new Map<number, LaneStyle[]>();
   private latestLaneSet = 0;
   private hiddenTracks = 0;
   private drawnLaneCount = 0;
+  private drawnLaneSet = 0;
 
   constructor(backend: Backend, store: SettingsStore, debug: DebugState) {
     this.backend = backend;
@@ -402,6 +411,7 @@ export class OscilloscopeApp {
     segment("displayMode", "display-mode", [
       ["single", "Single"],
       ["multi", "Multi"],
+      ["compare", "Compare"],
     ]);
     segment("group", "group", [
       ["a", "A"],
@@ -439,6 +449,12 @@ export class OscilloscopeApp {
       popover.hidden = !popover.hidden;
       details.setAttribute("aria-expanded", String(!popover.hidden));
       this.placeTriggerPopover();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      const menu = element("partner-menu");
+      if (!menu.hidden && !menu.contains(event.target as Node)) {
+        menu.hidden = true;
+      }
     });
     document.addEventListener("pointerdown", (event) => {
       const target = event.target as Node;
@@ -560,6 +576,10 @@ export class OscilloscopeApp {
     }
     if (name === "displayMode") {
       this.updateMultiControls();
+      if (value !== "compare" && this.previewFix) {
+        this.previewFix = false;
+        this.backend.previewFix(false);
+      }
     }
     // Level cursors are drawn at their level in each lane.
     if (
@@ -637,8 +657,13 @@ export class OscilloscopeApp {
     return Math.max(1, lanes > 0 ? lanes : this.shownViews().length);
   }
 
+  // Multi and Compare both show lanes of the group's tracks.
   private multiMode(): boolean {
-    return this.store.get("displayMode") === "multi";
+    return this.store.get("displayMode") !== "single";
+  }
+
+  private compareMode(): boolean {
+    return this.store.get("displayMode") === "compare";
   }
 
   // The names and colours of a multi-track frame's lanes: its own lane set, or the latest.
@@ -647,10 +672,24 @@ export class OscilloscopeApp {
     if (count === 0) {
       return [];
     }
-    const styles =
+    let styles =
       this.laneSets.get(frame?.laneSet ?? 0) ??
       this.laneSets.get(this.latestLaneSet) ??
       [];
+    // A Compare frame's third lane is the sum of the first two.
+    const [first, second] = styles;
+    if (frame?.comparison !== undefined && first && second) {
+      styles = [
+        first,
+        second,
+        {
+          id: sumLaneId,
+          name: `${first.name} + ${second.name}`,
+          colour: sumLaneColour,
+          own: false,
+        },
+      ];
+    }
     // A set that does not match the frame's lanes yet: fallback names and colours by position.
     return styles.length === count
       ? styles
@@ -668,13 +707,76 @@ export class OscilloscopeApp {
   // level label.
   private placeLaneLabels(): void {
     const container = element("lane-labels");
-    const styles = this.lanesOf(this.lastFrame);
+    const frame = this.lastFrame;
+    const styles = this.lanesOf(frame);
     const height = this.screen.clientHeight;
-    const name = (style: LaneStyle) => {
+    const comparing = frame?.comparison !== undefined;
+    // Rebuilt only when what they show changes, so a click on a label is never lost to a redraw.
+    const key = JSON.stringify([
+      styles,
+      comparing,
+      this.previewFix,
+      this.layout(),
+      height,
+      this.compareMode() && frame !== undefined,
+      this.store.get("group"),
+    ]);
+    if (key === this.laneLabelsKey) {
+      return;
+    }
+    this.laneLabelsKey = key;
+    const button = (
+      text: string,
+      help: HelpTopic,
+      onClick: (event: MouseEvent) => void,
+    ) => {
+      const node = document.createElement("button");
+      node.textContent = text;
+      node.dataset["help"] = help;
+      node.addEventListener("click", onClick);
+      return node;
+    };
+    // In the Compare view: A, then B with the partner picker, then the sum with the preview.
+    const name = (style: LaneStyle, index: number) => {
       const node = document.createElement("span");
-      node.textContent = style.name;
       node.style.setProperty("--swatch", cssColour(style.colour));
       node.classList.toggle("own", style.own);
+      if (!comparing) {
+        node.textContent = style.name;
+        return node;
+      }
+      if (index < 2) {
+        const badge = document.createElement("b");
+        badge.className = "pair-badge";
+        badge.textContent = index === 0 ? "A" : "B";
+        node.append(badge);
+      }
+      if (index === 1) {
+        node.dataset["help"] = "comparePartner";
+        node.append(
+          button("◂", "comparePartner", () => {
+            this.stepPartner(-1);
+          }),
+          button(style.name, "comparePartner", (event) => {
+            this.openPartnerMenu(event.currentTarget as HTMLElement);
+          }),
+          button("▸", "comparePartner", () => {
+            this.stepPartner(1);
+          }),
+        );
+        return node;
+      }
+      node.append(style.name);
+      if (index === 2) {
+        const preview = button("Preview fix", "previewFix", () => {
+          this.previewFix = !this.previewFix;
+          this.backend.previewFix(this.previewFix);
+          this.placeLaneLabels();
+        });
+        preview.className = "preview-fix";
+        preview.setAttribute("aria-pressed", String(this.previewFix));
+        node.append(preview);
+      }
       return node;
     };
     const place = (node: HTMLElement, top: number) => {
@@ -689,7 +791,7 @@ export class OscilloscopeApp {
           const node = document.createElement("div");
           const style = styles[index];
           if (style !== undefined) {
-            node.append(name(style));
+            node.append(name(style, index));
           }
           return place(
             node,
@@ -704,6 +806,51 @@ export class OscilloscopeApp {
         ...(styles.length > 0 ? [place(legend, 3)] : []),
       );
     }
+    // The Compare view without a partner says why.
+    if (this.compareMode() && frame !== undefined && !comparing) {
+      const note = document.createElement("div");
+      note.className = "compare-note";
+      note.textContent = `No other track in group ${String(this.store.get("group")).toUpperCase()} to compare with. Insert O-Scope on another track.`;
+      container.append(note);
+    }
+  }
+
+  // The Compare partner: the next or previous of the group's other tracks.
+  private stepPartner(step: number): void {
+    const current = this.candidates.findIndex(
+      (candidate) => candidate.id === this.partnerId,
+    );
+    const count = this.candidates.length;
+    const next = this.candidates[(((current + step) % count) + count) % count];
+    if (next !== undefined) {
+      this.backend.partner(next.id);
+    }
+  }
+
+  // A list of the group's other tracks, below the partner's name.
+  private openPartnerMenu(anchor: HTMLElement): void {
+    const menu = element("partner-menu");
+    menu.replaceChildren(
+      ...this.candidates.map((candidate) => {
+        const item = document.createElement("button");
+        item.textContent = candidate.name;
+        item.style.setProperty("--swatch", cssColour(candidate.colour));
+        item.setAttribute(
+          "aria-pressed",
+          String(candidate.id === this.partnerId),
+        );
+        item.addEventListener("click", () => {
+          this.backend.partner(candidate.id);
+          menu.hidden = true;
+        });
+        return item;
+      }),
+    );
+    const screen = this.screen.getBoundingClientRect();
+    const place = anchor.getBoundingClientRect();
+    menu.style.left = `${String(place.left - screen.left)}px`;
+    menu.style.top = `${String(place.bottom - screen.top + 4)}px`;
+    menu.hidden = false;
   }
 
   private beatsMode(): boolean {
@@ -969,6 +1116,18 @@ export class OscilloscopeApp {
   }
 
   private listenToScreen(): void {
+    // Buttons on the screen (the Compare view's partner picker and fix preview) take their own
+    // clicks: the screen would otherwise claim the pointer for a zoom drag, or reset the zoom.
+    for (const id of ["lane-labels", "partner-menu"]) {
+      const overlay = element(id);
+      for (const type of ["pointerdown", "dblclick"] as const) {
+        overlay.addEventListener(type, (event) => {
+          if ((event.target as Element).closest("button") !== null) {
+            event.stopPropagation();
+          }
+        });
+      }
+    }
     for (const [id, key] of [
       ["cursor-a", "a"],
       ["cursor-b", "b"],
@@ -1211,11 +1370,16 @@ export class OscilloscopeApp {
         this.panSeconds = 0;
       }
       this.loop.submit(frame);
-      // A track joined or left: lanes, grid and labels change with it.
+      // A track joined or left: lanes, grid and labels change with it. A new lane set (another
+      // partner, a renamed track) changes the labels.
       if (frame.lanes.length !== this.drawnLaneCount) {
         this.drawScreen();
         this.placeCursors();
+      } else if (frame.laneSet !== this.drawnLaneSet) {
+        this.placeLaneLabels();
+        this.placeTriggerMarker();
       }
+      this.drawnLaneSet = frame.laneSet;
       if (this.lastFrameTime - this.lastReadoutTime >= readoutInterval) {
         this.updateStatus();
       }
@@ -1232,6 +1396,9 @@ export class OscilloscopeApp {
       }
       this.latestLaneSet = message.laneSet;
       this.hiddenTracks = message.hidden;
+      this.candidates = laneStyles(message.candidates);
+      this.partnerId = message.lanes[1]?.id;
+      element("partner-menu").hidden = true;
       this.drawScreen();
       this.loop.invalidate();
       this.updateStatus();
@@ -1281,10 +1448,85 @@ export class OscilloscopeApp {
     const frame = this.lastFrame;
     if (frame !== undefined) {
       this.lastReadoutTime = now;
-      element("peak").textContent = formatDbfs(frame.peak);
-      element("rms").textContent = formatDbfs(frame.rms);
-      element("frequency").textContent = formatFrequency(frame.frequency);
+      this.showReadouts(frame);
     }
+  }
+
+  // Peak, RMS and frequency; in the Compare view, the pair's summing gain, correlation and offset.
+  private showReadouts(frame: Frame): void {
+    const set = (
+      id: string,
+      label: string,
+      value: string,
+      unit: string,
+      help: HelpTopic,
+      tone = "",
+    ) => {
+      const valueNode = element(id);
+      const readout = valueNode.parentElement;
+      valueNode.textContent = value;
+      valueNode.className = tone;
+      if (readout !== null) {
+        readout.dataset["help"] = help;
+        const labelNode = readout.querySelector("b");
+        const unitNode = readout.querySelector("small");
+        if (labelNode !== null) {
+          labelNode.textContent = label;
+        }
+        if (unitNode !== null) {
+          unitNode.textContent = unit;
+        }
+      }
+    };
+    if (!this.compareMode()) {
+      set("peak", "Peak", formatDbfs(frame.peak), "dBFS", "peak");
+      set("rms", "RMS", formatDbfs(frame.rms), "dBFS", "rms");
+      set(
+        "frequency",
+        "Freq",
+        formatFrequency(frame.frequency),
+        "Hz",
+        "frequency",
+      );
+      return;
+    }
+    const comparison = frame.comparison;
+    const dash = "—";
+    const gain = comparison?.sumGain;
+    set(
+      "peak",
+      "Sum",
+      gain === undefined ? dash : signed(gain, 1),
+      "dB",
+      "sumGain",
+      gain === undefined
+        ? ""
+        : gain < -1
+          ? "cancels"
+          : gain > 1
+            ? "reinforces"
+            : "",
+    );
+    set(
+      "rms",
+      "Corr",
+      comparison === undefined ? dash : signed(comparison.correlation, 2),
+      "",
+      "correlation",
+    );
+    const offsetMs =
+      comparison === undefined
+        ? undefined
+        : (comparison.offset / this.sampleRate) * 1000;
+    set(
+      "frequency",
+      "Offset",
+      offsetMs === undefined
+        ? dash
+        : `${offsetMs === 0 ? "0.0" : signed(offsetMs, 1)}${comparison?.inverted === true ? " Ø" : ""}`,
+      "ms",
+      "offset",
+    );
   }
 
   private showError(message: ErrorMessage): void {

@@ -3,7 +3,14 @@ import type { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import type { ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
-import { laneGeometry, traceGeometry } from "./trace-geometry.ts";
+import {
+  cancellationBands,
+  laneGeometry,
+  traceGeometry,
+} from "./trace-geometry.ts";
+
+// Behind a Compare frame's sum lane, where the pair cancels.
+const cancellationColor: Rgba = [0.94, 0.44, 0.54, 0.16];
 
 export type Rgba = readonly [number, number, number, number];
 
@@ -128,6 +135,10 @@ export class TraceRenderer implements FrameRenderer {
           colors.get(channelView) ?? white,
         ],
       );
+    }
+    const bands = cancellationBands(frame, layout);
+    if (bands.length > 0) {
+      traces.unshift([bands, cancellationColor]);
     }
     for (const [vertices, color] of traces) {
       const alpha = view.dim === true ? color[3] * 0.45 : color[3];

@@ -106,7 +106,7 @@ describe("mock back end", () => {
     transport.send({ type: "credit" });
     const frame = frames.at(-1);
     expect(frame?.views.size).toBe(0);
-    expect(frame?.lanes).toHaveLength(3);
+    expect(frame?.lanes).toHaveLength(4);
     expect(frame?.laneSet).toBe(1);
 
     transport.send({ type: "setSetting", name: "group", value: "b" });
@@ -117,6 +117,36 @@ describe("mock back end", () => {
       lanes: [{ name: "Kick", own: true }],
     });
     expect(frames.at(-1)?.lanes).toHaveLength(1);
+  });
+
+  test("compares this track with a partner and previews the fix", () => {
+    const { transport, messages, frames } = connect();
+    transport.send({
+      type: "setSetting",
+      name: "displayMode",
+      value: "compare",
+    });
+    transport.send({ type: "credit" });
+    const lanes = messages.filter((message) => message.type === "lanes").at(-1);
+    expect(lanes).toMatchObject({
+      lanes: [{ name: "Kick" }, { name: "Bass" }],
+    });
+    expect(lanes?.["candidates"]).toHaveLength(3);
+    expect(frames.at(-1)?.lanes).toHaveLength(3);
+    expect(frames.at(-1)?.comparison?.sumGain).toBeCloseTo(0.1);
+
+    transport.send({ type: "partner", id: 4 });
+    transport.send({ type: "credit" });
+    const cancelling = frames.at(-1);
+    expect(cancelling?.comparison).toMatchObject({ inverted: true });
+    expect(cancelling?.comparison?.sumGain).toBeLessThan(-6);
+
+    transport.send({ type: "previewFix", on: true });
+    transport.send({ type: "credit" });
+    const fixed = frames.at(-1);
+    const peak = (values: Float32Array | undefined) =>
+      Math.max(...Array.from(values ?? [], Math.abs));
+    expect(peak(fixed?.lanes[2])).toBeGreaterThan(peak(cancelling?.lanes[2]));
   });
 
   test("sweeps in sync with a simulated transport in Beats mode", () => {
