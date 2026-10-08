@@ -109,6 +109,41 @@ TEST_F(EngineLink, ProcessorJoinsItsGroupUntilTerminated)
         [&](const engine::GroupMember& member) { return member.engine == engine; }));
 }
 
+IPtr<IAttributeList> channelInfo(const char16_t* name, int64 colour, int64 index)
+{
+    IPtr<IAttributeList> list = HostAttributeList::make();
+    list->setString(ChannelContext::kChannelNameKey, name);
+    list->setInt(ChannelContext::kChannelColorKey, colour);
+    list->setInt(ChannelContext::kChannelIndexKey, index);
+    list->setInt(ChannelContext::kChannelIndexNamespaceOrderKey, 2);
+    return list;
+}
+
+TEST_F(EngineLink, PassesTheHostsTrackDetailsToTheEngine)
+{
+    // Details may arrive before the engine; they are applied once it does.
+    ASSERT_EQ(controller->setChannelContextInfos(channelInfo(u"Kick", 0xffe03030, 3)), kResultTrue);
+    connect();
+    engine::TrackInfo track = processor->engine()->trackInfo();
+    EXPECT_EQ(track.name, "Kick");
+    EXPECT_EQ(track.colour, 0xe03030u) << "alpha dropped";
+    EXPECT_EQ(track.index, 200003) << "namespace order, then position";
+    controller->setChannelContextInfos(channelInfo(u"Kick 2 ✓", 0xff3060e0, 4));
+    track = processor->engine()->trackInfo();
+    EXPECT_EQ(track.name, "Kick 2 ✓") << "renamed, in UTF-8";
+    EXPECT_EQ(track.colour, 0x3060e0u);
+}
+
+TEST(TrackInfo, KeepsOnlyWhatTheHostReports)
+{
+    IPtr<IAttributeList> list = HostAttributeList::make();
+    list->setString(ChannelContext::kChannelNameKey, u"Bass");
+    const engine::TrackInfo track = trackInfoFrom(*list);
+    EXPECT_EQ(track.name, "Bass");
+    EXPECT_FALSE(track.colour.has_value());
+    EXPECT_FALSE(track.index.has_value());
+}
+
 TEST(EngineRegistry, ForgetsRemovedTokens)
 {
     auto engine = std::make_shared<engine::Engine>();
