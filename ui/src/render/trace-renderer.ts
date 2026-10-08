@@ -9,7 +9,7 @@ import {
   traceGeometry,
 } from "./trace-geometry.ts";
 
-// Behind a Compare frame's sum lane, where the pair cancels.
+// Behind a Compare frame's sum lane, where the compared tracks cancel.
 const cancellationColor: Rgba = [0.94, 0.44, 0.54, 0.16];
 
 export type Rgba = readonly [number, number, number, number];
@@ -17,8 +17,10 @@ export type Rgba = readonly [number, number, number, number];
 export interface TraceStyle {
   // Resolved at draw time, so colours can come from a stylesheet that loads after start-up.
   readonly colors: () => ReadonlyMap<ChannelView, Rgba>;
-  // Multi-track frames: one colour per lane, in lane order.
+  // Multi-track frames: one colour per lane, in lane order, and in a Compare frame which tracks
+  // are compared.
   readonly laneColors: () => readonly Rgba[];
+  readonly comparedLanes: () => readonly boolean[];
   readonly lineWidthPixels: number;
 }
 
@@ -136,7 +138,7 @@ export class TraceRenderer implements FrameRenderer {
         ],
       );
     }
-    const bands = cancellationBands(frame, layout);
+    const bands = cancellationBands(frame, layout, this.style.comparedLanes());
     if (bands.length > 0) {
       traces.unshift([bands, cancellationColor]);
     }

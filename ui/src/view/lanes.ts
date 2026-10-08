@@ -12,6 +12,7 @@ export interface LaneStyle {
   readonly name: string;
   readonly colour: number; // 0xRRGGBB
   readonly own: boolean;
+  readonly compared: boolean; // Compare view: in the sum, measured against this track.
 }
 
 export function laneStyles(labels: readonly LaneLabel[]): LaneStyle[] {
@@ -23,6 +24,7 @@ export function laneStyles(labels: readonly LaneLabel[]): LaneStyle[] {
       fallbackPalette[index % fallbackPalette.length] ??
       0xffffff,
     own: label.own,
+    compared: label.compared,
   }));
 }
 

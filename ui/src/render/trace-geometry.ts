@@ -202,8 +202,9 @@ export function laneGeometry(
   return blockGeometry(frame.lanes, frame, layout);
 }
 
-// Compare frames hold this track, its partner and their sum. Where the sum's peak level falls more
-// than 3 dB below the louder of the two, they cancel: these spans of the sum's lane, as quads.
+// Compare frames hold the group's tracks and then the sum of the compared ones. Where the sum's
+// peak level falls more than 3 dB below the loudest compared track, they cancel: these spans of
+// the sum's lane, as quads. `compared` marks the compared tracks in lane order.
 const cancellationRatio = 0.708; // -3 dB.
 const quietRatio = 0.05; // About -26 dB.
 const bridgedGap = 3; // Points.
@@ -241,17 +242,22 @@ function peaks(frame: Frame, values: Float32Array): Float32Array {
 export function cancellationBands(
   frame: Frame,
   layout: TraceLayout,
+  compared: readonly boolean[],
 ): Float32Array {
-  const [a, b, sum] = frame.lanes;
-  if (frame.comparison === undefined || !a || !b || !sum) {
+  const sum = frame.lanes.at(-1);
+  const tracks = frame.lanes
+    .slice(0, -1)
+    .filter((_, index) => compared[index] === true);
+  if (frame.comparison === undefined || !sum || tracks.length < 2) {
     return new Float32Array();
   }
-  const levelA = peaks(frame, a);
-  const levelB = peaks(frame, b);
   const levelSum = peaks(frame, sum);
-  const louder = levelA.map((level, point) =>
-    Math.max(level, levelB[point] ?? 0),
-  );
+  const louder = new Float32Array(frame.pointCount);
+  for (const track of tracks) {
+    peaks(frame, track).forEach((level, point) => {
+      louder[point] = Math.max(louder[point] ?? 0, level);
+    });
+  }
   // Quiet stretches (more than about 26 dB below the loudest moment) cancel nothing audible.
   const audible = quietRatio * Math.max(0, ...louder);
   const cancelling = Array.from(
@@ -269,7 +275,11 @@ export function cancellationBands(
       cancelling.fill(true, point, resume);
     }
   }
-  const lane = lanes(3, layout.layout)[2] ?? { center: 0, halfHeight: 1 };
+  const count = frame.lanes.length;
+  const lane = lanes(count, layout.layout)[count - 1] ?? {
+    center: 0,
+    halfHeight: 1,
+  };
   const view = layout.view ?? fullView;
   const position = (point: number) =>
     frame.mode === FrameMode.minMax

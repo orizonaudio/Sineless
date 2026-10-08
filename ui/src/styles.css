@@ -290,6 +290,22 @@ body {
   font-size: 11px;
 }
 
+/* A feature still being shaped, such as Compare. */
+.segmented .badge {
+  margin-left: 4px;
+  padding: 0 3px;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  vertical-align: 1px;
+  color: var(--warn);
+  border: 1px solid currentcolor;
+  border-radius: 2px;
+}
+
+.segmented button[aria-pressed="true"] .badge {
+  color: var(--panel);
+}
+
 /* Multi-track lane names: one per stacked lane, or a legend when overlaid. */
 .lane-labels {
   position: absolute;
@@ -299,16 +315,27 @@ body {
 
 .lane-label {
   position: absolute;
+  right: 8px;
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   font-family: var(--font-label);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: var(--ink-dim);
+  color: var(--ink);
 }
 
-.lane-label span::before {
+/* Each name sits on a chip of the screen's colour, so traces never run through it. */
+.lane-label > span {
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--screen) 85%, transparent);
+  border-radius: 3px;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+.lane-label > span::before {
   content: "";
   display: inline-block;
   width: 8px;
@@ -318,21 +345,19 @@ body {
   background: var(--swatch);
 }
 
-.lane-label .own {
-  color: var(--ink);
-}
-
-/* The Compare view's labels: A and B badges, the partner picker and the fix preview. */
+/* The Compare view's labels: each swatch a check box, then how the track lines up with this one;
+   the sum's gain and the fix preview. */
 .lane-label span {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .lane-label button {
   pointer-events: auto;
   padding: 0 4px;
   font: inherit;
+  letter-spacing: inherit;
   color: var(--ink);
   background: transparent;
   border: 1px solid transparent;
@@ -340,27 +365,74 @@ body {
   cursor: pointer;
 }
 
-.lane-label button:hover {
+.lane-label button:hover:not(:disabled) {
   border-color: var(--line);
 }
 
+.lane-label > .checkable::before {
+  display: none;
+}
+
+.lane-label .compare-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 0;
+  color: var(--ink-faint);
+}
+
+.lane-label .compare-check::before {
+  content: "";
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--panel);
+  border: 1.5px solid var(--swatch);
+  border-radius: 2px;
+}
+
+.lane-label .compare-check[aria-checked="false"] {
+  opacity: 0.5;
+}
+
+.lane-label .compare-check[aria-checked="true"] {
+  color: var(--ink);
+}
+
+.lane-label .compare-check[aria-checked="true"]::before {
+  content: "✓";
+  background: var(--swatch);
+}
+
+.lane-label .compare-check:disabled {
+  cursor: default;
+}
+
+.lane-label .lane-readout {
+  pointer-events: auto;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
 .lane-label .preview-fix {
-  margin-left: 8px;
-  border-color: var(--line);
+  margin-left: 4px;
+  background: var(--panel);
+  border-color: var(--ink-faint);
+}
+
+.lane-label button.preview-fix:hover {
+  border-color: var(--ink-dim);
 }
 
 .lane-label .preview-fix[aria-pressed="true"] {
   color: var(--panel);
   background: var(--ok);
   border-color: var(--ok);
-}
-
-.pair-badge {
-  padding: 0 4px;
-  font-size: 10px;
-  color: var(--panel);
-  background: var(--swatch);
-  border-radius: 3px;
 }
 
 .compare-note {
@@ -373,56 +445,16 @@ body {
   color: var(--ink-dim);
 }
 
-.partner-menu {
-  position: absolute;
-  z-index: 3;
-  display: grid;
-  min-width: 140px;
-  padding: 4px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
-}
-
-.partner-menu button {
-  padding: 4px 8px;
-  font-family: var(--font-label);
-  font-size: 12px;
-  text-align: left;
-  color: var(--ink-dim);
-  background: transparent;
-  border: 0;
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.partner-menu button::before {
-  content: "";
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 6px;
-  border-radius: 2px;
-  background: var(--swatch);
-}
-
-.partner-menu button:hover,
-.partner-menu button[aria-pressed="true"] {
-  color: var(--ink);
-  background: var(--line);
-}
-
-/* Compare readouts: the summing gain coloured by what the pair does. */
-.readout .cancels {
+/* Compare readouts: the summing gain coloured by what the tracks do together. */
+.lane-label .cancels {
   color: var(--warn);
 }
 
-.readout .reinforces {
+.lane-label .reinforces {
   color: var(--ok);
 }
 
-.lane-label .own::after {
+.lane-label > .own::after {
   content: " · this track";
   font-weight: 500;
   color: var(--ink-faint);

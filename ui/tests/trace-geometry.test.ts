@@ -234,20 +234,16 @@ describe("cancellation bands", () => {
       new Float32Array([-0.4, 0.4, -0.4, 0.4, -0.4, 0.4, -0.4, 0.4]),
       new Float32Array(sum),
     ],
-    comparison: {
-      sumGain: -3,
-      correlation: -0.5,
-      offset: 0,
-      inverted: true,
-      fixedGain: 3,
-    },
+    comparison: { sumGain: -3, fixedGain: 3, matches: [] },
   });
+  const both = [true, true];
 
   test("shade where the sum falls 3 dB below the louder track", () => {
     // Columns 1 and 2 cancel (0.1 against 0.5); 0 and 3 do not.
     const bands = cancellationBands(
       compareFrame([-0.9, 0.9, -0.1, 0.1, -0.1, 0.1, -0.9, 0.9]),
       layout,
+      both,
     );
     expect(bands).toHaveLength(12); // One quad: the two adjacent columns merge.
     const x = xs(bands);
@@ -271,16 +267,35 @@ describe("cancellation bands", () => {
       ],
     };
     // Column 1 is quiet, but bridges columns 0 and 2 into one stretch with column 3.
-    const bands = cancellationBands(quiet, layout);
+    const bands = cancellationBands(quiet, layout, both);
     expect(bands).toHaveLength(12);
     expect(Math.min(...xs(bands))).toBeCloseTo(-1);
     expect(Math.max(...xs(bands))).toBeCloseTo(1);
   });
 
+  test("measure against the compared tracks only", () => {
+    // The sum (0.6) is well below a loud third track (0.9), which is not compared.
+    const sum = new Float32Array([-0.6, 0.6, -0.6, 0.6, -0.6, 0.6, -0.6, 0.6]);
+    const loud = new Float32Array([-0.9, 0.9, -0.9, 0.9, -0.9, 0.9, -0.9, 0.9]);
+    const plain = compareFrame([]);
+    const [first, second] = plain.lanes;
+    const threeTracks = {
+      ...plain,
+      lanes: [first ?? sum, loud, second ?? sum, sum],
+    };
+    expect(
+      cancellationBands(threeTracks, layout, [true, false, true]),
+    ).toHaveLength(0);
+    const bands = cancellationBands(threeTracks, layout, [true, true, true]);
+    expect(bands).toHaveLength(12);
+    expect(Math.min(...ys(bands))).toBeCloseTo(-1); // In the bottom of four lanes.
+    expect(Math.max(...ys(bands))).toBeCloseTo(-0.5);
+  });
+
   test("shade nothing outside the Compare view", () => {
     const plain = compareFrame([0, 0, 0, 0, 0, 0, 0, 0]);
     expect(
-      cancellationBands({ ...plain, comparison: undefined }, layout),
+      cancellationBands({ ...plain, comparison: undefined }, layout, both),
     ).toHaveLength(0);
   });
 });

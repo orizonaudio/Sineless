@@ -7,8 +7,11 @@ import {
   ChannelView,
   FrameMode,
 } from "../../../protocol/src/enums.ts";
-import type { Comparison } from "../../../protocol/src/frame-decoder.ts";
-import { encodeFrame } from "../../../protocol/src/frame-encoder.ts";
+import type { Match } from "../../../protocol/src/frame-decoder.ts";
+import {
+  encodeFrame,
+  type FrameContent,
+} from "../../../protocol/src/frame-encoder.ts";
 import type {
   LaneLabel,
   SettingValue,
@@ -73,17 +76,16 @@ function kick(time: number): number {
   );
 }
 const kickMicDelay = 0.0013;
-const harmless = {
-  sumGain: 0.1,
+const unrelated: Match = {
   correlation: 0.01,
+  related: false,
   offset: 0,
   inverted: false,
-  fixedGain: 0.1,
 };
-export const mockTracks: readonly (LaneLabel & {
+export const mockTracks: readonly (Omit<LaneLabel, "compared"> & {
   readonly sample: (time: number) => number;
   readonly fixed?: (time: number) => number;
-  readonly comparison?: Comparison;
+  readonly match?: Match;
 })[] = [
   {
     id: 1,
@@ -120,12 +122,11 @@ export const mockTracks: readonly (LaneLabel & {
     own: false,
     sample: (time) => -0.8 * kick(time - kickMicDelay),
     fixed: (time) => 0.8 * kick(time),
-    comparison: {
-      sumGain: -9.4,
+    match: {
       correlation: -0.93,
+      related: true,
       offset: Math.round(kickMicDelay * mockSampleRate),
       inverted: true,
-      fixedGain: 2.8,
     },
   },
 ];
@@ -150,8 +151,9 @@ export class MockTransport implements Transport {
   private sequence = 0;
   private laneSet = 0;
   private lanesKey = "";
-  // The Compare view's partner, by track id, and whether the sum previews the fix.
-  private partner: number | undefined;
+  // The Compare view's other tracks, by id (until asked, the first), and whether the sum previews
+  // the fix.
+  private compared: readonly number[] | undefined;
   private previewFix = false;
 
   constructor(options: MockOptions = {}) {
@@ -219,12 +221,14 @@ export class MockTransport implements Transport {
         }
         break;
       }
-      case "partner":
-        if (typeof message["id"] === "number") {
-          this.partner = message["id"];
+      case "compare": {
+        const ids = message["ids"];
+        if (Array.isArray(ids)) {
+          this.compared = ids.filter((id) => typeof id === "number");
           this.sendLanes();
         }
         break;
+      }
       case "previewFix":
         this.previewFix = message["on"] === true;
         break;
@@ -254,44 +258,40 @@ export class MockTransport implements Transport {
       : mockTracks.filter((track) => track.own);
   }
 
-  // The Compare partner: the one asked for, else the group's first other track.
-  private partnerTrack(): (typeof mockTracks)[number] | undefined {
-    const others = this.groupTracks().filter((track) => !track.own);
-    return others.find((track) => track.id === this.partner) ?? others[0];
-  }
-
-  // The tracks drawn: the group, or in the Compare view this track and its partner.
-  private shownTracks(): typeof mockTracks {
+  // The ids of the tracks compared in the Compare view: this one and the others asked for (until
+  // asked, the group's first other track), or none when the group has no other track.
+  private comparedIds(): number[] {
     if (this.setting("displayMode") !== "compare") {
-      return this.groupTracks();
+      return [];
     }
-    const partner = this.partnerTrack();
-    return mockTracks.filter((track) => track.own || track === partner);
+    const others = this.groupTracks().filter((track) => !track.own);
+    const asked = others
+      .filter(
+        (track) => this.compared?.includes(track.id) ?? track === others[0],
+      )
+      .map((track) => track.id);
+    const own = mockTracks.find((track) => track.own)?.id ?? 0;
+    return others.length === 0 ? [] : [own, ...asked];
   }
 
   private sendLanes(): void {
-    const compare = this.setting("displayMode") === "compare";
-    const key = `${String(this.setting("group"))}/${String(compare)}/${String(this.partnerTrack()?.id)}`;
+    const compared = this.comparedIds();
+    const key = `${String(this.setting("group"))}/${compared.join(",")}`;
     if (key === this.lanesKey) {
       return;
     }
     this.lanesKey = key;
-    const label = ({ id, name, colour, own }: LaneLabel) => ({
-      id,
-      name,
-      colour,
-      own,
-    });
     this.reply({
       type: "lanes",
       laneSet: ++this.laneSet,
-      lanes: this.shownTracks().map(label),
+      lanes: this.groupTracks().map(({ id, name, colour, own }) => ({
+        id,
+        name,
+        colour,
+        own,
+        compared: compared.includes(id),
+      })),
       hidden: 0,
-      candidates: compare
-        ? this.groupTracks()
-            .filter((track) => !track.own)
-            .map(label)
-        : [],
     });
   }
 
@@ -384,33 +384,59 @@ export class MockTransport implements Transport {
     };
 
     // The multi-track view draws the group's tracks; readouts measure this one. The Compare view
-    // draws this track, its partner and their sum.
+    // adds the sum of the compared tracks.
     const multi = this.setting("displayMode") !== "single";
-    const partner =
-      this.setting("displayMode") === "compare"
-        ? this.partnerTrack()
-        : undefined;
+    const comparedIds = this.comparedIds();
+    const compared = mockTracks.filter((track) =>
+      comparedIds.includes(track.id),
+    );
     const views = new Map<ChannelView, Float32Array>();
     const lanes: Float32Array[] = [];
     const source =
       ChannelView[this.setting("triggerSource") as keyof typeof ChannelView];
     let readoutSignal = (time: number) => viewSample(source, time);
-    if (partner !== undefined) {
-      const corrected = this.previewFix
-        ? (partner.fixed ?? partner.sample)
-        : partner.sample;
-      lanes.push(
-        points(kick),
-        points(partner.sample),
-        points((time) => kick(time) + corrected(time)),
-      );
-      readoutSignal = kick;
-    } else if (multi) {
-      for (const track of this.shownTracks()) {
+    let comparison: FrameContent["comparison"];
+    if (multi) {
+      for (const track of this.groupTracks()) {
         lanes.push(points(track.sample));
       }
       readoutSignal = kick;
-    } else {
+    }
+    if (compared.length > 0) {
+      const sum = (fix: boolean) => (time: number) =>
+        compared.reduce(
+          (total, track) =>
+            total + (fix ? (track.fixed ?? track.sample) : track.sample)(time),
+          0,
+        );
+      lanes.push(points(sum(this.previewFix)));
+      // Summing gains over the window, from a few thousand samples.
+      const gain = (fix: boolean) => {
+        let together = 0;
+        let apart = 0;
+        const stride = Math.max(1, Math.floor(sampleCount / 4096));
+        for (let sample = 0; sample < sampleCount; sample += stride) {
+          const time = sampleTime(sample);
+          together += sum(fix)(time) ** 2;
+          for (const track of compared) {
+            apart +=
+              (fix ? (track.fixed ?? track.sample) : track.sample)(time) ** 2;
+          }
+        }
+        return apart > 0
+          ? 10 * Math.log10(Math.max(together, 1e-30) / apart)
+          : 0;
+      };
+      comparison = {
+        sumGain: gain(false),
+        fixedGain: gain(true),
+        matches: this.groupTracks().map((track) =>
+          track.own || !comparedIds.includes(track.id)
+            ? { correlation: 0, related: false, offset: 0, inverted: false }
+            : (track.match ?? unrelated),
+        ),
+      };
+    } else if (!multi) {
       const names = this.setting("channelViews") as readonly string[];
       for (const [name, view] of Object.entries(ChannelView)) {
         if (names.includes(name)) {
@@ -457,9 +483,7 @@ export class MockTransport implements Transport {
         views,
         lanes,
         laneSet: multi ? this.laneSet : 0,
-        ...(partner === undefined
-          ? {}
-          : { comparison: partner.comparison ?? harmless }),
+        ...(comparison === undefined ? {} : { comparison }),
       }),
     );
   }

@@ -119,7 +119,7 @@ describe("mock back end", () => {
     expect(frames.at(-1)?.lanes).toHaveLength(1);
   });
 
-  test("compares this track with a partner and previews the fix", () => {
+  test("compares this track with the checked tracks and previews the fix", () => {
     const { transport, messages, frames } = connect();
     transport.send({
       type: "setSetting",
@@ -129,24 +129,36 @@ describe("mock back end", () => {
     transport.send({ type: "credit" });
     const lanes = messages.filter((message) => message.type === "lanes").at(-1);
     expect(lanes).toMatchObject({
-      lanes: [{ name: "Kick" }, { name: "Bass" }],
+      lanes: [
+        { name: "Kick", compared: true },
+        { name: "Bass", compared: true },
+        { name: "", compared: false },
+        { name: "Kick 2", compared: false },
+      ],
     });
-    expect(lanes?.["candidates"]).toHaveLength(3);
-    expect(frames.at(-1)?.lanes).toHaveLength(3);
-    expect(frames.at(-1)?.comparison?.sumGain).toBeCloseTo(0.1);
+    expect(frames.at(-1)?.lanes).toHaveLength(5);
+    expect(frames.at(-1)?.comparison?.matches).toHaveLength(4);
 
-    transport.send({ type: "partner", id: 4 });
+    transport.send({ type: "compare", ids: [4] });
     transport.send({ type: "credit" });
     const cancelling = frames.at(-1);
-    expect(cancelling?.comparison).toMatchObject({ inverted: true });
+    expect(cancelling?.comparison?.matches[3]).toMatchObject({
+      inverted: true,
+    });
     expect(cancelling?.comparison?.sumGain).toBeLessThan(-6);
+    expect(cancelling?.comparison?.fixedGain).toBeGreaterThan(2);
 
     transport.send({ type: "previewFix", on: true });
     transport.send({ type: "credit" });
     const fixed = frames.at(-1);
     const peak = (values: Float32Array | undefined) =>
       Math.max(...Array.from(values ?? [], Math.abs));
-    expect(peak(fixed?.lanes[2])).toBeGreaterThan(peak(cancelling?.lanes[2]));
+    expect(peak(fixed?.lanes[4])).toBeGreaterThan(peak(cancelling?.lanes[4]));
+
+    transport.send({ type: "compare", ids: [] });
+    transport.send({ type: "credit" });
+    expect(frames.at(-1)?.lanes).toHaveLength(5); // The sum of this track alone.
+    expect(frames.at(-1)?.comparison?.sumGain).toBeCloseTo(0);
   });
 
   test("sweeps in sync with a simulated transport in Beats mode", () => {

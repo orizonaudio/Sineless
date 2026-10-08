@@ -13,31 +13,27 @@ export const helpTexts = {
   },
   displayMode: {
     title: "Single, Multi or Compare",
-    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 8. Compare shows this track, one partner and their sum, to find where they cancel. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
+    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 8. Compare (in beta) shows the same tracks, at most 7, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
   },
-  comparePartner: {
-    title: "Partner",
-    text: "The track this one is compared with. Use the arrows to step through the group's other tracks, or click the name for a list.",
+  compareTrack: {
+    title: "Compare",
+    text: "Check a track to add it to the sum and measure it against this track, which is always part of the comparison. Uncheck it to leave it out.",
   },
   previewFix: {
     title: "Preview fix",
-    text: "Redraws the sum as if the partner were moved by the offset found and, if needed, flipped in polarity. Apply it in your host, with track delay and a phase or polarity switch.",
+    text: "Redraws the sum as if every checked track were moved by its offset and, if needed, flipped in polarity, and shows the summing gain that would give. Apply it in your host, with track delay and a phase or polarity switch.",
   },
   sumGain: {
     title: "Summing gain",
-    text: "How loud the two tracks are together, against two unrelated signals of the same levels. 0 dB is harmless, around +3 dB they reinforce, below 0 dB they cancel. Measured over the visible part, so zoom into a hit to measure that hit.",
+    text: "How loud the checked tracks are together, against unrelated signals of the same levels. 0 dB is harmless, positive values reinforce, below 0 dB they cancel. Measured over the visible part, but only where at least two of them sound together, so a long view does not water down a short clash.",
   },
-  correlation: {
-    title: "Correlation",
-    text: "How alike the two tracks move, from +1 (in step) through 0 (unrelated) to -1 (opposite).",
-  },
-  offset: {
-    title: "Offset",
-    text: "How late the partner is against this track, within 10 ms (negative: early). Ø means its polarity is opposite. Preview fix shows the sum with both corrected.",
+  match: {
+    title: "Against this track",
+    text: "How late this track is against yours, within 10 ms (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.",
   },
   group: {
     title: "Group",
-    text: "Instances in the same group appear together in Multi mode. Use different groups to keep separate comparisons apart, such as drums in A and bass in B. Every instance belongs to a group, whatever its own mode.",
+    text: "Instances in the same group appear together in Multi and Compare modes. Use different groups to keep separate comparisons apart, such as drums in A and bass in B. Every instance belongs to a group, whatever its own mode.",
   },
   channelViews: {
     title: "Views",

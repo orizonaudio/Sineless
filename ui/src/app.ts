@@ -174,10 +174,11 @@ export class OscilloscopeApp {
   private timeCursors: CursorPair | undefined;
   private levelCursors: LevelPair | undefined;
   private sampleRate = 48000;
-  // The Compare view: the group's other tracks, the partner shown, and the fix preview.
-  private candidates: LaneStyle[] = [];
-  private partnerId: number | undefined;
+  // The Compare view: the fix preview, and the lane labels' readouts of each compared track (by
+  // lane index) and of the sum, updated in place.
   private previewFix = false;
+  private matchNodes: (HTMLElement | undefined)[] = [];
+  private sumNode: HTMLElement | undefined;
   private laneLabelsKey = "";
   // Multi-track lanes by lane set, as the lanes messages describe them; a few are kept, so a
   // frame drawn just before or after a change finds its own.
@@ -208,10 +209,17 @@ export class OscilloscopeApp {
       this.traceCanvas,
       {
         colors: resolveColors,
-        laneColors: () =>
-          this.lanesOf(this.lastFrame).map((lane) =>
-            rgba(cssColour(lane.colour)),
-          ),
+        // Tracks left out of a comparison are drawn faint.
+        laneColors: () => {
+          const comparing = this.lastFrame?.comparison !== undefined;
+          return this.lanesOf(this.lastFrame).map((lane) => {
+            const [r, g, b, a] = rgba(cssColour(lane.colour));
+            const faint = comparing && !lane.compared && lane.id !== sumLaneId;
+            return [r, g, b, faint ? a * 0.2 : a] as const;
+          });
+        },
+        comparedLanes: () =>
+          this.lanesOf(this.lastFrame).map((lane) => lane.compared),
         lineWidthPixels: 1.5 * window.devicePixelRatio,
       },
       () => ({
@@ -391,16 +399,22 @@ export class OscilloscopeApp {
     const segment = (
       name: SettingName,
       host: string,
-      choices: [value: string, label: string, help?: HelpTopic][],
+      choices: [
+        value: string,
+        label: string,
+        help?: HelpTopic | undefined,
+        badge?: string,
+      ][],
     ) => {
       this.segmented.set(
         name,
         new Segmented(
           element(host),
-          choices.map(([value, label, help]) => ({
+          choices.map(([value, label, help, badge]) => ({
             value,
             label,
             ...(help === undefined ? {} : { help }),
+            ...(badge === undefined ? {} : { badge }),
           })),
           (value) => {
             this.request(name, value);
@@ -411,7 +425,7 @@ export class OscilloscopeApp {
     segment("displayMode", "display-mode", [
       ["single", "Single"],
       ["multi", "Multi"],
-      ["compare", "Compare"],
+      ["compare", "Compare", undefined, "beta"],
     ]);
     segment("group", "group", [
       ["a", "A"],
@@ -449,12 +463,6 @@ export class OscilloscopeApp {
       popover.hidden = !popover.hidden;
       details.setAttribute("aria-expanded", String(!popover.hidden));
       this.placeTriggerPopover();
-    });
-    document.addEventListener("pointerdown", (event) => {
-      const menu = element("partner-menu");
-      if (!menu.hidden && !menu.contains(event.target as Node)) {
-        menu.hidden = true;
-      }
     });
     document.addEventListener("pointerdown", (event) => {
       const target = event.target as Node;
@@ -676,17 +684,16 @@ export class OscilloscopeApp {
       this.laneSets.get(frame?.laneSet ?? 0) ??
       this.laneSets.get(this.latestLaneSet) ??
       [];
-    // A Compare frame's third lane is the sum of the first two.
-    const [first, second] = styles;
-    if (frame?.comparison !== undefined && first && second) {
+    // A Compare frame's last lane is the sum of the compared tracks.
+    if (frame?.comparison !== undefined && styles.length > 0) {
       styles = [
-        first,
-        second,
+        ...styles,
         {
           id: sumLaneId,
-          name: `${first.name} + ${second.name}`,
+          name: "Sum",
           colour: sumLaneColour,
           own: false,
+          compared: false,
         },
       ];
     }
@@ -699,6 +706,7 @@ export class OscilloscopeApp {
             name: "",
             colour: null,
             own: false,
+            compared: false,
           })),
         );
   }
@@ -736,38 +744,20 @@ export class OscilloscopeApp {
       node.addEventListener("click", onClick);
       return node;
     };
-    // In the Compare view: A, then B with the partner picker, then the sum with the preview.
+    // In the Compare view, each track's swatch is its check box, followed by how it lines up with
+    // this track when compared; the sum shows its gain and the fix preview.
+    const compareMode = this.compareMode();
+    this.matchNodes = [];
+    this.sumNode = undefined;
     const name = (style: LaneStyle, index: number) => {
       const node = document.createElement("span");
       node.style.setProperty("--swatch", cssColour(style.colour));
       node.classList.toggle("own", style.own);
-      if (!comparing) {
-        node.textContent = style.name;
-        return node;
-      }
-      if (index < 2) {
-        const badge = document.createElement("b");
-        badge.className = "pair-badge";
-        badge.textContent = index === 0 ? "A" : "B";
-        node.append(badge);
-      }
-      if (index === 1) {
-        node.dataset["help"] = "comparePartner";
-        node.append(
-          button("◂", "comparePartner", () => {
-            this.stepPartner(-1);
-          }),
-          button(style.name, "comparePartner", (event) => {
-            this.openPartnerMenu(event.currentTarget as HTMLElement);
-          }),
-          button("▸", "comparePartner", () => {
-            this.stepPartner(1);
-          }),
-        );
-        return node;
-      }
-      node.append(style.name);
-      if (index === 2) {
+      if (style.id === sumLaneId) {
+        const gain = document.createElement("span");
+        gain.className = "lane-readout";
+        gain.dataset["help"] = "sumGain";
+        this.sumNode = gain;
         const preview = button("Preview fix", "previewFix", () => {
           this.previewFix = !this.previewFix;
           this.backend.previewFix(this.previewFix);
@@ -775,7 +765,28 @@ export class OscilloscopeApp {
         });
         preview.className = "preview-fix";
         preview.setAttribute("aria-pressed", String(this.previewFix));
-        node.append(preview);
+        node.append(style.name, gain, preview);
+        return node;
+      }
+      if (!compareMode) {
+        node.textContent = style.name;
+        return node;
+      }
+      node.classList.add("checkable");
+      const check = button(style.name, "compareTrack", () => {
+        this.toggleCompared(style.id);
+      });
+      check.className = "compare-check";
+      check.setAttribute("role", "checkbox");
+      check.setAttribute("aria-checked", String(style.compared));
+      check.disabled = style.own;
+      node.append(check);
+      if (comparing && style.compared && !style.own) {
+        const match = document.createElement("span");
+        match.className = "lane-readout";
+        match.dataset["help"] = "match";
+        this.matchNodes[index] = match;
+        node.append(match);
       }
       return node;
     };
@@ -806,51 +817,48 @@ export class OscilloscopeApp {
         ...(styles.length > 0 ? [place(legend, 3)] : []),
       );
     }
-    // The Compare view without a partner says why.
-    if (this.compareMode() && frame !== undefined && !comparing) {
+    // The Compare view without another track says why.
+    if (this.compareMode() && frame?.lanes.length === 1) {
       const note = document.createElement("div");
       note.className = "compare-note";
       note.textContent = `No other track in group ${String(this.store.get("group")).toUpperCase()} to compare with. Insert O-Scope on another track.`;
       container.append(note);
     }
+    this.updateMatches(frame);
   }
 
-  // The Compare partner: the next or previous of the group's other tracks.
-  private stepPartner(step: number): void {
-    const current = this.candidates.findIndex(
-      (candidate) => candidate.id === this.partnerId,
+  // Adds a track to the comparison, or takes it out.
+  private toggleCompared(id: number): void {
+    const others = (this.laneSets.get(this.latestLaneSet) ?? []).filter(
+      (style) => !style.own,
     );
-    const count = this.candidates.length;
-    const next = this.candidates[(((current + step) % count) + count) % count];
-    if (next !== undefined) {
-      this.backend.partner(next.id);
+    this.backend.compare(
+      others
+        .filter((style) => style.compared !== (style.id === id))
+        .map((style) => style.id),
+    );
+  }
+
+  // The Compare view's readouts in the lane labels: each compared track's offset and polarity
+  // (or that it matches nowhere clearly) and correlation against this track, and the sum's gain (with the fix, while it is previewed).
+  private updateMatches(frame: Frame | undefined): void {
+    const comparison = frame?.comparison;
+    this.matchNodes.forEach((node, index) => {
+      const match = comparison?.matches[index];
+      if (node === undefined || match === undefined) {
+        return;
+      }
+      const offsetMs = (match.offset / this.sampleRate) * 1000;
+      const alignment = match.related
+        ? `${offsetMs === 0 ? "0.0" : signed(offsetMs, 1)} ms${match.inverted ? " Ø" : ""}`
+        : "unrelated";
+      node.textContent = `${alignment} · ${signed(match.correlation, 2)}`;
+    });
+    if (this.sumNode !== undefined && comparison !== undefined) {
+      const gain = this.previewFix ? comparison.fixedGain : comparison.sumGain;
+      this.sumNode.textContent = `${signed(gain, 1)} dB`;
+      this.sumNode.className = `lane-readout ${gain < -1 ? "cancels" : gain > 1 ? "reinforces" : ""}`;
     }
-  }
-
-  // A list of the group's other tracks, below the partner's name.
-  private openPartnerMenu(anchor: HTMLElement): void {
-    const menu = element("partner-menu");
-    menu.replaceChildren(
-      ...this.candidates.map((candidate) => {
-        const item = document.createElement("button");
-        item.textContent = candidate.name;
-        item.style.setProperty("--swatch", cssColour(candidate.colour));
-        item.setAttribute(
-          "aria-pressed",
-          String(candidate.id === this.partnerId),
-        );
-        item.addEventListener("click", () => {
-          this.backend.partner(candidate.id);
-          menu.hidden = true;
-        });
-        return item;
-      }),
-    );
-    const screen = this.screen.getBoundingClientRect();
-    const place = anchor.getBoundingClientRect();
-    menu.style.left = `${String(place.left - screen.left)}px`;
-    menu.style.top = `${String(place.bottom - screen.top + 4)}px`;
-    menu.hidden = false;
   }
 
   private beatsMode(): boolean {
@@ -1116,17 +1124,15 @@ export class OscilloscopeApp {
   }
 
   private listenToScreen(): void {
-    // Buttons on the screen (the Compare view's partner picker and fix preview) take their own
+    // Buttons on the screen (the Compare view's check boxes and fix preview) take their own
     // clicks: the screen would otherwise claim the pointer for a zoom drag, or reset the zoom.
-    for (const id of ["lane-labels", "partner-menu"]) {
-      const overlay = element(id);
-      for (const type of ["pointerdown", "dblclick"] as const) {
-        overlay.addEventListener(type, (event) => {
-          if ((event.target as Element).closest("button") !== null) {
-            event.stopPropagation();
-          }
-        });
-      }
+    const overlay = element("lane-labels");
+    for (const type of ["pointerdown", "dblclick"] as const) {
+      overlay.addEventListener(type, (event) => {
+        if ((event.target as Element).closest("button") !== null) {
+          event.stopPropagation();
+        }
+      });
     }
     for (const [id, key] of [
       ["cursor-a", "a"],
@@ -1370,8 +1376,8 @@ export class OscilloscopeApp {
         this.panSeconds = 0;
       }
       this.loop.submit(frame);
-      // A track joined or left: lanes, grid and labels change with it. A new lane set (another
-      // partner, a renamed track) changes the labels.
+      // A track joined or left: lanes, grid and labels change with it. A new lane set (a track
+      // checked, a renamed track) changes the labels.
       if (frame.lanes.length !== this.drawnLaneCount) {
         this.drawScreen();
         this.placeCursors();
@@ -1396,9 +1402,6 @@ export class OscilloscopeApp {
       }
       this.latestLaneSet = message.laneSet;
       this.hiddenTracks = message.hidden;
-      this.candidates = laneStyles(message.candidates);
-      this.partnerId = message.lanes[1]?.id;
-      element("partner-menu").hidden = true;
       this.drawScreen();
       this.loop.invalidate();
       this.updateStatus();
@@ -1448,85 +1451,11 @@ export class OscilloscopeApp {
     const frame = this.lastFrame;
     if (frame !== undefined) {
       this.lastReadoutTime = now;
-      this.showReadouts(frame);
+      element("peak").textContent = formatDbfs(frame.peak);
+      element("rms").textContent = formatDbfs(frame.rms);
+      element("frequency").textContent = formatFrequency(frame.frequency);
+      this.updateMatches(frame);
     }
-  }
-
-  // Peak, RMS and frequency; in the Compare view, the pair's summing gain, correlation and offset.
-  private showReadouts(frame: Frame): void {
-    const set = (
-      id: string,
-      label: string,
-      value: string,
-      unit: string,
-      help: HelpTopic,
-      tone = "",
-    ) => {
-      const valueNode = element(id);
-      const readout = valueNode.parentElement;
-      valueNode.textContent = value;
-      valueNode.className = tone;
-      if (readout !== null) {
-        readout.dataset["help"] = help;
-        const labelNode = readout.querySelector("b");
-        const unitNode = readout.querySelector("small");
-        if (labelNode !== null) {
-          labelNode.textContent = label;
-        }
-        if (unitNode !== null) {
-          unitNode.textContent = unit;
-        }
-      }
-    };
-    if (!this.compareMode()) {
-      set("peak", "Peak", formatDbfs(frame.peak), "dBFS", "peak");
-      set("rms", "RMS", formatDbfs(frame.rms), "dBFS", "rms");
-      set(
-        "frequency",
-        "Freq",
-        formatFrequency(frame.frequency),
-        "Hz",
-        "frequency",
-      );
-      return;
-    }
-    const comparison = frame.comparison;
-    const dash = "—";
-    const gain = comparison?.sumGain;
-    set(
-      "peak",
-      "Sum",
-      gain === undefined ? dash : signed(gain, 1),
-      "dB",
-      "sumGain",
-      gain === undefined
-        ? ""
-        : gain < -1
-          ? "cancels"
-          : gain > 1
-            ? "reinforces"
-            : "",
-    );
-    set(
-      "rms",
-      "Corr",
-      comparison === undefined ? dash : signed(comparison.correlation, 2),
-      "",
-      "correlation",
-    );
-    const offsetMs =
-      comparison === undefined
-        ? undefined
-        : (comparison.offset / this.sampleRate) * 1000;
-    set(
-      "frequency",
-      "Offset",
-      offsetMs === undefined
-        ? dash
-        : `${offsetMs === 0 ? "0.0" : signed(offsetMs, 1)}${comparison?.inverted === true ? " Ø" : ""}`,
-      "ms",
-      "offset",
-    );
   }
 
   private showError(message: ErrorMessage): void {
