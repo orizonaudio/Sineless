@@ -2,6 +2,10 @@
 
 #include <utility>
 
+#if defined(__APPLE__)
+#include <pthread.h>
+#endif
+
 namespace orizon::engine {
 
 AnalysisWorker::AnalysisWorker(std::function<void()> task, std::chrono::microseconds interval)
@@ -29,6 +33,9 @@ void AnalysisWorker::wake()
 
 void AnalysisWorker::run()
 {
+#if defined(__APPLE__)
+    pthread_setname_np("O-Scope analysis"); // Named for profilers and the benchmark.
+#endif
     std::unique_lock lock(mutex);
     while (!stopping) {
         woken = false;

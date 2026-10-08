@@ -54,3 +54,11 @@ if(BUILD_TESTING)
     set_source_files_properties(tests/EditorTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30)
 endif()
+
+# The performance benchmark: the real page under a simulated host. See bench/PerfBench.mm.
+if(ORIZON_BENCH)
+    add_executable(perf_bench bench/PerfBench.mm)
+    target_link_libraries(perf_bench
+        PRIVATE editor orizon_warnings "-framework Cocoa" "-framework WebKit" "-framework IOKit")
+    set_source_files_properties(bench/PerfBench.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+endif()

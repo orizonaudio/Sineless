@@ -42,3 +42,5 @@ function(orizon_forbid_dependencies target)
         endforeach()
     endwhile()
 endfunction()
+
+option(ORIZON_BENCH "Build the editor performance benchmark (perf_bench)" OFF)

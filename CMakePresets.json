@@ -41,6 +41,30 @@
         "ORIZON_THREAD_SANITIZER": "ON",
         "SMTG_RUN_VST_VALIDATOR": "OFF"
       }
+    },
+    {
+      "name": "bench",
+      "displayName": "Optimised build of the performance benchmark",
+      "binaryDir": "${sourceDir}/build/bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "BUILD_TESTING": "OFF",
+        "ORIZON_BENCH": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      }
+    },
+    {
+      "name": "bench-debug",
+      "displayName": "Debug build of the performance benchmark, as the dev plugin",
+      "binaryDir": "${sourceDir}/build/bench-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "BUILD_TESTING": "OFF",
+        "ORIZON_BENCH": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -61,6 +85,16 @@
       "name": "tsan",
       "configurePreset": "tsan",
       "targets": ["engine_tests"]
+    },
+    {
+      "name": "bench",
+      "configurePreset": "bench",
+      "targets": ["perf_bench"]
+    },
+    {
+      "name": "bench-debug",
+      "configurePreset": "bench-debug",
+      "targets": ["perf_bench"]
     }
   ],
   "testPresets": [
