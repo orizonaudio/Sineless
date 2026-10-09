@@ -23,6 +23,9 @@ scenarios=(
     # takes over a minute to fill.
     "multi-15-16bars-60bpm-96k --mode=multi --lanes=15 --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70"
     "compare-15-16bars-60bpm-96k --mode=compare --lanes=15 --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70"
+    # The same with every track checked and their matches moving, as with real material, with the
+    # fix previewed: the sum is redone as matches move.
+    "compare-15-all-jitter-96k --mode=compare --lanes=15 --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70 --compare-all --jitter --preview-fix"
     "single-16bars-60bpm-96k --mode=single --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70"
     "compare-15-roll-4s-96k --mode=compare --lanes=15 --timebase=seconds --span=4 --rate=96000"
 )

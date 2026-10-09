@@ -6,7 +6,8 @@
 //   perf_bench [--lanes=7] [--mode=multi|compare|single] [--timebase=beats|seconds]
 //              [--beatspan=fourBars] [--span=4] [--rate=48000] [--tempo=120]
 //              [--layout=stacked|overlaid] [--width=1400] [--height=800]
-//              [--warmup=3] [--duration=10] [--idle]
+//              [--warmup=3] [--duration=10] [--idle] [--compare-all] [--jitter]
+//              [--preview-fix]
 //              [--soak-interval=SECONDS] [--reopen=COUNT]
 //              [--min-fps=N] [--max-total=PERCENT] [--max-analysis=PERCENT]
 //              [--max-memory-growth=MB] [--max-memory-rate=MB_PER_MINUTE]
@@ -15,7 +16,10 @@
 // rate memory grows at (a least-squares slope over the intervals after the first, so a slow leak
 // shows within minutes) and on the slowest and busiest intervals. Reopen: with --reopen, the editor
 // is closed and opened COUNT times while the tracks play, then judged on memory growth and on
-// threads left behind. Any limit given makes the exit code 1 when it is broken, for automated
+// threads left behind. Compare: --compare-all checks every track, as a user may; --jitter delays
+// the other tracks by 0 to 3 ms, changing every 0.7 s, so their matches keep moving, as
+// with real material; --preview-fix
+// draws the sum as fixed. Any limit given makes the exit code 1 when it is broken, for automated
 // checks.
 #include "editor/Editor.h"
 #include "engine/Engine.h"
@@ -64,6 +68,9 @@ struct Options
     double warmup = 3.0;
     double duration = 10.0;
     bool idle = false; // No audio: the page open with nothing to draw.
+    bool compareAll = false;
+    bool jitter = false;
+    bool previewFix = false;
     double soakInterval = 0.0;
     int reopen = 0;
     // Limits; negative means none.
@@ -108,6 +115,12 @@ Options parse(std::span<const char* const> arguments)
             options.duration = std::stod(value);
         } else if (key == "--idle") {
             options.idle = true;
+        } else if (key == "--compare-all") {
+            options.compareAll = true;
+        } else if (key == "--jitter") {
+            options.jitter = true;
+        } else if (key == "--preview-fix") {
+            options.previewFix = true;
         } else if (key == "--soak-interval") {
             options.soakInterval = std::stod(value);
         } else if (key == "--reopen") {
@@ -158,8 +171,9 @@ float signalOf(int track, double t, double tempo)
 class Host
 {
 public:
-    Host(std::vector<std::shared_ptr<engine::Engine>> engines, double rate, double tempo)
-        : engines(std::move(engines)), rate(rate), tempo(tempo),
+    Host(std::vector<std::shared_ptr<engine::Engine>> engines, double rate, double tempo,
+         bool jitter)
+        : engines(std::move(engines)), rate(rate), tempo(tempo), jitter(jitter),
           block(static_cast<int>(std::lround(rate / 100.0))), thread([this] { run(); })
     {}
     ~Host()
@@ -181,8 +195,12 @@ private:
         while (!stopping) {
             for (std::size_t track = 0; track < engines.size(); ++track) {
                 for (int i = 0; i < block; ++i) {
-                    const double t =
-                        static_cast<double>(sample + static_cast<std::uint64_t>(i)) / rate;
+                    double t = static_cast<double>(sample + static_cast<std::uint64_t>(i)) / rate;
+                    if (jitter && track > 0) {
+                        // 0 to 3 ms late, changing every 0.7 s.
+                        const auto step = static_cast<std::size_t>(t / 0.7) + track;
+                        t -= 0.001 * static_cast<double>(step % 4);
+                    }
                     left[static_cast<std::size_t>(i)] = signalOf(static_cast<int>(track), t, tempo);
                     right[static_cast<std::size_t>(i)] = 0.8f * left[static_cast<std::size_t>(i)];
                 }
@@ -211,6 +229,7 @@ private:
     std::vector<std::shared_ptr<engine::Engine>> engines;
     double rate;
     double tempo;
+    bool jitter;
     int block; // Samples per block: 10 ms.
     std::atomic<bool> stopping{false};
     std::thread thread;
@@ -455,7 +474,9 @@ int run(const Options& options)
             own.settings().set(SettingId::kChannelViews, 15.0); // L, R, M and S.
         }
         const std::unique_ptr<Host> host =
-            options.idle ? nullptr : std::make_unique<Host>(engines, options.rate, options.tempo);
+            options.idle
+                ? nullptr
+                : std::make_unique<Host>(engines, options.rate, options.tempo, options.jitter);
 
         const auto before = webKitTimes();
         NSWindow* window =
@@ -481,7 +502,33 @@ int run(const Options& options)
             }
         };
         open();
-        pump(options.warmup);
+        if (options.compareAll || options.previewFix) {
+            // Once the page is up, send what its checkboxes and Preview fix button would.
+            const double settle = std::min(1.0, options.warmup);
+            pump(settle);
+            auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+            const auto post = [&](const nlohmann::json& message) {
+                const std::string script = "window.webkit.messageHandlers.orizon.postMessage(" +
+                                           nlohmann::json(message.dump()).dump() + "); ''";
+                evaluate(webView, @(script.c_str()));
+            };
+            if (options.compareAll) {
+                nlohmann::json ids = nlohmann::json::array();
+                for (const auto& member : engine::InstanceRegistry::shared().members(
+                         own.settings().get().enumValue<protocol::Group>(SettingId::kGroup))) {
+                    if (member.engine != engines.front()) {
+                        ids.push_back(member.serial);
+                    }
+                }
+                post({{"type", "compare"}, {"ids", ids}});
+            }
+            if (options.previewFix) {
+                post({{"type", "previewFix"}, {"on", true}});
+            }
+            pump(options.warmup - settle);
+        } else {
+            pump(options.warmup);
+        }
 
         const std::string perfScript = "JSON.stringify(window.orizonDebug?.perf ?? "
                                        "{frameCount: window.orizonDebug?.frameCount ?? 0})";

@@ -41,6 +41,11 @@ inline constexpr double kMatchSpacingSeconds = 0.1;
 // together.
 inline constexpr double kStatsBlockSeconds = 0.01;
 
+// When the parts of a Compare sum change (a track checked, or a match moved), its levels and
+// columns are summed again over the whole sweep, at most this many samples of compared tracks per
+// frame: a long sweep of many tracks is redone over a few frames instead of stalling one.
+inline constexpr std::size_t kSumRefreshSamples = std::size_t{1} << 21U;
+
 // At most this many lanes are drawn in the multi-track view: tracks, and in the Compare view
 // their sum.
 inline constexpr std::size_t kMaxLanes = 16;
@@ -214,11 +219,20 @@ private:
                        std::span<float> into);
     void readSum(const std::vector<SumPart>& parts, std::size_t length, std::size_t position,
                  std::span<float> into);
-    // Keeps `stats`, the levels of the sum of `parts` per block, in step: all of them when `key`
-    // differs from `lastKey`, else where compared tracks changed this frame, widened by `reach`.
-    void updateSumStats(BlockStats& stats, const std::vector<std::int64_t>& key,
-                        std::vector<std::int64_t>& lastKey, const std::vector<SumPart>& parts,
-                        std::size_t reach, std::size_t length, std::size_t block);
+    // A sum's recomputation spread over frames: `remaining` positions from `cursor`, wrapping.
+    struct SumRefresh
+    {
+        std::size_t cursor = 0;
+        std::size_t remaining = 0;
+    };
+    // Keeps `stats`, the levels of the sum of `parts` per block, in step: where compared tracks
+    // changed this frame, widened by `reach`, and when `key` differs from `lastKey`, all of them
+    // again over the next frames (see kSumRefreshSamples); all at once for a new length. True if
+    // levels were measured again beyond this frame's changes.
+    bool updateSumStats(BlockStats& stats, SumRefresh& refresh,
+                        const std::vector<std::int64_t>& key, std::vector<std::int64_t>& lastKey,
+                        const std::vector<SumPart>& parts, std::size_t reach, std::size_t length,
+                        std::size_t block);
     // The energies the summing gains over screen positions [first, end) need: each compared
     // lane's, then the sums' as recorded and as fixed, per block inside the part and per piece of
     // a block at its edges, so that the gains cover exactly the visible part.
@@ -308,6 +322,10 @@ private:
     std::vector<SumPart> fixedParts; // ...and shifted and flipped as matched.
     std::vector<std::int64_t> sumKey;
     std::vector<std::int64_t> lastSumKey;
+    // Tempo-synced: the sum lane's span, visible part and columns, and its pending recomputation.
+    std::vector<std::int64_t> sumGeometry;
+    std::vector<std::int64_t> lastSumGeometry;
+    SumRefresh sumRefresh;
     std::vector<float> sumScratch;
     // The sums' levels per block, and the parts they were measured for.
     BlockStats rawSumStats;
@@ -316,6 +334,14 @@ private:
     std::vector<std::int64_t> lastRawSumKey;
     std::vector<std::int64_t> fixedSumKey;
     std::vector<std::int64_t> lastFixedSumKey;
+    SumRefresh rawSumRefresh;
+    SumRefresh fixedSumRefresh;
+    // Whether a sum is still being recomputed: frames go on meanwhile, also while frozen.
+    [[nodiscard]] bool sumsRefreshing() const
+    {
+        return sumRefresh.remaining > 0 || rawSumRefresh.remaining > 0 ||
+               fixedSumRefresh.remaining > 0;
+    }
     // The match search's copies of the visible part, and the gains' energies.
     std::vector<float> matchOwn;
     std::vector<float> matchTrack;

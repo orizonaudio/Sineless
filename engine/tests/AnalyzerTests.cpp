@@ -1564,5 +1564,51 @@ TEST_F(CompareTest, KeepsAMatchThroughTheCycleStart)
     EXPECT_GT(frames, 300);
 }
 
+// When the parts of the sum change, here by the fix previewed while frozen, a long sweep is summed
+// again over a few frames, which keep coming until it is done. Thirty-two seconds of two tracks
+// take two frames.
+TEST_F(CompareTest, SumsALongSweepAgainOverFrames)
+{
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    own->settings().set(SettingId::kBeatSpan,
+                        static_cast<double>(protocol::BeatSpan::kSixteenBars));
+    analyzer->setColumns(1000);
+    play(std::uint64_t{33} * 48000);
+    for (int step = 0; step < 3; ++step) {
+        play(480);
+        produce();
+    }
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    ASSERT_FALSE(produce()) << "nothing new while frozen";
+
+    // Columns of lane `index`: (min, max) pairs.
+    const auto columnsOf = [](const DecodedFrame& frame, std::size_t index) {
+        const std::size_t values = std::size_t{2} * frame.pointCount;
+        const auto begin = frame.data.begin() + static_cast<std::ptrdiff_t>(index * values);
+        return std::vector<float>(begin, begin + static_cast<std::ptrdiff_t>(values));
+    };
+    // The copy is inverted: fixed, the sum is twice this track.
+    const auto fixedEverywhere = [&](const DecodedFrame& frame) {
+        const std::vector<float> track = columnsOf(frame, 0);
+        const std::vector<float> sum = columnsOf(frame, 2);
+        for (std::size_t i = 0; i < track.size(); ++i) {
+            if (sum[i] != 2.0f * track[i]) {
+                return false;
+            }
+        }
+        return true;
+    };
+    analyzer->setPreviewFix(true);
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 3);
+    EXPECT_FALSE(fixedEverywhere(*frame)) << "partly summed again";
+    frame = produce();
+    ASSERT_TRUE(frame) << "frames go on while the sum is redone";
+    EXPECT_TRUE(fixedEverywhere(*frame));
+    EXPECT_FALSE(produce()) << "and stop once it is done";
+}
+
 } // namespace
 } // namespace orizon::engine

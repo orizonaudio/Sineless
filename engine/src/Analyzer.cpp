@@ -96,6 +96,32 @@ Readouts levelsOf(const BlockStats& stats, std::size_t first, std::size_t end)
     return readouts;
 }
 
+// Goes on with a sum's pending recomputation (an Analyzer::SumRefresh): up to `step` positions of
+// a span of `length`, from where it stopped, wrapping at the end.
+template <typename Refresh, typename Update>
+void continueRefresh(Refresh& refresh, std::size_t length, std::size_t step, const Update& update)
+{
+    if (length == 0) {
+        refresh = {};
+        return;
+    }
+    std::size_t budget = std::min(std::max<std::size_t>(step, 1), refresh.remaining);
+    refresh.remaining -= budget;
+    while (budget > 0) {
+        refresh.cursor %= length;
+        const std::size_t run = std::min(budget, length - refresh.cursor);
+        update(refresh.cursor, refresh.cursor + run);
+        refresh.cursor += run;
+        budget -= run;
+    }
+}
+
+// How many positions of a sum of `parts` tracks to recompute per frame.
+std::size_t refreshStep(std::size_t parts)
+{
+    return kSumRefreshSamples / std::max<std::size_t>(parts, 1);
+}
+
 } // namespace
 
 Analyzer::Analyzer(Engine& engine, const InstanceRegistry& registry)
@@ -852,7 +878,8 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     const bool changed = fresh || settings != lastSettings || command.columns != lastColumns ||
                          isFrozen != lastFrozen || command.viewStart != lastViewStart ||
                          command.viewEnd != lastViewEnd || laneSetId != lastLaneSet ||
-                         command.previewFix != lastPreviewFix || (comparing && matchesPending);
+                         command.previewFix != lastPreviewFix ||
+                         (comparing && (matchesPending || sumsRefreshing()));
     if (!changed) {
         return false;
     }
@@ -1190,7 +1217,8 @@ void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, st
     }
 }
 
-void Analyzer::updateSumStats(BlockStats& stats, const std::vector<std::int64_t>& key,
+bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
+                              const std::vector<std::int64_t>& key,
                               std::vector<std::int64_t>& lastKey, const std::vector<SumPart>& parts,
                               std::size_t reach, std::size_t length, std::size_t block)
 {
@@ -1198,11 +1226,18 @@ void Analyzer::updateSumStats(BlockStats& stats, const std::vector<std::int64_t>
         readSum(parts, length, from, into);
         return true;
     };
-    if (key != lastKey || !stats.fits(length, block)) {
+    if (!stats.fits(length, block)) {
         stats.reset(length, block);
         stats.update(0, length, read);
         lastKey = key;
-        return;
+        refresh = {};
+        return true;
+    }
+    if (key != lastKey) {
+        // Other parts: every block again, over the next frames; meanwhile the blocks not redone
+        // yet still hold the previous parts' levels.
+        refresh.remaining = length;
+        lastKey = key;
     }
     for (const SweepImage::Range& range : frameChanges) {
         const auto from = static_cast<std::size_t>(range.first > reach ? range.first - reach : 0);
@@ -1212,6 +1247,10 @@ void Analyzer::updateSumStats(BlockStats& stats, const std::vector<std::int64_t>
             stats.update(from, to, read);
         }
     }
+    const bool refreshing = refresh.remaining > 0;
+    continueRefresh(refresh, length, refreshStep(parts.size()),
+                    [&](std::size_t from, std::size_t to) { stats.update(from, to, read); });
+    return refreshing;
 }
 
 void Analyzer::collectEnergies(std::size_t first, std::size_t end, std::size_t length,
@@ -1285,9 +1324,9 @@ void Analyzer::collectEnergies(std::size_t first, std::size_t end, std::size_t l
 // of the compared tracks as one more lane, then each track's match. Like the track lanes, the sum
 // lane keeps its columns, and only those where compared tracks changed (moved by the largest
 // correction while the fix is previewed) are summed again; all of them when a correction
-// changes. The sums' levels per block are kept the same way, so the summing gains, measured with
-// the matches or at most every 100 ms of audio, cost a pass over blocks. Matches are searched
-// only when due (see kMatchRefreshSeconds).
+// changes, spread over frames (see kSumRefreshSamples). The sums' levels per block are kept the
+// same way, so the summing gains, measured with the matches or at most every 100 ms of audio,
+// cost a pass over blocks. Matches are searched only when due (see kMatchRefreshSeconds).
 void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, std::size_t end,
                                 std::uint64_t count, std::size_t columns, bool previewFix,
                                 std::size_t playhead)
@@ -1349,14 +1388,18 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         fixedSumKey.insert(fixedSumKey.end(), {static_cast<std::int64_t>(serial), fixed.offset,
                                                fixed.sign < 0.0f ? 1 : 0});
     }
-    updateSumStats(rawSumStats, rawSumKey, lastRawSumKey, rawParts, 0, length, block);
-    updateSumStats(fixedSumStats, fixedSumKey, lastFixedSumKey, fixedParts, maxOffset, length,
-                   block);
+    // Measured again beyond this frame's changes: the gains follow, so they settle as the
+    // recomputation ends.
+    const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey,
+                                            rawParts, 0, length, block);
+    const bool fixedMeasured =
+        updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey, lastFixedSumKey, fixedParts,
+                       maxOffset, length, block);
 
     // The matches' values and the gains, when due.
     const auto gainInterval = static_cast<std::uint64_t>(0.1 * sampleRate);
-    if (searched || !comparisonCache.valid || now < comparisonCache.at ||
-        now - comparisonCache.at >= gainInterval) {
+    if (searched || rawMeasured || fixedMeasured || !comparisonCache.valid ||
+        now < comparisonCache.at || now - comparisonCache.at >= gainInterval) {
         std::vector<float>& matchValues = comparisonCache.matches;
         matchValues.assign(laneOrder.size() * protocol::kMatchValues, 0.0f);
         for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
@@ -1379,11 +1422,12 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         comparisonCache.valid = true;
     }
 
-    // The sum lane, with its parts as previewed. Its key: the span and visible part, the columns,
-    // and each part as summed.
+    // The sum lane, with its parts as previewed. Its geometry: the span and visible part, and the
+    // columns; its key: each part as summed.
     const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
-    sumKey.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
-                   static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns)});
+    sumGeometry.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
+                        static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns)});
+    sumKey.clear();
     for (const SumPart& part : parts) {
         sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
                                      part.sign < 0.0f ? 1 : 0});
@@ -1393,11 +1437,19 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         return true;
     };
     const std::size_t visibleCount = end - first;
-    if (sumKey != lastSumKey || !sumReduction.fits(visibleCount, columns)) {
+    if (sumGeometry != lastSumGeometry || !sumReduction.fits(visibleCount, columns)) {
         sumReduction.reset(visibleCount, columns);
         sumReduction.update(0, visibleCount, readVisibleSum);
+        lastSumGeometry = sumGeometry;
         lastSumKey = sumKey;
+        sumRefresh = {};
     } else {
+        if (sumKey != lastSumKey) {
+            // Other parts: every column again, over the next frames, from left to right.
+            sumRefresh.remaining = visibleCount;
+            sumRefresh.cursor = 0;
+            lastSumKey = sumKey;
+        }
         const std::size_t reach = previewFix ? maxOffset : 0;
         for (const SweepImage::Range& range : frameChanges) {
             const std::uint64_t from =
@@ -1408,6 +1460,10 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
                                     static_cast<std::size_t>(to) - first, readVisibleSum);
             }
         }
+        continueRefresh(sumRefresh, visibleCount, refreshStep(parts.size()),
+                        [&](std::size_t from, std::size_t to) {
+                            sumReduction.update(from, to, readVisibleSum);
+                        });
     }
     frameData.insert(frameData.end(), sumReduction.values().begin(), sumReduction.values().end());
     frameData.insert(frameData.end(), comparisonCache.matches.begin(),
