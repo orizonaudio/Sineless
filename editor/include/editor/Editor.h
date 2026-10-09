@@ -43,7 +43,7 @@ public:
     Steinberg::tresult PLUGIN_API removed() override;
     Steinberg::tresult PLUGIN_API onSize(Steinberg::ViewRect* newSize) override;
     Steinberg::tresult PLUGIN_API canResize() override;
-    Steinberg::tresult PLUGIN_API checkSizeConstraint(Steinberg::ViewRect* rect) override;
+    Steinberg::tresult PLUGIN_API checkSizeConstraint(Steinberg::ViewRect* size) override;
 
     // The minimum height now: kMinimumHeight, or more with stacked lanes on show.
     [[nodiscard]] int minimumHeight() const;

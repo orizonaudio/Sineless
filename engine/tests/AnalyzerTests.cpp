@@ -1224,11 +1224,12 @@ TEST_F(CompareTest, SumsEveryComparedTrack)
     const auto frame = produce();
     ASSERT_TRUE(frame);
     ASSERT_EQ(frame->laneCount, 5);
-    const std::vector<float> own = lane(*frame, 0);
+    const std::vector<float> ownTrack = lane(*frame, 0);
     const std::vector<float> other = lane(*frame, 2);
     const std::vector<float> sum = lane(*frame, 4);
     for (std::size_t i = 0; i < sum.size(); ++i) {
-        ASSERT_NEAR(sum[i], 2.0f * own[i] + other[i], 1e-5f) << "the inverted track is left out";
+        ASSERT_NEAR(sum[i], 2.0f * ownTrack[i] + other[i], 1e-5f)
+            << "the inverted track is left out";
     }
     // Three equal levels, two of them alike: 10 log10(5 / 3).
     EXPECT_NEAR(sumGain(), 2.2f, 0.2f);

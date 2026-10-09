@@ -540,23 +540,23 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             const auto readVisible = [&](std::size_t first, std::span<float> destination) {
                 return read(crop.first + first, destination);
             };
-            bool reduced = true;
+            bool updated = true;
             if (!sameReduction || !reduction.fits(visibleCount, columns)) {
                 reduction.reset(visibleCount, columns);
-                reduced = reduction.update(0, visibleCount, readVisible);
+                updated = reduction.update(0, visibleCount, readVisible);
             } else {
                 for (const SweepImage::Range& range : image.changes()) {
-                    const std::uint64_t first = std::max<std::uint64_t>(range.first, crop.first);
-                    const std::uint64_t end = std::min<std::uint64_t>(range.end, crop.end);
-                    if (first < end) {
-                        reduced = reduction.update(static_cast<std::size_t>(first) - crop.first,
-                                                   static_cast<std::size_t>(end) - crop.first,
+                    const std::uint64_t from = std::max<std::uint64_t>(range.first, crop.first);
+                    const std::uint64_t to = std::min<std::uint64_t>(range.end, crop.end);
+                    if (from < to) {
+                        updated = reduction.update(static_cast<std::size_t>(from) - crop.first,
+                                                   static_cast<std::size_t>(to) - crop.first,
                                                    readVisible) &&
-                                  reduced;
+                                  updated;
                     }
                 }
             }
-            if (!reduced) {
+            if (!updated) {
                 reduction.invalidate();
                 return false;
             }
@@ -645,20 +645,20 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     return true;
 }
 
-bool Analyzer::updateStats(BlockStats& stats, const SweepImage& image, ChannelView view,
+bool Analyzer::updateStats(BlockStats& stats, const SweepImage& sweep, ChannelView view,
                            int channels, bool fresh)
 {
     const auto read = [&](std::size_t first, std::span<float> destination) {
         readScratch.resize(std::max(readScratch.size(), destination.size()));
-        return readView(image, channels, view, first, destination, readScratch);
+        return readView(sweep, channels, view, first, destination, readScratch);
     };
-    const auto length = static_cast<std::size_t>(image.length());
+    const auto length = static_cast<std::size_t>(sweep.length());
     if (fresh) {
         stats.reset(length, statsBlock(engine.sampleRate()));
         return stats.update(0, length, read);
     }
     bool measured = true;
-    for (const SweepImage::Range& range : image.changes()) {
+    for (const SweepImage::Range& range : sweep.changes()) {
         measured = stats.update(static_cast<std::size_t>(range.first),
                                 static_cast<std::size_t>(range.end), read) &&
                    measured;
@@ -833,7 +833,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         imageWindow.reset();
     }
     const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
-    const Lane& ownLane = *lanes.at(ownSerial);
+    const Lane& own = *lanes.at(ownSerial);
 
     // Live, each lane follows its own capture and clock, and only new audio is placed. Frozen,
     // the lanes stay as they are; the own lane decides, as in Single mode, whether a span is
@@ -844,32 +844,34 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     double subEnd = 1.0;
     if (!isFrozen) {
         fresh = placeLanes(settings, beatSpan);
-        shown = ownLane.window;
-    } else if (ownLane.hold.held()) {
+        shown = own.window;
+    } else if (own.hold.held()) {
         const auto frozen =
-            frozenSweep(ownLane.hold.clock(), ownLane.hold.endIndex(), ownLane.engine->sampleRate(),
-                        beatSpan, ownLane.window, ownLane.image.length());
+            frozenSweep(own.hold.clock(), own.hold.endIndex(), own.engine->sampleRate(), beatSpan,
+                        own.window, own.image.length());
         if (frozen && frozen->rebuild) {
             for (const std::uint64_t serial : laneOrder) {
                 Lane& lane = *lanes.at(serial);
-                const LaneHold& hold = lane.hold;
+                const LaneHold& laneHold = lane.hold;
                 const auto held =
-                    hold.held() ? sweepWindow(hold.clock(), hold.endIndex(),
-                                              lane.engine->sampleRate(), beatSpan, kMaxSweepSamples)
-                                : std::nullopt;
-                if (held && lane.image.update(hold, *held, true, lane.engine->inputChannels())) {
+                    laneHold.held()
+                        ? sweepWindow(laneHold.clock(), laneHold.endIndex(),
+                                      lane.engine->sampleRate(), beatSpan, kMaxSweepSamples)
+                        : std::nullopt;
+                if (held &&
+                    lane.image.update(laneHold, *held, true, lane.engine->inputChannels())) {
                     lane.window = held;
                     fresh = true;
                 }
             }
-            shown = ownLane.window;
+            shown = own.window;
         } else if (frozen) {
             shown = frozen->window;
             subStart = frozen->start;
             subEnd = frozen->end;
         }
     } else {
-        shown = ownLane.window;
+        shown = own.window;
     }
     if (!shown) {
         return false;
@@ -887,7 +889,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     // Lanes share the own track's window. A lane whose sweep differs in length for a moment (a
     // tempo change reaching it a block later) is drawn silent until it catches up.
     const SweepWindow& window = *shown;
-    const std::uint64_t count = ownLane.image.length();
+    const std::uint64_t count = own.image.length();
     const double shownPart = subEnd - subStart;
     const Crop crop =
         cropOf(static_cast<double>(count), 0.0, subStart + command.viewStart * shownPart,
@@ -926,24 +928,24 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
             return readView(lane.image, lane.image.channels(), ChannelView::kMid,
                             crop.first + first, destination, readScratch);
         };
-        bool reduced = false;
+        bool updated = false;
         if (lane.image.length() == count) {
             if (!reduction.fits(visibleCount, columns) || lane.reducedFirst != crop.first ||
                 lane.reducedChannels != channels) {
                 reduction.reset(visibleCount, columns);
                 lane.reducedFirst = crop.first;
                 lane.reducedChannels = channels;
-                reduced = reduction.update(0, visibleCount, read);
+                updated = reduction.update(0, visibleCount, read);
             } else {
-                reduced = true;
+                updated = true;
                 for (const SweepImage::Range& range : lane.image.changes()) {
                     const std::uint64_t first = std::max<std::uint64_t>(range.first, crop.first);
                     const std::uint64_t end = std::min<std::uint64_t>(range.end, crop.end);
                     if (first < end) {
-                        reduced =
+                        updated =
                             reduction.update(static_cast<std::size_t>(first) - crop.first,
                                              static_cast<std::size_t>(end) - crop.first, read) &&
-                            reduced;
+                            updated;
                     }
                 }
             }
@@ -959,8 +961,8 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
             }
             lane.image.clearChanges();
         }
-        if (!reduced) {
-            // Not on this sweep's length (yet): silent, and reduced afresh once it is.
+        if (!updated) {
+            // Not on this sweep's length (yet): silent, and updated afresh once it is.
             reduction.reset(visibleCount, columns);
             reduction.invalidate();
         }
@@ -986,17 +988,16 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
 
     // Readouts measure the own track's Mid: peak and RMS over the whole span from its levels per
     // block, the frequency over the newest second, at most every 100 ms of audio.
-    const std::uint64_t ownEnd = ownLane.engine->captureRing().endIndex();
-    if (readoutsDue(ownEnd) && ownLane.stats.fits(static_cast<std::size_t>(count), block)) {
+    const std::uint64_t ownEnd = own.engine->captureRing().endIndex();
+    if (readoutsDue(ownEnd) && own.stats.fits(static_cast<std::size_t>(count), block)) {
         Readouts readouts;
         if (measureSweepReadouts(
-                ownLane.stats,
+                own.stats,
                 static_cast<std::size_t>(std::llround(subStart * static_cast<double>(count))),
                 static_cast<std::size_t>(std::llround(subEnd * static_cast<double>(count))),
-                isFrozen ? static_cast<const SampleSource&>(ownLane.hold)
-                         : ownLane.engine->captureRing(),
-                isFrozen ? ownLane.hold.endIndex() : ownEnd, ChannelView::kMid,
-                engine.inputChannels(), readouts)) {
+                isFrozen ? static_cast<const SampleSource&>(own.hold) : own.engine->captureRing(),
+                isFrozen ? own.hold.endIndex() : ownEnd, ChannelView::kMid, engine.inputChannels(),
+                readouts)) {
             storeReadouts(readouts, ownEnd);
         }
     }

@@ -117,13 +117,13 @@ tresult PLUGIN_API Editor::canResize()
     return kResultTrue;
 }
 
-tresult PLUGIN_API Editor::checkSizeConstraint(ViewRect* rect)
+tresult PLUGIN_API Editor::checkSizeConstraint(ViewRect* size)
 {
-    if (rect == nullptr) {
+    if (size == nullptr) {
         return kInvalidArgument;
     }
-    rect->right = rect->left + std::max(rect->getWidth(), kMinimumWidth);
-    rect->bottom = rect->top + std::max(rect->getHeight(), minimumHeight());
+    size->right = size->left + std::max(size->getWidth(), kMinimumWidth);
+    size->bottom = size->top + std::max(size->getHeight(), minimumHeight());
     return kResultTrue;
 }
 
