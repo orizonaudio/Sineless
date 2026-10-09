@@ -153,7 +153,7 @@ export const helpTexts = {
   },
   hoverReadout: {
     title: "Hover readout",
-    text: "When on, resting the pointer on a trace shows, beside it, the position there, the level, and the length, frequency and note of the cycle around it.",
+    text: "When on, resting the pointer on a trace shows, beside it, the position there, the level, and the length, frequency and note of the cycle around it. A dotted line marks the column or point read, and a faint band the cycle measured.",
   },
   displayOptions: {
     title: "Display options",

@@ -1195,9 +1195,12 @@ export class OscilloscopeApp {
     };
   }
 
-  // Shows what lies under the pointer, beside it; hidden while a help tooltip shows.
+  // Shows what lies under the pointer, beside it, with a line at the column or point read and a
+  // band over the cycle measured; hidden while a help tooltip shows.
   private updateHover(): void {
     const node = element("hover-readout");
+    const line = element("hover-line");
+    const band = element("hover-cycle");
     const frame = this.lastFrame;
     const readout =
       this.store.get("hoverReadout") === "on" &&
@@ -1208,7 +1211,19 @@ export class OscilloscopeApp {
         : undefined;
     if (readout === undefined || this.hover === undefined) {
       node.hidden = true;
+      line.hidden = true;
+      band.hidden = true;
       return;
+    }
+    const width = this.screen.clientWidth;
+    line.style.left = `${String(readout.x * width)}px`;
+    line.hidden = false;
+    if (readout.cycle === undefined) {
+      band.hidden = true;
+    } else {
+      band.style.left = `${String(readout.cycle.start * width)}px`;
+      band.style.width = `${String((readout.cycle.end - readout.cycle.start) * width)}px`;
+      band.hidden = false;
     }
     const title = document.createElement("strong");
     title.textContent = readout.title;
@@ -1222,7 +1237,6 @@ export class OscilloscopeApp {
     );
     node.hidden = false;
     // Below and right of the pointer, flipped where the screen ends.
-    const width = this.screen.clientWidth;
     const height = this.screen.clientHeight;
     const x = this.hover.x * width;
     const y = this.hover.y * height;

@@ -4,8 +4,10 @@ import { FrameMode, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   cycleAt,
+  cycleBounds,
   hoverReadout,
   levelAt,
+  readPosition,
   risingCrossings,
   traceAt,
 } from "../src/view/hover.ts";
@@ -76,6 +78,24 @@ describe("hover readout", () => {
     expect(cycleAt(frame, values, 0.4)).toBeCloseTo(0.25, 3);
     expect(cycleAt(frame, values, 0.1)).toBeUndefined(); // No rising crossing before it.
     expect(levelAt(frame, values, 30 / 480)).toBeCloseTo(0.5, 3); // A crest.
+    const bounds = cycleBounds(frame, values, 0.4);
+    expect(bounds?.start).toBeCloseTo(0.25, 3);
+    expect(bounds?.end).toBeCloseTo(0.5, 3);
+  });
+
+  test("says which point or column it read", () => {
+    const values = sine(480, 4);
+    expect(readPosition(rawFrame(values), 150.4 / 480)).toBeCloseTo(
+      150 / 480,
+      6,
+    );
+    const columns = rawFrame(new Float32Array(480), {
+      mode: FrameMode.minMax,
+      pointCount: 96,
+      samplesPerPoint: 5,
+    });
+    expect(readPosition(columns, 0.5)).toBeCloseTo(48.5 / 96, 6);
+    expect(readPosition(columns, 1.5)).toBeUndefined();
   });
 
   test("reads out the position from the trigger, level, cycle and note", () => {
@@ -102,6 +122,28 @@ describe("hover readout", () => {
       "2.5 ms · 120.0 samples",
       "≈ 400.0 Hz · G4 +35 ct",
     ]);
+    expect(readout?.x).toBeCloseTo(150 / 480, 6);
+    expect(readout?.cycle?.start).toBeCloseTo(0.25, 3);
+    expect(readout?.cycle?.end).toBeCloseTo(0.5, 3);
+  });
+
+  test("marks the point and cycle as screen positions, clipped to the view", () => {
+    const values = sine(480, 4);
+    const context = {
+      frame: rawFrame(values),
+      traces: [{ name: "Left", values }],
+      overlaid: 0,
+      layout: ViewLayout.overlaid,
+      view: { start: 0.3, end: 0.8 },
+      sampleRate,
+      a4: 440,
+      roll: false,
+    };
+    // Screen 0.025 is span 0.3125, sample 150: the cycle from 0.25 to 0.5 starts off screen.
+    const readout = hoverReadout(context, 0.025, 0.5);
+    expect(readout?.x).toBeCloseTo(0.025, 6);
+    expect(readout?.cycle?.start).toBe(0);
+    expect(readout?.cycle?.end).toBeCloseTo(0.4, 6);
   });
 
   test("rounds a cycle read from min/max columns and names it without cents", () => {

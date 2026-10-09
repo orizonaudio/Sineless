@@ -1,7 +1,8 @@
 // The hover readout: what lies under the pointer on the screen. It names the trace, gives the
 // position (bar.beat.sixteenth and project time in Beats mode, time from the trigger point
 // otherwise), the trace's peak level there, and the length of the cycle around the pointer from
-// its rising zero crossings, with that cycle's frequency and nearest note.
+// its rising zero crossings, with that cycle's frequency and nearest note. It also says where it
+// read: the column or point under the pointer, and the cycle's extent, for the screen to mark.
 import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
@@ -19,7 +20,7 @@ import {
   formatSeconds,
 } from "./format.ts";
 import { musicalPosition } from "./musical-grid.ts";
-import { toFrame, type ViewWindow } from "./zoom.ts";
+import { toFrame, toScreen, type ViewWindow } from "./zoom.ts";
 
 export interface HoverTrace {
   readonly name: string;
@@ -117,14 +118,39 @@ export function levelAt(
   return Math.abs(values[index] ?? 0);
 }
 
-// The length of the cycle around `position`, as a fraction of the span: from the last rising
-// crossing at or before it to the next one after it. Undefined when either is missing, or when
-// min/max columns are too coarse to tell.
-export function cycleAt(
+// The span position actually read for `position`: the centre of its min/max column, or the
+// nearest raw point. Undefined off the frame.
+export function readPosition(
+  frame: Frame,
+  position: number,
+): number | undefined {
+  const covered = frame.viewEnd - frame.viewStart;
+  if (frame.pointCount === 0 || covered <= 0) {
+    return undefined;
+  }
+  const along = (position - frame.viewStart) / covered;
+  if (frame.mode === FrameMode.minMax) {
+    const column = Math.floor(along * frame.pointCount);
+    if (column < 0 || column >= frame.pointCount) {
+      return undefined;
+    }
+    return columnPosition(frame, column + 0.5);
+  }
+  const index = Math.round(frame.startFraction + along * frame.visibleSamples);
+  if (index < 0 || index >= frame.pointCount) {
+    return undefined;
+  }
+  return pointPosition(frame, index);
+}
+
+// The cycle around `position`, as fractions of the span: from the last rising crossing at or
+// before it to the next one after it. Undefined when either is missing, or when min/max columns
+// are too coarse to tell.
+export function cycleBounds(
   frame: Frame,
   values: Float32Array,
   position: number,
-): number | undefined {
+): { start: number; end: number } | undefined {
   const crossings = risingCrossings(frame, values);
   const next = crossings.findIndex((crossing) => crossing > position);
   const after = crossings[next];
@@ -132,22 +158,42 @@ export function cycleAt(
   if (after === undefined || before === undefined) {
     return undefined;
   }
-  const length = after - before;
   if (frame.mode === FrameMode.minMax) {
     const columnWidth = (frame.viewEnd - frame.viewStart) / frame.pointCount;
-    if (length < minimumColumnsPerCycle * columnWidth) {
+    if (after - before < minimumColumnsPerCycle * columnWidth) {
       return undefined;
     }
   }
-  return length;
+  return { start: before, end: after };
 }
 
-// The readout at screen position (`x`, `y`), both 0 to 1 from the top left: a title and lines.
+// The length of that cycle, as a fraction of the span.
+export function cycleAt(
+  frame: Frame,
+  values: Float32Array,
+  position: number,
+): number | undefined {
+  const bounds = cycleBounds(frame, values, position);
+  return bounds === undefined ? undefined : bounds.end - bounds.start;
+}
+
+// What the hover readout shows: a title and lines, and where it read, as screen positions
+// (0 to 1, clipped to the screen): the column or point, and the cycle measured, if any.
+export interface HoverReadout {
+  readonly title: string;
+  readonly lines: string[];
+  readonly x: number;
+  readonly cycle: { start: number; end: number } | undefined;
+}
+
+const clip = (value: number) => Math.min(1, Math.max(0, value));
+
+// The readout at screen position (`x`, `y`), both 0 to 1 from the top left.
 export function hoverReadout(
   context: HoverContext,
   x: number,
   y: number,
-): { title: string; lines: string[] } | undefined {
+): HoverReadout | undefined {
   const { frame, traces, sampleRate } = context;
   const covered = frame.viewEnd - frame.viewStart;
   if (traces.length === 0 || covered <= 0 || sampleRate <= 0) {
@@ -181,11 +227,11 @@ export function hoverReadout(
     lines.push(`${formatDbfs(level)} dBFS`);
   }
 
-  const cycle = cycleAt(frame, trace.values, position);
-  if (cycle !== undefined) {
+  const bounds = cycleBounds(frame, trace.values, position);
+  if (bounds !== undefined) {
     // From min/max columns the cycle is approximate: rounded, and named without cents.
     const coarse = frame.mode === FrameMode.minMax;
-    const seconds = cycle * spanSeconds;
+    const seconds = (bounds.end - bounds.start) * spanSeconds;
     const samples = seconds * sampleRate;
     lines.push(
       `${coarse ? "≈ " : ""}${formatSeconds(seconds)} · ${
@@ -199,5 +245,17 @@ export function hoverReadout(
       `${formatFrequency(hertz)} Hz${named === undefined ? "" : ` · ${named}`}`,
     );
   }
-  return { title: trace.name, lines };
+  const read = readPosition(frame, position);
+  return {
+    title: trace.name,
+    lines,
+    x: clip(toScreen(context.view, read ?? position)),
+    cycle:
+      bounds === undefined
+        ? undefined
+        : {
+            start: clip(toScreen(context.view, bounds.start)),
+            end: clip(toScreen(context.view, bounds.end)),
+          },
+  };
 }
