@@ -41,7 +41,7 @@ if(BUILD_TESTING)
     add_executable(engine_test_support_tests tests/support/AllocationCounterTests.cpp)
     target_link_libraries(engine_test_support_tests
         PRIVATE engine_test_support orizon_warnings GTest::gtest_main)
-    gtest_discover_tests(engine_test_support_tests)
+    gtest_discover_tests(engine_test_support_tests DISCOVERY_TIMEOUT 30)
 
     add_executable(engine_tests
         tests/AnalysisWorkerTests.cpp
@@ -69,6 +69,6 @@ if(BUILD_TESTING)
                 ORIZON_PROTOCOL_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data")
     target_link_libraries(engine_tests
         PRIVATE engine engine_test_support orizon_warnings GTest::gtest_main)
-    gtest_discover_tests(engine_tests)
+    gtest_discover_tests(engine_tests DISCOVERY_TIMEOUT 30)
 
 endif()

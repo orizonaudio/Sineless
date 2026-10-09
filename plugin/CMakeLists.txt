@@ -37,7 +37,7 @@ if(BUILD_TESTING)
         PRIVATE ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/memorystream.cpp)
     target_link_libraries(plugin_tests
         PRIVATE plugin sdk_hosting engine_test_support orizon_warnings GTest::gtest_main)
-    gtest_discover_tests(plugin_tests)
+    gtest_discover_tests(plugin_tests DISCOVERY_TIMEOUT 30)
 endif()
 
 # The audio-thread benchmark: process() timed against the block deadline. See bench/ProcessBench.cpp.
