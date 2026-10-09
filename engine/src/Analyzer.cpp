@@ -454,8 +454,6 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const int inputChannels = engine.inputChannels();
     const double first = std::floor(window.start);
     const auto start = static_cast<std::uint64_t>(std::max(first, 0.0));
-    viewSamples.resize(static_cast<std::size_t>(sampleCount));
-    scratch.resize(std::max(scratch.size(), viewSamples.size()));
 
     const auto views = effectiveViews(
         static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)), inputChannels);
@@ -549,6 +547,9 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             frameData.insert(frameData.end(), values.begin(), values.end());
             continue;
         }
+        // A window (at most a few seconds) is read whole; a sweep never is.
+        viewSamples.resize(static_cast<std::size_t>(sampleCount));
+        scratch.resize(std::max(scratch.size(), viewSamples.size()));
         if (!readView(source, inputChannels, view, start, viewSamples, scratch)) {
             return false;
         }
