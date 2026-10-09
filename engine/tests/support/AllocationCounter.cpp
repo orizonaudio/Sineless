@@ -2,6 +2,9 @@
 
 #include <cstdlib>
 #include <new>
+#ifdef _WIN32
+#include <malloc.h>
+#endif
 
 namespace {
 
@@ -27,7 +30,13 @@ void* allocateAligned(std::size_t size, std::align_val_t alignment)
     }
     const auto align = static_cast<std::size_t>(alignment);
     const std::size_t rounded = (size + align - 1) / align * align;
-    if (void* memory = std::aligned_alloc(align, rounded == 0 ? align : rounded)) {
+    // Windows has no aligned_alloc; its aligned blocks come from, and go back to, _aligned_*.
+#ifdef _WIN32
+    void* memory = _aligned_malloc(rounded == 0 ? align : rounded, align);
+#else
+    void* memory = std::aligned_alloc(align, rounded == 0 ? align : rounded);
+#endif
+    if (memory != nullptr) {
         return memory;
     }
     throw std::bad_alloc();
@@ -39,6 +48,18 @@ void deallocate(void* memory) noexcept
         ++deallocationCount;
     }
     std::free(memory);
+}
+
+void deallocateAligned(void* memory) noexcept
+{
+    if (counting && memory != nullptr) {
+        ++deallocationCount;
+    }
+#ifdef _WIN32
+    _aligned_free(memory);
+#else
+    std::free(memory);
+#endif
 }
 
 } // namespace
@@ -119,17 +140,17 @@ void operator delete[](void* memory, std::size_t /*size*/) noexcept
 }
 void operator delete(void* memory, std::align_val_t /*alignment*/) noexcept
 {
-    deallocate(memory);
+    deallocateAligned(memory);
 }
 void operator delete[](void* memory, std::align_val_t /*alignment*/) noexcept
 {
-    deallocate(memory);
+    deallocateAligned(memory);
 }
 void operator delete(void* memory, std::size_t /*size*/, std::align_val_t /*alignment*/) noexcept
 {
-    deallocate(memory);
+    deallocateAligned(memory);
 }
 void operator delete[](void* memory, std::size_t /*size*/, std::align_val_t /*alignment*/) noexcept
 {
-    deallocate(memory);
+    deallocateAligned(memory);
 }

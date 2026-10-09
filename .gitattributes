@@ -1,0 +1,4 @@
+# Keep LF everywhere, also in Windows checkouts: formatters, golden files and the embedded UI
+# depend on exact bytes.
+* text=auto eol=lf
+*.png binary

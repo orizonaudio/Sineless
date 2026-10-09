@@ -1,12 +1,18 @@
 # Compiler settings shared by all project targets.
 add_library(orizon_warnings INTERFACE)
-target_compile_options(orizon_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
+if(MSVC)
+    # /utf-8: sources are UTF-8. /permissive-: standard conformance. /Zc:__cplusplus: the real
+    # standard version in __cplusplus.
+    target_compile_options(orizon_warnings INTERFACE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+else()
+    target_compile_options(orizon_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
 
-# Compile-time check of functions marked ORIZON_NONBLOCKING.
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag(-Wfunction-effects ORIZON_HAS_FUNCTION_EFFECTS)
-if(ORIZON_HAS_FUNCTION_EFFECTS)
-    target_compile_options(orizon_warnings INTERFACE -Wfunction-effects)
+    # Compile-time check of functions marked ORIZON_NONBLOCKING.
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag(-Wfunction-effects ORIZON_HAS_FUNCTION_EFFECTS)
+    if(ORIZON_HAS_FUNCTION_EFFECTS)
+        target_compile_options(orizon_warnings INTERFACE -Wfunction-effects)
+    endif()
 endif()
 
 # Run-time check: RealtimeSanitizer aborts when a nonblocking function allocates, locks or blocks.

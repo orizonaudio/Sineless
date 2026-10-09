@@ -1,8 +1,8 @@
 #include "AllocationCounter.h"
 
+#include <array>
 #include <gtest/gtest.h>
 #include <memory>
-#include <vector>
 
 namespace orizon::testing {
 namespace {
@@ -13,8 +13,10 @@ TEST(AllocationCounter, CountsAllocationsAndDeallocationsInScope)
     std::size_t deallocations = 0;
     {
         AllocationCounter counter;
+        // Plain allocations: library containers may add their own (MSVC's Debug vector allocates
+        // an iterator-checking proxy).
         auto value = std::make_unique<int>(1);
-        std::vector<int> values(16);
+        auto values = std::make_unique<std::array<int, 16>>();
         value.reset();
         allocations = counter.allocations();
         deallocations = counter.deallocations();
