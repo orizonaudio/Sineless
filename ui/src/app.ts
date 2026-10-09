@@ -1215,14 +1215,22 @@ export class OscilloscopeApp {
       band.hidden = true;
       return;
     }
+    // The marks cover the trace's lane only.
     const width = this.screen.clientWidth;
+    const screenHeight = this.screen.clientHeight;
+    const laneTop = `${String(readout.top * screenHeight)}px`;
+    const laneHeight = `${String((readout.bottom - readout.top) * screenHeight)}px`;
     line.style.left = `${String(readout.x * width)}px`;
+    line.style.top = laneTop;
+    line.style.height = laneHeight;
     line.hidden = false;
     if (readout.cycle === undefined) {
       band.hidden = true;
     } else {
       band.style.left = `${String(readout.cycle.start * width)}px`;
       band.style.width = `${String((readout.cycle.end - readout.cycle.start) * width)}px`;
+      band.style.top = laneTop;
+      band.style.height = laneHeight;
       band.hidden = false;
     }
     const title = document.createElement("strong");

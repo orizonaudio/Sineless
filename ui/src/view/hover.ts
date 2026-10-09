@@ -63,18 +63,31 @@ export function traceAt(
   return found < 0 ? (clip > 0 ? 0 : count - 1) : found;
 }
 
-// Span positions (0 to 1) where `values` rises through zero. A min/max column that spans zero
-// rises when its neighbours' midpoints do.
+// Span positions (0 to 1) where `values` rises through zero. Min/max columns cross either
+// inside a column that spans zero, entered from below, or at the edge between a column wholly
+// below zero and one wholly above it; a column that spans zero is left on the side its next
+// column's midpoint lies on.
 export function risingCrossings(frame: Frame, values: Float32Array): number[] {
   const crossings: number[] = [];
   if (frame.mode === FrameMode.minMax) {
     const middle = (column: number) =>
       ((values[column * 2] ?? 0) + (values[column * 2 + 1] ?? 0)) / 2;
-    for (let column = 1; column + 1 < frame.pointCount; column++) {
+    let below: boolean | undefined;
+    for (let column = 0; column < frame.pointCount; column++) {
       const low = values[column * 2] ?? 0;
       const high = values[column * 2 + 1] ?? 0;
-      if (low < 0 && high >= 0 && middle(column - 1) < middle(column + 1)) {
-        crossings.push(columnPosition(frame, column + 0.5));
+      if (high < 0) {
+        below = true;
+      } else if (low >= 0) {
+        if (below === true) {
+          crossings.push(columnPosition(frame, column));
+        }
+        below = false;
+      } else {
+        if (below === true) {
+          crossings.push(columnPosition(frame, column + 0.5));
+        }
+        below = column + 1 < frame.pointCount ? middle(column + 1) < 0 : !below;
       }
     }
     return crossings;
@@ -178,12 +191,15 @@ export function cycleAt(
 }
 
 // What the hover readout shows: a title and lines, and where it read, as screen positions
-// (0 to 1, clipped to the screen): the column or point, and the cycle measured, if any.
+// (0 to 1, clipped to the screen): the column or point, the cycle measured, if any, and the
+// trace's lane from `top` to `bottom` (the whole screen unless lanes are stacked).
 export interface HoverReadout {
   readonly title: string;
   readonly lines: string[];
   readonly x: number;
   readonly cycle: { start: number; end: number } | undefined;
+  readonly top: number;
+  readonly bottom: number;
 }
 
 const clip = (value: number) => Math.min(1, Math.max(0, value));
@@ -199,9 +215,10 @@ export function hoverReadout(
   if (traces.length === 0 || covered <= 0 || sampleRate <= 0) {
     return undefined;
   }
-  const trace =
-    traces[traceAt(traces.length, context.layout, y, context.overlaid)];
-  if (trace === undefined) {
+  const index = traceAt(traces.length, context.layout, y, context.overlaid);
+  const trace = traces[index];
+  const lane = lanes(traces.length, context.layout)[index];
+  if (trace === undefined || lane === undefined) {
     return undefined;
   }
   const position = toFrame(context.view, x);
@@ -257,5 +274,7 @@ export function hoverReadout(
             start: clip(toScreen(context.view, bounds.start)),
             end: clip(toScreen(context.view, bounds.end)),
           },
+    top: (1 - (lane.center + lane.halfHeight)) / 2,
+    bottom: (1 - (lane.center - lane.halfHeight)) / 2,
   };
 }

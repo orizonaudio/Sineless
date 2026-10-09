@@ -545,20 +545,16 @@ body {
   pointer-events: none;
 }
 
-/* The hover readout's marks: a dotted line at the column or point read, and a faint band over
-   the cycle measured. */
+/* The hover readout's marks, over the trace's lane: a dotted line at the column or point read,
+   and a faint band over the cycle measured. */
 .hover-line {
   position: absolute;
-  top: 0;
-  bottom: 0;
   border-left: 1px dotted var(--ink-dim);
   pointer-events: none;
 }
 
 .hover-cycle {
   position: absolute;
-  top: 0;
-  bottom: 0;
   background: color-mix(in srgb, var(--ink) 7%, transparent);
   pointer-events: none;
 }

@@ -72,6 +72,24 @@ describe("hover readout", () => {
     expect(crossings[0]).toBeCloseTo(120 / 480, 2);
   });
 
+  test("finds crossings inside min/max columns and at their edges", () => {
+    // Eight columns: below, below, spanning (rising), above, above, below, above (an edge
+    // crossing), spanning (falling).
+    const values = Float32Array.from([
+      -0.5, -0.4, -0.3, -0.2, -0.1, 0.2, 0.3, 0.4, 0.3, 0.5, -0.4, -0.2, 0.2,
+      0.3, -0.2, 0.1,
+    ]);
+    const frame = rawFrame(new Float32Array(80), {
+      mode: FrameMode.minMax,
+      pointCount: 8,
+      samplesPerPoint: 10,
+    });
+    const crossings = risingCrossings(frame, values);
+    expect(crossings).toHaveLength(2);
+    expect(crossings[0]).toBeCloseTo(2.5 / 8, 6); // Inside the third column.
+    expect(crossings[1]).toBeCloseTo(6 / 8, 6); // The edge before the seventh.
+  });
+
   test("measures the cycle around the pointer and the level under it", () => {
     const values = sine(480, 4);
     const frame = rawFrame(values);
@@ -125,6 +143,33 @@ describe("hover readout", () => {
     expect(readout?.x).toBeCloseTo(150 / 480, 6);
     expect(readout?.cycle?.start).toBeCloseTo(0.25, 3);
     expect(readout?.cycle?.end).toBeCloseTo(0.5, 3);
+    expect(readout?.top).toBe(0);
+    expect(readout?.bottom).toBe(1);
+  });
+
+  test("marks the stacked lane under the pointer only", () => {
+    const values = sine(480, 4);
+    const readout = hoverReadout(
+      {
+        frame: rawFrame(values),
+        traces: [
+          { name: "Kick", values },
+          { name: "Bass", values },
+          { name: "Hats", values },
+        ],
+        overlaid: 0,
+        layout: ViewLayout.stacked,
+        view: fullView,
+        sampleRate,
+        a4: 440,
+        roll: false,
+      },
+      0.5,
+      0.5,
+    );
+    expect(readout?.title).toBe("Bass");
+    expect(readout?.top).toBeCloseTo(1 / 3, 6);
+    expect(readout?.bottom).toBeCloseTo(2 / 3, 6);
   });
 
   test("marks the point and cycle as screen positions, clipped to the view", () => {
