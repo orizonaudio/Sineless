@@ -107,6 +107,9 @@ const viewColorTokens: Record<ViewName, string> = {
 };
 // How fast ⌘ + scroll and pinch zoom, per wheel delta unit.
 const wheelZoomRate = 0.01;
+// A mouse-wheel notch is deltaY 100 on Windows (×2.7 zoom unclamped); a trackpad's events are
+// a few each. Clamped, a notch zooms by about 1.3×.
+const maxWheelZoomDelta = 25;
 // The Compare view's sum lane: an id no track has, and a neutral colour.
 const sumLaneId = -100;
 const sumLaneColour = 0xe6e2d8;
@@ -1471,7 +1474,11 @@ export class OscilloscopeApp {
         if (event.metaKey || event.ctrlKey) {
           // Trackpad pinches arrive as wheel events with ctrlKey set.
           event.preventDefault();
-          const factor = Math.exp(-event.deltaY * wheelZoomRate);
+          const delta = Math.max(
+            -maxWheelZoomDelta,
+            Math.min(maxWheelZoomDelta, event.deltaY),
+          );
+          const factor = Math.exp(-delta * wheelZoomRate);
           this.setView(
             zoomAround(this.view, screenPosition(event.clientX), factor),
           );
