@@ -289,6 +289,9 @@ WebViewWin::~WebViewWin()
     }
     if (controller) {
         controller->remove_AcceleratorKeyPressed(acceleratorToken);
+        // Hidden first: WebView2 leaves a handle to an exited process of its own in ours for each
+        // view closed while visible.
+        controller->put_IsVisible(FALSE);
         controller->Close();
     }
     SetWindowLongPtrW(container, GWLP_USERDATA, 0);
@@ -378,6 +381,7 @@ void WebViewWin::environmentCreated(ICoreWebView2Environment* created)
                            if (SUCCEEDED(result) && link->owner != nullptr) {
                                link->owner->controllerCreated(made);
                            } else if (SUCCEEDED(result) && made != nullptr) {
+                               made->put_IsVisible(FALSE); // See ~WebViewWin.
                                made->Close(); // The editor closed while WebView2 started.
                            } else if (FAILED(result) && link->owner != nullptr) {
                                link->owner->showFailure(result);

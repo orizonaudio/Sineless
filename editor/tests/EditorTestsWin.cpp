@@ -405,10 +405,39 @@ TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
     DWORD handlesAtEnd = 0;
     GetProcessHandleCount(GetCurrentProcess(), &handlesAtEnd);
     std::cout << "process handles " << handlesAtStart << " -> " << handlesAtEnd << "\n";
-    // WebView2 leaves a few kernel handles behind per open: about 1 with time between opens,
-    // 2.5 to 3 here, where half the editors close while WebView2 starts. Memory stays flat and
-    // its processes exit; none of our calls leaves any on its own. Guards against more.
+    // WebView2 still leaves handles to its exited processes for views closed before they have
+    // finished starting, or while another starts: 2.5 to 3 per cycle here, where half the
+    // editors close that early, as a user hardly can. Guards against more.
     EXPECT_LE(static_cast<int>(handlesAtEnd) - static_cast<int>(handlesAtStart), 4 * (kCycles - 2))
+        << "handles left behind by " << kCycles - 2 << " open/close cycles";
+}
+
+// As a user opens and closes the editor: each one loads before it closes. WebView2 leaves a
+// handle behind for each view closed while visible; the editor hides it first.
+TEST_F(EditorTest, LeavesNoHandlesBehindWhenClosedAfterLoading)
+{
+    constexpr int kCycles = 32;
+    DWORD handlesAtStart = 0;
+    for (int cycle = 0; cycle < kCycles; ++cycle) {
+        if (cycle == 2) { // After WebView2's one-time setup.
+            GetProcessHandleCount(GetCurrentProcess(), &handlesAtStart);
+        }
+        HWND window = makeWindow();
+        std::vector<std::string> received;
+        auto editor = makeEditor(received);
+        ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+        ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(*editor->webView()); }, kPageTimeout))
+            << "cycle " << cycle;
+        EXPECT_EQ(editor->removed(), kResultOk);
+        DestroyWindow(window);
+        pumpUntil([] { return false; }, std::chrono::milliseconds(50));
+    }
+    pumpUntil([] { return false; }, std::chrono::seconds(1)); // WebView2 winds down.
+    DWORD handlesAtEnd = 0;
+    GetProcessHandleCount(GetCurrentProcess(), &handlesAtEnd);
+    std::cout << "process handles " << handlesAtStart << " -> " << handlesAtEnd << "\n";
+    // A few handles of slack for noise.
+    EXPECT_LE(static_cast<int>(handlesAtEnd) - static_cast<int>(handlesAtStart), (kCycles - 2) / 5)
         << "handles left behind by " << kCycles - 2 << " open/close cycles";
 }
 
