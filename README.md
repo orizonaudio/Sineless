@@ -53,3 +53,5 @@ The plugin is built at `build/dev/VST3/Debug/O-Scope.vst3`. To work on the inter
 ## Licence
 
 GPL-3.0. See [LICENSE](LICENSE).
+
+The UI's fonts, Roboto, Roboto Condensed and Roboto Mono, are embedded under the SIL Open Font License 1.1. See [ui/src/fonts](ui/src/fonts/README.md).

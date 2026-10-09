@@ -2,3 +2,4 @@
 # depend on exact bytes.
 * text=auto eol=lf
 *.png binary
+*.woff2 binary

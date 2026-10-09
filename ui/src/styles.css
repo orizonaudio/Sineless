@@ -1,6 +1,26 @@
-/* Fonts are ones macOS or Windows ships, so the plugin needs no network and bundles no font
-   files. Windows: Bahnschrift (condensed through font-stretch, like Avenir Next Condensed),
-   Segoe UI and Cascadia Mono or Consolas, which keep the strip within the minimum width. */
+/* The fonts are embedded (see fonts/README.md), so the UI looks the same on every system and
+   needs no network. */
+@font-face {
+  font-family: "Roboto Condensed";
+  src: url("./fonts/RobotoCondensed.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Roboto Mono";
+  src: url("./fonts/RobotoMono.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: block;
+}
+
+@font-face {
+  font-family: Roboto;
+  src: url("./fonts/Roboto.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: block;
+}
+
 :root {
   color-scheme: dark;
   --panel: #161b21;
@@ -19,12 +39,9 @@
   --hold: #7fa8e8;
   --cursor: #f0708a;
   --warn: #e8a35a;
-  --font-label:
-    "Avenir Next Condensed", Bahnschrift, "Arial Narrow", "Helvetica Neue",
-    sans-serif;
-  --font-value:
-    ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
-  --font-body: -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-label: "Roboto Condensed", sans-serif;
+  --font-value: "Roboto Mono", monospace;
+  --font-body: Roboto, sans-serif;
 }
 
 [hidden] {
@@ -51,7 +68,7 @@ body {
   grid-template-rows: 34px minmax(0, 1fr) auto;
   height: 100%;
   /* The editor's minimum width (Editor::kMinimumWidth): the strip and top bar fit. */
-  min-width: 890px;
+  min-width: 900px;
 }
 
 .bar {
@@ -65,7 +82,6 @@ body {
 
 .wordmark {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-weight: 600;
   letter-spacing: 0.18em;
   font-size: 13px;
@@ -111,7 +127,6 @@ body {
 
 .chip {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-weight: 600;
   font-size: 11px;
   letter-spacing: 0.1em;
@@ -156,7 +171,6 @@ body {
   height: 20px;
   padding: 0;
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-dim);
@@ -196,7 +210,6 @@ body {
 
 .help-tip strong {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -212,7 +225,6 @@ body {
 
 .readout b {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-weight: 500;
   font-size: 12px;
   letter-spacing: 0.12em;
@@ -339,7 +351,6 @@ body {
   flex-wrap: wrap;
   gap: 4px 6px;
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -572,7 +583,6 @@ body {
 
 .hover-readout strong {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -636,7 +646,6 @@ body {
 
 .message strong {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-weight: 600;
   font-size: 18px;
   letter-spacing: 0.06em;
@@ -672,7 +681,6 @@ body {
 
 .group-label {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-weight: 600;
   font-size: 11px;
   letter-spacing: 0.14em;
@@ -747,7 +755,6 @@ body {
 .toggle,
 .action {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-weight: 600;
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -829,7 +836,6 @@ button:focus-visible,
 
 .popover-row > span {
   font-family: var(--font-label);
-  font-stretch: condensed;
   font-weight: 600;
   font-size: 11px;
   letter-spacing: 0.14em;
