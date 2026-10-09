@@ -1,6 +1,13 @@
 # Third-party C++ dependencies, pinned.
 include(FetchContent)
 
+# The C++ runtime is linked statically on Windows, so that users need no Visual C++
+# redistributable. The VST3 SDK adds its own runtime flag; both must agree.
+if(WIN32)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    set(SMTG_USE_STATIC_CRT ON CACHE BOOL "" FORCE)
+endif()
+
 # VST3 SDK: only the submodules needed for a plugin without VSTGUI.
 set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
 set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
