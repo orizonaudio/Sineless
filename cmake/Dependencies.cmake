@@ -29,5 +29,27 @@ FetchContent_Declare(nlohmann_json
 )
 
 FetchContent_MakeAvailable(vst3sdk googletest nlohmann_json)
+
+# WebView2 SDK for the Windows editor: headers and the static loader, so that no WebView2Loader.dll
+# ships next to the plugin. The NuGet package is a zip under another extension.
+if(WIN32)
+    FetchContent_Declare(webview2
+        URL https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4258.31/microsoft.web.webview2.1.0.4258.31.nupkg
+        URL_HASH SHA256=56F7F4B8BF9AEE4B8EFEFBBDD4F67D5F74EBD1B100ED0806DA71BF76AF481AA9
+        DOWNLOAD_NAME microsoft.web.webview2.zip
+    )
+    FetchContent_MakeAvailable(webview2)
+    if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+        set(webview2Arch arm64)
+    else()
+        set(webview2Arch x64)
+    endif()
+    add_library(webview2 STATIC IMPORTED)
+    set_target_properties(webview2 PROPERTIES
+        IMPORTED_LOCATION ${webview2_SOURCE_DIR}/build/native/${webview2Arch}/WebView2LoaderStatic.lib
+        INTERFACE_INCLUDE_DIRECTORIES ${webview2_SOURCE_DIR}/build/native/include
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${webview2_SOURCE_DIR}/build/native/include
+    )
+endif()
 smtg_enable_vst3_sdk()
 include(GoogleTest)

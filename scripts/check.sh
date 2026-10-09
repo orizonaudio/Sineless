@@ -65,7 +65,7 @@ mkdir -p build/lint
 sed 's/ -arch x86_64//g' "$buildDir/compile_commands.json" > build/lint/compile_commands.json
 # Windows-only sources need Windows headers: they are checked by the Windows build.
 git ls-files -co --exclude-standard -- 'engine/*.cpp' 'editor/*.cpp' 'editor/*.mm' 'plugin/*.cpp' \
-    ':!editor/src/win/*' |
+    ':!editor/src/win/*' ':!editor/tests/*Win.cpp' |
     xargs "$LLVM_BIN/clang-tidy" -p build/lint --quiet --extra-arg="-isysroot$(xcrun --show-sdk-path)"
 
 step "pluginval"

@@ -19,11 +19,21 @@ import "./styles.css";
 
 declare global {
   interface Window {
+    // The native channel: WKWebView on macOS, WebView2 on Windows.
     webkit?: {
       messageHandlers: Record<
         string,
         { postMessage(text: string): void } | undefined
       >;
+    };
+    chrome?: {
+      webview?: {
+        postMessage(text: string): void;
+        addEventListener(
+          type: "message",
+          listener: (event: { data: unknown }) => void,
+        ): void;
+      };
     };
     orizonBridge?: NativeReceiver;
     // Session state exposed for the editor's automated tests.
@@ -38,8 +48,15 @@ declare global {
   }
 }
 
-// Inside the plugin the native channel exists; in a desktop browser the mock stands in.
-const channel = window.webkit?.messageHandlers["orizon"];
+// Inside the plugin the native channel exists; in a desktop browser the mock stands in. WebView2
+// delivers native messages as events, which are handed to the bridge like WKWebView's calls.
+const webview = window.chrome?.webview;
+webview?.addEventListener("message", (event) => {
+  if (typeof event.data === "string") {
+    window.orizonBridge?.receive(event.data);
+  }
+});
+const channel = window.webkit?.messageHandlers["orizon"] ?? webview;
 const transport: Transport =
   channel !== undefined
     ? new NativeTransport({ channel, receiver: window })

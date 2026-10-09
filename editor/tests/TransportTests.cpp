@@ -17,6 +17,10 @@ public:
         frames.emplace_back(frame.begin(), frame.end());
     }
     [[nodiscard]] void* nativeView() const override { return nullptr; }
+    void evaluate(std::string_view /*script*/, std::function<void(std::string)> done) override
+    {
+        done("");
+    }
 
     std::vector<std::string> messages;
     std::vector<std::vector<std::byte>> frames;

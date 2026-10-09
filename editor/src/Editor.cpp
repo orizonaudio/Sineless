@@ -18,7 +18,12 @@ constexpr std::chrono::milliseconds kStateSyncInterval{100};
 
 bool isSupportedPlatform(FIDString type)
 {
-    return type != nullptr && std::strcmp(type, kPlatformTypeNSView) == 0;
+#ifdef _WIN32
+    const FIDString kPlatformType = kPlatformTypeHWND;
+#else
+    const FIDString kPlatformType = kPlatformTypeNSView;
+#endif
+    return type != nullptr && std::strcmp(type, kPlatformType) == 0;
 }
 
 } // namespace

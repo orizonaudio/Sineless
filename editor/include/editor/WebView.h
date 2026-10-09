@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace orizon::editor {
@@ -34,8 +35,12 @@ public:
     virtual void postMessage(std::string_view message) = 0;
     virtual void sendFrame(std::span<const std::byte> frame) = 0;
 
-    // The platform view (NSView*), for tests.
+    // The platform view (NSView*, or the host's HWND on Windows), for tests.
     [[nodiscard]] virtual void* nativeView() const = 0;
+
+    // Runs `script` in the page and calls `done` on the UI thread with its result if that is a
+    // string, otherwise with "". For tests.
+    virtual void evaluate(std::string_view script, std::function<void(std::string)> done) = 0;
 };
 
 } // namespace orizon::editor

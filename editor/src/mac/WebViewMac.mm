@@ -93,6 +93,7 @@ public:
     void postMessage(std::string_view message) override;
     void sendFrame(std::span<const std::byte> frame) override;
     [[nodiscard]] void* nativeView() const override { return (__bridge void*)webView; }
+    void evaluate(std::string_view script, std::function<void(std::string)> done) override;
 
     void receive(WKScriptMessage* message);
     void requestFrame(id<WKURLSchemeTask> task);
@@ -379,6 +380,18 @@ void WebViewMac::answer(id<WKURLSchemeTask> task, NSData* frame)
 void WebViewMac::evaluate(NSString* script)
 {
     [webView evaluateJavaScript:script completionHandler:nil];
+}
+
+void WebViewMac::evaluate(std::string_view script, std::function<void(std::string)> done)
+{
+    NSString* source = [[NSString alloc] initWithBytes:script.data()
+                                                length:script.size()
+                                              encoding:NSUTF8StringEncoding];
+    auto callback = std::make_shared<std::function<void(std::string)>>(std::move(done));
+    [webView evaluateJavaScript:source
+              completionHandler:^(id value, NSError* /*error*/) {
+                (*callback)([value isKindOfClass:[NSString class]] ? [value UTF8String] : "");
+              }];
 }
 
 void WebViewMac::receive(WKScriptMessage* message)
