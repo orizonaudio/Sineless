@@ -8,9 +8,6 @@ The UI's fonts, embedded so that it looks the same on every system and needs no 
 | `RobotoMono.woff2` | Roboto Mono | values | SIL Open Font License 1.1 ([OFL-RobotoMono.txt](OFL-RobotoMono.txt)) |
 | `Roboto.woff2` | Roboto | text | SIL Open Font License 1.1 ([OFL-Roboto.txt](OFL-Roboto.txt)) |
 
-Roboto Condensed's own metadata still names its earlier licence, Apache 2.0; Google Fonts
-distributes it under the OFL. Either allows embedding.
-
 ## Source
 
 [google/fonts](https://github.com/google/fonts) at commit
