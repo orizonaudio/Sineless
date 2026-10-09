@@ -29,7 +29,7 @@ export const helpTexts = {
   },
   match: {
     title: "Against this track",
-    text: "How late this track is against yours, within 10 ms (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the last 8 seconds shown. Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.",
+    text: "How late this track is against yours, within 10 ms (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the 8 seconds before the playhead (zoomed away from it, the newest 8 seconds shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.",
   },
   group: {
     title: "Group",

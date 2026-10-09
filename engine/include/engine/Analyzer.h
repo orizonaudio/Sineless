@@ -26,11 +26,12 @@
 
 namespace orizon::engine {
 
-// A compared track's match is searched over the newest kMatchWindowSeconds of the view, where the
-// playhead is: a match is a property of the routing, not of the whole span, and a search over a
-// long view would stall the frames. Each track's match is searched again at most every
-// kMatchRefreshSeconds of audio, one track per frame and at most one every kMatchSpacingSeconds,
-// so that many tracks share the analysis thread.
+// A compared track's match is searched over the kMatchWindowSeconds of audio before the playhead
+// (or the newest of the view, zoomed away from it), continuing at the right edge into the end of
+// the previous pass when the playhead is near the left one: a match is a property of the routing,
+// not of the whole span, and a search over a long view would stall the frames. Each track's match
+// is searched again at most every kMatchRefreshSeconds of audio, one track per frame and at most
+// one every kMatchSpacingSeconds, so that many tracks share the analysis thread.
 inline constexpr double kMatchWindowSeconds = 8.0;
 inline constexpr double kMatchRefreshSeconds = 0.5;
 inline constexpr double kMatchSpacingSeconds = 0.1;

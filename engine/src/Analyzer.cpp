@@ -1299,18 +1299,28 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     const auto ownIndex =
         static_cast<std::size_t>(std::ranges::find(laneOrder, ownLane) - laneOrder.begin());
 
-    // The match search: one track per frame, over the newest part of the view, just before the
-    // playhead, or the newest part visible when the playhead is elsewhere.
-    const auto windowSamples =
-        static_cast<std::size_t>(std::lround(kMatchWindowSeconds * sampleRate));
-    const std::size_t searchEnd = playhead > first && playhead < end ? playhead : end;
-    const std::size_t searchFirst = searchEnd - std::min(windowSamples, searchEnd - first);
+    // The match search: one track per frame, over the audio just before the playhead, continuing
+    // at the right edge into the end of the previous pass when the playhead is near the left one
+    // (the sweep's positions there are the moments just before), or over the newest part visible
+    // when the playhead is elsewhere.
+    const std::size_t windowSamples =
+        std::min(static_cast<std::size_t>(std::lround(kMatchWindowSeconds * sampleRate)), length);
+    const bool playheadShown = playhead > first && playhead < end;
+    const std::size_t searchEnd = playheadShown ? playhead : end;
+    const std::size_t searchCount =
+        playheadShown ? windowSamples : std::min(windowSamples, end - first);
+    // Positions [searchEnd - searchCount, searchEnd), the part before 0 from the right edge.
+    const auto readSearch = [&](std::size_t index, std::span<float> into) {
+        const std::size_t wrapped = searchCount > searchEnd ? searchCount - searchEnd : 0;
+        readLaneImage(index, length, length - wrapped, into.first(wrapped));
+        readLaneImage(index, length, searchEnd + wrapped - searchCount, into.subspan(wrapped));
+    };
     bool searched = false;
     if (const auto lane = matchToSearch(header.laneSet, first, end, length, now)) {
-        matchOwn.resize(searchEnd - searchFirst);
-        matchTrack.resize(searchEnd - searchFirst);
-        readLaneImage(ownIndex, length, searchFirst, matchOwn);
-        readLaneImage(*lane, length, searchFirst, matchTrack);
+        matchOwn.resize(searchCount);
+        matchTrack.resize(searchCount);
+        readSearch(ownIndex, matchOwn);
+        readSearch(*lane, matchTrack);
         matchStates[laneOrder[*lane]] = {
             .analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch),
             .analysedAt = now};

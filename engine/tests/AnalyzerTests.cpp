@@ -1536,5 +1536,33 @@ TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
     EXPECT_NEAR(sumGain(), 0.0f, 1e-3f) << "this track alone";
 }
 
+// Just after the playhead wraps to the left edge, the match search continues at the right edge,
+// where the end of the previous pass is: a snare on beats 2 and 4 and its exact copy stay related
+// all round the bar, instead of reading as unrelated while the bar's first beat has no snare.
+TEST_F(CompareTest, KeepsAMatchThroughTheCycleStart)
+{
+    const auto snare = [](std::uint64_t sample) {
+        const std::uint64_t beat = (sample / 24000) % 4;
+        return (beat == 1 || beat == 3) && sample % 24000 < 4800 ? noiseAt(sample, 1) : 0.0f;
+    };
+    tracks.front().second = snare;
+    const auto copy = joinWith(snare);
+    analyzer->setCompared({idOf(copy)});
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
+    analyzer->setColumns(1000);
+    play(std::uint64_t{4} * 48000);
+    int frames = 0;
+    for (int step = 0; step < 400; ++step) { // Two bars, a frame every 10 ms.
+        play(480);
+        const auto frame = produce();
+        if (!frame) {
+            continue;
+        }
+        ++frames;
+        ASSERT_EQ(match(*frame, 1).polarity, 1.0f) << "at playhead " << frame->cursor;
+    }
+    EXPECT_GT(frames, 300);
+}
+
 } // namespace
 } // namespace orizon::engine
