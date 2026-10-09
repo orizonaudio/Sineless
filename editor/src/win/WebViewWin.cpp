@@ -7,6 +7,8 @@
 #define NOMINMAX
 #include <windows.h>
 // clang-format on
+#include "WinModule.h"
+
 #include <WebView2.h>
 #include <WebView2EnvironmentOptions.h>
 #include <cwchar>
@@ -23,6 +25,11 @@
 // custom scheme answered from the UI embedded in the binary, and fetches each display frame from
 // orizon://ui/frame, a request held until a frame is ready. WebView2 starts asynchronously: until
 // it is ready, messages for the page wait in a queue.
+//
+// WebView2 sits in a child window of ours inside the host's window. It paints the page's
+// background colour from the start, and tells WebView2 when the editor is hidden, which
+// WebView2 cannot see by itself (the page would keep drawing). The page is told the display
+// scale instead of following the monitor's, so that it always lays out in the editor's CSS size.
 
 namespace orizon::editor {
 namespace {
@@ -62,6 +69,33 @@ constexpr const wchar_t* kKeyScript = LR"JS(
 })();
 )JS";
 
+// The page's background (--panel), shown until the page draws.
+constexpr COREWEBVIEW2_COLOR kBackground{255, 0x16, 0x1b, 0x21};
+constexpr wchar_t kContainerClass[] = L"OrizonOScopeWebViewHost";
+constexpr UINT_PTR kVisibilityTimer = 1;
+constexpr UINT kVisibilityInterval = 250; // ms
+
+// Runs the enclosed calls in `window`'s DPI awareness, so that the windows they create match
+// it: a host can open a DPI-unaware plugin window (stretched by Windows) from an aware thread.
+class DpiContext
+{
+public:
+    explicit DpiContext(HWND window)
+        : previous(SetThreadDpiAwarenessContext(GetWindowDpiAwarenessContext(window)))
+    {}
+    ~DpiContext()
+    {
+        if (previous != nullptr) {
+            SetThreadDpiAwarenessContext(previous);
+        }
+    }
+    DpiContext(const DpiContext&) = delete;
+    DpiContext& operator=(const DpiContext&) = delete;
+
+private:
+    DPI_AWARENESS_CONTEXT previous;
+};
+
 std::wstring widen(std::string_view text)
 {
     if (text.empty()) {
@@ -90,12 +124,25 @@ std::string narrow(std::wstring_view text)
 // WebView2 keeps its profile in a user-data folder. The default sits next to the host's
 // executable, which may not be writable, so it is set explicitly:
 // %LOCALAPPDATA%\Orizon Audio\O-Scope\WebView2.
-std::wstring userDataFolder()
+// WebView2 refuses (ERROR_INVALID_STATE) to add a view to a browser process whose views have
+// another DPI awareness, and editors share a browser process through their profile folder:
+// DPI-unaware host windows (Live's Auto-Scale, for example) get a folder of their own.
+std::wstring userDataFolder(HWND parent)
 {
     PWSTR localAppData = nullptr;
     std::wstring folder;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppData))) {
         folder = std::wstring(localAppData) + L"\\Orizon Audio\\O-Scope\\WebView2";
+        switch (GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(parent))) {
+        case DPI_AWARENESS_UNAWARE:
+            folder += L"-Unaware";
+            break;
+        case DPI_AWARENESS_SYSTEM_AWARE:
+            folder += L"-SystemAware";
+            break;
+        default:
+            break;
+        }
     }
     CoTaskMemFree(localAppData);
     return folder;
@@ -111,6 +158,7 @@ public:
     WebViewWin& operator=(const WebViewWin&) = delete;
 
     void setSize(int width, int height) override;
+    void setScale(double scale) override;
     void postMessage(std::string_view message) override;
     void sendFrame(std::span<const std::byte> frame) override;
     [[nodiscard]] void* nativeView() const override { return parent; }
@@ -123,6 +171,9 @@ private:
         WebViewWin* owner = nullptr;
     };
 
+    static LRESULT CALLBACK containerProcedure(HWND handle, UINT message, WPARAM wParam,
+                                               LPARAM lParam);
+    void updateVisibility();
     void environmentCreated(ICoreWebView2Environment* created);
     void controllerCreated(ICoreWebView2Controller* created);
     void resourceRequested(ICoreWebView2WebResourceRequestedEventArgs* args);
@@ -135,8 +186,11 @@ private:
     void answerFrame(const std::vector<std::byte>& frame);
 
     HWND parent = nullptr;
+    HWND container = nullptr;
     int width = 0;
     int height = 0;
+    double scale = 1.0;
+    bool isShown = true;
     MessageHandler onMessage;
     FrameRequestHandler onFrameRequest;
     std::shared_ptr<Link> link = std::make_shared<Link>();
@@ -161,6 +215,23 @@ WebViewWin::WebViewWin(HWND parentWindow, int initialWidth, int initialHeight,
       onMessage(std::move(messages)), onFrameRequest(std::move(frameRequests))
 {
     link->owner = this;
+    {
+        static const HBRUSH background =
+            CreateSolidBrush(RGB(kBackground.R, kBackground.G, kBackground.B));
+        WNDCLASSEXW windowClass{};
+        windowClass.cbSize = sizeof(windowClass);
+        windowClass.lpfnWndProc = &WebViewWin::containerProcedure;
+        windowClass.hInstance = thisModule();
+        windowClass.hbrBackground = background;
+        windowClass.lpszClassName = kContainerClass;
+        RegisterClassExW(&windowClass); // Fails harmlessly once the class exists.
+        const DpiContext dpi(parent);
+        container =
+            CreateWindowExW(0, kContainerClass, L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN, 0, 0,
+                            width, height, parent, nullptr, windowClass.hInstance, nullptr);
+        SetWindowLongPtrW(container, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+        SetTimer(container, kVisibilityTimer, kVisibilityInterval, nullptr);
+    }
     auto options = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
     ComPtr<ICoreWebView2EnvironmentOptions4> schemeOptions;
     if (SUCCEEDED(options.As(&schemeOptions))) {
@@ -173,7 +244,7 @@ WebViewWin::WebViewWin(HWND parentWindow, int initialWidth, int initialHeight,
         ICoreWebView2CustomSchemeRegistration* registrations[] = {scheme.Get()};
         schemeOptions->SetCustomSchemeRegistrations(1, registrations);
     }
-    const std::wstring folder = userDataFolder();
+    const std::wstring folder = userDataFolder(parent);
     CreateCoreWebView2EnvironmentWithOptions(
         nullptr, folder.empty() ? nullptr : folder.c_str(), options.Get(),
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
@@ -200,27 +271,67 @@ WebViewWin::~WebViewWin()
         controller->remove_AcceleratorKeyPressed(acceleratorToken);
         controller->Close();
     }
+    SetWindowLongPtrW(container, GWLP_USERDATA, 0);
+    DestroyWindow(container); // Also stops its timer.
+}
+
+LRESULT CALLBACK WebViewWin::containerProcedure(HWND handle, UINT message, WPARAM wParam,
+                                                LPARAM lParam)
+{
+    auto* self = reinterpret_cast<WebViewWin*>(GetWindowLongPtrW(handle, GWLP_USERDATA));
+    if (self != nullptr && message == WM_TIMER && wParam == kVisibilityTimer) {
+        self->updateVisibility();
+        return 0;
+    }
+    return DefWindowProcW(handle, message, wParam, lParam);
+}
+
+// Hidden covers a closed or minimised host window too: hosts hide their plugin windows then.
+void WebViewWin::updateVisibility()
+{
+    const bool shown =
+        IsWindowVisible(container) != FALSE && IsIconic(GetAncestor(parent, GA_ROOT)) == FALSE;
+    if (shown == isShown || !controller) {
+        return;
+    }
+    isShown = shown;
+    controller->put_IsVisible(shown ? TRUE : FALSE); // Hidden pages pause requestAnimationFrame.
 }
 
 void WebViewWin::environmentCreated(ICoreWebView2Environment* created)
 {
     environment = created;
+    const DpiContext dpi(parent);
     environment->CreateCoreWebView2Controller(
-        parent, Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                    [link = link](HRESULT result, ICoreWebView2Controller* made) -> HRESULT {
-                        if (SUCCEEDED(result) && link->owner != nullptr) {
-                            link->owner->controllerCreated(made);
-                        }
-                        return S_OK;
-                    })
-                    .Get());
+        container, Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                       [link = link](HRESULT result, ICoreWebView2Controller* made) -> HRESULT {
+                           if (SUCCEEDED(result) && link->owner != nullptr) {
+                               link->owner->controllerCreated(made);
+                           } else if (SUCCEEDED(result) && made != nullptr) {
+                               made->Close(); // The editor closed while WebView2 started.
+                           }
+                           return S_OK;
+                       })
+                       .Get());
 }
 
 void WebViewWin::controllerCreated(ICoreWebView2Controller* created)
 {
+    const DpiContext dpi(parent);
     controller = created;
     controller->get_CoreWebView2(&core);
+    ComPtr<ICoreWebView2Controller2> background;
+    if (SUCCEEDED(controller.As(&background))) {
+        background->put_DefaultBackgroundColor(kBackground);
+    }
+    ComPtr<ICoreWebView2Controller3> scaling;
+    if (SUCCEEDED(controller.As(&scaling))) {
+        scaling->put_ShouldDetectMonitorScaleChanges(FALSE);
+    }
+    setScale(scale);
     setSize(width, height);
+    isShown = true;
+    updateVisibility();
 
     ComPtr<ICoreWebView2Settings> settings;
     core->get_Settings(&settings);
@@ -274,8 +385,19 @@ void WebViewWin::setSize(int newWidth, int newHeight)
 {
     width = newWidth;
     height = newHeight;
+    const DpiContext dpi(parent);
+    SetWindowPos(container, nullptr, 0, 0, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
     if (controller) {
         controller->put_Bounds(RECT{0, 0, width, height});
+    }
+}
+
+void WebViewWin::setScale(double newScale)
+{
+    scale = newScale;
+    ComPtr<ICoreWebView2Controller3> scaling;
+    if (controller && SUCCEEDED(controller.As(&scaling))) {
+        scaling->put_RasterizationScale(scale);
     }
 }
 

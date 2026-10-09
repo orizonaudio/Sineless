@@ -16,7 +16,8 @@
 
 namespace orizon::editor {
 
-// The VST3 editor view: a WebView filling the host's editor window.
+// The VST3 editor view: a WebView filling the host's editor window. Sizes below are in CSS
+// pixels; the editor's rect is in the host's window units, scaled by displayScale.
 class Editor : public Steinberg::CPluginView
 {
 public:
@@ -45,8 +46,11 @@ public:
     Steinberg::tresult PLUGIN_API canResize() override;
     Steinberg::tresult PLUGIN_API checkSizeConstraint(Steinberg::ViewRect* size) override;
 
-    // The minimum height now: kMinimumHeight, or more with stacked lanes on show.
+    // The minimum height now, in CSS pixels: kMinimumHeight, or more with stacked lanes on show.
     [[nodiscard]] int minimumHeight() const;
+
+    // Host window units per CSS pixel.
+    [[nodiscard]] double scaleFactor() const { return scale; }
 
     // False when the editor must show the "unavailable" state.
     [[nodiscard]] bool engineAvailable() const { return engineState != nullptr; }
@@ -63,8 +67,15 @@ private:
     void receive(std::string_view message);
     // Asks the host for more height when the lanes on show no longer fit, once per change.
     void requestMinimumHeight();
+    // Follows a change of display scaling (the window moved to another display): the same size
+    // in CSS pixels, in the new window units.
+    void updateScale();
+    // The current rect converted to `newScale`, which becomes the scale.
+    Steinberg::ViewRect rescaled(double newScale);
+    [[nodiscard]] int toHostUnits(int cssPixels) const;
 
     MessageObserver observer;
+    double scale = 1.0;
     int lastMinimumHeight = kMinimumHeight;
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;

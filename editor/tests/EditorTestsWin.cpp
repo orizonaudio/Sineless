@@ -1,3 +1,4 @@
+#include "editor/DisplayScale.h"
 #include "editor/Editor.h"
 #include "editor/WebView.h"
 #include "engine/Engine.h"
@@ -10,8 +11,10 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <gtest/gtest.h>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -42,6 +45,40 @@ bool pumpUntil(const std::function<bool()>& condition, std::chrono::milliseconds
     return condition();
 }
 
+// Runs the enclosed code in the given DPI awareness, as a host opening its plugin window.
+class ScopedDpiAwareness
+{
+public:
+    explicit ScopedDpiAwareness(DPI_AWARENESS_CONTEXT context)
+        : previous(SetThreadDpiAwarenessContext(context))
+    {}
+    ~ScopedDpiAwareness() { SetThreadDpiAwarenessContext(previous); }
+    ScopedDpiAwareness(const ScopedDpiAwareness&) = delete;
+    ScopedDpiAwareness& operator=(const ScopedDpiAwareness&) = delete;
+
+private:
+    DPI_AWARENESS_CONTEXT previous;
+};
+
+// Lists the page's elements that reach past its right edge or clip their content, "" if none.
+constexpr const char* kOverflowScript = R"JS(
+(() => {
+  const found = [];
+  for (const element of document.querySelectorAll("body *")) {
+    const box = element.getBoundingClientRect();
+    if (box.width === 0) continue;
+    const name = element.id || element.className || element.tagName;
+    if (box.right > innerWidth + 0.5) {
+      found.push(name + " ends at " + Math.round(box.right));
+    } else if (element.scrollWidth > element.clientWidth + 1 &&
+               getComputedStyle(element).overflowX !== "visible") {
+      found.push(name + " clips its content");
+    }
+  }
+  return found.slice(0, 8).join("; ");
+})()
+)JS";
+
 class EditorTest : public ::testing::Test
 {
 protected:
@@ -69,12 +106,15 @@ protected:
 
     static inline int hostKeyDowns = 0;
 
+    // Shown, as a host's editor window is: the editor pauses the page while it is hidden.
     static HWND makeWindow()
     {
-        return CreateWindowExW(0, L"OrizonEditorTest", L"O-Scope test", WS_OVERLAPPEDWINDOW,
-                               CW_USEDEFAULT, CW_USEDEFAULT, Editor::kDefaultWidth,
-                               Editor::kDefaultHeight, nullptr, nullptr, GetModuleHandleW(nullptr),
-                               nullptr);
+        HWND window = CreateWindowExW(0, L"OrizonEditorTest", L"O-Scope test", WS_OVERLAPPEDWINDOW,
+                                      CW_USEDEFAULT, CW_USEDEFAULT, Editor::kDefaultWidth,
+                                      Editor::kDefaultHeight, nullptr, nullptr,
+                                      GetModuleHandleW(nullptr), nullptr);
+        ShowWindow(window, SW_SHOWNOACTIVATE);
+        return window;
     }
 
     IPtr<Editor>
@@ -206,6 +246,92 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
     DestroyWindow(window);
 }
 
+// The page lays out in CSS pixels at the editor's default size whatever the display scaling, in
+// a DPI-aware host window (sized in physical pixels) and in an unaware one (stretched by
+// Windows). Meaningful on a display scaled above 100 %; the scale is printed.
+TEST_F(EditorTest, LaysOutAtTheDefaultCssSizeAtAnyDisplayScale)
+{
+    for (const auto context :
+         {DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, DPI_AWARENESS_CONTEXT_UNAWARE}) {
+        const ScopedDpiAwareness awareness(context);
+        HWND window = makeWindow();
+        std::vector<std::string> received;
+        auto editor = makeEditor(received);
+        ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+        WebView& view = *editor->webView();
+        ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+        const double scale = displayScale(window);
+        std::cout << "display scale " << scale << "\n";
+        EXPECT_EQ(editor->scaleFactor(), scale);
+        EXPECT_EQ(editor->getRect().getWidth(),
+                  static_cast<int>(std::ceil(Editor::kDefaultWidth * scale - 1e-6)));
+        EXPECT_EQ(evaluate(view, "String(innerWidth)"), std::to_string(Editor::kDefaultWidth));
+        EXPECT_EQ(std::stod("0" + evaluate(view, "String(devicePixelRatio)")), scale);
+        EXPECT_EQ(editor->removed(), kResultOk);
+        DestroyWindow(window);
+    }
+}
+
+// With Windows' fonts, everything fits at the default and at the minimum size.
+TEST_F(EditorTest, FitsTheDefaultAndMinimumSizes)
+{
+    const ScopedDpiAwareness awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    pumpUntil([] { return false; }, std::chrono::milliseconds(300)); // Fonts and layout settle.
+    EXPECT_EQ(evaluate(view, kOverflowScript), "") << "at the default size";
+
+    ViewRect minimum(0, 0, 0, 0);
+    editor->checkSizeConstraint(&minimum);
+    ASSERT_EQ(editor->onSize(&minimum), kResultTrue);
+    ASSERT_TRUE(pumpUntil(
+        [&] {
+            return evaluate(view, "String(innerWidth)") == std::to_string(Editor::kMinimumWidth);
+        },
+        std::chrono::seconds(5)));
+    pumpUntil([] { return false; }, std::chrono::milliseconds(300));
+    EXPECT_EQ(evaluate(view, kOverflowScript), "") << "at the minimum size";
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
+// Hosts hide the editor's window when it is closed or the host is minimised; WebView2 cannot
+// tell by itself, and the page would keep drawing.
+TEST_F(EditorTest, PausesThePageWhileHidden)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    evaluate(view,
+             "window.testFrames = 0;"
+             "(function count() { window.testFrames++; requestAnimationFrame(count); })(); ''");
+    const auto frames = [&] {
+        return std::stoi("0" + evaluate(view, "String(window.testFrames)"));
+    };
+    const auto state = [&] { return evaluate(view, "document.visibilityState"); };
+
+    ShowWindow(window, SW_HIDE);
+    ASSERT_TRUE(pumpUntil([&] { return state() == "hidden"; }, std::chrono::seconds(3)));
+    const int whileHidden = frames();
+    pumpUntil([] { return false; }, std::chrono::milliseconds(500));
+    EXPECT_LE(frames() - whileHidden, 1) << "no drawing while hidden";
+
+    ShowWindow(window, SW_SHOWNOACTIVATE);
+    ASSERT_TRUE(pumpUntil([&] { return state() == "visible"; }, std::chrono::seconds(3)));
+    const int shown = frames();
+    EXPECT_TRUE(pumpUntil([&] { return frames() > shown + 10; }, std::chrono::seconds(3)))
+        << "drawing again once shown";
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
 TEST_F(EditorTest, ExplainsWhenTheEngineIsUnavailable)
 {
     HWND window = makeWindow();
@@ -227,7 +353,11 @@ TEST_F(EditorTest, ExplainsWhenTheEngineIsUnavailable)
 TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
 {
     constexpr int kCycles = 10;
+    DWORD handlesAtStart = 0;
     for (int cycle = 0; cycle < kCycles; ++cycle) {
+        if (cycle == 2) { // After WebView2's one-time setup.
+            GetProcessHandleCount(GetCurrentProcess(), &handlesAtStart);
+        }
         HWND window = makeWindow();
         std::vector<std::string> received;
         auto editor = makeEditor(received);
@@ -242,6 +372,14 @@ TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
         DestroyWindow(window);
         pumpUntil([] { return false; }, std::chrono::milliseconds(50));
     }
+    pumpUntil([] { return false; }, std::chrono::seconds(1)); // WebView2 winds down.
+    DWORD handlesAtEnd = 0;
+    GetProcessHandleCount(GetCurrentProcess(), &handlesAtEnd);
+    std::cout << "process handles " << handlesAtStart << " -> " << handlesAtEnd << "\n";
+    // WebView2 leaves about one kernel handle behind per open (memory stays flat, and its
+    // processes exit); not found in our calls, each clean on its own. Guards against more.
+    EXPECT_LE(static_cast<int>(handlesAtEnd) - static_cast<int>(handlesAtStart), 2 * (kCycles - 2))
+        << "handles left behind by " << kCycles - 2 << " open/close cycles";
 }
 
 } // namespace

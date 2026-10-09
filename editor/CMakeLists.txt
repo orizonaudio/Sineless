@@ -34,11 +34,13 @@ add_library(editor STATIC
 target_include_directories(editor PUBLIC include PRIVATE src)
 target_link_libraries(editor PUBLIC engine sdk PRIVATE orizon_warnings)
 if(APPLE)
-    target_sources(editor PRIVATE src/mac/UiDispatcherMac.mm src/mac/WebViewMac.mm)
+    target_sources(editor PRIVATE src/mac/DisplayScaleMac.cpp src/mac/UiDispatcherMac.mm
+                                  src/mac/WebViewMac.mm)
     target_link_libraries(editor PRIVATE "-framework Cocoa" "-framework WebKit")
     set_source_files_properties(src/mac/WebViewMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 elseif(WIN32)
-    target_sources(editor PRIVATE src/win/UiDispatcherWin.cpp src/win/WebViewWin.cpp)
+    target_sources(editor PRIVATE src/win/DisplayScaleWin.cpp src/win/UiDispatcherWin.cpp
+                                  src/win/WebViewWin.cpp)
     target_link_libraries(editor PRIVATE webview2 shlwapi shell32 ole32)
 endif()
 

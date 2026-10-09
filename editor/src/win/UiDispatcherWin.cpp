@@ -6,6 +6,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 // clang-format on
+#include "WinModule.h"
+
 #include <deque>
 #include <mutex>
 #include <utility>
@@ -16,17 +18,6 @@ namespace {
 
 // The posted-work queue has new entries.
 constexpr UINT kWorkMessage = WM_APP + 1;
-
-// The module (this plugin's DLL) that registers the window class, so that each loaded copy of
-// the plugin has its own class.
-HINSTANCE thisModule()
-{
-    HMODULE module = nullptr;
-    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                       reinterpret_cast<LPCWSTR>(&thisModule), &module);
-    return module;
-}
 
 // A hidden message-only window on the UI thread runs posted work and timers. Destroying it
 // drops whatever is still pending, so nothing runs after the dispatcher is gone.

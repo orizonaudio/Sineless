@@ -11,6 +11,7 @@ class RecordingWebView final : public WebView
 {
 public:
     void setSize(int /*width*/, int /*height*/) override {}
+    void setScale(double /*scale*/) override {}
     void postMessage(std::string_view message) override { messages.emplace_back(message); }
     void sendFrame(std::span<const std::byte> frame) override
     {

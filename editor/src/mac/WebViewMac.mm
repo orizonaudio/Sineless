@@ -94,6 +94,7 @@ public:
     void sendFrame(std::span<const std::byte> frame) override;
     [[nodiscard]] void* nativeView() const override { return (__bridge void*)webView; }
     void evaluate(std::string_view script, std::function<void(std::string)> done) override;
+    void setScale(double /*scale*/) override {} // macOS sizes in points: always 1.
 
     void receive(WKScriptMessage* message);
     void requestFrame(id<WKURLSchemeTask> task);

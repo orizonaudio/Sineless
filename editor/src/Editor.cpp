@@ -1,9 +1,11 @@
 #include "editor/Editor.h"
 
+#include "editor/DisplayScale.h"
 #include "pluginterfaces/gui/iplugview.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <utility>
 
@@ -29,10 +31,25 @@ bool isSupportedPlatform(FIDString type)
 } // namespace
 
 Editor::Editor(std::shared_ptr<engine::Engine> engine, MessageObserver observer)
-    : observer(std::move(observer)), engineState(std::move(engine))
+    : observer(std::move(observer)), scale(displayScale(nullptr)), engineState(std::move(engine))
 {
-    ViewRect initial(0, 0, kDefaultWidth, kDefaultHeight);
+    ViewRect initial(0, 0, toHostUnits(kDefaultWidth), toHostUnits(kDefaultHeight));
     setRect(initial);
+}
+
+int Editor::toHostUnits(int cssPixels) const
+{
+    return static_cast<int>(std::ceil(cssPixels * scale - 1e-6));
+}
+
+ViewRect Editor::rescaled(double newScale)
+{
+    const ViewRect current = getRect();
+    const double ratio = newScale / scale;
+    scale = newScale;
+    return {current.left, current.top,
+            current.left + static_cast<int32>(std::lround(current.getWidth() * ratio)),
+            current.top + static_cast<int32>(std::lround(current.getHeight() * ratio))};
 }
 
 tresult PLUGIN_API Editor::isPlatformTypeSupported(FIDString type)
@@ -44,6 +61,13 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
 {
     if (parent == nullptr || !isSupportedPlatform(type)) {
         return kResultFalse;
+    }
+    // The host sized the window before attaching, possibly at a guessed scale; the window's
+    // own scale is the true one.
+    const double windowScale = displayScale(parent);
+    const bool scaleChanged = windowScale != scale;
+    if (scaleChanged) {
+        setRect(rescaled(windowScale));
     }
     // Each frame request from the page is its credit for one frame.
     view = WebView::create(
@@ -57,21 +81,43 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
                 worker->wake();
             }
         });
+    view->setScale(scale);
     transport = std::make_unique<WebViewTransport>(*view);
+    dispatcher = UiDispatcher::create();
+    dispatcher->every(kStateSyncInterval, [this] {
+        if (session) {
+            session->sync();
+            requestMinimumHeight();
+        }
+        updateScale();
+    });
     if (engineState) {
         analyzer = std::make_unique<engine::Analyzer>(*engineState);
-        dispatcher = UiDispatcher::create();
         frameFlow = std::make_unique<FrameFlow>(
             *analyzer, *dispatcher,
             [this](std::span<const std::byte> frame) { transport->sendFrame(frame); });
         session = std::make_unique<Session>(*engineState, *analyzer, *transport);
-        dispatcher->every(kStateSyncInterval, [this] {
-            session->sync();
-            requestMinimumHeight();
-        });
         worker = std::make_unique<engine::AnalysisWorker>([this] { frameFlow->step(); });
     }
-    return CPluginView::attached(parent, type);
+    const tresult result = CPluginView::attached(parent, type);
+    if (scaleChanged && plugFrame != nullptr) {
+        ViewRect wanted = getRect();
+        plugFrame->resizeView(this, &wanted);
+    }
+    return result;
+}
+
+void Editor::updateScale()
+{
+    const double windowScale = displayScale(systemWindow);
+    if (windowScale == scale || view == nullptr) {
+        return;
+    }
+    ViewRect wanted = rescaled(windowScale);
+    view->setScale(scale);
+    if (plugFrame != nullptr) {
+        plugFrame->resizeView(this, &wanted); // The host answers with onSize, or declines.
+    }
 }
 
 tresult PLUGIN_API Editor::removed()
@@ -127,8 +173,8 @@ tresult PLUGIN_API Editor::checkSizeConstraint(ViewRect* size)
     if (size == nullptr) {
         return kInvalidArgument;
     }
-    size->right = size->left + std::max(size->getWidth(), kMinimumWidth);
-    size->bottom = size->top + std::max(size->getHeight(), minimumHeight());
+    size->right = size->left + std::max(size->getWidth(), toHostUnits(kMinimumWidth));
+    size->bottom = size->top + std::max(size->getHeight(), toHostUnits(minimumHeight()));
     return kResultTrue;
 }
 
@@ -158,11 +204,11 @@ void Editor::requestMinimumHeight()
         return;
     }
     lastMinimumHeight = minimum;
-    if (plugFrame == nullptr || getRect().getHeight() >= minimum) {
+    if (plugFrame == nullptr || getRect().getHeight() >= toHostUnits(minimum)) {
         return;
     }
     ViewRect wanted = getRect();
-    wanted.bottom = wanted.top + minimum;
+    wanted.bottom = wanted.top + toHostUnits(minimum);
     plugFrame->resizeView(this, &wanted); // The host answers with onSize, or declines.
 }
 

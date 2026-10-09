@@ -18,7 +18,7 @@ public:
     // Called on the UI thread when the page asks for the next display frame.
     using FrameRequestHandler = std::function<void(WebView& view)>;
 
-    // `parent` is the host's NSView. The page is loaded from the embedded UI.
+    // `parent` is the host's NSView or HWND. The page is loaded from the embedded UI.
     static std::unique_ptr<WebView> create(void* parent, int width, int height,
                                            MessageHandler onMessage,
                                            FrameRequestHandler onFrameRequest = {});
@@ -28,7 +28,10 @@ public:
     WebView(const WebView&) = delete;
     WebView& operator=(const WebView&) = delete;
 
+    // In the host's window units, like the editor's rect.
     virtual void setSize(int width, int height) = 0;
+    // Host window units per CSS pixel (see displayScale); the page lays out in CSS pixels.
+    virtual void setScale(double scale) = 0;
 
     // Native-to-page delivery: messages over the native channel, and display frames as the
     // binary answer to the page's frame request (kept for the next request if none is open).
