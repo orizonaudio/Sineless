@@ -15,6 +15,7 @@
 #include <deque>
 #include <iterator>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <string>
@@ -77,6 +78,52 @@ constexpr UINT_PTR kVisibilityTimer = 1;
 constexpr UINT kVisibilityInterval = 250; // ms
 
 void paintFailure(HWND window);
+
+// Hosts open DPI-unaware plugin windows to have Windows stretch them (Live's Auto-Scale, for
+// example). WebView2 cannot put its window under an unaware one at most display scales
+// (ERROR_INVALID_STATE: Windows forbids parenting across DPI awareness), so there it uses
+// Window-to-Visual hosting, drawing into a visual of the window instead: it works at every
+// scale, takes input as usual, and draws sharp. WebView2 reads the mode from an environment
+// variable while it creates the environment; the variable is set for that call only, since
+// the host may run other WebView2s. Unaware windows have a profile, and so a browser process,
+// of their own, so the two modes never share one.
+constexpr wchar_t kHostingModeVariable[] = L"COREWEBVIEW2_FORCED_HOSTING_MODE";
+constexpr wchar_t kWindowToVisual[] = L"COREWEBVIEW2_HOSTING_MODE_WINDOW_TO_VISUAL";
+
+bool isDpiUnaware(HWND window)
+{
+    return GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(window)) ==
+           DPI_AWARENESS_UNAWARE;
+}
+
+// Sets one of this process's environment variables until the end of the scope.
+class ScopedEnvironmentVariable
+{
+public:
+    ScopedEnvironmentVariable(const wchar_t* variableName, const wchar_t* value)
+        : name(variableName)
+    {
+        const DWORD length = GetEnvironmentVariableW(name, nullptr, 0);
+        if (length > 0) {
+            previous.resize(length);
+            GetEnvironmentVariableW(name, previous.data(), length);
+            previous.resize(length - 1); // Without the terminator.
+            hadValue = true;
+        }
+        SetEnvironmentVariableW(name, value);
+    }
+    ~ScopedEnvironmentVariable()
+    {
+        SetEnvironmentVariableW(name, hadValue ? previous.c_str() : nullptr);
+    }
+    ScopedEnvironmentVariable(const ScopedEnvironmentVariable&) = delete;
+    ScopedEnvironmentVariable& operator=(const ScopedEnvironmentVariable&) = delete;
+
+private:
+    const wchar_t* name;
+    std::wstring previous;
+    bool hadValue = false;
+};
 
 // Runs the enclosed calls in `window`'s DPI awareness, so that the windows they create match
 // it: a host can open a DPI-unaware plugin window (stretched by Windows) from an aware thread.
@@ -257,6 +304,10 @@ WebViewWin::WebViewWin(HWND parentWindow, int initialWidth, int initialHeight,
         schemeOptions->SetCustomSchemeRegistrations(1, registrations);
     }
     const std::wstring folder = userDataFolder(parent);
+    std::optional<ScopedEnvironmentVariable> hostingMode;
+    if (isDpiUnaware(parent)) {
+        hostingMode.emplace(kHostingModeVariable, kWindowToVisual);
+    }
     const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
         nullptr, folder.empty() ? nullptr : folder.c_str(), options.Get(),
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
@@ -272,6 +323,7 @@ WebViewWin::WebViewWin(HWND parentWindow, int initialWidth, int initialHeight,
                 return S_OK;
             })
             .Get());
+    hostingMode.reset();
     if (FAILED(started)) {
         showFailure(started); // No WebView2 Runtime installed, for example.
     }

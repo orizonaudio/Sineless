@@ -117,6 +117,16 @@ protected:
         return window;
     }
 
+    // Sizes the window's client area to the editor, as a host does, then attaches the editor.
+    static tresult attach(HWND window, Editor& editor)
+    {
+        RECT frame{0, 0, editor.getRect().getWidth(), editor.getRect().getHeight()};
+        AdjustWindowRectExForDpi(&frame, WS_OVERLAPPEDWINDOW, FALSE, 0, GetDpiForWindow(window));
+        SetWindowPos(window, nullptr, 0, 0, frame.right - frame.left, frame.bottom - frame.top,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        return editor.attached(window, kPlatformTypeHWND);
+    }
+
     IPtr<Editor>
     makeEditor(std::vector<std::string>& received,
                std::shared_ptr<engine::Engine> engine = std::make_shared<engine::Engine>())
@@ -170,7 +180,7 @@ TEST_F(EditorTest, LoadsThePageAndCompletesTheHandshake)
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received);
-    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(*editor->webView()); }, kPageTimeout))
         << "the page did not receive the session snapshot";
     EXPECT_TRUE(saw(received, "hello"));
@@ -196,7 +206,7 @@ TEST_F(EditorTest, StreamsFramesOnePerRequest)
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received, engine);
-    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
     WebView& view = *editor->webView();
     const auto frameCount = [&] {
         return std::stoi("0" + evaluate(view, "String(window.orizonDebug?.frameCount ?? 0)"));
@@ -220,7 +230,7 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received);
-    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
     WebView& view = *editor->webView();
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
     // Presses a key in the page, waits for any forwarded key to arrive, and returns how many
@@ -247,8 +257,9 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
 }
 
 // The page lays out in CSS pixels at the editor's default size whatever the display scaling, in
-// a DPI-aware host window (sized in physical pixels) and in an unaware one (stretched by
-// Windows). Meaningful on a display scaled above 100 %; the scale is printed.
+// a DPI-aware host window (sized in physical pixels) and in an unaware one (sized in 96-dpi
+// units, which WebView2 still draws sharp, at the display's scale). Meaningful on a display
+// scaled above 100 %; the scale is printed.
 TEST_F(EditorTest, LaysOutAtTheDefaultCssSizeAtAnyDisplayScale)
 {
     for (const auto context :
@@ -257,7 +268,7 @@ TEST_F(EditorTest, LaysOutAtTheDefaultCssSizeAtAnyDisplayScale)
         HWND window = makeWindow();
         std::vector<std::string> received;
         auto editor = makeEditor(received);
-        ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+        ASSERT_EQ(attach(window, *editor), kResultTrue);
         WebView& view = *editor->webView();
         ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
         const double scale = displayScale(window);
@@ -266,7 +277,12 @@ TEST_F(EditorTest, LaysOutAtTheDefaultCssSizeAtAnyDisplayScale)
         EXPECT_EQ(editor->getRect().getWidth(),
                   static_cast<int>(std::ceil(Editor::kDefaultWidth * scale - 1e-6)));
         EXPECT_EQ(evaluate(view, "String(innerWidth)"), std::to_string(Editor::kDefaultWidth));
-        EXPECT_EQ(std::stod("0" + evaluate(view, "String(devicePixelRatio)")), scale);
+        double displayed = scale;
+        if (context == DPI_AWARENESS_CONTEXT_UNAWARE) {
+            const ScopedDpiAwareness perMonitor(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            displayed = GetDpiForSystem() / 96.0; // The display's scale, with one display.
+        }
+        EXPECT_EQ(std::stod("0" + evaluate(view, "String(devicePixelRatio)")), displayed);
         EXPECT_EQ(editor->removed(), kResultOk);
         DestroyWindow(window);
     }
@@ -280,7 +296,7 @@ TEST_F(EditorTest, FitsTheDefaultAndMinimumSizes)
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received);
-    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
     WebView& view = *editor->webView();
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
     pumpUntil([] { return false; }, std::chrono::milliseconds(300)); // Fonts and layout settle.
@@ -307,7 +323,7 @@ TEST_F(EditorTest, PausesThePageWhileHidden)
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received);
-    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
     WebView& view = *editor->webView();
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
     evaluate(view,
@@ -341,7 +357,7 @@ TEST_F(EditorTest, ExplainsWhenWebView2CannotStart)
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received);
-    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
     HWND container = FindWindowExW(window, nullptr, L"OrizonOScopeWebViewHost", nullptr);
     ASSERT_NE(container, nullptr);
     std::wstring text;
@@ -366,7 +382,7 @@ TEST_F(EditorTest, ExplainsWhenTheEngineIsUnavailable)
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received, nullptr);
-    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
     EXPECT_TRUE(pumpUntil(
         [&] {
             return evaluate(*editor->webView(), "String(window.orizonDebug?.error?.code ?? '')") ==
@@ -390,7 +406,7 @@ TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
         HWND window = makeWindow();
         std::vector<std::string> received;
         auto editor = makeEditor(received);
-        ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+        ASSERT_EQ(attach(window, *editor), kResultTrue);
         if (cycle % 2 == 1) {
             EXPECT_EQ(editor->removed(), kResultOk) << "closed while WebView2 starts";
         } else {
@@ -425,7 +441,7 @@ TEST_F(EditorTest, LeavesNoHandlesBehindWhenClosedAfterLoading)
         HWND window = makeWindow();
         std::vector<std::string> received;
         auto editor = makeEditor(received);
-        ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+        ASSERT_EQ(attach(window, *editor), kResultTrue);
         ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(*editor->webView()); }, kPageTimeout))
             << "cycle " << cycle;
         EXPECT_EQ(editor->removed(), kResultOk);
