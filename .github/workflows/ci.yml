@@ -1,7 +1,7 @@
 name: CI
 
-# Manual only while the repository is private: macOS runner minutes count tenfold against
-# the free allowance. Run it from the Actions tab.
+# Manual only while the repository is private: macOS runner minutes count tenfold, and Windows
+# minutes twofold, against the free allowance. Run it from the Actions tab.
 on:
   workflow_dispatch:
 
@@ -20,3 +20,21 @@ jobs:
         run: npm ci
       - name: Run all checks
         run: scripts/check.sh
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install npm dependencies
+        run: npm ci
+      # GitHub's Windows machines are x64: they cannot run the ARM64 build's validator and tests,
+      # which run on ARM64 Windows instead.
+      - name: Run all checks (x64)
+        shell: powershell
+        env:
+          PRESETS: windows-x64
+        run: scripts/check.ps1

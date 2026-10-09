@@ -1,0 +1,99 @@
+# Runs every check that applies on Windows. Stops at the first failure.
+#
+# The sanitizer builds, clang-tidy and the performance limits run on macOS (scripts/check.sh),
+# which shares all of this code.
+#
+# Environment:
+#   PRESETS   Windows presets to build, comma-separated (default: windows-x64,windows-arm64)
+#   LLVM_BIN  Directory with clang-format (default: C:\Program Files\LLVM\bin)
+$ErrorActionPreference = 'Stop'
+Set-Location (Join-Path $PSScriptRoot '..')
+
+$presets = if ($env:PRESETS) { $env:PRESETS -split ',' } else { @('windows-x64', 'windows-arm64') }
+$llvmBin = if ($env:LLVM_BIN) { $env:LLVM_BIN } else { 'C:\Program Files\LLVM\bin' }
+# ARM64 Windows runs x64 programs too; an x64 machine cannot run ARM64 ones.
+$hostIsArm = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64'
+
+function Step($name) { Write-Host "`n==> $name" }
+function Run {
+    & $args[0] $args[1..($args.Count - 1)]
+    if ($LASTEXITCODE -ne 0) { throw "Failed: $($args -join ' ')" }
+}
+
+Step 'Toolchain'
+# CMake, MSBuild and the compilers come from Visual Studio's developer environment.
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (-not $vs) { throw 'Visual Studio 2022 with the C++ tools is required.' }
+    Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+    $arch = if ($hostIsArm) { 'arm64' } else { 'amd64' }
+    # -Arch/-HostArch lack arm64; the underlying VsDevCmd accepts it.
+    Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=$arch -host_arch=$arch" | Out-Null
+}
+# Windows PowerShell 5.1 strips double quotes inside arguments to programs: single quotes only.
+$nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
+if ($nodeMajor -lt 22) { throw "Node $(node -v) is too old; install the version in .nvmrc." }
+if (-not (Test-Path "$llvmBin\clang-format.exe")) { throw "Missing $llvmBin\clang-format.exe (winget install LLVM.LLVM)." }
+
+Step 'C++ format'
+$sources = git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm'
+Run "$llvmBin\clang-format.exe" --dry-run --Werror @sources
+
+if (-not (Test-Path node_modules)) {
+    Step 'npm packages'
+    Run npm.cmd ci --no-audit --no-fund
+}
+
+foreach ($preset in $presets) {
+    Step "C++ build: $preset (includes the VST3 validator)"
+    Run cmake --preset $preset
+    Run cmake --build --preset $preset -- /m /nologo /v:minimal
+
+    if ($preset -like '*arm64' -and -not $hostIsArm) {
+        Write-Host "Tests skipped: this machine cannot run $preset binaries."
+        continue
+    }
+    Step "C++ tests: $preset"
+    Run ctest --preset $preset
+}
+
+Step 'Bundle with both architectures'
+# Each preset builds a bundle with its own Contents\<arch>-win folder; one bundle holds both.
+$bundle = 'build\windows\O-Scope.vst3'
+if (Test-Path $bundle) { Remove-Item -Recurse -Force $bundle }
+foreach ($preset in $presets) {
+    # robocopy merges folder trees; its exit codes below 8 mean success.
+    robocopy "build\$preset\VST3\Debug\O-Scope.vst3" $bundle /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "Could not copy the $preset bundle." }
+}
+$global:LASTEXITCODE = 0
+Get-ChildItem "$bundle\Contents" -Directory | ForEach-Object { Write-Host "  $($_.Name)" }
+
+Step 'pluginval (x64)'
+# pluginval runs on x64 only; on ARM64 Windows it runs emulated and validates the x64 build.
+$pluginvalVersion = 'v1.0.4'
+$pluginvalSha256 = 'C08E61CE3B96DB41636F8EC7E76F4C7E2C13EBDAC7FA1B5A1F52B4F32EC715AB'
+$pluginval = 'build\tools\pluginval.exe'
+if (-not (Test-Path $pluginval)) {
+    New-Item -ItemType Directory -Force build\tools | Out-Null
+    $zip = 'build\tools\pluginval_Windows.zip'
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -UseBasicParsing -OutFile $zip `
+        -Uri "https://github.com/Tracktion/pluginval/releases/download/$pluginvalVersion/pluginval_Windows.zip"
+    if ((Get-FileHash -Algorithm SHA256 $zip).Hash -ne $pluginvalSha256) { throw 'pluginval download has the wrong checksum.' }
+    Expand-Archive -Force $zip build\tools
+}
+if ($presets -contains 'windows-x64') {
+    Run $pluginval --strictness-level 10 --validate-in-process --validate 'build\windows-x64\VST3\Debug\O-Scope.vst3'
+}
+
+Step 'TypeScript'
+# npm.cmd, not npm: PowerShell would pick npm.ps1, which mishandles forwarded arguments.
+Run npm.cmd run typecheck
+Run npm.cmd run lint
+Run npm.cmd run format:check
+Run npm.cmd test
+Run npm.cmd run build
+
+Write-Host "`nAll checks passed."
