@@ -13,6 +13,7 @@
 #include <WebView2EnvironmentOptions.h>
 #include <cwchar>
 #include <deque>
+#include <iterator>
 #include <nlohmann/json.hpp>
 #include <shlobj.h>
 #include <shlwapi.h>
@@ -75,6 +76,8 @@ constexpr wchar_t kContainerClass[] = L"OrizonOScopeWebViewHost";
 constexpr UINT_PTR kVisibilityTimer = 1;
 constexpr UINT kVisibilityInterval = 250; // ms
 
+void paintFailure(HWND window);
+
 // Runs the enclosed calls in `window`'s DPI awareness, so that the windows they create match
 // it: a host can open a DPI-unaware plugin window (stretched by Windows) from an aware thread.
 class DpiContext
@@ -123,16 +126,23 @@ std::string narrow(std::wstring_view text)
 
 // WebView2 keeps its profile in a user-data folder. The default sits next to the host's
 // executable, which may not be writable, so it is set explicitly:
-// %LOCALAPPDATA%\Orizon Audio\O-Scope\WebView2.
+// %LOCALAPPDATA%\Orizon Audio\O-Scope\WebView2-<kProfileVersion>.
+// Processes share a profile's browser process, and WebView2 refuses (ERROR_INVALID_STATE) one
+// whose environment options differ: two hosts running O-Scope versions with different options
+// would clash. kProfileVersion changes with the options, so that each such version has its own.
 // WebView2 refuses (ERROR_INVALID_STATE) to add a view to a browser process whose views have
 // another DPI awareness, and editors share a browser process through their profile folder:
 // DPI-unaware host windows (Live's Auto-Scale, for example) get a folder of their own.
+// Increase whenever the environment options (scheme registration, arguments) change.
+constexpr int kProfileVersion = 1;
+
 std::wstring userDataFolder(HWND parent)
 {
     PWSTR localAppData = nullptr;
     std::wstring folder;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppData))) {
-        folder = std::wstring(localAppData) + L"\\Orizon Audio\\O-Scope\\WebView2";
+        folder = std::wstring(localAppData) + L"\\Orizon Audio\\O-Scope\\WebView2-" +
+                 std::to_wstring(kProfileVersion);
         switch (GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(parent))) {
         case DPI_AWARENESS_UNAWARE:
             folder += L"-Unaware";
@@ -174,6 +184,8 @@ private:
     static LRESULT CALLBACK containerProcedure(HWND handle, UINT message, WPARAM wParam,
                                                LPARAM lParam);
     void updateVisibility();
+    // Shows why WebView2 could not start, painted by the container instead of the page.
+    void showFailure(HRESULT result);
     void environmentCreated(ICoreWebView2Environment* created);
     void controllerCreated(ICoreWebView2Controller* created);
     void resourceRequested(ICoreWebView2WebResourceRequestedEventArgs* args);
@@ -245,16 +257,24 @@ WebViewWin::WebViewWin(HWND parentWindow, int initialWidth, int initialHeight,
         schemeOptions->SetCustomSchemeRegistrations(1, registrations);
     }
     const std::wstring folder = userDataFolder(parent);
-    CreateCoreWebView2EnvironmentWithOptions(
+    const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
         nullptr, folder.empty() ? nullptr : folder.c_str(), options.Get(),
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [link = link](HRESULT result, ICoreWebView2Environment* created) -> HRESULT {
-                if (SUCCEEDED(result) && link->owner != nullptr) {
+                if (link->owner == nullptr) {
+                    return S_OK;
+                }
+                if (SUCCEEDED(result)) {
                     link->owner->environmentCreated(created);
+                } else {
+                    link->owner->showFailure(result);
                 }
                 return S_OK;
             })
             .Get());
+    if (FAILED(started)) {
+        showFailure(started); // No WebView2 Runtime installed, for example.
+    }
 }
 
 WebViewWin::~WebViewWin()
@@ -283,7 +303,57 @@ LRESULT CALLBACK WebViewWin::containerProcedure(HWND handle, UINT message, WPARA
         self->updateVisibility();
         return 0;
     }
+    if (message == WM_PAINT && GetWindowTextLengthW(handle) > 0) {
+        paintFailure(handle);
+        return 0;
+    }
     return DefWindowProcW(handle, message, wParam, lParam);
+}
+
+void WebViewWin::showFailure(HRESULT result)
+{
+    wchar_t text[256];
+    if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
+        result == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)) {
+        std::swprintf(text, std::size(text),
+                      L"O-Scope needs the Microsoft Edge WebView2 Runtime.\n"
+                      L"Install it from microsoft.com/edge/webview2, then reopen the editor.");
+    } else {
+        std::swprintf(text, std::size(text),
+                      L"O-Scope's editor could not start (WebView2 error 0x%08lX).\n"
+                      L"Close and reopen it; if that does not help, restart the host.",
+                      static_cast<unsigned long>(result));
+    }
+    SetWindowTextW(container, text);
+    InvalidateRect(container, nullptr, TRUE);
+}
+
+// The container's text, centred in the system's message font at the window's DPI.
+void paintFailure(HWND window)
+{
+    std::wstring text(static_cast<std::size_t>(GetWindowTextLengthW(window)) + 1, L'\0');
+    text.resize(static_cast<std::size_t>(
+        GetWindowTextW(window, text.data(), static_cast<int>(text.size()))));
+    PAINTSTRUCT paint;
+    HDC context = BeginPaint(window, &paint);
+    RECT bounds;
+    GetClientRect(window, &bounds);
+    NONCLIENTMETRICSW metrics{};
+    metrics.cbSize = sizeof(metrics);
+    SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0,
+                               GetDpiForWindow(window));
+    HFONT font = CreateFontIndirectW(&metrics.lfMessageFont);
+    HGDIOBJ previousFont = SelectObject(context, font);
+    SetTextColor(context, RGB(0xe6, 0xe2, 0xd8)); // --ink
+    SetBkMode(context, TRANSPARENT);
+    RECT measured = bounds;
+    DrawTextW(context, text.c_str(), -1, &measured, DT_CENTER | DT_WORDBREAK | DT_CALCRECT);
+    RECT centred = bounds;
+    centred.top = (bounds.bottom - (measured.bottom - measured.top)) / 2;
+    DrawTextW(context, text.c_str(), -1, &centred, DT_CENTER | DT_WORDBREAK);
+    SelectObject(context, previousFont);
+    DeleteObject(font);
+    EndPaint(window, &paint);
 }
 
 // Hidden covers a closed or minimised host window too: hosts hide their plugin windows then.
@@ -309,6 +379,8 @@ void WebViewWin::environmentCreated(ICoreWebView2Environment* created)
                                link->owner->controllerCreated(made);
                            } else if (SUCCEEDED(result) && made != nullptr) {
                                made->Close(); // The editor closed while WebView2 started.
+                           } else if (FAILED(result) && link->owner != nullptr) {
+                               link->owner->showFailure(result);
                            }
                            return S_OK;
                        })

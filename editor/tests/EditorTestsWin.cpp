@@ -333,6 +333,34 @@ TEST_F(EditorTest, PausesThePageWhileHidden)
     DestroyWindow(window);
 }
 
+// When WebView2 cannot start (here: its browser is looked for in a folder that does not exist,
+// as without the runtime), the editor says so instead of staying empty.
+TEST_F(EditorTest, ExplainsWhenWebView2CannotStart)
+{
+    SetEnvironmentVariableW(L"WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", L"C:\\O-Scope-no-such-folder");
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(editor->attached(window, kPlatformTypeHWND), kResultTrue);
+    HWND container = FindWindowExW(window, nullptr, L"OrizonOScopeWebViewHost", nullptr);
+    ASSERT_NE(container, nullptr);
+    std::wstring text;
+    ASSERT_TRUE(pumpUntil(
+        [&] {
+            std::array<wchar_t, 512> buffer{};
+            text.assign(buffer.data(),
+                        static_cast<std::size_t>(GetWindowTextW(container, buffer.data(),
+                                                                static_cast<int>(buffer.size()))));
+            return !text.empty();
+        },
+        kPageTimeout))
+        << "no message while WebView2 cannot start";
+    EXPECT_NE(text.find(L"WebView2"), std::wstring::npos);
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+    SetEnvironmentVariableW(L"WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", nullptr);
+}
+
 TEST_F(EditorTest, ExplainsWhenTheEngineIsUnavailable)
 {
     HWND window = makeWindow();
