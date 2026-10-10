@@ -106,6 +106,26 @@
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       }
+    },
+    {
+      "name": "windows-x64-bench",
+      "displayName": "Windows x64, optimised audio benchmark",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build/windows-x64-bench",
+      "cacheVariables": {
+        "BUILD_TESTING": "OFF",
+        "ORIZON_BENCH": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ],
   "buildPresets": [
@@ -177,6 +197,17 @@
       "configurePreset": "windows-arm64",
       "configuration": "Release",
       "targets": ["O-Scope"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-x64-bench",
+      "configurePreset": "windows-x64-bench",
+      "configuration": "Release",
+      "targets": ["process_bench"],
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",

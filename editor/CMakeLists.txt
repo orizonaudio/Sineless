@@ -65,8 +65,9 @@ if(BUILD_TESTING)
     gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30)
 endif()
 
-# The performance benchmark: the real page under a simulated host. See bench/PerfBench.mm.
-if(ORIZON_BENCH)
+# The performance benchmark: the real page under a simulated host, in WKWebView (macOS only).
+# See bench/PerfBench.mm.
+if(ORIZON_BENCH AND APPLE)
     add_executable(perf_bench bench/PerfBench.mm)
     target_link_libraries(perf_bench
         PRIVATE editor orizon_warnings "-framework Cocoa" "-framework WebKit" "-framework IOKit")
