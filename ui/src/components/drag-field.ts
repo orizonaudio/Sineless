@@ -1,5 +1,6 @@
 // A numeric field: drag vertically or scroll to step, double-click to type. It shows
 // only values set with show(), i.e. values the engine reported; requests go through onRequest.
+import { WheelSteps } from "./wheel-steps.ts";
 
 export interface DragFieldOptions {
   readonly label: string;
@@ -11,6 +12,8 @@ export interface DragFieldOptions {
 }
 
 const pixelsPerStep = 8;
+// A wheel line in CSS px, as browsers scroll it.
+const wheelLinePixels = 40;
 
 export class DragField {
   readonly element: HTMLElement;
@@ -46,6 +49,7 @@ export class DragField {
   }
 
   private listen(): void {
+    const wheel = new WheelSteps();
     let startY = 0;
     let applied = 0;
     let dragging = false;
@@ -79,13 +83,19 @@ export class DragField {
       "wheel",
       (event) => {
         event.preventDefault();
-        this.request(
-          this.options.step(
-            this.value,
-            event.deltaY < 0 ? 1 : -1,
-            event.shiftKey,
-          ),
-        );
+        const unit =
+          event.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? wheelLinePixels
+            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? window.innerHeight
+              : 1;
+        const steps = wheel.add(event.deltaY * unit, event.timeStamp);
+        if (steps !== 0) {
+          // Within a stream, from the value already asked for: the engine may not have
+          // answered yet.
+          const from = wheel.continues ? this.dragValue : this.value;
+          this.request(this.options.step(from, steps, event.shiftKey));
+        }
       },
       { passive: false },
     );
