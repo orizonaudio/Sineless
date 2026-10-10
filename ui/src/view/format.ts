@@ -16,6 +16,12 @@ export function signed(value: number, decimals: number): string {
   return (value < 0 ? minus : "+") + text;
 }
 
+// A summing gain in dB with one decimal; tracks that cancel exactly read minus infinity
+// (the engine floors the sum's energy, which would otherwise read about −300 dB).
+export function formatGain(db: number): string {
+  return db < -200 ? `${minus}∞` : signed(db, 1);
+}
+
 // Seconds as "0.5 ms", "20 ms", "250 ms", "1.5 s".
 export function formatSeconds(seconds: number): string {
   if (seconds === 0) {

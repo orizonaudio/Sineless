@@ -31,6 +31,7 @@ import {
 import {
   formatDb,
   formatDbfs,
+  formatGain,
   formatFrequency,
   formatSeconds,
   parseQuantity,
@@ -923,7 +924,7 @@ export class OscilloscopeApp {
     });
     if (this.sumNode !== undefined && comparison !== undefined) {
       const gain = this.previewFix ? comparison.fixedGain : comparison.sumGain;
-      this.sumNode.textContent = `${signed(gain, 1)} dB`;
+      this.sumNode.textContent = `${formatGain(gain)} dB`;
       this.sumNode.className = `lane-readout ${gain < -1 ? "cancels" : gain > 1 ? "reinforces" : ""}`;
     }
   }
