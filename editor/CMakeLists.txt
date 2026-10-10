@@ -72,4 +72,12 @@ if(ORIZON_BENCH AND APPLE)
     target_link_libraries(perf_bench
         PRIVATE editor orizon_warnings "-framework Cocoa" "-framework WebKit" "-framework IOKit")
     set_source_files_properties(bench/PerfBench.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+
+    # The showcase video, filmed from the real page frame by frame. See showcase/Showcase.mm.
+    add_executable(showcase showcase/Showcase.mm)
+    target_link_libraries(showcase
+        PRIVATE editor orizon_warnings "-framework Cocoa" "-framework WebKit"
+                "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+                "-framework CoreText")
+    set_source_files_properties(showcase/Showcase.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 endif()
