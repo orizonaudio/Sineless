@@ -39,6 +39,13 @@ jobs:
           cache: npm
       - name: Install npm dependencies
         run: npm ci
+      # The image's WebView2 runtime is old and never updated (and leaks handles that the current
+      # one does not); users' runtimes update themselves, so the checks run on the current one.
+      - name: Install the current WebView2 runtime
+        shell: powershell
+        run: |
+          Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile installwebview.exe
+          Start-Process -Wait installwebview.exe -ArgumentList '/silent', '/install'
       # GitHub's Windows machines are x64: they cannot run the ARM64 build's validator and tests,
       # which run on ARM64 Windows instead.
       - name: Run all checks (x64)

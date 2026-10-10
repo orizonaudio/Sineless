@@ -2,6 +2,7 @@
 #include "editor/Editor.h"
 #include "editor/WebView.h"
 #include "engine/Engine.h"
+#include "win/WebViewWinTesting.h"
 
 // windows.h first: the other Windows headers depend on it.
 // clang-format off
@@ -351,9 +352,11 @@ TEST_F(EditorTest, PausesThePageWhileHidden)
 
 // When WebView2 cannot start (here: its browser is looked for in a folder that does not exist,
 // as without the runtime), the editor says so instead of staying empty.
+// (Not WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: WebView2 ignores it in elevated processes, which CI
+// runs.)
 TEST_F(EditorTest, ExplainsWhenWebView2CannotStart)
 {
-    SetEnvironmentVariableW(L"WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", L"C:\\O-Scope-no-such-folder");
+    setBrowserFolderForTests(L"C:\\O-Scope-no-such-folder");
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received);
@@ -374,7 +377,7 @@ TEST_F(EditorTest, ExplainsWhenWebView2CannotStart)
     EXPECT_NE(text.find(L"WebView2"), std::wstring::npos);
     EXPECT_EQ(editor->removed(), kResultOk);
     DestroyWindow(window);
-    SetEnvironmentVariableW(L"WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", nullptr);
+    setBrowserFolderForTests({});
 }
 
 TEST_F(EditorTest, ExplainsWhenTheEngineIsUnavailable)

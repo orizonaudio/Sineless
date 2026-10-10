@@ -7,6 +7,7 @@
 #define NOMINMAX
 #include <windows.h>
 // clang-format on
+#include "WebViewWinTesting.h"
 #include "WinModule.h"
 
 #include <WebView2.h>
@@ -180,6 +181,12 @@ std::string narrow(std::wstring_view text)
 // WebView2 refuses (ERROR_INVALID_STATE) to add a view to a browser process whose views have
 // another DPI awareness, and editors share a browser process through their profile folder:
 // DPI-unaware host windows (Live's Auto-Scale, for example) get a folder of their own.
+std::wstring& browserFolderForTests()
+{
+    static std::wstring folder;
+    return folder;
+}
+
 // Increase whenever the environment options (scheme registration, arguments) change.
 constexpr int kProfileVersion = 1;
 
@@ -309,7 +316,8 @@ WebViewWin::WebViewWin(HWND parentWindow, int initialWidth, int initialHeight,
         hostingMode.emplace(kHostingModeVariable, kWindowToVisual);
     }
     const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
-        nullptr, folder.empty() ? nullptr : folder.c_str(), options.Get(),
+        browserFolderForTests().empty() ? nullptr : browserFolderForTests().c_str(),
+        folder.empty() ? nullptr : folder.c_str(), options.Get(),
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [link = link](HRESULT result, ICoreWebView2Environment* created) -> HRESULT {
                 if (link->owner == nullptr) {
@@ -715,6 +723,11 @@ void WebViewWin::evaluate(std::string_view script, std::function<void(std::strin
 }
 
 } // namespace
+
+void setBrowserFolderForTests(std::wstring folder)
+{
+    browserFolderForTests() = std::move(folder);
+}
 
 std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
                                          MessageHandler onMessage,
