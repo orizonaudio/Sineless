@@ -14,7 +14,7 @@ Every change:
 
 `scripts/check.sh` enforces performance limits, measured on optimised builds of two benchmarks:
 
-- `process_bench`: real processor instances driven through the VST3 API at every common block size and sample rate. Eight instances together must stay within 5% of each block's deadline at p99.9.
+- `process_bench`: real processor instances driven through the VST3 API at every common block size and sample rate. Eight instances together must stay within 5% of each block's deadline at p99.9. `scripts\check.ps1` runs it too on GitHub's Windows machines, or anywhere with `RUN_BENCH=1`.
 - `perf_bench`: the real editor page in a WKWebView, with tracks playing in real time. Seven tracks over four bars, and fifteen tracks over sixteen bars at 60 BPM and 96 kHz (a 64 s sweep), must draw at 45 frames/s or more with the analysis thread under its budget, and opening and closing the editor 50 times must leave nothing behind.
 
 To compare changes, `scripts/bench.sh` prints CPU by part, frames/s, memory and data per frame for a fixed set of scenarios, at 48 kHz and 120 BPM unless a scenario says otherwise (`perf_bench` takes `--rate` and `--tempo`). CPU in % of a core varies with system load, so compare builds back to back. `scripts/soak.sh` plays seven tracks in the editor for 10 minutes, judging the rate memory grows at, then reopens the editor 200 times; `scripts/soak.sh 60` runs the hour-long version. Build the benchmarks with the `bench` preset (optimised) or `bench-debug` (as the development plugin).
