@@ -47,3 +47,9 @@ for scenario in "${scenarios[@]}"; do
     printf "%-25s %9s %6s %7s %7s %8s %8s %8s\n" "$name" "${analysis:-0}" "${main:-0}" \
         "${webkit:-0}" "${total:-0}" "${fps:-0}" "${memory:-0}" "${size:-0}"
 done
+
+# How soon a zoom or a reset shows in the worst case, when every lane's whole span is reduced
+# again: from the change to the first frame of the new view.
+echo
+"$bench" --mode=multi --lanes=15 --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 \
+    --warmup=70 --view-changes=30 2>&1 | grep "^view changes"

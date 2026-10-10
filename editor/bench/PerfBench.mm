@@ -8,9 +8,10 @@
 //              [--layout=stacked|overlaid] [--width=1400] [--height=800]
 //              [--warmup=3] [--duration=10] [--idle] [--compare-all] [--jitter]
 //              [--preview-fix]
-//              [--soak-interval=SECONDS] [--reopen=COUNT]
+//              [--soak-interval=SECONDS] [--reopen=COUNT] [--view-changes=COUNT]
 //              [--min-fps=N] [--max-total=PERCENT] [--max-analysis=PERCENT]
 //              [--max-memory-growth=MB] [--max-memory-rate=MB_PER_MINUTE]
+//              [--max-view-latency=MS]
 //
 // Soak: with --soak-interval, the run is measured in intervals, one line each, and judged on the
 // rate memory grows at (a least-squares slope over the intervals after the first, so a slow leak
@@ -73,12 +74,14 @@ struct Options
     bool previewFix = false;
     double soakInterval = 0.0;
     int reopen = 0;
+    int viewChanges = 0;
     // Limits; negative means none.
     double minFps = -1.0;
     double maxTotal = -1.0;
     double maxAnalysis = -1.0;
     double maxMemoryGrowth = -1.0;
     double maxMemoryRate = -1.0;
+    double maxViewLatency = -1.0;
 };
 
 Options parse(std::span<const char* const> arguments)
@@ -135,6 +138,10 @@ Options parse(std::span<const char* const> arguments)
             options.maxMemoryGrowth = std::stod(value);
         } else if (key == "--max-memory-rate") {
             options.maxMemoryRate = std::stod(value);
+        } else if (key == "--view-changes") {
+            options.viewChanges = std::stoi(value);
+        } else if (key == "--max-view-latency") {
+            options.maxViewLatency = std::stod(value);
         }
     }
     return options;
@@ -644,6 +651,64 @@ int run(const Options& options)
             std::printf("reopened: %.1f frames/s, %.1f%% of a core in total\n",
                         after.framesPerSecond, 100.0 * after.total);
             judge("frames/s after reopening", after.framesPerSecond, options.minFps, true);
+        } else if (options.viewChanges > 0) {
+            // Zoom in and back out again and again, as with Ctrl/Cmd + wheel and a double-click:
+            // each change makes every column stale, so every lane's whole span is reduced
+            // again. Timed in the page, from the change to the first frame of the new view.
+            auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+            std::vector<double> latencies;
+            for (int change = 0; change < options.viewChanges; ++change) {
+                const std::string event =
+                    change % 2 == 0
+                        ? "new WheelEvent('wheel', {deltaY: -25, ctrlKey: true, clientX: x, "
+                          "clientY: y, bubbles: true, cancelable: true})"
+                        : "new MouseEvent('dblclick', {clientX: x, clientY: y, bubbles: true})";
+                const std::string script = R"JS(
+(() => {
+  const screen = document.getElementById("screen");
+  const last = window.orizonDebug.lastFrame;
+  const from = last === undefined ? [] : [last.viewStart, last.viewEnd];
+  const box = screen.getBoundingClientRect();
+  const x = box.left + box.width * 0.37;
+  const y = box.top + box.height / 2;
+  window.benchViewLatency = undefined;
+  const started = performance.now();
+  screen.dispatchEvent()JS" + event + R"JS();
+  const check = () => {
+    const frame = window.orizonDebug.lastFrame;
+    if (frame !== undefined && (frame.viewStart !== from[0] || frame.viewEnd !== from[1])) {
+      window.benchViewLatency = performance.now() - started;
+    } else if (performance.now() - started < 5000) {
+      setTimeout(check, 1);
+    }
+  };
+  check();
+  return "";
+})()
+)JS";
+                evaluate(webView, @(script.c_str()));
+                double latency = -1.0;
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(6);
+                while (latency < 0.0 && std::chrono::steady_clock::now() < deadline) {
+                    pump(0.01);
+                    const std::string text =
+                        evaluate(webView, @"String(window.benchViewLatency ?? '')");
+                    if (!text.empty()) {
+                        latency = std::stod(text);
+                    }
+                }
+                if (latency >= 0.0) {
+                    latencies.push_back(latency);
+                }
+                pump(0.3);
+            }
+            std::ranges::sort(latencies);
+            const double median = latencies.empty() ? -1.0 : latencies[latencies.size() / 2];
+            const double slowest = latencies.empty() ? -1.0 : latencies.back();
+            std::printf("view changes: %zu of %d answered; first frame of the new view after "
+                        "%.1f ms median, %.1f ms at most (a frame is 16.7 ms)\n",
+                        latencies.size(), options.viewChanges, median, slowest);
+            judge("view change latency (ms, slowest)", slowest, options.maxViewLatency, false);
         } else if (options.soakInterval > 0.0) {
             // Measured interval by interval; the first is the reference for drift.
             std::printf("%8s %8s %8s %8s %9s %9s\n", "minute", "total%", "webkit%", "analysis%",
