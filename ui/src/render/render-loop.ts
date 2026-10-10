@@ -7,6 +7,9 @@ import { perf } from "../perf.ts";
 // The draw clock: requestAnimationFrame in the page, a manual clock in tests.
 export type Scheduler = (callback: (timestamp: number) => void) => void;
 
+// How early a tick may come and still count as on time (ms).
+const tickJitter = 1;
+
 export interface FrameRenderer {
   draw(frame: Frame): void;
 }
@@ -19,20 +22,23 @@ export class RenderLoop {
   private lastDrawn: Frame | undefined;
   private tickPending = false;
   private redrawRequested = false;
-  // Engine frames are drawn at most once per `minimumInterval` ms; ticks in between pass.
-  private readonly minimumInterval: number;
-  private lastDrawTime = -Infinity;
+  // Engine frames are drawn on a schedule of one per `interval` ms, on the display's ticks:
+  // at 144 Hz, 60 frames a second fall on ticks 0, 3, 5, 8, 10... A minimum gap since the
+  // last draw would instead wait for whole ticks each time, and draw 50 frames a second at
+  // 100 Hz, 48 at 144 Hz.
+  private readonly interval: number;
+  private nextDrawTime = -Infinity;
 
   constructor(
     schedule: Scheduler,
     renderer: FrameRenderer,
     returnCredit: () => void,
-    minimumInterval = 0,
+    interval = 0,
   ) {
     this.schedule = schedule;
     this.renderer = renderer;
     this.returnCredit = returnCredit;
-    this.minimumInterval = minimumInterval;
+    this.interval = interval;
   }
 
   // Called for every frame from the engine.
@@ -61,9 +67,9 @@ export class RenderLoop {
     this.tickPending = false;
     if (
       this.latest !== undefined &&
-      timestamp - this.lastDrawTime < this.minimumInterval
+      timestamp < this.nextDrawTime - tickJitter
     ) {
-      this.requestTick(); // Too soon after the last frame: wait for a later tick.
+      this.requestTick(); // Before the next frame's time: wait for a later tick.
       return;
     }
     const frame = this.latest;
@@ -71,7 +77,12 @@ export class RenderLoop {
     const redraw = this.redrawRequested;
     this.redrawRequested = false;
     if (frame !== undefined) {
-      this.lastDrawTime = timestamp;
+      // On schedule; more than a whole interval late (a stall, or the first frame), restarted
+      // from now rather than drawing a quick pair to catch up.
+      this.nextDrawTime =
+        timestamp - this.nextDrawTime < this.interval
+          ? this.nextDrawTime + this.interval
+          : timestamp + this.interval;
       const started = performance.now();
       this.renderer.draw(frame);
       const elapsed = performance.now() - started;

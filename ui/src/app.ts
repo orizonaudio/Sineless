@@ -129,9 +129,9 @@ interface GestureEvent extends UIEvent {
 // Room taken by the amplitude labels at the left edge (CSS px).
 const amplitudeLabelWidth = 56;
 const readoutInterval = 100; // ms: readouts stay legible while frames arrive at display rate.
-// At most 60 engine frames a second (with room for timer jitter), on any display rate: more
-// would cost work in every part of the pipeline for motion the eye barely tells apart.
-const minimumFrameInterval = 1000 / 60 - 2;
+// 60 engine frames a second on any display rate (at most the display's): more would cost work
+// in every part of the pipeline for motion the eye barely tells apart.
+const frameInterval = 1000 / 60;
 // Group titles that open a popover: the group, its title button and the popover.
 const popovers = [
   ["trigger-group", "trigger-details", "trigger-popover"],
@@ -273,7 +273,7 @@ export class OscilloscopeApp {
       () => {
         backend.requestFrame();
       },
-      minimumFrameInterval,
+      frameInterval,
     );
     this.buildControls();
     this.listenToScreen();

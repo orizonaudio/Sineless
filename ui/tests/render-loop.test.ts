@@ -80,6 +80,58 @@ describe("render loop", () => {
     expect(drawn).toEqual([1, 2]);
   });
 
+  test.each([60, 75, 100, 120, 144, 165])(
+    "draws 60 frames a second at %i Hz",
+    (refreshRate) => {
+      const pending: ((timestamp: number) => void)[] = [];
+      let drawn = 0;
+      const loop = new RenderLoop(
+        (callback) => pending.push(callback),
+        {
+          draw: () => {
+            drawn++;
+          },
+        },
+        () => {
+          loop.submit(frame(drawn)); // The engine always has the next frame ready.
+        },
+        1000 / 60,
+      );
+      loop.submit(frame(0));
+      for (let tick = 0; tick <= refreshRate * 10; tick++) {
+        for (const callback of pending.splice(0)) {
+          callback((tick * 1000) / refreshRate);
+        }
+      }
+      expect(drawn / 10).toBeCloseTo(60, 0); // Over 10 seconds.
+    },
+  );
+
+  test("does not catch up with a quick pair of draws after a stall", () => {
+    const pending: ((timestamp: number) => void)[] = [];
+    const drawn: number[] = [];
+    const loop = new RenderLoop(
+      (callback) => pending.push(callback),
+      { draw: (drawnFrame) => drawn.push(drawnFrame.sequence) },
+      () => undefined,
+      1000 / 60,
+    );
+    const tickAt = (timestamp: number) => {
+      for (const callback of pending.splice(0)) {
+        callback(timestamp);
+      }
+    };
+    loop.submit(frame(1));
+    tickAt(0);
+    loop.submit(frame(2));
+    tickAt(500); // A stall.
+    loop.submit(frame(3));
+    tickAt(508); // 120 Hz: the next tick.
+    expect(drawn).toEqual([1, 2]);
+    tickAt(517);
+    expect(drawn).toEqual([1, 2, 3]);
+  });
+
   test("draws on the next tick, then returns the credit", () => {
     const { loop, drawn, tick, credits } = setup();
     loop.submit(frame(1));
