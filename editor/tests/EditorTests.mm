@@ -1,3 +1,4 @@
+#include "FitStates.h"
 #include "editor/Editor.h"
 #include "engine/Version.h"
 #include "pluginterfaces/gui/iplugview.h"
@@ -202,6 +203,44 @@ TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
         std::chrono::seconds(5)))
         << "a host setState change should reach the page";
 
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
+// With the embedded fonts as WebKit renders them, everything fits at the minimum size, in
+// every state that changes the labels' widths.
+TEST_F(EditorTest, FitsTheMinimumSizeInEveryState)
+{
+    auto engine = std::make_shared<engine::Engine>();
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    std::vector<std::string> received;
+    auto editor = makeEditor(received, engine);
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+    ViewRect minimum(0, 0, 0, 0);
+    editor->checkSizeConstraint(&minimum);
+    ASSERT_EQ(editor->onSize(&minimum), kResultTrue);
+    ASSERT_TRUE(pumpUntil(
+        [&] {
+            return evaluate(webView, @"String(innerWidth)") ==
+                   std::to_string(Editor::kMinimumWidth);
+        },
+        std::chrono::seconds(5)));
+    for (const fit::State& state : fit::states()) {
+        engine::Settings settings;
+        for (const auto& [id, value] : state.settings) {
+            settings.set(id, value);
+        }
+        engine->settings().replace(settings);
+        pumpUntil([] { return false; }, std::chrono::milliseconds(400)); // A state sync or more.
+        if (!state.script.empty()) {
+            evaluate(webView, [NSString stringWithUTF8String:std::string(state.script).c_str()]);
+            pumpUntil([] { return false; }, std::chrono::milliseconds(200));
+        }
+        EXPECT_EQ(evaluate(webView, @(fit::kOverflowScript)), "") << state.name;
+    }
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
 }

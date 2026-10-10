@@ -1,3 +1,4 @@
+#include "FitStates.h"
 #include "editor/DisplayScale.h"
 #include "editor/Editor.h"
 #include "editor/WebView.h"
@@ -60,25 +61,6 @@ public:
 private:
     DPI_AWARENESS_CONTEXT previous;
 };
-
-// Lists the page's elements that reach past its right edge or clip their content, "" if none.
-constexpr const char* kOverflowScript = R"JS(
-(() => {
-  const found = [];
-  for (const element of document.querySelectorAll("body *")) {
-    const box = element.getBoundingClientRect();
-    if (box.width === 0) continue;
-    const name = element.id || element.className || element.tagName;
-    if (box.right > innerWidth + 0.5) {
-      found.push(name + " ends at " + Math.round(box.right));
-    } else if (element.scrollWidth > element.clientWidth + 1 &&
-               getComputedStyle(element).overflowX !== "visible") {
-      found.push(name + " clips its content");
-    }
-  }
-  return found.slice(0, 8).join("; ");
-})()
-)JS";
 
 class EditorTest : public ::testing::Test
 {
@@ -291,20 +273,18 @@ TEST_F(EditorTest, LaysOutAtTheDefaultCssSizeAtAnyDisplayScale)
     }
 }
 
-// With the embedded fonts as Windows renders them, everything fits at the default and the
-// minimum size.
-TEST_F(EditorTest, FitsTheDefaultAndMinimumSizes)
+// With the embedded fonts as Windows renders them, everything fits at the minimum size, in
+// every state that changes the labels' widths.
+TEST_F(EditorTest, FitsTheMinimumSizeInEveryState)
 {
     const ScopedDpiAwareness awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    auto engine = std::make_shared<engine::Engine>();
     HWND window = makeWindow();
     std::vector<std::string> received;
-    auto editor = makeEditor(received);
+    auto editor = makeEditor(received, engine);
     ASSERT_EQ(attach(window, *editor), kResultTrue);
     WebView& view = *editor->webView();
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
-    pumpUntil([] { return false; }, std::chrono::milliseconds(300)); // Fonts and layout settle.
-    EXPECT_EQ(evaluate(view, kOverflowScript), "") << "at the default size";
-
     ViewRect minimum(0, 0, 0, 0);
     editor->checkSizeConstraint(&minimum);
     ASSERT_EQ(editor->onSize(&minimum), kResultTrue);
@@ -313,8 +293,19 @@ TEST_F(EditorTest, FitsTheDefaultAndMinimumSizes)
             return evaluate(view, "String(innerWidth)") == std::to_string(Editor::kMinimumWidth);
         },
         std::chrono::seconds(5)));
-    pumpUntil([] { return false; }, std::chrono::milliseconds(300));
-    EXPECT_EQ(evaluate(view, kOverflowScript), "") << "at the minimum size";
+    for (const fit::State& state : fit::states()) {
+        engine::Settings settings;
+        for (const auto& [id, value] : state.settings) {
+            settings.set(id, value);
+        }
+        engine->settings().replace(settings);
+        pumpUntil([] { return false; }, std::chrono::milliseconds(400)); // A state sync or more.
+        if (!state.script.empty()) {
+            evaluate(view, std::string(state.script));
+            pumpUntil([] { return false; }, std::chrono::milliseconds(200));
+        }
+        EXPECT_EQ(evaluate(view, fit::kOverflowScript), "") << state.name;
+    }
     EXPECT_EQ(editor->removed(), kResultOk);
     DestroyWindow(window);
 }
