@@ -814,6 +814,12 @@ button:focus-visible,
   outline-offset: -2px;
 }
 
+/* A pressed segment's light fill is too close to the ring to tell apart: a panel-coloured edge
+   inside the ring separates them. */
+.segmented button[aria-pressed="true"]:focus-visible {
+  box-shadow: inset 0 0 0 4px var(--panel);
+}
+
 .popover {
   position: absolute;
   bottom: calc(100% + 6px);
