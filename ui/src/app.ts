@@ -110,6 +110,8 @@ const wheelZoomRate = 0.01;
 // A mouse-wheel notch is deltaY 100 on Windows (×2.7 zoom unclamped); a trackpad's events are
 // a few each. Clamped, a notch zooms by about 1.3×.
 const maxWheelZoomDelta = 25;
+// A wheel line in pixels, as browsers scroll it.
+const wheelLinePixels = 40;
 // The Compare view's sum lane: an id no track has, and a neutral colour.
 const sumLaneId = -100;
 const sumLaneColour = 0xe6e2d8;
@@ -1471,20 +1473,30 @@ export class OscilloscopeApp {
     this.screen.addEventListener(
       "wheel",
       (event) => {
+        // In pixels: Windows reports lines, or pages with "scroll one screen at a time", which
+        // would otherwise zoom and pan by almost nothing.
+        const unit =
+          event.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? wheelLinePixels
+            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? this.screen.clientHeight
+              : 1;
+        const deltaX = event.deltaX * unit;
+        const deltaY = event.deltaY * unit;
         if (event.metaKey || event.ctrlKey) {
           // Trackpad pinches arrive as wheel events with ctrlKey set.
           event.preventDefault();
           const delta = Math.max(
             -maxWheelZoomDelta,
-            Math.min(maxWheelZoomDelta, event.deltaY),
+            Math.min(maxWheelZoomDelta, deltaY),
           );
           const factor = Math.exp(-delta * wheelZoomRate);
           this.setView(
             zoomAround(this.view, screenPosition(event.clientX), factor),
           );
-        } else if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
           event.preventDefault();
-          this.swipe(event.deltaX / this.screen.clientWidth);
+          this.swipe(deltaX / this.screen.clientWidth);
         }
       },
       { passive: false },
