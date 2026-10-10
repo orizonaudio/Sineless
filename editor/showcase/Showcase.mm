@@ -1,9 +1,12 @@
 // Showcase video: the real editor page in a real WKWebView, fed by the real engines, filmed one
-// video frame at a time. A synthesized groove plays through six instances; a script clicks
+// video frame at a time. A song's stems play through one instance per track; a script clicks
 // through the main features while a drawn cursor, camera moves and captions frame them; each
-// frame is composed with Core Graphics and encoded with the groove as the soundtrack.
+// frame is composed with Core Graphics and encoded with the song's mix as the soundtrack.
 //
-//   showcase [--out=build/showcase/O-Scope.mp4] [--seconds=30] [--frames=N]
+//   showcase --stems=DIR [--prefix=Promo] [--out=build/showcase/O-Scope.mp4] [--frames=N]
+//
+// DIR holds the song exported from Live with "All Individual Tracks": "<prefix> <track>.wav" for
+// each track and "<prefix>.wav", the mix; 16 bars at 120 BPM and 48 kHz, rendered as a loop.
 //
 // Time is stepped, not real: before each video frame the engines get exactly one frame of audio,
 // and the frame is taken once the page has drawn it, so the video is smooth however slowly the
@@ -21,13 +24,13 @@
 #import <CoreText/CoreText.h>
 #import <WebKit/WebKit.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <functional>
 #include <memory>
-#include <numbers>
-#include <random>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -38,24 +41,28 @@ namespace {
 
 constexpr double kRate = 48000.0;
 constexpr double kTempo = 120.0;
-constexpr double kBeat = 60.0 / kTempo;
 constexpr int kFps = 60;
 constexpr int kBlock = static_cast<int>(kRate) / kFps; // Audio per video frame.
 constexpr double kPreroll = 2.0; // Seconds played before the first frame: one bar.
+constexpr double kSeconds = 64.0;
+// Where in the song the first frame falls: two bars before the loop's end, so the sweep rises
+// under the title and the drop lands as the plugin appears.
+constexpr double kSongStart = 26.0;
+// The song starts at bar 17 of the set; the host's position counts from there.
+constexpr double kSetStart = 32.0;
 
 constexpr int kVideoWidth = 1920;
 constexpr int kVideoHeight = 1080;
-constexpr double kEditorWidth = 1200.0; // CSS pixels.
-constexpr double kEditorHeight = 680.0;
-constexpr double kTitleBar = 28.0;
-constexpr double kWindowHeight = kEditorHeight + kTitleBar;
-constexpr double kWindowScale = 1.1; // Video pixels per CSS pixel at rest.
-constexpr double kWindowCentreY = 580.0;
+// The editor fills the frame: 16:9 in CSS pixels, at 1.5 video pixels each.
+constexpr double kEditorWidth = 1280.0;
+constexpr double kEditorHeight = 720.0;
+constexpr double kPageScale = kVideoWidth / kEditorWidth;
 
 struct Options
 {
+    std::string stems;
+    std::string prefix = "Promo";
     std::string out = "build/showcase/O-Scope.mp4";
-    double seconds = 30.0;
     int frames = -1; // Stop early, for trying out the script.
 };
 
@@ -67,165 +74,76 @@ Options parse(int argc, const char* argv[])
         const auto equals = argument.find('=');
         const std::string key = argument.substr(0, equals);
         const std::string value = equals == std::string::npos ? "" : argument.substr(equals + 1);
-        if (key == "--out") {
+        if (key == "--stems") {
+            options.stems = value;
+        } else if (key == "--prefix") {
+            options.prefix = value;
+        } else if (key == "--out") {
             options.out = value;
-        } else if (key == "--seconds") {
-            options.seconds = std::stod(value);
         } else if (key == "--frames") {
             options.frames = std::stoi(value);
         }
+    }
+    if (options.stems.empty()) {
+        throw std::runtime_error("--stems=DIR is required: the song's tracks, exported from Live");
     }
     return options;
 }
 
 // ---------------------------------------------------------------------------------------------
-// The groove: four bars at 120 BPM, one mono signal per track.
+// The song.
 
-using Signal = std::vector<float>;
-
-struct Groove
+struct Stereo
 {
-    Signal kickIn, clap, hats, bass, keys, kickOut;
+    std::vector<float> left;
+    std::vector<float> right;
+    [[nodiscard]] std::size_t size() const { return left.size(); }
 };
 
-Groove makeGroove()
+Stereo load(const std::string& path)
 {
-    const auto length = static_cast<std::size_t>(kRate * kBeat * 16);
-    std::mt19937 random(7);
-    std::uniform_real_distribution<double> noise(-1.0, 1.0);
-    const double pi = std::numbers::pi;
-    const auto at = [](double beat) { return static_cast<std::size_t>(std::lround(beat * kBeat * kRate)); };
-    const auto add = [&](Signal& signal, std::size_t start, const std::vector<double>& sound) {
-        for (std::size_t i = 0; i < sound.size() && start + i < signal.size(); ++i) {
-            signal[start + i] += static_cast<float>(sound[i]);
-        }
-    };
-    const auto kick = [&] {
-        std::vector<double> out;
-        double phase = 0.0;
-        for (int i = 0; i < static_cast<int>(0.45 * kRate); ++i) {
-            const double t = i / kRate;
-            phase += 2 * pi * (48 + 110 * std::exp(-t * 28)) / kRate;
-            out.push_back(0.95 * std::tanh(1.4 * std::sin(phase) * std::exp(-t * 7.5)) +
-                          0.3 * std::exp(-t * 400) * std::sin(phase * 3));
-        }
-        return out;
-    };
-    const auto clap = [&] {
-        std::vector<double> out;
-        double low = 0.0;
-        for (int i = 0; i < static_cast<int>(0.35 * kRate); ++i) {
-            const double t = i / kRate;
-            double bursts = 0.0;
-            for (const double delay : {0.0, 0.011, 0.022}) {
-                bursts += t >= delay ? std::exp(-(t - delay) * 180) : 0.0;
-            }
-            const double tail = t >= 0.022 ? 0.55 * std::exp(-(t - 0.022) * 16) : 0.0;
-            const double n = noise(random);
-            low += 0.35 * (n - low);
-            out.push_back(0.8 * (n - low) * std::min(1.0, bursts * 0.7 + tail));
-        }
-        return out;
-    };
-    const auto hat = [&](bool open) {
-        std::vector<double> out;
-        double previous = 0.0;
-        for (int i = 0; i < static_cast<int>((open ? 0.22 : 0.05) * kRate); ++i) {
-            const double n = noise(random);
-            out.push_back(0.42 * (n - previous) * std::exp(-(i / kRate) * (open ? 14 : 90)));
-            previous = n;
-        }
-        return out;
-    };
-    const auto bass = [&](double frequency, double seconds) {
-        std::vector<double> out;
-        double phase = 0.0;
-        double low = 0.0;
-        for (int i = 0; i < static_cast<int>(seconds * kRate); ++i) {
-            const double t = i / kRate;
-            phase = std::fmod(phase + frequency / kRate, 1.0);
-            low += (0.04 + 0.25 * std::exp(-t * 12)) * (2 * phase - 1 - low);
-            out.push_back(0.9 * low * std::min(1.0, t * 400) * std::exp(-t * 5) *
-                          std::min(1.0, (seconds - t) * 200));
-        }
-        return out;
-    };
-    const auto pluck = [&](double frequency, double seconds) {
-        const auto period = static_cast<std::size_t>(kRate / frequency);
-        std::vector<double> ring(period);
-        for (double& value : ring) {
-            value = noise(random);
-        }
-        std::vector<double> out;
-        for (std::size_t i = 0; i < static_cast<std::size_t>(seconds * kRate); ++i) {
-            const double value = ring[i % period];
-            ring[i % period] = 0.985 * 0.5 * (value + ring[(i + 1) % period]);
-            out.push_back(0.5 * value);
-        }
-        return out;
-    };
-    // MIDI note numbers.
-    const auto hz = [](int note) { return 440.0 * std::pow(2.0, (note - 69) / 12.0); };
-    const int roots[] = {36, 36, 32, 34};                    // C2 C2 Ab1 Bb1
-    const int chords[][4] = {{60, 63, 67, 70}, {60, 63, 67, 74}, {56, 60, 63, 67}, {58, 62, 65, 68}};
-
-    Groove groove;
-    for (Signal* signal : {&groove.kickIn, &groove.clap, &groove.hats, &groove.bass, &groove.keys}) {
-        signal->assign(length, 0.0f);
+    NSError* error = nil;
+    AVAudioFile* file = [[AVAudioFile alloc] initForReading:[NSURL fileURLWithPath:@(path.c_str())]
+                                               commonFormat:AVAudioPCMFormatFloat32
+                                                interleaved:NO
+                                                      error:&error];
+    if (file == nil) {
+        throw std::runtime_error("cannot read " + path);
     }
-    const auto kickSound = kick();
-    for (int bar = 0; bar < 4; ++bar) {
-        const double b = bar * 4.0;
-        for (const double beat : bar % 2 == 1 ? std::vector<double>{0, 2.5, 3} : std::vector<double>{0, 2}) {
-            add(groove.kickIn, at(b + beat), kickSound);
-        }
-        for (const double beat : {1.0, 3.0}) {
-            add(groove.clap, at(b + beat), clap());
-        }
-        for (int k = 0; k < 8; ++k) {
-            add(groove.hats, at(b + k * 0.5), hat(k == 3 || k == 7));
-        }
-        const std::pair<double, double> notes[] = {{0, 0.4}, {0.75, 0.2}, {1.5, 0.4}, {2.5, 0.2}, {3, 0.5}};
-        for (const auto& [beat, beats] : notes) {
-            add(groove.bass, at(b + beat), bass(2 * hz(roots[bar]), beats * kBeat));
-        }
-        const double steps[] = {0, 0.75, 1.5, 2.25, 3, 3.5};
-        for (int k = 0; k < 6; ++k) {
-            add(groove.keys, at(b + steps[k]), pluck(hz(chords[bar][k % 4]), 0.3));
-        }
+    if (file.processingFormat.sampleRate != kRate) {
+        throw std::runtime_error(path + " is not at 48 kHz");
     }
-    for (Signal* signal : {&groove.kickIn, &groove.clap, &groove.hats, &groove.bass, &groove.keys}) {
-        float peak = 0.0f;
-        for (const float value : *signal) {
-            peak = std::max(peak, std::abs(value));
-        }
-        for (float& value : *signal) {
-            value *= 0.89f / std::max(peak, 1e-6f);
-        }
+    const auto frames = static_cast<AVAudioFrameCount>(file.length);
+    AVAudioPCMBuffer* buffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:file.processingFormat
+                                                             frameCapacity:frames];
+    if (![file readIntoBuffer:buffer error:&error]) {
+        throw std::runtime_error("cannot read " + path);
     }
-    // A second microphone on the kick: further away (1.1 ms later), darker, and wired the other
-    // way round, so it partly cancels the first.
-    groove.kickOut.assign(length, 0.0f);
-    double low = 0.0;
-    const std::size_t delay = 53;
-    for (std::size_t i = 0; i < length; ++i) {
-        low += 0.2 * (groove.kickIn[i] - low);
-        groove.kickOut[(i + delay) % length] = static_cast<float>(-0.85 * low);
-    }
-    return groove;
+    const float* left = buffer.floatChannelData[0];
+    const float* right = buffer.format.channelCount > 1 ? buffer.floatChannelData[1] : left;
+    return {{left, left + buffer.frameLength}, {right, right + buffer.frameLength}};
 }
 
 // ---------------------------------------------------------------------------------------------
 // Easing and keyframes.
 
-double clamp01(double x) { return std::clamp(x, 0.0, 1.0); }
+double clamp01(double x)
+{
+    return std::clamp(x, 0.0, 1.0);
+}
 double smooth(double x) // Ease in and out.
 {
     x = clamp01(x);
     return x < 0.5 ? 4 * x * x * x : 1 - std::pow(-2 * x + 2, 3) / 2;
 }
-double easeOut(double x) { return 1 - std::pow(1 - clamp01(x), 3); }
-double lerp(double a, double b, double x) { return a + (b - a) * x; }
+double easeOut(double x)
+{
+    return 1 - std::pow(1 - clamp01(x), 3);
+}
+double lerp(double a, double b, double x)
+{
+    return a + (b - a) * x;
+}
 // 0 before `from`, rising to 1 over `rise`, falling back to 0 over `fall` before `to`.
 double shown(double t, double from, double to, double rise = 0.35, double fall = 0.35)
 {
@@ -275,10 +193,11 @@ void waitUntil(const std::function<bool()>& done, double timeout)
     while (!done() && std::chrono::steady_clock::now() < deadline) {
         // Window server events too, or WebKit counts the page as hidden and stops drawing it.
         @autoreleasepool {
-            NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                                                untilDate:[NSDate dateWithTimeIntervalSinceNow:0.001]
-                                                   inMode:NSDefaultRunLoopMode
-                                                  dequeue:YES];
+            NSEvent* event =
+                [NSApp nextEventMatchingMask:NSEventMaskAny
+                                   untilDate:[NSDate dateWithTimeIntervalSinceNow:0.001]
+                                      inMode:NSDefaultRunLoopMode
+                                     dequeue:YES];
             if (event != nil) {
                 [NSApp sendEvent:event];
             }
@@ -314,13 +233,14 @@ void settle(WKWebView* webView)
 {
     bool done = false;
     bool* finished = &done;
-    [webView callAsyncJavaScript:@"await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));"
-                       arguments:@{}
-                         inFrame:nil
-                  inContentWorld:WKContentWorld.pageWorld
-               completionHandler:^(id, NSError*) {
-                 *finished = true;
-               }];
+    [webView callAsyncJavaScript:
+                 @"await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));"
+        arguments:@{}
+        inFrame:nil
+        inContentWorld:WKContentWorld.pageWorld
+        completionHandler:^(id, NSError*) {
+          *finished = true;
+        }];
     waitUntil([&] { return done; }, 2.0);
 }
 
@@ -340,8 +260,8 @@ CGImageRef snapshot(WKWebView* webView)
                            }
                            if (taken != nil) {
                                *filmed = CGImageRetain([taken CGImageForProposedRect:nil
-                                                                           context:nil
-                                                                             hints:nil]);
+                                                                             context:nil
+                                                                               hints:nil]);
                            }
                            *finished = true;
                          }];
@@ -365,6 +285,10 @@ window.showcase = {
     const box = node.getBoundingClientRect();
     return JSON.stringify([box.left + box.width / 2, box.top + box.height / 2]);
   },
+  box(selector) {
+    const box = this.find(selector)?.getBoundingClientRect();
+    return box ? JSON.stringify([box.left, box.top, box.width, box.height]) : "";
+  },
   click(selector, text) { this.find(selector, text)?.click(); return ""; },
   trace() { return document.getElementById("trace"); },
   hover(x, y) {
@@ -383,6 +307,28 @@ window.showcase = {
   },
   reset() {
     document.getElementById("screen").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    return "";
+  },
+  // A drag of a cursor line. The page captures the pointer, which a script's pointer cannot be;
+  // the capture is skipped while the drag starts.
+  grab(selector, x, y) {
+    this.held = this.find(selector);
+    const capture = Element.prototype.setPointerCapture;
+    Element.prototype.setPointerCapture = () => {};
+    this.held?.dispatchEvent(new PointerEvent("pointerdown",
+      { clientX: x, clientY: y, buttons: 1, pointerId: 7, bubbles: true }));
+    Element.prototype.setPointerCapture = capture;
+    return "";
+  },
+  drag(x, y) {
+    this.held?.dispatchEvent(new PointerEvent("pointermove",
+      { clientX: x, clientY: y, buttons: 1, pointerId: 7, bubbles: true }));
+    return "";
+  },
+  release(x, y) {
+    this.held?.dispatchEvent(new PointerEvent("pointerup",
+      { clientX: x, clientY: y, pointerId: 7, bubbles: true }));
+    this.held = undefined;
     return "";
   },
 };
@@ -444,9 +390,12 @@ CTLineRef makeLine(const Text& text)
     return CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)string);
 }
 
-double lineWidth(CTLineRef line)
+double textWidth(const Text& text)
 {
-    return CTLineGetTypographicBounds(line, nullptr, nullptr, nullptr);
+    CTLineRef line = makeLine(text);
+    const double width = CTLineGetTypographicBounds(line, nullptr, nullptr, nullptr);
+    CFRelease(line);
+    return width;
 }
 
 // Centred on `x`, with its baseline at `y`.
@@ -455,7 +404,9 @@ void drawText(CGContextRef context, const Text& text, double x, double y)
     CTLineRef line = makeLine(text);
     CGContextSaveGState(context);
     CGContextSetTextMatrix(context, CGAffineTransformMakeScale(1, -1));
-    CGContextSetTextPosition(context, x - lineWidth(line) / 2 + text.kern / 2, y);
+    CGContextSetTextPosition(
+        context,
+        x - CTLineGetTypographicBounds(line, nullptr, nullptr, nullptr) / 2 + text.kern / 2, y);
     CTLineDraw(line, context);
     CGContextRestoreGState(context);
     CFRelease(line);
@@ -464,25 +415,15 @@ void drawText(CGContextRef context, const Text& text, double x, double y)
 CGImageRef makeBackground()
 {
     CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    CGContextRef context = CGBitmapContextCreate(nullptr, kVideoWidth, kVideoHeight, 8, 0, space,
-                                                 static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedFirst) |
-                                                     kCGBitmapByteOrder32Little);
+    CGContextRef context = CGBitmapContextCreate(
+        nullptr, kVideoWidth, kVideoHeight, 8, 0, space,
+        static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedFirst) | kCGBitmapByteOrder32Little);
     const CGFloat colours[] = {0.10, 0.12, 0.19, 1, 0.027, 0.031, 0.047, 1};
     const CGFloat stops[] = {0, 1};
     CGGradientRef gradient = CGGradientCreateWithColorComponents(space, colours, stops, 2);
-    CGContextDrawRadialGradient(context, gradient, CGPointMake(kVideoWidth / 2.0, kVideoHeight * 0.6),
-                                0, CGPointMake(kVideoWidth / 2.0, kVideoHeight * 0.6),
-                                kVideoWidth * 0.75, kCGGradientDrawsAfterEndLocation);
-    // Faint coloured glows, in the tracks' colours.
-    const double glows[][5] = {{0.25, 0.30, 0.94, 0.31, 0.29}, {0.78, 0.75, 0.24, 0.55, 0.85}};
-    for (const auto& glow : glows) {
-        const CGFloat glowColours[] = {static_cast<CGFloat>(glow[2]), static_cast<CGFloat>(glow[3]),
-                                       static_cast<CGFloat>(glow[4]), 0.10, 0, 0, 0, 0};
-        CGGradientRef soft = CGGradientCreateWithColorComponents(space, glowColours, stops, 2);
-        const CGPoint centre = CGPointMake(kVideoWidth * glow[0], kVideoHeight * (1 - glow[1]));
-        CGContextDrawRadialGradient(context, soft, centre, 0, centre, kVideoWidth * 0.45, 0);
-        CGGradientRelease(soft);
-    }
+    const CGPoint centre = CGPointMake(kVideoWidth / 2.0, kVideoHeight * 0.55);
+    CGContextDrawRadialGradient(context, gradient, centre, 0, centre, kVideoWidth * 0.75,
+                                kCGGradientDrawsAfterEndLocation);
     CGImageRef image = CGBitmapContextCreateImage(context);
     CGGradientRelease(gradient);
     CGContextRelease(context);
@@ -490,30 +431,31 @@ CGImageRef makeBackground()
     return image;
 }
 
-void drawCursor(CGContextRef context, Point at, double alpha, double press)
+void drawCursor(CGContextRef context, Point at, double alpha, double press, bool held)
 {
     if (alpha <= 0.0) {
         return;
     }
     CGContextSaveGState(context);
     CGContextSetAlpha(context, alpha);
-    if (press > 0.0) {
-        // The click: a ring that grows and fades.
-        CGColorRef ring = rgba(1, 1, 1, 0.55 * (1 - press));
+    if (press > 0.0 || held) {
+        // A click: a ring that grows and fades. A held button: a steady ring.
+        CGColorRef ring = rgba(1, 1, 1, held ? 0.45 : 0.6 * (1 - press));
         CGContextSetStrokeColorWithColor(context, ring);
         CGContextSetLineWidth(context, 3);
-        const double radius = 10 + 26 * easeOut(press);
-        CGContextStrokeEllipseInRect(context, CGRectMake(at.x - radius, at.y - radius, 2 * radius,
-                                                         2 * radius));
+        const double radius = held ? 16 : 12 + 30 * easeOut(press);
+        CGContextStrokeEllipseInRect(
+            context, CGRectMake(at.x - radius, at.y - radius, 2 * radius, 2 * radius));
         CGColorRelease(ring);
     }
     CGContextTranslateCTM(context, at.x, at.y);
-    CGContextScaleCTM(context, 1.5, 1.5);
+    CGContextScaleCTM(context, 1.7, 1.7);
     CGMutablePathRef arrow = CGPathCreateMutable();
-    const CGPoint points[] = {{0, 0}, {0, 17}, {4, 13.2}, {6.8, 19.6}, {9.6, 18.4}, {6.9, 12.2}, {12.2, 12.2}};
+    const CGPoint points[] = {{0, 0},      {0, 17},     {4, 13.2},   {6.8, 19.6},
+                              {9.6, 18.4}, {6.9, 12.2}, {12.2, 12.2}};
     CGPathAddLines(arrow, nullptr, points, 7);
     CGPathCloseSubpath(arrow);
-    CGColorRef shadow = rgba(0, 0, 0, 0.45);
+    CGColorRef shadow = rgba(0, 0, 0, 0.5);
     CGContextSetShadowWithColor(context, CGSizeMake(0, 2), 4, shadow);
     fill(context, arrow, 0.05, 0.05, 0.05, 1);
     CGContextSetShadowWithColor(context, CGSizeZero, 0, nullptr);
@@ -529,31 +471,51 @@ void drawCursor(CGContextRef context, Point at, double alpha, double press)
     CGContextRestoreGState(context);
 }
 
-// A caption: one line under a pill, rising in and fading out.
-void drawCaption(CGContextRef context, const std::string& text, double visible)
+enum class Place
+{
+    kTop,
+    kBottom,
+};
+
+// A caption over the page: a headline and a line explaining it, on a dark panel, rising in and
+// fading out.
+void drawCaption(CGContextRef context, const std::string& headline, const std::string& detail,
+                 Place place, double visible)
 {
     if (visible <= 0.0) {
         return;
     }
-    const Text caption{.text = text, .size = 46, .weight = NSFontWeightBold, .kern = -0.5,
-                       .a = visible};
-    CTLineRef line = makeLine(caption);
-    const double width = lineWidth(line);
-    CFRelease(line);
-    const double y = 112 - 14 * (1 - visible);
+    const Text title{
+        .text = headline, .size = 50, .weight = NSFontWeightBold, .kern = -0.6, .a = visible};
+    const Text line{.text = detail,
+                    .size = 28,
+                    .weight = NSFontWeightMedium,
+                    .r = 0.80,
+                    .g = 0.84,
+                    .b = 0.90,
+                    .a = visible};
+    const double width = std::max(textWidth(title), textWidth(line)) + 96;
+    const double height = 142;
+    const double top =
+        (place == Place::kTop ? 96 : kVideoHeight - 290 - height) + 16 * (1 - visible);
+    const CGRect panel = CGRectMake(kVideoWidth / 2.0 - width / 2, top, width, height);
+    CGPathRef shape = CGPathCreateWithRoundedRect(panel, 22, 22, nullptr);
     CGContextSaveGState(context);
-    CGPathRef pill = CGPathCreateWithRoundedRect(
-        CGRectMake(kVideoWidth / 2.0 - width / 2 - 34, y - 50, width + 68, 72), 36, 36, nullptr);
-    fill(context, pill, 0.03, 0.035, 0.05, 0.72 * visible);
-    CGColorRef edge = rgba(1, 1, 1, 0.10 * visible);
+    CGColorRef shadow = rgba(0, 0, 0, 0.5 * visible);
+    CGContextSetShadowWithColor(context, CGSizeMake(0, 10), 40, shadow);
+    fill(context, shape, 0.035, 0.04, 0.06, 0.86 * visible);
+    CGContextSetShadowWithColor(context, CGSizeZero, 0, nullptr);
+    CGColorRelease(shadow);
+    CGColorRef edge = rgba(1, 1, 1, 0.12 * visible);
     CGContextSetStrokeColorWithColor(context, edge);
-    CGContextSetLineWidth(context, 1);
-    CGContextAddPath(context, pill);
+    CGContextSetLineWidth(context, 1.5);
+    CGContextAddPath(context, shape);
     CGContextStrokePath(context);
     CGColorRelease(edge);
-    CGPathRelease(pill);
     CGContextRestoreGState(context);
-    drawText(context, caption, kVideoWidth / 2.0, y);
+    CGPathRelease(shape);
+    drawText(context, title, kVideoWidth / 2.0, top + 66);
+    drawText(context, line, kVideoWidth / 2.0, top + 112);
 }
 
 void drawLogo(CGContextRef context, double alpha, double y, const std::string& line)
@@ -561,92 +523,59 @@ void drawLogo(CGContextRef context, double alpha, double y, const std::string& l
     if (alpha <= 0.0) {
         return;
     }
-    drawText(context, {.text = "O-SCOPE", .size = 124, .weight = NSFontWeightHeavy, .kern = 22, .a = alpha},
+    drawText(context,
+             {.text = "O-SCOPE", .size = 136, .weight = NSFontWeightHeavy, .kern = 24, .a = alpha},
              kVideoWidth / 2.0, y);
-    drawText(context, {.text = line, .size = 34, .weight = NSFontWeightMedium, .kern = 1,
-                       .r = 0.72, .g = 0.76, .b = 0.84, .a = alpha},
-             kVideoWidth / 2.0, y + 70);
+    drawText(context,
+             {.text = line,
+              .size = 36,
+              .weight = NSFontWeightMedium,
+              .kern = 1,
+              .r = 0.72,
+              .g = 0.76,
+              .b = 0.84,
+              .a = alpha},
+             kVideoWidth / 2.0, y + 78);
 }
 
-// The camera: how much the window is magnified and which point of it (in window coordinates:
-// CSS pixels, the title bar included) sits where its centre would.
+// The camera: how much the page is magnified and which point of it (CSS pixels) is centred.
+// The point is kept far enough from the edges that the page always fills the frame.
 struct Camera
 {
     double zoom = 1.0;
-    Point focus{kEditorWidth / 2, kWindowHeight / 2};
+    Point focus{kEditorWidth / 2, kEditorHeight / 2};
 };
 
-struct Look
+Camera framed(Camera camera)
 {
-    double opacity = 1.0;
-    double rise = 0.0; // Video pixels the window sits lower by.
-    double scale = 1.0;
-};
-
-// Window coordinates to video coordinates.
-Point toVideo(const Camera& camera, const Look& look, Point p)
-{
-    const double scale = kWindowScale * camera.zoom * look.scale;
-    return {kVideoWidth / 2.0 + (p.x - camera.focus.x) * scale,
-            kWindowCentreY + look.rise + (p.y - camera.focus.y) * scale};
+    const double halfWidth = kEditorWidth / 2 / camera.zoom;
+    const double halfHeight = kEditorHeight / 2 / camera.zoom;
+    camera.focus.x = std::clamp(camera.focus.x, halfWidth, kEditorWidth - halfWidth);
+    camera.focus.y = std::clamp(camera.focus.y, halfHeight, kEditorHeight - halfHeight);
+    return camera;
 }
 
-void drawWindow(CGContextRef context, CGImageRef page, const Camera& camera, const Look& look,
-                const std::string& title)
+// Page coordinates to video coordinates; `settle` scales the page about the frame's centre as it
+// arrives.
+Point toVideo(const Camera& camera, double settle, Point p)
 {
-    if (look.opacity <= 0.0) {
+    const double scale = kPageScale * camera.zoom * settle;
+    return {kVideoWidth / 2.0 + (p.x - camera.focus.x) * scale,
+            kVideoHeight / 2.0 + (p.y - camera.focus.y) * scale};
+}
+
+void drawPage(CGContextRef context, CGImageRef page, const Camera& camera, double settle,
+              double opacity)
+{
+    if (page == nullptr || opacity <= 0.0) {
         return;
     }
-    const Point origin = toVideo(camera, look, {0, 0});
-    const double scale = kWindowScale * camera.zoom * look.scale;
-    const CGRect frame = CGRectMake(origin.x, origin.y, kEditorWidth * scale, kWindowHeight * scale);
-    const double radius = 11 * scale;
+    const Point origin = toVideo(camera, settle, {0, 0});
+    const double scale = kPageScale * camera.zoom * settle;
     CGContextSaveGState(context);
-    CGContextSetAlpha(context, look.opacity);
-    CGContextBeginTransparencyLayer(context, nullptr);
-    CGPathRef outline = CGPathCreateWithRoundedRect(frame, radius, radius, nullptr);
-    CGColorRef shadow = rgba(0, 0, 0, 0.6);
-    CGContextSetShadowWithColor(context, CGSizeMake(0, 24 * scale), 70 * scale, shadow);
-    fill(context, outline, 0.11, 0.11, 0.12, 1);
-    CGContextSetShadowWithColor(context, CGSizeZero, 0, nullptr);
-    CGColorRelease(shadow);
-    CGContextAddPath(context, outline);
-    CGContextClip(context);
-    // The title bar, as macOS draws a dark window's.
-    const CGRect bar = CGRectMake(frame.origin.x, frame.origin.y, frame.size.width, kTitleBar * scale);
-    CGPathRef barPath = CGPathCreateWithRect(bar, nullptr);
-    fill(context, barPath, 0.16, 0.16, 0.17, 1);
-    CGPathRelease(barPath);
-    const double lights[][3] = {{1.0, 0.37, 0.34}, {1.0, 0.74, 0.18}, {0.16, 0.78, 0.25}};
-    for (int i = 0; i < 3; ++i) {
-        const double cx = frame.origin.x + (20 + 20 * i) * scale;
-        const double cy = frame.origin.y + kTitleBar / 2 * scale;
-        CGPathRef light = CGPathCreateWithEllipseInRect(
-            CGRectMake(cx - 6 * scale, cy - 6 * scale, 12 * scale, 12 * scale), nullptr);
-        fill(context, light, lights[i][0], lights[i][1], lights[i][2], 1);
-        CGPathRelease(light);
-    }
-    drawText(context, {.text = title, .size = 13 * scale, .weight = NSFontWeightSemibold,
-                       .r = 0.78, .g = 0.78, .b = 0.8},
-             frame.origin.x + frame.size.width / 2, frame.origin.y + 18.5 * scale);
-    if (page != nullptr) {
-        drawImage(context, page,
-                  CGRectMake(frame.origin.x, frame.origin.y + kTitleBar * scale, frame.size.width,
-                             kEditorHeight * scale));
-    }
-    CGPathRelease(outline);
-    CGContextEndTransparencyLayer(context);
-    CGContextRestoreGState(context);
-    // A hairline edge, as on a real window.
-    CGContextSaveGState(context);
-    CGPathRef edge = CGPathCreateWithRoundedRect(CGRectInset(frame, 0.5, 0.5), radius, radius, nullptr);
-    CGColorRef line = rgba(1, 1, 1, 0.12 * look.opacity);
-    CGContextSetStrokeColorWithColor(context, line);
-    CGContextSetLineWidth(context, 1);
-    CGContextAddPath(context, edge);
-    CGContextStrokePath(context);
-    CGColorRelease(line);
-    CGPathRelease(edge);
+    CGContextSetAlpha(context, opacity);
+    drawImage(context, page,
+              CGRectMake(origin.x, origin.y, kEditorWidth * scale, kEditorHeight * scale));
     CGContextRestoreGState(context);
 }
 
@@ -685,7 +614,8 @@ public:
                 AVVideoMaxKeyFrameIntervalKey : @(kFps),
             },
         };
-        video = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
+        video = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo
+                                               outputSettings:videoSettings];
         video.expectsMediaDataInRealTime = NO;
         adaptor = [[AVAssetWriterInputPixelBufferAdaptor alloc]
                initWithAssetWriterInput:video
@@ -712,14 +642,15 @@ public:
         [writer startSessionAtSourceTime:kCMTimeZero];
         AudioStreamBasicDescription format{.mSampleRate = kRate,
                                            .mFormatID = kAudioFormatLinearPCM,
-                                           .mFormatFlags = kAudioFormatFlagIsFloat |
-                                                           kAudioFormatFlagIsPacked,
+                                           .mFormatFlags =
+                                               kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
                                            .mBytesPerPacket = 8,
                                            .mFramesPerPacket = 1,
                                            .mBytesPerFrame = 8,
                                            .mChannelsPerFrame = 2,
                                            .mBitsPerChannel = 32};
-        CMAudioFormatDescriptionCreate(nullptr, &format, 0, nullptr, 0, nullptr, nullptr, &audioFormat);
+        CMAudioFormatDescriptionCreate(nullptr, &format, 0, nullptr, 0, nullptr, nullptr,
+                                       &audioFormat);
     }
     ~Encoder() { CFRelease(audioFormat); }
     Encoder(const Encoder&) = delete;
@@ -749,13 +680,14 @@ public:
                 return false;
             },
             10.0);
-        if (!video.readyForMoreMediaData ||
-            ![adaptor appendPixelBuffer:buffer withPresentationTime:CMTimeMake(index, kFps)]) {
+        if (!video.readyForMoreMediaData || ![adaptor appendPixelBuffer:buffer
+                                                   withPresentationTime:CMTimeMake(index, kFps)]) {
             CVPixelBufferRelease(buffer);
-            throw std::runtime_error(std::string("video frame refused at ") + std::to_string(index) +
-                                     " (audio ready " + std::to_string(audio.readyForMoreMediaData) +
-                                     ", status " + std::to_string(writer.status) + "): " +
-                                     (writer.error ? writer.error.description.UTF8String : "not ready"));
+            throw std::runtime_error(
+                std::string("video frame refused at ") + std::to_string(index) + " (audio ready " +
+                std::to_string(audio.readyForMoreMediaData) + ", status " +
+                std::to_string(writer.status) +
+                "): " + (writer.error ? writer.error.description.UTF8String : "not ready"));
         }
         CVPixelBufferRelease(buffer);
     }
@@ -772,9 +704,11 @@ public:
         CMAudioSampleBufferCreateReadyWithPacketDescriptions(
             nullptr, block, audioFormat, static_cast<CMItemCount>(interleaved.size() / 2),
             CMTimeMake(start, static_cast<int32_t>(kRate)), nullptr, &sample);
-        if (sample == nullptr || !audio.readyForMoreMediaData || ![audio appendSampleBuffer:sample]) {
-            throw std::runtime_error(std::string("audio refused: ") +
-                                     (writer.error ? writer.error.description.UTF8String : "not ready"));
+        if (sample == nullptr || !audio.readyForMoreMediaData ||
+            ![audio appendSampleBuffer:sample]) {
+            throw std::runtime_error(
+                std::string("audio refused: ") +
+                (writer.error ? writer.error.description.UTF8String : "not ready"));
         }
         CFRelease(sample);
         CFRelease(block);
@@ -787,13 +721,14 @@ public:
             [audio markAsFinished];
         }
         bool done = false;
-    bool* finished = &done;
+        bool* finished = &done;
         [writer finishWritingWithCompletionHandler:^{
           *finished = true;
         }];
         waitUntil([&] { return done; }, 60.0);
         if (writer.status != AVAssetWriterStatusCompleted) {
-            std::fprintf(stderr, "encoding failed: %s\n", writer.error.localizedDescription.UTF8String);
+            std::fprintf(stderr, "encoding failed: %s\n",
+                         writer.error.localizedDescription.UTF8String);
         }
     }
 
@@ -822,26 +757,47 @@ int run(const Options& options)
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         [NSApp finishLaunching];
 
-        const Groove groove = makeGroove();
+        // The tracks, in the set's order, in their colours. Kick Off is the kick a second
+        // microphone hears: the set moves its clip 0.0117 beats (281 samples) later and mutes it,
+        // so it is made here from the kick. Group B keeps a track out of the view until needed.
         struct Member
         {
             const char* name;
             std::uint32_t colour;
-            const Signal* signal;
+            const char* group;
         };
         const std::vector<Member> members = {
-            {"Kick In", 0xE8484A, &groove.kickIn}, {"Clap", 0xEE7D32, &groove.clap},
-            {"Hats", 0xF2D64B, &groove.hats},      {"Bass", 0x3D8AD6, &groove.bass},
-            {"Keys", 0x5BBE3C, &groove.keys},      {"Kick Out", 0xB06EE6, &groove.kickOut},
+            {"Kick", 0xF2453D, "a"},  {"Kick Off", 0xB06EE6, "b"}, {"Bass", 0x5468F0, "a"},
+            {"Sub", 0x2EA8F2, "a"},   {"Clap", 0xF2792E, "a"},     {"Hat", 0xF5DE47, "a"},
+            {"Pluck", 0xEE4FD3, "a"}, {"Sweep Up", 0xA8ADB8, "b"},
         };
+        const std::string base = options.stems + "/" + options.prefix;
+        std::vector<Stereo> tracks;
+        for (const Member& member : members) {
+            if (std::string(member.name) == "Kick Off") {
+                const Stereo& kick = tracks.front();
+                constexpr std::size_t kDelay = 281;
+                Stereo late{kick.left, kick.right};
+                for (std::size_t i = 0; i < kick.size(); ++i) {
+                    late.left[(i + kDelay) % kick.size()] = kick.left[i];
+                    late.right[(i + kDelay) % kick.size()] = kick.right[i];
+                }
+                tracks.push_back(std::move(late));
+            } else {
+                tracks.push_back(load(base + " " + member.name + ".wav"));
+            }
+        }
+        const Stereo mixdown = load(base + ".wav");
+        const std::size_t songLength = mixdown.size();
+
         std::vector<std::shared_ptr<engine::Engine>> engines;
         for (std::size_t i = 0; i < members.size(); ++i) {
             auto engine = std::make_shared<engine::Engine>();
             engine->setSampleRate(kRate);
-            engine->setInputChannels(1);
             engine->setTrackInfo({.name = members[i].name,
                                   .colour = members[i].colour,
                                   .index = static_cast<int>(i)});
+            set(*engine, protocol::SettingId::kGroup, members[i].group);
             engine::InstanceRegistry::shared().add(engine);
             engines.push_back(engine);
         }
@@ -851,7 +807,6 @@ int run(const Options& options)
         set(own, SettingId::kTimeBase, "beats");
         set(own, SettingId::kBeatSpan, "oneBar");
         set(own, SettingId::kViewLayout, "stacked");
-        set(*engines.back(), SettingId::kGroup, "b"); // Kick Out joins for Compare.
 
         // The window goes on the sharpest screen, so the page is filmed at its backing scale.
         NSScreen* screen = NSScreen.mainScreen;
@@ -862,8 +817,9 @@ int run(const Options& options)
         }
         const NSRect visible = screen.visibleFrame;
         NSWindow* window = [[NSWindow alloc]
-            initWithContentRect:NSMakeRect(visible.origin.x + 40,
-                                           visible.origin.y + visible.size.height - kEditorHeight - 60,
+            initWithContentRect:NSMakeRect(visible.origin.x + 20,
+                                           visible.origin.y + visible.size.height - kEditorHeight -
+                                               40,
                                            kEditorWidth, kEditorHeight)
                       styleMask:NSWindowStyleMaskTitled
                         backing:NSBackingStoreBuffered
@@ -871,7 +827,8 @@ int run(const Options& options)
                          screen:screen];
         window.releasedWhenClosed = NO;
         window.title = @"O-Scope showcase (filming)";
-        NSView* content = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, kEditorWidth, kEditorHeight)];
+        NSView* content =
+            [[NSView alloc] initWithFrame:NSMakeRect(0, 0, kEditorWidth, kEditorHeight)];
         window.contentView = content;
         window.level = NSFloatingWindowLevel;
         [window makeKeyAndOrderFront:nil];
@@ -884,41 +841,75 @@ int run(const Options& options)
             editor->attached((__bridge void*)content, kPlatformTypeNSView);
         }
         auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
-        waitUntil([&] { return evaluate(webView, "String(typeof window.orizonDebug)") == "object"; }, 10.0);
+        waitUntil(
+            [&] { return evaluate(webView, "String(typeof window.orizonDebug)") == "object"; },
+            10.0);
         evaluate(webView, kPageHelpers);
 
         // The film's state, moved by the script.
         double now = 0.0;
         Track<double> zoom(1.0);
-        Track<Point> focus(Point{kEditorWidth / 2, kWindowHeight / 2});
-        Track<Point> cursor(Point{kEditorWidth * 0.55, kWindowHeight * 0.62});
+        Track<Point> focus(Point{kEditorWidth / 2, kEditorHeight / 2});
+        Track<Point> cursor(Point{kEditorWidth * 0.5, kEditorHeight * 0.55});
         double cursorShown = -1.0; // When the cursor appears; it fades in.
         double pressAt = -10.0;
         bool live = true;      // Frames still arrive (not frozen).
         bool hovering = false; // The pointer is over the traces, so the page hears it move.
+        bool dragging = false; // A cursor line is held.
         double zoomUntil = -1.0;
         double zoomRate = 0.0; // Wheel delta per frame while zooming.
 
-        const auto centre = [&](const std::string& selector, const std::string& text = "") {
-            const std::string args = text.empty() ? "'" + selector + "'" : "'" + selector + "','" + text + "'";
-            const std::string found = evaluate(webView, "window.showcase.centre(" + args + ")");
-            const auto json = nlohmann::json::parse(found.empty() ? "[600,340]" : found, nullptr, false);
-            return Point{json.is_array() ? json[0].get<double>() : 600.0,
-                         (json.is_array() ? json[1].get<double>() : 340.0) + kTitleBar};
+        const auto quote = [](const std::string& text) { return "'" + text + "'"; };
+        const auto json = [&](const std::string& call) {
+            const std::string found = evaluate(webView, "window.showcase." + call);
+            const auto value = nlohmann::json::parse(found.empty() ? "[]" : found, nullptr, false);
+            return value.is_array() ? value : nlohmann::json::array();
         };
-        const auto pageCall = [&](const std::string& call) { evaluate(webView, "window.showcase." + call); };
-        const auto moveTo = [&](Point target, double duration) { cursor.move(now, target, duration); };
+        const auto centre = [&](const std::string& selector, const std::string& text = "") {
+            const auto value =
+                json("centre(" + quote(selector) + (text.empty() ? "" : "," + quote(text)) + ")");
+            if (value.size() < 2) {
+                std::fprintf(stderr, "not found: %s %s\n", selector.c_str(), text.c_str());
+                return Point{kEditorWidth / 2, kEditorHeight / 2};
+            }
+            return Point{value[0].get<double>(), value[1].get<double>()};
+        };
+        const auto box = [&](const std::string& selector) {
+            const auto value = json("box(" + quote(selector) + ")");
+            return value.size() < 4 ? CGRectMake(0, 0, kEditorWidth, kEditorHeight)
+                                    : CGRectMake(value[0].get<double>(), value[1].get<double>(),
+                                                 value[2].get<double>(), value[3].get<double>());
+        };
+        const auto pageCall = [&](const std::string& call) {
+            evaluate(webView, "window.showcase." + call);
+        };
+        const auto at = [](Point p) { return std::to_string(p.x) + "," + std::to_string(p.y); };
+        const auto moveTo = [&](Point target, double duration) {
+            cursor.move(now, target, duration);
+        };
         const auto click = [&](const std::string& selector, const std::string& text = "") {
             pressAt = now;
-            const std::string args = text.empty() ? "'" + selector + "'" : "'" + selector + "','" + text + "'";
-            pageCall("click(" + args + ")");
+            pageCall("click(" + quote(selector) + (text.empty() ? "" : "," + quote(text)) + ")");
         };
-        const auto look = [&](double magnify, Point at, double duration) {
+        const auto look = [&](double magnify, Point point, double duration) {
             zoom.move(now, magnify, duration);
-            focus.move(now, at, duration);
+            focus.move(now, point, duration);
         };
-        const auto group = [&](std::size_t index, const char* name) {
-            set(*engines[index], SettingId::kGroup, name);
+        const Point middle{kEditorWidth / 2, kEditorHeight / 2};
+        const auto group = [&](const char* name, const char* value) {
+            for (std::size_t i = 0; i < members.size(); ++i) {
+                if (std::string(members[i].name) == name) {
+                    set(*engines[i], SettingId::kGroup, value);
+                }
+            }
+        };
+        const auto grab = [&](const std::string& selector) {
+            pageCall("grab(" + quote(selector) + "," + at(cursor.at(now)) + ")");
+            dragging = true;
+        };
+        const auto release = [&] {
+            pageCall("release(" + at(cursor.at(now)) + ")");
+            dragging = false;
         };
 
         // The script: when, and what.
@@ -927,52 +918,124 @@ int run(const Options& options)
             double at;
             std::function<void()> run;
         };
+        CGRect trace{};
         Point kickHit{};
         std::vector<Cue> cues = {
-            {5.6, [&] { cursorShown = now; }},
-            {5.8, [&] { moveTo(centre("#display-mode button", "multi"), 0.8); }},
-            {6.7, [&] { click("#display-mode button", "multi"); }},
-            {8.6, [&] { look(1.06, {kEditorWidth / 2, kWindowHeight / 2 + 10}, 2.6); }},
-            {10.9, [&] { moveTo(centre("#freeze"), 0.8); }},
-            {11.9, [&] { click("#freeze"); live = false; }},
-            {12.3, [&] {
-                // The attack of the frozen bar's first kick, at the start of the traces.
-                const auto lane = centre("#lane-labels span", "kick in");
-                const std::string left = evaluate(webView, "String(document.getElementById('trace').getBoundingClientRect().left)");
-                kickHit = {(left.empty() ? 32.0 : std::stod(left)) + 3, lane.y + 40};
-                moveTo(kickHit, 0.7);
-                look(2.1, {kickHit.x + 200, kickHit.y}, 1.0);
-            }},
-            {13.2, [&] { zoomUntil = 15.4; zoomRate = -2.6; hovering = false; }},
-            {15.8, [&] { look(1.0, {kEditorWidth / 2, kWindowHeight / 2}, 0.8); }},
-            {16.1, [&] { pageCall("reset()"); }},
-            {16.4, [&] { moveTo(centre("#hover-toggle"), 0.7); }},
-            {17.2, [&] { click("#hover-toggle"); }},
-            {17.5, [&] {
-                const auto bass = centre("#lane-labels span", "bass");
-                moveTo({kEditorWidth * 0.30, bass.y + 46}, 0.7);
-                look(1.25, {kEditorWidth * 0.45, bass.y}, 1.0);
-            }},
-            {18.2, [&] { hovering = true; moveTo({kEditorWidth * 0.62, cursor.target().y - 60}, 2.2); }},
-            {20.5, [&] { hovering = false; pageCall("leave()"); }},
-            {20.6, [&] {
-                pageCall("click('#hover-toggle')");
-                pageCall("click('#freeze')");
-                live = true;
-                group(1, "b"), group(2, "b"), group(3, "b"), group(4, "b"), group(5, "a");
-                look(1.0, {kEditorWidth / 2, kWindowHeight / 2}, 0.9);
-                moveTo(centre("#display-mode button", "compare"), 0.8);
-            }},
-            {21.5, [&] { click("#display-mode button", "compare"); }},
-            {22.1, [&] {
-                // Kick Out is compared already: point at how it lines up, then at the sum.
-                const auto out = centre("#lane-labels span", "kick out");
-                moveTo({out.x + 60, out.y + 2}, 0.8);
-                look(1.45, {kEditorWidth * 0.36, kWindowHeight * 0.45}, 1.2);
-            }},
-            {24.0, [&] { moveTo(centre(".preview-fix"), 0.7); }},
-            {24.8, [&] { click(".preview-fix"); }},
-            {26.3, [&] { look(1.0, {kEditorWidth / 2, kWindowHeight / 2}, 0.9); }},
+            // Single: the page arrives as the drop lands.
+            {6.0, [&] { look(1.04, middle, 6.0); }},
+            // Multi.
+            {12.0, [&] { look(1.0, middle, 1.0); }},
+            {12.2, [&] { cursorShown = now; }},
+            {12.4, [&] { moveTo(centre("#display-mode button", "multi"), 1.0); }},
+            {13.6, [&] { click("#display-mode button", "multi"); }},
+            {15.0, [&] { look(1.06, {middle.x, middle.y + 20}, 5.0); }},
+            // Freeze at the end of a bar, then zoom into the kick's attack.
+            {20.6, [&] { moveTo(centre("#freeze"), 1.0); }},
+            {21.92,
+             [&] {
+                 click("#freeze");
+                 live = false;
+             }},
+            {22.6,
+             [&] {
+                 trace = box("#trace");
+                 const auto lane = centre("#lane-labels span", "kick");
+                 kickHit = {trace.origin.x + 3, lane.y + 30};
+                 moveTo(kickHit, 1.0);
+                 look(1.6, {kickHit.x + 320, kickHit.y + 40}, 1.4);
+             }},
+            {24.4,
+             [&] {
+                 zoomUntil = 28.6;
+                 zoomRate = -1.1;
+             }},
+            {29.6, [&] { look(1.0, middle, 1.0); }},
+            {30.0, [&] { pageCall("reset()"); }},
+            // Hover.
+            {31.0, [&] { moveTo(centre("#hover-toggle"), 1.0); }},
+            {32.2, [&] { click("#hover-toggle"); }},
+            {32.8,
+             [&] {
+                 const auto sub = centre("#lane-labels span", "sub");
+                 moveTo({kEditorWidth * 0.22, sub.y + 30}, 0.9);
+                 look(1.25, {middle.x, sub.y - 40}, 1.2);
+             }},
+            {33.8,
+             [&] {
+                 hovering = true;
+                 moveTo({kEditorWidth * 0.66, cursor.target().y - 8}, 4.4);
+             }},
+            {38.4,
+             [&] {
+                 hovering = false;
+                 pageCall("leave()");
+                 pageCall("click('#hover-toggle')");
+                 look(1.0, middle, 1.0);
+             }},
+            // Time cursors: A onto the bar's first kick, B a beat later.
+            {38.8, [&] { moveTo(centre("#time-cursors"), 1.0); }},
+            {40.0, [&] { click("#time-cursors"); }},
+            {40.5,
+             [&] {
+                 moveTo({centre("#cursor-a").x, trace.origin.y + trace.size.height * 0.42}, 0.8);
+             }},
+            {41.5,
+             [&] {
+                 grab("#cursor-a");
+                 moveTo({trace.origin.x + 2, cursor.target().y}, 1.2);
+             }},
+            {42.9, [&] { release(); }},
+            {43.1,
+             [&] {
+                 moveTo({centre("#cursor-b").x, trace.origin.y + trace.size.height * 0.42}, 0.8);
+             }},
+            {44.0,
+             [&] {
+                 grab("#cursor-b");
+                 moveTo({trace.origin.x + trace.size.width / 4 + 2, cursor.target().y}, 1.4);
+             }},
+            {45.6, [&] { release(); }},
+            // Level cursors: the first onto the kick's peak.
+            {46.4, [&] { moveTo(centre("#level-cursors"), 0.9); }},
+            {47.5, [&] { click("#level-cursors"); }},
+            {48.0,
+             [&] {
+                 const auto line = box(".level-cursor");
+                 moveTo(
+                     {line.origin.x + line.size.width * 0.55, line.origin.y + line.size.height / 2},
+                     0.8);
+             }},
+            {49.0,
+             [&] {
+                 grab(".level-cursor");
+                 const double lane = trace.size.height / 6;
+                 moveTo({cursor.target().x, trace.origin.y + lane * 0.5 - lane * 0.5 * 0.72}, 1.4);
+             }},
+            {50.6, [&] { release(); }},
+            // Compare: the two kick microphones alone.
+            {52.4,
+             [&] {
+                 pageCall("click('#time-cursors')");
+                 pageCall("click('#level-cursors')");
+                 pageCall("click('#freeze')");
+                 live = true;
+                 for (const char* name : {"Bass", "Sub", "Clap", "Hat", "Pluck"}) {
+                     group(name, "b");
+                 }
+                 group("Kick Off", "a");
+                 look(1.0, middle, 1.0);
+             }},
+            {52.8, [&] { moveTo(centre("#display-mode button", "compare"), 1.0); }},
+            {54.0, [&] { click("#display-mode button", "compare"); }},
+            {55.0,
+             [&] {
+                 const auto out = centre("#lane-labels span", "kick off");
+                 moveTo({out.x + 70, out.y + 2}, 0.9);
+                 look(1.35, {kEditorWidth * 0.33, kEditorHeight * 0.45}, 1.4);
+             }},
+            {57.4, [&] { moveTo(centre(".preview-fix"), 0.8); }},
+            {58.4, [&] { click(".preview-fix"); }},
+            {60.6, [&] { look(1.0, middle, 0.8); }},
         };
         std::size_t nextCue = 0;
 
@@ -980,36 +1043,53 @@ int run(const Options& options)
         {
             double from;
             double to;
-            const char* text;
+            Place place;
+            const char* headline;
+            const char* detail;
         };
         const Caption captions[] = {
-            {3.0, 6.3, "A real-time oscilloscope for your DAW"},
-            {7.0, 10.7, "Every track. Lined up on the beat."},
-            {12.2, 16.1, "Freeze. Zoom down to the sample."},
-            {17.4, 20.6, "Read time and level anywhere."},
-            {21.8, 26.3, "Spot phase problems. Preview the fix."},
+            {6.8, 12.0, Place::kBottom, "A real-time oscilloscope for your DAW",
+             "Insert it on any track to watch the waveform as it plays."},
+            {14.2, 20.8, Place::kBottom, "Every track, lined up on the beat",
+             "Each track with O-Scope gets its own lane, in its colour, on one timeline."},
+            {22.4, 31.0, Place::kBottom, "Freeze, then zoom down to the sample",
+             "⌘ + scroll zooms around the pointer. Double-click to zoom back out."},
+            {32.6, 38.4, Place::kTop, "Read time and level anywhere",
+             "Turn on Hover and point at a trace."},
+            {40.3, 46.2, Place::kBottom, "Measure with time cursors",
+             "Drag A and B to read the time and frequency between them."},
+            {47.8, 52.4, Place::kBottom, "…and level cursors",
+             "Drag them onto peaks to read levels, and their difference, in dB."},
+            {54.4, 60.8, Place::kTop, "Spot phase problems between tracks",
+             "Compare finds each track's offset and polarity, and previews the fix."},
         };
 
         Encoder encoder(options.out);
         CGImageRef background = makeBackground();
         CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-        std::uint64_t sample = 0;
+        const auto songStart = static_cast<std::uint64_t>((kSongStart - kPreroll) * kRate);
+        std::uint64_t sample = 0; // Played so far, from the preroll's start.
         double framesDrawn = 0.0;
         const auto drawn = [&] {
-            const std::string text = evaluate(webView, "String(window.orizonDebug.perf.framesDrawn)");
+            const std::string text =
+                evaluate(webView, "String(window.orizonDebug.perf.framesDrawn)");
             return text.empty() ? 0.0 : std::stod(text);
         };
         // One frame of audio into every engine, on one host clock.
         const auto play = [&] {
             std::vector<float> left(kBlock);
+            std::vector<float> right(kBlock);
+            const double seconds =
+                kSetStart + kSongStart - kPreroll + static_cast<double>(sample) / kRate;
             for (std::size_t track = 0; track < engines.size(); ++track) {
-                const Signal& signal = *members[track].signal;
                 for (int i = 0; i < kBlock; ++i) {
-                    left[static_cast<std::size_t>(i)] = signal[(sample + static_cast<std::uint64_t>(i)) % signal.size()];
+                    const auto index =
+                        (songStart + sample + static_cast<std::uint64_t>(i)) % songLength;
+                    left[static_cast<std::size_t>(i)] = tracks[track].left[index];
+                    right[static_cast<std::size_t>(i)] = tracks[track].right[index];
                 }
-                std::array<const float*, 2> channels{left.data(), left.data()};
+                std::array<const float*, 2> channels{left.data(), right.data()};
                 engines[track]->captureRing().write(channels.data(), 2, kBlock);
-                const double seconds = static_cast<double>(sample) / kRate;
                 engines[track]->timeline().advance({.playing = true,
                                                     .positionValid = true,
                                                     .quarterNotes = seconds * kTempo / 60.0,
@@ -1025,7 +1105,8 @@ int run(const Options& options)
             sample += static_cast<std::uint64_t>(kBlock);
         };
         const auto step = [&](double pageTime) {
-            evaluate(webView, "window.showcase.now = " + std::to_string(pageTime * 1000.0) + "; ''");
+            evaluate(webView,
+                     "window.showcase.now = " + std::to_string(pageTime * 1000.0) + "; ''");
             play();
             if (live) {
                 const double before = framesDrawn;
@@ -1039,27 +1120,25 @@ int run(const Options& options)
             step(static_cast<double>(f) / kFps);
         }
 
-        // The soundtrack for video frame `index`: what the tracks play during it, mixed, faded in
-        // and out.
-        const auto prerollSamples = static_cast<std::uint64_t>(kPreroll * kRate);
+        const int total = options.frames > 0 ? options.frames : static_cast<int>(kSeconds * kFps);
+        // The soundtrack for video frame `index`: the song's mix, faded in and out.
         int soundFrames = 0;
         const auto appendSound = [&](int index) {
             std::vector<float> mix(2 * kBlock);
-            const std::uint64_t first = prerollSamples + static_cast<std::uint64_t>(index) * kBlock;
             for (int i = 0; i < kBlock; ++i) {
                 const double t = static_cast<double>(index) / kFps + static_cast<double>(i) / kRate;
-                const double fade = std::min(clamp01(t / 0.3), clamp01((options.seconds - t) / 1.5));
-                const auto at = (first + static_cast<std::uint64_t>(i)) % groove.kickIn.size();
-                const double centre = 0.34 * groove.kickIn[at] + 0.26 * groove.clap[at] + 0.30 * groove.bass[at];
-                const double hats = 0.18 * groove.hats[at];
-                const double keys = 0.26 * groove.keys[at];
-                mix[2 * static_cast<std::size_t>(i)] = static_cast<float>(fade * (centre + 0.7 * hats + keys));
-                mix[2 * static_cast<std::size_t>(i) + 1] = static_cast<float>(fade * (centre + hats + 0.7 * keys));
+                const double fade = std::min(clamp01(t / 1.0), clamp01((kSeconds - t) / 2.5));
+                const auto position =
+                    (songStart + static_cast<std::uint64_t>((kPreroll + t) * kRate + 0.5)) %
+                    songLength;
+                mix[2 * static_cast<std::size_t>(i)] =
+                    static_cast<float>(fade * mixdown.left[position]);
+                mix[2 * static_cast<std::size_t>(i) + 1] =
+                    static_cast<float>(fade * mixdown.right[position]);
             }
             encoder.appendAudio(mix, static_cast<std::int64_t>(index) * kBlock);
         };
 
-        const int total = options.frames > 0 ? options.frames : static_cast<int>(options.seconds * kFps);
         const auto started = std::chrono::steady_clock::now();
         for (int f = 0; f < total; ++f) {
             now = static_cast<double>(f) / kFps;
@@ -1069,48 +1148,53 @@ int run(const Options& options)
             }
             const Point pointer = cursor.at(now);
             if (now < zoomUntil) {
-                pageCall("zoom(" + std::to_string(pointer.x) + "," + std::to_string(pointer.y - kTitleBar) +
-                         "," + std::to_string(zoomRate) + ")");
+                pageCall("zoom(" + at(pointer) + "," + std::to_string(zoomRate) + ")");
             }
             if (hovering) {
-                pageCall("hover(" + std::to_string(pointer.x) + "," + std::to_string(pointer.y - kTitleBar) + ")");
+                pageCall("hover(" + at(pointer) + ")");
+            }
+            if (dragging) {
+                pageCall("drag(" + at(pointer) + ")");
             }
             settle(webView);
             CGImageRef page = snapshot(webView);
             if (f == 0 && page != nullptr) {
-                std::printf("page filmed at %zux%zu\n", CGImageGetWidth(page), CGImageGetHeight(page));
+                std::printf("page filmed at %zux%zu\n", CGImageGetWidth(page),
+                            CGImageGetHeight(page));
             }
 
             CVPixelBufferRef buffer = encoder.frame();
             CVPixelBufferLockBaseAddress(buffer, 0);
-            CGContextRef context = CGBitmapContextCreate(
-                CVPixelBufferGetBaseAddress(buffer), kVideoWidth, kVideoHeight, 8,
-                CVPixelBufferGetBytesPerRow(buffer), space,
-                static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedFirst) | kCGBitmapByteOrder32Little);
+            CGContextRef context =
+                CGBitmapContextCreate(CVPixelBufferGetBaseAddress(buffer), kVideoWidth,
+                                      kVideoHeight, 8, CVPixelBufferGetBytesPerRow(buffer), space,
+                                      static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedFirst) |
+                                          kCGBitmapByteOrder32Little);
             CGContextTranslateCTM(context, 0, kVideoHeight);
             CGContextScaleCTM(context, 1, -1);
             drawImage(context, background, CGRectMake(0, 0, kVideoWidth, kVideoHeight));
 
-            // Intro: the name, then the window rises in. Outro: the window gives way to the name.
-            const double intro = smooth((now - 2.0) / 0.9);
-            const double outro = smooth((now - 26.9) / 0.8);
-            drawLogo(context, shown(now, 0.2, 2.6, 0.6, 0.5), 560 - 40 * smooth((now - 2.0) / 0.6),
+            // Intro: the name while the sweep rises, then the page as the drop lands. Outro: the
+            // page gives way to the name.
+            drawLogo(context, shown(now, 0.4, 5.4, 0.8, 0.6), 520 - 30 * smooth((now - 4.8) / 0.6),
                      "by Orizon Audio");
-            Look appearance{.opacity = intro * (1 - outro),
-                            .rise = 70 * (1 - easeOut((now - 2.0) / 0.9)) + 40 * outro,
-                            .scale = 1 - 0.05 * (1 - intro) - 0.04 * outro};
-            const Camera view{.zoom = zoom.at(now), .focus = focus.at(now)};
-            drawWindow(context, page, view, appearance, "O-Scope/Kick In");
+            const double arrive = easeOut((now - 5.2) / 1.4);
+            const double opacity = smooth((now - 5.2) / 0.8) * (1 - smooth((now - 61.0) / 0.8));
+            const double settleScale = 1.05 - 0.05 * arrive + 0.03 * smooth((now - 61.0) / 0.8);
+            const Camera view = framed({.zoom = zoom.at(now), .focus = focus.at(now)});
+            drawPage(context, page, view, settleScale, opacity);
             for (const Caption& caption : captions) {
-                drawCaption(context, caption.text, shown(now, caption.from, caption.to));
+                drawCaption(context, caption.headline, caption.detail, caption.place,
+                            shown(now, caption.from, caption.to, 0.45, 0.45));
             }
-            const double cursorAlpha =
-                cursorShown < 0.0 ? 0.0 : smooth((now - cursorShown) / 0.3) * (1 - smooth((now - 26.4) / 0.4));
-            const double press = now - pressAt < 0.35 ? (now - pressAt) / 0.35 : 0.0;
-            drawCursor(context, toVideo(view, appearance, pointer), cursorAlpha, press);
-            drawLogo(context, smooth((now - 27.5) / 0.7), 500, "Free and open source  ·  VST3  ·  macOS and Windows");
-            // Fade to black at the very end.
-            const double black = smooth((now - (options.seconds - 0.6)) / 0.6);
+            const double cursorAlpha = cursorShown < 0.0 ? 0.0
+                                                         : smooth((now - cursorShown) / 0.4) *
+                                                               (1 - smooth((now - 60.6) / 0.4));
+            const double press = now - pressAt < 0.4 ? (now - pressAt) / 0.4 : 0.0;
+            drawCursor(context, toVideo(view, settleScale, pointer), cursorAlpha, press, dragging);
+            drawLogo(context, smooth((now - 61.6) / 0.8), 500,
+                     "Free and open source  ·  VST3  ·  macOS and Windows");
+            const double black = smooth((now - (kSeconds - 0.7)) / 0.7);
             if (black > 0.0) {
                 CGColorRef shade = rgba(0, 0, 0, black);
                 CGContextSetFillColorWithColor(context, shade);
@@ -1134,8 +1218,10 @@ int run(const Options& options)
             });
 
             if (f % kFps == 0) {
-                const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-                std::printf("%5.1f s of %.0f filmed (%.0f s so far)\n", now, options.seconds, elapsed);
+                const double elapsed =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - started)
+                        .count();
+                std::printf("%5.1f s of %.0f filmed (%.0f s so far)\n", now, kSeconds, elapsed);
                 std::fflush(stdout);
             }
         }
