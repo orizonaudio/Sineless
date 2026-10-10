@@ -497,22 +497,34 @@ void WebViewWin::environmentCreated(ICoreWebView2Environment* created)
     // host's own is restored first thing then.
     const DPI_AWARENESS_CONTEXT hostAwareness = GetThreadDpiAwarenessContext();
     const DpiContext dpi(parent);
-    environment->CreateCoreWebView2Controller(
-        container,
-        Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-            [link = link, hostAwareness](HRESULT result, ICoreWebView2Controller* made) -> HRESULT {
-                SetThreadDpiAwarenessContext(hostAwareness);
-                if (SUCCEEDED(result) && link->owner != nullptr) {
-                    link->owner->controllerCreated(made);
-                } else if (SUCCEEDED(result) && made != nullptr) {
-                    made->put_IsVisible(FALSE); // See ~WebViewWin.
-                    made->Close();              // The editor closed while WebView2 started.
-                } else if (FAILED(result) && link->owner != nullptr) {
-                    link->owner->showFailure(result);
-                }
-                return S_OK;
-            })
-            .Get());
+    const auto completed = Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+        [link = link, hostAwareness](HRESULT result, ICoreWebView2Controller* made) -> HRESULT {
+            SetThreadDpiAwarenessContext(hostAwareness);
+            if (SUCCEEDED(result) && link->owner != nullptr) {
+                link->owner->controllerCreated(made);
+            } else if (SUCCEEDED(result) && made != nullptr) {
+                made->put_IsVisible(FALSE); // See ~WebViewWin.
+                made->Close();              // The editor closed while WebView2 started.
+            } else if (FAILED(result) && link->owner != nullptr) {
+                link->owner->showFailure(result);
+            }
+            return S_OK;
+        });
+    // The page's background colour from the start: set only once the controller exists, it can
+    // still leave a white flicker first (a known WebView2 issue). Older runtimes lack these
+    // options; controllerCreated sets the colour then.
+    ComPtr<ICoreWebView2Environment10> withOptions;
+    ComPtr<ICoreWebView2ControllerOptions> options;
+    ComPtr<ICoreWebView2ControllerOptions3> colour;
+    if (SUCCEEDED(environment.As(&withOptions)) &&
+        SUCCEEDED(withOptions->CreateCoreWebView2ControllerOptions(&options)) &&
+        SUCCEEDED(options.As(&colour)) &&
+        SUCCEEDED(colour->put_DefaultBackgroundColor(kBackground))) {
+        withOptions->CreateCoreWebView2ControllerWithOptions(container, options.Get(),
+                                                             completed.Get());
+    } else {
+        environment->CreateCoreWebView2Controller(container, completed.Get());
+    }
 }
 
 void WebViewWin::controllerCreated(ICoreWebView2Controller* created)
