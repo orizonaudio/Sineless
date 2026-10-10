@@ -113,9 +113,8 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
         worker = std::make_unique<engine::AnalysisWorker>([this] { frameFlow->step(); });
     }
     const tresult result = CPluginView::attached(parent, type);
-    if (scaleChanged && plugFrame != nullptr) {
-        ViewRect wanted = getRect();
-        plugFrame->resizeView(this, &wanted);
+    if (scaleChanged) {
+        requestSize(getRect());
     }
     return result;
 }
@@ -125,11 +124,21 @@ void Editor::updateScale()
     if (view == nullptr || !refreshScale()) {
         return;
     }
-    ViewRect wanted = hostRect();
+    const ViewRect wanted = hostRect();
     const ViewRect current = getRect();
-    if (plugFrame != nullptr &&
-        (wanted.getWidth() != current.getWidth() || wanted.getHeight() != current.getHeight())) {
-        plugFrame->resizeView(this, &wanted); // The host answers with onSize, or declines.
+    if (wanted.getWidth() != current.getWidth() || wanted.getHeight() != current.getHeight()) {
+        requestSize(wanted);
+    }
+}
+
+void Editor::requestSize(ViewRect wanted)
+{
+    if (plugFrame == nullptr) {
+        return;
+    }
+    sizedByHost = false;
+    if (plugFrame->resizeView(this, &wanted) == kResultTrue && !sizedByHost) {
+        onSize(&wanted);
     }
 }
 
@@ -172,6 +181,7 @@ tresult PLUGIN_API Editor::onSize(ViewRect* newSize)
     // A host that follows a display change resizes the window itself, possibly before the next
     // check of the scale: the size is in the new window units.
     refreshScale();
+    sizedByHost = true;
     setRect(*newSize);
     cssWidth = newSize->getWidth() / scale;
     cssHeight = newSize->getHeight() / scale;
@@ -227,7 +237,7 @@ void Editor::requestMinimumHeight()
     }
     ViewRect wanted = getRect();
     wanted.bottom = wanted.top + toHostUnits(minimum);
-    plugFrame->resizeView(this, &wanted); // The host answers with onSize, or declines.
+    requestSize(wanted);
 }
 
 } // namespace orizon::editor

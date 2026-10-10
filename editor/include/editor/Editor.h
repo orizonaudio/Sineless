@@ -71,6 +71,11 @@ private:
     // Follows a change of display scaling (the window moved to another display): the same size
     // in CSS pixels, in the new window units.
     void updateScale();
+    // Asks the host for `wanted` (host units). By the VST3 contract the host answers with onSize
+    // in the same call, or declines; some (Live and Bitwig on Windows, REAPER and WaveLab on
+    // macOS, as JUCE lists them) resize their window and accept without calling onSize, and the
+    // size is then applied here.
+    void requestSize(Steinberg::ViewRect wanted);
     // Takes the window's current scale, if attached; true if it changed.
     bool refreshScale();
     // The CSS size in host window units, at the current origin.
@@ -83,6 +88,7 @@ private:
     // change applied to the rect itself would apply twice if the host has resized it already.
     double cssWidth = kDefaultWidth;
     double cssHeight = kDefaultHeight;
+    bool sizedByHost = false; // Set by onSize, for requestSize.
     int lastMinimumHeight = kMinimumHeight;
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;
