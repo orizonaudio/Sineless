@@ -9,7 +9,7 @@ An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its trac
 - Left, right, mid and side views, overlaid or stacked, on a vertical scale in dB.
 - Multi-track view: every track with O-Scope inserted, each in its own lane in its track colour and lined up in time, or overlaid. Groups A–D keep separate comparisons apart.
 - Freeze, then pan back through the last 4 seconds; optionally freeze automatically when the transport stops.
-- Zoom in down to individual samples with ⌘ + scroll, pinch or drag.
+- Zoom in down to individual samples with ⌘ + scroll (Ctrl on Windows), pinch or drag.
 - Time and level cursors that snap to zero crossings and peaks: read the time between them, its frequency and nearest note, beats, and levels in dB.
 - Indicative peak, RMS and frequency readouts.
 - Built-in help: turn it on, and every control explains itself.

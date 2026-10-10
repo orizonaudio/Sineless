@@ -1,6 +1,12 @@
 // Help texts, shown as tooltips while help is on. An element names its topic with a data-help
 // attribute; the nearest such element under the pointer gives the tooltip.
 
+// Modifier keys as the platform names them: the page also runs in WebView2 on Windows.
+const isMac =
+  typeof navigator !== "undefined" && /Mac/u.test(navigator.platform);
+const command = isMac ? "⌘" : "Ctrl";
+const option = isMac ? "⌥" : "Alt";
+
 export interface HelpText {
   readonly title: string;
   readonly text: string;
@@ -57,7 +63,7 @@ export const helpTexts = {
   },
   screen: {
     title: "Screen",
-    text: "The signal over time. ⌘ + scroll or pinch to zoom around the pointer, drag across to zoom to a region, swipe sideways to pan, double-click to reset. While frozen and not zoomed, swipe to look further back.",
+    text: `The signal over time. ${command} + scroll or pinch to zoom around the pointer, drag across to zoom to a region, swipe sideways to pan, double-click to reset. While frozen and not zoomed, swipe to look further back.`,
   },
   triggerMarker: {
     title: "Trigger level",
@@ -65,11 +71,11 @@ export const helpTexts = {
   },
   timeCursor: {
     title: "Time cursor",
-    text: "Drag sideways to move it. It snaps to zero crossings and to the highest and lowest points; hold ⌥ to place it freely.",
+    text: `Drag sideways to move it. It snaps to zero crossings and to the highest and lowest points; hold ${option} to place it freely.`,
   },
   levelCursor: {
     title: "Level cursor",
-    text: "Drag up or down to move it. It snaps to the highest and lowest levels and to zero; hold ⌥ to place it freely.",
+    text: `Drag up or down to move it. It snaps to the highest and lowest levels and to zero; hold ${option} to place it freely.`,
   },
   timeSpan: {
     title: "Time span",
