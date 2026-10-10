@@ -12,6 +12,7 @@
 
 #include <WebView2.h>
 #include <WebView2EnvironmentOptions.h>
+#include <chrono>
 #include <cwchar>
 #include <deque>
 #include <iterator>
@@ -41,6 +42,11 @@ using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 
 constexpr const wchar_t* kStartUrl = L"orizon://ui/index.html";
+// The page stays on the embedded UI: navigations elsewhere (a link, a file dropped on the
+// editor) are cancelled, and messages from anywhere else are ignored.
+constexpr std::wstring_view kUiOrigin = L"orizon://ui/";
+// A renderer that keeps crashing is not reloaded forever: at most this many times a minute.
+constexpr std::size_t kMaxReloadsPerMinute = 3;
 constexpr const wchar_t* kFrameUrl = L"orizon://ui/frame";
 // The key script's reports share the page's channel; control messages are JSON objects.
 constexpr std::wstring_view kFocusPrefix = L"orizonFocus:";
@@ -227,6 +233,7 @@ public:
     void sendFrame(std::span<const std::byte> frame) override;
     [[nodiscard]] void* nativeView() const override { return parent; }
     void evaluate(std::string_view script, std::function<void(std::string)> done) override;
+    bool terminateProcessForTests(bool browser);
 
 private:
     // Lets WebView2's completion handlers, which may run after this object is gone, find it.
@@ -240,6 +247,10 @@ private:
     void updateVisibility();
     // Shows why WebView2 could not start, painted by the container instead of the page.
     void showFailure(HRESULT result);
+    void showMessage(const wchar_t* text);
+    // A crashed or hung renderer is reloaded; when the browser process exits, every view of it
+    // is closed, and the editor has to be reopened.
+    void processFailed(ICoreWebView2ProcessFailedEventArgs* args);
     void environmentCreated(ICoreWebView2Environment* created);
     void controllerCreated(ICoreWebView2Controller* created);
     void resourceRequested(ICoreWebView2WebResourceRequestedEventArgs* args);
@@ -266,6 +277,10 @@ private:
     EventRegistrationToken resourceToken{};
     EventRegistrationToken messageToken{};
     EventRegistrationToken acceleratorToken{};
+    EventRegistrationToken navigationToken{};
+    EventRegistrationToken newWindowToken{};
+    EventRegistrationToken processFailedToken{};
+    std::deque<std::chrono::steady_clock::time_point> reloads; // In the last minute.
     bool isEditableFocused = false;
     std::deque<std::wstring> queuedMessages; // Until WebView2 is ready.
     // The page's open frame request, and a frame produced while none was open.
@@ -281,6 +296,7 @@ WebViewWin::WebViewWin(HWND parentWindow, int initialWidth, int initialHeight,
       onMessage(std::move(messages)), onFrameRequest(std::move(frameRequests))
 {
     link->owner = this;
+    pinThisModule();
     {
         static const HBRUSH background =
             CreateSolidBrush(RGB(kBackground.R, kBackground.G, kBackground.B));
@@ -346,6 +362,9 @@ WebViewWin::~WebViewWin()
     if (core) {
         core->remove_WebResourceRequested(resourceToken);
         core->remove_WebMessageReceived(messageToken);
+        core->remove_NavigationStarting(navigationToken);
+        core->remove_NewWindowRequested(newWindowToken);
+        core->remove_ProcessFailed(processFailedToken);
     }
     if (controller) {
         controller->remove_AcceleratorKeyPressed(acceleratorToken);
@@ -380,15 +399,55 @@ void WebViewWin::showFailure(HRESULT result)
         result == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)) {
         std::swprintf(text, std::size(text),
                       L"O-Scope needs the Microsoft Edge WebView2 Runtime.\n"
-                      L"Install it from microsoft.com/edge/webview2, then reopen the editor.");
+                      L"Install it from developer.microsoft.com/microsoft-edge/webview2/consumer,\n"
+                      L"then reopen the editor.");
     } else {
         std::swprintf(text, std::size(text),
                       L"O-Scope's editor could not start (WebView2 error 0x%08lX).\n"
                       L"Close and reopen it; if that does not help, restart the host.",
                       static_cast<unsigned long>(result));
     }
+    showMessage(text);
+}
+
+void WebViewWin::showMessage(const wchar_t* text)
+{
     SetWindowTextW(container, text);
     InvalidateRect(container, nullptr, TRUE);
+}
+
+void WebViewWin::processFailed(ICoreWebView2ProcessFailedEventArgs* args)
+{
+    COREWEBVIEW2_PROCESS_FAILED_KIND kind{};
+    args->get_ProcessFailedKind(&kind);
+    if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED) {
+        controller->put_IsVisible(FALSE); // Shows the message underneath.
+        showMessage(L"O-Scope's editor stopped: its WebView2 browser exited.\n"
+                    L"Close and reopen the editor.");
+        return;
+    }
+    if (kind != COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED &&
+        kind != COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE) {
+        return; // GPU and utility processes, and subframes, recover by themselves.
+    }
+    const auto now = std::chrono::steady_clock::now();
+    while (!reloads.empty() && now - reloads.front() > std::chrono::minutes(1)) {
+        reloads.pop_front();
+    }
+    if (reloads.size() >= kMaxReloadsPerMinute) {
+        controller->put_IsVisible(FALSE);
+        showMessage(L"O-Scope's editor keeps failing.\nClose and reopen it; if that does not "
+                    L"help, restart the host.");
+        return;
+    }
+    reloads.push_back(now);
+    if (frameDeferral) {
+        frameDeferral->Complete(); // The page that asked is gone.
+        frameRequest.Reset();
+        frameDeferral.Reset();
+    }
+    isEditableFocused = false;
+    core->Reload(); // The new page says hello and gets the session's state again.
 }
 
 // The container's text, centred in the system's message font at the window's DPI.
@@ -434,21 +493,26 @@ void WebViewWin::updateVisibility()
 void WebViewWin::environmentCreated(ICoreWebView2Environment* created)
 {
     environment = created;
+    // WebView2 can leave the thread in another DPI awareness by the time it completes; the
+    // host's own is restored first thing then.
+    const DPI_AWARENESS_CONTEXT hostAwareness = GetThreadDpiAwarenessContext();
     const DpiContext dpi(parent);
     environment->CreateCoreWebView2Controller(
-        container, Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                       [link = link](HRESULT result, ICoreWebView2Controller* made) -> HRESULT {
-                           if (SUCCEEDED(result) && link->owner != nullptr) {
-                               link->owner->controllerCreated(made);
-                           } else if (SUCCEEDED(result) && made != nullptr) {
-                               made->put_IsVisible(FALSE); // See ~WebViewWin.
-                               made->Close(); // The editor closed while WebView2 started.
-                           } else if (FAILED(result) && link->owner != nullptr) {
-                               link->owner->showFailure(result);
-                           }
-                           return S_OK;
-                       })
-                       .Get());
+        container,
+        Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+            [link = link, hostAwareness](HRESULT result, ICoreWebView2Controller* made) -> HRESULT {
+                SetThreadDpiAwarenessContext(hostAwareness);
+                if (SUCCEEDED(result) && link->owner != nullptr) {
+                    link->owner->controllerCreated(made);
+                } else if (SUCCEEDED(result) && made != nullptr) {
+                    made->put_IsVisible(FALSE); // See ~WebViewWin.
+                    made->Close();              // The editor closed while WebView2 started.
+                } else if (FAILED(result) && link->owner != nullptr) {
+                    link->owner->showFailure(result);
+                }
+                return S_OK;
+            })
+            .Get());
 }
 
 void WebViewWin::controllerCreated(ICoreWebView2Controller* created)
@@ -464,6 +528,10 @@ void WebViewWin::controllerCreated(ICoreWebView2Controller* created)
     if (SUCCEEDED(controller.As(&scaling))) {
         scaling->put_ShouldDetectMonitorScaleChanges(FALSE);
     }
+    ComPtr<ICoreWebView2Controller4> drops;
+    if (SUCCEEDED(controller.As(&drops))) {
+        drops->put_AllowExternalDrop(FALSE); // A file dropped on the editor would replace the UI.
+    }
     setScale(scale);
     setSize(width, height);
     isShown = true;
@@ -473,6 +541,19 @@ void WebViewWin::controllerCreated(ICoreWebView2Controller* created)
     core->get_Settings(&settings);
     settings->put_IsStatusBarEnabled(FALSE);
     settings->put_IsZoomControlEnabled(FALSE); // Ctrl + scroll zooms the trace, not the page.
+    ComPtr<ICoreWebView2Settings4> autofill;
+    if (SUCCEEDED(settings.As(&autofill))) {
+        autofill->put_IsGeneralAutofillEnabled(FALSE); // The value fields are plain inputs.
+        autofill->put_IsPasswordAutosaveEnabled(FALSE);
+    }
+    ComPtr<ICoreWebView2Settings5> pinch;
+    if (SUCCEEDED(settings.As(&pinch))) {
+        pinch->put_IsPinchZoomEnabled(FALSE); // A touch pinch would scale the whole page.
+    }
+    ComPtr<ICoreWebView2Settings6> swipe;
+    if (SUCCEEDED(settings.As(&swipe))) {
+        swipe->put_IsSwipeNavigationEnabled(FALSE);
+    }
 #ifdef NDEBUG
     settings->put_AreDefaultContextMenusEnabled(FALSE);
     settings->put_AreDevToolsEnabled(FALSE);
@@ -509,6 +590,35 @@ void WebViewWin::controllerCreated(ICoreWebView2Controller* created)
             })
             .Get(),
         &messageToken);
+    core->add_NavigationStarting(
+        Callback<ICoreWebView2NavigationStartingEventHandler>(
+            [](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+                LPWSTR uri = nullptr;
+                args->get_Uri(&uri);
+                if (uri == nullptr || !std::wstring_view(uri).starts_with(kUiOrigin)) {
+                    args->put_Cancel(TRUE);
+                }
+                CoTaskMemFree(uri);
+                return S_OK;
+            })
+            .Get(),
+        &navigationToken);
+    core->add_NewWindowRequested(
+        Callback<ICoreWebView2NewWindowRequestedEventHandler>(
+            [](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
+                args->put_Handled(TRUE); // No windows of its own.
+                return S_OK;
+            })
+            .Get(),
+        &newWindowToken);
+    core->add_ProcessFailed(
+        Callback<ICoreWebView2ProcessFailedEventHandler>(
+            [this](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
+                processFailed(args);
+                return S_OK;
+            })
+            .Get(),
+        &processFailedToken);
     core->Navigate(kStartUrl);
 
     for (const std::wstring& message : queuedMessages) {
@@ -624,6 +734,13 @@ void WebViewWin::answerFrame(const std::vector<std::byte>& frame)
 
 void WebViewWin::messageReceived(ICoreWebView2WebMessageReceivedEventArgs* args)
 {
+    LPWSTR source = nullptr;
+    const bool isFromUi = SUCCEEDED(args->get_Source(&source)) && source != nullptr &&
+                          std::wstring_view(source).starts_with(kUiOrigin);
+    CoTaskMemFree(source);
+    if (!isFromUi) {
+        return;
+    }
     LPWSTR text = nullptr;
     if (FAILED(args->TryGetWebMessageAsString(&text)) || text == nullptr) {
         return;
@@ -698,6 +815,41 @@ void WebViewWin::forwardPageKey(std::wstring_view report)
     PostMessageW(parent, isDown ? WM_KEYDOWN : WM_KEYUP, key, keyData);
 }
 
+bool WebViewWin::terminateProcessForTests(bool browser)
+{
+    if (!core) {
+        return false;
+    }
+    UINT32 id = 0;
+    if (browser) {
+        core->get_BrowserProcessId(&id);
+    } else {
+        ComPtr<ICoreWebView2Environment8> processes;
+        ComPtr<ICoreWebView2ProcessInfoCollection> infos;
+        UINT32 count = 0;
+        if (FAILED(environment.As(&processes)) || FAILED(processes->GetProcessInfos(&infos)) ||
+            FAILED(infos->get_Count(&count))) {
+            return false;
+        }
+        for (UINT32 index = 0; index < count && id == 0; ++index) {
+            ComPtr<ICoreWebView2ProcessInfo> info;
+            COREWEBVIEW2_PROCESS_KIND kind{};
+            if (SUCCEEDED(infos->GetValueAtIndex(index, &info)) &&
+                SUCCEEDED(info->get_Kind(&kind)) && kind == COREWEBVIEW2_PROCESS_KIND_RENDERER) {
+                INT32 processId = 0;
+                info->get_ProcessId(&processId);
+                id = static_cast<UINT32>(processId);
+            }
+        }
+    }
+    HANDLE process = id != 0 ? OpenProcess(PROCESS_TERMINATE, FALSE, id) : nullptr;
+    const bool ended = process != nullptr && TerminateProcess(process, 1) != FALSE;
+    if (process != nullptr) {
+        CloseHandle(process);
+    }
+    return ended;
+}
+
 // ExecuteScript reports the result as JSON; only a string result is passed on.
 void WebViewWin::evaluate(std::string_view script, std::function<void(std::string)> done)
 {
@@ -727,6 +879,12 @@ void WebViewWin::evaluate(std::string_view script, std::function<void(std::strin
 void setBrowserFolderForTests(std::wstring folder)
 {
     browserFolderForTests() = std::move(folder);
+}
+
+bool terminateProcessForTests(WebView& view, bool browser)
+{
+    auto* windows = dynamic_cast<WebViewWin*>(&view);
+    return windows != nullptr && windows->terminateProcessForTests(browser);
 }
 
 std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,

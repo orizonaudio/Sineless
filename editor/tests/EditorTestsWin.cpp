@@ -284,6 +284,8 @@ TEST_F(EditorTest, LaysOutAtTheDefaultCssSizeAtAnyDisplayScale)
             displayed = GetDpiForSystem() / 96.0; // The display's scale, with one display.
         }
         EXPECT_EQ(std::stod("0" + evaluate(view, "String(devicePixelRatio)")), displayed);
+        EXPECT_TRUE(AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(), context))
+            << "the host's thread keeps its DPI awareness";
         EXPECT_EQ(editor->removed(), kResultOk);
         DestroyWindow(window);
     }
@@ -378,6 +380,71 @@ TEST_F(EditorTest, ExplainsWhenWebView2CannotStart)
     EXPECT_EQ(editor->removed(), kResultOk);
     DestroyWindow(window);
     setBrowserFolderForTests({});
+}
+
+// The page stays on the embedded UI: a link elsewhere and a new window are refused.
+TEST_F(EditorTest, StaysOnTheEmbeddedUi)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    evaluate(view,
+             "window.open('https://example.com/'); location.href = 'https://example.com/'; ''");
+    pumpUntil([] { return false; }, std::chrono::milliseconds(1500));
+    EXPECT_EQ(evaluate(view, "location.href"), "orizon://ui/index.html");
+    EXPECT_TRUE(hasSnapshot(view));
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
+// A crashed renderer is reloaded, and the new page gets the session again.
+TEST_F(EditorTest, ReloadsAfterTheRendererCrashes)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    const auto hellos = [&] {
+        return std::ranges::count_if(received, [](const std::string& message) {
+            return message.find(R"("type":"hello")") != std::string::npos;
+        });
+    };
+    ASSERT_EQ(hellos(), 1);
+    ASSERT_TRUE(terminateProcessForTests(view, false));
+    EXPECT_TRUE(pumpUntil([&] { return hellos() == 2 && hasSnapshot(view); }, kPageTimeout))
+        << "the page did not come back";
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
+// When WebView2's browser exits, every view of it is gone: the editor says so.
+TEST_F(EditorTest, ExplainsWhenTheBrowserExits)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    HWND container = FindWindowExW(window, nullptr, L"OrizonOScopeWebViewHost", nullptr);
+    ASSERT_TRUE(terminateProcessForTests(view, true));
+    std::wstring text;
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            std::array<wchar_t, 512> buffer{};
+            text.assign(buffer.data(),
+                        static_cast<std::size_t>(GetWindowTextW(container, buffer.data(),
+                                                                static_cast<int>(buffer.size()))));
+            return text.find(L"stopped") != std::wstring::npos;
+        },
+        std::chrono::seconds(20)));
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
 }
 
 TEST_F(EditorTest, ExplainsWhenTheEngineIsUnavailable)
