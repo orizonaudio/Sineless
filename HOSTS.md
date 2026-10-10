@@ -6,9 +6,11 @@ tested; update a row when a new version of O-Scope or of the host is tested agai
 
 ## Matrix
 
-| Host | Version | macOS | Format | Plugin process | O-Scope | Date | Result | Notes |
+| Host | Version | OS | Format | Plugin process | O-Scope | Date | Result | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Ableton Live Standard | 12.2.7 | 27.0.1 | VST3 | Shared (only mode) | 0.3.0 + development | 2026-10-08 | Pass | Single, Multi and Compare, groups, freeze, cursors, saved state. Track names arrive in three partial reports; merged. |
+| Ableton Live Standard | 12.2.7 | macOS 27.0.1 | VST3 | Shared (only mode) | 0.3.0 + development | 2026-10-08 | Pass | Single, Multi and Compare, groups, freeze, cursors, saved state. Track names arrive in three partial reports; merged. |
+| Ableton Live Standard | 12.4.6 (x64, emulated) | Windows 11 ARM64 | VST3 | Shared (only mode) | 0.4.0 development | 2026-10-09 | Partial | Scan, Single, Multi with two tracks, keys to Live and to fields, 50 editor reopens without memory growth, two editors at once; the editor appears and draws sharp with Auto-Scale on and off at 100 and 125 %. Protocol steps 3, 4 and 7 to 10 not yet run on Windows. |
+| REAPER | 7.82 (ARM64EC; loads the x64 binary) | Windows 11 ARM64 | VST3 | Shared, and "Dedicated process" | 0.4.0 development | 2026-10-09 | Pass (scripted) | `scripts/windows/Test-Reaper.ps1`: four tracks of tone, editors captured, 50 editor reopens while playing with REAPER's memory and handles flat, state restored after reopening the project, Space reaches the transport; in both process modes. |
 | REAPER | — | — | VST3 | Shared by default ("Native"); "Dedicated process" isolates | — | — | Not tested | Multi shows each instance alone when isolated. |
 | Bitwig Studio | — | — | VST3 | "Together" by default; "Individually" isolates | — | — | Not tested | As REAPER. |
 | Cubase / Nuendo | — | — | VST3 | Shared | — | — | Not tested | |

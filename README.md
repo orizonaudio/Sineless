@@ -18,13 +18,14 @@ An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its trac
 ## Requirements
 
 - macOS 13.1 or later, on Apple silicon or Intel.
+- Or Windows 10 or later, x64 or ARM64, with the Microsoft Edge WebView2 Runtime.
 - A host that loads VST3 plugins, such as Ableton Live, Cubase, REAPER, Bitwig Studio or Studio One. See [HOSTS.md](HOSTS.md) for the hosts tested so far.
 
 For the multi-track lanes to line up, put O-Scope last on each track.
 
-Windows support is planned.
-
 ## Install
+
+### macOS
 
 1. Download `O-Scope-<version>-macOS.zip` from the releases page and unzip it.
 2. Move `O-Scope.vst3` to `~/Library/Audio/Plug-Ins/VST3/`.
@@ -35,6 +36,12 @@ Windows support is planned.
    ```
 
 4. Rescan plugins in your host. O-Scope appears under Orizon Audio.
+
+### Windows
+
+1. Download `O-Scope-<version>-Windows.zip` from the releases page and unzip it.
+2. Move `O-Scope.vst3` to `C:\Program Files\Common Files\VST3\`.
+3. Rescan plugins in your host. O-Scope appears under Orizon Audio.
 
 ## Build from source
 
@@ -47,6 +54,16 @@ cmake --build --preset dev
 ```
 
 The plugin is built at `build/dev/VST3/Debug/O-Scope.vst3`. To work on the interface in a browser, without the plugin, run `npm run dev`; a built-in mock replaces the audio engine.
+
+On Windows, you need Visual Studio 2022 with the "Desktop development with C++" workload (add the ARM64 build tools to build for ARM64), Node.js 22 and LLVM (`winget install LLVM.LLVM`, for `clang-format`). In a PowerShell window:
+
+```powershell
+npm.cmd ci
+cmake --preset windows-x64
+cmake --build --preset windows-x64
+```
+
+The plugin is built at `build\windows-x64\VST3\Debug\O-Scope.vst3`; use `windows-arm64` for ARM64. `scripts\check.ps1` runs the Windows checks for both.
 
 `scripts/check.sh` runs every check that CI runs. It also needs Homebrew LLVM (`brew install llvm`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 

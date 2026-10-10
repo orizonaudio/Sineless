@@ -4,7 +4,7 @@
 
 Every change:
 
-- [ ] `scripts/check.sh` passes locally. CI runs the same script, on demand.
+- [ ] `scripts/check.sh` passes locally. CI runs the same script, on demand. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
 - [ ] New or changed behaviour is covered by tests.
 - [ ] Code follows the naming conventions and is formatted and linted.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.
@@ -24,6 +24,6 @@ To compare changes, `scripts/bench.sh` prints CPU by part, frames/s, memory and 
 1. Set the version in `project(... VERSION x.y.z ...)` in `CMakeLists.txt`.
 2. Run `scripts/check.sh`. Every check must pass.
 3. Run `scripts/soak.sh` (about 12 minutes): memory must not grow faster than 0.5 MB a minute, frames must stay steady, and reopening the editor must leave nothing behind. After changing something long-lived (capture buffers, the musical clock, the page's memory use), also run the hour-long `scripts/soak.sh 60`.
-4. Run `scripts/package.sh`. It builds the Release bundle, verifies both architectures and the macOS 13.1 minimum, and writes `build/release/O-Scope-<version>-macOS.zip`.
-5. Install the zipped bundle and test it in each host you can, following the protocol in [HOSTS.md](HOSTS.md), at least in Ableton Live. Update the matrix there.
-6. Tag the commit `vx.y.z` and attach the zip to a GitHub release.
+4. Run `scripts/package.sh`. It builds the Release bundle, verifies both architectures and the macOS 13.1 minimum, and writes `build/release/O-Scope-<version>-macOS.zip`. On Windows, run `scripts\package.ps1`: it builds the x64 and ARM64 Release binaries into one bundle, checks each binary's architecture and that it needs no Visual C++ runtime DLLs, and writes `build\release\O-Scope-<version>-Windows.zip`.
+5. Install the zipped bundle and test it in each host you can, following the protocol in [HOSTS.md](HOSTS.md), at least in Ableton Live, on macOS and on Windows. Update the matrix there.
+6. Tag the commit `vx.y.z` and attach both zips to a GitHub release.
