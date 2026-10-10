@@ -33,23 +33,35 @@ bool isSupportedPlatform(FIDString type)
 Editor::Editor(std::shared_ptr<engine::Engine> engine, MessageObserver observer)
     : observer(std::move(observer)), scale(displayScale(nullptr)), engineState(std::move(engine))
 {
-    ViewRect initial(0, 0, toHostUnits(kDefaultWidth), toHostUnits(kDefaultHeight));
-    setRect(initial);
+    setRect(hostRect());
 }
 
-int Editor::toHostUnits(int cssPixels) const
+int Editor::toHostUnits(double cssPixels) const
 {
     return static_cast<int>(std::ceil(cssPixels * scale - 1e-6));
 }
 
-ViewRect Editor::rescaled(double newScale)
+ViewRect Editor::hostRect() const
 {
     const ViewRect current = getRect();
-    const double ratio = newScale / scale;
-    scale = newScale;
-    return {current.left, current.top,
-            current.left + static_cast<int32>(std::lround(current.getWidth() * ratio)),
-            current.top + static_cast<int32>(std::lround(current.getHeight() * ratio))};
+    return {current.left, current.top, current.left + toHostUnits(cssWidth),
+            current.top + toHostUnits(cssHeight)};
+}
+
+bool Editor::refreshScale()
+{
+    if (systemWindow == nullptr) {
+        return false;
+    }
+    const double windowScale = displayScale(systemWindow);
+    if (windowScale == scale) {
+        return false;
+    }
+    scale = windowScale;
+    if (view) {
+        view->setScale(scale);
+    }
+    return true;
 }
 
 tresult PLUGIN_API Editor::isPlatformTypeSupported(FIDString type)
@@ -67,7 +79,8 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
     const double windowScale = displayScale(parent);
     const bool scaleChanged = windowScale != scale;
     if (scaleChanged) {
-        setRect(rescaled(windowScale));
+        scale = windowScale;
+        setRect(hostRect());
     }
     // Each frame request from the page is its credit for one frame.
     view = WebView::create(
@@ -109,13 +122,13 @@ tresult PLUGIN_API Editor::attached(void* parent, FIDString type)
 
 void Editor::updateScale()
 {
-    const double windowScale = displayScale(systemWindow);
-    if (windowScale == scale || view == nullptr) {
+    if (view == nullptr || !refreshScale()) {
         return;
     }
-    ViewRect wanted = rescaled(windowScale);
-    view->setScale(scale);
-    if (plugFrame != nullptr) {
+    ViewRect wanted = hostRect();
+    const ViewRect current = getRect();
+    if (plugFrame != nullptr &&
+        (wanted.getWidth() != current.getWidth() || wanted.getHeight() != current.getHeight())) {
         plugFrame->resizeView(this, &wanted); // The host answers with onSize, or declines.
     }
 }
@@ -156,7 +169,12 @@ tresult PLUGIN_API Editor::onSize(ViewRect* newSize)
     if (newSize == nullptr) {
         return kInvalidArgument;
     }
+    // A host that follows a display change resizes the window itself, possibly before the next
+    // check of the scale: the size is in the new window units.
+    refreshScale();
     setRect(*newSize);
+    cssWidth = newSize->getWidth() / scale;
+    cssHeight = newSize->getHeight() / scale;
     if (view) {
         view->setSize(newSize->getWidth(), newSize->getHeight());
     }

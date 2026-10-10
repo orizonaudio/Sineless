@@ -71,12 +71,18 @@ private:
     // Follows a change of display scaling (the window moved to another display): the same size
     // in CSS pixels, in the new window units.
     void updateScale();
-    // The current rect converted to `newScale`, which becomes the scale.
-    Steinberg::ViewRect rescaled(double newScale);
-    [[nodiscard]] int toHostUnits(int cssPixels) const;
+    // Takes the window's current scale, if attached; true if it changed.
+    bool refreshScale();
+    // The CSS size in host window units, at the current origin.
+    [[nodiscard]] Steinberg::ViewRect hostRect() const;
+    [[nodiscard]] int toHostUnits(double cssPixels) const;
 
     MessageObserver observer;
     double scale = 1.0;
+    // The editor's size in CSS pixels, the truth that the rect in window units follows: a scale
+    // change applied to the rect itself would apply twice if the host has resized it already.
+    double cssWidth = kDefaultWidth;
+    double cssHeight = kDefaultHeight;
     int lastMinimumHeight = kMinimumHeight;
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;
