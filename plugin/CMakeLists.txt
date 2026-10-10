@@ -12,6 +12,12 @@ target_link_libraries(plugin
 
 smtg_add_vst3plugin(O-Scope src/Factory.cpp)
 target_link_libraries(O-Scope PRIVATE plugin orizon_warnings)
+# The licences travel with the plugin: O-Scope's, and the embedded fonts'.
+smtg_target_add_plugin_resources(O-Scope RESOURCES
+    ${PROJECT_SOURCE_DIR}/LICENSE
+    ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-Roboto.txt
+    ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-RobotoMono.txt
+)
 set_target_properties(O-Scope PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resource/Info.plist.in
     MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.o-scope
