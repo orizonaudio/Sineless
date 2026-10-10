@@ -92,5 +92,10 @@ describe("level cursors", () => {
       "2 0.0 dBFS",
       "Δ — dB",
     ]);
+    expect(levelReadout({ first: 1e-6, second: 1 })).toEqual([
+      `1 ${minus}∞ dBFS`,
+      "2 0.0 dBFS",
+      "Δ — dB",
+    ]);
   });
 });

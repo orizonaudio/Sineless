@@ -16,10 +16,9 @@ export function signed(value: number, decimals: number): string {
   return (value < 0 ? minus : "+") + text;
 }
 
-// A summing gain in dB with one decimal; tracks that cancel exactly read minus infinity
-// (the engine floors the sum's energy, which would otherwise read about −300 dB).
+// A summing gain in dB with one decimal, floored like levels.
 export function formatGain(db: number): string {
-  return db < -200 ? `${minus}∞` : signed(db, 1);
+  return isBelowFloor(db) ? `${minus}∞` : signed(db, 1);
 }
 
 // Seconds as "0.5 ms", "20 ms", "250 ms", "1.5 s".
@@ -47,12 +46,26 @@ export function formatSamples(samples: number): string {
   return `${samples < 10000 ? samples.toFixed(1) : samples.toFixed(0)} samples`;
 }
 
-// Linear amplitude as dBFS with one decimal; silence is minus infinity.
+// Readouts show −∞ at or below −100 dB, where only silence, dither or a cancelled sum's
+// residue is left, rather than three-digit numbers.
+const floorDb = -100;
+
+// Whether a level reads −∞: at or below the floor once rounded to the shown decimal.
+export function isBelowFloor(db: number): boolean {
+  return !(Math.round(db * 10) / 10 > floorDb);
+}
+
+// Linear amplitude in dB (−Infinity for silence).
+export function toDb(linear: number): number {
+  return 20 * Math.log10(Math.abs(linear));
+}
+
+// Linear amplitude as dBFS with one decimal; −∞ at or below the floor.
 export function formatDbfs(linear: number): string {
-  if (linear <= 0) {
+  const db = toDb(linear);
+  if (isBelowFloor(db)) {
     return `${minus}∞`;
   }
-  const db = 20 * Math.log10(linear);
   return db < 0 ? `${minus}${Math.abs(db).toFixed(1)}` : db.toFixed(1);
 }
 

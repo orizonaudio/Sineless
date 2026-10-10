@@ -43,6 +43,10 @@ describe("format", () => {
     expect(formatDbfs(1)).toBe("0.0");
     expect(formatDbfs(0.5)).toBe(`${minus}6.0`);
     expect(formatDbfs(0)).toBe(`${minus}∞`);
+    expect(formatDbfs(1.2e-5)).toBe(`${minus}98.4`);
+    expect(formatDbfs(1e-5)).toBe(`${minus}∞`); // −100 dB
+    expect(formatDbfs(9.9958e-6)).toBe(`${minus}∞`); // Rounds to −100.0.
+    expect(formatDbfs(1e-7)).toBe(`${minus}∞`);
     expect(formatDb(0)).toBe("0 dB");
     expect(formatDb(-12)).toBe(`${minus}12 dB`);
     expect(formatDb(6)).toBe("+6 dB");
@@ -63,6 +67,8 @@ describe("format", () => {
     expect(signed(-0.0001, 2)).toBe("0.00");
     expect(formatGain(-6.02)).toBe(`${minus}6.0`);
     expect(formatGain(3)).toBe("+3.0");
+    expect(formatGain(-99.9)).toBe(`${minus}99.9`);
+    expect(formatGain(-100)).toBe(`${minus}∞`);
     expect(formatGain(-332.2)).toBe(`${minus}∞`);
   });
 

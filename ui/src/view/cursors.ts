@@ -7,6 +7,8 @@ import {
   formatFrequency,
   formatSamples,
   formatSeconds,
+  isBelowFloor,
+  toDb,
 } from "./format.ts";
 import { toFrame, type ViewWindow } from "./zoom.ts";
 
@@ -112,9 +114,12 @@ export function initialLevels(fullScale: number): LevelPair {
 
 // The readout lines: each level in dBFS, and the difference between them in dB.
 export function levelReadout(levels: LevelPair): string[] {
-  const first = 20 * Math.log10(Math.abs(levels.first));
-  const second = 20 * Math.log10(Math.abs(levels.second));
-  const difference = Math.abs(first - second);
+  const first = toDb(levels.first);
+  const second = toDb(levels.second);
+  const difference =
+    isBelowFloor(first) || isBelowFloor(second)
+      ? Number.NaN
+      : Math.abs(first - second);
   return [
     `1 ${formatDbfs(Math.abs(levels.first))} dBFS`,
     `2 ${formatDbfs(Math.abs(levels.second))} dBFS`,
