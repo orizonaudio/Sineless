@@ -1,7 +1,9 @@
 #include "engine/Reducer.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <utility>
 
 namespace orizon::engine {
 
@@ -11,6 +13,32 @@ namespace {
 
 // The most samples read at once when reducing again: bounds the working space.
 constexpr std::size_t kChunkSamples = 16384;
+
+// The smallest and largest of `samples` (not empty), found per lane first so that the compiler
+// can run the lanes as vector registers. std::minmax_element must find the first minimum and the
+// last maximum, which keeps it a scalar loop: several times slower over long columns.
+std::pair<float, float> minMax(std::span<const float> samples)
+{
+    constexpr std::size_t kLanes = 8;
+    std::array<float, kLanes> low{};
+    std::array<float, kLanes> high{};
+    low.fill(samples.front());
+    high.fill(samples.front());
+    std::size_t index = 0;
+    for (; index + kLanes <= samples.size(); index += kLanes) {
+        for (std::size_t lane = 0; lane < kLanes; ++lane) {
+            low[lane] = std::min(low[lane], samples[index + lane]);
+            high[lane] = std::max(high[lane], samples[index + lane]);
+        }
+    }
+    float minimum = *std::ranges::min_element(low);
+    float maximum = *std::ranges::max_element(high);
+    for (; index < samples.size(); ++index) {
+        minimum = std::min(minimum, samples[index]);
+        maximum = std::max(maximum, samples[index]);
+    }
+    return {minimum, maximum};
+}
 
 } // namespace
 
@@ -28,11 +56,9 @@ FrameMode reduceToColumns(std::span<const float> samples, std::size_t columns,
         // 64-bit products: count * columns stays far below 2^64 for any real span and width.
         const auto begin = static_cast<std::size_t>(std::uint64_t{column} * count / columns);
         const auto end = static_cast<std::size_t>(std::uint64_t{column + 1} * count / columns);
-        const auto [minimum, maximum] =
-            std::minmax_element(samples.begin() + static_cast<std::ptrdiff_t>(begin),
-                                samples.begin() + static_cast<std::ptrdiff_t>(end));
-        output[column * 2] = *minimum;
-        output[column * 2 + 1] = *maximum;
+        const auto [minimum, maximum] = minMax(samples.subspan(begin, end - begin));
+        output[column * 2] = minimum;
+        output[column * 2 + 1] = maximum;
     }
     return FrameMode::kMinMax;
 }
@@ -82,11 +108,10 @@ bool ColumnReduction::update(std::size_t first, std::size_t end, const Reader& r
             return false;
         }
         for (; column < stop; ++column) {
-            const auto [minimum, maximum] = std::minmax_element(
-                scratch.begin() + static_cast<std::ptrdiff_t>(columnBegin(column) - from),
-                scratch.begin() + static_cast<std::ptrdiff_t>(columnBegin(column + 1) - from));
-            output[column * 2] = *minimum;
-            output[column * 2 + 1] = *maximum;
+            const auto [minimum, maximum] = minMax(std::span<const float>(scratch).subspan(
+                columnBegin(column) - from, columnBegin(column + 1) - columnBegin(column)));
+            output[column * 2] = minimum;
+            output[column * 2 + 1] = maximum;
         }
     }
     return true;
@@ -131,11 +156,10 @@ std::span<const float> RollColumns::update(std::uint64_t start, std::size_t colu
             available /= 2; // The newest audio may not be there yet: try a shorter stretch.
         }
         for (std::size_t index = 0; index < available; ++index) {
-            const auto begin = scratch.begin() + static_cast<std::ptrdiff_t>(index * perColumn);
-            const auto [minimum, maximum] =
-                std::minmax_element(begin, begin + static_cast<std::ptrdiff_t>(perColumn));
-            output[(column + index) * 2] = *minimum;
-            output[(column + index) * 2 + 1] = *maximum;
+            const auto [minimum, maximum] = minMax(std::span<const float>(scratch).subspan(
+                static_cast<std::size_t>(index * perColumn), static_cast<std::size_t>(perColumn)));
+            output[(column + index) * 2] = minimum;
+            output[(column + index) * 2 + 1] = maximum;
         }
         column += available;
         if (available < wanted) {
