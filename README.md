@@ -17,7 +17,7 @@ An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its trac
 
 ## Requirements
 
-- macOS 13 or later, on Apple silicon or Intel.
+- macOS 13.1 or later, on Apple silicon or Intel.
 - A host that loads VST3 plugins, such as Ableton Live, Cubase, REAPER, Bitwig Studio or Studio One. See [HOSTS.md](HOSTS.md) for the hosts tested so far.
 
 For the multi-track lanes to line up, put O-Scope last on each track.
