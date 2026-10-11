@@ -1,5 +1,6 @@
 // View zoom: which part of the frame the screen shows, as fractions of the frame's width.
 // Temporary display state only; it never changes a setting.
+import { minimumViewWidth } from "../../../protocol/src/limits.ts";
 
 export interface ViewWindow {
   readonly start: number;
@@ -8,8 +9,8 @@ export interface ViewWindow {
 
 export const fullView: ViewWindow = { start: 0, end: 1 };
 
-// The narrowest view: 256 times magnified.
-export const minimumWidth = 1 / 256;
+// The narrowest view: 256 times magnified, as the engine accepts.
+export const minimumWidth = minimumViewWidth;
 
 function width(view: ViewWindow): number {
   return view.end - view.start;

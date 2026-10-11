@@ -23,7 +23,13 @@ import {
   signed,
 } from "../src/view/format.ts";
 import { statusChips } from "../src/view/status.ts";
-import { spanSteps, stepLinear, stepThrough } from "../src/view/steps.ts";
+import {
+  holdOffSteps,
+  spanSteps,
+  stepFine,
+  stepLinear,
+  stepThrough,
+} from "../src/view/steps.ts";
 
 const minus = "−";
 
@@ -126,6 +132,15 @@ describe("format", () => {
 });
 
 describe("steps", () => {
+  test("steps finely between 1-2-5 values with Shift", () => {
+    expect(stepFine(spanSteps, 0.02, 1)).toBe(0.0212);
+    expect(stepFine(spanSteps, 0.02, -1)).toBe(0.0189);
+    expect(stepFine(spanSteps, 4, 1)).toBe(4);
+    expect(stepFine(spanSteps, 0.0005, -1)).toBe(0.0005);
+    expect(stepFine(holdOffSteps, 0, 1)).toBe(0.001);
+    expect(stepFine(holdOffSteps, 0.001, -1)).toBeLessThan(0.001);
+  });
+
   test("follows the 1-2-5 span sequence from 0.5 ms to 4 s", () => {
     expect(spanSteps[0]).toBe(0.0005);
     expect(spanSteps.at(-1)).toBe(4);

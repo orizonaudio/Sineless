@@ -21,18 +21,18 @@ namespace orizon::editor {
 class Editor : public Steinberg::CPluginView
 {
 public:
-    static constexpr int kDefaultWidth = 900;
-    static constexpr int kDefaultHeight = 500;
     // The narrowest window that fits the whole control strip and the top bar with its usual
-    // status chips and its edge padding, in the embedded fonts (measured: 898). The UI's .app
-    // min-width matches.
-    static constexpr int kMinimumWidth = 900;
+    // status chips and its edge padding, in the embedded fonts (measured: 898). The page takes
+    // it as its minimum width too.
+    static constexpr int kMinimumWidth = protocol::kMinimumEditorWidth;
     static constexpr int kMinimumHeight = 250;
+    static constexpr int kDefaultWidth = kMinimumWidth;
+    static constexpr int kDefaultHeight = 500;
     // Stacked lanes of the multi-track view need this much height each, for their label chip
     // and a clear trace, above the top bar and control strip (kChromeHeight, measured): the
     // minimum height grows with the lanes shown, and the editor asks the host for the room.
-    static constexpr int kMinimumLaneHeight = 40;
-    static constexpr int kChromeHeight = 140;
+    static constexpr int kMinimumLaneHeight = protocol::kMinimumLaneHeight;
+    static constexpr int kChromeHeight = protocol::kChromeHeight;
 
     // Sees every raw message from the page before the session handles it. For tests.
     using MessageObserver = std::function<void(std::string_view message)>;

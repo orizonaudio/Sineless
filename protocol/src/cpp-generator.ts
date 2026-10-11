@@ -1,14 +1,7 @@
 // Generates the C++ header that mirrors this schema. Enumerators and constants become kPascalCase.
 import { beatSpanLengths, enums, type EnumName } from "./enums.ts";
-import {
-  crossingHysteresis,
-  frameHeader,
-  frozenHoldSeconds,
-  FrameFlag,
-  matchValues,
-  periodTolerance,
-  silenceFloorDb,
-} from "./frame.ts";
+import { frameHeader, FrameFlag, matchValues } from "./frame.ts";
+import { limits } from "./limits.ts";
 import { MessageType } from "./messages.ts";
 import { settings, type Setting } from "./settings.ts";
 import { protocolVersion } from "./version.ts";
@@ -157,16 +150,26 @@ function frameDeclaration(): string {
     "",
     "// Values per track in a Compare frame's matches, after the lane data.",
     `inline constexpr std::size_t kMatchValues = ${String(matchValues)};`,
-    "",
-    "// The level, in dBFS, at or below which audio counts as silence.",
-    `inline constexpr double kSilenceFloorDb = ${silenceFloorDb.toFixed(1)};`,
-    "",
-    "// How a signal's cycles are found, and when they repeat steadily enough to give a frequency.",
-    `inline constexpr double kCrossingHysteresis = ${String(crossingHysteresis)};`,
-    `inline constexpr double kPeriodTolerance = ${String(periodTolerance)};`,
-    "",
-    "// Seconds of audio a freeze holds in Seconds mode.",
-    `inline constexpr double kFrozenHoldSeconds = ${frozenHoldSeconds.toFixed(1)};`,
+  ].join("\n");
+}
+
+// Numbers the engine and the UI must agree on; see limits.ts for what each means.
+function limitsDeclaration(): string {
+  const types = {
+    double: "double",
+    count: "std::size_t",
+    pixels: "int",
+  } as const;
+  const lines = limits.map(({ name, value, kind }) => {
+    const literal =
+      kind === "double" && Number.isInteger(value)
+        ? value.toFixed(1)
+        : String(value);
+    return `inline constexpr ${types[kind]} ${constant(name)} = ${literal};`;
+  });
+  return [
+    "// Numbers the engine and the UI share (protocol/src/limits.ts).",
+    ...lines,
   ].join("\n");
 }
 
@@ -216,6 +219,8 @@ export function generateCppHeader(): string {
     settingsDeclaration(),
     "",
     frameDeclaration(),
+    "",
+    limitsDeclaration(),
     "",
     beatSpanDeclaration(),
     "",

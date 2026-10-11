@@ -37,8 +37,8 @@ std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool sync
         ring.capacity());
 }
 
-// The narrowest view accepted, matching the UI's 256-fold maximum zoom.
-constexpr double kMinimumViewWidth = 1.0 / 512;
+// The narrowest view accepted: the UI zooms no further.
+constexpr double kMinimumViewWidth = protocol::kMinimumViewWidth;
 
 constexpr std::uint8_t flag(FrameFlag value)
 {
@@ -214,7 +214,8 @@ void Analyzer::arm()
 // (such as a pan), so they always measure. `end` is this track's capture end.
 bool Analyzer::readoutsDue(std::uint64_t end) const
 {
-    const auto interval = static_cast<std::uint64_t>(0.1 * engine.sampleRate());
+    const auto interval =
+        static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * engine.sampleRate());
     return isFrozen || !readoutCache.valid || readoutCache.settings != frameSettings ||
            readoutCache.frozen != isFrozen || end < readoutCache.end ||
            end - readoutCache.end >= interval;
@@ -1387,7 +1388,8 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
                                 std::size_t playhead)
 {
     const double sampleRate = engine.sampleRate();
-    const auto maxOffset = static_cast<std::size_t>(std::lround(0.01 * sampleRate));
+    const auto maxOffset =
+        static_cast<std::size_t>(std::lround(protocol::kMatchReachSeconds * sampleRate));
     const std::size_t block = statsBlock(sampleRate);
     const std::uint64_t now = engine.captureRing().endIndex();
     const auto length = static_cast<std::size_t>(count);
@@ -1452,7 +1454,8 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
                        maxOffset, length, block);
 
     // The matches' values and the gains, when due.
-    const auto gainInterval = static_cast<std::uint64_t>(0.1 * sampleRate);
+    const auto gainInterval =
+        static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * sampleRate);
     if (searched || rawMeasured || fixedMeasured || !comparisonCache.valid ||
         now < comparisonCache.at || now - comparisonCache.at >= gainInterval) {
         std::vector<float>& matchValues = comparisonCache.matches;
@@ -1543,7 +1546,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
                              bool rolling, const Commands& command, std::vector<std::byte>& frame)
 {
     const double sampleRate = engine.sampleRate();
-    const auto maxOffset = static_cast<std::size_t>(std::lround(0.01 * sampleRate));
+    const auto maxOffset =
+        static_cast<std::size_t>(std::lround(protocol::kMatchReachSeconds * sampleRate));
     const std::size_t block = statsBlock(sampleRate);
     const std::size_t columns = command.columns;
     const bool previewFix = command.previewFix;
@@ -1625,7 +1629,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     }
 
     // The matches' values and the gains, when due, over the visible part.
-    const auto gainInterval = static_cast<std::uint64_t>(0.1 * sampleRate);
+    const auto gainInterval =
+        static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * sampleRate);
     if (searched || !comparisonCache.valid || now < comparisonCache.at ||
         now - comparisonCache.at >= gainInterval) {
         std::vector<float>& matchValues = comparisonCache.matches;

@@ -1,10 +1,24 @@
 // Help texts, shown as tooltips while help is on. An element names its topic with a data-help
 // attribute; the nearest such element under the pointer gives the tooltip.
 
+import {
+  matchReachSeconds,
+  maxLanes,
+  rollThresholdSeconds,
+} from "../../../protocol/src/limits.ts";
+import { settings } from "../../../protocol/src/settings.ts";
+import { formatSeconds } from "./format.ts";
+
 // Modifier keys as the platform names them: the page also runs in WebView2 on Windows.
 export const isMac =
   typeof navigator !== "undefined" && /Mac/u.test(navigator.platform);
 const command = isMac ? "⌘" : "Ctrl";
+const lanesMulti = String(maxLanes);
+const lanesCompare = String(maxLanes - 1);
+const reach = formatSeconds(matchReachSeconds);
+const shortestSpan = formatSeconds(settings.timeSpan.minimum);
+const longestSpan = formatSeconds(settings.timeSpan.maximum);
+const rollSpan = formatSeconds(rollThresholdSeconds);
 const option = isMac ? "⌥" : "Alt";
 
 export interface HelpText {
@@ -19,7 +33,7 @@ export const helpTexts = {
   },
   displayMode: {
     title: "Single, Multi or Compare",
-    text: "Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most 16. Compare (in beta) shows the same tracks, at most 15, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.",
+    text: `Single shows this track's channels. Multi shows every track of this instance's group that has O-Scope inserted, one lane each as the track's Mid, at most ${lanesMulti}. Compare (in beta) shows the same tracks, at most ${lanesCompare}, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put O-Scope last on each track so lanes line up.`,
   },
   compareTrack: {
     title: "Compare",
@@ -35,7 +49,7 @@ export const helpTexts = {
   },
   match: {
     title: "Against this track",
-    text: "How late this track is against yours, within 10 ms (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the 8 seconds before the playhead (zoomed away from it, the newest 8 seconds shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.",
+    text: `How late this track is against yours, within ${reach} (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the 8 seconds before the playhead (zoomed away from it, the newest 8 seconds shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.`,
   },
   group: {
     title: "Group",
@@ -59,11 +73,11 @@ export const helpTexts = {
   },
   frequency: {
     title: "Frequency",
-    text: "An estimate of the trigger channel's pitch over the last second, from how often it rises through its average. A dash means no steady repetition was found.",
+    text: "An estimate of the pitch over the last second, from how often the signal rises through its average: of the trigger source in Sec mode, and of the top view in Beats mode. A dash means no steady repetition was found.",
   },
   screen: {
     title: "Screen",
-    text: `The signal over time. ${command} + scroll or pinch to zoom around the pointer, drag across to zoom to a region, swipe sideways to pan, double-click to reset. While frozen and not zoomed, swipe to look further back.`,
+    text: `The signal over time. ${command} + scroll or pinch to zoom around the pointer, drag across to zoom to a region, swipe sideways to pan, double-click to reset. In Sec mode, while frozen and not zoomed, swipe to look further back.`,
   },
   triggerMarker: {
     title: "Trigger level",
@@ -79,7 +93,7 @@ export const helpTexts = {
   },
   timeSpan: {
     title: "Time span",
-    text: "How much time the screen shows, from 0.5 ms to 4 s. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one, such as 20 ms. Spans above 1 s scroll continuously.",
+    text: `How much time the screen shows, from ${shortestSpan} to ${longestSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one, such as 20 ms. Spans above ${rollSpan} scroll continuously.`,
   },
   beatSpan: {
     title: "Beat span",
@@ -155,7 +169,7 @@ export const helpTexts = {
   },
   triggerHoldOff: {
     title: "Hold-off",
-    text: "The least time between triggers. Use it to lock onto the start of a repeating pattern instead of a hit inside it.",
+    text: "The least time between triggers. Use it to lock onto the start of a repeating pattern instead of a hit inside it. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type.",
   },
   hoverReadout: {
     title: "Hover readout",
@@ -171,7 +185,7 @@ export const helpTexts = {
   },
   freeze: {
     title: "Freeze",
-    text: "Holds the display so you can study it. Scale, views, zoom and cursors keep working, and you can swipe to look back. Click again to go live.",
+    text: "Holds the display so you can study it. Scale, views, zoom and cursors keep working, and in Sec mode you can swipe to look back. Click again to go live.",
   },
   autoFreeze: {
     title: "Auto-freeze",

@@ -22,6 +22,10 @@ import {
   isValidSettingValue,
 } from "../../../protocol/src/setting-values.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
+import {
+  rollThresholdSeconds,
+  triggerPosition,
+} from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
 import type { ControlMessage, Transport } from "./transport.ts";
 
@@ -32,8 +36,6 @@ export const mockFundamental = 220;
 // The simulated transport: 120 BPM in 4/4.
 export const mockTempo = 120;
 const mockBarQuarterNotes = 4;
-const triggerPosition = 0.1;
-const rollThresholdSeconds = 1;
 
 function signal(channel: "left" | "right", time: number): number {
   const phase = 2 * Math.PI * mockFundamental * time;

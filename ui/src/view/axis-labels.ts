@@ -2,11 +2,12 @@
 // screen: `x` from the left, `y` from the top.
 import { lanes } from "../render/trace-geometry.ts";
 import { ViewLayout } from "../../../protocol/src/enums.ts";
+import { triggerPosition } from "../../../protocol/src/limits.ts";
 import { formatDb, formatDbValue, formatSeconds } from "./format.ts";
 import { fullView, toFrame, type ViewWindow } from "./zoom.ts";
 
 export const gridColumns = 10;
-export const triggerPosition = 0.1;
+export { triggerPosition };
 
 // Level lines sit every 3 dB down from the top of a lane, at most four below it. The trace is
 // linear, so a line `step` steps down sits at 10^(-3 * step / 20) of the half-lane height.

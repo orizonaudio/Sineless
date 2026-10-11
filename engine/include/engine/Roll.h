@@ -1,12 +1,14 @@
 #pragma once
 
+#include "protocol/Protocol.h"
+
 #include <cstddef>
 #include <cstdint>
 
 namespace orizon::engine {
 
 // Spans above this scroll continuously instead of being triggered.
-inline constexpr double kRollThresholdSeconds = 1.0;
+inline constexpr double kRollThresholdSeconds = protocol::kRollThresholdSeconds;
 
 [[nodiscard]] constexpr bool isRollSpan(double spanSeconds)
 {

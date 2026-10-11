@@ -56,6 +56,12 @@ inline std::vector<State> states()
 }
 
 // Lists the page's elements that reach past its right edge or clip their content, "" if none.
+// The height of everything but the screen (CSS px): the editor's minimum height counts on it
+// being at most protocol::kChromeHeight.
+inline constexpr const char* kChromeScript =
+    "String(Math.ceil(innerHeight - "
+    "document.getElementById('screen').getBoundingClientRect().height))";
+
 inline constexpr const char* kOverflowScript = R"JS(
 (() => {
   const found = [];

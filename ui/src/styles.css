@@ -67,8 +67,9 @@ body {
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr) auto;
   height: 100%;
-  /* The editor's minimum width (Editor::kMinimumWidth): the strip and top bar fit. */
-  min-width: 900px;
+  /* The editor's minimum width (minimumEditorWidth in protocol/src/limits.ts, set at start-up):
+     the strip and top bar fit. */
+  min-width: var(--minimum-width);
 }
 
 .bar {

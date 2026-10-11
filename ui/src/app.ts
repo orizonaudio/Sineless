@@ -2,7 +2,11 @@
 // the settings store. Controls show only engine-reported values and send requests.
 import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
-import { frozenHoldSeconds } from "../../protocol/src/frame.ts";
+import {
+  frozenHoldSeconds,
+  minimumEditorWidth,
+  readoutIntervalSeconds,
+} from "../../protocol/src/limits.ts";
 import type {
   ErrorMessage,
   SettingValue,
@@ -82,6 +86,7 @@ import {
   holdOffSteps,
   spanSteps,
   stepLinear,
+  stepFine,
   stepThrough,
 } from "./view/steps.ts";
 
@@ -134,7 +139,7 @@ interface GestureEvent extends UIEvent {
 
 // Room taken by the amplitude labels at the left edge (CSS px).
 const amplitudeLabelWidth = 56;
-const readoutInterval = 100; // ms: readouts stay legible while frames arrive at display rate.
+const readoutInterval = readoutIntervalSeconds * 1000; // ms, as the engine measures them.
 // 60 engine frames a second on any display rate (at most the display's): more would cost work
 // in every part of the pipeline for motion the eye barely tells apart.
 const frameInterval = 1000 / 60;
@@ -232,6 +237,10 @@ export class OscilloscopeApp {
     this.backend = backend;
     this.store = store;
     this.debug = debug;
+    document.documentElement.style.setProperty(
+      "--minimum-width",
+      `${String(minimumEditorWidth)}px`,
+    );
     // Resolved on first use: in development the stylesheet may apply after start-up.
     let colors: Map<ChannelView, Rgba> | undefined;
     const resolveColors = (): ReadonlyMap<ChannelView, Rgba> => {
@@ -385,7 +394,10 @@ export class OscilloscopeApp {
       "span-field",
       "Time span",
       formatSeconds,
-      (value, delta) => stepThrough(spanSteps, value, delta),
+      (value, delta, fine) =>
+        fine
+          ? stepFine(spanSteps, value, delta)
+          : stepThrough(spanSteps, value, delta),
       "time",
       0.001,
     );
@@ -420,7 +432,10 @@ export class OscilloscopeApp {
       "hold-off-field",
       "Trigger hold-off",
       formatSeconds,
-      (value, delta) => stepThrough(holdOffSteps, value, delta),
+      (value, delta, fine) =>
+        fine
+          ? stepFine(holdOffSteps, value, delta)
+          : stepThrough(holdOffSteps, value, delta),
       "time",
       0.001,
     );

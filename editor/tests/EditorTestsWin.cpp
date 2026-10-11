@@ -305,6 +305,8 @@ TEST_F(EditorTest, FitsTheMinimumSizeInEveryState)
             pumpUntil([] { return false; }, std::chrono::milliseconds(200));
         }
         EXPECT_EQ(evaluate(view, fit::kOverflowScript), "") << state.name;
+        EXPECT_LE(std::stoi(evaluate(view, fit::kChromeScript)), Editor::kChromeHeight)
+            << state.name;
     }
     EXPECT_EQ(editor->removed(), kResultOk);
     DestroyWindow(window);

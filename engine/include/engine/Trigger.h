@@ -12,7 +12,7 @@ namespace orizon::engine {
 // Edge trigger and trigger modes. Positions are absolute, fractional sample indices.
 
 // The trigger point sits this fraction of the span from the left edge.
-inline constexpr double kTriggerPosition = 0.1;
+inline constexpr double kTriggerPosition = protocol::kTriggerPosition;
 // Auto mode draws untriggered once no trigger arrived for max(span, this).
 inline constexpr double kAutoTimeoutSeconds = 0.1;
 

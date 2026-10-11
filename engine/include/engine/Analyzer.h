@@ -48,7 +48,7 @@ inline constexpr std::size_t kSumRefreshSamples = std::size_t{1} << 21U;
 
 // At most this many lanes are drawn in the multi-track view: tracks, and in the Compare view
 // their sum.
-inline constexpr std::size_t kMaxLanes = 16;
+inline constexpr std::size_t kMaxLanes = protocol::kMaxLanes;
 
 // One track of the multi-track view, as the UI labels it.
 struct LaneLabel

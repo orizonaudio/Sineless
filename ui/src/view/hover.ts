@@ -9,7 +9,7 @@ import {
   crossingHysteresis,
   periodTolerance,
   silenceFloorDb,
-} from "../../../protocol/src/frame.ts";
+} from "../../../protocol/src/limits.ts";
 import {
   columnPosition,
   lanes,

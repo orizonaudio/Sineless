@@ -2,7 +2,7 @@
 // missing, or not a number (from a broken signal upstream), shows as a dash. Every formatter
 // rounds first and then chooses its unit and decimals, so a value just under a boundary ("999.96")
 // shows as the value it rounds to ("1000"), and none uses exponent notation.
-import { silenceFloorDb } from "../../../protocol/src/frame.ts";
+import { silenceFloorDb } from "../../../protocol/src/limits.ts";
 
 const minus = "−";
 const none = "—";
