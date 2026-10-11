@@ -76,8 +76,13 @@ export const FrameFlag = {
   partial: 64,
 } as const;
 
-// Values per track in a Compare frame's matches: correlation, offset and polarity.
+// Values per track in a Compare frame's matches: correlation, offset and polarity. The
+// correlation is NaN when the two tracks never sound together, so nothing was measured.
 export const matchValues = 3;
+
+// The level, in dBFS, at or below which audio counts as silence: readouts show minus infinity,
+// and analysis leaves it out. Only silence, dither or a cancelled sum's residue is that quiet.
+export const silenceFloorDb = -100;
 
 const fieldSizes: Record<FieldType, number> = { u8: 1, u16: 2, u32: 4, f32: 4 };
 

@@ -2,6 +2,7 @@
 
 #include "engine/BlockStats.h"
 #include "engine/Trigger.h"
+#include "protocol/Protocol.h"
 
 #include <algorithm>
 #include <cmath>
@@ -11,7 +12,8 @@ namespace orizon::engine {
 namespace {
 
 constexpr double kHysteresisFraction = 0.1;
-constexpr double kMinimumRange = 1e-6; // Below this the signal is treated as flat.
+// A peak-to-peak range at the silence floor: quieter signals are treated as flat, with no pitch.
+const double kMinimumRange = std::pow(10.0, protocol::kSilenceFloorDb / 20.0);
 
 } // namespace
 

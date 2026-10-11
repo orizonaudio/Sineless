@@ -11,6 +11,7 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace orizon::engine {
@@ -1411,14 +1412,16 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
             }
             const PairAnalysis& match = found->second.analysis;
             float* const values = matchValues.data() + lane * protocol::kMatchValues;
-            values[0] = static_cast<float>(match.correlation);
+            values[0] = match.measured ? static_cast<float>(match.correlation)
+                                       : std::numeric_limits<float>::quiet_NaN();
             values[1] = static_cast<float>(match.offset);
             values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
         }
         collectEnergies(first, end, length, block);
-        comparisonCache.sumGain = static_cast<float>(overlapGainOfBlocks(energySpans, sumEnergies));
+        comparisonCache.sumGain =
+            static_cast<float>(overlapGainOfBlocks(energySpans, sumEnergies, block));
         comparisonCache.fixedGain =
-            static_cast<float>(overlapGainOfBlocks(energySpans, fixedSumEnergies));
+            static_cast<float>(overlapGainOfBlocks(energySpans, fixedSumEnergies, block));
         comparisonCache.at = now;
         comparisonCache.valid = true;
     }
@@ -1558,7 +1561,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             }
             const PairAnalysis& match = found->second.analysis;
             float* const values = matchValues.data() + lane * protocol::kMatchValues;
-            values[0] = static_cast<float>(match.correlation);
+            values[0] = match.measured ? static_cast<float>(match.correlation)
+                                       : std::numeric_limits<float>::quiet_NaN();
             values[1] = static_cast<float>(match.offset);
             values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
         }

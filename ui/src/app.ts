@@ -916,6 +916,10 @@ export class OscilloscopeApp {
       if (node === undefined || match === undefined) {
         return;
       }
+      if (Number.isNaN(match.correlation)) {
+        node.textContent = "—"; // They never sound together: nothing measured.
+        return;
+      }
       const offsetMs = (match.offset / this.sampleRate) * 1000;
       const alignment = match.related
         ? `${offsetMs === 0 ? "0.0" : signed(offsetMs, 1)} ms${match.inverted ? " Ø" : ""}`

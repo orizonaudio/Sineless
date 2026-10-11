@@ -47,6 +47,8 @@ describe("format", () => {
     expect(formatDbfs(1e-5)).toBe(`${minus}∞`); // −100 dB
     expect(formatDbfs(9.9958e-6)).toBe(`${minus}∞`); // Rounds to −100.0.
     expect(formatDbfs(1e-7)).toBe(`${minus}∞`);
+    expect(formatDbfs(Number.NaN)).toBe("—");
+    expect(formatDbfs(Infinity)).toBe("—");
     expect(formatDb(0)).toBe("0 dB");
     expect(formatDb(-12)).toBe(`${minus}12 dB`);
     expect(formatDb(6)).toBe("+6 dB");
@@ -70,6 +72,8 @@ describe("format", () => {
     expect(formatGain(-99.9)).toBe(`${minus}99.9`);
     expect(formatGain(-100)).toBe(`${minus}∞`);
     expect(formatGain(-332.2)).toBe(`${minus}∞`);
+    expect(formatGain(-151.8)).toBe(`${minus}∞`);
+    expect(formatGain(Number.NaN)).toBe("—");
   });
 
   test("parses typed quantities", () => {

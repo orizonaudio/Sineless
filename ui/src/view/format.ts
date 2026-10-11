@@ -1,6 +1,9 @@
-// Text forms of values shown in the UI. Negative numbers use a true minus sign.
+// Text forms of values shown in the UI. Negative numbers use a true minus sign; a value that is
+// missing, or not a number (from a broken signal upstream), shows as a dash.
+import { silenceFloorDb } from "../../../protocol/src/frame.ts";
 
 const minus = "−";
+const none = "—";
 
 function trim(text: string): string {
   return text.includes(".")
@@ -18,6 +21,9 @@ export function signed(value: number, decimals: number): string {
 
 // A summing gain in dB with one decimal, floored like levels.
 export function formatGain(db: number): string {
+  if (Number.isNaN(db) || db === Infinity) {
+    return none;
+  }
   return isBelowFloor(db) ? `${minus}∞` : signed(db, 1);
 }
 
@@ -46,13 +52,9 @@ export function formatSamples(samples: number): string {
   return `${samples < 10000 ? samples.toFixed(1) : samples.toFixed(0)} samples`;
 }
 
-// Readouts show −∞ at or below −100 dB, where only silence, dither or a cancelled sum's
-// residue is left, rather than three-digit numbers.
-const floorDb = -100;
-
-// Whether a level reads −∞: at or below the floor once rounded to the shown decimal.
+// Whether a level reads −∞: at or below the silence floor once rounded to the shown decimal.
 export function isBelowFloor(db: number): boolean {
-  return !(Math.round(db * 10) / 10 > floorDb);
+  return Math.round(db * 10) / 10 <= silenceFloorDb;
 }
 
 // Linear amplitude in dB (−Infinity for silence).
@@ -60,8 +62,11 @@ export function toDb(linear: number): number {
   return 20 * Math.log10(Math.abs(linear));
 }
 
-// Linear amplitude as dBFS with one decimal; −∞ at or below the floor.
+// Linear amplitude as dBFS with one decimal; −∞ at or below the silence floor.
 export function formatDbfs(linear: number): string {
+  if (!Number.isFinite(linear)) {
+    return none;
+  }
   const db = toDb(linear);
   if (isBelowFloor(db)) {
     return `${minus}∞`;
@@ -83,8 +88,8 @@ export function formatDb(db: number): string {
 
 // Frequency readout: approximate, or a dash when unavailable.
 export function formatFrequency(hertz: number | undefined): string {
-  if (hertz === undefined) {
-    return "—";
+  if (hertz === undefined || !Number.isFinite(hertz)) {
+    return none;
   }
   return `≈ ${hertz < 1000 ? hertz.toFixed(1) : hertz.toFixed(0)}`;
 }

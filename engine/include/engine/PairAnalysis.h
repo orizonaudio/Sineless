@@ -13,6 +13,9 @@ struct PairAnalysis
     // levels would give, in dB: 0 harmless, about +3 for identical signals, below 0 when they
     // cancel.
     double sumGain = 0.0;
+    // False when the two never sound together above the silence floor: nothing was measured, and
+    // the rest holds its defaults.
+    bool measured = false;
     double correlation = 0.0; // -1 to +1, at no offset.
     // Whether `b` matches `a` clearly at some shift. Unrelated tracks (a kick and a hi-hat) still
     // have a strongest match, but a weak one; it suggests no fix.
@@ -45,13 +48,14 @@ struct PairAnalysis
 // The summing gain of `tracks` (equal length) where at least two of them sound together, so that
 // stretches where one plays alone do not water it down: over blocks of `block` samples in which
 // the second-loudest track is within 20 dB of the loudest, leaving out blocks more than 60 dB
-// below the loudest block. 0 when they never sound together.
+// below the loudest block or below the silence floor. 0 when they never sound together.
 [[nodiscard]] double overlapGain(std::span<const std::span<const float>> tracks, std::size_t block);
 
-// The same gain from energies kept per block: `tracks` holds each track's energy (sum of squares)
-// per block, and `sums` the energy of the tracks' sum per block, over the same blocks.
+// The same gain from energies kept per block of `block` samples: `tracks` holds each track's
+// energy (sum of squares) per block, and `sums` the energy of the tracks' sum per block, over the
+// same blocks.
 [[nodiscard]] double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
-                                         std::span<const double> sums);
+                                         std::span<const double> sums, std::size_t block);
 
 // `b` as the analysis suggests fixing it: shifted earlier by `offset` and flipped if `inverted`,
 // silent where it has no samples.

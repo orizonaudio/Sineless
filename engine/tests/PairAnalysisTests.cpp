@@ -149,9 +149,23 @@ TEST(PairAnalysis, ReportsNothingForSilence)
 {
     const std::vector<float> silence(kLength, 0.0f);
     const PairAnalysis result = analyse(noise(6), silence);
+    EXPECT_FALSE(result.measured);
     EXPECT_EQ(result.sumGain, 0.0);
     EXPECT_EQ(result.correlation, 0.0);
     EXPECT_EQ(result.offset, 0);
+}
+
+TEST(PairAnalysis, LeavesOutTracksBelowTheSilenceFloor)
+{
+    // A late copy at about -126 dBFS, as dither or a tail would be: too quiet to analyse.
+    std::vector<float> quiet = noise(8);
+    for (float& value : quiet) {
+        value *= 1e-6f;
+    }
+    const PairAnalysis result = analyse(quiet, delayed(quiet, 20));
+    EXPECT_FALSE(result.measured);
+    EXPECT_FALSE(result.related);
+    EXPECT_TRUE(analyse(noise(8), delayed(noise(8), 20)).measured);
 }
 
 TEST(PairAnalysis, JudgesABriefTrackWhereItPlays)
@@ -204,8 +218,8 @@ TEST(PairAnalysis, ComputesTheSummingGainFromBlockEnergies)
         }
     }
     const std::array<std::span<const double>, 2> energies{energyA, energyB};
-    EXPECT_NEAR(overlapGainOfBlocks(energies, sums), overlapGain(tracks, kBlock), 1e-9);
-    EXPECT_NEAR(overlapGainOfBlocks(energies, sums), 10.0 * std::log10(0.25 / 1.25), 0.01)
+    EXPECT_NEAR(overlapGainOfBlocks(energies, sums, kBlock), overlapGain(tracks, kBlock), 1e-9);
+    EXPECT_NEAR(overlapGainOfBlocks(energies, sums, kBlock), 10.0 * std::log10(0.25 / 1.25), 0.01)
         << "half the level, inverted: where they meet the sum is a quarter of the energy";
 }
 

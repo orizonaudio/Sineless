@@ -1,5 +1,7 @@
 #include "engine/PairAnalysis.h"
 
+#include "protocol/Protocol.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -16,6 +18,8 @@ constexpr double kRelatedMatch = 0.3;
 // Overlap: tracks sound together within 20 dB of each other, and above 60 dB below the loudest.
 constexpr double kTogether = 0.01;
 constexpr double kAudible = 1e-6;
+// A track's mean power at the silence floor: quieter blocks are never analysed.
+const double kSilentPower = std::pow(10.0, protocol::kSilenceFloorDb / 10.0);
 
 // The dot product of a[0, count) and b[0, count). Eight independent float sums, so the compiler
 // can run them as vector lanes; each sums an eighth of the terms, which keeps float rounding far
@@ -117,9 +121,11 @@ std::vector<std::span<const double>> spansOf(const std::vector<std::vector<doubl
 }
 
 // Which blocks hold at least two tracks sounding together, from each track's energy per block
-// (equal lengths): the second-loudest within 20 dB of the loudest, and not more than 60 dB below
-// the loudest block. Empty when there are fewer than two tracks.
-std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energies)
+// of `block` samples (equal lengths): the second-loudest within 20 dB of the loudest, not more
+// than 60 dB below the loudest block, and above the silence floor. Empty when there are fewer
+// than two tracks.
+std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energies,
+                                 std::size_t block)
 {
     if (energies.size() < 2) {
         return {};
@@ -142,8 +148,9 @@ std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energi
     }
     std::vector<bool> together(blocks);
     for (std::size_t index = 0; index < blocks; ++index) {
-        together[index] =
-            loudest[index] > kAudible * loudestBlock && second[index] >= kTogether * loudest[index];
+        together[index] = loudest[index] > kAudible * loudestBlock &&
+                          second[index] >= kTogether * loudest[index] &&
+                          second[index] > kSilentPower * static_cast<double>(block);
     }
     return together;
 }
@@ -154,7 +161,7 @@ std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, 
     if (tracks.size() < 2 || block == 0) {
         return {};
     }
-    return togetherBlocks(spansOf(blockEnergies(tracks, block)));
+    return togetherBlocks(spansOf(blockEnergies(tracks, block)), block);
 }
 
 } // namespace
@@ -202,6 +209,7 @@ PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std
     if (norm <= 0.0) {
         return result;
     }
+    result.measured = true;
     double sumEnergy = 0.0;
     for (std::size_t i = 0; i < length; ++i) {
         const double sum = static_cast<double>(a[i]) + b[i];
@@ -271,13 +279,13 @@ double overlapGain(std::span<const std::span<const float>> tracks, std::size_t b
             sums[index] += total * total;
         }
     }
-    return overlapGainOfBlocks(spansOf(blockEnergies(tracks, block)), sums);
+    return overlapGainOfBlocks(spansOf(blockEnergies(tracks, block)), sums, block);
 }
 
 double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
-                           std::span<const double> sums)
+                           std::span<const double> sums, std::size_t block)
 {
-    const std::vector<bool> together = togetherBlocks(tracks);
+    const std::vector<bool> together = togetherBlocks(tracks, block);
     double sum = 0.0;
     double parts = 0.0;
     for (std::size_t index = 0; index < together.size(); ++index) {
