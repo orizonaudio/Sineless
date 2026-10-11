@@ -32,9 +32,12 @@ import {
   formatDb,
   formatDbfs,
   formatGain,
+  formatOffset,
+  formatPitch,
   formatFrequency,
   formatSeconds,
   parseQuantity,
+  type Quantity,
   signed,
 } from "./view/format.ts";
 import {
@@ -323,12 +326,13 @@ export class OscilloscopeApp {
     label: string,
     format: (value: number) => string,
     step: (value: number, delta: number, fine: boolean) => number,
-    defaultUnitScale = 1,
+    quantity: Quantity,
+    bareScale = 1,
   ): void {
     const field = new DragField({
       label,
       format,
-      parse: (text) => parseQuantity(text, defaultUnitScale),
+      parse: (text) => parseQuantity(text, quantity, bareScale),
       step: (value, delta, fine) => clampTo(name, step(value, delta, fine)),
       onRequest: (value) => {
         this.request(name, clampTo(name, value));
@@ -372,6 +376,7 @@ export class OscilloscopeApp {
       "Time span",
       formatSeconds,
       (value, delta) => stepThrough(spanSteps, value, delta),
+      "time",
       0.001,
     );
     this.numberField(
@@ -380,6 +385,7 @@ export class OscilloscopeApp {
       "Vertical scale",
       formatDb,
       (value, delta, fine) => stepLinear(value, delta, fine ? 1 : 3, -60, 6),
+      "level",
     );
     this.numberField(
       "triggerLevel",
@@ -388,6 +394,7 @@ export class OscilloscopeApp {
       (value) => signed(value, 3),
       (value, delta, fine) =>
         stepLinear(value, delta, fine ? 0.001 : 0.01, -1, 1),
+      "number",
     );
     this.numberField(
       "triggerHysteresis",
@@ -396,6 +403,7 @@ export class OscilloscopeApp {
       (value) => value.toFixed(3),
       (value, delta, fine) =>
         stepLinear(value, delta, fine ? 0.001 : 0.005, 0, 0.5),
+      "number",
     );
     this.numberField(
       "triggerHoldOff",
@@ -403,6 +411,7 @@ export class OscilloscopeApp {
       "Trigger hold-off",
       formatSeconds,
       (value, delta) => stepThrough(holdOffSteps, value, delta),
+      "time",
       0.001,
     );
 
@@ -497,8 +506,9 @@ export class OscilloscopeApp {
       "concertPitch",
       "concert-pitch-field",
       "Concert pitch",
-      (value) => `${String(Number(value.toFixed(1)))} Hz`,
+      (value) => `${formatPitch(value)} Hz`,
       (value, delta, fine) => value + delta * (fine ? 0.1 : 1),
+      "pitch",
     );
 
     // A group's title opens its popover of further settings; a press elsewhere closes it.
@@ -674,8 +684,7 @@ export class OscilloscopeApp {
     }
     this.updateTriggerSummary();
     if (name === "concertPitch" && typeof value === "number") {
-      element("display-summary").textContent =
-        `A4 ${String(Number(value.toFixed(1)))}`;
+      element("display-summary").textContent = `A4 ${formatPitch(value)}`;
       this.updateCursorReadout();
     }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
@@ -922,7 +931,7 @@ export class OscilloscopeApp {
       }
       const offsetMs = (match.offset / this.sampleRate) * 1000;
       const alignment = match.related
-        ? `${offsetMs === 0 ? "0.0" : signed(offsetMs, 1)} ms${match.inverted ? " Ø" : ""}`
+        ? `${formatOffset(offsetMs)}${match.inverted ? " Ø" : ""}`
         : "unrelated";
       node.textContent = `${alignment} · ${signed(match.correlation, 2)}`;
     });

@@ -13,6 +13,8 @@ import {
   formatDbValue,
   formatDbfs,
   formatGain,
+  formatOffset,
+  formatPitch,
   formatFrequency,
   formatClock,
   formatSamples,
@@ -76,15 +78,50 @@ describe("format", () => {
     expect(formatGain(Number.NaN)).toBe("—");
   });
 
-  test("parses typed quantities", () => {
-    expect(parseQuantity("20 ms")).toBeCloseTo(0.02);
-    expect(parseQuantity("0.5s")).toBe(0.5);
-    expect(parseQuantity("500 us")).toBeCloseTo(0.0005);
-    expect(parseQuantity("-12 dB")).toBe(-12);
-    expect(parseQuantity(`${minus}0.25`)).toBe(-0.25);
-    expect(parseQuantity("20", 0.001)).toBeCloseTo(0.02);
-    expect(parseQuantity("0,5")).toBe(0.5);
-    expect(parseQuantity("fast")).toBeUndefined();
+  test("parses typed quantities in their field's units only", () => {
+    expect(parseQuantity("20 ms", "time")).toBeCloseTo(0.02);
+    expect(parseQuantity("0.5s", "time")).toBe(0.5);
+    expect(parseQuantity("500 us", "time")).toBeCloseTo(0.0005);
+    expect(parseQuantity("20", "time", 0.001)).toBeCloseTo(0.02);
+    expect(parseQuantity("-12 dB", "level")).toBe(-12);
+    expect(parseQuantity("440 Hz", "pitch")).toBe(440);
+    expect(parseQuantity(`${minus}0.25`, "number")).toBe(-0.25);
+    expect(parseQuantity("0,5", "number")).toBe(0.5);
+    expect(parseQuantity("fast", "number")).toBeUndefined();
+    expect(parseQuantity("20 ms", "level")).toBeUndefined();
+    expect(parseQuantity("3 dB", "time")).toBeUndefined();
+    expect(parseQuantity("1 s", "number")).toBeUndefined();
+  });
+
+  test("rounds before choosing a unit, never in exponent notation", () => {
+    expect(formatSeconds(0.9996)).toBe("1 s");
+    expect(formatSeconds(0.0009996)).toBe("1 ms");
+    expect(formatSeconds(-0.25)).toBe(`${minus}250 ms`);
+    expect(formatFrequency(999.97)).toBe("≈ 1000");
+    expect(formatFrequency(999.94)).toBe("≈ 999.9");
+    expect(formatSamples(9999.96)).toBe("10000 samples");
+    expect(formatDbfs(0.999)).toBe("0.0");
+    expect(formatDbfs(0.99)).toBe(`${minus}0.1`);
+    expect(formatOffset(1000 / 48000)).toBe("+0.02 ms");
+    expect(formatOffset(-1.5)).toBe(`${minus}1.5 ms`);
+    expect(formatOffset(0.996)).toBe("+1.0 ms");
+    expect(formatOffset(0)).toBe("0.0 ms");
+  });
+
+  test("reads back what each field shows", () => {
+    for (const seconds of [0.0005, 0.02, 0.25, 1.5, 4]) {
+      expect(parseQuantity(formatSeconds(seconds), "time")).toBeCloseTo(
+        seconds,
+        9,
+      );
+    }
+    for (const db of [-60, -7.5, 0, 6]) {
+      expect(parseQuantity(formatDb(db), "level")).toBe(db);
+    }
+    for (const hertz of [415, 440, 441.5]) {
+      expect(parseQuantity(`${formatPitch(hertz)} Hz`, "pitch")).toBe(hertz);
+    }
+    expect(parseQuantity(signed(-0.25, 3), "number")).toBe(-0.25);
   });
 });
 
@@ -276,7 +313,7 @@ describe("status chips", () => {
     ]);
     expect(statusChips(frame({ frozen: true }), "auto", 5, 0.12)).toEqual([
       { text: "Frozen", tone: "hold" },
-      { text: "−0.12 s", tone: "neutral" },
+      { text: "−120 ms", tone: "neutral" },
     ]);
     expect(
       statusChips(frame({ frozen: true, partial: true }), "auto", 5, 0)[1],

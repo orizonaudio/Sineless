@@ -1,5 +1,7 @@
 // Text forms of values shown in the UI. Negative numbers use a true minus sign; a value that is
-// missing, or not a number (from a broken signal upstream), shows as a dash.
+// missing, or not a number (from a broken signal upstream), shows as a dash. Every formatter
+// rounds first and then chooses its unit and decimals, so a value just under a boundary ("999.96")
+// shows as the value it rounds to ("1000"), and none uses exponent notation.
 import { silenceFloorDb } from "../../../protocol/src/frame.ts";
 
 const minus = "−";
@@ -9,6 +11,23 @@ function trim(text: string): string {
   return text.includes(".")
     ? text.replace(/0+$/u, "").replace(/\.$/u, "")
     : text;
+}
+
+// `value` to `digits` significant digits, as plain decimals without trailing zeros.
+function significant(value: number, digits: number): string {
+  if (value === 0) {
+    return "0";
+  }
+  const decimals = Math.max(
+    0,
+    digits - 1 - Math.floor(Math.log10(Math.abs(value))),
+  );
+  return trim(value.toFixed(decimals));
+}
+
+// `value` rounded to `decimals`, as a number.
+function rounded(value: number, decimals: number): number {
+  return Number(value.toFixed(decimals));
 }
 
 export function signed(value: number, decimals: number): string {
@@ -27,15 +46,23 @@ export function formatGain(db: number): string {
   return isBelowFloor(db) ? `${minus}∞` : signed(db, 1);
 }
 
-// Seconds as "0.5 ms", "20 ms", "250 ms", "1.5 s".
+// Seconds to three significant digits: "0.5 ms", "20 ms", "250 ms", "1.5 s".
 export function formatSeconds(seconds: number): string {
-  if (seconds === 0) {
-    return "0 ms";
+  const milliseconds = Number(significant(seconds * 1000, 3));
+  if (Math.abs(milliseconds) < 1000) {
+    return `${significant(milliseconds, 3).replace("-", minus)} ms`;
   }
-  if (Math.abs(seconds) < 1) {
-    return `${trim((seconds * 1000).toPrecision(3))} ms`;
+  return `${significant(seconds, 3).replace("-", minus)} s`;
+}
+
+// A track's offset in milliseconds, signed, with two decimals below 1 ms so that a shift of a
+// sample or two still shows: "0.0 ms", "+0.02 ms", "−1.5 ms".
+export function formatOffset(milliseconds: number): string {
+  if (milliseconds === 0) {
+    return "0.0 ms";
   }
-  return `${trim(seconds.toPrecision(3))} s`;
+  const decimals = Math.abs(rounded(milliseconds, 2)) < 1 ? 2 : 1;
+  return `${signed(milliseconds, decimals)} ms`;
 }
 
 // Project time as "m:ss.mmm", e.g. "1:04.512".
@@ -49,7 +76,8 @@ export function formatClock(seconds: number): string {
 
 // A sample count: one decimal below 10000, e.g. "218.2 samples", "48000 samples".
 export function formatSamples(samples: number): string {
-  return `${samples < 10000 ? samples.toFixed(1) : samples.toFixed(0)} samples`;
+  const decimals = rounded(samples, 1) < 10000 ? 1 : 0;
+  return `${samples.toFixed(decimals)} samples`;
 }
 
 // Whether a level reads −∞: at or below the silence floor once rounded to the shown decimal.
@@ -71,7 +99,8 @@ export function formatDbfs(linear: number): string {
   if (isBelowFloor(db)) {
     return `${minus}∞`;
   }
-  return db < 0 ? `${minus}${Math.abs(db).toFixed(1)}` : db.toFixed(1);
+  const shown = rounded(db, 1); // −0.04 dB reads 0.0, not −0.0.
+  return shown < 0 ? `${minus}${Math.abs(shown).toFixed(1)}` : shown.toFixed(1);
 }
 
 // A level in dB without the unit: "0", "+3", "−7.5".
@@ -91,37 +120,43 @@ export function formatFrequency(hertz: number | undefined): string {
   if (hertz === undefined || !Number.isFinite(hertz)) {
     return none;
   }
-  return `≈ ${hertz < 1000 ? hertz.toFixed(1) : hertz.toFixed(0)}`;
+  return `≈ ${hertz.toFixed(rounded(hertz, 1) < 1000 ? 1 : 0)}`;
 }
 
-// Parses typed input such as "20 ms", "0.5s", "500 us", "-12 dB", "−0.25".
-// Bare numbers use `defaultUnitScale` (e.g. 0.001 for milliseconds).
+// A reference pitch, to a tenth of a hertz without trailing zeros: "440", "441.5".
+export function formatPitch(hertz: number): string {
+  return trim(hertz.toFixed(1));
+}
+
+// What an editable field holds, and so which units typed into it are accepted.
+export type Quantity = "time" | "level" | "pitch" | "number";
+
+const unitScales: Record<Quantity, Record<string, number>> = {
+  time: { s: 1, ms: 0.001, us: 0.000001, µs: 0.000001 },
+  level: { db: 1 },
+  pitch: { hz: 1, khz: 1000 },
+  number: {},
+};
+
+// Parses typed input such as "20 ms", "0.5s", "500 us", "-12 dB", "440 Hz", "−0.25", accepting
+// only the units of `quantity`. Bare numbers are scaled by `bareScale` (e.g. 0.001 when a time
+// field's bare numbers are milliseconds).
 export function parseQuantity(
   text: string,
-  defaultUnitScale = 1,
+  quantity: Quantity,
+  bareScale = 1,
 ): number | undefined {
-  const match =
-    /^\s*([+\-−]?\d*\.?\d+(?:e[+-]?\d+)?)\s*(ms|us|µs|s|db)?\s*$/iu.exec(
-      text.replace(",", "."),
-    );
+  const match = /^\s*([+\-−]?\d*\.?\d+(?:e[+-]?\d+)?)\s*([a-zµ]*)\s*$/iu.exec(
+    text.replace(",", "."),
+  );
   if (match === null) {
     return undefined;
   }
   const value = Number((match[1] ?? "").replace(minus, "-"));
-  if (!Number.isFinite(value)) {
+  const unit = (match[2] ?? "").toLowerCase();
+  const scale = unit === "" ? bareScale : unitScales[quantity][unit];
+  if (!Number.isFinite(value) || scale === undefined) {
     return undefined;
   }
-  switch ((match[2] ?? "").toLowerCase()) {
-    case "s":
-      return value;
-    case "ms":
-      return value / 1000;
-    case "us":
-    case "µs":
-      return value / 1_000_000;
-    case "db":
-      return value;
-    default:
-      return value * defaultUnitScale;
-  }
+  return value * scale;
 }

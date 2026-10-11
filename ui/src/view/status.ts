@@ -1,5 +1,6 @@
 // Status chips of the top bar, derived from the latest frame and the trigger mode.
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+import { formatSeconds } from "./format.ts";
 
 export type Tone = "neutral" | "ok" | "hold" | "warn";
 
@@ -21,7 +22,7 @@ export function statusChips(
   if (frame?.frozen === true) {
     chips.push({ text: "Frozen", tone: "hold" });
     if (panSeconds > 0) {
-      chips.push({ text: `−${panSeconds.toFixed(2)} s`, tone: "neutral" });
+      chips.push({ text: `−${formatSeconds(panSeconds)}`, tone: "neutral" });
     }
     if (frame.partial) {
       chips.push({ text: "Partial", tone: "neutral" });
