@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace orizon::editor {
@@ -37,17 +38,17 @@ std::vector<Case> everyCase()
             const auto base = Case{.mode = static_cast<DisplayMode>(mode),
                                    .layout = static_cast<ViewLayout>(layout)};
             if (base.mode == DisplayMode::kSingle) {
-                for (int views = 1; views < (1 << protocol::kChannelViewCount); ++views) {
+                for (unsigned views = 1; views < (1U << protocol::kChannelViewCount); ++views) {
                     for (const int channels : {1, 2}) {
                         Case c = base;
-                        c.views = views;
+                        c.views = static_cast<int>(views);
                         c.channels = channels;
                         cases.push_back(c);
                     }
                 }
                 continue;
             }
-            for (int tracks = 1; tracks <= static_cast<int>(protocol::kMaxLanes); ++tracks) {
+            for (int tracks = 1; std::cmp_less_equal(tracks, protocol::kMaxLanes); ++tracks) {
                 for (const bool compared : {false, true}) {
                     if (compared && tracks < 2) {
                         continue; // Nothing else to compare with.
@@ -63,6 +64,7 @@ std::vector<Case> everyCase()
     return cases;
 }
 
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
 void PrintTo(const Case& c, std::ostream* out)
 {
     *out << protocol::kDisplayModeNames.at(static_cast<std::size_t>(c.mode)) << " "
@@ -96,9 +98,11 @@ TEST_P(MinimumHeight, GivesEveryStackedTraceItsRoomAndNoMore)
     settings.set(SettingId::kDisplayMode, static_cast<double>(c.mode));
     settings.set(SettingId::kViewLayout, static_cast<double>(c.layout));
     settings.set(SettingId::kChannelViews, static_cast<double>(c.views));
-    engine::LaneSet lanes{.id = 1};
+    engine::LaneSet lanes{.id = 1, .lanes = {}};
     for (int track = 0; track < c.tracks; ++track) {
         lanes.lanes.push_back({.id = static_cast<std::uint64_t>(track + 1),
+                               .name = "",
+                               .colour = std::nullopt,
                                .own = track == 0,
                                .compared = track == 0 || c.compared});
     }

@@ -19,7 +19,10 @@ constexpr double kRelatedMatch = 0.3;
 constexpr double kTogether = 0.01;
 constexpr double kAudible = 1e-6;
 // A track's mean power at the silence floor: quieter blocks are never analysed.
-const double kSilentPower = std::pow(10.0, protocol::kSilenceFloorDb / 10.0);
+double silentPower()
+{
+    return std::pow(10.0, protocol::kSilenceFloorDb / 10.0);
+}
 
 // The dot product of a[0, count) and b[0, count). Eight independent float sums, so the compiler
 // can run them as vector lanes; each sums an eighth of the terms, which keeps float rounding far
@@ -146,11 +149,12 @@ std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energi
         }
         loudestBlock = std::max(loudestBlock, loudest[index]);
     }
+    const double silentBlock = silentPower() * static_cast<double>(block);
     std::vector<bool> together(blocks);
     for (std::size_t index = 0; index < blocks; ++index) {
         together[index] = loudest[index] > kAudible * loudestBlock &&
                           second[index] >= kTogether * loudest[index] &&
-                          second[index] > kSilentPower * static_cast<double>(block);
+                          second[index] > silentBlock;
     }
     return together;
 }

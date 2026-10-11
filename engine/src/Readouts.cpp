@@ -14,8 +14,6 @@ namespace {
 
 // Most cycles must be close to the median one for the signal to count as repeating.
 constexpr double kSteadyShare = 0.6;
-// A peak-to-peak range at the silence floor: quieter signals are treated as flat, with no pitch.
-const double kMinimumRange = std::pow(10.0, protocol::kSilenceFloorDb / 20.0);
 
 } // namespace
 
@@ -39,7 +37,8 @@ std::optional<double> estimateFrequency(std::span<const float> samples, double s
         maximum = std::max(maximum, sample);
     }
     const double range = static_cast<double>(maximum) - minimum;
-    if (range < kMinimumRange) {
+    // A range at the silence floor: quieter signals are treated as flat, with no pitch.
+    if (range < std::pow(10.0, protocol::kSilenceFloorDb / 20.0)) {
         return std::nullopt;
     }
     const TriggerParameters crossing{.level = sum / static_cast<double>(samples.size()),

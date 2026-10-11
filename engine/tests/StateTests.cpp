@@ -49,7 +49,8 @@ std::vector<SettingCase> everySettingValue()
             values = {setting.minimum, setting.maximum, setting.defaultValue};
             break;
         case protocol::SettingKind::kEnum:
-            for (double value = setting.minimum; value <= setting.maximum; ++value) {
+            for (auto value = static_cast<int>(setting.minimum);
+                 value <= static_cast<int>(setting.maximum); ++value) {
                 values.push_back(value);
             }
             break;
@@ -67,6 +68,7 @@ std::vector<SettingCase> everySettingValue()
     return cases;
 }
 
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
 void PrintTo(const SettingCase& c, std::ostream* out)
 {
     *out << c.setting->name << " = " << c.value;

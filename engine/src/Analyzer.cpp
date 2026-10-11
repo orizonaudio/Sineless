@@ -1582,8 +1582,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             return true;
         }
         sumScratch.resize(static_cast<std::size_t>(stop - begin));
-        const bool read =
-            readLaneWindow(part.lane, static_cast<std::uint64_t>(source + begin), sumScratch);
+        const std::ptrdiff_t from = source + begin;
+        const bool read = readLaneWindow(part.lane, static_cast<std::uint64_t>(from), sumScratch);
         for (std::ptrdiff_t i = begin; i < stop; ++i) {
             into[static_cast<std::size_t>(i)] +=
                 part.sign * sumScratch[static_cast<std::size_t>(i - begin)];

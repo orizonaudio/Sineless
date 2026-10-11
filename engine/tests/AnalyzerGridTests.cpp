@@ -79,6 +79,7 @@ std::string testName(const ::testing::TestParamInfo<Case>& info)
     return nameOf(info.param);
 }
 
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
 void PrintTo(const Case& c, std::ostream* out)
 {
     *out << nameOf(c);
@@ -235,7 +236,7 @@ TEST_P(AnalyzerGrid, DrawsEveryTraceAndKeepsGoing)
     }
     EXPECT_GT(frame->peak, 0.01f) << "readouts measured nothing";
     if (!c.frozen) {
-        tracks.play(kBlock * 4);
+        tracks.play(std::uint64_t{kBlock} * 4);
         EXPECT_TRUE(produceSome(analyzer)) << "frames stopped coming";
     }
 }

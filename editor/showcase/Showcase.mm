@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -66,11 +67,11 @@ struct Options
     int frames = -1; // Stop early, for trying out the script.
 };
 
-Options parse(int argc, const char* argv[])
+Options parse(std::span<const char* const> arguments)
 {
     Options options;
-    for (int i = 1; i < argc; ++i) {
-        const std::string argument = argv[i];
+    for (const char* const text : arguments.subspan(1)) {
+        const std::string argument = text;
         const auto equals = argument.find('=');
         const std::string key = argument.substr(0, equals);
         const std::string value = equals == std::string::npos ? "" : argument.substr(equals + 1);
@@ -121,7 +122,8 @@ Stereo load(const std::string& path)
     }
     const float* left = buffer.floatChannelData[0];
     const float* right = buffer.format.channelCount > 1 ? buffer.floatChannelData[1] : left;
-    return {{left, left + buffer.frameLength}, {right, right + buffer.frameLength}};
+    return {.left = {left, left + buffer.frameLength},
+            .right = {right, right + buffer.frameLength}};
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -168,16 +170,19 @@ public:
         start = now;
         length = duration;
     }
-    T at(double t) const
+    [[nodiscard]] T at(double t) const
     {
         const double x = length <= 0.0 ? 1.0 : smooth((t - start) / length);
         return mix(from, to, x);
     }
-    T target() const { return to; }
+    [[nodiscard]] T target() const { return to; }
 
 private:
     static double mix(double a, double b, double x) { return lerp(a, b, x); }
-    static Point mix(Point a, Point b, double x) { return {lerp(a.x, b.x, x), lerp(a.y, b.y, x)}; }
+    static Point mix(Point a, Point b, double x)
+    {
+        return {.x = lerp(a.x, b.x, x), .y = lerp(a.y, b.y, x)};
+    }
     T from;
     T to;
     double start = 0.0;
@@ -343,8 +348,8 @@ performance.now = () => window.showcase.now;
 CGColorRef rgba(double r, double g, double b, double a)
 {
     static CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    const CGFloat components[] = {r, g, b, a};
-    return CGColorCreate(space, components);
+    const std::array<CGFloat, 4> components{r, g, b, a};
+    return CGColorCreate(space, components.data());
 }
 
 void fill(CGContextRef context, CGPathRef path, double r, double g, double b, double a)
@@ -418,9 +423,10 @@ CGImageRef makeBackground()
     CGContextRef context = CGBitmapContextCreate(
         nullptr, kVideoWidth, kVideoHeight, 8, 0, space,
         static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedFirst) | kCGBitmapByteOrder32Little);
-    const CGFloat colours[] = {0.10, 0.12, 0.19, 1, 0.027, 0.031, 0.047, 1};
-    const CGFloat stops[] = {0, 1};
-    CGGradientRef gradient = CGGradientCreateWithColorComponents(space, colours, stops, 2);
+    const std::array<CGFloat, 8> colours{0.10, 0.12, 0.19, 1, 0.027, 0.031, 0.047, 1};
+    const std::array<CGFloat, 2> stops{0, 1};
+    CGGradientRef gradient =
+        CGGradientCreateWithColorComponents(space, colours.data(), stops.data(), 2);
     const CGPoint centre = CGPointMake(kVideoWidth / 2.0, kVideoHeight * 0.55);
     CGContextDrawRadialGradient(context, gradient, centre, 0, centre, kVideoWidth * 0.75,
                                 kCGGradientDrawsAfterEndLocation);
@@ -451,9 +457,14 @@ void drawCursor(CGContextRef context, Point at, double alpha, double press, bool
     CGContextTranslateCTM(context, at.x, at.y);
     CGContextScaleCTM(context, 1.7, 1.7);
     CGMutablePathRef arrow = CGPathCreateMutable();
-    const CGPoint points[] = {{0, 0},      {0, 17},     {4, 13.2},   {6.8, 19.6},
-                              {9.6, 18.4}, {6.9, 12.2}, {12.2, 12.2}};
-    CGPathAddLines(arrow, nullptr, points, 7);
+    const std::array<CGPoint, 7> points{{{.x = 0, .y = 0},
+                                         {.x = 0, .y = 17},
+                                         {.x = 4, .y = 13.2},
+                                         {.x = 6.8, .y = 19.6},
+                                         {.x = 9.6, .y = 18.4},
+                                         {.x = 6.9, .y = 12.2},
+                                         {.x = 12.2, .y = 12.2}}};
+    CGPathAddLines(arrow, nullptr, points.data(), points.size());
     CGPathCloseSubpath(arrow);
     CGColorRef shadow = rgba(0, 0, 0, 0.5);
     CGContextSetShadowWithColor(context, CGSizeMake(0, 2), 4, shadow);
@@ -471,7 +482,7 @@ void drawCursor(CGContextRef context, Point at, double alpha, double press, bool
     CGContextRestoreGState(context);
 }
 
-enum class Place
+enum class Place : std::uint8_t
 {
     kTop,
     kBottom,
@@ -543,7 +554,7 @@ void drawLogo(CGContextRef context, double alpha, double y, const std::string& l
 struct Camera
 {
     double zoom = 1.0;
-    Point focus{kEditorWidth / 2, kEditorHeight / 2};
+    Point focus{.x = kEditorWidth / 2, .y = kEditorHeight / 2};
 };
 
 Camera framed(Camera camera)
@@ -560,8 +571,8 @@ Camera framed(Camera camera)
 Point toVideo(const Camera& camera, double settle, Point p)
 {
     const double scale = kPageScale * camera.zoom * settle;
-    return {kVideoWidth / 2.0 + (p.x - camera.focus.x) * scale,
-            kVideoHeight / 2.0 + (p.y - camera.focus.y) * scale};
+    return {.x = kVideoWidth / 2.0 + (p.x - camera.focus.x) * scale,
+            .y = kVideoHeight / 2.0 + (p.y - camera.focus.y) * scale};
 }
 
 void drawPage(CGContextRef context, CGImageRef page, const Camera& camera, double settle,
@@ -570,7 +581,7 @@ void drawPage(CGContextRef context, CGImageRef page, const Camera& camera, doubl
     if (page == nullptr || opacity <= 0.0) {
         return;
     }
-    const Point origin = toVideo(camera, settle, {0, 0});
+    const Point origin = toVideo(camera, settle, {.x = 0, .y = 0});
     const double scale = kPageScale * camera.zoom * settle;
     CGContextSaveGState(context);
     CGContextSetAlpha(context, opacity);
@@ -648,7 +659,8 @@ public:
                                            .mFramesPerPacket = 1,
                                            .mBytesPerFrame = 8,
                                            .mChannelsPerFrame = 2,
-                                           .mBitsPerChannel = 32};
+                                           .mBitsPerChannel = 32,
+                                           .mReserved = 0};
         CMAudioFormatDescriptionCreate(nullptr, &format, 0, nullptr, 0, nullptr, nullptr,
                                        &audioFormat);
     }
@@ -767,9 +779,14 @@ int run(const Options& options)
             const char* group;
         };
         const std::vector<Member> members = {
-            {"Kick", 0xF2453D, "a"},  {"Kick Off", 0xB06EE6, "b"}, {"Bass", 0x5468F0, "a"},
-            {"Sub", 0x2EA8F2, "a"},   {"Clap", 0xF2792E, "a"},     {"Hat", 0xF5DE47, "a"},
-            {"Pluck", 0xEE4FD3, "a"}, {"Sweep Up", 0xA8ADB8, "b"},
+            {.name = "Kick", .colour = 0xF2453D, .group = "a"},
+            {.name = "Kick Off", .colour = 0xB06EE6, .group = "b"},
+            {.name = "Bass", .colour = 0x5468F0, .group = "a"},
+            {.name = "Sub", .colour = 0x2EA8F2, .group = "a"},
+            {.name = "Clap", .colour = 0xF2792E, .group = "a"},
+            {.name = "Hat", .colour = 0xF5DE47, .group = "a"},
+            {.name = "Pluck", .colour = 0xEE4FD3, .group = "a"},
+            {.name = "Sweep Up", .colour = 0xA8ADB8, .group = "b"},
         };
         const std::string base = options.stems + "/" + options.prefix;
         std::vector<Stereo> tracks;
@@ -777,7 +794,7 @@ int run(const Options& options)
             if (std::string(member.name) == "Kick Off") {
                 const Stereo& kick = tracks.front();
                 constexpr std::size_t kDelay = 281;
-                Stereo late{kick.left, kick.right};
+                Stereo late{.left = kick.left, .right = kick.right};
                 for (std::size_t i = 0; i < kick.size(); ++i) {
                     late.left[(i + kDelay) % kick.size()] = kick.left[i];
                     late.right[(i + kDelay) % kick.size()] = kick.right[i];
@@ -849,8 +866,8 @@ int run(const Options& options)
         // The film's state, moved by the script.
         double now = 0.0;
         Track<double> zoom(1.0);
-        Track<Point> focus(Point{kEditorWidth / 2, kEditorHeight / 2});
-        Track<Point> cursor(Point{kEditorWidth * 0.5, kEditorHeight * 0.55});
+        Track<Point> focus(Point{.x = kEditorWidth / 2, .y = kEditorHeight / 2});
+        Track<Point> cursor(Point{.x = kEditorWidth * 0.5, .y = kEditorHeight * 0.55});
         double cursorShown = -1.0; // When the cursor appears; it fades in.
         double pressAt = -10.0;
         bool live = true;      // Frames still arrive (not frozen).
@@ -870,9 +887,9 @@ int run(const Options& options)
                 json("centre(" + quote(selector) + (text.empty() ? "" : "," + quote(text)) + ")");
             if (value.size() < 2) {
                 std::fprintf(stderr, "not found: %s %s\n", selector.c_str(), text.c_str());
-                return Point{kEditorWidth / 2, kEditorHeight / 2};
+                return Point{.x = kEditorWidth / 2, .y = kEditorHeight / 2};
             }
-            return Point{value[0].get<double>(), value[1].get<double>()};
+            return Point{.x = value[0].get<double>(), .y = value[1].get<double>()};
         };
         const auto box = [&](const std::string& selector) {
             const auto value = json("box(" + quote(selector) + ")");
@@ -895,7 +912,7 @@ int run(const Options& options)
             zoom.move(now, magnify, duration);
             focus.move(now, point, duration);
         };
-        const Point middle{kEditorWidth / 2, kEditorHeight / 2};
+        const Point middle{.x = kEditorWidth / 2, .y = kEditorHeight / 2};
         const auto group = [&](const char* name, const char* value) {
             for (std::size_t i = 0; i < members.size(); ++i) {
                 if (std::string(members[i].name) == name) {
@@ -922,120 +939,142 @@ int run(const Options& options)
         Point kickHit{};
         std::vector<Cue> cues = {
             // Single: the page arrives as the drop lands.
-            {6.0, [&] { look(1.04, middle, 6.0); }},
+            {.at = 6.0, .run = [&] { look(1.04, middle, 6.0); }},
             // Multi.
-            {12.0, [&] { look(1.0, middle, 1.0); }},
-            {12.2, [&] { cursorShown = now; }},
-            {12.4, [&] { moveTo(centre("#display-mode button", "multi"), 1.0); }},
-            {13.6, [&] { click("#display-mode button", "multi"); }},
-            {15.0, [&] { look(1.06, {middle.x, middle.y + 20}, 5.0); }},
+            {.at = 12.0, .run = [&] { look(1.0, middle, 1.0); }},
+            {.at = 12.2, .run = [&] { cursorShown = now; }},
+            {.at = 12.4, .run = [&] { moveTo(centre("#display-mode button", "multi"), 1.0); }},
+            {.at = 13.6, .run = [&] { click("#display-mode button", "multi"); }},
+            {.at = 15.0, .run = [&] { look(1.06, {.x = middle.x, .y = middle.y + 20}, 5.0); }},
             // Freeze at the end of a bar, then zoom into the kick's attack.
-            {20.6, [&] { moveTo(centre("#freeze"), 1.0); }},
-            {21.92,
-             [&] {
-                 click("#freeze");
-                 live = false;
-             }},
-            {22.6,
-             [&] {
-                 trace = box("#trace");
-                 const auto lane = centre("#lane-labels span", "kick");
-                 kickHit = {trace.origin.x + 3, lane.y + 30};
-                 moveTo(kickHit, 1.0);
-                 look(1.6, {kickHit.x + 320, kickHit.y + 40}, 1.4);
-             }},
-            {24.4,
-             [&] {
-                 zoomUntil = 28.6;
-                 zoomRate = -1.1;
-             }},
-            {29.6, [&] { look(1.0, middle, 1.0); }},
-            {30.0, [&] { pageCall("reset()"); }},
+            {.at = 20.6, .run = [&] { moveTo(centre("#freeze"), 1.0); }},
+            {.at = 21.92,
+             .run =
+                 [&] {
+                     click("#freeze");
+                     live = false;
+                 }},
+            {.at = 22.6,
+             .run =
+                 [&] {
+                     trace = box("#trace");
+                     const auto lane = centre("#lane-labels span", "kick");
+                     kickHit = {.x = trace.origin.x + 3, .y = lane.y + 30};
+                     moveTo(kickHit, 1.0);
+                     look(1.6, {.x = kickHit.x + 320, .y = kickHit.y + 40}, 1.4);
+                 }},
+            {.at = 24.4,
+             .run =
+                 [&] {
+                     zoomUntil = 28.6;
+                     zoomRate = -1.1;
+                 }},
+            {.at = 29.6, .run = [&] { look(1.0, middle, 1.0); }},
+            {.at = 30.0, .run = [&] { pageCall("reset()"); }},
             // Hover.
-            {31.0, [&] { moveTo(centre("#hover-toggle"), 1.0); }},
-            {32.2, [&] { click("#hover-toggle"); }},
-            {32.8,
-             [&] {
-                 const auto sub = centre("#lane-labels span", "sub");
-                 moveTo({kEditorWidth * 0.22, sub.y + 30}, 0.9);
-                 look(1.25, {middle.x, sub.y - 40}, 1.2);
-             }},
-            {33.8,
-             [&] {
-                 hovering = true;
-                 moveTo({kEditorWidth * 0.66, cursor.target().y - 8}, 4.4);
-             }},
-            {38.4,
-             [&] {
-                 hovering = false;
-                 pageCall("leave()");
-                 pageCall("click('#hover-toggle')");
-                 look(1.0, middle, 1.0);
-             }},
+            {.at = 31.0, .run = [&] { moveTo(centre("#hover-toggle"), 1.0); }},
+            {.at = 32.2, .run = [&] { click("#hover-toggle"); }},
+            {.at = 32.8,
+             .run =
+                 [&] {
+                     const auto sub = centre("#lane-labels span", "sub");
+                     moveTo({.x = kEditorWidth * 0.22, .y = sub.y + 30}, 0.9);
+                     look(1.25, {.x = middle.x, .y = sub.y - 40}, 1.2);
+                 }},
+            {.at = 33.8,
+             .run =
+                 [&] {
+                     hovering = true;
+                     moveTo({.x = kEditorWidth * 0.66, .y = cursor.target().y - 8}, 4.4);
+                 }},
+            {.at = 38.4,
+             .run =
+                 [&] {
+                     hovering = false;
+                     pageCall("leave()");
+                     pageCall("click('#hover-toggle')");
+                     look(1.0, middle, 1.0);
+                 }},
             // Time cursors: A onto the bar's first kick, B a beat later.
-            {38.8, [&] { moveTo(centre("#time-cursors"), 1.0); }},
-            {40.0, [&] { click("#time-cursors"); }},
-            {40.5,
-             [&] {
-                 moveTo({centre("#cursor-a").x, trace.origin.y + trace.size.height * 0.42}, 0.8);
-             }},
-            {41.5,
-             [&] {
-                 grab("#cursor-a");
-                 moveTo({trace.origin.x + 2, cursor.target().y}, 1.2);
-             }},
-            {42.9, [&] { release(); }},
-            {43.1,
-             [&] {
-                 moveTo({centre("#cursor-b").x, trace.origin.y + trace.size.height * 0.42}, 0.8);
-             }},
-            {44.0,
-             [&] {
-                 grab("#cursor-b");
-                 moveTo({trace.origin.x + trace.size.width / 4 + 2, cursor.target().y}, 1.4);
-             }},
-            {45.6, [&] { release(); }},
+            {.at = 38.8, .run = [&] { moveTo(centre("#time-cursors"), 1.0); }},
+            {.at = 40.0, .run = [&] { click("#time-cursors"); }},
+            {.at = 40.5,
+             .run =
+                 [&] {
+                     moveTo({.x = centre("#cursor-a").x,
+                             .y = trace.origin.y + trace.size.height * 0.42},
+                            0.8);
+                 }},
+            {.at = 41.5,
+             .run =
+                 [&] {
+                     grab("#cursor-a");
+                     moveTo({.x = trace.origin.x + 2, .y = cursor.target().y}, 1.2);
+                 }},
+            {.at = 42.9, .run = [&] { release(); }},
+            {.at = 43.1,
+             .run =
+                 [&] {
+                     moveTo({.x = centre("#cursor-b").x,
+                             .y = trace.origin.y + trace.size.height * 0.42},
+                            0.8);
+                 }},
+            {.at = 44.0,
+             .run =
+                 [&] {
+                     grab("#cursor-b");
+                     moveTo(
+                         {.x = trace.origin.x + trace.size.width / 4 + 2, .y = cursor.target().y},
+                         1.4);
+                 }},
+            {.at = 45.6, .run = [&] { release(); }},
             // Level cursors: the first onto the kick's peak.
-            {46.4, [&] { moveTo(centre("#level-cursors"), 0.9); }},
-            {47.5, [&] { click("#level-cursors"); }},
-            {48.0,
-             [&] {
-                 const auto line = box(".level-cursor");
-                 moveTo(
-                     {line.origin.x + line.size.width * 0.55, line.origin.y + line.size.height / 2},
-                     0.8);
-             }},
-            {49.0,
-             [&] {
-                 grab(".level-cursor");
-                 const double lane = trace.size.height / 6;
-                 moveTo({cursor.target().x, trace.origin.y + lane * 0.5 - lane * 0.5 * 0.72}, 1.4);
-             }},
-            {50.6, [&] { release(); }},
+            {.at = 46.4, .run = [&] { moveTo(centre("#level-cursors"), 0.9); }},
+            {.at = 47.5, .run = [&] { click("#level-cursors"); }},
+            {.at = 48.0,
+             .run =
+                 [&] {
+                     const auto line = box(".level-cursor");
+                     moveTo({.x = line.origin.x + line.size.width * 0.55,
+                             .y = line.origin.y + line.size.height / 2},
+                            0.8);
+                 }},
+            {.at = 49.0,
+             .run =
+                 [&] {
+                     grab(".level-cursor");
+                     const double lane = trace.size.height / 6;
+                     moveTo({.x = cursor.target().x,
+                             .y = trace.origin.y + lane * 0.5 - lane * 0.5 * 0.72},
+                            1.4);
+                 }},
+            {.at = 50.6, .run = [&] { release(); }},
             // Compare: the two kick microphones alone.
-            {52.4,
-             [&] {
-                 pageCall("click('#time-cursors')");
-                 pageCall("click('#level-cursors')");
-                 pageCall("click('#freeze')");
-                 live = true;
-                 for (const char* name : {"Bass", "Sub", "Clap", "Hat", "Pluck"}) {
-                     group(name, "b");
-                 }
-                 group("Kick Off", "a");
-                 look(1.0, middle, 1.0);
-             }},
-            {52.8, [&] { moveTo(centre("#display-mode button", "compare"), 1.0); }},
-            {54.0, [&] { click("#display-mode button", "compare"); }},
-            {55.0,
-             [&] {
-                 const auto out = centre("#lane-labels span", "kick off");
-                 moveTo({out.x + 70, out.y + 2}, 0.9);
-                 look(1.35, {kEditorWidth * 0.33, kEditorHeight * 0.45}, 1.4);
-             }},
-            {57.4, [&] { moveTo(centre(".preview-fix"), 0.8); }},
-            {58.4, [&] { click(".preview-fix"); }},
-            {60.6, [&] { look(1.0, middle, 0.8); }},
+            {.at = 52.4,
+             .run =
+                 [&] {
+                     pageCall("click('#time-cursors')");
+                     pageCall("click('#level-cursors')");
+                     pageCall("click('#freeze')");
+                     live = true;
+                     for (const char* name : {"Bass", "Sub", "Clap", "Hat", "Pluck"}) {
+                         group(name, "b");
+                     }
+                     group("Kick Off", "a");
+                     look(1.0, middle, 1.0);
+                 }},
+            {.at = 52.8, .run = [&] { moveTo(centre("#display-mode button", "compare"), 1.0); }},
+            {.at = 54.0, .run = [&] { click("#display-mode button", "compare"); }},
+            {.at = 55.0,
+             .run =
+                 [&] {
+                     const auto out = centre("#lane-labels span", "kick off");
+                     moveTo({.x = out.x + 70, .y = out.y + 2}, 0.9);
+                     look(1.35, {.x = kEditorWidth * 0.33, .y = kEditorHeight * 0.45}, 1.4);
+                 }},
+            {.at = 57.4, .run = [&] { moveTo(centre(".preview-fix"), 0.8); }},
+            {.at = 58.4, .run = [&] { click(".preview-fix"); }},
+            {.at = 60.6, .run = [&] { look(1.0, middle, 0.8); }},
         };
         std::size_t nextCue = 0;
 
@@ -1047,22 +1086,44 @@ int run(const Options& options)
             const char* headline;
             const char* detail;
         };
-        const Caption captions[] = {
-            {6.8, 12.0, Place::kBottom, "A real-time oscilloscope for your DAW",
-             "Insert it on any track to watch the waveform as it plays."},
-            {14.2, 20.8, Place::kBottom, "Every track, lined up on the beat",
-             "Each track with O-Scope gets its own lane, in its colour, on one timeline."},
-            {22.4, 31.0, Place::kBottom, "Freeze, then zoom down to the sample",
-             "⌘ + scroll zooms around the pointer. Double-click to zoom back out."},
-            {32.6, 38.4, Place::kTop, "Read time and level anywhere",
-             "Turn on Hover and point at a trace."},
-            {40.3, 46.2, Place::kBottom, "Measure with time cursors",
-             "Drag A and B to read the time and frequency between them."},
-            {47.8, 52.4, Place::kBottom, "…and level cursors",
-             "Drag them onto peaks to read levels, and their difference, in dB."},
-            {54.4, 60.8, Place::kTop, "Spot phase problems between tracks",
-             "Compare finds each track's offset and polarity, and previews the fix."},
-        };
+        const std::array<Caption, 7> captions{{
+            {.from = 6.8,
+             .to = 12.0,
+             .place = Place::kBottom,
+             .headline = "A real-time oscilloscope for your DAW",
+             .detail = "Insert it on any track to watch the waveform as it plays."},
+            {.from = 14.2,
+             .to = 20.8,
+             .place = Place::kBottom,
+             .headline = "Every track, lined up on the beat",
+             .detail =
+                 "Each track with O-Scope gets its own lane, in its colour, on one timeline."},
+            {.from = 22.4,
+             .to = 31.0,
+             .place = Place::kBottom,
+             .headline = "Freeze, then zoom down to the sample",
+             .detail = "⌘ + scroll zooms around the pointer. Double-click to zoom back out."},
+            {.from = 32.6,
+             .to = 38.4,
+             .place = Place::kTop,
+             .headline = "Read time and level anywhere",
+             .detail = "Turn on Hover and point at a trace."},
+            {.from = 40.3,
+             .to = 46.2,
+             .place = Place::kBottom,
+             .headline = "Measure with time cursors",
+             .detail = "Drag A and B to read the time and frequency between them."},
+            {.from = 47.8,
+             .to = 52.4,
+             .place = Place::kBottom,
+             .headline = "…and level cursors",
+             .detail = "Drag them onto peaks to read levels, and their difference, in dB."},
+            {.from = 54.4,
+             .to = 60.8,
+             .place = Place::kTop,
+             .headline = "Spot phase problems between tracks",
+             .detail = "Compare finds each track's offset and polarity, and previews the fix."},
+        }};
 
         Encoder encoder(options.out);
         CGImageRef background = makeBackground();
@@ -1124,12 +1185,12 @@ int run(const Options& options)
         // The soundtrack for video frame `index`: the song's mix, faded in and out.
         int soundFrames = 0;
         const auto appendSound = [&](int index) {
-            std::vector<float> mix(2 * kBlock);
+            std::vector<float> mix(std::size_t{2} * kBlock);
             for (int i = 0; i < kBlock; ++i) {
                 const double t = static_cast<double>(index) / kFps + static_cast<double>(i) / kRate;
                 const double fade = std::min(clamp01(t / 1.0), clamp01((kSeconds - t) / 2.5));
                 const auto position =
-                    (songStart + static_cast<std::uint64_t>((kPreroll + t) * kRate + 0.5)) %
+                    (songStart + static_cast<std::uint64_t>(std::llround((kPreroll + t) * kRate))) %
                     songLength;
                 mix[2 * static_cast<std::size_t>(i)] =
                     static_cast<float>(fade * mixdown.left[position]);
@@ -1244,7 +1305,7 @@ int run(const Options& options)
 int main(int argc, const char* argv[])
 {
     try {
-        return run(parse(argc, argv));
+        return run(parse(std::span(argv, static_cast<std::size_t>(argc))));
     } catch (const std::exception& error) {
         std::fprintf(stderr, "showcase: %s\n", error.what());
         return 1;

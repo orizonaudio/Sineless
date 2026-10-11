@@ -66,7 +66,7 @@ TEST(Readouts, ReportNoFrequencyForSilenceDcOrTooShortSpans)
 
 TEST(Readouts, ReportNoFrequencyForNoise)
 {
-    std::mt19937 random(3);
+    std::mt19937 random(3); // NOLINT(bugprone-random-generator-seed): repeatable on purpose.
     std::uniform_real_distribution<float> uniform(-1.0f, 1.0f);
     std::vector<float> noise(48000);
     for (float& value : noise) {
