@@ -300,15 +300,4 @@ double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
     return summingGain(sum, parts);
 }
 
-void applyFix(std::span<const float> b, std::ptrdiff_t offset, bool inverted,
-              std::span<float> fixed)
-{
-    const float sign = inverted ? -1.0f : 1.0f;
-    const auto size = static_cast<std::ptrdiff_t>(b.size());
-    for (std::size_t i = 0; i < fixed.size(); ++i) {
-        const auto source = static_cast<std::ptrdiff_t>(i) + offset;
-        fixed[i] = source >= 0 && source < size ? sign * b[static_cast<std::size_t>(source)] : 0.0f;
-    }
-}
-
 } // namespace orizon::engine

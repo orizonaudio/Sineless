@@ -28,10 +28,11 @@ public:
     // Places the samples of `window` from `source` that are not on screen yet, as far as the
     // source still holds them: all of them when the length changed (beyond what a tempo change
     // moves it, see sweepLengthsSimilar) or `rebuild` is set. The Mid of a one-channel image is
-    // read from `inputChannels` captured channels. False if the source overwrote samples during
-    // the copy; the image is then rebuilt on the next update.
+    // read from `inputChannels` captured channels. A rebuilt image holds `length` samples, the
+    // window's own count unless given (it must be similar to it). False if the source overwrote
+    // samples during the copy; the image is then rebuilt on the next update.
     bool update(const SampleSource& source, const SweepWindow& window, bool rebuild,
-                int inputChannels = CaptureRing::kMaxChannels);
+                int inputChannels = CaptureRing::kMaxChannels, std::uint64_t length = 0);
     // Forgets the sweep and frees its memory.
     void clear();
 

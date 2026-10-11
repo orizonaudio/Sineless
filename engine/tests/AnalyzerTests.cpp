@@ -795,15 +795,15 @@ protected:
                 }
                 std::array<const float*, 2> channels{block.data(), block.data()};
                 engine->captureRing().write(channels.data(), 2, static_cast<int>(kBlock));
-                engine->timeline().advance(
-                    {.playing = true,
-                     .positionValid = true,
-                     .quarterNotes = static_cast<double>(hostSample) / 24000.0,
-                     .tempoValid = true,
-                     .tempo = 120.0},
-                    static_cast<int>(kBlock), kSampleRate);
+                engine->timeline().advance({.playing = true,
+                                            .positionValid = true,
+                                            .quarterNotes = quarterNotes,
+                                            .tempoValid = true,
+                                            .tempo = tempo},
+                                           static_cast<int>(kBlock), kSampleRate);
             }
             hostSample += kBlock;
+            quarterNotes += static_cast<double>(kBlock) * tempo / (60.0 * kSampleRate);
         }
     }
 
@@ -828,7 +828,25 @@ protected:
     std::unique_ptr<Analyzer> analyzer;
     std::vector<std::byte> analyzerBytes; // The last frame, for header fields the decoder skips.
     std::uint64_t hostSample = 0;
+    double tempo = 120.0;
+    double quarterNotes = 0.0;
 };
+
+TEST_F(MultiTrackTest, DrawsALaneThatJoinsAfterASmallTempoChange)
+{
+    play(9600);
+    ASSERT_TRUE(produce());
+    // 0.05% faster: the own sweep keeps its length; a lane joining now would measure a slightly
+    // different one.
+    tempo = 120.06;
+    join(2.0f);
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 2);
+    const std::vector<float> joined = lane(*frame, 1);
+    EXPECT_GT(std::ranges::count(joined, 2.0f), 0) << "drawn, not left silent";
+}
 
 TEST_F(MultiTrackTest, KeepsReducedLanesInStepWithAFreshReduction)
 {
@@ -1515,6 +1533,28 @@ TEST_F(CompareTest, ComparesInSecondsModeToo)
     EXPECT_FALSE(frame->has(FrameFlag::kSynced));
     EXPECT_TRUE(match(*frame, 1).inverted());
     EXPECT_LT(sumGain(), -60.0f);
+}
+
+TEST_F(CompareTest, MeasuresTheFixOnRealSamplesInSecondsMode)
+{
+    // A copy 5 ms late in a 20 ms view: fixed, it sums as identical signals do (+3 dB). At the
+    // right edge its shift reaches past the newest audio; summed with that silence it read 2.7 dB.
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    own->settings().set(SettingId::kTimeSpan, 0.02);
+    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    joinWith([](std::uint64_t sample) { return sample < 240 ? 0.0f : noiseAt(sample - 240, 1); });
+    analyzer->setPreviewFix(true);
+    play(9600);
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 80; ++step) {
+        play(480);
+        if (auto produced = produce()) {
+            frame = std::move(produced);
+        }
+    }
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(match(*frame, 1).offset, 240.0f);
+    EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kFixedGainOffset), 3.01f, 0.2f);
 }
 
 TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)

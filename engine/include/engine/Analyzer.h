@@ -178,7 +178,10 @@ private:
     Commands peekCommands();
     std::uint64_t selectLanes(const Settings& settings, const Commands& command);
     // Live: places each lane's new audio into its sweep. True if any lane changed.
+    [[nodiscard]] bool inputsChanged(const Settings& settings, const Commands& command,
+                                     std::uint32_t laneSetId) const;
     bool placeLanes(const Settings& settings, protocol::BeatSpan span);
+    [[nodiscard]] std::uint64_t sharedLength(std::uint64_t serial, const SweepWindow& sweep) const;
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,

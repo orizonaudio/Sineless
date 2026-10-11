@@ -18,12 +18,11 @@ constexpr std::uint64_t kChunkSamples = 16384;
 SweepImage::SweepImage(int channels) : channelCount(channels) {}
 
 bool SweepImage::update(const SampleSource& source, const SweepWindow& window, bool rebuild,
-                        int inputChannels)
+                        int inputChannels, std::uint64_t length)
 {
-    const std::uint64_t length = window.sampleCount;
-    const std::int64_t end = window.start + static_cast<std::int64_t>(length);
-    if (rebuild || !sweepLengthsSimilar(length, count)) {
-        count = length;
+    const std::int64_t end = window.start + static_cast<std::int64_t>(window.sampleCount);
+    if (rebuild || !sweepLengthsSimilar(window.sampleCount, count)) {
+        count = length != 0 ? length : window.sampleCount;
         samples.assign(static_cast<std::size_t>(count) * static_cast<std::size_t>(channelCount),
                        0.0f);
         placedEnd = 0;

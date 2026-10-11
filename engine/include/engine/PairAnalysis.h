@@ -57,9 +57,4 @@ struct PairAnalysis
 [[nodiscard]] double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
                                          std::span<const double> sums, std::size_t block);
 
-// `b` as the analysis suggests fixing it: shifted earlier by `offset` and flipped if `inverted`,
-// silent where it has no samples.
-void applyFix(std::span<const float> b, std::ptrdiff_t offset, bool inverted,
-              std::span<float> fixed);
-
 } // namespace orizon::engine

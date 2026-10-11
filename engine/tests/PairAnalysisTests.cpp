@@ -223,15 +223,5 @@ TEST(PairAnalysis, ComputesTheSummingGainFromBlockEnergies)
         << "half the level, inverted: where they meet the sum is a quarter of the energy";
 }
 
-TEST(PairAnalysis, AppliesTheFix)
-{
-    const std::vector<float> b{1.0f, 2.0f, 3.0f, 4.0f};
-    std::vector<float> fixed(4);
-    applyFix(b, 1, true, fixed);
-    EXPECT_EQ(fixed, (std::vector<float>{-2.0f, -3.0f, -4.0f, 0.0f})) << "earlier by one, flipped";
-    applyFix(b, -2, false, fixed);
-    EXPECT_EQ(fixed, (std::vector<float>{0.0f, 0.0f, 1.0f, 2.0f}));
-}
-
 } // namespace
 } // namespace orizon::engine
