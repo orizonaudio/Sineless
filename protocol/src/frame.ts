@@ -93,6 +93,9 @@ export const crossingHysteresis = 0.1;
 // cycle; otherwise it has no frequency to show (noise, or several pitches at once).
 export const periodTolerance = 0.15;
 
+// Seconds of audio a freeze holds in Seconds mode: what a frozen view can be panned back through.
+export const frozenHoldSeconds = 4;
+
 const fieldSizes: Record<FieldType, number> = { u8: 1, u16: 2, u32: 4, f32: 4 };
 
 export interface FieldLayout {

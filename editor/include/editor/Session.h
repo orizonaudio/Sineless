@@ -25,7 +25,7 @@ public:
     void receive(const nlohmann::json& message);
 
     // Reports what changed outside the session: settings (the host's setState) as stateChanged,
-    // and a new multi-track lane set as lanes.
+    // and a new multi-track lane set as lanes; the snapshot again if the audio format changed.
     void sync();
 
     [[nodiscard]] bool started() const { return isStarted; }
@@ -34,6 +34,7 @@ private:
     void hello(const nlohmann::json& message);
     void setSetting(const nlohmann::json& message);
     void setViewport(const nlohmann::json& message);
+    void sendSnapshot();
     void sendState(protocol::SettingId id, double value);
     void syncLanes();
 
@@ -43,6 +44,8 @@ private:
     bool isStarted = false;
     std::optional<engine::Settings> lastSent;
     std::uint32_t lastLaneSet = 0;
+    double sentSampleRate = 0.0;
+    int sentInputChannels = 0;
 };
 
 } // namespace orizon::editor

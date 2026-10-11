@@ -523,6 +523,11 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     // again only the columns its newest samples landed in, a roll window only the columns that
     // scrolled in. A triggered window is new every time.
     const bool synced = window.synced && &source == &image;
+    // Readouts measure the trigger source, whose control is there in Seconds mode; in Beats mode,
+    // where nothing triggers, the first view on show.
+    const ChannelView readoutView =
+        synced ? static_cast<ChannelView>(std::countr_zero(static_cast<unsigned>(views)))
+               : triggerView;
     const bool rolling = window.roll && !window.synced && window.cropStart == 0.0 &&
                          window.cropEnd == 1.0 && columns > 0 && sampleCount % columns == 0 &&
                          sampleCount > columns;
@@ -595,13 +600,13 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
     if (synced) {
-        // The trigger view's levels per block, for readouts, kept in step with the sweep.
+        // The readout view's levels per block, for readouts, kept in step with the sweep.
         const bool fresh =
             !sweepStats.fits(static_cast<std::size_t>(sampleCount), statsBlock(sampleRate)) ||
-            sweepStatsView != triggerView || sweepStatsChannels != inputChannels;
-        sweepStatsView = triggerView;
+            sweepStatsView != readoutView || sweepStatsChannels != inputChannels;
+        sweepStatsView = readoutView;
         sweepStatsChannels = inputChannels;
-        if (!updateStats(sweepStats, image, triggerView, inputChannels, fresh)) {
+        if (!updateStats(sweepStats, image, readoutView, inputChannels, fresh)) {
             return false;
         }
         image.clearChanges();
@@ -631,7 +636,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                     sweepStats, static_cast<std::size_t>(std::llround(window.subStart * shown)),
                     static_cast<std::size_t>(std::llround(window.subEnd * shown)),
                     isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing(),
-                    isFrozen ? hold.endIndex() : end, triggerView, inputChannels, readouts)) {
+                    isFrozen ? hold.endIndex() : end, readoutView, inputChannels, readouts)) {
                 storeReadouts(readouts, end);
             }
         } else {
@@ -641,7 +646,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                 window.readoutCount > 0 ? window.readoutCount : sampleCount;
             viewSamples.resize(static_cast<std::size_t>(readoutCount));
             scratch.resize(std::max(scratch.size(), viewSamples.size()));
-            if (!readView(source, inputChannels, triggerView, readoutStart, viewSamples, scratch)) {
+            if (!readView(source, inputChannels, readoutView, readoutStart, viewSamples, scratch)) {
                 return false;
             }
             storeReadouts(computeReadouts(viewSamples, sampleRate), end);

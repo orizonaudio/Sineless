@@ -3,6 +3,7 @@ import { beatSpanLengths, enums, type EnumName } from "./enums.ts";
 import {
   crossingHysteresis,
   frameHeader,
+  frozenHoldSeconds,
   FrameFlag,
   matchValues,
   periodTolerance,
@@ -163,6 +164,9 @@ function frameDeclaration(): string {
     "// How a signal's cycles are found, and when they repeat steadily enough to give a frequency.",
     `inline constexpr double kCrossingHysteresis = ${String(crossingHysteresis)};`,
     `inline constexpr double kPeriodTolerance = ${String(periodTolerance)};`,
+    "",
+    "// Seconds of audio a freeze holds in Seconds mode.",
+    `inline constexpr double kFrozenHoldSeconds = ${frozenHoldSeconds.toFixed(1)};`,
   ].join("\n");
 }
 

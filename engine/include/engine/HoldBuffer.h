@@ -2,6 +2,7 @@
 
 #include "engine/CaptureRing.h"
 #include "engine/SampleSource.h"
+#include "protocol/Protocol.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -16,7 +17,7 @@ class HoldBuffer final : public SampleSource
 {
 public:
     // The span held on freeze: the 4 s maximum visible span.
-    static constexpr double kHoldSeconds = 4.0;
+    static constexpr double kHoldSeconds = protocol::kFrozenHoldSeconds;
 
     explicit HoldBuffer(std::size_t capacity = CaptureRing::kDefaultCapacity);
 

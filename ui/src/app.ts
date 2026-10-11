@@ -2,6 +2,7 @@
 // the settings store. Controls show only engine-reported values and send requests.
 import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
+import { frozenHoldSeconds } from "../../protocol/src/frame.ts";
 import type {
   ErrorMessage,
   SettingValue,
@@ -197,6 +198,7 @@ export class OscilloscopeApp {
   private shownChips = "";
   private lastZoomWheel = -Infinity; // When the last zooming wheel event came (ms).
   private panSeconds = 0;
+  private inputChannels = 2; // The track's, from the snapshot.
   private waiting = false;
   private readonly fields = new Map<SettingName, DragField>();
   private readonly segmented = new Map<SettingName, Segmented>();
@@ -314,6 +316,9 @@ export class OscilloscopeApp {
   }
 
   private shownViews(): ViewName[] {
+    if (this.inputChannels < 2) {
+      return ["left"]; // A mono track has one view, as the engine draws it (see effectiveViews).
+    }
     const value = this.store.get("channelViews");
     const names = Array.isArray(value) ? value : [];
     return viewOrder.filter((name) => names.includes(name));
@@ -646,6 +651,8 @@ export class OscilloscopeApp {
       const shown = this.shownViews();
       for (const [view, button] of this.viewToggles) {
         button.setAttribute("aria-pressed", String(shown.includes(view)));
+        // On a mono track R, M and S would only repeat L.
+        button.disabled = this.inputChannels < 2 && view !== "left";
       }
     }
     if (name === "triggerMode" || name === "timeBase") {
@@ -1005,7 +1012,7 @@ export class OscilloscopeApp {
     const height = this.screen.clientHeight;
     const width = this.screen.clientWidth;
     const span = this.store.number("timeSpan");
-    const roll = span > 1;
+    const roll = this.rolling();
     const labels: HTMLElement[] = [];
     for (const label of amplitudeLabels(
       this.store.number("verticalScale"),
@@ -1053,7 +1060,10 @@ export class OscilloscopeApp {
   // In the multi-track view the own track triggers, so the marker sits in its lane.
   private markerGeometry(): { center: number; halfHeight: number } {
     const shown = this.shownViews();
-    const source = this.store.get("triggerSource") as ViewName;
+    const source =
+      this.inputChannels < 2
+        ? "left"
+        : (this.store.get("triggerSource") as ViewName);
     const ownLane = Math.max(
       0,
       this.lanesOf(this.lastFrame).findIndex((style) => style.own),
@@ -1075,10 +1085,15 @@ export class OscilloscopeApp {
     };
   }
 
+  // Whether the trace rolls, as the engine decided for the latest frame.
+  private rolling(): boolean {
+    return this.lastFrame?.roll === true;
+  }
+
   private placeTriggerMarker(): void {
     const marker = element("trigger-marker");
     const hidden =
-      this.store.number("timeSpan") > 1 ||
+      this.rolling() ||
       this.store.get("triggerMode") === "free" ||
       this.beatsMode();
     marker.hidden = hidden;
@@ -1583,8 +1598,13 @@ export class OscilloscopeApp {
     if (isZoomed(this.view)) {
       this.setView(panBy(this.view, screenWidths));
     } else if (this.lastFrame?.frozen === true && !this.lastFrame.synced) {
-      const seconds = screenWidths * this.store.number("timeSpan");
-      this.panSeconds = Math.max(0, this.panSeconds - seconds);
+      // No further back than the freeze holds: the engine stops there too.
+      const span = this.store.number("timeSpan");
+      const furthest = Math.max(0, frozenHoldSeconds - span);
+      this.panSeconds = Math.min(
+        furthest,
+        Math.max(0, this.panSeconds - screenWidths * span),
+      );
       this.backend.pan(this.panSeconds);
     }
   }
@@ -1607,7 +1627,12 @@ export class OscilloscopeApp {
 
   private listenToBackend(): void {
     this.backend.on("frame", (frame) => {
+      const rolled = this.rolling();
       this.lastFrame = frame;
+      if (frame.roll !== rolled) {
+        this.placeLabels();
+        this.placeTriggerMarker();
+      }
       this.lastFrameTime = performance.now();
       this.debug.lastFrame = frame;
       this.debug.frameCount++;
@@ -1655,6 +1680,10 @@ export class OscilloscopeApp {
     this.backend.on("snapshot", (message) => {
       element("message").hidden = true;
       this.sampleRate = message.sampleRate;
+      this.inputChannels = message.inputChannels;
+      this.showSetting("channelViews", this.store.get("channelViews"));
+      this.drawScreen();
+      this.placeTriggerMarker();
     });
   }
 

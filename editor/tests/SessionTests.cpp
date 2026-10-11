@@ -164,6 +164,23 @@ TEST_F(SessionTest, ReportsHostStateChanges)
     EXPECT_EQ(transport.ofType("stateChanged").size(), 1u) << "nothing new the second time";
 }
 
+// A project's rate, or the track's channels, can change with the editor open.
+TEST_F(SessionTest, SendsTheSnapshotAgainWhenTheAudioFormatChanges)
+{
+    session.receive(example("hello"));
+    transport.messages.clear();
+    session.sync();
+    EXPECT_TRUE(transport.ofType("snapshot").empty()) << "nothing changed";
+    engine.setSampleRate(96000.0);
+    session.sync();
+    ASSERT_EQ(transport.ofType("snapshot").size(), 1u);
+    EXPECT_EQ(transport.ofType("snapshot")[0]["sampleRate"], 96000.0);
+    engine.setInputChannels(1);
+    session.sync();
+    ASSERT_EQ(transport.ofType("snapshot").size(), 2u);
+    EXPECT_EQ(transport.ofType("snapshot")[1]["inputChannels"], 1);
+}
+
 // The multi-track view's lanes reach the page once, and again whenever they change.
 TEST_F(SessionTest, ReportsTheMultiTrackLanes)
 {

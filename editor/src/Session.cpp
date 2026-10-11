@@ -133,22 +133,30 @@ void Session::hello(const nlohmann::json& message)
         return;
     }
     setViewport(message);
+    sendSnapshot();
+    lastLaneSet = 0;
+    isStarted = true;
+    syncLanes();
+}
 
+// Everything the page needs to start from: the settings, and the audio format, which the UI
+// converts samples to time and lays out a mono track's views with.
+void Session::sendSnapshot()
+{
     const engine::Settings settings = engine.settings().get();
     nlohmann::json values = nlohmann::json::object();
     for (const auto& setting : protocol::kSettings) {
         values[std::string(setting.name)] =
             engine::settingToJson(setting.id, settings.value(setting.id));
     }
+    sentSampleRate = engine.sampleRate();
+    sentInputChannels = engine.inputChannels();
     transport.sendMessage({{"type", "snapshot"},
                            {"protocolVersion", protocol::kProtocolVersion},
                            {"settings", values},
-                           {"sampleRate", engine.sampleRate()},
-                           {"inputChannels", engine.inputChannels()}});
+                           {"sampleRate", sentSampleRate},
+                           {"inputChannels", sentInputChannels}});
     lastSent = settings;
-    lastLaneSet = 0;
-    isStarted = true;
-    syncLanes();
 }
 
 void Session::setSetting(const nlohmann::json& message)
@@ -182,10 +190,14 @@ void Session::sync()
     if (!isStarted) {
         return;
     }
-    const engine::Settings settings = engine.settings().get();
-    for (const auto& setting : protocol::kSettings) {
-        if (!lastSent || lastSent->value(setting.id) != settings.value(setting.id)) {
-            sendState(setting.id, settings.value(setting.id));
+    if (engine.sampleRate() != sentSampleRate || engine.inputChannels() != sentInputChannels) {
+        sendSnapshot(); // The host changed the rate or the track's channels with the editor open.
+    } else {
+        const engine::Settings settings = engine.settings().get();
+        for (const auto& setting : protocol::kSettings) {
+            if (!lastSent || lastSent->value(setting.id) != settings.value(setting.id)) {
+                sendState(setting.id, settings.value(setting.id));
+            }
         }
     }
     syncLanes();

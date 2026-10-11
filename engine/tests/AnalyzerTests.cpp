@@ -175,6 +175,33 @@ TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
     EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
 }
 
+// In Beats mode nothing triggers and the trigger source cannot be set: readouts measure the first
+// view on show instead.
+TEST_F(AnalyzerTest, MeasuresTheFirstShownViewInBeatsMode)
+{
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    engine.settings().set(SettingId::kChannelViews, 0b0010); // R only; the source stays Mid.
+    analyzer.setColumns(300);
+    std::uint64_t written = 0;
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 80; ++step) {
+        writeTone(330.0, 0.01, 0.5);
+        engine.timeline().advance({.playing = true,
+                                   .positionValid = true,
+                                   .quarterNotes = static_cast<double>(written) / 24000.0,
+                                   .tempoValid = true,
+                                   .tempo = 120.0},
+                                  480, kSampleRate);
+        written += 480;
+        if (auto produced = produce()) {
+            frame = std::move(produced);
+        }
+    }
+    ASSERT_TRUE(frame);
+    EXPECT_NEAR(frame->peak, 0.25f, 0.01f) << "R (half of L), not Mid (0.375)";
+}
+
 TEST_F(AnalyzerTest, ProducesNothingUntilTheWidthIsKnown)
 {
     writeTone(440.0, 0.5, 0.5);
