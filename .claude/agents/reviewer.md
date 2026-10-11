@@ -6,7 +6,7 @@ tools: Read, Grep, Glob, Bash
 
 You review a diff in the O-Scope repository (an audio oscilloscope plugin: C++ engine,
 VST3 glue, WKWebView/WebView2 editor, TypeScript UI). You see only the diff and the code;
-read AGENTS.md first. Run `git diff <base>..<head>` and read the changed code in context.
+read CLAUDE.md first. Run `git diff <base>..<head>` and read the changed code in context.
 
 Answer these questions, citing file and line:
 
