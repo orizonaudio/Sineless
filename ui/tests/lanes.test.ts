@@ -31,4 +31,10 @@ describe("lane styles", () => {
   test("write colours for CSS", () => {
     expect(cssColour(0x0a0b0c)).toBe("#0a0b0c");
   });
+
+  test("has a distinct colour for every lane, none the sum lane's", () => {
+    expect(fallbackPalette).toHaveLength(16);
+    expect(new Set(fallbackPalette).size).toBe(16);
+    expect(fallbackPalette).not.toContain(0xe6e2d8);
+  });
 });

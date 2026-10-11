@@ -27,12 +27,16 @@ engine::TrackInfo mergeTrackInfo(engine::TrackInfo known, Vst::IAttributeList& l
         info.colour = static_cast<std::uint32_t>(colour) & 0xffffffU; // Drop the alpha.
     }
     // Positions count from 1 within a namespace (such as inputs, channels, outputs); the
-    // namespace's own order ranks it among them.
-    int64 index = 0;
-    if (list.getInt(context::kChannelIndexKey, index) == kResultTrue) {
-        int64 namespaceOrder = 0;
-        list.getInt(context::kChannelIndexNamespaceOrderKey, namespaceOrder);
-        info.index = static_cast<int>(namespaceOrder * 100000 + index);
+    // namespace's own order ranks it among them. Like the name, either part may come in a report
+    // of its own, so the other part is kept from what was known.
+    constexpr int64 kNamespaceStep = 100000;
+    int64 position = info.index ? *info.index % kNamespaceStep : 0;
+    int64 namespaceOrder = info.index ? *info.index / kNamespaceStep : 0;
+    const bool hasPosition = list.getInt(context::kChannelIndexKey, position) == kResultTrue;
+    const bool hasOrder =
+        list.getInt(context::kChannelIndexNamespaceOrderKey, namespaceOrder) == kResultTrue;
+    if (hasPosition || (hasOrder && info.index)) {
+        info.index = static_cast<int>(namespaceOrder * kNamespaceStep + position);
     }
     return info;
 }

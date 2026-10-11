@@ -4,7 +4,7 @@
 // dozens of small events gives a few steps rather than dozens.
 
 // Events closer together than this are a stream (ms).
-const streamGap = 80;
+export const streamGap = 80;
 // In a stream, one step per this distance: one Windows mouse notch (CSS px).
 const pixelsPerStep = 100;
 

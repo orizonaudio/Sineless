@@ -89,7 +89,10 @@ export class DragField {
             : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
               ? window.innerHeight
               : 1;
-        const steps = wheel.add(event.deltaY * unit, event.timeStamp);
+        // macOS turns Shift + wheel (fine steps) into horizontal scrolling.
+        const delta =
+          event.deltaY === 0 && event.shiftKey ? event.deltaX : event.deltaY;
+        const steps = wheel.add(delta * unit, event.timeStamp);
         if (steps !== 0) {
           // Within a stream, from the value already asked for: the engine may not have
           // answered yet.

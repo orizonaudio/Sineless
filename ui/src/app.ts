@@ -19,6 +19,7 @@ import type { Backend } from "./bridge/backend.ts";
 import { DragField } from "./components/drag-field.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { Segmented } from "./components/segmented.ts";
+import { streamGap } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
 import { fullScale, lanes, summingMarginDb } from "./render/trace-geometry.ts";
 import { TraceRenderer, type Rgba } from "./render/trace-renderer.ts";
@@ -56,7 +57,7 @@ import {
   type HoverTrace,
 } from "./view/hover.ts";
 import { cssColour, laneStyles, type LaneStyle } from "./view/lanes.ts";
-import type { HelpTopic } from "./view/help.ts";
+import { isMac, type HelpTopic } from "./view/help.ts";
 import {
   extremePositions,
   levelTargets,
@@ -111,8 +112,8 @@ const viewColorTokens: Record<ViewName, string> = {
 };
 // How fast ⌘ + scroll and pinch zoom, per wheel delta unit.
 const wheelZoomRate = 0.01;
-// A mouse-wheel notch is deltaY 100 on Windows (×2.7 zoom unclamped); a trackpad's events are
-// a few each. Clamped, a notch zooms by about 1.3×.
+// The most one wheel event zooms by, in wheel delta units: about 1.3×, which is also what a lone
+// mouse-wheel notch zooms by on every system. A trackpad's events are a few units each.
 const maxWheelZoomDelta = 25;
 // A wheel line in pixels, as browsers scroll it.
 const wheelLinePixels = 40;
@@ -190,7 +191,11 @@ export class OscilloscopeApp {
   private readonly loop: RenderLoop;
   private lastFrame: Frame | undefined;
   private lastFrameTime = 0;
-  private lastReadoutTime = 0;
+  // Readouts refresh on a fixed schedule of one per readoutInterval, as frames are drawn (see
+  // RenderLoop), whether frames or the idle timer prompt them.
+  private nextReadoutTime = -Infinity;
+  private shownChips = "";
+  private lastZoomWheel = -Infinity; // When the last zooming wheel event came (ms).
   private panSeconds = 0;
   private waiting = false;
   private readonly fields = new Map<SettingName, DragField>();
@@ -292,7 +297,7 @@ export class OscilloscopeApp {
       this.resize();
     });
     window.setInterval(() => {
-      this.updateStatus();
+      this.statusDue(); // Without frames too: the chips say when none arrive.
     }, readoutInterval);
     this.resize();
   }
@@ -1498,12 +1503,21 @@ export class OscilloscopeApp {
         const deltaX = event.deltaX * unit;
         const deltaY = event.deltaY * unit;
         if (event.metaKey || event.ctrlKey) {
-          // Trackpad pinches arrive as wheel events with ctrlKey set.
+          // Trackpad pinches arrive as wheel events with ctrlKey set (on a Mac, where the zoom
+          // key is ⌘). A mouse wheel's notch on its own zooms one fixed step on every system
+          // (WebKit reports a few pixels per notch, Windows 100), as it steps a value field;
+          // events in a stream (a trackpad, a pinch, a wheel spun fast) zoom by their distance.
           event.preventDefault();
-          const delta = Math.max(
-            -maxWheelZoomDelta,
-            Math.min(maxWheelZoomDelta, deltaY),
-          );
+          const pinch = isMac && event.ctrlKey && !event.metaKey;
+          const alone = event.timeStamp - this.lastZoomWheel > streamGap;
+          this.lastZoomWheel = event.timeStamp;
+          const delta =
+            alone && !pinch
+              ? Math.sign(deltaY) * maxWheelZoomDelta
+              : Math.max(
+                  -maxWheelZoomDelta,
+                  Math.min(maxWheelZoomDelta, deltaY),
+                );
           const factor = Math.exp(-delta * wheelZoomRate);
           this.setView(
             zoomAround(this.view, screenPosition(event.clientX), factor),
@@ -1620,9 +1634,7 @@ export class OscilloscopeApp {
         this.placeTriggerMarker();
       }
       this.drawnLaneSet = frame.laneSet;
-      if (this.lastFrameTime - this.lastReadoutTime >= readoutInterval) {
-        this.updateStatus();
-      }
+      this.statusDue();
     });
     this.backend.on("error", (message) => {
       this.showError(message);
@@ -1644,6 +1656,19 @@ export class OscilloscopeApp {
       element("message").hidden = true;
       this.sampleRate = message.sampleRate;
     });
+  }
+
+  private statusDue(): void {
+    const now = performance.now();
+    if (now < this.nextReadoutTime - 1) {
+      return;
+    }
+    // On schedule; more than a whole interval late, restarted from now.
+    this.nextReadoutTime =
+      now - this.nextReadoutTime < readoutInterval
+        ? this.nextReadoutTime + readoutInterval
+        : now + readoutInterval;
+    this.updateStatus();
   }
 
   private updateStatus(): void {
@@ -1673,19 +1698,22 @@ export class OscilloscopeApp {
         tone: "neutral",
       });
     }
-    element("chips").replaceChildren(
-      ...chips.map((chip) => {
-        const node = document.createElement("span");
-        node.className = `chip ${chip.tone}`;
-        node.textContent = chip.text;
-        return node;
-      }),
-    );
+    const shown = JSON.stringify(chips);
+    if (shown !== this.shownChips) {
+      this.shownChips = shown;
+      element("chips").replaceChildren(
+        ...chips.map((chip) => {
+          const node = document.createElement("span");
+          node.className = `chip ${chip.tone}`;
+          node.textContent = chip.text;
+          return node;
+        }),
+      );
+    }
     this.updateCursorReadout();
     this.updateHover(); // Live data changes under a resting pointer.
     const frame = this.lastFrame;
     if (frame !== undefined) {
-      this.lastReadoutTime = now;
       element("peak").textContent = formatDbfs(frame.peak);
       element("rms").textContent = formatDbfs(frame.rms);
       element("frequency").textContent = formatFrequency(frame.frequency);

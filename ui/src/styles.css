@@ -814,9 +814,11 @@ button:focus-visible,
   outline-offset: -2px;
 }
 
-/* A pressed segment's light fill is too close to the ring to tell apart: a panel-coloured edge
-   inside the ring separates them. */
-.segmented button[aria-pressed="true"]:focus-visible {
+/* A pressed button's fill (light, or the ring's own blue on toggles such as Freeze and Help) is
+   too close to the ring to tell apart: the ring goes inside, with a panel-coloured edge
+   between it and the fill. */
+button[aria-pressed="true"]:focus-visible {
+  outline-offset: -2px;
   box-shadow: inset 0 0 0 4px var(--panel);
 }
 

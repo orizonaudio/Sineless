@@ -2,7 +2,7 @@
 // attribute; the nearest such element under the pointer gives the tooltip.
 
 // Modifier keys as the platform names them: the page also runs in WebView2 on Windows.
-const isMac =
+export const isMac =
   typeof navigator !== "undefined" && /Mac/u.test(navigator.platform);
 const command = isMac ? "⌘" : "Ctrl";
 const option = isMac ? "⌥" : "Alt";

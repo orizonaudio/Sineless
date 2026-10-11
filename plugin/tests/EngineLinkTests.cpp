@@ -164,6 +164,17 @@ TEST_F(EngineLink, CombinesTrackDetailsReportedSeparately)
     EXPECT_EQ(track.colour, 0xe03030u);
 }
 
+TEST(TrackInfo, KeepsTheOrderPartTheHostDidNotRepeat)
+{
+    IPtr<IAttributeList> both = HostAttributeList::make();
+    both->setInt(ChannelContext::kChannelIndexKey, 3);
+    both->setInt(ChannelContext::kChannelIndexNamespaceOrderKey, 2);
+    IPtr<IAttributeList> position = HostAttributeList::make();
+    position->setInt(ChannelContext::kChannelIndexKey, 5);
+    const engine::TrackInfo moved = mergeTrackInfo(mergeTrackInfo({}, *both), *position);
+    EXPECT_EQ(moved.index, 200005) << "the namespace order kept";
+}
+
 TEST(EngineRegistry, ForgetsRemovedTokens)
 {
     auto engine = std::make_shared<engine::Engine>();

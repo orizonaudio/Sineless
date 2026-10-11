@@ -1,9 +1,11 @@
 #include "editor/Editor.h"
 
 #include "editor/DisplayScale.h"
+#include "engine/ChannelViews.h"
 #include "pluginterfaces/gui/iplugview.h"
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -216,12 +218,27 @@ int Editor::minimumHeight() const
     const auto mode = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode);
     const bool stacked = settings.enumValue<protocol::ViewLayout>(SettingId::kViewLayout) ==
                          protocol::ViewLayout::kStacked;
-    if (mode == protocol::DisplayMode::kSingle || !stacked) {
+    if (!stacked) {
         return kMinimumHeight;
     }
-    // The tracks on show, and the sum lane in the Compare view.
-    const auto lanes = static_cast<int>(analyzer->laneSet().lanes.size()) +
-                       (mode == protocol::DisplayMode::kCompare ? 1 : 0);
+    int lanes = 0;
+    if (mode == protocol::DisplayMode::kSingle) {
+        // The channel views on show, one lane each.
+        lanes = std::popcount(engine::effectiveViews(
+            static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)),
+            engineState->inputChannels()));
+    } else {
+        // The tracks on show, and in the Compare view the sum lane, drawn once another track is
+        // compared with this one.
+        const engine::LaneSet set = analyzer->laneSet();
+        lanes = static_cast<int>(set.lanes.size());
+        if (mode == protocol::DisplayMode::kCompare &&
+            std::ranges::any_of(set.lanes, [](const engine::LaneLabel& lane) {
+                return lane.compared && !lane.own;
+            })) {
+            ++lanes;
+        }
+    }
     return std::max(kMinimumHeight, kChromeHeight + lanes * kMinimumLaneHeight);
 }
 
