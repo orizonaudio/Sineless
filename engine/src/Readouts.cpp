@@ -29,16 +29,19 @@ std::optional<double> estimateFrequency(std::span<const float> samples, double s
         return std::nullopt;
     }
     double sum = 0.0;
+    double squares = 0.0;
     float minimum = samples.front();
     float maximum = samples.front();
     for (const float sample : samples) {
         sum += sample;
+        squares += static_cast<double>(sample) * sample;
         minimum = std::min(minimum, sample);
         maximum = std::max(maximum, sample);
     }
     const double range = static_cast<double>(maximum) - minimum;
-    // A range at the silence floor: quieter signals are treated as flat, with no pitch.
-    if (range < std::pow(10.0, protocol::kSilenceFloorDb / 20.0)) {
+    // At or below the analysis gate there is no pitch to find.
+    const double rms = std::sqrt(squares / static_cast<double>(samples.size()));
+    if (!(rms > std::pow(10.0, protocol::kAnalysisGateDbfs / 20.0)) || range <= 0.0) {
         return std::nullopt;
     }
     const TriggerParameters crossing{.level = sum / static_cast<double>(samples.size()),

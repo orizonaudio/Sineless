@@ -21,7 +21,8 @@ describe("frame decoder", () => {
     expect(frame.sequence).toBe(golden.header.sequence);
     expect(frame.mode).toBe(FrameMode.minMax);
     expect(frame.triggered).toBe(true);
-    expect(frame.frozen).toBe(false);
+    expect(frame.frozen).toBe(true);
+    expect(frame.panReach).toBe(1.5);
     expect(frame.roll).toBe(false);
     expect(frame.pointCount).toBe(golden.header.pointCount);
     expect(frame.samplesPerPoint).toBe(golden.header.samplesPerPoint);

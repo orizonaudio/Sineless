@@ -233,15 +233,10 @@ int Editor::minimumHeightFor(const engine::Settings& settings, int inputChannels
         lanes = std::popcount(engine::effectiveViews(
             static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)), inputChannels));
     } else {
-        // The tracks on show, and in the Compare view the sum lane, drawn once another track is
-        // compared with this one.
-        lanes = static_cast<int>(laneSet.lanes.size());
-        if (mode == protocol::DisplayMode::kCompare &&
-            std::ranges::any_of(laneSet.lanes, [](const engine::LaneLabel& lane) {
-                return lane.compared && !lane.own;
-            })) {
-            ++lanes;
-        }
+        // The tracks on show, and in the Compare view the sum lane, which is drawn whether or
+        // not another track is checked (alone, it is this track).
+        lanes = static_cast<int>(laneSet.lanes.size()) +
+                (mode == protocol::DisplayMode::kCompare ? 1 : 0);
     }
     return std::max(kMinimumHeight, kChromeHeight + lanes * kMinimumLaneHeight);
 }

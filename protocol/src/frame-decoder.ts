@@ -27,6 +27,8 @@ export interface Frame {
   // Musical context of a synced sweep, in quarter notes.
   readonly cycleStart: number;
   readonly cycleSeconds: number; // The left edge's project time.
+  // Frozen in Seconds mode: how far back the view can be panned (seconds); 0 otherwise.
+  readonly panReach: number;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
   // The part of the span this frame covers, and its length in samples.
@@ -138,6 +140,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     cursor: cursor >= 0 ? cursor : undefined,
     cycleStart: f32("cycleStart"),
     cycleSeconds: f32("cycleSeconds"),
+    panReach: f32("panReach"),
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
     viewStart: f32("viewStart"),

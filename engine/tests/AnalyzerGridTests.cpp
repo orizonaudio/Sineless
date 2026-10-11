@@ -138,6 +138,14 @@ public:
     }
 
     int channelCount;
+    // Writes `samples` more to one track's capture only, as if its audio arrived early.
+    void lead(std::size_t track, int samples)
+    {
+        std::vector<float> silence(static_cast<std::size_t>(samples), 0.1f);
+        std::array<const float*, 2> channels{silence.data(), silence.data()};
+        engines.at(track)->captureRing().write(channels.data(), 2, samples);
+    }
+
     InstanceRegistry registry;
     std::vector<std::shared_ptr<Engine>> engines;
     std::vector<double> frequencies;
@@ -193,15 +201,24 @@ std::vector<float> loudestPerTrace(const DecodedFrame& frame)
     return loudest;
 }
 
+std::vector<std::byte> lastProduced;
+
 std::optional<DecodedFrame> produceSome(Analyzer& analyzer, int attempts = 4)
 {
     std::vector<std::byte> bytes;
     for (int attempt = 0; attempt < attempts; ++attempt) {
         if (analyzer.produce(bytes)) {
+            lastProduced = bytes;
             return decode(bytes);
         }
     }
     return std::nullopt;
+}
+
+// The bytes of the last frame produceSome returned.
+const std::vector<std::byte>& lastBytes(const Analyzer& /*analyzer*/)
+{
+    return lastProduced;
 }
 
 class AnalyzerGrid : public ::testing::TestWithParam<Case>
@@ -288,6 +305,56 @@ std::vector<Case> rampCases()
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryView, TempoRamp, ::testing::ValuesIn(rampCases()), testName);
+
+// A view at the zoom limit can come out a few ulps narrower in the UI's floating point: the engine
+// still takes it.
+TEST(AnalyzerLimits, AcceptsAViewAtTheZoomLimit)
+{
+    Tracks tracks(2);
+    configure(tracks.own(), DisplayMode::kSingle, TimeBase::kSeconds);
+    Analyzer analyzer(tracks.own(), tracks.registry);
+    analyzer.setColumns(400);
+    tracks.play(9600);
+    const double start = 0.3;
+    analyzer.setView(start, start + (protocol::kMinimumViewWidth - 1e-15));
+    const auto frame = produceSome(analyzer);
+    ASSERT_TRUE(frame);
+    EXPECT_NEAR(frame->viewEnd - frame->viewStart, protocol::kMinimumViewWidth, 1e-6);
+}
+
+// Frozen in Seconds mode and panned as far back as the frame says it can be, every lane still
+// holds the span, though another track's capture runs ahead of this one's.
+// Switching to Beats then makes frames only when something changes.
+TEST(AnalyzerLimits, PansFrozenLanesToTheReportedReach)
+{
+    Tracks tracks(2);
+    configure(tracks.own(), DisplayMode::kMulti, TimeBase::kSeconds);
+    tracks.own().settings().set(SettingId::kTimeSpan, 2.0); // Two seconds to pan back through.
+    Analyzer analyzer(tracks.own(), tracks.registry);
+    analyzer.setColumns(400);
+    for (int step = 0; step < 700; ++step) { // Seven seconds.
+        tracks.play(kBlock);
+        produceSome(analyzer, 1);
+    }
+    tracks.lead(1, kBlock * 4); // The other track's capture is four blocks ahead.
+    analyzer.setFrozen(true);
+    auto frame = produceSome(analyzer);
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(protocol::FrameFlag::kFrozen));
+    const auto reach = get<float>(lastBytes(analyzer), protocol::FrameHeader::kPanReachOffset);
+    EXPECT_GT(reach, 0.0f);
+    analyzer.setPan(reach);
+    frame = produceSome(analyzer);
+    ASSERT_TRUE(frame);
+    for (const float loudest : loudestPerTrace(*frame)) {
+        EXPECT_GT(loudest, 0.01f) << "a lane is blank at the reach";
+    }
+
+    tracks.own().settings().set(SettingId::kTimeBase, static_cast<double>(TimeBase::kBeats));
+    produceSome(analyzer);
+    std::vector<std::byte> bytes;
+    EXPECT_FALSE(analyzer.produce(bytes)) << "frames made with nothing new";
+}
 
 } // namespace
 } // namespace orizon::engine

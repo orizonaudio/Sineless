@@ -38,6 +38,8 @@ struct FrameHeaderValues
     // Compare frames (flag kCompared): the summing gain of the compared tracks, and with the fix.
     float sumGain = 0.0f;
     float fixedGain = 0.0f;
+    // Frozen in Seconds mode: how far back the view can be panned, in seconds; 0 otherwise.
+    float panReach = 0.0f;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,

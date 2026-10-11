@@ -73,8 +73,9 @@ void PrintTo(const Case& c, std::ostream* out)
          << (c.compared ? " compared" : "");
 }
 
-// The traces the page draws for a case, as the product describes it: one per view on show (a
-// mono track shows one), one per track, and the Compare sum once something is compared.
+// The traces the page draws for a case, as the analyzer draws them: one per view on show (a mono
+// track shows one), one per track, and in Compare the sum lane, which stays even with nothing else
+// checked (see the analyzer test SumsThisTrackAloneWhenNothingElseIsChecked).
 int tracesDrawn(const Case& c)
 {
     switch (c.mode) {
@@ -83,7 +84,7 @@ int tracesDrawn(const Case& c)
     case DisplayMode::kMulti:
         return c.tracks;
     default:
-        return c.tracks + (c.compared ? 1 : 0);
+        return c.tracks + 1;
     }
 }
 

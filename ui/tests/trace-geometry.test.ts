@@ -38,6 +38,7 @@ function frame(
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,
+    panReach: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,
@@ -109,23 +110,53 @@ describe("cancellation bands", () => {
   });
   const both = [true, true];
 
-  test("shade where the sum falls 1 dB below what unrelated tracks would give", () => {
-    // Unrelated, 0.5 and 0.4 sum to about 0.64: 0.6 is within 1 dB, 0.5 is 2 dB below it.
-    const near = cancellationBands(
-      compareFrame([-0.6, 0.6, -0.6, 0.6, -0.6, 0.6, -0.6, 0.6]),
-      layout,
-      both,
-    );
-    expect(near).toHaveLength(0);
-    const below = cancellationBands(
-      compareFrame([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5]),
-      layout,
-      both,
-    );
-    expect(below).toHaveLength(12);
+  test("leave unrelated noise unshaded", () => {
+    let seed = 11;
+    const noise = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648 - 0.5;
+    };
+    const columns = 2000;
+    const a: number[] = [];
+    const b: number[] = [];
+    const sum: number[] = [];
+    for (let column = 0; column < columns; column++) {
+      let lowA = 0,
+        highA = 0,
+        lowB = 0,
+        highB = 0,
+        lowS = 0,
+        highS = 0;
+      for (let i = 0; i < 20; i++) {
+        const x = noise();
+        const y = noise();
+        lowA = Math.min(lowA, x);
+        highA = Math.max(highA, x);
+        lowB = Math.min(lowB, y);
+        highB = Math.max(highB, y);
+        lowS = Math.min(lowS, x + y);
+        highS = Math.max(highS, x + y);
+      }
+      a.push(lowA, highA);
+      b.push(lowB, highB);
+      sum.push(lowS, highS);
+    }
+    const unrelated = {
+      ...frame(FrameMode.minMax, [[ChannelView.left, a]]),
+      views: new Map(),
+      lanes: [new Float32Array(a), new Float32Array(b), new Float32Array(sum)],
+      comparison: { sumGain: 0, fixedGain: 0, matches: [] },
+    };
+    const shaded = xs(cancellationBands(unrelated, layout, both));
+    // Quads span columns: the share of the lane's width they cover.
+    let covered = 0;
+    for (let quad = 0; quad < shaded.length; quad += 6) {
+      covered += Math.abs((shaded[quad + 1] ?? 0) - (shaded[quad] ?? 0)) / 2;
+    }
+    expect(covered).toBeLessThan(0.02);
   });
 
-  test("shade only the columns that cancel", () => {
+  test("shade where the sum falls 3 dB below the louder track", () => {
     // Columns 1 and 2 cancel (0.1 against 0.5); 0 and 3 do not.
     const bands = cancellationBands(
       compareFrame([-0.9, 0.9, -0.1, 0.1, -0.1, 0.1, -0.9, 0.9]),

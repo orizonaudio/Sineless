@@ -13,7 +13,7 @@ struct PairAnalysis
     // levels would give, in dB: 0 harmless, about +3 for identical signals, below 0 when they
     // cancel.
     double sumGain = 0.0;
-    // False when the two never sound together above the silence floor: nothing was measured, and
+    // False when the two never sound together above the analysis gate: nothing was measured, and
     // the rest holds its defaults.
     bool measured = false;
     double correlation = 0.0; // -1 to +1, at no offset.
@@ -42,13 +42,14 @@ struct PairAnalysis
 [[nodiscard]] double energyOf(std::span<const float> values);
 
 // How loud a sum of tracks is against the same tracks unrelated, in dB: the sum's energy against
-// `partsEnergy`, the tracks' energies added. 0 when the tracks are silent.
+// `partsEnergy`, the tracks' energies added. NaN when the tracks are silent: nothing to measure.
 [[nodiscard]] double summingGain(double sumEnergy, double partsEnergy);
 
 // The summing gain of `tracks` (equal length) where at least two of them sound together, so that
 // stretches where one plays alone do not water it down: over blocks of `block` samples in which
 // the second-loudest track is within 20 dB of the loudest, leaving out blocks more than 60 dB
-// below the loudest block or below the silence floor. 0 when they never sound together.
+// below the loudest block or at or below the analysis gate. 0 for fewer than two tracks (the sum
+// is the track); NaN when they never sound together: nothing was measured.
 [[nodiscard]] double overlapGain(std::span<const std::span<const float>> tracks, std::size_t block);
 
 // The same gain from energies kept per block of `block` samples: `tracks` holds each track's

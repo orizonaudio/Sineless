@@ -51,10 +51,11 @@ describe("format", () => {
     expect(formatDbfs(1)).toBe("0.0");
     expect(formatDbfs(0.5)).toBe(`${minus}6.0`);
     expect(formatDbfs(0)).toBe(`${minus}∞`);
-    expect(formatDbfs(1.2e-5)).toBe(`${minus}98.4`);
-    expect(formatDbfs(1e-5)).toBe(`${minus}∞`); // −100 dB
-    expect(formatDbfs(9.9958e-6)).toBe(`${minus}∞`); // Rounds to −100.0.
-    expect(formatDbfs(1e-7)).toBe(`${minus}∞`);
+    expect(formatDbfs(1e-5)).toBe(`${minus}100.0`);
+    expect(formatDbfs(1.2e-6)).toBe(`${minus}118.4`);
+    expect(formatDbfs(1e-6)).toBe(`${minus}∞`); // −120 dB
+    expect(formatDbfs(9.9958e-7)).toBe(`${minus}∞`); // Rounds to −120.0.
+    expect(formatDbfs(1e-8)).toBe(`${minus}∞`);
     expect(formatDbfs(Number.NaN)).toBe("—");
     expect(formatDbfs(Infinity)).toBe("—");
     expect(formatDb(0)).toBe("0 dB");
@@ -78,7 +79,9 @@ describe("format", () => {
     expect(formatGain(-6.02)).toBe(`${minus}6.0`);
     expect(formatGain(3)).toBe("+3.0");
     expect(formatGain(-99.9)).toBe(`${minus}99.9`);
-    expect(formatGain(-100)).toBe(`${minus}∞`);
+    expect(formatGain(-100)).toBe(`${minus}100.0`);
+    expect(formatGain(-139.9)).toBe(`${minus}139.9`);
+    expect(formatGain(-140)).toBe(`${minus}∞`);
     expect(formatGain(-332.2)).toBe(`${minus}∞`);
     expect(formatGain(-151.8)).toBe(`${minus}∞`);
     expect(formatGain(Number.NaN)).toBe("—");
@@ -108,7 +111,8 @@ describe("format", () => {
     expect(formatSamples(9999.96)).toBe("10000 samples");
     expect(formatDbfs(0.999)).toBe("0.0");
     expect(formatDbfs(0.99)).toBe(`${minus}0.1`);
-    expect(formatOffset(1000 / 48000)).toBe("+0.02 ms");
+    expect(formatOffset(1000 / 48000)).toBe("+0.021 ms"); // One sample at 48 kHz.
+    expect(formatOffset(1000 / 384000)).toBe("+0.0026 ms"); // One sample at 384 kHz.
     expect(formatOffset(-1.5)).toBe(`${minus}1.5 ms`);
     expect(formatOffset(0.996)).toBe("+1.0 ms");
     expect(formatOffset(0)).toBe("0.0 ms");
@@ -279,6 +283,7 @@ describe("status chips", () => {
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,
+    panReach: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

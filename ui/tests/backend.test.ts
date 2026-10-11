@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import golden from "../../protocol/tests/data/golden-frame.json" with { type: "json" };
+import { protocolVersion } from "../../protocol/src/version.ts";
 import { Backend } from "../src/bridge/backend.ts";
 import type { ControlMessage, Transport } from "../src/bridge/transport.ts";
 
@@ -54,7 +55,7 @@ describe("backend", () => {
     expect(transport.sent.at(-2)).toMatchObject({ ids: [3, 5] });
     expect(transport.sent.at(-1)).toMatchObject({ on: true });
     expect(transport.sent[0]).toMatchObject({
-      protocolVersion: 1,
+      protocolVersion,
       viewWidth: 640,
       pixelRatio: 2,
     });

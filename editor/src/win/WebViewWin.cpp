@@ -447,7 +447,9 @@ void WebViewWin::processFailed(ICoreWebView2ProcessFailedEventArgs* args)
         frameDeferral.Reset();
     }
     isEditableFocused = false;
-    core->Reload(); // The new page says hello and gets the session's state again.
+    // Loaded afresh, not reloaded: a page that never finished loading has nothing to reload. The
+    // new page says hello and gets the session's state again.
+    core->Navigate(kStartUrl);
 }
 
 // The container's text, centred in the system's message font at the window's DPI.

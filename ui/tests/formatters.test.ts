@@ -8,7 +8,6 @@ import { maxLanes } from "../../protocol/src/limits.ts";
 import { levelReadout } from "../src/view/cursors.ts";
 import { numberFields } from "../src/view/fields.ts";
 import {
-  formatClock,
   formatDbfs,
   formatFrequency,
   formatGain,
@@ -17,6 +16,7 @@ import {
   formatSeconds,
   parseQuantity,
 } from "../src/view/format.ts";
+import * as format from "../src/view/format.ts";
 import { laneStyles, sumLaneColour } from "../src/view/lanes.ts";
 
 const minus = "−";
@@ -37,14 +37,14 @@ const linearFormatters = {
     levelReadout({ first: linear, second: 0.5 })[0] ?? "",
 };
 const linearValues = [
-  0, 1e-45, 1e-10, 1e-5, 9.9958e-6, 1.2e-5, 0.5, 0.999, 1, 2,
+  0, 1e-45, 1e-10, 1e-6, 9.9958e-7, 1.2e-6, 1e-5, 0.5, 0.999, 1, 2,
 ];
 
 describe.each(Object.entries(linearFormatters))("%s", (_, format) => {
   test.each(linearValues)("is readable at %s", (value) => {
     expectReadable(format(value));
   });
-  test.each([0, 1e-45, 1e-10, 1e-5])(
+  test.each([0, 1e-45, 1e-10, 1e-6])(
     "reads −∞ at or below the floor (%s)",
     (value) => {
       expect(format(value)).toContain(`${minus}∞`);
@@ -56,13 +56,22 @@ describe.each(Object.entries(linearFormatters))("%s", (_, format) => {
 });
 
 describe("formatGain", () => {
-  test.each([-Infinity, -332.2, -151.8, -100, -99.96, -0.04, 0, 0.04, 3, 30])(
-    "is readable at %s dB",
-    (db) => {
-      expectReadable(formatGain(db));
-    },
-  );
-  test.each([-Infinity, -332.2, -151.8, -100, -99.96])(
+  test.each([
+    -Infinity,
+    -332.2,
+    -151.8,
+    -140,
+    -139.96,
+    -100,
+    -0.04,
+    0,
+    0.04,
+    3,
+    30,
+  ])("is readable at %s dB", (db) => {
+    expectReadable(formatGain(db));
+  });
+  test.each([-Infinity, -332.2, -151.8, -140, -139.96])(
     "reads −∞ at %s dB",
     (db) => {
       expect(formatGain(db)).toBe(`${minus}∞`);
@@ -70,19 +79,18 @@ describe("formatGain", () => {
   );
 });
 
-// Every formatter, given something that is not a number.
-const allFormatters = {
-  formatDbfs,
-  formatGain,
-  formatSeconds,
-  formatOffset,
-  formatSamples,
-  formatClock,
-  formatFrequency,
-};
-describe.each(Object.entries(allFormatters))("%s", (_, format) => {
+// Every formatter the module exports, given something that is not a number: taken from the
+// module itself, so a new formatter is checked as it is added.
+const allFormatters = Object.entries(format).filter(
+  (entry): entry is [string, (value: number) => string] =>
+    entry[0].startsWith("format") && typeof entry[1] === "function",
+);
+test("finds the formatters", () => {
+  expect(allFormatters.length).toBeGreaterThanOrEqual(10);
+});
+describe.each(allFormatters)("%s", (_, formatValue) => {
   test.each(notNumbers)("shows a dash for %s", (value) => {
-    expect(format(value)).toBe("—");
+    expect(formatValue(value)).toBe("—");
   });
 });
 

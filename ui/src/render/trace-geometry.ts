@@ -5,7 +5,6 @@
 import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { fullView, type ViewWindow } from "../view/zoom.ts";
-import { summingMarginDb } from "../../../protocol/src/limits.ts";
 
 export interface TraceLayout {
   readonly widthPixels: number; // Device pixels.
@@ -79,10 +78,14 @@ function pushQuad(
 }
 
 // Compare frames hold the group's tracks and then the sum of the compared ones. Where the sum's
-// peak level falls more than summingMarginDb below the root-sum-square of the compared tracks'
-// peaks (what unrelated tracks would sum to), they cancel: these spans of the sum's lane, as
-// quads. `compared` marks the compared tracks in lane order.
-const cancellationRatio = 10 ** (-summingMarginDb / 20);
+// peak falls more than 3 dB below the louder compared track's, they cancel strongly: these spans
+// of the sum's lane, as quads. `compared` marks the compared tracks in lane order.
+//
+// This is not the summing gain readout's rule (energy against unrelated tracks, ±1 dB), and
+// cannot be: a column holds only peaks, and the peak of two unrelated signals' sum wanders well
+// below what their powers add to (on 10 to 30% of columns of noise), which would shade unrelated
+// tracks. Against the louder track alone, with 3 dB, unrelated tracks are left unshaded.
+const cancellationRatio = 10 ** (-3 / 20);
 const quietRatio = 0.05; // About -26 dB.
 const bridgedGap = 3; // Points.
 
@@ -129,19 +132,16 @@ export function cancellationBands(
     return new Float32Array();
   }
   const levelSum = peaks(frame, sum);
-  const unrelated = new Float32Array(frame.pointCount);
+  const louder = new Float32Array(frame.pointCount);
   for (const track of tracks) {
     peaks(frame, track).forEach((level, point) => {
-      unrelated[point] = (unrelated[point] ?? 0) + level * level;
+      louder[point] = Math.max(louder[point] ?? 0, level);
     });
   }
-  unrelated.forEach((power, point) => {
-    unrelated[point] = Math.sqrt(power);
-  });
   // Quiet stretches (more than about 26 dB below the loudest moment) cancel nothing audible.
-  const audible = quietRatio * Math.max(0, ...unrelated);
+  const audible = quietRatio * Math.max(0, ...louder);
   const cancelling = Array.from(
-    unrelated,
+    louder,
     (level, point) =>
       level > audible && (levelSum[point] ?? 0) < cancellationRatio * level,
   );

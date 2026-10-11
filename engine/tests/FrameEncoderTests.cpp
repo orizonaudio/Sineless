@@ -53,6 +53,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .laneSet = header["laneSet"].get<std::uint32_t>(),
         .sumGain = header["sumGain"].get<float>(),
         .fixedGain = header["fixedGain"].get<float>(),
+        .panReach = header["panReach"].get<float>(),
     };
 }
 

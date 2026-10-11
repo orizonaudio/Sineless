@@ -8,7 +8,7 @@ import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
   crossingHysteresis,
   periodTolerance,
-  silenceFloorDb,
+  analysisGateDbfs,
 } from "../../../protocol/src/limits.ts";
 import {
   columnPosition,
@@ -27,8 +27,8 @@ import {
 import { musicalPosition } from "./musical-grid.ts";
 import { toFrame, toScreen, type ViewWindow } from "./zoom.ts";
 
-// A peak-to-peak range at the silence floor: quieter signals have no cycles.
-const silentRange = 10 ** (silenceFloorDb / 20);
+// An RMS level at the analysis gate: quieter signals have no cycles, as in the engine.
+const gateLevel = 10 ** (analysisGateDbfs / 20);
 
 export interface HoverTrace {
   readonly name: string;
@@ -74,7 +74,7 @@ export function traceAt(
 // Span positions (0 to 1) where `values` rises through its mean level, by the engine's rule for
 // its frequency readout: only after first falling `crossingHysteresis` of the peak-to-peak range
 // below it, so noise riding on a crossing does not count twice. None for a signal at or below
-// the silence floor. Min/max columns cross inside a column that spans the level, entered from
+// the analysis gate. Min/max columns cross inside a column that spans the level, entered from
 // below, or at the edge between a column wholly below it and one wholly above.
 export function risingCrossings(frame: Frame, values: Float32Array): number[] {
   const crossings: number[] = [];
@@ -83,14 +83,16 @@ export function risingCrossings(frame: Frame, values: Float32Array): number[] {
   let lowest = Infinity;
   let highest = -Infinity;
   let total = 0;
+  let squares = 0;
   for (let index = 0; index < count; index++) {
     const value = values[index] ?? 0;
     lowest = Math.min(lowest, value);
     highest = Math.max(highest, value);
     total += value;
+    squares += value * value;
   }
   const range = highest - lowest;
-  if (!(range > silentRange)) {
+  if (!(Math.sqrt(squares / count) > gateLevel) || !(range > 0)) {
     return crossings;
   }
   const level = total / count;

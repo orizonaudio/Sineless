@@ -23,22 +23,29 @@ using protocol::SettingId;
 
 namespace {
 
-// Samples a freeze holds, of this track and of every lane alike. In Beats mode, the newest audio
-// the capture can spare (a margin for the audio thread, which writes on), so that a longer beat
-// span chosen while frozen has its audio; in Seconds mode, the 4 s a view can show or pan back
-// through.
-std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool synced)
+// In Seconds mode a freeze holds the longest span, which the view can be panned back through. The
+// lanes of other tracks hold this much more: their captures can run a little ahead of or behind
+// this one's, and each must still cover the whole span with the view panned as far back as this
+// track's hold allows.
+constexpr double kLaneMarginSeconds = 1.0;
+
+// Samples a freeze holds. In Beats mode, the newest audio the capture can spare (a margin for the
+// audio thread, which writes on), so that a longer beat span chosen while frozen has its audio;
+// in Seconds mode, the longest span, and for another track's lane the margin above.
+std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool synced,
+                           bool lane = false)
 {
     if (synced) {
         return ring.capacity() - ring.capacity() / 8;
     }
-    return std::min<std::uint64_t>(
-        static_cast<std::uint64_t>(std::llround(HoldBuffer::kHoldSeconds * sampleRate)),
-        ring.capacity());
+    const double seconds = HoldBuffer::kHoldSeconds + (lane ? kLaneMarginSeconds : 0.0);
+    return std::min<std::uint64_t>(static_cast<std::uint64_t>(std::llround(seconds * sampleRate)),
+                                   ring.capacity());
 }
 
-// The narrowest view accepted: the UI zooms no further.
-constexpr double kMinimumViewWidth = protocol::kMinimumViewWidth;
+// The narrowest view accepted: as far as the UI zooms. The UI computes its views in floating
+// point, so one at the limit can come out a few ulps narrower; those are accepted too.
+constexpr double kMinimumViewWidth = protocol::kMinimumViewWidth * (1.0 - 1e-9);
 
 constexpr std::uint8_t flag(FrameFlag value)
 {
@@ -402,6 +409,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         const auto earliestStart = static_cast<double>(hold.beginIndex());
         window.start = std::clamp(anchor - anchorOffset - command.panSeconds * sampleRate,
                                   earliestStart, std::max(earliestStart, latestStart));
+        // The UI keeps its pan within this, so it never asks for more than is held.
+        window.panReach = std::max(0.0, (anchor - anchorOffset - earliestStart) / sampleRate);
         window.triggered = lastLive && lastLive->triggered;
     } else if (roll) {
         // Zoomed, the roll window covers only the visible part, so its columns keep fixed
@@ -468,14 +477,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         lastLive = window;
     }
     lastShown = window;
-    lastSettings = settings;
-    lastColumns = command.columns;
-    lastPan = command.panSeconds;
-    lastViewStart = command.viewStart;
-    lastViewEnd = command.viewEnd;
-    lastFrozen = isFrozen;
-    lastLaneSet = laneSetId;
-    lastPreviewFix = command.previewFix;
+    rememberInputs(settings, command, laneSetId);
     if (freezeAfterRender) {
         freeze(sampleRate);
         lastFrozen = isFrozen; // The frame just sent already shows the held window.
@@ -517,7 +519,8 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         .cycleSeconds = static_cast<float>(window.cycleSeconds),
         .viewStart = static_cast<float>(window.viewStart),
         .viewEnd = static_cast<float>(window.viewEnd),
-        .visibleSamples = static_cast<float>(visibleSamples)};
+        .visibleSamples = static_cast<float>(visibleSamples),
+        .panReach = static_cast<float>(window.panReach)};
     frameData.clear();
     std::size_t pointCount = 0;
     // Each view keeps its columns from frame to frame where it can: a tempo-synced sweep reduces
@@ -525,10 +528,8 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     // scrolled in. A triggered window is new every time.
     const bool synced = window.synced && &source == &image;
     // Readouts measure the trigger source, whose control is there in Seconds mode; in Beats mode,
-    // where nothing triggers, the first view on show.
-    const ChannelView readoutView =
-        synced ? static_cast<ChannelView>(std::countr_zero(static_cast<unsigned>(views)))
-               : triggerView;
+    // where nothing triggers, the Mid, as the multi-track lanes do.
+    const ChannelView readoutView = synced ? ChannelView::kMid : triggerView;
     const bool rolling = window.roll && !window.synced && window.cropStart == 0.0 &&
                          window.cropEnd == 1.0 && columns > 0 && sampleCount % columns == 0 &&
                          sampleCount > columns;
@@ -775,7 +776,8 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& co
         const CaptureRing& ring = lane->engine->captureRing();
         if (isFrozen && !lane->hold.held()) {
             lane->hold.capture(*lane->engine,
-                               frozenLength(ring, lane->engine->sampleRate(), synced), scratch);
+                               frozenLength(ring, lane->engine->sampleRate(), synced, true),
+                               scratch);
         } else if (!isFrozen && lane->hold.held()) {
             lane->hold.release();
         }
@@ -794,8 +796,22 @@ Analyzer::Commands Analyzer::peekCommands()
     return commands;
 }
 
-// Whether anything that decides a frame, other than new audio, differs from the last frame's:
-// one list for every mode and time base, so that a new input is never missed in one of them.
+// Whether anything that decides a frame, other than new audio, differs from the last frame's, and
+// recording them once a frame is made: one list for every mode and time base, read and written in
+// one place, so that a new input is never missed in one of them.
+void Analyzer::rememberInputs(const Settings& settings, const Commands& command,
+                              std::uint32_t laneSetId)
+{
+    lastSettings = settings;
+    lastColumns = command.columns;
+    lastPan = command.panSeconds;
+    lastViewStart = command.viewStart;
+    lastViewEnd = command.viewEnd;
+    lastFrozen = isFrozen;
+    lastLaneSet = laneSetId;
+    lastPreviewFix = command.previewFix;
+}
+
 bool Analyzer::inputsChanged(const Settings& settings, const Commands& command,
                              std::uint32_t laneSetId) const
 {
@@ -846,9 +862,14 @@ std::uint64_t Analyzer::sharedLength(std::uint64_t serial, const SweepWindow& sw
     if (serial == ownLane || found == lanes.end()) {
         return sweep.sampleCount;
     }
+    // Within a sample too: a short sweep's image keeps no drift of its own, but its lane would
+    // stay blank for being one sample off this track's.
     const std::uint64_t ownLength = found->second->image.length();
-    return ownLength != 0 && sweepLengthsSimilar(sweep.sampleCount, ownLength) ? ownLength
-                                                                               : sweep.sampleCount;
+    const std::uint64_t apart =
+        std::max(sweep.sampleCount, ownLength) - std::min(sweep.sampleCount, ownLength);
+    return ownLength != 0 && (apart <= 1 || sweepLengthsSimilar(sweep.sampleCount, ownLength))
+               ? ownLength
+               : sweep.sampleCount;
 }
 
 void Analyzer::advance()
@@ -1060,13 +1081,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
 
     encodeFrame(header, frameData, frame);
     ++sequence;
-    lastSettings = settings;
-    lastColumns = command.columns;
-    lastViewStart = command.viewStart;
-    lastViewEnd = command.viewEnd;
-    lastFrozen = isFrozen;
-    lastLaneSet = laneSetId;
-    lastPreviewFix = command.previewFix;
+    rememberInputs(settings, command, laneSetId);
     return true;
 }
 
@@ -1098,7 +1113,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         .viewStart = static_cast<float>(window.viewStart),
         .viewEnd = static_cast<float>(window.viewEnd),
         .visibleSamples = static_cast<float>(crop.visibleSamples),
-        .laneSet = laneSet().id};
+        .laneSet = laneSet().id,
+        .panReach = static_cast<float>(window.panReach)};
     // Where each lane's part of the window starts in its own capture (or hold).
     const auto sourceOf =
         [&](std::uint64_t serial) -> std::pair<const SampleSource*, std::uint64_t> {
@@ -1600,15 +1616,16 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     if (const auto lane = matchToSearch(header.laneSet, first, end, count, now)) {
         matchOwn.resize(end - searchFirst);
         matchTrack.resize(end - searchFirst);
-        // A failed read (a capture overwritten during the copy) leaves the match as it was, to be
-        // searched again on the next frame rather than kept from partly silent audio.
+        // A failed read (a capture overwritten during the copy, or not holding this audio yet)
+        // keeps the match as it was rather than one from partly silent audio; it still counts as
+        // this track's turn, so the others are searched before it is tried again.
+        MatchState& state = matchStates[laneOrder[*lane]];
         if (readLaneWindow(ownIndex, searchFirst, matchOwn) &&
             readLaneWindow(*lane, searchFirst, matchTrack)) {
-            matchStates[laneOrder[*lane]] = {
-                .analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch),
-                .analysedAt = now};
+            state.analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch);
             searched = true;
         }
+        state.analysedAt = now;
     }
 
     // The compared tracks as parts of the sum: as recorded, and shifted and flipped as matched.
@@ -1667,23 +1684,21 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         fixedLanes.resize(laneOrder.size());
         rawTracks.clear();
         fixedTracks.clear();
-        bool complete = true;
         for (std::size_t part = 0; part < rawParts.size(); ++part) {
             const std::size_t lane = rawParts[part].lane;
             std::vector<float>& samples = laneSamples[lane];
             samples.resize(visibleCount);
-            complete = readLaneWindow(lane, first, samples) && complete;
+            readLaneWindow(lane, first, samples);
             std::vector<float>& fixed = fixedLanes[lane];
             fixed.assign(fixedEnd - fixedFirst, 0.0f);
-            complete = addPart(fixedParts[part], fixedFirst, fixed) && complete;
+            addPart(fixedParts[part], fixedFirst, fixed);
             rawTracks.emplace_back(samples);
             fixedTracks.emplace_back(fixed);
         }
         comparisonCache.sumGain = static_cast<float>(overlapGain(rawTracks, block));
         comparisonCache.fixedGain = static_cast<float>(overlapGain(fixedTracks, block));
         comparisonCache.at = now;
-        // Measured from partly silent audio: shown this once, and measured again next frame.
-        comparisonCache.valid = complete;
+        comparisonCache.valid = true;
     }
 
     // The lanes' columns: rolling, each lane keeps its columns and reduces only those that

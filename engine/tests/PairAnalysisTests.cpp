@@ -193,7 +193,7 @@ TEST(PairAnalysis, CountsTheSummingGainWhereTracksOverlap)
     EXPECT_LT(overlapGain(tracks, kBlock), -60.0) << "where they meet, they cancel";
     const std::vector<float> silence(kLength, 0.0f);
     const std::array<std::span<const float>, 2> apart{a, silence};
-    EXPECT_EQ(overlapGain(apart, kBlock), 0.0) << "never together";
+    EXPECT_TRUE(std::isnan(overlapGain(apart, kBlock))) << "never together: nothing measured";
     const std::array<std::span<const float>, 1> alone{a};
     EXPECT_EQ(overlapGain(alone, kBlock), 0.0);
 }

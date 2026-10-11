@@ -409,11 +409,48 @@ TEST_F(EditorTest, StaysOnTheEmbeddedUi)
     ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
     auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
-    evaluate(webView, @"location.href = 'https://example.com/'; ''");
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:@"/tmp/page.html"]]];
-    pumpUntil([] { return false; }, std::chrono::milliseconds(500));
+    // Pages that load at once, with no network: without the guard they would replace the UI.
+    evaluate(webView, @"location.href = 'about:blank'; ''");
+    pumpUntil([] { return false; }, std::chrono::milliseconds(300));
+    [webView
+        loadRequest:[NSURLRequest
+                        requestWithURL:[NSURL URLWithString:@"data:text/html,<p>dropped</p>"]]];
+    pumpUntil([] { return false; }, std::chrono::milliseconds(300));
     EXPECT_STREQ(webView.URL.absoluteString.UTF8String, "orizon://ui/index.html");
     EXPECT_TRUE(hasSnapshot(webView)) << "still the UI";
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
+// A page process that keeps dying is not reloaded forever: after three reloads in a minute the
+// editor says so instead.
+TEST_F(EditorTest, ExplainsWhenThePageKeepsFailing)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    for (int reload = 0; reload < 3; ++reload) {
+        ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout))
+            << "reload " << reload;
+        ASSERT_TRUE(terminateContentProcessForTests(*editor->webView()));
+        pumpUntil([&] { return !hasSnapshot(webView); }, std::chrono::seconds(2));
+    }
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+    ASSERT_TRUE(terminateContentProcessForTests(*editor->webView()));
+    const auto noticeShown = [&] {
+        for (NSView* view in webView.superview.subviews) {
+            if ([view isKindOfClass:[NSTextField class]] && !view.hidden &&
+                [static_cast<NSTextField*>(view).stringValue containsString:@"keeps failing"]) {
+                return true;
+            }
+        }
+        return false;
+    };
+    EXPECT_TRUE(pumpUntil(noticeShown, std::chrono::seconds(5)));
+    EXPECT_TRUE(webView.hidden);
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
 }

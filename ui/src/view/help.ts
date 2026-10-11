@@ -3,6 +3,7 @@
 
 import {
   frequencyWindowSeconds,
+  levelFloorDbfs,
   matchReachSeconds,
   matchWindowSeconds,
   maxLanes,
@@ -22,6 +23,7 @@ const reach = formatSeconds(matchReachSeconds);
 const matchWindow = formatSeconds(matchWindowSeconds);
 const frequencyWindow = formatSeconds(frequencyWindowSeconds);
 const margin = String(summingMarginDb);
+const levelFloor = String(levelFloorDbfs).replace("-", "−");
 const shortestSpan = formatSeconds(settings.timeSpan.minimum);
 const longestSpan = formatSeconds(settings.timeSpan.maximum);
 const rollSpan = formatSeconds(rollThresholdSeconds);
@@ -51,7 +53,7 @@ export const helpTexts = {
   },
   sumGain: {
     title: "Summing gain",
-    text: `How loud the checked tracks are together, against unrelated signals of the same levels. Within ${margin} dB of 0 is harmless; above that they reinforce, and below it they cancel, shaded red in the sum's lane. Measured over the visible part, but only where at least two of them sound together, so a long view does not water down a short clash.`,
+    text: `How loud the checked tracks are together, against unrelated signals of the same levels. Within ${margin} dB of 0 is harmless; above that they reinforce, and below it they cancel. Where they cancel strongly, the sum's lane is shaded red. A dash means they never sound together. Measured over the visible part, but only where at least two of them sound together, so a long view does not water down a short clash.`,
   },
   match: {
     title: "Against this track",
@@ -71,15 +73,15 @@ export const helpTexts = {
   },
   peak: {
     title: "Peak",
-    text: "The highest sample level of the trigger channel over the whole span, in dBFS. Indicative, not a standards-compliant meter.",
+    text: `The highest sample level over the whole span, in dBFS: of the trigger source in Sec mode, and of the Mid in Beats mode. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
   },
   rms: {
     title: "RMS",
-    text: "The average power of the trigger channel over the whole span, in dBFS. Indicative, not a standards-compliant meter.",
+    text: `The average power over the whole span, in dBFS, measured like Peak: a full-scale sine reads −3 dB RMS. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
   },
   frequency: {
     title: "Frequency",
-    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average: of the trigger source in Sec mode, and of the top view in Beats mode. A dash means no steady repetition was found.`,
+    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average: of the trigger source in Sec mode, and of the Mid in Beats mode. A dash means no steady repetition was found.`,
   },
   screen: {
     title: "Screen",

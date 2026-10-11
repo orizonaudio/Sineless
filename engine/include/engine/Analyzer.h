@@ -147,6 +147,9 @@ private:
         double cropEnd = 1.0;
         double viewStart = 0.0;
         double viewEnd = 1.0;
+        // Frozen in Seconds mode: how far back the view can be panned (seconds), to the start of
+        // the held audio.
+        double panReach = 0.0;
         // Readouts always cover the whole span; 0 means the window itself.
         std::uint64_t readoutStart = 0;
         std::uint64_t readoutCount = 0;
@@ -180,6 +183,7 @@ private:
     // Live: places each lane's new audio into its sweep. True if any lane changed.
     [[nodiscard]] bool inputsChanged(const Settings& settings, const Commands& command,
                                      std::uint32_t laneSetId) const;
+    void rememberInputs(const Settings& settings, const Commands& command, std::uint32_t laneSetId);
     bool placeLanes(const Settings& settings, protocol::BeatSpan span);
     [[nodiscard]] std::uint64_t sharedLength(std::uint64_t serial, const SweepWindow& sweep) const;
     bool produceLanes(const Settings& settings, const Commands& command,

@@ -29,6 +29,7 @@ function frameOf(mode: FrameMode, pointCount: number): Frame {
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,
+    panReach: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,

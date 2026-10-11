@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace orizon::engine {
 
@@ -18,10 +19,10 @@ constexpr double kRelatedMatch = 0.3;
 // Overlap: tracks sound together within 20 dB of each other, and above 60 dB below the loudest.
 constexpr double kTogether = 0.01;
 constexpr double kAudible = 1e-6;
-// A track's mean power at the silence floor: quieter blocks are never analysed.
+// A track's mean power (RMS squared) at the analysis gate: quieter blocks are never analysed.
 double silentPower()
 {
-    return std::pow(10.0, protocol::kSilenceFloorDb / 10.0);
+    return std::pow(10.0, protocol::kAnalysisGateDbfs / 10.0);
 }
 
 // The dot product of a[0, count) and b[0, count). Eight independent float sums, so the compiler
@@ -125,7 +126,7 @@ std::vector<std::span<const double>> spansOf(const std::vector<std::vector<doubl
 
 // Which blocks hold at least two tracks sounding together, from each track's energy per block
 // of `block` samples (equal lengths): the second-loudest within 20 dB of the loudest, not more
-// than 60 dB below the loudest block, and above the silence floor. Empty when there are fewer
+// than 60 dB below the loudest block, and above the analysis gate. Empty when there are fewer
 // than two tracks.
 std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energies,
                                  std::size_t block)
@@ -182,7 +183,7 @@ double energyOf(std::span<const float> values)
 double summingGain(double sumEnergy, double partsEnergy)
 {
     if (partsEnergy <= 0.0) {
-        return 0.0;
+        return std::numeric_limits<double>::quiet_NaN();
     }
     return 10.0 * std::log10(std::max(sumEnergy, 1e-30) / partsEnergy);
 }
@@ -289,6 +290,9 @@ double overlapGain(std::span<const std::span<const float>> tracks, std::size_t b
 double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
                            std::span<const double> sums, std::size_t block)
 {
+    if (tracks.size() < 2) {
+        return 0.0; // One track alone: the sum is that track, as loud as itself.
+    }
     const std::vector<bool> together = togetherBlocks(tracks, block);
     double sum = 0.0;
     double parts = 0.0;

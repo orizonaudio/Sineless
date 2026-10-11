@@ -118,13 +118,13 @@ TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
     EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
 }
 
-// In Beats mode nothing triggers and the trigger source cannot be set: readouts measure the first
-// view on show instead.
-TEST_F(AnalyzerTest, MeasuresTheFirstShownViewInBeatsMode)
+// In Beats mode nothing triggers and the trigger source cannot be set: readouts measure the Mid,
+// as the multi-track lanes do, whatever views are on show.
+TEST_F(AnalyzerTest, MeasuresTheMidInBeatsMode)
 {
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
-    engine.settings().set(SettingId::kChannelViews, 0b0010); // R only; the source stays Mid.
+    engine.settings().set(SettingId::kChannelViews, 0b0010); // R only on show.
     analyzer.setColumns(300);
     std::uint64_t written = 0;
     std::optional<DecodedFrame> frame;
@@ -142,7 +142,7 @@ TEST_F(AnalyzerTest, MeasuresTheFirstShownViewInBeatsMode)
         }
     }
     ASSERT_TRUE(frame);
-    EXPECT_NEAR(frame->peak, 0.25f, 0.01f) << "R (half of L), not Mid (0.375)";
+    EXPECT_NEAR(frame->peak, 0.375f, 0.01f) << "Mid, (L + R) / 2, not R alone (0.25)";
 }
 
 TEST_F(AnalyzerTest, ProducesNothingUntilTheWidthIsKnown)

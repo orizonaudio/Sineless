@@ -59,6 +59,7 @@ export const frameHeaderFields = [
   { name: "sumGain", type: "f32" },
   { name: "fixedGain", type: "f32" },
   { name: "cycleSeconds", type: "f32" },
+  { name: "panReach", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

@@ -3,7 +3,6 @@
 import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
-  frozenHoldSeconds,
   minimumEditorWidth,
   readoutIntervalSeconds,
   summingMarginDb,
@@ -554,13 +553,25 @@ export class OscilloscopeApp {
   private updateMultiControls(): void {
     const multi = this.multiMode();
     for (const id of ["views", "source"]) {
-      const container = element(id);
-      container.classList.toggle("inactive", multi);
-      for (const button of container.querySelectorAll("button")) {
-        button.disabled = multi;
-      }
+      element(id).classList.toggle("inactive", multi);
     }
+    for (const button of element("source").querySelectorAll("button")) {
+      button.disabled = multi;
+    }
+    this.updateViewToggles();
     this.updateStatus();
+  }
+
+  // The view toggles: pressed as asked for; disabled in Multi and Compare, which show each
+  // track's Mid, and for R, M and S on a mono track, which would only repeat L. The one place
+  // that decides, for every case.
+  private updateViewToggles(): void {
+    const shown = this.shownViews();
+    const multi = this.multiMode();
+    for (const [view, button] of this.viewToggles) {
+      button.setAttribute("aria-pressed", String(shown.includes(view)));
+      button.disabled = multi || (this.inputChannels < 2 && view !== "left");
+    }
   }
 
   private updateTriggerControls(): void {
@@ -603,12 +614,7 @@ export class OscilloscopeApp {
       this.segmented.get(name)?.show(value);
     }
     if (name === "channelViews") {
-      const shown = this.shownViews();
-      for (const [view, button] of this.viewToggles) {
-        button.setAttribute("aria-pressed", String(shown.includes(view)));
-        // On a mono track R, M and S would only repeat L.
-        button.disabled = this.inputChannels < 2 && view !== "left";
-      }
+      this.updateViewToggles();
     }
     if (name === "triggerMode" || name === "timeBase") {
       this.updateTriggerControls();
@@ -946,6 +952,7 @@ export class OscilloscopeApp {
     this.drawnLaneCount = this.laneCount();
     this.placeLabels();
     this.placeLaneLabels();
+    this.placeTriggerMarker(); // It sits in a lane: lanes may have changed.
   }
 
   // Moves the sweep cursor, and redraws grid and labels when a new cycle starts.
@@ -1143,8 +1150,13 @@ export class OscilloscopeApp {
     if (lane !== undefined && this.layout() === ViewLayout.stacked) {
       return views[lane];
     }
-    const source =
-      ChannelView[this.store.get("triggerSource") as keyof typeof ChannelView];
+    // Overlaid, the channel the readouts measure: the trigger source, or the Mid in Beats mode,
+    // where the trigger does not apply; the first view if that one is not drawn.
+    const source = this.beatsMode()
+      ? ChannelView.mid
+      : ChannelView[
+          this.store.get("triggerSource") as keyof typeof ChannelView
+        ];
     return frame.views.get(source) ?? views[0];
   }
 
@@ -1551,11 +1563,10 @@ export class OscilloscopeApp {
     if (isZoomed(this.view)) {
       this.setView(panBy(this.view, screenWidths));
     } else if (this.lastFrame?.frozen === true && !this.lastFrame.synced) {
-      // No further back than the freeze holds: the engine stops there too.
+      // No further back than the engine says this frozen view reaches.
       const span = this.store.number("timeSpan");
-      const furthest = Math.max(0, frozenHoldSeconds - span);
       this.panSeconds = Math.min(
-        furthest,
+        this.lastFrame.panReach,
         Math.max(0, this.panSeconds - screenWidths * span),
       );
       this.backend.pan(this.panSeconds);

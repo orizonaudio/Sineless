@@ -482,7 +482,8 @@ void WebViewMac::processTerminated()
     }
     reloads.push_back(now);
     webView.hidden = YES; // Until the page is back.
-    [webView reload];
+    // Loaded afresh, not reloaded: a page that never finished loading has nothing to reload.
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:kStartUrl]]];
 }
 
 bool WebViewMac::terminateForTests()

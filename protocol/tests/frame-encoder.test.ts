@@ -18,7 +18,7 @@ test("encodes the golden frame byte for byte", () => {
     sequence: golden.header.sequence,
     mode: FrameMode.minMax,
     triggered: true,
-    frozen: false,
+    frozen: true,
     roll: false,
     pointCount: golden.header.pointCount,
     samplesPerPoint: golden.header.samplesPerPoint,
@@ -29,6 +29,7 @@ test("encodes the golden frame byte for byte", () => {
     viewStart: golden.header.viewStart,
     viewEnd: golden.header.viewEnd,
     visibleSamples: golden.header.visibleSamples,
+    panReach: golden.header.panReach,
     views: new Map([
       [ChannelView.mid, golden.views.mid],
       [ChannelView.left, golden.views.left],

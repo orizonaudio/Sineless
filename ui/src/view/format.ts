@@ -2,7 +2,7 @@
 // missing, or not a number (from a broken signal upstream), shows as a dash. Every formatter
 // rounds first and then chooses its unit and decimals, so a value just under a boundary ("999.96")
 // shows as the value it rounds to ("1000"), and none uses exponent notation.
-import { silenceFloorDb } from "../../../protocol/src/limits.ts";
+import { gainFloorDb, levelFloorDbfs } from "../../../protocol/src/limits.ts";
 
 const minus = "−";
 const none = "—";
@@ -38,12 +38,12 @@ export function signed(value: number, decimals: number): string {
   return (value < 0 ? minus : "+") + text;
 }
 
-// A summing gain in dB with one decimal, floored like levels.
+// A summing gain in dB with one decimal; −∞ at or below the gain floor.
 export function formatGain(db: number): string {
   if (Number.isNaN(db) || db === Infinity) {
     return none;
   }
-  return isBelowFloor(db) ? `${minus}∞` : signed(db, 1);
+  return isBelowFloor(db, gainFloorDb) ? `${minus}∞` : signed(db, 1);
 }
 
 // Seconds to three significant digits: "0.5 ms", "20 ms", "250 ms", "1.5 s".
@@ -58,8 +58,9 @@ export function formatSeconds(seconds: number): string {
   return `${significant(seconds, 3).replace("-", minus)} s`;
 }
 
-// A track's offset in milliseconds, signed, with two decimals below 1 ms so that a shift of a
-// sample or two still shows: "0.0 ms", "+0.02 ms", "−1.5 ms".
+// A track's offset in milliseconds, signed: one decimal from 1 ms, and below it two significant
+// digits, so that a shift of a single sample shows at any rate ("+0.021 ms" at 48 kHz, "+0.0026 ms"
+// at 384 kHz): "0.0 ms", "+0.52 ms", "−1.5 ms".
 export function formatOffset(milliseconds: number): string {
   if (!Number.isFinite(milliseconds)) {
     return none;
@@ -67,8 +68,11 @@ export function formatOffset(milliseconds: number): string {
   if (milliseconds === 0) {
     return "0.0 ms";
   }
-  const decimals = Math.abs(rounded(milliseconds, 2)) < 1 ? 2 : 1;
-  return `${signed(milliseconds, decimals)} ms`;
+  if (Number(significant(Math.abs(milliseconds), 2)) >= 1) {
+    return `${signed(milliseconds, 1)} ms`;
+  }
+  const text = significant(Math.abs(milliseconds), 2);
+  return `${milliseconds < 0 ? minus : "+"}${text} ms`;
 }
 
 // Project time as "m:ss.mmm", e.g. "1:04.512".
@@ -92,9 +96,10 @@ export function formatSamples(samples: number): string {
   return `${samples.toFixed(decimals)} samples`;
 }
 
-// Whether a level reads −∞: at or below the silence floor once rounded to the shown decimal.
-export function isBelowFloor(db: number): boolean {
-  return Math.round(db * 10) / 10 <= silenceFloorDb;
+// Whether `db` reads −∞: at or below `floor` once rounded to the shown decimal. Levels use the
+// level floor; summing gains, which are ratios, their own.
+export function isBelowFloor(db: number, floor = levelFloorDbfs): boolean {
+  return Math.round(db * 10) / 10 <= floor;
 }
 
 // Linear amplitude in dB (−Infinity for silence).
@@ -102,7 +107,7 @@ export function toDb(linear: number): number {
   return 20 * Math.log10(Math.abs(linear));
 }
 
-// Linear amplitude as dBFS with one decimal; −∞ at or below the silence floor.
+// Linear amplitude as dBFS with one decimal; −∞ at or below the level floor.
 export function formatDbfs(linear: number): string {
   if (!Number.isFinite(linear)) {
     return none;
@@ -117,6 +122,9 @@ export function formatDbfs(linear: number): string {
 
 // A level in dB without the unit: "0", "+3", "−7.5".
 export function formatDbValue(db: number): string {
+  if (!Number.isFinite(db)) {
+    return none;
+  }
   const rounded = Math.round(db * 10) / 10;
   return rounded === 0
     ? "0"
@@ -124,7 +132,7 @@ export function formatDbValue(db: number): string {
 }
 
 export function formatDb(db: number): string {
-  return `${formatDbValue(db)} dB`;
+  return Number.isFinite(db) ? `${formatDbValue(db)} dB` : none;
 }
 
 // Frequency readout: approximate, or a dash when unavailable.
@@ -137,6 +145,9 @@ export function formatFrequency(hertz: number | undefined): string {
 
 // A reference pitch, to a tenth of a hertz without trailing zeros: "440", "441.5".
 export function formatPitch(hertz: number): string {
+  if (!Number.isFinite(hertz)) {
+    return none;
+  }
   return trim(hertz.toFixed(1));
 }
 

@@ -2,9 +2,22 @@
 // generated from this list (see cpp-generator.ts), so neither side keeps a copy of its own.
 import { settings } from "./settings.ts";
 
-// The level, in dBFS, at or below which audio counts as silence: readouts show minus infinity,
-// and analysis leaves it out. Only silence, dither or a cancelled sum's residue is that quiet.
-export const silenceFloorDb = -100;
+// Three different "too quiet" limits, for three different quantities. For scale: 16-bit dither is
+// about -96 dBFS RMS, converter and analog noise floors -110 to -120, 24-bit dither about -144,
+// and the residue of a polarity flip after a float gain round trip about -150.
+//
+// Level readouts (peak, RMS, hover, level cursors) show minus infinity at or below this level
+// (dBFS): converter noise floors still read as numbers; 24-bit dither and digital residue do not.
+export const levelFloorDbfs = -120;
+
+// A summing gain (a ratio: the sum against unrelated tracks of the same levels, in dB) shows
+// minus infinity at or below this: a deep but real null shows its depth, while what is left of
+// an exact cancellation after float rounding reads as none.
+export const gainFloorDb = -140;
+
+// Analysis leaves out audio whose RMS level (dBFS) is at or below this: Compare does not match
+// tracks there, and the frequency readout finds no pitch there. 16-bit dither falls below it.
+export const analysisGateDbfs = -90;
 
 // How a signal's cycles are found, for its frequency: where it rises through its mean level,
 // after first falling this fraction of its peak-to-peak range below it, so noise riding on a
@@ -62,7 +75,9 @@ export const limits: readonly {
   readonly value: number;
   readonly kind: Kind;
 }[] = [
-  { name: "silenceFloorDb", value: silenceFloorDb, kind: "double" },
+  { name: "levelFloorDbfs", value: levelFloorDbfs, kind: "double" },
+  { name: "gainFloorDb", value: gainFloorDb, kind: "double" },
+  { name: "analysisGateDbfs", value: analysisGateDbfs, kind: "double" },
   { name: "crossingHysteresis", value: crossingHysteresis, kind: "double" },
   { name: "periodTolerance", value: periodTolerance, kind: "double" },
   { name: "frozenHoldSeconds", value: frozenHoldSeconds, kind: "double" },
