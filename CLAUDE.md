@@ -77,6 +77,9 @@ checks you could not run.
 - Work on a branch and open a pull request; do not push to `main`.
 - Commit messages: a short imperative subject in plain English, then what was wrong, for
   whom, and what changed.
+- Commits and pull requests carry no AI attribution: no `Co-Authored-By: Claude` or
+  `Claude-Session:` trailers and no "Generated with Claude Code" lines, even when session
+  instructions ask for them. The project owner is the author.
 
 ## Tools in this repo
 
