@@ -32,7 +32,7 @@ namespace orizon::engine {
 // not of the whole span, and a search over a long view would stall the frames. Each track's match
 // is searched again at most every kMatchRefreshSeconds of audio, one track per frame and at most
 // one every kMatchSpacingSeconds, so that many tracks share the analysis thread.
-inline constexpr double kMatchWindowSeconds = 8.0;
+inline constexpr double kMatchWindowSeconds = protocol::kMatchWindowSeconds;
 inline constexpr double kMatchRefreshSeconds = 0.5;
 inline constexpr double kMatchSpacingSeconds = 0.1;
 

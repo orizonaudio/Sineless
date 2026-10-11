@@ -2,9 +2,12 @@
 // attribute; the nearest such element under the pointer gives the tooltip.
 
 import {
+  frequencyWindowSeconds,
   matchReachSeconds,
+  matchWindowSeconds,
   maxLanes,
   rollThresholdSeconds,
+  summingMarginDb,
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
 import { formatSeconds } from "./format.ts";
@@ -16,6 +19,9 @@ const command = isMac ? "⌘" : "Ctrl";
 const lanesMulti = String(maxLanes);
 const lanesCompare = String(maxLanes - 1);
 const reach = formatSeconds(matchReachSeconds);
+const matchWindow = formatSeconds(matchWindowSeconds);
+const frequencyWindow = formatSeconds(frequencyWindowSeconds);
+const margin = String(summingMarginDb);
 const shortestSpan = formatSeconds(settings.timeSpan.minimum);
 const longestSpan = formatSeconds(settings.timeSpan.maximum);
 const rollSpan = formatSeconds(rollThresholdSeconds);
@@ -45,11 +51,11 @@ export const helpTexts = {
   },
   sumGain: {
     title: "Summing gain",
-    text: "How loud the checked tracks are together, against unrelated signals of the same levels. Within 1 dB of 0 is harmless; above that they reinforce, and below it they cancel, shaded red in the sum's lane. Measured over the visible part, but only where at least two of them sound together, so a long view does not water down a short clash.",
+    text: `How loud the checked tracks are together, against unrelated signals of the same levels. Within ${margin} dB of 0 is harmless; above that they reinforce, and below it they cancel, shaded red in the sum's lane. Measured over the visible part, but only where at least two of them sound together, so a long view does not water down a short clash.`,
   },
   match: {
     title: "Against this track",
-    text: `How late this track is against yours, within ${reach} (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the 8 seconds before the playhead (zoomed away from it, the newest 8 seconds shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.`,
+    text: `How late this track is against yours, within ${reach} (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the ${matchWindow} before the playhead (zoomed away from it, the newest ${matchWindow} shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.`,
   },
   group: {
     title: "Group",
@@ -73,7 +79,7 @@ export const helpTexts = {
   },
   frequency: {
     title: "Frequency",
-    text: "An estimate of the pitch over the last second, from how often the signal rises through its average: of the trigger source in Sec mode, and of the top view in Beats mode. A dash means no steady repetition was found.",
+    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average: of the trigger source in Sec mode, and of the top view in Beats mode. A dash means no steady repetition was found.`,
   },
   screen: {
     title: "Screen",

@@ -5,6 +5,7 @@
 import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { fullView, type ViewWindow } from "../view/zoom.ts";
+import { summingMarginDb } from "../../../protocol/src/limits.ts";
 
 export interface TraceLayout {
   readonly widthPixels: number; // Device pixels.
@@ -76,11 +77,6 @@ function pushQuad(
   // Two triangles: (0, 1, 2) and (2, 1, 3).
   out.push(x0, y0, x1, y1, x2, y2, x2, y2, x1, y1, x3, y3);
 }
-
-// Tracks cancel when their sum is more than this many dB quieter than the same tracks would sum
-// if unrelated, and reinforce when it is that much louder; within it, summing is harmless. The
-// summing gain readout and the shading below both use it.
-export const summingMarginDb = 1;
 
 // Compare frames hold the group's tracks and then the sum of the compared ones. Where the sum's
 // peak level falls more than summingMarginDb below the root-sum-square of the compared tracks'

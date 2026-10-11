@@ -34,8 +34,18 @@ export const maxLanes = 16;
 // How often readouts are measured and refreshed (seconds): legible while frames arrive faster.
 export const readoutIntervalSeconds = 0.1;
 
-// How far apart two tracks may be for Compare to find their offset (seconds, either way).
+// How far apart two tracks may be for Compare to find their offset (seconds, either way), and how
+// much audio before the playhead it compares them over.
 export const matchReachSeconds = 0.01;
+export const matchWindowSeconds = 8;
+
+// Tracks cancel when their sum is more than this many dB quieter than the same tracks would sum
+// if unrelated (the summing gain), and reinforce when it is that much louder; within it, summing
+// is harmless.
+export const summingMarginDb = 1;
+
+// How much of the newest audio the frequency readout measures (seconds).
+export const frequencyWindowSeconds = 1;
 
 // The editor's layout (CSS pixels): its minimum width; the minimum height of a stacked lane; and
 // the height of everything around the screen (top bar and controls), at most: measured at 142,
@@ -66,6 +76,13 @@ export const limits: readonly {
     kind: "double",
   },
   { name: "matchReachSeconds", value: matchReachSeconds, kind: "double" },
+  { name: "matchWindowSeconds", value: matchWindowSeconds, kind: "double" },
+  { name: "summingMarginDb", value: summingMarginDb, kind: "double" },
+  {
+    name: "frequencyWindowSeconds",
+    value: frequencyWindowSeconds,
+    kind: "double",
+  },
   { name: "minimumEditorWidth", value: minimumEditorWidth, kind: "pixels" },
   { name: "minimumLaneHeight", value: minimumLaneHeight, kind: "pixels" },
   { name: "chromeHeight", value: chromeHeight, kind: "pixels" },

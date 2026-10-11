@@ -9,6 +9,7 @@ Every change:
 - [ ] Code follows the naming conventions and is formatted and linted.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.
 - [ ] Any new dependency was agreed on first and is pinned.
+- [ ] A number the engine and the UI both use (a limit, a threshold, an interval, a layout size) is defined once in `protocol/src/limits.ts`, which the C++ header is generated from, and help text reads it from there too.
 
 ## Performance
 

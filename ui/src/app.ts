@@ -6,6 +6,7 @@ import {
   frozenHoldSeconds,
   minimumEditorWidth,
   readoutIntervalSeconds,
+  summingMarginDb,
 } from "../../protocol/src/limits.ts";
 import type {
   ErrorMessage,
@@ -26,7 +27,7 @@ import { HelpTips } from "./components/help-tips.ts";
 import { Segmented } from "./components/segmented.ts";
 import { streamGap } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
-import { fullScale, lanes, summingMarginDb } from "./render/trace-geometry.ts";
+import { fullScale, lanes } from "./render/trace-geometry.ts";
 import { TraceRenderer, type Rgba } from "./render/trace-renderer.ts";
 import type { SettingsStore } from "./store/settings-store.ts";
 import {
@@ -324,13 +325,20 @@ export class OscilloscopeApp {
       : ViewLayout.overlaid;
   }
 
+  // The views asked for, as the toggles show them.
   private shownViews(): ViewName[] {
-    if (this.inputChannels < 2) {
-      return ["left"]; // A mono track has one view, as the engine draws it (see effectiveViews).
-    }
     const value = this.store.get("channelViews");
     const names = Array.isArray(value) ? value : [];
     return viewOrder.filter((name) => names.includes(name));
+  }
+
+  // The views the engine draws: those in the latest frame (a mono track's L alone, whatever was
+  // asked for), or those asked for until a frame says.
+  private drawnViews(): ViewName[] {
+    const views = this.lastFrame?.views;
+    return views !== undefined && views.size > 0
+      ? viewOrder.filter((name) => views.has(ChannelView[name]))
+      : this.shownViews();
   }
 
   private request(name: SettingName, value: SettingValue): void {
@@ -766,7 +774,7 @@ export class OscilloscopeApp {
       return 1;
     }
     const lanes = this.lastFrame?.lanes.length ?? 0;
-    return Math.max(1, lanes > 0 ? lanes : this.shownViews().length);
+    return Math.max(1, lanes > 0 ? lanes : this.drawnViews().length);
   }
 
   // Multi and Compare both show lanes of the group's tracks.
@@ -1003,7 +1011,7 @@ export class OscilloscopeApp {
       { grid: token("--grid"), axis: token("--grid-axis") },
       this.musicalLayout()?.lines,
     );
-    this.drawnLaneCount = this.lastFrame?.lanes.length ?? 0;
+    this.drawnLaneCount = this.laneCount();
     this.placeLabels();
     this.placeLaneLabels();
   }
@@ -1074,11 +1082,9 @@ export class OscilloscopeApp {
   // The level marker sits in the lane of the trigger source when stacked, else on the full height.
   // In the multi-track view the own track triggers, so the marker sits in its lane.
   private markerGeometry(): { center: number; halfHeight: number } {
-    const shown = this.shownViews();
-    const source =
-      this.inputChannels < 2
-        ? "left"
-        : (this.store.get("triggerSource") as ViewName);
+    // The source's lane if it is drawn; the first lane otherwise (a mono track triggers on L).
+    const shown = this.drawnViews();
+    const source = this.store.get("triggerSource") as ViewName;
     const ownLane = Math.max(
       0,
       this.lanesOf(this.lastFrame).findIndex((style) => style.own),
@@ -1664,9 +1670,10 @@ export class OscilloscopeApp {
         this.panSeconds = 0;
       }
       this.loop.submit(frame);
-      // A track joined or left: lanes, grid and labels change with it. A new lane set (a track
-      // checked, a renamed track) changes the labels.
-      if (frame.lanes.length !== this.drawnLaneCount) {
+      // A track joined or left, or the views drawn changed (a track turned mono): lanes, grid
+      // and labels change with it. A new lane set (a track checked, a renamed track) changes the
+      // labels.
+      if (this.laneCount() !== this.drawnLaneCount) {
         this.drawScreen();
         this.placeCursors();
       } else if (frame.laneSet !== this.drawnLaneSet) {

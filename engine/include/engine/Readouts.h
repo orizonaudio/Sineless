@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocol/Protocol.h"
+
 #include <cstddef>
 #include <optional>
 #include <span>
@@ -19,7 +21,7 @@ struct Readouts
 
 // The frequency is estimated over the newest second of the span, so that it follows what plays
 // now and costs the same however long the span.
-inline constexpr double kFrequencyWindowSeconds = 1.0;
+inline constexpr double kFrequencyWindowSeconds = protocol::kFrequencyWindowSeconds;
 
 // Peak and RMS of all of `samples`; the frequency of their newest kFrequencyWindowSeconds.
 [[nodiscard]] Readouts computeReadouts(std::span<const float> samples, double sampleRate);
