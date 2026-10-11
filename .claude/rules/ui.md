@@ -1,0 +1,18 @@
+---
+paths:
+  - "ui/**"
+  - "protocol/**"
+---
+
+# UI and protocol
+
+- Readouts round first, then choose the unit and precision: never exponent notation, never
+  "−0.0", and U+2212 for minus. Each typed field parses what its formatter prints, in its
+  own units only.
+- One function decides each shared rule (which channel readouts, snapping and hover measure;
+  what counts as cancelling); readouts, cursors, hover and shading call it rather than
+  re-deriving it.
+- Help text reads its numbers from `protocol/src/limits.ts` and describes what the code does
+  in every mode it applies to.
+- Changing the frame layout means bumping the protocol version and regenerating both golden
+  frames, in C++ and TypeScript.
