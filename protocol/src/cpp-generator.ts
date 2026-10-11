@@ -1,9 +1,11 @@
 // Generates the C++ header that mirrors this schema. Enumerators and constants become kPascalCase.
 import { beatSpanLengths, enums, type EnumName } from "./enums.ts";
 import {
+  crossingHysteresis,
   frameHeader,
   FrameFlag,
   matchValues,
+  periodTolerance,
   silenceFloorDb,
 } from "./frame.ts";
 import { MessageType } from "./messages.ts";
@@ -157,6 +159,10 @@ function frameDeclaration(): string {
     "",
     "// The level, in dBFS, at or below which audio counts as silence.",
     `inline constexpr double kSilenceFloorDb = ${silenceFloorDb.toFixed(1)};`,
+    "",
+    "// How a signal's cycles are found, and when they repeat steadily enough to give a frequency.",
+    `inline constexpr double kCrossingHysteresis = ${String(crossingHysteresis)};`,
+    `inline constexpr double kPeriodTolerance = ${String(periodTolerance)};`,
   ].join("\n");
 }
 

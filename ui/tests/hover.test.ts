@@ -65,6 +65,23 @@ describe("hover readout", () => {
     expect(traceAt(3, ViewLayout.overlaid, 0.9, 1)).toBe(1);
   });
 
+  test("finds cycles around a DC offset, and none in noise or silence", () => {
+    const offset = sine(480, 4).map((value) => value + 0.3);
+    expect(cycleAt(rawFrame(offset), offset, 0.4)).toBeCloseTo(0.25, 3);
+    let seed = 7;
+    const noise = Float32Array.from({ length: 4800 }, () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648 - 0.5;
+    });
+    const noiseFrame = rawFrame(noise);
+    const found = [0.2, 0.4, 0.6, 0.8].filter(
+      (position) => cycleAt(noiseFrame, noise, position) !== undefined,
+    );
+    expect(found.length).toBeLessThanOrEqual(1);
+    const silence = new Float32Array(480);
+    expect(risingCrossings(rawFrame(silence), silence)).toEqual([]);
+  });
+
   test("finds rising zero crossings only", () => {
     const values = sine(480, 4); // 120-sample cycles.
     const crossings = risingCrossings(rawFrame(values), values);

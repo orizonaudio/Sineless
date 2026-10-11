@@ -3,6 +3,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 #include <numbers>
+#include <random>
 #include <vector>
 
 namespace orizon::engine {
@@ -61,6 +62,36 @@ TEST(Readouts, ReportNoFrequencyForSilenceDcOrTooShortSpans)
     EXPECT_FLOAT_EQ(dc.rms, 0.25f);
     // 0.5 ms of a 100 Hz tone holds no full cycle.
     EXPECT_FALSE(computeReadouts(tone(100.0, 0.0005, 0.5), kSampleRate).frequencyHz);
+}
+
+TEST(Readouts, ReportNoFrequencyForNoise)
+{
+    std::mt19937 random(3);
+    std::uniform_real_distribution<float> uniform(-1.0f, 1.0f);
+    std::vector<float> noise(48000);
+    for (float& value : noise) {
+        value = uniform(random);
+    }
+    EXPECT_FALSE(computeReadouts(noise, kSampleRate).frequencyHz);
+    // 16-bit dither: two least significant bits of noise.
+    for (float& value : noise) {
+        value *= 2.0f / 32768.0f;
+    }
+    EXPECT_FALSE(computeReadouts(noise, kSampleRate).frequencyHz);
+}
+
+TEST(Readouts, FindTheFrequencyOfNotesWithGapsBetweenThem)
+{
+    // 100 Hz in bursts of 50 ms with 70 ms of silence between, as a bass line plays.
+    std::vector<float> notes = tone(100.0, 1.0, 0.5);
+    for (std::size_t i = 0; i < notes.size(); ++i) {
+        if (i % 5760 >= 2400) {
+            notes[i] = 0.0f;
+        }
+    }
+    const Readouts readouts = computeReadouts(notes, kSampleRate);
+    ASSERT_TRUE(readouts.frequencyHz.has_value());
+    EXPECT_NEAR(readouts.frequencyHz.value(), 100.0, 0.5);
 }
 
 TEST(Readouts, HandleAnEmptySpan)

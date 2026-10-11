@@ -22,6 +22,20 @@ using protocol::SettingId;
 
 namespace {
 
+// Samples a freeze holds, of this track and of every lane alike. In Beats mode, the newest audio
+// the capture can spare (a margin for the audio thread, which writes on), so that a longer beat
+// span chosen while frozen has its audio; in Seconds mode, the 4 s a view can show or pan back
+// through.
+std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool synced)
+{
+    if (synced) {
+        return ring.capacity() - ring.capacity() / 8;
+    }
+    return std::min<std::uint64_t>(
+        static_cast<std::uint64_t>(std::llround(HoldBuffer::kHoldSeconds * sampleRate)),
+        ring.capacity());
+}
+
 // The narrowest view accepted, matching the UI's 256-fold maximum zoom.
 constexpr double kMinimumViewWidth = 1.0 / 512;
 
@@ -281,12 +295,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     }
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
-    // A freeze holds the newest audio the capture can spare (a margin for the audio thread,
-    // which writes on), so that a longer beat span chosen while frozen has its audio.
-    const CaptureRing& captureRing = engine.captureRing();
-    const auto heldSamples =
-        static_cast<std::uint64_t>(captureRing.capacity() - captureRing.capacity() / 8);
-    if (command.frozen && !isFrozen && !freeze(sampleRate, synced ? heldSamples : 0)) {
+    if (command.frozen && !isFrozen &&
+        !freeze(sampleRate, frozenLength(engine.captureRing(), sampleRate, synced))) {
         return false;
     }
     if (!command.frozen) {
@@ -692,6 +702,8 @@ bool Analyzer::measureSweepReadouts(const BlockStats& stats, std::size_t first, 
 // Returns the own lane's serial.
 std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& command)
 {
+    const bool synced =
+        settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
     std::vector<GroupMember> members =
         registry.members(settings.enumValue<protocol::Group>(SettingId::kGroup));
     auto own = std::ranges::find_if(
@@ -758,7 +770,8 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& co
         lane->engine = std::move(member.engine);
         const CaptureRing& ring = lane->engine->captureRing();
         if (isFrozen && !lane->hold.held()) {
-            lane->hold.capture(*lane->engine, ring.capacity() - ring.capacity() / 8, scratch);
+            lane->hold.capture(*lane->engine,
+                               frozenLength(ring, lane->engine->sampleRate(), synced), scratch);
         } else if (!isFrozen && lane->hold.held()) {
             lane->hold.release();
         }

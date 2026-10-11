@@ -25,7 +25,9 @@ inline constexpr double kFrequencyWindowSeconds = 1.0;
 [[nodiscard]] Readouts computeReadouts(std::span<const float> samples, double sampleRate);
 
 // The frequency of `samples` from the spacing of rising crossings of their mean, with hysteresis
-// at 10% of the peak-to-peak range. Empty with fewer than two crossings, or for a flat signal.
+// at kCrossingHysteresis of the peak-to-peak range. Empty for a flat signal, with fewer than two
+// crossings, or when the signal does not repeat steadily: fewer than 60% of its periods within
+// kPeriodTolerance of the median period (noise, or several pitches at once).
 [[nodiscard]] std::optional<double> estimateFrequency(std::span<const float> samples,
                                                       double sampleRate);
 

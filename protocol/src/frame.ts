@@ -84,6 +84,15 @@ export const matchValues = 3;
 // and analysis leaves it out. Only silence, dither or a cancelled sum's residue is that quiet.
 export const silenceFloorDb = -100;
 
+// How a signal's cycles are found, for its frequency: where it rises through its mean level,
+// after first falling this fraction of its peak-to-peak range below it, so noise riding on a
+// crossing does not count twice.
+export const crossingHysteresis = 0.1;
+
+// A signal repeats steadily when most of its cycles last within this fraction of the median
+// cycle; otherwise it has no frequency to show (noise, or several pitches at once).
+export const periodTolerance = 0.15;
+
 const fieldSizes: Record<FieldType, number> = { u8: 1, u16: 2, u32: 4, f32: 4 };
 
 export interface FieldLayout {

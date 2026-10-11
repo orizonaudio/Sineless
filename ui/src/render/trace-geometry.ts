@@ -77,10 +77,16 @@ function pushQuad(
   out.push(x0, y0, x1, y1, x2, y2, x2, y2, x1, y1, x3, y3);
 }
 
+// Tracks cancel when their sum is more than this many dB quieter than the same tracks would sum
+// if unrelated, and reinforce when it is that much louder; within it, summing is harmless. The
+// summing gain readout and the shading below both use it.
+export const summingMarginDb = 1;
+
 // Compare frames hold the group's tracks and then the sum of the compared ones. Where the sum's
-// peak level falls more than 3 dB below the loudest compared track, they cancel: these spans of
-// the sum's lane, as quads. `compared` marks the compared tracks in lane order.
-const cancellationRatio = 0.708; // -3 dB.
+// peak level falls more than summingMarginDb below the root-sum-square of the compared tracks'
+// peaks (what unrelated tracks would sum to), they cancel: these spans of the sum's lane, as
+// quads. `compared` marks the compared tracks in lane order.
+const cancellationRatio = 10 ** (-summingMarginDb / 20);
 const quietRatio = 0.05; // About -26 dB.
 const bridgedGap = 3; // Points.
 
@@ -127,16 +133,19 @@ export function cancellationBands(
     return new Float32Array();
   }
   const levelSum = peaks(frame, sum);
-  const louder = new Float32Array(frame.pointCount);
+  const unrelated = new Float32Array(frame.pointCount);
   for (const track of tracks) {
     peaks(frame, track).forEach((level, point) => {
-      louder[point] = Math.max(louder[point] ?? 0, level);
+      unrelated[point] = (unrelated[point] ?? 0) + level * level;
     });
   }
+  unrelated.forEach((power, point) => {
+    unrelated[point] = Math.sqrt(power);
+  });
   // Quiet stretches (more than about 26 dB below the loudest moment) cancel nothing audible.
-  const audible = quietRatio * Math.max(0, ...louder);
+  const audible = quietRatio * Math.max(0, ...unrelated);
   const cancelling = Array.from(
-    louder,
+    unrelated,
     (level, point) =>
       level > audible && (levelSum[point] ?? 0) < cancellationRatio * level,
   );

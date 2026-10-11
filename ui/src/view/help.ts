@@ -31,7 +31,7 @@ export const helpTexts = {
   },
   sumGain: {
     title: "Summing gain",
-    text: "How loud the checked tracks are together, against unrelated signals of the same levels. 0 dB is harmless, positive values reinforce, below 0 dB they cancel. Measured over the visible part, but only where at least two of them sound together, so a long view does not water down a short clash.",
+    text: "How loud the checked tracks are together, against unrelated signals of the same levels. Within 1 dB of 0 is harmless; above that they reinforce, and below it they cancel, shaded red in the sum's lane. Measured over the visible part, but only where at least two of them sound together, so a long view does not water down a short clash.",
   },
   match: {
     title: "Against this track",

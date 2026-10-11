@@ -109,7 +109,23 @@ describe("cancellation bands", () => {
   });
   const both = [true, true];
 
-  test("shade where the sum falls 3 dB below the louder track", () => {
+  test("shade where the sum falls 1 dB below what unrelated tracks would give", () => {
+    // Unrelated, 0.5 and 0.4 sum to about 0.64: 0.6 is within 1 dB, 0.5 is 2 dB below it.
+    const near = cancellationBands(
+      compareFrame([-0.6, 0.6, -0.6, 0.6, -0.6, 0.6, -0.6, 0.6]),
+      layout,
+      both,
+    );
+    expect(near).toHaveLength(0);
+    const below = cancellationBands(
+      compareFrame([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5]),
+      layout,
+      both,
+    );
+    expect(below).toHaveLength(12);
+  });
+
+  test("shade only the columns that cancel", () => {
     // Columns 1 and 2 cancel (0.1 against 0.5); 0 and 3 do not.
     const bands = cancellationBands(
       compareFrame([-0.9, 0.9, -0.1, 0.1, -0.1, 0.1, -0.9, 0.9]),

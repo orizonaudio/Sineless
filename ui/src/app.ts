@@ -20,7 +20,7 @@ import { DragField } from "./components/drag-field.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { Segmented } from "./components/segmented.ts";
 import { RenderLoop } from "./render/render-loop.ts";
-import { fullScale, lanes } from "./render/trace-geometry.ts";
+import { fullScale, lanes, summingMarginDb } from "./render/trace-geometry.ts";
 import { TraceRenderer, type Rgba } from "./render/trace-renderer.ts";
 import type { SettingsStore } from "./store/settings-store.ts";
 import {
@@ -938,7 +938,7 @@ export class OscilloscopeApp {
     if (this.sumNode !== undefined && comparison !== undefined) {
       const gain = this.previewFix ? comparison.fixedGain : comparison.sumGain;
       this.sumNode.textContent = `${formatGain(gain)} dB`;
-      this.sumNode.className = `lane-readout ${gain < -1 ? "cancels" : gain > 1 ? "reinforces" : ""}`;
+      this.sumNode.className = `lane-readout ${gain < -summingMarginDb ? "cancels" : gain > summingMarginDb ? "reinforces" : ""}`;
     }
   }
 

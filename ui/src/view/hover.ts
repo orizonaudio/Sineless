@@ -1,10 +1,15 @@
 // The hover readout: what lies under the pointer on the screen. It names the trace, gives the
 // position (bar.beat.sixteenth and project time in Beats mode, time from the trigger point
 // otherwise), the trace's peak level there, and the length of the cycle around the pointer from
-// its rising zero crossings, with that cycle's frequency and nearest note. It also says where it
+// its rising crossings of its mean, with that cycle's frequency and nearest note. It also says where it
 // read: the column or point under the pointer, and the cycle's extent, for the screen to mark.
 import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+import {
+  crossingHysteresis,
+  periodTolerance,
+  silenceFloorDb,
+} from "../../../protocol/src/frame.ts";
 import {
   columnPosition,
   lanes,
@@ -21,6 +26,9 @@ import {
 } from "./format.ts";
 import { musicalPosition } from "./musical-grid.ts";
 import { toFrame, toScreen, type ViewWindow } from "./zoom.ts";
+
+// A peak-to-peak range at the silence floor: quieter signals have no cycles.
+const silentRange = 10 ** (silenceFloorDb / 20);
 
 export interface HoverTrace {
   readonly name: string;
@@ -63,31 +71,42 @@ export function traceAt(
   return found < 0 ? (clip > 0 ? 0 : count - 1) : found;
 }
 
-// Span positions (0 to 1) where `values` rises through zero. Min/max columns cross either
-// inside a column that spans zero, entered from below, or at the edge between a column wholly
-// below zero and one wholly above it; a column that spans zero is left on the side its next
-// column's midpoint lies on.
+// Span positions (0 to 1) where `values` rises through its mean level, by the engine's rule for
+// its frequency readout: only after first falling `crossingHysteresis` of the peak-to-peak range
+// below it, so noise riding on a crossing does not count twice. None for a signal at or below
+// the silence floor. Min/max columns cross inside a column that spans the level, entered from
+// below, or at the edge between a column wholly below it and one wholly above.
 export function risingCrossings(frame: Frame, values: Float32Array): number[] {
   const crossings: number[] = [];
+  const count =
+    frame.mode === FrameMode.minMax ? frame.pointCount * 2 : frame.pointCount;
+  let lowest = Infinity;
+  let highest = -Infinity;
+  let total = 0;
+  for (let index = 0; index < count; index++) {
+    const value = values[index] ?? 0;
+    lowest = Math.min(lowest, value);
+    highest = Math.max(highest, value);
+    total += value;
+  }
+  const range = highest - lowest;
+  if (!(range > silentRange)) {
+    return crossings;
+  }
+  const level = total / count;
+  const armLevel = level - crossingHysteresis * range;
+  let armed = false;
   if (frame.mode === FrameMode.minMax) {
-    const middle = (column: number) =>
-      ((values[column * 2] ?? 0) + (values[column * 2 + 1] ?? 0)) / 2;
-    let below: boolean | undefined;
     for (let column = 0; column < frame.pointCount; column++) {
       const low = values[column * 2] ?? 0;
       const high = values[column * 2 + 1] ?? 0;
-      if (high < 0) {
-        below = true;
-      } else if (low >= 0) {
-        if (below === true) {
-          crossings.push(columnPosition(frame, column));
-        }
-        below = false;
-      } else {
-        if (below === true) {
-          crossings.push(columnPosition(frame, column + 0.5));
-        }
-        below = column + 1 < frame.pointCount ? middle(column + 1) < 0 : !below;
+      if (armed && high >= level) {
+        crossings.push(
+          columnPosition(frame, low >= level ? column : column + 0.5),
+        );
+        armed = false;
+      } else if (low <= armLevel) {
+        armed = true;
       }
     }
     return crossings;
@@ -95,8 +114,14 @@ export function risingCrossings(frame: Frame, values: Float32Array): number[] {
   for (let index = 0; index + 1 < frame.pointCount; index++) {
     const here = values[index] ?? 0;
     const next = values[index + 1] ?? 0;
-    if (here < 0 && next >= 0) {
-      crossings.push(pointPosition(frame, index + here / (here - next)));
+    if (here <= armLevel) {
+      armed = true;
+    }
+    if (armed && here < level && next >= level) {
+      crossings.push(
+        pointPosition(frame, index + (level - here) / (next - here)),
+      );
+      armed = false;
     }
   }
   return crossings;
@@ -169,6 +194,23 @@ export function cycleBounds(
   const after = crossings[next];
   const before = next > 0 ? crossings[next - 1] : undefined;
   if (after === undefined || before === undefined) {
+    return undefined;
+  }
+  // A cycle is only a cycle if the signal repeats: next to another of about the same length,
+  // as the engine's frequency readout requires. A lone cycle, zoomed in on, has none to compare.
+  const length = after - before;
+  const neighbours = [
+    next > 1 ? before - (crossings[next - 2] ?? before) : undefined,
+    next + 1 < crossings.length
+      ? (crossings[next + 1] ?? after) - after
+      : undefined,
+  ].filter((other) => other !== undefined);
+  if (
+    neighbours.length > 0 &&
+    !neighbours.some(
+      (other) => Math.abs(other - length) <= periodTolerance * length,
+    )
+  ) {
     return undefined;
   }
   if (frame.mode === FrameMode.minMax) {
