@@ -1,12 +1,16 @@
 #include "EmbeddedAssets.h"
 #include "editor/WebView.h"
 #include "engine/Version.h"
+#include "mac/WebViewMacTesting.h"
 
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <csignal>
 #include <cstdio>
+#include <deque>
 #include <objc/message.h>
 #include <objc/runtime.h>
 #include <string>
@@ -25,6 +29,15 @@ NSString* const kMessageHandlerName = @"orizon";
 NSString* const kFocusHandlerName = @"orizonFocus";
 // The page fetches each display frame from here; the request is held until a frame is ready.
 NSString* const kFramePath = @"/frame";
+// The page's own origin: the only one it may navigate to or send messages from.
+NSString* const kUiHost = @"ui";
+// A page process that keeps dying is not reloaded again within the minute.
+constexpr std::size_t kMaxReloadsPerMinute = 3;
+
+bool isUiUrl(NSURL* url)
+{
+    return [url.scheme isEqualToString:kSchemeName] && [url.host isEqualToString:kUiHost];
+}
 
 // Reports to native code whether an editable element has focus, so that keystrokes go to the
 // host unless the user is typing into the page.
@@ -101,15 +114,27 @@ public:
     void cancelFrameRequest(id<WKURLSchemeTask> task);
     [[nodiscard]] bool editableFocused() const { return isEditableFocused; }
 
+    void pageLoaded();
+    void pageFailed(NSError* error);
+    void processTerminated();
+    bool terminateForTests();
+
 private:
+    void showMessage(NSString* text);
+
     void evaluate(NSString* script);
     static void answer(id<WKURLSchemeTask> task, NSData* frame);
 
     MessageHandler onMessage;
     FrameRequestHandler onFrameRequest;
+    NSView* container = nil; // The page's colour, behind it until it has loaded.
+    NSTextField* notice = nil;
     WKWebView* webView = nil;
     id messageHandler = nil;
     id schemeHandler = nil;
+    id navigationDelegate = nil;
+    bool loaded = false;
+    std::deque<std::chrono::steady_clock::time_point> reloads; // In the last minute.
     bool isEditableFocused = false;
     // The page's open frame request, and a frame produced while none was open.
     id<WKURLSchemeTask> frameTask = nil;
@@ -209,6 +234,65 @@ Class schemeHandlerClass()
     return cls;
 }
 
+// ----- Navigation delegate: the page stays on its own origin, and comes back after a crash -----
+
+void decidePolicyForNavigationAction(id /*self*/, SEL /*cmd*/, WKWebView* /*webView*/,
+                                     WKNavigationAction* action,
+                                     void (^decisionHandler)(WKNavigationActionPolicy))
+{
+    // A link or a file dropped on the editor would otherwise replace the UI.
+    decisionHandler(isUiUrl(action.request.URL) ? WKNavigationActionPolicyAllow
+                                                : WKNavigationActionPolicyCancel);
+}
+
+void didFinishNavigation(id self, SEL /*cmd*/, WKWebView* /*webView*/, WKNavigation* /*navigation*/)
+{
+    if (WebViewMac* owner = ownerOf(self)) {
+        owner->pageLoaded();
+    }
+}
+
+void didFailNavigation(id self, SEL /*cmd*/, WKWebView* /*webView*/, WKNavigation* /*navigation*/,
+                       NSError* error)
+{
+    if (WebViewMac* owner = ownerOf(self)) {
+        owner->pageFailed(error);
+    }
+}
+
+void webContentProcessDidTerminate(id self, SEL /*cmd*/, WKWebView* /*webView*/)
+{
+    if (WebViewMac* owner = ownerOf(self)) {
+        owner->processTerminated();
+    }
+}
+
+Class navigationDelegateClass()
+{
+    static Class cls = [] {
+        Class created = objc_allocateClassPair([NSObject class],
+                                               uniqueClassName("NavigationDelegate").c_str(), 0);
+        Protocol* protocol = @protocol(WKNavigationDelegate);
+        const auto add = [&](SEL selector, IMP implementation) {
+            class_addMethod(created, selector, implementation,
+                            protocol_getMethodDescription(protocol, selector, NO, YES).types);
+        };
+        add(@selector(webView:decidePolicyForNavigationAction:decisionHandler:),
+            reinterpret_cast<IMP>(&decidePolicyForNavigationAction));
+        add(@selector(webView:didFinishNavigation:), reinterpret_cast<IMP>(&didFinishNavigation));
+        add(@selector(webView:didFailNavigation:withError:),
+            reinterpret_cast<IMP>(&didFailNavigation));
+        add(@selector(webView:didFailProvisionalNavigation:withError:),
+            reinterpret_cast<IMP>(&didFailNavigation));
+        add(@selector(webViewWebContentProcessDidTerminate:),
+            reinterpret_cast<IMP>(&webContentProcessDidTerminate));
+        class_addProtocol(created, protocol);
+        objc_registerClassPair(created);
+        return created;
+    }();
+    return cls;
+}
+
 // ----- WKWebView subclass: keystrokes go to the host unless an editable element has focus -----
 
 void forwardKeyEvent(id self, SEL cmd, NSEvent* event)
@@ -242,6 +326,11 @@ BOOL acceptsFirstMouse(id /*self*/, SEL /*cmd*/, NSEvent* /*event*/)
     return YES; // A click in an inactive plugin window acts immediately.
 }
 
+void willOpenMenu(id /*self*/, SEL /*cmd*/, NSMenu* menu, NSEvent* /*event*/)
+{
+    [menu removeAllItems]; // No browser menu (Reload, Back): an empty one does not open.
+}
+
 Class webViewClass()
 {
     static Class cls = [] {
@@ -257,6 +346,9 @@ Class webViewClass()
         class_addMethod(created, @selector(acceptsFirstMouse:),
                         reinterpret_cast<IMP>(&acceptsFirstMouse),
                         superclassMethodTypes(superclass, @selector(acceptsFirstMouse:)));
+        class_addMethod(created, @selector(willOpenMenu:withEvent:),
+                        reinterpret_cast<IMP>(&willOpenMenu),
+                        superclassMethodTypes(superclass, @selector(willOpenMenu:withEvent:)));
         objc_registerClassPair(created);
         return created;
     }();
@@ -285,16 +377,38 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
                              injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                           forMainFrameOnly:YES]];
 
-    webView = [[webViewClass() alloc] initWithFrame:NSMakeRect(0, 0, width, height)
-                                      configuration:configuration];
+    // The page's background colour behind it, so the editor never shows white while it loads;
+    // the page is shown once loaded, and a message in its place if it cannot be.
+    const NSRect bounds = NSMakeRect(0, 0, width, height);
+    container = [[NSView alloc] initWithFrame:bounds];
+    container.wantsLayer = YES;
+    container.layer.backgroundColor = [NSColor colorWithSRGBRed:0x16 / 255.0
+                                                          green:0x1b / 255.0
+                                                           blue:0x21 / 255.0
+                                                          alpha:1.0]
+                                          .CGColor;
+    notice = [NSTextField wrappingLabelWithString:@""];
+    notice.alignment = NSTextAlignmentCenter;
+    notice.textColor = [NSColor colorWithSRGBRed:0.85 green:0.87 blue:0.9 alpha:1.0];
+    notice.frame = NSInsetRect(bounds, 24, 24);
+    notice.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    notice.hidden = YES;
+    [container addSubview:notice];
+
+    webView = [[webViewClass() alloc] initWithFrame:bounds configuration:configuration];
     setOwner(webView, this);
     webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    webView.hidden = YES;
+    navigationDelegate = [[navigationDelegateClass() alloc] init];
+    setOwner(navigationDelegate, this);
+    webView.navigationDelegate = navigationDelegate;
 #ifndef NDEBUG
     if (@available(macOS 13.3, *)) {
         webView.inspectable = YES;
     }
 #endif
-    [parent addSubview:webView];
+    [container addSubview:webView];
+    [parent addSubview:container];
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:kStartUrl]]];
 }
 
@@ -303,17 +417,84 @@ WebViewMac::~WebViewMac()
     // Detach every path back into this object before the webview can outlive it.
     setOwner(schemeHandler, nullptr);
     setOwner(messageHandler, nullptr);
+    setOwner(navigationDelegate, nullptr);
     setOwner(webView, nullptr);
+    webView.navigationDelegate = nil;
     [webView.configuration.userContentController removeAllScriptMessageHandlers];
     [webView stopLoading];
     [webView removeFromSuperview];
+    [container removeFromSuperview];
     webView = nil;
+    container = nil;
     messageHandler = nil;
+    navigationDelegate = nil;
 }
 
 void WebViewMac::setSize(int width, int height)
 {
-    [webView setFrameSize:NSMakeSize(width, height)];
+    [container setFrameSize:NSMakeSize(width, height)];
+}
+
+void WebViewMac::showMessage(NSString* text)
+{
+    notice.stringValue = text;
+    notice.hidden = NO;
+    webView.hidden = YES;
+}
+
+void WebViewMac::pageLoaded()
+{
+    loaded = true;
+    notice.hidden = YES;
+    webView.hidden = NO;
+}
+
+void WebViewMac::pageFailed(NSError* error)
+{
+    // A navigation the policy refused, or one cancelled by the next, is no failure; nor is any
+    // once the page is up.
+    const bool refused = [error.domain isEqualToString:@"WebKitErrorDomain"] && error.code == 102;
+    const bool cancelled =
+        [error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled;
+    if (loaded || refused || cancelled) {
+        return;
+    }
+    showMessage(@"O-Scope's editor could not load its page.\nClose and reopen it; if that does "
+                @"not help, restart the host.");
+}
+
+// macOS ends a page's process under memory pressure, and it can crash: the page is loaded again,
+// says hello and gets the session's state anew, unless it keeps dying.
+void WebViewMac::processTerminated()
+{
+    const auto now = std::chrono::steady_clock::now();
+    while (!reloads.empty() && now - reloads.front() > std::chrono::minutes(1)) {
+        reloads.pop_front();
+    }
+    loaded = false;
+    frameTask = nil; // The page that asked is gone.
+    heldFrame = nil;
+    isEditableFocused = false;
+    if (reloads.size() >= kMaxReloadsPerMinute) {
+        showMessage(@"O-Scope's editor keeps failing.\nClose and reopen it; if that does not "
+                    @"help, restart the host.");
+        return;
+    }
+    reloads.push_back(now);
+    webView.hidden = YES; // Until the page is back.
+    [webView reload];
+}
+
+bool WebViewMac::terminateForTests()
+{
+    // The page process's id, from WebKit's own test hook (not public API, so only tests use it);
+    // killed as a crash would end it.
+    const SEL identifier = NSSelectorFromString(@"_webProcessIdentifier");
+    if (![webView respondsToSelector:identifier]) {
+        return false;
+    }
+    const pid_t process = reinterpret_cast<pid_t (*)(id, SEL)>(objc_msgSend)(webView, identifier);
+    return process > 0 && kill(process, SIGKILL) == 0;
 }
 
 void WebViewMac::postMessage(std::string_view message)
@@ -397,7 +578,10 @@ void WebViewMac::evaluate(std::string_view script, std::function<void(std::strin
 
 void WebViewMac::receive(WKScriptMessage* message)
 {
-    if (![message.body isKindOfClass:[NSString class]]) {
+    // Only the UI's own page talks to the plugin.
+    WKSecurityOrigin* origin = message.frameInfo.securityOrigin;
+    if (!message.frameInfo.mainFrame || ![origin.protocol isEqualToString:kSchemeName] ||
+        ![origin.host isEqualToString:kUiHost] || ![message.body isKindOfClass:[NSString class]]) {
         return;
     }
     NSString* body = message.body;
@@ -418,6 +602,11 @@ std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
 {
     return std::make_unique<WebViewMac>((__bridge NSView*)parent, width, height,
                                         std::move(onMessage), std::move(onFrameRequest));
+}
+
+bool terminateContentProcessForTests(WebView& view)
+{
+    return static_cast<WebViewMac&>(view).terminateForTests();
 }
 
 } // namespace orizon::editor

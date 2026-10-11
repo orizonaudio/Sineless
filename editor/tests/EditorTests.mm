@@ -1,6 +1,7 @@
 #include "FitStates.h"
 #include "editor/Editor.h"
 #include "engine/Version.h"
+#include "mac/WebViewMacTesting.h"
 #include "pluginterfaces/gui/iplugview.h"
 
 #import <Cocoa/Cocoa.h>
@@ -369,6 +370,50 @@ TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
             [window close];
         }
     }
+}
+
+// macOS ends a page's process under memory pressure: the page comes back on its own.
+TEST_F(EditorTest, ReloadsAfterThePageProcessEnds)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+    EXPECT_FALSE(webView.hidden);
+    const auto hellos = [&] {
+        return std::ranges::count_if(received, [](const std::string& message) {
+            return message.find(R"("type":"hello")") != std::string::npos;
+        });
+    };
+    ASSERT_EQ(hellos(), 1);
+    ASSERT_TRUE(terminateContentProcessForTests(*editor->webView()));
+    EXPECT_TRUE(pumpUntil([&] { return hellos() == 2 && hasSnapshot(webView); }, kPageTimeout))
+        << "the page did not come back";
+    EXPECT_FALSE(webView.hidden);
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
+// A link or a dropped file must not replace the UI.
+TEST_F(EditorTest, StaysOnTheEmbeddedUi)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+    evaluate(webView, @"location.href = 'https://example.com/'; ''");
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:@"/tmp/page.html"]]];
+    pumpUntil([] { return false; }, std::chrono::milliseconds(500));
+    EXPECT_STREQ(webView.URL.absoluteString.UTF8String, "orizon://ui/index.html");
+    EXPECT_TRUE(hasSnapshot(webView)) << "still the UI";
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
 }
 
 TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
