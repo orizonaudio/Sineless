@@ -415,6 +415,45 @@ TEST_F(EditorTest, ReloadsAfterTheRendererCrashes)
     DestroyWindow(window);
 }
 
+// A renderer that keeps crashing is not reloaded forever: after three reloads in a minute the
+// editor says so instead.
+TEST_F(EditorTest, ExplainsWhenThePageKeepsFailing)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    const auto hellos = [&] {
+        return std::ranges::count_if(received, [](const std::string& message) {
+            return message.find(R"("type":"hello")") != std::string::npos;
+        });
+    };
+    for (std::ptrdiff_t reload = 0; reload < 3; ++reload) {
+        ASSERT_TRUE(
+            pumpUntil([&] { return hellos() == reload + 1 && hasSnapshot(view); }, kPageTimeout))
+            << "reload " << reload;
+        ASSERT_TRUE(terminateProcessForTests(view, false));
+    }
+    ASSERT_TRUE(pumpUntil([&] { return hellos() == 4 && hasSnapshot(view); }, kPageTimeout));
+    HWND container = FindWindowExW(window, nullptr, L"OrizonOScopeWebViewHost", nullptr);
+    ASSERT_TRUE(terminateProcessForTests(view, false));
+    std::wstring text;
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            std::array<wchar_t, 512> buffer{};
+            text.assign(buffer.data(),
+                        static_cast<std::size_t>(GetWindowTextW(container, buffer.data(),
+                                                                static_cast<int>(buffer.size()))));
+            return text.find(L"keeps failing") != std::wstring::npos;
+        },
+        std::chrono::seconds(10)));
+    pumpUntil([] { return false; }, std::chrono::seconds(2));
+    EXPECT_EQ(hellos(), 4) << "reloaded past the limit";
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
 // When WebView2's browser exits, every view of it is gone: the editor says so.
 TEST_F(EditorTest, ExplainsWhenTheBrowserExits)
 {

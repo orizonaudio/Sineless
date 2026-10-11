@@ -38,12 +38,12 @@ export function signed(value: number, decimals: number): string {
   return (value < 0 ? minus : "+") + text;
 }
 
-// A summing gain in dB with one decimal; −∞ at or below the gain floor.
+// A summing gain with one decimal: "+3.0 dB", "−∞ dB" at or below the gain floor.
 export function formatGain(db: number): string {
   if (Number.isNaN(db) || db === Infinity) {
     return none;
   }
-  return isBelowFloor(db, gainFloorDb) ? `${minus}∞` : signed(db, 1);
+  return `${isBelowFloor(db, gainFloorDb) ? `${minus}∞` : signed(db, 1)} dB`;
 }
 
 // Seconds to three significant digits: "0.5 ms", "20 ms", "250 ms", "1.5 s".

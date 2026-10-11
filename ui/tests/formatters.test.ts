@@ -74,7 +74,7 @@ describe("formatGain", () => {
   test.each([-Infinity, -332.2, -151.8, -140, -139.96])(
     "reads −∞ at %s dB",
     (db) => {
-      expect(formatGain(db)).toBe(`${minus}∞`);
+      expect(formatGain(db)).toBe(`${minus}∞ dB`);
     },
   );
 });

@@ -85,9 +85,15 @@ import {
   zoomTo,
   type ViewWindow,
 } from "./view/zoom.ts";
+import {
+  clampPan,
+  markerLane,
+  readoutView,
+  viewOrder,
+  viewToggleState,
+  type ViewName,
+} from "./view/screen-state.ts";
 
-const viewOrder = ["left", "right", "mid", "side"] as const;
-type ViewName = (typeof viewOrder)[number];
 const viewHelp: Record<ViewName, HelpTopic> = {
   left: "viewLeft",
   right: "viewRight",
@@ -569,8 +575,9 @@ export class OscilloscopeApp {
     const shown = this.shownViews();
     const multi = this.multiMode();
     for (const [view, button] of this.viewToggles) {
-      button.setAttribute("aria-pressed", String(shown.includes(view)));
-      button.disabled = multi || (this.inputChannels < 2 && view !== "left");
+      const state = viewToggleState(view, shown, multi, this.inputChannels);
+      button.setAttribute("aria-pressed", String(state.pressed));
+      button.disabled = state.disabled;
     }
   }
 
@@ -910,13 +917,20 @@ export class OscilloscopeApp {
     });
     if (this.sumNode !== undefined && comparison !== undefined) {
       const gain = this.previewFix ? comparison.fixedGain : comparison.sumGain;
-      this.sumNode.textContent = `${formatGain(gain)} dB`;
+      this.sumNode.textContent = formatGain(gain);
       this.sumNode.className = `lane-readout ${gain < -summingMarginDb ? "cancels" : gain > summingMarginDb ? "reinforces" : ""}`;
     }
   }
 
   private beatsMode(): boolean {
     return this.store.get("timeBase") === "beats";
+  }
+
+  private readoutView(): ChannelView {
+    return readoutView(
+      this.beatsMode(),
+      this.store.get("triggerSource") as ViewName,
+    );
   }
 
   // The musical grid of the last synced frame, when in Beats mode.
@@ -1028,12 +1042,13 @@ export class OscilloscopeApp {
       0,
       this.lanesOf(this.lastFrame).findIndex((style) => style.own),
     );
-    const index =
-      this.layout() !== ViewLayout.stacked
-        ? 0
-        : (this.lastFrame?.lanes.length ?? 0) > 0
-          ? ownLane
-          : Math.max(0, shown.indexOf(source));
+    const index = markerLane(
+      this.layout(),
+      (this.lastFrame?.lanes.length ?? 0) > 0,
+      ownLane,
+      shown,
+      source,
+    );
     const lane = lanes(this.laneCount(), this.layout())[index] ?? {
       center: 0,
       halfHeight: 1,
@@ -1150,14 +1165,8 @@ export class OscilloscopeApp {
     if (lane !== undefined && this.layout() === ViewLayout.stacked) {
       return views[lane];
     }
-    // Overlaid, the channel the readouts measure: the trigger source, or the Mid in Beats mode,
-    // where the trigger does not apply; the first view if that one is not drawn.
-    const source = this.beatsMode()
-      ? ChannelView.mid
-      : ChannelView[
-          this.store.get("triggerSource") as keyof typeof ChannelView
-        ];
-    return frame.views.get(source) ?? views[0];
+    // Overlaid, the channel the readouts measure; the first view if that one is not drawn.
+    return frame.views.get(this.readoutView()) ?? views[0];
   }
 
   // The traces as the hover readout sees them, in lane order, named.
@@ -1175,10 +1184,7 @@ export class OscilloscopeApp {
         styles.findIndex((style) => style.own),
       );
     } else {
-      const source =
-        ChannelView[
-          this.store.get("triggerSource") as keyof typeof ChannelView
-        ];
+      const source = this.readoutView();
       traces = [];
       for (const [view, values] of frame.views) {
         if (view === source) {
@@ -1565,9 +1571,9 @@ export class OscilloscopeApp {
     } else if (this.lastFrame?.frozen === true && !this.lastFrame.synced) {
       // No further back than the engine says this frozen view reaches.
       const span = this.store.number("timeSpan");
-      this.panSeconds = Math.min(
+      this.panSeconds = clampPan(
+        this.panSeconds - screenWidths * span,
         this.lastFrame.panReach,
-        Math.max(0, this.panSeconds - screenWidths * span),
       );
       this.backend.pan(this.panSeconds);
     }
@@ -1611,6 +1617,13 @@ export class OscilloscopeApp {
       // The engine may resume on its own (auto-freeze); a new freeze starts unpanned.
       if (!frame.frozen) {
         this.panSeconds = 0;
+      } else if (!frame.synced) {
+        // The reach shrinks when the span grows: the pan, and its chip, follow it.
+        const pan = clampPan(this.panSeconds, frame.panReach);
+        if (pan !== this.panSeconds) {
+          this.panSeconds = pan;
+          this.backend.pan(pan);
+        }
       }
       this.loop.submit(frame);
       // A track joined or left, or the views drawn changed (a track turned mono): lanes, grid

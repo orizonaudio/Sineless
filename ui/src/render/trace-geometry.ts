@@ -128,7 +128,13 @@ export function cancellationBands(
   const tracks = frame.lanes
     .slice(0, -1)
     .filter((_, index) => compared[index] === true);
-  if (frame.comparison === undefined || !sum || tracks.length < 2) {
+  // Tracks that match this one nowhere clearly have no cancellation to fix: their sum only dips
+  // and swells as they beat against each other. This track's own match is never related.
+  const related =
+    frame.comparison?.matches.some(
+      (match, index) => compared[index] === true && match.related,
+    ) === true;
+  if (frame.comparison === undefined || !sum || tracks.length < 2 || !related) {
     return new Float32Array();
   }
   const levelSum = peaks(frame, sum);

@@ -2,6 +2,7 @@
 // attribute; the nearest such element under the pointer gives the tooltip.
 
 import {
+  analysisGateDbfs,
   frequencyWindowSeconds,
   levelFloorDbfs,
   matchReachSeconds,
@@ -24,6 +25,7 @@ const matchWindow = formatSeconds(matchWindowSeconds);
 const frequencyWindow = formatSeconds(frequencyWindowSeconds);
 const margin = String(summingMarginDb);
 const levelFloor = String(levelFloorDbfs).replace("-", "−");
+const gate = String(analysisGateDbfs).replace("-", "−");
 const shortestSpan = formatSeconds(settings.timeSpan.minimum);
 const longestSpan = formatSeconds(settings.timeSpan.maximum);
 const rollSpan = formatSeconds(rollThresholdSeconds);
@@ -53,11 +55,11 @@ export const helpTexts = {
   },
   sumGain: {
     title: "Summing gain",
-    text: `How loud the checked tracks are together, against unrelated signals of the same levels. Within ${margin} dB of 0 is harmless; above that they reinforce, and below it they cancel. Where they cancel strongly, the sum's lane is shaded red. A dash means they never sound together. Measured over the visible part, but only where at least two of them sound together, so a long view does not water down a short clash.`,
+    text: `How loud the checked tracks are together, against unrelated signals of the same levels. Within ${margin} dB of 0 is harmless; above that they reinforce, and below it they cancel. Where they cancel strongly, the sum's lane is shaded red, provided a checked track is related to yours: unrelated tracks only beat against each other. A dash means they never sound together, or nothing is measured yet. Measured over the visible part, but only where at least two of them sound together above ${gate} dBFS, so a long view does not water down a short clash.`,
   },
   match: {
     title: "Against this track",
-    text: `How late this track is against yours, within ${reach} (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the ${matchWindow} before the playhead (zoomed away from it, the newest ${matchWindow} shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is.`,
+    text: `How late this track is against yours, within ${reach} (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the ${matchWindow} before the playhead (zoomed away from it, the newest ${matchWindow} shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is. Only audio above ${gate} dBFS is compared; a dash means they never sound together there, or the track is not measured yet.`,
   },
   group: {
     title: "Group",
@@ -81,7 +83,7 @@ export const helpTexts = {
   },
   frequency: {
     title: "Frequency",
-    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average: of the trigger source in Sec mode, and of the Mid in Beats mode. A dash means no steady repetition was found.`,
+    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average: of the trigger source in Sec mode, and of the Mid in Beats mode. A dash means no steady repetition was found, or the signal is below ${gate} dBFS.`,
   },
   screen: {
     title: "Screen",

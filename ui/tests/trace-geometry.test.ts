@@ -98,6 +98,11 @@ describe("cancellation bands", () => {
     layout: ViewLayout.stacked,
     lineWidthPixels: 1,
   };
+  // Each lane's match against this track: this track's own is zeros, never related.
+  const own = { correlation: 0, related: false, offset: 0, inverted: false };
+  const alike = { correlation: 0.9, related: true, offset: 0, inverted: false };
+  const relatedMatches = [own, alike, alike];
+  const unrelatedMatches = [own, own, own];
   const compareFrame = (sum: number[]) => ({
     ...frame(FrameMode.minMax, [[ChannelView.left, [0, 0, 0, 0, 0, 0, 0, 0]]]),
     views: new Map(),
@@ -106,9 +111,43 @@ describe("cancellation bands", () => {
       new Float32Array([-0.4, 0.4, -0.4, 0.4, -0.4, 0.4, -0.4, 0.4]),
       new Float32Array(sum),
     ],
-    comparison: { sumGain: -3, fixedGain: 3, matches: [] },
+    comparison: { sumGain: -3, fixedGain: 3, matches: relatedMatches },
   });
   const both = [true, true];
+
+  test("leave tracks that beat unshaded unless they are related", () => {
+    // Two steady tones a little apart in pitch: their sum swells and dips at the difference.
+    const columns = 1000;
+    const column = (signal: (t: number) => number) => {
+      const values: number[] = [];
+      for (let c = 0; c < columns; c++) {
+        let low = 0;
+        let high = 0;
+        for (let i = 0; i < 48; i++) {
+          const value = signal((c * 48 + i) / 48000);
+          low = Math.min(low, value);
+          high = Math.max(high, value);
+        }
+        values.push(low, high);
+      }
+      return new Float32Array(values);
+    };
+    const a = (t: number) => 0.5 * Math.sin(2 * Math.PI * 220 * t);
+    const b = (t: number) => 0.5 * Math.sin(2 * Math.PI * 223 * t);
+    const beating = {
+      ...frame(FrameMode.minMax, [[ChannelView.left, [0, 0]]]),
+      views: new Map(),
+      pointCount: columns,
+      lanes: [column(a), column(b), column((t) => a(t) + b(t))],
+      comparison: { sumGain: 0, fixedGain: 0, matches: unrelatedMatches },
+    };
+    expect(cancellationBands(beating, layout, both)).toHaveLength(0);
+    const related = {
+      ...beating,
+      comparison: { ...beating.comparison, matches: relatedMatches },
+    };
+    expect(cancellationBands(related, layout, both).length).toBeGreaterThan(0);
+  });
 
   test("leave unrelated noise unshaded", () => {
     let seed = 11;
@@ -145,7 +184,7 @@ describe("cancellation bands", () => {
       ...frame(FrameMode.minMax, [[ChannelView.left, a]]),
       views: new Map(),
       lanes: [new Float32Array(a), new Float32Array(b), new Float32Array(sum)],
-      comparison: { sumGain: 0, fixedGain: 0, matches: [] },
+      comparison: { sumGain: 0, fixedGain: 0, matches: relatedMatches },
     };
     const shaded = xs(cancellationBands(unrelated, layout, both));
     // Quads span columns: the share of the lane's width they cover.

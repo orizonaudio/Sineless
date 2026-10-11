@@ -76,14 +76,14 @@ describe("format", () => {
     expect(signed(-0.25, 2)).toBe(`${minus}0.25`);
     expect(signed(0.5, 2)).toBe("+0.50");
     expect(signed(-0.0001, 2)).toBe("0.00");
-    expect(formatGain(-6.02)).toBe(`${minus}6.0`);
-    expect(formatGain(3)).toBe("+3.0");
-    expect(formatGain(-99.9)).toBe(`${minus}99.9`);
-    expect(formatGain(-100)).toBe(`${minus}100.0`);
-    expect(formatGain(-139.9)).toBe(`${minus}139.9`);
-    expect(formatGain(-140)).toBe(`${minus}∞`);
-    expect(formatGain(-332.2)).toBe(`${minus}∞`);
-    expect(formatGain(-151.8)).toBe(`${minus}∞`);
+    expect(formatGain(-6.02)).toBe(`${minus}6.0 dB`);
+    expect(formatGain(3)).toBe("+3.0 dB");
+    expect(formatGain(-99.9)).toBe(`${minus}99.9 dB`);
+    expect(formatGain(-100)).toBe(`${minus}100.0 dB`);
+    expect(formatGain(-139.9)).toBe(`${minus}139.9 dB`);
+    expect(formatGain(-140)).toBe(`${minus}∞ dB`);
+    expect(formatGain(-332.2)).toBe(`${minus}∞ dB`);
+    expect(formatGain(-151.8)).toBe(`${minus}∞ dB`);
     expect(formatGain(Number.NaN)).toBe("—");
   });
 
