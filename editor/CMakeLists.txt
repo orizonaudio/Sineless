@@ -48,6 +48,7 @@ if(BUILD_TESTING)
     add_executable(editor_tests
         tests/EmbeddedAssetsTests.cpp
         tests/FrameFlowTests.cpp
+        tests/MinimumHeightTests.cpp
         tests/SessionTests.cpp
         tests/TransportTests.cpp
     )

@@ -23,6 +23,7 @@ import type {
 } from "../../protocol/src/settings.ts";
 import type { Backend } from "./bridge/backend.ts";
 import { DragField } from "./components/drag-field.ts";
+import { numberFields, type NumberField } from "./view/fields.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { Segmented } from "./components/segmented.ts";
 import { streamGap } from "./components/wheel-steps.ts";
@@ -36,15 +37,12 @@ import {
   triggerPosition,
 } from "./view/axis-labels.ts";
 import {
-  formatDb,
   formatDbfs,
   formatGain,
   formatOffset,
   formatPitch,
   formatFrequency,
-  formatSeconds,
   parseQuantity,
-  type Quantity,
   signed,
 } from "./view/format.ts";
 import {
@@ -62,7 +60,12 @@ import {
   type HoverContext,
   type HoverTrace,
 } from "./view/hover.ts";
-import { cssColour, laneStyles, type LaneStyle } from "./view/lanes.ts";
+import {
+  cssColour,
+  laneStyles,
+  sumLaneColour,
+  type LaneStyle,
+} from "./view/lanes.ts";
 import { isMac, type HelpTopic } from "./view/help.ts";
 import {
   extremePositions,
@@ -83,13 +86,6 @@ import {
   zoomTo,
   type ViewWindow,
 } from "./view/zoom.ts";
-import {
-  holdOffSteps,
-  spanSteps,
-  stepLinear,
-  stepFine,
-  stepThrough,
-} from "./view/steps.ts";
 
 const viewOrder = ["left", "right", "mid", "side"] as const;
 type ViewName = (typeof viewOrder)[number];
@@ -126,7 +122,6 @@ const maxWheelZoomDelta = 25;
 const wheelLinePixels = 40;
 // The Compare view's sum lane: an id no track has, and a neutral colour.
 const sumLaneId = -100;
-const sumLaneColour = 0xe6e2d8;
 // Cursors snap to a target within this distance (CSS px) unless Option is held.
 const snapRadius = 10;
 // A drag shorter than this (CSS px) is a click, not a zoom selection.
@@ -347,25 +342,18 @@ export class OscilloscopeApp {
 
   // ----- Controls -----
 
-  private numberField(
-    name: SettingName,
-    host: string,
-    label: string,
-    format: (value: number) => string,
-    step: (value: number, delta: number, fine: boolean) => number,
-    quantity: Quantity,
-    bareScale = 1,
-  ): void {
+  private numberField(name: SettingName, spec: NumberField): void {
     const field = new DragField({
-      label,
-      format,
-      parse: (text) => parseQuantity(text, quantity, bareScale),
-      step: (value, delta, fine) => clampTo(name, step(value, delta, fine)),
+      label: spec.label,
+      format: spec.format,
+      parse: (text) => parseQuantity(text, spec.quantity, spec.bareScale),
+      step: (value, delta, fine) =>
+        clampTo(name, spec.step(value, delta, fine)),
       onRequest: (value) => {
         this.request(name, clampTo(name, value));
       },
     });
-    element(host).append(field.element);
+    element(spec.host).append(field.element);
     this.fields.set(name, field);
   }
 
@@ -397,56 +385,9 @@ export class OscilloscopeApp {
     this.beatSpanField = beatSpanField;
     this.beatSpanNames = beatSpanNames;
 
-    this.numberField(
-      "timeSpan",
-      "span-field",
-      "Time span",
-      formatSeconds,
-      (value, delta, fine) =>
-        fine
-          ? stepFine(spanSteps, value, delta)
-          : stepThrough(spanSteps, value, delta),
-      "time",
-      0.001,
-    );
-    this.numberField(
-      "verticalScale",
-      "scale-field",
-      "Vertical scale",
-      formatDb,
-      (value, delta, fine) => stepLinear(value, delta, fine ? 1 : 3, -60, 6),
-      "level",
-    );
-    this.numberField(
-      "triggerLevel",
-      "level-field",
-      "Trigger level",
-      (value) => signed(value, 3),
-      (value, delta, fine) =>
-        stepLinear(value, delta, fine ? 0.001 : 0.01, -1, 1),
-      "number",
-    );
-    this.numberField(
-      "triggerHysteresis",
-      "hysteresis-field",
-      "Trigger hysteresis",
-      (value) => value.toFixed(3),
-      (value, delta, fine) =>
-        stepLinear(value, delta, fine ? 0.001 : 0.005, 0, 0.5),
-      "number",
-    );
-    this.numberField(
-      "triggerHoldOff",
-      "hold-off-field",
-      "Trigger hold-off",
-      formatSeconds,
-      (value, delta, fine) =>
-        fine
-          ? stepFine(holdOffSteps, value, delta)
-          : stepThrough(holdOffSteps, value, delta),
-      "time",
-      0.001,
-    );
+    for (const [name, field] of Object.entries(numberFields)) {
+      this.numberField(name as SettingName, field);
+    }
 
     const views = element("views");
     for (const name of viewOrder) {
@@ -534,15 +475,6 @@ export class OscilloscopeApp {
       ["rising", "Rising"],
       ["falling", "Falling"],
     ]);
-
-    this.numberField(
-      "concertPitch",
-      "concert-pitch-field",
-      "Concert pitch",
-      (value) => `${formatPitch(value)} Hz`,
-      (value, delta, fine) => value + delta * (fine ? 0.1 : 1),
-      "pitch",
-    );
 
     // A group's title opens its popover of further settings; a press elsewhere closes it.
     for (const [group, button, id] of popovers) {

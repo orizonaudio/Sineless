@@ -49,6 +49,10 @@ public:
 
     // The minimum height now, in CSS pixels: kMinimumHeight, or more with stacked lanes on show.
     [[nodiscard]] int minimumHeight() const;
+    // The same for given settings, track channels and lanes: kMinimumLaneHeight for each stacked
+    // trace drawn, above the chrome, and never less than kMinimumHeight.
+    [[nodiscard]] static int minimumHeightFor(const engine::Settings& settings, int inputChannels,
+                                              const engine::LaneSet& laneSet);
 
     // Host window units per CSS pixel.
     [[nodiscard]] double scaleFactor() const { return scale; }

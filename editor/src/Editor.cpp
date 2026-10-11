@@ -213,8 +213,14 @@ int Editor::minimumHeight() const
     if (!analyzer || !engineState) {
         return kMinimumHeight;
     }
+    return minimumHeightFor(engineState->settings().get(), engineState->inputChannels(),
+                            analyzer->laneSet());
+}
+
+int Editor::minimumHeightFor(const engine::Settings& settings, int inputChannels,
+                             const engine::LaneSet& laneSet)
+{
     using protocol::SettingId;
-    const engine::Settings settings = engineState->settings().get();
     const auto mode = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode);
     const bool stacked = settings.enumValue<protocol::ViewLayout>(SettingId::kViewLayout) ==
                          protocol::ViewLayout::kStacked;
@@ -225,15 +231,13 @@ int Editor::minimumHeight() const
     if (mode == protocol::DisplayMode::kSingle) {
         // The channel views on show, one lane each.
         lanes = std::popcount(engine::effectiveViews(
-            static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)),
-            engineState->inputChannels()));
+            static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)), inputChannels));
     } else {
         // The tracks on show, and in the Compare view the sum lane, drawn once another track is
         // compared with this one.
-        const engine::LaneSet set = analyzer->laneSet();
-        lanes = static_cast<int>(set.lanes.size());
+        lanes = static_cast<int>(laneSet.lanes.size());
         if (mode == protocol::DisplayMode::kCompare &&
-            std::ranges::any_of(set.lanes, [](const engine::LaneLabel& lane) {
+            std::ranges::any_of(laneSet.lanes, [](const engine::LaneLabel& lane) {
                 return lane.compared && !lane.own;
             })) {
             ++lanes;

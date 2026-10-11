@@ -1,10 +1,13 @@
+#include "engine/SettingJson.h"
 #include "engine/State.h"
 
 #include <fstream>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
+#include <ostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace orizon::engine {
 namespace {
@@ -28,14 +31,68 @@ double defaultOf(SettingId id)
     return Settings().value(id);
 }
 
-TEST(State, RoundTripsEverySetting)
+// Every value worth trying for a setting, from the protocol's table: a number's minimum, maximum
+// and default; every value of an enum; each flag alone and all of them.
+struct SettingCase
 {
-    Settings settings;
-    settings.set(SettingId::kTimeSpan, 1.5);
-    settings.set(SettingId::kChannelViews, 0b1111);
-    settings.set(SettingId::kTriggerSlope, 1.0);
-    EXPECT_EQ(deserializeState(serializeState(settings)), settings);
+    const protocol::SettingDescriptor* setting = nullptr;
+    double value = 0.0;
+};
+
+std::vector<SettingCase> everySettingValue()
+{
+    std::vector<SettingCase> cases;
+    for (const protocol::SettingDescriptor& setting : protocol::kSettings) {
+        std::vector<double> values;
+        switch (setting.kind) {
+        case protocol::SettingKind::kNumber:
+            values = {setting.minimum, setting.maximum, setting.defaultValue};
+            break;
+        case protocol::SettingKind::kEnum:
+            for (double value = setting.minimum; value <= setting.maximum; ++value) {
+                values.push_back(value);
+            }
+            break;
+        case protocol::SettingKind::kFlags:
+            for (std::size_t bit = 0; bit < setting.valueNames.size(); ++bit) {
+                values.push_back(static_cast<double>(1U << bit));
+            }
+            values.push_back(setting.maximum);
+            break;
+        }
+        for (const double value : values) {
+            cases.push_back({.setting = &setting, .value = value});
+        }
+    }
+    return cases;
 }
+
+void PrintTo(const SettingCase& c, std::ostream* out)
+{
+    *out << c.setting->name << " = " << c.value;
+}
+
+class EverySetting : public ::testing::TestWithParam<SettingCase>
+{
+};
+
+// Each survives a project's save and load, and the page's JSON form, unchanged.
+TEST_P(EverySetting, RoundTripsThroughStateAndJson)
+{
+    const auto [setting, value] = GetParam();
+    Settings settings;
+    ASSERT_TRUE(settings.set(setting->id, value)) << "the table's own value is refused";
+    EXPECT_EQ(deserializeState(serializeState(settings)).value(setting->id), value);
+    const auto parsed = settingFromJson(setting->id, settingToJson(setting->id, value));
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(*parsed, value);
+}
+
+INSTANTIATE_TEST_SUITE_P(State, EverySetting, ::testing::ValuesIn(everySettingValue()),
+                         [](const ::testing::TestParamInfo<SettingCase>& info) {
+                             return std::string(info.param.setting->name) + "_" +
+                                    std::to_string(info.index);
+                         });
 
 TEST(State, WritesTheVersionEnvelope)
 {

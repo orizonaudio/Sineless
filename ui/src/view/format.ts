@@ -48,6 +48,9 @@ export function formatGain(db: number): string {
 
 // Seconds to three significant digits: "0.5 ms", "20 ms", "250 ms", "1.5 s".
 export function formatSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds)) {
+    return none;
+  }
   const milliseconds = Number(significant(seconds * 1000, 3));
   if (Math.abs(milliseconds) < 1000) {
     return `${significant(milliseconds, 3).replace("-", minus)} ms`;
@@ -58,6 +61,9 @@ export function formatSeconds(seconds: number): string {
 // A track's offset in milliseconds, signed, with two decimals below 1 ms so that a shift of a
 // sample or two still shows: "0.0 ms", "+0.02 ms", "−1.5 ms".
 export function formatOffset(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds)) {
+    return none;
+  }
   if (milliseconds === 0) {
     return "0.0 ms";
   }
@@ -67,6 +73,9 @@ export function formatOffset(milliseconds: number): string {
 
 // Project time as "m:ss.mmm", e.g. "1:04.512".
 export function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds)) {
+    return none;
+  }
   const milliseconds = Math.round(Math.abs(seconds) * 1000);
   const minutes = Math.floor(milliseconds / 60000);
   const rest = (milliseconds % 60000) / 1000;
@@ -76,6 +85,9 @@ export function formatClock(seconds: number): string {
 
 // A sample count: one decimal below 10000, e.g. "218.2 samples", "48000 samples".
 export function formatSamples(samples: number): string {
+  if (!Number.isFinite(samples)) {
+    return none;
+  }
   const decimals = rounded(samples, 1) < 10000 ? 1 : 0;
   return `${samples.toFixed(decimals)} samples`;
 }

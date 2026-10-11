@@ -45,6 +45,7 @@ if(BUILD_TESTING)
 
     add_executable(engine_tests
         tests/AnalysisWorkerTests.cpp
+        tests/AnalyzerGridTests.cpp
         tests/AnalyzerTests.cpp
         tests/BlockStatsTests.cpp
         tests/CaptureRingTests.cpp

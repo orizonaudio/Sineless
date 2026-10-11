@@ -1,3 +1,4 @@
+#include "FrameDecoding.h"
 #include "engine/Analyzer.h"
 
 #include <array>
@@ -18,64 +19,6 @@ using protocol::FrameMode;
 using protocol::SettingId;
 
 constexpr double kSampleRate = 48000.0;
-
-struct DecodedFrame
-{
-    std::uint32_t sequence = 0;
-    FrameMode mode = FrameMode::kRaw;
-    std::uint8_t flags = 0;
-    std::uint8_t views = 0;
-    std::uint8_t laneCount = 0;
-    std::uint32_t laneSet = 0;
-    std::uint32_t pointCount = 0;
-    float samplesPerPoint = 0.0f;
-    float startFraction = 0.0f;
-    float peak = 0.0f;
-    float rms = 0.0f;
-    float frequency = 0.0f;
-    float cursor = -1.0f;
-    float viewStart = 0.0f;
-    float viewEnd = 1.0f;
-    float visibleSamples = 0.0f;
-    std::vector<float> data;
-
-    [[nodiscard]] bool has(FrameFlag value) const
-    {
-        return (flags & static_cast<std::uint8_t>(value)) != 0;
-    }
-};
-
-template <typename Value> Value get(const std::vector<std::byte>& bytes, std::size_t offset)
-{
-    Value value{};
-    std::memcpy(&value, bytes.data() + offset, sizeof(Value));
-    return value;
-}
-
-DecodedFrame decode(const std::vector<std::byte>& bytes)
-{
-    DecodedFrame frame;
-    frame.sequence = get<std::uint32_t>(bytes, FrameHeader::kSequenceOffset);
-    frame.mode = static_cast<FrameMode>(get<std::uint8_t>(bytes, FrameHeader::kModeOffset));
-    frame.flags = get<std::uint8_t>(bytes, FrameHeader::kFlagsOffset);
-    frame.views = get<std::uint8_t>(bytes, FrameHeader::kViewsOffset);
-    frame.laneCount = get<std::uint8_t>(bytes, FrameHeader::kLaneCountOffset);
-    frame.laneSet = get<std::uint32_t>(bytes, FrameHeader::kLaneSetOffset);
-    frame.pointCount = get<std::uint32_t>(bytes, FrameHeader::kPointCountOffset);
-    frame.samplesPerPoint = get<float>(bytes, FrameHeader::kSamplesPerPointOffset);
-    frame.startFraction = get<float>(bytes, FrameHeader::kStartFractionOffset);
-    frame.peak = get<float>(bytes, FrameHeader::kPeakOffset);
-    frame.rms = get<float>(bytes, FrameHeader::kRmsOffset);
-    frame.frequency = get<float>(bytes, FrameHeader::kFrequencyOffset);
-    frame.cursor = get<float>(bytes, FrameHeader::kCursorOffset);
-    frame.viewStart = get<float>(bytes, FrameHeader::kViewStartOffset);
-    frame.viewEnd = get<float>(bytes, FrameHeader::kViewEndOffset);
-    frame.visibleSamples = get<float>(bytes, FrameHeader::kVisibleSamplesOffset);
-    frame.data.resize((bytes.size() - FrameHeader::kSize) / sizeof(float));
-    std::memcpy(frame.data.data(), bytes.data() + FrameHeader::kSize,
-                frame.data.size() * sizeof(float));
-    return frame;
-}
 
 class AnalyzerTest : public ::testing::Test
 {

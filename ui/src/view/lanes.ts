@@ -2,6 +2,9 @@
 // "Track n" by its lane position; one without a host colour takes the fallback palette.
 import type { LaneLabel } from "../../../protocol/src/messages.ts";
 
+// The Compare view's sum lane: a neutral colour no track gets from the palette.
+export const sumLaneColour = 0xe6e2d8;
+
 // One colour per lane up to the lane limit (16), none of them the Compare sum lane's neutral.
 export const fallbackPalette = [
   0xe8b04b, 0x5ec8e5, 0xc48be0, 0x7fcf8f, 0xe8a35a, 0x7fa8e8, 0xf0708a,
