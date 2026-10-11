@@ -32,7 +32,7 @@ into the session scratchpad, never into the repository.
 - Prefer the documented or widely adopted approach.
 - Do something different only with a written reason: what the documented approach does not
   cover, and the evidence.
-- Then find every place in O-Scope that shares the cause (see AGENTS.md, "Fixing a bug").
+- Then find every place in O-Scope that shares the cause (see CLAUDE.md, "Fixing a bug").
 
 ## 3. Record it
 

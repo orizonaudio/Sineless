@@ -39,7 +39,7 @@ for (const push of pushes) {
         );
   if (targetsMain) {
     process.stderr.write(
-      "Pushing to main is blocked: push a branch and open a pull request instead (see AGENTS.md, Delivering).\n",
+      "Pushing to main is blocked: push a branch and open a pull request instead (see CLAUDE.md, Delivering).\n",
     );
     process.exit(2);
   }
