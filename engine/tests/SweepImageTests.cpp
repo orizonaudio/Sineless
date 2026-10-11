@@ -138,6 +138,24 @@ TEST_F(SweepImageTest, KeepsItsLengthThroughASmallTempoChange)
     EXPECT_EQ(image.length(), 1040u);
 }
 
+// A lane takes this track's sweep length, which can be a sample off its own window's; for a short
+// sweep that is more than the image would keep on its own, but the adopted length must stay.
+TEST_F(SweepImageTest, KeepsALengthItWasGivenEvenForAShortSweep)
+{
+    writeUpTo(1000);
+    ASSERT_TRUE(image.update(ring, {.start = 500, .sampleCount = 500}, false, 2, 499));
+    EXPECT_EQ(image.length(), 499u);
+    writeUpTo(1010);
+    image.clearChanges();
+    ASSERT_TRUE(image.update(ring, {.start = 510, .sampleCount = 500}, false, 2, 499));
+    EXPECT_EQ(image.length(), 499u);
+    std::uint64_t placed = 0;
+    for (const SweepImage::Range& range : image.changes()) {
+        placed += range.end - range.first;
+    }
+    EXPECT_EQ(placed, 10u) << "only the new samples placed, not rebuilt";
+}
+
 TEST_F(SweepImageTest, RefusesReadsBeyondTheScreen)
 {
     writeUpTo(100);

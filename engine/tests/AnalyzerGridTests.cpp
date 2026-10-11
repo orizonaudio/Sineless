@@ -124,12 +124,13 @@ public:
                 }
                 std::array<const float*, 2> channels{left.data(), right.data()};
                 engines[track]->captureRing().write(channels.data(), 2, kBlock);
-                engines[track]->timeline().advance({.playing = true,
-                                                    .positionValid = true,
-                                                    .quarterNotes = quarterNotes,
-                                                    .tempoValid = true,
-                                                    .tempo = tempo},
-                                                   kBlock, kSampleRate);
+                engines[track]->timeline().advance(
+                    {.playing = true,
+                     .positionValid = true,
+                     .quarterNotes = quarterNotes,
+                     .tempoValid = true,
+                     .tempo = track == 0 ? tempo : tempo + otherTempoOffset},
+                    kBlock, kSampleRate);
             }
             position += kBlock;
             quarterNotes += kBlock * tempo / (60.0 * kSampleRate);
@@ -152,6 +153,8 @@ public:
     std::uint64_t position = 0;
     double quarterNotes = 0.0;
     double tempo = 120.0;
+    // Added to the tempo the other tracks are given, as if a change reached them a little later.
+    double otherTempoOffset = 0.0;
 };
 
 void configure(Engine& engine, DisplayMode mode, TimeBase timeBase)
@@ -199,6 +202,27 @@ std::vector<float> loudestPerTrace(const DecodedFrame& frame)
         }
     }
     return loudest;
+}
+
+// Each trace's longest run of silent values, as a fraction of its length: a tone's runs are short,
+// a part of the sweep left unfilled is a long one.
+std::vector<double> longestSilencePerTrace(const DecodedFrame& frame)
+{
+    const std::size_t traces = tracesIn(frame);
+    const std::size_t perPoint = frame.mode == FrameMode::kMinMax ? 2 : 1;
+    const std::size_t length = static_cast<std::size_t>(frame.pointCount) * perPoint;
+    std::vector<double> longest(traces, 1.0);
+    for (std::size_t trace = 0; trace < traces && (trace + 1) * length <= frame.data.size();
+         ++trace) {
+        std::size_t run = 0;
+        std::size_t most = 0;
+        for (std::size_t i = 0; i < length; ++i) {
+            run = std::abs(frame.data[trace * length + i]) < 0.005f ? run + 1 : 0;
+            most = std::max(most, run);
+        }
+        longest[trace] = static_cast<double>(most) / static_cast<double>(length);
+    }
+    return longest;
 }
 
 std::vector<std::byte> lastProduced;
@@ -305,6 +329,37 @@ std::vector<Case> rampCases()
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryView, TempoRamp, ::testing::ValuesIn(rampCases()), testName);
+
+// A sweep shorter than 1024 samples keeps no drift of its own, so a lane a sample off this track's
+// takes this track's length; through a tempo ramp every lane must still be drawn whole.
+TEST(AnalyzerLimits, DrawsShortSweepsWholeThroughATempoRamp)
+{
+    for (const DisplayMode mode : {DisplayMode::kMulti, DisplayMode::kCompare}) {
+        Tracks tracks(2);
+        tracks.tempo = 200.0;            // A sixteenth of a beat: 900 samples.
+        tracks.otherTempoOffset = -0.15; // The other tracks' sweeps: a sample longer.
+        configure(tracks.own(), mode, TimeBase::kBeats);
+        tracks.own().settings().set(SettingId::kBeatSpan,
+                                    static_cast<double>(protocol::BeatSpan::kSixteenthBeat));
+        Analyzer analyzer(tracks.own(), tracks.registry);
+        analyzer.setColumns(400);
+        std::optional<DecodedFrame> frame;
+        for (int step = 0; step < 200; ++step) {
+            if (step == 80) {
+                tracks.join(440.0);
+            }
+            tracks.play(kBlock, 0.05);
+            if (auto produced = produceSome(analyzer, 1)) {
+                frame = std::move(produced);
+            }
+        }
+        ASSERT_TRUE(frame);
+        EXPECT_FALSE(frame->has(protocol::FrameFlag::kPartial)) << "still filling";
+        for (const double silence : longestSilencePerTrace(*frame)) {
+            EXPECT_LT(silence, 0.05) << "a lane is partly blank";
+        }
+    }
+}
 
 // A view at the zoom limit can come out a few ulps narrower in the UI's floating point: the engine
 // still takes it.

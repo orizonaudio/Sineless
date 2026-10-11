@@ -1505,6 +1505,30 @@ TEST_F(CompareTest, ComparesInSecondsModeToo)
     EXPECT_LT(sumGain(), -60.0f);
 }
 
+// A track that joins has no audio of the view yet: its first search fails, and it is searched again
+// soon after its capture holds the view rather than at the next refresh, half a second later.
+TEST_F(CompareTest, MeasuresATrackThatJoinsSoonAfterItsAudioArrives)
+{
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    own->settings().set(SettingId::kTimeSpan, 0.1);
+    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    play(9600);
+    produce();
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    play(960);
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_FALSE(match(*frame, 1).inverted()) << "its capture does not hold the view yet";
+    for (int step = 0; step < 12; ++step) { // 0.12 s more.
+        play(480);
+        if (auto produced = produce()) {
+            frame = std::move(produced);
+        }
+    }
+    EXPECT_TRUE(match(*frame, 1).inverted()) << "searched again soon";
+    EXPECT_LT(sumGain(), -60.0f) << "an inverted copy cancels";
+}
+
 TEST_F(CompareTest, MeasuresTheFixOnRealSamplesInSecondsMode)
 {
     // A copy 5 ms late in a 20 ms view: fixed, it sums as identical signals do (+3 dB). At the

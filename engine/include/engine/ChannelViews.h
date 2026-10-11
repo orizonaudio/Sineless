@@ -25,4 +25,10 @@ namespace orizon::engine {
                             protocol::ChannelView view, std::uint64_t start,
                             std::span<float> destination, std::span<float> scratch);
 
+// The same, reading what `source` holds of that range and silence for the rest, so that a track
+// whose capture runs a little ahead of or behind another's still shows what it has. True if all
+// of it was held.
+bool readViewHeld(const SampleSource& source, int inputChannels, protocol::ChannelView view,
+                  std::uint64_t start, std::span<float> destination, std::span<float> scratch);
+
 } // namespace orizon::engine

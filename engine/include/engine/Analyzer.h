@@ -35,6 +35,8 @@ namespace orizon::engine {
 inline constexpr double kMatchWindowSeconds = protocol::kMatchWindowSeconds;
 inline constexpr double kMatchRefreshSeconds = 0.5;
 inline constexpr double kMatchSpacingSeconds = 0.1;
+// A match search that could not read all its audio is tried again this soon.
+inline constexpr double kMatchRetrySeconds = 0.05;
 
 // Levels (peak and energy) are kept per block of this many seconds of audio, so that readouts and
 // summing gains cost a pass over blocks; the Compare view judges per block whether tracks sound
@@ -302,6 +304,7 @@ private:
     {
         PairAnalysis analysis;
         std::uint64_t analysedAt = 0;
+        std::uint64_t wait = 0; // Audio to pass after analysedAt before the next search.
     };
     std::map<std::uint64_t, MatchState> matchStates;
     std::uint64_t lastMatchSearch = 0; // Capture end of the last search.

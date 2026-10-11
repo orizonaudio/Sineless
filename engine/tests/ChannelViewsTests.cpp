@@ -67,5 +67,15 @@ TEST_F(ChannelViews, FailsWhenTheRangeIsUnavailable)
     EXPECT_FALSE(readView(ring, 2, ChannelView::kMid, 2, destination, scratch));
 }
 
+TEST_F(ChannelViews, ReadsWhatIsHeldAndSilenceForTheRest)
+{
+    std::vector<float> destination(4, 9.0f);
+    std::vector<float> scratch(4);
+    EXPECT_FALSE(readViewHeld(ring, 2, ChannelView::kLeft, 2, destination, scratch));
+    EXPECT_EQ(destination, (std::vector<float>{-1.0f, 0.0f, 0.0f, 0.0f})) << "held, then silence";
+    EXPECT_TRUE(readViewHeld(ring, 2, ChannelView::kLeft, 0, destination, scratch));
+    EXPECT_EQ(destination, (std::vector<float>{1.0f, 0.5f, -1.0f, 0.0f}));
+}
+
 } // namespace
 } // namespace orizon::engine

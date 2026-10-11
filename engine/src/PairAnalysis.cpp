@@ -127,7 +127,8 @@ std::vector<std::span<const double>> spansOf(const std::vector<std::vector<doubl
 // Which blocks hold at least two tracks sounding together, from each track's energy per block
 // of `block` samples (equal lengths): the second-loudest within 20 dB of the loudest, not more
 // than 60 dB below the loudest block, and above the analysis gate. Empty when there are fewer
-// than two tracks.
+// than two tracks. A shorter last block is judged by its energy as a whole one is: its tracks are
+// equally short, so only one of a few samples falls under the other two limits.
 std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energies,
                                  std::size_t block)
 {

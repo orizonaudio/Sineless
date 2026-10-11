@@ -38,9 +38,12 @@ std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool sync
     if (synced) {
         return ring.capacity() - ring.capacity() / 8;
     }
+    // Never more than the capture can spare while the audio thread writes on: at very high rates
+    // the ring holds less than the longest span, and lane reads then fill what is missing with
+    // silence.
     const double seconds = HoldBuffer::kHoldSeconds + (lane ? kLaneMarginSeconds : 0.0);
     return std::min<std::uint64_t>(static_cast<std::uint64_t>(std::llround(seconds * sampleRate)),
-                                   ring.capacity());
+                                   ring.capacity() - ring.capacity() / 8);
 }
 
 // The narrowest view accepted: as far as the UI zooms. The UI computes its views in floating
@@ -1163,9 +1166,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
             continue;
         }
         lane.roll.clear();
-        if (!readView(*source, channels, ChannelView::kMid, laneStart, viewSamples, scratch)) {
-            std::ranges::fill(viewSamples, 0.0f); // Not captured (yet, or any more).
-        }
+        // What the lane holds of the window; silence where it does not (yet, or any more).
+        (void)readViewHeld(*source, channels, ChannelView::kMid, laneStart, viewSamples, scratch);
         const std::span<const float> visible =
             std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
         header.mode = reduceToColumns(visible, columns, reduced);
@@ -1208,7 +1210,7 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
 {
     if (laneSet != matchLaneSet || first != matchFirst || end != matchEnd || length != matchCount) {
         for (auto& [serial, state] : matchStates) {
-            state.analysedAt = 0;
+            state.wait = 0;
         }
         comparisonCache.valid = false;
         matchLaneSet = laneSet;
@@ -1220,7 +1222,6 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
         return std::ranges::find(laneOrder, entry.first) == laneOrder.end();
     });
     const double sampleRate = engine.sampleRate();
-    const auto refresh = static_cast<std::uint64_t>(std::lround(kMatchRefreshSeconds * sampleRate));
     std::optional<std::size_t> chosen;
     std::uint64_t chosenAt = 0;
     bool missing = false;
@@ -1237,7 +1238,8 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
                 chosen = lane;
                 missing = true;
             }
-        } else if (now - found->second.analysedAt >= refresh) {
+        } else if (now < found->second.analysedAt ||
+                   now - found->second.analysedAt >= found->second.wait) {
             ++candidates;
             if (!missing && (!chosen || found->second.analysedAt < chosenAt)) {
                 chosen = lane;
@@ -1436,7 +1438,8 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         readSearch(*lane, matchTrack);
         matchStates[laneOrder[*lane]] = {
             .analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch),
-            .analysedAt = now};
+            .analysedAt = now,
+            .wait = static_cast<std::uint64_t>(std::lround(kMatchRefreshSeconds * sampleRate))};
         searched = true;
     }
 
@@ -1573,17 +1576,13 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         static_cast<std::size_t>(std::ranges::find(laneOrder, ownLane) - laneOrder.begin());
     const std::uint64_t now = engine.captureRing().endIndex();
 
-    // Lane `index`'s Mid over window samples from `from`: false, and silent, where its capture
-    // does not hold them (yet).
+    // Lane `index`'s Mid over window samples from `from`, silent where its capture does not hold
+    // them: false then (not captured yet, or any more).
     const auto readLaneWindow = [&](std::size_t index, std::uint64_t from, std::span<float> into) {
         const auto [source, laneStart] = laneSources[index];
         readScratch.resize(std::max(readScratch.size(), into.size()));
-        if (readView(*source, lanes.at(laneOrder[index])->engine->inputChannels(),
-                     ChannelView::kMid, laneStart + from, into, readScratch)) {
-            return true;
-        }
-        std::ranges::fill(into, 0.0f);
-        return false;
+        return readViewHeld(*source, lanes.at(laneOrder[index])->engine->inputChannels(),
+                            ChannelView::kMid, laneStart + from, into, readScratch);
     };
 
     // Adds `part` to `into` over window positions from `position`: each shows the part's sample
@@ -1617,13 +1616,17 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         matchOwn.resize(end - searchFirst);
         matchTrack.resize(end - searchFirst);
         // A failed read (a capture overwritten during the copy, or not holding this audio yet)
-        // keeps the match as it was rather than one from partly silent audio; it still counts as
-        // this track's turn, so the others are searched before it is tried again.
+        // keeps the match as it was rather than one from partly silent audio. It counts as this
+        // track's turn, so the others are searched first, but is tried again soon rather than at
+        // the next refresh.
         MatchState& state = matchStates[laneOrder[*lane]];
         if (readLaneWindow(ownIndex, searchFirst, matchOwn) &&
             readLaneWindow(*lane, searchFirst, matchTrack)) {
             state.analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch);
+            state.wait = static_cast<std::uint64_t>(std::lround(kMatchRefreshSeconds * sampleRate));
             searched = true;
+        } else {
+            state.wait = static_cast<std::uint64_t>(std::lround(kMatchRetrySeconds * sampleRate));
         }
         state.analysedAt = now;
     }

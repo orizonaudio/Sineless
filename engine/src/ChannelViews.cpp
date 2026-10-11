@@ -1,5 +1,6 @@
 #include "engine/ChannelViews.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 
@@ -45,6 +46,23 @@ bool readView(const SampleSource& source, int inputChannels, ChannelView view, s
         destination[i] = 0.5f * (destination[i] + sign * right[i]);
     }
     return true;
+}
+
+bool readViewHeld(const SampleSource& source, int inputChannels, ChannelView view,
+                  std::uint64_t start, std::span<float> destination, std::span<float> scratch)
+{
+    const std::uint64_t end = start + destination.size();
+    const std::uint64_t first = std::clamp(source.beginIndex(), start, end);
+    const std::uint64_t last = std::clamp(source.endIndex(), first, end);
+    std::ranges::fill(destination, 0.0f);
+    if (first < last && !readView(source, inputChannels, view, first,
+                                  destination.subspan(static_cast<std::size_t>(first - start),
+                                                      static_cast<std::size_t>(last - first)),
+                                  scratch)) {
+        std::ranges::fill(destination, 0.0f); // Overwritten during the copy.
+        return false;
+    }
+    return first == start && last == end;
 }
 
 } // namespace orizon::engine
