@@ -34,13 +34,13 @@ CI marks where each will run.
 | Contract | C++ and TypeScript agree on frames, messages and saved state | `protocol/tests/data`, `engine/tests/data` | Every PR |
 | Conformance | The VST3 rules hosts rely on | VST3 validator, pluginval at strictness 10 | Every PR |
 | Sanitizers | Real-time safety, data races, memory errors | RealtimeSanitizer, ThreadSanitizer, AddressSanitizer builds | Every PR |
+| Fault injection | Failed and short reads, a page that never loads | `engine/tests`, `plugin/tests`, `editor/tests` | Every PR |
 | Performance | Audio-thread deadline, frame rate, CPU, memory | `scripts/performance.sh`, `scripts/performance.ps1` | Every PR, reported |
 | Soak | Memory growth and reopening over time | `scripts/soak.sh` | Before a release |
 | End-to-end | Sineless in REAPER, scripted | `scripts/windows` | Before a release |
 | Acceptance | The protocol in each host | [HOSTS.md](HOSTS.md) | Before a release |
 | App (planned) | The real UI against the mock transport, in WebKit and Chromium | `ui/tests/app` | Every PR |
 | Matrix (planned) | Every sample rate from 44.1 to 384 kHz, spans around each tolerance, mono and stereo, live and frozen | `engine/tests` | Every PR |
-| Fault injection (planned) | Failed and short reads, a page that never loads | `engine/tests`, `plugin/tests`, `editor/tests` | Every PR |
 | Signal corpus (planned) | Approved frames for tones, DC, silence, NaN, inverted and delayed pairs | `engine/tests/corpus` | Every PR |
 | Fuzzing (planned) | State loading and frame decoding against malformed input | `engine/tests/fuzz` | Every PR, briefly |
 | Coverage (planned) | Lines the tests run, reported on changed lines | llvm-cov, vitest | Every PR, reported |
