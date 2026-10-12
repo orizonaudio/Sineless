@@ -1,6 +1,7 @@
 // Fault injection for the host's state streams: reads that fail, stop early or come in small
-// pieces, streams that never end, and writes that fail or fall short. setState loads what it
-// could read, tolerantly (see engine/State.h), and never hangs; getState reports a failed write.
+// pieces, streams that never end, and writes that fail, fall short or make no progress. setState
+// loads what it could read, tolerantly (see engine/State.h), and never hangs; getState writes the
+// whole state or reports a failure, and never hangs either.
 
 #include "Controller.h"
 #include "Processor.h"
@@ -24,7 +25,9 @@ using protocol::SettingId;
 
 // A host stream that serves `source`, at most `maxChunk` bytes per call, and fails every read
 // from byte `failAt` on. Endless, it serves `filler` after `source`, until byte `endAt` if set.
-// Writes keep at most `maxChunk` bytes per call, or fail if `failWrites`.
+// Writes keep at most `maxChunk` bytes per call and fail if `failWrites`. They keep nothing past
+// byte `failWritesAt` and fail from there on. If `overReportWrites`, they report one byte more than
+// they were offered.
 class FaultyStream : public U::Implements<U::Directly<IBStream>>
 {
 public:
@@ -63,13 +66,15 @@ public:
         if (numBytesWritten != nullptr) {
             *numBytesWritten = 0;
         }
-        if (failWrites || numBytes < 0) {
+        ++writes;
+        if (failWrites || written.size() >= failWritesAt || numBytes < 0) {
             return kResultFalse;
         }
-        const std::size_t count = std::min(static_cast<std::size_t>(numBytes), maxChunk);
+        const std::size_t count =
+            std::min({static_cast<std::size_t>(numBytes), maxChunk, failWritesAt - written.size()});
         written.append(static_cast<const char*>(buffer), count);
         if (numBytesWritten != nullptr) {
-            *numBytesWritten = static_cast<int32>(count);
+            *numBytesWritten = overReportWrites ? numBytes + 1 : static_cast<int32>(count);
         }
         return kResultOk;
     }
@@ -95,8 +100,11 @@ public:
     std::size_t endAt = std::numeric_limits<std::size_t>::max();
     char filler = 'x';
     bool failWrites = false;
+    std::size_t failWritesAt = std::numeric_limits<std::size_t>::max();
+    bool overReportWrites = false;
 
     int reads = 0;
+    int writes = 0;
     std::size_t served = 0;
     std::size_t position = 0;
     std::string written;
@@ -258,23 +266,73 @@ TEST(ProcessorStateFaults, ReportsAFailedWrite)
     processor->terminate();
 }
 
-// Disabled: a real bug. getState makes one write and ignores how many bytes the stream took, so a
-// stream that takes fewer (IBStream::write may, and reports it in numBytesWritten) is left with a
-// cut state while getState returns kResultOk: the host saves it and the project later loads with
-// every setting at its default. getState should write the rest, or report the failure.
-TEST(ProcessorStateFaults, DISABLED_AShortWriteSavesTheWholeStateOrFails)
+// IBStream::write may take fewer bytes than offered and still succeed, saying how many in
+// numBytesWritten: getState offers the rest until the stream has the whole state. Writing it once
+// left the host a cut state, which loads with every setting at its default, while reporting
+// success.
+TEST(ProcessorStateFaults, AShortWriteSavesTheWholeState)
 {
     const std::string state = savedState();
+    ASSERT_GT(state.size(), std::size_t{64});
     for (const std::size_t chunk :
-         {std::size_t{0}, std::size_t{1}, std::size_t{7}, std::size_t{64}, state.size() - 1}) {
+         {std::size_t{1}, std::size_t{7}, std::size_t{64}, state.size() - 1, state.size()}) {
         auto processor = makeProcessor();
         processor->engine()->settings().replace(changedSettings());
         auto stream = owned(new FaultyStream());
         stream->maxChunk = chunk;
-        const tresult result = processor->getState(stream);
-        EXPECT_TRUE(result != kResultOk || stream->written == state)
-            << chunk << " bytes per write: kept " << stream->written.size() << " of "
-            << state.size() << " bytes, and getState returned kResultOk";
+        EXPECT_EQ(processor->getState(stream), kResultOk) << chunk << " bytes per write";
+        EXPECT_EQ(stream->written, state) << chunk << " bytes per write";
+        EXPECT_EQ(stream->writes, static_cast<int>((state.size() + chunk - 1) / chunk))
+            << chunk << " bytes per write";
+        processor->terminate();
+    }
+}
+
+// A stream that accepts writes but takes nothing would have getState offer the state forever:
+// a write that makes no progress is a failure.
+TEST(ProcessorStateFaults, AWriteThatTakesNothingFailsInsteadOfHanging)
+{
+    auto processor = makeProcessor();
+    auto stream = owned(new FaultyStream());
+    stream->maxChunk = 0;
+    EXPECT_NE(processor->getState(stream), kResultOk);
+    EXPECT_EQ(stream->writes, 1);
+    EXPECT_TRUE(stream->written.empty());
+    processor->terminate();
+}
+
+// A write that fails after part of the state was taken leaves a cut state: getState reports it and
+// writes no more, whether the stream took the earlier bytes whole or in pieces.
+TEST(ProcessorStateFaults, AWriteFailingPartWayReportsTheFailure)
+{
+    const std::string state = savedState();
+    auto processor = makeProcessor();
+    processor->engine()->settings().replace(changedSettings());
+    for (std::size_t failAt = 0; failAt < state.size(); ++failAt) {
+        for (const std::size_t chunk : {std::size_t{5}, std::numeric_limits<std::size_t>::max()}) {
+            auto stream = owned(new FaultyStream());
+            stream->failWritesAt = failAt;
+            stream->maxChunk = chunk;
+            EXPECT_NE(processor->getState(stream), kResultOk) << "failed at byte " << failAt;
+            EXPECT_LE(stream->written.size(), state.size()) << "failed at byte " << failAt;
+            EXPECT_EQ(stream->written, state.substr(0, stream->written.size()))
+                << "failed at byte " << failAt;
+        }
+    }
+    processor->terminate();
+}
+
+// A stream that reports more bytes written than it was offered cannot be trusted with the rest:
+// counting them would skip part of the state, or run past its end.
+TEST(ProcessorStateFaults, AWriteReportingMoreThanOfferedFails)
+{
+    for (const std::size_t chunk : {std::size_t{7}, std::numeric_limits<std::size_t>::max()}) {
+        auto processor = makeProcessor();
+        auto stream = owned(new FaultyStream());
+        stream->maxChunk = chunk;
+        stream->overReportWrites = true;
+        EXPECT_NE(processor->getState(stream), kResultOk) << chunk << " bytes per write";
+        EXPECT_EQ(stream->writes, 1) << chunk << " bytes per write";
         processor->terminate();
     }
 }

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <limits>
 #include <string>
 
 namespace orizon::plugin {
@@ -90,6 +91,30 @@ std::string readAll(IBStream* stream)
     return text;
 }
 
+// Writes all of `text`. IBStream::write may take fewer bytes than offered and still succeed, so
+// the rest is offered again until the stream has it all. A write that fails, takes nothing or
+// reports more than it was offered ends it as a failure: the host then knows the state is cut.
+tresult writeAll(IBStream* stream, const std::string& text)
+{
+    const char* next = text.data();
+    std::size_t remaining = text.size();
+    while (remaining > 0) {
+        const auto offered = static_cast<int32>(
+            std::min(remaining, static_cast<std::size_t>(std::numeric_limits<int32>::max())));
+        int32 bytesWritten = 0;
+        const tresult result = stream->write(const_cast<char*>(next), offered, &bytesWritten);
+        if (result != kResultOk) {
+            return result;
+        }
+        if (bytesWritten <= 0 || bytesWritten > offered) {
+            return kResultFalse;
+        }
+        next += bytesWritten;
+        remaining -= static_cast<std::size_t>(bytesWritten);
+    }
+    return kResultOk;
+}
+
 } // namespace
 
 Processor::Processor()
@@ -142,9 +167,7 @@ tresult PLUGIN_API Processor::getState(IBStream* state)
     }
     try {
         const std::string text = engine::serializeState(engineState->settings().get());
-        int32 bytesWritten = 0;
-        return state->write(const_cast<char*>(text.data()), static_cast<int32>(text.size()),
-                            &bytesWritten);
+        return writeAll(state, text);
     } catch (...) {
         return kInternalError;
     }
