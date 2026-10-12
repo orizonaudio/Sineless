@@ -54,12 +54,9 @@ struct SweepWindow
                                                      std::uint64_t maxSamples);
 
 // What a frozen sweep shows for `span`, given the sweep image held (`image`, the window it was
-// built for, of `imageLength` samples, `imageComplete` when every position of it is drawn): the
-// image as it is for the same span; the part of it holding the span's current cycle for a shorter
-// span that divides the image's, when the image is complete; otherwise a sweep rebuilt from the
-// audio held on freeze, as far as that goes. An image still filling in, such as one rebuilt for a
-// span longer than the hold, would show its empty part in the crop, where the hold may well cover
-// the shorter span.
+// built for, of `imageLength` samples): the image as it is for the same span; the part of it
+// holding the span's current cycle for a shorter span that divides the image's; otherwise a
+// sweep rebuilt from the audio held on freeze, as far as that goes.
 struct FrozenSweep
 {
     SweepWindow window;
@@ -71,6 +68,6 @@ struct FrozenSweep
 [[nodiscard]] std::optional<FrozenSweep> frozenSweep(const MusicalStamp& stamp, std::uint64_t end,
                                                      double sampleRate, protocol::BeatSpan span,
                                                      const std::optional<SweepWindow>& image,
-                                                     std::uint64_t imageLength, bool imageComplete);
+                                                     std::uint64_t imageLength);
 
 } // namespace orizon::engine

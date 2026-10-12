@@ -156,6 +156,78 @@ TEST_F(SweepImageTest, KeepsALengthItWasGivenEvenForAShortSweep)
     EXPECT_EQ(placed, 10u) << "only the new samples placed, not rebuilt";
 }
 
+// A part shows over its positions instead of the image's samples, which stay underneath: reads
+// and the changed positions follow it while it is shown and after it is cleared, and the next
+// update clears it.
+TEST_F(SweepImageTest, ShowsAPartOverItsPositionsAndKeepsTheImage)
+{
+    writeUpTo(100);
+    ASSERT_TRUE(image.update(ring, {.start = 90, .sampleCount = 10}, false));
+    const std::vector<float> drawn = screen();
+    image.clearChanges();
+
+    SweepImage part;
+    ASSERT_TRUE(part.update(ring, {.start = 50, .sampleCount = 4}, false));
+    ASSERT_TRUE(part.complete());
+    image.showPart(part, 3);
+    EXPECT_TRUE(image.hasPart());
+    EXPECT_TRUE(image.partComplete());
+    EXPECT_TRUE(image.showsPart(3, 4));
+    EXPECT_FALSE(image.showsPart(3, 5));
+    EXPECT_EQ(screen(), (std::vector<float>{90, 91, 92, 50, 51, 52, 53, 97, 98, 99}));
+    // A read starting inside the part, or ending in it.
+    std::array<float, 3> inside{};
+    ASSERT_TRUE(image.read(0, 5, inside));
+    EXPECT_EQ(inside, (std::array<float, 3>{52, 53, 97}));
+    ASSERT_TRUE(image.read(0, 1, inside));
+    EXPECT_EQ(inside, (std::array<float, 3>{91, 92, 50}));
+    ASSERT_EQ(image.changes().size(), 1U);
+    EXPECT_EQ(image.changes().front().first, 3U);
+    EXPECT_EQ(image.changes().front().end, 7U);
+    image.clearChanges();
+
+    image.clearPart();
+    EXPECT_FALSE(image.hasPart());
+    EXPECT_FALSE(image.partComplete());
+    EXPECT_EQ(screen(), drawn);
+    ASSERT_EQ(image.changes().size(), 1U);
+    EXPECT_EQ(image.changes().front().first, 3U);
+    EXPECT_EQ(image.changes().front().end, 7U);
+
+    image.showPart(part, 3);
+    writeUpTo(101);
+    ASSERT_TRUE(image.update(ring, {.start = 91, .sampleCount = 10}, false));
+    EXPECT_FALSE(image.hasPart()) << "an update clears the part";
+}
+
+// A part longer than the positions left is cut at the right edge; one of other channels, or from
+// beyond the edge, is not shown; one still filling in shows as such.
+TEST_F(SweepImageTest, ShowsOnlyAPartThatFits)
+{
+    writeUpTo(100);
+    ASSERT_TRUE(image.update(ring, {.start = 90, .sampleCount = 10}, false));
+
+    SweepImage part;
+    ASSERT_TRUE(part.update(ring, {.start = 40, .sampleCount = 6}, false));
+    image.showPart(part, 7);
+    EXPECT_TRUE(image.showsPart(7, 3));
+    EXPECT_EQ(screen(), (std::vector<float>{90, 91, 92, 93, 94, 95, 96, 40, 41, 42}));
+
+    image.showPart(part, 10);
+    EXPECT_FALSE(image.hasPart()) << "beyond the edge";
+    SweepImage mid(1);
+    ASSERT_TRUE(mid.update(ring, {.start = 40, .sampleCount = 6}, false));
+    image.showPart(mid, 2);
+    EXPECT_FALSE(image.hasPart()) << "other channels";
+
+    SweepImage filling;
+    ASSERT_TRUE(filling.update(ring, {.start = -2, .sampleCount = 6}, false));
+    ASSERT_FALSE(filling.complete());
+    image.showPart(filling, 2);
+    EXPECT_TRUE(image.hasPart());
+    EXPECT_FALSE(image.partComplete());
+}
+
 TEST_F(SweepImageTest, RefusesReadsBeyondTheScreen)
 {
     writeUpTo(100);
