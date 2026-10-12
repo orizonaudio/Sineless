@@ -1289,12 +1289,22 @@ INSTANTIATE_TEST_SUITE_P(EveryRate, NoDataIsNaN,
 // A track against a copy of itself `delay` samples late (negative: early), in either time base.
 // Delays around the match reach (protocol::kMatchReachSeconds either way): the shortest, either
 // side of the reach, the reach early, and just beyond it, where no match is found.
+// Where the transport stops in Beats mode: anywhere, or with the playhead within the delay after a
+// sweep's start or before its end, where the measured part's edges meet the sweep's.
+enum class Stop : std::uint8_t
+{
+    kAnywhere,
+    kAfterAWrap,
+    kBeforeAWrap,
+};
+
 struct DelayCase
 {
     ModeCase mode;
-    std::string_view name; // Of the delay.
+    std::string_view name; // Of the delay, and where the transport stops if not anywhere.
     std::int64_t delay = 0;
     bool found = true; // Within the reach: the copy is matched at its delay.
+    Stop stop = Stop::kAnywhere;
 };
 
 std::string delayTestName(const ::testing::TestParamInfo<DelayCase>& info)
@@ -1319,6 +1329,19 @@ std::vector<DelayCase> delayCases()
         cases.push_back({.mode = mode, .name = "LeadingAtTheReach", .delay = -reach});
         cases.push_back(
             {.mode = mode, .name = "BeyondTheReach", .delay = reach + 1, .found = false});
+        if (mode.timeBase == TimeBase::kBeats) {
+            for (const std::int64_t delay : {reach, -reach}) {
+                const bool late = delay > 0;
+                cases.push_back({.mode = mode,
+                                 .name = late ? "AtTheReachAfterAWrap" : "LeadingAfterAWrap",
+                                 .delay = delay,
+                                 .stop = Stop::kAfterAWrap});
+                cases.push_back({.mode = mode,
+                                 .name = late ? "AtTheReachBeforeAWrap" : "LeadingBeforeAWrap",
+                                 .delay = delay,
+                                 .stop = Stop::kBeforeAWrap});
+            }
+        }
     }
     return cases;
 }
@@ -1330,9 +1353,9 @@ class DelayedCopy : public ::testing::TestWithParam<DelayCase>
 // Lined up again, a delayed copy sums as a copy does, 10 log10(2) = +3.0103 dB louder than two
 // unrelated tracks, in Beats as in Seconds, live and frozen: the fix is measured only where the
 // shifted copy has samples of the same moments, never with the silence past the sweep's edges or
-// the audio of another pass beyond the playhead. Beyond the reach nothing is fixed, and the fix's
-// gain is the sum's. Frozen, the gains are measured again (the view is zoomed and back), not kept
-// from before the freeze.
+// the audio of another pass beyond the playhead, including with the playhead next to those edges.
+// Beyond the reach nothing is fixed, and the fix's gain is the sum's. Frozen, the gains are
+// measured again (the view is zoomed and back), not kept from before the freeze.
 TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
 {
     const DelayCase c = GetParam();
@@ -1343,6 +1366,21 @@ TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
     session.own().settings().set(SettingId::kDisplayMode,
                                  static_cast<double>(DisplayMode::kCompare));
     auto frame = playForReadouts(session, c.mode.timeBase);
+    // A block at a time, until the playhead is within the delay of the sweep's edge.
+    const auto distance = static_cast<float>(std::abs(c.delay));
+    for (int block = 0; c.stop != Stop::kAnywhere && block < 4000; ++block) {
+        ASSERT_TRUE(frame);
+        const float playhead = frame->cursor * frame->visibleSamples;
+        if (c.stop == Stop::kAfterAWrap
+                ? playhead > 0.0f && playhead < distance
+                : playhead < frame->visibleSamples && playhead > frame->visibleSamples - distance) {
+            break;
+        }
+        session.play(static_cast<double>(kBlock) / c.mode.rate);
+        if (auto produced = session.produce()) {
+            frame = std::move(produced);
+        }
+    }
     for (const bool frozen : {false, true}) {
         SCOPED_TRACE(frozen ? "frozen" : "live");
         if (frozen) {
