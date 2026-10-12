@@ -367,12 +367,13 @@ private:
     SumRefresh rawSumRefresh;
     SumRefresh fixedSumRefresh;
     // Whether a sum is still being recomputed: frames go on meanwhile, also while frozen.
+    // A track's shifted levels (Lane::fixedRefresh) need no term of their own: a shift that changes
+    // them changes the fixed sum's parts too, and the sum, of at least two parts, is redone at
+    // most half as fast, so it is still refreshing until they are done.
     [[nodiscard]] bool sumsRefreshing() const
     {
         return sumRefresh.remaining > 0 || rawSumRefresh.remaining > 0 ||
-               fixedSumRefresh.remaining > 0 || std::ranges::any_of(lanes, [](const auto& entry) {
-                   return entry.second->fixedRefresh.remaining > 0;
-               });
+               fixedSumRefresh.remaining > 0;
     }
     // The match search's copies of the visible part, and the gains' energies.
     std::vector<float> matchOwn;
