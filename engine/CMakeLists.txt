@@ -53,6 +53,7 @@ if(BUILD_TESTING)
         tests/FrameEncoderTests.cpp
         tests/HoldBufferTests.cpp
         tests/InstanceRegistryTests.cpp
+        tests/MatrixTests.cpp
         tests/PairAnalysisTests.cpp
         tests/ReadoutsTests.cpp
         tests/ReducerTests.cpp

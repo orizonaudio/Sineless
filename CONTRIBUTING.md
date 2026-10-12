@@ -40,7 +40,7 @@ CI marks where each will run.
 | Soak | Memory growth and reopening over time | `scripts/soak.sh` | Before a release |
 | End-to-end | Sineless in REAPER, scripted | `scripts/windows` | Before a release |
 | Acceptance | The protocol in each host | [HOSTS.md](HOSTS.md) | Before a release |
-| Matrix (planned) | Every sample rate from 44.1 to 384 kHz, spans around each tolerance, mono and stereo, live and frozen | `engine/tests` | Every PR |
+| Matrix | Every sample rate from 44.1 to 384 kHz, spans around each tolerance, mono and stereo, live and frozen | `engine/tests/MatrixTests.cpp` | Every PR |
 | Signal corpus | Approved frames for tones, DC, silence, NaN, inverted and delayed pairs | `engine/tests/corpus`, from `engine/tests/SignalCorpusTests.cpp` | Every PR |
 | Fuzzing (planned) | State loading and frame decoding against malformed input | `engine/tests/fuzz` | Every PR, briefly |
 | Coverage | Lines the tests run, reported on changed lines | `scripts/coverage.sh` (llvm-cov, Vitest V8) | Every PR, reported |
