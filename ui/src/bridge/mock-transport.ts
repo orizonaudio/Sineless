@@ -166,11 +166,10 @@ export class MockTransport implements Transport {
   private readonly inputChannels: 1 | 2;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
-  // Where a frozen Seconds view stays put, as the engine keeps it: the last live window's
-  // trigger point, or its right edge when it rolled (or when frozen in Beats mode: the newest
-  // audio held). The span changed while frozen grows or shrinks around it.
-  private frozenAnchor:
-    { readonly seconds: number; readonly trigger: boolean } | undefined;
+  // The last live Seconds window before a freeze (none when frozen in Beats mode), from which a
+  // frozen view is placed as the engine places it (see frozenWindow).
+  private lastLive:
+    { readonly start: number; readonly span: number } | undefined;
 
   constructor(options: MockOptions = {}) {
     const start = performance.now();
@@ -227,16 +226,14 @@ export class MockTransport implements Transport {
       case "freeze":
         if (message["frozen"] !== true) {
           this.frozenAt = undefined;
-          this.frozenAnchor = undefined;
+          this.lastLive = undefined;
         } else if (this.frozenAt === undefined) {
           this.frozenAt = this.now();
           const span = this.setting("timeSpan") as number;
-          const triggered =
-            this.setting("timeBase") !== "beats" &&
-            span <= rollThresholdSeconds;
-          this.frozenAnchor = triggered
-            ? { seconds: this.triggerTime(this.frozenAt, span), trigger: true }
-            : { seconds: this.frozenAt, trigger: false };
+          this.lastLive =
+            this.setting("timeBase") === "beats"
+              ? undefined
+              : { start: this.liveStart(this.frozenAt, span), span };
         }
         this.panSeconds = 0;
         break;
@@ -356,14 +353,28 @@ export class MockTransport implements Transport {
     return Math.floor((time - span) / period) * period;
   }
 
-  // A frozen Seconds view, as the engine places it: the unpanned start around the anchor, and
-  // how far back it can pan, to the oldest of the frozenHoldSeconds of audio held.
+  // Where a live Seconds window of `span` at `time` starts: triggered spans one trigger offset
+  // before a period boundary, roll spans ending now.
+  private liveStart(time: number, span: number): number {
+    return span > rollThresholdSeconds
+      ? time - span
+      : this.triggerTime(time, span) - triggerPosition * span;
+  }
+
+  // A frozen Seconds view, placed as the engine places it (Analyzer.cpp): the last live window's
+  // trigger point stays put, or its right edge when the span now rolls (the newest audio held
+  // when there was no live window), and the view reaches back to the oldest of the
+  // frozenHoldSeconds of audio held.
   private frozenWindow(span: number): { start: number; reach: number } {
     const frozenAt = this.frozenAt ?? 0;
-    const anchor = this.frozenAnchor ?? { seconds: frozenAt, trigger: false };
     const roll = span > rollThresholdSeconds;
-    const offset = roll || !anchor.trigger ? span : triggerPosition * span;
-    const unpanned = anchor.seconds - offset;
+    const live = this.lastLive;
+    const anchor =
+      live === undefined
+        ? frozenAt
+        : live.start + (roll ? live.span : triggerPosition * live.span);
+    const offset = roll || live === undefined ? span : triggerPosition * span;
+    const unpanned = anchor - offset;
     const earliest = frozenAt - frozenHoldSeconds;
     return {
       start: Math.min(
@@ -412,13 +423,10 @@ export class MockTransport implements Transport {
       timeOf = (fraction) =>
         (fraction < phase ? cycleTime : cycleTime - span) + fraction * span;
     } else {
-      // Triggered spans start one trigger offset before a period boundary; roll spans end now.
       const start =
         this.frozenAt !== undefined
           ? this.frozenWindow(span).start
-          : roll
-            ? time - span
-            : this.triggerTime(time, span) - triggerPosition * span;
+          : this.liveStart(time, span);
       timeOf = (fraction) => start + fraction * span;
     }
 

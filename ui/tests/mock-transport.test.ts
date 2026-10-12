@@ -250,12 +250,14 @@ describe("mock back end", () => {
     transport.requestFrame();
     expect(frames.at(-1)?.panReach).toBeCloseTo(reach(0.5), 3);
 
-    // A roll span ends at the trigger point instead.
+    // A roll span ends at the right edge of the last live window instead: the trigger point
+    // and the rest of that window after it.
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
     transport.requestFrame();
     expect(frames.at(-1)?.roll).toBe(true);
+    const liveEnd = trigger + (1 - triggerPosition) * 0.1;
     expect(frames.at(-1)?.panReach).toBeCloseTo(
-      trigger - 2 - (1 - frozenHoldSeconds),
+      liveEnd - 2 - (1 - frozenHoldSeconds),
       3,
     );
 
@@ -309,5 +311,21 @@ describe("mock back end", () => {
     expect(frame?.visibleSamples).toBe(960);
     // Kick 2 is 1.3 ms late: 125 samples at 96 kHz.
     expect(frame?.comparison?.matches[3]?.offset).toBe(125);
+  });
+
+  test("places a view frozen while rolling around that window", () => {
+    const { transport, frames } = connect(); // now = 1 s.
+    useSeconds(transport);
+    transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
+    transport.send({ type: "freeze", frozen: true });
+    // The live 2 s window ended at 1 s. At 100 ms the trigger point sits one trigger offset into
+    // that window, and the view starts one trigger offset of its own span before it.
+    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    transport.requestFrame();
+    const anchor = 1 - 2 + triggerPosition * 2;
+    expect(frames.at(-1)?.panReach).toBeCloseTo(
+      anchor - triggerPosition * 0.1 - (1 - frozenHoldSeconds),
+      3,
+    );
   });
 });
