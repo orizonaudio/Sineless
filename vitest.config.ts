@@ -36,8 +36,8 @@ export default defineConfig({
           browser: {
             enabled: true,
             headless: true,
-            // Clicks wait for the page as long as a test may: under coverage, or on a busy
-            // machine, the page draws late.
+            // Clicks wait up to 10 s for the page, well within a test's 30 s: under coverage,
+            // or on a busy machine, the page draws late.
             provider: playwright({
               actionTimeout: 10000,
               ...(chromium === undefined
