@@ -1,12 +1,12 @@
 # Tested hosts
 
-Which hosts O-Scope has been tested in, how, and with what result. Add a row whenever a host is
-tested; update a row when a new version of O-Scope or of the host is tested again. A host is
+Which hosts Sineless has been tested in, how, and with what result. Add a row whenever a host is
+tested; update a row when a new version of Sineless or of the host is tested again. A host is
 "supported" only once it has a row with a passing result for the current release.
 
 ## Matrix
 
-| Host | Version | OS | Format | Plugin process | O-Scope | Date | Result | Notes |
+| Host | Version | OS | Format | Plugin process | Sineless | Date | Result | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Ableton Live Standard | 12.2.7 | macOS 27.0.1 | VST3 | Shared (only mode) | 0.4.0 | 2026-10-10 | Pass | Release zip: saved state from 0.3.0 loads; Beats and Sec; Multi with 15 lanes, names and colours, the window grows to fit them; Compare cancels an inverted copy; Space reaches the transport; 25 editor reopens while playing, Live +9 MB; nothing cropped at the minimum size; settings and size restored after saving and reopening the set. Track names arrive in three partial reports; merged. |
 | Ableton Live Standard | 12.4.6 (x64, emulated) | Windows 11 ARM64 | VST3 | Shared (only mode) | 0.4.0 development | 2026-10-09 | Partial | Scan, Single, Multi with two tracks, keys to Live and to fields, 50 editor reopens without memory growth, two editors at once; the editor appears and draws sharp with Auto-Scale on and off at 100 and 125 %. Protocol steps 3, 4 and 7 to 10 not yet run on Windows. |
@@ -16,7 +16,7 @@ tested; update a row when a new version of O-Scope or of the host is tested agai
 | Cubase / Nuendo | — | — | VST3 | Shared | — | — | Not tested | |
 | Studio One | — | — | VST3 | Shared | — | — | Not tested | |
 | FL Studio | — | — | VST3 | Shared unless bridged | — | — | Not tested | |
-| Logic Pro | — | — | — | — | — | — | Not applicable | Loads Audio Units only; O-Scope is VST3. |
+| Logic Pro | — | — | — | — | — | — | Not applicable | Loads Audio Units only; Sineless is VST3. |
 | Pro Tools | — | — | — | — | — | — | Not applicable | Loads AAX only. |
 
 ## Protocol
@@ -24,7 +24,7 @@ tested; update a row when a new version of O-Scope or of the host is tested agai
 Run every step with a Release build installed from the release zip, at 48 kHz and a 256-sample
 buffer unless a step says otherwise. Note anything unexpected in the row's notes.
 
-1. **Install and scan.** The host finds O-Scope under Orizon Audio without warnings, and a rescan
+1. **Install and scan.** The host finds Sineless under Orizon Audio without warnings, and a rescan
    is quick.
 2. **Single.** Insert on a stereo track and on a mono track. Play: the trace follows, readouts
    update, Beats and Sec both work, the trigger holds a steady tone still in Sec mode.

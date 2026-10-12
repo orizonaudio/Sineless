@@ -459,7 +459,7 @@ void WebViewMac::pageFailed(NSError* error)
     if (loaded || refused || cancelled) {
         return;
     }
-    showMessage(@"O-Scope's editor could not load its page.\nClose and reopen it; if that does "
+    showMessage(@"Sineless's editor could not load its page.\nClose and reopen it; if that does "
                 @"not help, restart the host.");
 }
 
@@ -476,7 +476,7 @@ void WebViewMac::processTerminated()
     heldFrame = nil;
     isEditableFocused = false;
     if (reloads.size() >= kMaxReloadsPerMinute) {
-        showMessage(@"O-Scope's editor keeps failing.\nClose and reopen it; if that does not "
+        showMessage(@"Sineless's editor keeps failing.\nClose and reopen it; if that does not "
                     @"help, restart the host.");
         return;
     }

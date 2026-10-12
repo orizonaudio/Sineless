@@ -92,7 +92,7 @@ protected:
     // Shown, as a host's editor window is: the editor pauses the page while it is hidden.
     static HWND makeWindow()
     {
-        HWND window = CreateWindowExW(0, L"OrizonEditorTest", L"O-Scope test", WS_OVERLAPPEDWINDOW,
+        HWND window = CreateWindowExW(0, L"OrizonEditorTest", L"Sineless test", WS_OVERLAPPEDWINDOW,
                                       CW_USEDEFAULT, CW_USEDEFAULT, Editor::kDefaultWidth,
                                       Editor::kDefaultHeight, nullptr, nullptr,
                                       GetModuleHandleW(nullptr), nullptr);
@@ -351,12 +351,12 @@ TEST_F(EditorTest, PausesThePageWhileHidden)
 // runs.)
 TEST_F(EditorTest, ExplainsWhenWebView2CannotStart)
 {
-    setBrowserFolderForTests(L"C:\\O-Scope-no-such-folder");
+    setBrowserFolderForTests(L"C:\\Sineless-no-such-folder");
     HWND window = makeWindow();
     std::vector<std::string> received;
     auto editor = makeEditor(received);
     ASSERT_EQ(attach(window, *editor), kResultTrue);
-    HWND container = FindWindowExW(window, nullptr, L"OrizonOScopeWebViewHost", nullptr);
+    HWND container = FindWindowExW(window, nullptr, L"OrizonSinelessWebViewHost", nullptr);
     ASSERT_NE(container, nullptr);
     std::wstring text;
     ASSERT_TRUE(pumpUntil(
@@ -436,7 +436,7 @@ TEST_F(EditorTest, ExplainsWhenThePageKeepsFailing)
         ASSERT_TRUE(terminateProcessForTests(view, false));
     }
     ASSERT_TRUE(pumpUntil([&] { return hellos() == 4 && hasSnapshot(view); }, kPageTimeout));
-    HWND container = FindWindowExW(window, nullptr, L"OrizonOScopeWebViewHost", nullptr);
+    HWND container = FindWindowExW(window, nullptr, L"OrizonSinelessWebViewHost", nullptr);
     ASSERT_TRUE(terminateProcessForTests(view, false));
     std::wstring text;
     EXPECT_TRUE(pumpUntil(
@@ -463,7 +463,7 @@ TEST_F(EditorTest, ExplainsWhenTheBrowserExits)
     ASSERT_EQ(attach(window, *editor), kResultTrue);
     WebView& view = *editor->webView();
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
-    HWND container = FindWindowExW(window, nullptr, L"OrizonOScopeWebViewHost", nullptr);
+    HWND container = FindWindowExW(window, nullptr, L"OrizonSinelessWebViewHost", nullptr);
     ASSERT_TRUE(terminateProcessForTests(view, true));
     std::wstring text;
     EXPECT_TRUE(pumpUntil(

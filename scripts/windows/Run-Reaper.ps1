@@ -2,7 +2,7 @@
 # first-run audio prompt, and waits until the script writes its done file (or REAPER exits, or
 # the timeout passes). Needs a licensed REAPER: an evaluation copy's reminder waits for you.
 #
-#   Run-Reaper.ps1 -Config build\reaper-test -Script scripts\windows\oscope-session.lua `
+#   Run-Reaper.ps1 -Config build\reaper-test -Script scripts\windows\sineless-session.lua `
 #                  -Done build\reaper-test\out\done.txt [-Project file.rpp] [-TimeoutSec 900]
 #
 # The configuration folder holds reaper.ini and is REAPER's resource folder; the user's own
@@ -14,7 +14,7 @@ param(
     [string] $Done,
     [string] $Project,
     [int] $TimeoutSec = 900,
-    # How REAPER runs O-Scope: its default (in REAPER's process, if it can) or in a process of its
+    # How REAPER runs Sineless: its default (in REAPER's process, if it can) or in a process of its
     # own ("Run as > Dedicated process" in the FX browser).
     [ValidateSet('Default', 'Dedicated')] [string] $RunAs = 'Default',
     [switch] $KeepRunning
@@ -26,7 +26,7 @@ $Config = (Resolve-Path $Config).Path
 # REAPER keeps "Run as" per plugin file here; 2 is "Dedicated process".
 $bridge = Join-Path $Config 'reaper-vstbridge64armwin.ini'
 if ($RunAs -eq 'Dedicated') {
-    Set-Content -Path $bridge -Value "[vst_dll_options]`r`nO-Scope.vst3=2 -1" -Encoding ASCII
+    Set-Content -Path $bridge -Value "[vst_dll_options]`r`nSineless.vst3=2 -1" -Encoding ASCII
 } elseif (Test-Path $bridge) {
     Remove-Item $bridge
 }

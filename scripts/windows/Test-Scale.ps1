@@ -1,5 +1,5 @@
 # The editor checks at the current display scale: EditorTest.* on windows-arm64 (and windows-x64
-# with -X64), then O-Scope's editor in REAPER at its default and its minimum size.
+# with -X64), then Sineless's editor in REAPER at its default and its minimum size.
 #
 #   Test-Scale.ps1 [-X64] [-Config build\reaper-test] [-Results build\scale-results]
 #
@@ -14,17 +14,17 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Win32.ps1')
-if (-not ('OScope.WinDpi' -as [type])) {
-    Add-Type -Namespace OScope -Name WinDpi -ReferencedAssemblies System.Drawing -MemberDefinition @'
+if (-not ('Sineless.WinDpi' -as [type])) {
+    Add-Type -Namespace Sineless -Name WinDpi -ReferencedAssemblies System.Drawing -MemberDefinition @'
 [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(System.Drawing.Point point, uint flags);
 [DllImport("shcore.dll")] public static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint x, out uint y);
 '@
 }
 # The primary monitor's effective DPI: the desktop window's can be stale after a live change.
-$monitor = [OScope.WinDpi]::MonitorFromPoint((New-Object System.Drawing.Point 0, 0), 1)
+$monitor = [Sineless.WinDpi]::MonitorFromPoint((New-Object System.Drawing.Point 0, 0), 1)
 $dpi = 0
 $unused = 0
-[OScope.WinDpi]::GetDpiForMonitor($monitor, 0, [ref] $dpi, [ref] $unused) | Out-Null
+[Sineless.WinDpi]::GetDpiForMonitor($monitor, 0, [ref] $dpi, [ref] $unused) | Out-Null
 $scale = [int][math]::Round($dpi * 100 / 96)
 $target = Join-Path $Results "$scale"
 New-Item -ItemType Directory -Force $target | Out-Null
@@ -42,12 +42,12 @@ foreach ($preset in $presets) {
     $summary | ForEach-Object { "  $_" }
 }
 
-$out = Join-Path (Resolve-Path $Config).Path 'oscope-out'
+$out = Join-Path (Resolve-Path $Config).Path 'sineless-out'
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
-$env:OSCOPE_PHASE = 'shots'
-$env:OSCOPE_PREFIX = "p2-$scale-"
+$env:SINELESS_PHASE = 'shots'
+$env:SINELESS_PREFIX = "p2-$scale-"
 & (Join-Path $PSScriptRoot 'Run-Reaper.ps1') -Config $Config -RunAs Default -Done "$out\done.txt" `
-    -Script (Join-Path $PSScriptRoot 'oscope-session.lua') -TimeoutSec 180 | Out-Null
-Remove-Item Env:OSCOPE_PHASE, Env:OSCOPE_PREFIX
+    -Script (Join-Path $PSScriptRoot 'sineless-session.lua') -TimeoutSec 180 | Out-Null
+Remove-Item Env:SINELESS_PHASE, Env:SINELESS_PREFIX
 Copy-Item "$out\*.png", "$out\shots.log" $target
 Select-String -Path "$target\shots.log" -Pattern 'window|FAILED' | ForEach-Object Line

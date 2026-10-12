@@ -12,7 +12,7 @@ inline DECLARE_UID(kProcessorUid, 0xB704D89D, 0x96B24108, 0x878CA953,
     constexpr const char* kVendorName = "Orizon Audio";
 constexpr const char* kVendorUrl = "";
 constexpr const char* kVendorEmail = "";
-constexpr const char* kProductName = "O-Scope";
+constexpr const char* kProductName = "Sineless";
 constexpr const char* kSubCategories = "Fx|Analyzer";
 
 } // namespace orizon::plugin

@@ -1,7 +1,7 @@
 # Saves a PNG of a window as it appears on screen, in physical pixels.
 #
 #   Capture-Window.ps1 -Out shot.png -Handle 0x1234                  # a window by handle
-#   Capture-Window.ps1 -Out shot.png -Title 'O-Scope' [-ProcessId n] # the first visible match
+#   Capture-Window.ps1 -Out shot.png -Title 'Sineless' [-ProcessId n] # the first visible match
 #   Capture-Window.ps1 -Out shot.png                                  # the whole primary screen
 #
 # The window is brought to the front first. Prints its frame, client size and DPI.
@@ -25,17 +25,17 @@ if ($Title) {
 }
 
 if ($window -ne [IntPtr]::Zero) {
-    [OScope.Win32]::SetForegroundWindow($window) | Out-Null
+    [Sineless.Win32]::SetForegroundWindow($window) | Out-Null
     Start-Sleep -Milliseconds 400
-    $rect = New-Object OScope.Win32+RECT
+    $rect = New-Object Sineless.Win32+RECT
     # The visible frame, without the invisible resize borders.
-    [OScope.Win32]::DwmGetWindowAttribute($window, 9, [ref] $rect, 16) | Out-Null
-    $client = New-Object OScope.Win32+RECT
-    [OScope.Win32]::GetClientRect($window, [ref] $client) | Out-Null
+    [Sineless.Win32]::DwmGetWindowAttribute($window, 9, [ref] $rect, 16) | Out-Null
+    $client = New-Object Sineless.Win32+RECT
+    [Sineless.Win32]::GetClientRect($window, [ref] $client) | Out-Null
     $bounds = [System.Drawing.Rectangle]::FromLTRB($rect.Left, $rect.Top, $rect.Right, $rect.Bottom)
     'window 0x{0:X} frame {1}x{2} at {3},{4}; client {5}x{6}; dpi {7}' -f [Int64]$window,
         $bounds.Width, $bounds.Height, $bounds.Left, $bounds.Top, $client.Right, $client.Bottom,
-        [OScope.Win32]::GetDpiForWindow($window)
+        [Sineless.Win32]::GetDpiForWindow($window)
 } else {
     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 }

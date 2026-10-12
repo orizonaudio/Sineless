@@ -878,7 +878,7 @@ export class OscilloscopeApp {
     if (this.compareMode() && frame?.lanes.length === 1) {
       const note = document.createElement("div");
       note.className = "compare-note";
-      note.textContent = `No other track in group ${String(this.store.get("group")).toUpperCase()} to compare with. Insert O-Scope on another track.`;
+      note.textContent = `No other track in group ${String(this.store.get("group")).toUpperCase()} to compare with. Insert Sineless on another track.`;
       container.append(note);
     }
     this.updateMatches(frame);

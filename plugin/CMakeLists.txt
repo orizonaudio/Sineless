@@ -10,27 +10,27 @@ target_link_libraries(plugin
     PRIVATE orizon_warnings
 )
 
-smtg_add_vst3plugin(O-Scope src/Factory.cpp)
-target_link_libraries(O-Scope PRIVATE plugin orizon_warnings)
-# The licences travel with the plugin: O-Scope's, and the embedded fonts'.
-smtg_target_add_plugin_resources(O-Scope RESOURCES
+smtg_add_vst3plugin(Sineless src/Factory.cpp)
+target_link_libraries(Sineless PRIVATE plugin orizon_warnings)
+# The licences travel with the plugin: Sineless's, and the embedded fonts'.
+smtg_target_add_plugin_resources(Sineless RESOURCES
     ${PROJECT_SOURCE_DIR}/LICENSE
     ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-Roboto.txt
     ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-RobotoMono.txt
 )
-set_target_properties(O-Scope PROPERTIES
+set_target_properties(Sineless PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resource/Info.plist.in
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.o-scope
-    MACOSX_BUNDLE_BUNDLE_NAME O-Scope
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.sineless
+    MACOSX_BUNDLE_BUNDLE_NAME Sineless
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
 )
 # Finder shows the bundle as one item only when it has a PkgInfo file, which the SDK writes
 # for the Xcode generator alone.
 if(APPLE)
-    add_custom_command(TARGET O-Scope POST_BUILD
+    add_custom_command(TARGET Sineless POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/resource/PkgInfo
-            $<TARGET_BUNDLE_CONTENT_DIR:O-Scope>/PkgInfo
+            $<TARGET_BUNDLE_CONTENT_DIR:Sineless>/PkgInfo
         VERBATIM
     )
 endif()

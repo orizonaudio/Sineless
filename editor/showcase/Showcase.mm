@@ -3,7 +3,7 @@
 // through the main features while a drawn cursor, camera moves and captions frame them; each
 // frame is composed with Core Graphics and encoded with the song's mix as the soundtrack.
 //
-//   showcase --stems=DIR [--prefix=Promo] [--out=build/showcase/O-Scope.mp4] [--frames=N]
+//   showcase --stems=DIR [--prefix=Promo] [--out=build/showcase/Sineless.mp4] [--frames=N]
 //
 // DIR holds the song exported from Live with "All Individual Tracks": "<prefix> <track>.wav" for
 // each track and "<prefix>.wav", the mix; 16 bars at 120 BPM and 48 kHz, rendered as a loop.
@@ -63,7 +63,7 @@ struct Options
 {
     std::string stems;
     std::string prefix = "Promo";
-    std::string out = "build/showcase/O-Scope.mp4";
+    std::string out = "build/showcase/Sineless.mp4";
     int frames = -1; // Stop early, for trying out the script.
 };
 
@@ -535,7 +535,7 @@ void drawLogo(CGContextRef context, double alpha, double y, const std::string& l
         return;
     }
     drawText(context,
-             {.text = "O-SCOPE", .size = 136, .weight = NSFontWeightHeavy, .kern = 24, .a = alpha},
+             {.text = "SINELESS", .size = 136, .weight = NSFontWeightHeavy, .kern = 24, .a = alpha},
              kVideoWidth / 2.0, y);
     drawText(context,
              {.text = line,
@@ -843,7 +843,7 @@ int run(const Options& options)
                           defer:NO
                          screen:screen];
         window.releasedWhenClosed = NO;
-        window.title = @"O-Scope showcase (filming)";
+        window.title = @"Sineless showcase (filming)";
         NSView* content =
             [[NSView alloc] initWithFrame:NSMakeRect(0, 0, kEditorWidth, kEditorHeight)];
         window.contentView = content;
@@ -1097,7 +1097,7 @@ int run(const Options& options)
              .place = Place::kBottom,
              .headline = "Every track, lined up on the beat",
              .detail =
-                 "Each track with O-Scope gets its own lane, in its colour, on one timeline."},
+                 "Each track with Sineless gets its own lane, in its colour, on one timeline."},
             {.from = 22.4,
              .to = 31.0,
              .place = Place::kBottom,

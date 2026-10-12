@@ -26,7 +26,7 @@ class UiDispatcherWin final : public UiDispatcher
 public:
     UiDispatcherWin()
     {
-        static const wchar_t* const kClassName = L"OrizonOScopeUiDispatcher";
+        static const wchar_t* const kClassName = L"OrizonSinelessUiDispatcher";
         WNDCLASSEXW windowClass{};
         windowClass.cbSize = sizeof(windowClass);
         windowClass.lpfnWndProc = &UiDispatcherWin::windowProcedure;

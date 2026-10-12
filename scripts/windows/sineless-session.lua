@@ -1,26 +1,26 @@
--- Drives REAPER through an O-Scope session without clicks. Run by Run-Reaper.ps1, which starts
--- REAPER with this script on its command line. Writes everything to <resource path>/oscope-out/:
+-- Drives REAPER through a Sineless session without clicks. Run by Run-Reaper.ps1, which starts
+-- REAPER with this script on its command line. Writes everything to <resource path>/sineless-out/:
 --   session.log   what happened, step by step
---   measure.txt   REAPER's memory and handles, and O-Scope's WebView2 processes
---   chunks.txt    each O-Scope's state as saved
+--   measure.txt   REAPER's memory and handles, and Sineless's WebView2 processes
+--   chunks.txt    each Sineless's state as saved
 --   *.png         screenshots
 --   done.txt      written last
 --
--- Phase "session" (the default): a 48 kHz project with 4 tracks of tone into O-Scope; plays;
+-- Phase "session" (the default): a 48 kHz project with 4 tracks of tone into Sineless; plays;
 -- opens the 4 editors as floating windows and screenshots them; opens and closes track 1's editor
--- OSCOPE_CYCLES times (default 50) while playing, measuring before, halfway and after; saves the
+-- SINELESS_CYCLES times (default 50) while playing, measuring before, halfway and after; saves the
 -- project and its chunks, then quits.
--- Phase "verify" (OSCOPE_PHASE=verify, project given on the command line): compares each
--- O-Scope's chunk with chunks.txt, writes verify.txt, then quits.
--- Phase "shots" (OSCOPE_PHASE=shots): only the 4 tracks and a screenshot of track 1's editor at its
+-- Phase "verify" (SINELESS_PHASE=verify, project given on the command line): compares each
+-- Sineless's chunk with chunks.txt, writes verify.txt, then quits.
+-- Phase "shots" (SINELESS_PHASE=shots): only the 4 tracks and a screenshot of track 1's editor at its
 -- default size, then at its minimum size, for the display-scale checks.
 
 local scriptDir = debug.getinfo(1, "S").source:match("^@(.*[\\/])")
-local out = reaper.GetResourcePath() .. "/oscope-out/"
+local out = reaper.GetResourcePath() .. "/sineless-out/"
 reaper.RecursiveCreateDirectory(out, 0)
-local phase = os.getenv("OSCOPE_PHASE") or "session"
-local cycles = tonumber(os.getenv("OSCOPE_CYCLES") or "50")
-local prefix = os.getenv("OSCOPE_PREFIX") or ""
+local phase = os.getenv("SINELESS_PHASE") or "session"
+local cycles = tonumber(os.getenv("SINELESS_CYCLES") or "50")
+local prefix = os.getenv("SINELESS_PREFIX") or ""
 local log = io.open(out .. phase .. ".log", "w")
 
 local function say(...)
@@ -74,18 +74,18 @@ local function findFx(pattern)
   end
 end
 
-local function oscopeOn(track)
+local function sinelessOn(track)
   for fx = 0, reaper.TrackFX_GetCount(track) - 1 do
     local _, name = reaper.TrackFX_GetFXName(track, fx)
-    if name:find("O-Scope") then return fx end
+    if name:find("Sineless") then return fx end
   end
   return nil
 end
 
--- The O-Scope block of the track's state, as the project stores it.
-local function oscopeChunk(track)
+-- The Sineless block of the track's state, as the project stores it.
+local function sinelessChunk(track)
   local _, chunk = reaper.GetTrackStateChunk(track, "", false)
-  local block = chunk:match("(<VST3?[^\n]*O%-Scope.->)\n")
+  local block = chunk:match("(<VST3?[^\n]*Sineless.->)\n")
   return block or ""
 end
 
@@ -117,9 +117,9 @@ local function toBase64(data)
   end) .. ({"", "==", "="})[#data % 3 + 1])
 end
 
--- Gives an O-Scope its own settings: edits of the same length in the JSON of its state, so that
+-- Gives a Sineless its own settings: edits of the same length in the JSON of its state, so that
 -- the sizes in REAPER's and the plugin's headers stay right.
-local function setOscopeState(track, fx, group, timeSpan)
+local function setSinelessState(track, fx, group, timeSpan)
   local ok, chunk = reaper.TrackFX_GetNamedConfigParm(track, fx, "vst_chunk")
   if not ok then return false end
   local data = fromBase64(chunk)
@@ -129,17 +129,17 @@ local function setOscopeState(track, fx, group, timeSpan)
   return reaper.TrackFX_SetNamedConfigParm(track, fx, "vst_chunk", toBase64(edited))
 end
 
-local function oscopeSettings(track)
-  local ok, chunk = reaper.TrackFX_GetNamedConfigParm(track, oscopeOn(track), "vst_chunk")
+local function sinelessSettings(track)
+  local ok, chunk = reaper.TrackFX_GetNamedConfigParm(track, sinelessOn(track), "vst_chunk")
   if not ok then return "(no chunk)" end
   local data = fromBase64(chunk)
   return (data:match('"group": "%a"') or "?") .. ", " .. (data:match('"timeSpan": [%d%.]+') or "?")
 end
 
 local function floatTitle(trackNumber)
-  -- REAPER titles a floating FX window "VST3: O-Scope (Orizon Audio) - Track N"; in a dedicated
-  -- process, "O-Scope (x64 bridged)" for every track (the front one is the one just opened).
-  return "O-Scope.*(Track " .. trackNumber .. "\\b|bridged\\))"
+  -- REAPER titles a floating FX window "VST3: Sineless (Orizon Audio) - Track N"; in a dedicated
+  -- process, "Sineless (x64 bridged)" for every track (the front one is the one just opened).
+  return "Sineless.*(Track " .. trackNumber .. "\\b|bridged\\))"
 end
 
 local function buildProject()
@@ -147,8 +147,8 @@ local function buildProject()
   reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 48000, true)
   reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 1, true)
   local tone = findFx("[Tt]one [Gg]enerator")
-  local oscope = findFx("O%-Scope")
-  say("tone fx:", tone, "| oscope fx:", oscope)
+  local sineless = findFx("Sineless")
+  say("tone fx:", tone, "| sineless fx:", sineless)
   local frequencies = {110, 220, 440, 880}
   for i = 1, 4 do
     reaper.InsertTrackAtIndex(i - 1, true)
@@ -162,15 +162,15 @@ local function buildProject()
         say("track", i, "tone", paramName, "=", frequencies[i])
       end
     end
-    local scopeFx = reaper.TrackFX_AddByName(track, oscope, false, -1)
+    local scopeFx = reaper.TrackFX_AddByName(track, sineless, false, -1)
     say("track", i, "fx", toneFx, scopeFx, "params", reaper.TrackFX_GetNumParams(track, scopeFx))
   end
-  -- Distinct O-Scope states: groups A to D, and seconds spans (used in SEC mode).
+  -- Distinct Sineless states: groups A to D, and seconds spans (used in SEC mode).
   local groups, spans = {"a", "b", "c", "d"}, {1, 2, 4, 0.5}
   for i = 1, 4 do
     local track = reaper.GetTrack(0, i - 1)
-    local set = setOscopeState(track, oscopeOn(track), groups[i], spans[i])
-    say("track", i, "state set", set, "->", oscopeSettings(track))
+    local set = setSinelessState(track, sinelessOn(track), groups[i], spans[i])
+    say("track", i, "state set", set, "->", sinelessSettings(track))
   end
   say("project rate", reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 0, false),
     "device rate", select(2, reaper.GetAudioDeviceInfo("SRATE")))
@@ -188,7 +188,7 @@ local function session()
   -- another forward while it runs the capture.
   for i = 1, 4 do
     local track = reaper.GetTrack(0, i - 1)
-    reaper.TrackFX_Show(track, oscopeOn(track), 3)
+    reaper.TrackFX_Show(track, sinelessOn(track), 3)
     wait(6) -- WebView2 starts and the page loads.
     capture(string.format("p1-%02d-editor-track%d", i + 1, i), floatTitle(i))
   end
@@ -196,13 +196,13 @@ local function session()
   say("device rate", select(2, reaper.GetAudioDeviceInfo("SRATE")))
   for i = 1, 4 do
     local track = reaper.GetTrack(0, i - 1)
-    reaper.TrackFX_Show(track, oscopeOn(track), 2)
+    reaper.TrackFX_Show(track, sinelessOn(track), 2)
   end
   wait(8)
   measure("before-cycles", false)
 
   local track = reaper.GetTrack(0, 0)
-  local fx = oscopeOn(track)
+  local fx = sinelessOn(track)
   for cycle = 1, cycles do
     reaper.TrackFX_Show(track, fx, 3)
     wait(2)
@@ -221,8 +221,8 @@ local function session()
   local chunks = io.open(out .. "chunks.txt", "w")
   for i = 1, 4 do
     local track = reaper.GetTrack(0, i - 1)
-    chunks:write("== track ", i, "\n", oscopeChunk(track), "\n")
-    say("track", i, "before saving:", oscopeSettings(track))
+    chunks:write("== track ", i, "\n", sinelessChunk(track), "\n")
+    say("track", i, "before saving:", sinelessSettings(track))
   end
   chunks:close()
   local project = out .. "session.rpp"
@@ -241,11 +241,11 @@ local function verify()
     local track = reaper.GetTrack(0, i - 1)
     local expected = saved:match("== track " .. i .. "\n(.-)\n== track") or
       saved:match("== track " .. i .. "\n(.-)\n$")
-    local actual = track and oscopeChunk(track) or "(no track)"
+    local actual = track and sinelessChunk(track) or "(no track)"
     local ok = expected ~= nil and expected == actual
     if ok then same = same + 1 end
     report:write("track ", i, ok and " same" or " DIFFERENT", " (",
-      track and oscopeSettings(track) or "-", ")\n")
+      track and sinelessSettings(track) or "-", ")\n")
     if not ok then report:write("expected:\n", tostring(expected), "\nactual:\n", actual, "\n") end
   end
   report:write(same, " of 4 chunks unchanged\n")
@@ -257,7 +257,7 @@ local function shots()
   buildProject()
   reaper.OnPlayButton()
   local track = reaper.GetTrack(0, 0)
-  reaper.TrackFX_Show(track, oscopeOn(track), 3)
+  reaper.TrackFX_Show(track, sinelessOn(track), 3)
   wait(8)
   -- Into the work area, clear of the taskbar, on a short screen: a resize by nothing moves it.
   powershellInBackground("Resize-Window.ps1", '-Title "' .. floatTitle(1) .. '" -ShrinkHeight 0')
@@ -266,17 +266,17 @@ local function shots()
   powershellInBackground("Resize-Window.ps1", '-Title "' .. floatTitle(1) .. '" -ShrinkHeight 250')
   wait(10)
   capture("editor-minimum", floatTitle(1))
-  reaper.TrackFX_Show(track, oscopeOn(track), 2)
+  reaper.TrackFX_Show(track, sinelessOn(track), 2)
   reaper.OnStopButton()
 end
 
 -- Space in an editor whose page has focus, outside any text field, should reach REAPER and
--- toggle its transport. The page is focused by a click on O-Scope's logo.
+-- toggle its transport. The page is focused by a click on Sineless's logo.
 local function keys()
   buildProject()
   reaper.OnPlayButton()
   local track = reaper.GetTrack(0, 0)
-  reaper.TrackFX_Show(track, oscopeOn(track), 3)
+  reaper.TrackFX_Show(track, sinelessOn(track), 3)
   wait(8)
   local report = io.open(out .. "keys.txt", "w")
   local sent = 0
@@ -318,7 +318,7 @@ local function keys()
   press(true)  -- Expected: playing (1) -> stopped (0).
   press(false) -- Expected: stopped (0) -> playing (1).
   report:close()
-  reaper.TrackFX_Show(track, oscopeOn(track), 2)
+  reaper.TrackFX_Show(track, sinelessOn(track), 2)
   reaper.OnStopButton()
 end
 

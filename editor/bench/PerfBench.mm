@@ -429,7 +429,7 @@ int analysisThreads()
     int count = 0;
     for (const auto& [name, time] : threadTimes()) {
         (void)time;
-        count += name == "O-Scope analysis" ? 1 : 0;
+        count += name == "Sineless analysis" ? 1 : 0;
     }
     return count;
 }
@@ -449,11 +449,11 @@ int run(const Options& options)
     @autoreleasepool {
         // A sleeping display makes compositing nearly free; keep it awake, so runs compare.
         IOPMAssertionID displayAwake = 0;
-        IOPMAssertionDeclareUserActivity(CFSTR("O-Scope benchmark"), kIOPMUserActiveLocal,
+        IOPMAssertionDeclareUserActivity(CFSTR("Sineless benchmark"), kIOPMUserActiveLocal,
                                          &displayAwake);
         IOPMAssertionID noSleep = 0;
         IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep,
-                                    kIOPMAssertionLevelOn, CFSTR("O-Scope benchmark"), &noSleep);
+                                    kIOPMAssertionLevelOn, CFSTR("Sineless benchmark"), &noSleep);
         [NSApplication sharedApplication];
         // A foreground app with a visible window, or WebKit throttles the page's draw clock.
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -567,7 +567,7 @@ int run(const Options& options)
             }
             interval.total = interval.process + interval.webKit;
             const auto analysis = [](const Snapshot& snapshot) {
-                const auto found = snapshot.threads.find("O-Scope analysis");
+                const auto found = snapshot.threads.find("Sineless analysis");
                 return found == snapshot.threads.end() ? 0.0 : found->second;
             };
             interval.analysis = (analysis(to) - analysis(from)) / seconds;

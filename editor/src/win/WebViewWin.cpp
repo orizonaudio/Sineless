@@ -80,7 +80,7 @@ constexpr const wchar_t* kKeyScript = LR"JS(
 
 // The page's background (--panel), shown until the page draws.
 constexpr COREWEBVIEW2_COLOR kBackground{255, 0x16, 0x1b, 0x21};
-constexpr wchar_t kContainerClass[] = L"OrizonOScopeWebViewHost";
+constexpr wchar_t kContainerClass[] = L"OrizonSinelessWebViewHost";
 constexpr UINT_PTR kVisibilityTimer = 1;
 constexpr UINT kVisibilityInterval = 250; // ms
 
@@ -180,9 +180,9 @@ std::string narrow(std::wstring_view text)
 
 // WebView2 keeps its profile in a user-data folder. The default sits next to the host's
 // executable, which may not be writable, so it is set explicitly:
-// %LOCALAPPDATA%\Orizon Audio\O-Scope\WebView2-<kProfileVersion>.
+// %LOCALAPPDATA%\Orizon Audio\Sineless\WebView2-<kProfileVersion>.
 // Processes share a profile's browser process, and WebView2 refuses (ERROR_INVALID_STATE) one
-// whose environment options differ: two hosts running O-Scope versions with different options
+// whose environment options differ: two hosts running Sineless versions with different options
 // would clash. kProfileVersion changes with the options, so that each such version has its own.
 // WebView2 refuses (ERROR_INVALID_STATE) to add a view to a browser process whose views have
 // another DPI awareness, and editors share a browser process through their profile folder:
@@ -201,7 +201,7 @@ std::wstring userDataFolder(HWND parent)
     PWSTR localAppData = nullptr;
     std::wstring folder;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppData))) {
-        folder = std::wstring(localAppData) + L"\\Orizon Audio\\O-Scope\\WebView2-" +
+        folder = std::wstring(localAppData) + L"\\Orizon Audio\\Sineless\\WebView2-" +
                  std::to_wstring(kProfileVersion);
         switch (GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(parent))) {
         case DPI_AWARENESS_UNAWARE:
@@ -398,12 +398,12 @@ void WebViewWin::showFailure(HRESULT result)
     if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
         result == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)) {
         std::swprintf(text, std::size(text),
-                      L"O-Scope needs the Microsoft Edge WebView2 Runtime.\n"
+                      L"Sineless needs the Microsoft Edge WebView2 Runtime.\n"
                       L"Install it from developer.microsoft.com/microsoft-edge/webview2/consumer,\n"
                       L"then reopen the editor.");
     } else {
         std::swprintf(text, std::size(text),
-                      L"O-Scope's editor could not start (WebView2 error 0x%08lX).\n"
+                      L"Sineless's editor could not start (WebView2 error 0x%08lX).\n"
                       L"Close and reopen it; if that does not help, restart the host.",
                       static_cast<unsigned long>(result));
     }
@@ -422,7 +422,7 @@ void WebViewWin::processFailed(ICoreWebView2ProcessFailedEventArgs* args)
     args->get_ProcessFailedKind(&kind);
     if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED) {
         controller->put_IsVisible(FALSE); // Shows the message underneath.
-        showMessage(L"O-Scope's editor stopped: its WebView2 browser exited.\n"
+        showMessage(L"Sineless's editor stopped: its WebView2 browser exited.\n"
                     L"Close and reopen the editor.");
         return;
     }
@@ -436,7 +436,7 @@ void WebViewWin::processFailed(ICoreWebView2ProcessFailedEventArgs* args)
     }
     if (reloads.size() >= kMaxReloadsPerMinute) {
         controller->put_IsVisible(FALSE);
-        showMessage(L"O-Scope's editor keeps failing.\nClose and reopen it; if that does not "
+        showMessage(L"Sineless's editor keeps failing.\nClose and reopen it; if that does not "
                     L"help, restart the host.");
         return;
     }

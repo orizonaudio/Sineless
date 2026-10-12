@@ -77,7 +77,7 @@ if [[ ! -x "$pluginval" ]]; then
     unzip -oq "$toolsDir/pluginval_macOS.zip" -d "$toolsDir"
 fi
 "$pluginval" --strictness-level 10 --validate-in-process \
-    --validate "$buildDir/VST3/Debug/O-Scope.vst3"
+    --validate "$buildDir/VST3/Debug/Sineless.vst3"
 
 if [[ "${SKIP_PERFORMANCE:-}" != 1 ]]; then
     step "Performance limits (optimised benchmark build)"

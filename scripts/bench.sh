@@ -37,7 +37,7 @@ for scenario in "${scenarios[@]}"; do
     # shellcheck disable=SC2086 # Arguments are split on purpose.
     output="$("$bench" --warmup=10 --duration="$duration" $arguments 2>&1)"
     pick() { grep -E "$1" <<<"$output" | head -1 | sed -E "s|$2|\1|"; }
-    analysis="$(pick "thread O-Scope analysis" '.* ([0-9.]+)%.*')"
+    analysis="$(pick "thread Sineless analysis" '.* ([0-9.]+)%.*')"
     main="$(pick "thread main" '.* ([0-9.]+)%.*')"
     webkit="$(pick "^webkit processes" '.* ([0-9.]+)% .*')"
     total="$(pick "^total" '.* ([0-9.]+)% .*')"
