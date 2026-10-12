@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-O-Scope is an audio oscilloscope and multi-track analyser, shipped as a VST3 plugin for
+Sineless is an audio oscilloscope and multi-track analyser, shipped as a VST3 plugin for
 macOS and Windows. [CONTRIBUTING.md](CONTRIBUTING.md) is the definition of done; this file
 is how to meet it the first time.
 
