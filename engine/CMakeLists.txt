@@ -58,6 +58,7 @@ if(BUILD_TESTING)
         tests/ReducerTests.cpp
         tests/RollTests.cpp
         tests/SettingsTests.cpp
+        tests/StateFaultTests.cpp
         tests/StateTests.cpp
         tests/SweepTests.cpp
         tests/SweepImageTests.cpp
