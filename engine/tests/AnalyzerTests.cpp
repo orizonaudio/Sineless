@@ -1583,6 +1583,70 @@ TEST_F(CompareTest, FollowsTheFixAsTheDelayChanges)
     EXPECT_LT(frames, 10) << "frames stop once frozen and measured";
 }
 
+// On a sweep longer than the audio between two matches, the shifted track's levels are measured
+// again as soon as its shift changes, not as the playhead rewrites the sweep: the fixed gain
+// agrees with an analyzer measuring everything afresh on the same audio. The copy plays 37 samples
+// late, then in step at a quarter of the level, then late again; the levels from before the
+// in-step part would otherwise stand for it. Both tracks sound in alternate 20 ms bursts, the other
+// ones while in step, so that each block's level depends on the part of the song it holds.
+TEST_F(CompareTest, MeasuresAShiftedTrackAgainWhenItsShiftChanges)
+{
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
+    std::uint64_t delay = 37;
+    std::uint64_t phase = 0;
+    const auto burst = [&phase](std::uint64_t sample) {
+        return (sample / 960 + phase) % 2 == 0 ? noiseAt(sample, 1) : 0.0f;
+    };
+    tracks.front().second = burst;
+    joinWith([&](std::uint64_t sample) { return sample < delay ? 0.0f : burst(sample - delay); });
+    const std::vector<std::uint64_t> compared{idOf(tracks[1].first)};
+    analyzer->setCompared(compared);
+    analyzer->setPreviewFix(true);
+    // A frame every 100 ms: one sweep is 8 s.
+    const auto playFor = [&](double seconds) {
+        std::optional<DecodedFrame> frame;
+        for (int step = 0; step < static_cast<int>(seconds * 10.0); ++step) {
+            play(4800);
+            if (auto produced = produce()) {
+                frame = std::move(produced);
+            }
+        }
+        return frame;
+    };
+    auto frame = playFor(10.0);
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(match(*frame, 1).offset, 37.0f);
+    delay = 0;
+    phase = 1;
+    frame = playFor(6.0);
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(match(*frame, 1).offset, 0.0f) << "the in-step part leads the sweep";
+    delay = 37;
+    phase = 0;
+    frame = playFor(6.0);
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(match(*frame, 1).offset, 37.0f) << "late again over most of the sweep";
+
+    // A fresh analyzer searches one match per frame: it gets a few frames, on the same audio,
+    // then both measure the gains again after 100 ms more.
+    Analyzer fresh(*own, registry);
+    fresh.setColumns(8000);
+    fresh.setCompared(compared);
+    fresh.setPreviewFix(true);
+    std::vector<std::byte> bytes;
+    for (int step = 0; step < 4; ++step) {
+        play(480);
+        produce();
+        ASSERT_TRUE(fresh.produce(bytes));
+    }
+    play(4800);
+    ASSERT_TRUE(produce());
+    ASSERT_TRUE(fresh.produce(bytes));
+    ASSERT_EQ(match(decode(bytes), 1).offset, 37.0f);
+    EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kFixedGainOffset),
+                get<float>(bytes, FrameHeader::kFixedGainOffset), 1e-3f);
+}
+
 TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
 {
     own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
