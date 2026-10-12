@@ -19,7 +19,12 @@ public:
     // The span held on freeze: the 4 s maximum visible span.
     static constexpr double kHoldSeconds = protocol::kFrozenHoldSeconds;
 
-    explicit HoldBuffer(std::size_t capacity = CaptureRing::kDefaultCapacity);
+    // Holds up to `capacity` samples per channel: the capture's, which follows the sample rate.
+    explicit HoldBuffer(std::size_t capacity = CaptureRing::kMinimumCapacity);
+
+    // Reallocates for `size` samples per channel, empty, if it holds a different number: the
+    // capture was resized for another sample rate. Analysis worker only.
+    void resize(std::size_t size);
 
     // Copies the newest `length` samples of every channel (fewer if fewer exist). If the source
     // overwrote them during the copy, the buffer is left empty and false is returned; the

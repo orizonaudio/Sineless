@@ -9,6 +9,18 @@ HoldBuffer::HoldBuffer(std::size_t capacity)
     : capacity(capacity), samples(capacity * CaptureRing::kMaxChannels)
 {}
 
+void HoldBuffer::resize(std::size_t size)
+{
+    if (size == capacity) {
+        return;
+    }
+    capacity = size;
+    samples.assign(size * CaptureRing::kMaxChannels, 0.0f);
+    samples.shrink_to_fit();
+    begin = 0;
+    end = 0;
+}
+
 bool HoldBuffer::capture(const SampleSource& source, std::size_t length)
 {
     const std::uint64_t sourceEnd = source.endIndex();

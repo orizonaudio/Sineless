@@ -4,6 +4,7 @@
 #include "engine/RealtimeSafety.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 
@@ -20,7 +21,10 @@ public:
 
     Steinberg::tresult PLUGIN_API initialize(Steinberg::FUnknown* context) override;
     Steinberg::tresult PLUGIN_API terminate() override;
+    // Sizes the capture for the sample rate (Engine::prepare). The host calls it while the
+    // processor is inactive, before processing starts, so the allocation never meets process().
     Steinberg::tresult PLUGIN_API setupProcessing(Steinberg::Vst::ProcessSetup& setup) override;
+    Steinberg::tresult PLUGIN_API setActive(Steinberg::TBool state) override;
     // Saved state. Called on a non-audio host thread; never throws.
     Steinberg::tresult PLUGIN_API getState(Steinberg::IBStream* state) override;
     Steinberg::tresult PLUGIN_API setState(Steinberg::IBStream* state) override;
@@ -41,6 +45,7 @@ public:
 private:
     std::shared_ptr<engine::Engine> engineState;
     std::int64_t engineToken = 0;
+    std::atomic<bool> active{false};
 };
 
 } // namespace orizon::plugin

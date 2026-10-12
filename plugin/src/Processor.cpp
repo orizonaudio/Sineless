@@ -157,9 +157,21 @@ tresult PLUGIN_API Processor::terminate()
 tresult PLUGIN_API Processor::setupProcessing(ProcessSetup& setup)
 {
     if (engineState) {
-        engineState->setSampleRate(setup.sampleRate);
+        if (active.load()) {
+            // The VST3 rules allow this only while inactive; a host that breaks them may be
+            // processing, so the capture keeps its size (holds shrink to fit) rather than move.
+            engineState->setSampleRate(setup.sampleRate);
+        } else {
+            engineState->prepare(setup.sampleRate);
+        }
     }
     return AudioEffect::setupProcessing(setup);
+}
+
+tresult PLUGIN_API Processor::setActive(TBool state)
+{
+    active.store(state != 0);
+    return AudioEffect::setActive(state);
 }
 
 tresult PLUGIN_API Processor::getState(IBStream* state)

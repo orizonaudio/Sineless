@@ -161,7 +161,7 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
 TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
 {
     auto engine = std::make_shared<engine::Engine>();
-    engine->setSampleRate(48000.0);
+    engine->prepare(48000.0);
     engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per request.
     std::vector<float> tone(96000);
     for (std::size_t i = 0; i < tone.size(); ++i) {

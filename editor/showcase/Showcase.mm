@@ -810,7 +810,7 @@ int run(const Options& options)
         std::vector<std::shared_ptr<engine::Engine>> engines;
         for (std::size_t i = 0; i < members.size(); ++i) {
             auto engine = std::make_shared<engine::Engine>();
-            engine->setSampleRate(kRate);
+            engine->prepare(kRate);
             engine->setTrackInfo({.name = members[i].name,
                                   .colour = members[i].colour,
                                   .index = static_cast<int>(i)});

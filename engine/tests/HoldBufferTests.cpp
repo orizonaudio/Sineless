@@ -78,10 +78,33 @@ TEST(HoldBuffer, RejectsReadsOutsideTheHeldRange)
 
 TEST(HoldBuffer, HoldsFourSecondsWithinCapacity)
 {
-    const HoldBuffer hold;
-    EXPECT_EQ(hold.holdLength(48000.0), 192000u);
-    EXPECT_EQ(hold.holdLength(192000.0), 768000u);
-    EXPECT_EQ(hold.holdLength(384000.0), CaptureRing::kDefaultCapacity) << "limited by capacity";
+    for (const double rate : {48000.0, 192000.0, 384000.0}) {
+        const HoldBuffer hold(CaptureRing::capacityFor(rate));
+        EXPECT_EQ(hold.holdLength(rate), static_cast<std::size_t>(rate * 4)) << rate;
+    }
+    const HoldBuffer shortHold(kCapacity);
+    EXPECT_EQ(shortHold.holdLength(48000.0), kCapacity) << "limited by capacity";
+}
+
+// Resized for the capture of another rate, it holds nothing until the next capture, then up to
+// the new size.
+TEST(HoldBuffer, ResizesForAnotherCapture)
+{
+    CaptureRing ring(kCapacity * 2);
+    writeRamp(ring, 3000);
+    HoldBuffer hold(kCapacity);
+    ASSERT_TRUE(hold.capture(ring, kCapacity * 2));
+    EXPECT_EQ(hold.endIndex() - hold.beginIndex(), kCapacity);
+    hold.resize(kCapacity * 2);
+    EXPECT_EQ(hold.endIndex(), hold.beginIndex()) << "emptied";
+    EXPECT_EQ(hold.holdLength(48000.0), kCapacity * 2);
+    ASSERT_TRUE(hold.capture(ring, kCapacity * 2));
+    EXPECT_EQ(hold.beginIndex(), 3000u - kCapacity * 2);
+    std::vector<float> copy(kCapacity * 2);
+    ASSERT_TRUE(hold.read(1, hold.beginIndex(), copy));
+    EXPECT_EQ(copy.back(), -2999.0f);
+    hold.resize(kCapacity * 2);
+    EXPECT_EQ(hold.endIndex(), 3000u) << "the same size keeps what it holds";
 }
 
 TEST(CaptureRing, ReportsItsReadableRange)

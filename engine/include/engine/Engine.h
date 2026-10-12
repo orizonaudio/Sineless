@@ -57,7 +57,16 @@ public:
         return track;
     }
 
-    // Set by the processor in setupProcessing; read by the analysis worker.
+    // Sets the sample rate and sizes the capture for it (CaptureRing::capacityFor), emptying the
+    // capture if its size changes. Called by the processor in setupProcessing, before processing
+    // starts: it allocates, so never on the audio thread, nor while it writes.
+    void prepare(double rate)
+    {
+        ring.resize(CaptureRing::capacityFor(rate));
+        setSampleRate(rate);
+    }
+
+    // The sample rate alone, read by the analysis worker; prepare() sets it with the capture.
     void setSampleRate(double rate) { sampleRateValue.store(rate, std::memory_order_relaxed); }
     [[nodiscard]] double sampleRate() const
     {

@@ -30,7 +30,8 @@ export const crossingHysteresis = 0.1;
 export const periodTolerance = 0.15;
 
 // Seconds of audio a freeze holds in Seconds mode: the longest span, which a frozen view can be
-// panned back through.
+// panned back through. The engine's capture is sized to keep it at 384 kHz, the highest rate hosts
+// run at (CaptureRing::capacityFor; the build checks it), so a longer hold needs a larger one.
 export const frozenHoldSeconds = settings.timeSpan.maximum;
 
 // Where a triggered trace's trigger point sits, as a fraction of the span from the left.

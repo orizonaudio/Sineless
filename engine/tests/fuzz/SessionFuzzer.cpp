@@ -83,7 +83,7 @@ std::optional<Format> parseFormat(std::string_view line)
 
 void play(engine::Engine& engine, const Format& format, float sign)
 {
-    engine.setSampleRate(format.sampleRate);
+    engine.prepare(format.sampleRate);
     engine.setInputChannels(format.channels);
     std::vector<float> tone(kToneSamples);
     for (std::size_t i = 0; i < tone.size(); ++i) {

@@ -5,7 +5,9 @@
 #include <atomic>
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <limits>
 #include <random>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -46,10 +48,139 @@ void expectRange(const CaptureRing& ring, int channel, std::uint64_t start, std:
     }
 }
 
-TEST(CaptureRing, DefaultCapacityCoversFourSecondsAt192kHzWithMargin)
+TEST(CaptureRing, ReadersTakeAllButAnEighth)
 {
-    constexpr std::size_t kFourSecondsAt192k = std::size_t{4} * 192000;
-    EXPECT_GE(CaptureRing::kDefaultCapacity, kFourSecondsAt192k + 192000);
+    EXPECT_EQ(CaptureRing::readableLength(1024), 896u);
+}
+
+struct RateCapacity
+{
+    double rate;
+    std::size_t capacity;
+};
+
+class CapacityForRate : public ::testing::TestWithParam<RateCapacity>
+{
+};
+
+// The smallest capture up to the rate at which its readable part holds exactly the 4 s freeze
+// (229.376 kHz), the largest above it, and no larger above the highest rate; the smallest for
+// what is not a rate.
+TEST_P(CapacityForRate, IsTheSmallestThatKeepsAFreeze)
+{
+    const auto [rate, capacity] = GetParam();
+    EXPECT_EQ(CaptureRing::capacityFor(rate), capacity);
+    if (rate > 0.0 && rate <= CaptureRing::kHighestSampleRate) {
+        EXPECT_GE(static_cast<double>(CaptureRing::readableLength(capacity)),
+                  protocol::kFrozenHoldSeconds * rate)
+            << "keeps a freeze";
+    }
+}
+
+constexpr std::size_t kSmallest = CaptureRing::kMinimumCapacity;
+constexpr std::size_t kLargest = CaptureRing::kMaximumCapacity;
+constexpr double kLastRateOfTheSmallest =
+    static_cast<double>(CaptureRing::readableLength(kSmallest)) / protocol::kFrozenHoldSeconds;
+
+INSTANTIATE_TEST_SUITE_P(
+    Rates, CapacityForRate,
+    ::testing::Values(RateCapacity{44100.0, kSmallest}, RateCapacity{48000.0, kSmallest},
+                      RateCapacity{96000.0, kSmallest}, RateCapacity{192000.0, kSmallest},
+                      RateCapacity{kLastRateOfTheSmallest, kSmallest},
+                      RateCapacity{kLastRateOfTheSmallest + 1.0, kLargest},
+                      RateCapacity{352800.0, kLargest}, RateCapacity{384000.0, kLargest},
+                      RateCapacity{768000.0, kLargest}, RateCapacity{0.0, kSmallest},
+                      RateCapacity{-48000.0, kSmallest},
+                      RateCapacity{std::numeric_limits<double>::quiet_NaN(), kSmallest},
+                      RateCapacity{std::numeric_limits<double>::infinity(), kLargest}),
+    [](const ::testing::TestParamInfo<RateCapacity>& info) {
+        return "Case" + std::to_string(info.index);
+    });
+
+TEST(CaptureRing, KeepsWhatItHoldsResizedToItsOwnSize)
+{
+    CaptureRing ring(kSmallCapacity);
+    writeBlock(ring, 2, 300);
+    ring.resize(kSmallCapacity);
+    EXPECT_EQ(ring.capacity(), kSmallCapacity);
+    EXPECT_EQ(ring.beginIndex(), 0u);
+    expectRange(ring, 0, 0, 300);
+}
+
+// Resized for another rate, the capture starts empty at the newest index, which goes on from
+// there; what came before is no longer held. Writing after it allocates nothing.
+TEST(CaptureRing, StartsEmptyWhenResized)
+{
+    for (const std::size_t size : {kSmallCapacity * 2, kSmallCapacity / 2}) {
+        SCOPED_TRACE(size);
+        CaptureRing ring(kSmallCapacity);
+        writeBlock(ring, 2, 3000);
+        ring.resize(size);
+        EXPECT_EQ(ring.capacity(), size);
+        EXPECT_EQ(ring.writeIndex(), 3000u);
+        EXPECT_EQ(ring.beginIndex(), 3000u) << "nothing held";
+        std::vector<float> copy(10);
+        EXPECT_FALSE(ring.read(0, 2990, copy)) << "written before the resize";
+
+        std::vector<float> block(size, 0.5f);
+        std::array<const float*, 2> pointers{block.data(), block.data()};
+        std::size_t allocations = 0;
+        {
+            testing::AllocationCounter counter;
+            ring.write(pointers.data(), 2, static_cast<int>(size / 2));
+            allocations = counter.allocations() + counter.deallocations();
+        }
+        EXPECT_EQ(allocations, 0u);
+        EXPECT_EQ(ring.beginIndex(), 3000u);
+        writeBlock(ring, 2, static_cast<int>(size));
+        EXPECT_EQ(ring.beginIndex(), 3000u + size / 2) << "full again";
+        expectRange(ring, 1, ring.writeIndex() - size, size);
+    }
+}
+
+// Readers copy while the capture is resized again and again between blocks (the writer never
+// runs during a resize, as the host guarantees). A read that succeeds returns exactly what was
+// written; reads that meet a resize fail, and none touches a freed buffer (AddressSanitizer).
+TEST(CaptureRing, ReadsThatMeetAResizeFail)
+{
+    constexpr int kResizes = 4000;
+    CaptureRing ring(kSmallCapacity);
+    std::atomic<bool> done{false};
+    std::atomic<std::uint64_t> successfulReads{0};
+    std::atomic<std::uint64_t> corruptReads{0};
+
+    std::thread reader([&] {
+        std::vector<float> copy(200);
+        while (!done.load()) {
+            const std::uint64_t begin = ring.beginIndex();
+            const std::uint64_t end = ring.writeIndex();
+            if (end - begin < copy.size()) {
+                continue;
+            }
+            const std::uint64_t start = end - copy.size();
+            if (!ring.read(0, start, copy)) {
+                continue;
+            }
+            successfulReads.fetch_add(1);
+            for (std::size_t i = 0; i < copy.size(); ++i) {
+                if (copy[i] != valueAt(start + i, 0)) {
+                    corruptReads.fetch_add(1);
+                    break;
+                }
+            }
+        }
+    });
+    for (int resize = 0; resize < kResizes; ++resize) {
+        ring.resize(resize % 2 == 0 ? kSmallCapacity * 2 : kSmallCapacity);
+        for (int block = 0; block < 8; ++block) {
+            writeBlock(ring, 2, 64);
+        }
+    }
+    done.store(true);
+    reader.join();
+
+    EXPECT_EQ(corruptReads.load(), 0u);
+    EXPECT_GT(successfulReads.load(), 0u);
 }
 
 TEST(CaptureRing, StartsEmpty)
