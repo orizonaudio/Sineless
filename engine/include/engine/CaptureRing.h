@@ -122,9 +122,6 @@ private:
     std::shared_ptr<Storage> storage;
     // The writer's view of `storage`, changed only by resize() while the writer does not run.
     std::atomic<Storage*> writerStorage{nullptr};
-    // Odd while resize() swaps the storage, and moved on by each resize: a read that sees it
-    // change copied from a storage the writer may have left.
-    std::atomic<std::uint64_t> generation{0};
 
     // Writer-only copy of the write index; avoids reading the atomic back on the audio thread.
     std::uint64_t writerIndex = 0;

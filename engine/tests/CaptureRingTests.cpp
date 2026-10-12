@@ -140,8 +140,9 @@ TEST(CaptureRing, StartsEmptyWhenResized)
 
 // Readers copy while the capture is resized again and again between blocks (the writer never
 // runs during a resize, as the host guarantees). A read that succeeds returns exactly what was
-// written; reads that meet a resize fail, and none touches a freed buffer (AddressSanitizer).
-TEST(CaptureRing, ReadsThatMeetAResizeFail)
+// written, one that meets a resize may fail, and none touches a freed buffer (AddressSanitizer)
+// or races with the writer (ThreadSanitizer).
+TEST(CaptureRing, ReadsAcrossResizesAreWholeOrFail)
 {
     constexpr int kResizes = 4000;
     CaptureRing ring(kSmallCapacity);
