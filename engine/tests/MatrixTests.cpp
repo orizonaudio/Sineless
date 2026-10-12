@@ -989,6 +989,57 @@ TEST_P(HeldBeatSpans, StaysWholeFrozenFromALongerSpanAndBack)
 INSTANTIATE_TEST_SUITE_P(EdgeRates, HeldBeatSpans, ::testing::ValuesIn(heldBeatCases()),
                          modeTestName);
 
+// The host changes the rate with the editor open in Beats mode: the freeze then holds the longest
+// beat span the capture sized for the new rate covers, whole when it is rebuilt from the hold (on
+// coming back to it from a longer span).
+class BeatRateChanges : public ::testing::TestWithParam<RateChange>
+{
+};
+
+TEST_P(BeatRateChanges, HoldTheLongestSpanTheNewCaptureCovers)
+{
+    const RateChange& c = GetParam();
+    Session session(c.from, 2);
+    session.join({.frequency = 1000.0}, kHeldTempo);
+    session.join({.frequency = 1500.0}, kHeldTempo);
+    configure(session.own(), c.mode, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan,
+                                 static_cast<double>(longestBeatSpanHeld(c.from, kHeldTempo)));
+    session.play(1.0, protocol::kReadoutIntervalSeconds);
+    ASSERT_TRUE(session.produce()) << "no frame before the change";
+    session.analyzer().setFrozen(true);
+    ASSERT_TRUE(session.produce()) << "no frozen frame before the change";
+    session.analyzer().setFrozen(false);
+
+    session.prepare(c.to);
+    const std::size_t fits = longestBeatSpanHeld(c.to, kHeldTempo);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(fits));
+    const double sweepSeconds = static_cast<double>(beatSpanSamples(c.to, kHeldTempo, fits)) / c.to;
+    session.play(captureSeconds(c.to) + 2.0 * sweepSeconds, captureSeconds(c.to) / 4.0);
+    const std::size_t traces = expectedTraces(c.mode, 2, 2);
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no live frame";
+    EXPECT_FALSE(frame->has(FrameFlag::kPartial));
+    expectTraces(*frame, traces);
+
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / c.to);
+    ASSERT_TRUE(session.produce()) << "no frozen frame";
+    ASSERT_LT(fits + 1, protocol::kBeatSpanCount) << "every beat span fits the capture";
+    ASSERT_TRUE(frozenAt(session, fits + 1)) << "no frame of the longer span";
+    frame = frozenAt(session, fits);
+    ASSERT_TRUE(frame) << "no frame back at the held span";
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_FALSE(frame->has(FrameFlag::kPartial)) << "the new hold covers the span";
+    EXPECT_EQ(frame->visibleSamples, static_cast<float>(beatSpanSamples(c.to, kHeldTempo, fits)));
+    expectTraces(*frame, traces);
+}
+
+INSTANTIATE_TEST_SUITE_P(Changes, BeatRateChanges, ::testing::ValuesIn(rateChanges()),
+                         [](const ::testing::TestParamInfo<RateChange>& info) {
+                             return nameOf(info.param);
+                         });
+
 // Frozen with a lane still filling in, beside whole ones: a shorter span longer than the hold is
 // cropped from the whole lanes, which keep all they drew, and rebuilt from the held audio only for
 // the lane that is filling in. At 90 BPM, 16 bars is 42.7 s and 8 bars 21.3 s, longer than the
