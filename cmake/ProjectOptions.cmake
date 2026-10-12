@@ -34,6 +34,15 @@ if(ORIZON_REALTIME_SANITIZER)
     add_link_options(-fsanitize=realtime)
 endif()
 
+option(ORIZON_COVERAGE "Build with Clang source-based coverage (see scripts/coverage.sh)" OFF)
+if(ORIZON_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "ORIZON_COVERAGE needs Clang")
+    endif()
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+    add_link_options(-fprofile-instr-generate)
+endif()
+
 # Fails configuration if <target> links any of the given targets, directly or transitively.
 function(orizon_forbid_dependencies target)
     set(pending ${target})
