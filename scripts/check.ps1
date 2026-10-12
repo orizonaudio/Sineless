@@ -8,6 +8,7 @@
 #   LLVM_BIN  Directory with clang-format (default: C:\Program Files\LLVM\bin)
 #   RUN_BENCH 1 to run the audio benchmark here; it runs by default on GitHub's machines only,
 #             since its limit means something on real x64 hardware alone (not under emulation)
+#   SKIP_PERFORMANCE  1 to skip the performance limits (scripts\performance.ps1)
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
@@ -75,17 +76,10 @@ if ($presets -contains 'windows-x64') {
     Run $pluginval --strictness-level 10 --validate-in-process --validate 'build\windows-x64\VST3\Debug\Sineless.vst3'
 }
 
-Step 'Audio performance (x64, optimised benchmark build)'
-if ($env:GITHUB_ACTIONS -eq 'true' -or $env:RUN_BENCH -eq '1') {
-    Run cmake --preset windows-x64-bench
-    Run cmake --build --preset windows-x64-bench -- /m /nologo /v:minimal
-    # The same limit as on macOS: eight instances within 5 % of each block's deadline at p99.9.
-    $output = & build\windows-x64-bench\bin\Release\process_bench.exe --instances=8 --seconds=30 --max-share=0.05
-    $result = $LASTEXITCODE
-    $output | Select-Object -Last 1 | Write-Host
-    if ($result -ne 0) { throw 'process_bench is over its budget.' }
+if ($env:SKIP_PERFORMANCE -eq '1') {
+    Write-Host "`nPerformance limits skipped (SKIP_PERFORMANCE=1)."
 } else {
-    Write-Host 'Skipped: set RUN_BENCH=1 on real x64 hardware (it runs on GitHub by default).'
+    & (Join-Path $PSScriptRoot 'performance.ps1')
 }
 
 Step 'TypeScript'
