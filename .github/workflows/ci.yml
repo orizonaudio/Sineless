@@ -1,8 +1,8 @@
 name: CI
 
 # Every pull request, every merge-queue entry and every push to main runs the same checks; the
-# ruleset on main requires the jobs below except "performance". Actions are pinned to commits;
-# Dependabot keeps the pins current.
+# ruleset on main requires the jobs below except "performance". Actions are pinned to commits, so
+# a moved tag cannot change what runs.
 on:
   pull_request:
   merge_group:
@@ -13,9 +13,10 @@ on:
 permissions:
   contents: read
 
-# A new push to a pull request cancels its older run; runs on main and in the queue finish.
+# A new push to a pull request cancels its older run; every run on main and in the queue finishes
+# (each has a group of its own).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -37,13 +38,18 @@ jobs:
       # too; see "Test levels" in CONTRIBUTING.md.
       - run: npm run build
 
-  # The engine and protocol C++ tests under AddressSanitizer, without the VST3 SDK: the fast
-  # signal, and the tier contributors without a Mac or Windows can run.
+  # The C++ format, checked once with a pinned clang-format (the macOS and Windows machines carry
+  # different versions), and the engine and protocol C++ tests under AddressSanitizer, without
+  # the VST3 SDK: the fast signal, and the tier contributors without a Mac or Windows can run.
   linux:
     name: linux
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: C++ format (clang-format 23.1.3)
+        run: |
+          git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' |
+            xargs pipx run --spec clang-format==23.1.3 clang-format --dry-run --Werror
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -56,7 +62,7 @@ jobs:
       # Planned: short fuzzing runs of state loading and frame decoding; see "Test levels" in
       # CONTRIBUTING.md.
 
-  # Everything scripts/check.sh checks except the performance limits: format, build, all C++
+  # Everything scripts/check.sh checks except the performance limits and the format: build, all C++
   # tests including the editor's in a real WKWebView, the VST3 validator, clang-tidy, the
   # RealtimeSanitizer, ThreadSanitizer and AddressSanitizer builds, pluginval and the TypeScript.
   macos:
@@ -64,6 +70,7 @@ jobs:
     runs-on: macos-15
     env:
       SKIP_PERFORMANCE: 1
+      SKIP_FORMAT: 1
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
@@ -82,8 +89,8 @@ jobs:
       - run: npm ci
       - run: scripts/check.sh
 
-  # Everything scripts\check.ps1 checks except the performance limit, on x64 and on ARM64:
-  # format, build, all C++ tests including the editor's in a real WebView2, the VST3 validator,
+  # Everything scripts\check.ps1 checks except the performance limit and the format, on x64 and
+  # on ARM64: build, all C++ tests including the editor's in a real WebView2, the VST3 validator,
   # pluginval (x64) and the TypeScript.
   windows:
     name: windows-${{ matrix.arch }}
@@ -99,6 +106,7 @@ jobs:
     env:
       PRESETS: windows-${{ matrix.arch }}
       SKIP_PERFORMANCE: 1
+      SKIP_FORMAT: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
