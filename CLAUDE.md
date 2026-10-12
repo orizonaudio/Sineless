@@ -85,8 +85,8 @@ checks you could not run.
 
 ## Tools in this repo
 
-- Before pushing, run the `review` skill on your diff and fix or answer each finding it
-  verifies.
+- Before opening a pull request, run the `review` skill on its diff and fix or answer each
+  finding it verifies. Pushes to an open pull request are reviewed by CI.
 - Area rules in `.claude/rules/` load when you work in `engine/`, `plugin/`, `editor/`,
   `ui/` or `protocol/`.
 - A hook blocks `git push` to `main` (`.claude/hooks/no-push-to-main.mjs`).

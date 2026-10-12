@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review a change before it is pushed or a pull request is opened - specialist reviewers in parallel, then one verifier per Important finding. Use before every push, giving it the base and head commits (by default the merge base with origin/main and HEAD).
+description: Review a change before a pull request is opened - specialist reviewers in parallel, then one verifier per Important finding. Use before opening a pull request, giving it the base and head commits (by default the merge base with origin/main and HEAD).
 ---
 
 # Review before a push
