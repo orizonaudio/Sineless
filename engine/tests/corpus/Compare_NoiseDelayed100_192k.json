@@ -1,0 +1,53 @@
+{
+  "fixedGain": 2.988287,
+  "flags": {
+    "compared": true,
+    "frozen": false,
+    "limited": false,
+    "partial": false,
+    "roll": false,
+    "synced": true,
+    "triggered": false
+  },
+  "lanes": {
+    "sum": {
+      "max": 0.99357,
+      "min": -0.993187,
+      "nanPoints": 0
+    },
+    "track0": {
+      "max": 0.4999999,
+      "min": -0.4999352,
+      "nanPoints": 0
+    },
+    "track1": {
+      "max": 0.4999999,
+      "min": -0.4999352,
+      "nanPoints": 0
+    }
+  },
+  "matches": {
+    "track1": {
+      "correlation": -0.001226526,
+      "offset": 100,
+      "polarity": 1
+    }
+  },
+  "mode": "minMax",
+  "pointCount": 500,
+  "readouts": {
+    "frequency": 0,
+    "peak": 0.499995,
+    "rms": 0.2902821
+  },
+  "samplesPerPoint": 48,
+  "signal": {
+    "channels": 2,
+    "displayMode": "compare",
+    "frozen": false,
+    "sampleRate": 192000,
+    "timeBase": "beats"
+  },
+  "sumGain": -0.009091031,
+  "visibleSamples": 24000
+}

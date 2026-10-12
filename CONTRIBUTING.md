@@ -41,9 +41,17 @@ CI marks where each will run.
 | End-to-end | Sineless in REAPER, scripted | `scripts/windows` | Before a release |
 | Acceptance | The protocol in each host | [HOSTS.md](HOSTS.md) | Before a release |
 | Matrix (planned) | Every sample rate from 44.1 to 384 kHz, spans around each tolerance, mono and stereo, live and frozen | `engine/tests` | Every PR |
-| Signal corpus (planned) | Approved frames for tones, DC, silence, NaN, inverted and delayed pairs | `engine/tests/corpus` | Every PR |
+| Signal corpus | Approved frames for tones, DC, silence, NaN, inverted and delayed pairs | `engine/tests/corpus`, from `engine/tests/SignalCorpusTests.cpp` | Every PR |
 | Fuzzing (planned) | State loading and frame decoding against malformed input | `engine/tests/fuzz` | Every PR, briefly |
 | Coverage (planned) | Lines the tests run, reported on changed lines | llvm-cov, vitest | Every PR, reported |
+
+The signal corpus plays each signal of the table in `engine/tests/SignalCorpusTests.cpp` through the analyzer and compares the last frame's readouts, views or lanes, matches and summing gains with its approved JSON file, numbers within a tolerance that allows for rounding differences between compilers and platforms, and NaN as `"NaN"`. Each case also states what its signal must read (a 0.5 sine peaks at −6.02 dBFS, an inverted copy correlates at −1), so a wrong value cannot be approved. To add a signal, add a line to the table. When a change to what the engine reports is intended, write the files again and review the diff before committing it:
+
+```sh
+ORIZON_UPDATE_CORPUS=1 ctest --preset linux -R SignalCorpus   # or --preset dev on macOS
+```
+
+On Windows, set `ORIZON_UPDATE_CORPUS=1` in the environment before running `ctest`. The files are written with LF line endings and as Prettier formats them.
 
 ## Releasing
 

@@ -1,0 +1,39 @@
+{
+  "flags": {
+    "compared": false,
+    "frozen": false,
+    "limited": false,
+    "partial": false,
+    "roll": false,
+    "synced": false,
+    "triggered": true
+  },
+  "mode": "minMax",
+  "pointCount": 500,
+  "readouts": {
+    "frequency": 0,
+    "peak": 0.4999783,
+    "rms": 0.2893001
+  },
+  "samplesPerPoint": 9.6,
+  "signal": {
+    "channels": 2,
+    "displayMode": "single",
+    "frozen": false,
+    "sampleRate": 48000,
+    "timeBase": "seconds"
+  },
+  "views": {
+    "left": {
+      "max": 0.4999783,
+      "min": -0.4999298,
+      "nanPoints": 0
+    },
+    "right": {
+      "max": 0.4999783,
+      "min": -0.4999298,
+      "nanPoints": 0
+    }
+  },
+  "visibleSamples": 4800
+}

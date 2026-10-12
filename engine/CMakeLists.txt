@@ -58,6 +58,7 @@ if(BUILD_TESTING)
         tests/ReducerTests.cpp
         tests/RollTests.cpp
         tests/SettingsTests.cpp
+        tests/SignalCorpusTests.cpp
         tests/StateFaultTests.cpp
         tests/StateTests.cpp
         tests/SweepTests.cpp
@@ -68,7 +69,8 @@ if(BUILD_TESTING)
     )
     target_compile_definitions(engine_tests
         PRIVATE ORIZON_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
-                ORIZON_PROTOCOL_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data")
+                ORIZON_PROTOCOL_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data"
+                ORIZON_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus")
     target_link_libraries(engine_tests
         PRIVATE engine engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(engine_tests DISCOVERY_TIMEOUT 30)
