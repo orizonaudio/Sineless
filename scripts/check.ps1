@@ -10,6 +10,7 @@
 #             since its limit means something on real x64 hardware alone (not under emulation)
 #   SKIP_PERFORMANCE  1 to skip the performance limits (scripts\performance.ps1)
 #   SKIP_FORMAT       1 to skip the C++ format check (CI runs it once, with a pinned clang-format)
+#   SKIP_APP_TESTS    1 to skip the app tests in WebKit and Chromium (CI runs them once, on Linux)
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
@@ -91,6 +92,10 @@ Run npm.cmd run typecheck
 Run npm.cmd run lint
 Run npm.cmd run format:check
 Run npm.cmd test
+if ($env:SKIP_APP_TESTS -ne '1') {
+    Run npx.cmd playwright install webkit chromium
+    Run npm.cmd run test:app
+}
 Run npm.cmd run build
 
 Write-Host "`nAll checks passed."

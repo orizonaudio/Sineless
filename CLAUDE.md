@@ -61,6 +61,7 @@ is how to meet it the first time.
 | --- | --- |
 | Install | `npm ci` |
 | TypeScript | `npm run typecheck` (this is `tsc -b`; `tsc --noEmit -p .` checks nothing), `npm test`, `npm run lint`, `npm run format:check` |
+| App tests (real page, WebKit and Chromium) | `npm run test:app`; where Playwright cannot download browsers, `CHROMIUM_EXECUTABLE=<path to chrome> npm run test:app` runs Chromium alone |
 | One UI test | `npx vitest run ui/tests/<file> -t "<name>"` |
 | C++ build and tests (macOS) | `cmake --preset dev && cmake --build --preset dev && ctest --preset dev` |
 | One C++ test | `ctest --preset dev -R <Suite.Name>` |

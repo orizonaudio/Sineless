@@ -8,6 +8,8 @@ dist/
 
 # Node
 node_modules/
+# Screenshots of failed app tests
+/.vitest/
 
 # Local research and planning material (not part of the repository)
 /Research Topics/

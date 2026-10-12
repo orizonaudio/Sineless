@@ -34,8 +34,11 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
-      # Planned: the app-level UI tests in real WebKit and Chromium (Vitest browser mode) run here
-      # too; see "Test levels" in CONTRIBUTING.md.
+      # The app tests run the real page in WebKit, as WKWebView does on macOS, and Chromium, as
+      # WebView2 does on Windows.
+      - name: Install the browsers for the app tests
+        run: npx playwright install --with-deps webkit chromium
+      - run: npm run test:app
       - run: npm run build
 
   # The C++ format, checked once with a pinned clang-format (the macOS and Windows machines carry
@@ -71,6 +74,7 @@ jobs:
     env:
       SKIP_PERFORMANCE: 1
       SKIP_FORMAT: 1
+      SKIP_APP_TESTS: 1
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
@@ -107,6 +111,7 @@ jobs:
       PRESETS: windows-${{ matrix.arch }}
       SKIP_PERFORMANCE: 1
       SKIP_FORMAT: 1
+      SKIP_APP_TESTS: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
