@@ -1,0 +1,1288 @@
+// The matrix: the engine's rules run at every sample rate a host may use, with spans on both sides
+// of each limit the engine branches on, in every display mode and time base, mono and stereo, live
+// and frozen. Spans, modes, beat spans and limits come from the protocol, so a new one is covered
+// as it is added. Past bugs sat on exactly these edges: a frozen hold sized to the longest span
+// left lanes blank at the pan reach, a view at the zoom limit was rejected after rounding, and a
+// quiet level read as a number where there was none.
+//
+// Signals ride on a DC offset, so a trace value near zero is a hole in the data, never a zero
+// crossing.
+
+#include "FrameDecoding.h"
+#include "engine/Analyzer.h"
+#include "engine/CaptureRing.h"
+#include "engine/HoldBuffer.h"
+#include "engine/InstanceRegistry.h"
+#include "engine/Sweep.h"
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cctype>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <gtest/gtest.h>
+#include <limits>
+#include <memory>
+#include <numbers>
+#include <optional>
+#include <ostream>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace orizon::engine {
+namespace {
+
+using protocol::BeatSpan;
+using protocol::DisplayMode;
+using protocol::FrameFlag;
+using protocol::FrameHeader;
+using protocol::FrameMode;
+using protocol::SettingId;
+using protocol::TimeBase;
+
+// The sample rates hosts run at, from CD audio to the highest any of them offers. The protocol
+// does not list them: nothing the engine and the UI share depends on one.
+constexpr std::array kSampleRates{44100.0,  48000.0,  88200.0,  96000.0,
+                                  176400.0, 192000.0, 352800.0, 384000.0};
+
+constexpr std::size_t kColumns = 400;
+constexpr int kBlock = 1024;
+// A trace value below this is a hole: every signal here stays above it.
+constexpr float kHole = 0.05f;
+
+// "44k1", "48k", "352k8".
+std::string rateName(double rate)
+{
+    const auto tenths = static_cast<long long>(std::llround(rate / 100.0));
+    std::string name = std::to_string(tenths / 10) + "k";
+    if (tenths % 10 != 0) {
+        name += std::to_string(tenths % 10);
+    }
+    return name;
+}
+
+std::string capitalised(std::string_view name)
+{
+    std::string text(name);
+    if (!text.empty()) {
+        text.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(text.front())));
+    }
+    return text;
+}
+
+std::string modeName(DisplayMode mode)
+{
+    return capitalised(protocol::kDisplayModeNames.at(static_cast<std::size_t>(mode)));
+}
+
+std::string timeBaseName(TimeBase timeBase)
+{
+    return capitalised(protocol::kTimeBaseNames.at(static_cast<std::size_t>(timeBase)));
+}
+
+const char* channelsName(int channels)
+{
+    return channels == 1 ? "Mono" : "Stereo";
+}
+
+std::vector<DisplayMode> everyMode()
+{
+    std::vector<DisplayMode> modes;
+    modes.reserve(protocol::kDisplayModeCount);
+    for (std::size_t mode = 0; mode < protocol::kDisplayModeCount; ++mode) {
+        modes.push_back(static_cast<DisplayMode>(mode));
+    }
+    return modes;
+}
+
+const protocol::SettingDescriptor& setting(SettingId id)
+{
+    return protocol::kSettings.at(static_cast<std::size_t>(id));
+}
+
+// The seconds a capture holds at `rate`. Playing longer than this before measuring makes the
+// capture wrap, as it has in any host that has played for a while.
+double captureSeconds(double rate)
+{
+    return static_cast<double>(CaptureRing::kDefaultCapacity) / rate;
+}
+
+// Whether the capture keeps `seconds` of audio at `rate` for readers while the audio thread writes
+// on. The engine reads no more than the capture less an eighth of it, the margin frozenLength in
+// Analyzer.cpp leaves the writer; the margin is the engine's, not a public constant, so it is
+// repeated here and must follow it.
+bool captureKeeps(double rate, double seconds)
+{
+    const std::size_t capacity = CaptureRing::kDefaultCapacity;
+    const std::size_t kept = capacity - capacity / 8; // In whole samples, as frozenLength.
+    return seconds * rate <= static_cast<double>(kept);
+}
+
+// Whether the capture keeps what a freeze in Seconds mode holds. Below that, the engine cannot
+// keep what it promises the page (see CaptureRing::kDefaultCapacity), so the frozen view's pan
+// reach and what it draws there are disabled at those rates until the capture grows with them.
+bool captureHoldsTheFreeze(double rate)
+{
+    return captureKeeps(rate, protocol::kFrozenHoldSeconds);
+}
+
+// The rates where the capture is known to keep less than a freeze (issue #14). The cases are
+// split by this list, not by the engine's capacity, so that a regression at any other rate fails
+// rather than moving its cases to the disabled set. Remove a rate here once the engine keeps a
+// freeze at it.
+constexpr auto kRatesShorterThanAFreeze = std::to_array({352800.0, 384000.0});
+
+bool knownShort(double rate)
+{
+    return std::ranges::find(kRatesShorterThanAFreeze, rate) != kRatesShorterThanAFreeze.end();
+}
+
+// Deterministic noise in -0.5 to 0.5.
+float noiseAt(std::int64_t sample, std::uint64_t seed)
+{
+    std::uint64_t x =
+        static_cast<std::uint64_t>(sample) * 0x9E3779B97F4A7C15ULL + seed * 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 30U;
+    x *= 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 27U;
+    return static_cast<float>(x >> 40U) / static_cast<float>(1U << 24U) - 0.5f;
+}
+
+// What one track plays on its left channel (the right one plays half of it).
+struct Signal
+{
+    enum class Kind : std::uint8_t
+    {
+        kTone,
+        kNoise,
+        kSilence,
+    };
+    Kind kind = Kind::kTone;
+    double frequency = 1000.0;
+    double amplitude = 0.25;
+    double offset = 0.5; // DC, so that a hole in a trace stands out.
+    std::uint64_t seed = 1;
+    std::int64_t delay = 0; // Noise: samples by which it lags the host.
+};
+
+// Tracks of group A on one host, each with its own signal and tempo, viewed from the first.
+class Session
+{
+public:
+    Session(double sampleRate, int channels) : rate(sampleRate), channelCount(channels) {}
+
+    std::shared_ptr<Engine> join(Signal signal, double tempo = 120.0)
+    {
+        auto engine = std::make_shared<Engine>();
+        engine->setSampleRate(rate);
+        engine->setInputChannels(channelCount);
+        registry.add(engine);
+        tracks.push_back({.engine = engine, .signal = signal, .tempo = tempo});
+        return engine;
+    }
+
+    Engine& own() { return *tracks.front().engine; }
+
+    Analyzer& analyzer()
+    {
+        if (!view) {
+            view = std::make_unique<Analyzer>(own(), registry);
+            view->setColumns(kColumns);
+        }
+        return *view;
+    }
+
+    // Plays `seconds`, producing a frame every `frameSeconds` of audio as a page asks (none if 0).
+    void play(double seconds, double frameSeconds = 0.0)
+    {
+        const auto total = static_cast<std::uint64_t>(std::llround(seconds * rate));
+        const auto frameEvery = static_cast<std::uint64_t>(std::llround(frameSeconds * rate));
+        std::uint64_t sinceFrame = 0;
+        for (std::uint64_t done = 0; done < total; done += kBlock) {
+            for (Track& track : tracks) {
+                fill(track.signal, position);
+                std::array<const float*, 2> channels{left.data(), right.data()};
+                track.engine->captureRing().write(channels.data(), channelCount, kBlock);
+                track.engine->timeline().advance(
+                    {.playing = true,
+                     .positionValid = true,
+                     .quarterNotes = static_cast<double>(position) * track.tempo / (60.0 * rate),
+                     .tempoValid = true,
+                     .tempo = track.tempo},
+                    kBlock, rate);
+            }
+            position += kBlock;
+            sinceFrame += kBlock;
+            if (frameEvery > 0 && sinceFrame >= frameEvery) {
+                sinceFrame = 0;
+                std::vector<std::byte> frame;
+                (void)analyzer().produce(frame);
+            }
+        }
+    }
+
+    // Writes `samples` more to one track's capture only, as if its audio arrived early.
+    void lead(std::size_t track, int samples)
+    {
+        std::vector<float> values(static_cast<std::size_t>(samples), 0.5f);
+        std::array<const float*, 2> channels{values.data(), values.data()};
+        tracks.at(track).engine->captureRing().write(channels.data(), channelCount, samples);
+    }
+
+    // The next frame, if one comes within a few tries.
+    std::optional<DecodedFrame> produce()
+    {
+        for (int attempt = 0; attempt < 4; ++attempt) {
+            if (analyzer().produce(bytes)) {
+                return decode(bytes);
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] float field(std::size_t offset) const { return get<float>(bytes, offset); }
+
+    double rate;
+    InstanceRegistry registry;
+
+private:
+    struct Track
+    {
+        std::shared_ptr<Engine> engine;
+        Signal signal;
+        double tempo = 120.0;
+    };
+
+    void fill(const Signal& signal, std::uint64_t from)
+    {
+        const double step = 2.0 * std::numbers::pi * signal.frequency / rate;
+        for (int i = 0; i < kBlock; ++i) {
+            const auto index = static_cast<std::int64_t>(from) + i;
+            double value = 0.0;
+            switch (signal.kind) {
+            case Signal::Kind::kTone:
+                value =
+                    signal.offset + signal.amplitude * std::sin(step * static_cast<double>(index));
+                break;
+            case Signal::Kind::kNoise:
+                value = signal.amplitude * 2.0 * noiseAt(index - signal.delay, signal.seed);
+                break;
+            case Signal::Kind::kSilence:
+                break;
+            }
+            left.at(static_cast<std::size_t>(i)) = static_cast<float>(value);
+            right.at(static_cast<std::size_t>(i)) = static_cast<float>(0.5 * value);
+        }
+    }
+
+    int channelCount;
+    std::vector<Track> tracks;
+    std::unique_ptr<Analyzer> view;
+    std::array<float, kBlock> left{};
+    std::array<float, kBlock> right{};
+    std::uint64_t position = 0;
+    std::vector<std::byte> bytes;
+};
+
+void configure(Engine& engine, DisplayMode mode, TimeBase timeBase)
+{
+    engine.settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
+    engine.settings().set(SettingId::kTriggerMode,
+                          static_cast<double>(protocol::TriggerMode::kFree));
+    engine.settings().set(SettingId::kChannelViews, 0b0011); // L and R asked for.
+}
+
+// The traces a frame should hold: views in Single (one for a mono track), else one lane per
+// track and, in Compare, the sum.
+std::size_t expectedTraces(DisplayMode mode, int channels, std::size_t tracks)
+{
+    switch (mode) {
+    case DisplayMode::kSingle:
+        return channels == 1 ? 1 : 2;
+    case DisplayMode::kMulti:
+        return tracks;
+    case DisplayMode::kCompare:
+        return tracks + 1;
+    }
+    ADD_FAILURE() << "no expectation for display mode " << static_cast<int>(mode);
+    return 0;
+}
+
+std::size_t tracesIn(const DecodedFrame& frame)
+{
+    return frame.laneCount > 0 ? frame.laneCount
+                               : static_cast<std::size_t>(std::popcount(frame.views));
+}
+
+std::size_t traceLength(const DecodedFrame& frame)
+{
+    return static_cast<std::size_t>(frame.pointCount) * (frame.mode == FrameMode::kMinMax ? 2 : 1);
+}
+
+std::span<const float> trace(const DecodedFrame& frame, std::size_t index)
+{
+    const std::size_t length = traceLength(frame);
+    return std::span(frame.data).subspan(index * length, length);
+}
+
+// Checks that the frame's data holds every trace, and that no value of trace `index` is a hole
+// (or not a number); a trace in `silent` must be all zeros instead.
+void expectTraces(const DecodedFrame& frame, std::size_t expected,
+                  std::optional<std::size_t> silent = std::nullopt)
+{
+    ASSERT_EQ(tracesIn(frame), expected);
+    ASSERT_GE(frame.data.size(), expected * traceLength(frame)) << "data shorter than its traces";
+    ASSERT_GT(frame.pointCount, 0U);
+    for (std::size_t index = 0; index < expected; ++index) {
+        const std::span<const float> values = trace(frame, index);
+        if (silent == index) {
+            EXPECT_TRUE(std::ranges::all_of(values, [](float value) { return value == 0.0f; }))
+                << "trace " << index << " should be silent";
+            continue;
+        }
+        const auto hole =
+            std::ranges::find_if(values, [](float value) { return !(std::abs(value) >= kHole); });
+        EXPECT_TRUE(hole == values.end())
+            << "trace " << index << " has a hole at " << (hole - values.begin()) << " of "
+            << values.size() << ": " << (hole != values.end() ? *hole : 0.0f);
+    }
+}
+
+// --- Capacities -----------------------------------------------------------------------------
+
+class CaptureCapacity : public ::testing::TestWithParam<double>
+{
+};
+
+class SweepCapacity : public ::testing::TestWithParam<double>
+{
+};
+
+std::string rateTestName(const ::testing::TestParamInfo<double>& info)
+{
+    return rateName(info.param);
+}
+
+// The capture holds what a freeze holds, and the freeze holds the longest span, so a frame of the
+// longest span can be read live and frozen.
+TEST_P(CaptureCapacity, HoldsAFreeze)
+{
+    const double rate = GetParam();
+    EXPECT_TRUE(captureHoldsTheFreeze(rate)) << protocol::kFrozenHoldSeconds * rate << " samples, "
+                                             << CaptureRing::kDefaultCapacity << " held";
+    const HoldBuffer hold;
+    EXPECT_EQ(hold.holdLength(rate),
+              static_cast<std::size_t>(std::llround(protocol::kFrozenHoldSeconds * rate)));
+    EXPECT_EQ(protocol::kFrozenHoldSeconds, setting(SettingId::kTimeSpan).maximum)
+        << "a freeze holds the longest span";
+}
+
+// The tempo-synced sweep of every beat span, at slow, common and fast tempos and in 4/4 and 7/8:
+// within the most a sweep keeps, the span asked for when it fits, else the longest that does.
+TEST_P(SweepCapacity, KeepsTheLongestBeatSpanThatFits)
+{
+    const double rate = GetParam();
+    for (const double tempo : {30.0, 120.0, 300.0}) {
+        for (const auto [numerator, denominator] : {std::pair{4, 4}, std::pair{7, 8}}) {
+            const MusicalStamp stamp{.sampleIndex = 0,
+                                     .quarterNotes = 0.0,
+                                     .tempo = tempo,
+                                     .numerator = numerator,
+                                     .denominator = denominator,
+                                     .playing = true};
+            const double barQuarterNotes = 4.0 * numerator / denominator;
+            const double perQuarterNote = 60.0 * rate / tempo;
+            const auto lengthOf = [&](std::size_t span) {
+                const protocol::BeatSpanLength& length = protocol::kBeatSpanLengths.at(span);
+                return length.inBars ? length.amount * barQuarterNotes : length.amount;
+            };
+            for (std::size_t span = 0; span < protocol::kBeatSpanCount; ++span) {
+                SCOPED_TRACE(::testing::Message()
+                             << protocol::kBeatSpanNames.at(span) << " at " << tempo << " BPM in "
+                             << numerator << "/" << denominator);
+                const auto sweep = sweepWindow(stamp, std::uint64_t{1} << 26U, rate,
+                                               static_cast<BeatSpan>(span), kMaxSweepSamples);
+                ASSERT_TRUE(sweep);
+                EXPECT_GT(sweep->sampleCount, 0U);
+                EXPECT_LE(sweep->sampleCount, kMaxSweepSamples);
+                EXPECT_GT(sweep->cursor, 0.0);
+                EXPECT_LE(sweep->cursor, 1.0);
+                const bool fits =
+                    lengthOf(span) * perQuarterNote <= static_cast<double>(kMaxSweepSamples);
+                EXPECT_EQ(sweep->limited, !fits);
+                if (fits) {
+                    EXPECT_DOUBLE_EQ(sweep->spanQuarterNotes, lengthOf(span));
+                    EXPECT_EQ(sweep->sampleCount, static_cast<std::uint64_t>(std::llround(
+                                                      lengthOf(span) * perQuarterNote)));
+                    continue;
+                }
+                // The longest shorter span that fits.
+                std::size_t chosen = span;
+                while (chosen > 0 &&
+                       lengthOf(chosen) * perQuarterNote > static_cast<double>(kMaxSweepSamples)) {
+                    --chosen;
+                }
+                EXPECT_DOUBLE_EQ(sweep->spanQuarterNotes, lengthOf(chosen));
+            }
+        }
+    }
+}
+
+std::vector<double> ratesWhere(bool shortOfAFreeze)
+{
+    std::vector<double> rates;
+    for (const double rate : kSampleRates) {
+        if (knownShort(rate) == shortOfAFreeze) {
+            rates.push_back(rate);
+        }
+    }
+    return rates;
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, SweepCapacity, ::testing::ValuesIn(kSampleRates), rateTestName);
+INSTANTIATE_TEST_SUITE_P(EveryRate, CaptureCapacity, ::testing::ValuesIn(ratesWhere(false)),
+                         rateTestName);
+// DISABLED_: engine bug, for triage. At 352.8 and 384 kHz the capture (2^20 samples, under 3 s)
+// holds less than a freeze (4 s). See SecondsSpans and FrozenPan below.
+INSTANTIATE_TEST_SUITE_P(DISABLED_CaptureShorterThanAFreeze, CaptureCapacity,
+                         ::testing::ValuesIn(ratesWhere(true)), rateTestName);
+
+// --- Seconds spans --------------------------------------------------------------------------
+
+// A span of the seconds time base, from the protocol: the shortest, the roll threshold and the
+// next span above it, and the longest.
+struct SecondsSpan
+{
+    std::string name;
+    double seconds = 0.0;
+};
+
+std::vector<SecondsSpan> secondsSpans()
+{
+    return {{.name = "Shortest", .seconds = setting(SettingId::kTimeSpan).minimum},
+            {.name = "AtRollThreshold", .seconds = protocol::kRollThresholdSeconds},
+            {.name = "AboveRollThreshold",
+             .seconds = std::nextafter(protocol::kRollThresholdSeconds,
+                                       std::numeric_limits<double>::infinity())},
+            {.name = "Longest", .seconds = setting(SettingId::kTimeSpan).maximum}};
+}
+
+struct SpanCase
+{
+    double rate = 48000.0;
+    SecondsSpan span;
+    DisplayMode mode = DisplayMode::kSingle;
+    int channels = 2;
+};
+
+std::string nameOf(const SpanCase& c)
+{
+    return rateName(c.rate) + "_" + c.span.name + "_" + modeName(c.mode) + "_" +
+           channelsName(c.channels);
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const SpanCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+// Every rate, span and mode. Channels alternate so that each rate and each span runs both mono
+// and stereo: the engine branches on the channel count only where it reads views, the same at
+// every rate and span. `holds(rate, seconds)`: which cases to keep.
+template <typename Holds> std::vector<SpanCase> spanCases(Holds holds)
+{
+    std::vector<SpanCase> cases;
+    const std::vector<SecondsSpan> spans = secondsSpans();
+    for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
+        for (std::size_t span = 0; span < spans.size(); ++span) {
+            if (!holds(kSampleRates.at(rate), spans[span].seconds)) {
+                continue;
+            }
+            for (const DisplayMode mode : everyMode()) {
+                cases.push_back({.rate = kSampleRates.at(rate),
+                                 .span = spans[span],
+                                 .mode = mode,
+                                 .channels = (rate + span) % 2 == 0 ? 2 : 1});
+            }
+        }
+    }
+    return cases;
+}
+
+// Two tracks of a case in Seconds mode, played past a whole capture, so that it has wrapped as in
+// a host that has played for a while, and `extraSeconds` more.
+struct SecondsSession
+{
+    SecondsSession(const SpanCase& c, double extraSeconds) : session(c.rate, c.channels)
+    {
+        session.join(own);
+        session.join({.frequency = 1500.0});
+        configure(session.own(), c.mode, TimeBase::kSeconds);
+        EXPECT_TRUE(session.own().settings().set(SettingId::kTimeSpan, c.span.seconds));
+        session.play(captureSeconds(c.rate) + extraSeconds);
+    }
+
+    // Freezes, with another track's capture a little ahead of this one's and audio going on.
+    std::optional<DecodedFrame> freeze()
+    {
+        session.lead(1, kBlock * 4);
+        session.analyzer().setFrozen(true);
+        session.play(static_cast<double>(kBlock) / session.rate);
+        return session.produce();
+    }
+
+    Signal own{.frequency = 1000.0};
+    Session session;
+};
+
+class SecondsSpans : public ::testing::TestWithParam<SpanCase>
+{
+};
+
+// Live, the frame holds the whole span, rolls exactly above the threshold, and measures it.
+// Frozen, it holds the same.
+TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
+{
+    const SpanCase& c = GetParam();
+    SecondsSession seconds(c, c.span.seconds + 0.5);
+    Session& session = seconds.session;
+    const std::size_t traces = expectedTraces(c.mode, c.channels, 2);
+    const double spanSamples = c.span.seconds * c.rate;
+
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no live frame";
+    EXPECT_FALSE(frame->has(FrameFlag::kFrozen));
+    EXPECT_EQ(frame->has(FrameFlag::kRoll), c.span.seconds > protocol::kRollThresholdSeconds);
+    EXPECT_EQ(frame->has(FrameFlag::kCompared), c.mode == DisplayMode::kCompare);
+    EXPECT_NEAR(frame->visibleSamples, spanSamples, kColumns / 2.0 + 1.0);
+    expectTraces(*frame, traces);
+    EXPECT_TRUE(std::isfinite(frame->peak));
+    EXPECT_GT(frame->peak, 0.1f) << "readouts measured nothing";
+    EXPECT_GT(frame->rms, 0.1f);
+    if (c.span.seconds * seconds.own.frequency >= 4.0) {
+        EXPECT_NEAR(frame->frequency, seconds.own.frequency, seconds.own.frequency * 0.01);
+    }
+
+    frame = seconds.freeze();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_NEAR(frame->visibleSamples, spanSamples, kColumns / 2.0 + 1.0);
+    expectTraces(*frame, traces);
+}
+
+class FrozenPan : public ::testing::TestWithParam<SpanCase>
+{
+};
+
+// Frozen, the frame reports how far back it can be panned through the freeze, and is whole there
+// and at the zoom limit.
+TEST_P(FrozenPan, PansBackThroughTheWholeFreeze)
+{
+    const SpanCase& c = GetParam();
+    // More than a freeze holds, so that the view can pan back through all of it.
+    SecondsSession seconds(c, protocol::kFrozenHoldSeconds + 0.5);
+    Session& session = seconds.session;
+    const std::size_t traces = expectedTraces(c.mode, c.channels, 2);
+    const double spanSamples = c.span.seconds * c.rate;
+    auto frame = seconds.freeze();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+
+    // The freeze holds the longest span: the view pans back over what the span leaves of it.
+    const float reach = session.field(FrameHeader::kPanReachOffset);
+    ASSERT_TRUE(std::isfinite(reach));
+    EXPECT_GE(reach, 0.0f);
+    const double held = protocol::kFrozenHoldSeconds;
+    const double block = static_cast<double>(kBlock) / c.rate;
+    EXPECT_LE(reach, held - c.span.seconds + 2.0 * block);
+    EXPECT_GE(reach, held - c.span.seconds - 2.0 * block - c.span.seconds / kColumns);
+    if (reach > 0.0f) { // At no reach, the frame above is the one at the reach.
+        session.analyzer().setPan(reach);
+        frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame at the pan reach";
+        SCOPED_TRACE("panned to the reach");
+        expectTraces(*frame, traces);
+    }
+
+    // At the zoom limit, a few ulps narrower as the UI may compute it.
+    const double width = protocol::kMinimumViewWidth * (1.0 - 1e-12);
+    session.analyzer().setView(0.5, 0.5 + width);
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frame at the zoom limit";
+    EXPECT_NEAR(frame->viewEnd - frame->viewStart, protocol::kMinimumViewWidth, 1e-6);
+    EXPECT_NEAR(frame->visibleSamples, width * spanSamples, 1e-3 * spanSamples + 1e-3);
+    {
+        SCOPED_TRACE("zoomed to the limit");
+        expectTraces(*frame, traces);
+    }
+}
+
+std::string spanTestName(const ::testing::TestParamInfo<SpanCase>& info)
+{
+    return nameOf(info.param);
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, SecondsSpans,
+                         ::testing::ValuesIn(spanCases([](double rate, double seconds) {
+                             return !knownShort(rate) || captureKeeps(rate, seconds);
+                         })),
+                         spanTestName);
+// DISABLED_: engine bug, for triage. The longest span at 352.8 and 384 kHz is longer than the
+// capture keeps (see CaptureCapacity). Once the capture has wrapped, Single mode produces no live
+// frame, its readouts reading more than the capture holds. Live, Multi and Compare draw every lane
+// with a hole at its oldest edge (column 0) and measure peak, RMS and frequency as 0; frozen, the
+// other lanes keep that hole and the own lane has one further in.
+INSTANTIATE_TEST_SUITE_P(DISABLED_SpanLongerThanTheCapture, SecondsSpans,
+                         ::testing::ValuesIn(spanCases([](double rate, double seconds) {
+                             return knownShort(rate) && !captureKeeps(rate, seconds);
+                         })),
+                         spanTestName);
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, FrozenPan,
+                         ::testing::ValuesIn(spanCases([](double rate, double /*seconds*/) {
+                             return !knownShort(rate);
+                         })),
+                         spanTestName);
+// DISABLED_: engine bug, for triage. At 352.8 and 384 kHz the capture keeps less than a freeze
+// (see CaptureCapacity), so once it has wrapped the freeze holds less than it promises: the pan
+// reach falls short of it in every mode, and lanes have a hole at their oldest edge panned to the
+// reach and zoomed to the limit. The longest span there is left to SecondsSpans above, which
+// already fails before panning.
+INSTANTIATE_TEST_SUITE_P(DISABLED_CaptureShorterThanAFreeze, FrozenPan,
+                         ::testing::ValuesIn(spanCases([](double rate, double seconds) {
+                             return knownShort(rate) && captureKeeps(rate, seconds);
+                         })),
+                         spanTestName);
+
+// --- Beat spans -----------------------------------------------------------------------------
+
+struct ModeCase
+{
+    double rate = 48000.0;
+    DisplayMode mode = DisplayMode::kSingle;
+    int channels = 2;
+    TimeBase timeBase = TimeBase::kBeats;
+};
+
+std::string nameOf(const ModeCase& c)
+{
+    return rateName(c.rate) + "_" + modeName(c.mode) + "_" + timeBaseName(c.timeBase) + "_" +
+           channelsName(c.channels);
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const ModeCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+std::string modeTestName(const ::testing::TestParamInfo<ModeCase>& info)
+{
+    return nameOf(info.param);
+}
+
+// Every rate and mode in Beats, channels alternating by rate.
+std::vector<ModeCase> beatCases()
+{
+    std::vector<ModeCase> cases;
+    for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
+        for (const DisplayMode mode : everyMode()) {
+            cases.push_back({.rate = kSampleRates.at(rate),
+                             .mode = mode,
+                             .channels = rate % 2 == 0 ? 2 : 1,
+                             .timeBase = TimeBase::kBeats});
+        }
+    }
+    return cases;
+}
+
+class BeatSpans : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+std::uint64_t beatSamples(double rate, double tempo, double quarterNotes)
+{
+    return static_cast<std::uint64_t>(std::llround(quarterNotes * 60.0 * rate / tempo));
+}
+
+// The samples of a beat span at `tempo` in the time signature Session plays (the host default).
+std::uint64_t beatSpanSamples(double rate, double tempo, std::size_t span)
+{
+    return beatSamples(rate, tempo,
+                       beatSpanQuarterNotes(static_cast<BeatSpan>(span),
+                                            Timeline::barQuarterNotes(MusicalStamp{})));
+}
+
+// The sweep is whole once it has played, and frozen it stays whole: as it is, cropped to a shorter
+// span, rebuilt for a longer one from the held audio, and at the zoom limit.
+TEST_P(BeatSpans, DrawsTheWholeSweepLiveAndFrozen)
+{
+    const ModeCase c = GetParam();
+    const double rate = c.rate;
+    Session session(rate, c.channels);
+    session.join({.frequency = 1000.0});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), c.mode, TimeBase::kBeats);
+    const auto span = static_cast<std::size_t>(BeatSpan::kOneBeat);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(span));
+    const std::size_t traces = expectedTraces(c.mode, c.channels, 2);
+    const auto lengthOf = [&](std::size_t beatSpan) {
+        return beatSpanSamples(rate, 120.0, beatSpan);
+    };
+
+    // Past a whole capture, then two and a half beats, producing frames as a page does.
+    session.play(captureSeconds(rate) + 1.25, protocol::kReadoutIntervalSeconds / 2.0);
+    auto frame = session.produce();
+    if (!frame) {
+        session.play(0.01);
+        frame = session.produce();
+    }
+    ASSERT_TRUE(frame) << "no live frame";
+    EXPECT_TRUE(frame->has(FrameFlag::kSynced));
+    EXPECT_FALSE(frame->has(FrameFlag::kFrozen));
+    EXPECT_FALSE(frame->has(FrameFlag::kPartial)) << "still filling after two passes";
+    EXPECT_EQ(frame->visibleSamples, static_cast<float>(lengthOf(span)));
+    EXPECT_GE(frame->cursor, 0.0f);
+    EXPECT_LE(frame->cursor, 1.0f);
+    expectTraces(*frame, traces);
+    EXPECT_GT(frame->peak, 0.1f) << "readouts measured nothing";
+
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / rate);
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_EQ(frame->visibleSamples, static_cast<float>(lengthOf(span)));
+    expectTraces(*frame, traces);
+
+    // Shorter and longer spans chosen while frozen, then back.
+    for (const std::size_t other : {span - 1, span + 1, span}) {
+        SCOPED_TRACE(protocol::kBeatSpanNames.at(other));
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(other));
+        frame = session.produce();
+        ASSERT_TRUE(frame);
+        EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+        EXPECT_NEAR(frame->visibleSamples, static_cast<float>(lengthOf(other)), 1.0f);
+        expectTraces(*frame, traces);
+    }
+
+    const double width = protocol::kMinimumViewWidth * (1.0 - 1e-12);
+    session.analyzer().setView(1.0 - width, 1.0);
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frame at the zoom limit";
+    EXPECT_NEAR(frame->viewEnd - frame->viewStart, protocol::kMinimumViewWidth, 1e-6);
+    SCOPED_TRACE("zoomed to the limit");
+    expectTraces(*frame, traces);
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, BeatSpans, ::testing::ValuesIn(beatCases()), modeTestName);
+
+// --- Beat spans at the freeze hold ----------------------------------------------------------
+
+// The longest beat span whose sweep at `tempo` fits in the capture, which bounds what a freeze in
+// Beats mode holds. The freeze keeps a little less, leaving the audio thread a margin to write on
+// (frozenLength in Analyzer.cpp); spans double, so at these rates none falls in that margin, and
+// the test below would find one that did, its frozen frame not whole.
+std::size_t longestBeatSpanHeld(double rate, double tempo)
+{
+    std::size_t span = 0;
+    while (span + 1 < protocol::kBeatSpanCount &&
+           beatSpanSamples(rate, tempo, span + 1) <= CaptureRing::kDefaultCapacity) {
+        ++span;
+    }
+    return span;
+}
+
+// The lowest and highest rates in every mode, channels alternating.
+std::vector<ModeCase> heldBeatCases()
+{
+    std::vector<ModeCase> cases;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        for (const DisplayMode mode : everyMode()) {
+            cases.push_back({.rate = rate,
+                             .mode = mode,
+                             .channels = rate == kSampleRates.front() ? 2 : 1,
+                             .timeBase = TimeBase::kBeats});
+        }
+    }
+    return cases;
+}
+
+class HeldBeatSpans : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+constexpr double kHeldTempo = 120.0;
+
+// Two tracks playing `span` past a whole capture and two of its sweeps, still live: each test
+// freezes when it is ready.
+struct HeldSession
+{
+    HeldSession(const ModeCase& c, std::size_t span) : session(c.rate, c.channels)
+    {
+        session.join({.frequency = 1000.0}, kHeldTempo);
+        session.join({.frequency = 1500.0}, kHeldTempo);
+        configure(session.own(), c.mode, TimeBase::kBeats);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(span));
+        const double sweepSeconds =
+            static_cast<double>(beatSpanSamples(c.rate, kHeldTempo, span)) / c.rate;
+        // Frames often enough that no sweep misses audio the capture overwrote.
+        session.play(captureSeconds(c.rate) + 2.0 * sweepSeconds, captureSeconds(c.rate) / 4.0);
+    }
+
+    Session session;
+};
+
+// A frozen frame of beat span `span`, chosen while frozen.
+std::optional<DecodedFrame> frozenAt(Session& session, std::size_t span)
+{
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(span));
+    return session.produce();
+}
+
+// Live and frozen, the longest span the hold covers is whole. A longer span chosen while frozen is
+// rebuilt from the held audio, which covers only part of it: the frame says so.
+TEST_P(HeldBeatSpans, DrawsTheLongestHeldSpanWholeFrozen)
+{
+    const ModeCase c = GetParam();
+    const std::size_t fits = longestBeatSpanHeld(c.rate, kHeldTempo);
+    const std::size_t longer = fits + 1;
+    ASSERT_LT(longer, protocol::kBeatSpanCount) << "every beat span fits the capture";
+    HeldSession held(c, fits);
+    Session& session = held.session;
+    const std::size_t traces = expectedTraces(c.mode, c.channels, 2);
+
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no live frame";
+    EXPECT_FALSE(frame->has(FrameFlag::kPartial));
+    EXPECT_EQ(frame->visibleSamples, static_cast<float>(beatSpanSamples(c.rate, kHeldTempo, fits)));
+    {
+        SCOPED_TRACE("live");
+        expectTraces(*frame, traces);
+    }
+
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / c.rate);
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_FALSE(frame->has(FrameFlag::kPartial));
+    {
+        SCOPED_TRACE("frozen");
+        expectTraces(*frame, traces);
+    }
+
+    frame = frozenAt(session, longer);
+    ASSERT_TRUE(frame) << "no frame of the longer span";
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_NEAR(frame->visibleSamples,
+                static_cast<float>(beatSpanSamples(c.rate, kHeldTempo, longer)), 1.0f);
+    EXPECT_TRUE(frame->has(FrameFlag::kPartial)) << "the hold covers only part of the span";
+}
+
+// DISABLED_: engine bug, for triage. Back at the held span after the longer one, the frame is
+// cropped from the longer span's partly empty sweep instead of rebuilt from the hold, which
+// covers it: the frame is flagged partial and has holes, in every mode at 44.1 and 384 kHz,
+// though it was whole before the round trip.
+TEST_P(HeldBeatSpans, DISABLED_StaysWholeFrozenBackFromALongerSpan)
+{
+    const ModeCase c = GetParam();
+    const std::size_t fits = longestBeatSpanHeld(c.rate, kHeldTempo);
+    const std::size_t longer = fits + 1;
+    ASSERT_LT(longer, protocol::kBeatSpanCount) << "every beat span fits the capture";
+    HeldSession held(c, fits);
+    Session& session = held.session;
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / c.rate);
+    ASSERT_TRUE(session.produce()) << "no frozen frame";
+    ASSERT_TRUE(frozenAt(session, longer)) << "no frame of the longer span";
+
+    const auto frame = frozenAt(session, fits);
+    ASSERT_TRUE(frame) << "no frame back at the held span";
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_EQ(frame->visibleSamples, static_cast<float>(beatSpanSamples(c.rate, kHeldTempo, fits)));
+    EXPECT_FALSE(frame->has(FrameFlag::kPartial)) << "the hold covers the span";
+    expectTraces(*frame, expectedTraces(c.mode, c.channels, 2));
+}
+
+// Frozen after playing the next span up, which the hold does not cover but the live sweep kept,
+// the frame is whole: as it is, cropped to the held span, and back.
+TEST_P(HeldBeatSpans, StaysWholeFrozenFromALongerSpanAndBack)
+{
+    const ModeCase c = GetParam();
+    const std::size_t fits = longestBeatSpanHeld(c.rate, kHeldTempo);
+    const std::size_t longer = fits + 1;
+    ASSERT_LT(longer, protocol::kBeatSpanCount) << "every beat span fits the capture";
+    HeldSession held(c, longer);
+    Session& session = held.session;
+    const std::size_t traces = expectedTraces(c.mode, c.channels, 2);
+
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no live frame";
+    EXPECT_FALSE(frame->has(FrameFlag::kPartial));
+    {
+        SCOPED_TRACE("live");
+        expectTraces(*frame, traces);
+    }
+
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / c.rate);
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    {
+        SCOPED_TRACE("frozen");
+        expectTraces(*frame, traces);
+    }
+    for (const std::size_t span : {fits, longer}) {
+        SCOPED_TRACE(protocol::kBeatSpanNames.at(span));
+        frame = frozenAt(session, span);
+        ASSERT_TRUE(frame);
+        EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+        EXPECT_FALSE(frame->has(FrameFlag::kPartial));
+        EXPECT_NEAR(frame->visibleSamples,
+                    static_cast<float>(beatSpanSamples(c.rate, kHeldTempo, span)), 1.0f);
+        expectTraces(*frame, traces);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, HeldBeatSpans, ::testing::ValuesIn(heldBeatCases()),
+                         modeTestName);
+
+// --- Lane lengths around the sweep tolerance ------------------------------------------------
+
+// The most two sweep lengths may differ, the shorter being `length`, for a lane to take the own
+// track's length: what sweepLengthsSimilar allows, and always one sample (sharedLength in
+// Analyzer.cpp).
+std::uint64_t laneTolerance(std::uint64_t length)
+{
+    std::uint64_t apart = 1;
+    while (sweepLengthsSimilar(length, length + apart + 1)) {
+        ++apart;
+    }
+    return apart;
+}
+
+// The shortest length whose tolerance is `apart` samples.
+std::uint64_t toleranceStep(std::uint64_t apart)
+{
+    std::uint64_t length = 1;
+    while (laneTolerance(length) < apart) {
+        ++length;
+    }
+    return length;
+}
+
+// The shortest length that sweepLengthsSimilar lets a sweep one sample longer match.
+std::uint64_t firstSimilarLength()
+{
+    std::uint64_t length = 1;
+    while (!sweepLengthsSimilar(length, length + 1)) {
+        ++length;
+    }
+    return length;
+}
+
+struct LengthCase
+{
+    double rate = 48000.0;
+    std::uint64_t length = 0; // The own track's sweep, in samples; 0 for a sixteenth at 120 BPM.
+    bool within = true;       // The other track's sweep: at the tolerance, or one sample beyond.
+    DisplayMode mode = DisplayMode::kMulti;
+};
+
+std::uint64_t ownLength(const LengthCase& c)
+{
+    const double sixteenth = protocol::kBeatSpanLengths.at(0).amount;
+    return c.length > 0 ? c.length : beatSamples(c.rate, 120.0, sixteenth);
+}
+
+std::string nameOf(const LengthCase& c)
+{
+    return rateName(c.rate) + "_" + std::to_string(ownLength(c)) + "Samples_" +
+           (c.within ? "AtTolerance" : "BeyondTolerance") + "_" + modeName(c.mode);
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const LengthCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+std::string lengthTestName(const ::testing::TestParamInfo<LengthCase>& info)
+{
+    return nameOf(info.param);
+}
+
+// Every rate at a sixteenth beat, the lanes' modes; and at 48 kHz, lengths on both sides of each
+// edge sweepLengthsSimilar has, each within and beyond the tolerance. Below the first (1023
+// samples) it allows nothing and only the one sample lets a lane through; from it, it allows that
+// sample too; from the next ones (2046, 3069) it allows two and three samples.
+std::vector<LengthCase> lengthCases()
+{
+    std::vector<LengthCase> cases;
+    for (const double rate : kSampleRates) {
+        for (const bool within : {true, false}) {
+            for (const DisplayMode mode : {DisplayMode::kMulti, DisplayMode::kCompare}) {
+                cases.push_back({.rate = rate, .within = within, .mode = mode});
+            }
+        }
+    }
+    for (const std::uint64_t edge : {firstSimilarLength(), toleranceStep(2), toleranceStep(3)}) {
+        for (const std::uint64_t length : {edge - 1, edge}) {
+            for (const bool within : {true, false}) {
+                cases.push_back({.rate = 48000.0, .length = length, .within = within});
+            }
+        }
+    }
+    return cases;
+}
+
+class LaneLengths : public ::testing::TestWithParam<LengthCase>
+{
+};
+
+// Another track's sweep a little longer than this one's (its tempo a little slower) is drawn on
+// this track's length as long as it is within the tolerance, and silent beyond it, live and
+// frozen.
+TEST_P(LaneLengths, DrawsALaneWithinTheToleranceOnly)
+{
+    const LengthCase c = GetParam();
+    const double rate = c.rate;
+    const std::uint64_t length = ownLength(c);
+    const std::uint64_t apart = laneTolerance(length) + (c.within ? 0 : 1);
+    const double sixteenth = protocol::kBeatSpanLengths.at(0).amount;
+    const auto tempoFor = [&](std::uint64_t samples) {
+        return sixteenth * 60.0 * rate / static_cast<double>(samples);
+    };
+    ASSERT_EQ(beatSamples(rate, tempoFor(length), sixteenth), length);
+    ASSERT_EQ(beatSamples(rate, tempoFor(length + apart), sixteenth), length + apart);
+
+    Session session(rate, 2);
+    session.join({.frequency = 1000.0}, tempoFor(length));
+    session.join({.frequency = 1500.0}, tempoFor(length + apart));
+    configure(session.own(), c.mode, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, 0.0);
+    const std::size_t traces = expectedTraces(c.mode, 2, 2);
+    const std::optional<std::size_t> silent =
+        c.within ? std::nullopt : std::optional<std::size_t>(1);
+
+    session.play(static_cast<double>(6 * length) / rate, static_cast<double>(length) / rate);
+    session.play(static_cast<double>(kBlock) / rate);
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no live frame";
+    EXPECT_EQ(frame->visibleSamples, static_cast<float>(length));
+    {
+        SCOPED_TRACE("live");
+        expectTraces(*frame, traces, silent);
+    }
+
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / rate);
+    session.analyzer().setColumns(kColumns - 1); // Forces a frame.
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    SCOPED_TRACE("frozen");
+    expectTraces(*frame, traces, silent);
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, LaneLengths, ::testing::ValuesIn(lengthCases()),
+                         lengthTestName);
+
+// --- Compare's match reach ------------------------------------------------------------------
+
+struct ReachCase
+{
+    double rate = 48000.0;
+    int beyond = 0; // Samples beyond the reach; the other track lags by reach + beyond.
+    bool leads = false;
+};
+
+std::string nameOf(const ReachCase& c)
+{
+    return rateName(c.rate) + "_" + (c.leads ? "Leads" : "Lags") +
+           (c.beyond > 0 ? "BeyondReach" : "AtReach");
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const ReachCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+std::string reachTestName(const ::testing::TestParamInfo<ReachCase>& info)
+{
+    return nameOf(info.param);
+}
+
+std::vector<ReachCase> reachCases()
+{
+    std::vector<ReachCase> cases;
+    for (const double rate : kSampleRates) {
+        for (const bool leads : {false, true}) {
+            for (const int beyond : {0, 1}) {
+                cases.push_back({.rate = rate, .beyond = beyond, .leads = leads});
+            }
+        }
+    }
+    return cases;
+}
+
+class MatchReach : public ::testing::TestWithParam<ReachCase>
+{
+};
+
+// Compare finds a track up to the match reach late or early, to the sample, at any rate; a track
+// a sample beyond the reach either way is reported neither at its offset nor at the reach's edge.
+TEST_P(MatchReach, FindsAnOffsetUpToTheReachOnly)
+{
+    const ReachCase c = GetParam();
+    const double rate = c.rate;
+    const auto reach = static_cast<std::int64_t>(std::llround(protocol::kMatchReachSeconds * rate));
+    const std::int64_t delay = (reach + c.beyond) * (c.leads ? -1 : 1);
+    Session session(rate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7, .delay = delay});
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    // A span of ten times the reach: the match is searched over the visible span, so even a track
+    // offset by the whole reach overlaps nine tenths of it.
+    session.own().settings().set(SettingId::kTimeSpan, 10.0 * protocol::kMatchReachSeconds);
+    session.play(0.25);
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(FrameFlag::kCompared));
+    ASSERT_EQ(frame->laneCount, 3);
+    const std::size_t at = std::size_t{frame->laneCount} * traceLength(*frame) +
+                           std::size_t{1} * protocol::kMatchValues;
+    ASSERT_LT(at + 2, frame->data.size());
+    const float correlation = frame->data.at(at);
+    const float offset = frame->data.at(at + 1);
+    const float polarity = frame->data.at(at + 2);
+    EXPECT_TRUE(std::isfinite(correlation)) << "both tracks sound: a correlation is measured";
+    EXPECT_LE(std::abs(offset), static_cast<float>(reach));
+    if (c.beyond == 0) {
+        EXPECT_EQ(offset, static_cast<float>(delay));
+        EXPECT_EQ(polarity, 1.0f);
+    } else {
+        // Not clipped to the edge of the reach, as a search that clamped a farther match would.
+        EXPECT_LT(std::abs(offset), static_cast<float>(reach));
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, MatchReach, ::testing::ValuesIn(reachCases()), reachTestName);
+
+// --- Readouts at the analysis gate, and no value as NaN -------------------------------------
+
+std::vector<ModeCase> timeBaseCases(DisplayMode mode)
+{
+    std::vector<ModeCase> cases;
+    for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
+        for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+            cases.push_back({.rate = kSampleRates.at(rate),
+                             .mode = mode,
+                             .channels = (rate + timeBase) % 2 == 0 ? 2 : 1,
+                             .timeBase = static_cast<TimeBase>(timeBase)});
+        }
+    }
+    return cases;
+}
+
+// Plays enough for the readouts of `timeBase` (a sweep of one beat, or a 50 ms window), producing
+// frames as a page does, and returns the last frame.
+std::optional<DecodedFrame> playForReadouts(Session& session, TimeBase timeBase)
+{
+    configure(session.own(),
+              session.own().settings().get().enumValue<DisplayMode>(SettingId::kDisplayMode),
+              timeBase);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kTimeSpan, 0.05);
+    session.play(protocol::kFrequencyWindowSeconds + 0.1, protocol::kReadoutIntervalSeconds);
+    session.play(protocol::kReadoutIntervalSeconds);
+    return session.produce();
+}
+
+class AnalysisGate : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+// A tone just above the analysis gate has its frequency measured, one just below has none
+// (frequency 0, as the frame defines it); either way the level travels as measured, not floored.
+TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
+{
+    const ModeCase c = GetParam();
+    for (const double aboveGate : {1.0, -1.0}) {
+        SCOPED_TRACE(aboveGate > 0.0 ? "above the gate" : "below the gate");
+        Session session(c.rate, c.channels);
+        // An RMS level aboveGate dB from the gate, as the readout view (the Mid of L and half of
+        // L, or the one channel of a mono track) measures it.
+        const double viewGain = c.channels == 1 ? 1.0 : 0.75;
+        const double rms = std::pow(10.0, (protocol::kAnalysisGateDbfs + aboveGate) / 20.0);
+        const double amplitude = rms * std::numbers::sqrt2 / viewGain;
+        session.join({.frequency = 1000.0, .amplitude = amplitude, .offset = 0.0});
+        session.own().settings().set(SettingId::kDisplayMode, static_cast<double>(c.mode));
+        session.own().settings().set(SettingId::kTriggerSource,
+                                     static_cast<double>(protocol::ChannelView::kMid));
+        const auto frame = playForReadouts(session, c.timeBase);
+        ASSERT_TRUE(frame);
+        EXPECT_NEAR(frame->peak, amplitude * viewGain, amplitude * viewGain * 1e-3)
+            << "the peak as measured";
+        EXPECT_NEAR(frame->rms, rms, rms * 0.02);
+        if (aboveGate > 0.0) {
+            EXPECT_NEAR(frame->frequency, 1000.0f, 10.0f);
+        } else {
+            EXPECT_EQ(frame->frequency, 0.0f);
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, AnalysisGate,
+                         ::testing::ValuesIn(timeBaseCases(DisplayMode::kSingle)), modeTestName);
+
+class NoDataIsNaN : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+// Compared with a silent track, nothing sounds together: the correlation and both summing gains
+// travel as NaN, not 0, live and frozen.
+TEST_P(NoDataIsNaN, ReportsNoMatchWithASilentTrack)
+{
+    const ModeCase c = GetParam();
+    Session session(c.rate, c.channels);
+    session.join({.kind = Signal::Kind::kNoise});
+    session.join({.kind = Signal::Kind::kSilence});
+    session.own().settings().set(SettingId::kDisplayMode,
+                                 static_cast<double>(DisplayMode::kCompare));
+    auto frame = playForReadouts(session, c.timeBase);
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        if (frozen) {
+            session.analyzer().setFrozen(true);
+            session.play(static_cast<double>(kBlock) / c.rate);
+            frame = session.produce();
+        }
+        ASSERT_TRUE(frame);
+        ASSERT_TRUE(frame->has(FrameFlag::kCompared));
+        ASSERT_EQ(frame->laneCount, 3);
+        const std::size_t at = std::size_t{frame->laneCount} * traceLength(*frame) +
+                               std::size_t{1} * protocol::kMatchValues;
+        ASSERT_LT(at, frame->data.size());
+        EXPECT_TRUE(std::isnan(frame->data.at(at))) << "correlation " << frame->data.at(at);
+        EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
+            << "sum gain " << session.field(FrameHeader::kSumGainOffset);
+        EXPECT_TRUE(std::isnan(session.field(FrameHeader::kFixedGainOffset)))
+            << "fixed gain " << session.field(FrameHeader::kFixedGainOffset);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, NoDataIsNaN,
+                         ::testing::ValuesIn(timeBaseCases(DisplayMode::kCompare)), modeTestName);
+
+} // namespace
+} // namespace orizon::engine
