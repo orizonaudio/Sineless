@@ -793,9 +793,12 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& co
         lane->engine = std::move(member.engine);
         const CaptureRing& ring = lane->engine->captureRing();
         if (isFrozen && !lane->hold.held()) {
-            lane->hold.capture(*lane->engine,
-                               frozenLength(ring, lane->engine->sampleRate(), synced, true),
-                               scratch);
+            if (lane->hold.capture(*lane->engine,
+                                   frozenLength(ring, lane->engine->sampleRate(), synced, true),
+                                   scratch) &&
+                synced) {
+                catchUpToHold(*lane, settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan));
+            }
         } else if (!isFrozen && lane->hold.held()) {
             lane->hold.release();
         }
@@ -1101,6 +1104,24 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     ++sequence;
     rememberInputs(settings, command, laneSetId);
     return true;
+}
+
+// The lanes were last placed a frame before the freeze, which holds the audio up to its moment:
+// what the hold has since is placed too, so that a frozen sweep ends, and its playhead stands,
+// where the hold does. Only on the span the lane was drawn with, which a span chosen at the same
+// moment does not have.
+void Analyzer::catchUpToHold(Lane& lane, protocol::BeatSpan span)
+{
+    const auto held = sweepWindow(lane.hold.clock(), lane.hold.endIndex(),
+                                  lane.engine->sampleRate(), span, kMaxSweepSamples);
+    const std::uint64_t length = lane.image.length();
+    if (!held || length == 0 || !lane.window ||
+        std::abs(held->spanQuarterNotes - lane.window->spanQuarterNotes) > 1e-9) {
+        return;
+    }
+    if (lane.image.update(lane.hold, *held, false, lane.engine->inputChannels(), length)) {
+        lane.window = held;
+    }
 }
 
 // The multi-track view with the seconds time base: every lane shows this track's window (its
