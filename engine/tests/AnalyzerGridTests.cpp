@@ -99,7 +99,7 @@ public:
     void join(double frequency)
     {
         auto engine = std::make_shared<Engine>();
-        engine->setSampleRate(kSampleRate);
+        engine->prepare(kSampleRate);
         engine->setInputChannels(channelCount);
         registry.add(engine);
         engines.push_back(engine);

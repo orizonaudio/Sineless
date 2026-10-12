@@ -457,7 +457,7 @@ private:
     void add(const Track& track)
     {
         auto engine = std::make_shared<Engine>();
-        engine->setSampleRate(rate);
+        engine->prepare(rate);
         engine->setInputChannels(track.channels);
         registry.add(engine);
         tracks.push_back({.engine = std::move(engine), .track = track});

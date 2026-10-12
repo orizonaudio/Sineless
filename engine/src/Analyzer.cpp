@@ -24,9 +24,11 @@ using protocol::SettingId;
 namespace {
 
 // In Seconds mode a freeze holds the longest span, which the view can be panned back through. The
-// lanes of other tracks hold this much more: their captures can run a little ahead of or behind
-// this one's, and each must still cover the whole span with the view panned as far back as this
-// track's hold allows.
+// lanes of other tracks hold up to this much more: their captures can run a little ahead of or
+// behind this one's, and each must still cover the whole span with the view panned as far back as
+// this track's hold allows. What the capture keeps cuts it short above 183.5 kHz with the smallest
+// capture, and above 367 kHz with the largest: to 0.78 s at 192 and 384 kHz (see
+// CaptureRing::capacityFor).
 constexpr double kLaneMarginSeconds = 1.0;
 
 // Samples a freeze holds. In Beats mode, the newest audio the capture can spare (a margin for the
@@ -35,15 +37,16 @@ constexpr double kLaneMarginSeconds = 1.0;
 std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool synced,
                            bool lane = false)
 {
+    const std::uint64_t readable = CaptureRing::readableLength(ring.capacity());
     if (synced) {
-        return ring.capacity() - ring.capacity() / 8;
+        return readable;
     }
-    // Never more than the capture can spare while the audio thread writes on: at very high rates
-    // the ring holds less than the longest span, and lane reads then fill what is missing with
-    // silence.
+    // Never more than the capture can spare while the audio thread writes on. That always covers
+    // the hold up to the highest sample rate (see CaptureRing::capacityFor); a lane's margin may
+    // be cut short.
     const double seconds = HoldBuffer::kHoldSeconds + (lane ? kLaneMarginSeconds : 0.0);
     return std::min<std::uint64_t>(static_cast<std::uint64_t>(std::llround(seconds * sampleRate)),
-                                   ring.capacity() - ring.capacity() / 8);
+                                   readable);
 }
 
 // The narrowest view accepted: as far as the UI zooms. The UI computes its views in floating
@@ -166,7 +169,7 @@ std::pair<std::size_t, std::size_t> fixedPart(std::size_t first, std::size_t end
 } // namespace
 
 Analyzer::Analyzer(Engine& engine, const InstanceRegistry& registry)
-    : engine(engine), registry(registry)
+    : engine(engine), registry(registry), hold(engine.captureRing().capacity())
 {}
 
 LaneSet Analyzer::laneSet() const
@@ -298,6 +301,7 @@ void Analyzer::followTransport(const Settings& settings, Commands& command)
 
 bool Analyzer::freeze(double sampleRate, std::uint64_t minimumSamples)
 {
+    hold.resize(engine.captureRing().capacity()); // The rate may have changed since it opened.
     frozenStamp = engine.timeline().latest();
     frozenEnd = engine.captureRing().endIndex();
     const auto length = std::max<std::uint64_t>(hold.holdLength(sampleRate), minimumSamples);

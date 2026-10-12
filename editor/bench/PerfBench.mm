@@ -463,7 +463,7 @@ int run(const Options& options)
         const int tracks = options.mode == "single" ? 1 : options.lanes;
         for (int i = 0; i < tracks; ++i) {
             auto engine = std::make_shared<engine::Engine>();
-            engine->setSampleRate(options.rate);
+            engine->prepare(options.rate);
             engine->setTrackInfo(
                 {.name = "Track " + std::to_string(i + 1), .colour = std::nullopt, .index = i});
             engine::InstanceRegistry::shared().add(engine);

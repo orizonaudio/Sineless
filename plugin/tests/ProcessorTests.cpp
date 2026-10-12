@@ -9,6 +9,7 @@
 #include <cstring>
 #include <gtest/gtest.h>
 #include <random>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -256,6 +257,112 @@ TEST(Processor, PassesTheSampleRateToTheEngine)
                        .sampleRate = 96000.0};
     ASSERT_EQ(processor->setupProcessing(setup), kResultOk);
     EXPECT_EQ(processor->engine()->sampleRate(), 96000.0);
+}
+
+ProcessSetup setupAt(double sampleRate)
+{
+    return ProcessSetup{.processMode = kRealtime,
+                        .symbolicSampleSize = kSample32,
+                        .maxSamplesPerBlock = kBlockSize,
+                        .sampleRate = sampleRate};
+}
+
+// Processes one block of a constant `value` on both channels; counts what process() allocates.
+std::size_t processBlock(Processor& processor, float value)
+{
+    std::vector<Sample32> block(kBlockSize, value);
+    std::array<Sample32*, 2> channels = {block.data(), block.data()};
+    AudioBusBuffers input{};
+    input.numChannels = 2;
+    input.channelBuffers32 = channels.data();
+    AudioBusBuffers output = input;
+    ProcessData data{};
+    data.symbolicSampleSize = kSample32;
+    data.numSamples = kBlockSize;
+    data.numInputs = 1;
+    data.numOutputs = 1;
+    data.inputs = &input;
+    data.outputs = &output;
+    std::size_t allocations = 0;
+    {
+        testing::AllocationCounter counter;
+        EXPECT_EQ(processor.process(data), kResultOk);
+        allocations = counter.allocations() + counter.deallocations();
+    }
+    return allocations;
+}
+
+class CaptureForRate : public ::testing::TestWithParam<double>
+{
+};
+
+// The capture is sized for the rate the host sets up: the smallest at 44.1 and 192 kHz, the
+// largest from the first standard rate above 229.376 kHz, where the smallest no longer holds a
+// freeze, to 384 kHz.
+TEST_P(CaptureForRate, IsSizedInSetupProcessing)
+{
+    const double rate = GetParam();
+    auto processor = owned(new Processor());
+    ASSERT_EQ(processor->initialize(nullptr), kResultOk);
+    auto setup = setupAt(rate);
+    ASSERT_EQ(processor->setupProcessing(setup), kResultOk);
+    EXPECT_EQ(processor->engine()->captureRing().capacity(),
+              rate <= 192000.0 ? engine::CaptureRing::kMinimumCapacity
+                               : engine::CaptureRing::kMaximumCapacity);
+    EXPECT_EQ(processor->engine()->captureRing().capacity(),
+              engine::CaptureRing::capacityFor(rate));
+    EXPECT_EQ(processor->setActive(true), kResultOk);
+    EXPECT_EQ(processBlock(*processor, 0.5f), 0u) << "process() must not allocate";
+    EXPECT_EQ(processor->setActive(false), kResultOk);
+    EXPECT_EQ(processor->terminate(), kResultOk);
+}
+
+INSTANTIATE_TEST_SUITE_P(Rates, CaptureForRate,
+                         ::testing::Values(44100.0, 192000.0, 352800.0, 384000.0),
+                         [](const ::testing::TestParamInfo<double>& info) {
+                             return std::to_string(static_cast<int>(info.param)) + "Hz";
+                         });
+
+// A host changes the rate by deactivating, setting up again and reactivating: the capture is
+// resized there, empty from the newest index, and processing at the new rate allocates nothing.
+TEST(Processor, ResizesTheCaptureWhenTheRateChanges)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32); // 48 kHz, active.
+    const engine::CaptureRing& ring = processor->engine()->captureRing();
+    EXPECT_EQ(ring.capacity(), engine::CaptureRing::kMinimumCapacity);
+    EXPECT_EQ(processBlock(*processor, 0.25f), 0u);
+
+    for (const double rate : {384000.0, 44100.0}) {
+        SCOPED_TRACE(rate);
+        processor->setProcessing(false);
+        ASSERT_EQ(processor->setActive(false), kResultOk);
+        auto setup = setupAt(rate);
+        ASSERT_EQ(processor->setupProcessing(setup), kResultOk);
+        ASSERT_EQ(processor->setActive(true), kResultOk);
+        processor->setProcessing(true);
+        EXPECT_EQ(ring.capacity(), engine::CaptureRing::capacityFor(rate));
+        EXPECT_EQ(processor->engine()->sampleRate(), rate);
+        const std::uint64_t before = ring.writeIndex();
+        EXPECT_EQ(ring.beginIndex(), before) << "empty after the resize";
+        EXPECT_EQ(processBlock(*processor, 0.75f), 0u) << "process() must not allocate";
+        std::vector<float> captured(kBlockSize);
+        ASSERT_TRUE(ring.read(1, before, captured));
+        EXPECT_EQ(captured, std::vector<float>(kBlockSize, 0.75f));
+    }
+}
+
+// The VST3 rules allow setupProcessing only while inactive. A host that calls it while active may
+// be processing, so the capture keeps its size; the engine still learns the rate.
+TEST(Processor, KeepsTheCaptureWhenSetUpWhileActive)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32); // 48 kHz, active.
+    EXPECT_EQ(processBlock(*processor, 0.25f), 0u);
+    auto setup = setupAt(384000.0);
+    ASSERT_EQ(processor->setupProcessing(setup), kResultOk);
+    const engine::CaptureRing& ring = processor->engine()->captureRing();
+    EXPECT_EQ(ring.capacity(), engine::CaptureRing::kMinimumCapacity);
+    EXPECT_EQ(processor->engine()->sampleRate(), 384000.0);
+    EXPECT_EQ(ring.beginIndex(), 0u) << "what it held is kept";
 }
 
 TEST(Processor, CapturesSilentChannelsAsZeros)

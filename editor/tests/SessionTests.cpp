@@ -48,7 +48,7 @@ class SessionTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        engine.setSampleRate(48000.0);
+        engine.prepare(48000.0);
         // These tests use the seconds time base; Beats is the default.
         engine.settings().set(protocol::SettingId::kTimeBase,
                               static_cast<double>(protocol::TimeBase::kSeconds));
@@ -174,7 +174,7 @@ TEST_F(SessionTest, SendsTheSnapshotAgainWhenTheAudioFormatChanges)
     transport.messages.clear();
     session.sync();
     EXPECT_TRUE(transport.ofType("snapshot").empty()) << "nothing changed";
-    engine.setSampleRate(96000.0);
+    engine.prepare(96000.0);
     session.sync();
     ASSERT_EQ(transport.ofType("snapshot").size(), 1u);
     EXPECT_EQ(transport.ofType("snapshot")[0]["sampleRate"], 96000.0);
@@ -265,7 +265,7 @@ void changeEverythingTheSessionReports(engine::Engine& engine, engine::Analyzer&
     restored.set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
     restored.set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kQuarterBeat));
     engine.settings().replace(restored);
-    engine.setSampleRate(96000.0);
+    engine.prepare(96000.0);
     engine.setInputChannels(1);
     engine.setTrackInfo({.name = "Kick", .colour = std::nullopt, .index = std::nullopt});
     analyzer.setColumns(640);

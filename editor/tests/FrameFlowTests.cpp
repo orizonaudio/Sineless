@@ -32,7 +32,7 @@ class FrameFlowTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        engine.setSampleRate(48000.0);
+        engine.prepare(48000.0);
         // These tests use the seconds time base; Beats is the default.
         engine.settings().set(protocol::SettingId::kTimeBase,
                               static_cast<double>(protocol::TimeBase::kSeconds));

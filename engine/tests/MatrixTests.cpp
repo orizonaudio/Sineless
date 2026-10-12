@@ -49,6 +49,8 @@ using protocol::TimeBase;
 // does not list them: nothing the engine and the UI share depends on one.
 constexpr std::array kSampleRates{44100.0,  48000.0,  88200.0,  96000.0,
                                   176400.0, 192000.0, 352800.0, 384000.0};
+static_assert(kSampleRates.back() == CaptureRing::kHighestSampleRate,
+              "the capture is sized for the highest rate tested");
 
 constexpr std::size_t kColumns = 400;
 constexpr int kBlock = 1024;
@@ -109,37 +111,15 @@ const protocol::SettingDescriptor& setting(SettingId id)
 // capture wrap, as it has in any host that has played for a while.
 double captureSeconds(double rate)
 {
-    return static_cast<double>(CaptureRing::kDefaultCapacity) / rate;
+    return static_cast<double>(CaptureRing::capacityFor(rate)) / rate;
 }
 
-// Whether the capture keeps `seconds` of audio at `rate` for readers while the audio thread writes
-// on. The engine reads no more than the capture less an eighth of it, the margin frozenLength in
-// Analyzer.cpp leaves the writer; the margin is the engine's, not a public constant, so it is
-// repeated here and must follow it.
-bool captureKeeps(double rate, double seconds)
-{
-    const std::size_t capacity = CaptureRing::kDefaultCapacity;
-    const std::size_t kept = capacity - capacity / 8; // In whole samples, as frozenLength.
-    return seconds * rate <= static_cast<double>(kept);
-}
-
-// Whether the capture keeps what a freeze in Seconds mode holds. Below that, the engine cannot
-// keep what it promises the page (see CaptureRing::kDefaultCapacity), so the frozen view's pan
-// reach and what it draws there are disabled at those rates until the capture grows with them.
+// Whether the capture keeps what a freeze in Seconds mode holds at `rate`, for readers while the
+// audio thread writes on (the most the engine reads at once, as frozenLength in Analyzer.cpp).
 bool captureHoldsTheFreeze(double rate)
 {
-    return captureKeeps(rate, protocol::kFrozenHoldSeconds);
-}
-
-// The rates where the capture is known to keep less than a freeze (issue #14). The cases are
-// split by this list, not by the engine's capacity, so that a regression at any other rate fails
-// rather than moving its cases to the disabled set. Remove a rate here once the engine keeps a
-// freeze at it.
-constexpr auto kRatesShorterThanAFreeze = std::to_array({352800.0, 384000.0});
-
-bool knownShort(double rate)
-{
-    return std::ranges::find(kRatesShorterThanAFreeze, rate) != kRatesShorterThanAFreeze.end();
+    return protocol::kFrozenHoldSeconds * rate <=
+           static_cast<double>(CaptureRing::readableLength(CaptureRing::capacityFor(rate)));
 }
 
 // Deterministic noise in -0.5 to 0.5.
@@ -179,7 +159,7 @@ public:
     std::shared_ptr<Engine> join(Signal signal, double tempo = 120.0)
     {
         auto engine = std::make_shared<Engine>();
-        engine->setSampleRate(rate);
+        engine->prepare(rate);
         engine->setInputChannels(channelCount);
         registry.add(engine);
         tracks.push_back({.engine = engine, .signal = signal, .tempo = tempo});
@@ -187,6 +167,15 @@ public:
     }
 
     Engine& own() { return *tracks.front().engine; }
+
+    // The host changes the sample rate: every track is prepared again, as setupProcessing does.
+    void prepare(double sampleRate)
+    {
+        rate = sampleRate;
+        for (Track& track : tracks) {
+            track.engine->prepare(rate);
+        }
+    }
 
     Analyzer& analyzer()
     {
@@ -369,14 +358,23 @@ std::string rateTestName(const ::testing::TestParamInfo<double>& info)
     return rateName(info.param);
 }
 
-// The capture holds what a freeze holds, and the freeze holds the longest span, so a frame of the
-// longest span can be read live and frozen.
+// An engine prepared for the rate sizes its capture for it: the smallest that holds what a freeze
+// holds, and the freeze holds the longest span, so a frame of the longest span can be read live
+// and frozen.
 TEST_P(CaptureCapacity, HoldsAFreeze)
 {
     const double rate = GetParam();
-    EXPECT_TRUE(captureHoldsTheFreeze(rate)) << protocol::kFrozenHoldSeconds * rate << " samples, "
-                                             << CaptureRing::kDefaultCapacity << " held";
-    const HoldBuffer hold;
+    Engine engine;
+    engine.prepare(rate);
+    const std::size_t capacity = engine.captureRing().capacity();
+    EXPECT_EQ(capacity, CaptureRing::capacityFor(rate));
+    EXPECT_TRUE(captureHoldsTheFreeze(rate))
+        << protocol::kFrozenHoldSeconds * rate << " samples, " << capacity << " held";
+    EXPECT_TRUE(capacity == CaptureRing::kMinimumCapacity ||
+                static_cast<double>(CaptureRing::readableLength(capacity / 2)) <
+                    protocol::kFrozenHoldSeconds * rate)
+        << "no larger than it needs";
+    const HoldBuffer hold(capacity);
     EXPECT_EQ(hold.holdLength(rate),
               static_cast<std::size_t>(std::llround(protocol::kFrozenHoldSeconds * rate)));
     EXPECT_EQ(protocol::kFrozenHoldSeconds, setting(SettingId::kTimeSpan).maximum)
@@ -434,24 +432,9 @@ TEST_P(SweepCapacity, KeepsTheLongestBeatSpanThatFits)
     }
 }
 
-std::vector<double> ratesWhere(bool shortOfAFreeze)
-{
-    std::vector<double> rates;
-    for (const double rate : kSampleRates) {
-        if (knownShort(rate) == shortOfAFreeze) {
-            rates.push_back(rate);
-        }
-    }
-    return rates;
-}
-
 INSTANTIATE_TEST_SUITE_P(EveryRate, SweepCapacity, ::testing::ValuesIn(kSampleRates), rateTestName);
-INSTANTIATE_TEST_SUITE_P(EveryRate, CaptureCapacity, ::testing::ValuesIn(ratesWhere(false)),
+INSTANTIATE_TEST_SUITE_P(EveryRate, CaptureCapacity, ::testing::ValuesIn(kSampleRates),
                          rateTestName);
-// DISABLED_: engine bug, for triage. At 352.8 and 384 kHz the capture (2^20 samples, under 3 s)
-// holds less than a freeze (4 s). See SecondsSpans and FrozenPan below.
-INSTANTIATE_TEST_SUITE_P(DISABLED_CaptureShorterThanAFreeze, CaptureCapacity,
-                         ::testing::ValuesIn(ratesWhere(true)), rateTestName);
 
 // --- Seconds spans --------------------------------------------------------------------------
 
@@ -495,16 +478,13 @@ void PrintTo(const SpanCase& c, std::ostream* out)
 
 // Every rate, span and mode. Channels alternate so that each rate and each span runs both mono
 // and stereo: the engine branches on the channel count only where it reads views, the same at
-// every rate and span. `holds(rate, seconds)`: which cases to keep.
-template <typename Holds> std::vector<SpanCase> spanCases(Holds holds)
+// every rate and span.
+std::vector<SpanCase> spanCases()
 {
     std::vector<SpanCase> cases;
     const std::vector<SecondsSpan> spans = secondsSpans();
     for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
         for (std::size_t span = 0; span < spans.size(); ++span) {
-            if (!holds(kSampleRates.at(rate), spans[span].seconds)) {
-                continue;
-            }
             for (const DisplayMode mode : everyMode()) {
                 cases.push_back({.rate = kSampleRates.at(rate),
                                  .span = spans[span],
@@ -629,37 +609,93 @@ std::string spanTestName(const ::testing::TestParamInfo<SpanCase>& info)
     return nameOf(info.param);
 }
 
-INSTANTIATE_TEST_SUITE_P(EveryRate, SecondsSpans,
-                         ::testing::ValuesIn(spanCases([](double rate, double seconds) {
-                             return !knownShort(rate) || captureKeeps(rate, seconds);
-                         })),
-                         spanTestName);
-// DISABLED_: engine bug, for triage. The longest span at 352.8 and 384 kHz is longer than the
-// capture keeps (see CaptureCapacity). Once the capture has wrapped, Single mode produces no live
-// frame, its readouts reading more than the capture holds. Live, Multi and Compare draw every lane
-// with a hole at its oldest edge (column 0) and measure peak, RMS and frequency as 0; frozen, the
-// other lanes keep that hole and the own lane has one further in.
-INSTANTIATE_TEST_SUITE_P(DISABLED_SpanLongerThanTheCapture, SecondsSpans,
-                         ::testing::ValuesIn(spanCases([](double rate, double seconds) {
-                             return knownShort(rate) && !captureKeeps(rate, seconds);
-                         })),
-                         spanTestName);
+INSTANTIATE_TEST_SUITE_P(EveryRate, SecondsSpans, ::testing::ValuesIn(spanCases()), spanTestName);
+INSTANTIATE_TEST_SUITE_P(EveryRate, FrozenPan, ::testing::ValuesIn(spanCases()), spanTestName);
 
-INSTANTIATE_TEST_SUITE_P(EveryRate, FrozenPan,
-                         ::testing::ValuesIn(spanCases([](double rate, double /*seconds*/) {
-                             return !knownShort(rate);
-                         })),
-                         spanTestName);
-// DISABLED_: engine bug, for triage. At 352.8 and 384 kHz the capture keeps less than a freeze
-// (see CaptureCapacity), so once it has wrapped the freeze holds less than it promises: the pan
-// reach falls short of it in every mode, and lanes have a hole at their oldest edge panned to the
-// reach and zoomed to the limit. The longest span there is left to SecondsSpans above, which
-// already fails before panning.
-INSTANTIATE_TEST_SUITE_P(DISABLED_CaptureShorterThanAFreeze, FrozenPan,
-                         ::testing::ValuesIn(spanCases([](double rate, double seconds) {
-                             return knownShort(rate) && captureKeeps(rate, seconds);
-                         })),
-                         spanTestName);
+// --- A change of sample rate ----------------------------------------------------------------
+
+struct RateChange
+{
+    double from = 48000.0;
+    double to = 384000.0;
+    DisplayMode mode = DisplayMode::kSingle;
+};
+
+std::string nameOf(const RateChange& c)
+{
+    return rateName(c.from) + "_To_" + rateName(c.to) + "_" + modeName(c.mode);
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const RateChange& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+// Up across the size change, down across it, and within one size, in every mode.
+std::vector<RateChange> rateChanges()
+{
+    std::vector<RateChange> changes;
+    for (const auto [from, to] :
+         {std::pair{kSampleRates.front(), kSampleRates.back()},
+          std::pair{kSampleRates.back(), kSampleRates.front()}, std::pair{48000.0, 192000.0}}) {
+        for (const DisplayMode mode : everyMode()) {
+            changes.push_back({.from = from, .to = to, .mode = mode});
+        }
+    }
+    return changes;
+}
+
+class RateChanges : public ::testing::TestWithParam<RateChange>
+{
+};
+
+// The host changes the rate with the editor open: the captures are sized for the new rate, and a
+// freeze there holds what it promises, for the whole pan reach, after the editor's freeze hold was
+// sized for the old one.
+TEST_P(RateChanges, SizeTheCaptureForTheNewRate)
+{
+    const RateChange& c = GetParam();
+    Session session(c.from, 2);
+    session.join({.frequency = 1000.0});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), c.mode, TimeBase::kSeconds);
+    const double span = setting(SettingId::kTimeSpan).minimum;
+    EXPECT_TRUE(session.own().settings().set(SettingId::kTimeSpan, span));
+    EXPECT_EQ(session.own().captureRing().capacity(), CaptureRing::capacityFor(c.from));
+    session.play(1.0, protocol::kReadoutIntervalSeconds);
+    ASSERT_TRUE(session.produce()) << "no frame before the change";
+    session.analyzer().setFrozen(true);
+    ASSERT_TRUE(session.produce()) << "no frozen frame before the change";
+    session.analyzer().setFrozen(false);
+
+    session.prepare(c.to);
+    EXPECT_EQ(session.own().captureRing().capacity(), CaptureRing::capacityFor(c.to));
+    session.play(captureSeconds(c.to) + protocol::kFrozenHoldSeconds + 0.5,
+                 protocol::kReadoutIntervalSeconds);
+    const std::size_t traces = expectedTraces(c.mode, 2, 2);
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no live frame";
+    expectTraces(*frame, traces);
+
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / c.to);
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+    const float reach = session.field(FrameHeader::kPanReachOffset);
+    const double block = static_cast<double>(kBlock) / c.to;
+    EXPECT_GE(reach, protocol::kFrozenHoldSeconds - span - 2.0 * block - span / kColumns);
+    session.analyzer().setPan(reach);
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frame at the pan reach";
+    expectTraces(*frame, traces);
+}
+
+INSTANTIATE_TEST_SUITE_P(Changes, RateChanges, ::testing::ValuesIn(rateChanges()),
+                         [](const ::testing::TestParamInfo<RateChange>& info) {
+                             return nameOf(info.param);
+                         });
 
 // --- Beat spans -----------------------------------------------------------------------------
 
@@ -794,7 +830,7 @@ std::size_t longestBeatSpanHeld(double rate, double tempo)
 {
     std::size_t span = 0;
     while (span + 1 < protocol::kBeatSpanCount &&
-           beatSpanSamples(rate, tempo, span + 1) <= CaptureRing::kDefaultCapacity) {
+           beatSpanSamples(rate, tempo, span + 1) <= CaptureRing::capacityFor(rate)) {
         ++span;
     }
     return span;

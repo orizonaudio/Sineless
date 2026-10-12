@@ -1,5 +1,6 @@
 #include "engine/CaptureRing.h"
 
+#include <algorithm>
 #include <bit>
 #include <cassert>
 
@@ -10,11 +11,43 @@ namespace orizon::engine {
 // then issues an acquire fence is guaranteed to see the new `pendingIndex`, so it detects that
 // its range was overwritten. Samples are accessed through relaxed std::atomic_ref, which
 // compiles to plain loads and stores, so concurrent access is well-defined.
+//
+// A resize swaps in a new storage between two steps of `generation`. A reader notes the generation
+// before taking the storage and checks it after its copy: if it moved, the copy may come from a
+// storage the writer has left, and fails. The reader's shared_ptr keeps that storage alive.
+
+CaptureRing::Storage::Storage(std::size_t size, std::uint64_t firstIndex)
+    : capacity(size), mask(size - 1), first(firstIndex), samples(size * kMaxChannels, 0.0f)
+{
+    assert(std::has_single_bit(size));
+}
 
 CaptureRing::CaptureRing(std::size_t capacity)
-    : capacityValue(capacity), mask(capacity - 1), samples(capacity * kMaxChannels, 0.0f)
+    : storage(std::make_shared<Storage>(capacity, 0)), writerStorage(storage.get())
+{}
+
+void CaptureRing::resize(std::size_t capacity)
 {
-    assert(std::has_single_bit(capacity));
+    const std::scoped_lock lock(storageMutex);
+    if (storage->capacity == capacity) {
+        return; // Keeps what it holds.
+    }
+    auto next = std::make_shared<Storage>(capacity, publishedIndex.load(std::memory_order_acquire));
+    generation.fetch_add(1, std::memory_order_acq_rel);
+    storage = std::move(next);
+    writerStorage.store(storage.get(), std::memory_order_release);
+    generation.fetch_add(1, std::memory_order_release);
+}
+
+std::shared_ptr<const CaptureRing::Storage> CaptureRing::current() const
+{
+    const std::scoped_lock lock(storageMutex);
+    return storage;
+}
+
+std::size_t CaptureRing::capacity() const
+{
+    return current()->capacity;
 }
 
 void CaptureRing::write(const float* const* channels, int numChannels,
@@ -39,16 +72,17 @@ void CaptureRing::writeSamples(const Sample* const* channels, int numChannels,
     const auto count = static_cast<std::uint64_t>(numSamples);
     const std::uint64_t start = writerIndex;
     const std::uint64_t end = start + count;
+    Storage& into = *writerStorage.load(std::memory_order_acquire);
 
     pendingIndex.store(end, std::memory_order_relaxed);
     std::atomic_thread_fence(std::memory_order_release);
 
     for (int channel = 0; channel < kMaxChannels; ++channel) {
         const Sample* source = channel < numChannels ? channels[channel] : nullptr;
-        float* block = samples.data() + static_cast<std::size_t>(channel) * capacityValue;
+        float* block = into.samples.data() + static_cast<std::size_t>(channel) * into.capacity;
         for (std::uint64_t i = 0; i < count; ++i) {
             const float value = source != nullptr ? static_cast<float>(source[i]) : 0.0f;
-            std::atomic_ref<float>(block[(start + i) & mask])
+            std::atomic_ref<float>(block[(start + i) & into.mask])
                 .store(value, std::memory_order_relaxed);
         }
     }
@@ -64,31 +98,40 @@ std::uint64_t CaptureRing::writeIndex() const noexcept
 
 std::uint64_t CaptureRing::beginIndex() const
 {
+    const std::shared_ptr<const Storage> held = current();
     const std::uint64_t end = writeIndex();
-    return end > capacityValue ? end - capacityValue : 0;
+    const std::uint64_t oldest = end > held->capacity ? end - held->capacity : 0;
+    return std::max(oldest, std::min(held->first, end));
 }
 
 bool CaptureRing::read(int channel, std::uint64_t start, std::span<float> destination) const
 {
-    if (channel < 0 || channel >= kMaxChannels || destination.size() > capacityValue) {
+    const std::uint64_t before = generation.load(std::memory_order_acquire);
+    if (before % 2 != 0) {
+        return false; // Being resized.
+    }
+    const std::shared_ptr<const Storage> held = current();
+    const std::size_t size = held->capacity;
+    if (channel < 0 || channel >= kMaxChannels || destination.size() > size ||
+        start < held->first) {
         return false;
     }
     const std::uint64_t end = start + destination.size();
     const std::uint64_t published = publishedIndex.load(std::memory_order_acquire);
-    if (end > published || published - start > capacityValue) {
+    if (end > published || published - start > size) {
         return false;
     }
 
-    const float* block = samples.data() + static_cast<std::size_t>(channel) * capacityValue;
+    const float* block = held->samples.data() + static_cast<std::size_t>(channel) * size;
     for (std::size_t i = 0; i < destination.size(); ++i) {
         // atomic_ref needs a non-const object; the load does not modify it.
-        auto& slot = const_cast<float&>(block[(start + i) & mask]);
+        auto& slot = const_cast<float&>(block[(start + i) & held->mask]);
         destination[i] = std::atomic_ref<float>(slot).load(std::memory_order_relaxed);
     }
 
     std::atomic_thread_fence(std::memory_order_acquire);
     const std::uint64_t pending = pendingIndex.load(std::memory_order_relaxed);
-    return pending - start <= capacityValue;
+    return pending - start <= size && generation.load(std::memory_order_relaxed) == before;
 }
 
 } // namespace orizon::engine

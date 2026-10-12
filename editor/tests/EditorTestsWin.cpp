@@ -176,7 +176,7 @@ TEST_F(EditorTest, LoadsThePageAndCompletesTheHandshake)
 TEST_F(EditorTest, StreamsFramesOnePerRequest)
 {
     auto engine = std::make_shared<engine::Engine>();
-    engine->setSampleRate(48000.0);
+    engine->prepare(48000.0);
     engine->settings().set(protocol::SettingId::kTimeBase, 0.0);    // Seconds.
     engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per request.
     std::vector<float> tone(96000);

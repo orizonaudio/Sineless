@@ -25,7 +25,7 @@ class AnalyzerTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        engine.setSampleRate(kSampleRate);
+        engine.prepare(kSampleRate);
         // These tests use the seconds time base at a 20 ms span unless they set another.
         engine.settings().set(SettingId::kTimeBase,
                               static_cast<double>(protocol::TimeBase::kSeconds));
@@ -746,7 +746,7 @@ protected:
     std::shared_ptr<Engine> joinWith(Signal signal, protocol::Group group = protocol::Group::kA)
     {
         auto engine = std::make_shared<Engine>();
-        engine->setSampleRate(kSampleRate);
+        engine->prepare(kSampleRate);
         engine->settings().set(SettingId::kGroup, static_cast<double>(group));
         registry.add(engine);
         tracks.emplace_back(engine, std::move(signal));
