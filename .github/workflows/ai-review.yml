@@ -255,8 +255,10 @@ jobs:
           failures=$(gh api "repos/$REPO/issues/$NUMBER/comments" --paginate \
             --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-review: failed -->")))] | length' |
             jq -s 'add')
-          # Once, on the second failure; later failures are already waiting on a maintainer.
-          if (( failures == 2 )); then
+          # Once: from the second failure on, unless the label is already there (a count of exactly
+          # 2 could be missed by a run cancelled between posting its summary and counting).
+          labelled=$(gh api "repos/$REPO/issues/$NUMBER" --jq '[.labels[].name] | index("needs-human") != null')
+          if (( failures >= 2 )) && [[ "$labelled" != true ]]; then
             gh api -X POST "repos/$REPO/issues/$NUMBER/labels" -f "labels[]=needs-human" > /dev/null
             gh pr comment "$NUMBER" --repo "$REPO" --body "This pull request has failed the AI review $failures times; it needs a maintainer's decision."
           fi
