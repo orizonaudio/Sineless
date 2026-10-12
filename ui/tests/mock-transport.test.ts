@@ -3,12 +3,17 @@ import { describe, expect, test } from "vitest";
 import { ChannelView, FrameMode } from "../../protocol/src/enums.ts";
 import { decodeFrame, type Frame } from "../../protocol/src/frame-decoder.ts";
 import {
+  frozenHoldSeconds,
+  triggerPosition,
+} from "../../protocol/src/limits.ts";
+import {
   mockFundamental,
   MockTransport,
+  type MockOptions,
 } from "../src/bridge/mock-transport.ts";
 import type { ControlMessage } from "../src/bridge/transport.ts";
 
-function connect(): {
+function connect(options: MockOptions = {}): {
   transport: MockTransport;
   messages: ControlMessage[];
   frames: Frame[];
@@ -18,6 +23,7 @@ function connect(): {
     schedule: (work) => {
       work();
     },
+    ...options,
   });
   const messages: ControlMessage[] = [];
   const frames: Frame[] = [];
@@ -195,5 +201,113 @@ describe("mock back end", () => {
     transport.requestFrame();
     expect(frames.at(-1)?.roll).toBe(true);
     expect(frames.at(-1)?.frozen).toBe(true);
+  });
+
+  test("measures the Mid in Beats mode, as the engine does", () => {
+    const { transport, frames } = connect();
+    transport.send({
+      type: "setSetting",
+      name: "triggerSource",
+      value: "left",
+    });
+    useSeconds(transport);
+    transport.requestFrame();
+    const left = frames.at(-1)?.peak ?? NaN;
+    transport.send({ type: "setSetting", name: "timeBase", value: "beats" });
+    transport.requestFrame();
+    const beats = frames.at(-1)?.peak ?? NaN;
+    // L is 0.6 sin; the Mid is half of L plus R: 0.45 sin + 0.125 sin(2x + 0.7).
+    let mid = 0;
+    for (let step = 0; step < 10000; step++) {
+      const phase = (2 * Math.PI * step) / 10000;
+      mid = Math.max(
+        mid,
+        Math.abs(0.45 * Math.sin(phase) + 0.125 * Math.sin(2 * phase + 0.7)),
+      );
+    }
+    expect(left).toBeCloseTo(0.6, 2);
+    expect(beats).toBeCloseTo(mid, 2);
+  });
+
+  test("keeps a frozen view's trigger point and pans back to the held audio", () => {
+    const { transport, frames } = connect(); // now = 1 s.
+    useSeconds(transport);
+    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    transport.requestFrame();
+    expect(frames.at(-1)?.panReach).toBe(0); // Live: nothing to pan through.
+
+    // Frozen, the trigger point stays where the live window had it: a span back, at 0.9 s (198
+    // periods of 220 Hz). The view reaches back from there to the oldest audio held.
+    transport.send({ type: "freeze", frozen: true });
+    transport.requestFrame();
+    const trigger = 0.9;
+    const reach = (span: number) =>
+      trigger - triggerPosition * span - (1 - frozenHoldSeconds);
+    expect(frames.at(-1)?.panReach).toBeCloseTo(reach(0.1), 3);
+
+    // A longer span grows around the trigger point, so the reach shrinks.
+    transport.send({ type: "setSetting", name: "timeSpan", value: 0.5 });
+    transport.requestFrame();
+    expect(frames.at(-1)?.panReach).toBeCloseTo(reach(0.5), 3);
+
+    // A roll span ends at the trigger point instead.
+    transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
+    transport.requestFrame();
+    expect(frames.at(-1)?.roll).toBe(true);
+    expect(frames.at(-1)?.panReach).toBeCloseTo(
+      trigger - 2 - (1 - frozenHoldSeconds),
+      3,
+    );
+
+    // Unfrozen, nothing to pan through again.
+    transport.send({ type: "freeze", frozen: false });
+    transport.requestFrame();
+    expect(frames.at(-1)?.panReach).toBe(0);
+  });
+
+  test("measures L on a mono track, whatever the trigger source", () => {
+    const { transport, frames } = connect({ inputChannels: 1 });
+    useSeconds(transport);
+    transport.send({
+      type: "setSetting",
+      name: "triggerSource",
+      value: "side",
+    });
+    transport.requestFrame();
+    expect(frames.at(-1)?.peak).toBeCloseTo(0.6, 2);
+  });
+
+  test("shows a mono track's L alone, whatever views are asked for", () => {
+    const { transport, messages, frames } = connect({ inputChannels: 1 });
+    expect(messages[0]).toMatchObject({ type: "snapshot", inputChannels: 1 });
+    useSeconds(transport);
+    transport.send({
+      type: "setSetting",
+      name: "channelViews",
+      value: ["mid", "side"],
+    });
+    transport.requestFrame();
+    expect([...(frames.at(-1)?.views.keys() ?? [])]).toEqual([
+      ChannelView.left,
+    ]);
+  });
+
+  test("runs at the sample rate it is given", () => {
+    const { transport, messages, frames } = connect({ sampleRate: 96000 });
+    expect(messages[0]).toMatchObject({ type: "snapshot", sampleRate: 96000 });
+    useSeconds(transport);
+    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    transport.send({ type: "view", start: 0.5, end: 0.6 });
+    transport.send({
+      type: "setSetting",
+      name: "displayMode",
+      value: "compare",
+    });
+    transport.send({ type: "compare", ids: [4] });
+    transport.requestFrame();
+    const frame = frames.at(-1);
+    expect(frame?.visibleSamples).toBe(960);
+    // Kick 2 is 1.3 ms late: 125 samples at 96 kHz.
+    expect(frame?.comparison?.matches[3]?.offset).toBe(125);
   });
 });
