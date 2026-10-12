@@ -77,6 +77,8 @@ engine::HostTimeline hostTimeline(const ProcessContext* context) noexcept ORIZON
 // Saved states are a few hundred bytes; anything far larger is not ours.
 constexpr std::size_t kMaxStateSize = std::size_t{1} << 20U;
 
+// Reads the stream up to its end or a failed read. A read that reports more than it was asked for
+// counts as failed: nothing it left in the buffer can be trusted.
 std::string readAll(IBStream* stream)
 {
     std::string text;
@@ -85,7 +87,7 @@ std::string readAll(IBStream* stream)
     while (text.size() < kMaxStateSize &&
            stream->read(buffer.data(), static_cast<int32>(buffer.size()), &bytesRead) ==
                kResultOk &&
-           bytesRead > 0) {
+           bytesRead > 0 && static_cast<std::size_t>(bytesRead) <= buffer.size()) {
         text.append(buffer.data(), static_cast<std::size_t>(bytesRead));
     }
     return text;

@@ -56,7 +56,7 @@ public:
         position += count;
         served += count;
         if (numBytesRead != nullptr) {
-            *numBytesRead = static_cast<int32>(count);
+            *numBytesRead = overReportReads ? numBytes + 1 : static_cast<int32>(count);
         }
         return kResultOk;
     }
@@ -67,7 +67,8 @@ public:
             *numBytesWritten = 0;
         }
         ++writes;
-        if (failWrites || written.size() >= failWritesAt || numBytes < 0) {
+        // Fails any writer that keeps writing without progress, rather than hanging the test.
+        if (failWrites || written.size() >= failWritesAt || numBytes < 0 || writes > kMaxWrites) {
             return kResultFalse;
         }
         const std::size_t count =
@@ -102,6 +103,8 @@ public:
     bool failWrites = false;
     std::size_t failWritesAt = std::numeric_limits<std::size_t>::max();
     bool overReportWrites = false;
+    bool overReportReads = false;
+    static constexpr int kMaxWrites = 1000;
 
     int reads = 0;
     int writes = 0;
@@ -224,6 +227,17 @@ TEST(ProcessorStateFaults, AStreamThatFailsAtOnceLoadsDefaults)
     stream->failAt = 0;
     EXPECT_EQ(loadInto(*stream), engine::Settings());
     EXPECT_EQ(stream->reads, 1) << "a failed read is not retried";
+}
+
+// A read that reports more bytes than it was asked for cannot be trusted, nor what it left in the
+// buffer: the processor stops there, as at a failed read, so a state cut there takes the defaults,
+// and it never reads past its buffer.
+TEST(ProcessorStateFaults, AReadReportingMoreThanAskedLoadsDefaults)
+{
+    auto stream = owned(new FaultyStream(savedState()));
+    stream->overReportReads = true;
+    EXPECT_EQ(loadInto(*stream), engine::Settings());
+    EXPECT_EQ(stream->reads, 1) << "nothing more is read";
 }
 
 TEST(ProcessorStateFaults, AnEmptyStreamLoadsDefaults)
