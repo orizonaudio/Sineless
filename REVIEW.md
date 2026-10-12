@@ -1,8 +1,11 @@
 # REVIEW.md
 
-How changes to Sineless are reviewed: by the `reviewer` subagent before a push, and by the
-`ai-review` check on every pull request. Both read this file; read CLAUDE.md and the
-`.claude/rules` file of each folder the change touches too.
+How changes to Sineless are reviewed: by the `review` skill before a push, and by the
+`ai-review` check on every pull request. Both run the specialist reviewers in
+`.claude/agents` (correctness, rules, tests and, for C++ in `engine/`, `plugin/` or
+`editor/`, real-time safety), then a `review-verifier` on each Important finding, which keeps
+it only if it can prove it from the code. Every reviewer reads this file; read CLAUDE.md and
+the `.claude/rules` file of each folder the change touches too.
 
 ## Questions
 

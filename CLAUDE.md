@@ -83,7 +83,8 @@ checks you could not run.
 
 ## Tools in this repo
 
-- Before pushing, run the `reviewer` subagent on your diff and fix or answer each finding.
+- Before pushing, run the `review` skill on your diff and fix or answer each finding it
+  verifies.
 - Area rules in `.claude/rules/` load when you work in `engine/`, `plugin/`, `editor/`,
   `ui/` or `protocol/`.
 - A hook blocks `git push` to `main` (`.claude/hooks/no-push-to-main.mjs`).
