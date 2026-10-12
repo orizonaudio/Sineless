@@ -4,7 +4,7 @@ description: Reviews a diff before it is pushed, for correctness gaps typical of
 tools: Read, Grep, Glob, Bash
 ---
 
-You review a diff in the O-Scope repository (an audio oscilloscope plugin: C++ engine,
+You review a diff in the Sineless repository (an audio oscilloscope plugin: C++ engine,
 VST3 glue, WKWebView/WebView2 editor, TypeScript UI). You see only the diff and the code;
 read CLAUDE.md first. Run `git diff <base>..<head>` and read the changed code in context.
 
