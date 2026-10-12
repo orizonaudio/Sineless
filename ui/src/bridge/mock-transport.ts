@@ -23,10 +23,12 @@ import {
 } from "../../../protocol/src/setting-values.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import {
+  frozenHoldSeconds,
   rollThresholdSeconds,
   triggerPosition,
 } from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
+import { clampPan, readoutView, type ViewName } from "../view/screen-state.ts";
 import type { ControlMessage, Transport } from "./transport.ts";
 
 export const mockSampleRate = 48000;
@@ -44,9 +46,10 @@ function signal(channel: "left" | "right", time: number): number {
     : 0.3 * Math.sin(phase) + 0.25 * Math.sin(2 * phase + 0.7);
 }
 
-function viewSample(view: ChannelView, time: number): number {
+// On a mono track R repeats L, as a host feeds a mono track to a stereo insert.
+function viewSample(view: ChannelView, time: number, mono = false): number {
   const left = signal("left", time);
-  const right = signal("right", time);
+  const right = mono ? left : signal("right", time);
   switch (view) {
     case ChannelView.left:
       return left;
@@ -87,7 +90,9 @@ const unrelated: Match = {
 export const mockTracks: readonly (Omit<LaneLabel, "compared"> & {
   readonly sample: (time: number) => number;
   readonly fixed?: (time: number) => number;
-  readonly match?: Match;
+  // What the Compare view finds against this track; its offset in samples follows from `delay`.
+  readonly match?: Omit<Match, "offset">;
+  readonly delay?: number; // Seconds.
 })[] = [
   {
     id: 1,
@@ -124,12 +129,8 @@ export const mockTracks: readonly (Omit<LaneLabel, "compared"> & {
     own: false,
     sample: (time) => -0.8 * kick(time - kickMicDelay),
     fixed: (time) => 0.8 * kick(time),
-    match: {
-      correlation: -0.93,
-      related: true,
-      offset: Math.round(kickMicDelay * mockSampleRate),
-      inverted: true,
-    },
+    match: { correlation: -0.93, related: true, inverted: true },
+    delay: kickMicDelay,
   },
 ];
 
@@ -138,6 +139,10 @@ export interface MockOptions {
   readonly now?: () => number;
   // Runs work asynchronously, like a message from another process.
   readonly schedule?: (work: () => void) => void;
+  // The host's sample rate; mockSampleRate by default.
+  readonly sampleRate?: number;
+  // The track's channels: 1 for a mono track, whose R repeats L and which shows L alone.
+  readonly inputChannels?: 1 | 2;
 }
 
 export class MockTransport implements Transport {
@@ -157,11 +162,22 @@ export class MockTransport implements Transport {
   // the fix.
   private compared: readonly number[] | undefined;
   private previewFix = false;
+  private readonly sampleRate: number;
+  private readonly inputChannels: 1 | 2;
+  // How far back the frozen view is panned, within its reach (see frame panReach).
+  private panSeconds = 0;
+  // Where a frozen Seconds view stays put, as the engine keeps it: the last live window's
+  // trigger point, or its right edge when it rolled (or when frozen in Beats mode: the newest
+  // audio held). The span changed while frozen grows or shrinks around it.
+  private frozenAnchor:
+    { readonly seconds: number; readonly trigger: boolean } | undefined;
 
   constructor(options: MockOptions = {}) {
     const start = performance.now();
     this.now = options.now ?? (() => (performance.now() - start) / 1000);
     this.schedule = options.schedule ?? ((work) => setTimeout(work, 0));
+    this.sampleRate = options.sampleRate ?? mockSampleRate;
+    this.inputChannels = options.inputChannels ?? 2;
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -196,8 +212,8 @@ export class MockTransport implements Transport {
           type: "snapshot",
           protocolVersion,
           settings: { ...this.settings },
-          sampleRate: mockSampleRate,
-          inputChannels: 2,
+          sampleRate: this.sampleRate,
+          inputChannels: this.inputChannels,
         });
         this.lanesKey = "";
         this.sendLanes();
@@ -209,11 +225,28 @@ export class MockTransport implements Transport {
         this.setViewport(message);
         break;
       case "freeze":
-        this.frozenAt =
-          message["frozen"] === true
-            ? (this.frozenAt ?? this.now())
-            : undefined;
+        if (message["frozen"] !== true) {
+          this.frozenAt = undefined;
+          this.frozenAnchor = undefined;
+        } else if (this.frozenAt === undefined) {
+          this.frozenAt = this.now();
+          const span = this.setting("timeSpan") as number;
+          const triggered =
+            this.setting("timeBase") !== "beats" &&
+            span <= rollThresholdSeconds;
+          this.frozenAnchor = triggered
+            ? { seconds: this.triggerTime(this.frozenAt, span), trigger: true }
+            : { seconds: this.frozenAt, trigger: false };
+        }
+        this.panSeconds = 0;
         break;
+      case "pan": {
+        const seconds = message["seconds"];
+        if (typeof seconds === "number" && Number.isFinite(seconds)) {
+          this.panSeconds = clampPan(seconds, this.panReach());
+        }
+        break;
+      }
       case "view": {
         const start = message["start"];
         const end = message["end"];
@@ -316,10 +349,44 @@ export class MockTransport implements Transport {
     return this.settings[name];
   }
 
+  // The trigger point of a live triggered window of `span` at `time`: the last period
+  // boundary a span back.
+  private triggerTime(time: number, span: number): number {
+    const period = 1 / mockFundamental;
+    return Math.floor((time - span) / period) * period;
+  }
+
+  // A frozen Seconds view, as the engine places it: the unpanned start around the anchor, and
+  // how far back it can pan, to the oldest of the frozenHoldSeconds of audio held.
+  private frozenWindow(span: number): { start: number; reach: number } {
+    const frozenAt = this.frozenAt ?? 0;
+    const anchor = this.frozenAnchor ?? { seconds: frozenAt, trigger: false };
+    const roll = span > rollThresholdSeconds;
+    const offset = roll || !anchor.trigger ? span : triggerPosition * span;
+    const unpanned = anchor.seconds - offset;
+    const earliest = frozenAt - frozenHoldSeconds;
+    return {
+      start: Math.min(
+        Math.max(earliest, frozenAt - span),
+        Math.max(earliest, unpanned - this.panSeconds),
+      ),
+      reach: Math.max(0, unpanned - earliest),
+    };
+  }
+
+  private panReach(): number {
+    if (this.frozenAt === undefined || this.setting("timeBase") === "beats") {
+      return 0;
+    }
+    return this.frozenWindow(this.setting("timeSpan") as number).reach;
+  }
+
   private sendFrame(): void {
     if (this.columns === 0) {
       return;
     }
+    // A pan keeps within the reach, which shrinks when the span grows.
+    this.panSeconds = clampPan(this.panSeconds, this.panReach());
     const time = this.frozenAt ?? this.now();
     const synced = this.setting("timeBase") === "beats";
     let span = this.setting("timeSpan") as number;
@@ -346,17 +413,19 @@ export class MockTransport implements Transport {
         (fraction < phase ? cycleTime : cycleTime - span) + fraction * span;
     } else {
       // Triggered spans start one trigger offset before a period boundary; roll spans end now.
-      const period = 1 / mockFundamental;
-      const start = roll
-        ? time - span
-        : Math.floor((time - span) / period) * period - triggerPosition * span;
+      const start =
+        this.frozenAt !== undefined
+          ? this.frozenWindow(span).start
+          : roll
+            ? time - span
+            : this.triggerTime(time, span) - triggerPosition * span;
       timeOf = (fraction) => start + fraction * span;
     }
 
     const visibleWidth = this.view.end - this.view.start;
     const sampleCount = Math.max(
       1,
-      Math.round(span * visibleWidth * mockSampleRate),
+      Math.round(span * visibleWidth * this.sampleRate),
     );
     const sampleTime = (sample: number) =>
       timeOf(this.view.start + (sample / sampleCount) * visibleWidth);
@@ -396,9 +465,13 @@ export class MockTransport implements Transport {
     );
     const views = new Map<ChannelView, Float32Array>();
     const lanes: Float32Array[] = [];
-    const source =
-      ChannelView[this.setting("triggerSource") as keyof typeof ChannelView];
-    let readoutSignal = (time: number) => viewSample(source, time);
+    // The readouts measure what the engine's do: the trigger source, or the Mid in Beats mode.
+    const mono = this.inputChannels === 1;
+    // A mono track measures L, whatever source was asked for, as the engine's readView does.
+    const source = mono
+      ? ChannelView.left
+      : readoutView(synced, this.setting("triggerSource") as ViewName);
+    let readoutSignal = (time: number) => viewSample(source, time, mono);
     let comparison: FrameContent["comparison"];
     if (multi) {
       for (const track of this.groupTracks()) {
@@ -437,16 +510,24 @@ export class MockTransport implements Transport {
         matches: this.groupTracks().map((track) =>
           track.own || !comparedIds.includes(track.id)
             ? { correlation: 0, related: false, offset: 0, inverted: false }
-            : (track.match ?? unrelated),
+            : track.match === undefined
+              ? unrelated
+              : {
+                  ...track.match,
+                  offset: Math.round((track.delay ?? 0) * this.sampleRate),
+                },
         ),
       };
     } else if (!multi) {
-      const names = this.setting("channelViews") as readonly string[];
+      // A mono track shows L alone, whatever was asked for.
+      const names = mono
+        ? ["left"]
+        : (this.setting("channelViews") as readonly string[]);
       for (const [name, view] of Object.entries(ChannelView)) {
         if (names.includes(name)) {
           views.set(
             view,
-            points((time) => viewSample(view, time)),
+            points((time) => viewSample(view, time, mono)),
           );
         }
       }
@@ -469,6 +550,7 @@ export class MockTransport implements Transport {
         mode: minMax ? FrameMode.minMax : FrameMode.raw,
         triggered: !roll && !synced,
         frozen: this.frozenAt !== undefined,
+        panReach: this.panReach(),
         roll,
         synced,
         cursor,
