@@ -35,7 +35,11 @@ FetchContent_Declare(nlohmann_json
     SYSTEM
 )
 
-FetchContent_MakeAvailable(vst3sdk googletest nlohmann_json)
+# An engine-only build needs no VST3 SDK (see ORIZON_ENGINE_ONLY).
+if(NOT ORIZON_ENGINE_ONLY)
+    FetchContent_MakeAvailable(vst3sdk)
+endif()
+FetchContent_MakeAvailable(googletest nlohmann_json)
 
 # WebView2 SDK for the Windows editor: headers and the static loader, so that no WebView2Loader.dll
 # ships next to the plugin. The NuGet package is a zip under another extension.
@@ -58,5 +62,7 @@ if(WIN32)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${webview2_SOURCE_DIR}/build/native/include
     )
 endif()
-smtg_enable_vst3_sdk()
+if(NOT ORIZON_ENGINE_ONLY)
+    smtg_enable_vst3_sdk()
+endif()
 include(GoogleTest)

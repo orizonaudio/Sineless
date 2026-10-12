@@ -65,7 +65,14 @@ cmake --build --preset windows-x64
 
 The plugin is built at `build\windows-x64\VST3\Debug\Sineless.vst3`; use `windows-arm64` for ARM64. `scripts\check.ps1` runs the Windows checks for both.
 
-`scripts/check.sh` runs every check that CI runs. It also needs Homebrew LLVM (`brew install llvm`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
+`scripts/check.sh` runs every check that CI runs on macOS. It also needs Homebrew LLVM (`brew install llvm`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
+
+Without macOS or Windows, the engine and protocol tests still build and run on Linux with Clang and Ninja, as CI's `linux` job does:
+
+```bash
+npm ci
+cmake --preset linux && cmake --build --preset linux && ctest --preset linux
+```
 
 ## Licence
 
