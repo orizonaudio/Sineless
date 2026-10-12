@@ -48,6 +48,6 @@
     "sampleRate": 48000,
     "timeBase": "seconds"
   },
-  "sumGain": -329.0497,
+  "sumGain": "-Infinity",
   "visibleSamples": 4800
 }

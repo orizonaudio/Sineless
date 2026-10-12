@@ -12,7 +12,8 @@ export const levelFloorDbfs = -120;
 
 // A summing gain (a ratio: the sum against unrelated tracks of the same levels, in dB) shows
 // minus infinity at or below this: a deep but real null shows its depth, while what is left of
-// an exact cancellation after float rounding reads as none.
+// an exact cancellation after float rounding reads as none. The engine sends gains unfloored (an
+// exact cancellation as -Infinity); only the UI's formatter applies this.
 export const gainFloorDb = -140;
 
 // Analysis leaves out audio whose RMS level (dBFS) is at or below this: Compare does not match

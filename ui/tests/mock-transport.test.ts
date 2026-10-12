@@ -8,6 +8,7 @@ import {
 } from "../../protocol/src/limits.ts";
 import {
   mockFundamental,
+  mockSummingGain,
   MockTransport,
   type MockOptions,
 } from "../src/bridge/mock-transport.ts";
@@ -327,5 +328,22 @@ describe("mock back end", () => {
       anchor - triggerPosition * 0.1 - (1 - frozenHoldSeconds),
       3,
     );
+  });
+});
+
+describe("mockSummingGain", () => {
+  test.each([
+    [2, 1, 10 * Math.log10(2)],
+    [1e-40, 1, -400],
+    [0, 1, -Infinity], // An exact cancellation, not a number at a floor.
+    [0, 1e-300, -Infinity],
+  ])("sum %s against parts %s reads %s dB", (sum, parts, expected) => {
+    expect(mockSummingGain(sum, parts)).toBeCloseTo(expected);
+  });
+  test.each([
+    [0, 0],
+    [1, 0],
+  ])("is NaN, not 0, for silent tracks (%s, %s)", (sum, parts) => {
+    expect(mockSummingGain(sum, parts)).toBeNaN();
   });
 });
