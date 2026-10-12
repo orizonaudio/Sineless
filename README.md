@@ -55,7 +55,7 @@ cmake --build --preset dev
 
 The plugin is built at `build/dev/VST3/Debug/Sineless.vst3`. To work on the interface in a browser, without the plugin, run `npm run dev`; a built-in mock replaces the audio engine.
 
-On Windows, you need Visual Studio 2022 with the "Desktop development with C++" workload (add the ARM64 build tools to build for ARM64), Node.js 22 and LLVM (`winget install LLVM.LLVM`, for `clang-format`). In a PowerShell window:
+On Windows, you need Visual Studio 2022 or 2026 with the "Desktop development with C++" workload (the presets use the newest one installed) (add the ARM64 build tools to build for ARM64), Node.js 22 and LLVM (`winget install LLVM.LLVM`, for `clang-format`). In a PowerShell window:
 
 ```powershell
 npm.cmd ci
