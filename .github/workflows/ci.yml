@@ -125,12 +125,12 @@ jobs:
         shell: powershell
         run: scripts/check.ps1
 
-  # The performance limits, reported but not required: shared CI machines are too noisy for
-  # hard limits. Not run in the merge queue, so it does not slow merging.
+  # The performance limits, reported as a warning, never a failure: shared CI machines are too
+  # noisy for hard limits, so they are a little looser here than on a developer's Mac. Not run in
+  # the merge queue, so it does not slow merging.
   performance:
     name: performance-${{ matrix.os }}
     if: github.event_name != 'merge_group'
-    continue-on-error: true
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -140,6 +140,10 @@ jobs:
             runner: macos-15
           - os: windows
             runner: windows-2022
+    env:
+      PERF_MIN_FPS: 40
+      PERF_CPU_SLACK: 10
+      PERF_MAX_SHARE: 0.06
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -147,8 +151,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - if: matrix.os == 'macos'
+      - id: macos
+        if: matrix.os == 'macos'
+        continue-on-error: true
         run: scripts/performance.sh
-      - if: matrix.os == 'windows'
+      - id: windows
+        if: matrix.os == 'windows'
+        continue-on-error: true
         shell: powershell
         run: scripts/performance.ps1
+      - if: steps.macos.outcome == 'failure' || steps.windows.outcome == 'failure'
+        run: echo "::warning title=Performance::A performance limit was missed on ${{ matrix.os }}; see the log of the step above."
