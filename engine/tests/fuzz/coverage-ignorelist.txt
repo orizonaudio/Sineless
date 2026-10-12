@@ -1,0 +1,6 @@
+# Functions the fuzzers do not trace for coverage: the standard library (std::), whose
+# instrumented loops would fill each capture buffer one traced float at a time, and whose
+# branches tell the fuzzers nothing about the engine.
+fun:_ZSt*
+fun:_ZNSt*
+fun:_ZNKSt*

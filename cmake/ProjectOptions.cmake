@@ -64,4 +64,20 @@ function(orizon_forbid_dependencies target)
     endwhile()
 endfunction()
 
+# Fuzzing: libFuzzer with AddressSanitizer and UndefinedBehaviorSanitizer. The whole build is
+# instrumented for coverage, so the fuzzers are guided through the engine's code, not only their
+# own. Clang on Linux only: libFuzzer ships with Clang, and CI fuzzes on Linux.
+option(ORIZON_FUZZ "Build the libFuzzer targets in engine/tests/fuzz (Clang on Linux)" OFF)
+if(ORIZON_FUZZ)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "ORIZON_FUZZ needs Clang on Linux (try the fuzz preset)")
+    endif()
+    # -O1 even in Debug, as libFuzzer recommends, and the standard library left untraced: filling
+    # each capture buffer one traced float at a time would leave a few runs a second.
+    add_compile_options(-fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=all
+                        -fno-omit-frame-pointer -O1
+                        -fsanitize-coverage-ignorelist=${PROJECT_SOURCE_DIR}/engine/tests/fuzz/coverage-ignorelist.txt)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 option(ORIZON_BENCH "Build the performance benchmarks (perf_bench, process_bench)" OFF)

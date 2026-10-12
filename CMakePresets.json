@@ -159,6 +159,25 @@
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       }
+    },
+    {
+      "name": "fuzz",
+      "displayName": "Linux: libFuzzer targets under AddressSanitizer and UBSan (Clang)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/fuzz",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "ORIZON_ENGINE_ONLY": "ON",
+        "ORIZON_FUZZ": "ON",
+        "BUILD_TESTING": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "buildPresets": [
@@ -259,6 +278,15 @@
     {
       "name": "coverage",
       "configurePreset": "coverage",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
