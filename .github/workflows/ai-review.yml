@@ -32,8 +32,7 @@ name: AI review
 #
 # A pull request from a branch of this repository runs its own version of this workflow, so only
 # people with write access are trusted with it; pull requests from forks run the base branch's.
-# A pull request that changes this workflow cannot review itself (GitHub rejects the Claude app's
-# token for it) and needs a waive.
+# A pull request that changes this workflow is reviewed by its own, changed version of it.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
