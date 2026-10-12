@@ -148,6 +148,21 @@ std::size_t refreshStep(std::size_t parts)
     return kSumRefreshSamples / std::max<std::size_t>(parts, 1);
 }
 
+// Where the fixed sum is measured, of positions [first, end) of a span of `count`: where every
+// compared track, shifted by its fix (offsets from `earliest`, at most 0, to `latest`, at least 0),
+// has samples of its own. At the span's edges a shift reaches past them (into audio not captured
+// yet, at the right edge live), and a track summed with that silence would read as a weaker fix
+// than it is. Empty (first == end) when no position has them all.
+std::pair<std::size_t, std::size_t> fixedPart(std::size_t first, std::size_t end, std::size_t count,
+                                              std::ptrdiff_t earliest, std::ptrdiff_t latest)
+{
+    const auto from = std::max<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(first), -earliest);
+    const auto to =
+        std::max(from, std::min<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(end),
+                                                static_cast<std::ptrdiff_t>(count) - latest));
+    return {static_cast<std::size_t>(from), static_cast<std::size_t>(to)};
+}
+
 } // namespace
 
 Analyzer::Analyzer(Engine& engine, const InstanceRegistry& registry)
@@ -1327,71 +1342,71 @@ bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
     return refreshing;
 }
 
-void Analyzer::collectEnergies(std::size_t first, std::size_t end, std::size_t length,
-                               std::size_t block)
+void Analyzer::collectEnergies(std::span<const Positions> ranges, std::size_t length,
+                               std::size_t block, const std::vector<SumPart>& parts,
+                               const BlockStats& sumStats, std::vector<std::vector<double>>& tracks,
+                               std::vector<std::span<const double>>& spans,
+                               std::vector<double>& sums)
 {
-    const std::size_t firstBlock = (first + block - 1) / block;
-    const std::size_t endBlock = end / block;
-    const bool wholeBlocks = endBlock > firstBlock;
-    // The pieces of blocks at the edges of the visible part, measured from their samples.
-    struct Piece
-    {
-        std::size_t first = 0;
-        std::size_t end = 0;
-    };
-    std::array<Piece, 2> pieces{};
-    std::size_t pieceCount = 0;
-    if (!wholeBlocks) {
-        pieces[pieceCount++] = {.first = first, .end = end};
-    } else {
-        if (first < firstBlock * block) {
-            pieces[pieceCount++] = {.first = first, .end = firstBlock * block};
-        }
-        if (endBlock * block < end) {
-            pieces[pieceCount++] = {.first = endBlock * block, .end = end};
-        }
-    }
-    const auto appendPieces = [&](std::vector<double>& into, const auto& read) {
-        for (std::size_t piece = 0; piece < pieceCount; ++piece) {
-            pieceScratch.resize(pieces[piece].end - pieces[piece].first);
-            read(pieces[piece].first, std::span<float>(pieceScratch));
-            into.push_back(measureBlock(pieceScratch).sumSquares);
-        }
-    };
-    trackEnergies.resize(rawParts.size());
-    energySpans.clear();
-    for (std::size_t part = 0; part < rawParts.size(); ++part) {
-        const std::size_t lane = rawParts[part].lane;
-        const Lane& track = *lanes.at(laneOrder[lane]);
-        std::vector<double>& energies = trackEnergies[part];
+    tracks.resize(parts.size());
+    for (std::vector<double>& energies : tracks) {
         energies.clear();
-        const bool measured = track.stats.fits(length, block);
-        if (wholeBlocks) {
-            for (std::size_t index = firstBlock; index < endBlock; ++index) {
-                energies.push_back(measured ? track.stats.blocks()[index].sumSquares : 0.0);
+    }
+    sums.clear();
+    const bool summed = sumStats.fits(length, block);
+    for (const Positions range : ranges) {
+        if (range.first >= range.end) {
+            continue;
+        }
+        const std::size_t firstBlock = (range.first + block - 1) / block;
+        const std::size_t endBlock = range.end / block;
+        const bool wholeBlocks = endBlock > firstBlock;
+        // The pieces of blocks at the edges of the range, measured from their samples.
+        std::array<Positions, 2> pieces{};
+        std::size_t pieceCount = 0;
+        if (!wholeBlocks) {
+            pieces[pieceCount++] = range;
+        } else {
+            if (range.first < firstBlock * block) {
+                pieces[pieceCount++] = {.first = range.first, .end = firstBlock * block};
+            }
+            if (endBlock * block < range.end) {
+                pieces[pieceCount++] = {.first = endBlock * block, .end = range.end};
             }
         }
-        appendPieces(energies, [&](std::size_t from, std::span<float> into) {
-            readLaneImage(lane, length, from, into);
-        });
-    }
-    for (const std::vector<double>& energies : trackEnergies) {
-        energySpans.emplace_back(energies);
-    }
-    const auto collectSum = [&](const BlockStats& stats, const std::vector<SumPart>& parts,
-                                std::vector<double>& into) {
-        into.clear();
+        const auto appendPieces = [&](std::vector<double>& into, const std::vector<SumPart>& of) {
+            for (std::size_t piece = 0; piece < pieceCount; ++piece) {
+                pieceScratch.resize(pieces[piece].end - pieces[piece].first);
+                readSum(of, length, pieces[piece].first, pieceScratch);
+                into.push_back(measureBlock(pieceScratch).sumSquares);
+            }
+        };
+        for (std::size_t part = 0; part < parts.size(); ++part) {
+            // A part as recorded has the lane's own levels; one the fix shifts, its levels as
+            // shifted.
+            const Lane& lane = *lanes.at(laneOrder[parts[part].lane]);
+            const BlockStats& stats = parts[part].offset == 0 ? lane.stats : lane.fixedStats;
+            const bool measured = stats.fits(length, block);
+            std::vector<double>& energies = tracks[part];
+            if (wholeBlocks) {
+                for (std::size_t index = firstBlock; index < endBlock; ++index) {
+                    energies.push_back(measured ? stats.blocks()[index].sumSquares : 0.0);
+                }
+            }
+            onePart.assign(1, parts[part]);
+            appendPieces(energies, onePart);
+        }
         if (wholeBlocks) {
             for (std::size_t index = firstBlock; index < endBlock; ++index) {
-                into.push_back(stats.blocks()[index].sumSquares);
+                sums.push_back(summed ? sumStats.blocks()[index].sumSquares : 0.0);
             }
         }
-        appendPieces(into, [&](std::size_t from, std::span<float> piece) {
-            readSum(parts, length, from, piece);
-        });
-    };
-    collectSum(rawSumStats, rawParts, sumEnergies);
-    collectSum(fixedSumStats, fixedParts, fixedSumEnergies);
+        appendPieces(sums, parts);
+    }
+    spans.clear();
+    for (const std::vector<double>& energies : tracks) {
+        spans.emplace_back(energies);
+    }
 }
 
 // The Compare part of a tempo-synced frame whose track lanes are already in `frameData`: the sum
@@ -1468,9 +1483,27 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     // recomputation ends.
     const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey,
                                             rawParts, 0, length, block);
-    const bool fixedMeasured =
-        updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey, lastFixedSumKey, fixedParts,
-                       maxOffset, length, block);
+    bool fixedMeasured = updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey,
+                                        lastFixedSumKey, fixedParts, maxOffset, length, block);
+    // Each track the fix shifts: its levels per block as shifted, which the fixed gain weighs the
+    // fixed sum against. A track it does not shift (or no longer compared) keeps none pending, and
+    // measures them all again once shifted.
+    for (const std::uint64_t serial : laneOrder) {
+        Lane& lane = *lanes.at(serial);
+        const auto part = std::ranges::find_if(fixedParts, [&](const SumPart& candidate) {
+            return laneOrder[candidate.lane] == serial;
+        });
+        if (part == fixedParts.end() || part->offset == 0) {
+            lane.fixedRefresh = {};
+            lane.lastFixedKey.clear();
+            continue;
+        }
+        lane.fixedKey.assign({static_cast<std::int64_t>(length), part->offset});
+        onePart.assign(1, *part);
+        fixedMeasured = updateSumStats(lane.fixedStats, lane.fixedRefresh, lane.fixedKey,
+                                       lane.lastFixedKey, onePart, maxOffset, length, block) ||
+                        fixedMeasured;
+    }
 
     // The matches' values and the gains, when due.
     const auto gainInterval =
@@ -1492,11 +1525,36 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
             values[1] = static_cast<float>(match.offset);
             values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
         }
-        collectEnergies(first, end, length, block);
+        // The sum as recorded over the visible part; the fix where every shifted track has
+        // samples of the same moments as the others: not past the sweep's edges, nor where a shift
+        // reaches across the playhead, beyond which the sweep holds the previous pass.
+        std::ptrdiff_t earliest = 0;
+        std::ptrdiff_t latest = 0;
+        for (const SumPart& part : fixedParts) {
+            earliest = std::min(earliest, part.offset);
+            latest = std::max(latest, part.offset);
+        }
+        const auto [fixedFirst, fixedEnd] = fixedPart(first, end, length, earliest, latest);
+        std::array<Positions, 2> fixedRanges{Positions{.first = fixedFirst, .end = fixedEnd},
+                                             Positions{.first = fixedEnd, .end = fixedEnd}};
+        if (playhead <= length) {
+            // Positions p whose shifted reads p + offset lie on the other side of the playhead.
+            const auto seamFirst = static_cast<std::size_t>(
+                std::max<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(playhead) - latest, 0));
+            const std::size_t seamEnd =
+                std::min(length, playhead + static_cast<std::size_t>(-earliest));
+            fixedRanges[0].end = std::clamp(seamFirst, fixedFirst, fixedEnd);
+            fixedRanges[1].first = std::clamp(seamEnd, fixedFirst, fixedEnd);
+        }
+        const std::array<Positions, 1> visible{Positions{.first = first, .end = end}};
+        collectEnergies(visible, length, block, rawParts, rawSumStats, trackEnergies, energySpans,
+                        sumEnergies);
+        collectEnergies(fixedRanges, length, block, fixedParts, fixedSumStats, fixedTrackEnergies,
+                        fixedEnergySpans, fixedSumEnergies);
         comparisonCache.sumGain =
             static_cast<float>(overlapGainOfBlocks(energySpans, sumEnergies, block));
         comparisonCache.fixedGain =
-            static_cast<float>(overlapGainOfBlocks(energySpans, fixedSumEnergies, block));
+            static_cast<float>(overlapGainOfBlocks(fixedEnergySpans, fixedSumEnergies, block));
         comparisonCache.at = now;
         comparisonCache.valid = true;
     }
@@ -1668,21 +1726,14 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             values[1] = static_cast<float>(match.offset);
             values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
         }
-        // The fix is measured where every shifted track has samples in the window: at its edges a
-        // shift reaches past them (into audio not captured yet, at the right edge live), and a
-        // track summed with that silence would read as a weaker fix than it is.
+        // The fix is measured where every shifted track has samples in the window.
         std::ptrdiff_t earliest = 0;
         std::ptrdiff_t latest = 0;
         for (const SumPart& part : fixedParts) {
             earliest = std::min(earliest, part.offset);
             latest = std::max(latest, part.offset);
         }
-        const auto fixedFirst = static_cast<std::size_t>(
-            std::max<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(first), -earliest));
-        const auto fixedEnd = static_cast<std::size_t>(std::max<std::ptrdiff_t>(
-            static_cast<std::ptrdiff_t>(fixedFirst),
-            std::min<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(end),
-                                     static_cast<std::ptrdiff_t>(count) - latest)));
+        const auto [fixedFirst, fixedEnd] = fixedPart(first, end, count, earliest, latest);
         laneSamples.resize(laneOrder.size());
         fixedLanes.resize(laneOrder.size());
         rawTracks.clear();

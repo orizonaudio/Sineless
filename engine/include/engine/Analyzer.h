@@ -13,6 +13,7 @@
 #include "engine/SweepImage.h"
 #include "engine/Trigger.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -157,6 +158,13 @@ private:
         std::uint64_t readoutCount = 0;
     };
 
+    // A sum's recomputation spread over frames: `remaining` positions from `cursor`, wrapping.
+    struct SumRefresh
+    {
+        std::size_t cursor = 0;
+        std::size_t remaining = 0;
+    };
+
     // One track of the multi-track view: its own persistent sweep, and its audio while frozen.
     struct Lane
     {
@@ -176,8 +184,21 @@ private:
         // channel count they were measured for.
         BlockStats stats;
         int statsChannels = 0;
+        // Tempo-synced Compare, while the fix shifts this track: its levels per block as shifted,
+        // for the fixed summing gain, the shift they were measured for and their pending
+        // recomputation (see updateSumStats).
+        BlockStats fixedStats;
+        SumRefresh fixedRefresh;
+        std::vector<std::int64_t> fixedKey;
+        std::vector<std::int64_t> lastFixedKey;
     };
     struct SumPart;
+    // Screen or window positions [first, end).
+    struct Positions
+    {
+        std::size_t first = 0;
+        std::size_t end = 0;
+    };
 
     Commands takeCommands();
     Commands peekCommands();
@@ -228,12 +249,6 @@ private:
                        std::span<float> into);
     void readSum(const std::vector<SumPart>& parts, std::size_t length, std::size_t position,
                  std::span<float> into);
-    // A sum's recomputation spread over frames: `remaining` positions from `cursor`, wrapping.
-    struct SumRefresh
-    {
-        std::size_t cursor = 0;
-        std::size_t remaining = 0;
-    };
     // Keeps `stats`, the levels of the sum of `parts` per block, in step: where compared tracks
     // changed this frame, widened by `reach`, and when `key` differs from `lastKey`, all of them
     // again over the next frames (see kSumRefreshSamples); all at once for a new length. True if
@@ -242,10 +257,14 @@ private:
                         const std::vector<std::int64_t>& key, std::vector<std::int64_t>& lastKey,
                         const std::vector<SumPart>& parts, std::size_t reach, std::size_t length,
                         std::size_t block);
-    // The energies the summing gains over screen positions [first, end) need: each compared
-    // lane's, then the sums' as recorded and as fixed, per block inside the part and per piece of
-    // a block at its edges, so that the gains cover exactly the visible part.
-    void collectEnergies(std::size_t first, std::size_t end, std::size_t length, std::size_t block);
+    // The energies a summing gain over screen positions `ranges` needs: into `tracks`, each of
+    // `parts` (shifted as it is), and into `sums` their sum, whose levels per block `sumStats`
+    // keeps; per block inside each range and per piece of a block at its edges, so that the gain
+    // covers exactly those positions.
+    void collectEnergies(std::span<const Positions> ranges, std::size_t length, std::size_t block,
+                         const std::vector<SumPart>& parts, const BlockStats& sumStats,
+                         std::vector<std::vector<double>>& tracks,
+                         std::vector<std::span<const double>>& spans, std::vector<double>& sums);
     // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
     void followTransport(const Settings& settings, Commands& command);
     bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
@@ -350,7 +369,9 @@ private:
     [[nodiscard]] bool sumsRefreshing() const
     {
         return sumRefresh.remaining > 0 || rawSumRefresh.remaining > 0 ||
-               fixedSumRefresh.remaining > 0;
+               fixedSumRefresh.remaining > 0 || std::ranges::any_of(lanes, [](const auto& entry) {
+                   return entry.second->fixedRefresh.remaining > 0;
+               });
     }
     // The match search's copies of the visible part, and the gains' energies.
     std::vector<float> matchOwn;
@@ -358,6 +379,9 @@ private:
     std::vector<float> pieceScratch;
     std::vector<std::vector<double>> trackEnergies;
     std::vector<std::span<const double>> energySpans;
+    std::vector<std::vector<double>> fixedTrackEnergies;
+    std::vector<std::span<const double>> fixedEnergySpans;
+    std::vector<SumPart> onePart; // One part of a sum, read alone.
     std::vector<double> sumEnergies;
     std::vector<double> fixedSumEnergies;
     ComparisonCache comparisonCache;

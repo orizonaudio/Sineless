@@ -1284,5 +1284,91 @@ TEST_P(NoDataIsNaN, ReportsNoMatchWithASilentTrack)
 INSTANTIATE_TEST_SUITE_P(EveryRate, NoDataIsNaN,
                          ::testing::ValuesIn(timeBaseCases(DisplayMode::kCompare)), modeTestName);
 
+// --- A delayed copy, fixed --------------------------------------------------------------------
+
+// A track against a copy of itself `delay` samples late (negative: early), in either time base.
+// Delays around the match reach (protocol::kMatchReachSeconds either way): the shortest, either
+// side of the reach, the reach early, and just beyond it, where no match is found.
+struct DelayCase
+{
+    ModeCase mode;
+    std::string_view name; // Of the delay.
+    std::int64_t delay = 0;
+    bool found = true; // Within the reach: the copy is matched at its delay.
+};
+
+std::string delayTestName(const ::testing::TestParamInfo<DelayCase>& info)
+{
+    return nameOf(info.param.mode) + "_" + std::string(info.param.name);
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const DelayCase& c, std::ostream* out)
+{
+    *out << nameOf(c.mode) << "_" << c.name;
+}
+
+std::vector<DelayCase> delayCases()
+{
+    std::vector<DelayCase> cases;
+    for (const ModeCase& mode : timeBaseCases(DisplayMode::kCompare)) {
+        const std::int64_t reach = std::lround(protocol::kMatchReachSeconds * mode.rate);
+        cases.push_back({.mode = mode, .name = "OneSample", .delay = 1});
+        cases.push_back({.mode = mode, .name = "UnderTheReach", .delay = reach - 1});
+        cases.push_back({.mode = mode, .name = "AtTheReach", .delay = reach});
+        cases.push_back({.mode = mode, .name = "LeadingAtTheReach", .delay = -reach});
+        cases.push_back(
+            {.mode = mode, .name = "BeyondTheReach", .delay = reach + 1, .found = false});
+    }
+    return cases;
+}
+
+class DelayedCopy : public ::testing::TestWithParam<DelayCase>
+{
+};
+
+// Lined up again, a delayed copy sums as a copy does, 10 log10(2) = +3.0103 dB louder than two
+// unrelated tracks, in Beats as in Seconds, live and frozen: the fix is measured only where the
+// shifted copy has samples of the same moments, never with the silence past the sweep's edges or
+// the audio of another pass beyond the playhead. Beyond the reach nothing is fixed, and the fix's
+// gain is the sum's.
+TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
+{
+    const DelayCase c = GetParam();
+    const double identical = 10.0 * std::log10(2.0);
+    Session session(c.mode.rate, c.mode.channels);
+    session.join({.kind = Signal::Kind::kNoise});
+    session.join({.kind = Signal::Kind::kNoise, .delay = c.delay});
+    session.own().settings().set(SettingId::kDisplayMode,
+                                 static_cast<double>(DisplayMode::kCompare));
+    auto frame = playForReadouts(session, c.mode.timeBase);
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        if (frozen) {
+            session.analyzer().setFrozen(true);
+            session.play(static_cast<double>(kBlock) / c.mode.rate);
+            frame = session.produce();
+        }
+        ASSERT_TRUE(frame);
+        ASSERT_TRUE(frame->has(FrameFlag::kCompared));
+        ASSERT_EQ(frame->laneCount, 3);
+        const std::size_t at = std::size_t{frame->laneCount} * traceLength(*frame) +
+                               std::size_t{1} * protocol::kMatchValues;
+        ASSERT_LT(at + 2, frame->data.size());
+        const float sumGain = session.field(FrameHeader::kSumGainOffset);
+        const float fixedGain = session.field(FrameHeader::kFixedGainOffset);
+        if (c.found) {
+            EXPECT_EQ(frame->data.at(at + 1), static_cast<float>(c.delay)) << "offset";
+            EXPECT_EQ(frame->data.at(at + 2), 1.0f) << "polarity";
+            EXPECT_NEAR(fixedGain, identical, 0.01) << "fixed gain";
+        } else {
+            EXPECT_EQ(frame->data.at(at + 2), 0.0f) << "no match beyond the reach";
+            EXPECT_NEAR(fixedGain, sumGain, 1e-6) << "nothing to fix";
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, DelayedCopy, ::testing::ValuesIn(delayCases()), delayTestName);
+
 } // namespace
 } // namespace orizon::engine
