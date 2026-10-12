@@ -1,0 +1,19 @@
+# Weekly update pull requests for the npm packages and the GitHub Actions (which CI pins to
+# commits). The C++ dependencies are fetched by CMake at pinned versions; Dependabot cannot see
+# them, so cmake/Dependencies.cmake is updated by hand.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

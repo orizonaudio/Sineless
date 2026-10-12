@@ -1,5 +1,7 @@
 # Sineless
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/orizonaudio/Sineless/badge)](https://scorecard.dev/viewer/?uri=github.com/orizonaudio/Sineless)
+
 An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its track in real time and passes it through unchanged, with zero latency.
 
 ![Sineless's multi-track view, frozen in Beats mode: kick, clap, hi-hat, bass and keys lanes stacked in their track colours](assets/sineless.png)
