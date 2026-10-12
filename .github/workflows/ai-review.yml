@@ -13,10 +13,11 @@ name: AI review
 # The base branch is checked out at the workspace root and the pull request's files into
 # pr-head/, without any CLAUDE.md or .claude folder, so that Claude follows the base branch's
 # CLAUDE.md, REVIEW.md, rules and hooks, never ones the pull request changed. Claude can only read
-# and comment, cannot read the repository's git config or the process environment (where tokens
-# live), and gets a token limited to this job; this workflow, not Claude, sets the status. Claude
-# runs on the maintainer's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN, made with
-# `claude setup-token`).
+# and comment, may read only the workspace (a read anywhere else would need a permission prompt,
+# which the action refuses), and never its git config; the process environment and the runner's
+# temporary files, where tokens live, are denied as well. It gets a token limited to this job;
+# this workflow, not Claude, sets the status. Claude runs on the maintainer's Claude subscription
+# (CLAUDE_CODE_OAUTH_TOKEN, made with `claude setup-token`).
 #
 # A pull request from a branch of this repository runs its own version of this workflow, so only
 # people with write access are trusted with it; pull requests from forks run the base branch's.
@@ -124,12 +125,15 @@ jobs:
           path: pr-head
           persist-credentials: false
       # Claude loads the CLAUDE.md of any folder it reads; the pull request's own must not steer
-      # its review (the diff still shows changes to them).
-      - name: Remove the pull request's agent instructions
+      # its review (the diff still shows changes to them). Symbolic links go too: one pointing
+      # outside pr-head (to /proc/self/environ, say) would let Claude read the job's secrets
+      # through a path in the checkout.
+      - name: Remove the pull request's agent instructions and symbolic links
         if: steps.pr.outputs.action == 'review'
         run: |
           find pr-head \( -name CLAUDE.md -o -name CLAUDE.local.md \) -type f -delete
           find pr-head -name .claude -type d -prune -exec rm -rf {} +
+          find pr-head -type l -delete
 
       - if: steps.pr.outputs.action == 'review'
         id: claude
@@ -160,8 +164,8 @@ jobs:
           claude_args: |
             --model opus
             --max-turns 60
-            --allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment"
-            --disallowedTools "Read(./.git/**),Grep(./.git/**),Glob(./.git/**),Read(./pr-head/.git/**),Read(/proc/**),Grep(/proc/**)"
+            --allowedTools "Read(./**),Grep(./**),Glob(./**),Read(/${{ github.workspace }}/**),Grep(/${{ github.workspace }}/**),Glob(/${{ github.workspace }}/**),Bash(gh pr diff:*),Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment"
+            --disallowedTools "Read(./.git/**),Grep(./.git/**),Glob(./.git/**),Read(./pr-head/.git/**),Grep(./pr-head/.git/**),Glob(./pr-head/.git/**),Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(/${{ runner.temp }}/**),Grep(/${{ runner.temp }}/**),Glob(/${{ runner.temp }}/**),Read(~/.claude/**),Grep(~/.claude/**),Glob(~/.claude/**)"
             --json-schema '{"type":"object","required":["summary","important","nits"],"properties":{"summary":{"type":"string"},"important":{"type":"array","items":{"type":"object","required":["file","title","scenario"],"properties":{"file":{"type":"string"},"line":{"type":"integer"},"title":{"type":"string"},"scenario":{"type":"string"}}}},"nits":{"type":"array","items":{"type":"object","required":["file","title"],"properties":{"file":{"type":"string"},"line":{"type":"integer"},"title":{"type":"string"}}}}}}'
 
       - name: Report the result
@@ -203,9 +207,9 @@ jobs:
             echo
             echo "Fix or answer each Important finding. A maintainer can comment \`/ai-review\` to review again, or \`/ai-review waive <reason>\` to pass the check."
           } > summary.md
-          # Anything that looks like a GitHub token is redacted, and the comment kept under
-          # GitHub's size limit.
-          sed -E -i 's/(gh[pousr]_|github_pat_)[A-Za-z0-9_]{16,}/[redacted]/g' summary.md
+          # Anything that looks like a GitHub or Anthropic token is redacted, and the comment kept
+          # under GitHub's size limit.
+          sed -E -i 's/(gh[pousr]_|github_pat_|sk-ant-)[A-Za-z0-9_-]{16,}/[redacted]/g' summary.md
           head -c 60000 summary.md > summary-posted.md
           gh pr comment "$NUMBER" --repo "$REPO" --body-file summary-posted.md ||
             echo "::warning::Could not post the review summary."
