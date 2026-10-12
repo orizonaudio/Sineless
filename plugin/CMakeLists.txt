@@ -37,7 +37,8 @@ endif()
 
 if(BUILD_TESTING)
     add_executable(plugin_tests
-        tests/EngineLinkTests.cpp tests/ProcessorTests.cpp tests/StateTests.cpp)
+        tests/EngineLinkTests.cpp tests/ProcessorTests.cpp tests/StateFaultTests.cpp
+        tests/StateTests.cpp)
     # The SDK ships MemoryStream (a host-side IBStream) as a source file only.
     target_sources(plugin_tests
         PRIVATE ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/memorystream.cpp)
