@@ -14,13 +14,26 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
+
+# The engine and protocol build anywhere; the editor and plugin need the macOS or Windows SDKs.
+# Elsewhere (Linux CI, contributors without a Mac or Windows) only the engine and protocol build.
+if(APPLE OR WIN32)
+    set(orizonPlatformDefault OFF)
+else()
+    set(orizonPlatformDefault ON)
+endif()
+option(ORIZON_ENGINE_ONLY "Build only the engine and protocol, without the VST3 SDK"
+       ${orizonPlatformDefault})
+
 include(cmake/ProjectOptions.cmake)
 include(cmake/Dependencies.cmake)
 
 # Module order: each module may depend only on modules added before it.
 add_subdirectory(protocol)
 add_subdirectory(engine)
-add_subdirectory(editor)
-add_subdirectory(plugin)
+if(NOT ORIZON_ENGINE_ONLY)
+    add_subdirectory(editor)
+    add_subdirectory(plugin)
+endif()
 
 orizon_forbid_dependencies(engine sdk sdk_common pluginterfaces base)
