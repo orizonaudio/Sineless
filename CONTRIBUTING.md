@@ -31,6 +31,7 @@ CI marks where each will run.
 | Unit | One module at a time | `engine/tests`, `protocol/tests`, `ui/tests` | Every PR |
 | Component | The plugin through the VST3 API; the editor's session, frame flow and sizing | `plugin/tests`, `editor/tests` | Every PR |
 | Integration | The editor with its page in a real WKWebView or WebView2 | `editor/tests/EditorTests.mm`, `editor/tests/EditorTestsWin.cpp` | Every PR |
+| App | The real page against the mock back end, in WebKit and Chromium: controls, readouts, lanes, pan limits | `ui/tests/app`, `npm run test:app` | Every PR |
 | Contract | C++ and TypeScript agree on frames, messages and saved state | `protocol/tests/data`, `engine/tests/data` | Every PR |
 | Conformance | The VST3 rules hosts rely on | VST3 validator, pluginval at strictness 10 | Every PR |
 | Sanitizers | Real-time safety, data races, memory errors | RealtimeSanitizer, ThreadSanitizer, AddressSanitizer builds | Every PR |
@@ -38,7 +39,6 @@ CI marks where each will run.
 | Soak | Memory growth and reopening over time | `scripts/soak.sh` | Before a release |
 | End-to-end | Sineless in REAPER, scripted | `scripts/windows` | Before a release |
 | Acceptance | The protocol in each host | [HOSTS.md](HOSTS.md) | Before a release |
-| App (planned) | The real UI against the mock transport, in WebKit and Chromium | `ui/tests/app` | Every PR |
 | Matrix (planned) | Every sample rate from 44.1 to 384 kHz, spans around each tolerance, mono and stereo, live and frozen | `engine/tests` | Every PR |
 | Fault injection (planned) | Failed and short reads, a page that never loads | `engine/tests`, `plugin/tests`, `editor/tests` | Every PR |
 | Signal corpus (planned) | Approved frames for tones, DC, silence, NaN, inverted and delayed pairs | `engine/tests/corpus` | Every PR |

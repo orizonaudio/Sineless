@@ -6,6 +6,7 @@
 #   LLVM_BIN  Directory with clang-format and clang-tidy (default: Homebrew LLVM)
 #   SKIP_PERFORMANCE=1  Skip the performance limits (they need a logged-in desktop session)
 #   SKIP_FORMAT=1       Skip the C++ format check (CI runs it once, with a pinned clang-format)
+#   SKIP_APP_TESTS=1    Skip the app tests in WebKit and Chromium (CI runs them once, on Linux)
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -92,6 +93,10 @@ npm run typecheck
 npm run lint
 npm run format:check
 npm test
+if [[ "${SKIP_APP_TESTS:-}" != 1 ]]; then
+    npx playwright install webkit chromium
+    npm run test:app
+fi
 npm run build
 
 printf '\nAll checks passed.\n'

@@ -10,7 +10,8 @@
     "dev": "vite ui",
     "build": "tsc -b && vite build ui",
     "typecheck": "tsc -b",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test:app": "vitest run --project app",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -18,7 +19,9 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "22.20.5",
+    "@vitest/browser-playwright": "5.0.3",
     "eslint": "10.12.0",
+    "playwright": "1.64.0",
     "prettier": "3.9.9",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1",
