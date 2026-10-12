@@ -210,6 +210,7 @@ private:
     bool placeLanes(const Settings& settings, protocol::BeatSpan span);
     [[nodiscard]] std::uint64_t sharedLength(std::uint64_t serial, const SweepWindow& sweep) const;
     void catchUpToHold(Lane& lane, protocol::BeatSpan span);
+    bool showFrozenParts(protocol::BeatSpan span, double start, double end);
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,
@@ -306,6 +307,7 @@ private:
     std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;
     std::vector<std::uint64_t> laneOrder;
     std::uint64_t ownLane = 0; // Serial of this instance's lane.
+    SweepImage partScratch{1}; // A frozen lane's span rebuilt from its hold (showFrozenParts).
     // Compare view: whether this frame compares tracks; in Seconds mode, each lane's source and
     // where this frame's window starts in it, the sum lane's columns as the window rolls, and
     // the compared lanes' visible samples, as recorded and as fixed, for the gains.

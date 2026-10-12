@@ -947,14 +947,11 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         fresh = placeLanes(settings, beatSpan);
         shown = own.window;
     } else if (own.hold.held()) {
-        // A crop shows every lane drawn on the own lane's length, so it needs all of them whole.
-        const bool complete = std::ranges::all_of(lanes, [&](const auto& entry) {
-            const SweepImage& laneImage = entry.second->image;
-            return laneImage.length() != own.image.length() || laneImage.complete();
-        });
+        // A shorter span is cropped from the lanes as they are (see showFrozenParts), so the
+        // crop does not wait for every lane to be whole.
         const auto frozen =
             frozenSweep(own.hold.clock(), own.hold.endIndex(), own.engine->sampleRate(), beatSpan,
-                        own.window, own.image.length(), complete);
+                        own.window, own.image.length(), true);
         if (frozen && frozen->rebuild) {
             std::vector<std::uint64_t> order{ownSerial};
             std::ranges::copy_if(laneOrder, std::back_inserter(order),
@@ -978,6 +975,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
             shown = frozen->window;
             subStart = frozen->start;
             subEnd = frozen->end;
+            fresh = showFrozenParts(beatSpan, subStart, subEnd);
         }
     } else {
         shown = own.window;
@@ -1060,7 +1058,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                         !lane.stats.fits(static_cast<std::size_t>(count), block) ||
                             lane.statsChannels != channels);
             lane.statsChannels = channels;
-            partial = partial || !lane.image.complete();
+            partial = partial || !(lane.image.complete() || lane.image.partComplete());
             if (comparing && lane.compared) {
                 frameChanges.insert(frameChanges.end(), lane.image.changes().begin(),
                                     lane.image.changes().end());
@@ -1131,6 +1129,41 @@ void Analyzer::catchUpToHold(Lane& lane, protocol::BeatSpan span)
     if (lane.image.update(lane.hold, *held, false, lane.engine->inputChannels(), length)) {
         lane.window = held;
     }
+}
+
+// Frozen, a span cropped from the lanes, over [start, end) of their images: a lane whose image is
+// still filling in (rebuilt for a span longer than its hold, or joined partway through a cycle)
+// shows that span rebuilt from its held audio instead, which may cover more of it; a whole lane
+// keeps the crop, with all it drew. True if any lane's part changed.
+bool Analyzer::showFrozenParts(protocol::BeatSpan span, double start, double end)
+{
+    const std::uint64_t count = lanes.at(ownLane)->image.length();
+    const auto first = static_cast<std::uint64_t>(std::llround(start * static_cast<double>(count)));
+    const auto last = static_cast<std::uint64_t>(std::llround(end * static_cast<double>(count)));
+    const bool cropped = first > 0 || last < count;
+    bool changed = false;
+    for (const auto& [serial, lanePointer] : lanes) {
+        Lane& lane = *lanePointer;
+        const bool needed = cropped && last > first && lane.image.length() == count &&
+                            !lane.image.complete() && lane.hold.held();
+        if (!needed) {
+            changed = changed || lane.image.hasPart();
+            lane.image.clearPart();
+            continue;
+        }
+        if (lane.image.showsPart(first, last - first)) {
+            continue;
+        }
+        const auto held = sweepWindow(lane.hold.clock(), lane.hold.endIndex(),
+                                      lane.engine->sampleRate(), span, kMaxSweepSamples);
+        if (held && partScratch.update(lane.hold, *held, true, lane.engine->inputChannels(),
+                                       last - first)) {
+            lane.image.showPart(partScratch, first);
+            changed = true;
+        }
+    }
+    partScratch.clear();
+    return changed;
 }
 
 // The multi-track view with the seconds time base: every lane shows this track's window (its

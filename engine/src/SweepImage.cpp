@@ -20,6 +20,7 @@ SweepImage::SweepImage(int channels) : channelCount(channels) {}
 bool SweepImage::update(const SampleSource& source, const SweepWindow& window, bool rebuild,
                         int inputChannels, std::uint64_t length)
 {
+    clearPart();
     const std::int64_t end = window.start + static_cast<std::int64_t>(window.sampleCount);
     // An image already at the length asked for keeps it, even where that length is not similar
     // enough to the window's for an image to keep its own (a lane on this track's length).
@@ -87,12 +88,44 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
 
 void SweepImage::clear()
 {
+    clearPart();
     count = 0;
     placedEnd = 0;
     placedSinceBuild = 0;
     changed.clear();
     samples.clear();
     samples.shrink_to_fit();
+}
+
+void SweepImage::showPart(const SweepImage& part, std::uint64_t first)
+{
+    clearPart();
+    if (part.channelCount != channelCount || first >= count) {
+        return;
+    }
+    partFirst = first;
+    partCount = std::min(part.count, count - first);
+    partWhole = part.complete();
+    partSamples.resize(static_cast<std::size_t>(partCount) *
+                       static_cast<std::size_t>(channelCount));
+    for (int channel = 0; channel < channelCount; ++channel) {
+        std::copy_n(part.samples.begin() + static_cast<std::ptrdiff_t>(channel * part.count),
+                    static_cast<std::ptrdiff_t>(partCount),
+                    partSamples.begin() + static_cast<std::ptrdiff_t>(channel * partCount));
+    }
+    markChanged(partFirst, partFirst + partCount);
+}
+
+void SweepImage::clearPart()
+{
+    if (partCount == 0) {
+        return;
+    }
+    markChanged(partFirst, partFirst + partCount);
+    partFirst = 0;
+    partCount = 0;
+    partWhole = false;
+    partSamples.clear();
 }
 
 // Ranges pile up only while no frame is taken; past a few, the whole screen counts as changed.
@@ -117,6 +150,15 @@ bool SweepImage::read(int channel, std::uint64_t start, std::span<float> destina
     }
     const float* const block = samples.data() + static_cast<std::size_t>(channel) * count;
     std::copy_n(block + start, destination.size(), destination.begin());
+    const std::uint64_t end = start + destination.size();
+    const std::uint64_t first = std::max(start, partFirst);
+    const std::uint64_t last = std::min(end, partFirst + partCount);
+    if (first < last) {
+        const float* const part =
+            partSamples.data() + static_cast<std::size_t>(channel) * partCount;
+        std::copy_n(part + (first - partFirst), last - first,
+                    destination.begin() + static_cast<std::ptrdiff_t>(first - start));
+    }
     return true;
 }
 
