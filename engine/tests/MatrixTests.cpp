@@ -1331,7 +1331,8 @@ class DelayedCopy : public ::testing::TestWithParam<DelayCase>
 // unrelated tracks, in Beats as in Seconds, live and frozen: the fix is measured only where the
 // shifted copy has samples of the same moments, never with the silence past the sweep's edges or
 // the audio of another pass beyond the playhead. Beyond the reach nothing is fixed, and the fix's
-// gain is the sum's.
+// gain is the sum's. Frozen, the gains are measured again (the view is zoomed and back), not kept
+// from before the freeze.
 TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
 {
     const DelayCase c = GetParam();
@@ -1347,6 +1348,10 @@ TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
         if (frozen) {
             session.analyzer().setFrozen(true);
             session.play(static_cast<double>(kBlock) / c.mode.rate);
+            ASSERT_TRUE(session.produce()) << "no frozen frame";
+            session.analyzer().setView(0.0, 0.5);
+            ASSERT_TRUE(session.produce()) << "no frozen frame zoomed in";
+            session.analyzer().setView(0.0, 1.0);
             frame = session.produce();
         }
         ASSERT_TRUE(frame);
