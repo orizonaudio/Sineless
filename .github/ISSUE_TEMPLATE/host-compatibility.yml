@@ -1,0 +1,51 @@
+name: Host compatibility report
+description: How Sineless behaves in a host, following the protocol in HOSTS.md.
+labels: [host compatibility]
+body:
+  - type: markdown
+    attributes:
+      value: Thank you for testing. The steps are in [HOSTS.md](https://github.com/orizonaudio/Sineless/blob/main/HOSTS.md); the results go into its matrix.
+  - type: input
+    id: host
+    attributes:
+      label: Host and version
+      placeholder: REAPER 7.42
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Windows x64
+        - Windows ARM64
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Sineless version
+      placeholder: 0.4.2
+    validations:
+      required: true
+  - type: input
+    id: hosting
+    attributes:
+      label: How the host runs plugins
+      description: In its own process, sandboxed, bridged, and so on, if the host lets you choose.
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Passes every step
+        - Passes with problems
+        - Fails
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Steps that failed, and what happened
