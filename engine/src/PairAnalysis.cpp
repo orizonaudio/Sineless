@@ -186,7 +186,9 @@ double summingGain(double sumEnergy, double partsEnergy)
     if (partsEnergy <= 0.0) {
         return std::numeric_limits<double>::quiet_NaN();
     }
-    return 10.0 * std::log10(std::max(sumEnergy, 1e-30) / partsEnergy);
+    // Raw, with no floor: an exact cancellation (a sum of exactly 0) is -infinity, which the UI
+    // shows as such below its gain floor (protocol::kGainFloorDb, applied by its formatter).
+    return 10.0 * std::log10(sumEnergy / partsEnergy);
 }
 
 PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,

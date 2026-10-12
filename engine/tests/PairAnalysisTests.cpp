@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 #include <numbers>
 #include <random>
 #include <span>
@@ -221,6 +222,33 @@ TEST(PairAnalysis, ComputesTheSummingGainFromBlockEnergies)
     EXPECT_NEAR(overlapGainOfBlocks(energies, sums, kBlock), overlapGain(tracks, kBlock), 1e-9);
     EXPECT_NEAR(overlapGainOfBlocks(energies, sums, kBlock), 10.0 * std::log10(0.25 / 1.25), 0.01)
         << "half the level, inverted: where they meet the sum is a quarter of the energy";
+}
+
+// An exact cancellation is a measurement, -infinity dB, which the UI shows below its gain floor;
+// silence is none, NaN. The engine floors neither, so the two stay apart.
+TEST(PairAnalysis, SendsAnExactCancellationAsMinusInfinity)
+{
+    constexpr double kMinusInfinity = -std::numeric_limits<double>::infinity();
+    EXPECT_EQ(summingGain(0.0, 1.0), kMinusInfinity);
+    EXPECT_EQ(summingGain(0.0, 1e-300), kMinusInfinity);
+    EXPECT_NEAR(summingGain(1e-40, 1.0), -400.0, 1e-9) << "a deep null keeps its depth";
+    EXPECT_TRUE(std::isnan(summingGain(0.0, 0.0))) << "silent: nothing to measure";
+
+    const auto a = noise(12);
+    std::vector<float> b(a);
+    for (float& value : b) {
+        value = -value;
+    }
+    EXPECT_EQ(analyse(a, b).sumGain, kMinusInfinity);
+    const std::array<std::span<const float>, 2> tracks{a, b};
+    EXPECT_EQ(overlapGain(tracks, kBlock), kMinusInfinity);
+    const std::vector<double> energy(kLength / kBlock, 1.0);
+    const std::vector<double> nothing(kLength / kBlock, 0.0);
+    const std::array<std::span<const double>, 2> energies{energy, energy};
+    EXPECT_EQ(overlapGainOfBlocks(energies, nothing, kBlock), kMinusInfinity);
+    const std::array<std::span<const double>, 2> silent{nothing, nothing};
+    EXPECT_TRUE(std::isnan(overlapGainOfBlocks(silent, nothing, kBlock)))
+        << "never together: nothing measured, not a cancellation";
 }
 
 } // namespace

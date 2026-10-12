@@ -204,7 +204,7 @@ struct Expect
     std::optional<double> rmsDbfs;
     std::optional<double> frequency;
     // Compare: the other track's match and the summing gains (dB). NaN: nothing measured;
-    // -infinity: an exact cancellation, at or below the gain floor.
+    // -infinity: an exact cancellation, the sum exactly 0 (never a floor: the UI applies that).
     std::optional<double> correlation;
     std::optional<int> offset;
     std::optional<int> polarity; // 1 as it is, -1 flipped, 0 no clear match.
@@ -296,7 +296,7 @@ constexpr TimeBase kSeconds = TimeBase::kSeconds;
 constexpr TimeBase kBeats = TimeBase::kBeats;
 constexpr double kNone = kNaN;              // No frequency found, nothing measured.
 constexpr double kSilent = kMinusInfinity;  // The dBFS of exactly 0.
-constexpr double kCancels = kMinusInfinity; // A summing gain at or below the gain floor.
+constexpr double kCancels = kMinusInfinity; // The summing gain of an exact cancellation.
 constexpr float kNaNSample = std::numeric_limits<float>::quiet_NaN();
 constexpr float kInfSample = std::numeric_limits<float>::infinity();
 // Levels known in closed form, written out because std::log10 is not constexpr (a static
@@ -781,7 +781,8 @@ TEST_P(SignalCorpus, MatchesTheApprovedFrame)
              {std::pair{"sumGain", expect.sumGainDb}, std::pair{"fixedGain", expect.fixedGainDb}}) {
             const double gain = valueOf(actual.at(name));
             if (expected && std::isinf(*expected)) {
-                EXPECT_LE(gain, protocol::kGainFloorDb) << name << " cancels exactly";
+                EXPECT_EQ(gain, *expected)
+                    << name << " cancels exactly: -infinity, not a number at a floor";
             } else {
                 expectNear(name, gain, expected,
                            expected == 0.0 ? kChanceGainDb : kGainToleranceDb);

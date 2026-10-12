@@ -9,12 +9,13 @@
 // Compare frames (flag `compared`) hold one lane per track and then the sum of the compared
 // tracks (those whose lanes entry has `compared`), so `laneCount` is the track count plus one.
 // Over the visible part, `sumGain` is the sum's level against the level the same tracks would
-// give if unrelated, in dB (0 harmless, below 0 cancelling), and `fixedGain` the same with every
-// compared track corrected as found. After the lane data comes one match per track, in lane
-// order, of three float32 values each: the correlation with this track (-1 to +1), the offset in
-// samples by which the track lags this track (negative: it leads), and its polarity: 1 when it
-// matches this track best as it is, -1 when flipped, 0 when it matches nowhere clearly (unrelated
-// sounds; the offset is then 0). Tracks that are not compared, and this track, have zeros.
+// give if unrelated, in dB (0 harmless, below 0 cancelling, -Infinity cancelling exactly; NaN when
+// they never sound together), and `fixedGain` the same with every compared track corrected as
+// found. Both are raw: the UI's formatter applies the gain floor. After the lane data comes one
+// match per track, in lane order, of three float32 values each: the correlation with this track
+// (-1 to +1), the offset in samples by which the track lags this track (negative: it leads), and
+// its polarity: 1 when it matches this track best as it is, -1 when flipped, 0 when it matches
+// nowhere clearly (unrelated sounds; the offset is then 0). Tracks that are not compared, and this track, have zeros.
 //
 // `samplesPerPoint` is the number of samples each point covers. The visible span starts
 // `startFraction` samples after the first point (sub-sample trigger alignment). Readouts cover

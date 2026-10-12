@@ -42,7 +42,8 @@ struct PairAnalysis
 [[nodiscard]] double energyOf(std::span<const float> values);
 
 // How loud a sum of tracks is against the same tracks unrelated, in dB: the sum's energy against
-// `partsEnergy`, the tracks' energies added. NaN when the tracks are silent: nothing to measure.
+// `partsEnergy`, the tracks' energies added. -infinity when the sum cancels exactly (a measurement:
+// the sum is silent), NaN when the tracks are silent: nothing to measure.
 [[nodiscard]] double summingGain(double sumEnergy, double partsEnergy);
 
 // The summing gain of `tracks` (equal length) where at least two of them sound together, so that

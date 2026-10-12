@@ -134,6 +134,18 @@ export const mockTracks: readonly (Omit<LaneLabel, "compared"> & {
   },
 ];
 
+// A summing gain in dB from the sum's energy and the tracks' energies added, raw as the engine's
+// summingGain sends it: -Infinity when the sum cancels exactly, NaN when the tracks are silent.
+// The gain floor is the formatter's.
+export function mockSummingGain(
+  sumEnergy: number,
+  partsEnergy: number,
+): number {
+  return partsEnergy > 0
+    ? 10 * Math.log10(sumEnergy / partsEnergy)
+    : Number.NaN;
+}
+
 export interface MockOptions {
   // Seconds since start; real time by default.
   readonly now?: () => number;
@@ -508,9 +520,7 @@ export class MockTransport implements Transport {
               (fix ? (track.fixed ?? track.sample) : track.sample)(time) ** 2;
           }
         }
-        return apart > 0
-          ? 10 * Math.log10(Math.max(together, 1e-30) / apart)
-          : 0;
+        return mockSummingGain(together, apart);
       };
       comparison = {
         sumGain: gain(false),
