@@ -989,6 +989,74 @@ TEST_P(HeldBeatSpans, StaysWholeFrozenFromALongerSpanAndBack)
 INSTANTIATE_TEST_SUITE_P(EdgeRates, HeldBeatSpans, ::testing::ValuesIn(heldBeatCases()),
                          modeTestName);
 
+// Frozen with a lane still filling in, beside whole ones: a shorter span longer than the hold is
+// cropped from the whole lanes, which keep all they drew, and rebuilt from the held audio only for
+// the lane that is filling in. At 90 BPM, 16 bars is 42.7 s and 8 bars 21.3 s, longer than the
+// 19.1 s held at 48 kHz.
+class MixedFrozenLanes : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(MixedFrozenLanes, KeepsWholeLanesWholeBesideALaneFillingIn)
+{
+    constexpr double kRate = 48000.0;
+    constexpr double kTempo = 90.0;
+    const DisplayMode mode = GetParam();
+    Session session(kRate, 2);
+    session.join({.frequency = 1000.0}, kTempo);
+    session.join({.frequency = 1500.0}, kTempo);
+    configure(session.own(), mode, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan,
+                                 static_cast<double>(protocol::BeatSpan::kSixteenBars));
+    session.play(30.0, 2.0);
+    session.join({.frequency = 2000.0}, kTempo); // Joins partway through the 16-bar cycle.
+    session.play(20.0, 2.0);
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no live frame";
+    EXPECT_TRUE(frame->has(FrameFlag::kPartial)) << "the third lane is still filling in";
+
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / kRate);
+    ASSERT_TRUE(session.produce()) << "no frozen frame";
+    frame = frozenAt(session, static_cast<std::size_t>(protocol::BeatSpan::kEightBars));
+    ASSERT_TRUE(frame) << "no frame of the shorter span";
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_NEAR(frame->visibleSamples,
+                static_cast<float>(beatSpanSamples(
+                    kRate, kTempo, static_cast<std::size_t>(protocol::BeatSpan::kEightBars))),
+                1.0f);
+    ASSERT_EQ(tracesIn(*frame), expectedTraces(mode, 2, 3));
+    // The whole lanes, and in Compare the sum of this track and the first other one.
+    std::vector<std::size_t> whole{0, 1};
+    if (mode == DisplayMode::kCompare) {
+        whole.push_back(3);
+    }
+    for (const std::size_t index : whole) {
+        const std::span<const float> values = trace(*frame, index);
+        const auto hole =
+            std::ranges::find_if(values, [](float value) { return !(std::abs(value) >= kHole); });
+        EXPECT_TRUE(hole == values.end()) << "trace " << index << " has a hole at "
+                                          << (hole - values.begin()) << " of " << values.size();
+    }
+
+    // Back at the frozen span, every lane is as it was drawn.
+    frame = frozenAt(session, static_cast<std::size_t>(protocol::BeatSpan::kSixteenBars));
+    ASSERT_TRUE(frame) << "no frame back at the frozen span";
+    for (const std::size_t index : whole) {
+        const std::span<const float> values = trace(*frame, index);
+        EXPECT_TRUE(
+            std::ranges::none_of(values, [](float value) { return !(std::abs(value) >= kHole); }))
+            << "trace " << index << " lost audio";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(MultiTrack, MixedFrozenLanes,
+                         ::testing::Values(DisplayMode::kMulti, DisplayMode::kCompare),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return info.param == DisplayMode::kMulti ? std::string("Multi")
+                                                                      : std::string("Compare");
+                         });
+
 // --- Lane lengths around the sweep tolerance ------------------------------------------------
 
 // The most two sweep lengths may differ, the shorter being `length`, for a lane to take the own

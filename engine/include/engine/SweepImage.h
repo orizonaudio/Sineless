@@ -36,6 +36,21 @@ public:
     // Forgets the sweep and frees its memory.
     void clear();
 
+    // Shows `part`, a sweep of the same channels, over positions [first, first + its length)
+    // instead of the image's own samples, which are kept: for a span cropped from a frozen image
+    // that is still filling in, rebuilt from the held audio, which may cover more of it. Until
+    // clearPart() or the next update().
+    void showPart(const SweepImage& part, std::uint64_t first);
+    void clearPart();
+    [[nodiscard]] bool hasPart() const { return partCount > 0; }
+    // Whether the part shown was complete: a crop that shows only it is whole.
+    [[nodiscard]] bool partComplete() const { return partCount > 0 && partWhole; }
+    // Whether a part of `length` samples is shown from position `first`.
+    [[nodiscard]] bool showsPart(std::uint64_t first, std::uint64_t length) const
+    {
+        return partCount > 0 && partFirst == first && partCount == length;
+    }
+
     [[nodiscard]] std::uint64_t length() const { return count; }
     [[nodiscard]] int channels() const { return channelCount; }
     // Whether every position has been drawn since the image was (re)built: false while a sweep
@@ -64,6 +79,10 @@ private:
     std::uint64_t placedEnd = 0;        // One past the newest source sample placed.
     std::uint64_t placedSinceBuild = 0; // Samples placed since the image was (re)built.
     std::vector<Range> changed;
+    std::vector<float> partSamples; // The part shown, `channelCount` blocks of `partCount`.
+    std::uint64_t partFirst = 0;
+    std::uint64_t partCount = 0;
+    bool partWhole = false;
     std::vector<float> scratch;     // One chunk of samples read from the source.
     std::vector<float> viewScratch; // The second channel, for the Mid.
 
