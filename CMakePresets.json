@@ -141,6 +141,24 @@
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Linux: engine and protocol tests with source-based coverage (Clang)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "ORIZON_ENGINE_ONLY": "ON",
+        "ORIZON_COVERAGE": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "buildPresets": [
@@ -237,6 +255,15 @@
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "testPresets": [
@@ -312,6 +339,21 @@
       },
       "environment": {
         "ASAN_OPTIONS": "halt_on_error=1"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "LLVM_PROFILE_FILE": "${sourceDir}/build/coverage/profiles/%m-%p.profraw"
       },
       "condition": {
         "type": "equals",

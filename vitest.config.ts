@@ -3,11 +3,19 @@ import { defineConfig } from "vitest/config";
 
 // The app tests run the real page in WebKit (as WKWebView does on macOS) and Chromium (as
 // WebView2 does on Windows). CHROMIUM_EXECUTABLE runs them in Chromium alone, with an installed
-// browser, where Playwright cannot download its own.
+// browser, where Playwright cannot download its own; APP_BROWSERS=chromium does too, as coverage
+// needs (V8 coverage is measured in Chromium only).
 const chromium = process.env["CHROMIUM_EXECUTABLE"];
+const chromiumOnly =
+  chromium !== undefined || process.env["APP_BROWSERS"] === "chromium";
 
 export default defineConfig({
   test: {
+    // The product's sources, for `vitest run --coverage` (see scripts/coverage.sh).
+    coverage: {
+      provider: "v8",
+      include: ["protocol/src/**/*.ts", "ui/src/**/*.ts"],
+    },
     projects: [
       {
         test: {
@@ -28,15 +36,17 @@ export default defineConfig({
           browser: {
             enabled: true,
             headless: true,
-            provider: playwright(
-              chromium === undefined
+            // Clicks wait for the page as long as a test may: under coverage, or on a busy
+            // machine, the page draws late.
+            provider: playwright({
+              actionTimeout: 10000,
+              ...(chromium === undefined
                 ? {}
-                : { launchOptions: { executablePath: chromium } },
-            ),
-            instances:
-              chromium === undefined
-                ? [{ browser: "webkit" }, { browser: "chromium" }]
-                : [{ browser: "chromium" }],
+                : { launchOptions: { executablePath: chromium } }),
+            }),
+            instances: chromiumOnly
+              ? [{ browser: "chromium" }]
+              : [{ browser: "webkit" }, { browser: "chromium" }],
             // Wider than the editor's minimum width, as a host opens it.
             viewport: { width: 1200, height: 720 },
           },

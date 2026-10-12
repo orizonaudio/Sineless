@@ -43,7 +43,7 @@ CI marks where each will run.
 | Fault injection (planned) | Failed and short reads, a page that never loads | `engine/tests`, `plugin/tests`, `editor/tests` | Every PR |
 | Signal corpus (planned) | Approved frames for tones, DC, silence, NaN, inverted and delayed pairs | `engine/tests/corpus` | Every PR |
 | Fuzzing (planned) | State loading and frame decoding against malformed input | `engine/tests/fuzz` | Every PR, briefly |
-| Coverage (planned) | Lines the tests run, reported on changed lines | llvm-cov, vitest | Every PR, reported |
+| Coverage | Lines the tests run, reported on changed lines | `scripts/coverage.sh` (llvm-cov, Vitest V8) | Every PR, reported |
 
 ## Releasing
 
