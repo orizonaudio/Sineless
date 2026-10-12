@@ -11,10 +11,17 @@ name: AI review
 # - In the merge queue the reviewed pull requests pass at once.
 #
 # The base branch is checked out at the workspace root and the pull request's files into
-# pr-head/, so that Claude runs with the base branch's CLAUDE.md, REVIEW.md, rules and hooks, never
-# with ones the pull request changed. Claude can only read and comment; this workflow, not
-# Claude, sets the status. Claude runs on the maintainer's Claude subscription
-# (CLAUDE_CODE_OAUTH_TOKEN, made with `claude setup-token`).
+# pr-head/, without any CLAUDE.md or .claude folder, so that Claude follows the base branch's
+# CLAUDE.md, REVIEW.md, rules and hooks, never ones the pull request changed. Claude can only read
+# and comment, cannot read the repository's git config or the process environment (where tokens
+# live), and gets a token limited to this job; this workflow, not Claude, sets the status. Claude
+# runs on the maintainer's Claude subscription (CLAUDE_CODE_OAUTH_TOKEN, made with
+# `claude setup-token`).
+#
+# A pull request from a branch of this repository runs its own version of this workflow, so only
+# people with write access are trusted with it; pull requests from forks run the base branch's.
+# A pull request that changes this workflow cannot review itself (GitHub rejects the Claude app's
+# token for it) and needs a waive.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -36,9 +43,10 @@ jobs:
        startsWith(github.event.comment.body, '/ai-review') &&
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
     # At job level, so that an ordinary comment, whose run skips this job, cannot cancel a
-    # review in progress; a newer push or /ai-review replaces an older review.
+    # review in progress; a newer push or /ai-review replaces an older review, and a waive never
+    # cancels a review.
     concurrency:
-      group: ai-review-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+      group: ai-review-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}-${{ contains(github.event.comment.body, 'waive') && 'waive' || 'review' }}
       cancel-in-progress: true
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -49,13 +57,13 @@ jobs:
       statuses: write
       id-token: write
     env:
-      GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Find the pull request
         id: pr
         env:
+          GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           PR_FROM_EVENT: ${{ github.event.pull_request.number }}
           PR_FROM_COMMENT: ${{ github.event.issue.number }}
@@ -80,10 +88,19 @@ jobs:
             echo "base=$base"
           } >> "$GITHUB_OUTPUT"
           if [[ "$EVENT" == issue_comment && "$COMMENT" =~ ^/ai-review[[:space:]]+waive ]]; then
+            # Only a review that ran on the current head and failed can be waived: a commit
+            # pushed since, or one still being reviewed, is not passed unreviewed.
+            last=$(gh api "repos/$REPO/commits/$sha/statuses" \
+              --jq '[.[] | select(.context == "ai-review")][0].state // "none"')
+            if [[ "$last" != failure && "$last" != error ]]; then
+              gh pr comment "$number" --repo "$REPO" --body "Nothing to waive: the AI review of ${sha:0:7}, the current head, is $last."
+              echo "action=done" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             reason="${COMMENT#*waive}"
             status "$sha" success "Waived by @$ACTOR"
             gh pr comment "$number" --repo "$REPO" \
-              --body "AI review waived by @$ACTOR:${reason:- (no reason given)}"
+              --body "AI review of ${sha:0:7} waived by @$ACTOR:${reason:- (no reason given)}"
             echo "action=done" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -106,12 +123,22 @@ jobs:
           ref: ${{ steps.pr.outputs.sha }}
           path: pr-head
           persist-credentials: false
+      # Claude loads the CLAUDE.md of any folder it reads; the pull request's own must not steer
+      # its review (the diff still shows changes to them).
+      - name: Remove the pull request's agent instructions
+        if: steps.pr.outputs.action == 'review'
+        run: |
+          find pr-head \( -name CLAUDE.md -o -name CLAUDE.local.md \) -type f -delete
+          find pr-head -name .claude -type d -prune -exec rm -rf {} +
 
       - if: steps.pr.outputs.action == 'review'
         id: claude
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The job's own token, limited to its permissions and expiring with it, rather than the
+          # Claude app's broader one.
+          github_token: ${{ github.token }}
           prompt: |
             REPO: ${{ github.repository }}
             PULL REQUEST: ${{ steps.pr.outputs.number }}
@@ -134,11 +161,13 @@ jobs:
             --model opus
             --max-turns 60
             --allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment"
+            --disallowedTools "Read(./.git/**),Grep(./.git/**),Glob(./.git/**),Read(./pr-head/.git/**),Read(/proc/**),Grep(/proc/**)"
             --json-schema '{"type":"object","required":["summary","important","nits"],"properties":{"summary":{"type":"string"},"important":{"type":"array","items":{"type":"object","required":["file","title","scenario"],"properties":{"file":{"type":"string"},"line":{"type":"integer"},"title":{"type":"string"},"scenario":{"type":"string"}}}},"nits":{"type":"array","items":{"type":"object","required":["file","title"],"properties":{"file":{"type":"string"},"line":{"type":"integer"},"title":{"type":"string"}}}}}}'
 
       - name: Report the result
         if: always() && steps.pr.outputs.action == 'review'
         env:
+          GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ steps.pr.outputs.number }}
           SHA: ${{ steps.pr.outputs.sha }}
           RESULT: ${{ steps.claude.outputs.structured_output }}
@@ -152,6 +181,12 @@ jobs:
             exit 1
           fi
           important=$(jq '.important | length' <<< "$RESULT")
+          # The status first, so that a failure to post the comment cannot leave it pending.
+          if (( important == 0 )); then
+            status success "No Important findings"
+          else
+            status failure "$important Important finding(s)"
+          fi
           {
             if (( important > 0 )); then
               echo "<!-- ai-review: failed -->"
@@ -168,12 +203,15 @@ jobs:
             echo
             echo "Fix or answer each Important finding. A maintainer can comment \`/ai-review\` to review again, or \`/ai-review waive <reason>\` to pass the check."
           } > summary.md
-          gh pr comment "$NUMBER" --repo "$REPO" --body-file summary.md
+          # Anything that looks like a GitHub token is redacted, and the comment kept under
+          # GitHub's size limit.
+          sed -E -i 's/(gh[pousr]_|github_pat_)[A-Za-z0-9_]{16,}/[redacted]/g' summary.md
+          head -c 60000 summary.md > summary-posted.md
+          gh pr comment "$NUMBER" --repo "$REPO" --body-file summary-posted.md ||
+            echo "::warning::Could not post the review summary."
           if (( important == 0 )); then
-            status success "No Important findings"
             exit 0
           fi
-          status failure "$important Important finding(s)"
           failures=$(gh api "repos/$REPO/issues/$NUMBER/comments" --paginate \
             --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-review: failed -->")))] | length' |
             jq -s 'add')
