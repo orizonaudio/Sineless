@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Sineless does not work as it should.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Sineless version
+      description: In the name of the release's zip file, or the host's plugin details.
+      placeholder: 0.4.2
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host and version
+      placeholder: Ableton Live 12.2.7
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Windows x64
+        - Windows ARM64
+    validations:
+      required: true
+  - type: input
+    id: system-version
+    attributes:
+      label: Operating system version
+      placeholder: macOS 15.5, Windows 11 24H2
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From a new project if you can. Mention the display mode, time base and trigger settings in use.
+      placeholder: |
+        1. Insert Sineless on a track playing a 100 Hz sine
+        2. Switch to Multi, Beats
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots, recordings or a project
+      description: Drag files here. A small project that shows the problem helps most.
