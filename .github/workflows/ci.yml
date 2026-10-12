@@ -1,55 +1,146 @@
 name: CI
 
-# Manual only while the repository is private: macOS runner minutes count tenfold, and Windows
-# minutes twofold, against the free allowance. Run it from the Actions tab.
+# Every pull request, every merge-queue entry and every push to main runs the same checks; the
+# ruleset on main requires the jobs below except "performance". Actions are pinned to commits;
+# Dependabot keeps the pins current.
 on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      platforms:
-        description: Platforms to check
-        type: choice
-        options: [both, macos, windows]
-        default: both
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels its older run; runs on main and in the queue finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  macos:
-    if: inputs.platforms != 'windows'
-    runs-on: macos-15
+  typescript:
+    name: typescript
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      # Planned: the app-level UI tests in real WebKit and Chromium (Vitest browser mode) run here
+      # too; see "Test levels" in CONTRIBUTING.md.
+      - run: npm run build
+
+  # The engine and protocol C++ tests under AddressSanitizer, without the VST3 SDK: the fast
+  # signal, and the tier contributors without a Mac or Windows can run.
+  linux:
+    name: linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          key: linux
+      - run: cmake --preset linux -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - run: cmake --build --preset linux
+      - run: ctest --preset linux
+      # Planned: short fuzzing runs of state loading and frame decoding; see "Test levels" in
+      # CONTRIBUTING.md.
+
+  # Everything scripts/check.sh checks except the performance limits: format, build, all C++
+  # tests including the editor's in a real WKWebView, the VST3 validator, clang-tidy, the
+  # RealtimeSanitizer, ThreadSanitizer and AddressSanitizer builds, pluginval and the TypeScript.
+  macos:
+    name: macos
+    runs-on: macos-15
+    env:
+      SKIP_PERFORMANCE: 1
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          key: macos
+          max-size: 2G
       - name: Install LLVM
         run: brew install llvm
-      - name: Install npm dependencies
-        run: npm ci
-      - name: Run all checks
-        run: scripts/check.sh
+      - run: npm ci
+      - run: scripts/check.sh
 
+  # Everything scripts\check.ps1 checks except the performance limit, on x64 and on ARM64:
+  # format, build, all C++ tests including the editor's in a real WebView2, the VST3 validator,
+  # pluginval (x64) and the TypeScript.
   windows:
-    if: inputs.platforms != 'macos'
-    runs-on: windows-2022
+    name: windows-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-2022
+          - arch: arm64
+            runner: windows-11-arm
+    env:
+      PRESETS: windows-${{ matrix.arch }}
+      SKIP_PERFORMANCE: 1
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
-      - name: Install npm dependencies
-        run: npm ci
-      # The image's WebView2 runtime is old and never updated (and leaks handles that the current
+      - run: npm ci
+      # The images' WebView2 runtime is old and never updated (and leaks handles that the current
       # one does not); users' runtimes update themselves, so the checks run on the current one.
       - name: Install the current WebView2 runtime
         shell: powershell
         run: |
           Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile installwebview.exe
           Start-Process -Wait installwebview.exe -ArgumentList '/silent', '/install'
-      # GitHub's Windows machines are x64: they cannot run the ARM64 build's validator and tests,
-      # which run on ARM64 Windows instead.
-      - name: Run all checks (x64)
+      - name: Run the checks
         shell: powershell
-        env:
-          PRESETS: windows-x64
         run: scripts/check.ps1
+
+  # The performance limits, reported but not required: shared CI machines are too noisy for
+  # hard limits. Not run in the merge queue, so it does not slow merging.
+  performance:
+    name: performance-${{ matrix.os }}
+    if: github.event_name != 'merge_group'
+    continue-on-error: true
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos
+            runner: macos-15
+          - os: windows
+            runner: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - if: matrix.os == 'macos'
+        run: scripts/performance.sh
+      - if: matrix.os == 'windows'
+        shell: powershell
+        run: scripts/performance.ps1
