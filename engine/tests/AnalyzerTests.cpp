@@ -1551,6 +1551,38 @@ TEST_F(CompareTest, MeasuresTheFixOnRealSamplesInSecondsMode)
     EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kFixedGainOffset), 3.01f, 0.2f);
 }
 
+// In Beats mode, a late copy's fixed gain follows its shift as the delay changes, to 37 samples
+// late, in step, and late again: each shift's levels are measured again (over frames, which go on
+// until done), none stay pending while the copy is in step, and once frozen the frames stop.
+TEST_F(CompareTest, FollowsTheFixAsTheDelayChanges)
+{
+    std::uint64_t delay = 37;
+    joinWith([&delay](std::uint64_t sample) {
+        return sample < delay ? 0.0f : noiseAt(sample - delay, 1);
+    });
+    const double identical = 10.0 * std::log10(2.0);
+    for (const std::uint64_t step : {37U, 0U, 37U}) {
+        SCOPED_TRACE(step);
+        delay = step;
+        std::optional<DecodedFrame> frame;
+        for (int frames = 0; frames < 100; ++frames) { // A second, a frame every 10 ms.
+            play(480);
+            if (auto produced = produce()) {
+                frame = std::move(produced);
+            }
+        }
+        ASSERT_TRUE(frame);
+        EXPECT_EQ(match(*frame, 1).offset, static_cast<float>(step));
+        EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kFixedGainOffset), identical, 0.01);
+    }
+    analyzer->setFrozen(true);
+    int frames = 0;
+    while (produce() && frames < 10) {
+        ++frames;
+    }
+    EXPECT_LT(frames, 10) << "frames stop once frozen and measured";
+}
+
 TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
 {
     own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));

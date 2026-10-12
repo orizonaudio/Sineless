@@ -357,21 +357,16 @@ std::vector<Case> corpus()
         compare("Compare_NoiseInverted_48k_Seconds", stereo(hiss), stereo(inverted(hiss))).in(kSeconds).match(-1, 0, -1).gains(kCancels, kIdentical),
         compare("Compare_NoiseInverted_48k_Mono", mono(hiss), mono(inverted(hiss))).match(-1, 0, -1).gains(kCancels, kIdentical),
         compare("Compare_NoiseInverted_48k_Frozen", stereo(hiss), stereo(inverted(hiss))).freeze().match(-1, 0, -1).gains(kCancels, kIdentical),
-        // A delayed copy, fixed, sums as a copy does: +3.01 dB (kIdentical), as the Seconds cases
-        // assert. The Beats cases leave the fix's gain unstated because the engine gets it wrong
-        // now, we suspect: Beats mode's fixed sum gain is too weak for delayed pairs, in
-        // proportion to the delay (2.67 dB at 1500 samples of a 24000-sample sweep), likely as
-        // the shifted track is summed across the playhead with audio of another pass. Their
-        // snapshots record that current behaviour, not a correct value; the bug is to be fixed in
-        // its own change, which then states +3.01 dB here and approves the new snapshots.
-        compare("Compare_NoiseDelayed100_48k", stereo(hiss), stereo(delayed(hiss, 100))).match(0, 100, 1).gains(0, std::nullopt),
-        compare("Compare_NoiseDelayed100_192k", stereo(hiss), stereo(delayed(hiss, 100))).at(192000).match(0, 100, 1).gains(0, std::nullopt),
-        compare("Compare_NoiseDelayed1500_192k", stereo(hiss), stereo(delayed(hiss, 1500))).at(192000).match(0, 1500, 1).gains(0, std::nullopt),
+        // A delayed copy, fixed, sums as a copy does: +3.01 dB (kIdentical), in Beats as in
+        // Seconds.
+        compare("Compare_NoiseDelayed100_48k", stereo(hiss), stereo(delayed(hiss, 100))).match(0, 100, 1).gains(0, kIdentical),
+        compare("Compare_NoiseDelayed100_192k", stereo(hiss), stereo(delayed(hiss, 100))).at(192000).match(0, 100, 1).gains(0, kIdentical),
+        compare("Compare_NoiseDelayed1500_192k", stereo(hiss), stereo(delayed(hiss, 1500))).at(192000).match(0, 1500, 1).gains(0, kIdentical),
         compare("Compare_NoiseDelayed100_48k_Seconds", stereo(hiss), stereo(delayed(hiss, 100))).in(kSeconds).match(0, 100, 1).gains(0, kIdentical),
-        compare("Compare_NoiseDelayedInverted37_48k", stereo(hiss), stereo(inverted(delayed(hiss, 37)))).match(0, 37, -1).gains(0, std::nullopt),
+        compare("Compare_NoiseDelayedInverted37_48k", stereo(hiss), stereo(inverted(delayed(hiss, 37)))).match(0, 37, -1).gains(0, kIdentical),
         compare("Compare_NoiseDelayedInverted37_48k_Seconds", stereo(hiss), stereo(inverted(delayed(hiss, 37)))).in(kSeconds).match(0, 37, -1).gains(0, kIdentical),
         // This track is the late one: the other leads, by a negative offset.
-        compare("Compare_NoiseLeading64_48k", stereo(delayed(hiss, 64)), stereo(hiss)).match(0, -64, 1).gains(0, std::nullopt),
+        compare("Compare_NoiseLeading64_48k", stereo(delayed(hiss, 64)), stereo(hiss)).match(0, -64, 1).gains(0, kIdentical),
         // Beyond the 480-sample reach: no match is found, and no fix suggested.
         compare("Compare_NoiseDelayed600_48k", stereo(hiss), stereo(delayed(hiss, 600))).match(0, 0, 0).gains(0, 0),
         compare("Compare_NoiseUnrelated_48k", stereo(hiss), stereo(noise(2, 0.5))).match(0, 0, 0).gains(0, 0),
