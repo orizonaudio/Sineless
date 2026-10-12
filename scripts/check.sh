@@ -5,6 +5,7 @@
 #   PRESET    CMake preset to use (default: dev-local if CMakeUserPresets.json exists, else dev)
 #   LLVM_BIN  Directory with clang-format and clang-tidy (default: Homebrew LLVM)
 #   SKIP_PERFORMANCE=1  Skip the performance limits (they need a logged-in desktop session)
+#   SKIP_FORMAT=1       Skip the C++ format check (CI runs it once, with a pinned clang-format)
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,9 +34,11 @@ for tool in clang-format clang-tidy; do
     [[ -x "$LLVM_BIN/$tool" ]] || { echo "Missing $LLVM_BIN/$tool (brew install llvm)." >&2; exit 1; }
 done
 
-step "C++ format"
-git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' |
-    xargs "$LLVM_BIN/clang-format" --dry-run --Werror
+if [[ "${SKIP_FORMAT:-}" != 1 ]]; then
+    step "C++ format"
+    git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' |
+        xargs "$LLVM_BIN/clang-format" --dry-run --Werror
+fi
 
 step "C++ build (includes the VST3 validator)"
 cmake --preset "$PRESET"

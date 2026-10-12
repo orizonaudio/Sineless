@@ -9,6 +9,7 @@
 #   RUN_BENCH 1 to run the audio benchmark here; it runs by default on GitHub's machines only,
 #             since its limit means something on real x64 hardware alone (not under emulation)
 #   SKIP_PERFORMANCE  1 to skip the performance limits (scripts\performance.ps1)
+#   SKIP_FORMAT       1 to skip the C++ format check (CI runs it once, with a pinned clang-format)
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
@@ -22,11 +23,13 @@ Step 'Toolchain'
 # Windows PowerShell 5.1 strips double quotes inside arguments to programs: single quotes only.
 $nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
 if ($nodeMajor -lt 22) { throw "Node $(node -v) is too old; install the version in .nvmrc." }
-if (-not (Test-Path "$llvmBin\clang-format.exe")) { throw "Missing $llvmBin\clang-format.exe (winget install LLVM.LLVM)." }
+if ($env:SKIP_FORMAT -ne '1') {
+    if (-not (Test-Path "$llvmBin\clang-format.exe")) { throw "Missing $llvmBin\clang-format.exe (winget install LLVM.LLVM)." }
 
-Step 'C++ format'
-$sources = git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm'
-Run "$llvmBin\clang-format.exe" --dry-run --Werror @sources
+    Step 'C++ format'
+    $sources = git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm'
+    Run "$llvmBin\clang-format.exe" --dry-run --Werror @sources
+}
 
 if (-not (Test-Path node_modules)) {
     Step 'npm packages'
