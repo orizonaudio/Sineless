@@ -71,7 +71,7 @@ std::optional<SweepWindow> sweepWindow(const MusicalStamp& stamp, std::uint64_t 
 std::optional<FrozenSweep> frozenSweep(const MusicalStamp& stamp, std::uint64_t end,
                                        double sampleRate, BeatSpan span,
                                        const std::optional<SweepWindow>& image,
-                                       std::uint64_t imageLength, bool imageComplete)
+                                       std::uint64_t imageLength)
 {
     const auto requested = sweepWindow(stamp, end, sampleRate, span, kMaxSweepSamples);
     if (!requested) {
@@ -82,7 +82,7 @@ std::optional<FrozenSweep> frozenSweep(const MusicalStamp& stamp, std::uint64_t 
             std::abs(requested->spanQuarterNotes - image->spanQuarterNotes) < kEpsilon) {
             return FrozenSweep{.window = *requested};
         }
-        if (imageComplete && requested->spanQuarterNotes < image->spanQuarterNotes &&
+        if (requested->spanQuarterNotes < image->spanQuarterNotes &&
             isMultiple(image->spanQuarterNotes, requested->spanQuarterNotes)) {
             // The span's current cycle lies within the image's cycle.
             const double start =

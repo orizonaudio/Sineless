@@ -166,6 +166,35 @@ std::pair<std::size_t, std::size_t> fixedPart(std::size_t first, std::size_t end
     return {static_cast<std::size_t>(from), static_cast<std::size_t>(to)};
 }
 
+// Frozen, positions [first, last) of `image` cropped for a shorter span: when the image is still
+// filling in (rebuilt for a span longer than the hold, or begun partway through a cycle), that
+// span rebuilt from the audio `held` up to `heldEnd`, which may cover more of it, is shown there
+// instead, beside the image, which stays as it is for when the crop ends; otherwise nothing is.
+// True if what is shown changed.
+bool showHeldPart(SweepImage& image, const SampleSource& held, const MusicalStamp& clock,
+                  std::uint64_t heldEnd, double sampleRate, protocol::BeatSpan span,
+                  int inputChannels, std::uint64_t first, std::uint64_t last)
+{
+    const bool cropped = last > first && (first > 0 || last < image.length());
+    if (!cropped || image.complete()) {
+        const bool had = image.hasPart();
+        image.clearPart();
+        return had;
+    }
+    if (image.showsPart(first, last - first)) {
+        return false;
+    }
+    const auto window = sweepWindow(clock, heldEnd, sampleRate, span, kMaxSweepSamples);
+    SweepImage part(image.channels());
+    if (!window || !part.update(held, *window, true, inputChannels, last - first)) {
+        const bool had = image.hasPart();
+        image.clearPart();
+        return had;
+    }
+    image.showPart(part, first);
+    return true;
+}
+
 } // namespace
 
 Analyzer::Analyzer(Engine& engine, const InstanceRegistry& registry)
@@ -377,7 +406,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         SweepWindow sweep;
         if (isFrozen) {
             const auto frozen = frozenSweep(frozenStamp, frozenEnd, sampleRate, beatSpan,
-                                            imageWindow, image.length(), image.complete());
+                                            imageWindow, image.length());
             if (!frozen) {
                 return false;
             }
@@ -386,6 +415,11 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
                     return false;
                 }
                 imageWindow = frozen->window;
+            } else {
+                const auto count = static_cast<double>(image.length());
+                showHeldPart(image, hold, frozenStamp, frozenEnd, sampleRate, beatSpan, channels,
+                             static_cast<std::uint64_t>(std::llround(frozen->start * count)),
+                             static_cast<std::uint64_t>(std::llround(frozen->end * count)));
             }
             sweep = frozen->window;
             window.subStart = frozen->start;
@@ -405,7 +439,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         window.roll = false;
         window.synced = true;
         window.limited = sweep.limited;
-        window.partial = !image.complete();
+        window.partial = !(image.complete() || image.partComplete());
         window.cursor = sweep.cursor;
         window.cycleStart = sweep.cycleStart;
         window.spanQuarterNotes = sweep.spanQuarterNotes;
@@ -947,11 +981,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         fresh = placeLanes(settings, beatSpan);
         shown = own.window;
     } else if (own.hold.held()) {
-        // A shorter span is cropped from the lanes as they are (see showFrozenParts), so the
-        // crop does not wait for every lane to be whole.
         const auto frozen =
             frozenSweep(own.hold.clock(), own.hold.endIndex(), own.engine->sampleRate(), beatSpan,
-                        own.window, own.image.length(), true);
+                        own.window, own.image.length());
         if (frozen && frozen->rebuild) {
             std::vector<std::uint64_t> order{ownSerial};
             std::ranges::copy_if(laneOrder, std::back_inserter(order),
@@ -1131,38 +1163,26 @@ void Analyzer::catchUpToHold(Lane& lane, protocol::BeatSpan span)
     }
 }
 
-// Frozen, a span cropped from the lanes, over [start, end) of their images: a lane whose image is
-// still filling in (rebuilt for a span longer than its hold, or joined partway through a cycle)
-// shows that span rebuilt from its held audio instead, which may cover more of it; a whole lane
+// Frozen, a span cropped from the lanes, over [start, end) of the own lane's image: each lane
+// still filling in shows that span rebuilt from its held audio (see showHeldPart); a whole lane
 // keeps the crop, with all it drew. True if any lane's part changed.
 bool Analyzer::showFrozenParts(protocol::BeatSpan span, double start, double end)
 {
-    const std::uint64_t count = lanes.at(ownLane)->image.length();
-    const auto first = static_cast<std::uint64_t>(std::llround(start * static_cast<double>(count)));
-    const auto last = static_cast<std::uint64_t>(std::llround(end * static_cast<double>(count)));
-    const bool cropped = first > 0 || last < count;
+    const auto count = static_cast<double>(lanes.at(ownLane)->image.length());
+    const auto first = static_cast<std::uint64_t>(std::llround(start * count));
+    const auto last = static_cast<std::uint64_t>(std::llround(end * count));
     bool changed = false;
-    for (const auto& [serial, lanePointer] : lanes) {
-        Lane& lane = *lanePointer;
-        const bool needed = cropped && last > first && lane.image.length() == count &&
-                            !lane.image.complete() && lane.hold.held();
-        if (!needed) {
-            changed = changed || lane.image.hasPart();
-            lane.image.clearPart();
+    for (const auto& [serial, lane] : lanes) {
+        if (!lane->hold.held() || static_cast<double>(lane->image.length()) != count) {
+            changed = changed || lane->image.hasPart();
+            lane->image.clearPart();
             continue;
         }
-        if (lane.image.showsPart(first, last - first)) {
-            continue;
-        }
-        const auto held = sweepWindow(lane.hold.clock(), lane.hold.endIndex(),
-                                      lane.engine->sampleRate(), span, kMaxSweepSamples);
-        if (held && partScratch.update(lane.hold, *held, true, lane.engine->inputChannels(),
-                                       last - first)) {
-            lane.image.showPart(partScratch, first);
-            changed = true;
-        }
+        changed = showHeldPart(lane->image, lane->hold, lane->hold.clock(), lane->hold.endIndex(),
+                               lane->engine->sampleRate(), span, lane->engine->inputChannels(),
+                               first, last) ||
+                  changed;
     }
-    partScratch.clear();
     return changed;
 }
 

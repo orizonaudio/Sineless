@@ -986,6 +986,34 @@ TEST_P(HeldBeatSpans, StaysWholeFrozenFromALongerSpanAndBack)
     }
 }
 
+// Frozen at the held span, a longer one chosen, the held one and the longer one again: the longer
+// span is as it was the first time, partly filled and flagged so, the held span's rebuilt part
+// gone from it.
+TEST_P(HeldBeatSpans, ShowsTheLongerSpanAgainAsItWas)
+{
+    const ModeCase c = GetParam();
+    const std::size_t fits = longestBeatSpanHeld(c.rate, kHeldTempo);
+    const std::size_t longer = fits + 1;
+    ASSERT_LT(longer, protocol::kBeatSpanCount) << "every beat span fits the capture";
+    HeldSession held(c, fits);
+    Session& session = held.session;
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / c.rate);
+    ASSERT_TRUE(session.produce()) << "no frozen frame";
+    const auto first = frozenAt(session, longer);
+    ASSERT_TRUE(first) << "no frame of the longer span";
+    ASSERT_TRUE(first->has(FrameFlag::kPartial));
+    const auto back = frozenAt(session, fits);
+    ASSERT_TRUE(back) << "no frame back at the held span";
+    ASSERT_FALSE(back->has(FrameFlag::kPartial));
+
+    const auto again = frozenAt(session, longer);
+    ASSERT_TRUE(again) << "no frame of the longer span again";
+    EXPECT_TRUE(again->has(FrameFlag::kPartial)) << "the hold covers only part of the span";
+    EXPECT_EQ(again->visibleSamples, first->visibleSamples);
+    EXPECT_EQ(again->data, first->data) << "the longer span as it was";
+}
+
 INSTANTIATE_TEST_SUITE_P(EdgeRates, HeldBeatSpans, ::testing::ValuesIn(heldBeatCases()),
                          modeTestName);
 
@@ -1038,6 +1066,49 @@ TEST_P(BeatRateChanges, HoldTheLongestSpanTheNewCaptureCovers)
 INSTANTIATE_TEST_SUITE_P(Changes, BeatRateChanges, ::testing::ValuesIn(rateChanges()),
                          [](const ::testing::TestParamInfo<RateChange>& info) {
                              return nameOf(info.param);
+                         });
+
+// Frozen before a long sweep is whole, in every mode: a shorter span is cropped from it, still
+// filling in, and the sweep is as it was drawn back at its span, with all the audio it had beyond
+// what the freeze holds. At 120 BPM, 16 bars is 32 s, of which 25 s was drawn, more than the
+// 19.1 s held at 48 kHz.
+class FrozenSweepFillingIn : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(FrozenSweepFillingIn, IsAsItWasBackFromAShorterSpan)
+{
+    constexpr double kRate = 48000.0;
+    const DisplayMode mode = GetParam();
+    Session session(kRate, 2);
+    session.join({.frequency = 1000.0}, kHeldTempo);
+    session.join({.frequency = 1500.0}, kHeldTempo);
+    configure(session.own(), mode, TimeBase::kBeats);
+    const auto longSpan = static_cast<std::size_t>(protocol::BeatSpan::kSixteenBars);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(longSpan));
+    session.play(25.0, 2.0);
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / kRate);
+    const auto drawn = session.produce();
+    ASSERT_TRUE(drawn) << "no frozen frame";
+    ASSERT_TRUE(drawn->has(FrameFlag::kPartial)) << "the sweep is still filling in";
+
+    const auto shorter = frozenAt(session, static_cast<std::size_t>(protocol::BeatSpan::kFourBars));
+    ASSERT_TRUE(shorter) << "no frame of the shorter span";
+    EXPECT_FALSE(shorter->has(FrameFlag::kPartial)) << "the hold covers four bars";
+    expectTraces(*shorter, expectedTraces(mode, 2, 2));
+
+    const auto back = frozenAt(session, longSpan);
+    ASSERT_TRUE(back) << "no frame back at the sweep's span";
+    EXPECT_TRUE(back->has(FrameFlag::kPartial));
+    EXPECT_EQ(back->data, drawn->data) << "the sweep as it was drawn";
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSweepFillingIn,
+                         ::testing::Values(DisplayMode::kSingle, DisplayMode::kMulti,
+                                           DisplayMode::kCompare),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
                          });
 
 // Frozen with a lane still filling in, beside whole ones: a shorter span longer than the hold is
