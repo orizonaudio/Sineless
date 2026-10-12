@@ -35,5 +35,8 @@ if(NOT ORIZON_ENGINE_ONLY)
     add_subdirectory(editor)
     add_subdirectory(plugin)
 endif()
+if(ORIZON_FUZZ)
+    add_subdirectory(engine/tests/fuzz) # After the modules: it builds the editor's session too.
+endif()
 
 orizon_forbid_dependencies(engine sdk sdk_common pluginterfaces base)

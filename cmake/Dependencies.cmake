@@ -39,7 +39,11 @@ FetchContent_Declare(nlohmann_json
 if(NOT ORIZON_ENGINE_ONLY)
     FetchContent_MakeAvailable(vst3sdk)
 endif()
-FetchContent_MakeAvailable(googletest nlohmann_json)
+FetchContent_MakeAvailable(nlohmann_json)
+# The fuzzers build without tests, and need no GoogleTest.
+if(BUILD_TESTING)
+    FetchContent_MakeAvailable(googletest)
+endif()
 
 # WebView2 SDK for the Windows editor: headers and the static loader, so that no WebView2Loader.dll
 # ships next to the plugin. The NuGet package is a zip under another extension.

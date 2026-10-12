@@ -67,9 +67,10 @@ step "C++ lint"
 # clang-tidy cannot handle universal-binary commands (two -arch flags); lint the arm64 slice.
 mkdir -p build/lint
 sed 's/ -arch x86_64//g' "$buildDir/compile_commands.json" > build/lint/compile_commands.json
-# Windows-only sources need Windows headers: they are checked by the Windows build.
+# Windows-only sources need Windows headers: they are checked by the Windows build. The fuzzers
+# build only in the Linux fuzz preset, whose CI job checks them.
 git ls-files -co --exclude-standard -- 'engine/*.cpp' 'editor/*.cpp' 'editor/*.mm' 'plugin/*.cpp' \
-    ':!editor/src/win/*' ':!editor/tests/*Win.cpp' |
+    ':!editor/src/win/*' ':!editor/tests/*Win.cpp' ':!engine/tests/fuzz/*' |
     xargs "$LLVM_BIN/clang-tidy" -p build/lint --quiet --extra-arg="-isysroot$(xcrun --show-sdk-path)"
 
 step "pluginval"
