@@ -377,7 +377,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         SweepWindow sweep;
         if (isFrozen) {
             const auto frozen = frozenSweep(frozenStamp, frozenEnd, sampleRate, beatSpan,
-                                            imageWindow, image.length());
+                                            imageWindow, image.length(), image.complete());
             if (!frozen) {
                 return false;
             }
@@ -947,9 +947,14 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         fresh = placeLanes(settings, beatSpan);
         shown = own.window;
     } else if (own.hold.held()) {
+        // A crop shows every lane drawn on the own lane's length, so it needs all of them whole.
+        const bool complete = std::ranges::all_of(lanes, [&](const auto& entry) {
+            const SweepImage& laneImage = entry.second->image;
+            return laneImage.length() != own.image.length() || laneImage.complete();
+        });
         const auto frozen =
             frozenSweep(own.hold.clock(), own.hold.endIndex(), own.engine->sampleRate(), beatSpan,
-                        own.window, own.image.length());
+                        own.window, own.image.length(), complete);
         if (frozen && frozen->rebuild) {
             std::vector<std::uint64_t> order{ownSerial};
             std::ranges::copy_if(laneOrder, std::back_inserter(order),

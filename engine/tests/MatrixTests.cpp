@@ -923,11 +923,9 @@ TEST_P(HeldBeatSpans, DrawsTheLongestHeldSpanWholeFrozen)
     EXPECT_TRUE(frame->has(FrameFlag::kPartial)) << "the hold covers only part of the span";
 }
 
-// DISABLED_: engine bug, for triage. Back at the held span after the longer one, the frame is
-// cropped from the longer span's partly empty sweep instead of rebuilt from the hold, which
-// covers it: the frame is flagged partial and has holes, in every mode at 44.1 and 384 kHz,
-// though it was whole before the round trip.
-TEST_P(HeldBeatSpans, DISABLED_StaysWholeFrozenBackFromALongerSpan)
+// Back at the held span after the longer one, the frame is rebuilt from the hold, which covers it,
+// not cropped from the longer span's partly empty sweep: whole, as before the round trip.
+TEST_P(HeldBeatSpans, StaysWholeFrozenBackFromALongerSpan)
 {
     const ModeCase c = GetParam();
     const std::size_t fits = longestBeatSpanHeld(c.rate, kHeldTempo);

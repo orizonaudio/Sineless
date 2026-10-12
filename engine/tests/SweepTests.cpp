@@ -85,7 +85,7 @@ std::optional<SweepWindow> barImage()
 TEST(FrozenSweep, KeepsTheImageForTheSameSpan)
 {
     const auto frozen =
-        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kOneBar, barImage(), 96000);
+        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kOneBar, barImage(), 96000, true);
     ASSERT_TRUE(frozen);
     EXPECT_FALSE(frozen->rebuild);
     EXPECT_DOUBLE_EQ(frozen->start, 0.0);
@@ -97,7 +97,7 @@ TEST(FrozenSweep, CropsAShorterSpanThatDividesTheImage)
 {
     // Two beats at 1.25 bars: the cycle of quarter notes 4 to 6, the first half of the bar.
     const auto frozen =
-        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kTwoBeats, barImage(), 96000);
+        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kTwoBeats, barImage(), 96000, true);
     ASSERT_TRUE(frozen);
     EXPECT_FALSE(frozen->rebuild);
     EXPECT_DOUBLE_EQ(frozen->start, 0.0);
@@ -107,11 +107,28 @@ TEST(FrozenSweep, CropsAShorterSpanThatDividesTheImage)
     EXPECT_EQ(frozen->window.sampleCount, 48000u);
 }
 
+// An image still filling in (rebuilt for a span longer than the held audio) would show its empty
+// part in a crop: a shorter span is rebuilt from the held audio instead, and the same span keeps
+// the image, so a frozen sweep is not rebuilt on every frame.
+TEST(FrozenSweep, RebuildsAShorterSpanFromAnImageStillFillingIn)
+{
+    const auto shorter =
+        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kTwoBeats, barImage(), 96000, false);
+    ASSERT_TRUE(shorter);
+    EXPECT_TRUE(shorter->rebuild);
+    EXPECT_EQ(shorter->window.sampleCount, 48000u);
+    EXPECT_DOUBLE_EQ(shorter->window.cycleStart, 4.0);
+    const auto same =
+        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kOneBar, barImage(), 96000, false);
+    ASSERT_TRUE(same);
+    EXPECT_FALSE(same->rebuild);
+}
+
 TEST(FrozenSweep, RebuildsOtherSpansFromTheHeldAudio)
 {
     // Two bars do not fit the image: the whole span, filled as far as the held audio goes.
     const auto longer =
-        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kTwoBars, barImage(), 96000);
+        frozenSweep(clockAt120(), 120000, kRate, BeatSpan::kTwoBars, barImage(), 96000, true);
     ASSERT_TRUE(longer);
     EXPECT_TRUE(longer->rebuild);
     EXPECT_EQ(longer->window.sampleCount, 192000u);
@@ -122,8 +139,8 @@ TEST(FrozenSweep, RebuildsOtherSpansFromTheHeldAudio)
     waltz.numerator = 3;
     const auto waltzBar = sweepWindow(waltz, 120000, kRate, BeatSpan::kOneBar, kUnlimited);
     ASSERT_TRUE(waltzBar);
-    const auto odd =
-        frozenSweep(waltz, 120000, kRate, BeatSpan::kTwoBeats, waltzBar, waltzBar->sampleCount);
+    const auto odd = frozenSweep(waltz, 120000, kRate, BeatSpan::kTwoBeats, waltzBar,
+                                 waltzBar->sampleCount, true);
     ASSERT_TRUE(odd);
     EXPECT_TRUE(odd->rebuild);
 }
