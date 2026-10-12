@@ -4,7 +4,10 @@
 #include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <optional>
+#include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace orizon::editor {
@@ -249,6 +252,158 @@ TEST_F(SessionTest, CanBeRestartedWithAnotherHello)
     session.receive(example("hello"));
     EXPECT_EQ(transport.ofType("snapshot").size(), 2u);
 }
+
+// Fault injection: a page that never loads, or never finishes its handshake, never says hello.
+
+// Changes the host makes while no page listens: a setting (setState), the sample rate, the track's
+// channels and, in the multi-track view, the lanes.
+void changeEverythingTheSessionReports(engine::Engine& engine, engine::Analyzer& analyzer)
+{
+    engine::Settings restored = engine.settings().get();
+    restored.set(SettingId::kTriggerLevel, 0.5);
+    restored.set(SettingId::kDisplayMode, static_cast<double>(protocol::DisplayMode::kMulti));
+    restored.set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+    restored.set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+    engine.settings().replace(restored);
+    engine.setSampleRate(96000.0);
+    engine.setInputChannels(1);
+    engine.setTrackInfo({.name = "Kick", .colour = std::nullopt, .index = std::nullopt});
+    analyzer.setColumns(640);
+    std::vector<std::byte> frame;
+    EXPECT_TRUE(analyzer.produce(frame)); // Builds the lane set.
+    EXPECT_NE(analyzer.laneSet().id, 0u);
+}
+
+// Nothing is sent or queued for a page that never said hello, however long the editor stays open
+// and whatever the host changes meanwhile; a page that loads late gets the state as it is then,
+// once, with no backlog of changes.
+TEST_F(SessionTest, SendsNothingUntilThePageSaysHello)
+{
+    for (int tick = 0; tick < 100; ++tick) {
+        session.sync();
+        if (tick == 50) {
+            changeEverythingTheSessionReports(engine, analyzer);
+        }
+    }
+    EXPECT_FALSE(session.started());
+    EXPECT_TRUE(transport.messages.empty());
+
+    session.receive(example("hello"));
+    ASSERT_TRUE(session.started());
+    const auto snapshots = transport.ofType("snapshot");
+    ASSERT_EQ(snapshots.size(), 1u);
+    EXPECT_EQ(snapshots[0]["sampleRate"], 96000.0);
+    EXPECT_EQ(snapshots[0]["inputChannels"], 1);
+    EXPECT_EQ(snapshots[0]["settings"]["triggerLevel"], 0.5);
+    EXPECT_EQ(snapshots[0]["settings"]["displayMode"], "multi");
+    EXPECT_TRUE(transport.ofType("stateChanged").empty()) << "the snapshot already holds them";
+    EXPECT_EQ(transport.ofType("lanes").size(), 1u);
+    EXPECT_EQ(transport.messages.size(), 2u);
+}
+
+// A page that speaks another protocol version stays unstarted: after its one error, the host's
+// changes and its own requests send nothing more.
+TEST_F(SessionTest, SendsNothingMoreAfterARejectedHello)
+{
+    auto hello = example("hello");
+    hello["protocolVersion"] = protocol::kProtocolVersion + 1;
+    session.receive(hello);
+    ASSERT_EQ(transport.messages.size(), 1u);
+    changeEverythingTheSessionReports(engine, analyzer);
+    session.sync();
+    session.receive(example("setSetting"));
+    EXPECT_FALSE(session.started());
+    EXPECT_EQ(transport.messages.size(), 1u);
+    EXPECT_EQ(engine.settings().get().value(SettingId::kTriggerMode), 0.0);
+}
+
+// What a frame shows that the page's messages can change.
+struct FrameFacts
+{
+    std::uint32_t pointCount = 0;
+    std::uint8_t flags = 0;
+    float viewStart = 0.0f;
+    float viewEnd = 0.0f;
+    float visibleSamples = 0.0f;
+
+    bool operator==(const FrameFacts&) const = default;
+};
+
+FrameFacts produceFacts(engine::Analyzer& analyzer)
+{
+    std::vector<std::byte> frame;
+    EXPECT_TRUE(analyzer.produce(frame));
+    FrameFacts facts;
+    if (frame.size() < FrameHeader::kSize) {
+        return facts;
+    }
+    std::memcpy(&facts.pointCount, frame.data() + FrameHeader::kPointCountOffset,
+                sizeof(facts.pointCount));
+    std::memcpy(&facts.flags, frame.data() + FrameHeader::kFlagsOffset, sizeof(facts.flags));
+    std::memcpy(&facts.viewStart, frame.data() + FrameHeader::kViewStartOffset,
+                sizeof(facts.viewStart));
+    std::memcpy(&facts.viewEnd, frame.data() + FrameHeader::kViewEndOffset, sizeof(facts.viewEnd));
+    std::memcpy(&facts.visibleSamples, frame.data() + FrameHeader::kVisibleSamplesOffset,
+                sizeof(facts.visibleSamples));
+    return facts;
+}
+
+// Every message but hello: each shared example, and a bare message of every protocol type.
+struct EarlyMessage
+{
+    std::string name;
+    nlohmann::json message;
+};
+
+std::vector<EarlyMessage> earlyMessages()
+{
+    std::vector<EarlyMessage> messages;
+    std::ifstream file(std::string(ORIZON_PROTOCOL_TEST_DATA_DIR) + "/messages.json");
+    const nlohmann::json examples = nlohmann::json::parse(file);
+    for (const auto& [name, message] : examples.items()) {
+        if (message.is_object() && message.value("type", "") != "hello") {
+            messages.push_back({.name = name, .message = message});
+        }
+    }
+    for (const std::string_view type : protocol::kMessageTypeNames) {
+        if (type != "hello") {
+            messages.push_back(
+                {.name = "bare_" + std::string(type), .message = {{"type", std::string(type)}}});
+        }
+    }
+    return messages;
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const EarlyMessage& early, std::ostream* out)
+{
+    *out << early.message.dump();
+}
+
+class MessageBeforeHello : public SessionTest, public ::testing::WithParamInterface<EarlyMessage>
+{
+};
+
+// A page that sends before its hello (or whose hello was lost) changes nothing and gets no answer:
+// the settings, and what the analyzer draws, stay as an untouched session would have them.
+TEST_P(MessageBeforeHello, ChangesNothing)
+{
+    engine.settings().set(SettingId::kTimeSpan, 0.1);
+    engine::Analyzer untouched{engine};
+    analyzer.setColumns(640);
+    untouched.setColumns(640);
+    const engine::Settings before = engine.settings().get();
+    session.receive(GetParam().message);
+    EXPECT_FALSE(session.started());
+    EXPECT_TRUE(transport.messages.empty());
+    EXPECT_EQ(engine.settings().get(), before);
+    EXPECT_EQ(produceFacts(analyzer), produceFacts(untouched));
+}
+
+INSTANTIATE_TEST_SUITE_P(PageNeverLoads, MessageBeforeHello, ::testing::ValuesIn(earlyMessages()),
+                         [](const ::testing::TestParamInfo<EarlyMessage>& info) {
+                             return info.param.name;
+                         });
 
 } // namespace
 } // namespace orizon::editor

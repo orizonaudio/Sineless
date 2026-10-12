@@ -100,6 +100,23 @@ TEST_F(FrameFlowTest, ProducesNothingWithoutACredit)
     EXPECT_EQ(delivered, 0);
 }
 
+// Fault injection: a page that never loads never asks for a frame. However long the editor stays
+// open, the worker hands the UI thread nothing, so no work or frame queues up for it.
+TEST_F(FrameFlowTest, QueuesNothingForAPageThatNeverAsks)
+{
+    for (int step = 0; step < 1000; ++step) {
+        writeSamples(480);
+        flow.step();
+        ASSERT_TRUE(dispatcher.queue.empty()) << "step " << step;
+    }
+    EXPECT_EQ(delivered, 0);
+    // A page that loads late gets a frame on its first request.
+    flow.grantCredit();
+    flow.step();
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 1);
+}
+
 TEST_F(FrameFlowTest, DeliversOneFramePerCreditOnTheUiThread)
 {
     flow.grantCredit();
