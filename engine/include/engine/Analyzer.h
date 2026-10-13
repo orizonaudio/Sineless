@@ -209,8 +209,8 @@ private:
     void rememberInputs(const Settings& settings, const Commands& command, std::uint32_t laneSetId);
     bool placeLanes(const Settings& settings, protocol::BeatSpan span);
     [[nodiscard]] std::uint64_t sharedLength(std::uint64_t serial, const SweepWindow& sweep) const;
-    void catchUpToHold(Lane& lane, protocol::BeatSpan span);
-    void catchUpImageToHold(protocol::BeatSpan span);
+    void catchUpToHold(Lane& lane);
+    void catchUpImageToHold();
     bool showFrozenParts(protocol::BeatSpan span, double start, double end);
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
@@ -307,6 +307,8 @@ private:
     // Multi-track view: lanes by member serial, and their order on screen.
     std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;
     std::vector<std::uint64_t> laneOrder;
+    // The beat span the sweeps (Single mode's, or the lanes') were last drawn with, live.
+    protocol::BeatSpan placedSpan = protocol::BeatSpan::kOneBar;
     std::uint64_t ownLane = 0; // Serial of this instance's lane.
     // Compare view: whether this frame compares tracks; in Seconds mode, each lane's source and
     // where this frame's window starts in it, the sum lane's columns as the window rolls, and

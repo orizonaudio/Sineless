@@ -1120,22 +1120,28 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSweepFillingIn,
 
 // Frozen partway through a sweep's first pass, with audio that arrived after the last frame: the
 // frozen sweep draws that audio too, so its playhead stands at the newest drawn sample, with no
-// gap behind it. In every mode.
-class FrozenPlayhead : public ::testing::TestWithParam<DisplayMode>
+// gap behind it. In every mode, at the lowest and highest rates.
+class FrozenPlayhead : public ::testing::TestWithParam<ModeCase>
 {
 };
 
+// Plays two tracks for `seconds` of a two-bar sweep (4 s), with a frame every 100 ms, then 80 ms
+// more after the last frame.
+void playSweep(Session& session, const ModeCase& c, double seconds)
+{
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1}); // Differs from pass to pass.
+    session.join({.kind = Signal::Kind::kNoise, .seed = 2});
+    configure(session.own(), c.mode, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kTwoBars));
+    session.play(seconds, 0.1);
+    session.play(0.08);
+}
+
 TEST_P(FrozenPlayhead, StandsAtTheNewestDrawnSample)
 {
-    constexpr double kRate = 48000.0;
-    const DisplayMode mode = GetParam();
-    Session session(kRate, 2);
-    session.join({.frequency = 1000.0});
-    session.join({.frequency = 1500.0});
-    configure(session.own(), mode, TimeBase::kBeats);
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kTwoBars));
-    session.play(1.0, 0.1); // Into the first pass of a 4 s sweep.
-    session.play(0.08);     // After the last frame.
+    const ModeCase c = GetParam();
+    Session session(c.rate, c.channels);
+    playSweep(session, c, 1.0); // Into the first pass.
     session.analyzer().setFrozen(true);
     const auto frame = session.produce();
     ASSERT_TRUE(frame) << "no frozen frame";
@@ -1154,12 +1160,34 @@ TEST_P(FrozenPlayhead, StandsAtTheNewestDrawnSample)
     }
 }
 
-INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenPlayhead,
-                         ::testing::Values(DisplayMode::kSingle, DisplayMode::kMulti,
-                                           DisplayMode::kCompare),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
-                             return modeName(info.param);
-                         });
+// A shorter span chosen in the same step as the freeze is shown as when chosen just after it:
+// cropped from the whole sweep drawn up to the freeze, on the span it was drawn with.
+TEST_P(FrozenPlayhead, IsTheSameWithASpanChosenAsItFreezes)
+{
+    const ModeCase c = GetParam();
+    const auto oneBar = static_cast<double>(BeatSpan::kOneBar);
+    Session together(c.rate, c.channels);
+    playSweep(together, c, 5.0); // Past a whole pass.
+    together.own().settings().set(SettingId::kBeatSpan, oneBar);
+    together.analyzer().setFrozen(true);
+    const auto atOnce = together.produce();
+    ASSERT_TRUE(atOnce) << "no frame frozen with the span";
+
+    Session after(c.rate, c.channels);
+    playSweep(after, c, 5.0);
+    after.analyzer().setFrozen(true);
+    ASSERT_TRUE(after.produce()) << "no frozen frame";
+    after.own().settings().set(SettingId::kBeatSpan, oneBar);
+    const auto later = after.produce();
+    ASSERT_TRUE(later) << "no frame of the span chosen after";
+
+    EXPECT_EQ(atOnce->cursor, later->cursor);
+    EXPECT_EQ(atOnce->visibleSamples, later->visibleSamples);
+    EXPECT_TRUE(sameValues(atOnce->data, later->data)) << "the same frame";
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenPlayhead, ::testing::ValuesIn(heldBeatCases()),
+                         modeTestName);
 
 // Frozen with a lane still filling in, beside whole ones: a shorter span longer than the hold is
 // cropped from the whole lanes, which keep all they drew, and rebuilt from the held audio only for
