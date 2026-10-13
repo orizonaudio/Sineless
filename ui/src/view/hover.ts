@@ -75,7 +75,8 @@ export function traceAt(
 // its frequency readout: only after first falling `crossingHysteresis` of the peak-to-peak range
 // below it, so noise riding on a crossing does not count twice. None for a signal at or below
 // the analysis gate. Min/max columns cross inside a column that spans the level, entered from
-// below, or at the edge between a column wholly below it and one wholly above.
+// below, or at the edge between a column wholly below it and one wholly above. Values that are
+// not finite (from a broken signal upstream) are measured around, as the engine does.
 export function risingCrossings(frame: Frame, values: Float32Array): number[] {
   const crossings: number[] = [];
   const count =
@@ -84,24 +85,36 @@ export function risingCrossings(frame: Frame, values: Float32Array): number[] {
   let highest = -Infinity;
   let total = 0;
   let squares = 0;
+  let finite = 0;
   for (let index = 0; index < count; index++) {
     const value = values[index] ?? 0;
+    if (!Number.isFinite(value)) {
+      continue;
+    }
     lowest = Math.min(lowest, value);
     highest = Math.max(highest, value);
     total += value;
     squares += value * value;
+    finite++;
   }
   const range = highest - lowest;
-  if (!(Math.sqrt(squares / count) > gateLevel) || !(range > 0)) {
+  if (
+    finite === 0 ||
+    !(Math.sqrt(squares / finite) > gateLevel) ||
+    !(range > 0)
+  ) {
     return crossings;
   }
-  const level = total / count;
+  const level = total / finite;
   const armLevel = level - crossingHysteresis * range;
   let armed = false;
   if (frame.mode === FrameMode.minMax) {
     for (let column = 0; column < frame.pointCount; column++) {
       const low = values[column * 2] ?? 0;
       const high = values[column * 2 + 1] ?? 0;
+      if (!Number.isFinite(low) || !Number.isFinite(high)) {
+        continue;
+      }
       if (armed && high >= level) {
         crossings.push(
           columnPosition(frame, low >= level ? column : column + 0.5),
@@ -116,10 +129,13 @@ export function risingCrossings(frame: Frame, values: Float32Array): number[] {
   for (let index = 0; index + 1 < frame.pointCount; index++) {
     const here = values[index] ?? 0;
     const next = values[index + 1] ?? 0;
+    if (!Number.isFinite(here)) {
+      continue;
+    }
     if (here <= armLevel) {
       armed = true;
     }
-    if (armed && here < level && next >= level) {
+    if (armed && Number.isFinite(next) && here < level && next >= level) {
       crossings.push(
         pointPosition(frame, index + (level - here) / (next - here)),
       );
