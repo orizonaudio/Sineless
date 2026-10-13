@@ -381,6 +381,7 @@ private:
     std::vector<float> matchOwn;
     std::vector<float> matchTrack;
     std::vector<float> pieceScratch;
+    std::vector<float> pieceSumScratch;
     std::vector<std::vector<double>> trackEnergies;
     std::vector<std::span<const double>> energySpans;
     std::vector<std::vector<double>> fixedTrackEnergies;

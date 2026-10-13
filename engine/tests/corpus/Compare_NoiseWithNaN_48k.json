@@ -1,5 +1,5 @@
 {
-  "fixedGain": 3.010245,
+  "fixedGain": 3.0103,
   "flags": {
     "compared": true,
     "frozen": false,
@@ -50,6 +50,6 @@
     "sampleRate": 48000,
     "timeBase": "beats"
   },
-  "sumGain": 3.010245,
+  "sumGain": 3.0103,
   "visibleSamples": 6000
 }
