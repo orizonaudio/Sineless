@@ -210,6 +210,7 @@ private:
     bool placeLanes(const Settings& settings, protocol::BeatSpan span);
     [[nodiscard]] std::uint64_t sharedLength(std::uint64_t serial, const SweepWindow& sweep) const;
     void catchUpToHold(Lane& lane, protocol::BeatSpan span);
+    void catchUpImageToHold(protocol::BeatSpan span);
     bool showFrozenParts(protocol::BeatSpan span, double start, double end);
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);

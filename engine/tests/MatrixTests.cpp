@@ -1118,6 +1118,49 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSweepFillingIn,
                              return modeName(info.param);
                          });
 
+// Frozen partway through a sweep's first pass, with audio that arrived after the last frame: the
+// frozen sweep draws that audio too, so its playhead stands at the newest drawn sample, with no
+// gap behind it. In every mode.
+class FrozenPlayhead : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(FrozenPlayhead, StandsAtTheNewestDrawnSample)
+{
+    constexpr double kRate = 48000.0;
+    const DisplayMode mode = GetParam();
+    Session session(kRate, 2);
+    session.join({.frequency = 1000.0});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), mode, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kTwoBars));
+    session.play(1.0, 0.1); // Into the first pass of a 4 s sweep.
+    session.play(0.08);     // After the last frame.
+    session.analyzer().setFrozen(true);
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+    ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+    const auto playhead = static_cast<std::size_t>(frame->cursor * kColumns);
+    ASSERT_GT(playhead, 20U);
+    // The columns just behind the playhead, in every trace: drawn, not holes.
+    const std::size_t traces = tracesIn(*frame);
+    for (std::size_t index = 0; index < traces; ++index) {
+        const std::span<const float> values = trace(*frame, index);
+        for (std::size_t column = playhead - 20; column < playhead - 1; ++column) {
+            EXPECT_GE(std::abs(values[column * 2 + 1]), kHole)
+                << "trace " << index << ", column " << column << " of playhead " << playhead;
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenPlayhead,
+                         ::testing::Values(DisplayMode::kSingle, DisplayMode::kMulti,
+                                           DisplayMode::kCompare),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
+                         });
+
 // Frozen with a lane still filling in, beside whole ones: a shorter span longer than the hold is
 // cropped from the whole lanes, which keep all they drew, and rebuilt from the held audio only for
 // the lane that is filling in. At 90 BPM, 16 bars is 42.7 s and 8 bars 21.3 s, longer than the
