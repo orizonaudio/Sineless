@@ -55,6 +55,18 @@ describe("the mutation testing summary", () => {
     ]);
   });
 
+  test("lists a file's mutants by line", () => {
+    const unordered: Report = {
+      files: {
+        "a.ts": { mutants: [mutant("Survived", 9), mutant("Survived", 2)] },
+      },
+    };
+    const rows = summarise(unordered)
+      .split("\n")
+      .filter((line) => line.startsWith("| a.ts"));
+    expect(rows.map((row) => row.split(" ")[1])).toEqual(["a.ts:2", "a.ts:9"]);
+  });
+
   test("keeps a change on one table row", () => {
     const multiline: Report = {
       files: { "a.ts": { mutants: [mutant("Survived", 1, "a ||\n  b")] } },
@@ -77,10 +89,10 @@ describe("the mutation testing warnings", () => {
 
   test("escape what GitHub would decode", () => {
     const modulo: Report = {
-      files: { "a,b.ts": { mutants: [mutant("Survived", 1, "a % b")] } },
+      files: { "a,b:c.ts": { mutants: [mutant("Survived", 1, "a % b")] } },
     };
     const [warning] = annotations(modulo);
-    expect(warning).toContain("file=a%2Cb.ts,");
+    expect(warning).toContain("file=a%2Cb%3Ac.ts,");
     expect(warning).toMatch(/: a %25 b$/u);
   });
 
