@@ -15,11 +15,14 @@
 // match per track, in lane order, of three float32 values each: the correlation with this track
 // (-1 to +1), the offset in samples by which the track lags this track (negative: it leads), and
 // its polarity: 1 when it matches this track best as it is, -1 when flipped, 0 when it matches
-// nowhere clearly (unrelated sounds; the offset is then 0). Tracks that are not compared, and this track, have zeros.
+// nowhere clearly (unrelated sounds; the offset is then NaN). Tracks that are not compared, and
+// this track, have no correlation or offset (NaN) and polarity 0; a correlation not measured yet,
+// or of tracks that never sound together, is NaN too.
 //
 // `samplesPerPoint` is the number of samples each point covers. The visible span starts
 // `startFraction` samples after the first point (sub-sample trigger alignment). Readouts cover
-// the trigger channel; `frequency` is 0 when unavailable. In a tempo-synced sweep, `cursor` is
+// the trigger channel; `peak`, `rms` and `frequency` are NaN when not measured (no frequency found,
+// or nothing to measure). In a tempo-synced sweep, `cursor` is
 // the playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
 // project position of the left edge, `spanQuarterNotes` the span shown and `barQuarterNotes` the
 // bar length, all in quarter notes (0 when not synced); `cycleSeconds` is the left edge's project

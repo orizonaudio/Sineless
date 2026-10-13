@@ -94,11 +94,12 @@ TEST(Readouts, FindTheFrequencyOfNotesWithGapsBetweenThem)
     EXPECT_NEAR(readouts.frequencyHz.value(), 100.0, 0.5);
 }
 
+// Nothing to measure: no value, not the level of silence.
 TEST(Readouts, HandleAnEmptySpan)
 {
     const Readouts readouts = computeReadouts({}, kSampleRate);
-    EXPECT_EQ(readouts.peak, 0.0f);
-    EXPECT_EQ(readouts.rms, 0.0f);
+    EXPECT_TRUE(std::isnan(readouts.peak));
+    EXPECT_TRUE(std::isnan(readouts.rms));
     EXPECT_FALSE(readouts.frequencyHz);
 }
 

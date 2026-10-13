@@ -142,7 +142,7 @@ function expectedHeader(
     startFraction: content.startFraction,
     peak: content.peak,
     rms: content.rms,
-    frequency: content.frequency ?? 0,
+    frequency: content.frequency ?? Number.NaN,
     cursor: content.cursor ?? -1,
     cycleStart: content.cycleStart ?? 0,
     spanQuarterNotes: content.spanQuarterNotes ?? 0,
@@ -177,8 +177,8 @@ function offsetOf(name: FrameHeaderFieldName): number {
 const toFloat32 = (values: ArrayLike<number>): number[] =>
   Array.from(Float32Array.from(Array.from(values)));
 
-// The frame the decoder should return for a content: float32 precision, "no frequency" (0 or
-// below) and "no cursor" (below 0) as undefined, and a polarity that is either related or not.
+// The frame the decoder should return for a content: float32 precision, "no frequency" (NaN)
+// and "no cursor" (below 0) as undefined, and a polarity that is either related or not.
 function expectedFrame(content: FrameContent): Frame {
   const header = expectedHeader(content);
   const f = Math.fround;
@@ -195,7 +195,7 @@ function expectedFrame(content: FrameContent): Frame {
     startFraction: f(header.startFraction),
     peak: f(header.peak),
     rms: f(header.rms),
-    frequency: frequency > 0 ? frequency : undefined,
+    frequency: Number.isNaN(frequency) ? undefined : frequency,
     synced: content.synced === true,
     limited: content.limited === true,
     partial: content.partial === true,

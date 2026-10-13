@@ -112,14 +112,16 @@ Readouts levelsOf(const BlockStats& stats, std::size_t first, std::size_t end)
     const std::span<const BlockStats::Block> blocks = stats.blocks();
     const std::size_t firstBlock = std::min(first / block, blocks.size());
     const std::size_t endBlock = std::min((end + block - 1) / block, blocks.size());
+    float peak = 0.0f;
     double sumSquares = 0.0;
     for (std::size_t index = firstBlock; index < endBlock; ++index) {
-        readouts.peak = std::max(readouts.peak, blocks[index].peak);
+        peak = std::max(peak, blocks[index].peak);
         sumSquares += blocks[index].sumSquares;
     }
     const std::size_t samples = std::min(endBlock * block, stats.sampleCount()) -
                                 std::min(firstBlock * block, stats.sampleCount());
     if (samples > 0) {
+        readouts.peak = peak;
         readouts.rms = static_cast<float>(std::sqrt(sumSquares / static_cast<double>(samples)));
     }
     return readouts;
@@ -146,6 +148,15 @@ void continueRefresh(Refresh& refresh, std::size_t length, std::size_t step, con
 }
 
 // How many positions of a sum of `parts` tracks to recompute per frame.
+// `lanes` matches that are none: no correlation or offset (NaN), and not related (polarity 0).
+void assignNoMatches(std::vector<float>& values, std::size_t lanes)
+{
+    values.assign(lanes * protocol::kMatchValues, std::numeric_limits<float>::quiet_NaN());
+    for (std::size_t lane = 0; lane < lanes; ++lane) {
+        values[(lane * protocol::kMatchValues) + 2] = 0.0f;
+    }
+}
+
 std::size_t refreshStep(std::size_t parts)
 {
     return kSumRefreshSamples / std::max<std::size_t>(parts, 1);
@@ -294,7 +305,8 @@ void Analyzer::applyReadouts(FrameHeaderValues& header)
     readoutCache.frozen = isFrozen;
     header.peak = readoutCache.values.peak;
     header.rms = readoutCache.values.rms;
-    header.frequency = static_cast<float>(readoutCache.values.frequencyHz.value_or(0.0));
+    header.frequency = static_cast<float>(
+        readoutCache.values.frequencyHz.value_or(std::numeric_limits<double>::quiet_NaN()));
 }
 
 Analyzer::Commands Analyzer::takeCommands()
@@ -1594,18 +1606,19 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     if (searched || rawMeasured || fixedMeasured || !comparisonCache.valid ||
         now < comparisonCache.at || now - comparisonCache.at >= gainInterval) {
         std::vector<float>& matchValues = comparisonCache.matches;
-        matchValues.assign(laneOrder.size() * protocol::kMatchValues, 0.0f);
+        assignNoMatches(matchValues, laneOrder.size());
         for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
             const std::uint64_t serial = laneOrder[lane];
             const auto found = matchStates.find(serial);
             if (!lanes.at(serial)->compared || found == matchStates.end()) {
-                continue; // This track, and tracks not compared, have zeros.
+                continue; // This track, and tracks not compared, have none.
             }
             const PairAnalysis& match = found->second.analysis;
             float* const values = matchValues.data() + lane * protocol::kMatchValues;
             values[0] = match.measured ? static_cast<float>(match.correlation)
                                        : std::numeric_limits<float>::quiet_NaN();
-            values[1] = static_cast<float>(match.offset);
+            values[1] = match.related ? static_cast<float>(match.offset)
+                                      : std::numeric_limits<float>::quiet_NaN();
             values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
         }
         // The sum as recorded over the visible part; the fix where every shifted track has
@@ -1795,18 +1808,19 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     if (searched || !comparisonCache.valid || now < comparisonCache.at ||
         now - comparisonCache.at >= gainInterval) {
         std::vector<float>& matchValues = comparisonCache.matches;
-        matchValues.assign(laneOrder.size() * protocol::kMatchValues, 0.0f);
+        assignNoMatches(matchValues, laneOrder.size());
         for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
             const std::uint64_t serial = laneOrder[lane];
             const auto found = matchStates.find(serial);
             if (!lanes.at(serial)->compared || found == matchStates.end()) {
-                continue; // This track, and tracks not compared, have zeros.
+                continue; // This track, and tracks not compared, have none.
             }
             const PairAnalysis& match = found->second.analysis;
             float* const values = matchValues.data() + lane * protocol::kMatchValues;
             values[0] = match.measured ? static_cast<float>(match.correlation)
                                        : std::numeric_limits<float>::quiet_NaN();
-            values[1] = static_cast<float>(match.offset);
+            values[1] = match.related ? static_cast<float>(match.offset)
+                                      : std::numeric_limits<float>::quiet_NaN();
             values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
         }
         // The fix is measured where every shifted track has samples in the window.
