@@ -372,7 +372,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
             return false;
         }
         if (synced) {
-            catchUpImageToHold(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan));
+            catchUpImageToHold();
         }
     }
     if (!command.frozen) {
@@ -447,6 +447,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
                 return false;
             }
             imageWindow = live;
+            placedSpan = beatSpan;
             sweep = *live;
         }
         source = &image;
@@ -851,7 +852,7 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& co
                                    frozenLength(ring, lane->engine->sampleRate(), synced, true),
                                    scratch) &&
                 synced) {
-                catchUpToHold(*lane, settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan));
+                catchUpToHold(*lane);
             }
         } else if (!isFrozen && lane->hold.held()) {
             lane->hold.release();
@@ -898,6 +899,7 @@ bool Analyzer::inputsChanged(const Settings& settings, const Commands& command,
 
 bool Analyzer::placeLanes(const Settings& settings, protocol::BeatSpan span)
 {
+    placedSpan = span;
     bool fresh = false;
     // The own lane first: the others take its length.
     std::vector<std::uint64_t> order{ownLane};
@@ -967,6 +969,7 @@ void Analyzer::advance()
                                    beatSpan, kMaxSweepSamples);
     if (sweep && image.update(ring, *sweep, false, engine.inputChannels())) {
         imageWindow = sweep;
+        placedSpan = beatSpan;
     }
 }
 
@@ -1163,12 +1166,11 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
 
 // Single mode's sweep, as the lanes' (see catchUpToHold): drawn up to where the freeze holds the
 // audio, on the span it was drawn with.
-void Analyzer::catchUpImageToHold(protocol::BeatSpan span)
+void Analyzer::catchUpImageToHold()
 {
     const auto held =
-        sweepWindow(frozenStamp, frozenEnd, engine.sampleRate(), span, kMaxSweepSamples);
-    if (!held || image.length() == 0 || !imageWindow ||
-        std::abs(held->spanQuarterNotes - imageWindow->spanQuarterNotes) > 1e-9) {
+        sweepWindow(frozenStamp, frozenEnd, engine.sampleRate(), placedSpan, kMaxSweepSamples);
+    if (!held || image.length() == 0 || !imageWindow) {
         return;
     }
     if (image.update(hold, *held, false, engine.inputChannels(), image.length())) {
@@ -1178,15 +1180,14 @@ void Analyzer::catchUpImageToHold(protocol::BeatSpan span)
 
 // The lanes were last placed a frame before the freeze, which holds the audio up to its moment:
 // what the hold has since is placed too, so that a frozen sweep ends, and its playhead stands,
-// where the hold does. Only on the span the lane was drawn with, which a span chosen at the same
-// moment does not have.
-void Analyzer::catchUpToHold(Lane& lane, protocol::BeatSpan span)
+// where the hold does. On the span the lanes were drawn with, also when another is chosen at the
+// same moment: it is then cropped or rebuilt from them as drawn.
+void Analyzer::catchUpToHold(Lane& lane)
 {
     const auto held = sweepWindow(lane.hold.clock(), lane.hold.endIndex(),
-                                  lane.engine->sampleRate(), span, kMaxSweepSamples);
+                                  lane.engine->sampleRate(), placedSpan, kMaxSweepSamples);
     const std::uint64_t length = lane.image.length();
-    if (!held || length == 0 || !lane.window ||
-        std::abs(held->spanQuarterNotes - lane.window->spanQuarterNotes) > 1e-9) {
+    if (!held || length == 0 || !lane.window) {
         return;
     }
     if (lane.image.update(lane.hold, *held, false, lane.engine->inputChannels(), length)) {
