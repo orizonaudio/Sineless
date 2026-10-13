@@ -126,8 +126,7 @@ jobs:
             exit 0
           fi
           number="${PR_FROM_EVENT:-$PR_FROM_COMMENT}"
-          read -r sha base author < <(gh api "repos/$REPO/pulls/$number" \
-            --jq '"\(.head.sha) \(.base.ref) \(.user.login)"')
+          read -r sha base < <(gh api "repos/$REPO/pulls/$number" --jq '"\(.head.sha) \(.base.ref)"')
           {
             echo "number=$number"
             echo "sha=$sha"
@@ -152,9 +151,10 @@ jobs:
             echo "action=done" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Dependabot's pull requests get no secrets, so no review can run on them; they change
-          # pinned versions, which CI and the dependency review check.
-          if [[ "$author" == "dependabot[bot]" ]]; then
+          # A push by Dependabot runs without secrets, so no review can run on it; it changes pinned
+          # versions, which CI and the dependency review check. Anyone else's push to its branch,
+          # and a /ai-review comment, is reviewed as usual.
+          if [[ "$EVENT" == pull_request && "$ACTOR" == "dependabot[bot]" ]]; then
             status "$sha" success "Dependency update: checked by CI and the dependency review"
             echo "action=done" >> "$GITHUB_OUTPUT"
             exit 0
