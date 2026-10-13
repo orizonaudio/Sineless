@@ -1573,8 +1573,10 @@ TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
         break;
     }
 
-    // Once they are past what the frame shows, nothing is flagged any more.
-    session.play(span * 2.0 + 0.5);
+    // Once they are past what the frame shows, nothing is flagged any more: with frames along the
+    // way, so a rolling lane keeps its columns and moves their flags with them.
+    session.play(span * 2.0 + 0.5, 0.02);
+    session.play(static_cast<double>(kBlock) / rate); // Audio since the last frame, for one more.
     frame = session.produce();
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->invalidSamples, 0U) << "none left";
