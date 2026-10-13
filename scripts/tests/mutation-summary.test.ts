@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   annotations,
+  relativeTo,
   summarise,
   type Mutant,
   type Report,
@@ -36,17 +37,40 @@ const report: Report = {
   },
 };
 
+const title = "Mutation testing (C++)";
+
 describe("the mutation testing summary", () => {
+  test("is headed by its title", () => {
+    expect(summarise(report, title).split("\n")[0]).toBe(
+      "## Mutation testing (C++)",
+    );
+  });
+
+  test("names files from the repository, as Mull's absolute paths are not", () => {
+    const absolute: Report = {
+      files: {
+        "/work/repo/engine/src/a.cpp": { mutants: [mutant("Survived", 4)] },
+        "ui/src/b.ts": { mutants: [mutant("Survived", 5)] },
+      },
+    };
+    expect(relativeTo(absolute, "/work/repo")).toEqual({
+      files: {
+        "engine/src/a.cpp": { mutants: [mutant("Survived", 4)] },
+        "ui/src/b.ts": { mutants: [mutant("Survived", 5)] },
+      },
+    });
+  });
+
   test("scores the mutants noticed out of those measured", () => {
     // Killed, Timeout and RuntimeError noticed; Survived and NoCoverage not; the rest left out.
-    expect(summarise(report, 12)).toContain(
+    expect(summarise(report, title, 12)).toContain(
       "4 of 6 mutants noticed by the tests (66.7%), in 12 s.",
     );
-    expect(summarise(report)).toContain("(66.7%).");
+    expect(summarise(report, title)).toContain("(66.7%).");
   });
 
   test("lists the mutants not noticed, by file and line", () => {
-    const rows = summarise(report)
+    const rows = summarise(report, title)
       .split("\n")
       .filter((line) => line.startsWith("| ui/"));
     expect(rows).toEqual([
@@ -61,7 +85,7 @@ describe("the mutation testing summary", () => {
         "a.ts": { mutants: [mutant("Survived", 9), mutant("Survived", 2)] },
       },
     };
-    const rows = summarise(unordered)
+    const rows = summarise(unordered, title)
       .split("\n")
       .filter((line) => line.startsWith("| a.ts"));
     expect(rows.map((row) => row.split(" ")[1])).toEqual(["a.ts:2", "a.ts:9"]);
@@ -71,11 +95,11 @@ describe("the mutation testing summary", () => {
     const multiline: Report = {
       files: { "a.ts": { mutants: [mutant("Survived", 1, "a ||\n  b")] } },
     };
-    expect(summarise(multiline)).toContain("`a \\|\\| b`");
+    expect(summarise(multiline, title)).toContain("`a \\|\\| b`");
   });
 
   test("says when there is nothing to measure", () => {
-    expect(summarise({ files: {} })).toContain("No mutants to test.");
+    expect(summarise({ files: {} }, title)).toContain("No mutants to test.");
   });
 });
 

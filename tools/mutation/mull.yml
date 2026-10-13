@@ -1,0 +1,10 @@
+# Mull's settings for the C++ engine (scripts/mutation-cpp.sh): every mutator, in the engine's own
+# sources only. The script adds the changed-lines filter for a run against a base revision.
+mutators:
+  - cxx_all
+includePaths:
+  - ".*/engine/src/.*"
+  - ".*/engine/include/.*"
+excludePaths:
+  - ".*/_deps/.*"
+  - ".*/tests/.*"
