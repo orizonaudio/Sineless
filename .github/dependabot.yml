@@ -12,6 +12,11 @@ updates:
       npm:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # Node's types follow the Node the project runs (.nvmrc, "engines" in package.json): a newer
+    # major describes functions that Node 22 lacks. Both move together, by hand.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   # Mutation testing's own packages: Stryker and the Vitest it runs, held at 4 until Stryker's
   # Vitest runner supports Vitest 5 (stryker-js#6210, #6240).
   - package-ecosystem: npm
