@@ -12,6 +12,19 @@ updates:
       npm:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+  # Mutation testing's own packages: Stryker and the Vitest it runs, held at 4 until Stryker's
+  # Vitest runner supports Vitest 5 (stryker-js#6210, #6240).
+  - package-ecosystem: npm
+    directory: /tools/mutation
+    schedule:
+      interval: weekly
+    groups:
+      mutation:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -1,6 +1,8 @@
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
+import { unitTests } from "./vitest.unit.ts";
+
 // The app tests run the real page in WebKit (as WKWebView does on macOS) and Chromium (as
 // WebView2 does on Windows). CHROMIUM_EXECUTABLE runs them in Chromium alone, with an installed
 // browser, where Playwright cannot download its own; APP_BROWSERS=chromium does too, as coverage
@@ -17,13 +19,7 @@ export default defineConfig({
       include: ["protocol/src/**/*.ts", "ui/src/**/*.ts"],
     },
     projects: [
-      {
-        test: {
-          name: "unit",
-          include: ["protocol/tests/**/*.test.ts", "ui/tests/**/*.test.ts"],
-          exclude: ["ui/tests/app/**"],
-        },
-      },
+      { test: unitTests },
       {
         test: {
           name: "app",
