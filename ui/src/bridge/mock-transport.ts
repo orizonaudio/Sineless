@@ -311,7 +311,7 @@ export class MockTransport implements Transport {
 
   // The simulated group: every track in group A, only this instance's track in the others.
   // What the engine says of this track's broken samples: how many its readouts measured
-  // around, and its lane and, in Compare, the sum's, as holding some.
+  // around, and its lane and, in Compare, the sum's, as holding some; in Single, bit 0.
   private invalidFields(
     multi: boolean,
     comparing: boolean,
@@ -321,7 +321,7 @@ export class MockTransport implements Transport {
     }
     const tracks = this.groupTracks();
     const own = tracks.findIndex((track) => track.own);
-    const lanes = multi ? 2 ** own + (comparing ? 2 ** tracks.length : 0) : 0;
+    const lanes = multi ? 2 ** own + (comparing ? 2 ** tracks.length : 0) : 1;
     return { invalidSamples: this.brokenSamples, invalidLanes: lanes };
   }
 

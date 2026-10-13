@@ -8,6 +8,7 @@
     "synced": false,
     "triggered": true
   },
+  "invalidLanes": 1,
   "mode": "minMax",
   "pointCount": 500,
   "readouts": {

@@ -680,6 +680,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         if (rolling) {
             const auto values =
                 viewRolls.at(index).update(start, columns, sampleCount / columns, read);
+            header.invalidLanes |= viewRolls.at(index).holdsInvalid() ? 1U : 0U;
             header.mode = protocol::FrameMode::kMinMax;
             pointCount = columns;
             frameData.insert(frameData.end(), values.begin(), values.end());
@@ -693,6 +694,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         }
         const std::span<const float> visible =
             std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
+        header.invalidLanes |= holdsInvalid(visible) ? 1U : 0U;
         header.mode = reduceToColumns(visible, columns, reduced);
         pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
@@ -707,6 +709,9 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         if (!updateStats(sweepStats, image, readoutView, inputChannels, fresh)) {
             return false;
         }
+        // Single has no lanes: bit 0 says what is shown holds samples that are not finite. The
+        // Mid is not finite wherever a channel is, so its levels say so for every trace.
+        header.invalidLanes |= holdsInvalid(sweepStats, crop.first, crop.end) ? 1U : 0U;
         image.clearChanges();
         viewReduction = {.first = crop.first, .channels = inputChannels, .views = views};
     } else {
