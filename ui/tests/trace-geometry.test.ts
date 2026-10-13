@@ -213,6 +213,42 @@ describe("cancellation bands", () => {
     expect(Math.min(...y)).toBeCloseTo(-1);
   });
 
+  // A sample that is not finite (from a broken signal upstream), in a track and so in the sum:
+  // measured around, as the engine measures the gains, so the cancelling stretch still shows.
+  test.each([Number.NaN, Infinity, -Infinity])(
+    "shade around a column that is %s",
+    (broken) => {
+      const cancelling = compareFrame([
+        -0.1,
+        0.1,
+        broken,
+        broken,
+        -0.1,
+        0.1,
+        -0.1,
+        0.1,
+      ]);
+      const [first, second, sum] = cancelling.lanes;
+      const spiked = new Float32Array(first ?? []);
+      spiked[3] = broken;
+      const bands = cancellationBands(
+        {
+          ...cancelling,
+          lanes: [
+            spiked,
+            second ?? new Float32Array(),
+            sum ?? new Float32Array(),
+          ],
+        },
+        layout,
+        both,
+      );
+      expect(bands).toHaveLength(12); // One quad across the lane.
+      expect(Math.min(...xs(bands))).toBeCloseTo(-1);
+      expect(Math.max(...xs(bands))).toBeCloseTo(1);
+    },
+  );
+
   test("ignore quiet stretches and bridge short gaps", () => {
     const quietFrame = compareFrame([
       -0.1, 0.1, -0.1, 0.1, -0.1, 0.1, -0.1, 0.1,

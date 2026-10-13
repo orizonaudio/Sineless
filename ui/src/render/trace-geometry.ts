@@ -89,6 +89,7 @@ const cancellationRatio = 10 ** (-3 / 20);
 const quietRatio = 0.05; // About -26 dB.
 const bridgedGap = 3; // Points.
 
+// Each point's peak, NaN where a value is not finite (from a broken signal upstream).
 function peaks(frame: Frame, values: Float32Array): Float32Array {
   const out = new Float32Array(frame.pointCount);
   for (let point = 0; point < frame.pointCount; point++) {
@@ -112,9 +113,9 @@ function peaks(frame: Frame, values: Float32Array): Float32Array {
       near <= Math.min(out.length - 1, point + reach);
       near++
     ) {
-      peak = Math.max(peak, out[near] ?? 0);
+      peak = Number.isFinite(out[near]) ? Math.max(peak, out[near] ?? 0) : peak;
     }
-    smoothed[point] = peak;
+    smoothed[point] = Number.isFinite(out[point]) ? peak : Number.NaN;
   }
   return smoothed;
 }
@@ -144,12 +145,20 @@ export function cancellationBands(
       louder[point] = Math.max(louder[point] ?? 0, level);
     });
   }
+  // A point where a track or the sum is not finite is measured around, as the engine measures
+  // the gains: it cancels nothing, and a short gap it leaves is bridged below.
+  const measured = (point: number) =>
+    Number.isFinite(louder[point]) && Number.isFinite(levelSum[point]);
   // Quiet stretches (more than about 26 dB below the loudest moment) cancel nothing audible.
-  const audible = quietRatio * Math.max(0, ...louder);
+  const audible =
+    quietRatio *
+    Math.max(0, ...louder.filter((level) => Number.isFinite(level)));
   const cancelling = Array.from(
     louder,
     (level, point) =>
-      level > audible && (levelSum[point] ?? 0) < cancellationRatio * level,
+      measured(point) &&
+      level > audible &&
+      (levelSum[point] ?? 0) < cancellationRatio * level,
   );
   // Short gaps inside a cancelling stretch belong to it.
   for (let point = 1; point < cancelling.length; point++) {
