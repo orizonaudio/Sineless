@@ -367,8 +367,10 @@ body {
   backdrop-filter: blur(3px);
 }
 
-/* A lane showing samples that are not finite (NaN or infinite). */
-.lane-label > span.invalid {
+/* A lane showing samples that are not finite (NaN or infinite). In Compare a track's name is its
+   check box's, which sets its own colour. */
+.lane-label > span.invalid,
+.lane-label > span.invalid > .compare-check {
   color: var(--warn);
 }
 
