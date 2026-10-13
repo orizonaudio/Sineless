@@ -162,6 +162,9 @@ export interface MockOptions {
   readonly sampleRate?: number;
   // The track's channels: 1 for a mono track, whose R repeats L and which shows L alone.
   readonly inputChannels?: 1 | 2;
+  // Samples of this track that are not finite (NaN or infinite) in what each frame measures, as
+  // from a broken plugin upstream; none by default.
+  readonly brokenSamples?: number;
 }
 
 export class MockTransport implements Transport {
@@ -183,6 +186,7 @@ export class MockTransport implements Transport {
   private previewFix = false;
   private readonly sampleRate: number;
   private readonly inputChannels: 1 | 2;
+  private readonly brokenSamples: number;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
   // The last live Seconds window before a freeze (none when frozen in Beats mode), from which a
@@ -196,6 +200,7 @@ export class MockTransport implements Transport {
     this.schedule = options.schedule ?? ((work) => setTimeout(work, 0));
     this.sampleRate = options.sampleRate ?? mockSampleRate;
     this.inputChannels = options.inputChannels ?? 2;
+    this.brokenSamples = options.brokenSamples ?? 0;
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -305,6 +310,21 @@ export class MockTransport implements Transport {
   }
 
   // The simulated group: every track in group A, only this instance's track in the others.
+  // What the engine says of this track's broken samples: how many its readouts measured
+  // around, and its lane and, in Compare, the sum's, as holding some.
+  private invalidFields(
+    multi: boolean,
+    comparing: boolean,
+  ): { invalidSamples: number; invalidLanes: number } {
+    if (this.brokenSamples === 0) {
+      return { invalidSamples: 0, invalidLanes: 0 };
+    }
+    const tracks = this.groupTracks();
+    const own = tracks.findIndex((track) => track.own);
+    const lanes = multi ? 2 ** own + (comparing ? 2 ** tracks.length : 0) : 0;
+    return { invalidSamples: this.brokenSamples, invalidLanes: lanes };
+  }
+
   private groupTracks(): typeof mockTracks {
     return this.setting("group") === "a"
       ? mockTracks
@@ -598,6 +618,7 @@ export class MockTransport implements Transport {
         views,
         lanes,
         laneSet: multi ? this.laneSet : 0,
+        ...this.invalidFields(multi, comparison !== undefined),
         ...(comparison === undefined ? {} : { comparison }),
       }),
     );

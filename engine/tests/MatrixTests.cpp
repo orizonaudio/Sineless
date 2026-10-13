@@ -148,6 +148,10 @@ struct Signal
     double offset = 0.5; // DC, so that a hole in a trace stands out.
     std::uint64_t seed = 1;
     std::int64_t delay = 0; // Noise: samples by which it lags the host.
+    // Every `brokenEvery` samples (none if 0), one that is not finite, as a broken plugin upstream
+    // might send.
+    std::int64_t brokenEvery = 0;
+    float broken = std::numeric_limits<float>::quiet_NaN();
 };
 
 // Tracks of group A on one host, each with its own signal and tempo, viewed from the first.
@@ -266,6 +270,10 @@ private:
             }
             left.at(static_cast<std::size_t>(i)) = static_cast<float>(value);
             right.at(static_cast<std::size_t>(i)) = static_cast<float>(0.5 * value);
+            if (signal.brokenEvery > 0 && index % signal.brokenEvery == 0) {
+                left.at(static_cast<std::size_t>(i)) = signal.broken;
+                right.at(static_cast<std::size_t>(i)) = signal.broken;
+            }
         }
     }
 
@@ -1476,6 +1484,87 @@ TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, AnalysisGate,
                          ::testing::ValuesIn(timeBaseCases(DisplayMode::kSingle)), modeTestName);
+
+// Samples that are not finite, one in every 4800 of this track (NaN or infinite): measured around,
+// so the readouts are those of the tone, and counted. The frame says how many the readouts measured
+// around, and which lanes hold any: this track's and, in Compare, the sum's, never the other
+// track's. In every mode and time base, live; in Seconds mode also rolling.
+struct BrokenCase
+{
+    DisplayMode mode = DisplayMode::kSingle;
+    TimeBase timeBase = TimeBase::kSeconds;
+    bool rolling = false;
+    bool infinite = false;
+};
+
+std::string nameOf(const BrokenCase& c)
+{
+    return modeName(c.mode) + "_" + timeBaseName(c.timeBase) + (c.rolling ? "_Rolling" : "") +
+           (c.infinite ? "_Infinity" : "_NaN");
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const BrokenCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+std::vector<BrokenCase> brokenCases()
+{
+    std::vector<BrokenCase> cases;
+    for (const DisplayMode mode : everyMode()) {
+        for (const bool infinite : {false, true}) {
+            cases.push_back({.mode = mode, .timeBase = TimeBase::kBeats, .infinite = infinite});
+            cases.push_back({.mode = mode, .timeBase = TimeBase::kSeconds, .infinite = infinite});
+            cases.push_back({.mode = mode,
+                             .timeBase = TimeBase::kSeconds,
+                             .rolling = true,
+                             .infinite = infinite});
+        }
+    }
+    return cases;
+}
+
+class BrokenSamples : public ::testing::TestWithParam<BrokenCase>
+{
+};
+
+TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
+{
+    const BrokenCase c = GetParam();
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.frequency = 1000.0,
+                  .brokenEvery = 4800,
+                  .broken = c.infinite ? std::numeric_limits<float>::infinity()
+                                       : std::numeric_limits<float>::quiet_NaN()});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), c.mode, c.timeBase);
+    session.own().settings().set(SettingId::kTimeSpan, c.rolling ? 2.0 : 0.2);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.play(c.rolling ? 3.0 : 1.5, protocol::kReadoutIntervalSeconds);
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(std::isfinite(frame->peak)) << "measured around";
+    EXPECT_TRUE(std::isfinite(frame->rms)) << "measured around";
+    EXPECT_GT(frame->invalidSamples, 0U) << "this track's are counted";
+    switch (c.mode) {
+    case DisplayMode::kSingle:
+        EXPECT_EQ(frame->invalidLanes, 0U) << "no lanes";
+        break;
+    case DisplayMode::kMulti:
+        EXPECT_EQ(frame->invalidLanes, 0b01U) << "this track's lane only";
+        break;
+    case DisplayMode::kCompare:
+        EXPECT_EQ(frame->invalidLanes, 0b101U) << "this track's lane and the sum's";
+        break;
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, BrokenSamples, ::testing::ValuesIn(brokenCases()),
+                         [](const ::testing::TestParamInfo<BrokenCase>& info) {
+                             return nameOf(info.param);
+                         });
 
 class NoDataIsNaN : public ::testing::TestWithParam<ModeCase>
 {

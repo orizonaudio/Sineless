@@ -30,6 +30,8 @@ test("encodes the golden frame byte for byte", () => {
     viewEnd: golden.header.viewEnd,
     visibleSamples: golden.header.visibleSamples,
     panReach: golden.header.panReach,
+    invalidSamples: golden.header.invalidSamples,
+    invalidLanes: golden.header.invalidLanes,
     views: new Map([
       [ChannelView.mid, golden.views.mid],
       [ChannelView.left, golden.views.left],
@@ -63,6 +65,8 @@ test("encodes the golden lanes frame byte for byte", () => {
     views: new Map(),
     lanes: goldenLanes.lanes,
     laneSet: header.laneSet,
+    invalidSamples: header.invalidSamples,
+    invalidLanes: header.invalidLanes,
     comparison: {
       sumGain: header.sumGain,
       fixedGain: header.fixedGain,

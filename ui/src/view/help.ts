@@ -71,7 +71,7 @@ export const helpTexts = {
   },
   status: {
     title: "Status",
-    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, Roll, Sync, Frozen or Zoom for the current mode, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did).",
+    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, Roll, Sync, Frozen or Zoom for the current mode, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in orange.",
   },
   peak: {
     title: "Peak",

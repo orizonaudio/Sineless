@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <span>
 #include <vector>
@@ -8,10 +9,11 @@
 namespace orizon::engine {
 
 // Level statistics of a span whose samples change only in places, kept per block of
-// `blockSamples` samples: each block's peak (largest absolute value) and sum of squares. Readouts
-// over the whole span, and the block energies the Compare view's summing gains need, then cost a
-// pass over the blocks instead of over the samples, and after a change only the blocks holding
-// changed samples are measured again.
+// `blockSamples` samples: each block's peak (largest absolute value) and sum of squares, of its
+// finite samples, and how many are not finite (NaN or infinite, from a broken signal upstream).
+// Readouts over the whole span, and the block energies the Compare view's summing gains need, then
+// cost a pass over the blocks instead of over the samples, and after a change only the blocks
+// holding changed samples are measured again.
 class BlockStats
 {
 public:
@@ -22,6 +24,7 @@ public:
     {
         float peak = 0.0f;
         double sumSquares = 0.0;
+        std::uint32_t invalid = 0; // Samples not finite, left out of the peak and sum.
     };
 
     // Starts over for a span of `count` samples in blocks of `blockSamples` (at least 1); the
@@ -52,7 +55,7 @@ private:
     std::vector<float> scratch;
 };
 
-// The peak and sum of squares of `samples`.
+// The peak and sum of squares of the finite `samples`, and how many are not finite.
 [[nodiscard]] BlockStats::Block measureBlock(std::span<const float> samples);
 
 } // namespace orizon::engine

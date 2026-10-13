@@ -343,11 +343,10 @@ std::vector<Case> corpus()
         single("Single_Silence_384k_Mono", mono(silence())).at(384000).levels(kSilent, kSilent).pitch(kNone),
         single("Single_Silence_48k_Beats", stereo(silence())).in(kBeats).levels(kSilent, kSilent).pitch(kNone),
         single("Single_Noise_48k_Stereo", stereo(hiss)).levels(kHalf, kHalf + kUniform).pitch(kNone),
-        // Samples no host should send, one in every 4800: what the readouts should then say is
-        // not decided, so nothing is stated; the snapshot keeps what they say now. A NaN sample
-        // leaves the peak as it was but makes the RMS NaN and hides the frequency.
-        single("Single_SineWithNaN_48k_Stereo", stereo(spiked(tone, kNaNSample, 4800))),
-        single("Single_SineWithInfinity_48k_Stereo", stereo(spiked(tone, kInfSample, 4800))),
+        // Samples no host should send, one in every 4800: they are measured around, so the
+        // readouts are those of the tone.
+        single("Single_SineWithNaN_48k_Stereo", stereo(spiked(tone, kNaNSample, 4800))).levels(kHalf, kHalf + kSine).pitch(1000),
+        single("Single_SineWithInfinity_48k_Stereo", stereo(spiked(tone, kInfSample, 4800))).levels(kHalf, kHalf + kSine).pitch(1000),
 
         // Compare: the other track's match against this one, and their summing gains.
         compare("Compare_NoiseCopy_48k", stereo(hiss), stereo(hiss)).match(1, 0, 1).gains(kIdentical, kIdentical),
@@ -378,9 +377,9 @@ std::vector<Case> corpus()
         compare("Compare_BothSilent_48k", stereo(silence()), stereo(silence())).levels(kSilent, kSilent).pitch(kNone).match(kNone, kNone, 0).gains(kNone, kNone),
         // A steady offset is sound to the analysis too: two equal ones sum as copies.
         compare("Compare_DcCopy_48k", stereo(dc(0.25)), stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf).pitch(kNone).match(1, 0, 1).gains(kIdentical, kIdentical),
-        // NaN samples on this track, as in Single: nothing is stated. The blocks holding them are
-        // left out of the match, and the sum lane carries the NaN points.
-        compare("Compare_NoiseWithNaN_48k", stereo(spiked(hiss, kNaNSample, 4800)), stereo(hiss)),
+        // NaN samples on this track, as in Single: measured around, so the copy still matches
+        // and sums as one; the sum lane carries the NaN points.
+        compare("Compare_NoiseWithNaN_48k", stereo(spiked(hiss, kNaNSample, 4800)), stereo(hiss)).match(1, 0, 1).gains(kIdentical, kIdentical),
     };
 }
 // clang-format on
@@ -557,6 +556,13 @@ json snapshot(const Case& c, const DecodedFrame& frame, const std::vector<std::b
     out["readouts"]["peak"] = number(frame.peak);
     out["readouts"]["rms"] = number(frame.rms);
     out["readouts"]["frequency"] = number(frame.frequency);
+    // Samples that are not finite, measured around: recorded where there are any.
+    if (frame.invalidSamples > 0) {
+        out["readouts"]["invalidSamples"] = frame.invalidSamples;
+    }
+    if (frame.invalidLanes != 0) {
+        out["invalidLanes"] = frame.invalidLanes;
+    }
 
     const std::size_t perPoint = frame.mode == FrameMode::kMinMax ? 2 : 1;
     const std::size_t traceLength = std::size_t{frame.pointCount} * perPoint;

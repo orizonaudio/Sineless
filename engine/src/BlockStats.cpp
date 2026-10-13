@@ -16,6 +16,10 @@ BlockStats::Block measureBlock(std::span<const float> samples)
 {
     BlockStats::Block block;
     for (const float sample : samples) {
+        if (!std::isfinite(sample)) {
+            ++block.invalid;
+            continue;
+        }
         block.peak = std::max(block.peak, std::abs(sample));
         block.sumSquares += static_cast<double>(sample) * sample;
     }

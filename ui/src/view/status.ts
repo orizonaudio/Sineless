@@ -1,5 +1,6 @@
 // Status chips of the top bar, derived from the latest frame and the trigger mode.
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+
 import { formatSeconds } from "./format.ts";
 
 export type Tone = "neutral" | "ok" | "hold" | "warn";
@@ -12,7 +13,29 @@ export interface Chip {
 // Normal and Single show "Waiting" once no frame has arrived for this long.
 export const waitingAfterSeconds = 0.25;
 
+// Whether lane `index` of `frame` shows samples that are not finite (NaN or infinite).
+export function laneHoldsInvalid(frame: Frame, index: number): boolean {
+  return index < 32 && (frame.invalidLanes & (2 ** index)) !== 0;
+}
+
 export function statusChips(
+  frame: Frame | undefined,
+  mode: string,
+  secondsSinceFrame: number,
+  panSeconds: number,
+): Chip[] {
+  const chips = modeChips(frame, mode, secondsSinceFrame, panSeconds);
+  // Samples that are not finite reached the measurements, which measure around them.
+  if (
+    frame !== undefined &&
+    (frame.invalidSamples > 0 || frame.invalidLanes !== 0)
+  ) {
+    chips.push({ text: "Invalid samples", tone: "warn" });
+  }
+  return chips;
+}
+
+function modeChips(
   frame: Frame | undefined,
   mode: string,
   secondsSinceFrame: number,

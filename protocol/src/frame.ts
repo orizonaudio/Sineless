@@ -28,6 +28,11 @@
 // bar length, all in quarter notes (0 when not synced); `cycleSeconds` is the left edge's project
 // time in seconds.
 //
+// Samples that are not finite (NaN or infinite, from a broken signal upstream) are measured
+// around: left out of the readouts and Compare's matches and gains, and drawn as they are.
+// `invalidSamples` is how many this track has in what its readouts measure, and `invalidLanes`
+// has bit i set when lane i has any in what the frame shows.
+//
 // View zoom: the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
 // 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
 // viewStart + (k - startFraction) / visibleSamples * (viewEnd - viewStart); min/max columns
@@ -64,6 +69,8 @@ export const frameHeaderFields = [
   { name: "fixedGain", type: "f32" },
   { name: "cycleSeconds", type: "f32" },
   { name: "panReach", type: "f32" },
+  { name: "invalidSamples", type: "u32" },
+  { name: "invalidLanes", type: "u32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

@@ -28,23 +28,33 @@ std::optional<double> estimateFrequency(std::span<const float> samples, double s
     if (samples.empty()) {
         return std::nullopt;
     }
+    // Over the finite samples: one that is not (from a broken signal upstream) is measured
+    // around, and crosses nothing.
     double sum = 0.0;
     double squares = 0.0;
-    float minimum = samples.front();
-    float maximum = samples.front();
+    std::size_t finite = 0;
+    float minimum = std::numeric_limits<float>::max();
+    float maximum = std::numeric_limits<float>::lowest();
     for (const float sample : samples) {
+        if (!std::isfinite(sample)) {
+            continue;
+        }
         sum += sample;
         squares += static_cast<double>(sample) * sample;
         minimum = std::min(minimum, sample);
         maximum = std::max(maximum, sample);
+        ++finite;
+    }
+    if (finite == 0) {
+        return std::nullopt;
     }
     const double range = static_cast<double>(maximum) - minimum;
     // At or below the analysis gate there is no pitch to find.
-    const double rms = std::sqrt(squares / static_cast<double>(samples.size()));
+    const double rms = std::sqrt(squares / static_cast<double>(finite));
     if (!(rms > std::pow(10.0, protocol::kAnalysisGateDbfs / 20.0)) || range <= 0.0) {
         return std::nullopt;
     }
-    const TriggerParameters crossing{.level = sum / static_cast<double>(samples.size()),
+    const TriggerParameters crossing{.level = sum / static_cast<double>(finite),
                                      .hysteresis = protocol::kCrossingHysteresis * range};
     std::vector<double> periods;
     double lastEdge = -1.0;
@@ -84,9 +94,13 @@ Readouts computeReadouts(std::span<const float> samples, double sampleRate)
         return readouts;
     }
     const BlockStats::Block levels = measureBlock(samples);
+    readouts.invalid = levels.invalid;
+    const std::size_t finite = samples.size() - levels.invalid;
+    if (finite == 0) {
+        return readouts;
+    }
     readouts.peak = levels.peak;
-    readouts.rms =
-        static_cast<float>(std::sqrt(levels.sumSquares / static_cast<double>(samples.size())));
+    readouts.rms = static_cast<float>(std::sqrt(levels.sumSquares / static_cast<double>(finite)));
     readouts.frequencyHz =
         estimateFrequency(samples.last(frequencyWindow(samples.size(), sampleRate)), sampleRate);
     return readouts;

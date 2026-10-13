@@ -1,5 +1,5 @@
 {
-  "description": "A Compare frame encoded by Python's struct module, independently of both implementations. Mode 1 is raw; flags 40 is synced (8) and compared (32); views 0 and laneCount 3: this track, one other track and the sum of the compared tracks follow the 80-byte header, in the order of the lanes message with laneSet 42, then one match per track. This track's match is none: no correlation or offset (NaN, written \"NaN\" here) and polarity 0; the other track correlates at -0.75 and lags by 62.5 samples with opposite polarity (-1). The sum is 6.5 dB below unrelated, 2.75 dB above with the fix. The left edge is 8 s into the project. No frequency was found (NaN).",
+  "description": "A Compare frame encoded by Python's struct module, independently of both implementations. Mode 1 is raw; flags 40 is synced (8) and compared (32); views 0 and laneCount 3: this track, one other track and the sum of the compared tracks follow the 88-byte header, in the order of the lanes message with laneSet 42, then one match per track. This track's match is none: no correlation or offset (NaN, written \"NaN\" here) and polarity 0; the other track correlates at -0.75 and lags by 62.5 samples with opposite polarity (-1). The sum is 6.5 dB below unrelated, 2.75 dB above with the fix. The left edge is 8 s into the project. No frequency was found (NaN). Lane 1 holds samples that are not finite (invalidLanes 2).",
   "header": {
     "sequence": 11,
     "mode": 1,
@@ -23,14 +23,16 @@
     "sumGain": -6.5,
     "fixedGain": 2.75,
     "cycleSeconds": 8.0,
-    "panReach": 0.0
+    "panReach": 0.0,
+    "invalidSamples": 0,
+    "invalidLanes": 2
   },
   "lanes": [
     [0.25, -0.25],
     [0.5, 0.0],
     [-1.0, 1.0]
   ],
-  "hex": "0b00000001280003020000000000803f000000000000003f0000803e0000c07f0000003f000080410000804000008040000000000000803f000000402a0000000000d0c00000304000000041000000000000803e000080be0000003f00000000000080bf0000803f0000c07f0000c07f00000000000040bf00007a42000080bf",
+  "hex": "0b00000001280003020000000000803f000000000000003f0000803e0000c07f0000003f000080410000804000008040000000000000803f000000402a0000000000d0c000003040000000410000000000000000020000000000803e000080be0000003f00000000000080bf0000803f0000c07f0000c07f00000000000040bf00007a42000080bf",
   "matches": [
     {
       "correlation": "NaN",

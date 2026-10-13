@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { ChannelView, FrameMode } from "../src/enums.ts";
 import { decodeFrame } from "../src/frame-decoder.ts";
+import { frameHeader } from "../src/frame.ts";
 
 import golden from "./data/golden-frame.json" with { type: "json" };
 import { goldenLanes } from "./golden.ts";
@@ -23,6 +24,8 @@ describe("frame decoder", () => {
     expect(frame.triggered).toBe(true);
     expect(frame.frozen).toBe(true);
     expect(frame.panReach).toBe(1.5);
+    expect(frame.invalidSamples).toBe(golden.header.invalidSamples);
+    expect(frame.invalidLanes).toBe(golden.header.invalidLanes);
     expect(frame.roll).toBe(false);
     expect(frame.pointCount).toBe(golden.header.pointCount);
     expect(frame.samplesPerPoint).toBe(golden.header.samplesPerPoint);
@@ -54,6 +57,7 @@ describe("frame decoder", () => {
     expect(frame.cursor).toBe(goldenLanes.header.cursor);
     expect(frame.cycleSeconds).toBe(goldenLanes.header.cycleSeconds);
     expect(frame.frequency).toBeUndefined();
+    expect(frame.invalidLanes).toBe(goldenLanes.header.invalidLanes);
     expect(frame.lanes.map((lane) => Array.from(lane))).toEqual(
       goldenLanes.lanes,
     );
@@ -82,7 +86,7 @@ describe("frame decoder", () => {
     expect(() => decodeFrame(buffer.slice(0, 16))).toThrow(
       /shorter than its header/,
     );
-    expect(() => decodeFrame(buffer.slice(0, 80))).toThrow(
+    expect(() => decodeFrame(buffer.slice(0, frameHeader.size))).toThrow(
       /shorter than its header announces/,
     );
     const lanes = fromHex(goldenLanes.hex);

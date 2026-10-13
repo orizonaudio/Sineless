@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 #include <numbers>
 #include <random>
 #include <vector>
@@ -92,6 +93,29 @@ TEST(Readouts, FindTheFrequencyOfNotesWithGapsBetweenThem)
     const Readouts readouts = computeReadouts(notes, kSampleRate);
     ASSERT_TRUE(readouts.frequencyHz.has_value());
     EXPECT_NEAR(readouts.frequencyHz.value(), 100.0, 0.5);
+}
+
+// Samples that are not finite (from a broken signal upstream) are measured around and counted:
+// the readouts are the tone's.
+TEST(Readouts, MeasureAroundSamplesThatAreNotFinite)
+{
+    std::vector<float> samples(9600);
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        samples[i] = 0.5f * static_cast<float>(std::sin(2.0 * std::numbers::pi * 1000.0 *
+                                                        static_cast<double>(i) / kSampleRate));
+    }
+    const Readouts clean = computeReadouts(samples, kSampleRate);
+    for (const std::size_t i : {100U, 2000U, 4321U}) {
+        samples[i] = std::numeric_limits<float>::quiet_NaN();
+    }
+    samples[5000] = std::numeric_limits<float>::infinity();
+    samples[7000] = -std::numeric_limits<float>::infinity();
+    const Readouts readouts = computeReadouts(samples, kSampleRate);
+    EXPECT_EQ(readouts.invalid, 5U);
+    EXPECT_NEAR(readouts.peak, clean.peak, 1e-6f);
+    EXPECT_NEAR(readouts.rms, clean.rms, 1e-3f);
+    ASSERT_TRUE(readouts.frequencyHz.has_value());
+    EXPECT_NEAR(*readouts.frequencyHz, 1000.0, 1.0);
 }
 
 // Nothing to measure: no value, not the level of silence.

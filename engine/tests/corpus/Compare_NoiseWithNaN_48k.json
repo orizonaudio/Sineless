@@ -1,5 +1,5 @@
 {
-  "fixedGain": 3.0103,
+  "fixedGain": 3.010245,
   "flags": {
     "compared": true,
     "frozen": false,
@@ -9,6 +9,7 @@
     "synced": true,
     "triggered": false
   },
+  "invalidLanes": 5,
   "lanes": {
     "sum": {
       "max": 0.9999566,
@@ -37,8 +38,9 @@
   "pointCount": 500,
   "readouts": {
     "frequency": "NaN",
+    "invalidSamples": 1,
     "peak": 0.4999602,
-    "rms": "NaN"
+    "rms": 0.2863876
   },
   "samplesPerPoint": 12,
   "signal": {
@@ -48,6 +50,6 @@
     "sampleRate": 48000,
     "timeBase": "beats"
   },
-  "sumGain": 3.0103,
+  "sumGain": 3.010245,
   "visibleSamples": 6000
 }

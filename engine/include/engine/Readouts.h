@@ -19,6 +19,8 @@ struct Readouts
     // From the spacing of rising crossings of the mean, with hysteresis at 10% of the
     // peak-to-peak range. Empty with fewer than two crossings.
     std::optional<double> frequencyHz;
+    // Samples measured around: not finite (NaN or infinite), left out of all of the above.
+    std::uint32_t invalid = 0;
 };
 
 // The frequency is estimated over the newest second of the span, so that it follows what plays
