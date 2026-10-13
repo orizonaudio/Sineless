@@ -5,7 +5,7 @@ import { decodeFrame } from "../src/frame-decoder.ts";
 import { encodeFrame } from "../src/frame-encoder.ts";
 import { frameHeader } from "../src/frame.ts";
 import golden from "./data/golden-frame.json" with { type: "json" };
-import goldenLanes from "./data/golden-lanes-frame.json" with { type: "json" };
+import { goldenLanes } from "./golden.ts";
 
 function toHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer), (byte) =>

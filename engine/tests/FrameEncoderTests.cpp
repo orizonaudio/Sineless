@@ -4,6 +4,7 @@
 #include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
@@ -30,6 +31,14 @@ nlohmann::json readGolden(const std::string& name)
     return nlohmann::json::parse(file);
 }
 
+// A float of a golden file, where "NaN" stands for no value (JSON has no NaN).
+float floatOf(const nlohmann::json& value)
+{
+    return value.is_string() && value.get<std::string>() == "NaN"
+               ? std::numeric_limits<float>::quiet_NaN()
+               : value.get<float>();
+}
+
 FrameHeaderValues headerValues(const nlohmann::json& header)
 {
     return {
@@ -43,7 +52,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .startFraction = header["startFraction"].get<float>(),
         .peak = header["peak"].get<float>(),
         .rms = header["rms"].get<float>(),
-        .frequency = header["frequency"].get<float>(),
+        .frequency = floatOf(header["frequency"]),
         .cursor = header["cursor"].get<float>(),
         .cycleStart = header["cycleStart"].get<float>(),
         .spanQuarterNotes = header["spanQuarterNotes"].get<float>(),
@@ -81,8 +90,8 @@ TEST(FrameEncoder, MatchesTheGoldenLanesFrame)
         data.insert(data.end(), values.begin(), values.end());
     }
     for (const auto& match : golden["matches"]) {
-        data.push_back(match["correlation"].get<float>());
-        data.push_back(match["offset"].get<float>());
+        data.push_back(floatOf(match["correlation"]));
+        data.push_back(floatOf(match["offset"]));
         const bool inverted = match["inverted"].get<bool>();
         data.push_back(match["related"].get<bool>() ? (inverted ? -1.0f : 1.0f) : 0.0f);
     }
