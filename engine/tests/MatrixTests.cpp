@@ -1664,6 +1664,39 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, BrokenSamples, ::testing::ValuesIn(brokenCas
                              return nameOf(info.param);
                          });
 
+// A copy with every other sample of this track not finite still sums as a copy, 10 log10(2) =
+// +3.0103 dB, in Beats as in Seconds, live and frozen: where the sum is not finite, neither track
+// is measured, rather than the other track's energy counting where the sum's does not.
+class BrokenCopy : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(BrokenCopy, SumsAsACopyAroundThem)
+{
+    const ModeCase c = GetParam();
+    const double identical = 10.0 * std::log10(2.0);
+    Session session(c.rate, c.channels);
+    session.join({.kind = Signal::Kind::kNoise, .brokenEvery = 2});
+    session.join({.kind = Signal::Kind::kNoise});
+    session.own().settings().set(SettingId::kDisplayMode,
+                                 static_cast<double>(DisplayMode::kCompare));
+    auto frame = playForReadouts(session, c.timeBase);
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        if (frozen) {
+            session.analyzer().setFrozen(true);
+            session.play(static_cast<double>(kBlock) / c.rate);
+            frame = session.produce();
+        }
+        ASSERT_TRUE(frame);
+        EXPECT_NEAR(session.field(FrameHeader::kSumGainOffset), identical, 1e-3);
+        EXPECT_NEAR(session.field(FrameHeader::kFixedGainOffset), identical, 1e-3);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, BrokenCopy,
+                         ::testing::ValuesIn(timeBaseCases(DisplayMode::kCompare)), modeTestName);
+
 class NoDataIsNaN : public ::testing::TestWithParam<ModeCase>
 {
 };

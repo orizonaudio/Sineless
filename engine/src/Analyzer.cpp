@@ -1516,6 +1516,33 @@ void Analyzer::collectEnergies(std::span<const Positions> ranges, std::size_t le
     }
     sums.clear();
     const bool summed = sumStats.fits(length, block);
+    // Positions [from, to) measured from their samples. A position where the sum is not finite,
+    // as it is wherever a compared track's sample is not (a broken signal upstream), is left out
+    // of the sum and of every part alike, as in Seconds mode.
+    const auto measureExactly = [&](Positions positions) {
+        const std::size_t size = positions.end - positions.first;
+        pieceSumScratch.resize(size);
+        readSum(parts, length, positions.first, pieceSumScratch);
+        double sum = 0.0;
+        for (const float value : pieceSumScratch) {
+            if (std::isfinite(value)) {
+                sum += static_cast<double>(value) * value;
+            }
+        }
+        sums.push_back(sum);
+        for (std::size_t part = 0; part < parts.size(); ++part) {
+            pieceScratch.resize(size);
+            onePart.assign(1, parts[part]);
+            readSum(onePart, length, positions.first, pieceScratch);
+            double energy = 0.0;
+            for (std::size_t i = 0; i < size; ++i) {
+                if (std::isfinite(pieceSumScratch[i])) {
+                    energy += static_cast<double>(pieceScratch[i]) * pieceScratch[i];
+                }
+            }
+            tracks[part].push_back(energy);
+        }
+    };
     for (const Positions range : ranges) {
         if (range.first >= range.end) {
             continue;
@@ -1523,47 +1550,33 @@ void Analyzer::collectEnergies(std::span<const Positions> ranges, std::size_t le
         const std::size_t firstBlock = (range.first + block - 1) / block;
         const std::size_t endBlock = range.end / block;
         const bool wholeBlocks = endBlock > firstBlock;
-        // The pieces of blocks at the edges of the range, measured from their samples.
-        std::array<Positions, 2> pieces{};
-        std::size_t pieceCount = 0;
         if (!wholeBlocks) {
-            pieces[pieceCount++] = range;
-        } else {
-            if (range.first < firstBlock * block) {
-                pieces[pieceCount++] = {.first = range.first, .end = firstBlock * block};
+            measureExactly(range);
+            continue;
+        }
+        // The pieces of blocks at the edges of the range, measured from their samples; whole
+        // blocks from the levels kept per block, unless a sample in them is not finite.
+        if (range.first < firstBlock * block) {
+            measureExactly({.first = range.first, .end = firstBlock * block});
+        }
+        for (std::size_t index = firstBlock; index < endBlock; ++index) {
+            if (summed && sumStats.blocks()[index].invalid > 0) {
+                measureExactly({.first = index * block, .end = (index + 1) * block});
+                continue;
             }
-            if (endBlock * block < range.end) {
-                pieces[pieceCount++] = {.first = endBlock * block, .end = range.end};
+            sums.push_back(summed ? sumStats.blocks()[index].sumSquares : 0.0);
+            for (std::size_t part = 0; part < parts.size(); ++part) {
+                // A part as recorded has the lane's own levels; one the fix shifts, its levels as
+                // shifted.
+                const Lane& lane = *lanes.at(laneOrder[parts[part].lane]);
+                const BlockStats& stats = parts[part].offset == 0 ? lane.stats : lane.fixedStats;
+                tracks[part].push_back(stats.fits(length, block) ? stats.blocks()[index].sumSquares
+                                                                 : 0.0);
             }
         }
-        const auto appendPieces = [&](std::vector<double>& into, const std::vector<SumPart>& of) {
-            for (std::size_t piece = 0; piece < pieceCount; ++piece) {
-                pieceScratch.resize(pieces[piece].end - pieces[piece].first);
-                readSum(of, length, pieces[piece].first, pieceScratch);
-                into.push_back(measureBlock(pieceScratch).sumSquares);
-            }
-        };
-        for (std::size_t part = 0; part < parts.size(); ++part) {
-            // A part as recorded has the lane's own levels; one the fix shifts, its levels as
-            // shifted.
-            const Lane& lane = *lanes.at(laneOrder[parts[part].lane]);
-            const BlockStats& stats = parts[part].offset == 0 ? lane.stats : lane.fixedStats;
-            const bool measured = stats.fits(length, block);
-            std::vector<double>& energies = tracks[part];
-            if (wholeBlocks) {
-                for (std::size_t index = firstBlock; index < endBlock; ++index) {
-                    energies.push_back(measured ? stats.blocks()[index].sumSquares : 0.0);
-                }
-            }
-            onePart.assign(1, parts[part]);
-            appendPieces(energies, onePart);
+        if (endBlock * block < range.end) {
+            measureExactly({.first = endBlock * block, .end = range.end});
         }
-        if (wholeBlocks) {
-            for (std::size_t index = firstBlock; index < endBlock; ++index) {
-                sums.push_back(summed ? sumStats.blocks()[index].sumSquares : 0.0);
-            }
-        }
-        appendPieces(sums, parts);
     }
     spans.clear();
     for (const std::vector<double>& energies : tracks) {
