@@ -85,6 +85,66 @@ describe("cursor snapping", () => {
     ]);
   });
 
+  // Samples that are not finite (from a broken signal upstream) are passed over, as the engine
+  // measures around them: no target at them, and the others as without them.
+  describe.each([Number.NaN, Infinity, -Infinity])(
+    "past a sample that is %s",
+    (broken) => {
+      test("finds the crossings of raw points and min/max columns", () => {
+        const raw = new Float32Array([-1, broken, 1, 1, 3, -1, broken]);
+        const crossings = zeroCrossings(frameOf(FrameMode.raw, 7), raw);
+        expect(crossings).toHaveLength(1);
+        expect(crossings[0]).toBeCloseTo(4.75 / 7);
+        const columns = new Float32Array([
+          broken,
+          broken,
+          -0.4,
+          0.3,
+          broken,
+          0.5,
+        ]);
+        expect(zeroCrossings(frameOf(FrameMode.minMax, 3), columns)).toEqual([
+          1.5 / 3,
+        ]);
+      });
+
+      test("finds the extremes of raw points and min/max columns", () => {
+        const raw = new Float32Array([broken, 0.1, 0.8, broken, -0.9, 0]);
+        expect(extremePositions(frameOf(FrameMode.raw, 6), raw)).toEqual([
+          2 / 6,
+          4 / 6,
+        ]);
+        const columns = new Float32Array([
+          broken,
+          broken,
+          -0.7,
+          0.1,
+          -0.1,
+          0.9,
+        ]);
+        expect(extremePositions(frameOf(FrameMode.minMax, 3), columns)).toEqual(
+          [2.5 / 3, 1.5 / 3],
+        );
+      });
+
+      test("offers the finite extremes and zero as levels", () => {
+        expect(
+          levelTargets(new Float32Array([0.2, broken, -0.7, 0.4])),
+        ).toEqual([expect.closeTo(0.4), expect.closeTo(-0.7), 0]);
+      });
+
+      test("offers nothing but zero when none is finite", () => {
+        expect(
+          extremePositions(
+            frameOf(FrameMode.raw, 2),
+            new Float32Array([broken, broken]),
+          ),
+        ).toEqual([]);
+        expect(levelTargets(new Float32Array([broken]))).toEqual([0, 0, 0]);
+      });
+    },
+  );
+
   test("snaps to the nearest target within the radius only", () => {
     expect(snap(0.52, [0.1, 0.5, 0.55], 0.05)).toBe(0.5);
     expect(snap(0.3, [0.1, 0.5], 0.05)).toBe(0.3);

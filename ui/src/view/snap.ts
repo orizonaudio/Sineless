@@ -1,5 +1,7 @@
 // Snap targets for cursors, taken from the frame on screen: zero crossings and the positions of
-// the trace's extremes for time cursors, the extremes' values and zero for level cursors.
+// the trace's extremes for time cursors, the extremes' values and zero for level cursors. Values
+// that are not finite (from a broken signal upstream) are passed over, as the engine measures
+// around them.
 import { FrameMode } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { columnPosition, pointPosition } from "../render/trace-geometry.ts";
@@ -12,7 +14,12 @@ export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
     for (let column = 0; column < frame.pointCount; column++) {
       const low = values[column * 2] ?? 0;
       const high = values[column * 2 + 1] ?? 0;
-      if (low < 0 && high >= 0) {
+      if (
+        Number.isFinite(low) &&
+        Number.isFinite(high) &&
+        low < 0 &&
+        high >= 0
+      ) {
         crossings.push(columnPosition(frame, column + 0.5));
       }
     }
@@ -21,6 +28,9 @@ export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
   for (let index = 0; index + 1 < frame.pointCount; index++) {
     const here = values[index] ?? 0;
     const next = values[index + 1] ?? 0;
+    if (!Number.isFinite(here) || !Number.isFinite(next)) {
+      continue;
+    }
     if ((here < 0 && next >= 0) || (here >= 0 && next < 0)) {
       crossings.push(pointPosition(frame, index + here / (here - next)));
     }
@@ -29,25 +39,27 @@ export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
 }
 
 // Span positions of the highest and of the lowest point of `values` (one view of `frame`): the
-// first raw point or min/max column centre that reaches each.
+// first raw point or min/max column centre that reaches each. None if no value is finite.
 export function extremePositions(frame: Frame, values: Float32Array): number[] {
-  if (frame.pointCount === 0) {
-    return [];
-  }
   const minMax = frame.mode === FrameMode.minMax;
-  let highest = 0;
-  let lowest = 0;
-  for (let index = 1; index < frame.pointCount; index++) {
-    const high = minMax ? values[index * 2 + 1] : values[index];
-    const low = minMax ? values[index * 2] : values[index];
-    const bestHigh = minMax ? values[highest * 2 + 1] : values[highest];
-    const bestLow = minMax ? values[lowest * 2] : values[lowest];
-    if ((high ?? 0) > (bestHigh ?? 0)) {
+  let highest = -1;
+  let lowest = -1;
+  let top = -Infinity;
+  let bottom = Infinity;
+  for (let index = 0; index < frame.pointCount; index++) {
+    const high = (minMax ? values[index * 2 + 1] : values[index]) ?? 0;
+    const low = (minMax ? values[index * 2] : values[index]) ?? 0;
+    if (Number.isFinite(high) && high > top) {
       highest = index;
+      top = high;
     }
-    if ((low ?? 0) < (bestLow ?? 0)) {
+    if (Number.isFinite(low) && low < bottom) {
       lowest = index;
+      bottom = low;
     }
+  }
+  if (highest < 0 || lowest < 0) {
+    return [];
   }
   const position = (index: number) =>
     minMax ? columnPosition(frame, index + 0.5) : pointPosition(frame, index);
@@ -59,6 +71,9 @@ export function levelTargets(values: Float32Array): number[] {
   let highest = 0;
   let lowest = 0;
   for (const value of values) {
+    if (!Number.isFinite(value)) {
+      continue;
+    }
     highest = Math.max(highest, value);
     lowest = Math.min(lowest, value);
   }
