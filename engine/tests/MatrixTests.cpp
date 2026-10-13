@@ -1186,6 +1186,33 @@ TEST_P(FrozenPlayhead, IsTheSameWithASpanChosenAsItFreezes)
     EXPECT_TRUE(sameValues(atOnce->data, later->data)) << "the same frame";
 }
 
+// A shorter span drawn between frames, as the sweep advances while the page is not ready for one,
+// then frozen: the freeze catches up on the span it was drawn with, as when a frame drew it.
+TEST_P(FrozenPlayhead, IsTheSameWithASpanDrawnBetweenFrames)
+{
+    const ModeCase c = GetParam();
+    const auto oneBar = static_cast<double>(BeatSpan::kOneBar);
+    Session between(c.rate, c.channels);
+    playSweep(between, c, 5.0); // Past a whole pass.
+    between.own().settings().set(SettingId::kBeatSpan, oneBar);
+    between.analyzer().advance();
+    between.analyzer().setFrozen(true);
+    const auto advanced = between.produce();
+    ASSERT_TRUE(advanced) << "no frame frozen after the sweep advanced";
+
+    Session framed(c.rate, c.channels);
+    playSweep(framed, c, 5.0);
+    framed.own().settings().set(SettingId::kBeatSpan, oneBar);
+    ASSERT_TRUE(framed.produce()) << "no live frame of the span";
+    framed.analyzer().setFrozen(true);
+    const auto produced = framed.produce();
+    ASSERT_TRUE(produced) << "no frame frozen after a frame";
+
+    EXPECT_EQ(advanced->cursor, produced->cursor);
+    EXPECT_EQ(advanced->visibleSamples, produced->visibleSamples);
+    EXPECT_TRUE(sameValues(advanced->data, produced->data)) << "the same frame";
+}
+
 INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenPlayhead, ::testing::ValuesIn(heldBeatCases()),
                          modeTestName);
 
