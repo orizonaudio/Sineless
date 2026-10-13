@@ -11,9 +11,10 @@
   "mode": "minMax",
   "pointCount": 500,
   "readouts": {
-    "frequency": "NaN",
+    "frequency": 1000,
+    "invalidSamples": 1,
     "peak": 0.5,
-    "rms": "NaN"
+    "rms": 0.3535902
   },
   "samplesPerPoint": 9.6,
   "signal": {

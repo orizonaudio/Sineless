@@ -42,6 +42,9 @@ struct FrameHeaderValues
     float fixedGain = 0.0f;
     // Frozen in Seconds mode: how far back the view can be panned, in seconds; 0 otherwise.
     float panReach = 0.0f;
+    // Samples not finite: how many in what the readouts measure, and a bit per lane holding any.
+    std::uint32_t invalidSamples = 0;
+    std::uint32_t invalidLanes = 0;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,

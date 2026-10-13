@@ -367,6 +367,11 @@ body {
   backdrop-filter: blur(3px);
 }
 
+/* A lane showing samples that are not finite (NaN or infinite). */
+.lane-label > span.invalid {
+  color: var(--warn);
+}
+
 .lane-label > span::before {
   content: "";
   display: inline-block;

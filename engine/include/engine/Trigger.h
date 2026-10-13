@@ -2,6 +2,7 @@
 
 #include "protocol/Protocol.h"
 
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -37,9 +38,12 @@ void forEachEdge(std::span<const float> samples, std::uint64_t firstIndex,
     bool armed = false;
     for (std::size_t i = 0; i < samples.size(); ++i) {
         const double current = sign * samples[i];
+        if (!std::isfinite(current)) {
+            continue; // A broken sample (NaN or infinite) crosses nothing, nor arms.
+        }
         if (armed && i > 0 && current >= level) {
             const double previous = sign * samples[i - 1];
-            if (previous < level) {
+            if (std::isfinite(previous) && previous < level) {
                 const double fraction = (level - previous) / (current - previous);
                 onEdge(static_cast<double>(firstIndex + i - 1) + fraction);
                 armed = false;

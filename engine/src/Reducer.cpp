@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <utility>
 
@@ -130,12 +131,15 @@ std::span<const float> RollColumns::update(std::uint64_t start, std::size_t colu
             std::copy(output.begin() + static_cast<std::ptrdiff_t>(shift * 2),
                       output.begin() + static_cast<std::ptrdiff_t>(readyColumns * 2),
                       output.begin());
+            std::copy(invalid.begin() + static_cast<std::ptrdiff_t>(shift),
+                      invalid.begin() + static_cast<std::ptrdiff_t>(readyColumns), invalid.begin());
         }
     }
     firstSample = start;
     samplesPerColumn = perColumn;
     columnCount = columns;
     output.resize(columns * 2);
+    invalid.resize(columns);
     readyColumns = kept;
     if (kept == columns) {
         return output;
@@ -156,10 +160,15 @@ std::span<const float> RollColumns::update(std::uint64_t start, std::size_t colu
             available /= 2; // The newest audio may not be there yet: try a shorter stretch.
         }
         for (std::size_t index = 0; index < available; ++index) {
-            const auto [minimum, maximum] = minMax(std::span<const float>(scratch).subspan(
-                static_cast<std::size_t>(index * perColumn), static_cast<std::size_t>(perColumn)));
+            const std::span<const float> samples = std::span<const float>(scratch).subspan(
+                static_cast<std::size_t>(index * perColumn), static_cast<std::size_t>(perColumn));
+            const auto [minimum, maximum] = minMax(samples);
             output[(column + index) * 2] = minimum;
             output[(column + index) * 2 + 1] = maximum;
+            invalid[column + index] =
+                std::ranges::all_of(samples, [](float sample) { return std::isfinite(sample); })
+                    ? 0
+                    : 1;
         }
         column += available;
         if (available < wanted) {
@@ -168,7 +177,16 @@ std::span<const float> RollColumns::update(std::uint64_t start, std::size_t colu
     }
     readyColumns = column;
     std::fill(output.begin() + static_cast<std::ptrdiff_t>(column * 2), output.end(), 0.0f);
+    std::fill(invalid.begin() + static_cast<std::ptrdiff_t>(column), invalid.end(), 0);
     return output;
+}
+
+bool RollColumns::holdsInvalid() const
+{
+    return std::any_of(invalid.begin(),
+                       invalid.begin() +
+                           static_cast<std::ptrdiff_t>(std::min(readyColumns, invalid.size())),
+                       [](std::uint8_t column) { return column != 0; });
 }
 
 } // namespace orizon::engine

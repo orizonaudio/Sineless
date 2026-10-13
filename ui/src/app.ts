@@ -73,7 +73,7 @@ import {
   zeroCrossings,
 } from "./view/snap.ts";
 import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
-import { statusChips } from "./view/status.ts";
+import { laneHoldsInvalid, statusChips } from "./view/status.ts";
 import {
   fullView,
   isZoomed,
@@ -224,6 +224,8 @@ export class OscilloscopeApp {
   // lane index) and of the sum, updated in place.
   private previewFix = false;
   private matchNodes: (HTMLElement | undefined)[] = [];
+  // Each lane's name, marked while the lane shows samples that are not finite.
+  private laneNameNodes: HTMLElement[] = [];
   private sumNode: HTMLElement | undefined;
   private laneLabelsKey = "";
   // Multi-track lanes by lane set, as the lanes messages describe them; a few are kept, so a
@@ -806,8 +808,10 @@ export class OscilloscopeApp {
     const compareMode = this.compareMode();
     this.matchNodes = [];
     this.sumNode = undefined;
+    this.laneNameNodes = [];
     const name = (style: LaneStyle, index: number) => {
       const node = document.createElement("span");
+      this.laneNameNodes[index] = node;
       node.style.setProperty("--swatch", cssColour(style.colour));
       node.classList.toggle("own", style.own);
       if (style.id === sumLaneId) {
@@ -899,6 +903,12 @@ export class OscilloscopeApp {
   // The Compare view's readouts in the lane labels: each compared track's offset and polarity
   // (or that it matches nowhere clearly) and correlation against this track, and the sum's gain (with the fix, while it is previewed).
   private updateMatches(frame: Frame | undefined): void {
+    this.laneNameNodes.forEach((node, index) => {
+      node.classList.toggle(
+        "invalid",
+        frame !== undefined && laneHoldsInvalid(frame, index),
+      );
+    });
     const comparison = frame?.comparison;
     this.matchNodes.forEach((node, index) => {
       const match = comparison?.matches[index];

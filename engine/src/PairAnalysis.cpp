@@ -172,11 +172,14 @@ std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, 
 
 } // namespace
 
+// Of the finite values: one that is not (from a broken signal upstream) is measured around.
 double energyOf(std::span<const float> values)
 {
     double total = 0.0;
     for (const float value : values) {
-        total += static_cast<double>(value) * value;
+        if (std::isfinite(value)) {
+            total += static_cast<double>(value) * value;
+        }
     }
     return total;
 }
@@ -203,8 +206,11 @@ PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std
     const std::span<float> maskedB(scratch.data() + length, length);
     const std::array<std::span<const float>, 2> pair{a.first(length), b.first(length)};
     const std::vector<bool> together = overlapBlocks(pair, block == 0 ? length : block);
+    // A sample that is not finite (from a broken signal upstream) counts as silence in both, so
+    // the match is measured around it.
     for (std::size_t i = 0; i < length; ++i) {
-        const bool keep = !together.empty() && together[i / (block == 0 ? length : block)];
+        const bool keep = !together.empty() && together[i / (block == 0 ? length : block)] &&
+                          std::isfinite(a[i]) && std::isfinite(b[i]);
         maskedA[i] = keep ? a[i] : 0.0f;
         maskedB[i] = keep ? b[i] : 0.0f;
     }
@@ -273,21 +279,31 @@ double overlapGain(std::span<const std::span<const float>> tracks, std::size_t b
     if (tracks.size() < 2 || block == 0) {
         return 0.0;
     }
+    // Positions where a track is not finite (a broken signal upstream) are left out of the sum
+    // and of every part alike, so that the gain is measured around them.
     const std::size_t length = tracks.front().size();
     const std::size_t blocks = (length + block - 1) / block;
     std::vector<double> sums(blocks, 0.0);
+    std::vector<std::vector<double>> energies(tracks.size(), std::vector<double>(blocks, 0.0));
     for (std::size_t index = 0; index < blocks; ++index) {
         const std::size_t first = index * block;
         const std::size_t last = std::min(first + block, length);
         for (std::size_t i = first; i < last; ++i) {
+            if (!std::ranges::all_of(tracks, [i](std::span<const float> track) {
+                    return std::isfinite(track[i]);
+                })) {
+                continue;
+            }
             double total = 0.0;
-            for (const std::span<const float> track : tracks) {
-                total += track[i];
+            for (std::size_t track = 0; track < tracks.size(); ++track) {
+                const double value = tracks[track][i];
+                total += value;
+                energies[track][index] += value * value;
             }
             sums[index] += total * total;
         }
     }
-    return overlapGainOfBlocks(spansOf(blockEnergies(tracks, block)), sums, block);
+    return overlapGainOfBlocks(spansOf(energies), sums, block);
 }
 
 double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,

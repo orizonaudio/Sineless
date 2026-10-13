@@ -29,6 +29,8 @@ struct DecodedFrame
     float viewStart = 0.0f;
     float viewEnd = 1.0f;
     float visibleSamples = 0.0f;
+    std::uint32_t invalidSamples = 0;
+    std::uint32_t invalidLanes = 0;
     std::vector<float> data;
 
     [[nodiscard]] bool has(protocol::FrameFlag value) const
@@ -64,6 +66,8 @@ inline DecodedFrame decode(const std::vector<std::byte>& bytes)
     frame.viewStart = get<float>(bytes, protocol::FrameHeader::kViewStartOffset);
     frame.viewEnd = get<float>(bytes, protocol::FrameHeader::kViewEndOffset);
     frame.visibleSamples = get<float>(bytes, protocol::FrameHeader::kVisibleSamplesOffset);
+    frame.invalidSamples = get<std::uint32_t>(bytes, protocol::FrameHeader::kInvalidSamplesOffset);
+    frame.invalidLanes = get<std::uint32_t>(bytes, protocol::FrameHeader::kInvalidLanesOffset);
     frame.data.resize((bytes.size() - protocol::FrameHeader::kSize) / sizeof(float));
     std::memcpy(frame.data.data(), bytes.data() + protocol::FrameHeader::kSize,
                 frame.data.size() * sizeof(float));

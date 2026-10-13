@@ -212,6 +212,7 @@ private:
     void catchUpToHold(Lane& lane);
     void catchUpImageToHold();
     bool showFrozenParts(protocol::BeatSpan span, double start, double end);
+    [[nodiscard]] std::uint32_t sumLaneBit(std::uint32_t laneBits) const;
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,

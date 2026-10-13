@@ -29,6 +29,10 @@ export interface Frame {
   readonly cycleSeconds: number; // The left edge's project time.
   // Frozen in Seconds mode: how far back the view can be panned (seconds); 0 otherwise.
   readonly panReach: number;
+  // Samples not finite (measured around): this track's count in what its readouts measure, and a
+  // bit per lane holding any in what the frame shows.
+  readonly invalidSamples: number;
+  readonly invalidLanes: number;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
   // The part of the span this frame covers, and its length in samples.
@@ -141,6 +145,8 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     cycleStart: f32("cycleStart"),
     cycleSeconds: f32("cycleSeconds"),
     panReach: f32("panReach"),
+    invalidSamples: u32("invalidSamples"),
+    invalidLanes: u32("invalidLanes"),
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
     viewStart: f32("viewStart"),

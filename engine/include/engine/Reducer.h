@@ -76,6 +76,8 @@ public:
 
     // Forgets every column, e.g. when the source changes.
     void clear() { readyColumns = 0; }
+    // Whether a column on screen holds a sample that is not finite (NaN or infinite).
+    [[nodiscard]] bool holdsInvalid() const;
 
 private:
     std::uint64_t firstSample = 0; // Absolute index where column 0 starts.
@@ -83,6 +85,7 @@ private:
     std::size_t columnCount = 0;
     std::size_t readyColumns = 0; // Leading columns holding reduced audio.
     std::vector<float> output;
+    std::vector<std::uint8_t> invalid; // Per column: holds a sample that is not finite.
     std::vector<float> scratch;
 };
 

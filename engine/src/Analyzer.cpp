@@ -114,12 +114,15 @@ Readouts levelsOf(const BlockStats& stats, std::size_t first, std::size_t end)
     const std::size_t endBlock = std::min((end + block - 1) / block, blocks.size());
     float peak = 0.0f;
     double sumSquares = 0.0;
+    std::size_t invalid = 0;
     for (std::size_t index = firstBlock; index < endBlock; ++index) {
         peak = std::max(peak, blocks[index].peak);
         sumSquares += blocks[index].sumSquares;
+        invalid += blocks[index].invalid;
     }
+    readouts.invalid = static_cast<std::uint32_t>(invalid);
     const std::size_t samples = std::min(endBlock * block, stats.sampleCount()) -
-                                std::min(firstBlock * block, stats.sampleCount());
+                                std::min(firstBlock * block, stats.sampleCount()) - invalid;
     if (samples > 0) {
         readouts.peak = peak;
         readouts.rms = static_cast<float>(std::sqrt(sumSquares / static_cast<double>(samples)));
@@ -145,6 +148,30 @@ void continueRefresh(Refresh& refresh, std::size_t length, std::size_t step, con
         refresh.cursor += run;
         budget -= run;
     }
+}
+
+// Lane `index`'s bit in a frame's `invalidLanes`.
+std::uint32_t laneBit(std::size_t index)
+{
+    return index < 32 ? std::uint32_t{1} << index : 0U;
+}
+
+// Whether any of `samples` is not finite (NaN or infinite, from a broken signal upstream).
+bool holdsInvalid(std::span<const float> samples)
+{
+    return !std::ranges::all_of(samples, [](float sample) { return std::isfinite(sample); });
+}
+
+// Whether the blocks of `stats` holding samples [first, end) have any that is not finite.
+bool holdsInvalid(const BlockStats& stats, std::size_t first, std::size_t end)
+{
+    const std::size_t block = stats.blockSamples();
+    const std::span<const BlockStats::Block> blocks = stats.blocks();
+    const std::size_t firstBlock = std::min(first / block, blocks.size());
+    const std::size_t endBlock = std::min((end + block - 1) / block, blocks.size());
+    return std::any_of(blocks.begin() + static_cast<std::ptrdiff_t>(firstBlock),
+                       blocks.begin() + static_cast<std::ptrdiff_t>(endBlock),
+                       [](const BlockStats::Block& level) { return level.invalid > 0; });
 }
 
 // `lanes` matches that are none: no correlation or offset (NaN), and not related (polarity 0).
@@ -303,6 +330,7 @@ void Analyzer::applyReadouts(FrameHeaderValues& header)
     }
     readoutCache.settings = frameSettings;
     readoutCache.frozen = isFrozen;
+    header.invalidSamples = readoutCache.values.invalid;
     header.peak = readoutCache.values.peak;
     header.rms = readoutCache.values.rms;
     header.frequency = static_cast<float>(
@@ -1074,7 +1102,8 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     std::size_t pointCount = 0;
     bool partial = false;
     frameChanges.clear();
-    for (const std::uint64_t serial : laneOrder) {
+    for (std::size_t laneIndex = 0; laneIndex < laneOrder.size(); ++laneIndex) {
+        const std::uint64_t serial = laneOrder[laneIndex];
         Lane& lane = *lanes.at(serial);
         ColumnReduction& reduction = lane.reduction;
         const int channels = lane.engine->inputChannels();
@@ -1109,6 +1138,8 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                         !lane.stats.fits(static_cast<std::size_t>(count), block) ||
                             lane.statsChannels != channels);
             lane.statsChannels = channels;
+            header.invalidLanes |=
+                holdsInvalid(lane.stats, crop.first, crop.end) ? laneBit(laneIndex) : 0U;
             partial = partial || !(lane.image.complete() || lane.image.partComplete());
             if (comparing && lane.compared) {
                 frameChanges.insert(frameChanges.end(), lane.image.changes().begin(),
@@ -1137,6 +1168,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     if (comparing) {
         const auto playhead = static_cast<std::size_t>(
             std::llround((subStart + window.cursor * shownPart) * static_cast<double>(count)));
+        header.invalidLanes |= sumLaneBit(header.invalidLanes);
         appendComparison(header, crop.first, crop.end, count, columns, command.previewFix,
                          playhead);
     }
@@ -1218,6 +1250,18 @@ bool Analyzer::showFrozenParts(protocol::BeatSpan span, double start, double end
     return changed;
 }
 
+// The sum lane's bit in a frame's `invalidLanes`: set when a compared lane's is, since the sum
+// of a sample that is not finite is not finite either.
+std::uint32_t Analyzer::sumLaneBit(std::uint32_t laneBits) const
+{
+    for (std::size_t index = 0; index < laneOrder.size(); ++index) {
+        if ((laneBits & laneBit(index)) != 0 && lanes.at(laneOrder[index])->compared) {
+            return laneBit(laneOrder.size());
+        }
+    }
+    return 0U;
+}
+
 // The multi-track view with the seconds time base: every lane shows this track's window (its
 // trigger, roll or frozen window), placed in each other track's capture through the musical
 // clock that all instances share with the host.
@@ -1278,7 +1322,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     }
     frameData.clear();
     std::size_t pointCount = 0;
-    for (const std::uint64_t serial : laneOrder) {
+    for (std::size_t index = 0; index < laneOrder.size(); ++index) {
+        const std::uint64_t serial = laneOrder[index];
         Lane& lane = *lanes.at(serial);
         const auto [source, laneStart] = sourceOf(serial);
         const int channels = lane.engine->inputChannels();
@@ -1293,6 +1338,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
             header.mode = protocol::FrameMode::kMinMax;
             pointCount = columns;
             frameData.insert(frameData.end(), values.begin(), values.end());
+            header.invalidLanes |= lane.roll.holdsInvalid() ? laneBit(index) : 0U;
             continue;
         }
         lane.roll.clear();
@@ -1300,6 +1346,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         (void)readViewHeld(*source, channels, ChannelView::kMid, laneStart, viewSamples, scratch);
         const std::span<const float> visible =
             std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
+        header.invalidLanes |= holdsInvalid(visible) ? laneBit(index) : 0U;
         header.mode = reduceToColumns(visible, columns, reduced);
         pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
@@ -1894,13 +1941,16 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
                                    [&](std::uint64_t from, std::span<float> destination) {
                                        return readLaneWindow(lane, from - laneStart, destination);
                                    }));
+            header.invalidLanes |= roll.holdsInvalid() ? laneBit(lane) : 0U;
             continue;
         }
         roll.clear();
         viewSamples.resize(visibleCount);
         readLaneWindow(lane, first, viewSamples);
+        header.invalidLanes |= holdsInvalid(viewSamples) ? laneBit(lane) : 0U;
         addVisible(viewSamples);
     }
+    header.invalidLanes |= sumLaneBit(header.invalidLanes);
 
     // The sum lane, its parts as previewed. Rolling, it keeps its columns too, through a reader
     // that adds the parts, for as long as the parts stay the same.

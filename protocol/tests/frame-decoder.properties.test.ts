@@ -78,6 +78,8 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       cycleStart: f32,
       cycleSeconds: f32,
       panReach: f32,
+      invalidSamples: u32,
+      invalidLanes: u32,
       spanQuarterNotes: f32,
       barQuarterNotes: f32,
       viewStart: f32,
@@ -155,6 +157,8 @@ function expectedHeader(
     fixedGain: content.comparison?.fixedGain ?? 0,
     cycleSeconds: content.cycleSeconds ?? 0,
     panReach: content.panReach ?? 0,
+    invalidSamples: content.invalidSamples ?? 0,
+    invalidLanes: content.invalidLanes ?? 0,
   };
 }
 
@@ -203,6 +207,8 @@ function expectedFrame(content: FrameContent): Frame {
     cycleStart: f(header.cycleStart),
     cycleSeconds: f(header.cycleSeconds),
     panReach: f(header.panReach),
+    invalidSamples: header.invalidSamples,
+    invalidLanes: header.invalidLanes,
     spanQuarterNotes: f(header.spanQuarterNotes),
     barQuarterNotes: f(header.barQuarterNotes),
     viewStart: f(header.viewStart),

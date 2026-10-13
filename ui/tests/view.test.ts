@@ -22,7 +22,7 @@ import {
   parseQuantity,
   signed,
 } from "../src/view/format.ts";
-import { statusChips } from "../src/view/status.ts";
+import { laneHoldsInvalid, statusChips } from "../src/view/status.ts";
 import {
   holdOffSteps,
   spanSteps,
@@ -284,6 +284,8 @@ describe("status chips", () => {
     cycleStart: 0,
     cycleSeconds: 0,
     panReach: 0,
+    invalidSamples: 0,
+    invalidLanes: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,
@@ -310,6 +312,32 @@ describe("status chips", () => {
     expect(statusChips(frame({ triggered: true }), "auto", 1, 0)[0]?.text).toBe(
       "Trig’d",
     );
+  });
+
+  test.each([
+    { state: "triggered", overrides: { triggered: true } },
+    { state: "synced", overrides: { synced: true } },
+    { state: "rolling", overrides: { roll: true } },
+    { state: "frozen", overrides: { frozen: true } },
+  ])(
+    "warns of samples that are not finite whatever the display does ($state)",
+    ({ overrides }) => {
+      for (const invalid of [{ invalidSamples: 3 }, { invalidLanes: 0b100 }]) {
+        expect(
+          statusChips(frame({ ...overrides, ...invalid }), "auto", 0, 0).at(-1),
+        ).toEqual({ text: "Invalid samples", tone: "warn" });
+      }
+      expect(
+        statusChips(frame(overrides), "auto", 0, 0).map((chip) => chip.text),
+      ).not.toContain("Invalid samples");
+    },
+  );
+
+  test.each([0, 1, 2, 31])("reads lane %i's invalid-samples bit", (index) => {
+    const marked = frame({ invalidLanes: (2 ** index) >>> 0 });
+    expect(laneHoldsInvalid(marked, index)).toBe(true);
+    expect(laneHoldsInvalid(marked, index === 0 ? 1 : 0)).toBe(false);
+    expect(laneHoldsInvalid(frame({ invalidLanes: 0 }), index)).toBe(false);
   });
 
   test("shows sync, a shortened span, and a sweep still filling", () => {

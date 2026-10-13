@@ -24,6 +24,8 @@ function frame(sequence: number): Frame {
     cycleStart: 0,
     cycleSeconds: 0,
     panReach: 0,
+    invalidSamples: 0,
+    invalidLanes: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,
