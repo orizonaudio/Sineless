@@ -153,6 +153,7 @@ struct Signal
     std::int64_t brokenEvery = 0;
     float broken = std::numeric_limits<float>::quiet_NaN();
     std::int64_t brokenUntil = std::numeric_limits<std::int64_t>::max(); // Then whole again.
+    bool brokenRightOnly = false;                                        // Else both channels.
 };
 
 // Tracks of group A on one host, each with its own signal and tempo, viewed from the first.
@@ -273,7 +274,9 @@ private:
             right.at(static_cast<std::size_t>(i)) = static_cast<float>(0.5 * value);
             if (signal.brokenEvery > 0 && index % signal.brokenEvery == 0 &&
                 index < signal.brokenUntil) {
-                left.at(static_cast<std::size_t>(i)) = signal.broken;
+                if (!signal.brokenRightOnly) {
+                    left.at(static_cast<std::size_t>(i)) = signal.broken;
+                }
                 right.at(static_cast<std::size_t>(i)) = signal.broken;
             }
         }
@@ -1661,7 +1664,7 @@ TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
         << "one every 100 ms";
     switch (c.mode.mode) {
     case DisplayMode::kSingle:
-        EXPECT_EQ(frame->invalidLanes, 0U) << "no lanes";
+        EXPECT_EQ(frame->invalidLanes, 1U) << "no lanes: bit 0 for the traces";
         break;
     case DisplayMode::kMulti:
         EXPECT_EQ(frame->invalidLanes, 0b01U) << "this track's lane only";
@@ -1682,6 +1685,62 @@ TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
 }
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenSamples, ::testing::ValuesIn(brokenCases()),
+                         [](const ::testing::TestParamInfo<BrokenCase>& info) {
+                             return nameOf(info.param);
+                         });
+
+// Single has no lanes: bit 0 of `invalidLanes` says a trace drawn holds samples that are not
+// finite, whichever channel they are on. A stereo track broken on its right channel only, the
+// readouts on its left (the trigger source, in Seconds mode): drawn with R, the frame says so; with
+// L alone drawn, in Seconds mode nothing shown or measured holds any. In each time base, live and
+// rolling, at the lowest and highest rates.
+class BrokenChannel : public ::testing::TestWithParam<BrokenCase>
+{
+};
+
+TEST_P(BrokenChannel, IsFlaggedWhenDrawn)
+{
+    const BrokenCase c = GetParam();
+    for (const bool drawn : {true, false}) {
+        SCOPED_TRACE(drawn ? "L and R drawn" : "L alone drawn");
+        Session session(c.mode.rate, 2);
+        session.join({.frequency = 1000.0,
+                      .brokenEvery = std::llround(c.mode.rate / 10.0),
+                      .broken = c.infinite ? std::numeric_limits<float>::infinity()
+                                           : std::numeric_limits<float>::quiet_NaN(),
+                      .brokenRightOnly = true});
+        configure(session.own(), c.mode.mode, c.mode.timeBase);
+        session.own().settings().set(SettingId::kTriggerSource,
+                                     static_cast<double>(protocol::ChannelView::kLeft));
+        session.own().settings().set(SettingId::kChannelViews, drawn ? 0b0011 : 0b0001);
+        session.own().settings().set(SettingId::kTimeSpan, c.rolling ? 2.0 : 0.2);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+        session.play(c.rolling ? 3.0 : 1.5);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame);
+        if (drawn) {
+            EXPECT_EQ(frame->invalidLanes, 1U) << "a trace drawn holds some";
+        } else if (c.mode.timeBase == TimeBase::kSeconds) {
+            EXPECT_EQ(frame->invalidLanes, 0U) << "none drawn";
+            EXPECT_EQ(frame->invalidSamples, 0U) << "none measured";
+        }
+    }
+}
+
+// The Single cases, each on a stereo track.
+std::vector<BrokenCase> singleStereoCases()
+{
+    std::vector<BrokenCase> cases;
+    for (BrokenCase c : brokenCases()) {
+        if (c.mode.mode == DisplayMode::kSingle) {
+            c.mode.channels = 2;
+            cases.push_back(c);
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenChannel, ::testing::ValuesIn(singleStereoCases()),
                          [](const ::testing::TestParamInfo<BrokenCase>& info) {
                              return nameOf(info.param);
                          });

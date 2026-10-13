@@ -31,7 +31,8 @@
 // Samples that are not finite (NaN or infinite, from a broken signal upstream) are measured
 // around: left out of the readouts and Compare's matches and gains, and drawn as they are.
 // `invalidSamples` is how many this track has in what its readouts measure, and `invalidLanes`
-// has bit i set when lane i has any in what the frame shows.
+// has bit i set when lane i has any in what the frame shows; in Single, which has no lanes, bit 0
+// when any trace does.
 //
 // View zoom: the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
 // 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
