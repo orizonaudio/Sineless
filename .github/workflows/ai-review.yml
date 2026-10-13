@@ -111,6 +111,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           PR_FROM_EVENT: ${{ github.event.pull_request.number }}
+          EVENT_SHA: ${{ github.event.pull_request.head.sha }}
           PR_FROM_COMMENT: ${{ github.event.issue.number }}
           COMMENT: ${{ github.event.comment.body }}
           ACTOR: ${{ github.actor }}
@@ -152,10 +153,13 @@ jobs:
             exit 0
           fi
           # A push by Dependabot runs without secrets, so no review can run on it; it changes pinned
-          # versions, which CI and the dependency review check. Anyone else's push to its branch,
-          # and a /ai-review comment, is reviewed as usual.
+          # versions, which CI and the dependency review check. It passes only the commit it pushed,
+          # and only while that is still the head: a later push, by anyone, has its own run, and
+          # anyone else's push, and a /ai-review comment, is reviewed as usual.
           if [[ "$EVENT" == pull_request && "$ACTOR" == "dependabot[bot]" ]]; then
-            status "$sha" success "Dependency update: checked by CI and the dependency review"
+            if [[ "$EVENT_SHA" == "$sha" ]]; then
+              status "$sha" success "Dependency update: checked by CI and the dependency review"
+            fi
             echo "action=done" >> "$GITHUB_OUTPUT"
             exit 0
           fi
