@@ -1495,6 +1495,38 @@ TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
     }
 }
 
+// This track, and a track not compared, have no match in either time base, live and frozen: no
+// correlation or offset (NaN) and polarity 0, never a correlation or offset of 0.
+TEST_F(CompareTest, SendsNoMatchForThisTrackAndTracksNotCompared)
+{
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); }); // Compared.
+    joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });  // Not compared.
+    own->settings().set(SettingId::kTimeSpan, 0.1);
+    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    for (const auto timeBase : {protocol::TimeBase::kBeats, protocol::TimeBase::kSeconds}) {
+        for (const bool frozen : {false, true}) {
+            SCOPED_TRACE(std::string(timeBase == protocol::TimeBase::kBeats ? "Beats" : "Seconds") +
+                         (frozen ? ", frozen" : ", live"));
+            analyzer->setFrozen(false);
+            own->settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
+            play(9600);
+            if (frozen) {
+                analyzer->setFrozen(true);
+                play(480);
+            }
+            const auto frame = produce();
+            ASSERT_TRUE(frame);
+            ASSERT_EQ(frame->laneCount, 4);
+            EXPECT_TRUE(match(*frame, 1).inverted()) << "the compared track is matched";
+            for (const std::size_t track : {std::size_t{0}, std::size_t{2}}) {
+                EXPECT_TRUE(std::isnan(match(*frame, track).correlation)) << "track " << track;
+                EXPECT_TRUE(std::isnan(match(*frame, track).offset)) << "track " << track;
+                EXPECT_EQ(match(*frame, track).polarity, 0.0f) << "track " << track;
+            }
+        }
+    }
+}
+
 TEST_F(CompareTest, ComparesInSecondsModeToo)
 {
     own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
