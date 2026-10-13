@@ -4,7 +4,7 @@ import { ChannelView, FrameMode } from "../src/enums.ts";
 import { decodeFrame } from "../src/frame-decoder.ts";
 
 import golden from "./data/golden-frame.json" with { type: "json" };
-import goldenLanes from "./data/golden-lanes-frame.json" with { type: "json" };
+import { goldenLanes } from "./golden.ts";
 
 function fromHex(hex: string): ArrayBuffer {
   const bytes = new Uint8Array(hex.length / 2);
@@ -53,6 +53,7 @@ describe("frame decoder", () => {
     expect(frame.synced).toBe(true);
     expect(frame.cursor).toBe(goldenLanes.header.cursor);
     expect(frame.cycleSeconds).toBe(goldenLanes.header.cycleSeconds);
+    expect(frame.frequency).toBeUndefined();
     expect(frame.lanes.map((lane) => Array.from(lane))).toEqual(
       goldenLanes.lanes,
     );
