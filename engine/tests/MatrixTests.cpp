@@ -152,6 +152,7 @@ struct Signal
     // might send.
     std::int64_t brokenEvery = 0;
     float broken = std::numeric_limits<float>::quiet_NaN();
+    std::int64_t brokenUntil = std::numeric_limits<std::int64_t>::max(); // Then whole again.
 };
 
 // Tracks of group A on one host, each with its own signal and tempo, viewed from the first.
@@ -270,7 +271,8 @@ private:
             }
             left.at(static_cast<std::size_t>(i)) = static_cast<float>(value);
             right.at(static_cast<std::size_t>(i)) = static_cast<float>(0.5 * value);
-            if (signal.brokenEvery > 0 && index % signal.brokenEvery == 0) {
+            if (signal.brokenEvery > 0 && index % signal.brokenEvery == 0 &&
+                index < signal.brokenUntil) {
                 left.at(static_cast<std::size_t>(i)) = signal.broken;
                 right.at(static_cast<std::size_t>(i)) = signal.broken;
             }
@@ -1485,22 +1487,21 @@ TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
 INSTANTIATE_TEST_SUITE_P(EveryRate, AnalysisGate,
                          ::testing::ValuesIn(timeBaseCases(DisplayMode::kSingle)), modeTestName);
 
-// Samples that are not finite, one in every 4800 of this track (NaN or infinite): measured around,
+// Samples that are not finite, one every 100 ms on this track (NaN or infinite): measured around,
 // so the readouts are those of the tone, and counted. The frame says how many the readouts measured
 // around, and which lanes hold any: this track's and, in Compare, the sum's, never the other
-// track's. In every mode and time base, live; in Seconds mode also rolling.
+// track's; none once they are past. In every mode and time base, live and in Seconds mode
+// rolling, at the lowest and highest rates.
 struct BrokenCase
 {
-    DisplayMode mode = DisplayMode::kSingle;
-    TimeBase timeBase = TimeBase::kSeconds;
+    ModeCase mode;
     bool rolling = false;
     bool infinite = false;
 };
 
 std::string nameOf(const BrokenCase& c)
 {
-    return modeName(c.mode) + "_" + timeBaseName(c.timeBase) + (c.rolling ? "_Rolling" : "") +
-           (c.infinite ? "_Infinity" : "_NaN");
+    return nameOf(c.mode) + (c.rolling ? "_Rolling" : "") + (c.infinite ? "_Infinity" : "_NaN");
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
@@ -1512,14 +1513,21 @@ void PrintTo(const BrokenCase& c, std::ostream* out)
 std::vector<BrokenCase> brokenCases()
 {
     std::vector<BrokenCase> cases;
-    for (const DisplayMode mode : everyMode()) {
-        for (const bool infinite : {false, true}) {
-            cases.push_back({.mode = mode, .timeBase = TimeBase::kBeats, .infinite = infinite});
-            cases.push_back({.mode = mode, .timeBase = TimeBase::kSeconds, .infinite = infinite});
-            cases.push_back({.mode = mode,
-                             .timeBase = TimeBase::kSeconds,
-                             .rolling = true,
-                             .infinite = infinite});
+    std::size_t index = 0;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        for (const DisplayMode mode : everyMode()) {
+            for (const bool infinite : {false, true}) {
+                for (const auto [timeBase, rolling] :
+                     {std::pair{TimeBase::kBeats, false}, std::pair{TimeBase::kSeconds, false},
+                      std::pair{TimeBase::kSeconds, true}}) {
+                    cases.push_back({.mode = {.rate = rate,
+                                              .mode = mode,
+                                              .channels = index++ % 2 == 0 ? 2 : 1,
+                                              .timeBase = timeBase},
+                                     .rolling = rolling,
+                                     .infinite = infinite});
+                }
+            }
         }
     }
     return cases;
@@ -1532,23 +1540,28 @@ class BrokenSamples : public ::testing::TestWithParam<BrokenCase>
 TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
 {
     const BrokenCase c = GetParam();
-    constexpr double kRate = 48000.0;
-    Session session(kRate, 2);
+    const double rate = c.mode.rate;
+    // What the readouts measure: a beat at 120 BPM, or the span.
+    const double span = c.mode.timeBase == TimeBase::kBeats ? 0.5 : c.rolling ? 2.0 : 0.2;
+    const double played = c.rolling ? 3.0 : 1.5;
+    Session session(rate, c.mode.channels);
     session.join({.frequency = 1000.0,
-                  .brokenEvery = 4800,
+                  .brokenEvery = std::llround(rate / 10.0),
                   .broken = c.infinite ? std::numeric_limits<float>::infinity()
-                                       : std::numeric_limits<float>::quiet_NaN()});
+                                       : std::numeric_limits<float>::quiet_NaN(),
+                  .brokenUntil = std::llround(rate * (played + 0.1))});
     session.join({.frequency = 1500.0});
-    configure(session.own(), c.mode, c.timeBase);
-    session.own().settings().set(SettingId::kTimeSpan, c.rolling ? 2.0 : 0.2);
+    configure(session.own(), c.mode.mode, c.mode.timeBase);
+    session.own().settings().set(SettingId::kTimeSpan, span);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
-    session.play(c.rolling ? 3.0 : 1.5, protocol::kReadoutIntervalSeconds);
-    const auto frame = session.produce();
+    session.play(played);
+    auto frame = session.produce();
     ASSERT_TRUE(frame);
     EXPECT_TRUE(std::isfinite(frame->peak)) << "measured around";
     EXPECT_TRUE(std::isfinite(frame->rms)) << "measured around";
-    EXPECT_GT(frame->invalidSamples, 0U) << "this track's are counted";
-    switch (c.mode) {
+    EXPECT_EQ(frame->invalidSamples, static_cast<std::uint32_t>(std::lround(span * 10.0)))
+        << "one every 100 ms";
+    switch (c.mode.mode) {
     case DisplayMode::kSingle:
         EXPECT_EQ(frame->invalidLanes, 0U) << "no lanes";
         break;
@@ -1559,9 +1572,16 @@ TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
         EXPECT_EQ(frame->invalidLanes, 0b101U) << "this track's lane and the sum's";
         break;
     }
+
+    // Once they are past what the frame shows, nothing is flagged any more.
+    session.play(span * 2.0 + 0.5);
+    frame = session.produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->invalidSamples, 0U) << "none left";
+    EXPECT_EQ(frame->invalidLanes, 0U) << "none left";
 }
 
-INSTANTIATE_TEST_SUITE_P(EveryMode, BrokenSamples, ::testing::ValuesIn(brokenCases()),
+INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenSamples, ::testing::ValuesIn(brokenCases()),
                          [](const ::testing::TestParamInfo<BrokenCase>& info) {
                              return nameOf(info.param);
                          });
