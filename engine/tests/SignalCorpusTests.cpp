@@ -377,9 +377,12 @@ std::vector<Case> corpus()
         compare("Compare_BothSilent_48k", stereo(silence()), stereo(silence())).levels(kSilent, kSilent).pitch(kNone).match(kNone, kNone, 0).gains(kNone, kNone),
         // A steady offset is sound to the analysis too: two equal ones sum as copies.
         compare("Compare_DcCopy_48k", stereo(dc(0.25)), stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf).pitch(kNone).match(1, 0, 1).gains(kIdentical, kIdentical),
-        // NaN samples on this track, as in Single: measured around, so the copy still matches
+        // NaN or infinite samples on this track, as in Single: measured around, so the copy still matches
         // and sums as one; the sum lane carries the NaN points.
         compare("Compare_NoiseWithNaN_48k", stereo(spiked(hiss, kNaNSample, 4800)), stereo(hiss)).match(1, 0, 1).gains(kIdentical, kIdentical),
+        compare("Compare_NoiseWithNaN_48k_Seconds", stereo(spiked(hiss, kNaNSample, 4800)), stereo(hiss)).in(kSeconds).match(1, 0, 1).gains(kIdentical, kIdentical),
+        compare("Compare_NoiseWithInfinity_48k", stereo(spiked(hiss, kInfSample, 4800)), stereo(hiss)).match(1, 0, 1).gains(kIdentical, kIdentical),
+        compare("Compare_NoiseWithInfinity_48k_Seconds", stereo(spiked(hiss, kInfSample, 4800)), stereo(hiss)).in(kSeconds).match(1, 0, 1).gains(kIdentical, kIdentical),
     };
 }
 // clang-format on
