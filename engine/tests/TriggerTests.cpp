@@ -1,7 +1,9 @@
 #include "engine/Trigger.h"
 
+#include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 #include <numbers>
 #include <random>
 #include <vector>
@@ -53,6 +55,41 @@ TEST(EdgeTrigger, FindsFallingCrossingsAtTheLevel)
         // sin(x) = 0.5 going down at x = 5π/6, i.e. 5/12 of a period.
         const double phase = std::fmod(edge, kPeriod) / kPeriod;
         EXPECT_NEAR(phase, 5.0 / 12.0, 1e-3);
+    }
+}
+
+// Samples that are not finite (from a broken signal upstream) cross nothing and arm nothing: no
+// edge is found at them or next to them, and every edge found is a true crossing, for either
+// slope. An infinite sample right after one below the level, or just before a crossing, made a
+// false edge, or one at NaN.
+TEST(EdgeTrigger, StepsOverSamplesThatAreNotFinite)
+{
+    constexpr float kInf = std::numeric_limits<float>::infinity();
+    for (const TriggerSlope slope : {TriggerSlope::kRising, TriggerSlope::kFalling}) {
+        SCOPED_TRACE(slope == TriggerSlope::kRising ? "rising" : "falling");
+        const TriggerParameters parameters{.hysteresis = 0.01, .slope = slope};
+        const std::vector<float> clean = sine(1000);
+        const auto expected = edges(clean, parameters);
+        std::vector<float> broken = clean;
+        // Next to each crossing of either direction, and inside each half cycle.
+        for (std::size_t cycle = 0; cycle < 10; ++cycle) {
+            const std::size_t at = cycle * 100;
+            broken.at(at + 25) = std::numeric_limits<float>::quiet_NaN();
+            broken.at(at + 49) = cycle % 2 == 0 ? -kInf : kInf;
+            broken.at(at + 75) = cycle % 2 == 0 ? kInf : -kInf;
+            if (at > 0) {
+                broken.at(at - 1) = cycle % 2 == 0 ? -kInf : kInf;
+            }
+        }
+        const auto found = edges(broken, parameters);
+        ASSERT_FALSE(found.empty());
+        for (const double edge : found) {
+            ASSERT_TRUE(std::isfinite(edge));
+            const auto nearest = std::ranges::min_element(
+                expected, {}, [edge](double clean) { return std::abs(clean - edge); });
+            ASSERT_NE(nearest, expected.end());
+            EXPECT_NEAR(edge, *nearest, 1e-3) << "a true crossing";
+        }
     }
 }
 
