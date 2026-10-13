@@ -147,7 +147,6 @@ void continueRefresh(Refresh& refresh, std::size_t length, std::size_t step, con
     }
 }
 
-// How many positions of a sum of `parts` tracks to recompute per frame.
 // `lanes` matches that are none: no correlation or offset (NaN), and not related (polarity 0).
 void assignNoMatches(std::vector<float>& values, std::size_t lanes)
 {
@@ -157,6 +156,7 @@ void assignNoMatches(std::vector<float>& values, std::size_t lanes)
     }
 }
 
+// How many positions of a sum of `parts` tracks to recompute per frame.
 std::size_t refreshStep(std::size_t parts)
 {
     return kSumRefreshSamples / std::max<std::size_t>(parts, 1);
