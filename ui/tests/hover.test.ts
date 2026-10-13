@@ -85,6 +85,35 @@ describe("hover readout", () => {
     expect(risingCrossings(rawFrame(silence), silence)).toEqual([]);
   });
 
+  test.each([Number.NaN, Infinity, -Infinity])(
+    "measures around samples that are %s, as the engine does",
+    (broken) => {
+      const values = sine(480, 4);
+      const clean = risingCrossings(rawFrame(values), values);
+      const spiked = values.slice();
+      // Away from the crossings, which a broken sample would hide.
+      for (const index of [30, 150, 270]) {
+        spiked[index] = broken;
+      }
+      // The level is the mean of the finite samples, a hair from the clean one's.
+      const found = risingCrossings(rawFrame(spiked), spiked);
+      expect(found).toHaveLength(clean.length);
+      found.forEach((position, index) => {
+        expect(position).toBeCloseTo(clean[index] ?? 0, 3);
+      });
+      const columns = new Float32Array(spiked.length * 2);
+      spiked.forEach((value, index) => {
+        columns[index * 2] = value;
+        columns[index * 2 + 1] = value;
+      });
+      const minMax = rawFrame(columns, {
+        mode: FrameMode.minMax,
+        pointCount: spiked.length,
+      });
+      expect(risingCrossings(minMax, columns)).toHaveLength(clean.length);
+    },
+  );
+
   test("finds rising zero crossings only", () => {
     const values = sine(480, 4); // 120-sample cycles.
     const crossings = risingCrossings(rawFrame(values), values);
