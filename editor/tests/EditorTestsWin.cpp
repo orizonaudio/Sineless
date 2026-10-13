@@ -554,8 +554,11 @@ TEST_F(EditorTest, LeavesNoHandlesBehindWhenClosedAfterLoading)
     DWORD handlesAtEnd = 0;
     GetProcessHandleCount(GetCurrentProcess(), &handlesAtEnd);
     std::cout << "process handles " << handlesAtStart << " -> " << handlesAtEnd << "\n";
-    // A few handles of slack for noise.
-    EXPECT_LE(static_cast<int>(handlesAtEnd) - static_cast<int>(handlesAtStart), (kCycles - 2) / 5)
+    // The count moves with WebView2's own processes, by up to about 12 either way without any
+    // leak (-12 to +4 over ten runs in a Windows 11 VM, +7 once on CI): half a handle per cycle
+    // stays above that noise, and below the one per cycle a handle left behind by each editor
+    // would add.
+    EXPECT_LE(static_cast<int>(handlesAtEnd) - static_cast<int>(handlesAtStart), (kCycles - 2) / 2)
         << "handles left behind by " << kCycles - 2 << " open/close cycles";
 }
 
