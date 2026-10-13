@@ -1,5 +1,7 @@
-// What a Stryker report (build/mutation/mutation.json) says: the mutation score, each status's
-// count and the mutants the tests did not notice, as Markdown and as GitHub Actions warnings.
+// What a mutation testing report says (Stryker's for the TypeScript, Mull's for the C++, in the
+// same format): the mutation score, each status's count and the mutants the tests did not notice,
+// as Markdown and as GitHub Actions warnings.
+import { isAbsolute, relative } from "node:path";
 
 // The parts of the mutation testing report schema read here.
 export interface Mutant {
@@ -41,8 +43,24 @@ function cell(text: string): string {
   return `\`${text.replaceAll(/\s+/gu, " ").replaceAll("|", "\\|")}\``;
 }
 
-// The report as Markdown; `seconds` is how long Stryker took, if known.
-export function summarise(report: Report, seconds?: number): string {
+// The report with its files' paths relative to `root`: Mull writes them absolute.
+export function relativeTo(report: Report, root: string): Report {
+  return {
+    files: Object.fromEntries(
+      Object.entries(report.files).map(([file, mutants]) => [
+        isAbsolute(file) ? relative(root, file) : file,
+        mutants,
+      ]),
+    ),
+  };
+}
+
+// The report as Markdown under `title`; `seconds` is how long the run took, if known.
+export function summarise(
+  report: Report,
+  title: string,
+  seconds?: number,
+): string {
   const counts = new Map<string, number>();
   for (const { mutants } of Object.values(report.files)) {
     for (const mutant of mutants) {
@@ -56,7 +74,7 @@ export function summarise(report: Report, seconds?: number): string {
     );
   const caught = count(noticed);
   const measured = caught + count(unnoticed);
-  const lines = ["## Mutation testing (TypeScript)", ""];
+  const lines = [`## ${title}`, ""];
   if (measured === 0) {
     lines.push("No mutants to test.");
   } else {

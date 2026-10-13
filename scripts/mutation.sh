@@ -61,5 +61,6 @@ if ! cmp -s tools/mutation/package-lock.json "$work/package-lock.json"; then
 fi
 start=$SECONDS
 (cd "$work" && npx stryker run "${args[@]+"${args[@]}"}")
-node scripts/mutation-report.ts "$out/mutation.json" "$((SECONDS - start))" > "$out/summary.md"
+node scripts/mutation-report.ts "$out/mutation.json" "Mutation testing (TypeScript)" \
+    "$((SECONDS - start))" > "$out/summary.md"
 cat "$out/summary.md"
