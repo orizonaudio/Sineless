@@ -29,14 +29,14 @@
   "matches": {
     "track1": {
       "correlation": 0.01367426,
-      "offset": 0,
+      "offset": "NaN",
       "polarity": 0
     }
   },
   "mode": "minMax",
   "pointCount": 500,
   "readouts": {
-    "frequency": 0,
+    "frequency": "NaN",
     "peak": 0.4999602,
     "rms": 0.2863674
   },

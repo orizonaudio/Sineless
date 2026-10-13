@@ -70,9 +70,9 @@ describe("frame decoder", () => {
     expect(frame.comparison).toBeUndefined();
   });
 
-  test("reports an unavailable frequency as undefined", () => {
+  test("reports an unavailable frequency (NaN) as undefined", () => {
     const buffer = fromHex(golden.hex);
-    new DataView(buffer).setFloat32(28, 0, true);
+    new DataView(buffer).setFloat32(28, Number.NaN, true);
     expect(decodeFrame(buffer).frequency).toBeUndefined();
   });
 

@@ -1,5 +1,7 @@
 #include "engine/FrameEncoder.h"
 
+#include <cmath>
+#include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -95,6 +97,20 @@ TEST(FrameEncoder, WritesAHeaderOnlyFrame)
     std::vector<std::byte> output;
     encodeFrame({}, {}, output);
     EXPECT_EQ(output.size(), protocol::FrameHeader::kSize);
+}
+
+// Readouts not measured travel as no value, never as the level of silence or 0 Hz.
+TEST(FrameEncoder, SendsNoValueForReadoutsNotMeasured)
+{
+    std::vector<std::byte> output;
+    encodeFrame({}, {}, output);
+    for (const std::size_t offset :
+         {protocol::FrameHeader::kPeakOffset, protocol::FrameHeader::kRmsOffset,
+          protocol::FrameHeader::kFrequencyOffset}) {
+        float value = 0.0f;
+        std::memcpy(&value, output.data() + offset, sizeof value);
+        EXPECT_TRUE(std::isnan(value)) << "at byte " << offset;
+    }
 }
 
 } // namespace

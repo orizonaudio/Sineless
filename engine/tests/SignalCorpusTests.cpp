@@ -206,8 +206,8 @@ struct Expect
     // Compare: the other track's match and the summing gains (dB). NaN: nothing measured;
     // -infinity: an exact cancellation, the sum exactly 0 (never a floor: the UI applies that).
     std::optional<double> correlation;
-    std::optional<int> offset;
-    std::optional<int> polarity; // 1 as it is, -1 flipped, 0 no clear match.
+    std::optional<double> offset; // kNone: no offset (no clear match).
+    std::optional<int> polarity;  // 1 as it is, -1 flipped, 0 no clear match.
     std::optional<double> sumGainDb;
     std::optional<double> fixedGainDb;
 };
@@ -256,7 +256,7 @@ struct Case
         expect.frequency = hertz;
         return *this;
     }
-    Case& match(double correlation, int offset, int polarity)
+    Case& match(double correlation, double offset, int polarity)
     {
         expect.correlation = correlation;
         expect.offset = offset;
@@ -368,14 +368,14 @@ std::vector<Case> corpus()
         // This track is the late one: the other leads, by a negative offset.
         compare("Compare_NoiseLeading64_48k", stereo(delayed(hiss, 64)), stereo(hiss)).match(0, -64, 1).gains(0, kIdentical),
         // Beyond the 480-sample reach: no match is found, and no fix suggested.
-        compare("Compare_NoiseDelayed600_48k", stereo(hiss), stereo(delayed(hiss, 600))).match(0, 0, 0).gains(0, 0),
-        compare("Compare_NoiseUnrelated_48k", stereo(hiss), stereo(noise(2, 0.5))).match(0, 0, 0).gains(0, 0),
+        compare("Compare_NoiseDelayed600_48k", stereo(hiss), stereo(delayed(hiss, 600))).match(0, kNone, 0).gains(0, 0),
+        compare("Compare_NoiseUnrelated_48k", stereo(hiss), stereo(noise(2, 0.5))).match(0, kNone, 0).gains(0, 0),
         // A steady tone flipped: the flip wins over the half-period shift that matches as well.
         compare("Compare_SineInverted_48k", stereo(tone), stereo(inverted(tone))).match(-1, 0, -1).gains(kCancels, kIdentical),
         compare("Compare_SineCopy_44k1", stereo(tone), stereo(tone)).at(44100).match(1, 0, 1).gains(kIdentical, kIdentical),
         // Silence on either side: the tracks never sound together, so nothing is measured.
-        compare("Compare_OtherSilent_48k", stereo(hiss), stereo(silence())).match(kNone, 0, 0).gains(kNone, kNone),
-        compare("Compare_BothSilent_48k", stereo(silence()), stereo(silence())).levels(kSilent, kSilent).pitch(kNone).match(kNone, 0, 0).gains(kNone, kNone),
+        compare("Compare_OtherSilent_48k", stereo(hiss), stereo(silence())).match(kNone, kNone, 0).gains(kNone, kNone),
+        compare("Compare_BothSilent_48k", stereo(silence()), stereo(silence())).levels(kSilent, kSilent).pitch(kNone).match(kNone, kNone, 0).gains(kNone, kNone),
         // A steady offset is sound to the analysis too: two equal ones sum as copies.
         compare("Compare_DcCopy_48k", stereo(dc(0.25)), stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf).pitch(kNone).match(1, 0, 1).gains(kIdentical, kIdentical),
         // NaN samples on this track, as in Single: nothing is stated. The blocks holding them are
@@ -754,9 +754,9 @@ TEST_P(SignalCorpus, MatchesTheApprovedFrame)
         expectNear("RMS (dBFS)", dbfs(frame->rms), expect.rmsDbfs, kRmsToleranceDb);
     }
     if (expect.frequency) {
-        // The frame carries 0 for no frequency (protocol/src/frame.ts).
+        // The frame carries NaN for no frequency (protocol/src/frame.ts).
         if (std::isnan(*expect.frequency)) {
-            EXPECT_EQ(frame->frequency, 0.0f) << "no frequency to find";
+            EXPECT_TRUE(std::isnan(frame->frequency)) << "no frequency to find";
         } else {
             EXPECT_NEAR(frame->frequency, *expect.frequency,
                         kFrequencyTolerance * *expect.frequency);
@@ -766,7 +766,9 @@ TEST_P(SignalCorpus, MatchesTheApprovedFrame)
         const json& match = actual.at("matches").at("track1");
         expectNear("correlation", valueOf(match.at("correlation")), expect.correlation,
                    expect.correlation == 0.0 ? kChanceCorrelation : kCorrelationTolerance);
-        if (expect.offset) {
+        if (expect.offset && std::isnan(*expect.offset)) {
+            EXPECT_TRUE(std::isnan(valueOf(match.at("offset")))) << "no offset";
+        } else if (expect.offset) {
             EXPECT_EQ(valueOf(match.at("offset")), *expect.offset) << "offset (samples)";
         }
         if (expect.polarity) {

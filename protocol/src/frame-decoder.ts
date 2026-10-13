@@ -133,7 +133,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     startFraction: f32("startFraction"),
     peak: f32("peak"),
     rms: f32("rms"),
-    frequency: frequency > 0 ? frequency : undefined,
+    frequency: Number.isNaN(frequency) ? undefined : frequency,
     synced: (flags & FrameFlag.synced) !== 0,
     limited: (flags & FrameFlag.limited) !== 0,
     partial: (flags & FrameFlag.partial) !== 0,

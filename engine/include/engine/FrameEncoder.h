@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -20,10 +21,11 @@ struct FrameHeaderValues
     std::uint32_t pointCount = 0;
     float samplesPerPoint = 1.0f;
     float startFraction = 0.0f;
-    float peak = 0.0f;
-    float rms = 0.0f;
-    float frequency = 0.0f; // 0 when unavailable.
-    float cursor = -1.0f;   // Sweep playhead position (0 to 1), or -1.
+    // Readouts; NaN when not measured.
+    float peak = std::numeric_limits<float>::quiet_NaN();
+    float rms = std::numeric_limits<float>::quiet_NaN();
+    float frequency = std::numeric_limits<float>::quiet_NaN();
+    float cursor = -1.0f; // Sweep playhead position (0 to 1), or -1.
     // Musical context of a synced sweep in quarter notes; 0 otherwise.
     float cycleStart = 0.0f;
     float spanQuarterNotes = 0.0f;

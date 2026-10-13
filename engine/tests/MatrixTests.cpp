@@ -320,6 +320,13 @@ std::span<const float> trace(const DecodedFrame& frame, std::size_t index)
     return std::span(frame.data).subspan(index * length, length);
 }
 
+// Whether two frames' data are the same value for value, a missing value (NaN) matching another.
+bool sameValues(const std::vector<float>& a, const std::vector<float>& b)
+{
+    return std::ranges::equal(
+        a, b, [](float x, float y) { return x == y || (std::isnan(x) && std::isnan(y)); });
+}
+
 // Checks that the frame's data holds every trace, and that no value of trace `index` is a hole
 // (or not a number); a trace in `silent` must be all zeros instead.
 void expectTraces(const DecodedFrame& frame, std::size_t expected,
@@ -1011,7 +1018,7 @@ TEST_P(HeldBeatSpans, ShowsTheLongerSpanAgainAsItWas)
     ASSERT_TRUE(again) << "no frame of the longer span again";
     EXPECT_TRUE(again->has(FrameFlag::kPartial)) << "the hold covers only part of the span";
     EXPECT_EQ(again->visibleSamples, first->visibleSamples);
-    EXPECT_EQ(again->data, first->data) << "the longer span as it was";
+    EXPECT_TRUE(sameValues(again->data, first->data)) << "the longer span as it was";
 }
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, HeldBeatSpans, ::testing::ValuesIn(heldBeatCases()),
@@ -1101,7 +1108,7 @@ TEST_P(FrozenSweepFillingIn, IsAsItWasBackFromAShorterSpan)
     const auto back = frozenAt(session, longSpan);
     ASSERT_TRUE(back) << "no frame back at the sweep's span";
     EXPECT_TRUE(back->has(FrameFlag::kPartial));
-    EXPECT_EQ(back->data, drawn->data) << "the sweep as it was drawn";
+    EXPECT_TRUE(sameValues(back->data, drawn->data)) << "the sweep as it was drawn";
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSweepFillingIn,
@@ -1390,10 +1397,11 @@ TEST_P(MatchReach, FindsAnOffsetUpToTheReachOnly)
     const float offset = frame->data.at(at + 1);
     const float polarity = frame->data.at(at + 2);
     EXPECT_TRUE(std::isfinite(correlation)) << "both tracks sound: a correlation is measured";
-    EXPECT_LE(std::abs(offset), static_cast<float>(reach));
     if (c.beyond == 0) {
         EXPECT_EQ(offset, static_cast<float>(delay));
         EXPECT_EQ(polarity, 1.0f);
+    } else if (polarity == 0.0f) {
+        EXPECT_TRUE(std::isnan(offset)) << "no match: no offset";
     } else {
         // Not clipped to the edge of the reach, as a search that clamped a farther match would.
         EXPECT_LT(std::abs(offset), static_cast<float>(reach));
@@ -1461,7 +1469,7 @@ TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
         if (aboveGate > 0.0) {
             EXPECT_NEAR(frame->frequency, 1000.0f, 10.0f);
         } else {
-            EXPECT_EQ(frame->frequency, 0.0f);
+            EXPECT_TRUE(std::isnan(frame->frequency)) << "no frequency: no value";
         }
     }
 }
@@ -1630,6 +1638,7 @@ TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
             EXPECT_NEAR(fixedGain, identical, 0.01) << "fixed gain";
         } else {
             EXPECT_EQ(frame->data.at(at + 2), 0.0f) << "no match beyond the reach";
+            EXPECT_TRUE(std::isnan(frame->data.at(at + 1))) << "no offset beyond the reach";
             EXPECT_NEAR(fixedGain, sumGain, 1e-6) << "nothing to fix";
         }
     }

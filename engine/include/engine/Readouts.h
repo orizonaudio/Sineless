@@ -3,6 +3,7 @@
 #include "protocol/Protocol.h"
 
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <span>
 
@@ -12,8 +13,9 @@ namespace orizon::engine {
 // frequency over its newest second. Not standards-compliant metering.
 struct Readouts
 {
-    float peak = 0.0f; // Largest absolute sample value.
-    float rms = 0.0f;
+    // Largest absolute sample value, and the RMS; NaN with nothing to measure.
+    float peak = std::numeric_limits<float>::quiet_NaN();
+    float rms = std::numeric_limits<float>::quiet_NaN();
     // From the spacing of rising crossings of the mean, with hysteresis at 10% of the
     // peak-to-peak range. Empty with fewer than two crossings.
     std::optional<double> frequencyHz;

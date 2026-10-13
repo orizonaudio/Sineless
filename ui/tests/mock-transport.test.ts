@@ -146,6 +146,13 @@ describe("mock back end", () => {
     });
     expect(frames.at(-1)?.lanes).toHaveLength(5);
     expect(frames.at(-1)?.comparison?.matches).toHaveLength(4);
+    // This track and those not compared have no match, as the engine sends.
+    for (const index of [0, 2, 3]) {
+      const none = frames.at(-1)?.comparison?.matches[index];
+      expect(none?.correlation).toBeNaN();
+      expect(none?.offset).toBeNaN();
+      expect(none?.related).toBe(false);
+    }
 
     transport.send({ type: "compare", ids: [4] });
     transport.requestFrame();

@@ -1190,7 +1190,9 @@ TEST_F(CompareTest, ComparesThisTrackWithTheFirstOtherTrackUntilAsked)
     EXPECT_LT(loudest(lane(*frame, 3)), 1e-6f);
     EXPECT_TRUE(match(*frame, 1).inverted());
     EXPECT_NEAR(match(*frame, 1).correlation, -1.0f, 1e-4f);
-    EXPECT_EQ(match(*frame, 2).correlation, 0.0f) << "not compared";
+    EXPECT_TRUE(std::isnan(match(*frame, 2).correlation)) << "not compared: no value";
+    EXPECT_TRUE(std::isnan(match(*frame, 2).offset)) << "not compared: no value";
+    EXPECT_EQ(match(*frame, 2).polarity, 0.0f) << "not compared: not related";
 
     const LaneSet lanes = analyzer->laneSet();
     ASSERT_EQ(lanes.lanes.size(), 3u);
@@ -1209,6 +1211,9 @@ TEST_F(CompareTest, SumsEveryComparedTrack)
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     play(9600);
     analyzer->setCompared({idOf(copy), idOf(unrelated)});
+    // One match is searched per frame: a frame each.
+    ASSERT_TRUE(produce());
+    play(480);
     const auto frame = produce();
     ASSERT_TRUE(frame);
     ASSERT_EQ(frame->laneCount, 5);
@@ -1225,7 +1230,8 @@ TEST_F(CompareTest, SumsEveryComparedTrack)
     EXPECT_EQ(match(*frame, 1).polarity, 1.0f);
     EXPECT_NEAR(match(*frame, 2).correlation, 0.0f, 0.05f);
     EXPECT_EQ(match(*frame, 2).polarity, 0.0f) << "unrelated: no clear match";
-    EXPECT_EQ(match(*frame, 3).correlation, 0.0f) << "not compared";
+    EXPECT_TRUE(std::isnan(match(*frame, 2).offset)) << "unrelated: no offset";
+    EXPECT_TRUE(std::isnan(match(*frame, 3).correlation)) << "not compared: no value";
 }
 
 TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)
@@ -1239,7 +1245,7 @@ TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)
     EXPECT_TRUE(frame->has(FrameFlag::kCompared));
     EXPECT_EQ(lane(*frame, 2), lane(*frame, 0)) << "the sum is this track";
     EXPECT_NEAR(sumGain(), 0.0f, 1e-3f);
-    EXPECT_EQ(match(*frame, 1).correlation, 0.0f) << "not compared";
+    EXPECT_TRUE(std::isnan(match(*frame, 1).correlation)) << "not compared: no value";
     const LaneSet lanes = analyzer->laneSet();
     EXPECT_TRUE(lanes.lanes[0].compared);
     EXPECT_FALSE(lanes.lanes[1].compared);

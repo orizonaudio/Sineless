@@ -36,7 +36,7 @@
   "mode": "minMax",
   "pointCount": 500,
   "readouts": {
-    "frequency": 0,
+    "frequency": "NaN",
     "peak": 0.25,
     "rms": 0.25
   },

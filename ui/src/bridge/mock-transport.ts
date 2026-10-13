@@ -84,7 +84,14 @@ const kickMicDelay = 0.0013;
 const unrelated: Match = {
   correlation: 0.01,
   related: false,
-  offset: 0,
+  offset: Number.NaN,
+  inverted: false,
+};
+// This track's, and a track's not compared: none, as the engine sends.
+const noMatch: Match = {
+  correlation: Number.NaN,
+  related: false,
+  offset: Number.NaN,
   inverted: false,
 };
 export const mockTracks: readonly (Omit<LaneLabel, "compared"> & {
@@ -527,7 +534,7 @@ export class MockTransport implements Transport {
         fixedGain: gain(true),
         matches: this.groupTracks().map((track) =>
           track.own || !comparedIds.includes(track.id)
-            ? { correlation: 0, related: false, offset: 0, inverted: false }
+            ? noMatch
             : track.match === undefined
               ? unrelated
               : {
@@ -582,8 +589,11 @@ export class MockTransport implements Transport {
         pointCount,
         samplesPerPoint: minMax ? samplesPerPoint : 1,
         startFraction: 0,
-        peak,
-        rms: Math.sqrt(sumOfSquares / Math.max(readoutSamples, 1)),
+        peak: readoutSamples > 0 ? peak : Number.NaN,
+        rms:
+          readoutSamples > 0
+            ? Math.sqrt(sumOfSquares / readoutSamples)
+            : Number.NaN,
         frequency: multi ? undefined : mockFundamental,
         views,
         lanes,
