@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <numbers>
@@ -1643,6 +1644,48 @@ std::vector<BrokenCase> singleStereoCases()
 }
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenChannel, ::testing::ValuesIn(singleStereoCases()),
+                         [](const ::testing::TestParamInfo<BrokenCase>& info) {
+                             return nameOf(info.param);
+                         });
+
+// Another track broken, the third: its own lane is flagged, never this track's. In Compare it is
+// not compared (until set, only the first other track is), so the sum, which leaves it out, is not
+// flagged either. In Multi and Compare, each time base, live and rolling, at the lowest and
+// highest rates.
+class BrokenOtherTrack : public ::testing::TestWithParam<BrokenCase>
+{
+};
+
+TEST_P(BrokenOtherTrack, FlagsItsLaneOnly)
+{
+    const BrokenCase c = GetParam();
+    Session session(c.mode.rate, c.mode.channels);
+    session.join({.frequency = 1000.0});
+    session.join({.frequency = 1500.0});
+    session.join({.frequency = 700.0,
+                  .brokenEvery = std::llround(c.mode.rate / 10.0),
+                  .broken = c.infinite ? std::numeric_limits<float>::infinity()
+                                       : std::numeric_limits<float>::quiet_NaN()});
+    configure(session.own(), c.mode.mode, c.mode.timeBase);
+    session.own().settings().set(SettingId::kTimeSpan, c.rolling ? 2.0 : 0.2);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.play(c.rolling ? 3.0 : 1.5);
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->invalidLanes, 0b100U) << "the third track's lane only";
+    EXPECT_EQ(frame->invalidSamples, 0U) << "this track's readouts hold none";
+}
+
+// The Multi and Compare cases.
+std::vector<BrokenCase> laneCases()
+{
+    std::vector<BrokenCase> cases;
+    std::ranges::copy_if(brokenCases(), std::back_inserter(cases),
+                         [](const BrokenCase& c) { return c.mode.mode != DisplayMode::kSingle; });
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenOtherTrack, ::testing::ValuesIn(laneCases()),
                          [](const ::testing::TestParamInfo<BrokenCase>& info) {
                              return nameOf(info.param);
                          });
