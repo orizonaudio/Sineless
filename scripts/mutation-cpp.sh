@@ -55,13 +55,18 @@ MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --preset mutation > "$out/conf
 MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --build --preset mutation
 echo "$stamp" > build/mutation-cpp/settings.sha256
 start=$SECONDS
-# A full run of the tests takes about 100 s; a mutant may hang one, which then ends at 300 s. The
-# whole run stops after 75 minutes, so that CI's 90-minute limit never cancels the job.
+# A full run of the tests takes about 100 s; a mutant may hang one, which then ends at 300 s. A
+# run against a base, as on CI, stops after 75 minutes, so that CI's 90-minute limit never
+# cancels the job; a run over the whole engine is not limited.
+limit=()
+if [[ -n "$base" ]]; then
+    limit=(timeout 75m)
+fi
 status=0
-MULL_CONFIG="$config" timeout 75m mull-runner-18 --workers "$(nproc)" --timeout 300000 \
+MULL_CONFIG="$config" "${limit[@]}" mull-runner-18 --workers "$(nproc)" --timeout 300000 \
     --reporters Elements --report-dir "$out" --report-name mull \
     build/mutation-cpp/engine/engine_tests --gtest_fail_fast > "$out/mull.log" 2>&1 || status=$?
-if ((status == 124)); then
+if [[ -n "$base" ]] && ((status == 124)); then
     printf '## Mutation testing (C++)\n\nStopped after 75 minutes: too many mutants on the lines changed since %s.\n' \
         "$base" > "$out/summary.md"
     cat "$out/summary.md"
