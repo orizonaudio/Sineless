@@ -1,7 +1,7 @@
 // What a mutation testing report says (Stryker's for the TypeScript, Mull's for the C++, in the
 // same format): the mutation score, each status's count and the mutants the tests did not notice,
 // as Markdown and as GitHub Actions warnings.
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute, relative, sep } from "node:path";
 
 // The parts of the mutation testing report schema read here.
 export interface Mutant {
@@ -43,12 +43,13 @@ function cell(text: string): string {
   return `\`${text.replaceAll(/\s+/gu, " ").replaceAll("|", "\\|")}\``;
 }
 
-// The report with its files' paths relative to `root`: Mull writes them absolute.
+// The report with its files' paths relative to `root`, with forward slashes as GitHub and the
+// reports use: Mull writes them absolute.
 export function relativeTo(report: Report, root: string): Report {
   return {
     files: Object.fromEntries(
       Object.entries(report.files).map(([file, mutants]) => [
-        isAbsolute(file) ? relative(root, file) : file,
+        isAbsolute(file) ? relative(root, file).split(sep).join("/") : file,
         mutants,
       ]),
     ),
