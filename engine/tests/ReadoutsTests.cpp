@@ -127,5 +127,18 @@ TEST(Readouts, HandleAnEmptySpan)
     EXPECT_FALSE(readouts.frequencyHz);
 }
 
+// No sample finite: nothing to measure either, and every one counted.
+TEST(Readouts, HandleASpanWithNothingFinite)
+{
+    std::vector<float> samples(960, std::numeric_limits<float>::quiet_NaN());
+    samples[10] = std::numeric_limits<float>::infinity();
+    samples[20] = -std::numeric_limits<float>::infinity();
+    const Readouts readouts = computeReadouts(samples, kSampleRate);
+    EXPECT_TRUE(std::isnan(readouts.peak));
+    EXPECT_TRUE(std::isnan(readouts.rms));
+    EXPECT_FALSE(readouts.frequencyHz);
+    EXPECT_EQ(readouts.invalid, 960U);
+}
+
 } // namespace
 } // namespace orizon::engine

@@ -1586,6 +1586,52 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenSamples, ::testing::ValuesIn(brokenCas
                              return nameOf(info.param);
                          });
 
+// Every sample of this track not finite: nothing to measure, so its readouts have no value (NaN),
+// never the level of silence, and every sample measured is counted. In every mode and time base,
+// live and rolling, at the lowest and highest rates.
+class AllBroken : public ::testing::TestWithParam<BrokenCase>
+{
+};
+
+TEST_P(AllBroken, HasNoReadouts)
+{
+    const BrokenCase c = GetParam();
+    const double rate = c.mode.rate;
+    const double span = c.mode.timeBase == TimeBase::kBeats ? 0.5 : c.rolling ? 2.0 : 0.2;
+    Session session(rate, c.mode.channels);
+    session.join({.frequency = 1000.0,
+                  .brokenEvery = 1,
+                  .broken = c.infinite ? std::numeric_limits<float>::infinity()
+                                       : std::numeric_limits<float>::quiet_NaN()});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), c.mode.mode, c.mode.timeBase);
+    session.own().settings().set(SettingId::kTimeSpan, span);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.play(c.rolling ? 3.0 : 1.5);
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(std::isnan(frame->peak)) << "no value, not silence";
+    EXPECT_TRUE(std::isnan(frame->rms)) << "no value, not silence";
+    EXPECT_TRUE(std::isnan(frame->frequency)) << "no value";
+    // Every sample the readouts measure: the span, rounded out to whole blocks of levels.
+    const auto spanSamples = static_cast<std::uint32_t>(std::lround(span * rate));
+    const auto block = static_cast<std::uint32_t>(std::lround(kStatsBlockSeconds * rate));
+    EXPECT_GE(frame->invalidSamples, spanSamples);
+    EXPECT_LE(frame->invalidSamples, spanSamples + 2 * block);
+    if (c.mode.mode == DisplayMode::kCompare) {
+        // The sum is never finite, so it is not measured, and neither is the other track there.
+        EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
+            << "sum gain " << session.field(FrameHeader::kSumGainOffset);
+        EXPECT_TRUE(std::isnan(session.field(FrameHeader::kFixedGainOffset)))
+            << "fixed gain " << session.field(FrameHeader::kFixedGainOffset);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, AllBroken, ::testing::ValuesIn(brokenCases()),
+                         [](const ::testing::TestParamInfo<BrokenCase>& info) {
+                             return nameOf(info.param);
+                         });
+
 // A copy with every other sample of this track not finite still sums as a copy, 10 log10(2) =
 // +3.0103 dB, in Beats as in Seconds, live and frozen: where the sum is not finite, neither track
 // is measured, rather than the other track's energy counting where the sum's does not.
