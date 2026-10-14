@@ -68,6 +68,28 @@ describe("cursor snapping", () => {
     );
     expect(onZero).toHaveLength(1);
     expect(onZero[0]).toBeCloseTo(1 / 3);
+    // Through a stretch of silence between the two sides: in the middle of it.
+    const throughSilence = zeroCrossings(
+      frameOf(FrameMode.raw, 5),
+      new Float32Array([-1, 0, 0, 0, 1]),
+    );
+    expect(throughSilence).toHaveLength(1);
+    expect(throughSilence[0]).toBeCloseTo(2 / 5);
+    // Min/max columns alike: sound starting from silence below zero, or above it, then ending
+    // into it, gives one crossing either way, in the column that reaches both sides.
+    for (const sign of [1, -1]) {
+      const columns = new Float32Array(
+        [0, 0, -0.3, 0, -0.5, 0.4, 0, 0.3, 0, 0].map((value) => value * sign),
+      ).map((value, index, all) =>
+        // Each column as low then high, whichever way up.
+        index % 2 === 0
+          ? Math.min(value, all[index + 1] ?? value)
+          : Math.max(value, all[index - 1] ?? value),
+      );
+      expect(zeroCrossings(frameOf(FrameMode.minMax, 5), columns)).toEqual([
+        2.5 / 5,
+      ]);
+    }
     // Nothing anywhere in silence alone.
     expect(
       zeroCrossings(frameOf(FrameMode.raw, 6), new Float32Array(6)),
@@ -75,7 +97,9 @@ describe("cursor snapping", () => {
   });
 
   test("takes min/max columns that span zero as crossings at their centre", () => {
-    const values = new Float32Array([0.1, 0.5, -0.4, 0.3, -0.6, -0.2, -0.1, 0]);
+    const values = new Float32Array([
+      0.1, 0.5, -0.4, 0.3, -0.6, -0.2, -0.1, 0.05,
+    ]);
     expect(zeroCrossings(frameOf(FrameMode.minMax, 4), values)).toEqual([
       1.5 / 4,
       3.5 / 4,

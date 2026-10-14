@@ -10,7 +10,8 @@ import { columnPosition, pointPosition } from "../render/trace-geometry.ts";
 // where they pass from one side of zero to the other: interpolated, or in the middle of the
 // exact zeros between them (as at digital silence); touching zero, or leaving or entering
 // silence on one side, is no crossing, and none spans a value that is not finite. A min/max
-// column that spans zero counts as a crossing at its centre.
+// column that reaches both sides of zero counts as a crossing at its centre; one that only
+// touches zero does not.
 export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
   const crossings: number[] = [];
   if (frame.mode === FrameMode.minMax) {
@@ -21,7 +22,7 @@ export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
         Number.isFinite(low) &&
         Number.isFinite(high) &&
         low < 0 &&
-        high >= 0
+        high > 0
       ) {
         crossings.push(columnPosition(frame, column + 0.5));
       }
