@@ -206,5 +206,40 @@ TEST(RollColumns, FillsInColumnsWhoseAudioArrivesLater)
     EXPECT_EQ(std::vector<float>(values.begin(), values.end()), expected);
 }
 
+// A lane whose audio has not reached the span (a track that lags, or has only just been
+// inserted) is drawn silent and unready, even where it showed audio before, and the update
+// returns: every read fails, down to the shortest stretch, and none is tried again. A reader that
+// keeps being asked fails the test rather than hanging it.
+TEST(RollColumns, LeavesALaneWithoutAudioSilentAndReturns)
+{
+    auto signal = randomSamples(20000, 13);
+    signal[550] = std::numeric_limits<float>::quiet_NaN();
+    std::uint64_t available = signal.size();
+    int reads = 0;
+    const auto read = [&](std::uint64_t first, std::span<float> destination) {
+        if (++reads > 1000) {
+            ADD_FAILURE() << "still reading after " << reads << " tries";
+            std::ranges::fill(destination, 0.0f);
+            return true;
+        }
+        if (first + destination.size() > available) {
+            return false;
+        }
+        std::copy_n(signal.begin() + static_cast<std::ptrdiff_t>(first), destination.size(),
+                    destination.begin());
+        return true;
+    };
+    RollColumns roll;
+    auto values = roll.update(0, 100, 100, read);
+    ASSERT_TRUE(roll.holdsInvalid()) << "drawn, with a sample that is not a number";
+
+    // Further on than any column kept, and past the end of the lane's audio.
+    available = 14000;
+    reads = 0;
+    values = roll.update(15000, 100, 100, read);
+    EXPECT_TRUE(std::ranges::all_of(values, [](float value) { return value == 0.0f; }));
+    EXPECT_FALSE(roll.holdsInvalid());
+}
+
 } // namespace
 } // namespace orizon::engine
