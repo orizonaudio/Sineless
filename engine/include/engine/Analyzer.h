@@ -36,7 +36,8 @@ namespace orizon::engine {
 inline constexpr double kMatchWindowSeconds = protocol::kMatchWindowSeconds;
 inline constexpr double kMatchRefreshSeconds = 0.5;
 inline constexpr double kMatchSpacingSeconds = 0.1;
-// A match search that could not read all its audio is tried again this soon.
+// A match search that could not read all its audio is tried again this soon. Frozen or stopped,
+// searches are not spaced, and this keeps a search that keeps failing from running every frame.
 inline constexpr double kMatchRetrySeconds = 0.05;
 
 // Levels (peak and energy) are kept per block of this many seconds of audio, so that readouts and
@@ -174,16 +175,13 @@ private:
         std::uint64_t end = 0; // Capture end of the last update.
         LaneHold hold;
         bool compared = false;
-        // The lane's screen columns, and the part of the sweep and channel count they reduce.
+        // The lane's screen columns, and the part of the sweep they reduce.
         ColumnReduction reduction;
         std::size_t reducedFirst = 0;
-        int reducedChannels = 0;
         // Seconds mode, rolling: the lane's columns, kept as they scroll.
         RollColumns roll;
-        // The lane's levels per block of its sweep, for readouts and summing gains, and the
-        // channel count they were measured for.
+        // The lane's levels per block of its sweep, for readouts and summing gains.
         BlockStats stats;
-        int statsChannels = 0;
         // Tempo-synced Compare, while the fix shifts this track: its levels per block as shifted,
         // for the fixed summing gain, the shift they were measured for and their pending
         // recomputation (see updateSumStats).
@@ -422,10 +420,9 @@ private:
         std::uint8_t views = 0;
     };
     ViewReduction viewReduction;
-    // Single mode: the trigger view's levels per block of the tempo-synced sweep, for readouts,
-    // and what they were measured for.
+    // Single mode: the Mid's levels per block of the tempo-synced sweep, for readouts, and the
+    // channel count they were measured for.
     BlockStats sweepStats;
-    protocol::ChannelView sweepStatsView = protocol::ChannelView::kMid;
     int sweepStatsChannels = 0;
     Settings frameSettings; // The settings of the frame being produced.
     std::vector<float> readScratch;
