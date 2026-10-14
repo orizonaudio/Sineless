@@ -638,6 +638,66 @@ std::string spanTestName(const ::testing::TestParamInfo<SpanCase>& info)
 INSTANTIATE_TEST_SUITE_P(EveryRate, SecondsSpans, ::testing::ValuesIn(spanCases()), spanTestName);
 INSTANTIATE_TEST_SUITE_P(EveryRate, FrozenPan, ::testing::ValuesIn(spanCases()), spanTestName);
 
+// A longer Seconds span reads more of each stereo track's Mid and Side than any frame before it
+// did: live and frozen, from the shortest span to the longest read whole and to the longest; and
+// live, zoomed into a roll, from just above the roll threshold to the longest. The frame is whole,
+// and nothing reads past what it allocated (the Debug build's assert and the AddressSanitizer build
+// stop it if it does). In every mode, at the lowest and highest rates.
+class LongerSpan : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(LongerSpan, ReadsMoreOfEveryTrackSafely)
+{
+    const DisplayMode mode = GetParam();
+    const auto longest = static_cast<double>(setting(SettingId::kTimeSpan).maximum);
+    const std::uint32_t midAndSide = (1U << static_cast<unsigned>(protocol::ChannelView::kMid)) |
+                                     (1U << static_cast<unsigned>(protocol::ChannelView::kSide));
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        SCOPED_TRACE(rateName(rate));
+        const std::size_t traces = expectedTraces(mode, 2, 2);
+        // Live and frozen, to the longest span read whole (at the roll threshold) and to one
+        // that rolls.
+        for (const bool frozen : {false, true}) {
+            for (const SecondsSpan& longer : {secondsSpans().at(1), secondsSpans().back()}) {
+                SCOPED_TRACE(std::string(frozen ? "frozen" : "live") + ", shortest to " +
+                             longer.name);
+                SecondsSession seconds({.rate = rate, .span = secondsSpans().front(), .mode = mode},
+                                       1.0);
+                seconds.session.own().settings().set(SettingId::kChannelViews, midAndSide);
+                ASSERT_TRUE(seconds.session.produce()) << "no live frame";
+                if (frozen) {
+                    ASSERT_TRUE(seconds.freeze()) << "no frozen frame";
+                }
+                seconds.session.own().settings().set(SettingId::kTimeSpan, longer.seconds);
+                const auto frame = seconds.session.produce();
+                ASSERT_TRUE(frame) << "no frame at the longer span";
+                EXPECT_EQ(frame->has(FrameFlag::kFrozen), frozen);
+                expectTraces(*frame, traces);
+            }
+        }
+        {
+            SCOPED_TRACE("live, zoomed into a roll, threshold to longest");
+            const std::vector<SecondsSpan> spans = secondsSpans();
+            SecondsSession seconds({.rate = rate, .span = spans.at(2), .mode = mode}, 1.0);
+            seconds.session.own().settings().set(SettingId::kChannelViews, midAndSide);
+            seconds.session.analyzer().setView(0.5, 1.0);
+            ASSERT_TRUE(seconds.session.produce()) << "no live frame";
+            seconds.session.own().settings().set(SettingId::kTimeSpan, longest);
+            seconds.session.play(static_cast<double>(kBlock) / rate);
+            const auto frame = seconds.session.produce();
+            ASSERT_TRUE(frame) << "no frame at the longer span";
+            EXPECT_TRUE(frame->has(FrameFlag::kRoll));
+            expectTraces(*frame, traces);
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, LongerSpan, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
+                         });
+
 // --- A change of sample rate ----------------------------------------------------------------
 
 struct RateChange
