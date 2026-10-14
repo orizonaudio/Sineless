@@ -6,6 +6,7 @@
 #include <cstring>
 #include <functional>
 #include <gtest/gtest.h>
+#include <limits>
 #include <numbers>
 #include <vector>
 
@@ -50,6 +51,34 @@ protected:
     }
 
     void writeSilence(double seconds) { writeTone(0.0, seconds, 0.0); }
+
+    // Appends `count` samples that hold their own index on both channels, so a frame's raw points
+    // say which samples it shows.
+    void writeRamp(std::size_t count)
+    {
+        std::vector<float> ramp(count);
+        const std::uint64_t start = engine.captureRing().writeIndex();
+        for (std::size_t i = 0; i < count; ++i) {
+            ramp[i] = static_cast<float>(start + i);
+        }
+        std::array<const float*, 2> channels{ramp.data(), ramp.data()};
+        engine.captureRing().write(channels.data(), 2, static_cast<int>(count));
+    }
+
+    void setTriggerMode(protocol::TriggerMode mode)
+    {
+        engine.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
+    }
+
+    // The pan reach of the next frame, in seconds; NaN if none comes.
+    float producePanReach()
+    {
+        std::vector<std::byte> bytes;
+        if (!analyzer.produce(bytes)) {
+            return std::numeric_limits<float>::quiet_NaN();
+        }
+        return get<float>(bytes, FrameHeader::kPanReachOffset);
+    }
 
     std::optional<DecodedFrame> produce()
     {
@@ -263,6 +292,167 @@ TEST_F(AnalyzerTest, PanMovesTheFrozenViewBackInTime)
     const auto panned = produce();
     ASSERT_TRUE(panned);
     EXPECT_NEAR(panned->peak, 0.375f, 1e-3f);
+}
+
+// 20 ms is 960 samples at 48 kHz: with more columns than that, a frame carries raw points.
+constexpr std::size_t kRawColumns = 2000;
+constexpr double kSpanSamples = 960.0;
+
+// A pan of 0.1 s moves the frozen view back by 0.1 s of audio, not by some other amount.
+TEST_F(AnalyzerTest, PanMovesTheFrozenViewBackByTheTimeAsked)
+{
+    setTriggerMode(protocol::TriggerMode::kFree);
+    analyzer.setColumns(kRawColumns);
+    writeRamp(48000);
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    analyzer.setPan(0.1);
+    const auto panned = produce();
+    ASSERT_TRUE(panned);
+    EXPECT_EQ(frozen->data.front() - panned->data.front(), 4800.0f);
+}
+
+// The UI clears its own pan when the display goes live but sends no pan of 0, so the engine must
+// drop the pan itself: the next freeze opens on the newest audio, not 0.1 s before it.
+TEST_F(AnalyzerTest, RefreezingAfterAPanShowsTheNewestAudio)
+{
+    setTriggerMode(protocol::TriggerMode::kFree);
+    analyzer.setColumns(kRawColumns);
+    writeRamp(48000);
+    analyzer.setFrozen(true);
+    ASSERT_TRUE(produce());
+    analyzer.setPan(0.1);
+    ASSERT_TRUE(produce());
+
+    analyzer.setFrozen(false);
+    writeRamp(4800);
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    const auto refrozen = produce();
+    ASSERT_TRUE(refrozen);
+    EXPECT_EQ(refrozen->data.back(), 52799.0f) << "the newest sample before the freeze";
+}
+
+// Frozen before any live frame, the view ends at the newest sample held and can pan back to the
+// oldest: the reach is the held audio before the view, so the UI can pan to its first sample.
+TEST_F(AnalyzerTest, PansBackToTheOldestAudioHeld)
+{
+    setTriggerMode(protocol::TriggerMode::kFree);
+    analyzer.setColumns(kRawColumns);
+    writeRamp(240000); // 5 s: more than the 4 s a freeze holds.
+    analyzer.setFrozen(true);
+    const float reach = producePanReach();
+    EXPECT_NEAR(reach, protocol::kFrozenHoldSeconds - kSpanSamples / kSampleRate, 1e-4);
+    analyzer.setPan(reach);
+    const auto oldest = produce();
+    ASSERT_TRUE(oldest);
+    EXPECT_NEAR(oldest->data.front(), 240000.0 - protocol::kFrozenHoldSeconds * kSampleRate, 1.0)
+        << "the first sample held";
+}
+
+// Normal mode with nothing to trigger on keeps the last triggered trace, and when the views
+// change it redraws that same trace, not an untriggered window of whatever is there now.
+TEST_F(AnalyzerTest, RedrawsTheLastTraceWhileWaitingForATrigger)
+{
+    setTriggerMode(protocol::TriggerMode::kNormal);
+    analyzer.setColumns(400);
+    writeSilence(0.5);
+    writeTone(440.0, 0.5, 0.5);
+    const auto triggered = produce();
+    ASSERT_TRUE(triggered);
+    ASSERT_TRUE(triggered->has(FrameFlag::kTriggered));
+
+    writeSilence(0.5); // Longer than the trigger search region: no edge is left in it.
+    EXPECT_FALSE(produce()) << "nothing new to show";
+    engine.settings().set(SettingId::kChannelViews, 0b0101); // L and M.
+    const auto redrawn = produce();
+    ASSERT_TRUE(redrawn);
+    EXPECT_TRUE(redrawn->has(FrameFlag::kTriggered));
+    EXPECT_NEAR(redrawn->peak, 0.375f, 1e-3f) << "the tone, as last shown";
+}
+
+// The hold-off setting is in seconds: at 50 ms, a 440 Hz tone (an edge every 2.3 ms) triggers
+// about once every 50 ms, so half a second of frames every 10 ms shows about ten new traces.
+TEST_F(AnalyzerTest, TriggersNoMoreOftenThanTheHoldOff)
+{
+    setTriggerMode(protocol::TriggerMode::kNormal);
+    engine.settings().set(SettingId::kTriggerHoldOff, 0.05);
+    analyzer.setColumns(400);
+    writeTone(440.0, 0.5, 0.5);
+    ASSERT_TRUE(produce());
+    int triggers = 0;
+    for (int step = 0; step < 50; ++step) {
+        writeTone(440.0, 0.01, 0.5);
+        triggers += produce().has_value() ? 1 : 0;
+    }
+    EXPECT_GE(triggers, 8);
+    EXPECT_LE(triggers, 11);
+}
+
+// Auto triggers on every edge it finds, and only shows an untriggered trace after the timeout
+// without one: a 40 Hz tone has an edge every 25 ms, so every frame of it is triggered, even
+// those made between two edges.
+TEST_F(AnalyzerTest, AutoKeepsTriggeringOnALowTone)
+{
+    analyzer.setColumns(400);
+    writeTone(40.0, 0.5, 0.5);
+    int frames = 0;
+    for (int step = 0; step < 50; ++step) {
+        writeTone(40.0, 0.01, 0.5);
+        if (const auto frame = produce()) {
+            ++frames;
+            EXPECT_TRUE(frame->has(FrameFlag::kTriggered)) << "after " << step * 10 << " ms";
+        }
+    }
+    EXPECT_GT(frames, 10);
+}
+
+// Single mode captures once per Arm: making the display live again with Freeze does not capture
+// again until Arm is pressed. Each capture here is of a quieter tone, so its peak says which.
+TEST_F(AnalyzerTest, SingleCapturesAgainOnlyWhenArmed)
+{
+    setTriggerMode(protocol::TriggerMode::kSingle);
+    analyzer.setColumns(400);
+    writeTone(440.0, 0.5, 0.5);
+    ASSERT_TRUE(produce());
+    analyzer.arm();
+    analyzer.setFrozen(false);
+    writeTone(440.0, 0.2, 0.25);
+    const auto rearmed = produce();
+    ASSERT_TRUE(rearmed);
+    EXPECT_NEAR(rearmed->peak, 0.1875f, 1e-3f) << "armed: captured again (Mid of 0.25 and 0.125)";
+
+    analyzer.setFrozen(false);
+    int frames = 0;
+    for (int step = 0; step < 5; ++step) {
+        writeTone(440.0, 0.1, 0.125);
+        if (const auto frame = produce()) {
+            ++frames;
+            EXPECT_NEAR(frame->peak, 0.1875f, 1e-3f) << "not armed: still the last capture";
+        }
+    }
+    EXPECT_GT(frames, 0) << "live again, it shows the last capture";
+}
+
+// A Single capture holds as much audio as a freeze does, so the captured trace can be panned
+// back past its own span: here 0.65 s back, into the silence before the tone.
+TEST_F(AnalyzerTest, SingleCaptureHoldsEnoughToPanBack)
+{
+    setTriggerMode(protocol::TriggerMode::kSingle);
+    analyzer.setColumns(400);
+    writeSilence(1.0);
+    writeTone(440.0, 0.5, 0.5);
+    const auto captured = produce();
+    ASSERT_TRUE(captured);
+    ASSERT_TRUE(captured->has(FrameFlag::kTriggered));
+    analyzer.setPan(0.6);
+    EXPECT_GT(producePanReach(), 1.4f);
+    analyzer.setPan(0.65);
+    const auto panned = produce();
+    ASSERT_TRUE(panned);
+    EXPECT_TRUE(panned->has(FrameFlag::kFrozen));
+    EXPECT_NEAR(panned->peak, 0.0f, 1e-6f) << "the silence before the tone";
 }
 
 TEST_F(AnalyzerTest, SingleFreezesOnItsTriggerUntilRearmed)
@@ -646,14 +836,35 @@ TEST_F(AutoFreezeTest, FreezesOnStopAndResumesOnPlay)
     EXPECT_TRUE(frozen()) << "still frozen while stopped";
     play(480);
     EXPECT_FALSE(frozen()) << "playing again resumed it";
+    play(480);
+    EXPECT_FALSE(frozen()) << "and it stays live";
 }
 
 TEST_F(AutoFreezeTest, KeepsAFreezeByTheUser)
 {
     play(9600);
+    EXPECT_FALSE(frozen());
     analyzer.setFrozen(true);
     EXPECT_TRUE(frozen());
     play(480, false);
+    EXPECT_TRUE(frozen());
+    play(480);
+    EXPECT_TRUE(frozen()) << "playing does not end a freeze the user made";
+}
+
+// Auto-freeze, then the user resumes and freezes again while stopped: that freeze is the user's,
+// so playing does not end it.
+TEST_F(AutoFreezeTest, KeepsAFreezeByTheUserAfterAnAutoFreeze)
+{
+    play(9600);
+    EXPECT_FALSE(frozen());
+    play(480, false);
+    EXPECT_TRUE(frozen()) << "the stop froze the display";
+    analyzer.setFrozen(false);
+    EXPECT_FALSE(frozen());
+    analyzer.setFrozen(true);
+    play(480, false);
+    EXPECT_TRUE(frozen());
     play(480);
     EXPECT_TRUE(frozen()) << "playing does not end a freeze the user made";
 }
@@ -1110,6 +1321,34 @@ TEST_F(SecondsLanesTest, HoldsEveryLaneAtTheFreeze)
     EXPECT_EQ(lane(*frame, 1), lane(*frame, 0));
     const std::vector<float> held = lane(*frame, 0);
     EXPECT_EQ(held.back(), frozenAt - 1.0f) << "the newest sample before the freeze";
+}
+
+// Frozen in the multi-track view, then Single mode, live and frozen again, then back: the lanes
+// show the second freeze, not what they held at the first.
+TEST_F(SecondsLanesTest, ShowsTheLatestFreezeAfterASingleModeInterlude)
+{
+    join();
+    play(9600);
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    own->settings().set(SettingId::kDisplayMode,
+                        static_cast<double>(protocol::DisplayMode::kSingle));
+    ASSERT_TRUE(produce());
+    analyzer->setFrozen(false);
+    play(4800);
+    ASSERT_TRUE(produce());
+    const auto frozenAt = static_cast<float>(hostSample);
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    play(4800);
+    own->settings().set(SettingId::kDisplayMode,
+                        static_cast<double>(protocol::DisplayMode::kMulti));
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    ASSERT_EQ(frame->laneCount, 2);
+    EXPECT_EQ(lane(*frame, 0).back(), frozenAt - 1.0f) << "the newest sample before this freeze";
+    EXPECT_EQ(lane(*frame, 1), lane(*frame, 0));
 }
 
 // The Compare view: the group's tracks, with the sum of the compared ones. Tracks carry
