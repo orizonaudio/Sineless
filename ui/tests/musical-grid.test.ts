@@ -3,6 +3,17 @@ import { describe, expect, test } from "vitest";
 import { musicalGrid, musicalPosition } from "../src/view/musical-grid.ts";
 
 describe("musical grid", () => {
+  test("draws nothing without a span or a bar to measure it by", () => {
+    // As before the host has given a tempo or a time signature.
+    for (const [span, bar] of [
+      [0, 4],
+      [8, 0],
+      [-1, 4],
+    ] as const) {
+      expect(musicalGrid(0, span, bar)).toEqual({ lines: [], labels: [] });
+    }
+  });
+
   test("counts bar.beat.sixteenth like a DAW", () => {
     expect(musicalPosition(0, 4)).toBe("1.1");
     expect(musicalPosition(5, 4)).toBe("2.2");
