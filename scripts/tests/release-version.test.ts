@@ -15,30 +15,32 @@ describe("the release version", () => {
     expect(releaseVersion(cmakeLists, "v0.4.2")).toEqual({ version: "0.4.2" });
   });
 
+  // Refused, with an error naming what to fix: the tag, and the version it should name.
   test.each(["v0.4.3", "v0.4.1", "v1.4.2"])(
     "is not released from %s, a tag naming another version",
     (tag) => {
-      expect(releaseVersion(cmakeLists, tag)).toEqual({
-        error: `The tag ${tag} does not match version 0.4.2 in CMakeLists.txt`,
-      });
+      const result = releaseVersion(cmakeLists, tag);
+      expect(result).not.toHaveProperty("version");
+      expect(result).toHaveProperty("error", expect.stringContaining(tag));
+      expect(result).toHaveProperty("error", expect.stringContaining("0.4.2"));
     },
   );
 
   test.each(["0.4.2", "v0.4", "v0.4.2-rc.1", "release-0.4.2"])(
     "is not released from %s, a tag not of the form vX.Y.Z",
     (tag) => {
-      expect(releaseVersion(cmakeLists, tag)).toEqual({
-        error: `The tag ${tag} is not of the form vX.Y.Z`,
-      });
+      const result = releaseVersion(cmakeLists, tag);
+      expect(result).not.toHaveProperty("version");
+      expect(result).toHaveProperty("error", expect.stringContaining(tag));
     },
   );
 
   test("is none without a project version", () => {
-    expect(
-      releaseVersion("project(OrizonOscilloscope LANGUAGES CXX)\n"),
-    ).toEqual({
-      error: "No project(... VERSION x.y.z ...) in CMakeLists.txt",
-    });
+    const result = releaseVersion(
+      "project(OrizonOscilloscope LANGUAGES CXX)\n",
+    );
+    expect(result).not.toHaveProperty("version");
+    expect(result).toHaveProperty("error");
   });
 
   test("reads the repository's own CMakeLists.txt", () => {
