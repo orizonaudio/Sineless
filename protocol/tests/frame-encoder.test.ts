@@ -15,13 +15,11 @@ function toHex(buffer: ArrayBuffer): string {
 
 test("encodes the golden frame byte for byte", () => {
   const buffer = encodeFrame({
-    sequence: golden.header.sequence,
     mode: FrameMode.minMax,
     triggered: true,
     frozen: true,
     roll: false,
     pointCount: golden.header.pointCount,
-    samplesPerPoint: golden.header.samplesPerPoint,
     startFraction: golden.header.startFraction,
     peak: golden.header.peak,
     rms: golden.header.rms,
@@ -44,14 +42,12 @@ test("encodes the golden frame byte for byte", () => {
 test("encodes the golden lanes frame byte for byte", () => {
   const { header } = goldenLanes;
   const buffer = encodeFrame({
-    sequence: header.sequence,
     mode: FrameMode.raw,
     triggered: false,
     frozen: false,
     roll: false,
     synced: true,
     pointCount: header.pointCount,
-    samplesPerPoint: header.samplesPerPoint,
     startFraction: header.startFraction,
     peak: header.peak,
     rms: header.rms,
@@ -79,14 +75,12 @@ test("encodes the golden lanes frame byte for byte", () => {
 test("encodes a frequency not found as NaN, the protocol's no value", () => {
   const { header } = goldenLanes;
   const buffer = encodeFrame({
-    sequence: 1,
     mode: FrameMode.raw,
     triggered: false,
     frozen: false,
     roll: false,
     synced: false,
     pointCount: 0,
-    samplesPerPoint: 1,
     startFraction: 0,
     peak: header.peak,
     rms: header.rms,

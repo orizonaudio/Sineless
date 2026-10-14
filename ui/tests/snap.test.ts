@@ -12,13 +12,11 @@ import {
 // A frame of the whole span with the given points; other fields do not matter here.
 function frameOf(mode: FrameMode, pointCount: number): Frame {
   return {
-    sequence: 0,
     mode,
     triggered: false,
     frozen: false,
     roll: false,
     pointCount,
-    samplesPerPoint: 1,
     startFraction: 0,
     peak: 0,
     rms: 0,

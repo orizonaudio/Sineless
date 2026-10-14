@@ -22,13 +22,11 @@ void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewDat
 {
     using Layout = protocol::FrameHeader;
     output.resize(Layout::kSize + viewData.size_bytes());
-    put(output, Layout::kSequenceOffset, header.sequence);
     put(output, Layout::kModeOffset, static_cast<std::uint8_t>(header.mode));
     put(output, Layout::kFlagsOffset, header.flags);
     put(output, Layout::kViewsOffset, header.views);
     put(output, Layout::kLaneCountOffset, header.laneCount);
     put(output, Layout::kPointCountOffset, header.pointCount);
-    put(output, Layout::kSamplesPerPointOffset, header.samplesPerPoint);
     put(output, Layout::kStartFractionOffset, header.startFraction);
     put(output, Layout::kPeakOffset, header.peak);
     put(output, Layout::kRmsOffset, header.rms);

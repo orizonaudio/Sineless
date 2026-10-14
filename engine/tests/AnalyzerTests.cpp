@@ -194,7 +194,6 @@ TEST_F(AnalyzerTest, ProducesATriggeredMinMaxFrameWithReadouts)
     EXPECT_EQ(frame->views, 0b0011) << "default views: L + R";
     EXPECT_EQ(frame->pointCount, 400u);
     EXPECT_EQ(frame->data.size(), 2u * 400u * 2u) << "two views of min/max pairs";
-    EXPECT_NEAR(frame->samplesPerPoint, 0.02 * kSampleRate / 400, 1e-3);
 
     // Default trigger source is Mid = (L + R) / 2 = 0.75 L, so readouts see amplitude 0.375.
     EXPECT_NEAR(frame->peak, 0.375f, 1e-3f);
@@ -247,7 +246,6 @@ TEST_F(AnalyzerTest, RollsSpansAboveOneSecond)
     ASSERT_TRUE(frame);
     EXPECT_TRUE(frame->has(FrameFlag::kRoll));
     EXPECT_FALSE(frame->has(FrameFlag::kTriggered));
-    EXPECT_EQ(frame->samplesPerPoint, 192.0f) << "2 s * 48 kHz / 500 columns";
 }
 
 TEST_F(AnalyzerTest, FreezeKeepsShowingHeldDataWhileViewsStillChange)
@@ -538,8 +536,11 @@ TEST_F(ZoomTest, ReducesTheVisiblePartAtFullResolution)
     const auto frame = produce();
     ASSERT_TRUE(frame);
     ASSERT_EQ(frame->mode, FrameMode::kMinMax);
-    EXPECT_NEAR(frame->samplesPerPoint, 1.2f, 1e-6f);
+    ASSERT_EQ(frame->pointCount, 400u);
     EXPECT_EQ(frame->data[0], 48000.0f - 4800.0f) << "first column starts at the window start";
+    EXPECT_LE(frame->data[1] - frame->data[0], 1.0f) << "a column holds one or two samples";
+    EXPECT_EQ(frame->data[2 * 399 + 1], 48000.0f - 4800.0f + 480.0f)
+        << "the last column ends at the visible part's right edge";
 }
 
 TEST_F(ZoomTest, KeepsReadoutsOverTheWholeSpan)
@@ -579,9 +580,9 @@ TEST_F(ZoomTest, KeepsRollColumnsOnFixedBoundaries)
     const auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_TRUE(frame->has(FrameFlag::kRoll));
-    EXPECT_EQ(frame->samplesPerPoint, 96.0f);
     const float firstColumnMinimum = frame->data[0];
     EXPECT_EQ(static_cast<std::uint64_t>(firstColumnMinimum) % 96, 0u);
+    EXPECT_EQ(frame->data[2] - firstColumnMinimum, 96.0f) << "each column holds 96 samples";
 }
 
 TEST_F(ZoomTest, IgnoresInvalidViews)
@@ -910,19 +911,6 @@ TEST_F(SweepTest, FreezesTheWholeSweep)
     ASSERT_TRUE(redrawn);
     EXPECT_EQ(redrawn->data.front(), 6000.0f) << "still the sweep held at freeze time";
     EXPECT_NEAR(redrawn->cursor, 0.6f, 1e-6f);
-}
-
-TEST_F(AnalyzerTest, NumbersFramesSequentially)
-{
-    writeTone(440.0, 0.5, 0.5);
-    engine.settings().set(SettingId::kTriggerMode, 2.0); // Free: a frame on every step.
-    analyzer.setColumns(400);
-    const auto first = produce();
-    writeTone(440.0, 0.01, 0.5);
-    const auto second = produce();
-    ASSERT_TRUE(first);
-    ASSERT_TRUE(second);
-    EXPECT_EQ(second->sequence, first->sequence + 1);
 }
 
 // The multi-track view: several engines on one host clock, at 120 BPM in 4/4, with a quarter-

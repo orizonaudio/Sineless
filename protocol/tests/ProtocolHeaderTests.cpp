@@ -29,14 +29,14 @@ TEST(ProtocolHeader, MatchesTheApprovedSettingsTable)
 
 TEST(ProtocolHeader, LaysOutTheFrameHeaderWithNaturalAlignment)
 {
-    EXPECT_EQ(FrameHeader::kSequenceOffset, 0u);
+    EXPECT_EQ(FrameHeader::kModeOffset, 0u);
     EXPECT_EQ(FrameHeader::kPointCountOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kLaneSetOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kFixedGainOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kPanReachOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kInvalidSamplesOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kInvalidLanesOffset % 4, 0u);
-    EXPECT_EQ(FrameHeader::kSize, 88u);
+    EXPECT_EQ(FrameHeader::kSize, 80u);
     EXPECT_EQ(kMatchValues, 3u);
 }
 

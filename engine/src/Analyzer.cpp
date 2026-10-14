@@ -431,7 +431,6 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
 
     Window window{.span = span, .roll = roll};
     auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
-    double samplesPerColumn = span / static_cast<double>(command.columns);
     bool freezeAfterRender = false;
     const SampleSource* source =
         isFrozen ? static_cast<const SampleSource*>(&hold) : &engine.captureRing();
@@ -491,7 +490,6 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         window.barQuarterNotes = sweep.barQuarterNotes;
         window.cycleSeconds = sweep.cycleSeconds;
         sampleCount = image.length();
-        samplesPerColumn = window.span / static_cast<double>(command.columns);
         lastEnd = end;
 
     } else if (isFrozen) {
@@ -529,7 +527,6 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         window.readoutStart = whole.start;
         window.readoutCount = whole.sampleCount;
         sampleCount = rolled.sampleCount;
-        samplesPerColumn = static_cast<double>(rolled.samplesPerColumn);
     } else {
         const CaptureRing& ring = engine.captureRing();
         const double timeout = kAutoTimeoutSeconds * sampleRate;
@@ -569,9 +566,9 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         window.cropStart = window.subStart + command.viewStart * shown;
         window.cropEnd = window.subStart + command.viewEnd * shown;
     }
-    if (multi ? !renderLanes(*source, window, sampleCount, command, frame)
-              : !render(*source, settings, sampleRate, window, sampleCount, samplesPerColumn,
-                        command.columns, frame)) {
+    if (multi
+            ? !renderLanes(*source, window, sampleCount, command, frame)
+            : !render(*source, settings, sampleRate, window, sampleCount, command.columns, frame)) {
         return false;
     }
     if (!isFrozen) {
@@ -587,8 +584,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
 }
 
 bool Analyzer::render(const SampleSource& source, const Settings& settings, double sampleRate,
-                      const Window& window, std::uint64_t sampleCount, double samplesPerColumn,
-                      std::size_t columns, std::vector<std::byte>& frame)
+                      const Window& window, std::uint64_t sampleCount, std::size_t columns,
+                      std::vector<std::byte>& frame)
 {
     const int inputChannels = engine.inputChannels();
     const double first = std::floor(window.start);
@@ -604,7 +601,6 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const double visibleSamples = crop.visibleSamples;
 
     FrameHeaderValues header{
-        .sequence = sequence,
         .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
                                            (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
                                            (window.roll ? flag(FrameFlag::kRoll) : 0U) |
@@ -726,12 +722,6 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         viewReduction.channels = inputChannels;
     }
     header.pointCount = static_cast<std::uint32_t>(pointCount);
-    const double croppedSamplesPerColumn = window.cropEnd - window.cropStart < 1.0
-                                               ? visibleSamples / static_cast<double>(columns)
-                                               : samplesPerColumn;
-    header.samplesPerPoint = header.mode == protocol::FrameMode::kMinMax
-                                 ? static_cast<float>(croppedSamplesPerColumn)
-                                 : 1.0f;
 
     // Readouts cover the whole span, whatever part is on screen, at most every 100 ms of audio:
     // a sweep's from its levels per block, a window's from its samples.
@@ -763,7 +753,6 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     applyReadouts(header);
 
     encodeFrame(header, frameData, frame);
-    ++sequence;
     return true;
 }
 
@@ -1086,7 +1075,6 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     const std::size_t block = statsBlock(engine.sampleRate());
     frameData.clear();
     FrameHeaderValues header{
-        .sequence = sequence,
         .flags = static_cast<std::uint8_t>(flag(FrameFlag::kSynced) |
                                            (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
                                            (window.limited ? flag(FrameFlag::kLimited) : 0U)),
@@ -1162,10 +1150,6 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         frameData.insert(frameData.end(), reduction.values().begin(), reduction.values().end());
     }
     header.pointCount = static_cast<std::uint32_t>(pointCount);
-    header.samplesPerPoint =
-        header.mode == protocol::FrameMode::kMinMax
-            ? static_cast<float>(crop.visibleSamples / static_cast<double>(columns))
-            : 1.0f;
 
     if (partial) {
         header.flags = static_cast<std::uint8_t>(header.flags | flag(FrameFlag::kPartial));
@@ -1196,7 +1180,6 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     applyReadouts(header);
 
     encodeFrame(header, frameData, frame);
-    ++sequence;
     rememberInputs(settings, command, laneSetId);
     return true;
 }
@@ -1286,7 +1269,6 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     scratch.resize(std::max(scratch.size(), viewSamples.size()));
 
     FrameHeaderValues header{
-        .sequence = sequence,
         .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
                                            (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
                                            (window.roll ? flag(FrameFlag::kRoll) : 0U)),
@@ -1357,10 +1339,6 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
     header.pointCount = static_cast<std::uint32_t>(pointCount);
-    header.samplesPerPoint =
-        header.mode == protocol::FrameMode::kMinMax
-            ? static_cast<float>(crop.visibleSamples / static_cast<double>(columns))
-            : 1.0f;
 
     // Readouts measure this track's Mid over the whole span, at most every 100 ms of audio.
     const std::uint64_t ownEnd = engine.captureRing().endIndex();
@@ -1378,7 +1356,6 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     applyReadouts(header);
 
     encodeFrame(header, frameData, frame);
-    ++sequence;
     return true;
 }
 
@@ -2017,10 +1994,6 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     header.sumGain = comparisonCache.sumGain;
     header.fixedGain = comparisonCache.fixedGain;
     header.pointCount = static_cast<std::uint32_t>(pointCount);
-    header.samplesPerPoint = header.mode == protocol::FrameMode::kMinMax
-                                 ? static_cast<float>(static_cast<double>(header.visibleSamples) /
-                                                      static_cast<double>(columns))
-                                 : 1.0f;
 
     // Readouts measure this track's Mid over the whole span, at most every 100 ms of audio.
     const std::uint64_t ownEnd = engine.captureRing().endIndex();
@@ -2038,7 +2011,6 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     applyReadouts(header);
 
     encodeFrame(header, frameData, frame);
-    ++sequence;
 }
 
 } // namespace orizon::engine

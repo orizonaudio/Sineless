@@ -19,7 +19,6 @@ function fromHex(hex: string): ArrayBuffer {
 describe("frame decoder", () => {
   test("decodes the golden frame", () => {
     const frame = decodeFrame(fromHex(golden.hex));
-    expect(frame.sequence).toBe(golden.header.sequence);
     expect(frame.mode).toBe(FrameMode.minMax);
     expect(frame.triggered).toBe(true);
     expect(frame.frozen).toBe(true);
@@ -28,7 +27,6 @@ describe("frame decoder", () => {
     expect(frame.invalidLanes).toBe(golden.header.invalidLanes);
     expect(frame.roll).toBe(false);
     expect(frame.pointCount).toBe(golden.header.pointCount);
-    expect(frame.samplesPerPoint).toBe(golden.header.samplesPerPoint);
     expect(frame.startFraction).toBe(golden.header.startFraction);
     expect(frame.peak).toBe(golden.header.peak);
     expect(frame.rms).toBe(golden.header.rms);
@@ -77,7 +75,10 @@ describe("frame decoder", () => {
 
   test("reports an unavailable frequency (NaN) as undefined", () => {
     const buffer = fromHex(golden.hex);
-    new DataView(buffer).setFloat32(28, Number.NaN, true);
+    const frequency = frameHeader.fields.find(
+      (field) => field.name === "frequency",
+    );
+    new DataView(buffer).setFloat32(frequency?.offset ?? 0, Number.NaN, true);
     expect(decodeFrame(buffer).frequency).toBeUndefined();
   });
 

@@ -4,15 +4,14 @@ import { FrameMode } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import { RenderLoop } from "../src/render/render-loop.ts";
 
-function frame(sequence: number): Frame {
+// A frame told apart from the others by its point count, `id`; the loop never reads it.
+function frame(id: number): Frame {
   return {
-    sequence,
     mode: FrameMode.raw,
     triggered: false,
     frozen: false,
     roll: false,
-    pointCount: 0,
-    samplesPerPoint: 1,
+    pointCount: id,
     startFraction: 0,
     peak: 0,
     rms: 0,
@@ -44,7 +43,7 @@ function setup() {
   let credits = 0;
   const loop = new RenderLoop(
     (callback) => pending.push(callback),
-    { draw: (drawnFrame) => drawn.push(drawnFrame.sequence) },
+    { draw: (drawnFrame) => drawn.push(drawnFrame.pointCount) },
     () => {
       credits++;
     },
@@ -64,7 +63,7 @@ describe("render loop", () => {
     const drawn: number[] = [];
     const loop = new RenderLoop(
       (callback) => pending.push(callback),
-      { draw: (drawnFrame) => drawn.push(drawnFrame.sequence) },
+      { draw: (drawnFrame) => drawn.push(drawnFrame.pointCount) },
       () => undefined,
       15,
     );
@@ -115,7 +114,7 @@ describe("render loop", () => {
     const drawn: number[] = [];
     const loop = new RenderLoop(
       (callback) => pending.push(callback),
-      { draw: (drawnFrame) => drawn.push(drawnFrame.sequence) },
+      { draw: (drawnFrame) => drawn.push(drawnFrame.pointCount) },
       () => undefined,
       1000 / 60,
     );

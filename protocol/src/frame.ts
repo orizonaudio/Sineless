@@ -19,11 +19,10 @@
 // this track, have no correlation or offset (NaN) and polarity 0; a correlation not measured yet,
 // or of tracks that never sound together, is NaN too.
 //
-// `samplesPerPoint` is the number of samples each point covers. The visible span starts
-// `startFraction` samples after the first point (sub-sample trigger alignment). Readouts cover
-// the trigger channel; `peak`, `rms` and `frequency` are NaN when not measured (no frequency found,
-// or nothing to measure). In a tempo-synced sweep, `cursor` is
-// the playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
+// The visible span starts `startFraction` samples after the first point (sub-sample trigger
+// alignment). Readouts cover the trigger channel; `peak`, `rms` and `frequency` are NaN when not
+// measured (no frequency found, or nothing to measure). In a tempo-synced sweep, `cursor` is the
+// playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
 // project position of the left edge, `spanQuarterNotes` the span shown and `barQuarterNotes` the
 // bar length, all in quarter notes (0 when not synced); `cycleSeconds` is the left edge's project
 // time in seconds.
@@ -47,13 +46,11 @@ export interface FrameField {
 }
 
 export const frameHeaderFields = [
-  { name: "sequence", type: "u32" },
   { name: "mode", type: "u8" },
   { name: "flags", type: "u8" },
   { name: "views", type: "u8" },
   { name: "laneCount", type: "u8" },
   { name: "pointCount", type: "u32" },
-  { name: "samplesPerPoint", type: "f32" },
   { name: "startFraction", type: "f32" },
   { name: "peak", type: "f32" },
   { name: "rms", type: "f32" },

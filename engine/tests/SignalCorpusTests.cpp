@@ -538,8 +538,8 @@ static_assert(std::ranges::all_of(kFlags, [](const auto& flag) { return !flag.se
               "every frame flag needs a name in kFlags");
 
 // What a frame says that a reader would check: its shape, readouts, each view's or lane's
-// extremes, and in a Compare frame the matches and summing gains. The time position (sequence,
-// cursor, cycle) is left out: it follows how long the case played, not the signal.
+// extremes, and in a Compare frame the matches and summing gains. The time position (cursor,
+// cycle) is left out: it follows how long the case played, not the signal.
 json snapshot(const Case& c, const DecodedFrame& frame, const std::vector<std::byte>& bytes)
 {
     json out;
@@ -554,7 +554,6 @@ json snapshot(const Case& c, const DecodedFrame& frame, const std::vector<std::b
         out["flags"][name] = frame.has(flag);
     }
     out["pointCount"] = frame.pointCount;
-    out["samplesPerPoint"] = number(frame.samplesPerPoint);
     out["visibleSamples"] = number(frame.visibleSamples);
     out["readouts"]["peak"] = number(frame.peak);
     out["readouts"]["rms"] = number(frame.rms);

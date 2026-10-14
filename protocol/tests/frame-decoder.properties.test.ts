@@ -60,7 +60,6 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
     const block = fc.array(sample, { minLength: length, maxLength: length });
     const matchCount = Math.max(laneCount - 1, 0);
     return fc.record({
-      sequence: u32,
       mode: fc.constant(mode),
       triggered: fc.boolean(),
       frozen: fc.boolean(),
@@ -69,7 +68,6 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       limited: fc.boolean(),
       partial: fc.boolean(),
       pointCount: fc.constant(pointCount),
-      samplesPerPoint: f32,
       startFraction: f32,
       peak: f32,
       rms: f32,
@@ -134,13 +132,11 @@ function expectedHeader(
     0,
   );
   return {
-    sequence: content.sequence,
     mode: content.mode,
     flags,
     views,
     laneCount: content.lanes?.length ?? 0,
     pointCount: content.pointCount,
-    samplesPerPoint: content.samplesPerPoint,
     startFraction: content.startFraction,
     peak: content.peak,
     rms: content.rms,
@@ -189,13 +185,11 @@ function expectedFrame(content: FrameContent): Frame {
   const frequency = f(header.frequency);
   const cursor = f(header.cursor);
   return {
-    sequence: header.sequence,
     mode: content.mode,
     triggered: content.triggered,
     frozen: content.frozen,
     roll: content.roll,
     pointCount: content.pointCount,
-    samplesPerPoint: f(header.samplesPerPoint),
     startFraction: f(header.startFraction),
     peak: f(header.peak),
     rms: f(header.rms),

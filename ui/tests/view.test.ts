@@ -289,13 +289,11 @@ describe("axis labels", () => {
 
 describe("status chips", () => {
   const frame = (overrides: Partial<Frame>): Frame => ({
-    sequence: 0,
     mode: FrameMode.minMax,
     triggered: false,
     frozen: false,
     roll: false,
     pointCount: 0,
-    samplesPerPoint: 1,
     startFraction: 0,
     peak: 0,
     rms: 0,

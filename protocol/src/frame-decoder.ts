@@ -8,13 +8,11 @@ import {
 } from "./frame.ts";
 
 export interface Frame {
-  readonly sequence: number;
   readonly mode: FrameMode;
   readonly triggered: boolean;
   readonly frozen: boolean;
   readonly roll: boolean;
   readonly pointCount: number;
-  readonly samplesPerPoint: number;
   readonly startFraction: number;
   readonly peak: number;
   readonly rms: number;
@@ -127,13 +125,11 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
   const frequency = f32("frequency");
   const cursor = f32("cursor");
   return {
-    sequence: u32("sequence"),
     mode,
     triggered: (flags & FrameFlag.triggered) !== 0,
     frozen: (flags & FrameFlag.frozen) !== 0,
     roll: (flags & FrameFlag.roll) !== 0,
     pointCount,
-    samplesPerPoint: f32("samplesPerPoint"),
     startFraction: f32("startFraction"),
     peak: f32("peak"),
     rms: f32("rms"),

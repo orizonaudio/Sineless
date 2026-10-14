@@ -25,13 +25,11 @@ const sampleRate = 48000;
 // A raw frame of `values`, one sample per point, covering the whole span.
 function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
   return {
-    sequence: 0,
     mode: FrameMode.raw,
     triggered: true,
     frozen: false,
     roll: false,
     pointCount: values.length,
-    samplesPerPoint: 1,
     startFraction: 0,
     peak: 0,
     rms: 0,
@@ -166,7 +164,6 @@ describe("hover readout", () => {
     const frame = rawFrame(new Float32Array(80), {
       mode: FrameMode.minMax,
       pointCount: 8,
-      samplesPerPoint: 10,
     });
     const crossings = risingCrossings(frame, values);
     expect(crossings).toHaveLength(2);
@@ -194,7 +191,6 @@ describe("hover readout", () => {
     const columns = rawFrame(new Float32Array(480), {
       mode: FrameMode.minMax,
       pointCount: 96,
-      samplesPerPoint: 5,
     });
     expect(readPosition(columns, 0.5)).toBeCloseTo(48.5 / 96, 6);
     expect(readPosition(columns, 1.5)).toBeUndefined();
@@ -287,7 +283,6 @@ describe("hover readout", () => {
     const frame = rawFrame(new Float32Array(480), {
       mode: FrameMode.minMax,
       pointCount: columns,
-      samplesPerPoint: 5,
     });
     const readout = hoverReadout(
       {
@@ -349,7 +344,6 @@ describe("hover readout", () => {
     const zoomedColumns = rawFrame(new Float32Array(480), {
       mode: FrameMode.minMax,
       pointCount: 96,
-      samplesPerPoint: 5,
       viewStart: 0.25,
       viewEnd: 0.75,
     });
@@ -379,7 +373,6 @@ describe("hover readout", () => {
     const columns = rawFrame(new Float32Array(480), {
       mode: FrameMode.minMax,
       pointCount: 96,
-      samplesPerPoint: 5,
     });
     // Each column's level is its larger magnitude: the first column's low, the last's high.
     const peaks = new Float32Array(192).fill(0.1);
@@ -501,7 +494,6 @@ describe("hover readout", () => {
     const frame = rawFrame(new Float32Array(480), {
       mode: FrameMode.minMax,
       pointCount: 96,
-      samplesPerPoint: 5,
     });
     expect(cycleAt(frame, values, 0.5)).toBeUndefined();
     expect(hoverReadout(context(frame, values), 0.5, 0.5)?.lines).toHaveLength(
