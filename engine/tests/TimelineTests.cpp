@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <gtest/gtest.h>
+#include <string>
 #include <thread>
 
 namespace orizon::engine {
@@ -87,6 +88,32 @@ TEST(Timeline, KnowsTheProjectTime)
     EXPECT_NEAR(stamp.seconds, 5.0, 1e-9) << "stopped, it runs on with the clock";
 }
 
+// Before the host ever plays, the left edge's project time is where the host says it stands:
+// a project located at 4 s shows 4 s, not the start of the project.
+TEST(Timeline, StartsAtTheHostPositionBeforeTheFirstPlay)
+{
+    Timeline timeline;
+    HostTimeline host = playingAt(8.0);
+    host.playing = false;
+    host.secondsValid = true;
+    host.seconds = 4.0;
+    timeline.advance(host, kBlock, kRate);
+    const MusicalStamp stamp = timeline.latest();
+    EXPECT_FALSE(stamp.playing);
+    EXPECT_DOUBLE_EQ(stamp.quarterNotes, 8.0);
+    EXPECT_DOUBLE_EQ(stamp.seconds, 4.0);
+}
+
+// A position the host has not flagged as valid is not taken, whatever it holds.
+TEST(Timeline, StartsAtTheProjectStartWithoutAHostPosition)
+{
+    Timeline timeline;
+    timeline.advance({.quarterNotes = 8.0, .seconds = 4.0}, kBlock, kRate);
+    const MusicalStamp stamp = timeline.latest();
+    EXPECT_DOUBLE_EQ(stamp.quarterNotes, 0.0);
+    EXPECT_DOUBLE_EQ(stamp.seconds, 0.0);
+}
+
 TEST(Timeline, KeepsRunningAtTheLastTempoWhileStopped)
 {
     Timeline timeline;
@@ -132,6 +159,68 @@ TEST(Timeline, MapsBetweenSamplesAndQuarterNotes)
     EXPECT_DOUBLE_EQ(Timeline::quarterNotesAt(stamp, 96000, kRate), 11.5);
     EXPECT_DOUBLE_EQ(Timeline::quarterNotesAt(stamp, 24000, kRate), 9.25);
     EXPECT_DOUBLE_EQ(Timeline::sampleIndexAt(stamp, 11.5, kRate), 96000.0);
+}
+
+struct Meter
+{
+    int numerator;
+    int denominator;
+    double barQuarterNotes;
+};
+
+class TimeSignature : public ::testing::TestWithParam<Meter>
+{
+};
+
+// A bar lasts as long as the host's time signature says, so the beat grid and bar spans line up
+// with the host's bars in compound and odd meters, not only in quarter-note ones.
+TEST_P(TimeSignature, BarsLastAsLongAsTheHostsBars)
+{
+    const Meter meter = GetParam();
+    Timeline timeline;
+    HostTimeline host = playingAt(0.0);
+    host.numerator = meter.numerator;
+    host.denominator = meter.denominator;
+    timeline.advance(host, kBlock, kRate);
+    const MusicalStamp stamp = timeline.latest();
+    EXPECT_EQ(stamp.numerator, meter.numerator);
+    EXPECT_EQ(stamp.denominator, meter.denominator);
+    EXPECT_DOUBLE_EQ(Timeline::barQuarterNotes(stamp), meter.barQuarterNotes);
+}
+
+INSTANTIATE_TEST_SUITE_P(Meters, TimeSignature,
+                         ::testing::Values(Meter{4, 4, 4.0}, Meter{3, 4, 3.0}, Meter{6, 8, 3.0},
+                                           Meter{7, 8, 3.5}, Meter{5, 16, 1.25}, Meter{2, 2, 4.0}),
+                         [](const ::testing::TestParamInfo<Meter>& info) {
+                             return std::to_string(info.param.numerator) + "_" +
+                                    std::to_string(info.param.denominator);
+                         });
+
+// A host that stops sending a time signature, or sends one with a zero, leaves the bars as they
+// were rather than making them endless.
+TEST(Timeline, KeepsTheMeterWhenTheHostSendsNoValidOne)
+{
+    Timeline timeline;
+    HostTimeline host = playingAt(0.0);
+    host.numerator = 6;
+    host.denominator = 8;
+    timeline.advance(host, kBlock, kRate);
+
+    host.timeSignatureValid = false;
+    host.numerator = 4;
+    host.denominator = 4;
+    timeline.advance(host, kBlock, kRate);
+    EXPECT_DOUBLE_EQ(Timeline::barQuarterNotes(timeline.latest()), 3.0) << "not sent";
+
+    host.timeSignatureValid = true;
+    host.denominator = 0;
+    timeline.advance(host, kBlock, kRate);
+    EXPECT_DOUBLE_EQ(Timeline::barQuarterNotes(timeline.latest()), 3.0) << "a denominator of 0";
+
+    host.numerator = 0;
+    host.denominator = 4;
+    timeline.advance(host, kBlock, kRate);
+    EXPECT_DOUBLE_EQ(Timeline::barQuarterNotes(timeline.latest()), 3.0) << "a numerator of 0";
 }
 
 TEST(Timeline, AdvanceDoesNotAllocate)
