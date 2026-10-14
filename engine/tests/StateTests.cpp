@@ -126,6 +126,21 @@ TEST(State, LoadsTheVersion1GoldenFile)
     EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOff);
 }
 
+// Version 1 states from 0.1.0 already carry a time base: one saved in Beats reopens in Beats.
+// The file is what 0.1.0's serializeState wrote for a Beats project.
+TEST(State, LoadsAVersion1GoldenFileSavedInBeats)
+{
+    const Settings settings = deserializeState(readTestFile("state-v1-beats.json"));
+    EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
+              protocol::TimeBase::kBeats);
+    EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
+              protocol::BeatSpan::kTwoBars);
+    EXPECT_EQ(settings.value(SettingId::kChannelViews), 0b0101);
+    EXPECT_EQ(settings.enumValue<ViewLayout>(SettingId::kViewLayout), ViewLayout::kStacked);
+    EXPECT_EQ(settings.enumValue<TriggerSlope>(SettingId::kTriggerSlope), TriggerSlope::kFalling);
+    EXPECT_EQ(settings.value(SettingId::kVerticalScale), -6.0);
+}
+
 TEST(State, LoadsTheVersion2GoldenFile)
 {
     const Settings settings = deserializeState(readTestFile("state-v2.json"));
