@@ -14,6 +14,7 @@ import {
   formatOffset,
   formatSamples,
   formatSeconds,
+  formatClock,
   parseQuantity,
 } from "../src/view/format.ts";
 import * as format from "../src/view/format.ts";
@@ -93,6 +94,54 @@ describe.each(allFormatters)("%s", (_, formatValue) => {
     expect(formatValue(value)).toBe("—");
   });
 });
+
+// Values that round to zero from below show no negative zero, in the formatters whose values can
+// be negative: a Compare offset of a track a hair early, a time or project time just before zero,
+// a level or gain just under 0 dB. (Sample counts, frequencies and the reference pitch are never
+// negative.)
+const signedFormatters = {
+  formatOffset,
+  formatSeconds,
+  formatClock,
+  formatDb: format.formatDb,
+  formatDbValue: format.formatDbValue,
+  formatGain,
+};
+describe.each(Object.entries(signedFormatters))(
+  "%s near zero",
+  (_, formatValue) => {
+    test.each([0, -0, -1e-9, -0.0004])("is readable at %s", (value) => {
+      expectReadable(formatValue(value));
+    });
+  },
+);
+// And values that do not round to zero keep a true minus.
+test.each([
+  [formatOffset, -0.42, `${minus}0.42 ms`],
+  [formatOffset, -3.2, `${minus}3.2 ms`],
+  [formatClock, -1.5, `${minus}0:01.500`],
+  [formatClock, -0.0004, "0:00.000"],
+] as const)("%o of %s shows %s", (formatValue, value, shown) => {
+  expect(formatValue(value)).toBe(shown);
+});
+
+// A field reads what the readouts print, which is a true minus, and only a number with its unit.
+test.each([
+  ["−12 dB", "level", -12],
+  ["−0.25", "number", -0.25],
+  ["20 ms", "time", 0.02],
+  ["20 ms ", "time", 0.02],
+  ["2e1 ms", "time", 0.02],
+  ["1.5e-3 s", "time", 0.0015],
+] as const)("reads %s", (text, quantity, value) => {
+  expect(parseQuantity(text, quantity)).toBeCloseTo(value, 9);
+});
+test.each(["20 ms junk", "junk 20 ms", "2 0 ms", "20 ms ms"])(
+  "rejects %s",
+  (text) => {
+    expect(parseQuantity(text, "time")).toBeUndefined();
+  },
+);
 
 // Values on either side of each unit or precision switch.
 describe("unit boundaries", () => {
