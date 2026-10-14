@@ -1,5 +1,9 @@
 # Contributing
 
+## Picking up an issue
+
+Assign yourself to an issue before you start on it, and leave issues someone else is assigned to alone. Unassign yourself if you stop.
+
 ## Definition of Done
 
 Every change:
