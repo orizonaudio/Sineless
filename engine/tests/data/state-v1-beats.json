@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "beatSpan": "twoBars",
+    "channelViews": [
+      "left",
+      "mid"
+    ],
+    "timeBase": "beats",
+    "timeSpan": 0.02,
+    "triggerHoldOff": 0.0,
+    "triggerHysteresis": 0.01,
+    "triggerLevel": 0.0,
+    "triggerMode": "auto",
+    "triggerSlope": "falling",
+    "triggerSource": "mid",
+    "verticalScale": -6.0,
+    "viewLayout": "stacked"
+  },
+  "version": 1
+}
