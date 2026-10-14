@@ -58,6 +58,8 @@ On Windows, set `ORIZON_UPDATE_CORPUS=1` in the environment before running `ctes
 1. Set the version in `project(... VERSION x.y.z ...)` in `CMakeLists.txt`.
 2. Run `scripts/check.sh`. Every check must pass.
 3. Run `scripts/soak.sh` (about 12 minutes): memory must not grow faster than 0.5 MB a minute, frames must stay steady, and reopening the editor must leave nothing behind. After changing something long-lived (capture buffers, the musical clock, the page's memory use), also run the hour-long `scripts/soak.sh 60`.
-4. Run `scripts/package.sh`. It builds the Release bundle, verifies both architectures and the macOS 13.1 minimum, and writes `build/release/Sineless-<version>-macOS.zip`. On Windows, run `scripts\package.ps1`: it builds the x64 and ARM64 Release binaries into one bundle, checks each binary's architecture and that it needs no Visual C++ runtime DLLs, and writes `build\release\Sineless-<version>-Windows.zip`.
-5. Install the zipped bundle and test it in each host you can, following the protocol in [HOSTS.md](HOSTS.md), at least in Ableton Live, on macOS and on Windows. Update the matrix there.
-6. Tag the commit `vx.y.z` and attach both zips to a GitHub release.
+4. Once the version change has merged, tag that commit of `main` `vx.y.z` and push the tag (`git tag vx.y.z <commit>`, then `git push origin vx.y.z`). The Release workflow (`.github/workflows/release.yml`) checks that the tag matches the version in `CMakeLists.txt`, then builds both zips on GitHub's runners with `scripts/package.sh` (both architectures, macOS 13.1 minimum) and `scripts\package.ps1` (x64 and ARM64 binaries in one bundle, each of the right machine type, none needing the Visual C++ runtime DLLs). It attests where they were built and creates a draft release with them, their SHA-256 checksums and notes from the merged pull requests. To try it before tagging, run the workflow by hand from the Actions tab: it builds and checks both zips and keeps them with the run, but creates no release.
+5. Install the draft's zips and test them in each host you can, following the protocol in [HOSTS.md](HOSTS.md), at least in Ableton Live, on macOS and on Windows. Update the matrix there.
+6. Publish the draft release.
+
+The packaging scripts also run locally, writing `build/release/Sineless-<version>-macOS.zip` and `build\release\Sineless-<version>-Windows.zip`.
