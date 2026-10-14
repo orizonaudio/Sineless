@@ -846,6 +846,131 @@ TEST_P(BeatSpans, DrawsTheWholeSweepLiveAndFrozen)
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, BeatSpans, ::testing::ValuesIn(beatCases()), modeTestName);
 
+// --- Zoom and pan ---------------------------------------------------------------------------
+
+// A frozen view zoomed to either half shows the same columns as that half of the whole view drawn
+// with twice as many: the same audio, cut at the same places. Every trace, in every mode, in Beats
+// (a one-beat sweep) and in Seconds (a rolling 2 s span), at the lowest and highest rates; the
+// column count divides the span exactly, so the columns line up.
+class ZoomedHalves : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(ZoomedHalves, ShowTheSameColumnsAsTheWholeView)
+{
+    const ModeCase c = GetParam();
+    Session session(c.rate, c.channels);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 3});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 4});
+    configure(session.own(), c.mode, c.timeBase);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kTimeSpan, 2.0);
+    const double spanSeconds = c.timeBase == TimeBase::kBeats ? 0.5 : 2.0;
+    const auto half = static_cast<std::size_t>(std::llround(spanSeconds * c.rate / 2.0));
+    std::size_t columns = 300;
+    while (half % columns != 0) {
+        --columns;
+    }
+    session.play(captureSeconds(c.rate) + 1.0, protocol::kReadoutIntervalSeconds / 2.0);
+    session.analyzer().setFrozen(true);
+    session.analyzer().setColumns(2 * columns);
+    session.play(0.01);
+    const auto whole = session.produce();
+    ASSERT_TRUE(whole) << "no frame of the whole view";
+    ASSERT_TRUE(whole->has(FrameFlag::kFrozen));
+    ASSERT_EQ(whole->mode, FrameMode::kMinMax);
+    ASSERT_EQ(whole->pointCount, 2 * columns);
+    session.analyzer().setColumns(columns);
+    for (const bool second : {false, true}) {
+        SCOPED_TRACE(second ? "second half" : "first half");
+        session.analyzer().setView(second ? 0.5 : 0.0, second ? 1.0 : 0.5);
+        const auto zoomed = session.produce();
+        ASSERT_TRUE(zoomed) << "no zoomed frame";
+        ASSERT_EQ(zoomed->mode, FrameMode::kMinMax);
+        ASSERT_EQ(zoomed->pointCount, columns);
+        ASSERT_EQ(tracesIn(*zoomed), tracesIn(*whole));
+        for (std::size_t index = 0; index < tracesIn(*whole); ++index) {
+            const std::span<const float> all = trace(*whole, index);
+            const std::span<const float> part =
+                all.subspan(second ? all.size() / 2 : 0, all.size() / 2);
+            const std::span<const float> shown = trace(*zoomed, index);
+            EXPECT_TRUE(std::ranges::equal(shown, part)) << "trace " << index;
+        }
+    }
+}
+
+// Live in Beats, a zoomed sweep keeps its columns from frame to frame and reduces again only those
+// that new audio landed in; panned at the same width, it starts again from the new part. After
+// zooming into the second quarter and playing, and again on the first frame after panning to the
+// third (the same width), every trace is what a new analyzer draws of that part at once. In every
+// mode, at the lowest and highest rates.
+class LiveZoom : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(LiveZoom, KeepsZoomedAndPannedTracesInStep)
+{
+    const ModeCase c = GetParam();
+    Session session(c.rate, c.channels);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 5});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 6});
+    configure(session.own(), c.mode, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    constexpr std::size_t kZoomedColumns = 200;
+    session.analyzer().setColumns(kZoomedColumns);
+    session.play(captureSeconds(c.rate) + 1.0, protocol::kReadoutIntervalSeconds / 2.0);
+    for (const auto& [start, end] : {std::pair{0.25, 0.5}, std::pair{0.5, 0.75}}) {
+        SCOPED_TRACE(testing::Message() << "view " << start << " to " << end);
+        const bool panned = start > 0.25;
+        session.analyzer().setView(start, end);
+        if (!panned) { // Zoomed, frames go on; panned, the first frame shows the new part.
+            session.play(0.3, protocol::kReadoutIntervalSeconds / 2.0);
+        }
+        session.play(0.01);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        ASSERT_TRUE(frame->has(FrameFlag::kSynced));
+        Analyzer fresh(session.own(), session.registry);
+        fresh.setColumns(kZoomedColumns);
+        fresh.setView(start, end);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(fresh.produce(bytes));
+        const DecodedFrame expected = decode(bytes);
+        ASSERT_EQ(tracesIn(*frame), tracesIn(expected));
+        ASSERT_EQ(frame->pointCount, expected.pointCount);
+        for (std::size_t index = 0; index < tracesIn(expected); ++index) {
+            EXPECT_TRUE(std::ranges::equal(trace(*frame, index), trace(expected, index)))
+                << "trace " << index;
+        }
+    }
+}
+
+std::vector<ModeCase> zoomCases()
+{
+    std::vector<ModeCase> cases;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+            for (const DisplayMode mode : everyMode()) {
+                cases.push_back({.rate = rate,
+                                 .mode = mode,
+                                 .channels = rate == kSampleRates.front() ? 2 : 1,
+                                 .timeBase = static_cast<TimeBase>(timeBase)});
+            }
+        }
+    }
+    return cases;
+}
+
+// The Compare cases of zoomCases().
+std::vector<ModeCase> zoomedCompareCases()
+{
+    std::vector<ModeCase> cases = zoomCases();
+    std::erase_if(cases, [](const ModeCase& c) { return c.mode != DisplayMode::kCompare; });
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, ZoomedHalves, ::testing::ValuesIn(zoomCases()), modeTestName);
+
 // --- Beat spans at the freeze hold ----------------------------------------------------------
 
 // The longest beat span whose sweep at `tempo` fits in the capture, which bounds what a freeze in
@@ -1042,6 +1167,7 @@ TEST_P(HeldBeatSpans, ShowsTheLongerSpanAgainAsItWas)
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, HeldBeatSpans, ::testing::ValuesIn(heldBeatCases()),
                          modeTestName);
+INSTANTIATE_TEST_SUITE_P(EdgeRates, LiveZoom, ::testing::ValuesIn(heldBeatCases()), modeTestName);
 
 // The host changes the rate with the editor open in Beats mode: the freeze then holds the longest
 // beat span the capture sized for the new rate covers, whole when it is rebuilt from the hold (on
@@ -2162,6 +2288,92 @@ TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, DelayedCopy, ::testing::ValuesIn(delayCases()), delayTestName);
+
+// Zoomed so that the view starts part way into the span, Compare's search of what is shown still
+// succeeds, and finds a copy 37 samples late: in every time base, at the lowest and highest rates.
+// (The copy is late by the same amount throughout, so this does not tell a search of the view from
+// one of the whole span; ZoomedFrozenMatch does.)
+class ZoomedMatch : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(ZoomedMatch, FindsTheCopyInTheView)
+{
+    const ModeCase c = GetParam();
+    constexpr std::int64_t kDelay = 37;
+    for (const auto& [start, end] : {std::pair{0.5, 1.0}, std::pair{0.25, 0.75}}) {
+        SCOPED_TRACE(testing::Message() << "view " << start << " to " << end);
+        Session session(c.rate, c.channels);
+        session.join({.kind = Signal::Kind::kNoise});
+        session.join({.kind = Signal::Kind::kNoise, .delay = kDelay});
+        configure(session.own(), DisplayMode::kCompare, c.timeBase);
+        session.own().settings().set(SettingId::kTimeSpan, 0.2);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+        // Zoomed from the start, so that the match shown comes from searches of the zoomed view.
+        session.analyzer().setView(start, end);
+        session.play(2.0, 0.01);
+        session.play(0.01);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        ASSERT_TRUE(frame->has(FrameFlag::kCompared));
+        ASSERT_EQ(frame->laneCount, 3);
+        const std::size_t at = std::size_t{frame->laneCount} * traceLength(*frame) +
+                               std::size_t{1} * protocol::kMatchValues;
+        EXPECT_EQ(frame->data.at(at + 1), static_cast<float>(kDelay)) << "offset";
+        EXPECT_EQ(frame->data.at(at + 2), 1.0f) << "related, in polarity";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, ZoomedMatch, ::testing::ValuesIn(zoomedCompareCases()),
+                         modeTestName);
+
+// Frozen in Seconds and zoomed to the middle of the span, the match describes what is shown: a
+// copy that only starts sounding after the view's right edge is no match for the view, though it
+// is one in the newest audio of the span. At the lowest and highest rates.
+class ZoomedFrozenMatch : public ::testing::TestWithParam<double>
+{
+};
+
+TEST_P(ZoomedFrozenMatch, DescribesOnlyTheView)
+{
+    const double rate = GetParam();
+    constexpr double kPlayed = 2.0;
+    constexpr double kSpan = 0.2;
+    constexpr double kViewEnd = 0.75;
+    // The copy starts half way between the view's right edge and the newest sample.
+    const auto copyStart =
+        static_cast<std::int64_t>(std::llround((kPlayed - (1.0 - kViewEnd) * kSpan / 2.0) * rate));
+    Session session(rate, 2);
+    session.join({.kind = Signal::Kind::kNoise});
+    session.join({.kind = Signal::Kind::kNoise, .delay = 37, .startsAt = copyStart});
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTimeSpan, kSpan);
+    session.play(kPlayed);
+    // The polarity of the copy's match in the last frame of a few steps: a search, then frames
+    // until none is pending.
+    const auto settledPolarity = [&] {
+        std::optional<DecodedFrame> frame;
+        for (int step = 0; step < 3; ++step) {
+            if (auto produced = session.produce()) {
+                frame = std::move(produced);
+            }
+        }
+        EXPECT_TRUE(frame) << "no frame";
+        if (!frame) {
+            return std::numeric_limits<float>::quiet_NaN();
+        }
+        return frame->data.at(std::size_t{frame->laneCount} * traceLength(*frame) +
+                              protocol::kMatchValues + 2);
+    };
+    session.analyzer().setFrozen(true);
+    EXPECT_EQ(settledPolarity(), 1.0f) << "unzoomed, the newest audio holds the copy";
+    session.analyzer().setView(0.25, kViewEnd);
+    EXPECT_EQ(settledPolarity(), 0.0f) << "the view holds no copy: no match";
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, ZoomedFrozenMatch,
+                         ::testing::Values(kSampleRates.front(), kSampleRates.back()),
+                         rateTestName);
 
 } // namespace
 } // namespace orizon::engine
