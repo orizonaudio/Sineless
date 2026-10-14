@@ -72,9 +72,7 @@ describe("backend", () => {
     backend.on("lanes", (message) =>
       events.push(`lanes:${String(message.laneSet)}`),
     );
-    backend.on("frame", (frame) =>
-      events.push(`frame:${String(frame.sequence)}`),
-    );
+    backend.on("frame", (frame) => events.push(`frame:${String(frame.peak)}`));
     transport.messageHandler?.({
       type: "stateChanged",
       name: "timeSpan",
@@ -102,7 +100,7 @@ describe("backend", () => {
       "state:timeSpan",
       "error:protocolMismatch",
       "lanes:3",
-      "frame:7",
+      `frame:${String(golden.header.peak)}`,
     ]);
   });
 });

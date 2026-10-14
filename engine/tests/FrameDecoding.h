@@ -13,14 +13,12 @@ namespace orizon::engine {
 
 struct DecodedFrame
 {
-    std::uint32_t sequence = 0;
     protocol::FrameMode mode = protocol::FrameMode::kRaw;
     std::uint8_t flags = 0;
     std::uint8_t views = 0;
     std::uint8_t laneCount = 0;
     std::uint32_t laneSet = 0;
     std::uint32_t pointCount = 0;
-    float samplesPerPoint = 0.0f;
     float startFraction = 0.0f;
     float peak = 0.0f;
     float rms = 0.0f;
@@ -49,7 +47,6 @@ template <typename Value> Value get(const std::vector<std::byte>& bytes, std::si
 inline DecodedFrame decode(const std::vector<std::byte>& bytes)
 {
     DecodedFrame frame;
-    frame.sequence = get<std::uint32_t>(bytes, protocol::FrameHeader::kSequenceOffset);
     frame.mode = static_cast<protocol::FrameMode>(
         get<std::uint8_t>(bytes, protocol::FrameHeader::kModeOffset));
     frame.flags = get<std::uint8_t>(bytes, protocol::FrameHeader::kFlagsOffset);
@@ -57,7 +54,6 @@ inline DecodedFrame decode(const std::vector<std::byte>& bytes)
     frame.laneCount = get<std::uint8_t>(bytes, protocol::FrameHeader::kLaneCountOffset);
     frame.laneSet = get<std::uint32_t>(bytes, protocol::FrameHeader::kLaneSetOffset);
     frame.pointCount = get<std::uint32_t>(bytes, protocol::FrameHeader::kPointCountOffset);
-    frame.samplesPerPoint = get<float>(bytes, protocol::FrameHeader::kSamplesPerPointOffset);
     frame.startFraction = get<float>(bytes, protocol::FrameHeader::kStartFractionOffset);
     frame.peak = get<float>(bytes, protocol::FrameHeader::kPeakOffset);
     frame.rms = get<float>(bytes, protocol::FrameHeader::kRmsOffset);

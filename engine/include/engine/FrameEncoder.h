@@ -13,13 +13,11 @@ namespace orizon::engine {
 // Header values of one display frame; the layout is protocol::FrameHeader.
 struct FrameHeaderValues
 {
-    std::uint32_t sequence = 0;
     protocol::FrameMode mode = protocol::FrameMode::kRaw;
     std::uint8_t flags = 0;     // protocol::FrameFlag bits.
     std::uint8_t views = 0;     // protocol::ChannelView bit mask.
     std::uint8_t laneCount = 0; // Multi-track frames: lanes instead of views.
     std::uint32_t pointCount = 0;
-    float samplesPerPoint = 1.0f;
     float startFraction = 0.0f;
     // Readouts; NaN when not measured.
     float peak = std::numeric_limits<float>::quiet_NaN();

@@ -273,8 +273,8 @@ private:
     void followTransport(const Settings& settings, Commands& command);
     bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
     bool render(const SampleSource& source, const Settings& settings, double sampleRate,
-                const Window& window, std::uint64_t sampleCount, double samplesPerColumn,
-                std::size_t columns, std::vector<std::byte>& frame);
+                const Window& window, std::uint64_t sampleCount, std::size_t columns,
+                std::vector<std::byte>& frame);
 
     Engine& engine;
     const InstanceRegistry& registry;
@@ -300,7 +300,6 @@ private:
     // from a stop (only such a freeze ends when the transport plays again).
     std::optional<bool> lastPlaying;
     bool autoFrozen = false;
-    std::uint32_t sequence = 0;
     // Tempo sync: the clock and capture end when frozen, and the capture end of the last frame.
     MusicalStamp frozenStamp;
     std::uint64_t frozenEnd = 0;

@@ -46,7 +46,7 @@ describe("C++ generator", () => {
       `static constexpr std::size_t kSize = ${String(frameHeader.size)};`,
     );
     expect(header).toContain(
-      "static constexpr std::size_t kSamplesPerPointOffset = 12;",
+      "static constexpr std::size_t kStartFractionOffset = 8;",
     );
     expect(header).toContain("inline constexpr std::size_t kMatchValues = 3;");
   });

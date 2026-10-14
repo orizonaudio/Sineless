@@ -21,13 +21,11 @@ function frame(
 ): Frame {
   const first = views[0]?.[1] ?? [];
   return {
-    sequence: 0,
     mode,
     triggered: true,
     frozen: false,
     roll: false,
     pointCount: mode === FrameMode.minMax ? first.length / 2 : first.length,
-    samplesPerPoint: 1,
     startFraction,
     peak: 0,
     rms: 0,

@@ -42,13 +42,11 @@ float floatOf(const nlohmann::json& value)
 FrameHeaderValues headerValues(const nlohmann::json& header)
 {
     return {
-        .sequence = header["sequence"].get<std::uint32_t>(),
         .mode = static_cast<protocol::FrameMode>(header["mode"].get<int>()),
         .flags = header["flags"].get<std::uint8_t>(),
         .views = header["views"].get<std::uint8_t>(),
         .laneCount = header["laneCount"].get<std::uint8_t>(),
         .pointCount = header["pointCount"].get<std::uint32_t>(),
-        .samplesPerPoint = header["samplesPerPoint"].get<float>(),
         .startFraction = header["startFraction"].get<float>(),
         .peak = header["peak"].get<float>(),
         .rms = header["rms"].get<float>(),

@@ -4,13 +4,11 @@ import { ChannelView, type FrameMode } from "./enums.ts";
 import { FrameFlag, frameHeader, type FrameHeaderFieldName } from "./frame.ts";
 
 export interface FrameContent {
-  readonly sequence: number;
   readonly mode: FrameMode;
   readonly triggered: boolean;
   readonly frozen: boolean;
   readonly roll: boolean;
   readonly pointCount: number;
-  readonly samplesPerPoint: number;
   readonly startFraction: number;
   readonly peak: number;
   readonly rms: number;
@@ -77,7 +75,6 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     (content.limited === true ? FrameFlag.limited : 0) |
     (content.partial === true ? FrameFlag.partial : 0) |
     (content.comparison === undefined ? 0 : FrameFlag.compared);
-  header.setUint32(offsets.sequence, content.sequence, true);
   header.setUint8(offsets.mode, content.mode);
   header.setUint8(offsets.flags, flags);
   header.setUint8(
@@ -86,7 +83,6 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   );
   header.setUint8(offsets.laneCount, content.lanes?.length ?? 0);
   header.setUint32(offsets.pointCount, content.pointCount, true);
-  header.setFloat32(offsets.samplesPerPoint, content.samplesPerPoint, true);
   header.setFloat32(offsets.startFraction, content.startFraction, true);
   header.setFloat32(offsets.peak, content.peak, true);
   header.setFloat32(offsets.rms, content.rms, true);

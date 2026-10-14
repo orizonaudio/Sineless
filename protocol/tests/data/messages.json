@@ -2,7 +2,7 @@
   "description": "One example of every UI-to-engine message, checked against the TypeScript types and parsed by the C++ session tests, so field names cannot drift.",
   "hello": {
     "type": "hello",
-    "protocolVersion": 4,
+    "protocolVersion": 5,
     "viewWidth": 640,
     "pixelRatio": 2
   },

@@ -177,7 +177,6 @@ export class MockTransport implements Transport {
   private frozenAt: number | undefined;
   // The part of the span on screen; only that part is synthesised.
   private view = { start: 0, end: 1 };
-  private sequence = 0;
   private laneSet = 0;
   private lanesKey = "";
   // The Compare view's other tracks, by id (until asked, the first), and whether the sum previews
@@ -591,7 +590,6 @@ export class MockTransport implements Transport {
 
     this.frameHandler?.(
       encodeFrame({
-        sequence: this.sequence++,
         mode: minMax ? FrameMode.minMax : FrameMode.raw,
         triggered: !roll && !synced,
         frozen: this.frozenAt !== undefined,
@@ -607,7 +605,6 @@ export class MockTransport implements Transport {
         viewEnd: this.view.end,
         visibleSamples: sampleCount,
         pointCount,
-        samplesPerPoint: minMax ? samplesPerPoint : 1,
         startFraction: 0,
         peak: readoutSamples > 0 ? peak : Number.NaN,
         rms:

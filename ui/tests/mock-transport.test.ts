@@ -65,7 +65,6 @@ describe("mock back end", () => {
     transport.requestFrame();
     transport.requestFrame();
     expect(frames).toHaveLength(3);
-    expect(frames.map((frame) => frame.sequence)).toEqual([0, 1, 2]);
   });
 
   test("synthesises frames in the real format for the selected views", () => {

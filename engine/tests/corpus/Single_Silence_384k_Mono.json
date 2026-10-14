@@ -15,7 +15,6 @@
     "peak": 0,
     "rms": 0
   },
-  "samplesPerPoint": 76.8,
   "signal": {
     "channels": 1,
     "displayMode": "single",

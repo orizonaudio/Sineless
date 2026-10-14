@@ -40,7 +40,6 @@
     "peak": 0.25,
     "rms": 0.25
   },
-  "samplesPerPoint": 12,
   "signal": {
     "channels": 2,
     "displayMode": "compare",
