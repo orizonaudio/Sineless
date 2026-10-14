@@ -145,6 +145,19 @@ describe("steps", () => {
     expect(stepFine(holdOffSteps, 0.001, -1)).toBeLessThan(0.001);
   });
 
+  test("moves a fine step from any value in the range, and stays at zero going down", () => {
+    for (const steps of [spanSteps, holdOffSteps]) {
+      for (const value of steps.filter((step) => step > 0)) {
+        for (const delta of [-1, 1]) {
+          const next = stepFine(steps, value, delta);
+          const atEnd = value === (delta < 0 ? steps[0] : steps.at(-1));
+          expect(next === value).toBe(atEnd);
+        }
+      }
+    }
+    expect(stepFine(holdOffSteps, 0, -1)).toBe(0);
+  });
+
   test("follows the 1-2-5 span sequence from 0.5 ms to 4 s", () => {
     expect(spanSteps[0]).toBe(0.0005);
     expect(spanSteps.at(-1)).toBe(4);
