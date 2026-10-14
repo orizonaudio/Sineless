@@ -1,6 +1,7 @@
 #include "AllocationCounter.h"
 #include "engine/Timeline.h"
 
+#include <array>
 #include <atomic>
 #include <gtest/gtest.h>
 #include <thread>
@@ -34,6 +35,37 @@ TEST(Timeline, FollowsTheHostWhilePlaying)
     EXPECT_TRUE(stamp.playing);
     EXPECT_EQ(stamp.numerator, 3);
     EXPECT_DOUBLE_EQ(Timeline::barQuarterNotes(stamp), 3.0);
+}
+
+// A host may mark a tempo or time signature valid and still report 0 (or less) in it, as when a
+// project is loading. Each such value is ignored and the last usable one kept, so the beat span and
+// the sweep stay finite instead of dividing by zero.
+TEST(Timeline, KeepsTheLastUsableTempoAndTimeSignature)
+{
+    struct Case
+    {
+        const char* name;
+        void (*corrupt)(HostTimeline&);
+    };
+    const std::array cases{
+        Case{.name = "tempo 0", .corrupt = [](HostTimeline& host) { host.tempo = 0.0; }},
+        Case{.name = "negative tempo", .corrupt = [](HostTimeline& host) { host.tempo = -120.0; }},
+        Case{.name = "numerator 0", .corrupt = [](HostTimeline& host) { host.numerator = 0; }},
+        Case{.name = "denominator 0", .corrupt = [](HostTimeline& host) { host.denominator = 0; }},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        Timeline timeline;
+        timeline.advance(playingAt(8.0, 90.0), kBlock, kRate);
+        HostTimeline host = playingAt(8.02, 90.0);
+        c.corrupt(host);
+        timeline.advance(host, kBlock, kRate);
+        const MusicalStamp stamp = timeline.latest();
+        EXPECT_DOUBLE_EQ(stamp.tempo, 90.0);
+        EXPECT_EQ(stamp.numerator, 3);
+        EXPECT_EQ(stamp.denominator, 4);
+        EXPECT_DOUBLE_EQ(Timeline::barQuarterNotes(stamp), 3.0);
+    }
 }
 
 TEST(Timeline, KnowsTheProjectTime)
