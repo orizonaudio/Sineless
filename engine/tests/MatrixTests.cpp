@@ -216,7 +216,9 @@ public:
                      .positionValid = true,
                      .quarterNotes = static_cast<double>(position) * track.tempo / (60.0 * rate),
                      .tempoValid = true,
-                     .tempo = track.tempo},
+                     .tempo = track.tempo,
+                     .secondsValid = true,
+                     .seconds = secondsOffset + (static_cast<double>(position) / rate)},
                     kBlock, rate);
             }
             position += kBlock;
@@ -251,7 +253,8 @@ public:
     [[nodiscard]] float field(std::size_t offset) const { return get<float>(bytes, offset); }
 
     double rate;
-    bool playing = true; // The host transport, as play reports it.
+    bool playing = true;        // The host transport, as play reports it.
+    double secondsOffset = 0.0; // Project time at the start, as after a tempo change earlier.
     InstanceRegistry registry;
 
 private:
@@ -358,6 +361,20 @@ std::span<const float> trace(const DecodedFrame& frame, std::size_t index)
     return std::span(frame.data).subspan(index * length, length);
 }
 
+// How many values the page decodes after the header, as protocol/src/frame-decoder.ts reads them:
+// a trace per view, then per lane, then a match per lane but the sum when the frame is flagged as
+// compared. A frame holding fewer is dropped; one holding more shows its first values, which then
+// belong to another frame.
+std::size_t announcedValues(const DecodedFrame& frame)
+{
+    const std::size_t traces =
+        static_cast<std::size_t>(std::popcount(frame.views)) + std::size_t{frame.laneCount};
+    const std::size_t matches = frame.has(FrameFlag::kCompared) && frame.laneCount > 0
+                                    ? (std::size_t{frame.laneCount} - 1) * protocol::kMatchValues
+                                    : 0;
+    return (traces * traceLength(frame)) + matches;
+}
+
 // Whether two frames' data are the same value for value, a missing value (NaN) matching another.
 bool sameValues(const std::vector<float>& a, const std::vector<float>& b)
 {
@@ -365,14 +382,15 @@ bool sameValues(const std::vector<float>& a, const std::vector<float>& b)
         a, b, [](float x, float y) { return x == y || (std::isnan(x) && std::isnan(y)); });
 }
 
-// Checks that the frame's data holds every trace, and that no value of trace `index` is a hole
-// (or not a number); a trace in `silent` must be all zeros instead.
+// Checks that the frame's data holds every trace and exactly what its header announces, and that
+// no value of trace `index` is a hole (or not a number); a trace in `silent` must be all zeros
+// instead.
 void expectTraces(const DecodedFrame& frame, std::size_t expected,
                   std::optional<std::size_t> silent = std::nullopt)
 {
     ASSERT_EQ(tracesIn(frame), expected);
-    ASSERT_GE(frame.data.size(), expected * traceLength(frame)) << "data shorter than its traces";
     ASSERT_GT(frame.pointCount, 0U);
+    ASSERT_EQ(frame.data.size(), announcedValues(frame)) << "the page decodes what is announced";
     for (std::size_t index = 0; index < expected; ++index) {
         const std::span<const float> values = trace(frame, index);
         if (silent == index) {
@@ -1176,6 +1194,115 @@ std::vector<ModeCase> zoomedCompareCases()
 }
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, ZoomedHalves, ::testing::ValuesIn(zoomCases()), modeTestName);
+
+// A tempo-synced frame says where its cycle starts in the song, in quarter notes and in the
+// host's project time, and how long its span and the host's bar are, which the page draws the beat
+// grid and the hover time from. At 120 BPM in 4/4, 5.3 s in, a 1-bar span starts at quarter note 8
+// and a 2-beat span at 10; the project time is the host's, here 10 s ahead of the quarter notes
+// (as after an earlier tempo change), so 14 s and 15 s. Live, and frozen while the song plays
+// on, in every mode, at every rate.
+class BeatGrid : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(BeatGrid, PlacesTheCycleInTheSong)
+{
+    const ModeCase c = GetParam();
+    constexpr double kProjectTimeAhead = 10.0;
+    struct Expected
+    {
+        BeatSpan span;
+        double cycleStart;
+        double spanQuarterNotes;
+    };
+    for (const Expected expected :
+         {Expected{.span = BeatSpan::kOneBar, .cycleStart = 8.0, .spanQuarterNotes = 4.0},
+          Expected{.span = BeatSpan::kTwoBeats, .cycleStart = 10.0, .spanQuarterNotes = 2.0}}) {
+        SCOPED_TRACE(static_cast<int>(expected.span));
+        Session session(c.rate, c.channels);
+        session.secondsOffset = kProjectTimeAhead;
+        session.join({.frequency = 1000.0});
+        session.join({.frequency = 1500.0});
+        configure(session.own(), c.mode, TimeBase::kBeats);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(expected.span));
+        session.play(5.3, protocol::kReadoutIntervalSeconds / 2.0);
+        const auto expectCycle = [&] {
+            EXPECT_NEAR(session.field(FrameHeader::kCycleStartOffset), expected.cycleStart, 1e-3);
+            EXPECT_NEAR(session.field(FrameHeader::kSpanQuarterNotesOffset),
+                        expected.spanQuarterNotes, 1e-6);
+            EXPECT_NEAR(session.field(FrameHeader::kBarQuarterNotesOffset), 4.0, 1e-6);
+            EXPECT_NEAR(session.field(FrameHeader::kCycleSecondsOffset),
+                        kProjectTimeAhead + (expected.cycleStart / 2.0), 1e-3);
+        };
+        for (const bool frozen : {false, true}) {
+            SCOPED_TRACE(frozen ? "frozen" : "live");
+            session.analyzer().setFrozen(frozen);
+            session.play(0.01);
+            ASSERT_TRUE(session.produce()) << "no frame";
+            expectCycle();
+        }
+        // Frozen while the song plays on past a whole bar, a redrawn frame keeps the freeze's
+        // cycle.
+        SCOPED_TRACE("frozen, played on");
+        session.play(2.5);
+        session.analyzer().setColumns(kColumns - 1); // Forces a frame.
+        ASSERT_TRUE(session.produce()) << "no frame";
+        expectCycle();
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, BeatGrid, ::testing::ValuesIn(beatCases()), modeTestName);
+
+// A beat span longer than a sweep may hold (16 bars at 120 BPM and 384 kHz) is drawn limited and
+// says so, which the page shows as "Span limited", live and frozen; the same span at 48 kHz fits
+// and does not. Either way the frame claims nothing else: Compare only in Compare, never frozen
+// while live.
+class LimitedSweep : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(LimitedSweep, SaysWhenTheSpanIsLimited)
+{
+    const DisplayMode mode = GetParam();
+    const auto sixteenBars = static_cast<std::size_t>(BeatSpan::kSixteenBars);
+    ASSERT_GT(beatSpanSamples(kSampleRates.back(), 120.0, sixteenBars), kMaxSweepSamples)
+        << "no rate goes over the sweep limit: choose a longer span or a slower tempo";
+    for (const double rate : {48000.0, kSampleRates.back()}) {
+        SCOPED_TRACE(rateName(rate));
+        const bool limited = beatSpanSamples(rate, 120.0, sixteenBars) > kMaxSweepSamples;
+        Session session(rate, 2);
+        session.join({.frequency = 1000.0});
+        session.join({.frequency = 1500.0});
+        configure(session.own(), mode, TimeBase::kBeats);
+        session.own().settings().set(SettingId::kBeatSpan,
+                                     static_cast<double>(BeatSpan::kSixteenBars));
+        session.play(1.0, protocol::kReadoutIntervalSeconds / 2.0);
+        session.play(0.01);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        EXPECT_EQ(frame->has(FrameFlag::kLimited), limited);
+        EXPECT_EQ(frame->has(FrameFlag::kCompared), mode == DisplayMode::kCompare);
+        EXPECT_FALSE(frame->has(FrameFlag::kFrozen));
+        EXPECT_TRUE(frame->has(FrameFlag::kSynced));
+        EXPECT_LE(frame->visibleSamples, static_cast<float>(kMaxSweepSamples));
+        // Still filling its first pass, so only the layout is checked, not the values.
+        EXPECT_EQ(tracesIn(*frame), expectedTraces(mode, 2, 2));
+        EXPECT_EQ(frame->data.size(), announcedValues(*frame));
+
+        // Frozen, the frame still says whether the span was limited.
+        session.analyzer().setFrozen(true);
+        session.play(0.01);
+        const auto frozen = session.produce();
+        ASSERT_TRUE(frozen) << "no frozen frame";
+        EXPECT_TRUE(frozen->has(FrameFlag::kFrozen));
+        EXPECT_EQ(frozen->has(FrameFlag::kLimited), limited) << "frozen";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, LimitedSweep, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
+                         });
 
 // --- Beat spans at the freeze hold ----------------------------------------------------------
 
