@@ -212,11 +212,12 @@ describe("cancellation bands", () => {
   const quads = (bands: Float32Array) => bands.length / 12;
 
   test("shade nothing with only one track compared", () => {
-    // The tracks cancel, but only this one is in the sum: nothing to cancel against.
+    // The tracks cancel, and the other track is related, but it alone is in the sum: nothing to
+    // cancel against.
     const cancelling = compareFrame([
       -0.1, 0.1, -0.1, 0.1, -0.1, 0.1, -0.1, 0.1,
     ]);
-    expect(cancellationBands(cancelling, layout, [true, false])).toHaveLength(
+    expect(cancellationBands(cancelling, layout, [false, true])).toHaveLength(
       0,
     );
   });
