@@ -6,8 +6,11 @@ import { FrameMode } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { columnPosition, pointPosition } from "../render/trace-geometry.ts";
 
-// Span positions (0 to 1) where `values` (one view of `frame`) crosses zero. Raw points are
-// interpolated; a min/max column that spans zero counts as a crossing at its centre.
+// Span positions (0 to 1) where `values` (one view of `frame`) crosses zero. Raw points cross
+// where they pass from one side of zero to the other: interpolated, or in the middle of the
+// exact zeros between them (as at digital silence); touching zero, or leaving or entering
+// silence on one side, is no crossing, and none spans a value that is not finite. A min/max
+// column that spans zero counts as a crossing at its centre.
 export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
   const crossings: number[] = [];
   if (frame.mode === FrameMode.minMax) {
@@ -25,15 +28,27 @@ export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
     }
     return crossings;
   }
-  for (let index = 0; index + 1 < frame.pointCount; index++) {
-    const here = values[index] ?? 0;
-    const next = values[index + 1] ?? 0;
-    if (!Number.isFinite(here) || !Number.isFinite(next)) {
+  // The last point off zero, and its index: a crossing is a change of side since it.
+  let side = 0;
+  let sideIndex = 0;
+  for (let index = 0; index < frame.pointCount; index++) {
+    const value = values[index] ?? 0;
+    if (!Number.isFinite(value)) {
+      side = 0; // Measured around: no crossing spans it.
       continue;
     }
-    if ((here < 0 && next >= 0) || (here >= 0 && next < 0)) {
-      crossings.push(pointPosition(frame, index + here / (here - next)));
+    if (value === 0) {
+      continue;
     }
+    if (side !== 0 && Math.sign(value) !== Math.sign(side)) {
+      const crossing =
+        index === sideIndex + 1
+          ? sideIndex + side / (side - value)
+          : (sideIndex + index) / 2;
+      crossings.push(pointPosition(frame, crossing));
+    }
+    side = value;
+    sideIndex = index;
   }
   return crossings;
 }

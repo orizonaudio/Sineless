@@ -53,6 +53,27 @@ describe("cursor snapping", () => {
     expect(crossings[1]).toBeCloseTo(3.75 / 5); // Three quarters from 3 to -1.
   });
 
+  test("finds crossings only where a trace with silent stretches crosses zero", () => {
+    // Digital silence (exact zeros) before, between and after two crossings: one rising into
+    // the positive part at 2.5, one falling out of it at 5.5.
+    const values = new Float32Array([0, 0, -1, 1, 1, 1, -1, 0, 0, 0]);
+    const crossings = zeroCrossings(frameOf(FrameMode.raw, 10), values);
+    expect(crossings).toHaveLength(2);
+    expect(crossings[0]).toBeCloseTo(2.5 / 10);
+    expect(crossings[1]).toBeCloseTo(5.5 / 10);
+    // One sample exactly on zero between the two sides: the crossing is that sample.
+    const onZero = zeroCrossings(
+      frameOf(FrameMode.raw, 3),
+      new Float32Array([-1, 0, 1]),
+    );
+    expect(onZero).toHaveLength(1);
+    expect(onZero[0]).toBeCloseTo(1 / 3);
+    // Nothing anywhere in silence alone.
+    expect(
+      zeroCrossings(frameOf(FrameMode.raw, 6), new Float32Array(6)),
+    ).toEqual([]);
+  });
+
   test("takes min/max columns that span zero as crossings at their centre", () => {
     const values = new Float32Array([0.1, 0.5, -0.4, 0.3, -0.6, -0.2, -0.1, 0]);
     expect(zeroCrossings(frameOf(FrameMode.minMax, 4), values)).toEqual([
