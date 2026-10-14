@@ -95,10 +95,11 @@ jobs:
           path: build/release/Sineless-${{ needs.version.outputs.version }}-Windows.zip
           if-no-files-found: error
 
-  # From a tag only: the checksums, the attestation and the draft release.
+  # From a pushed tag only: the checksums, the attestation and the draft release. Run by hand,
+  # even on a tag, it stays a dry run.
   release:
     name: release-draft
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     needs: [version, macos, windows]
     runs-on: ubuntu-24.04
     permissions:
