@@ -6,26 +6,39 @@ import { FrameMode } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { columnPosition, pointPosition } from "../render/trace-geometry.ts";
 
-// Span positions (0 to 1) where `values` (one view of `frame`) crosses zero. Raw points cross
-// where they pass from one side of zero to the other: interpolated, or in the middle of the
-// exact zeros between them (as at digital silence); touching zero, or leaving or entering
-// silence on one side, is no crossing, and none spans a value that is not finite. A min/max
-// column that reaches both sides of zero counts as a crossing at its centre; one that only
-// touches zero does not.
+// Span positions (0 to 1) where `values` (one view of `frame`) crosses zero: passes from one
+// side of it to the other, whether drawn as raw points or min/max columns. Raw points cross
+// interpolated between them; a min/max column that reaches both sides, at its centre; and
+// between points or columns on either side of exact zeros (as at digital silence), in the middle
+// of those zeros, or at the edge between two columns. Touching zero, or leaving or entering
+// silence on one side, is no crossing, and none spans a value that is not finite.
 export function zeroCrossings(frame: Frame, values: Float32Array): number[] {
   const crossings: number[] = [];
   if (frame.mode === FrameMode.minMax) {
+    // The side of the last column off zero, and its index; 0 after one that reaches both.
+    let side = 0;
+    let sideColumn = 0;
     for (let column = 0; column < frame.pointCount; column++) {
       const low = values[column * 2] ?? 0;
       const high = values[column * 2 + 1] ?? 0;
-      if (
-        Number.isFinite(low) &&
-        Number.isFinite(high) &&
-        low < 0 &&
-        high > 0
-      ) {
-        crossings.push(columnPosition(frame, column + 0.5));
+      if (!Number.isFinite(low) || !Number.isFinite(high)) {
+        side = 0; // Measured around: no crossing spans it.
+        continue;
       }
+      if (low < 0 && high > 0) {
+        crossings.push(columnPosition(frame, column + 0.5));
+        side = 0;
+        continue;
+      }
+      const here = low < 0 ? -1 : high > 0 ? 1 : 0;
+      if (here === 0) {
+        continue; // Silence.
+      }
+      if (side !== 0 && here !== side) {
+        crossings.push(columnPosition(frame, (sideColumn + 1 + column) / 2));
+      }
+      side = here;
+      sideColumn = column;
     }
     return crossings;
   }

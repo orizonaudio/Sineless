@@ -90,6 +90,12 @@ describe("cursor snapping", () => {
         2.5 / 5,
       ]);
     }
+    // Split across columns: one ending on zero below and the next starting above it, at the
+    // edge between them; through silent columns, in the middle of those; as raw points find.
+    const split = new Float32Array([-0.5, -0.2, -0.2, 0, 0.1, 0.3, 0.2, 0.5]);
+    expect(zeroCrossings(frameOf(FrameMode.minMax, 4), split)).toEqual([2 / 4]);
+    const gated = new Float32Array([-0.3, 0, 0, 0, 0, 0, 0, 0.3]);
+    expect(zeroCrossings(frameOf(FrameMode.minMax, 4), gated)).toEqual([2 / 4]);
     // Nothing anywhere in silence alone.
     expect(
       zeroCrossings(frameOf(FrameMode.raw, 6), new Float32Array(6)),
