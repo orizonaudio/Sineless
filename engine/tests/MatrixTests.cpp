@@ -1557,6 +1557,68 @@ std::optional<DecodedFrame> playForReadouts(Session& session, TimeBase timeBase)
     return session.produce();
 }
 
+// Live in Beats, a view hidden for a while and shown again draws what is in the sweep now, not the
+// columns it had when it was hidden: Side, hidden for a beat and shown again, equals what a new
+// analyzer draws. At every rate, stereo.
+TEST(ChannelViewsInBeats, ShowAHiddenViewAsItIsNow)
+{
+    for (const double rate : kSampleRates) {
+        SCOPED_TRACE(rateName(rate));
+        Session session(rate, 2);
+        session.join({.kind = Signal::Kind::kNoise, .seed = 7});
+        configure(session.own(), DisplayMode::kSingle, TimeBase::kBeats);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+        const auto side = 1U << static_cast<unsigned>(protocol::ChannelView::kSide);
+        session.own().settings().set(SettingId::kChannelViews, static_cast<double>(0b0011U | side));
+        session.play(1.0, protocol::kReadoutIntervalSeconds / 2.0);
+        session.own().settings().set(SettingId::kChannelViews, 0b0011);
+        session.play(0.5, protocol::kReadoutIntervalSeconds / 2.0); // A beat.
+        session.own().settings().set(SettingId::kChannelViews, static_cast<double>(0b0011U | side));
+        session.play(0.01);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        Analyzer fresh(session.own(), session.registry);
+        fresh.setColumns(kColumns);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(fresh.produce(bytes));
+        const DecodedFrame expected = decode(bytes);
+        ASSERT_EQ(tracesIn(*frame), 3U);
+        EXPECT_TRUE(std::ranges::equal(trace(*frame, 2), trace(expected, 2))) << "Side";
+    }
+}
+
+// In Beats, the readouts measure the Mid, as the lanes do, whatever the trigger source (which only
+// Seconds mode uses): with the source on any other view, a track whose right channel is half its
+// left reads at the Mid's level, three quarters of the left. At the lowest and highest rates, live
+// and frozen.
+TEST(ChannelViewsInBeats, MeasureTheMidWhateverTheTriggerSource)
+{
+    constexpr double kAmplitude = 0.5;
+    for (std::size_t source = 0; source < protocol::kChannelViewCount; ++source) {
+        if (static_cast<protocol::ChannelView>(source) == protocol::ChannelView::kMid) {
+            continue;
+        }
+        for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+            SCOPED_TRACE(testing::Message() << "source " << source << ", " << rateName(rate));
+            Session session(rate, 2);
+            session.join({.frequency = 1000.0, .amplitude = kAmplitude, .offset = 0.0});
+            configure(session.own(), DisplayMode::kSingle, TimeBase::kBeats);
+            session.own().settings().set(SettingId::kTriggerSource, static_cast<double>(source));
+            auto frame = playForReadouts(session, TimeBase::kBeats);
+            for (const bool frozen : {false, true}) {
+                SCOPED_TRACE(frozen ? "frozen" : "live");
+                if (frozen) {
+                    session.analyzer().setFrozen(true);
+                    session.play(static_cast<double>(kBlock) / rate);
+                    frame = session.produce();
+                }
+                ASSERT_TRUE(frame) << "no frame";
+                EXPECT_NEAR(frame->peak, 0.75 * kAmplitude, 0.01 * kAmplitude);
+            }
+        }
+    }
+}
+
 class AnalysisGate : public ::testing::TestWithParam<ModeCase>
 {
 };

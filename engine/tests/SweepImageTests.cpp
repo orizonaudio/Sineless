@@ -8,25 +8,37 @@
 namespace orizon::engine {
 namespace {
 
-// A ring whose samples hold their own index, so positions on screen show where each came from.
+// A ring whose left samples hold their own index, so positions on screen show where each came
+// from, and whose right samples hold its negative, so the channels can be told apart.
 class SweepImageTest : public ::testing::Test
 {
 protected:
     void writeUpTo(std::uint64_t end)
     {
         std::vector<float> ramp;
+        std::vector<float> negated;
         for (std::uint64_t index = ring.writeIndex(); index < end; ++index) {
             ramp.push_back(static_cast<float>(index));
+            negated.push_back(-static_cast<float>(index));
         }
-        std::array<const float*, 2> channels{ramp.data(), ramp.data()};
+        std::array<const float*, 2> channels{ramp.data(), negated.data()};
         ring.write(channels.data(), 2, static_cast<int>(ramp.size()));
     }
 
-    std::vector<float> screen() const
+    std::vector<float> screen(int channel = 0) const
     {
         std::vector<float> samples(image.length());
-        EXPECT_TRUE(image.read(0, 0, samples));
+        EXPECT_TRUE(image.read(channel, 0, samples));
         return samples;
+    }
+
+    // The right channel of what the left shows.
+    static std::vector<float> negated(std::vector<float> left)
+    {
+        for (float& value : left) {
+            value = -value;
+        }
+        return left;
     }
 
     CaptureRing ring{1024};
@@ -175,6 +187,7 @@ TEST_F(SweepImageTest, ShowsAPartOverItsPositionsAndKeepsTheImage)
     EXPECT_TRUE(image.showsPart(3, 4));
     EXPECT_FALSE(image.showsPart(3, 5));
     EXPECT_EQ(screen(), (std::vector<float>{90, 91, 92, 50, 51, 52, 53, 97, 98, 99}));
+    EXPECT_EQ(screen(1), negated(screen())) << "each channel shows its own part";
     // A read starting inside the part, or ending in it.
     std::array<float, 3> inside{};
     ASSERT_TRUE(image.read(0, 5, inside));
@@ -212,6 +225,7 @@ TEST_F(SweepImageTest, ShowsOnlyAPartThatFits)
     image.showPart(part, 7);
     EXPECT_TRUE(image.showsPart(7, 3));
     EXPECT_EQ(screen(), (std::vector<float>{90, 91, 92, 93, 94, 95, 96, 40, 41, 42}));
+    EXPECT_EQ(screen(1), negated(screen())) << "each channel shows its own part";
 
     image.showPart(part, 10);
     EXPECT_FALSE(image.hasPart()) << "beyond the edge";
