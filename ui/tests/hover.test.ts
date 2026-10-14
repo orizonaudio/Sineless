@@ -5,6 +5,7 @@ import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   analysisGateDbfs,
   crossingHysteresis,
+  periodTolerance,
   triggerPosition,
 } from "../../protocol/src/limits.ts";
 import {
@@ -458,6 +459,34 @@ describe("hover readout", () => {
     // From 360 to 560: like neither the cycle before it nor any after it.
     expect(cycleAt(frame, values, 460 / length)).toBeUndefined();
   });
+
+  test.each([
+    [0.5, true],
+    [2, false],
+  ])(
+    "counts cycles %s of the engine's tolerance apart as repeating: %s",
+    (share, repeats) => {
+      // Rising crossings at 120 and 240, then a cycle that differs from the one before by
+      // `share` of the tolerance; the cycle measured has only that one beside it.
+      const longer = Math.round(120 * (1 + share * periodTolerance));
+      const periods = [120, 120, longer];
+      const values = new Float32Array(periods.reduce((a, b) => a + b, 0) + 120);
+      let index = 0;
+      for (const period of [...periods, 120]) {
+        for (let sample = 0; sample < period; sample++) {
+          values[index++] = 0.5 * Math.sin((2 * Math.PI * sample) / period);
+        }
+      }
+      const frame = rawFrame(values);
+      const middle = (240 + longer / 2) / values.length;
+      const cycle = cycleAt(frame, values, middle);
+      if (repeats) {
+        expect(cycle).toBeCloseTo(longer / values.length, 2);
+      } else {
+        expect(cycle).toBeUndefined();
+      }
+    },
+  );
 
   test("leaves min/max columns too coarse for a cycle unmeasured", () => {
     // A cycle every 8 columns: each crossing is only known to within a column, an eighth of it.
