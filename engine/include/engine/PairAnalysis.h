@@ -9,10 +9,6 @@ namespace orizon::engine {
 // How two tracks sum, from the same stretch of each.
 struct PairAnalysis
 {
-    // Where both sound, the sum's level against the level two unrelated signals of the same
-    // levels would give, in dB: 0 harmless, about +3 for identical signals, below 0 when they
-    // cancel.
-    double sumGain = 0.0;
     // False when the two never sound together above the analysis gate: nothing was measured, and
     // the rest holds its defaults.
     bool measured = false;
@@ -24,7 +20,6 @@ struct PairAnalysis
     // `inverted`, `b` lines up best with its polarity flipped. 0 and false when not related.
     std::ptrdiff_t offset = 0;
     bool inverted = false;
-    double fixedGain = 0.0; // The summing gain with `b` shifted and flipped as found.
 };
 
 // Analyses `a` and `b` (equal length), searching offsets up to `maxOffset` samples either way.

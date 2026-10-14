@@ -109,8 +109,7 @@ bool CaptureRing::read(int channel, std::uint64_t start, std::span<float> destin
     const std::uint64_t published = publishedIndex.load(std::memory_order_acquire);
     const std::shared_ptr<const Storage> held = current();
     const std::size_t size = held->capacity;
-    if (channel < 0 || channel >= kMaxChannels || destination.size() > size ||
-        start < held->first) {
+    if (channel < 0 || channel >= kMaxChannels || start < held->first) {
         return false;
     }
     const std::uint64_t end = start + destination.size();

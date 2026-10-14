@@ -150,10 +150,11 @@ void continueRefresh(Refresh& refresh, std::size_t length, std::size_t step, con
     }
 }
 
-// Lane `index`'s bit in a frame's `invalidLanes`.
+// Lane `index`'s bit in a frame's `invalidLanes`: the lanes, then the sum after them.
+static_assert(kMaxLanes < 32, "every lane and the sum have a bit");
 std::uint32_t laneBit(std::size_t index)
 {
-    return index < 32 ? std::uint32_t{1} << index : 0U;
+    return std::uint32_t{1} << index;
 }
 
 // Whether any of `samples` is not finite (NaN or infinite, from a broken signal upstream).
@@ -627,12 +628,12 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     // Each view keeps its columns from frame to frame where it can: a tempo-synced sweep reduces
     // again only the columns its newest samples landed in, a roll window only the columns that
     // scrolled in. A triggered window is new every time.
-    const bool synced = window.synced && &source == &image;
+    const bool synced = window.synced;
     // Readouts measure the trigger source, whose control is there in Seconds mode; in Beats mode,
     // where nothing triggers, the Mid, as the multi-track lanes do.
     const ChannelView readoutView = synced ? ChannelView::kMid : triggerView;
     const bool rolling = window.roll && !window.synced && window.cropStart == 0.0 &&
-                         window.cropEnd == 1.0 && columns > 0 && sampleCount % columns == 0 &&
+                         window.cropEnd == 1.0 && sampleCount % columns == 0 &&
                          sampleCount > columns;
     const std::size_t visibleCount = crop.end - crop.first;
     const bool sameReduction = viewReduction.first == crop.first &&
@@ -674,7 +675,6 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                 }
             }
             if (!updated) {
-                reduction.invalidate();
                 return false;
             }
             header.mode = reduction.mode();
@@ -705,11 +705,10 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
     if (synced) {
-        // The readout view's levels per block, for readouts, kept in step with the sweep.
+        // The Mid's levels per block, for readouts, kept in step with the sweep.
         const bool fresh =
             !sweepStats.fits(static_cast<std::size_t>(sampleCount), statsBlock(sampleRate)) ||
-            sweepStatsView != readoutView || sweepStatsChannels != inputChannels;
-        sweepStatsView = readoutView;
+            sweepStatsChannels != inputChannels;
         sweepStatsChannels = inputChannels;
         if (!updateStats(sweepStats, image, readoutView, inputChannels, fresh)) {
             return false;
@@ -1111,19 +1110,16 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         const std::uint64_t serial = laneOrder[laneIndex];
         Lane& lane = *lanes.at(serial);
         ColumnReduction& reduction = lane.reduction;
-        const int channels = lane.engine->inputChannels();
+        // The image holds the Mid alone: read as is, with no working space.
         const auto read = [&](std::size_t first, std::span<float> destination) {
-            readScratch.resize(std::max(readScratch.size(), destination.size()));
             return readView(lane.image, lane.image.channels(), ChannelView::kMid,
-                            crop.first + first, destination, readScratch);
+                            crop.first + first, destination, {});
         };
         bool updated = false;
         if (lane.image.length() == count) {
-            if (!reduction.fits(visibleCount, columns) || lane.reducedFirst != crop.first ||
-                lane.reducedChannels != channels) {
+            if (!reduction.fits(visibleCount, columns) || lane.reducedFirst != crop.first) {
                 reduction.reset(visibleCount, columns);
                 lane.reducedFirst = crop.first;
-                lane.reducedChannels = channels;
                 updated = reduction.update(0, visibleCount, read);
             } else {
                 updated = true;
@@ -1140,9 +1136,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
             }
             // The lane's levels per block, for readouts and summing gains.
             updateStats(lane.stats, lane.image, ChannelView::kMid, lane.image.channels(),
-                        !lane.stats.fits(static_cast<std::size_t>(count), block) ||
-                            lane.statsChannels != channels);
-            lane.statsChannels = channels;
+                        !lane.stats.fits(static_cast<std::size_t>(count), block));
             header.invalidLanes |=
                 holdsInvalid(lane.stats, crop.first, crop.end) ? laneBit(laneIndex) : 0U;
             partial = partial || !(lane.image.complete() || lane.image.partComplete());
@@ -1315,7 +1309,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     // A whole roll window falls into columns on fixed sample indices: each lane keeps its columns
     // and reduces only the new ones.
     const bool rolling = window.roll && window.cropStart == 0.0 && window.cropEnd == 1.0 &&
-                         columns > 0 && sampleCount % columns == 0 && sampleCount > columns;
+                         sampleCount % columns == 0 && sampleCount > columns;
     if (comparing) {
         laneSources.clear();
         for (const std::uint64_t serial : laneOrder) {
@@ -1450,9 +1444,9 @@ void Analyzer::readLaneImage(std::size_t index, std::size_t length, std::uint64_
                              std::span<float> into)
 {
     const Lane& lane = *lanes.at(laneOrder[index]);
-    readScratch.resize(std::max(readScratch.size(), into.size()));
+    // The image holds the Mid alone: read as is, with no working space.
     if (lane.image.length() != length ||
-        !readView(lane.image, lane.image.channels(), ChannelView::kMid, from, into, readScratch)) {
+        !readView(lane.image, lane.image.channels(), ChannelView::kMid, from, into, {})) {
         std::ranges::fill(into, 0.0f);
     }
 }

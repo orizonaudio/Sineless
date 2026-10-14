@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -126,15 +127,13 @@ std::vector<std::span<const double>> spansOf(const std::vector<std::vector<doubl
 
 // Which blocks hold at least two tracks sounding together, from each track's energy per block
 // of `block` samples (equal lengths): the second-loudest within 20 dB of the loudest, not more
-// than 60 dB below the loudest block, and above the analysis gate. Empty when there are fewer
-// than two tracks. A shorter last block is judged by its energy as a whole one is: its tracks are
+// than 60 dB below the loudest block, and above the analysis gate; for two tracks or more. A
+// shorter last block is judged by its energy as a whole one is: its tracks are
 // equally short, so only one of a few samples falls under the other two limits.
 std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energies,
                                  std::size_t block)
 {
-    if (energies.size() < 2) {
-        return {};
-    }
+    assert(energies.size() >= 2);
     const std::size_t blocks = energies.front().size();
     std::vector<double> loudest(blocks, 0.0);
     std::vector<double> second(blocks, 0.0);
@@ -161,12 +160,11 @@ std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energi
     return together;
 }
 
-// Which blocks of `block` samples hold at least two of `tracks` (equal length) sounding together.
+// Which blocks of `block` samples (more than 0) hold at least two of `tracks` (two or more, of
+// equal length) sounding together.
 std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, std::size_t block)
 {
-    if (tracks.size() < 2 || block == 0) {
-        return {};
-    }
+    assert(tracks.size() >= 2 && block > 0);
     return togetherBlocks(spansOf(blockEnergies(tracks, block)), block);
 }
 
@@ -224,12 +222,6 @@ PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std
         return result;
     }
     result.measured = true;
-    double sumEnergy = 0.0;
-    for (std::size_t i = 0; i < length; ++i) {
-        const double sum = static_cast<double>(a[i]) + b[i];
-        sumEnergy += sum * sum;
-    }
-    result.sumGain = summingGain(sumEnergy, energyA + energyB);
     result.correlation = correlationAt(a, b, 0, norm);
 
     // Coarse search on decimated copies, then a fine one around the coarse match.
@@ -250,27 +242,10 @@ PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std
         fine = {.offset = 0, .value = result.correlation};
     }
     result.related = std::abs(fine.value) >= kRelatedMatch;
-    if (!result.related) {
-        result.fixedGain = result.sumGain;
-        return result;
+    if (result.related) {
+        result.offset = fine.offset;
+        result.inverted = fine.value < 0.0;
     }
-    result.offset = fine.offset;
-    result.inverted = fine.value < 0.0;
-
-    double fixedEnergy = 0.0;
-    double fixedA = 0.0;
-    double fixedB = 0.0;
-    const float sign = result.inverted ? -1.0f : 1.0f;
-    const auto signedLength = static_cast<std::ptrdiff_t>(length);
-    for (std::ptrdiff_t i = std::max<std::ptrdiff_t>(0, -fine.offset);
-         i < std::min(signedLength, signedLength - fine.offset); ++i) {
-        const double valueA = a[static_cast<std::size_t>(i)];
-        const double valueB = sign * b[static_cast<std::size_t>(i + fine.offset)];
-        fixedEnergy += (valueA + valueB) * (valueA + valueB);
-        fixedA += valueA * valueA;
-        fixedB += valueB * valueB;
-    }
-    result.fixedGain = summingGain(fixedEnergy, fixedA + fixedB);
     return result;
 }
 

@@ -48,7 +48,8 @@ TEST(PairAnalysis, IdenticalTracksReinforce)
 {
     const auto a = noise(1);
     const PairAnalysis result = analyse(a, a);
-    EXPECT_NEAR(result.sumGain, 10.0 * std::log10(2.0), 0.01) << "about +3 dB";
+    const std::array<std::span<const float>, 2> tracks{a, a};
+    EXPECT_NEAR(overlapGain(tracks, kBlock), 10.0 * std::log10(2.0), 0.01) << "about +3 dB";
     EXPECT_NEAR(result.correlation, 1.0, 1e-6);
     EXPECT_TRUE(result.related);
     EXPECT_EQ(result.offset, 0);
@@ -63,11 +64,11 @@ TEST(PairAnalysis, AnInvertedCopyCancels)
         value = -value;
     }
     const PairAnalysis result = analyse(a, b);
-    EXPECT_LT(result.sumGain, -60.0);
+    const std::array<std::span<const float>, 2> tracks{a, b};
+    EXPECT_LT(overlapGain(tracks, kBlock), -60.0);
     EXPECT_NEAR(result.correlation, -1.0, 1e-6);
     EXPECT_EQ(result.offset, 0);
-    EXPECT_TRUE(result.inverted);
-    EXPECT_NEAR(result.fixedGain, 10.0 * std::log10(2.0), 0.01) << "flipped back, it reinforces";
+    EXPECT_TRUE(result.inverted) << "the fix flips it back";
 }
 
 TEST(PairAnalysis, FindsHowLateATrackArrives)
@@ -78,7 +79,6 @@ TEST(PairAnalysis, FindsHowLateATrackArrives)
     EXPECT_EQ(result.offset, 37);
     EXPECT_FALSE(result.inverted);
     EXPECT_LT(std::abs(result.correlation), 0.1) << "unaligned, broadband noise barely correlates";
-    EXPECT_NEAR(result.fixedGain, 10.0 * std::log10(2.0), 0.05);
 
     const PairAnalysis early = analyse(b, a);
     EXPECT_EQ(early.offset, -37) << "a track that leads has a negative offset";
@@ -104,13 +104,15 @@ TEST(PairAnalysis, FindsALateCopyWhateverLengthIsSearched)
 
 TEST(PairAnalysis, UnrelatedTracksSumHarmlessly)
 {
-    const PairAnalysis result = analyse(noise(4), noise(5));
-    EXPECT_NEAR(result.sumGain, 0.0, 0.2);
+    const auto a = noise(4);
+    const auto b = noise(5);
+    const PairAnalysis result = analyse(a, b);
+    const std::array<std::span<const float>, 2> tracks{a, b};
+    EXPECT_NEAR(overlapGain(tracks, kBlock), 0.0, 0.2);
     EXPECT_NEAR(result.correlation, 0.0, 0.05);
     EXPECT_FALSE(result.related);
     EXPECT_EQ(result.offset, 0);
-    EXPECT_FALSE(result.inverted);
-    EXPECT_EQ(result.fixedGain, result.sumGain) << "nothing to fix";
+    EXPECT_FALSE(result.inverted) << "nothing to fix";
 }
 
 TEST(PairAnalysis, SuggestsNoFixForAHiHatOverAKickTail)
@@ -169,7 +171,6 @@ TEST(PairAnalysis, ReportsNothingForSilence)
     const std::vector<float> silence(kLength, 0.0f);
     const PairAnalysis result = analyse(noise(6), silence);
     EXPECT_FALSE(result.measured);
-    EXPECT_EQ(result.sumGain, 0.0);
     EXPECT_EQ(result.correlation, 0.0);
     EXPECT_EQ(result.offset, 0);
 }
@@ -197,7 +198,6 @@ TEST(PairAnalysis, JudgesABriefTrackWhereItPlays)
     const PairAnalysis result = analyse(a, b);
     EXPECT_TRUE(result.related) << "not watered down by the 3.8 s where it is silent";
     EXPECT_EQ(result.offset, 37);
-    EXPECT_NEAR(result.fixedGain, 10.0 * std::log10(2.0), 0.1);
 }
 
 TEST(PairAnalysis, CountsTheSummingGainWhereTracksOverlap)
@@ -257,7 +257,6 @@ TEST(PairAnalysis, SendsAnExactCancellationAsMinusInfinity)
     for (float& value : b) {
         value = -value;
     }
-    EXPECT_EQ(analyse(a, b).sumGain, kMinusInfinity);
     const std::array<std::span<const float>, 2> tracks{a, b};
     EXPECT_EQ(overlapGain(tracks, kBlock), kMinusInfinity);
     const std::vector<double> energy(kLength / kBlock, 1.0);
