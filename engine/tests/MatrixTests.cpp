@@ -32,6 +32,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -148,9 +149,10 @@ struct Signal
     double amplitude = 0.25;
     double offset = 0.5; // DC, so that a hole in a trace stands out.
     std::uint64_t seed = 1;
-    std::int64_t delay = 0;    // Noise: samples by which it lags the host.
-    std::int64_t startsAt = 0; // Silent before this host sample.
-    std::int64_t endsAt = -1;  // Silent from this host sample, if any.
+    std::int64_t delay = 0;     // Noise: samples by which it lags the host.
+    std::int64_t startsAt = 0;  // Silent before this host sample.
+    std::int64_t endsAt = -1;   // Silent from this host sample, if any.
+    std::int64_t brokenAt = -1; // One sample, at this host sample, that is not finite (`broken`).
     // Every other run of this many samples is at a quarter of the amplitude (none if 0), the first
     // run loud.
     std::int64_t quieterEvery = 0;
@@ -297,6 +299,9 @@ private:
             }
             if (signal.louderFrom >= 0 && index >= signal.louderFrom) {
                 value *= 4.0;
+            }
+            if (index == signal.brokenAt) {
+                value = signal.broken;
             }
             left.at(static_cast<std::size_t>(i)) = static_cast<float>(value);
             right.at(static_cast<std::size_t>(i)) = static_cast<float>(0.5 * value);
@@ -2377,6 +2382,115 @@ std::vector<BrokenCase> laneCases()
 INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenOtherTrack, ::testing::ValuesIn(laneCases()),
                          [](const ::testing::TestParamInfo<BrokenCase>& info) {
                              return nameOf(info.param);
+                         });
+
+// The lanes named for holding samples that are not finite are those whose part on screen holds
+// one. A single NaN 1.4 s into a 2 s beat span is named in the whole view, zoomed onto the second
+// half, and zoomed so that it lies 10 ms from either edge, but not zoomed onto the first half or
+// onto the last quarter. In Seconds, one 0.3 s back in a rolling 2 s span is named, also on a frame
+// where the roll did not move; frozen, one three quarters into a 200 ms span is named in the views
+// that show it, not in those on either side. In Compare, a compared track holding one names the
+// sum it is part of, though this track holds none. In every mode, at the lowest and highest rates.
+class InvalidOnScreen : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
+{
+    const DisplayMode mode = GetParam();
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        SCOPED_TRACE(rateName(rate));
+        {
+            SCOPED_TRACE("Beats");
+            Session session(rate, 2);
+            session.join({.brokenAt = static_cast<std::int64_t>(std::llround(1.4 * rate))});
+            session.join({.frequency = 1500.0});
+            configure(session.own(), mode, TimeBase::kBeats);
+            session.own().settings().set(SettingId::kBeatSpan,
+                                         static_cast<double>(BeatSpan::kOneBar));
+            session.play(1.9, protocol::kReadoutIntervalSeconds / 2.0);
+            for (const auto& [start, end, named] :
+                 {std::tuple{0.0, 1.0, true}, std::tuple{0.0, 0.5, false},
+                  std::tuple{0.5, 1.0, true}, std::tuple{0.5, 0.705, true},
+                  std::tuple{0.695, 0.9, true}, std::tuple{0.75, 1.0, false}}) {
+                SCOPED_TRACE(testing::Message() << "view " << start << " to " << end);
+                session.analyzer().setView(start, end);
+                session.play(0.01);
+                const auto frame = session.produce();
+                ASSERT_TRUE(frame) << "no frame";
+                EXPECT_EQ((frame->invalidLanes & 1U) != 0, named) << "this track";
+            }
+        }
+        {
+            SCOPED_TRACE("Seconds, rolling");
+            Session session(rate, 2);
+            const double played = captureSeconds(rate) + 1.0;
+            session.join(
+                {.brokenAt = static_cast<std::int64_t>(std::llround((played - 0.3) * rate))});
+            session.join({.frequency = 1500.0});
+            configure(session.own(), mode, TimeBase::kSeconds);
+            session.own().settings().set(SettingId::kTimeSpan, 2.0);
+            session.play(played, 0.01);
+            for (int again = 0; again < 2; ++again) { // The second frame, the roll stands still.
+                const auto frame = session.produce();
+                ASSERT_TRUE(frame) << "no frame";
+                ASSERT_TRUE(frame->has(FrameFlag::kRoll));
+                EXPECT_NE(frame->invalidLanes & 1U, 0U) << "this track, frame " << again;
+            }
+        }
+        {
+            SCOPED_TRACE("Seconds, frozen and zoomed");
+            Session session(rate, 2);
+            const double played = captureSeconds(rate) + 1.0;
+            // 50 ms from the end of a 200 ms span: three quarters of the way across.
+            session.join(
+                {.brokenAt = static_cast<std::int64_t>(std::llround((played - 0.05) * rate))});
+            session.join({.frequency = 1500.0});
+            configure(session.own(), mode, TimeBase::kSeconds);
+            session.own().settings().set(SettingId::kTimeSpan, 0.2);
+            session.play(played, 0.01);
+            ASSERT_TRUE(session.produce()) << "no live frame";
+            session.analyzer().setFrozen(true);
+            const auto whole = session.produce();
+            ASSERT_TRUE(whole) << "no frozen frame";
+            EXPECT_NE(whole->invalidLanes & 1U, 0U) << "this track, in the whole view";
+            for (const auto& [start, end, named] :
+                 {std::tuple{0.0, 0.5, false}, std::tuple{0.5, 1.0, true},
+                  std::tuple{0.85, 1.0, false}}) {
+                SCOPED_TRACE(testing::Message() << "view " << start << " to " << end);
+                session.analyzer().setView(start, end);
+                const auto frame = session.produce();
+                ASSERT_TRUE(frame) << "no frame";
+                ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+                EXPECT_EQ((frame->invalidLanes & 1U) != 0, named) << "this track";
+            }
+        }
+        if (mode == DisplayMode::kCompare) {
+            for (const TimeBase timeBase : {TimeBase::kBeats, TimeBase::kSeconds}) {
+                SCOPED_TRACE(timeBase == TimeBase::kBeats ? "sum, Beats" : "sum, Seconds");
+                Session session(rate, 2);
+                session.join({.frequency = 1000.0});
+                session.join({.brokenAt = static_cast<std::int64_t>(std::llround(1.85 * rate))});
+                configure(session.own(), mode, timeBase);
+                session.own().settings().set(SettingId::kBeatSpan,
+                                             static_cast<double>(BeatSpan::kOneBar));
+                session.own().settings().set(SettingId::kTimeSpan, 0.2);
+                session.play(1.9, 0.01);
+                session.play(0.01);
+                const auto frame = session.produce();
+                ASSERT_TRUE(frame) << "no frame";
+                ASSERT_EQ(frame->laneCount, 3);
+                EXPECT_EQ(frame->invalidLanes & 1U, 0U) << "this track holds none";
+                EXPECT_NE(frame->invalidLanes & 0b010U, 0U) << "the compared track";
+                EXPECT_NE(frame->invalidLanes & 0b100U, 0U) << "the sum it is part of";
+            }
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, InvalidOnScreen, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
                          });
 
 // Every sample of this track not finite: nothing to measure, so its readouts have no value (NaN),
