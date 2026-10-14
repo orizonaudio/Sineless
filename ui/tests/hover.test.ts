@@ -372,6 +372,10 @@ describe("hover readout", () => {
     expect(readPosition(raw, 0)).toBe(0);
     expect(readPosition(raw, -0.2)).toBeUndefined();
     expect(readPosition(raw, 1.2)).toBeUndefined();
+    // Just past the last point, nearer a point the frame does not have: no reading, rather
+    // than a level of nothing.
+    expect(levelAt(raw, values, 479.6 / 480)).toBeUndefined();
+    expect(readPosition(raw, 479.6 / 480)).toBeUndefined();
     const columns = rawFrame(new Float32Array(480), {
       mode: FrameMode.minMax,
       pointCount: 96,
@@ -387,6 +391,8 @@ describe("hover readout", () => {
     expect(readPosition(columns, 0.999)).toBeCloseTo(95.5 / 96, 6);
     expect(levelAt(columns, peaks, -0.01)).toBeUndefined();
     expect(readPosition(columns, -0.01)).toBeUndefined();
+    expect(levelAt(columns, peaks, 1)).toBeUndefined();
+    expect(readPosition(columns, 1)).toBeUndefined();
   });
 
   test("shows nothing before there is anything to read", () => {
@@ -461,18 +467,19 @@ describe("hover readout", () => {
   });
 
   test.each([
-    [0.5, true],
-    [2, false],
+    [0.8, true],
+    [1.25, false],
   ])(
     "counts cycles %s of the engine's tolerance apart as repeating: %s",
     (share, repeats) => {
       // Rising crossings at 120 and 240, then a cycle that differs from the one before by
-      // `share` of the tolerance; the cycle measured has only that one beside it.
-      const longer = Math.round(120 * (1 + share * periodTolerance));
-      const periods = [120, 120, longer];
-      const values = new Float32Array(periods.reduce((a, b) => a + b, 0) + 120);
+      // `share` of the tolerance; the cycle measured has only that one beside it. Within a
+      // fifth of the tolerance either way, whichever of the two lengths it is taken from.
+      const longer = Math.round(120 / (1 - share * periodTolerance));
+      const periods = [120, 120, longer, 120];
+      const values = new Float32Array(periods.reduce((a, b) => a + b, 0));
       let index = 0;
-      for (const period of [...periods, 120]) {
+      for (const period of periods) {
         for (let sample = 0; sample < period; sample++) {
           values[index++] = 0.5 * Math.sin((2 * Math.PI * sample) / period);
         }
