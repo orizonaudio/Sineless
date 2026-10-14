@@ -397,6 +397,8 @@ private:
     std::size_t matchFirst = 0;
     std::size_t matchEnd = 0;
     std::size_t matchCount = 0;
+    bool matchFrozen = false;  // Frozen or live: the audio the matches were searched over.
+    bool searchAtOnce = false; // Matches made due with no audio to space their searches by.
     std::uint32_t lastLaneSet = 0;
     mutable std::mutex laneMutex;
     LaneSet published;

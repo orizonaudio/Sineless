@@ -1384,13 +1384,16 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
 
 // The compared track whose match to search this frame: a track without a match first, else the
 // one with the oldest match that is due, provided kMatchSpacingSeconds of audio passed since the
-// last search. A change of the tracks compared, the view or the span makes every match due, but
-// keeps it on show until its search. Notes whether matches remain to search.
+// last search. A change of the tracks compared, the view or the span, or a freeze or its end,
+// makes every match due, but keeps it on show until its search. Frozen, or with the transport
+// stopped, no audio may arrive to space those searches by: they come one per frame instead, and
+// the later refreshes are spaced again. Notes whether matches remain to search.
 std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::size_t first,
                                                    std::size_t end, std::size_t length,
                                                    std::uint64_t now)
 {
-    if (laneSet != matchLaneSet || first != matchFirst || end != matchEnd || length != matchCount) {
+    if (laneSet != matchLaneSet || first != matchFirst || end != matchEnd || length != matchCount ||
+        isFrozen != matchFrozen) {
         for (auto& [serial, state] : matchStates) {
             state.wait = 0;
         }
@@ -1399,6 +1402,8 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
         matchFirst = first;
         matchEnd = end;
         matchCount = length;
+        matchFrozen = isFrozen;
+        searchAtOnce = isFrozen || !engine.timeline().latest().playing;
     }
     std::erase_if(matchStates, [&](const auto& entry) {
         return std::ranges::find(laneOrder, entry.first) == laneOrder.end();
@@ -1430,11 +1435,13 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
         }
     }
     const auto spacing = static_cast<std::uint64_t>(std::lround(kMatchSpacingSeconds * sampleRate));
-    if (!chosen || (!missing && now - lastMatchSearch < spacing)) {
+    if (!chosen || (!missing && !searchAtOnce && now - lastMatchSearch < spacing)) {
         matchesPending = chosen.has_value();
+        searchAtOnce = searchAtOnce && chosen.has_value();
         return std::nullopt;
     }
     matchesPending = candidates > 1;
+    searchAtOnce = searchAtOnce && matchesPending;
     lastMatchSearch = now;
     return chosen;
 }
