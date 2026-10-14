@@ -150,6 +150,7 @@ struct Signal
     std::uint64_t seed = 1;
     std::int64_t delay = 0;    // Noise: samples by which it lags the host.
     std::int64_t startsAt = 0; // Silent before this host sample.
+    std::int64_t endsAt = -1;  // Silent from this host sample, if any.
     // Every other run of this many samples is at a quarter of the amplitude (none if 0), the first
     // run loud.
     std::int64_t quieterEvery = 0;
@@ -285,7 +286,7 @@ private:
             case Signal::Kind::kSilence:
                 break;
             }
-            if (index < signal.startsAt) {
+            if (index < signal.startsAt || (signal.endsAt >= 0 && index >= signal.endsAt)) {
                 value = 0.0;
             }
             if (signal.quieterEvery > 0 && (index / signal.quieterEvery) % 2 == 1) {
@@ -2343,6 +2344,7 @@ std::vector<DelayCase> delayCases()
         cases.push_back({.mode = mode, .name = "UnderTheReach", .delay = reach - 1});
         cases.push_back({.mode = mode, .name = "AtTheReach", .delay = reach});
         cases.push_back({.mode = mode, .name = "LeadingAtTheReach", .delay = -reach});
+        cases.push_back({.mode = mode, .name = "LeadingByHalfTheReach", .delay = -reach / 2});
         cases.push_back(
             {.mode = mode, .name = "BeyondTheReach", .delay = reach + 1, .found = false});
         if (mode.timeBase == TimeBase::kBeats) {
@@ -2361,6 +2363,108 @@ std::vector<DelayCase> delayCases()
     }
     return cases;
 }
+
+// Compare at the lowest and highest rates, in every time base.
+std::vector<ModeCase> edgeCompareCases()
+{
+    std::vector<ModeCase> cases;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+            cases.push_back({.rate = rate,
+                             .mode = DisplayMode::kCompare,
+                             .channels = rate == kSampleRates.front() ? 2 : 1,
+                             .timeBase = static_cast<TimeBase>(timeBase)});
+        }
+    }
+    return cases;
+}
+
+// Frozen, changing the tracks compared measures the sum again: with a copy and an inverted copy of
+// this track compared, the three sum as this track alone (about -4.8 dB against three unrelated
+// tracks, as the copies cancel each other); with the inverted copy unchecked, they sum as a copy
+// does, +3 dB, not as measured before. In Beats and Seconds, at the lowest and highest rates.
+class FrozenComparison : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(FrozenComparison, MeasuresTheTracksNowChecked)
+{
+    const ModeCase c = GetParam();
+    const double identical = 10.0 * std::log10(2.0);
+    Session session(c.rate, c.channels);
+    session.join({.kind = Signal::Kind::kNoise});
+    session.join({.kind = Signal::Kind::kNoise});
+    session.join({.kind = Signal::Kind::kNoise, .amplitude = -0.25});
+    session.own().settings().set(SettingId::kDisplayMode,
+                                 static_cast<double>(DisplayMode::kCompare));
+    std::vector<std::uint64_t> others;
+    for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+        if (member.engine.get() != &session.own()) {
+            others.push_back(member.serial);
+        }
+    }
+    ASSERT_EQ(others.size(), 2U);
+    session.analyzer().setCompared(others);
+    ASSERT_TRUE(playForReadouts(session, c.timeBase)) << "no live frame";
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / c.rate);
+    ASSERT_TRUE(session.produce()) << "no frozen frame";
+    const float both = session.field(FrameHeader::kSumGainOffset);
+    ASSERT_LT(both, identical - 1.0) << "the copies cancel each other";
+    // Unchecked: the inverted copy, the second other track by creation order.
+    session.analyzer().setCompared({others.front()});
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 8; ++step) { // Frames go on while the sum is measured again.
+        if (auto produced = session.produce()) {
+            frame = std::move(produced);
+        }
+    }
+    ASSERT_TRUE(frame) << "no frame after the change";
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+    EXPECT_NEAR(session.field(FrameHeader::kSumGainOffset), identical, 0.05)
+        << "a copy, not as before (" << both << " dB)";
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenComparison, ::testing::ValuesIn(edgeCompareCases()),
+                         modeTestName);
+
+// The summing gains count only where the tracks sound together: with this track playing
+// throughout and a copy of it that stops half way through what is shown, an exact copy sums at
+// about +3 dB, and one 37 samples late at about +3 dB once fixed, not watered down towards +2 dB
+// by the half where this track plays alone. In Beats and Seconds, at the lowest and highest rates.
+class PartlyPresentCopy : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(PartlyPresentCopy, SumsWhereBothSound)
+{
+    const ModeCase c = GetParam();
+    const double identical = 10.0 * std::log10(2.0);
+    // Spans of 0.5 s (a beat) and 0.4 s, long against the 10 ms blocks the gains are measured in,
+    // so that the one block the copy only partly fills hardly counts.
+    const double shown = c.timeBase == TimeBase::kBeats ? 0.5 : 0.4;
+    constexpr double kPlayed = 2.0;
+    const auto until = static_cast<std::int64_t>(std::llround((kPlayed - (shown / 2.0)) * c.rate));
+    for (const std::int64_t delay : {std::int64_t{0}, std::int64_t{37}}) {
+        SCOPED_TRACE(testing::Message() << "late by " << delay);
+        Session session(c.rate, c.channels);
+        session.join({.kind = Signal::Kind::kNoise});
+        session.join({.kind = Signal::Kind::kNoise, .delay = delay, .endsAt = until});
+        configure(session.own(), DisplayMode::kCompare, c.timeBase);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+        session.own().settings().set(SettingId::kTimeSpan, shown);
+        session.play(kPlayed, protocol::kReadoutIntervalSeconds / 2.0);
+        session.play(static_cast<double>(kBlock) / c.rate);
+        ASSERT_TRUE(session.produce()) << "no frame";
+        if (delay == 0) {
+            EXPECT_NEAR(session.field(FrameHeader::kSumGainOffset), identical, 0.1) << "sum";
+        }
+        EXPECT_NEAR(session.field(FrameHeader::kFixedGainOffset), identical, 0.1) << "fixed";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, PartlyPresentCopy, ::testing::ValuesIn(edgeCompareCases()),
+                         modeTestName);
 
 class DelayedCopy : public ::testing::TestWithParam<DelayCase>
 {
@@ -2425,6 +2529,42 @@ TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
             EXPECT_TRUE(std::isnan(frame->data.at(at + 1))) << "no offset beyond the reach";
             EXPECT_NEAR(fixedGain, sumGain, 1e-6) << "nothing to fix";
         }
+    }
+    if (c.found) {
+        // Last (so that the checks above see the playhead where the stop left it): previewing the
+        // fix, the copy is lined up: the sum is this track doubled, except at the edge where the
+        // shifted copy runs out of samples (the start for a copy that leads, the end for one that
+        // lags) and next to a sweep's playhead, where it reaches into the other pass.
+        SCOPED_TRACE("previewing the fix");
+        session.analyzer().setPreviewFix(true);
+        session.play(static_cast<double>(kBlock) / c.mode.rate);
+        const auto previewed = session.produce();
+        ASSERT_TRUE(previewed) << "no frame previewing the fix";
+        ASSERT_EQ(previewed->laneCount, 3);
+        const std::span<const float> own = trace(*previewed, 0);
+        const std::span<const float> sum = trace(*previewed, 2);
+        const double perPoint =
+            static_cast<double>(previewed->visibleSamples) / previewed->pointCount;
+        const std::size_t valuesPerPoint = previewed->mode == FrameMode::kMinMax ? 2 : 1;
+        const std::size_t edge =
+            valuesPerPoint * static_cast<std::size_t>(std::ceil(
+                                 (std::abs(static_cast<double>(c.delay)) / perPoint) + 2.0));
+        const auto playhead = previewed->cursor >= 0.0f
+                                  ? static_cast<std::ptrdiff_t>(std::llround(
+                                        previewed->cursor * static_cast<float>(own.size())))
+                                  : -static_cast<std::ptrdiff_t>(own.size());
+        const std::size_t first = c.delay < 0 ? edge : valuesPerPoint;
+        const std::size_t last = own.size() - (c.delay > 0 ? edge : valuesPerPoint);
+        std::size_t differing = 0;
+        for (std::size_t i = first; i < last; ++i) {
+            if (std::abs(static_cast<std::ptrdiff_t>(i) - playhead) <=
+                static_cast<std::ptrdiff_t>(edge)) {
+                continue;
+            }
+            differing += std::abs(sum[i] - (2.0f * own[i])) > 1e-4f ? 1 : 0;
+        }
+        EXPECT_EQ(differing, 0U) << "of " << last - first << " values";
+        session.analyzer().setPreviewFix(false);
     }
 }
 
