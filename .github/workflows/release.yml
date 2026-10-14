@@ -5,7 +5,7 @@ name: Release
 # and a build provenance attestation (`gh attestation verify <zip> --repo orizonaudio/Sineless`).
 # The draft is published by hand, once the zips pass the host protocol in HOSTS.md; see
 # "Releasing" in CONTRIBUTING.md. Run by hand, or on a pull request that changes this workflow or
-# the packaging scripts, it is a dry run: it builds and checks both zips and keeps them as the
+# the scripts it runs, it is a dry run: it builds and checks both zips and keeps them as the
 # run's artifacts, but attests nothing and creates no release.
 on:
   push:
@@ -15,6 +15,8 @@ on:
       - .github/workflows/release.yml
       - scripts/package.sh
       - scripts/package.ps1
+      - scripts/windows-env.ps1
+      - scripts/release-version.ts
   workflow_dispatch:
 
 permissions:
