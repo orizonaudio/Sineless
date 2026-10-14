@@ -3,6 +3,11 @@ import { describe, expect, test } from "vitest";
 import { FrameMode, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
+  analysisGateDbfs,
+  crossingHysteresis,
+  triggerPosition,
+} from "../../protocol/src/limits.ts";
+import {
   cycleAt,
   cycleBounds,
   hoverReadout,
@@ -11,7 +16,7 @@ import {
   risingCrossings,
   traceAt,
 } from "../src/view/hover.ts";
-import { fullView } from "../src/view/zoom.ts";
+import { fullView, type ViewWindow } from "../src/view/zoom.ts";
 
 const minus = "−";
 const sampleRate = 48000;
@@ -50,6 +55,35 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     comparison: undefined,
     ...extra,
   };
+}
+
+// The hover context for one trace of `values` in `frame`, drawn over the whole screen.
+function context(
+  frame: Frame,
+  values: Float32Array,
+  extra: { roll?: boolean; view?: ViewWindow } = {},
+) {
+  return {
+    frame,
+    traces: [{ name: "Left", values }],
+    overlaid: 0,
+    layout: ViewLayout.overlaid,
+    view: extra.view ?? fullView,
+    sampleRate,
+    a4: 440,
+    roll: extra.roll ?? false,
+  };
+}
+
+// Min/max columns of a 0.5-amplitude sine with a cycle every `perCycle` columns.
+function sineColumns(columns: number, perCycle: number): Float32Array {
+  const values = new Float32Array(columns * 2);
+  for (let column = 0; column < columns; column++) {
+    const value = 0.5 * Math.sin((2 * Math.PI * (column + 0.5)) / perCycle);
+    values[column * 2] = column % perCycle === 0 ? -0.01 : value;
+    values[column * 2 + 1] = column % perCycle === 0 ? 0.01 : value;
+  }
+  return values;
 }
 
 // `cycles` periods of a 0.5-amplitude sine over `length` samples.
@@ -297,5 +331,166 @@ describe("hover readout", () => {
       0.5,
     );
     expect(readout?.lines[0]).toBe("3.3.3 · 0:05.250");
+  });
+
+  test("reads a frame that covers part of the span as the part it covers", () => {
+    // The frozen view zoomed in: 480 samples of 4 cycles cover the span from 0.25 to 0.75.
+    const values = sine(480, 4);
+    const frame = rawFrame(values, { viewStart: 0.25, viewEnd: 0.75 });
+    const crest = 0.25 + (30 / 480) * 0.5; // Sample 30, a crest.
+    expect(levelAt(frame, values, crest)).toBeCloseTo(0.5, 3);
+    expect(readPosition(frame, crest)).toBeCloseTo(crest, 6);
+    // Its cycles last as long as unzoomed: 120 samples, 2.5 ms.
+    const readout = hoverReadout(context(frame, values), 0.5, 0.5);
+    expect(readout?.lines[2]).toBe("2.5 ms · 120.0 samples");
+    // Min/max columns zoomed in alike: a cycle of 32 of them is still fine enough to measure.
+    const columns = sineColumns(96, 32);
+    const zoomedColumns = rawFrame(new Float32Array(480), {
+      mode: FrameMode.minMax,
+      pointCount: 96,
+      samplesPerPoint: 5,
+      viewStart: 0.25,
+      viewEnd: 0.75,
+    });
+    expect(cycleAt(zoomedColumns, columns, 0.5)).toBeCloseTo(
+      (32 / 96) * 0.5,
+      3,
+    );
+  });
+
+  test("reads the first and last points and columns, and nothing off the frame", () => {
+    const values = sine(480, 4);
+    const raw = rawFrame(values);
+    expect(levelAt(raw, values, 0)).toBe(Math.abs(values[0] ?? NaN));
+    expect(levelAt(raw, values, 479 / 480)).toBeCloseTo(
+      Math.abs(values[479] ?? NaN),
+      6,
+    );
+    expect(levelAt(raw, values, -0.2)).toBeUndefined();
+    expect(levelAt(raw, values, 1.2)).toBeUndefined();
+    expect(readPosition(raw, 0)).toBe(0);
+    expect(readPosition(raw, -0.2)).toBeUndefined();
+    expect(readPosition(raw, 1.2)).toBeUndefined();
+    const columns = rawFrame(new Float32Array(480), {
+      mode: FrameMode.minMax,
+      pointCount: 96,
+      samplesPerPoint: 5,
+    });
+    // Each column's level is its larger magnitude: the first column's low, the last's high.
+    const peaks = new Float32Array(192).fill(0.1);
+    peaks[0] = -0.9;
+    peaks[191] = 0.8;
+    expect(levelAt(columns, peaks, 0)).toBeCloseTo(0.9, 6);
+    expect(levelAt(columns, peaks, 0.999)).toBeCloseTo(0.8, 6);
+    expect(readPosition(columns, 0)).toBeCloseTo(0.5 / 96, 6);
+    expect(readPosition(columns, 0.999)).toBeCloseTo(95.5 / 96, 6);
+    expect(levelAt(columns, peaks, -0.01)).toBeUndefined();
+    expect(readPosition(columns, -0.01)).toBeUndefined();
+  });
+
+  test("shows nothing before there is anything to read", () => {
+    const values = sine(480, 4);
+    const empty = rawFrame(new Float32Array(0));
+    expect(levelAt(empty, values, 0.5)).toBeUndefined();
+    expect(readPosition(empty, 0.5)).toBeUndefined();
+    expect(
+      hoverReadout(
+        { ...context(rawFrame(values), values), traces: [] },
+        0.5,
+        0.5,
+      ),
+    ).toBeUndefined();
+    expect(
+      hoverReadout(
+        { ...context(rawFrame(values), values), sampleRate: 0 },
+        0.5,
+        0.5,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("names a trace even when the overlaid one is no longer drawn", () => {
+    // A track removed while it was the one described: the last trace drawn is.
+    expect(traceAt(2, ViewLayout.overlaid, 0.5, 5)).toBe(1);
+    expect(traceAt(1, ViewLayout.stacked, 0.9, 3)).toBe(0);
+  });
+
+  test("measures cycles only above the analysis gate, as the engine does", () => {
+    // RMS of a sine is its amplitude over √2.
+    const gate = 10 ** (analysisGateDbfs / 20);
+    const at = (rms: number) =>
+      sine(480, 4).map((value) => (value / 0.5) * rms * Math.SQRT2);
+    const above = at(gate * 2);
+    const below = at(gate / 2);
+    expect(cycleAt(rawFrame(above), above, 0.4)).toBeCloseTo(0.25, 3);
+    expect(cycleAt(rawFrame(below), below, 0.4)).toBeUndefined();
+  });
+
+  test("counts a crossing once when noise inside the hysteresis rides on it", () => {
+    // Amplitude 1: a range of 2. Ripple well inside the hysteresis band crosses the mean
+    // several times around each rising crossing.
+    const ripple = 0.4 * crossingHysteresis * 2;
+    const values = Float32Array.from(
+      { length: 480 },
+      (_, index) =>
+        Math.sin((2 * Math.PI * 4 * index) / 480) +
+        ripple * Math.sin((2 * Math.PI * index) / 5),
+    );
+    const crossings = risingCrossings(rawFrame(values), values);
+    expect(crossings).toHaveLength(3);
+    expect(cycleAt(rawFrame(values), values, 0.4)).toBeCloseTo(0.25, 2);
+  });
+
+  test("measures a cycle beside one like it, and none where the signal does not repeat", () => {
+    // Cycles of 120, 120, 120, 200 and 200 samples: rising crossings at 120, 240, 360 and 560.
+    const periods = [120, 120, 120, 200, 200];
+    const values = new Float32Array(periods.reduce((a, b) => a + b, 0));
+    let index = 0;
+    for (const period of periods) {
+      for (let sample = 0; sample < period; sample++) {
+        values[index++] = 0.5 * Math.sin((2 * Math.PI * sample) / period);
+      }
+    }
+    const frame = rawFrame(values);
+    const length = values.length;
+    // From 240 to 360: like the cycle before it, though not the one after.
+    expect(cycleAt(frame, values, 300 / length)).toBeCloseTo(120 / length, 2);
+    // From 360 to 560: like neither the cycle before it nor any after it.
+    expect(cycleAt(frame, values, 460 / length)).toBeUndefined();
+  });
+
+  test("leaves min/max columns too coarse for a cycle unmeasured", () => {
+    // A cycle every 8 columns: each crossing is only known to within a column, an eighth of it.
+    const values = sineColumns(96, 8);
+    const frame = rawFrame(new Float32Array(480), {
+      mode: FrameMode.minMax,
+      pointCount: 96,
+      samplesPerPoint: 5,
+    });
+    expect(cycleAt(frame, values, 0.5)).toBeUndefined();
+    expect(hoverReadout(context(frame, values), 0.5, 0.5)?.lines).toHaveLength(
+      2,
+    );
+  });
+
+  test("shows no minus sign at the trigger point itself", () => {
+    const values = sine(480, 4);
+    const readout = hoverReadout(
+      context(rawFrame(values), values),
+      triggerPosition,
+      0.5,
+    );
+    expect(readout?.lines[0]).not.toContain(minus);
+  });
+
+  test("counts time back from now in a rolling span", () => {
+    // 480 samples at 48 kHz: the span is 10 ms, its end now.
+    const values = sine(480, 4);
+    const readout = hoverReadout(
+      context(rawFrame(values), values, { roll: true }),
+      0.75,
+      0.5,
+    );
+    expect(readout?.lines[0]).toBe(`${minus}2.5 ms`);
   });
 });
