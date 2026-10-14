@@ -1,4 +1,5 @@
 #include "engine/PairAnalysis.h"
+#include "protocol/Protocol.h"
 
 #include <algorithm>
 #include <array>
@@ -100,6 +101,82 @@ TEST(PairAnalysis, FindsALateCopyWhateverLengthIsSearched)
         EXPECT_EQ(result.offset, 37);
         EXPECT_FALSE(result.inverted);
     }
+}
+
+// `values` scaled to an RMS level `dbfs` (the noise is about -10.8 dBFS RMS).
+std::vector<float> atLevel(std::vector<float> values, double dbfs)
+{
+    const double rms = std::sqrt(energyOf(values) / static_cast<double>(values.size()));
+    const auto gain = static_cast<float>(std::pow(10.0, dbfs / 20.0) / rms);
+    for (float& value : values) {
+        value *= gain;
+    }
+    return values;
+}
+
+// Compare matches any tracks that sound above the analysis gate, however quiet: a late copy at
+// levels from 3 dB to 60 dB above the gate is found, and its sum measured; 3 dB below the gate,
+// nothing is measured.
+TEST(PairAnalysis, MatchesQuietTracksAboveTheGate)
+{
+    for (const double above : {3.0, 10.0, 30.0, 60.0}) {
+        SCOPED_TRACE(testing::Message() << above << " dB above the gate");
+        const auto a = atLevel(noise(11), protocol::kAnalysisGateDbfs + above);
+        const PairAnalysis result = analyse(a, delayed(a, 37));
+        EXPECT_TRUE(result.measured);
+        EXPECT_TRUE(result.related);
+        EXPECT_EQ(result.offset, 37);
+        const std::array<std::span<const float>, 2> pair{a, a};
+        EXPECT_NEAR(overlapGain(pair, kBlock), 10.0 * std::log10(2.0), 0.01) << "copies";
+    }
+    const auto below = atLevel(noise(11), protocol::kAnalysisGateDbfs - 3.0);
+    EXPECT_FALSE(analyse(below, delayed(below, 37)).measured) << "below the gate";
+}
+
+// In a short Seconds span the search covers the match reach either way of a stretch only twice
+// its length: a copy late by most of the reach (8 ms in 20 ms at 48 kHz) is still found there.
+TEST(PairAnalysis, FindsALateCopyInAShortSpan)
+{
+    constexpr std::size_t kShort = 960;
+    const auto a = noise(12, kShort);
+    std::vector<float> scratch;
+    const PairAnalysis result = analysePair(a, delayed(a, 384), kMaxOffset, kBlock, scratch);
+    EXPECT_TRUE(result.related);
+    EXPECT_EQ(result.offset, 384);
+    EXPECT_FALSE(result.inverted);
+}
+
+// A steady tone matches itself every period, so a late copy could be lined up at several shifts;
+// the nearest is the one suggested: a 200 Hz tone 40 samples late (its period is 240) reads as
+// about 40 samples late, not as leading by a period less that.
+TEST(PairAnalysis, LinesUpADelayedToneAtTheNearestShift)
+{
+    std::vector<float> a(kLength);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        a[i] = 0.5f * static_cast<float>(std::sin(2.0 * std::numbers::pi * 200.0 *
+                                                  static_cast<double>(i) / 48000.0));
+    }
+    const PairAnalysis result = analyse(a, delayed(a, 40));
+    EXPECT_TRUE(result.related);
+    // Within a tenth of the period: shifts that match almost as well may be preferred if smaller.
+    EXPECT_NEAR(static_cast<double>(result.offset), 40.0, 24.0);
+    EXPECT_FALSE(result.inverted);
+}
+
+// Tracks count as sounding together only where the quieter is within 20 dB of the louder: a track
+// that cancels this one, then carries only bleed 30 dB down while this one plays on, reads as
+// cancelling, not watered down to harmless by the stretch where it is all but silent.
+TEST(PairAnalysis, JudgesTheSumWhereTheTracksSoundTogether)
+{
+    const auto a = noise(13);
+    const auto bleed = atLevel(noise(14), -10.8 - 30.0);
+    std::vector<float> b(a.size());
+    constexpr std::size_t kCancelling = 12 * kBlock;
+    for (std::size_t i = 0; i < b.size(); ++i) {
+        b[i] = i < kCancelling ? -a[i] : bleed[i];
+    }
+    const std::array<std::span<const float>, 2> pair{a, b};
+    EXPECT_LT(overlapGain(pair, kBlock), -60.0);
 }
 
 TEST(PairAnalysis, UnrelatedTracksSumHarmlessly)
