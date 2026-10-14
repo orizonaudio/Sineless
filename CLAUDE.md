@@ -54,6 +54,9 @@ is how to meet it the first time.
   (44.1 to 384 kHz), span lengths around every tolerance, mono and stereo, live and frozen.
 - UI behaviour that depends on app state (marker placement, enabled controls, pan limits)
   needs a test through the app and mock transport, not only a helper's unit test.
+- A test protects behaviour a user would see go wrong, and its name says which. Never
+  restate a tuned value: test what the value is for, so it can still change (REVIEW.md,
+  question 3). A mutant no test notices gets a test only on the same grounds.
 
 ## Commands
 
