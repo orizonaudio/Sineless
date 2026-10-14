@@ -26,7 +26,8 @@ concurrency:
 
 jobs:
   # The tag names the version CMakeLists.txt builds, so a release is never made from a commit
-  # whose version was not bumped. A dry run takes the version from CMakeLists.txt alone.
+  # whose version was not bumped (scripts/release-version.ts). A dry run takes the version from
+  # CMakeLists.txt alone.
   version:
     name: version
     runs-on: ubuntu-24.04
@@ -36,26 +37,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
       - id: check
         env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
-          version="$(sed -nE 's/^project\([^ ]+ VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt)"
-          if [[ -z "$version" ]]; then
-            echo "::error::No project(... VERSION x.y.z ...) in CMakeLists.txt"
+          version="$(node scripts/release-version.ts "$TAG")" || {
+            echo "::error::$(node scripts/release-version.ts "$TAG" 2>&1)"
             exit 1
-          fi
-          if [[ "$REF_TYPE" == tag ]]; then
-            if [[ ! "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::The tag $REF_NAME is not of the form vX.Y.Z"
-              exit 1
-            fi
-            if [[ "$REF_NAME" != "v$version" ]]; then
-              echo "::error::The tag $REF_NAME does not match version $version in CMakeLists.txt"
-              exit 1
-            fi
-          fi
+          }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   # Each zip is built and checked by its packaging script, as by hand: both architectures and the

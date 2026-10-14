@@ -11,6 +11,7 @@
     "vitest.unit.ts",
     "scripts/mutation-report.ts",
     "scripts/mutation-summary.ts",
+    "scripts/release-version.ts",
     "scripts/tests/**/*.ts"
   ]
 }
