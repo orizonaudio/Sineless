@@ -174,6 +174,193 @@ TEST_F(AnalyzerTest, MeasuresTheMidInBeatsMode)
     EXPECT_NEAR(frame->peak, 0.375f, 0.01f) << "Mid, (L + R) / 2, not R alone (0.25)";
 }
 
+// Every display mode the protocol has.
+std::vector<protocol::DisplayMode> everyDisplayMode()
+{
+    std::vector<protocol::DisplayMode> modes;
+    modes.reserve(protocol::kDisplayModeCount);
+    for (std::size_t mode = 0; mode < protocol::kDisplayModeCount; ++mode) {
+        modes.push_back(static_cast<protocol::DisplayMode>(mode));
+    }
+    return modes;
+}
+
+// Plays half a second of a tone, then `silence` seconds of silence, in Beats mode at 120 BPM with
+// frames on the way: the last sweep shown is of the tone, the newest audio silent.
+void playBeatsThenSilence(Engine& engine, Analyzer& analyzer, double silence = 1.0)
+{
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    analyzer.setColumns(300);
+    std::vector<std::byte> bytes;
+    const auto steps = 50 + static_cast<std::uint64_t>(std::llround(silence * 100.0));
+    for (std::uint64_t step = 0; step < steps; ++step) {
+        std::vector<float> block(480);
+        for (std::size_t i = 0; i < block.size() && step < 50; ++i) {
+            const double time = static_cast<double>(step * 480 + i) / kSampleRate;
+            block[i] = static_cast<float>(0.5 * std::sin(2 * std::numbers::pi * 330.0 * time));
+        }
+        std::array<const float*, 2> channels{block.data(), block.data()};
+        engine.captureRing().write(channels.data(), 2, 480);
+        engine.timeline().advance({.playing = true,
+                                   .positionValid = true,
+                                   .quarterNotes = static_cast<double>(step * 480) / 24000.0,
+                                   .tempoValid = true,
+                                   .tempo = 120.0},
+                                  480, kSampleRate);
+        (void)analyzer.produce(bytes);
+    }
+}
+
+// Switched from Beats to Seconds with nothing to trigger on, Normal and Single show the newest
+// span at once, untriggered, rather than wait on a Beats sweep or show the capture's oldest
+// audio as if it were now; then they wait for a trigger as usual. In every display mode.
+TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingFromBeatsToSeconds)
+{
+    for (const auto display : everyDisplayMode()) {
+        for (const auto mode : {protocol::TriggerMode::kNormal, protocol::TriggerMode::kSingle}) {
+            SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display)
+                                              << ", trigger " << static_cast<int>(mode));
+            Engine fresh;
+            fresh.prepare(kSampleRate);
+            fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+            fresh.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
+            fresh.settings().set(SettingId::kTimeSpan, 0.02);
+            Analyzer view(fresh);
+            playBeatsThenSilence(fresh, view);
+            fresh.settings().set(SettingId::kTimeBase,
+                                 static_cast<double>(protocol::TimeBase::kSeconds));
+            std::vector<std::byte> bytes;
+            ASSERT_TRUE(view.produce(bytes)) << "the switch shows at once";
+            const DecodedFrame frame = decode(bytes);
+            EXPECT_FALSE(frame.has(FrameFlag::kSynced));
+            EXPECT_FALSE(frame.has(FrameFlag::kTriggered));
+            EXPECT_EQ(frame.peak, 0.0f) << "the newest span, silent, not the tone a second ago";
+            EXPECT_FALSE(view.produce(bytes)) << "then it waits for a trigger";
+        }
+    }
+}
+
+// Every display mode, at a triggered span and at a rolling one.
+std::vector<std::pair<protocol::DisplayMode, double>> displaysAndSpans()
+{
+    constexpr std::array kSpans{0.02, 2.0};
+    std::vector<std::pair<protocol::DisplayMode, double>> cases;
+    cases.reserve(protocol::kDisplayModeCount * kSpans.size());
+    for (const auto display : everyDisplayMode()) {
+        for (const double span : kSpans) {
+            cases.emplace_back(display, span);
+        }
+    }
+    return cases;
+}
+
+// Frozen in Beats and switched to Seconds, the view opens on the newest audio held, as a freeze
+// made in Seconds does, not on the oldest. In every display mode, triggered and rolling.
+TEST_F(AnalyzerTest, OpensOnTheNewestHeldAudioWhenFrozenInBeatsThenSeconds)
+{
+    // A triggered span, and a rolling one, whose view ends at an anchor of its own.
+    for (const auto& [display, span] : displaysAndSpans()) {
+        SCOPED_TRACE(::testing::Message()
+                     << "display " << static_cast<int>(display) << ", span " << span);
+        Engine fresh;
+        fresh.prepare(kSampleRate);
+        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        fresh.settings().set(SettingId::kTriggerMode,
+                             static_cast<double>(protocol::TriggerMode::kNormal));
+        fresh.settings().set(SettingId::kTimeSpan, span);
+        Analyzer view(fresh);
+        playBeatsThenSilence(fresh, view, 3.0); // Longer than the rolling span.
+        view.setFrozen(true);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(view.produce(bytes));
+        fresh.settings().set(SettingId::kTimeBase,
+                             static_cast<double>(protocol::TimeBase::kSeconds));
+        ASSERT_TRUE(view.produce(bytes));
+        const DecodedFrame frame = decode(bytes);
+        EXPECT_TRUE(frame.has(FrameFlag::kFrozen));
+        EXPECT_FALSE(frame.has(FrameFlag::kSynced));
+        EXPECT_EQ(frame.peak, 0.0f) << "the silence before the freeze, not the tone before it";
+        EXPECT_GT(get<float>(bytes, FrameHeader::kPanReachOffset), 1.0f)
+            << "and can pan back into the tone";
+    }
+}
+
+// Plays a 330 Hz tone of `amplitude` for `seconds` in Seconds mode, with a frame at the end.
+void playSecondsTone(Engine& engine, Analyzer& analyzer, double seconds, double amplitude)
+{
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    std::vector<float> tone(static_cast<std::size_t>(seconds * kSampleRate));
+    const std::uint64_t start = engine.captureRing().writeIndex();
+    for (std::size_t i = 0; i < tone.size(); ++i) {
+        const double time = static_cast<double>(start + i) / kSampleRate;
+        tone[i] = static_cast<float>(amplitude * std::sin(2 * std::numbers::pi * 330.0 * time));
+    }
+    std::array<const float*, 2> channels{tone.data(), tone.data()};
+    engine.captureRing().write(channels.data(), 2, static_cast<int>(tone.size()));
+    std::vector<std::byte> bytes;
+    (void)analyzer.produce(bytes);
+}
+
+// Frozen in Seconds, a look at Beats and back keeps the view where it was frozen, on its trigger
+// point, in every display mode.
+TEST_F(AnalyzerTest, KeepsTheFrozenSecondsViewAcrossATripToBeats)
+{
+    for (const auto display : everyDisplayMode()) {
+        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+        Engine fresh;
+        fresh.prepare(kSampleRate);
+        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        fresh.settings().set(SettingId::kTriggerMode,
+                             static_cast<double>(protocol::TriggerMode::kNormal));
+        fresh.settings().set(SettingId::kTimeSpan, 0.02);
+        Analyzer view(fresh);
+        view.setColumns(300);
+        playSecondsTone(fresh, view, 1.5, 0.25);
+        view.setFrozen(true);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(view.produce(bytes));
+        const DecodedFrame frozen = decode(bytes);
+        ASSERT_TRUE(frozen.has(FrameFlag::kTriggered));
+
+        fresh.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+        ASSERT_TRUE(view.produce(bytes));
+        fresh.settings().set(SettingId::kTimeBase,
+                             static_cast<double>(protocol::TimeBase::kSeconds));
+        ASSERT_TRUE(view.produce(bytes));
+        const DecodedFrame back = decode(bytes);
+        EXPECT_TRUE(back.has(FrameFlag::kTriggered)) << "still on its trigger point";
+        EXPECT_EQ(back.data, frozen.data) << "the same window as when frozen";
+    }
+}
+
+// Live in Seconds, then a while in Beats, then frozen and back to Seconds: the view opens on the
+// newest audio held, not on the Seconds window shown before the Beats spell. In every display
+// mode.
+TEST_F(AnalyzerTest, ForgetsTheSecondsWindowShownBeforeASpellInBeats)
+{
+    for (const auto display : everyDisplayMode()) {
+        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+        Engine fresh;
+        fresh.prepare(kSampleRate);
+        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        fresh.settings().set(SettingId::kTriggerMode,
+                             static_cast<double>(protocol::TriggerMode::kNormal));
+        fresh.settings().set(SettingId::kTimeSpan, 0.02);
+        Analyzer view(fresh);
+        view.setColumns(300);
+        playSecondsTone(fresh, view, 0.5, 0.25); // A Seconds window of a tone.
+        playBeatsThenSilence(fresh, view);       // Then Beats, ending in silence.
+        view.setFrozen(true);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(view.produce(bytes));
+        fresh.settings().set(SettingId::kTimeBase,
+                             static_cast<double>(protocol::TimeBase::kSeconds));
+        ASSERT_TRUE(view.produce(bytes));
+        EXPECT_EQ(decode(bytes).peak, 0.0f) << "the silence before the freeze";
+    }
+}
+
 TEST_F(AnalyzerTest, ProducesNothingUntilTheWidthIsKnown)
 {
     writeTone(440.0, 0.5, 0.5);
