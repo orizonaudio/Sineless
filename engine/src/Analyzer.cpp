@@ -497,20 +497,23 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
             return false;
         }
         // Keep the trigger point (triggered) or the right edge (roll) of the last live window
-        // where it was, so changing the scale while frozen zooms around it.
+        // where it was, so changing the scale while frozen zooms around it. A Beats sweep's
+        // window is a place in the sweep, not in the capture: frozen from Beats, the view ends at
+        // the newest audio held, as when frozen before any live frame.
         const auto held = static_cast<double>(hold.endIndex());
-        const double anchor = lastLive
-                                  ? (roll ? lastLive->start + lastLive->span
-                                          : lastLive->start + kTriggerPosition * lastLive->span)
-                                  : held;
-        const double anchorOffset = roll || !lastLive ? span : kTriggerPosition * span;
+        const std::optional<Window> live =
+            lastLive && !lastLive->synced ? lastLive : std::optional<Window>{};
+        const double anchor =
+            live ? (roll ? live->start + live->span : live->start + kTriggerPosition * live->span)
+                 : held;
+        const double anchorOffset = roll || !live ? span : kTriggerPosition * span;
         const double latestStart = held - span;
         const auto earliestStart = static_cast<double>(hold.beginIndex());
         window.start = std::clamp(anchor - anchorOffset - command.panSeconds * sampleRate,
                                   earliestStart, std::max(earliestStart, latestStart));
         // The UI keeps its pan within this, so it never asks for more than is held.
         window.panReach = std::max(0.0, (anchor - anchorOffset - earliestStart) / sampleRate);
-        window.triggered = lastLive && lastLive->triggered;
+        window.triggered = live && live->triggered;
     } else if (roll) {
         // Zoomed, the roll window covers only the visible part, so its columns keep fixed
         // sample boundaries and do not shimmer; readouts still cover the whole span.
@@ -546,7 +549,11 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         const TriggerDecision decision = trigger.decide(
             triggerSamples, first, span, timeout, triggerParameters(settings, sampleRate),
             settings.enumValue<protocol::TriggerMode>(SettingId::kTriggerMode));
-        if (decision.action == TriggerDecision::Action::kHold) {
+        if (decision.action == TriggerDecision::Action::kHold && lastShown && lastShown->synced) {
+            // Just switched from Beats: the last window was a place in a sweep, not in the
+            // capture. Show the newest span, untriggered, then wait for a trigger from there.
+            window.start = static_cast<double>(end) - span;
+        } else if (decision.action == TriggerDecision::Action::kHold) {
             if (!changed || !lastShown || lastShown->roll) {
                 return false;
             }
@@ -1180,6 +1187,12 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     applyReadouts(header);
 
     encodeFrame(header, frameData, frame);
+    // A Beats sweep was shown: a later Seconds frame has no window of its own to go on, and a
+    // later freeze no live one. A freeze made in Seconds keeps its window, as in Single mode.
+    lastShown = Window{.synced = true};
+    if (!isFrozen) {
+        lastLive = lastShown;
+    }
     rememberInputs(settings, command, laneSetId);
     return true;
 }
