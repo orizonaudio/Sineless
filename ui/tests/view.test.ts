@@ -173,6 +173,8 @@ describe("steps", () => {
     expect(stepThrough(spanSteps, 0.02, -2)).toBe(0.005);
     expect(stepThrough(spanSteps, 0.023, 1)).toBe(0.05); // From the nearest step.
     expect(stepThrough(spanSteps, 4, 3)).toBe(4);
+    // A hold-off typed between zero and the first step is nearest zero: up goes to 1 ms.
+    expect(stepThrough(holdOffSteps, 0.0004, 1)).toBe(0.001);
   });
 
   test("steps linearly within the range", () => {
