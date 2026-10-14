@@ -124,6 +124,18 @@ TEST(EdgeTrigger, IgnoresDcAndSilence)
     EXPECT_TRUE(edges(std::vector<float>(1000, 0.7f), {.hysteresis = 0.01}).empty());
 }
 
+// Without hysteresis (the setting's minimum), a signal that reaches the level and rests on it, as
+// digital silence does at a level of 0, crosses it once where it arrives, never again while it
+// rests: every edge is a position, so the trigger keeps a finite window to draw.
+TEST(EdgeTrigger, CrossesOnceWhereTheSignalRestsOnTheLevel)
+{
+    const std::vector<float> samples{-1.0f, 0.0f,  0.0f, 0.0f, 1.0f, 0.0f,
+                                     0.0f,  -1.0f, 0.0f, 0.0f, 1.0f};
+    const auto found = edges(samples, {.level = 0.0, .hysteresis = 0.0});
+    EXPECT_TRUE(std::ranges::all_of(found, [](double edge) { return std::isfinite(edge); }));
+    EXPECT_EQ(found, (std::vector<double>{1.0, 8.0}));
+}
+
 class TriggerModes : public ::testing::Test
 {
 protected:
