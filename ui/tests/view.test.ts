@@ -345,7 +345,11 @@ describe("status chips", () => {
       const waits = mode === "normal" || mode === "single";
       const texts = (frameNow: Frame | undefined, seconds: number) =>
         statusChips(frameNow, mode, seconds, 0).map((chip) => chip.text);
-      expect(texts(undefined, 0).includes("Waiting")).toBe(waits);
+      expect(
+        statusChips(undefined, mode, 0, 0).find(
+          (chip) => chip.text === "Waiting",
+        ),
+      ).toEqual(waits ? { text: "Waiting", tone: "warn" } : undefined);
       expect(texts(undefined, 0).at(-1)).toBe(mode);
       expect(
         texts(frame({ triggered: true }), waitingAfterSeconds * 2).includes(
@@ -355,6 +359,10 @@ describe("status chips", () => {
       expect(
         texts(frame({ triggered: true }), waitingAfterSeconds / 2),
       ).toEqual(["Trig’d", mode]);
+      // A fresh frame drawn without a trigger, as Auto and Free draw: the mode alone.
+      if (!waits) {
+        expect(texts(frame({}), 0)).toEqual([mode]);
+      }
     },
   );
 
