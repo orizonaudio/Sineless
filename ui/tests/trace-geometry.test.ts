@@ -197,6 +197,125 @@ describe("cancellation bands", () => {
     expect(covered).toBeLessThan(0.02);
   });
 
+  // A Compare frame of min/max columns with these peak levels per column, for the two tracks and
+  // their sum.
+  const columnsFrame = (a: number[], b: number[], sum: number[]) => {
+    const columns = (levels: number[]) =>
+      new Float32Array(levels.flatMap((level) => [-level, level]));
+    return {
+      ...frame(FrameMode.minMax, [[ChannelView.left, a.flatMap(() => [0, 0])]]),
+      views: new Map(),
+      lanes: [columns(a), columns(b), columns(sum)],
+      comparison: { sumGain: -3, fixedGain: 3, matches: relatedMatches },
+    };
+  };
+  const quads = (bands: Float32Array) => bands.length / 12;
+
+  test("shade nothing with only one track compared", () => {
+    // The tracks cancel, but only this one is in the sum: nothing to cancel against.
+    const cancelling = compareFrame([
+      -0.1, 0.1, -0.1, 0.1, -0.1, 0.1, -0.1, 0.1,
+    ]);
+    expect(cancellationBands(cancelling, layout, [true, false])).toHaveLength(
+      0,
+    );
+  });
+
+  test("shade two cancelling stretches far apart as two bands", () => {
+    // Columns 0-1 and 10-11 cancel; the eight between do not, far more than a short gap.
+    const loud = new Array<number>(12).fill(0.5);
+    const sum = loud.map((_, column) =>
+      column < 2 || column >= 10 ? 0.05 : 0.9,
+    );
+    const bands = cancellationBands(
+      columnsFrame(loud, loud, sum),
+      layout,
+      both,
+    );
+    expect(quads(bands)).toBe(2);
+    // One stretch at the start, then none to the end: the band stops where cancelling does.
+    const first = sum.map((level, column) => (column < 2 ? level : 0.9));
+    const alone = cancellationBands(
+      columnsFrame(loud, loud, first),
+      layout,
+      both,
+    );
+    expect(quads(alone)).toBe(1);
+    expect(Math.max(...xs(alone))).toBeCloseTo(-1 + (2 * 2) / 12);
+  });
+
+  test("measure a column by its larger excursion, either side of zero", () => {
+    // The tracks swing to −0.5 but only to +0.1; the sum's ±0.08 is well under the larger.
+    const asymmetric = new Float32Array([-0.5, 0.1, -0.5, 0.1]);
+    const cancelling = {
+      ...columnsFrame([0, 0], [0, 0], [0, 0]),
+      lanes: [
+        asymmetric,
+        asymmetric,
+        new Float32Array([-0.08, 0.08, -0.08, 0.08]),
+      ],
+    };
+    expect(quads(cancellationBands(cancelling, layout, both))).toBe(1);
+    // And the other way up: to +0.5, but only to −0.1.
+    const upwards = new Float32Array([-0.1, 0.5, -0.1, 0.5]);
+    expect(
+      quads(
+        cancellationBands(
+          {
+            ...cancelling,
+            lanes: [upwards, upwards, cancelling.lanes[2] ?? upwards],
+          },
+          layout,
+          both,
+        ),
+      ),
+    ).toBe(1);
+  });
+
+  test("shade no quiet stretch at the start or end, whatever its sum", () => {
+    // Columns 0-1 and 6-7 are some 46 dB below the loud middle, and their sum lower still.
+    const tracks = [0.0025, 0.0025, 0.5, 0.5, 0.5, 0.5, 0.0025, 0.0025];
+    const sum = [0.0001, 0.0001, 0.9, 0.9, 0.9, 0.9, 0.0001, 0.0001];
+    expect(
+      cancellationBands(columnsFrame(tracks, tracks, sum), layout, both),
+    ).toHaveLength(0);
+  });
+
+  test("shade the part of the span on screen, zoomed in", () => {
+    // Columns 1 and 2 cancel: the middle half of the span, which the view zooms to.
+    const bands = cancellationBands(
+      compareFrame([-0.9, 0.9, -0.1, 0.1, -0.1, 0.1, -0.9, 0.9]),
+      { ...layout, view: { start: 0.25, end: 0.75 } },
+      both,
+    );
+    expect(quads(bands)).toBe(1);
+    expect(Math.min(...xs(bands))).toBeCloseTo(-1);
+    expect(Math.max(...xs(bands))).toBeCloseTo(1);
+  });
+
+  test("shade raw points, zoomed in past the columns", () => {
+    // Eight raw points of each track and of a sum that cancels throughout, the first point half
+    // a sample after the span starts.
+    const alternate = (level: number) =>
+      new Float32Array(
+        Array.from({ length: 8 }, (_, i) => (i % 2 ? -level : level)),
+      );
+    const raw = {
+      ...frame(
+        FrameMode.raw,
+        [[ChannelView.left, new Array<number>(8).fill(0)]],
+        0.5,
+      ),
+      views: new Map(),
+      lanes: [alternate(0.5), alternate(-0.4), alternate(0.1)],
+      comparison: { sumGain: -3, fixedGain: 3, matches: relatedMatches },
+    };
+    const bands = cancellationBands(raw, layout, both);
+    expect(quads(bands)).toBe(1);
+    expect(Math.min(...xs(bands))).toBeCloseTo(-1 + 2 * pointPosition(raw, 0));
+    expect(Math.max(...xs(bands))).toBeCloseTo(-1 + 2 * pointPosition(raw, 8));
+  });
+
   test("shade where the sum falls 3 dB below the louder track", () => {
     // Columns 1 and 2 cancel (0.1 against 0.5); 0 and 3 do not.
     const bands = cancellationBands(
