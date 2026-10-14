@@ -17,7 +17,11 @@ Answer each, citing file and line:
    floor, tolerance or margin? Is each value's meaning, purpose and margin stated and true?
 3. **Tests:** does every fix have a test that fails without it? Does every new failure branch
    have a test that triggers it? Would the test catch the bug at the boundaries (highest
-   sample rate, shortest span, failed read)?
+   sample rate, shortest span, failed read)? Does each new test protect behaviour a user would
+   see go wrong, named as such, rather than restate a value or an implementation detail? A
+   test of a tuned value (a width, a gate, a tolerance) checks what the value is for, such as
+   "the widest content fits at the minimum width", never the number itself, so the value can
+   still be changed when that still holds.
 4. **Simpler or documented way:** for platform, SDK or standard code, is there a documented
    or widely adopted approach the change ignores?
 5. **Regressions:** can the change break a case that worked before: another mode, a host,
@@ -31,11 +35,24 @@ a rule the product relies on:
 - a correctness bug or regression, with a concrete scenario that triggers it;
 - anything on the audio thread that can allocate, lock, block or do I/O;
 - a fix without a test that fails without it, or a new failure branch with no test;
+- a new test that only restates a value or an implementation detail (`expect(limit).toBe(920)`,
+  a label's exact wording, the order of something no one reads in order): it fails on every
+  intended change and on no defect, so it blocks the first and hides the absence of a test
+  for the second;
 - a break of "Rules the product relies on" in CLAUDE.md.
 
 Everything else is a **nit**. Report at most three nits, and none once the pull request has
 had a review: after the first round, report Important findings only, so that reviews
 converge.
+
+## Mutation testing
+
+The mutation reports on a pull request (the `mutation` and `mutation-cpp` jobs) list changes to
+the code that no test fails on. Each is a question, not a finding: a test is worth adding only
+when a user would see that change go wrong. A change that alters nothing a user relies on
+(mutants equivalent in practice, such as `<` for `<=` where the two values never meet, wording,
+code that cannot run) is left as it is, or the code is removed when it does nothing. Survivors
+are never reported as findings on their own, and no score is a goal.
 
 ## Every finding
 
