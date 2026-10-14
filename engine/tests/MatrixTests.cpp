@@ -148,7 +148,8 @@ struct Signal
     double amplitude = 0.25;
     double offset = 0.5; // DC, so that a hole in a trace stands out.
     std::uint64_t seed = 1;
-    std::int64_t delay = 0; // Noise: samples by which it lags the host.
+    std::int64_t delay = 0;    // Noise: samples by which it lags the host.
+    std::int64_t startsAt = 0; // Silent before this host sample.
     // Every `brokenEvery` samples (none if 0), one that is not finite, as a broken plugin upstream
     // might send.
     std::int64_t brokenEvery = 0;
@@ -205,7 +206,7 @@ public:
                 std::array<const float*, 2> channels{left.data(), right.data()};
                 track.engine->captureRing().write(channels.data(), channelCount, kBlock);
                 track.engine->timeline().advance(
-                    {.playing = true,
+                    {.playing = playing,
                      .positionValid = true,
                      .quarterNotes = static_cast<double>(position) * track.tempo / (60.0 * rate),
                      .tempoValid = true,
@@ -244,6 +245,7 @@ public:
     [[nodiscard]] float field(std::size_t offset) const { return get<float>(bytes, offset); }
 
     double rate;
+    bool playing = true; // The host transport, as play reports it.
     InstanceRegistry registry;
 
 private:
@@ -270,6 +272,9 @@ private:
                 break;
             case Signal::Kind::kSilence:
                 break;
+            }
+            if (index < signal.startsAt) {
+                value = 0.0;
             }
             left.at(static_cast<std::size_t>(i)) = static_cast<float>(value);
             right.at(static_cast<std::size_t>(i)) = static_cast<float>(0.5 * value);
@@ -1865,6 +1870,128 @@ TEST_P(BrokenCopy, SumsAsACopyAroundThem)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, BrokenCopy,
+                         ::testing::ValuesIn(timeBaseCases(DisplayMode::kCompare)), modeTestName);
+
+// Each compared track's match describes the audio on screen, frozen or live: it is searched again
+// when the display freezes, even with no audio after it (a stopped transport), and when the
+// freeze ends, without waiting for its next refresh. This track starts just before; a copy of it
+// and an inverted copy read as what they are, not as never sounding together. In Beats as in
+// Seconds, at every rate.
+class FrozenMatch : public ::testing::TestWithParam<ModeCase>
+{
+protected:
+    void SetUp() override
+    {
+        const ModeCase c = GetParam();
+        start = static_cast<std::int64_t>(std::llround(kStart * c.rate));
+        session = std::make_unique<Session>(c.rate, c.channels);
+        session->join({.kind = Signal::Kind::kNoise, .startsAt = start});
+        session->join({.kind = Signal::Kind::kNoise});
+        session->join({.kind = Signal::Kind::kNoise, .amplitude = -0.25});
+        configure(session->own(), DisplayMode::kCompare, c.timeBase);
+        session->own().settings().set(SettingId::kTimeSpan, 0.2);
+        session->own().settings().set(SettingId::kBeatSpan,
+                                      static_cast<double>(BeatSpan::kOneBeat));
+        std::vector<std::uint64_t> others;
+        for (const GroupMember& member : session->registry.members(protocol::Group::kA)) {
+            if (member.engine.get() != &session->own()) {
+                others.push_back(member.serial);
+            }
+        }
+        session->analyzer().setCompared(others);
+    }
+
+    // The frames that follow with no more audio, the last of them; they stop once every match is
+    // searched (a failure, rather than a hang, if they do not).
+    std::optional<DecodedFrame> settle()
+    {
+        std::optional<DecodedFrame> last;
+        for (int frames = 0; frames < 64; ++frames) {
+            auto produced = session->produce();
+            if (!produced) {
+                return last;
+            }
+            last = std::move(produced);
+        }
+        ADD_FAILURE() << "frames go on with nothing new";
+        return last;
+    }
+
+    // Both copies read as copies: in time, with their polarity.
+    static void expectCopies(const DecodedFrame& frame)
+    {
+        ASSERT_EQ(frame.laneCount, 4);
+        for (const std::size_t track : {1U, 2U}) {
+            SCOPED_TRACE(track == 1 ? "copy" : "inverted copy");
+            const std::size_t at =
+                std::size_t{frame.laneCount} * traceLength(frame) + track * protocol::kMatchValues;
+            EXPECT_TRUE(std::isfinite(frame.data.at(at))) << "they sound together";
+            EXPECT_EQ(frame.data.at(at + 1), 0.0f) << "in time";
+            EXPECT_EQ(frame.data.at(at + 2), track == 1 ? 1.0f : -1.0f) << "related, its polarity";
+        }
+    }
+
+    static constexpr double kStart = 1.5;
+    // Shorter than the spacing of match searches: no search of the live view sees it.
+    static constexpr double kBrief = 0.5 * kMatchSpacingSeconds;
+    std::int64_t start = 0;
+    std::unique_ptr<Session> session;
+};
+
+TEST_P(FrozenMatch, DescribesTheAudioFrozen)
+{
+    session->play(kStart, 0.01);
+    session->play(kBrief); // This track sounds.
+    ASSERT_TRUE(session->produce());
+
+    session->analyzer().setFrozen(true);
+    const auto frame = settle();
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+    expectCopies(*frame);
+}
+
+TEST_P(FrozenMatch, DescribesTheLiveAudioOnceUnfrozen)
+{
+    session->play(kStart - kBrief, 0.01);
+    session->analyzer().setFrozen(true); // Before this track sounds.
+    settle();
+    session->play(2.0 * kBrief); // This track sounds, while frozen.
+
+    // Live again, long enough to search both, one by one.
+    session->analyzer().setFrozen(false);
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 20; ++step) {
+        session->play(0.1 * kMatchSpacingSeconds);
+        if (auto produced = session->produce()) {
+            frame = std::move(produced);
+        }
+    }
+    ASSERT_TRUE(frame);
+    ASSERT_FALSE(frame->has(FrameFlag::kFrozen));
+    expectCopies(*frame);
+}
+
+// Live with the transport stopped, the host may send no audio: a change of the view still has
+// each match searched again.
+TEST_P(FrozenMatch, FollowsTheViewWithTheTransportStopped)
+{
+    session->playing = false;
+    session->play(kStart - kBrief, 0.01);
+    session->play(2.0 * kBrief); // This track sounds.
+
+    session->analyzer().setView(0.0, 0.9); // Still where it sounds, and the playhead.
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 8; ++step) {
+        if (auto produced = session->produce()) {
+            frame = std::move(produced);
+        }
+    }
+    ASSERT_TRUE(frame);
+    expectCopies(*frame);
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, FrozenMatch,
                          ::testing::ValuesIn(timeBaseCases(DisplayMode::kCompare)), modeTestName);
 
 class NoDataIsNaN : public ::testing::TestWithParam<ModeCase>
