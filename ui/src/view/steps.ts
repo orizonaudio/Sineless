@@ -32,7 +32,8 @@ export function stepThrough(
 }
 
 // Fine steps between those of a sequence: about 6% each, to three significant digits, within
-// the sequence's range. Always moves by at least one representable step.
+// the sequence's range. A 6% step always changes the third digit, so a step within the range
+// always moves the value.
 export function stepFine(
   steps: readonly number[],
   value: number,
@@ -42,11 +43,6 @@ export function stepFine(
   const maximum = steps.at(-1) ?? value;
   const round = (x: number) => Number(x.toPrecision(3));
   let next = round(Math.max(value, minimum) * 1.06 ** delta);
-  if (next === value && delta !== 0) {
-    next = round(
-      value + Math.sign(delta) * 10 ** (Math.floor(Math.log10(value)) - 2),
-    );
-  }
   if (value === 0 && delta > 0) {
     next = steps.find((step) => step > 0) ?? value; // From zero, to the first step.
   }
