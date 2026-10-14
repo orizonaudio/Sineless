@@ -150,6 +150,11 @@ struct Signal
     std::uint64_t seed = 1;
     std::int64_t delay = 0;    // Noise: samples by which it lags the host.
     std::int64_t startsAt = 0; // Silent before this host sample.
+    // Every other run of this many samples is at a quarter of the amplitude (none if 0), the first
+    // run loud.
+    std::int64_t quieterEvery = 0;
+    double quieterFrequency = 0.0; // A tone's frequency in the quieter runs (its own if 0).
+    std::int64_t louderFrom = -1;  // Four times the amplitude from this host sample, if any.
     // Every `brokenEvery` samples (none if 0), one that is not finite, as a broken plugin upstream
     // might send.
     std::int64_t brokenEvery = 0;
@@ -263,10 +268,17 @@ private:
             const auto index = static_cast<std::int64_t>(from) + i;
             double value = 0.0;
             switch (signal.kind) {
-            case Signal::Kind::kTone:
-                value =
-                    signal.offset + signal.amplitude * std::sin(step * static_cast<double>(index));
+            case Signal::Kind::kTone: {
+                const bool quieter =
+                    signal.quieterEvery > 0 && (index / signal.quieterEvery) % 2 == 1;
+                const double toneStep =
+                    quieter && signal.quieterFrequency > 0.0
+                        ? 2.0 * std::numbers::pi * signal.quieterFrequency / rate
+                        : step;
+                value = signal.offset +
+                        signal.amplitude * std::sin(toneStep * static_cast<double>(index));
                 break;
+            }
             case Signal::Kind::kNoise:
                 value = signal.amplitude * 2.0 * noiseAt(index - signal.delay, signal.seed);
                 break;
@@ -275,6 +287,12 @@ private:
             }
             if (index < signal.startsAt) {
                 value = 0.0;
+            }
+            if (signal.quieterEvery > 0 && (index / signal.quieterEvery) % 2 == 1) {
+                value *= 0.25;
+            }
+            if (signal.louderFrom >= 0 && index >= signal.louderFrom) {
+                value *= 4.0;
             }
             left.at(static_cast<std::size_t>(i)) = static_cast<float>(value);
             right.at(static_cast<std::size_t>(i)) = static_cast<float>(0.5 * value);
@@ -583,6 +601,93 @@ TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
     expectTraces(*frame, traces);
 }
 
+// Frozen, a shorter Seconds span keeps the trigger point where the triggered live window had it,
+// at the trigger marker (a tenth into the span), so that changing the scale zooms around it: a
+// 1.1 kHz tone, triggered on its rising crossings of 0, still crosses 0 rising there. At the
+// lowest and highest rates.
+TEST(FrozenTrigger, StaysAtTheMarkerWhenTheSpanShortens)
+{
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        SCOPED_TRACE(rateName(rate));
+        Session session(rate, 1);
+        session.join({.frequency = 1100.0, .amplitude = 0.5, .offset = 0.0});
+        configure(session.own(), DisplayMode::kSingle, TimeBase::kSeconds);
+        session.own().settings().set(SettingId::kTriggerMode,
+                                     static_cast<double>(protocol::TriggerMode::kNormal));
+        session.own().settings().set(SettingId::kTimeSpan, 0.02);
+        session.analyzer().setColumns(std::size_t{1} << 16U); // Raw samples.
+        session.play(1.0, protocol::kReadoutIntervalSeconds / 2.0);
+        auto frame = session.produce();
+        if (!frame) {
+            session.play(0.01);
+            frame = session.produce();
+        }
+        ASSERT_TRUE(frame) << "no live frame";
+        ASSERT_TRUE(frame->has(FrameFlag::kTriggered));
+        session.analyzer().setFrozen(true);
+        session.play(static_cast<double>(kBlock) / rate);
+        ASSERT_TRUE(session.produce()) << "no frozen frame";
+        session.own().settings().set(SettingId::kTimeSpan, 0.01);
+        frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame at the shorter span";
+        ASSERT_EQ(frame->mode, FrameMode::kRaw);
+        const std::span<const float> values = trace(*frame, 0);
+        const auto marker = static_cast<std::ptrdiff_t>(
+            std::llround(kTriggerPosition * frame->visibleSamples + frame->startFraction));
+        bool rising = false;
+        for (std::ptrdiff_t i = std::max<std::ptrdiff_t>(marker - 1, 1);
+             i <= marker + 1 && i < std::ssize(values); ++i) {
+            rising = rising || (values[i - 1] <= 0.0f && values[i] > 0.0f) ||
+                     (values[i] <= 0.0f && i + 1 < std::ssize(values) && values[i + 1] > 0.0f);
+        }
+        EXPECT_TRUE(rising) << "no rising crossing at sample " << marker << " of " << values.size();
+    }
+}
+
+// Frozen in Seconds, a shorter span shows the part around the trigger marker of the last live
+// window, and its readouts describe that part: a tone four times louder in its newest 6 ms, which
+// the 10 ms span chosen after freezing at 20 ms no longer shows, reads at its quiet level. In every
+// mode, at the lowest and highest rates.
+class FrozenSecondsShorterSpan : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(FrozenSecondsShorterSpan, ReadsThePartShown)
+{
+    const DisplayMode mode = GetParam();
+    constexpr double kAmplitude = 0.1;
+    constexpr double kPlayed = 2.0;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        SCOPED_TRACE(rateName(rate));
+        const auto played = static_cast<std::int64_t>(
+            std::llround(kPlayed * rate / static_cast<double>(kBlock)) * kBlock);
+        Session session(rate, 1);
+        session.join(
+            {.frequency = 1100.0,
+             .amplitude = kAmplitude,
+             .offset = 0.0,
+             .louderFrom = played - static_cast<std::int64_t>(std::llround(0.006 * rate))});
+        session.join({.frequency = 1500.0});
+        configure(session.own(), mode, TimeBase::kSeconds);
+        session.own().settings().set(SettingId::kTimeSpan, 0.02);
+        session.play(static_cast<double>(played) / rate, protocol::kReadoutIntervalSeconds / 2.0);
+        ASSERT_TRUE(session.produce()) << "no live frame";
+        session.analyzer().setFrozen(true);
+        ASSERT_TRUE(session.produce()) << "no frozen frame";
+        session.own().settings().set(SettingId::kTimeSpan, 0.01);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame at the shorter span";
+        ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+        EXPECT_NEAR(frame->peak, kAmplitude, 0.02 * kAmplitude) << "the quiet part's peak";
+        EXPECT_NEAR(frame->rms, kAmplitude / std::numbers::sqrt2, 0.05 * kAmplitude);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSecondsShorterSpan, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
+                         });
+
 class FrozenPan : public ::testing::TestWithParam<SpanCase>
 {
 };
@@ -765,6 +870,44 @@ std::vector<ModeCase> beatCases()
     return cases;
 }
 
+// Frozen, a shorter beat span shows part of the held sweep, and its readouts describe that part:
+// Peak and RMS of what is shown, the frequency of its newest audio. A tone alternates every two
+// beats between loud at 1 kHz and quiet at 700 Hz; frozen at the end of a 1-bar cycle that holds a
+// loud half and then a quiet half, the newest two beats shown are the quiet half, read as such:
+// its level and its note, not the loud bar's. In every mode, at every rate.
+class FrozenShorterSpan : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(FrozenShorterSpan, ReadsThePartShown)
+{
+    const ModeCase c = GetParam();
+    constexpr double kAmplitude = 0.5;
+    const auto twoBeats = static_cast<std::int64_t>(std::llround(c.rate)); // At 120 BPM.
+    Session session(c.rate, c.channels);
+    session.join({.frequency = 1000.0,
+                  .amplitude = kAmplitude,
+                  .offset = 0.0,
+                  .quieterEvery = twoBeats,
+                  .quieterFrequency = 700.0});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), c.mode, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    // To just before quarter note 12: the bar [8, 12) is loud, then quiet from quarter note 10.
+    session.play(6.0 - (2.0 * static_cast<double>(kBlock) / c.rate),
+                 protocol::kReadoutIntervalSeconds / 2.0);
+    session.analyzer().setFrozen(true);
+    ASSERT_TRUE(session.produce()) << "no frozen frame";
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kTwoBeats));
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no frame at the shorter span";
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+    const double quiet = 0.25 * kAmplitude * (c.channels == 2 ? 0.75 : 1.0);
+    EXPECT_NEAR(frame->peak, quiet, 0.02 * quiet) << "the quiet half's peak, not the bar's";
+    EXPECT_NEAR(frame->rms, quiet / std::numbers::sqrt2, 0.02 * quiet);
+    EXPECT_NEAR(frame->frequency, 700.0, 7.0) << "the quiet half's note, not the bar's";
+}
+
 class BeatSpans : public ::testing::TestWithParam<ModeCase>
 {
 };
@@ -845,6 +988,8 @@ TEST_P(BeatSpans, DrawsTheWholeSweepLiveAndFrozen)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, BeatSpans, ::testing::ValuesIn(beatCases()), modeTestName);
+INSTANTIATE_TEST_SUITE_P(EveryRate, FrozenShorterSpan, ::testing::ValuesIn(beatCases()),
+                         modeTestName);
 
 // --- Beat spans at the freeze hold ----------------------------------------------------------
 
