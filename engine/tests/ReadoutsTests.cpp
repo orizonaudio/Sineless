@@ -1,10 +1,14 @@
+#include "SampleRates.h"
 #include "engine/Readouts.h"
+#include "protocol/Protocol.h"
 
 #include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <random>
+#include <string>
 #include <vector>
 
 namespace orizon::engine {
@@ -139,6 +143,82 @@ TEST(Readouts, HandleASpanWithNothingFinite)
     EXPECT_FALSE(readouts.frequencyHz);
     EXPECT_EQ(readouts.invalid, 960U);
 }
+
+// The shortest span the time span setting allows.
+double shortestSpan()
+{
+    return protocol::kSettings.at(static_cast<std::size_t>(protocol::SettingId::kTimeSpan)).minimum;
+}
+
+// Tones as instruments and mixes give them, at every sample rate: not perfectly periodic, offset
+// from zero, or high in a short span.
+class RealTones : public ::testing::TestWithParam<double>
+{
+protected:
+    // `seconds` of a tone at `frequency`, whose pitch swings by `vibrato` (a fraction) five times
+    // a second, offset by `dc`, with uniform noise of up to `noise`.
+    [[nodiscard]] std::vector<float> make(double frequency, double seconds, double amplitude,
+                                          double vibrato = 0.0, double dc = 0.0,
+                                          float noise = 0.0f) const
+    {
+        const double rate = GetParam();
+        std::mt19937 random(7); // NOLINT(bugprone-random-generator-seed): repeatable on purpose.
+        std::uniform_real_distribution<float> uniform(-noise, noise);
+        std::vector<float> samples(static_cast<std::size_t>(std::llround(seconds * rate)));
+        double phase = 0.0;
+        for (std::size_t i = 0; i < samples.size(); ++i) {
+            const double time = static_cast<double>(i) / rate;
+            const double now =
+                frequency * (1.0 + vibrato * std::sin(2.0 * std::numbers::pi * 5.0 * time));
+            samples[i] = static_cast<float>(dc + amplitude * std::sin(phase)) +
+                         (noise > 0.0f ? uniform(random) : 0.0f);
+            phase += 2.0 * std::numbers::pi * now / rate;
+        }
+        return samples;
+    }
+
+    [[nodiscard]] std::optional<double> frequencyOf(const std::vector<float>& samples) const
+    {
+        return computeReadouts(samples, GetParam()).frequencyHz;
+    }
+};
+
+TEST_P(RealTones, FindTheFrequencyOfANoisyTone)
+{
+    const auto found = frequencyOf(make(440.0, 0.2, 0.5, 0.0, 0.0, 0.02f));
+    ASSERT_TRUE(found.has_value()) << "a little noise on a tone leaves its pitch";
+    EXPECT_NEAR(*found, 440.0, 4.4);
+}
+
+// A singer's or a violinist's vibrato swings the pitch by about half a semitone either way.
+TEST_P(RealTones, FindTheFrequencyOfAToneWithVibrato)
+{
+    const double halfSemitone = std::pow(2.0, 1.0 / 24.0) - 1.0;
+    const auto found = frequencyOf(make(440.0, 0.5, 0.5, halfSemitone));
+    ASSERT_TRUE(found.has_value()) << "a note with vibrato still has its pitch";
+    EXPECT_NEAR(*found, 440.0, 4.4);
+}
+
+// The shortest span of a tone riding on a DC offset: its cycles cross the tone's own
+// mean level, not zero.
+TEST_P(RealTones, FindTheFrequencyOfAnOffsetToneInTheShortestSpan)
+{
+    const auto found = frequencyOf(make(6000.0, shortestSpan(), 0.2, 0.0, 0.5));
+    ASSERT_TRUE(found.has_value());
+    EXPECT_NEAR(*found, 6000.0, 60.0);
+}
+
+TEST_P(RealTones, FindTheFrequencyOfAHighToneInTheShortestSpan)
+{
+    const auto found = frequencyOf(make(5000.0, shortestSpan(), 0.5));
+    ASSERT_TRUE(found.has_value()) << "a few cycles of 5 kHz";
+    EXPECT_NEAR(*found, 5000.0, 50.0);
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, RealTones, ::testing::ValuesIn(kSampleRates),
+                         [](const ::testing::TestParamInfo<double>& info) {
+                             return std::to_string(static_cast<int>(info.param)) + "Hz";
+                         });
 
 } // namespace
 } // namespace orizon::engine

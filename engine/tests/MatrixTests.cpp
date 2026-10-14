@@ -9,6 +9,7 @@
 // crossing.
 
 #include "FrameDecoding.h"
+#include "SampleRates.h"
 #include "engine/Analyzer.h"
 #include "engine/CaptureRing.h"
 #include "engine/HoldBuffer.h"
@@ -46,13 +47,6 @@ using protocol::FrameHeader;
 using protocol::FrameMode;
 using protocol::SettingId;
 using protocol::TimeBase;
-
-// The sample rates hosts run at, from CD audio to the highest any of them offers. The protocol
-// does not list them: nothing the engine and the UI share depends on one.
-constexpr std::array kSampleRates{44100.0,  48000.0,  88200.0,  96000.0,
-                                  176400.0, 192000.0, 352800.0, 384000.0};
-static_assert(kSampleRates.back() == CaptureRing::kHighestSampleRate,
-              "the capture is sized for the highest rate tested");
 
 constexpr std::size_t kColumns = 400;
 constexpr int kBlock = 1024;
