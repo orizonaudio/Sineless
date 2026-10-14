@@ -630,12 +630,32 @@ protected:
                  .positionValid = true,
                  .quarterNotes = static_cast<double>(start) * tempo / (60.0 * kSampleRate) + offset,
                  .tempoValid = true,
-                 .tempo = tempo},
+                 .tempo = tempo,
+                 .timeSignatureValid = true,
+                 .numerator = numerator,
+                 .denominator = denominator},
                 static_cast<int>(kBlock), kSampleRate);
         }
     }
 
+    // Plays 0.1 s into the second bar of `barSamples` and checks that the one-bar sweep shows it.
+    void expectBarSweep(std::uint64_t barSamples)
+    {
+        engine.settings().set(SettingId::kBeatSpan,
+                              static_cast<double>(protocol::BeatSpan::kOneBar));
+        analyzer.setColumns(96000); // Raw points.
+        play(barSamples + 4800);
+        const auto frame = produce();
+        ASSERT_TRUE(frame);
+        EXPECT_FLOAT_EQ(frame->visibleSamples, static_cast<float>(barSamples));
+        EXPECT_NEAR(frame->cursor, 4800.0 / static_cast<double>(barSamples), 1e-6);
+        EXPECT_EQ(frame->data.front(), static_cast<float>(barSamples))
+            << "the second bar starts the sweep";
+    }
+
     double tempo = 120.0;
+    int numerator = 4;
+    int denominator = 4;
 };
 
 // At 20 BPM four bars are 48 s: more than the capture holds. The sweep starts from what the
@@ -683,6 +703,22 @@ TEST_F(SweepTest, AdvancesTheSweepBetweenFrames)
     ASSERT_TRUE(frame);
     EXPECT_FALSE(frame->has(FrameFlag::kPartial)) << "every sample was placed as it arrived";
     EXPECT_EQ(frame->data[0], 2304000.0f);
+}
+
+// A bar span sweeps one of the host's bars: in 6/8 three quarter notes, in 7/8 three and a half,
+// so the sweep restarts on the host's downbeats rather than every four quarter notes.
+TEST_F(SweepTest, SweepsTheHostsBarInSixEight)
+{
+    numerator = 6;
+    denominator = 8;
+    expectBarSweep(72000); // Three quarter notes at 2 per second.
+}
+
+TEST_F(SweepTest, SweepsTheHostsBarInSevenEight)
+{
+    numerator = 7;
+    denominator = 8;
+    expectBarSweep(84000);
 }
 
 TEST_F(SweepTest, CropsAShorterSpanFromAFrozenSweepAndRebuildsALongerOne)
