@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { FrameMode, ViewLayout } from "../../protocol/src/enums.ts";
+import {
+  FrameMode,
+  TriggerMode,
+  ViewLayout,
+} from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   amplitudeLabels,
@@ -22,7 +26,11 @@ import {
   parseQuantity,
   signed,
 } from "../src/view/format.ts";
-import { laneHoldsInvalid, statusChips } from "../src/view/status.ts";
+import {
+  laneHoldsInvalid,
+  statusChips,
+  waitingAfterSeconds,
+} from "../src/view/status.ts";
 import {
   holdOffSteps,
   spanSteps,
@@ -326,6 +334,27 @@ describe("status chips", () => {
       "Trig’d",
     );
   });
+
+  // Normal and Single draw only on a trigger, so they say they are waiting for one: before the
+  // first frame, and once frames stop. Auto and Free draw without one.
+  test.each(Object.keys(TriggerMode))(
+    "in %s, says it is waiting only when frames are missing and the mode needs a trigger",
+    (mode) => {
+      const waits = mode === "normal" || mode === "single";
+      const texts = (frameNow: Frame | undefined, seconds: number) =>
+        statusChips(frameNow, mode, seconds, 0).map((chip) => chip.text);
+      expect(texts(undefined, 0).includes("Waiting")).toBe(waits);
+      expect(texts(undefined, 0).at(-1)).toBe(mode);
+      expect(
+        texts(frame({ triggered: true }), waitingAfterSeconds * 2).includes(
+          "Waiting",
+        ),
+      ).toBe(waits);
+      expect(
+        texts(frame({ triggered: true }), waitingAfterSeconds / 2),
+      ).toEqual(["Trig’d", mode]);
+    },
+  );
 
   test.each([
     { state: "triggered", overrides: { triggered: true } },
