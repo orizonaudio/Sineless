@@ -157,6 +157,9 @@ describe("cursor snapping", () => {
         expect(zeroCrossings(frameOf(FrameMode.minMax, 3), columns)).toEqual([
           1.5 / 3,
         ]);
+        // Wholly below, broken, wholly above: no crossing across the broken column.
+        const across = new Float32Array([-0.5, -0.2, broken, broken, 0.1, 0.3]);
+        expect(zeroCrossings(frameOf(FrameMode.minMax, 3), across)).toEqual([]);
       });
 
       test("finds the extremes of raw points and min/max columns", () => {
