@@ -84,6 +84,24 @@ TEST(PairAnalysis, FindsHowLateATrackArrives)
     EXPECT_EQ(early.offset, -37) << "a track that leads has a negative offset";
 }
 
+// The audio searched has whatever length the view leaves, not only whole blocks: one sample short
+// of a whole number of blocks, exactly a whole number, or one over, a late copy is found where it
+// is, and no block is read past the end of the audio.
+TEST(PairAnalysis, FindsALateCopyWhateverLengthIsSearched)
+{
+    for (const std::size_t length :
+         {(2 * kBlock) - 1, 2 * kBlock, (2 * kBlock) + 1, (20 * kBlock) - 1, 20 * kBlock}) {
+        SCOPED_TRACE(testing::Message() << length << " samples");
+        const auto a = noise(3, length);
+        const auto b = delayed(a, 37);
+        const PairAnalysis result = analyse(a, b);
+        EXPECT_TRUE(result.measured);
+        EXPECT_TRUE(result.related);
+        EXPECT_EQ(result.offset, 37);
+        EXPECT_FALSE(result.inverted);
+    }
+}
+
 TEST(PairAnalysis, UnrelatedTracksSumHarmlessly)
 {
     const PairAnalysis result = analyse(noise(4), noise(5));
