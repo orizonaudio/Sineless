@@ -2078,6 +2078,60 @@ TEST(ChannelViewsInBeats, MeasureTheMidWhateverTheTriggerSource)
     }
 }
 
+// A mono track is its one channel, not a stereo pair with a silent right: its trace (Single's
+// view, or its lane in the multi-track view and Compare) reaches the tone's amplitude, and its
+// readouts are the tone's level and frequency, not 6 dB lower. In both time bases, live, frozen,
+// and frozen at another span (whose lanes are rebuilt from the held audio), at every rate.
+class MonoLanes : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(MonoLanes, ShowTheTrackAtItsLevel)
+{
+    const ModeCase c = GetParam();
+    constexpr double kAmplitude = 0.5;
+    Session session(c.rate, 1);
+    session.join({.frequency = 1000.0, .amplitude = kAmplitude, .offset = 0.0});
+    session.join({.frequency = 1500.0, .amplitude = kAmplitude, .offset = 0.0});
+    configure(session.own(), c.mode, c.timeBase);
+    session.own().settings().set(SettingId::kTimeSpan, 0.05);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    auto frame = playForReadouts(session, c.timeBase);
+    // Live; frozen; and frozen at another span, which rebuilds the lanes from what is held.
+    for (const int step : {0, 1, 2}) {
+        SCOPED_TRACE(step == 0 ? "live" : step == 1 ? "frozen" : "frozen, another span");
+        if (step == 1) {
+            session.analyzer().setFrozen(true);
+            session.play(static_cast<double>(kBlock) / c.rate);
+            frame = session.produce();
+        } else if (step == 2) {
+            session.own().settings().set(SettingId::kTimeSpan, 0.03);
+            session.own().settings().set(SettingId::kBeatSpan,
+                                         static_cast<double>(BeatSpan::kTwoBeats));
+            frame = session.produce();
+        }
+        ASSERT_TRUE(frame) << "no frame";
+        ASSERT_EQ(frame->laneCount > 0, c.mode != DisplayMode::kSingle);
+        const std::span<const float> own = trace(*frame, 0);
+        const float loudest = std::ranges::max(own, {}, [](float v) { return std::abs(v); });
+        EXPECT_NEAR(std::abs(loudest), kAmplitude, 0.02 * kAmplitude) << "this track's trace";
+        EXPECT_NEAR(frame->peak, kAmplitude, 0.02 * kAmplitude);
+        EXPECT_NEAR(frame->rms, kAmplitude / std::numbers::sqrt2, 0.02 * kAmplitude);
+        EXPECT_NEAR(frame->frequency, 1000.0, 10.0);
+    }
+}
+
+std::vector<ModeCase> monoLaneCases()
+{
+    std::vector<ModeCase> cases;
+    for (const DisplayMode mode : everyMode()) {
+        for (const ModeCase& c : timeBaseCases(mode)) {
+            cases.push_back({.rate = c.rate, .mode = mode, .channels = 1, .timeBase = c.timeBase});
+        }
+    }
+    return cases;
+}
+
 class AnalysisGate : public ::testing::TestWithParam<ModeCase>
 {
 };
@@ -2112,8 +2166,19 @@ TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
     }
 }
 
-INSTANTIATE_TEST_SUITE_P(EveryRate, AnalysisGate,
-                         ::testing::ValuesIn(timeBaseCases(DisplayMode::kSingle)), modeTestName);
+// Every display mode: the lanes and Compare read this track's channels as Single's views do.
+std::vector<ModeCase> gateCases()
+{
+    std::vector<ModeCase> cases;
+    for (const DisplayMode mode : everyMode()) {
+        const std::vector<ModeCase> modeCases = timeBaseCases(mode);
+        cases.insert(cases.end(), modeCases.begin(), modeCases.end());
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, AnalysisGate, ::testing::ValuesIn(gateCases()), modeTestName);
+INSTANTIATE_TEST_SUITE_P(EveryRate, MonoLanes, ::testing::ValuesIn(monoLaneCases()), modeTestName);
 
 // Samples that are not finite, one every 100 ms on this track (NaN or infinite): measured around,
 // so the readouts are those of the tone, and counted. The frame says how many the readouts measured
