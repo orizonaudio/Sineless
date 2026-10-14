@@ -1594,6 +1594,27 @@ TEST_F(CompareTest, PreviewsTheFixForALateTrack)
     }
 }
 
+// Frozen with tracks that joined just before, whose captures hold too little to search a match
+// in: each failed search is tried again later, not on every step, so a still view goes idle.
+TEST_F(CompareTest, GoesIdleWhenFrozenTracksHoldTooLittleToMatch)
+{
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    own->settings().set(SettingId::kTimeSpan, 0.1);
+    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    play(9600);
+    joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    play(960); // 20 ms: less than the 0.1 s span the match is searched over.
+    analyzer->setCompared({idOf(own), idOf(tracks[1].first), idOf(tracks[2].first)});
+    analyzer->setFrozen(true);
+    for (int step = 0; step < 5; ++step) {
+        (void)produce(); // The freeze, and a failed search of each track.
+    }
+    for (int step = 5; step < 20; ++step) {
+        EXPECT_FALSE(produce()) << "nothing changes, so frames stop, at step " << step;
+    }
+}
+
 TEST_F(CompareTest, RefreshesAMatchWhilePlaying)
 {
     // In step until host sample 12000, inverted after.
