@@ -37,6 +37,17 @@ std::optional<double> number(const nlohmann::json& message, const char* field)
     return found->get<double>();
 }
 
+// A number from the page, as it would read it: whole numbers without a fraction, any other as
+// JSON writes it ("3.5", "5e+89"). A value too large for an integer is never cast to one.
+std::string numberText(double value)
+{
+    constexpr double kExactIntegers = 9007199254740992.0; // 2^53.
+    if (std::trunc(value) == value && std::abs(value) < kExactIntegers) {
+        return std::to_string(static_cast<long long>(value));
+    }
+    return nlohmann::json(value).dump();
+}
+
 std::optional<protocol::SettingId> settingId(const nlohmann::json& name)
 {
     if (!name.is_string()) {
@@ -126,8 +137,7 @@ void Session::hello(const nlohmann::json& message)
             {{"type", "error"},
              {"code", "protocolMismatch"},
              {"message", "The UI speaks protocol version " +
-                             (version ? std::to_string(static_cast<long long>(*version))
-                                      : std::string("unknown")) +
+                             (version ? numberText(*version) : std::string("unknown")) +
                              "; the engine speaks version " +
                              std::to_string(protocol::kProtocolVersion) + "."}});
         return;

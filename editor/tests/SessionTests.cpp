@@ -8,6 +8,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace orizon::editor {
@@ -109,6 +110,30 @@ TEST_F(SessionTest, RejectsAProtocolMismatch)
     ASSERT_EQ(errors.size(), 1u);
     EXPECT_EQ(errors[0]["code"], "protocolMismatch");
     EXPECT_TRUE(transport.ofType("snapshot").empty());
+}
+
+// The error names the version the page sent, as it sent it: any number JSON can carry, however
+// large or fractional, not one cast to an integer that cannot hold it.
+TEST_F(SessionTest, NamesTheVersionAMismatchedPageSent)
+{
+    for (const auto& [sent, named] : std::vector<std::pair<nlohmann::json, std::string>>{
+             {protocol::kProtocolVersion + 1, std::to_string(protocol::kProtocolVersion + 1)},
+             {3.5, "3.5"},
+             {1e19, "1e+19"}, // Just past what a 64-bit integer holds.
+             {5e89, "5e+89"},
+             {-1e300, "-1e+300"},
+             {"4", "unknown"}}) {
+        SCOPED_TRACE(sent.dump());
+        transport.messages.clear();
+        auto hello = example("hello");
+        hello["protocolVersion"] = sent;
+        session.receive(hello);
+        const auto errors = transport.ofType("error");
+        ASSERT_EQ(errors.size(), 1u);
+        EXPECT_NE(errors[0]["message"].get<std::string>().find("protocol version " + named + ";"),
+                  std::string::npos)
+            << errors[0]["message"];
+    }
 }
 
 TEST_F(SessionTest, IgnoresMessagesBeforeHello)
