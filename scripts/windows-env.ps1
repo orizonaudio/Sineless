@@ -1,10 +1,12 @@
 # Dot-sourced by the Windows scripts: enters Visual Studio's developer environment, which
-# provides CMake, MSBuild, the compilers and dumpbin, unless it is already active.
+# provides CMake, MSBuild, the compilers and dumpbin, unless it is already active. It is told by
+# dumpbin, which only that environment provides: CMake may be on the PATH without it, as on
+# GitHub's runners.
 
 # ARM64 Windows runs x64 programs too; an x64 machine cannot run ARM64 ones.
 $hostIsArm = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64'
 
-if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command dumpbin -ErrorAction SilentlyContinue)) {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (-not $vs) { throw 'Visual Studio 2022 or later with the C++ tools is required.' }
