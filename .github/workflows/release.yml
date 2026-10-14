@@ -31,7 +31,7 @@ jobs:
   # whose version was not bumped (scripts/release-version.ts). A dry run takes the version from
   # CMakeLists.txt alone.
   version:
-    name: version
+    name: release-version
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.check.outputs.version }}
@@ -56,7 +56,7 @@ jobs:
   # macOS minimum; on Windows, each binary's machine type and no Visual C++ runtime DLLs. Windows
   # builds on ARM64, which runs the x64 build's own steps too (they load the plugin they built).
   macos:
-    name: macos
+    name: release-macos
     needs: version
     runs-on: macos-15
     steps:
@@ -75,7 +75,7 @@ jobs:
           if-no-files-found: error
 
   windows:
-    name: windows
+    name: release-windows
     needs: version
     runs-on: windows-11-arm
     steps:
@@ -97,7 +97,7 @@ jobs:
 
   # From a tag only: the checksums, the attestation and the draft release.
   release:
-    name: release
+    name: release-draft
     if: github.ref_type == 'tag'
     needs: [version, macos, windows]
     runs-on: ubuntu-24.04
