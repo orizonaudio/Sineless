@@ -95,26 +95,27 @@ describe.each(allFormatters)("%s", (_, formatValue) => {
   });
 });
 
-// Values that round to zero from below show no negative zero, in the formatters whose values can
-// be negative: a Compare offset of a track a hair early, a time or project time just before zero,
-// a level or gain just under 0 dB. (Sample counts, frequencies and the reference pitch are never
-// negative.)
-const signedFormatters = {
-  formatOffset,
-  formatSeconds,
-  formatClock,
-  formatDb: format.formatDb,
-  formatDbValue: format.formatDbValue,
-  formatGain,
-};
-describe.each(Object.entries(signedFormatters))(
-  "%s near zero",
-  (_, formatValue) => {
-    test.each([0, -0, -1e-9, -0.0004])("is readable at %s", (value) => {
-      expectReadable(formatValue(value));
-    });
-  },
+// Values that round to zero from below show no negative zero, in every formatter whose values
+// can be negative: a Compare offset of a track a hair early, a time or project time just before
+// zero, a level or gain just under 0 dB. Taken from the module, so a new formatter is checked
+// unless it is named here as one whose values are never negative.
+const neverNegative = new Set([
+  "formatSamples",
+  "formatFrequency",
+  "formatPitch",
+]);
+const signedFormatters = allFormatters.filter(
+  ([name]) => !neverNegative.has(name),
 );
+test("finds the signed formatters", () => {
+  expect(signedFormatters.length).toBeGreaterThanOrEqual(6);
+});
+describe.each(signedFormatters)("%s near zero", (_, formatValue) => {
+  test.each([0, -0, -1e-9, -0.0004])("is readable at %s", (value) => {
+    expectReadable(formatValue(value));
+  });
+});
+
 // And values that do not round to zero keep a true minus.
 test.each([
   [formatOffset, -0.42, `${minus}0.42 ms`],
