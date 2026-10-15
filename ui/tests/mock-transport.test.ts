@@ -316,6 +316,7 @@ describe("mock back end", () => {
     transport.requestFrame();
     const frame = frames.at(-1);
     expect(frame?.visibleSamples).toBe(960);
+    expect(frame?.sampleRate).toBe(96000);
     // Kick 2 is 1.3 ms late: 125 samples at 96 kHz.
     expect(frame?.comparison?.matches[3]?.offset).toBe(125);
   });

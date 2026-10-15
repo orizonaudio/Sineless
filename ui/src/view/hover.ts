@@ -42,7 +42,6 @@ export interface HoverContext {
   readonly overlaid: number;
   readonly layout: ViewLayout;
   readonly view: ViewWindow;
-  readonly sampleRate: number;
   readonly a4: number;
   // Seconds mode: the span rolls, so times count back from now.
   readonly roll: boolean;
@@ -270,7 +269,8 @@ export function hoverReadout(
   x: number,
   y: number,
 ): HoverReadout | undefined {
-  const { frame, traces, sampleRate } = context;
+  const { frame, traces } = context;
+  const { sampleRate } = frame; // The rate of the audio shown.
   const covered = frame.viewEnd - frame.viewStart;
   if (traces.length === 0 || covered <= 0 || sampleRate <= 0) {
     return undefined;

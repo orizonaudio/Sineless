@@ -219,7 +219,6 @@ export class OscilloscopeApp {
   // The pointer over the traces, as fractions of the screen, for the hover readout.
   private hover: { x: number; y: number } | undefined;
   private levelCursors: LevelPair | undefined;
-  private sampleRate = 48000;
   // The Compare view: the fix preview, and the lane labels' readouts of each compared track (by
   // lane index) and of the sum, updated in place.
   private previewFix = false;
@@ -912,14 +911,14 @@ export class OscilloscopeApp {
     const comparison = frame?.comparison;
     this.matchNodes.forEach((node, index) => {
       const match = comparison?.matches[index];
-      if (node === undefined || match === undefined) {
+      if (node === undefined || match === undefined || frame === undefined) {
         return;
       }
       if (Number.isNaN(match.correlation)) {
         node.textContent = "—"; // They never sound together: nothing measured.
         return;
       }
-      const offsetMs = (match.offset / this.sampleRate) * 1000;
+      const offsetMs = (match.offset / frame.sampleRate) * 1000;
       const alignment = match.related
         ? `${formatOffset(offsetMs)}${match.inverted ? " Ø" : ""}`
         : "unrelated";
@@ -951,7 +950,7 @@ export class OscilloscopeApp {
     }
     const covered = frame.viewEnd - frame.viewStart;
     const spanSeconds =
-      covered > 0 ? frame.visibleSamples / this.sampleRate / covered : 0;
+      covered > 0 ? frame.visibleSamples / frame.sampleRate / covered : 0;
     return musicalGrid(
       frame.cycleStart,
       frame.spanQuarterNotes,
@@ -1209,7 +1208,6 @@ export class OscilloscopeApp {
       overlaid,
       layout: this.layout(),
       view: this.view,
-      sampleRate: this.sampleRate,
       a4: this.store.number("concertPitch"),
       roll: frame.roll,
     };
@@ -1297,10 +1295,10 @@ export class OscilloscopeApp {
         ...cursorReadout(
           measure(
             this.timeCursors,
-            spanSamples / this.sampleRate,
+            spanSamples / frame.sampleRate,
             frame.synced ? frame.spanQuarterNotes : undefined,
           ),
-          this.sampleRate,
+          frame.sampleRate,
           this.store.number("concertPitch"),
         ),
       );
@@ -1667,7 +1665,6 @@ export class OscilloscopeApp {
     });
     this.backend.on("snapshot", (message) => {
       element("message").hidden = true;
-      this.sampleRate = message.sampleRate;
       this.inputChannels = message.inputChannels;
       this.showSetting("channelViews", this.store.get("channelViews"));
       this.drawScreen();

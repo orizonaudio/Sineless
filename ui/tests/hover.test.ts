@@ -43,6 +43,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     panReach: 0,
     invalidSamples: 0,
     invalidLanes: 0,
+    sampleRate,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,
@@ -68,7 +69,6 @@ function context(
     overlaid: 0,
     layout: ViewLayout.overlaid,
     view: extra.view ?? fullView,
-    sampleRate,
     a4: 440,
     roll: extra.roll ?? false,
   };
@@ -206,7 +206,6 @@ describe("hover readout", () => {
         overlaid: 0,
         layout: ViewLayout.overlaid,
         view: fullView,
-        sampleRate,
         a4: 440,
         roll: false,
       },
@@ -240,7 +239,6 @@ describe("hover readout", () => {
         overlaid: 0,
         layout: ViewLayout.stacked,
         view: fullView,
-        sampleRate,
         a4: 440,
         roll: false,
       },
@@ -252,6 +250,18 @@ describe("hover readout", () => {
     expect(readout?.bottom).toBeCloseTo(2 / 3, 6);
   });
 
+  test("times the frame at the rate it carries, not the host's", () => {
+    // The same 480 samples as above, held at 96 kHz: 5 ms of 4 cycles, 800 Hz.
+    const values = sine(480, 4);
+    const readout = hoverReadout(
+      context(rawFrame(values, { sampleRate: 96000 }), values),
+      150 / 480,
+      0.5,
+    );
+    expect(readout?.lines[2]).toBe("1.25 ms · 120.0 samples");
+    expect(readout?.lines[3]).toMatch(/^≈ 800\.0 Hz/u);
+  });
+
   test("marks the point and cycle as screen positions, clipped to the view", () => {
     const values = sine(480, 4);
     const context = {
@@ -260,7 +270,6 @@ describe("hover readout", () => {
       overlaid: 0,
       layout: ViewLayout.overlaid,
       view: { start: 0.3, end: 0.8 },
-      sampleRate,
       a4: 440,
       roll: false,
     };
@@ -291,7 +300,6 @@ describe("hover readout", () => {
         overlaid: 0,
         layout: ViewLayout.overlaid,
         view: fullView,
-        sampleRate,
         a4: 440,
         roll: false,
       },
@@ -319,7 +327,6 @@ describe("hover readout", () => {
         overlaid: 0,
         layout: ViewLayout.overlaid,
         view: fullView,
-        sampleRate,
         a4: 440,
         roll: false,
       },
@@ -402,7 +409,7 @@ describe("hover readout", () => {
     ).toBeUndefined();
     expect(
       hoverReadout(
-        { ...context(rawFrame(values), values), sampleRate: 0 },
+        context(rawFrame(values, { sampleRate: 0 }), values),
         0.5,
         0.5,
       ),

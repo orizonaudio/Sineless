@@ -3218,7 +3218,10 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     // Another rate, whose capture keeps its size: the host changed it without preparing again.
     const double otherRate = c.rate == 44100.0 ? 48000.0 : 44100.0;
     session.own().setSampleRate(otherRate);
-    EXPECT_TRUE(session.produce()) << "a new sample rate";
+    const auto newRate = session.produce();
+    ASSERT_TRUE(newRate) << "a new sample rate";
+    EXPECT_EQ(newRate->sampleRate, static_cast<float>(otherRate))
+        << "the page times it at the new rate";
     EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
     if (c.mode != DisplayMode::kSingle) {
         for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
@@ -3300,6 +3303,8 @@ TEST_P(FrozenRateChange, KeepsTheHeldPictureAndItsTimes)
         session.analyzer().redraw();
         ASSERT_TRUE(session.analyzer().produce(after)) << "no frame drawn again";
         EXPECT_EQ(after, before) << "the held picture or its times changed with the rate";
+        EXPECT_EQ(decode(after).sampleRate, static_cast<float>(c.rate))
+            << "the page times the held audio at the rate it was recorded at";
     }
 }
 

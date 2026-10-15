@@ -43,6 +43,8 @@ struct FrameHeaderValues
     // Samples not finite: how many in what the readouts measure, and a bit per lane holding any.
     std::uint32_t invalidSamples = 0;
     std::uint32_t invalidLanes = 0;
+    // The rate of the audio shown (frozen, the one it was held at), for the frame's times.
+    float sampleRate = 0.0f;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,

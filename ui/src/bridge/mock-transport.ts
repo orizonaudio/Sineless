@@ -594,6 +594,7 @@ export class MockTransport implements Transport {
         triggered: !roll && !synced,
         frozen: this.frozenAt !== undefined,
         panReach: this.panReach(),
+        sampleRate: this.sampleRate,
         roll,
         synced,
         cursor,
