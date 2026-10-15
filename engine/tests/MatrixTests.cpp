@@ -3219,14 +3219,29 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     const double otherRate = c.rate == 44100.0 ? 48000.0 : 44100.0;
     session.own().setSampleRate(otherRate);
     EXPECT_TRUE(session.produce()) << "a new sample rate";
+    EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
     if (c.mode != DisplayMode::kSingle) {
-        EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
         for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
             if (member.engine.get() != &session.own()) {
                 member.engine->setSampleRate(otherRate);
             }
         }
         EXPECT_TRUE(session.produce()) << "another track's new sample rate";
+        EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
+    }
+
+    // Frozen, the picture is the audio held: a format changing meanwhile is not redrawn at
+    // display rate. (Frozen Beats lanes place their held audio at the track's current rate, so a
+    // new rate may redraw them once.)
+    session.analyzer().setFrozen(true);
+    (void)session.produce();
+    ASSERT_FALSE(session.analyzer().produce(bytes)) << "frozen, nothing has changed";
+    session.own().setInputChannels(2);
+    EXPECT_FALSE(session.analyzer().produce(bytes)) << "frozen, a track's channels changed";
+    session.own().setSampleRate(c.rate);
+    (void)session.analyzer().produce(bytes);
+    for (int request = 0; request < 5; ++request) {
+        EXPECT_FALSE(session.analyzer().produce(bytes)) << "frozen, request " << request;
     }
 }
 
