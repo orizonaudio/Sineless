@@ -2425,7 +2425,14 @@ TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
             configure(session.own(), mode, TimeBase::kSeconds);
             session.own().settings().set(SettingId::kTimeSpan, 2.0);
             session.play(played, 0.01);
-            for (int again = 0; again < 2; ++again) { // The second frame, the roll stands still.
+            // The first frame shows newly arrived audio; the second redraws the roll as it
+            // stands, from its kept columns: a setting changes, no audio arrives.
+            for (int again = 0; again < 2; ++again) {
+                if (again == 0) {
+                    session.play(0.01);
+                } else {
+                    session.own().settings().set(SettingId::kVerticalScale, -6.0);
+                }
                 const auto frame = session.produce();
                 ASSERT_TRUE(frame) << "no frame";
                 ASSERT_TRUE(frame->has(FrameFlag::kRoll));
@@ -2442,8 +2449,7 @@ TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
             session.join({.frequency = 1500.0});
             configure(session.own(), mode, TimeBase::kSeconds);
             session.own().settings().set(SettingId::kTimeSpan, 0.2);
-            session.play(played, 0.01);
-            ASSERT_TRUE(session.produce()) << "no live frame";
+            session.play(played, 0.01); // Its last frame shows the newest audio live.
             session.analyzer().setFrozen(true);
             const auto whole = session.produce();
             ASSERT_TRUE(whole) << "no frozen frame";
@@ -3033,6 +3039,89 @@ TEST_P(ZoomedMatch, FindsTheCopyInTheView)
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, ZoomedMatch, ::testing::ValuesIn(zoomedCompareCases()),
                          modeTestName);
+
+// Seconds mode draws a new frame only when something it shows can have changed: new audio on
+// any track shown, a setting, the view. The page asks for frames at display rate, so with the
+// transport stopped, or a host that has stopped processing, every frame drawn would be the last
+// one again. In every display mode and trigger mode, triggered and rolling.
+struct IdleCase
+{
+    DisplayMode mode;
+    protocol::TriggerMode trigger;
+    double span;
+};
+
+std::vector<IdleCase> idleCases()
+{
+    std::vector<IdleCase> cases;
+    for (const DisplayMode mode : everyMode()) {
+        for (const auto trigger : {protocol::TriggerMode::kAuto, protocol::TriggerMode::kNormal,
+                                   protocol::TriggerMode::kFree}) {
+            for (const double span : {0.2, 2.0}) {
+                cases.push_back({.mode = mode, .trigger = trigger, .span = span});
+            }
+        }
+    }
+    return cases;
+}
+
+class SecondsIdle : public ::testing::TestWithParam<IdleCase>
+{
+};
+
+TEST_P(SecondsIdle, DrawsNothingNewWithoutNewAudio)
+{
+    const IdleCase c = GetParam();
+    Session session(48000.0, 2);
+    // Tones around 0, so that the trigger at level 0 finds their edges. Two other tracks, both
+    // compared in Compare, so that a search can wait for audio to space it by.
+    session.join({.frequency = 1000.0, .offset = 0.0});
+    session.join({.frequency = 1500.0, .offset = 0.0});
+    session.join({.frequency = 2000.0, .offset = 0.0});
+    configure(session.own(), c.mode, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTriggerMode, static_cast<double>(c.trigger));
+    session.own().settings().set(SettingId::kTimeSpan, c.span);
+    std::vector<std::uint64_t> others;
+    for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+        if (member.engine.get() != &session.own()) {
+            others.push_back(member.serial);
+        }
+    }
+    session.analyzer().setCompared(others);
+    session.play(3.0, 0.05);
+    (void)session.produce(); // The last of the audio played.
+
+    std::vector<std::byte> bytes;
+    for (int request = 0; request < 20; ++request) {
+        EXPECT_FALSE(session.analyzer().produce(bytes)) << "request " << request;
+    }
+    session.own().settings().set(SettingId::kVerticalScale, -6.0);
+    EXPECT_TRUE(session.produce()) << "a setting changed";
+    EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
+    // A zoom draws once; in Compare it also makes the matches due, which with no audio to space
+    // their searches by must not keep drawing.
+    session.analyzer().setView(0.25, 0.75);
+    EXPECT_TRUE(session.produce()) << "the view changed";
+    for (int request = 0; request < 20; ++request) {
+        EXPECT_FALSE(session.analyzer().produce(bytes)) << "after the zoom, request " << request;
+    }
+    // A window that ends at the newest audio shows a track processed after this one fill in.
+    if (c.mode != DisplayMode::kSingle &&
+        (c.trigger == protocol::TriggerMode::kFree || c.span > 1.0)) {
+        session.lead(1, 480);
+        EXPECT_TRUE(session.produce()) << "another track's newest audio, arriving after this one's";
+    }
+    session.play(0.05);
+    EXPECT_TRUE(session.produce()) << "new audio";
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, SecondsIdle, ::testing::ValuesIn(idleCases()),
+                         [](const ::testing::TestParamInfo<IdleCase>& info) {
+                             const auto trigger = static_cast<std::size_t>(info.param.trigger);
+                             return modeName(info.param.mode) + "_" +
+                                    std::string(protocol::kTriggerModeNames.at(trigger)) +
+                                    (info.param.span > 1.0 ? "_Rolling" : "_Triggered");
+                         });
 
 } // namespace
 } // namespace orizon::engine

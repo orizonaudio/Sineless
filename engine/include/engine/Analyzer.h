@@ -288,6 +288,10 @@ private:
     bool isFrozen = false;
     std::optional<Window> lastLive;
     std::optional<Window> lastShown;
+    // Seconds mode, live: the capture end of this track and of each lane shown, now and when the
+    // last frame was drawn. A frame with the same ends and the same inputs would be the same.
+    std::vector<std::uint64_t> liveEnds;
+    std::vector<std::uint64_t> lastLiveEnds;
     std::optional<Settings> lastSettings;
     std::size_t lastColumns = 0;
     double lastPan = 0.0;
