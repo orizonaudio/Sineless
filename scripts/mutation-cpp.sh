@@ -42,7 +42,9 @@ if ! command -v mull-runner-18 > /dev/null; then
         { echo "Needs mull-runner-18 (Mull for Clang 18) or Docker." >&2; exit 1; }
     docker build -q -t sineless-mutation-cpp tools/mutation > /dev/null
     # The build stays in a volume of its own: Linux objects have no place in the host's build/.
-    exec docker run --rm -v "$root":/src -v sineless-mutation-cpp:/src/build/mutation-cpp -w /src \
+    # MUTANT_TIMEOUT goes in with the run, when set.
+    exec docker run --rm -e MUTANT_TIMEOUT -v "$root":/src \
+        -v sineless-mutation-cpp:/src/build/mutation-cpp -w /src \
         sineless-mutation-cpp scripts/mutation-cpp.sh ${args[@]+"${args[@]}"}
 fi
 
