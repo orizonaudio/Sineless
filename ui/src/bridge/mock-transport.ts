@@ -37,7 +37,7 @@ export const mockSampleRate = 48000;
 export const mockFundamental = 220;
 // The simulated transport: 120 BPM in 4/4.
 export const mockTempo = 120;
-const mockBarQuarterNotes = 4;
+export const mockBarQuarterNotes = 4;
 
 function signal(channel: "left" | "right", time: number): number {
   const phase = 2 * Math.PI * mockFundamental * time;
