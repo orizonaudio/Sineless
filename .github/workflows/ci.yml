@@ -1,8 +1,10 @@
 name: CI
 
 # Every pull request, every merge-queue entry and every push to main runs the same checks; the
-# ruleset on main requires the jobs below except "fuzz" and "performance". Actions are pinned to
-# commits, so a moved tag cannot change what runs.
+# ruleset on main requires the jobs below except "fuzz" and "performance". A change to
+# documentation only skips them: a skipped job satisfies the ruleset and the queue, where a job
+# that never started would block them. Actions are pinned to commits, so a moved tag cannot
+# change what runs.
 on:
   pull_request:
   merge_group:
@@ -20,8 +22,50 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Whether anything but documentation changed (scripts/changed-code.ts). Each event is compared
+  # with what it builds on: a pull request with its base, a queue entry with the entry before it
+  # (whose own run built everything before), a push with the commit before it. Anything that
+  # cannot be compared, a run by hand included, counts as code. The jobs below skip only when this
+  # job has answered "documentation only"; if it fails, they all run.
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+          QUEUE_HEAD: ${{ github.event.merge_group.head_sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          case "$EVENT" in
+            pull_request) range="$PR_BASE...$PR_HEAD" ;;
+            merge_group) range="$QUEUE_BASE..$QUEUE_HEAD" ;;
+            push) range="$BEFORE..$AFTER" ;;
+            *) range="" ;;
+          esac
+          code=$(node scripts/changed-code.ts "$range")
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [[ "$code" == false ]]; then
+            echo "Documentation only; the builds and tests are skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   typescript:
     name: typescript
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,6 +90,8 @@ jobs:
   # the VST3 SDK: the fast signal, and the tier contributors without a Mac or Windows can run.
   linux:
     name: linux
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,7 +116,8 @@ jobs:
   # fuzzed the same code, and another minute of random inputs there would find little more.
   fuzz:
     name: fuzz
-    if: github.event_name != 'merge_group'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name != 'merge_group' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -98,6 +145,8 @@ jobs:
   # RealtimeSanitizer, ThreadSanitizer and AddressSanitizer builds, pluginval and the TypeScript.
   macos:
     name: macos
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: macos-15
     env:
       SKIP_PERFORMANCE: 1
@@ -126,6 +175,10 @@ jobs:
   # pluginval (x64) and the TypeScript.
   windows:
     name: windows-${{ matrix.arch }}
+    needs: changes
+    # Skipped as a whole, a matrix job reports one check under its unexpanded name, and the
+    # required windows-x64 and windows-arm64 never would: its steps are skipped instead.
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -140,21 +193,27 @@ jobs:
       SKIP_PERFORMANCE: 1
       SKIP_FORMAT: 1
       SKIP_APP_TESTS: 1
+      CODE: ${{ needs.changes.outputs.code != 'false' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - if: env.CODE == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.CODE == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - if: env.CODE == 'true'
+        run: npm ci
       # The images' WebView2 runtime is old and never updated (and leaks handles that the current
       # one does not); users' runtimes update themselves, so the checks run on the current one.
-      - name: Install the current WebView2 runtime
+      - if: env.CODE == 'true'
+        name: Install the current WebView2 runtime
         shell: powershell
         run: |
           Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile installwebview.exe
           Start-Process -Wait installwebview.exe -ArgumentList '/silent', '/install'
-      - name: Run the checks
+      - if: env.CODE == 'true'
+        name: Run the checks
         shell: powershell
         run: scripts/check.ps1
 
@@ -164,7 +223,8 @@ jobs:
   # run in the merge queue, so it does not slow merging.
   coverage:
     name: coverage
-    if: github.event_name != 'merge_group'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name != 'merge_group' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -197,7 +257,8 @@ jobs:
   # failure, and not required; pull requests only, as it measures what they change.
   mutation:
     name: mutation
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -229,7 +290,8 @@ jobs:
   # within the job's 90.
   mutation-cpp:
     name: mutation-cpp
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -262,7 +324,8 @@ jobs:
   # the merge queue, so it does not slow merging.
   performance:
     name: performance-${{ matrix.os }}
-    if: github.event_name != 'merge_group'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name != 'merge_group' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
