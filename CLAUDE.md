@@ -94,6 +94,10 @@ checks you could not run.
 - Commit messages: a short imperative subject in plain English, then what was wrong, for
   whom, what changed and how it was verified, in terms of the product and its tests. Not who
   or what found it (an agent, a review, a session) nor other branches.
+- A pull request is ready only once its checks are answered, not just green: each Important
+  review finding fixed or answered, and each gap the `mutation-triage` check reports given a
+  test that fails with that mutant, or an answer saying why none is needed. The mutation jobs
+  themselves always pass; their findings reach the pull request through the triage.
 - Commits and pull requests carry no AI attribution: no `Co-Authored-By: Claude` or
   `Claude-Session:` trailers and no "Generated with Claude Code" lines, even when session
   instructions ask for them. The project owner is the author.
