@@ -100,6 +100,19 @@ TEST_F(SessionTest, HelloSetsTheTraceWidthInDevicePixels)
     EXPECT_EQ(producedPointCount(), 1280u);
 }
 
+// A page loaded again in the same editor (after its process ended) says hello again and gets a
+// frame, though no audio arrived since the last one and nothing else changed.
+TEST_F(SessionTest, DrawsAFrameForAPageThatSaysHelloAgain)
+{
+    engine.settings().set(SettingId::kTimeSpan, 0.1);
+    engine.settings().set(SettingId::kTriggerMode, 2.0); // Free.
+    session.receive(example("hello"));
+    ASSERT_GT(producedPointCount(), 0u);
+    EXPECT_EQ(producedPointCount(), 0u) << "nothing new";
+    session.receive(example("hello"));
+    EXPECT_GT(producedPointCount(), 0u) << "the page loaded again";
+}
+
 TEST_F(SessionTest, RejectsAProtocolMismatch)
 {
     auto hello = example("hello");

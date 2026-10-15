@@ -299,6 +299,12 @@ void Analyzer::setPreviewFix(bool on)
     commands.previewFix = on;
 }
 
+void Analyzer::redraw()
+{
+    const std::scoped_lock lock(commandMutex);
+    ++commands.redraws;
+}
+
 void Analyzer::arm()
 {
     const std::scoped_lock lock(commandMutex);
@@ -934,6 +940,7 @@ void Analyzer::rememberInputs(const Settings& settings, const Commands& command,
     lastFrozen = isFrozen;
     lastLaneSet = laneSetId;
     lastPreviewFix = command.previewFix;
+    lastRedraws = command.redraws;
 }
 
 bool Analyzer::inputsChanged(const Settings& settings, const Commands& command,
@@ -942,7 +949,8 @@ bool Analyzer::inputsChanged(const Settings& settings, const Commands& command,
     return settings != lastSettings || command.columns != lastColumns ||
            command.panSeconds != lastPan || isFrozen != lastFrozen ||
            command.viewStart != lastViewStart || command.viewEnd != lastViewEnd ||
-           laneSetId != lastLaneSet || command.previewFix != lastPreviewFix;
+           laneSetId != lastLaneSet || command.previewFix != lastPreviewFix ||
+           command.redraws != lastRedraws;
 }
 
 bool Analyzer::placeLanes(const Settings& settings, protocol::BeatSpan span)

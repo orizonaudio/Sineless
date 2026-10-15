@@ -101,6 +101,9 @@ public:
     // previews the fix. Until set, the group's first other track is compared.
     void setCompared(std::vector<std::uint64_t> ids);
     void setPreviewFix(bool on);
+    // Draws the frame again at the next request, whatever has changed: for a page that has just
+    // loaded (or loaded again after its process ended) and has no frame yet.
+    void redraw();
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
     bool produce(std::vector<std::byte>& frame);
@@ -123,6 +126,7 @@ private:
         double viewEnd = 1.0;
         std::optional<std::vector<std::uint64_t>> compared;
         bool previewFix = false;
+        std::uint64_t redraws = 0;
     };
 
     // The last window shown while live, which a freeze holds on to.
@@ -317,6 +321,7 @@ private:
     // the compared lanes' visible samples, as recorded and as fixed, for the gains.
     bool comparing = false;
     bool lastPreviewFix = false;
+    std::uint64_t lastRedraws = 0;
     std::vector<std::pair<const SampleSource*, std::uint64_t>> laneSources;
     RollColumns sumRoll;
     std::vector<float> sumSamples;
