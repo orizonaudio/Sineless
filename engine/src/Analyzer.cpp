@@ -1145,7 +1145,8 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     }
 
     // Lanes share the own track's window and length (see sharedLength). A lane whose sweep is
-    // further off (its own tempo or span differs) is drawn silent until it matches.
+    // further off (its own tempo or span differs, or frozen, it was held at another rate) is drawn
+    // silent until it matches.
     const SweepWindow& window = *shown;
     const std::uint64_t count = own.image.length();
     const double shownPart = subEnd - subStart;
@@ -1377,11 +1378,16 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         const MusicalStamp clock = isFrozen ? lane.hold.clock() : lane.engine->timeline().latest();
         const SampleSource* source =
             isFrozen ? static_cast<const SampleSource*>(&lane.hold) : &lane.engine->captureRing();
-        // Frozen, the lane's audio is placed at the rate it was held at.
-        const double laneRate = isFrozen ? lane.hold.sampleRate() : sampleRate;
-        return {source,
-                static_cast<std::uint64_t>(std::max(
-                    std::round(Timeline::sampleIndexAt(clock, startQuarterNotes, laneRate)), 0.0))};
+        // Frozen, a lane held at another rate than this track's audio (first held after the host
+        // changed it) holds none of this window's samples: it is drawn silent from the end of its
+        // hold, as a Beats lane on another sweep length is.
+        if (isFrozen && lane.hold.sampleRate() != sampleRate) {
+            return {source, lane.hold.endIndex()};
+        }
+        return {
+            source,
+            static_cast<std::uint64_t>(std::max(
+                std::round(Timeline::sampleIndexAt(clock, startQuarterNotes, sampleRate)), 0.0))};
     };
     // A whole roll window falls into columns on fixed sample indices: each lane keeps its columns
     // and reduces only the new ones.
