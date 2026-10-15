@@ -425,10 +425,29 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     const double spanSeconds = settings.value(SettingId::kTimeSpan);
     const double span = spanSeconds * sampleRate;
     const bool roll = isRollSpan(spanSeconds);
-    // Other lanes, or other tracks compared, change the frame too.
+    // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown
+    // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
+    // at display rate, also when the transport is stopped or the host has stopped processing.
+    const bool live = !synced && !isFrozen;
+    if (live) {
+        liveEnds.clear();
+        liveEnds.push_back(engine.captureRing().endIndex());
+        if (multi) {
+            for (const std::uint64_t serial : laneOrder) {
+                liveEnds.push_back(lanes.at(serial)->engine->captureRing().endIndex());
+            }
+        }
+    }
+    const bool newAudio = !live || liveEnds != lastLiveEnds;
+    // Other lanes, or other tracks compared, change the frame too. A match still to search does
+    // only when its search can run: live with the transport playing, searches are spaced by audio,
+    // so without new audio none would, and the frame drawn would be the same.
     const std::uint32_t laneSetId = multi ? laneSet().id : 0;
-    const bool changed =
-        inputsChanged(settings, command, laneSetId) || (comparing && matchesPending);
+    const bool changed = inputsChanged(settings, command, laneSetId) ||
+                         (comparing && matchesPending && (newAudio || searchAtOnce));
+    if (live && !changed && !newAudio && lastShown && !lastShown->synced) {
+        return false;
+    }
 
     Window window{.span = span, .roll = roll};
     auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
@@ -581,6 +600,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     }
     if (!isFrozen) {
         lastLive = window;
+        lastLiveEnds = liveEnds;
     }
     lastShown = window;
     rememberInputs(settings, command, laneSetId);
