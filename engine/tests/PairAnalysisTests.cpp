@@ -278,6 +278,32 @@ TEST(PairAnalysis, LeavesOutTracksBelowTheSilenceFloor)
     EXPECT_TRUE(analyse(noise(8), delayed(noise(8), 20)).measured);
 }
 
+// Tracks that meet only far below the loudest moment do not sound together: this track plays
+// loud, then fades 70 dB, and the other is an inverted copy of that faint tail alone. Both are
+// above the analysis gate there, yet a verdict from near-silence is no verdict: nothing measured.
+TEST(PairAnalysis, LeavesOutWhereTracksMeetOnlyFarBelowTheLoudest)
+{
+    constexpr float kTail = 3.16e-4f; // -70 dB.
+    auto a = noise(12);
+    std::vector<float> b(kLength, 0.0f);
+    for (std::size_t i = kLength / 2; i < kLength; ++i) {
+        a[i] *= kTail; // About -80 dBFS: above the analysis gate (kAnalysisGateDbfs).
+        b[i] = -a[i];
+    }
+    const PairAnalysis result = analyse(a, b);
+    EXPECT_FALSE(result.measured);
+    EXPECT_FALSE(result.related);
+    EXPECT_FALSE(result.inverted) << "nothing to fix";
+
+    // The same tail at full level is compared, and found inverted: only its level left it out.
+    auto loud = noise(12);
+    std::vector<float> loudCopy(kLength, 0.0f);
+    for (std::size_t i = kLength / 2; i < kLength; ++i) {
+        loudCopy[i] = -loud[i];
+    }
+    EXPECT_TRUE(analyse(loud, loudCopy).inverted);
+}
+
 TEST(PairAnalysis, JudgesABriefTrackWhereItPlays)
 {
     // Four seconds of one track; the other, a late copy, plays only in the first 0.2 s.
