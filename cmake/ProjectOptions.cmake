@@ -4,6 +4,11 @@ if(MSVC)
     # /utf-8: sources are UTF-8. /permissive-: standard conformance. /Zc:__cplusplus: the real
     # standard version in __cplusplus.
     target_compile_options(orizon_warnings INTERFACE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    # /fp:precise: the VST3 SDK's CMake adds /fp:fast to every target, ours included, and an
+    # optimised build may then assume there is no NaN or infinity, which the engine measures
+    # around and sends for "no value". The last /fp option wins, and a target's own options come
+    # after the directory's.
+    target_compile_options(orizon_warnings INTERFACE /fp:precise)
 else()
     target_compile_options(orizon_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
 

@@ -3,6 +3,7 @@
 #include "EngineRegistry.h"
 #include "PluginIds.h"
 #include "engine/InstanceRegistry.h"
+#include "engine/PreciseFloatingPoint.h"
 #include "engine/State.h"
 #include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
