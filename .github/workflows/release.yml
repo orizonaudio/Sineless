@@ -54,9 +54,9 @@ jobs:
           }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  # Each zip is built and checked by its packaging script, as by hand: both architectures and the
-  # macOS minimum; on Windows, each binary's machine type and no Visual C++ runtime DLLs. Windows
-  # builds on ARM64, which runs the x64 build's own steps too (they load the plugin they built).
+  # Each zip is built and checked by its packaging script, as by hand: on macOS both architectures
+  # and the minimum macOS; on Windows, x64 (ARM64 is not built for now), the binary's machine type
+  # and no Visual C++ runtime DLLs.
   macos:
     name: release-macos
     needs: version
@@ -79,7 +79,7 @@ jobs:
   windows:
     name: release-windows
     needs: version
-    runs-on: windows-11-arm
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

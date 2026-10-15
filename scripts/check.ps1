@@ -4,7 +4,8 @@
 # which shares all of this code.
 #
 # Environment:
-#   PRESETS   Windows presets to build, comma-separated (default: windows-x64,windows-arm64)
+#   PRESETS   Windows presets to build, comma-separated (default: windows-x64; ARM64 is not
+#             built for now, but windows-arm64 can be given)
 #   LLVM_BIN  Directory with clang-format (default: C:\Program Files\LLVM\bin)
 #   RUN_BENCH 1 to run the audio benchmark here; it runs by default on GitHub's machines only,
 #             since its limit means something on real x64 hardware alone (not under emulation)
@@ -15,7 +16,7 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
-$presets = if ($env:PRESETS) { $env:PRESETS -split ',' } else { @('windows-x64', 'windows-arm64') }
+$presets = if ($env:PRESETS) { $env:PRESETS -split ',' } else { @('windows-x64') }
 $llvmBin = if ($env:LLVM_BIN) { $env:LLVM_BIN } else { 'C:\Program Files\LLVM\bin' }
 
 function Step($name) { Write-Host "`n==> $name" }

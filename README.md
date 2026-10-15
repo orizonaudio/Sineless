@@ -20,7 +20,7 @@ An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its trac
 ## Requirements
 
 - macOS 13.1 or later, on Apple silicon or Intel.
-- Or Windows 10 or later, x64 or ARM64, with the Microsoft Edge WebView2 Runtime.
+- Or Windows 10 or later, x64, with the Microsoft Edge WebView2 Runtime. On Windows on Arm, use an x64 host (or REAPER's ARM64EC build, which loads x64 plugins).
 - A host that loads VST3 plugins, such as Ableton Live, Cubase, REAPER, Bitwig Studio or Studio One. See [HOSTS.md](HOSTS.md) for the hosts tested so far.
 
 For the multi-track lanes to line up, put Sineless last on each track.
