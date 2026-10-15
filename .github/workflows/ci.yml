@@ -398,9 +398,10 @@ jobs:
   # Mutation testing of the engine lines a pull request changes (scripts/mutation-cpp.sh), with
   # Mull for the runner's Clang 18: a report in the job summary, with warnings on the lines whose
   # changes no engine test notices. Never a failure, and not required; nothing is built when no
-  # engine source changed. Each mutant runs the tests up to their first failure, a few minutes at
-  # most, or 300 s for one that hangs a test (MUTANT_TIMEOUT), on every core. The script stops a
-  # run at 75 minutes, within the job's 90.
+  # engine source changed. Each mutant runs the tests up to their first failure, and is stopped at
+  # 300 s (MUTANT_TIMEOUT) if it hangs one; the summary says how long the tests take unmutated, and
+  # warns when that is more than half the limit, as a mutant no test notices would then be reported
+  # as timed out. On every core; the script stops a run at 75 minutes, within the job's 90.
   mutation-cpp:
     name: mutation-cpp
     needs: changes
