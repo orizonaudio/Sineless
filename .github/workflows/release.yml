@@ -2,7 +2,9 @@ name: Release
 
 # Pushing a tag vX.Y.Z builds the release zips on GitHub's runners and creates a draft release
 # for them, with notes generated from the merged pull requests, a SHA-256 checksum of each zip
-# and a build provenance attestation (`gh attestation verify <zip> --repo orizonaudio/Sineless`).
+# and a build provenance attestation, both in GitHub's attestation store and as a release asset
+# (Sineless-<version>.intoto.jsonl), so that a download can be verified from the files alone:
+# `gh attestation verify <zip> --repo orizonaudio/Sineless --bundle Sineless-<version>.intoto.jsonl`.
 # The draft is published by hand, once the zips pass the host protocol in HOSTS.md; see
 # "Releasing" in CONTRIBUTING.md. Run by hand, or on a pull request that changes this workflow or
 # the scripts it runs, it is a dry run: it builds and checks both zips and keeps them as the
@@ -113,6 +115,8 @@ jobs:
           merge-multiple: true
       - name: Checksums
         working-directory: dist
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           sha256sum Sineless-*.zip > SHA256SUMS.txt
           {
@@ -121,8 +125,18 @@ jobs:
             echo '```'
             cat SHA256SUMS.txt
             echo '```'
+            echo
+            echo '### Build provenance'
+            echo
+            echo "Each zip's build is attested by this repository's release workflow. To check a download"
+            echo "against it, with the \`Sineless-$VERSION.intoto.jsonl\` asset:"
+            echo
+            echo '```'
+            echo "gh attestation verify Sineless-$VERSION-macOS.zip --repo orizonaudio/Sineless --bundle Sineless-$VERSION.intoto.jsonl"
+            echo '```'
           } > ../checksums.md
-      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      - id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/Sineless-*.zip
       - name: Draft release
@@ -131,7 +145,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.version.outputs.version }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: |
+          # The attestation as an asset too, named as provenance (.intoto.jsonl), which OpenSSF
+          # Scorecard's Signed-Releases check looks for.
+          cp "$BUNDLE" "dist/Sineless-$VERSION.intoto.jsonl"
           gh release create "$TAG" --repo "$REPOSITORY" --draft --verify-tag \
             --title "Sineless $VERSION" --generate-notes --notes-file checksums.md \
-            dist/Sineless-*.zip dist/SHA256SUMS.txt
+            dist/Sineless-*.zip dist/SHA256SUMS.txt "dist/Sineless-$VERSION.intoto.jsonl"
