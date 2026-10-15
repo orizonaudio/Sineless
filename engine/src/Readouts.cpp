@@ -1,6 +1,7 @@
 #include "engine/Readouts.h"
 
 #include "engine/BlockStats.h"
+#include "engine/PreciseFloatingPoint.h"
 #include "engine/Trigger.h"
 #include "protocol/Protocol.h"
 
