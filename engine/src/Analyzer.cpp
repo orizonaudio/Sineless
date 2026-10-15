@@ -434,24 +434,32 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown
     // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
     // at display rate, also when the transport is stopped or the host has stopped processing.
-    const bool live = !synced && !isFrozen;
-    if (live) {
+    // A track turning mono, or a new sample rate with the same capture size, change it too.
+    const bool liveSeconds = !synced && !isFrozen;
+    if (liveSeconds) {
         liveEnds.clear();
-        liveEnds.push_back(engine.captureRing().endIndex());
+        liveFormats.clear();
+        const auto addSource = [&](const Engine& source) {
+            liveEnds.push_back(source.captureRing().endIndex());
+            liveFormats.push_back(static_cast<std::uint64_t>(source.inputChannels()));
+            liveFormats.push_back(std::bit_cast<std::uint64_t>(source.sampleRate()));
+        };
+        addSource(engine);
         if (multi) {
             for (const std::uint64_t serial : laneOrder) {
-                liveEnds.push_back(lanes.at(serial)->engine->captureRing().endIndex());
+                addSource(*lanes.at(serial)->engine);
             }
         }
     }
-    const bool newAudio = !live || liveEnds != lastLiveEnds;
+    const bool newAudio = !liveSeconds || liveEnds != lastLiveEnds;
+    const bool newFormat = liveSeconds && liveFormats != lastLiveFormats;
     // Other lanes, or other tracks compared, change the frame too. A match still to search does
     // only when its search can run: live with the transport playing, searches are spaced by audio,
     // so without new audio none would, and the frame drawn would be the same.
     const std::uint32_t laneSetId = multi ? laneSet().id : 0;
-    const bool changed = inputsChanged(settings, command, laneSetId) ||
+    const bool changed = inputsChanged(settings, command, laneSetId) || newFormat ||
                          (comparing && matchesPending && (newAudio || searchAtOnce));
-    if (live && !changed && !newAudio && lastShown && !lastShown->synced) {
+    if (liveSeconds && !changed && !newAudio && lastShown && !lastShown->synced) {
         return false;
     }
 
@@ -607,6 +615,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     if (!isFrozen) {
         lastLive = window;
         lastLiveEnds = liveEnds;
+        lastLiveFormats = liveFormats;
     }
     lastShown = window;
     rememberInputs(settings, command, laneSetId);

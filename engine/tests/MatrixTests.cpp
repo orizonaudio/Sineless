@@ -3111,8 +3111,26 @@ TEST_P(SecondsIdle, DrawsNothingNewWithoutNewAudio)
         session.lead(1, 480);
         EXPECT_TRUE(session.produce()) << "another track's newest audio, arriving after this one's";
     }
+    // A track that turns mono shows other views, here or in its lane, with no new audio.
+    std::shared_ptr<Engine> other;
+    for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+        if (member.engine.get() != &session.own()) {
+            other = member.engine;
+        }
+    }
+    session.own().setInputChannels(1);
+    EXPECT_TRUE(session.produce()) << "this track turned mono";
+    EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
+    if (c.mode != DisplayMode::kSingle) {
+        other->setInputChannels(1);
+        EXPECT_TRUE(session.produce()) << "another track turned mono";
+    }
     session.play(0.05);
     EXPECT_TRUE(session.produce()) << "new audio";
+    // A new sample rate whose capture has the same size keeps the audio, and changes its times.
+    ASSERT_FALSE(session.analyzer().produce(bytes));
+    session.own().setSampleRate(44100.0);
+    EXPECT_TRUE(session.produce()) << "a new sample rate";
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, SecondsIdle, ::testing::ValuesIn(idleCases()),
