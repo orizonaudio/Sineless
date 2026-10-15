@@ -104,8 +104,10 @@ template <typename Sample> void expectBitExactPassThrough(int32 numChannels, boo
         deallocations = counter.deallocations();
     }
     ASSERT_EQ(result, kResultOk);
-    EXPECT_EQ(allocations, 0u) << "process() must not allocate";
-    EXPECT_EQ(deallocations, 0u) << "process() must not deallocate";
+    if (testing::kCountsAllocations) {
+        EXPECT_EQ(allocations, 0u) << "process() must not allocate";
+        EXPECT_EQ(deallocations, 0u) << "process() must not deallocate";
+    }
 
     using Bits = std::conditional_t<sizeof(Sample) == sizeof(uint64_t), uint64_t, uint32_t>;
     const auto channelCount = static_cast<size_t>(numChannels);

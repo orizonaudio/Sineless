@@ -225,6 +225,9 @@ TEST(Timeline, KeepsTheMeterWhenTheHostSendsNoValidOne)
 
 TEST(Timeline, AdvanceDoesNotAllocate)
 {
+    if (!testing::kCountsAllocations) {
+        GTEST_SKIP() << "ThreadSanitizer's build counts no allocations (AllocationCounter.h)";
+    }
     Timeline timeline;
     std::size_t operations = 0;
     {
