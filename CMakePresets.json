@@ -426,7 +426,8 @@
         }
       },
       "execution": {
-        "jobs": 4
+        "jobs": 4,
+        "noTestsAction": "error"
       }
     },
     {
@@ -436,7 +437,8 @@
         "outputOnFailure": true
       },
       "execution": {
-        "jobs": 4
+        "jobs": 4,
+        "noTestsAction": "error"
       },
       "filter": {
         "include": {
@@ -479,6 +481,9 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     },
     {
@@ -568,7 +573,8 @@
         "rhs": "Linux"
       },
       "execution": {
-        "jobs": 4
+        "jobs": 4,
+        "noTestsAction": "error"
       }
     },
     {
@@ -588,7 +594,8 @@
         "rhs": "Linux"
       },
       "execution": {
-        "jobs": 4
+        "jobs": 4,
+        "noTestsAction": "error"
       }
     },
     {
