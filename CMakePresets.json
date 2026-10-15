@@ -79,6 +79,24 @@
       }
     },
     {
+      "name": "windows-x64-glue",
+      "displayName": "Windows x64 glue: the editor's web view tests under AddressSanitizer",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build/windows-x64-glue",
+      "cacheVariables": {
+        "ORIZON_ADDRESS_SANITIZER": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
       "name": "windows-arm64",
       "displayName": "Windows ARM64, with tests",
       "architecture": {
@@ -246,6 +264,17 @@
       "name": "windows-x64",
       "configurePreset": "windows-x64",
       "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-x64-glue",
+      "configurePreset": "windows-x64-glue",
+      "configuration": "Release",
+      "targets": ["editor_tests"],
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -429,6 +458,27 @@
       },
       "execution": {
         "jobs": 4
+      }
+    },
+    {
+      "name": "windows-x64-glue",
+      "configurePreset": "windows-x64-glue",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^EditorTest\\."
+        }
+      },
+      "environment": {
+        "ASAN_OPTIONS": "halt_on_error=1:windows_fast_fail_on_error=1"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     },
     {

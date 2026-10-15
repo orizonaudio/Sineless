@@ -248,10 +248,10 @@ jobs:
       - run: npm ci
       - run: scripts/check.sh
 
-  # Everything scripts\check.ps1 checks except the performance limit and the format, on x64:
-  # build, all C++ tests including the editor's in a real WebView2, the VST3 validator, and
-  # pluginval. The TypeScript is the typescript job's. ARM64 is not built for now (the
-  # windows-arm64 presets stay, to bring it back).
+  # scripts\check.ps1's main part except the performance limit and the format, on x64: build,
+  # all C++ tests including the editor's in a real WebView2, the VST3 validator, and pluginval.
+  # The TypeScript is the typescript job's. ARM64 is not built for now (the windows-arm64 presets
+  # stay, to bring it back).
   windows:
     name: windows-x64
     needs: changes
@@ -261,6 +261,47 @@ jobs:
     runs-on: windows-2022
     env:
       PRESETS: windows-x64
+      CHECKS: main
+      SKIP_PERFORMANCE: 1
+      SKIP_FORMAT: 1
+      SKIP_APP_TESTS: 1
+      SKIP_TYPESCRIPT: 1
+      CODE: ${{ needs.changes.outputs.code != 'false' }}
+    steps:
+      - if: env.CODE == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.CODE == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - if: env.CODE == 'true'
+        run: npm ci
+      # The images' WebView2 runtime is old and never updated (and leaks handles that the current
+      # one does not); users' runtimes update themselves, so the checks run on the current one.
+      - if: env.CODE == 'true'
+        name: Install the current WebView2 runtime
+        shell: powershell
+        run: |
+          Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile installwebview.exe
+          Start-Process -Wait installwebview.exe -ArgumentList '/silent', '/install'
+      - if: env.CODE == 'true'
+        name: Run the checks
+        shell: powershell
+        run: scripts/check.ps1
+
+  # scripts\check.ps1's glue part: the Windows editor's web view tests (WebView2, Win32) under
+  # MSVC's AddressSanitizer. In parallel with the main job.
+  windows-glue:
+    name: windows-x64-glue
+    needs: changes
+    # Skipped as a whole, the job would never report the required windows-x64-glue check: its
+    # steps are skipped instead.
+    if: ${{ !cancelled() }}
+    runs-on: windows-2022
+    env:
+      PRESETS: windows-x64
+      CHECKS: glue
       SKIP_PERFORMANCE: 1
       SKIP_FORMAT: 1
       SKIP_APP_TESTS: 1

@@ -73,7 +73,7 @@ is how to meet it the first time.
 | Coverage (Linux) | `cmake --preset coverage && cmake --build --preset coverage && scripts/coverage.sh origin/main` |
 | Everything on macOS | `scripts/check.sh` (format, build, tests, pluginval, performance; the macOS glue's sanitizers and lint; the Linux checks in Docker). `CHECKS="main glue"` skips the Linux part |
 | The shared code's sanitizers and clang-tidy (Linux, or Docker on macOS) | `scripts/check-linux.sh [asan\|tsan\|rtsan\|lint]` |
-| Windows | `scripts\check.ps1`, preset `windows-x64` (ARM64 is not built for now) |
+| Windows | `scripts\check.ps1` (main: build, tests, pluginval; glue: the WebView2 editor tests under AddressSanitizer, preset `windows-x64-glue`), preset `windows-x64` (ARM64 is not built for now) |
 
 While iterating, build and run the tests a change touches; run `scripts/check.sh` (about half
 an hour) once, before opening a pull request.
