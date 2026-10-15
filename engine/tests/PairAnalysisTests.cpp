@@ -295,13 +295,18 @@ TEST(PairAnalysis, LeavesOutWhereTracksMeetOnlyFarBelowTheLoudest)
     EXPECT_FALSE(result.related);
     EXPECT_FALSE(result.inverted) << "nothing to fix";
 
-    // The same tail at full level is compared, and found inverted: only its level left it out.
-    auto loud = noise(12);
-    std::vector<float> loudCopy(kLength, 0.0f);
+    // The same tail 50 dB down, nearer than 60 dB to the loudest and still above the gate, is
+    // compared and found inverted: only how far below the loudest it was left it out.
+    constexpr float kNearerTail = 3.16e-3f; // -50 dB.
+    auto nearer = noise(12);
+    std::vector<float> nearerCopy(kLength, 0.0f);
     for (std::size_t i = kLength / 2; i < kLength; ++i) {
-        loudCopy[i] = -loud[i];
+        nearer[i] *= kNearerTail;
+        nearerCopy[i] = -nearer[i];
     }
-    EXPECT_TRUE(analyse(loud, loudCopy).inverted);
+    const PairAnalysis compared = analyse(nearer, nearerCopy);
+    EXPECT_TRUE(compared.measured);
+    EXPECT_TRUE(compared.inverted);
 }
 
 TEST(PairAnalysis, JudgesABriefTrackWhereItPlays)
