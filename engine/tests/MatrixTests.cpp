@@ -3123,5 +3123,48 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, SecondsIdle, ::testing::ValuesIn(idleCases()
                                     (info.param.span > 1.0 ? "_Rolling" : "_Triggered");
                          });
 
+// A page that has just loaded, or loaded again after its process ended, has no frame: asked to,
+// the engine draws the last frame again although nothing changed, live and frozen, in every
+// display mode and time base.
+class Redraw : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(Redraw, DrawsTheFrameAgainForANewPage)
+{
+    const ModeCase c = GetParam();
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        Session session(c.rate, c.channels);
+        session.join({.frequency = 1000.0, .offset = 0.0});
+        session.join({.frequency = 1500.0, .offset = 0.0});
+        configure(session.own(), c.mode, c.timeBase);
+        session.play(2.0, 0.05);
+        session.analyzer().setFrozen(frozen);
+        (void)session.produce();
+        std::vector<std::byte> bytes;
+        ASSERT_FALSE(session.analyzer().produce(bytes)) << "nothing has changed";
+        session.analyzer().redraw();
+        EXPECT_TRUE(session.analyzer().produce(bytes)) << "asked to draw again";
+        EXPECT_FALSE(session.analyzer().produce(bytes)) << "once";
+    }
+}
+
+std::vector<ModeCase> redrawCases()
+{
+    std::vector<ModeCase> cases;
+    for (const DisplayMode mode : everyMode()) {
+        for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+            cases.push_back({.rate = 48000.0,
+                             .mode = mode,
+                             .channels = 2,
+                             .timeBase = static_cast<TimeBase>(timeBase)});
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, Redraw, ::testing::ValuesIn(redrawCases()), modeTestName);
+
 } // namespace
 } // namespace orizon::engine

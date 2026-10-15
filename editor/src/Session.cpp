@@ -143,6 +143,7 @@ void Session::hello(const nlohmann::json& message)
         return;
     }
     setViewport(message);
+    analyzer.redraw(); // The page has no frame yet, whether or not anything changed.
     sendSnapshot();
     lastLaneSet = 0;
     isStarted = true;
