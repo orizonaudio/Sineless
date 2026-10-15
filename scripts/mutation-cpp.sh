@@ -15,6 +15,8 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/build/mutation-cpp-report"
 cd "$root"
+# Passed on to the run in Docker, as ${args[@]+...}: macOS's bash 3.2 calls an empty array
+# unbound under set -u.
 args=("$@")
 base=""
 files=()
@@ -41,7 +43,7 @@ if ! command -v mull-runner-18 > /dev/null; then
     docker build -q -t sineless-mutation-cpp tools/mutation > /dev/null
     # The build stays in a volume of its own: Linux objects have no place in the host's build/.
     exec docker run --rm -v "$root":/src -v sineless-mutation-cpp:/src/build/mutation-cpp -w /src \
-        sineless-mutation-cpp scripts/mutation-cpp.sh "${args[@]}"
+        sineless-mutation-cpp scripts/mutation-cpp.sh ${args[@]+"${args[@]}"}
 fi
 
 rm -rf "$out"
