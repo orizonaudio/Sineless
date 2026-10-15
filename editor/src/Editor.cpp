@@ -22,12 +22,14 @@ constexpr std::chrono::milliseconds kStateSyncInterval{100};
 
 bool isSupportedPlatform(FIDString type)
 {
-#ifdef _WIN32
-    const FIDString kPlatformType = kPlatformTypeHWND;
+#if defined(_WIN32)
+    return type != nullptr && std::strcmp(type, kPlatformTypeHWND) == 0;
+#elif defined(__APPLE__)
+    return type != nullptr && std::strcmp(type, kPlatformTypeNSView) == 0;
 #else
-    const FIDString kPlatformType = kPlatformTypeNSView;
+    (void)type;
+    return false; // No editor on Linux (src/linux/PlatformLinux.cpp).
 #endif
-    return type != nullptr && std::strcmp(type, kPlatformType) == 0;
 }
 
 } // namespace

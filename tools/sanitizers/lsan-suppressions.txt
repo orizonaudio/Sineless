@@ -1,0 +1,6 @@
+# LeakSanitizer suppressions (LSAN_OPTIONS=suppressions=..., set by the Linux presets). Third-party
+# code only: a leak in Sineless's own code is never suppressed here.
+
+# The VST3 SDK's test registry (public.sdk/source/vst/utility/testing.cpp) keeps the validator's
+# self-tests until the process ends and never frees them.
+leak:Steinberg::Vst::registerTest

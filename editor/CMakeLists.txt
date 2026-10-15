@@ -42,6 +42,8 @@ elseif(WIN32)
     target_sources(editor PRIVATE src/win/DisplayScaleWin.cpp src/win/UiDispatcherWin.cpp
                                   src/win/WebViewWin.cpp)
     target_link_libraries(editor PRIVATE webview2 shlwapi shell32 ole32)
+else()
+    target_sources(editor PRIVATE src/linux/PlatformLinux.cpp) # Built for the checks; no editor.
 endif()
 
 if(BUILD_TESTING)
@@ -62,6 +64,8 @@ if(BUILD_TESTING)
         set_source_files_properties(tests/EditorTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     elseif(WIN32)
         target_sources(editor_tests PRIVATE tests/EditorTestsWin.cpp)
+    else()
+        target_sources(editor_tests PRIVATE tests/EditorTestsLinux.cpp)
     endif()
     # The editor tests run alone, though the other tests run in parallel: on Windows every
     # process's views share one WebView2 browser process, which some tests end on purpose, and a
