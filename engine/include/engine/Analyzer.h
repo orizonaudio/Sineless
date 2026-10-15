@@ -296,6 +296,9 @@ private:
     // last frame was drawn. A frame with the same ends and the same inputs would be the same.
     std::vector<std::uint64_t> liveEnds;
     std::vector<std::uint64_t> lastLiveEnds;
+    // And their channel counts and sample rates, which are inputs too.
+    std::vector<std::uint64_t> liveFormats;
+    std::vector<std::uint64_t> lastLiveFormats;
     std::optional<Settings> lastSettings;
     std::size_t lastColumns = 0;
     double lastPan = 0.0;
