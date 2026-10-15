@@ -1,6 +1,10 @@
+#include "SampleRates.h"
 #include "editor/Session.h"
 
 #include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -221,6 +225,73 @@ TEST_F(SessionTest, SendsTheSnapshotAgainWhenTheAudioFormatChanges)
     ASSERT_EQ(transport.ofType("snapshot").size(), 2u);
     EXPECT_EQ(transport.ofType("snapshot")[1]["inputChannels"], 1);
 }
+
+// The host changes the sample rate or the track's channels with no new audio, as when it has
+// stopped processing: the page gets a frame for the new format, not only a snapshot, or it keeps
+// the old rate's times (visibleSamples) or a stereo track's views on a mono one.
+struct FormatCase
+{
+    double rate = 48000.0;
+    int channels = 2;
+};
+
+class SessionFormat : public SessionTest, public ::testing::WithParamInterface<FormatCase>
+{
+};
+
+TEST_P(SessionFormat, DrawsAFrameForANewFormatWithoutNewAudio)
+{
+    const FormatCase c = GetParam();
+    constexpr double kSpan = 0.1;
+    engine.settings().set(SettingId::kTimeSpan, kSpan);
+    engine.settings().set(SettingId::kTriggerMode, 2.0); // Free.
+    session.receive(example("hello"));
+    std::vector<std::byte> frame;
+    ASSERT_TRUE(analyzer.produce(frame));
+    const auto stereoViews = std::to_integer<std::uint8_t>(frame.at(FrameHeader::kViewsOffset));
+    ASSERT_FALSE(analyzer.produce(frame)) << "nothing new";
+
+    transport.messages.clear();
+    engine.prepare(c.rate);
+    engine.setInputChannels(c.channels);
+    session.sync();
+    ASSERT_EQ(transport.ofType("snapshot").size(), 1u);
+    ASSERT_TRUE(analyzer.produce(frame)) << "a frame for the new format";
+    // The span in samples at the new rate, to within a column; the rates differ by 9 % or more.
+    float visible = 0.0f;
+    std::memcpy(&visible, frame.data() + FrameHeader::kVisibleSamplesOffset, sizeof(visible));
+    EXPECT_NEAR(visible, kSpan * c.rate, 0.01 * kSpan * c.rate);
+    const auto views = std::to_integer<std::uint8_t>(frame.at(FrameHeader::kViewsOffset));
+    if (c.channels == 1) {
+        EXPECT_NE(views, stereoViews) << "a mono track shows its one channel";
+    } else {
+        EXPECT_EQ(views, stereoViews);
+    }
+}
+
+std::vector<FormatCase> formatChanges()
+{
+    std::vector<FormatCase> cases;
+    // A rate whose capture has another size empties it, leaving nothing to draw until audio
+    // arrives; the others keep the audio shown.
+    for (const double rate : engine::kSampleRates) {
+        if (engine::CaptureRing::capacityFor(rate) != engine::CaptureRing::capacityFor(48000.0)) {
+            continue;
+        }
+        for (const int channels : {1, 2}) {
+            if (rate != 48000.0 || channels != 2) { // The format the fixture starts with.
+                cases.push_back({.rate = rate, .channels = channels});
+            }
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryFormat, SessionFormat, ::testing::ValuesIn(formatChanges()),
+                         [](const ::testing::TestParamInfo<FormatCase>& info) {
+                             return std::to_string(static_cast<int>(info.param.rate)) + "Hz_" +
+                                    (info.param.channels == 1 ? "Mono" : "Stereo");
+                         });
 
 // The multi-track view's lanes reach the page once, and again whenever they change.
 TEST_F(SessionTest, ReportsTheMultiTrackLanes)

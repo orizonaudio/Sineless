@@ -55,7 +55,7 @@ if(BUILD_TESTING)
     target_compile_definitions(editor_tests
         PRIVATE ORIZON_PROTOCOL_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data")
     target_include_directories(editor_tests PRIVATE src)
-    target_link_libraries(editor_tests PRIVATE editor orizon_warnings GTest::gtest_main)
+    target_link_libraries(editor_tests PRIVATE editor engine_test_support orizon_warnings GTest::gtest_main)
     if(APPLE)
         target_sources(editor_tests PRIVATE tests/EditorTests.mm)
         target_link_libraries(editor_tests PRIVATE "-framework Cocoa" "-framework WebKit")
