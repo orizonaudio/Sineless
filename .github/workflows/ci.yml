@@ -398,9 +398,9 @@ jobs:
   # Mutation testing of the engine lines a pull request changes (scripts/mutation-cpp.sh), with
   # Mull for the runner's Clang 18: a report in the job summary, with warnings on the lines whose
   # changes no engine test notices. Never a failure, and not required; nothing is built when no
-  # engine source changed. Each mutant runs the tests up to their first failure: about 100 s at
-  # most, or 300 s for one that hangs a test, on every core. The script stops a run at 75 minutes,
-  # within the job's 90.
+  # engine source changed. Each mutant runs the tests up to their first failure, a few minutes at
+  # most, or 300 s for one that hangs a test (MUTANT_TIMEOUT), on every core. The script stops a
+  # run at 75 minutes, within the job's 90.
   mutation-cpp:
     name: mutation-cpp
     needs: changes
@@ -422,6 +422,7 @@ jobs:
         continue-on-error: true
         env:
           BASE: origin/${{ github.base_ref }}
+          MUTANT_TIMEOUT: 300
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: scripts/mutation-cpp.sh "$BASE"
       - name: Report

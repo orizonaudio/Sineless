@@ -90,16 +90,18 @@ MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --preset mutation > "$out/conf
 MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --build --preset mutation
 echo "$stamp" > build/mutation-cpp/settings.sha256
 start=$SECONDS
-# A full run of the tests takes about 5 minutes in this build (Mull's instrumentation, in Docker on
-# macOS); a mutant may hang one, which then ends at 15 minutes. A run against a base, as on CI,
-# stops after 75 minutes, so that CI's 90-minute limit never cancels the job; a run over the whole
-# engine is not limited.
+# A full run of the tests takes about 5 minutes in this build in Docker on macOS (Mull's
+# instrumentation) and less on CI; a mutant may hang one, which then ends after MUTANT_TIMEOUT
+# seconds (default 900; CI sets 300, its runs being faster). A run against a base, as on CI, stops
+# after 75 minutes, so that CI's 90-minute limit never cancels the job; a run over the whole engine
+# is not limited.
 limit=()
 if [[ -n "$base" ]]; then
     limit=(timeout 75m)
 fi
 status=0
-MULL_CONFIG="$config" "${limit[@]}" mull-runner-18 --workers "$(nproc)" --timeout 900000 \
+mutantTimeout=$((${MUTANT_TIMEOUT:-900} * 1000))
+MULL_CONFIG="$config" "${limit[@]}" mull-runner-18 --workers "$(nproc)" --timeout "$mutantTimeout" \
     --reporters Elements --report-dir "$out" --report-name mull \
     build/mutation-cpp/engine/engine_tests --gtest_fail_fast > "$out/mull.log" 2>&1 || status=$?
 if [[ -n "$base" ]] && ((status == 124)); then
