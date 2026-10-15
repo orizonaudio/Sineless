@@ -3184,5 +3184,42 @@ std::vector<ModeCase> redrawCases()
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, Redraw, ::testing::ValuesIn(redrawCases()), modeTestName);
 
+// With no new audio, as when the host has stopped, a track that turns mono or a new sample rate
+// whose capture keeps its size still changes what a live frame shows (its views, its times): in
+// every display mode and both time bases, each draws a frame.
+class FormatChange : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
+{
+    const ModeCase c = GetParam();
+    Session session(c.rate, c.channels);
+    session.join({.frequency = 1000.0, .offset = 0.0}); // This track.
+    session.join({.frequency = 1500.0, .offset = 0.0});
+    configure(session.own(), c.mode, c.timeBase);
+    session.play(2.0, 0.05);
+    (void)session.produce();
+    std::vector<std::byte> bytes;
+    ASSERT_FALSE(session.analyzer().produce(bytes)) << "nothing has changed";
+
+    session.own().setInputChannels(1);
+    EXPECT_TRUE(session.produce()) << "this track turned mono";
+    EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
+    if (c.mode != DisplayMode::kSingle) {
+        for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+            if (member.engine.get() != &session.own()) {
+                member.engine->setInputChannels(1);
+            }
+        }
+        EXPECT_TRUE(session.produce()) << "another track turned mono";
+        EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
+    }
+    session.own().setSampleRate(c.rate == 44100.0 ? 48000.0 : 44100.0);
+    EXPECT_TRUE(session.produce()) << "a new sample rate";
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, FormatChange, ::testing::ValuesIn(redrawCases()), modeTestName);
+
 } // namespace
 } // namespace orizon::engine
