@@ -76,6 +76,10 @@ npm ci
 cmake --preset linux && cmake --build --preset linux && ctest --preset linux
 ```
 
+## Bugs and ideas
+
+Report a bug or suggest a feature in [Issues](https://github.com/orizonaudio/Sineless/issues): for a bug, say which Sineless version, host and operating system, and what you did. Report a security problem privately instead, as [SECURITY.md](SECURITY.md) describes.
+
 ## Licence
 
 GPL-3.0. See [LICENSE](LICENSE).
