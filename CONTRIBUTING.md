@@ -8,7 +8,7 @@ Assign yourself to an issue before you start on it, and leave issues someone els
 
 Every change:
 
-- [ ] `scripts/check.sh` passes locally. CI runs it, `scripts\check.ps1` on Windows x64, and the Linux engine tests on every pull request that changes more than documentation (Markdown; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
+- [ ] `scripts/check.sh` passes locally. CI runs its parts as jobs of their own (the macOS main and glue jobs, the Linux checks), and `scripts\check.ps1` on Windows x64, on every pull request that changes more than documentation (Markdown; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
 - [ ] New or changed behaviour is covered by tests.
 - [ ] Code follows the naming conventions and is formatted and linted.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.
@@ -38,7 +38,7 @@ CI marks where each will run.
 | App | The real page against the mock back end, in WebKit and Chromium: controls, readouts, lanes, pan limits | `ui/tests/app`, `npm run test:app` | Every PR |
 | Contract | C++ and TypeScript agree on frames, messages and saved state | `protocol/tests/data`, `engine/tests/data` | Every PR |
 | Conformance | The VST3 rules hosts rely on | VST3 validator, pluginval at strictness 10 | Every PR |
-| Sanitizers | Real-time safety, data races, memory errors | RealtimeSanitizer, ThreadSanitizer, AddressSanitizer builds | Every PR |
+| Sanitizers | Real-time safety, data races, memory errors and leaks | The shared code on Linux (`scripts/check-linux.sh`): RealtimeSanitizer, ThreadSanitizer, AddressSanitizer with LeakSanitizer; the macOS editor's web view glue: AddressSanitizer, ThreadSanitizer | Every PR |
 | Fault injection | Failed and short reads, a page that never loads | `engine/tests`, `plugin/tests`, `editor/tests` | Every PR |
 | Performance | Audio-thread deadline, frame rate, CPU, memory | `scripts/performance.sh`, `scripts/performance.ps1` | Every PR, reported |
 | Soak | Memory growth and reopening over time | `scripts/soak.sh` | Before a release |

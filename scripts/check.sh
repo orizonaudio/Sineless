@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # Runs every check. Exits non-zero on the first failure.
 #
+# Three parts, all by default; CI runs each as a job of its own:
+#   main   format, build, tests, the VST3 validator, pluginval, performance, TypeScript
+#   glue   the macOS editor's web view tests under AddressSanitizer and ThreadSanitizer, and
+#          clang-tidy over the macOS sources
+#   linux  the shared code's checks, scripts/check-linux.sh (in Docker here)
+#
 # Environment:
+#   CHECKS    Parts to run, space-separated (default: "main glue linux")
 #   PRESET    CMake preset to use (default: dev-local if CMakeUserPresets.json exists, else dev)
 #   LLVM_BIN  Directory with clang-format and clang-tidy (default: Homebrew LLVM)
 #   SKIP_PERFORMANCE=1  Skip the performance limits (they need a logged-in desktop session)
@@ -26,6 +33,9 @@ pluginval="$toolsDir/pluginval.app/Contents/MacOS/pluginval"
 
 step() { printf '\n==> %s\n' "$1"; }
 
+checks=" ${CHECKS:-main glue linux} "
+part() { [[ "$checks" == *" $1 "* ]]; }
+
 step "Toolchain"
 nodeMajor="$(node -p 'process.versions.node.split(".")[0]')"
 if (( nodeMajor < 22 )); then
@@ -36,73 +46,73 @@ for tool in clang-format clang-tidy; do
     [[ -x "$LLVM_BIN/$tool" ]] || { echo "Missing $LLVM_BIN/$tool (brew install llvm)." >&2; exit 1; }
 done
 
-if [[ "${SKIP_FORMAT:-}" != 1 ]]; then
-    step "C++ format"
-    git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' |
-        xargs "$LLVM_BIN/clang-format" --dry-run --Werror
-fi
-
-step "C++ build (includes the VST3 validator)"
-cmake --preset "$PRESET"
-cmake --build --preset "$PRESET" -j "$(sysctl -n hw.ncpu)"
-
-step "C++ tests"
-ctest --preset "$PRESET" -j "$(sysctl -n hw.ncpu)"
-
-step "Real-time safety (RealtimeSanitizer build)"
-cmake --preset rtsan
-cmake --build --preset rtsan -j "$(sysctl -n hw.ncpu)"
-ctest --preset rtsan -j "$(sysctl -n hw.ncpu)"
-
-step "Concurrency (ThreadSanitizer build)"
-cmake --preset tsan
-cmake --build --preset tsan -j "$(sysctl -n hw.ncpu)"
-TSAN_OPTIONS=halt_on_error=1 ctest --preset tsan -j "$(sysctl -n hw.ncpu)"
-
-step "Memory errors (AddressSanitizer build)"
-cmake --preset asan
-cmake --build --preset asan -j "$(sysctl -n hw.ncpu)"
-ASAN_OPTIONS=halt_on_error=1 ctest --preset asan -j "$(sysctl -n hw.ncpu)"
-
-step "C++ lint"
-# clang-tidy cannot handle universal-binary commands (two -arch flags); lint the arm64 slice.
-mkdir -p build/lint
-sed 's/ -arch x86_64//g' "$buildDir/compile_commands.json" > build/lint/compile_commands.json
-# Windows-only sources need Windows headers: they are checked by the Windows build. Linux-only ones
-# are not built on macOS. The fuzzers build only in the Linux fuzz preset, whose CI job checks
-# them. One clang-tidy per core, a few files each; xargs fails if any of them does.
-git ls-files -co --exclude-standard -- 'engine/*.cpp' 'editor/*.cpp' 'editor/*.mm' 'plugin/*.cpp' \
-    ':!editor/src/win/*' ':!editor/tests/*Win.cpp' ':!editor/src/linux/*' ':!editor/tests/*Linux.cpp' ':!engine/tests/fuzz/*' |
-    xargs -P "$(sysctl -n hw.ncpu)" -n 4 \
-        "$LLVM_BIN/clang-tidy" -p build/lint --quiet --extra-arg="-isysroot$(xcrun --show-sdk-path)"
-
-step "pluginval"
-if [[ ! -x "$pluginval" ]]; then
-    mkdir -p "$toolsDir"
-    curl -sSL -o "$toolsDir/pluginval_macOS.zip" \
-        "https://github.com/Tracktion/pluginval/releases/download/$pluginvalVersion/pluginval_macOS.zip"
-    echo "$pluginvalSha256  $toolsDir/pluginval_macOS.zip" | shasum -a 256 -c -
-    unzip -oq "$toolsDir/pluginval_macOS.zip" -d "$toolsDir"
-fi
-"$pluginval" --strictness-level 10 --validate-in-process \
-    --validate "$buildDir/VST3/Debug/Sineless.vst3"
-
-if [[ "${SKIP_PERFORMANCE:-}" != 1 ]]; then
-    scripts/performance.sh
-fi
-
-if [[ "${SKIP_TYPESCRIPT:-}" != 1 ]]; then
-    step "TypeScript"
-    [[ -d node_modules ]] || npm ci
-    npm run typecheck
-    npm run lint
-    npm run format:check
-    npm test
-    if [[ "${SKIP_APP_TESTS:-}" != 1 ]]; then
-        npx playwright install webkit chromium
-        npm run test:app
+if part main; then
+    if [[ "${SKIP_FORMAT:-}" != 1 ]]; then
+        step "C++ format"
+        git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' |
+            xargs "$LLVM_BIN/clang-format" --dry-run --Werror
     fi
-    npm run build
+
+    step "C++ build (includes the VST3 validator)"
+    cmake --preset "$PRESET"
+    cmake --build --preset "$PRESET" -j "$(sysctl -n hw.ncpu)"
+
+    step "C++ tests"
+    ctest --preset "$PRESET" -j "$(sysctl -n hw.ncpu)"
+
+    step "pluginval"
+    if [[ ! -x "$pluginval" ]]; then
+        mkdir -p "$toolsDir"
+        curl -sSL -o "$toolsDir/pluginval_macOS.zip" \
+            "https://github.com/Tracktion/pluginval/releases/download/$pluginvalVersion/pluginval_macOS.zip"
+        echo "$pluginvalSha256  $toolsDir/pluginval_macOS.zip" | shasum -a 256 -c -
+        unzip -oq "$toolsDir/pluginval_macOS.zip" -d "$toolsDir"
+    fi
+    "$pluginval" --strictness-level 10 --validate-in-process \
+        --validate "$buildDir/VST3/Debug/Sineless.vst3"
+
+    if [[ "${SKIP_PERFORMANCE:-}" != 1 ]]; then
+        scripts/performance.sh
+    fi
+
+    if [[ "${SKIP_TYPESCRIPT:-}" != 1 ]]; then
+        step "TypeScript"
+        [[ -d node_modules ]] || npm ci
+        npm run typecheck
+        npm run lint
+        npm run format:check
+        npm test
+        if [[ "${SKIP_APP_TESTS:-}" != 1 ]]; then
+            npx playwright install webkit chromium
+            npm run test:app
+        fi
+        npm run build
+    fi
+fi
+
+if part glue; then
+    step "macOS glue: memory errors (AddressSanitizer build)"
+    cmake --preset asan
+    cmake --build --preset asan -j "$(sysctl -n hw.ncpu)"
+    ASAN_OPTIONS=halt_on_error=1 ctest --preset asan
+
+    step "macOS glue: concurrency (ThreadSanitizer build)"
+    cmake --preset tsan
+    cmake --build --preset tsan -j "$(sysctl -n hw.ncpu)"
+    TSAN_OPTIONS=halt_on_error=1 ctest --preset tsan
+
+    step "macOS glue: C++ lint"
+    # The macOS sources only; Linux lints the shared ones. With the AddressSanitizer build's
+    # commands: arm64 only (clang-tidy cannot handle a universal binary's two -arch flags), and
+    # its generated headers are built.
+    git ls-files -co --exclude-standard -- 'editor/src/mac/*' 'editor/tests/*.mm' |
+        xargs -P "$(sysctl -n hw.ncpu)" -n 4 \
+            "$LLVM_BIN/clang-tidy" -p build/asan --quiet --extra-arg="-isysroot$(xcrun --show-sdk-path)"
+fi
+
+if part linux; then
+    step "Linux: the shared code's checks"
+    scripts/check-linux.sh
 fi
 
 printf '\nAll checks passed.\n'

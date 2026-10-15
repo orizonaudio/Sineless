@@ -49,3 +49,13 @@ updates:
       - dependency-name: ubuntu
         update-types:
           ["version-update:semver-major", "version-update:semver-minor"]
+  # The Linux checks image's base, held at 24.04 as CI's runners are (ubuntu-24.04); moving both is
+  # made by hand.
+  - package-ecosystem: docker
+    directory: /tools/linux-checks
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: ubuntu
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
