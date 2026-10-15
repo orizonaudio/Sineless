@@ -9,6 +9,7 @@
     "vitest.config.ts",
     "vitest.mutation.config.ts",
     "vitest.unit.ts",
+    "scripts/changed-code.ts",
     "scripts/mutation-report.ts",
     "scripts/mutation-summary.ts",
     "scripts/release-version.ts",
