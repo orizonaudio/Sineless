@@ -8,7 +8,7 @@ Assign yourself to an issue before you start on it, and leave issues someone els
 
 Every change:
 
-- [ ] `scripts/check.sh` passes locally. CI runs it, `scripts\check.ps1` on Windows x64 and ARM64, and the Linux engine tests on every pull request that changes more than documentation (Markdown; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
+- [ ] `scripts/check.sh` passes locally. CI runs it, `scripts\check.ps1` on Windows x64, and the Linux engine tests on every pull request that changes more than documentation (Markdown; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
 - [ ] New or changed behaviour is covered by tests.
 - [ ] Code follows the naming conventions and is formatted and linted.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.

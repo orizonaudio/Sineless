@@ -172,26 +172,19 @@ jobs:
       - run: npm ci
       - run: scripts/check.sh
 
-  # Everything scripts\check.ps1 checks except the performance limit and the format, on x64 and
-  # on ARM64: build, all C++ tests including the editor's in a real WebView2, the VST3 validator,
-  # and pluginval (x64). The TypeScript is the typescript job's.
+  # Everything scripts\check.ps1 checks except the performance limit and the format, on x64:
+  # build, all C++ tests including the editor's in a real WebView2, the VST3 validator, and
+  # pluginval. The TypeScript is the typescript job's. ARM64 is not built for now (the
+  # windows-arm64 presets stay, to bring it back).
   windows:
-    name: windows-${{ matrix.arch }}
+    name: windows-x64
     needs: changes
-    # Skipped as a whole, a matrix job reports one check under its unexpanded name, and the
-    # required windows-x64 and windows-arm64 never would: its steps are skipped instead.
+    # Skipped as a whole, the job would never report the required windows-x64 check: its steps
+    # are skipped instead.
     if: ${{ !cancelled() }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: windows-2022
-          - arch: arm64
-            runner: windows-11-arm
+    runs-on: windows-2022
     env:
-      PRESETS: windows-${{ matrix.arch }}
+      PRESETS: windows-x64
       SKIP_PERFORMANCE: 1
       SKIP_FORMAT: 1
       SKIP_APP_TESTS: 1

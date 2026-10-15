@@ -1,5 +1,6 @@
-# Builds the Release bundle with x64 and ARM64 binaries and zips it for GitHub Releases. It has
-# no code signature.
+# Builds the Release bundle and zips it for GitHub Releases. It has no code signature. Only x64 is
+# built for now; adding 'arm64' to $architectures (and an ARM64 machine type below) brings ARM64
+# back, built on an ARM64 machine.
 #
 # Output: build\release\Sineless-<version>-Windows.zip
 $ErrorActionPreference = 'Stop'
@@ -8,7 +9,8 @@ Set-Location (Join-Path $PSScriptRoot '..')
 
 $bundle = 'build\release\Sineless.vst3'
 if (Test-Path $bundle) { Remove-Item -Recurse -Force $bundle }
-foreach ($arch in 'x64', 'arm64') {
+$architectures = @('x64')
+foreach ($arch in $architectures) {
     Run cmake --preset "windows-$arch"
     Run cmake --build --preset "windows-$arch-release" -- /m /nologo /v:minimal
     # Each build has its own Contents\<arch>-win folder; robocopy merges them into one bundle.
@@ -18,9 +20,9 @@ foreach ($arch in 'x64', 'arm64') {
 }
 $global:LASTEXITCODE = 0
 
-# Checks of C-2 on Windows: one binary per architecture, each of the right machine type, and
+# Checks of C-2 on Windows: one binary per architecture built, each of the right machine type, and
 # no dependency on the Visual C++ runtime DLLs, which users may not have.
-$machines = @{ 'x86_64-win' = 0x8664; 'arm64-win' = 0xAA64 }
+$machines = @{ 'x86_64-win' = 0x8664 }
 foreach ($folder in $machines.Keys) {
     $binary = "$bundle\Contents\$folder\Sineless.vst3"
     if (-not (Test-Path $binary)) { throw "Missing $binary" }
