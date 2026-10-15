@@ -3,8 +3,9 @@
 # (tools/mutation/mull.yml) and runs the tests once per mutant, each run stopping at the first test
 # that fails. A mutant no test fails on marks code that no test checks. With a base revision, only
 # the engine lines changed since it are mutated, as on a pull request (and nothing is built when
-# none changed); without one, all of engine/src and engine/include:
-#   scripts/mutation-cpp.sh [base revision, e.g. origin/main]
+# none changed); with --file, only the files named (an engine source or header each, repeatable);
+# with neither, all of engine/src and engine/include, about nine hours:
+#   scripts/mutation-cpp.sh [--file engine/src/Analyzer.cpp ...] [base revision, e.g. origin/main]
 # Mull needs the Clang it was built for: Ubuntu 24.04's Clang 18, as on CI. Where mull-runner-18 is
 # not installed (on macOS), the script runs itself in tools/mutation/Dockerfile's image.
 # A report, not a check: writes build/mutation-cpp-report/ (mull.json and summary.md, which also
@@ -13,8 +14,26 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/build/mutation-cpp-report"
-base="${1:-}"
 cd "$root"
+args=("$@")
+base=""
+files=()
+while (($#)); do
+    case "$1" in
+    --file)
+        if ! [[ $# -ge 2 && -f "$2" && "$2" =~ ^engine/(src|include)/ ]]; then
+            echo "--file needs an engine source or header, as engine/src/Analyzer.cpp." >&2
+            exit 1
+        fi
+        files+=("$2")
+        shift 2
+        ;;
+    *)
+        base="$1"
+        shift
+        ;;
+    esac
+done
 
 if ! command -v mull-runner-18 > /dev/null; then
     command -v docker > /dev/null ||
@@ -22,7 +41,7 @@ if ! command -v mull-runner-18 > /dev/null; then
     docker build -q -t sineless-mutation-cpp tools/mutation > /dev/null
     # The build stays in a volume of its own: Linux objects have no place in the host's build/.
     exec docker run --rm -v "$root":/src -v sineless-mutation-cpp:/src/build/mutation-cpp -w /src \
-        sineless-mutation-cpp scripts/mutation-cpp.sh "$base"
+        sineless-mutation-cpp scripts/mutation-cpp.sh "${args[@]}"
 fi
 
 rm -rf "$out"
@@ -41,6 +60,20 @@ if [[ -n "$base" ]]; then
     config="$out/mull.yml"
     { cat tools/mutation/mull.yml; echo "gitDiffRef: $from"; echo "gitProjectRoot: $root"; } \
         > "$config"
+fi
+if ((${#files[@]})); then
+    # The tests run only the mutants in the files named, from the same build: the run's own
+    # settings name just those files.
+    filtered="$out/mull-files.yml"
+    {
+        sed '/^includePaths:/,/^[a-zA-Z]/{/^includePaths:/d;/^  - /d;}' "$config"
+        echo "includePaths:"
+        for file in "${files[@]}"; do
+            # Single quotes: YAML reads backslashes in them as they are, regex escapes included.
+            printf "  - '.*/%s\$'\n" "${file//./\\.}"
+        done
+    } > "$filtered"
+    config="$filtered"
 fi
 
 # The mutants compiled in follow mull.yml and the Mull installed, which neither Ninja nor ccache
