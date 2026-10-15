@@ -9,6 +9,9 @@ namespace {
 
 TEST(AllocationCounter, CountsAllocationsAndDeallocationsInScope)
 {
+    if (!kCountsAllocations) {
+        GTEST_SKIP() << "ThreadSanitizer's build counts no allocations (AllocationCounter.h)";
+    }
     std::size_t allocations = 0;
     std::size_t deallocations = 0;
     {
@@ -27,6 +30,9 @@ TEST(AllocationCounter, CountsAllocationsAndDeallocationsInScope)
 
 TEST(AllocationCounter, IgnoresAllocationsOutsideScope)
 {
+    if (!kCountsAllocations) {
+        GTEST_SKIP() << "ThreadSanitizer's build counts no allocations (AllocationCounter.h)";
+    }
     std::size_t allocations = 0;
     {
         AllocationCounter counter;

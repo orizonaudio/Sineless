@@ -137,7 +137,9 @@ TEST(CaptureRing, StartsEmptyWhenResized)
             ring.write(pointers.data(), 2, static_cast<int>(size / 2));
             allocations = counter.allocations() + counter.deallocations();
         }
-        EXPECT_EQ(allocations, 0u);
+        if (testing::kCountsAllocations) {
+            EXPECT_EQ(allocations, 0u);
+        }
         EXPECT_EQ(ring.beginIndex(), 3000u);
         writeBlock(ring, 2, static_cast<int>(size));
         EXPECT_EQ(ring.beginIndex(), 3000u + size / 2) << "full again";
@@ -272,6 +274,9 @@ TEST(CaptureRing, ConvertsDoubleInputToFloat)
 
 TEST(CaptureRing, WriteDoesNotAllocate)
 {
+    if (!testing::kCountsAllocations) {
+        GTEST_SKIP() << "ThreadSanitizer's build counts no allocations (AllocationCounter.h)";
+    }
     CaptureRing ring(kSmallCapacity);
     std::vector<float> block(256, 0.5f);
     std::array<const float*, 2> pointers{block.data(), block.data()};

@@ -8,10 +8,14 @@
 
 namespace {
 
-thread_local bool counting = false;
+// Read by the replaced operators only, so unread under ThreadSanitizer.
+[[maybe_unused]] thread_local bool counting = false;
 thread_local std::size_t allocationCount = 0;
 thread_local std::size_t deallocationCount = 0;
 
+// The replaced operators' work, compiled with them (not under ThreadSanitizer, whose runtime's
+// operators would clash: AllocationCounter.h).
+#ifndef ORIZON_UNDER_THREAD_SANITIZER
 void* allocate(std::size_t size)
 {
     if (counting) {
@@ -62,6 +66,8 @@ void deallocateAligned(void* memory) noexcept
 #endif
 }
 
+#endif
+
 } // namespace
 
 namespace orizon::testing {
@@ -90,6 +96,7 @@ std::size_t AllocationCounter::deallocations() const
 
 } // namespace orizon::testing
 
+#ifndef ORIZON_UNDER_THREAD_SANITIZER
 void* operator new(std::size_t size)
 {
     return allocate(size);
@@ -154,3 +161,4 @@ void operator delete[](void* memory, std::size_t /*size*/, std::align_val_t /*al
 {
     deallocateAligned(memory);
 }
+#endif
