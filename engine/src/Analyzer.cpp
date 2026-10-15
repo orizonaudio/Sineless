@@ -947,9 +947,6 @@ Analyzer::Commands Analyzer::peekCommands()
     return commands;
 }
 
-// Whether anything that decides a frame, other than new audio, differs from the last frame's, and
-// recording them once a frame is made: one list for every mode and time base, read and written in
-// one place, so that a new input is never missed in one of them.
 // Live, the channel count and sample rate of this track and of each lane shown, against those
 // of the last frame drawn live: a track turning mono, or a new sample rate with the same capture
 // size, changes what a frame shows though no audio is new and no setting changed.
@@ -969,6 +966,9 @@ bool Analyzer::formatsChanged(bool multi)
     return liveFormats != lastLiveFormats;
 }
 
+// Whether anything that decides a frame, other than new audio, differs from the last frame's, and
+// recording them once a frame is made: one list for every mode and time base, read and written in
+// one place, so that a new input is never missed in one of them.
 void Analyzer::rememberInputs(const Settings& settings, const Commands& command,
                               std::uint32_t laneSetId)
 {
