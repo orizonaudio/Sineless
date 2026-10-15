@@ -684,17 +684,6 @@ protected:
         engine.settings().set(SettingId::kTriggerMode, 2.0); // Free: the newest span.
         engine.settings().set(SettingId::kChannelViews, 0b0001);
     }
-
-    void writeRamp(std::uint64_t count)
-    {
-        const std::uint64_t start = engine.captureRing().writeIndex();
-        std::vector<float> ramp(count);
-        for (std::uint64_t i = 0; i < count; ++i) {
-            ramp[i] = static_cast<float>(start + i);
-        }
-        std::array<const float*, 2> channels{ramp.data(), ramp.data()};
-        engine.captureRing().write(channels.data(), 2, static_cast<int>(count));
-    }
 };
 
 TEST_F(ZoomTest, RendersOnlyTheVisiblePartAsRawSamples)
