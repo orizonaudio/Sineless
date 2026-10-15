@@ -1,6 +1,7 @@
-# Weekly update pull requests for the npm packages and the GitHub Actions (which CI pins to
-# commits). The C++ dependencies are fetched by CMake at pinned versions; Dependabot cannot see
-# them, so cmake/Dependencies.cmake is updated by hand.
+# Weekly update pull requests for the npm packages, the GitHub Actions (which CI pins to commits)
+# and the mutation testing image's base (pinned by digest). The C++ dependencies are fetched by
+# CMake at pinned versions; Dependabot cannot see them, so cmake/Dependencies.cmake is updated by
+# hand.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -37,3 +38,14 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  # The mutation testing image's base: new digests of Ubuntu 24.04 only. Its Mull package is built
+  # for 24.04 and LLVM 18 (tools/mutation/install-mull.sh), and CI never builds this image, so a
+  # newer release would pass CI and break the mutation run on macOS; that move is made by hand.
+  - package-ecosystem: docker
+    directory: /tools/mutation
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: ubuntu
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
