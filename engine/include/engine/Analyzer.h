@@ -219,18 +219,20 @@ private:
     [[nodiscard]] std::uint32_t sumLaneBit(std::uint32_t laneBits) const;
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
+    // `sampleRate` is the rate of the audio shown: frozen, the one it was held at.
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,
-                     const Commands& command, std::vector<std::byte>& frame);
+                     double sampleRate, const Commands& command, std::vector<std::byte>& frame);
     // Seconds mode: the Compare frame of `window` (`sampleCount` samples from `start` of this
     // track, visible over [first, end), `rolling` on fixed column boundaries), from the lanes'
-    // sources in `laneSources`.
+    // sources in `laneSources`, whose audio is at `sampleRate`.
     void renderCompare(FrameHeaderValues header, const Window& window, std::uint64_t start,
                        std::uint64_t sampleCount, std::size_t first, std::size_t end, bool rolling,
-                       const Commands& command, std::vector<std::byte>& frame);
-    // `playhead` is the sweep's playhead as a screen position, where the newest audio is.
+                       double sampleRate, const Commands& command, std::vector<std::byte>& frame);
+    // `playhead` is the sweep's playhead as a screen position, where the newest audio is; the
+    // lanes' audio is at `sampleRate`.
     void appendComparison(FrameHeaderValues& header, std::size_t first, std::size_t end,
                           std::uint64_t count, std::size_t columns, bool previewFix,
-                          std::size_t playhead);
+                          std::size_t playhead, double sampleRate);
     // The compared track whose match to search this frame, as a lane index, if any.
     std::optional<std::size_t> matchToSearch(std::uint32_t laneSet, std::size_t first,
                                              std::size_t end, std::size_t length,
@@ -241,14 +243,16 @@ private:
     // Puts the latest readouts in `header`, and notes what they were measured under.
     void applyReadouts(FrameHeaderValues& header);
     // Keeps `stats`, the levels of `view` of `image` per block, in step with the samples placed
-    // since the last frame; all of them when `fresh`. False if the image could not be read.
+    // since the last frame; all of them, in blocks of `block` samples, when `fresh`. False if the
+    // image could not be read.
     bool updateStats(BlockStats& stats, const SweepImage& image, protocol::ChannelView view,
-                     int channels, bool fresh);
+                     int channels, bool fresh, std::size_t block);
     // Readouts of samples [first, end) of a sweep: their levels from `stats`, and the frequency
     // over the newest second of `view` in `live` (the capture, or what was held on freeze) ending
-    // at `liveEnd`. False, with `readouts` untouched, if that audio is gone.
+    // at `liveEnd`, recorded at `sampleRate`. False, with `readouts` untouched, if that audio is
+    // gone.
     bool measureSweepReadouts(const BlockStats& stats, std::size_t first, std::size_t end,
-                              const SampleSource& live, std::uint64_t liveEnd,
+                              const SampleSource& live, std::uint64_t liveEnd, double sampleRate,
                               protocol::ChannelView view, int channels, Readouts& readouts);
     // Tempo-synced Compare frames, over screen positions of the sweep of `length` samples: lane
     // `index`'s Mid from `from` (silent while the lane is not on that length), and the sum of
@@ -315,6 +319,9 @@ private:
     // Tempo sync: the clock and capture end when frozen, and the capture end of the last frame.
     MusicalStamp frozenStamp;
     std::uint64_t frozenEnd = 0;
+    // The rate the audio held on freeze was recorded at, which places it and gives its times: the
+    // host may change the track's while frozen.
+    double frozenRate = 0.0;
     std::uint64_t lastEnd = 0;
     // Multi-track view: lanes by member serial, and their order on screen.
     std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;

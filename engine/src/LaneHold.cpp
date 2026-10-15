@@ -10,6 +10,7 @@ bool LaneHold::capture(const Engine& engine, std::size_t length, std::vector<flo
 {
     const CaptureRing& ring = engine.captureRing();
     const MusicalStamp clockNow = engine.timeline().latest();
+    const double rateNow = engine.sampleRate();
     const std::uint64_t ringEnd = ring.endIndex();
     const auto count = std::min<std::uint64_t>(length, ringEnd - ring.beginIndex());
     mid.resize(static_cast<std::size_t>(count));
@@ -23,6 +24,7 @@ bool LaneHold::capture(const Engine& engine, std::size_t length, std::vector<flo
     begin = ringEnd - count;
     end = ringEnd;
     stamp = clockNow;
+    rate = rateNow;
     return true;
 }
 

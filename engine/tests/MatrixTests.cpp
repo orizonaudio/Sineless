@@ -3230,16 +3230,15 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
         EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
     }
 
-    // Frozen, the picture is the audio held: a format changing meanwhile is not redrawn at
-    // display rate. (Frozen Beats lanes place their held audio at the track's current rate, so a
-    // new rate may redraw them once.)
+    // Frozen, the picture is the audio held, placed at the rate it was recorded at: a format
+    // changing meanwhile changes nothing shown, and draws no frame (see FrozenRateChange).
     session.analyzer().setFrozen(true);
     (void)session.produce();
     ASSERT_FALSE(session.analyzer().produce(bytes)) << "frozen, nothing has changed";
     session.own().setInputChannels(2);
     EXPECT_FALSE(session.analyzer().produce(bytes)) << "frozen, a track's channels changed";
     session.own().setSampleRate(c.rate);
-    (void)session.analyzer().produce(bytes);
+    EXPECT_FALSE(session.analyzer().produce(bytes)) << "frozen, a track's sample rate changed";
     for (int request = 0; request < 5; ++request) {
         EXPECT_FALSE(session.analyzer().produce(bytes)) << "frozen, request " << request;
     }
@@ -3263,6 +3262,112 @@ std::vector<ModeCase> formatChangeCases()
 }
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, FormatChange, ::testing::ValuesIn(formatChangeCases()),
+                         modeTestName);
+
+// Frozen, the picture is the audio held, recorded at the rate of its moment: the host changing the
+// rate meanwhile, with no new audio, leaves it and its times as they were, in every display mode
+// and both time bases. Drawn again (as for a page that has just loaded), the frame is the same,
+// whether the capture keeps its size or the tracks are prepared again for the new rate.
+class FrozenRateChange : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(FrozenRateChange, KeepsTheHeldPictureAndItsTimes)
+{
+    const ModeCase c = GetParam();
+    const double otherRate = c.rate == kSampleRates.front() ? kSampleRates.back() : 48000.0;
+    for (const bool prepared : {false, true}) {
+        SCOPED_TRACE(prepared ? "prepared again" : "same capture size");
+        Session session(c.rate, c.channels);
+        session.join({.frequency = 1000.0, .offset = 0.0}); // This track.
+        session.join({.frequency = 1500.0, .offset = 0.0});
+        configure(session.own(), c.mode, c.timeBase);
+        session.play(2.0, 0.05);
+        session.analyzer().setFrozen(true);
+        (void)session.produce();
+        std::vector<std::byte> before;
+        session.analyzer().redraw();
+        ASSERT_TRUE(session.analyzer().produce(before)) << "no frozen frame";
+
+        if (prepared) {
+            session.prepare(otherRate);
+        } else {
+            for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+                member.engine->setSampleRate(otherRate);
+            }
+        }
+        std::vector<std::byte> after;
+        session.analyzer().redraw();
+        ASSERT_TRUE(session.analyzer().produce(after)) << "no frame drawn again";
+        EXPECT_EQ(after, before) << "the held picture or its times changed with the rate";
+    }
+}
+
+// And through other spans chosen while frozen after the rate changed: a shorter one cropped from
+// the sweep, a longer one rebuilt from the held audio (still filling in, as more than the 2 s
+// played), the shorter one again beside it, and the span frozen on. Each frame is the one the same
+// view draws with no rate change.
+TEST_P(FrozenRateChange, KeepsTheHeldPictureThroughOtherSpans)
+{
+    const ModeCase c = GetParam();
+    const double otherRate = c.rate == kSampleRates.front() ? kSampleRates.back() : 48000.0;
+    const bool beats = c.timeBase == TimeBase::kBeats;
+    const SettingId spanId = beats ? SettingId::kBeatSpan : SettingId::kTimeSpan;
+    const auto& span = setting(spanId);
+    const double frozenOn = beats ? static_cast<double>(BeatSpan::kOneBar) : span.defaultValue;
+    const double shorter = beats ? frozenOn - 1.0 : std::max(frozenOn / 2.0, span.minimum);
+    const double longer = beats ? frozenOn + 1.0 : std::min(frozenOn * 2.0, span.maximum);
+    ASSERT_LT(shorter, frozenOn);
+    ASSERT_GT(longer, frozenOn);
+
+    enum class Change : std::uint8_t
+    {
+        kNone,
+        kSameCaptureSize,
+        kPreparedAgain,
+    };
+    // The frames drawn for each span in turn, frozen after 2 s, with the rate changed as `change`.
+    const auto framesFor = [&](Change change) {
+        Session session(c.rate, c.channels);
+        session.join({.frequency = 1000.0, .offset = 0.0}); // This track.
+        session.join({.frequency = 1500.0, .offset = 0.0});
+        configure(session.own(), c.mode, c.timeBase);
+        session.own().settings().set(spanId, frozenOn);
+        session.play(2.0, 0.05);
+        session.analyzer().setFrozen(true);
+        (void)session.produce();
+        if (change == Change::kPreparedAgain) {
+            session.prepare(otherRate);
+        } else if (change == Change::kSameCaptureSize) {
+            for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+                member.engine->setSampleRate(otherRate);
+            }
+        }
+        std::vector<std::vector<std::byte>> frames;
+        for (const double value : {shorter, longer, shorter, frozenOn}) {
+            session.own().settings().set(spanId, value);
+            std::vector<std::byte> frame;
+            for (int attempt = 0; attempt < 4 && !session.analyzer().produce(frame); ++attempt) {
+            }
+            frames.push_back(frame);
+        }
+        return frames;
+    };
+    const auto unchanged = framesFor(Change::kNone);
+    for (const std::vector<std::byte>& frame : unchanged) {
+        ASSERT_FALSE(frame.empty()) << "no frame for a span chosen while frozen";
+    }
+    for (const Change change : {Change::kSameCaptureSize, Change::kPreparedAgain}) {
+        SCOPED_TRACE(change == Change::kPreparedAgain ? "prepared again" : "same capture size");
+        const auto changed = framesFor(change);
+        ASSERT_EQ(changed.size(), unchanged.size());
+        for (std::size_t step = 0; step < changed.size(); ++step) {
+            EXPECT_EQ(changed[step], unchanged[step]) << "span " << step << " in turn";
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenRateChange, ::testing::ValuesIn(formatChangeCases()),
                          modeTestName);
 
 } // namespace

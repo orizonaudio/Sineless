@@ -11,10 +11,10 @@
 
 namespace orizon::engine {
 
-// One multi-track lane's audio, held on freeze: the track's Mid, with its clock and capture end
-// at that moment, so a sweep of another span can still be built from it. Mono halves what a hold
-// of both channels would take. Reads return the Mid for either channel, so a sweep image built
-// from it holds the Mid.
+// One multi-track lane's audio, held on freeze: the track's Mid, with its clock, capture end and
+// sample rate at that moment, so a sweep of another span can still be built from it. Mono halves
+// what a hold of both channels would take. Reads return the Mid for either channel, so a sweep
+// image built from it holds the Mid.
 //
 // Used only by the analysis worker; it allocates on capture and frees on release.
 class LaneHold final : public SampleSource
@@ -27,6 +27,8 @@ public:
 
     [[nodiscard]] bool held() const { return isHeld; }
     [[nodiscard]] const MusicalStamp& clock() const { return stamp; }
+    // The rate the audio held was recorded at: the host may change the track's since.
+    [[nodiscard]] double sampleRate() const { return rate; }
 
     [[nodiscard]] std::uint64_t endIndex() const override { return end; }
     [[nodiscard]] std::uint64_t beginIndex() const override { return begin; }
@@ -38,6 +40,7 @@ private:
     std::uint64_t begin = 0;
     std::uint64_t end = 0;
     MusicalStamp stamp;
+    double rate = 0.0;
     bool isHeld = false;
 };
 
