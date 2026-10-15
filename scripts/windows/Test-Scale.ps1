@@ -35,7 +35,7 @@ $presets = @('windows-arm64') + $(if ($X64) { @('windows-x64') } else { @() })
 if ($ShotsOnly) { $presets = @() }
 foreach ($preset in $presets) {
     $log = Join-Path $target "editor-tests-$preset.txt"
-    & "build\$preset\bin\Debug\editor_tests.exe" --gtest_filter=EditorTest.* *> $log
+    & "build\$preset\bin\Release\editor_tests.exe" --gtest_filter=EditorTest.* *> $log
     $summary = Select-String -Path $log -Pattern '^\[  (PASSED|FAILED)  \]|^\[  FAILED  \]|display scale' |
         ForEach-Object Line
     "$preset (exit $LASTEXITCODE):"

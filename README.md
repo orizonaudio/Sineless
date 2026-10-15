@@ -65,7 +65,7 @@ cmake --preset windows-x64
 cmake --build --preset windows-x64
 ```
 
-The plugin is built at `build\windows-x64\VST3\Debug\Sineless.vst3`; use `windows-arm64` for ARM64. `scripts\check.ps1` runs the Windows checks for both.
+The plugin is built at `build\windows-x64\VST3\Release\Sineless.vst3`; use `windows-arm64` for ARM64, and `windows-x64-debug` or `windows-arm64-debug` for a Debug build to step through. `scripts\check.ps1` runs the Windows checks for both, on the Release build.
 
 `scripts/check.sh` runs every check that CI runs on macOS. It also needs Homebrew LLVM (`brew install llvm`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
