@@ -9,6 +9,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace orizon::engine {
 
@@ -57,6 +58,21 @@ public:
         return track;
     }
 
+    // The Compare view's other tracks, by lane id (GroupMember::serial); none until the editor
+    // first sets them, when the group's first other track is compared. Kept with the instance, not
+    // its editor, so that closing and opening the editor keeps them; like zoom, they are not saved,
+    // so lane ids, valid only while the plugin is loaded, are enough. Non-audio threads only.
+    void setCompared(std::optional<std::vector<std::uint64_t>> ids)
+    {
+        const std::scoped_lock lock(trackMutex);
+        comparedIds = std::move(ids);
+    }
+    [[nodiscard]] std::optional<std::vector<std::uint64_t>> compared() const
+    {
+        const std::scoped_lock lock(trackMutex);
+        return comparedIds;
+    }
+
     // Sets the sample rate and sizes the capture for it (CaptureRing::capacityFor), emptying the
     // capture if its size changes. Called by the processor in setupProcessing, before processing
     // starts: it allocates, so never on the audio thread, nor while it writes.
@@ -81,6 +97,7 @@ private:
     Timeline timelineState;
     mutable std::mutex trackMutex;
     TrackInfo track;
+    std::optional<std::vector<std::uint64_t>> comparedIds;
 };
 
 } // namespace orizon::engine

@@ -115,7 +115,7 @@ void Session::receive(const nlohmann::json& message)
                     ids.push_back(id.get<std::uint64_t>());
                 }
             }
-            analyzer.setCompared(std::move(ids));
+            analyzer.setCompared(ids);
         }
         break;
     case MessageType::kPreviewFix:

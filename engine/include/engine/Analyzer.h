@@ -98,8 +98,10 @@ public:
     // values are ignored. Only that part is reduced to screen columns.
     void setView(double start, double end);
     // Compare view: the other tracks compared with this one, by lane id, and whether the sum
-    // previews the fix. Until set, the group's first other track is compared.
-    void setCompared(std::vector<std::uint64_t> ids);
+    // previews the fix. The selection is kept with the instance (Engine::compared), so that it
+    // outlives this analyzer, but is not saved; until first set, the group's first other track is
+    // compared.
+    void setCompared(const std::vector<std::uint64_t>& ids);
     void setPreviewFix(bool on);
     // Draws the frame again at the next request, whatever has changed: for a page that has just
     // loaded (or loaded again after its process ended) and has no frame yet.
@@ -124,7 +126,6 @@ private:
         bool armRequested = false;
         double viewStart = 0.0;
         double viewEnd = 1.0;
-        std::optional<std::vector<std::uint64_t>> compared;
         bool previewFix = false;
         std::uint64_t redraws = 0;
     };
@@ -204,7 +205,7 @@ private:
 
     Commands takeCommands();
     Commands peekCommands();
-    std::uint64_t selectLanes(const Settings& settings, const Commands& command);
+    std::uint64_t selectLanes(const Settings& settings);
     // Live: places each lane's new audio into its sweep. True if any lane changed.
     [[nodiscard]] bool inputsChanged(const Settings& settings, const Commands& command,
                                      std::uint32_t laneSetId) const;
