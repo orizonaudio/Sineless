@@ -108,7 +108,11 @@ if ($checks -contains 'main') {
     }
 }
 
-if ($checks -contains 'glue') {
+if ($checks -contains 'glue' -and $hostIsArm) {
+    # An ARM64 machine's developer environment has the ARM64 tools, not the x64 sanitizer
+    # runtime the x64 glue build loads; CI runs the glue on x64.
+    Write-Host "`nWindows glue skipped: it is checked on x64, and this machine is ARM64."
+} elseif ($checks -contains 'glue') {
     Step 'Windows glue: memory errors (AddressSanitizer build)'
     # MSVC's AddressSanitizer has no leak checks; its runtime DLL is found on the PATH that
     # windows-env.ps1 set up (the compiler's folder). The VST3 validator and pluginval run in the
