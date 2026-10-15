@@ -27,7 +27,7 @@ cov="$(tool llvm-cov)"
 
 # Profiles from an earlier build would mix with this one's: each run starts afresh.
 rm -rf "$build/profiles" "$build/ts" "$build/summary.md" "$build/changed-lines.md"
-ctest --preset coverage > "$build/ctest.log" 2>&1 || failures+=("C++ tests (see $build/ctest.log)")
+ctest --preset coverage -j "$(getconf _NPROCESSORS_ONLN)" > "$build/ctest.log" 2>&1 || failures+=("C++ tests (see $build/ctest.log)")
 
 shopt -s nullglob
 profiles=("$build"/profiles/*.profraw)

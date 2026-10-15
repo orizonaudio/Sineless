@@ -63,7 +63,10 @@ if(BUILD_TESTING)
     elseif(WIN32)
         target_sources(editor_tests PRIVATE tests/EditorTestsWin.cpp)
     endif()
-    gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30)
+    # The editor tests run alone, though the other tests run in parallel: on Windows every
+    # process's views share one WebView2 browser process, which some tests end on purpose, and a
+    # page loaded beside a full machine misses the tests' timeouts.
+    gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE)
 endif()
 
 # The performance benchmark: the real page under a simulated host, in WKWebView (macOS only).
