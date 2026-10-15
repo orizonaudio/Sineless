@@ -19,11 +19,10 @@ class EngineLink : public ::testing::Test
 protected:
     void SetUp() override
     {
-        host = owned(new HostApplication());
         processor = owned(new Processor());
         controller = owned(new Controller());
-        ASSERT_EQ(processor->initialize(host), kResultOk);
-        ASSERT_EQ(controller->initialize(host), kResultOk);
+        ASSERT_EQ(processor->initialize(&host), kResultOk);
+        ASSERT_EQ(controller->initialize(&host), kResultOk);
     }
 
     void TearDown() override
@@ -46,7 +45,9 @@ protected:
         controller->notify(message);
     }
 
-    IPtr<HostApplication> host;
+    // Not reference counted: the SDK's HostApplication never deletes itself on release, as hosts
+    // keep one for the whole process, so it lives as long as the test.
+    HostApplication host;
     IPtr<Processor> processor;
     IPtr<Controller> controller;
 };
