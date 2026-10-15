@@ -3215,11 +3215,40 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
         EXPECT_TRUE(session.produce()) << "another track turned mono";
         EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
     }
-    session.own().setSampleRate(c.rate == 44100.0 ? 48000.0 : 44100.0);
+    // Another rate, whose capture keeps its size: the host changed it without preparing again.
+    const double otherRate = c.rate == 44100.0 ? 48000.0 : 44100.0;
+    session.own().setSampleRate(otherRate);
     EXPECT_TRUE(session.produce()) << "a new sample rate";
+    if (c.mode != DisplayMode::kSingle) {
+        EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
+        for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+            if (member.engine.get() != &session.own()) {
+                member.engine->setSampleRate(otherRate);
+            }
+        }
+        EXPECT_TRUE(session.produce()) << "another track's new sample rate";
+    }
 }
 
-INSTANTIATE_TEST_SUITE_P(EveryMode, FormatChange, ::testing::ValuesIn(redrawCases()), modeTestName);
+// Every display mode and time base, at the lowest and highest sample rates hosts run at.
+std::vector<ModeCase> formatChangeCases()
+{
+    std::vector<ModeCase> cases;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        for (const DisplayMode mode : everyMode()) {
+            for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+                cases.push_back({.rate = rate,
+                                 .mode = mode,
+                                 .channels = 2,
+                                 .timeBase = static_cast<TimeBase>(timeBase)});
+            }
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, FormatChange, ::testing::ValuesIn(formatChangeCases()),
+                         modeTestName);
 
 } // namespace
 } // namespace orizon::engine
