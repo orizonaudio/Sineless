@@ -17,11 +17,18 @@ import {
   type Report,
 } from "./mutation-summary.ts";
 
+// Every option the callers pass (scripts/mutation.sh, scripts/mutation-cpp.sh, CI's Report steps)
+// is declared: parseArgs refuses any other.
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { "mull-log": { type: "string" }, limit: { type: "string" } },
+  options: {
+    annotate: { type: "boolean" },
+    "mull-log": { type: "string" },
+    limit: { type: "string" },
+  },
 });
-const [path, option, seconds] = positionals;
+const [path, title, seconds] = positionals;
+const option = values.annotate === true ? "--annotate" : title;
 if (path === undefined || option === undefined) {
   console.error(
     "Usage: node scripts/mutation-report.ts <report.json> <title> [seconds] | --annotate",
