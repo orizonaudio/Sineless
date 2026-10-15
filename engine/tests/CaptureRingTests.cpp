@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <limits>
@@ -13,6 +14,12 @@
 
 namespace orizon::engine {
 namespace {
+
+// The concurrent tests run their writer until the reader has made this many successful reads, so
+// that a fast machine cannot finish writing before the reader has started; for at most kMaxWait,
+// which only a ring whose reads never succeed reaches.
+constexpr std::uint64_t kMinimumReads = 100;
+constexpr auto kMaxWait = std::chrono::seconds(10);
 
 constexpr std::size_t kSmallCapacity = 1024;
 
@@ -171,7 +178,12 @@ TEST(CaptureRing, ReadsAcrossResizesAreWholeOrFail)
             }
         }
     });
-    for (int resize = 0; resize < kResizes; ++resize) {
+    // At least kResizes, and on until the reader has had its reads, however fast the resizes run
+    // beside it.
+    const auto deadline = std::chrono::steady_clock::now() + kMaxWait;
+    for (int resize = 0; resize < kResizes || (successfulReads.load() < kMinimumReads &&
+                                               std::chrono::steady_clock::now() < deadline);
+         ++resize) {
         ring.resize(resize % 2 == 0 ? kSmallCapacity * 2 : kSmallCapacity);
         for (int block = 0; block < 8; ++block) {
             writeBlock(ring, 2, 64);
@@ -181,7 +193,7 @@ TEST(CaptureRing, ReadsAcrossResizesAreWholeOrFail)
     reader.join();
 
     EXPECT_EQ(corruptReads.load(), 0u);
-    EXPECT_GT(successfulReads.load(), 0u);
+    EXPECT_GE(successfulReads.load(), kMinimumReads);
 }
 
 TEST(CaptureRing, StartsEmpty)
@@ -279,17 +291,21 @@ TEST(CaptureRing, ConcurrentReadsNeverReturnTornData)
     constexpr std::uint64_t kTotalSamples = 4'000'000;
     CaptureRing ring(kSmallCapacity);
     std::atomic<bool> done{false};
+    std::atomic<std::uint64_t> successfulReads{0};
 
     std::thread writer([&] {
         std::mt19937 random(11); // NOLINT(bugprone-random-generator-seed): reproducible
         std::uniform_int_distribution<int> blockSize(1, 128);
-        while (ring.writeIndex() < kTotalSamples) {
+        // At least kTotalSamples, and on until the reader has had its reads, however fast the
+        // writes run beside it.
+        const auto deadline = std::chrono::steady_clock::now() + kMaxWait;
+        while (ring.writeIndex() < kTotalSamples || (successfulReads.load() < kMinimumReads &&
+                                                     std::chrono::steady_clock::now() < deadline)) {
             writeBlock(ring, 2, blockSize(random));
         }
         done.store(true);
     });
 
-    std::uint64_t successfulReads = 0;
     std::uint64_t corruptReads = 0;
     std::mt19937 random(13); // NOLINT(bugprone-random-generator-seed): reproducible
     std::vector<float> copy(256);
@@ -306,7 +322,7 @@ TEST(CaptureRing, ConcurrentReadsNeverReturnTornData)
         if (!ring.read(channel, start, copy)) {
             continue;
         }
-        ++successfulReads;
+        successfulReads.fetch_add(1);
         for (std::size_t i = 0; i < copy.size(); ++i) {
             if (copy[i] != valueAt(start + i, channel)) {
                 ++corruptReads;
@@ -317,7 +333,7 @@ TEST(CaptureRing, ConcurrentReadsNeverReturnTornData)
     writer.join();
 
     EXPECT_EQ(corruptReads, 0u);
-    EXPECT_GT(successfulReads, 0u);
+    EXPECT_GE(successfulReads.load(), kMinimumReads);
 }
 
 } // namespace
