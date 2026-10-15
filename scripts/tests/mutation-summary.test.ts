@@ -2,8 +2,11 @@ import { describe, expect, test } from "vitest";
 
 import {
   annotations,
+  mullSeconds,
   relativeTo,
   summarise,
+  timeLimitNote,
+  warmUpSeconds,
   type Mutant,
   type Report,
 } from "../mutation-summary.ts";
@@ -132,4 +135,67 @@ describe("the mutation testing warnings", () => {
     };
     expect(annotations(many)).toHaveLength(10);
   });
+});
+
+// Mull's log, as it reads around its warm-up run: the instrumented build's mutants, the warm-up
+// (the tests with no mutant), and the mutants' runs.
+const mullLog = (warmUp: string) =>
+  [
+    "[info] Filter mutants (threads: 1)",
+    "       [################################] 2307/2307. Finished in 216ms",
+    "[info] Warm up run (threads: 1)",
+    `       [################################] 1/1. Finished in ${warmUp}`,
+    "[info] Running mutants (threads: 8)",
+    "       [################################] 5/5. Finished in 1.21s",
+  ].join("\n");
+
+describe("the time limit note on a C++ mutation run", () => {
+  test.each([
+    ["216ms", 0.216],
+    ["3151ms", 3.151],
+    ["58.2s", 58.2],
+    ["4m40.4s", 280.4],
+    ["1h2m3s", 3723],
+  ])("reads Mull's duration %s as %f s", (text, seconds) => {
+    expect(mullSeconds(text)).toBeCloseTo(seconds, 6);
+  });
+
+  test.each(["", "4 minutes", "4m40.4", "ms"])(
+    "reads %j as no duration",
+    (text) => {
+      expect(mullSeconds(text)).toBeUndefined();
+    },
+  );
+
+  test.each([
+    ["4m40.4s", 280.4],
+    ["3151ms", 3.151],
+  ])(
+    "takes the warm-up's own duration (%s), not another step's",
+    (warmUp, seconds) => {
+      expect(warmUpSeconds(mullLog(warmUp))).toBeCloseTo(seconds, 6);
+    },
+  );
+
+  test("has no warm-up time for a log without one", () => {
+    expect(
+      warmUpSeconds("[info] Running mutants (threads: 8)"),
+    ).toBeUndefined();
+  });
+
+  // A mutant no test notices runs every test, so the tests must take well under the limit.
+  test.each([
+    [149, 300, false],
+    [151, 300, true],
+    [280, 900, false],
+  ])(
+    "for tests taking %d s against a %d s limit, warns: %s",
+    (warmUp, limit, warns) => {
+      const note = timeLimitNote(warmUp, limit);
+      expect(note.split("\n")[0]).toBe(
+        `The tests take ${String(warmUp)} s with no mutant; each mutant is stopped at ${String(limit)} s.`,
+      );
+      expect(note.includes("[!WARNING]")).toBe(warns);
+    },
+  );
 });

@@ -136,3 +136,42 @@ export function annotations(report: Report): string[] {
       );
     });
 }
+
+// A duration as Mull's progress lines print it ("216ms", "58.2s", "4m40.4s", "1h2m3s"), in
+// seconds; undefined if it is not one.
+export function mullSeconds(text: string): number | undefined {
+  const units: Record<string, number> = { h: 3600, m: 60, s: 1, ms: 0.001 };
+  const parts = [...text.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/gu)];
+  if (parts.length === 0 || parts.map((part) => part[0]).join("") !== text) {
+    return undefined;
+  }
+  return parts.reduce(
+    (total, [, amount, unit]) =>
+      total + Number(amount) * (units[unit ?? ""] ?? 0),
+    0,
+  );
+}
+
+// How long Mull's warm-up run, the tests with no mutant, took: the duration on the progress line
+// after "Warm up run" in its log. Undefined when the log has none.
+export function warmUpSeconds(log: string): number | undefined {
+  const match = /Warm up run.*\n.*Finished in (\S+)/u.exec(log);
+  return match?.[1] === undefined ? undefined : mullSeconds(match[1]);
+}
+
+// How long the tests take against each mutant's time limit. A mutant no test notices runs every
+// test: past half the limit, the margin is too small, as one would be stopped and reported as
+// timed out, which counts as noticed and hides a line no test checks.
+export function timeLimitNote(warmUp: number, limit: number): string {
+  const lines = [
+    `The tests take ${warmUp.toFixed(0)} s with no mutant; each mutant is stopped at ${limit.toFixed(0)} s.`,
+  ];
+  if (warmUp * 2 > limit) {
+    lines.push(
+      "",
+      "> [!WARNING]",
+      "> The tests take more than half the time limit: raise MUTANT_TIMEOUT, or mutants no test notices may be reported as timed out.",
+    );
+  }
+  return lines.join("\n");
+}
