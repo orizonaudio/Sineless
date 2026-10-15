@@ -56,7 +56,7 @@ $bundle = 'build\windows\Sineless.vst3'
 if (Test-Path $bundle) { Remove-Item -Recurse -Force $bundle }
 foreach ($preset in $presets) {
     # robocopy merges folder trees; its exit codes below 8 mean success.
-    robocopy "build\$preset\VST3\Debug\Sineless.vst3" $bundle /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    robocopy "build\$preset\VST3\Release\Sineless.vst3" $bundle /E /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Could not copy the $preset bundle." }
 }
 $global:LASTEXITCODE = 0
@@ -77,7 +77,7 @@ if (-not (Test-Path $pluginval)) {
     Expand-Archive -Force $zip build\tools
 }
 if ($presets -contains 'windows-x64') {
-    Run $pluginval --strictness-level 10 --validate-in-process --validate 'build\windows-x64\VST3\Debug\Sineless.vst3'
+    Run $pluginval --strictness-level 10 --validate-in-process --validate 'build\windows-x64\VST3\Release\Sineless.vst3'
 }
 
 if ($env:SKIP_PERFORMANCE -eq '1') {

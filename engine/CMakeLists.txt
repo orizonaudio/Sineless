@@ -74,6 +74,11 @@ if(BUILD_TESTING)
                 ORIZON_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/corpus")
     target_link_libraries(engine_tests
         PRIVATE engine engine_test_support orizon_warnings GTest::gtest_main)
+    if(MSVC)
+        # The parameterised suites instantiate more templates than an optimised object file holds
+        # sections for by default.
+        target_compile_options(engine_tests PRIVATE /bigobj)
+    endif()
     gtest_discover_tests(engine_tests DISCOVERY_TIMEOUT 30)
 
 endif()
