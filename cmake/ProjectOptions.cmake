@@ -27,8 +27,18 @@ if(ORIZON_THREAD_SANITIZER)
     add_link_options(-fsanitize=thread)
 endif()
 
-option(ORIZON_ADDRESS_SANITIZER "Build with AddressSanitizer (memory errors and leaks)" OFF)
-if(ORIZON_ADDRESS_SANITIZER)
+option(ORIZON_ADDRESS_SANITIZER "Build with AddressSanitizer (memory errors; leaks too, but not with MSVC)" OFF)
+if(ORIZON_ADDRESS_SANITIZER AND MSVC)
+    # MSVC's links its runtime itself (/INFERASANLIBS), with either C runtime, and needs debug
+    # information for its reports. It does not combine with the run-time checks (/RTC) or
+    # incremental linking, which CMake's Debug defaults add. Its runtime DLL must be on the PATH,
+    # as the Visual Studio developer environment puts it (scripts/windows-env.ps1).
+    add_compile_options(/fsanitize=address /Zi)
+    add_link_options(/DEBUG /INCREMENTAL:NO)
+    foreach(language C CXX)
+        string(REGEX REPLACE "/RTC[1csu]+" "" CMAKE_${language}_FLAGS_DEBUG "${CMAKE_${language}_FLAGS_DEBUG}")
+    endforeach()
+elseif(ORIZON_ADDRESS_SANITIZER)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address)
 endif()
