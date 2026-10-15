@@ -19,21 +19,8 @@
       }
     },
     {
-      "name": "rtsan",
-      "displayName": "Tests under RealtimeSanitizer (Homebrew LLVM)",
-      "binaryDir": "${sourceDir}/build/rtsan",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm/bin/clang",
-        "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm/bin/clang++",
-        "CMAKE_OSX_ARCHITECTURES": "arm64",
-        "ORIZON_REALTIME_SANITIZER": "ON",
-        "SMTG_RUN_VST_VALIDATOR": "OFF"
-      }
-    },
-    {
       "name": "tsan",
-      "displayName": "Engine tests under ThreadSanitizer",
+      "displayName": "macOS glue: the editor's web view tests under ThreadSanitizer",
       "binaryDir": "${sourceDir}/build/tsan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -44,7 +31,7 @@
     },
     {
       "name": "asan",
-      "displayName": "Tests under AddressSanitizer",
+      "displayName": "macOS glue: the editor's web view tests under AddressSanitizer",
       "binaryDir": "${sourceDir}/build/asan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -125,21 +112,49 @@
       }
     },
     {
-      "name": "linux",
-      "displayName": "Linux: engine, plugin and editor tests under AddressSanitizer (Clang)",
+      "name": "linux-checks",
+      "hidden": true,
+      "description": "The shared-code checks on Linux (scripts/check-linux.sh), with LLVM 23 as in CI and tools/linux-checks",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/linux",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "clang",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "ORIZON_ENGINE_ONLY": "OFF",
-        "ORIZON_ADDRESS_SANITIZER": "ON"
+        "CMAKE_C_COMPILER": "clang-23",
+        "CMAKE_CXX_COMPILER": "clang++-23",
+        "ORIZON_ENGINE_ONLY": "OFF"
       },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux",
+      "inherits": "linux-checks",
+      "displayName": "Linux: engine, plugin and editor tests under AddressSanitizer and LeakSanitizer",
+      "binaryDir": "${sourceDir}/build/linux",
+      "cacheVariables": {
+        "ORIZON_ADDRESS_SANITIZER": "ON"
+      }
+    },
+    {
+      "name": "linux-tsan",
+      "inherits": "linux-checks",
+      "displayName": "Linux: concurrency tests under ThreadSanitizer",
+      "binaryDir": "${sourceDir}/build/linux-tsan",
+      "cacheVariables": {
+        "ORIZON_THREAD_SANITIZER": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      }
+    },
+    {
+      "name": "linux-rtsan",
+      "inherits": "linux-checks",
+      "displayName": "Linux: real-time tests under RealtimeSanitizer",
+      "binaryDir": "${sourceDir}/build/linux-rtsan",
+      "cacheVariables": {
+        "ORIZON_REALTIME_SANITIZER": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
       }
     },
     {
@@ -208,18 +223,14 @@
       "configurePreset": "release"
     },
     {
-      "name": "rtsan",
-      "configurePreset": "rtsan",
-      "targets": ["plugin_tests"]
-    },
-    {
       "name": "tsan",
       "configurePreset": "tsan",
-      "targets": ["engine_tests"]
+      "targets": ["editor_tests"]
     },
     {
       "name": "asan",
-      "configurePreset": "asan"
+      "configurePreset": "asan",
+      "targets": ["editor_tests"]
     },
     {
       "name": "bench",
@@ -317,6 +328,24 @@
       }
     },
     {
+      "name": "linux-tsan",
+      "configurePreset": "linux-tsan",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-rtsan",
+      "configurePreset": "linux-rtsan",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
       "name": "mutation",
       "configurePreset": "mutation",
       "targets": ["engine_tests"],
@@ -357,21 +386,6 @@
       }
     },
     {
-      "name": "rtsan",
-      "configurePreset": "rtsan",
-      "output": {
-        "outputOnFailure": true
-      },
-      "filter": {
-        "include": {
-          "name": "PassThrough|Processor"
-        }
-      },
-      "execution": {
-        "jobs": 4
-      }
-    },
-    {
       "name": "tsan",
       "configurePreset": "tsan",
       "output": {
@@ -379,7 +393,7 @@
       },
       "filter": {
         "include": {
-          "name": "CaptureRing|AnalysisWorker|Timeline|InstanceRegistry"
+          "name": "^EditorTest\\."
         }
       },
       "execution": {
@@ -394,6 +408,11 @@
       },
       "execution": {
         "jobs": 4
+      },
+      "filter": {
+        "include": {
+          "name": "^EditorTest\\."
+        }
       }
     },
     {
@@ -469,6 +488,49 @@
       "environment": {
         "ASAN_OPTIONS": "halt_on_error=1",
         "LSAN_OPTIONS": "suppressions=${sourceDir}/tools/sanitizers/lsan-suppressions.txt"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "execution": {
+        "jobs": 4
+      }
+    },
+    {
+      "name": "linux-tsan",
+      "configurePreset": "linux-tsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "CaptureRing|AnalysisWorker|Timeline|InstanceRegistry"
+        }
+      },
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "execution": {
+        "jobs": 4
+      }
+    },
+    {
+      "name": "linux-rtsan",
+      "configurePreset": "linux-rtsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "PassThrough|Processor"
+        }
       },
       "condition": {
         "type": "equals",
