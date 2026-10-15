@@ -179,6 +179,19 @@ TEST(PairAnalysis, JudgesTheSumWhereTheTracksSoundTogether)
     EXPECT_LT(overlapGain(pair, kBlock), -60.0);
 }
 
+// A quieter double, 12 dB down and inverted, still sounds together with the track: its partial
+// cancellation is measured, (1 - 1/4)^2 of the energy against 1 + 1/16.
+TEST(PairAnalysis, JudgesAQuieterDoubleAsSoundingTogether)
+{
+    const auto a = noise(15);
+    std::vector<float> b(a.size());
+    for (std::size_t i = 0; i < b.size(); ++i) {
+        b[i] = -0.25f * a[i];
+    }
+    const std::array<std::span<const float>, 2> pair{a, b};
+    EXPECT_NEAR(overlapGain(pair, kBlock), 10.0 * std::log10(0.5625 / 1.0625), 0.01);
+}
+
 TEST(PairAnalysis, UnrelatedTracksSumHarmlessly)
 {
     const PairAnalysis result = analyse(noise(4), noise(5));
