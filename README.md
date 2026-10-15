@@ -69,11 +69,11 @@ The plugin is built at `build\windows-x64\VST3\Release\Sineless.vst3`; use `wind
 
 `scripts/check.sh` runs every check that CI runs on macOS and Linux, the Linux ones in Docker. It also needs Homebrew LLVM (`brew install llvm`) and Docker. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
-Without macOS or Windows, the engine and protocol tests still build and run on Linux with Clang and Ninja, as CI's `linux` job does:
+Without macOS or Windows, the engine, plugin and editor tests still build and run on Linux, as CI's Linux jobs do. They need LLVM 23 (on Ubuntu 24.04, `tools/linux-checks/install-llvm.sh` installs it), CMake and Ninja:
 
 ```bash
 npm ci
-cmake --preset linux && cmake --build --preset linux && ctest --preset linux
+scripts/check-linux.sh
 ```
 
 ## Bugs and ideas
