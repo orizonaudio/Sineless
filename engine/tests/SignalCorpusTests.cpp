@@ -55,8 +55,8 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kMinusInfinity = -std::numeric_limits<double>::infinity();
 
 // Approved numbers are compared within kRelativeTolerance of their size, or kAbsoluteTolerance,
-// whichever is larger. CI runs on Linux and macOS clang (x64 and arm64) and Windows MSVC (x64 and
-// ARM64): the engine is built without fast-math, so they differ only where one compiler fuses a
+// whichever is larger. CI runs on Linux and macOS clang (x64 and arm64) and Windows MSVC (x64): the
+// engine is built without fast-math, so they differ only where one compiler fuses a
 // multiply-add (arm64) and another does not, or a libm rounds a sine the other way, each a float
 // ulp (6e-8 of the value) at a time. The longest float sums behind a frame (a correlation over a
 // 24000-sample sweep, in eight lanes) round by about 1e-6 of their result at worst, so 1e-4
