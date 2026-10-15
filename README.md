@@ -1,6 +1,6 @@
 # Sineless
 
-[![CI on main](https://github.com/orizonaudio/Sineless/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/orizonaudio/Sineless/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush) [![Latest release](https://img.shields.io/github/v/release/orizonaudio/Sineless)](https://github.com/orizonaudio/Sineless/releases/latest) [![Licence: GPL-3.0](https://img.shields.io/github/license/orizonaudio/Sineless)](LICENSE) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/orizonaudio/Sineless/badge)](https://scorecard.dev/viewer/?uri=github.com/orizonaudio/Sineless)
+[![CI on main](https://github.com/orizonaudio/Sineless/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/orizonaudio/Sineless/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush) [![Latest release](https://img.shields.io/github/v/release/orizonaudio/Sineless)](https://github.com/orizonaudio/Sineless/releases/latest) [![Licence: GPL-3.0](https://img.shields.io/github/license/orizonaudio/Sineless)](LICENSE) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/orizonaudio/Sineless/badge)](https://scorecard.dev/viewer/?uri=github.com/orizonaudio/Sineless) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15526/badge)](https://www.bestpractices.dev/projects/15526)
 
 An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its track in real time and passes it through unchanged, with zero latency.
 
