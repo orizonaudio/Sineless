@@ -47,7 +47,7 @@ foreach ($preset in $presets) {
         continue
     }
     Step "C++ tests: $preset"
-    Run ctest --preset $preset
+    Run ctest --preset $preset -j $env:NUMBER_OF_PROCESSORS
 }
 
 Step 'Bundle with both architectures'

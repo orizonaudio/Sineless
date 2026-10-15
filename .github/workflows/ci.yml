@@ -61,7 +61,7 @@ jobs:
           key: linux
       - run: cmake --preset linux -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - run: cmake --build --preset linux
-      - run: ctest --preset linux
+      - run: ctest --preset linux -j "$(nproc)"
 
   # A minute of fuzzing (libFuzzer, under AddressSanitizer and UndefinedBehaviorSanitizer) of
   # saved-state loading, setting values and the page's messages; see "Test levels" in

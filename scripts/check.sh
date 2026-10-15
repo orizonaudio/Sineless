@@ -46,22 +46,22 @@ cmake --preset "$PRESET"
 cmake --build --preset "$PRESET" -j "$(sysctl -n hw.ncpu)"
 
 step "C++ tests"
-ctest --preset "$PRESET"
+ctest --preset "$PRESET" -j "$(sysctl -n hw.ncpu)"
 
 step "Real-time safety (RealtimeSanitizer build)"
 cmake --preset rtsan
 cmake --build --preset rtsan -j "$(sysctl -n hw.ncpu)"
-ctest --preset rtsan
+ctest --preset rtsan -j "$(sysctl -n hw.ncpu)"
 
 step "Concurrency (ThreadSanitizer build)"
 cmake --preset tsan
 cmake --build --preset tsan -j "$(sysctl -n hw.ncpu)"
-TSAN_OPTIONS=halt_on_error=1 ctest --preset tsan
+TSAN_OPTIONS=halt_on_error=1 ctest --preset tsan -j "$(sysctl -n hw.ncpu)"
 
 step "Memory errors (AddressSanitizer build)"
 cmake --preset asan
 cmake --build --preset asan -j "$(sysctl -n hw.ncpu)"
-ASAN_OPTIONS=halt_on_error=1 ctest --preset asan
+ASAN_OPTIONS=halt_on_error=1 ctest --preset asan -j "$(sysctl -n hw.ncpu)"
 
 step "C++ lint"
 # clang-tidy cannot handle universal-binary commands (two -arch flags); lint the arm64 slice.
