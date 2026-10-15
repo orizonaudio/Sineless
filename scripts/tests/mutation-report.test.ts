@@ -64,6 +64,49 @@ describe("the mutation report's command line", () => {
     expect(summary).not.toContain("[!WARNING]");
   });
 
+  test("lists the mutants no test notices as JSON, for the mutation triage", () => {
+    expect(JSON.parse(run(report(), "--survivors"))).toEqual([
+      {
+        file: "engine/src/Roll.cpp",
+        line: 3,
+        column: 1,
+        mutator: "cxx_add_to_sub",
+        replacement: "a - b",
+        status: "Survived",
+      },
+    ]);
+  });
+
+  test("gives a removed call, which has no replacement, an empty one", () => {
+    const removed = join(dir, "removed.json");
+    writeFileSync(
+      removed,
+      JSON.stringify({
+        files: {
+          "engine/src/Analyzer.cpp": {
+            mutants: [
+              {
+                mutatorName: "cxx_remove_void_call",
+                status: "Survived",
+                location: { start: { line: 459, column: 9 } },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(JSON.parse(run(removed, "--survivors"))).toEqual([
+      {
+        file: "engine/src/Analyzer.cpp",
+        line: 459,
+        column: 9,
+        mutator: "cxx_remove_void_call",
+        replacement: "",
+        status: "Survived",
+      },
+    ]);
+  });
+
   test("prints a warning on each line no test notices (CI's Report steps)", () => {
     expect(run(report(), "--annotate").trim()).toBe(
       "::warning file=engine/src/Roll.cpp,line=3,col=1,title=Mutant survived::No test fails when this is changed (cxx_add_to_sub): a - b",

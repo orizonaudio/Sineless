@@ -366,8 +366,9 @@ jobs:
             echo "Coverage could not be measured; see the Measure step." >> "$GITHUB_STEP_SUMMARY"
 
   # Mutation testing of the TypeScript lines a pull request changes (scripts/mutation.sh): a report
-  # in the job summary, with warnings on the lines whose changes no unit test notices. Never a
-  # failure, and not required; pull requests only, as it measures what they change.
+  # in the job summary, with warnings on the lines whose changes no unit test notices, and the
+  # report for the mutation triage (mutation-triage.yml), which judges each. Never a failure, and
+  # not required; pull requests only, as it measures what they change.
   mutation:
     name: mutation
     needs: changes
@@ -394,6 +395,15 @@ jobs:
           fi
           cat build/mutation/summary.md >> "$GITHUB_STEP_SUMMARY" ||
             echo "Mutation testing did not run; see the Measure step." >> "$GITHUB_STEP_SUMMARY"
+      # For the mutation triage (mutation-triage.yml), which judges the mutants no test noticed.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-ts
+          # With its summary, which says whether nothing was mutated or the run stopped short.
+          path: |
+            build/mutation/mutation.json
+            build/mutation/summary.md
+          if-no-files-found: ignore
 
   # Mutation testing of the engine lines a pull request changes (scripts/mutation-cpp.sh), with
   # Mull for the runner's Clang 18: a report in the job summary, with warnings on the lines whose
@@ -433,6 +443,15 @@ jobs:
           fi
           cat build/mutation-cpp-report/summary.md >> "$GITHUB_STEP_SUMMARY" ||
             echo "Mutation testing did not run; see the Measure step." >> "$GITHUB_STEP_SUMMARY"
+      # For the mutation triage (mutation-triage.yml), which judges the mutants no test noticed.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-cpp
+          # With its summary, which says whether nothing was mutated or the run stopped short.
+          path: |
+            build/mutation-cpp-report/mull.json
+            build/mutation-cpp-report/summary.md
+          if-no-files-found: ignore
 
   # The performance limits, reported as a warning, never a failure: shared CI machines are too
   # noisy for hard limits, so they are a little looser here than on a developer's Mac. Not run in

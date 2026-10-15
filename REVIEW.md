@@ -54,6 +54,12 @@ when a user would see that change go wrong. A change that alters nothing a user 
 code that cannot run) is left as it is, or the code is removed when it does nothing. Survivors
 are never reported as findings on their own, and no score is a goal.
 
+The `mutation-triage` check applies this to every pull request whose mutation run leaves
+mutants (`.github/workflows/mutation-triage.yml`): a `mutation-triager` gives each a verdict
+(gap, equivalent, speed, tuned, dead or message), a `review-verifier` checks each gap, and a
+comment lists them all. It fails while a verified gap is left; the author adds a test that
+fails with that mutant, or answers it, and a maintainer can waive it.
+
 ## Every finding
 
 - cites the file and line;

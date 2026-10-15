@@ -12,6 +12,7 @@
     "scripts/changed-code.ts",
     "scripts/mutation-report.ts",
     "scripts/mutation-summary.ts",
+    "scripts/mutation-triage.ts",
     "scripts/release-version.ts",
     "scripts/tests/**/*.ts"
   ]

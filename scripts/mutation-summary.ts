@@ -38,6 +38,26 @@ function missedMutants(report: Report): { file: string; mutant: Mutant }[] {
     );
 }
 
+// The mutants no test noticed, one entry each, for the mutation triage (CI's mutation-triage
+// workflow), which judges each by REVIEW.md's "Mutation testing".
+export function survivors(report: Report): {
+  file: string;
+  line: number;
+  column: number;
+  mutator: string;
+  replacement: string;
+  status: string;
+}[] {
+  return missedMutants(report).map(({ file, mutant }) => ({
+    file,
+    line: mutant.location.start.line,
+    column: mutant.location.start.column,
+    mutator: mutant.mutatorName,
+    replacement: mutant.replacement ?? "",
+    status: mutant.status,
+  }));
+}
+
 // One line of code, as Markdown table cells may not hold a line break or a bar.
 function cell(text: string): string {
   return `\`${text.replaceAll(/\s+/gu, " ").replaceAll("|", "\\|")}\``;
