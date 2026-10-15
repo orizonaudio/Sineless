@@ -210,6 +210,7 @@ private:
     [[nodiscard]] bool inputsChanged(const Settings& settings, const Commands& command,
                                      std::uint32_t laneSetId) const;
     void rememberInputs(const Settings& settings, const Commands& command, std::uint32_t laneSetId);
+    [[nodiscard]] bool formatsChanged(bool multi);
     bool placeLanes(const Settings& settings, protocol::BeatSpan span);
     [[nodiscard]] std::uint64_t sharedLength(std::uint64_t serial, const SweepWindow& sweep) const;
     void catchUpToHold(Lane& lane);
@@ -297,7 +298,8 @@ private:
     // last frame was drawn. A frame with the same ends and the same inputs would be the same.
     std::vector<std::uint64_t> liveEnds;
     std::vector<std::uint64_t> lastLiveEnds;
-    // And their channel counts and sample rates, which are inputs too.
+    // Live, in either time base: the channel counts and sample rates of this track and of each lane
+    // shown, now and when the last frame was drawn, which are inputs too (formatsChanged).
     std::vector<std::uint64_t> liveFormats;
     std::vector<std::uint64_t> lastLiveFormats;
     std::optional<Settings> lastSettings;

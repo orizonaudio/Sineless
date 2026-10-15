@@ -453,25 +453,18 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown
     // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
     // at display rate, also when the transport is stopped or the host has stopped processing.
-    // A track turning mono, or a new sample rate with the same capture size, change it too.
     const bool liveSeconds = !synced && !isFrozen;
     if (liveSeconds) {
         liveEnds.clear();
-        liveFormats.clear();
-        const auto addSource = [&](const Engine& source) {
-            liveEnds.push_back(source.captureRing().endIndex());
-            liveFormats.push_back(static_cast<std::uint64_t>(source.inputChannels()));
-            liveFormats.push_back(std::bit_cast<std::uint64_t>(source.sampleRate()));
-        };
-        addSource(engine);
+        liveEnds.push_back(engine.captureRing().endIndex());
         if (multi) {
             for (const std::uint64_t serial : laneOrder) {
-                addSource(*lanes.at(serial)->engine);
+                liveEnds.push_back(lanes.at(serial)->engine->captureRing().endIndex());
             }
         }
     }
     const bool newAudio = !liveSeconds || liveEnds != lastLiveEnds;
-    const bool newFormat = liveSeconds && liveFormats != lastLiveFormats;
+    const bool newFormat = !isFrozen && formatsChanged(multi);
     // Other lanes, or other tracks compared, change the frame too. A match still to search does
     // only when its search can run: live with the transport playing, searches are spaced by audio,
     // so without new audio none would, and the frame drawn would be the same.
@@ -957,6 +950,25 @@ Analyzer::Commands Analyzer::peekCommands()
 // Whether anything that decides a frame, other than new audio, differs from the last frame's, and
 // recording them once a frame is made: one list for every mode and time base, read and written in
 // one place, so that a new input is never missed in one of them.
+// Live, the channel count and sample rate of this track and of each lane shown, against those
+// of the last frame drawn live: a track turning mono, or a new sample rate with the same capture
+// size, changes what a frame shows though no audio is new and no setting changed.
+bool Analyzer::formatsChanged(bool multi)
+{
+    liveFormats.clear();
+    const auto add = [&](const Engine& source) {
+        liveFormats.push_back(static_cast<std::uint64_t>(source.inputChannels()));
+        liveFormats.push_back(std::bit_cast<std::uint64_t>(source.sampleRate()));
+    };
+    add(engine);
+    if (multi) {
+        for (const std::uint64_t serial : laneOrder) {
+            add(*lanes.at(serial)->engine);
+        }
+    }
+    return liveFormats != lastLiveFormats;
+}
+
 void Analyzer::rememberInputs(const Settings& settings, const Commands& command,
                               std::uint32_t laneSetId)
 {
@@ -1119,7 +1131,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         return false;
     }
 
-    const bool changed = fresh || inputsChanged(settings, command, laneSetId) ||
+    // Checked whatever else changed, so that the formats drawn are always the ones remembered.
+    const bool newFormat = !isFrozen && formatsChanged(true);
+    const bool changed = fresh || newFormat || inputsChanged(settings, command, laneSetId) ||
                          (comparing && (matchesPending || sumsRefreshing()));
     if (!changed) {
         return false;
@@ -1242,6 +1256,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     lastShown = Window{.synced = true};
     if (!isFrozen) {
         lastLive = lastShown;
+    }
+    if (!isFrozen) {
+        lastLiveFormats = liveFormats;
     }
     rememberInputs(settings, command, laneSetId);
     return true;
