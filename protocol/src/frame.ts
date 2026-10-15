@@ -33,6 +33,10 @@
 // has bit i set when lane i has any in what the frame shows; in Single, which has no lanes, bit 0
 // when any trace does.
 //
+// `sampleRate` is the rate of the audio the frame shows, which turns its samples
+// (`visibleSamples`, match offsets) into time: frozen, the rate the audio was held at, which the
+// host may have changed since.
+//
 // View zoom: the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
 // 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
 // viewStart + (k - startFraction) / visibleSamples * (viewEnd - viewStart); min/max columns
@@ -69,6 +73,7 @@ export const frameHeaderFields = [
   { name: "panReach", type: "f32" },
   { name: "invalidSamples", type: "u32" },
   { name: "invalidLanes", type: "u32" },
+  { name: "sampleRate", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

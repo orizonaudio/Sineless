@@ -30,6 +30,7 @@ function frameOf(mode: FrameMode, pointCount: number): Frame {
     panReach: 0,
     invalidSamples: 0,
     invalidLanes: 0,
+    sampleRate: 48000,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,

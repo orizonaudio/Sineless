@@ -25,6 +25,7 @@ describe("frame decoder", () => {
     expect(frame.panReach).toBe(1.5);
     expect(frame.invalidSamples).toBe(golden.header.invalidSamples);
     expect(frame.invalidLanes).toBe(golden.header.invalidLanes);
+    expect(frame.sampleRate).toBe(golden.header.sampleRate);
     expect(frame.roll).toBe(false);
     expect(frame.pointCount).toBe(golden.header.pointCount);
     expect(frame.startFraction).toBe(golden.header.startFraction);
@@ -56,6 +57,7 @@ describe("frame decoder", () => {
     expect(frame.cycleSeconds).toBe(goldenLanes.header.cycleSeconds);
     expect(frame.frequency).toBeUndefined();
     expect(frame.invalidLanes).toBe(goldenLanes.header.invalidLanes);
+    expect(frame.sampleRate).toBe(goldenLanes.header.sampleRate);
     expect(frame.lanes.map((lane) => Array.from(lane))).toEqual(
       goldenLanes.lanes,
     );

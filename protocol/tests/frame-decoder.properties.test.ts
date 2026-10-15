@@ -78,6 +78,7 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       panReach: f32,
       invalidSamples: u32,
       invalidLanes: u32,
+      sampleRate: f32,
       spanQuarterNotes: f32,
       barQuarterNotes: f32,
       viewStart: f32,
@@ -155,6 +156,7 @@ function expectedHeader(
     panReach: content.panReach ?? 0,
     invalidSamples: content.invalidSamples ?? 0,
     invalidLanes: content.invalidLanes ?? 0,
+    sampleRate: content.sampleRate,
   };
 }
 
@@ -203,6 +205,7 @@ function expectedFrame(content: FrameContent): Frame {
     panReach: f(header.panReach),
     invalidSamples: header.invalidSamples,
     invalidLanes: header.invalidLanes,
+    sampleRate: f(header.sampleRate),
     spanQuarterNotes: f(header.spanQuarterNotes),
     barQuarterNotes: f(header.barQuarterNotes),
     viewStart: f(header.viewStart),

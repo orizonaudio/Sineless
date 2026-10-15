@@ -65,6 +65,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .panReach = header["panReach"].get<float>(),
         .invalidSamples = header["invalidSamples"].get<std::uint32_t>(),
         .invalidLanes = header["invalidLanes"].get<std::uint32_t>(),
+        .sampleRate = header["sampleRate"].get<float>(),
     };
 }
 

@@ -31,6 +31,8 @@ export interface Frame {
   // bit per lane holding any in what the frame shows.
   readonly invalidSamples: number;
   readonly invalidLanes: number;
+  // The rate of the audio shown (frozen, the one it was held at), for the frame's times.
+  readonly sampleRate: number;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
   // The part of the span this frame covers, and its length in samples.
@@ -143,6 +145,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     panReach: f32("panReach"),
     invalidSamples: u32("invalidSamples"),
     invalidLanes: u32("invalidLanes"),
+    sampleRate: f32("sampleRate"),
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
     viewStart: f32("viewStart"),

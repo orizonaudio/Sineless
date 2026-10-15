@@ -39,6 +39,7 @@ function frame(
     panReach: 0,
     invalidSamples: 0,
     invalidLanes: 0,
+    sampleRate: 48000,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

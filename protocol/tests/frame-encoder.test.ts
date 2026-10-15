@@ -30,6 +30,7 @@ test("encodes the golden frame byte for byte", () => {
     panReach: golden.header.panReach,
     invalidSamples: golden.header.invalidSamples,
     invalidLanes: golden.header.invalidLanes,
+    sampleRate: golden.header.sampleRate,
     views: new Map([
       [ChannelView.mid, golden.views.mid],
       [ChannelView.left, golden.views.left],
@@ -63,6 +64,7 @@ test("encodes the golden lanes frame byte for byte", () => {
     laneSet: header.laneSet,
     invalidSamples: header.invalidSamples,
     invalidLanes: header.invalidLanes,
+    sampleRate: header.sampleRate,
     comparison: {
       sumGain: header.sumGain,
       fixedGain: header.fixedGain,
@@ -95,6 +97,7 @@ test("encodes a frequency not found as NaN, the protocol's no value", () => {
     views: new Map(),
     lanes: [],
     laneSet: 0,
+    sampleRate: header.sampleRate,
   });
   const offset = frameHeader.fields.find(
     (field) => field.name === "frequency",
