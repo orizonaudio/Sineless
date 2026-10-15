@@ -24,12 +24,16 @@ export interface Started {
   deliver(message: ControlMessage): void;
 }
 
-export async function startApp(options: MockOptions = {}): Promise<Started> {
+// Starts the page on a new mock back end, or on `transport`: the page reopened on the same
+// instance, as when the editor window is closed and opened again.
+export async function startApp(
+  options: MockOptions = {},
+  transport = new MockTransport(options),
+): Promise<Started> {
   document.body.innerHTML = new DOMParser().parseFromString(
     html,
     "text/html",
   ).body.innerHTML;
-  const transport = new MockTransport(options);
   const sent: ControlMessage[] = [];
   let held = false;
   let waiting = false; // A request held back.

@@ -1707,6 +1707,62 @@ TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)
     EXPECT_EQ(frame->laneCount, 3);
 }
 
+// The checks are the instance's, not its editor's: closing and reopening the editor (a new
+// analyzer on the same instance) keeps them.
+TEST_F(CompareTest, KeepsTheCheckedTracksWhenTheEditorReopens)
+{
+    const auto first = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
+    const auto second = joinWith([](std::uint64_t sample) { return noiseAt(sample, 3); });
+    const auto third = joinWith([](std::uint64_t sample) { return noiseAt(sample, 4); });
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer->setCompared({idOf(second), idOf(third)});
+    ASSERT_TRUE(produce());
+
+    analyzer.reset();
+    Analyzer reopened(*own, registry);
+    reopened.setColumns(8000);
+    std::vector<std::byte> bytes;
+    play(480);
+    ASSERT_TRUE(reopened.produce(bytes));
+    const LaneSet lanes = reopened.laneSet();
+    ASSERT_EQ(lanes.lanes.size(), 4u);
+    EXPECT_EQ(lanes.lanes[1].id, idOf(first));
+    EXPECT_FALSE(lanes.lanes[1].compared) << "the first other track, which the default compares";
+    EXPECT_TRUE(lanes.lanes[2].compared);
+    EXPECT_TRUE(lanes.lanes[3].compared);
+}
+
+// A checked track that leaves the group is not compared while away, and is again when it comes
+// back, though checks changed meanwhile: the page only knows the tracks it draws.
+TEST_F(CompareTest, KeepsATrackCheckedWhileItIsInAnotherGroup)
+{
+    const auto first = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
+    const auto away = joinWith([](std::uint64_t sample) { return noiseAt(sample, 3); });
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer->setCompared({idOf(first), idOf(away)});
+    ASSERT_TRUE(produce());
+
+    away->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kB));
+    play(480);
+    ASSERT_TRUE(produce());
+    ASSERT_EQ(analyzer->laneSet().lanes.size(), 2u);
+    analyzer->setCompared({}); // First unchecked while the other is away.
+    play(480);
+    ASSERT_TRUE(produce());
+    EXPECT_FALSE(analyzer->laneSet().lanes[1].compared);
+
+    away->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kA));
+    play(480);
+    ASSERT_TRUE(produce());
+    const LaneSet lanes = analyzer->laneSet();
+    ASSERT_EQ(lanes.lanes.size(), 3u);
+    EXPECT_FALSE(lanes.lanes[1].compared);
+    EXPECT_EQ(lanes.lanes[2].id, idOf(away));
+    EXPECT_TRUE(lanes.lanes[2].compared);
+}
+
 // Sixteen bars at 120 BPM are a 32 s sweep. The other track is this one inverted for the first
 // 14 s, then as it is: the match follows the newest 8 s before the playhead, not the whole view.
 TEST_F(CompareTest, SearchesTheMatchOverTheNewestPartOfTheView)

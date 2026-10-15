@@ -3,7 +3,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { byId, choice, settle, startApp } from "./harness.ts";
+import { byId, choice, settle, startApp, type Started } from "./harness.ts";
 
 function laneNames(): string[] {
   return [...byId("lane-labels").querySelectorAll(".lane-label")].map(
@@ -45,8 +45,10 @@ async function setCompared(name: string, compared: boolean): Promise<void> {
   await expect.poll(state).toBe(String(compared));
 }
 
+let started: Started;
+
 beforeAll(async () => {
-  await startApp();
+  started = await startApp();
 });
 
 describe("the multi-track view", () => {
@@ -104,6 +106,24 @@ describe("the Compare view", () => {
     await userEvent.click(preview as HTMLElement);
     await settle();
     await expect.poll(() => sum()?.classList.contains("reinforces")).toBe(true);
+  });
+
+  // The checks are the instance's: the engine keeps them, and the page reopened shows them
+  // rather than going back to comparing the first other track.
+  test("keeps the checked tracks when the editor reopens", async () => {
+    await show("Compare");
+    await setCompared("Bass", false);
+    await setCompared("Kick 2", true);
+    await setCompared("Track 3", true);
+    started = await startApp({}, started.transport);
+    const checks = () =>
+      ["Bass", "Track 3", "Kick 2"].map((name) =>
+        compareCheck(name).getAttribute("aria-checked"),
+      );
+    await expect.poll(checks).toEqual(["false", "true", "true"]);
+    expect(started.sent.some((message) => message.type === "compare")).toBe(
+      false,
+    );
   });
 
   test("says when the group has no other track", async () => {

@@ -180,7 +180,7 @@ export class MockTransport implements Transport {
   private laneSet = 0;
   private lanesKey = "";
   // The Compare view's other tracks, by id (until asked, the first), and whether the sum previews
-  // the fix.
+  // the fix. The checks outlive the page, as the engine keeps them with the instance.
   private compared: readonly number[] | undefined;
   private previewFix = false;
   private readonly sampleRate: number;

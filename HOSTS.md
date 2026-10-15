@@ -38,7 +38,7 @@ buffer unless a step says otherwise. Note anything unexpected in the row's notes
    names and colours, in order, and line up in time, and the window grows so that every stacked
    lane fits its label. Rename and recolour a track: its lane follows. In hosts with plugin
    isolation, check both modes and note what Multi shows.
-7. **Compare.** Check and uncheck tracks, an inverted copy reads Ø and cancels, Preview fix.
+7. **Compare.** Check and uncheck tracks, an inverted copy reads Ø and cancels, Preview fix. Close and reopen the editor: the checks remain. Save and reopen the project: the first other track is checked again.
 8. **State.** Save the project, close and reopen it: every setting is restored; an older
    project opens.
 9. **Rates and buffers.** Repeat steps 2 and 6 briefly at 44.1 and 96 kHz, and at 64 and 1024

@@ -287,10 +287,29 @@ void Analyzer::setView(double start, double end)
     commands.viewEnd = end;
 }
 
-void Analyzer::setCompared(std::vector<std::uint64_t> ids)
+// The checks are kept with the instance, so that they outlive this analyzer (the editor closed and
+// opened again); they are not saved. A track checked before that is not drawn now (in another
+// group, or beyond the tracks drawn) stays checked.
+void Analyzer::setCompared(const std::vector<std::uint64_t>& ids)
 {
-    const std::scoped_lock lock(commandMutex);
-    commands.compared = std::move(ids);
+    const LaneSet drawn = laneSet();
+    std::vector<std::uint64_t> next;
+    for (const std::uint64_t id : ids) {
+        const auto lane = std::ranges::find(drawn.lanes, id, &LaneLabel::id);
+        if ((lane == drawn.lanes.end() || !lane->own) && !contains(next, id)) {
+            next.push_back(id);
+        }
+    }
+    if (const auto previous = engine.compared()) {
+        for (const std::uint64_t id : *previous) {
+            const bool isDrawn = std::ranges::any_of(
+                drawn.lanes, [&](const LaneLabel& lane) { return lane.id == id; });
+            if (!isDrawn && !contains(next, id)) {
+                next.push_back(id);
+            }
+        }
+    }
+    engine.setCompared(std::move(next));
 }
 
 void Analyzer::setPreviewFix(bool on)
@@ -423,7 +442,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         return produceLanes(settings, command, frame);
     }
     if (multi) {
-        selectLanes(settings, command);
+        selectLanes(settings);
     } else {
         lanes.clear(); // Frees the lanes' sweeps and holds outside the multi-track view.
     }
@@ -841,7 +860,7 @@ bool Analyzer::measureSweepReadouts(const BlockStats& stats, std::size_t first, 
 // Compare view, which adds their sum), always including this instance's own. Publishes their
 // labels, keeps each lane's state across frames, and holds each lane's audio while frozen.
 // Returns the own lane's serial.
-std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& command)
+std::uint64_t Analyzer::selectLanes(const Settings& settings)
 {
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
@@ -876,12 +895,12 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings, const Commands& co
     // in the group there is nothing to compare.
     std::vector<std::uint64_t> compared;
     if (compare) {
+        const auto selection = engine.compared();
         for (const GroupMember& member : members) {
             if (member.serial == ownSerial) {
                 continue;
             }
-            const bool asked =
-                command.compared ? contains(*command.compared, member.serial) : compared.empty();
+            const bool asked = selection ? contains(*selection, member.serial) : compared.empty();
             if (asked) {
                 compared.push_back(member.serial);
             }
@@ -1025,7 +1044,7 @@ void Analyzer::advance()
     const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
     if (settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
         protocol::DisplayMode::kSingle) {
-        selectLanes(settings, peekCommands());
+        selectLanes(settings);
         placeLanes(settings, beatSpan);
         return;
     }
@@ -1044,7 +1063,7 @@ void Analyzer::advance()
 bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                             std::vector<std::byte>& frame)
 {
-    const std::uint64_t ownSerial = selectLanes(settings, command);
+    const std::uint64_t ownSerial = selectLanes(settings);
     const std::uint32_t laneSetId = laneSet().id;
 
     if (image.length() > 0) {
