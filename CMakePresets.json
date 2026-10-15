@@ -126,14 +126,14 @@
     },
     {
       "name": "linux",
-      "displayName": "Linux: engine and protocol tests under AddressSanitizer (Clang)",
+      "displayName": "Linux: engine, plugin and editor tests under AddressSanitizer (Clang)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/linux",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
-        "ORIZON_ENGINE_ONLY": "ON",
+        "ORIZON_ENGINE_ONLY": "OFF",
         "ORIZON_ADDRESS_SANITIZER": "ON"
       },
       "condition": {
@@ -307,6 +307,9 @@
     {
       "name": "linux",
       "configurePreset": "linux",
+      "environment": {
+        "LSAN_OPTIONS": "suppressions=${sourceDir}/tools/sanitizers/lsan-suppressions.txt"
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -464,7 +467,8 @@
         "outputOnFailure": true
       },
       "environment": {
-        "ASAN_OPTIONS": "halt_on_error=1"
+        "ASAN_OPTIONS": "halt_on_error=1",
+        "LSAN_OPTIONS": "suppressions=${sourceDir}/tools/sanitizers/lsan-suppressions.txt"
       },
       "condition": {
         "type": "equals",

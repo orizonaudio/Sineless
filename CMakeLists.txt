@@ -15,8 +15,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
 
-# The engine and protocol build anywhere; the editor and plugin need the macOS or Windows SDKs.
-# Elsewhere (Linux CI, contributors without a Mac or Windows) only the engine and protocol build.
+# The engine and protocol build anywhere. The plugin and editor need the VST3 SDK, and the editor
+# shows only on macOS and Windows: on Linux they build for the checks alone (CI's linux preset),
+# and by default only the engine and protocol build there, for contributors without the SDK.
 if(APPLE OR WIN32)
     set(orizonPlatformDefault OFF)
 else()
