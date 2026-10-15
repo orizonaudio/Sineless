@@ -3375,5 +3375,76 @@ TEST_P(FrozenRateChange, KeepsTheHeldPictureThroughOtherSpans)
 INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenRateChange, ::testing::ValuesIn(formatChangeCases()),
                          modeTestName);
 
+// Frozen in Multi and Compare, a track whose lane is first held after the host changed the rate
+// (here one that comes into the group then) holds audio at the new rate, while the view shows this
+// track's at the rate it was held at: the lane draws none of it, in both time bases, rather than a
+// stretch of other length or place. With no rate change, the same lane draws its audio.
+class FrozenLaneAtAnotherRate : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(FrozenLaneAtAnotherRate, DrawsNoAudio)
+{
+    const ModeCase c = GetParam();
+    const double otherRate = c.rate == kSampleRates.front() ? kSampleRates.back() : 48000.0;
+    const bool beats = c.timeBase == TimeBase::kBeats;
+    // The lane of the track that came into the group, in the frame drawn after it did.
+    const auto lateLane = [&](bool rateChanged) {
+        Session session(c.rate, c.channels);
+        session.join({.frequency = 1000.0}); // This track.
+        session.join({.frequency = 1500.0});
+        const auto late = session.join({.frequency = 2000.0});
+        late->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kB));
+        configure(session.own(), c.mode, c.timeBase);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+        session.play(4.0, 0.05);
+        session.analyzer().setFrozen(true);
+        (void)session.produce();
+        if (rateChanged) {
+            for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+                member.engine->setSampleRate(otherRate);
+            }
+            late->setSampleRate(otherRate);
+        }
+        late->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kA));
+        if (beats) {
+            // A lane comes into a frozen sweep when it is rebuilt from the held audio.
+            session.own().settings().set(SettingId::kBeatSpan,
+                                         static_cast<double>(BeatSpan::kTwoBars));
+        }
+        const auto frame = session.produce();
+        EXPECT_TRUE(frame) << "no frame with the track in the group";
+        EXPECT_TRUE(frame && frame->laneCount >= 3) << "the track has no lane";
+        return frame && frame->laneCount >= 3
+                   ? std::vector<float>(trace(*frame, 2).begin(), trace(*frame, 2).end())
+                   : std::vector<float>{};
+    };
+    const auto none = [](const std::vector<float>& values) {
+        return std::ranges::all_of(values,
+                                   [](float value) { return value == 0.0f || std::isnan(value); });
+    };
+    const auto unchanged = lateLane(false);
+    ASSERT_FALSE(unchanged.empty());
+    EXPECT_FALSE(none(unchanged)) << "with no rate change, the lane draws its audio";
+    const auto changed = lateLane(true);
+    ASSERT_FALSE(changed.empty());
+    EXPECT_TRUE(none(changed)) << "a lane held at another rate draws audio at this one's";
+}
+
+// Multi and Compare, both time bases, at the lowest and highest rates.
+std::vector<ModeCase> laneRateCases()
+{
+    std::vector<ModeCase> cases;
+    for (const ModeCase& c : formatChangeCases()) {
+        if (c.mode != DisplayMode::kSingle) {
+            cases.push_back(c);
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenLaneAtAnotherRate, ::testing::ValuesIn(laneRateCases()),
+                         modeTestName);
+
 } // namespace
 } // namespace orizon::engine
