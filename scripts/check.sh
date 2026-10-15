@@ -7,6 +7,7 @@
 #   SKIP_PERFORMANCE=1  Skip the performance limits (they need a logged-in desktop session)
 #   SKIP_FORMAT=1       Skip the C++ format check (CI runs it once, with a pinned clang-format)
 #   SKIP_APP_TESTS=1    Skip the app tests in WebKit and Chromium (CI runs them once, on Linux)
+#   SKIP_TYPESCRIPT=1   Skip the TypeScript checks (CI's typescript job runs them)
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -90,16 +91,18 @@ if [[ "${SKIP_PERFORMANCE:-}" != 1 ]]; then
     scripts/performance.sh
 fi
 
-step "TypeScript"
-[[ -d node_modules ]] || npm ci
-npm run typecheck
-npm run lint
-npm run format:check
-npm test
-if [[ "${SKIP_APP_TESTS:-}" != 1 ]]; then
-    npx playwright install webkit chromium
-    npm run test:app
+if [[ "${SKIP_TYPESCRIPT:-}" != 1 ]]; then
+    step "TypeScript"
+    [[ -d node_modules ]] || npm ci
+    npm run typecheck
+    npm run lint
+    npm run format:check
+    npm test
+    if [[ "${SKIP_APP_TESTS:-}" != 1 ]]; then
+        npx playwright install webkit chromium
+        npm run test:app
+    fi
+    npm run build
 fi
-npm run build
 
 printf '\nAll checks passed.\n'

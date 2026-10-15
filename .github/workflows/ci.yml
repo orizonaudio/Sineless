@@ -142,7 +142,8 @@ jobs:
 
   # Everything scripts/check.sh checks except the performance limits and the format: build, all C++
   # tests including the editor's in a real WKWebView, the VST3 validator, clang-tidy, the
-  # RealtimeSanitizer, ThreadSanitizer and AddressSanitizer builds, pluginval and the TypeScript.
+  # RealtimeSanitizer, ThreadSanitizer and AddressSanitizer builds and pluginval. The TypeScript is
+  # the typescript job's.
   macos:
     name: macos
     needs: changes
@@ -152,6 +153,7 @@ jobs:
       SKIP_PERFORMANCE: 1
       SKIP_FORMAT: 1
       SKIP_APP_TESTS: 1
+      SKIP_TYPESCRIPT: 1
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
@@ -172,7 +174,7 @@ jobs:
 
   # Everything scripts\check.ps1 checks except the performance limit and the format, on x64 and
   # on ARM64: build, all C++ tests including the editor's in a real WebView2, the VST3 validator,
-  # pluginval (x64) and the TypeScript.
+  # and pluginval (x64). The TypeScript is the typescript job's.
   windows:
     name: windows-${{ matrix.arch }}
     needs: changes
@@ -193,6 +195,7 @@ jobs:
       SKIP_PERFORMANCE: 1
       SKIP_FORMAT: 1
       SKIP_APP_TESTS: 1
+      SKIP_TYPESCRIPT: 1
       CODE: ${{ needs.changes.outputs.code != 'false' }}
     steps:
       - if: env.CODE == 'true'
