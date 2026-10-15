@@ -116,25 +116,8 @@ if [[ ! -f "$out/mull.json" ]]; then
     tail -n 20 "$out/mull.log" >&2
     exit 1
 fi
-node scripts/mutation-report.ts "$out/mull.json" "Mutation testing (C++)" \
-    "$((SECONDS - start))" > "$out/summary.md"
-# A mutant no test notices runs every test: were that close to its limit, it would be stopped and
-# reported as timed out, which counts as noticed, hiding a line no test checks. The summary says
-# how long the unmutated tests took (Mull's warm-up run) against the limit, and warns past half.
-warmup="$(grep -A1 'Warm up run' "$out/mull.log" | grep -oE 'Finished in [0-9hms.]+' | head -1 |
-    sed 's/Finished in //' |
-    awk '{ s = 0; n = ""; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1);
-        if (c ~ /[0-9.]/) n = n c; else { s += n * (c == "h" ? 3600 : c == "m" ? 60 : 1); n = "" } }
-        printf "%d", s }')"
-if [[ -n "$warmup" ]]; then
-    limitSeconds=$((mutantTimeout / 1000))
-    printf '\nThe tests take %d s unmutated; each mutant is stopped at %d s.\n' "$warmup" \
-        "$limitSeconds" >> "$out/summary.md"
-    if ((warmup * 2 > limitSeconds)); then
-        {
-            printf '\n> [!WARNING]\n> The tests take more than half the limit: raise'
-            printf ' MUTANT_TIMEOUT, or mutants no test notices may be reported as timed out.\n'
-        } >> "$out/summary.md"
-    fi
-fi
+# With Mull's log and the limit, the summary also says how long the tests take with no mutant
+# against each mutant's limit, and warns when the margin is too small (scripts/mutation-summary.ts).
+node scripts/mutation-report.ts "$out/mull.json" "Mutation testing (C++)" "$((SECONDS - start))" \
+    --mull-log "$out/mull.log" --limit "$((mutantTimeout / 1000))" > "$out/summary.md"
 cat "$out/summary.md"
