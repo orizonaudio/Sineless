@@ -17,5 +17,6 @@ paths:
   content; content of unbounded width goes where there is room for it.
 - Help text reads its numbers from `protocol/src/limits.ts` and describes what the code does
   in every mode it applies to.
-- Changing the frame layout means bumping the protocol version and regenerating both golden
-  frames, in C++ and TypeScript.
+- Changing the frame layout means bumping `protocolVersion` (`protocol/src/version.ts`) and
+  updating both shared golden frames in `protocol/tests/data/`, which the C++ encoder tests and
+  the TypeScript decoder tests read.
