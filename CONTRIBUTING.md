@@ -17,7 +17,7 @@ Every change:
 
 ## Performance
 
-`scripts/performance.sh` (macOS) and `scripts\performance.ps1` (Windows) enforce performance limits, measured on optimised builds of two benchmarks. The check scripts run them unless `SKIP_PERFORMANCE=1`; CI runs them as a separate job, with slightly looser limits (`PERF_MIN_FPS`, `PERF_CPU_SLACK`, `PERF_MAX_SHARE`), that warns but never fails, since shared CI machines are too noisy for hard limits.
+`scripts/performance.sh` (macOS) and `scripts\performance.ps1` (Windows) enforce performance limits, measured on optimised builds of two benchmarks. The check scripts run them unless `SKIP_PERFORMANCE=1`; CI runs them as a separate job that never fails: shared CI machines are too slow and noisy for the speed limits (frames/s, CPU, the audio thread's share), so it measures them and shows them in the job summary (`PERF_SPEED=report`), and warns only on the leak limits (what reopening the editor leaves behind).
 
 - `process_bench`: real processor instances driven through the VST3 API at every common block size and sample rate. Eight instances together must stay within 5% of each block's deadline at p99.9. `scripts\performance.ps1` runs it on GitHub's Windows machines, or anywhere with `RUN_BENCH=1`.
 - `perf_bench`: the real editor page in a WKWebView, with tracks playing in real time. Seven tracks over four bars, and fifteen tracks over sixteen bars at 60 BPM and 96 kHz (a 64 s sweep), must draw at 45 frames/s or more with the analysis thread under its budget, and opening and closing the editor 50 times must leave nothing behind.
