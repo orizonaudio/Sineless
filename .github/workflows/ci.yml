@@ -613,7 +613,9 @@ jobs:
       - if: always()
         shell: pwsh
         run: |
-          $lines = @(Select-String -Path performance.log -Pattern '^(limit|total|page|reopen|reopened|worst share)' |
+          # No log at all (the benchmarks did not build or run) is reported, not an error.
+          $lines = @(Select-String -Path performance.log -ErrorAction SilentlyContinue `
+            -Pattern '^(limit|total|page|reopen|reopened|worst share|  thread Sineless analysis)' |
             ForEach-Object { $_.Line })
           if ($lines.Count -eq 0) { $lines = @('No measurements; see the log.') }
           @("## Performance (${{ matrix.os }})", '', '```') + $lines + @('```') |
