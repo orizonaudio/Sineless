@@ -211,7 +211,9 @@ jobs:
 
           The mutation run of ${SHA:0:7} left no report (${incomplete[*]}): it failed, timed out or stopped short, so its mutants were not judged. See the job's summary in CI." ||
               echo "::warning::Could not post the mutation triage."
+            # Nothing to judge or report: the status above stays.
             echo "count=0" >> "$GITHUB_OUTPUT"
+            echo "not-run=0" >> "$GITHUB_OUTPUT"
             exit 1
           fi
           # Numbered, with repository paths (scripts/mutation-triage.ts, numbered).
