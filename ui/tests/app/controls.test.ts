@@ -2,6 +2,8 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { DisplayMode } from "../../../protocol/src/enums.ts";
+
 import {
   byId,
   choice,
@@ -121,6 +123,67 @@ describe("controls", () => {
     await expect.poll(chips, { timeout: 3000 }).not.toContain("Waiting");
     await userEvent.click(choice("mode", "Auto"));
   });
+
+  // Each overlay the Display group toggles, and everything it puts over the screen. Turning one
+  // off must leave nothing of it showing, wherever it was placed: an element left unplaced would
+  // sit at the top of the screen. A new overlay belongs in this table.
+  const overlays = [
+    {
+      name: "time cursors",
+      toggle: "time-cursors",
+      parts: () => [byId("cursor-a"), byId("cursor-b"), byId("cursor-readout")],
+    },
+    {
+      name: "level cursors",
+      toggle: "level-cursors",
+      parts: () => [
+        ...(byId("level-cursor-lines")
+          .children as HTMLCollectionOf<HTMLElement>),
+        byId("cursor-readout"),
+      ],
+    },
+    {
+      name: "hover readout",
+      toggle: "hover-toggle",
+      parts: () => [
+        byId("hover-line"),
+        byId("hover-readout"),
+        byId("hover-cycle"),
+      ],
+      // It shows where the pointer is over the screen.
+      show: () =>
+        userEvent.hover(byId("screen"), { position: { x: 300, y: 80 } }),
+    },
+  ];
+  const showing = (parts: HTMLElement[]) =>
+    parts.filter((part) => part.isConnected && !part.hidden).length;
+
+  test.each(
+    // Every display mode, from the protocol's enum, by its button's label ("single" → "Single").
+    Object.keys(DisplayMode)
+      .map((key) => key.charAt(0).toUpperCase() + key.slice(1))
+      .flatMap((mode) =>
+        overlays.map((overlay) => [mode, overlay.name, overlay] as const),
+      ),
+  )(
+    "in %s, turning the %s off leaves nothing of them on the screen",
+    async (mode, _, overlay) => {
+      await userEvent.click(choice("display-mode", mode));
+      await settle();
+      const toggle = byId(overlay.toggle);
+      if (toggle.getAttribute("aria-pressed") === "true") {
+        await userEvent.click(toggle);
+      }
+      await userEvent.click(toggle);
+      await overlay.show?.();
+      await expect.poll(() => showing(overlay.parts())).toBeGreaterThan(0);
+      await userEvent.click(toggle);
+      await overlay.show?.();
+      await settle();
+      expect(showing(overlay.parts())).toBe(0);
+      await userEvent.click(choice("display-mode", "Single"));
+    },
+  );
 
   test("an engine error shows its message over the screen", async () => {
     app.deliver({ type: "error", code: "engineUnavailable", message: "" });
