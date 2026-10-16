@@ -56,7 +56,7 @@ are never reported as findings on their own, and no score is a goal.
 
 The `mutation-triage` check applies this to every pull request whose mutation run leaves
 mutants (`.github/workflows/mutation-triage.yml`): a `mutation-triager` gives each a verdict
-(gap, equivalent, speed, tuned, dead or message), a `review-verifier` checks each gap, and a
+(gap, equivalent, speed, tuned, dead, message, or tested by an app test the mutation run does not run), a `review-verifier` checks each gap, and a
 comment lists them all. It fails while a verified gap is left; the author adds a test that
 fails with that mutant, or answers it, and a maintainer can waive it. A run that left mutants
 not run (it reached its deadline, or a share of it failed) leaves a partial report: the mutants

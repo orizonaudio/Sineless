@@ -290,7 +290,7 @@ jobs:
             --max-turns 30
             --allowedTools "Agent,Task,Read(./**),Grep(./**),Glob(./**),Read(/${{ github.workspace }}/**),Grep(/${{ github.workspace }}/**),Glob(/${{ github.workspace }}/**)"
             --disallowedTools "Read(./.git/**),Grep(./.git/**),Glob(./.git/**),Read(./pr-head/.git/**),Grep(./pr-head/.git/**),Glob(./pr-head/.git/**),Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(/${{ runner.temp }}/**),Grep(/${{ runner.temp }}/**),Glob(/${{ runner.temp }}/**),Read(~/.claude/**),Grep(~/.claude/**),Glob(~/.claude/**)"
-            --json-schema '{"type":"object","required":["verdicts"],"properties":{"verdicts":{"type":"array","items":{"type":"object","required":["id","verdict","reason"],"properties":{"id":{"type":"integer"},"verdict":{"enum":["gap","equivalent","speed","tuned","dead","message"]},"reason":{"type":"string"}}}}}}'
+            --json-schema '{"type":"object","required":["verdicts"],"properties":{"verdicts":{"type":"array","items":{"type":"object","required":["id","verdict","reason"],"properties":{"id":{"type":"integer"},"verdict":{"enum":["gap","equivalent","speed","tuned","dead","message","tested"]},"reason":{"type":"string"}}}}}}'
 
       # Each "gap" becomes a finding for a verifier; a mutant left without a verdict counts as one
       # (scripts/mutation-triage.ts, judge).
