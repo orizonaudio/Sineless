@@ -606,16 +606,14 @@ jobs:
         shell: powershell
         run: scripts/performance.ps1 *>&1 | Tee-Object performance.log
       - if: steps.macos.outcome == 'failure' || steps.windows.outcome == 'failure'
-        run: echo "::warning title=Performance::A leak limit was missed on ${{ matrix.os }}, or the benchmarks did not run; see the log of the step above."
-      # The measurements, to compare between runs.
+        run: echo "::warning title=Performance::A leak limit was missed on ${{ matrix.os }}, or a benchmark did not run to the end; see the log of the step above."
+      # The measurements, to compare between runs. Read with PowerShell 7, on both platforms: it
+      # reads Windows PowerShell's UTF-16 log as well as the macOS step's UTF-8 one.
       - if: always()
-        shell: bash
+        shell: pwsh
         run: |
-          {
-            echo "## Performance (${{ matrix.os }})"
-            echo
-            echo '```'
-            grep -E '^(limit|total|page|reopen|reopened|worst share)' performance.log ||
-              echo "No measurements; see the log."
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          $lines = @(Select-String -Path performance.log -Pattern '^(limit|total|page|reopen|reopened|worst share)' |
+            ForEach-Object { $_.Line })
+          if ($lines.Count -eq 0) { $lines = @('No measurements; see the log.') }
+          @("## Performance (${{ matrix.os }})", '', '```') + $lines + @('```') |
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY

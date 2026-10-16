@@ -15,7 +15,7 @@ step() { printf '\n==> %s\n' "$1"; }
 
 report=false
 [[ "${PERF_SPEED:-}" == report ]] && report=true
-# A speed limit, or -1 to measure without judging (the benchmarks skip a negative limit).
+# A speed limit, or -1 to measure without judging (perf_bench skips a negative limit).
 speed() { if $report; then echo -1; else echo "$1"; fi; }
 minFps="$(speed 45)" # frames/s every editor scenario must reach
 
@@ -26,8 +26,11 @@ step "Performance limits (optimised benchmark build)"
 cmake --preset bench
 cmake --build --preset bench -j "$(sysctl -n hw.ncpu)"
 bench="build/bench/bin/Release"
-# The audio thread: 8 instances together within 5% of every block's deadline at p99.9.
-if ! "$bench/process_bench" --instances=8 --seconds=30 --max-share=0.05 | tail -1 && ! $report; then
+# The audio thread: 8 instances together within 5% of every block's deadline at p99.9. Over it,
+# process_bench exits 1, which report mode lets pass; any other failure is a crash, never let pass.
+"$bench/process_bench" --instances=8 --seconds=30 --max-share=0.05 | tail -1 && status=0 ||
+    status="${PIPESTATUS[0]}"
+if ((status != 0)) && { ((status != 1)) || ! $report; }; then
     failed=1
 fi
 # The editor at full rate with seven tracks. CPU in % of one core, about 20 points above what

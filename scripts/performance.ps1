@@ -18,7 +18,12 @@ if ($env:GITHUB_ACTIONS -eq 'true' -or $env:RUN_BENCH -eq '1') {
     $output = & build\windows-x64-bench\bin\Release\process_bench.exe --instances=8 --seconds=30 --max-share=0.05
     $result = $LASTEXITCODE
     $output | Select-Object -Last 1 | Write-Host
-    if ($result -ne 0 -and $env:PERF_SPEED -ne 'report') { throw 'process_bench is over its budget.' }
+    # Over its budget it exits 1; anything else is a crash, never only reported.
+    if ($result -ne 0 -and ($result -ne 1 -or $env:PERF_SPEED -ne 'report')) {
+        throw "process_bench failed (exit code $result)."
+    }
+    # Reported, not judged: the step must not fail on the exit code left behind.
+    $global:LASTEXITCODE = 0
 } else {
     Write-Host 'Skipped: set RUN_BENCH=1 on real x64 hardware (it runs on GitHub by default).'
 }
