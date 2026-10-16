@@ -18,7 +18,8 @@ if (-not (Get-Command dumpbin -ErrorAction SilentlyContinue)) {
 
 # Runs a program and throws if it fails. Its output is piped on: PowerShell does not wait for a
 # program built for the Windows GUI subsystem, such as pluginval, unless its output is, and would
-# read the exit code of the program before it.
+# read the exit code of the program before it. A "--" meant for the program is quoted ('--'):
+# PowerShell takes a bare one as the end of Run's own parameters and drops it (about_Parsing).
 function Run {
     & $args[0] $args[1..($args.Count - 1)] | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Failed: $($args -join ' ')" }

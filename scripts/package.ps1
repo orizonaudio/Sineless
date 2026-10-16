@@ -12,7 +12,7 @@ if (Test-Path $bundle) { Remove-Item -Recurse -Force $bundle }
 $architectures = @('x64')
 foreach ($arch in $architectures) {
     Run cmake --preset "windows-$arch"
-    Run cmake --build --preset "windows-$arch-release" -- /m /nologo /v:minimal
+    Run cmake --build --preset "windows-$arch-release" '--' /m /nologo /v:minimal
     # Each build has its own Contents\<arch>-win folder; robocopy merges them into one bundle.
     # Its exit codes below 8 mean success.
     robocopy "build\windows-$arch\VST3\Release\Sineless.vst3" $bundle /E /NFL /NDL /NJH /NJS /NP | Out-Null
