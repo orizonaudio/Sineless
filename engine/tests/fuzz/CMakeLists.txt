@@ -36,8 +36,10 @@ target_include_directories(session_fuzzer PRIVATE ${PROJECT_SOURCE_DIR}/editor/i
 if(NOT ORIZON_FUZZ)
     # The replay refuses a path that names nothing, and a run with no input at all, rather than
     # passing with nothing replayed.
+    # Beside real inputs, so that only the missing path can fail it: a seed folder moved or
+    # misnamed must not leave the replay passing on the rest.
     add_test(NAME fuzz.replay.RefusesAMissingInput
-             COMMAND state_fuzzer ${CMAKE_CURRENT_BINARY_DIR}/no-such-input)
+             COMMAND state_fuzzer ${seedDir}/state ${CMAKE_CURRENT_BINARY_DIR}/no-such-input)
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/no-inputs)
     add_test(NAME fuzz.replay.RefusesNoInputs
              COMMAND state_fuzzer ${CMAKE_CURRENT_BINARY_DIR}/no-inputs)
