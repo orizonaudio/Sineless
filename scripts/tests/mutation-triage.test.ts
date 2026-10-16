@@ -16,6 +16,7 @@ import {
   numbered,
   repositoryPath,
   runOutcome,
+  verdicts,
   verify,
   type Mutant,
 } from "../mutation-triage.ts";
@@ -29,6 +30,24 @@ const mutant = (id: number, replacement = "<="): Mutant => ({
 });
 
 describe("the mutation triage's verdicts", () => {
+  test("are the ones the workflow lets the triage return, no more and no fewer", () => {
+    const workflow = readFileSync(
+      join(import.meta.dirname, "../../.github/workflows/mutation-triage.yml"),
+      "utf8",
+    );
+    const allowed = /"verdict":\{"enum":(\[[^\]]*\])\}/u.exec(workflow)?.[1];
+    expect(JSON.parse(allowed ?? "null")).toEqual([...verdicts]);
+  });
+
+  test.each(verdicts.filter((verdict) => verdict !== "gap"))(
+    "never sends a mutant judged %s to a verifier, nor fails the check on it",
+    (verdict) => {
+      const judged = judge([mutant(0)], [{ id: 0, verdict, reason: "r" }]);
+      expect(gapsToVerify(judged)).toEqual([]);
+      expect(gapsLeft(verify(judged, []))).toBe(0);
+    },
+  );
+
   test("counts a mutant the triage left without a verdict as a gap", () => {
     const judged = judge(
       [mutant(0), mutant(1)],

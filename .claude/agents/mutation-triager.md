@@ -31,6 +31,8 @@ Give each mutant one verdict:
   (REVIEW.md, question 3).
 - **dead**: the code cannot run, or does nothing: say where it should be removed.
 - **message**: only wording, logging or a diagnostic changes.
+- **tested**: a test the mutation run does not run would fail with the change (see below). Name
+  the test (`file:line`) and what it checks.
 
 The C++ mutants are made in the compiled code, not the source (Mull). A call removed from a
 function the compiler inlined, such as a container's `push_back` or `clear`, may remove only
@@ -38,6 +40,12 @@ part of it: the path that grows a vector's storage, say, which never runs where 
 its storage. Such a mutant is equivalent where the removed part cannot run, even though the
 same line deleted in the source would be noticed; say so, citing what keeps that part from
 running.
+
+The TypeScript mutants are run against the unit tests only (vitest.mutation.config.ts): the app
+tests in `ui/tests/app/` drive real browsers, far too slowly to run once per mutant, so a mutant
+in code only they reach, such as most of `ui/src/app.ts`, comes back as no coverage although an
+app test may well notice it. Before calling such a mutant a gap, look for the app test that
+would fail with it; if there is one, the verdict is **tested**.
 
 Choose **gap** only when you can name the user-visible failure and the state that triggers it;
 when in doubt between gap and another verdict, explain the doubt in the reason and choose gap,

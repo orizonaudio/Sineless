@@ -20,8 +20,18 @@ export interface Mutant {
   replacement: string;
 }
 
-export type Verdict =
-  "gap" | "equivalent" | "speed" | "tuned" | "dead" | "message";
+// The triage's verdicts (.claude/agents/mutation-triager.md); the workflow's output schema allows
+// these, and a test checks it allows no other. Only a gap goes on to a verifier.
+export const verdicts = [
+  "gap",
+  "equivalent",
+  "speed",
+  "tuned",
+  "dead",
+  "message",
+  "tested",
+] as const;
+export type Verdict = (typeof verdicts)[number];
 
 export interface Judged extends Mutant {
   verdict: Verdict | "not a gap";
