@@ -174,10 +174,9 @@ describe("the mutation triage's state", () => {
   });
 });
 
-// The summary each mutation script writes when no line it mutates changed, read from the script
-// itself, so that the test follows the script's wording.
 // Every summary a mutation script writes when it has nothing to report (no line it mutates
-// changed, or no test reaches them), as the script prints it against origin/main.
+// changed, or no test reaches them), read from the script itself, as it prints it against
+// origin/main, so that the test follows the script's wording.
 function nothingToJudgeSummaries(script: string): string[] {
   const summaries = [
     ...readFileSync(script, "utf8").matchAll(
@@ -194,7 +193,36 @@ function nothingChangedSummary(script: string): string {
   return nothingToJudgeSummaries(script)[0] ?? "";
 }
 
-describe("a pull request that changes no line a mutation job mutates", () => {
+describe("the reports the workflow triages", () => {
+  // Each report the collect step reads, as report artifact/file, must be downloaded by its name
+  // into its own folder: downloaded by pattern, a lone report lands straight in reports/, and a
+  // job that finished would read as incomplete.
+  const workflow = readFileSync(
+    join(import.meta.dirname, "../../.github/workflows/mutation-triage.yml"),
+    "utf8",
+  );
+  const read = [
+    ...(/for kind in ([^;]+); do/u.exec(workflow)?.[1] ?? "").matchAll(
+      /\S+:([^/\s]+)\/\S+/gu,
+    ),
+  ].map((match) => match[1] ?? "");
+
+  test("are the two mutation jobs'", () => {
+    expect(read).toEqual(["mutation-ts", "mutation-cpp"]);
+  });
+
+  test.each(read)(
+    "%s is downloaded by its name into the folder the collect step reads",
+    (artifact) => {
+      expect(workflow).toContain(
+        `name: ${artifact}\n          path: mutation-triage/reports/${artifact}\n`,
+      );
+      expect(workflow).not.toMatch(/pattern: mutation-/u);
+    },
+  );
+});
+
+describe("a pull request that changes no line a mutation job mutates or tests", () => {
   test.each(["scripts/mutation.sh", "scripts/mutation-cpp.sh"])(
     "is not incomplete for any of %s's summaries with nothing to judge",
     (script) => {
