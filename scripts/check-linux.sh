@@ -58,11 +58,10 @@ for check in "${checks[@]}"; do
         cmake --preset linux
         cmake --build --preset linux -j "$jobs"
         # The platform glue is linted on its own platform (macOS) or built there (Windows). The
-        # fuzzers build only in the fuzz preset, whose CI job checks them. One clang-tidy per core,
-        # a few files each; xargs fails if any of them does.
+        # fuzzers are linted here too: with tests, they build to replay their inputs. One
+        # clang-tidy per core, a few files each; xargs fails if any of them does.
         git ls-files -co --exclude-standard -- 'engine/*.cpp' 'editor/*.cpp' 'plugin/*.cpp' \
-            ':!editor/src/mac/*' ':!editor/src/win/*' ':!editor/tests/*Win.cpp' \
-            ':!engine/tests/fuzz/*' |
+            ':!editor/src/mac/*' ':!editor/src/win/*' ':!editor/tests/*Win.cpp' |
             xargs -P "$jobs" -n 4 "$LLVM_BIN/clang-tidy" -p build/linux --quiet
         ;;
     *)

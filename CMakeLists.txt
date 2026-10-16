@@ -36,7 +36,7 @@ if(NOT ORIZON_ENGINE_ONLY)
     add_subdirectory(editor)
     add_subdirectory(plugin)
 endif()
-if(ORIZON_FUZZ)
+if(ORIZON_FUZZ OR BUILD_TESTING)
     add_subdirectory(engine/tests/fuzz) # After the modules: it builds the editor's session too.
 endif()
 
