@@ -118,9 +118,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci # The editor embeds the page, built with Vite.
+      # No compiler cache key may begin another's: the action restores the newest cache whose key
+      # starts with this one, so "linux" would also restore linux-tsan's.
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
-          key: linux
+          key: linux-asan # Shared with the lint, which builds the same.
       - run: scripts/check-linux.sh asan
 
   # The shared code's other checks, each a job of its own, in parallel: the concurrency tests
@@ -229,7 +231,7 @@ jobs:
           cache: npm
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
-          key: macos
+          key: macos-main # Not "macos", which would also restore macos-glue's (see the linux job).
           max-size: 2G
       - name: Install LLVM
         run: brew install llvm
