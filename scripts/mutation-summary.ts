@@ -173,9 +173,9 @@ export function mullSeconds(text: string): number | undefined {
 }
 
 // How long Mull's warm-up run, the tests with no mutant, took: the duration on the progress line
-// after "Warm up run" in its log. Undefined when the log has none.
+// after "Warm up run" in its log, blank lines between. Undefined when the log has none.
 export function warmUpSeconds(log: string): number | undefined {
-  const match = /Warm up run.*\n.*Finished in (\S+)/u.exec(log);
+  const match = /Warm up run.*\n(?:[ \t]*\n)*.*Finished in (\S+)/u.exec(log);
   return match?.[1] === undefined ? undefined : mullSeconds(match[1]);
 }
 
