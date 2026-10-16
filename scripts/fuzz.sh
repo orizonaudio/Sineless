@@ -54,12 +54,14 @@ fi
 # inputs a second and stopped finding new code within their first minute on CI, so they get at
 # most a minute and one core each. The session fuzzer runs a few dozen a second (each input builds
 # two engines and an analyzer) and still finds new code, so it gets the whole run and the other
-# cores (libFuzzer's fork mode).
+# cores (libFuzzer's fork mode). Fork mode skips inputs that time out or run out of memory unless
+# told not to; here they fail the run as they do in a single process, as bugs.
 cores="$(nproc 2> /dev/null || sysctl -n hw.ncpu)"
 budget() {
     case "$1" in
     session_fuzzer)
-        echo "-max_total_time=$seconds -fork=$((cores > 2 ? cores - 1 : 1))"
+        echo "-max_total_time=$seconds -fork=$((cores > 2 ? cores - 1 : 1))" \
+            "-ignore_timeouts=0 -ignore_ooms=0"
         ;;
     *)
         echo "-max_total_time=$((seconds < 60 ? seconds : 60))"
