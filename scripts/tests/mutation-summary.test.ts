@@ -1,8 +1,12 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import {
   annotations,
   mullSeconds,
+  noTestReached,
   notRunCount,
   relativeTo,
   summarise,
@@ -239,4 +243,23 @@ describe("the time limit note on a C++ mutation run", () => {
       expect(note.includes("[!WARNING]")).toBe(warns);
     },
   );
+});
+
+describe("a Stryker run no unit test reaches", () => {
+  // Stryker's own log of such a run (allowEmpty), colour codes included.
+  const log = readFileSync(
+    join(import.meta.dirname, "fixtures", "stryker-no-tests.log"),
+    "utf8",
+  );
+
+  test("is told from its log when it wrote no report", () => {
+    expect(noTestReached(log, false)).toBe(true);
+  });
+
+  test("is not when it wrote a report, or its log gives another reason", () => {
+    expect(noTestReached(log, true)).toBe(false);
+    expect(
+      noTestReached("INFO DryRunExecutor Starting initial test run\n", false),
+    ).toBe(false);
+  });
 });

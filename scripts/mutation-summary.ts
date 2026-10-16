@@ -215,3 +215,20 @@ export function timeLimitNote(warmUp: number, limit: number): string {
   }
   return lines.join("\n");
 }
+
+// Whether Stryker found no unit test reaching the lines it mutated: with allowEmpty
+// (tools/mutation/stryker.config.json) it then ends without a report, its dry run having said "No
+// tests were found". A run that left no report for any other reason did not complete.
+// Its log is coloured even when written to a file: the colour codes are dropped first.
+export function noTestReached(strykerLog: string, hasReport: boolean): boolean {
+  // eslint-disable-next-line no-control-regex -- colour codes begin with the escape character.
+  const plain = strykerLog.replaceAll(/\u001b\[[0-9;]*m/gu, "");
+  return !hasReport && /DryRunExecutor No tests were found$/mu.test(plain);
+}
+
+// The summary of such a run: nothing to judge, as the mutation triage reads it
+// (scripts/mutation-triage.ts). The lines are left to the tests that do reach them, such as the
+// app tests, which drive real browsers and so do not run once per mutant.
+export function noTestReachedSummary(title: string, base: string): string {
+  return `## ${title}\n\nNo unit test reaches the lines changed since ${base}: they are left to the app tests.`;
+}

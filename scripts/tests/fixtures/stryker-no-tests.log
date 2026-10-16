@@ -1,0 +1,8 @@
+[32m15:54:50 (26396) INFO ProjectReader[39m Found 1 of 97 file(s) to be mutated.
+[32m15:54:50 (26396) INFO Instrumenter[39m Instrumented 1 source file(s) with 4 mutant(s)
+[32m15:54:50 (26396) INFO ConcurrencyTokenProvider[39m Creating 7 test runner process(es).
+[32m15:54:50 (26396) INFO BroadcastReporter[39m Detected that current console does not support the "progress" reporter, downgrading to "progress-append-only" reporter
+[32m15:54:51 (26396) INFO DryRunExecutor[39m Starting initial test run (vitest test runner with "perTest" coverage analysis). This may take a while.
+[33m15:54:51 (26417) WARN VitestTestRunner[39m Vitest failed to find test files related to mutated files. Either disable `vitest.related` or import your source files directly from your test files. See https://stryker-mutator.io/docs/stryker-js/troubleshooting/#vitest-failed-to-find-test-files-related-to-mutated-files
+[32m15:54:51 (26396) INFO DryRunExecutor[39m No tests were found
+[32m15:54:51 (26396) INFO MutationTestExecutor[39m Done in 1 second.
