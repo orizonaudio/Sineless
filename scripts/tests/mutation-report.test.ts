@@ -129,6 +129,23 @@ describe("a TypeScript run that wrote no report (scripts/mutation.sh)", () => {
       encoding: "utf8",
     });
 
+  test("leaves a run that wrote its report summarised as usual, as mutation.sh calls it on every run", () => {
+    const normal = join(dir, "stryker-normal.log");
+    writeFileSync(normal, "INFO MutationTestExecutor Done in 3 seconds.\n");
+    const result = runStatus(
+      report(),
+      "Mutation testing (TypeScript)",
+      "3",
+      "--stryker-log",
+      normal,
+      "--base",
+      "origin/main",
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("0 of 1 mutants noticed by the tests");
+    expect(result.stdout).not.toContain("No unit test reaches");
+  });
+
   test("is summarised as nothing to judge when no unit test reaches the lines changed", () => {
     const result = runStatus(
       missing(),
