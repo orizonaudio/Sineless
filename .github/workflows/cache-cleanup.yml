@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Delete the pull request's and the merge queue's caches
+        shell: bash # With pipefail: a list that fails fails the job, not deletes nothing quietly.
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
