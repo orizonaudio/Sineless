@@ -47,18 +47,20 @@ describe("a release's commit on main", () => {
     );
   });
 
+  // As the release reads it: only exit 0 lets it go on, so a commit git cannot place on main,
+  // because main is missing from the checkout, must stop it too.
   test.each([
-    ["newest", 0, ""],
-    ["side", 1, "is not on main"],
+    ["newest", "main", 0, ""],
+    ["side", "main", 1, "is not on main"],
+    ["newest", "origin/main", 1, "cannot tell"],
   ] as const)(
-    "from the command line, as the release runs it: %s exits %d",
-    (which, status, message) => {
+    "from the command line, %s against %s exits %d",
+    (which, main, status, message) => {
       const repo = repository();
-      const result = spawnSync(
-        process.execPath,
-        [script, repo[which], "main"],
-        { cwd: repo.dir, encoding: "utf8" },
-      );
+      const result = spawnSync(process.execPath, [script, repo[which], main], {
+        cwd: repo.dir,
+        encoding: "utf8",
+      });
       expect(result.status).toBe(status);
       expect(result.stderr).toContain(message);
     },
