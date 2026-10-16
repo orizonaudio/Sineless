@@ -19,6 +19,24 @@ if [ ${#fuzzers[@]} -eq 0 ]; then
     fuzzers=(state_fuzzer setting_json_fuzzer session_fuzzer)
 fi
 
+# How long and on how many cores each fuzzer runs. The state and setting fuzzers run thousands of
+# inputs a second and stopped finding new code within their first minute on CI, so they get at
+# most a minute and one core each. The session fuzzer runs a few dozen a second (each input builds
+# two engines and an analyzer) and still finds new code, so it gets the whole run and the other
+# cores (libFuzzer's fork mode).
+cores="$(nproc 2> /dev/null || sysctl -n hw.ncpu)"
+budget() {
+    case "$1" in
+    session_fuzzer)
+        echo "-max_total_time=$seconds -fork=$((cores > 2 ? cores - 1 : 1))"
+        ;;
+    *)
+        echo "-max_total_time=$((seconds < 60 ? seconds : 60))"
+        ;;
+    esac
+}
+
+
 # When a crash the fuzzers found is fixed, its input goes in
 # engine/tests/fuzz/regressions/<fuzzer>/ with the fix, and every run replays those first, so the
 # crash cannot come back unnoticed. A crash not fixed yet is an issue, not a file here.
@@ -39,9 +57,10 @@ for fuzzer in "${fuzzers[@]}"; do
     corpus="$build/corpus/$fuzzer"
     mkdir -p "$corpus"
     # -rss_limit_mb: an input that makes the engine allocate without bound is a bug too.
+    # shellcheck disable=SC2046 # budget's options are separate words.
     "$bin/$fuzzer" "$corpus" "$bin/seeds/${fuzzer%_fuzzer}" \
         -dict="$bin/fuzz.dict" \
-        -max_total_time="$seconds" \
+        $(budget "$fuzzer") \
         -max_len=4096 \
         -rss_limit_mb=2048 \
         -timeout=10 \
@@ -50,14 +69,16 @@ for fuzzer in "${fuzzers[@]}"; do
         >"$build/logs/$fuzzer.log" 2>&1 &
     pids+=($!)
 done
-echo "Fuzzing ${fuzzers[*]} for ${seconds}s"
+echo "Fuzzing ${fuzzers[*]} for up to ${seconds}s"
 
 failed=()
 for i in "${!fuzzers[@]}"; do
     fuzzer="${fuzzers[$i]}"
     if wait "${pids[$i]}"; then
         echo "== $fuzzer: no failure"
+        # A single process's DONE line and final stats, or fork mode's last progress report.
         grep -E '^(#[0-9]+[[:space:]]+DONE|stat::)' "$build/logs/$fuzzer.log"
+        grep -E '^#[0-9]+: cov:' "$build/logs/$fuzzer.log" | tail -n 1
     else
         failed+=("$fuzzer")
         echo "== $fuzzer: FAILED"
