@@ -19,7 +19,8 @@ Launch these subagents in one message, giving each the range (`git diff <base> <
 nothing else about the change:
 
 - `review-correctness`, `review-rules` and `review-tests`, always;
-- `review-realtime`, when C++ under `engine/`, `plugin/` or `editor/` changed.
+- `review-realtime`, when C++ or Objective-C++ (`.cpp`, `.cc`, `.h`, `.hpp`, `.mm`) under
+  `engine/`, `plugin/` or `editor/` changed.
 
 When only Markdown files changed, run `review-rules` alone.
 

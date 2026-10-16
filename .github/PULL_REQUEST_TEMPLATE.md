@@ -4,7 +4,7 @@
 
 ## Checklist
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for the definition of done.
+See [CONTRIBUTING.md](https://github.com/orizonaudio/Sineless/blob/main/CONTRIBUTING.md) for the definition of done.
 
 - [ ] A bug fix starts with a test that fails without it; new behaviour has tests.
 - [ ] The same cause was looked for, and fixed, in the other modes, time bases, platforms and readouts it reaches.

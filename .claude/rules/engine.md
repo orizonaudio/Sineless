@@ -14,6 +14,7 @@ paths:
   to the UI's formatters. Analysis gates (what audio is too quiet to analyse) stay in the
   engine, from `limits.ts`.
 - Test the engine across sample rates up to 384 kHz and span lengths on both sides of every
-  tolerance (`sweepLengthsSimilar` allows nothing below 1024 samples).
+  tolerance (`sweepLengthsSimilar` in `engine/include/engine/Sweep.h` lets lengths differ by
+  1/1024 of the longer, so by nothing below 1024 samples).
 - After steady input the engine should do no repeated work; a change that rebuilds lanes or
   frames on every step is a bug even if the output looks right.

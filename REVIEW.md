@@ -1,9 +1,10 @@
 # REVIEW.md
 
 How changes to Sineless are reviewed: by the `review` skill before a push, and by the
-`ai-review` check on every pull request. Both run the specialist reviewers in
-`.claude/agents` (correctness, rules, tests and, for C++ in `engine/`, `plugin/` or
-`editor/`, real-time safety), then a `review-verifier` on each Important finding, which keeps
+`ai-review` check on every pull request that is not a draft and not from a fork. Both run the
+specialist reviewers in `.claude/agents` (correctness, rules, tests and, for C++ in `engine/`,
+`plugin/` or `editor/`, real-time safety; `review-rules` alone for a change to Markdown only),
+then a `review-verifier` on each Important finding, which keeps
 it only if it can prove it from the code. Every reviewer reads this file; read CLAUDE.md and
 the `.claude/rules` file of each folder the change touches too.
 
@@ -56,7 +57,7 @@ are never reported as findings on their own, and no score is a goal.
 
 The `mutation-triage` check applies this to every pull request whose mutation run leaves
 mutants (`.github/workflows/mutation-triage.yml`): a `mutation-triager` gives each a verdict
-(gap, equivalent, speed, tuned, dead, message, or tested by an app test the mutation run does not run), a `review-verifier` checks each gap, and a
+(gap, equivalent, speed, tuned, dead, message, or tested by a test the mutation run does not run, such as an app test), a `review-verifier` checks each gap, and a
 comment lists them all. It fails while a verified gap is left; the author adds a test that
 fails with that mutant, or answers it, and a maintainer can waive it. A run that left mutants
 not run (it reached its deadline, or a share of it failed) leaves a partial report: the mutants

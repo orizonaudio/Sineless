@@ -9,8 +9,9 @@ An open-source VST3 oscilloscope by Orizon Audio. It shows the audio on its trac
 - Triggered display from 0.5 ms to 1 s, with Auto, Normal, Free and Single trigger modes; spans up to 4 s scroll continuously.
 - Tempo-synced sweep: a span in beats or bars, up to 16 bars, aligned to the host's bar lines, with a beat grid and playhead.
 - Left, right, mid and side views, overlaid or stacked, on a vertical scale in dB.
-- Multi-track view: every track with Sineless inserted, each in its own lane in its track colour and lined up in time, or overlaid. Groups A–D keep separate comparisons apart.
-- Freeze, then pan back through the last 4 seconds; optionally freeze automatically when the transport stops.
+- Multi-track view: every track with Sineless inserted, up to 16 lanes, each in its track colour and lined up in time, or overlaid. Groups A–D keep separate comparisons apart.
+- Compare (beta): measure another track's offset, polarity and likeness against this one, see their sum and how loud it is, and preview the fix.
+- Freeze, then pan back through the last 4 seconds in Seconds mode; optionally freeze automatically when the transport stops.
 - Zoom in down to individual samples with ⌘ + scroll (Ctrl on Windows), pinch or drag.
 - Time and level cursors that snap to zero crossings and peaks: read the time between them, its frequency and nearest note, beats, and levels in dB.
 - Indicative peak, RMS and frequency readouts.
@@ -47,7 +48,7 @@ For the multi-track lanes to line up, put Sineless last on each track.
 
 ## Build from source
 
-You need Xcode 26 or later, CMake 3.25 or later, and Node.js 22 (see `.nvmrc`).
+You need Xcode 16 or later, CMake 3.25 or later, and Node.js 22 (see `.nvmrc`).
 
 ```bash
 npm ci
@@ -57,7 +58,7 @@ cmake --build --preset dev
 
 The plugin is built at `build/dev/VST3/Debug/Sineless.vst3`. To work on the interface in a browser, without the plugin, run `npm run dev`; a built-in mock replaces the audio engine.
 
-On Windows, you need Visual Studio 2022 or 2026 with the "Desktop development with C++" workload (the presets use the newest one installed) (add the ARM64 build tools to build for ARM64), Node.js 22 and LLVM (`winget install LLVM.LLVM`, for `clang-format`). In a PowerShell window:
+On Windows, you need Visual Studio 2022 or 2026 with the "Desktop development with C++" workload (the presets use the newest one installed), Node.js 22 and LLVM (`winget install LLVM.LLVM`, for `clang-format`). In a PowerShell window:
 
 ```powershell
 npm.cmd ci
@@ -65,11 +66,11 @@ cmake --preset windows-x64
 cmake --build --preset windows-x64
 ```
 
-The plugin is built at `build\windows-x64\VST3\Release\Sineless.vst3`; use `windows-arm64` for ARM64, and `windows-x64-debug` or `windows-arm64-debug` for a Debug build to step through. `scripts\check.ps1` runs the Windows checks on the x64 Release build (`$env:PRESETS = 'windows-arm64'` for ARM64).
+The plugin is built at `build\windows-x64\VST3\Release\Sineless.vst3`; use `windows-x64-debug` for a Debug build to step through. `scripts\check.ps1` runs the Windows checks.
 
-`scripts/check.sh` runs every check that CI runs on macOS and Linux, the Linux ones in Docker. It also needs Homebrew LLVM (`brew install llvm`) and Docker. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
+`scripts/check.sh` runs CI's build, test, lint and performance checks for macOS and the shared code, the Linux ones in Docker; fuzzing, coverage and mutation testing run in CI. It also needs Homebrew LLVM (`brew install llvm`) and Docker. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
-Without macOS or Windows, the engine, plugin and editor tests still build and run on Linux, as CI's Linux jobs do. They need LLVM 23 (on Ubuntu 24.04, `tools/linux-checks/install-llvm.sh` installs it), CMake and Ninja:
+Without macOS or Windows, the engine, plugin and the editor's shared code still build and test on Linux, as CI's Linux jobs do. They need LLVM 23 (on Ubuntu 24.04, `tools/linux-checks/install-llvm.sh` installs it), CMake and Ninja:
 
 ```bash
 npm ci
