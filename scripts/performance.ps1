@@ -6,6 +6,9 @@
 #             means something on real x64 hardware alone (not under emulation)
 #   PERF_SPEED report to measure without judging, as CI sets it: its shared machines are noisier
 #             than the hardware the limit is set for (see scripts/performance.sh)
+#   PERF_LOG  a file to add the measurement to, for CI's job summary: Windows PowerShell cannot
+#             pipe this script's output to a file, as its native programs' stderr would turn into
+#             errors that stop it
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 . (Join-Path $PSScriptRoot 'windows-env.ps1')
@@ -17,7 +20,9 @@ if ($env:GITHUB_ACTIONS -eq 'true' -or $env:RUN_BENCH -eq '1') {
     # The same limit as on macOS: eight instances within 5 % of each block's deadline at p99.9.
     $output = & build\windows-x64-bench\bin\Release\process_bench.exe --instances=8 --seconds=30 --max-share=0.05
     $result = $LASTEXITCODE
-    $output | Select-Object -Last 1 | Write-Host
+    $measurement = $output | Select-Object -Last 1
+    Write-Host $measurement
+    if ($env:PERF_LOG) { Add-Content -Path $env:PERF_LOG -Value $measurement -Encoding utf8 }
     # Over its budget it exits 1; anything else is a crash, never only reported.
     if ($result -ne 0 -and ($result -ne 1 -or $env:PERF_SPEED -ne 'report')) {
         throw "process_bench failed (exit code $result)."
