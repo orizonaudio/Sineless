@@ -181,9 +181,8 @@ jobs:
           key: fuzz
       - run: cmake --preset fuzz -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - run: cmake --build --preset fuzz
-      # The macOS job lints the rest of the C++; the fuzzers build only here.
-      - name: C++ lint of the fuzzers (clang-tidy 22.1.8)
-        run: pipx run --spec clang-tidy==22.1.8 clang-tidy -p build/fuzz --quiet engine/tests/fuzz/*.cpp
+      # The fuzzers' sources are linted with the rest of the shared code (linux-lint), where they
+      # build to replay their inputs.
       - run: scripts/fuzz.sh 60
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
