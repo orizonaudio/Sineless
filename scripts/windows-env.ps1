@@ -16,7 +16,10 @@ if (-not (Get-Command dumpbin -ErrorAction SilentlyContinue)) {
     Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=$arch -host_arch=$arch" | Out-Null
 }
 
+# Runs a program and throws if it fails. Its output is piped on: PowerShell does not wait for a
+# program built for the Windows GUI subsystem, such as pluginval, unless its output is, and would
+# read the exit code of the program before it.
 function Run {
-    & $args[0] $args[1..($args.Count - 1)]
+    & $args[0] $args[1..($args.Count - 1)] | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Failed: $($args -join ' ')" }
 }
