@@ -397,30 +397,30 @@ void Analyzer::followTransport(const Settings& settings, Commands& command)
 bool Analyzer::freeze(double sampleRate, std::uint64_t minimumSamples)
 {
     hold.resize(engine.captureRing().capacity()); // The rate may have changed since it opened.
-    frozenStamp = engine.timeline().latest();
-    frozenEnd = engine.captureRing().endIndex();
-    const auto length = std::max<std::uint64_t>(hold.holdLength(sampleRate), minimumSamples);
-    if (!hold.capture(engine.captureRing(), static_cast<std::size_t>(length))) {
-        return false; // The writer outran the copy; try again on the next step.
+    frozenStamp = engine.timeline().latest(); 
+    frozenEnd = engine.captureRing().endIndex(); 
+    const auto length = std::max<std::uint64_t>(hold.holdLength(sampleRate), minimumSamples); 
+    if (!hold.capture(engine.captureRing(), static_cast<std::size_t>(length))) { 
+        return false; // The writer outran the copy; try again on the next step. 
     }
-    isFrozen = true;
+    isFrozen = true; 
     const std::scoped_lock lock(commandMutex);
-    commands.frozen = true; // Single mode freezes on its own; keep the command in step.
+    commands.frozen = true; // Single mode freezes on its own; keep the command in step. 
     return true;
 }
 
-bool Analyzer::produce(std::vector<std::byte>& frame)
+bool Analyzer::produce(std::vector<std::byte>& frame) 
 {
-    Commands command = takeCommands();
-    const Settings settings = engine.settings().get();
-    frameSettings = settings;
+    Commands command = takeCommands(); 
+    const Settings settings = engine.settings().get(); 
+    frameSettings = settings; 
     followTransport(settings, command);
-    const double sampleRate = engine.sampleRate();
+    const double sampleRate = engine.sampleRate(); 
     if (command.armRequested) {
         trigger.arm();
     }
-    const bool synced =
-        settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
+    const bool synced = 
+        settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats; 
     if (command.frozen && !isFrozen) {
         if (!freeze(sampleRate, frozenLength(engine.captureRing(), sampleRate, synced))) {
             return false;
@@ -430,13 +430,13 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         }
     }
     if (!command.frozen) {
-        isFrozen = false;
+        isFrozen = false; 
     }
-    if (command.columns == 0) {
+    if (command.columns == 0) { 
         return false;
     }
-    // Multi and Compare both draw lanes of the group's tracks.
-    const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
+    // Multi and Compare both draw lanes of the group's tracks. 
+    const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) != 
                        protocol::DisplayMode::kSingle;
     if (multi && synced) {
         return produceLanes(settings, command, frame);
@@ -444,79 +444,79 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     if (multi) {
         selectLanes(settings);
     } else {
-        lanes.clear(); // Frees the lanes' sweeps and holds outside the multi-track view.
+        lanes.clear(); // Frees the lanes' sweeps and holds outside the multi-track view. 
     }
 
-    const double spanSeconds = settings.value(SettingId::kTimeSpan);
-    const double span = spanSeconds * sampleRate;
-    const bool roll = isRollSpan(spanSeconds);
-    // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown
-    // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
-    // at display rate, also when the transport is stopped or the host has stopped processing.
-    const bool liveSeconds = !synced && !isFrozen;
+    const double spanSeconds = settings.value(SettingId::kTimeSpan); 
+    const double span = spanSeconds * sampleRate; 
+    const bool roll = isRollSpan(spanSeconds); 
+    // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown 
+    // and nothing else changed, it would be the last frame again, so none is drawn. The page asks 
+    // at display rate, also when the transport is stopped or the host has stopped processing. 
+    const bool liveSeconds = !synced && !isFrozen; 
     if (liveSeconds) {
         liveEnds.clear();
         liveEnds.push_back(engine.captureRing().endIndex());
         if (multi) {
             for (const std::uint64_t serial : laneOrder) {
-                liveEnds.push_back(lanes.at(serial)->engine->captureRing().endIndex());
+                liveEnds.push_back(lanes.at(serial)->engine->captureRing().endIndex()); 
             }
         }
     }
-    const bool newAudio = !liveSeconds || liveEnds != lastLiveEnds;
-    const bool newFormat = !isFrozen && formatsChanged(multi);
-    // Other lanes, or other tracks compared, change the frame too. A match still to search does
-    // only when its search can run: live with the transport playing, searches are spaced by audio,
-    // so without new audio none would, and the frame drawn would be the same.
-    const std::uint32_t laneSetId = multi ? laneSet().id : 0;
-    const bool changed = inputsChanged(settings, command, laneSetId) || newFormat ||
+    const bool newAudio = !liveSeconds || liveEnds != lastLiveEnds; 
+    const bool newFormat = !isFrozen && formatsChanged(multi); 
+    // Other lanes, or other tracks compared, change the frame too. A match still to search does 
+    // only when its search can run: live with the transport playing, searches are spaced by audio, 
+    // so without new audio none would, and the frame drawn would be the same. 
+    const std::uint32_t laneSetId = multi ? laneSet().id : 0; 
+    const bool changed = inputsChanged(settings, command, laneSetId) || newFormat || 
                          (comparing && matchesPending && (newAudio || searchAtOnce));
-    if (liveSeconds && !changed && !newAudio && lastShown && !lastShown->synced) {
+    if (liveSeconds && !changed && !newAudio && lastShown && !lastShown->synced) { 
         return false;
     }
 
-    Window window{.span = span, .roll = roll};
-    auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
-    bool freezeAfterRender = false;
-    const SampleSource* source =
-        isFrozen ? static_cast<const SampleSource*>(&hold) : &engine.captureRing();
+    Window window{.span = span, .roll = roll}; 
+    auto sampleCount = static_cast<std::uint64_t>(std::llround(span)); 
+    bool freezeAfterRender = false; 
+    const SampleSource* source = 
+        isFrozen ? static_cast<const SampleSource*>(&hold) : &engine.captureRing(); 
 
     if (synced) {
-        // Tempo-synced sweep. Live, the capture's new samples are placed. Frozen, the sweep stays
-        // as it is: a shorter span is cropped from it, and a longer one rebuilt from the held
-        // audio, stepping down if it does not fit.
-        const CaptureRing& ring = engine.captureRing();
-        const std::uint64_t end = isFrozen ? frozenEnd : ring.endIndex();
-        if (!changed && end == lastEnd) {
+        // Tempo-synced sweep. Live, the capture's new samples are placed. Frozen, the sweep stays 
+        // as it is: a shorter span is cropped from it, and a longer one rebuilt from the held 
+        // audio, stepping down if it does not fit. 
+        const CaptureRing& ring = engine.captureRing(); 
+        const std::uint64_t end = isFrozen ? frozenEnd : ring.endIndex(); 
+        if (!changed && end == lastEnd) { 
             return false;
         }
-        const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
-        const int channels = engine.inputChannels();
+        const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan); 
+        const int channels = engine.inputChannels(); 
         SweepWindow sweep;
         if (isFrozen) {
-            const auto frozen = frozenSweep(frozenStamp, frozenEnd, sampleRate, beatSpan,
+            const auto frozen = frozenSweep(frozenStamp, frozenEnd, sampleRate, beatSpan, 
                                             imageWindow, image.length());
             if (!frozen) {
                 return false;
             }
-            if (frozen->rebuild) {
-                if (!image.update(hold, frozen->window, true, channels)) {
+            if (frozen->rebuild) { 
+                if (!image.update(hold, frozen->window, true, channels)) { 
                     return false;
                 }
-                imageWindow = frozen->window;
+                imageWindow = frozen->window; 
             } else {
-                const auto count = static_cast<double>(image.length());
+                const auto count = static_cast<double>(image.length()); 
                 showHeldPart(image, hold, frozenStamp, frozenEnd, sampleRate, beatSpan, channels,
-                             static_cast<std::uint64_t>(std::llround(frozen->start * count)),
-                             static_cast<std::uint64_t>(std::llround(frozen->end * count)));
+                             static_cast<std::uint64_t>(std::llround(frozen->start * count)), 
+                             static_cast<std::uint64_t>(std::llround(frozen->end * count))); 
             }
-            sweep = frozen->window;
-            window.subStart = frozen->start;
-            window.subEnd = frozen->end;
+            sweep = frozen->window; 
+            window.subStart = frozen->start; 
+            window.subEnd = frozen->end; 
         } else {
-            const auto live = sweepWindow(engine.timeline().latest(), end, sampleRate, beatSpan,
+            const auto live = sweepWindow(engine.timeline().latest(), end, sampleRate, beatSpan, 
                                           kMaxSweepSamples);
-            if (!live || !image.update(ring, *live, false, channels)) {
+            if (!live || !image.update(ring, *live, false, channels)) { 
                 return false;
             }
             imageWindow = live;
