@@ -604,11 +604,12 @@ jobs:
         if: matrix.os == 'windows'
         continue-on-error: true
         shell: powershell
-        run: scripts/performance.ps1 *>&1 | Tee-Object performance.log
+        env:
+          PERF_LOG: performance.log # Not a pipe: see scripts/performance.ps1.
+        run: scripts/performance.ps1
       - if: steps.macos.outcome == 'failure' || steps.windows.outcome == 'failure'
         run: echo "::warning title=Performance::A leak limit was missed on ${{ matrix.os }}, or a benchmark did not run to the end; see the log of the step above."
-      # The measurements, to compare between runs. Read with PowerShell 7, on both platforms: it
-      # reads Windows PowerShell's UTF-16 log as well as the macOS step's UTF-8 one.
+      # The measurements, to compare between runs, from each platform's log.
       - if: always()
         shell: pwsh
         run: |
