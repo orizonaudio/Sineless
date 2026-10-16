@@ -2,9 +2,12 @@
 # Runs the libFuzzer targets side by side for a fixed time (Linux, Clang). Build them first:
 #   cmake --preset fuzz && cmake --build --preset fuzz
 # Usage: scripts/fuzz.sh [seconds, default 60] [fuzzer names, default all]
+#        scripts/fuzz.sh --prune [fuzzer names, default all]
 #
-# New inputs that reach new code are kept in build/fuzz/corpus/<fuzzer>, so later local runs
-# start from where earlier ones got to (CI starts from the seeds each time). A crash, a sanitizer report or a failed invariant stops that
+# New inputs that reach new code are kept in build/fuzz/corpus/<fuzzer>, so later runs start from
+# where earlier ones got to; CI keeps that corpus between runs (the fuzz job and fuzz-nightly.yml).
+# --prune shrinks it to the fewest inputs that reach the same code (libFuzzer's -merge=1), as the
+# nightly run does before keeping it. A crash, a sanitizer report or a failed invariant stops that
 # fuzzer and saves the input as build/fuzz/artifacts/<fuzzer>-crash-<hash>; reproduce it with
 #   build/fuzz/engine/tests/fuzz/<fuzzer> build/fuzz/artifacts/<fuzzer>-crash-<hash>
 set -uo pipefail
@@ -12,11 +15,39 @@ set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 build="$root/build/fuzz"
 bin="$build/engine/tests/fuzz"
-seconds="${1:-60}"
-shift || true
+prune=false
+if [ "${1:-}" = --prune ]; then
+    prune=true
+    shift
+    seconds=0
+else
+    seconds="${1:-60}"
+    shift || true
+fi
 fuzzers=("$@")
 if [ ${#fuzzers[@]} -eq 0 ]; then
     fuzzers=(state_fuzzer setting_json_fuzzer session_fuzzer)
+fi
+
+if $prune; then
+    mkdir -p "$build/logs"
+    for fuzzer in "${fuzzers[@]}"; do
+        corpus="$build/corpus/$fuzzer"
+        [ -d "$corpus" ] || continue
+        pruned="$build/corpus/$fuzzer.pruned"
+        rm -rf "$pruned"
+        mkdir -p "$pruned"
+        "$bin/$fuzzer" -merge=1 -max_len=4096 -rss_limit_mb=2048 -timeout=10 "$pruned" "$corpus" \
+            >"$build/logs/$fuzzer-prune.log" 2>&1 || {
+            echo "Pruning $fuzzer failed:" >&2
+            tail -n 40 "$build/logs/$fuzzer-prune.log" >&2
+            exit 1
+        }
+        echo "== $fuzzer: $(find "$corpus" -type f | wc -l) inputs pruned to $(find "$pruned" -type f | wc -l)"
+        rm -rf "$corpus"
+        mv "$pruned" "$corpus"
+    done
+    exit 0
 fi
 
 # How long and on how many cores each fuzzer runs. The state and setting fuzzers run thousands of
@@ -35,7 +66,6 @@ budget() {
         ;;
     esac
 }
-
 
 # When a crash the fuzzers found is fixed, its input goes in
 # engine/tests/fuzz/regressions/<fuzzer>/ with the fix, and every run replays those first, so the
