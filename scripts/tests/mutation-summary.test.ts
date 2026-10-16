@@ -177,6 +177,17 @@ describe("the time limit note on a C++ mutation run", () => {
     },
   );
 
+  test("reads the warm-up's duration with the blank line Mull's log puts before it", () => {
+    const log = [
+      "[warning] Could not find dynamic library: libc.so.6",
+      "[info] Warm up run (threads: 1)",
+      "",
+      "       [################################] 1/1. Finished in 3m20.1s",
+      "[info] Applying file path filter (threads: 8)",
+    ].join("\n");
+    expect(warmUpSeconds(log)).toBeCloseTo(200.1, 6);
+  });
+
   test("has no warm-up time for a log without one", () => {
     expect(
       warmUpSeconds("[info] Running mutants (threads: 8)"),
