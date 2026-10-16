@@ -5,6 +5,7 @@
     "configFile": "vitest.mutation.config.ts"
   },
   "coverageAnalysis": "perTest",
+  "allowEmpty": true,
   "mutate": ["protocol/src/**/*.ts", "ui/src/**/*.ts"],
   "reporters": ["clear-text", "progress", "json", "html"],
   "jsonReporter": {
