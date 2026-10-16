@@ -1,0 +1,28 @@
+name: Cache cleanup
+
+# Deletes a pull request's caches once it is closed, with any left on the merge queue's temporary
+# branches, which no later run can read: caches are scoped to the branch that saved them, so these
+# only take room from main's, which pull requests start from, in the repository's 10 GB. Without
+# this, GitHub evicted caches a few hours old.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    name: cache-cleanup
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete the pull request's and the merge queue's caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          # A cache another run deleted meanwhile is not an error.
+          gh cache list --limit 1000 --json id,ref \
+            --jq ".[] | select(.ref == \"$PR_REF\" or (.ref | startswith(\"refs/heads/gh-readonly-queue/\"))) | .id" |
+            while read -r id; do gh cache delete "$id" || true; done

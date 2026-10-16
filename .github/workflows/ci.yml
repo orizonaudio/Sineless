@@ -21,12 +21,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Each C++ mutant's time limit, in seconds (scripts/mutation-cpp.sh): the shares stop a mutant at
-# it, and the merged summary weighs the tests' own time against it, so both read this one value.
-# The tests take about 540 s here with every mutant compiled in, longer with four mutants running
-# at once; a mutant no test notices runs them all, and one stopped at the limit would read as
-# noticed. 1500 s is near three times their time, the margin the summary asks for.
 env:
+  # Whether the compiler caches are saved: not from the merge queue, whose temporary branches'
+  # caches no later run can read (caches are scoped to the branch that saved them); pull requests
+  # keep theirs for their next push, and cache-cleanup.yml deletes them when they close.
+  SAVE_CACHES: ${{ github.event_name != 'merge_group' }}
+  # Each C++ mutant's time limit, in seconds (scripts/mutation-cpp.sh): the shares stop a mutant
+  # at it, and the merged summary weighs the tests' own time against it, so both read this one
+  # value. The tests take about 540 s here with every mutant compiled in, longer with four mutants
+  # running at once; a mutant no test notices runs them all, and one stopped at the limit would
+  # read as noticed. 1500 s is near three times their time, the margin the summary asks for.
   MUTANT_TIMEOUT: 1500
 
 jobs:
@@ -122,6 +126,7 @@ jobs:
       # starts with this one, so "linux" would also restore linux-tsan's.
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
+          save: ${{ env.SAVE_CACHES }}
           key: linux-asan # Shared with the lint, which builds the same.
       - run: scripts/check-linux.sh asan
 
@@ -158,6 +163,7 @@ jobs:
       - if: env.CODE == 'true'
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
+          save: ${{ env.SAVE_CACHES }}
           # The lint builds the AddressSanitizer build, as the linux job does.
           key: linux-${{ matrix.check == 'lint' && 'asan' || matrix.check }}
       - if: env.CODE == 'true'
@@ -181,6 +187,7 @@ jobs:
           node-version-file: .nvmrc
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
+          save: ${{ env.SAVE_CACHES }}
           key: fuzz
       - run: cmake --preset fuzz -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - run: cmake --build --preset fuzz
@@ -231,6 +238,7 @@ jobs:
           cache: npm
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
+          save: ${{ env.SAVE_CACHES }}
           key: macos-main # Not "macos", which would also restore macos-glue's (see the linux job).
           max-size: 2G
       - name: Install LLVM
@@ -263,6 +271,7 @@ jobs:
           cache: npm
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
+          save: ${{ env.SAVE_CACHES }}
           key: macos-glue
           max-size: 2G
       - name: Install LLVM
@@ -371,6 +380,7 @@ jobs:
           cache: npm
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
+          save: ${{ env.SAVE_CACHES }}
           key: coverage
       - run: npm ci
       - run: npx playwright install --with-deps chromium
@@ -459,6 +469,7 @@ jobs:
       - run: sudo tools/mutation/install-mull.sh
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
+          save: ${{ env.SAVE_CACHES }}
           key: mutation-cpp
       - name: Build and list the mutants
         id: list
