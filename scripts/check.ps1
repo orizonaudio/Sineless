@@ -47,7 +47,7 @@ if ($checks -contains 'main') {
     foreach ($preset in $presets) {
         Step "C++ build: $preset (includes the VST3 validator)"
         Run cmake --preset $preset
-        Run cmake --build --preset $preset -- /m /nologo /v:minimal
+        Run cmake --build --preset $preset '--' /m /nologo /v:minimal
 
         if ($preset -like '*arm64' -and -not $hostIsArm) {
             Write-Host "Tests skipped: this machine cannot run $preset binaries."
@@ -118,7 +118,7 @@ if ($checks -contains 'glue' -and $hostIsArm) {
     # windows-env.ps1 set up (the compiler's folder). The VST3 validator and pluginval run in the
     # main part, on the plain build: they load the plugin into a host not built with the sanitizer.
     Run cmake --preset windows-x64-glue
-    Run cmake --build --preset windows-x64-glue -- /m /nologo /v:minimal
+    Run cmake --build --preset windows-x64-glue '--' /m /nologo /v:minimal
     # A build without the sanitizer would pass as well: it must load the sanitizer's runtime.
     $tests = 'build\windows-x64-glue\bin\Release\editor_tests.exe'
     $runtime = dumpbin /nologo /dependents $tests | Where-Object { $_ -match 'clang_rt\.asan' }

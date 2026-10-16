@@ -14,7 +14,7 @@ Set-Location (Join-Path $PSScriptRoot '..')
 Write-Host "`n==> Audio performance (x64, optimised benchmark build)"
 if ($env:GITHUB_ACTIONS -eq 'true' -or $env:RUN_BENCH -eq '1') {
     Run cmake --preset windows-x64-bench
-    Run cmake --build --preset windows-x64-bench -- /m /nologo /v:minimal
+    Run cmake --build --preset windows-x64-bench '--' /m /nologo /v:minimal
     # The same limit as on macOS: eight instances within 5 % of each block's deadline at p99.9.
     $maxShare = if ($env:PERF_MAX_SHARE) { $env:PERF_MAX_SHARE } else { '0.05' }
     $output = & build\windows-x64-bench\bin\Release\process_bench.exe --instances=8 --seconds=30 --max-share=$maxShare
