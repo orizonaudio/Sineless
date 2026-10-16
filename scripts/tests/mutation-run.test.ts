@@ -292,6 +292,16 @@ describe("checking the tests pass with no mutant", () => {
     ).toBe(false);
   });
 
+  test("fails tests that outlast the limit with no mutant, as every mutant would time out and read as noticed", async () => {
+    expect(
+      await testsPass({
+        limitSeconds: 1,
+        command: process.execPath,
+        args: ["-e", "setInterval(() => undefined, 1000)"],
+      }),
+    ).toBe(false);
+  });
+
   test("fails tests that cannot start", async () => {
     expect(
       await testsPass({ limitSeconds: 5, command: "/no/such/tests", args: [] }),
