@@ -1,6 +1,6 @@
 // The mutation report's command line, run as its callers run it: scripts/mutation.sh and
 // scripts/mutation-cpp.sh for the summary, CI's Report steps for the warnings.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -111,5 +111,56 @@ describe("the mutation report's command line", () => {
     expect(run(report(), "--annotate").trim()).toBe(
       "::warning file=engine/src/Roll.cpp,line=3,col=1,title=Mutant survived::No test fails when this is changed (cxx_add_to_sub): a - b",
     );
+  });
+});
+
+// Stryker's own log of a run in which no unit test reaches the lines it mutated (allowEmpty), as
+// it writes it, colour codes included.
+const noTestsLog = join(
+  import.meta.dirname,
+  "fixtures",
+  "stryker-no-tests.log",
+);
+
+describe("a TypeScript run that wrote no report (scripts/mutation.sh)", () => {
+  const missing = () => join(dir, "no-such-report.json");
+  const runStatus = (...args: string[]) =>
+    spawnSync(process.execPath, ["scripts/mutation-report.ts", ...args], {
+      encoding: "utf8",
+    });
+
+  test("is summarised as nothing to judge when no unit test reaches the lines changed", () => {
+    const result = runStatus(
+      missing(),
+      "Mutation testing (TypeScript)",
+      "3",
+      "--stryker-log",
+      noTestsLog,
+      "--base",
+      "origin/main",
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "No unit test reaches the lines changed since origin/main",
+    );
+  });
+
+  test("fails when Stryker's log gives no such reason, as a run that did not complete", () => {
+    const other = join(dir, "stryker-crashed.log");
+    writeFileSync(
+      other,
+      "INFO DryRunExecutor Starting initial test run\nERROR crashed\n",
+    );
+    const result = runStatus(
+      missing(),
+      "Mutation testing (TypeScript)",
+      "3",
+      "--stryker-log",
+      other,
+      "--base",
+      "origin/main",
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toBe("");
   });
 });

@@ -6,11 +6,13 @@
 //       [--mull-log <mull.log> --limit <seconds>]
 //   node scripts/mutation-report.ts <report.json> --annotate
 //   node scripts/mutation-report.ts <report.json> --survivors   (the mutants no test noticed, JSON)
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 import {
   annotations,
+  noTestReached,
+  noTestReachedSummary,
   relativeTo,
   summarise,
   survivors,
@@ -28,6 +30,8 @@ const { positionals, values } = parseArgs({
     survivors: { type: "boolean" },
     "mull-log": { type: "string" },
     limit: { type: "string" },
+    "stryker-log": { type: "string" },
+    base: { type: "string" },
   },
 });
 const [path, title, seconds] = positionals;
@@ -42,6 +46,19 @@ if (path === undefined || option === undefined) {
     "Usage: node scripts/mutation-report.ts <report.json> <title> [seconds] | --annotate | --survivors",
   );
   process.exit(2);
+}
+// With Stryker's log: a run that wrote no report because no unit test reaches the lines it mutated
+// is summarised as such; one that wrote none for any other reason fails here, as before.
+const strykerLog = values["stryker-log"];
+if (strykerLog !== undefined && option === title && !existsSync(path)) {
+  if (!noTestReached(readFileSync(strykerLog, "utf8"), false)) {
+    console.error(
+      `Stryker wrote no report (${path}); see its log, ${strykerLog}.`,
+    );
+    process.exit(1);
+  }
+  console.log(noTestReachedSummary(title, values.base ?? "the base"));
+  process.exit(0);
 }
 const report = relativeTo(
   JSON.parse(readFileSync(path, "utf8")) as Report,

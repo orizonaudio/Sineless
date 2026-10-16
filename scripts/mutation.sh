@@ -61,16 +61,9 @@ if ! cmp -s tools/mutation/package-lock.json "$work/package-lock.json"; then
 fi
 start=$SECONDS
 # allowEmpty (tools/mutation/stryker.config.json): when no unit test reaches the lines changed,
-# Stryker ends without a report rather than failing. Those lines are left to the app tests, which
-# drive real browsers and so do not run per mutant; the summary says so, and the mutation triage
-# finds nothing to judge.
+# Stryker ends without a report rather than failing, and the report script, given its log, says so
+# (scripts/mutation-summary.ts, noTestReached); the mutation triage then finds nothing to judge.
 (cd "$work" && npx stryker run "${args[@]+"${args[@]}"}") | tee "$out/stryker.log"
-if [[ ! -f "$out/mutation.json" ]] && grep -q "No tests were found" "$out/stryker.log"; then
-    printf '## Mutation testing (TypeScript)\n\nNo unit test reaches the TypeScript lines changed since %s: they are left to the app tests.\n' \
-        "$base" > "$out/summary.md"
-    cat "$out/summary.md"
-    exit 0
-fi
 node scripts/mutation-report.ts "$out/mutation.json" "Mutation testing (TypeScript)" \
-    "$((SECONDS - start))" > "$out/summary.md"
+    "$((SECONDS - start))" --stryker-log "$out/stryker.log" --base "${base:-HEAD}" > "$out/summary.md"
 cat "$out/summary.md"

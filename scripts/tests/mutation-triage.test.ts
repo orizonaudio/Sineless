@@ -20,6 +20,7 @@ import {
   verify,
   type Mutant,
 } from "../mutation-triage.ts";
+import { noTestReachedSummary } from "../mutation-summary.ts";
 
 const mutant = (id: number, replacement = "<="): Mutant => ({
   id,
@@ -223,6 +224,16 @@ describe("the reports the workflow triages", () => {
 });
 
 describe("a pull request that changes no line a mutation job mutates or tests", () => {
+  test("is not incomplete for the summary of a TypeScript run no unit test reaches", () => {
+    expect(
+      runOutcome(
+        "success",
+        false,
+        noTestReachedSummary("Mutation testing (TypeScript)", "origin/main"),
+      ),
+    ).toBe("none");
+  });
+
   test.each(["scripts/mutation.sh", "scripts/mutation-cpp.sh"])(
     "is not incomplete for any of %s's summaries with nothing to judge",
     (script) => {
