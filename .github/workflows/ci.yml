@@ -23,8 +23,11 @@ concurrency:
 
 # Each C++ mutant's time limit, in seconds (scripts/mutation-cpp.sh): the shares stop a mutant at
 # it, and the merged summary weighs the tests' own time against it, so both read this one value.
+# The tests take about 540 s here with every mutant compiled in, longer with four mutants running
+# at once; a mutant no test notices runs them all, and one stopped at the limit would read as
+# noticed. 1500 s is near three times their time, the margin the summary asks for.
 env:
-  MUTANT_TIMEOUT: 600
+  MUTANT_TIMEOUT: 1500
 
 jobs:
   # Whether anything but documentation changed (scripts/changed-code.ts). Each event is compared
@@ -417,13 +420,13 @@ jobs:
   # builds the tests with every mutant compiled in and lists the mutants; four share them out,
   # each a quarter of every file; the mutation-cpp job reports their results together, those of
   # mutants not reached in time as not run (a partial report, which the triage never passes).
-  # Each mutant runs the tests up to their first failure and is stopped at 600 s (MUTANT_TIMEOUT,
-  # set for the whole workflow) if it hangs one: the tests take a few minutes with every mutant
-  # compiled in, and a mutant no test notices runs them all. The summary says how long they take
-  # unmutated, and warns when that is more than half the limit, as such a mutant would then be
-  # reported as timed out. No share starts a mutant after 70 minutes of running them (MUTATION_DEADLINE), so
-  # that with its setup and one unmutated run of the tests the job's 90 rarely end it; when they
-  # do, the results it wrote are kept and the rest reported as not run.
+  # Each mutant runs the tests up to their first failure and is stopped at MUTANT_TIMEOUT (set for
+  # the whole workflow) if it hangs one. The summary says how long the tests take unmutated, and
+  # warns when that is more than half the limit, as a mutant no test notices would then be
+  # reported as timed out. No share starts a mutant after 50 minutes of running them
+  # (MUTATION_DEADLINE): with the limit's 25 and the setup and one unmutated run of the tests
+  # before them, the job's 90 rarely end it; when they do, the results it wrote are kept and the
+  # rest reported as not run.
   mutation-cpp-list:
     name: mutation-cpp-list
     needs: changes
@@ -497,7 +500,7 @@ jobs:
       - name: Run the share's mutants
         continue-on-error: true # Its mutants are then reported as not run.
         env:
-          MUTATION_DEADLINE: 4200
+          MUTATION_DEADLINE: 3000
         run: |
           chmod +x build/mutation-cpp/engine/engine_tests # Artifacts keep no permissions.
           scripts/mutation-cpp.sh --share "${{ matrix.share }}/4"
