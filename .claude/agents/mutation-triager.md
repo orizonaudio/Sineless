@@ -32,6 +32,13 @@ Give each mutant one verdict:
 - **dead**: the code cannot run, or does nothing: say where it should be removed.
 - **message**: only wording, logging or a diagnostic changes.
 
+The C++ mutants are made in the compiled code, not the source (Mull). A call removed from a
+function the compiler inlined, such as a container's `push_back` or `clear`, may remove only
+part of it: the path that grows a vector's storage, say, which never runs where the code reuses
+its storage. Such a mutant is equivalent where the removed part cannot run, even though the
+same line deleted in the source would be noticed; say so, citing what keeps that part from
+running.
+
 Choose **gap** only when you can name the user-visible failure and the state that triggers it;
 when in doubt between gap and another verdict, explain the doubt in the reason and choose gap,
 so that a verifier checks it.
