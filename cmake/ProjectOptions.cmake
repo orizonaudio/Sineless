@@ -30,7 +30,7 @@ if(ORIZON_THREAD_SANITIZER)
     add_link_options(-fsanitize=thread)
 endif()
 
-option(ORIZON_ADDRESS_SANITIZER "Build with AddressSanitizer (memory errors; leaks too, but not with MSVC)" OFF)
+option(ORIZON_ADDRESS_SANITIZER "Build with AddressSanitizer (memory errors; leaks too, but not with MSVC), and UndefinedBehaviorSanitizer where the compiler has it" OFF)
 if(ORIZON_ADDRESS_SANITIZER AND MSVC)
     # MSVC's links its runtime itself (/INFERASANLIBS), with either C runtime, and needs debug
     # information for its reports. It does not combine with the run-time checks (/RTC) or
@@ -42,8 +42,13 @@ if(ORIZON_ADDRESS_SANITIZER AND MSVC)
         string(REGEX REPLACE "/RTC[1csu]+" "" CMAKE_${language}_FLAGS_DEBUG "${CMAKE_${language}_FLAGS_DEBUG}")
     endforeach()
 elseif(ORIZON_ADDRESS_SANITIZER)
-    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-    add_link_options(-fsanitize=address)
+    # With UndefinedBehaviorSanitizer too (MSVC has none), stopping at its first report so the
+    # test fails: out-of-range float-to-integer casts (NaN travels as "no value"), signed overflow
+    # in positions at high sample rates, bad shifts, invalid bool or enum loads. The fuzz build
+    # found such a cast in the editor's session.
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined
+                        -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
 endif()
 
 option(ORIZON_REALTIME_SANITIZER "Build with RealtimeSanitizer (needs Clang 20+, not AppleClang)" OFF)
