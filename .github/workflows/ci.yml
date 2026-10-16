@@ -582,9 +582,10 @@ jobs:
             build/mutation-cpp-report/summary.md
           if-no-files-found: ignore
 
-  # The performance limits, reported as a warning, never a failure: shared CI machines are too
-  # noisy for hard limits, so they are a little looser here than on a developer's Mac. Not run in
-  # the merge queue, so it does not slow merging.
+  # The performance limits (scripts/performance.sh): the leak limits (what reopening the editor
+  # leaves behind) warn when missed; the speed limits, set for a developer's Mac, are measured and
+  # shown in the job summary without being judged, as these shared machines missed them on every
+  # run. Never a failure, and not run in the merge queue, so it does not slow merging.
   performance:
     name: performance-${{ matrix.os }}
     needs: changes
@@ -599,9 +600,7 @@ jobs:
           - os: windows
             runner: windows-2022
     env:
-      PERF_MIN_FPS: 40
-      PERF_CPU_SLACK: 10
-      PERF_MAX_SHARE: 0.06
+      PERF_SPEED: report
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -612,11 +611,24 @@ jobs:
       - id: macos
         if: matrix.os == 'macos'
         continue-on-error: true
-        run: scripts/performance.sh
+        shell: bash # With pipefail, so that the script's failure is the step's through tee.
+        run: scripts/performance.sh 2>&1 | tee performance.log
       - id: windows
         if: matrix.os == 'windows'
         continue-on-error: true
         shell: powershell
-        run: scripts/performance.ps1
+        run: scripts/performance.ps1 *>&1 | Tee-Object performance.log
       - if: steps.macos.outcome == 'failure' || steps.windows.outcome == 'failure'
-        run: echo "::warning title=Performance::A performance limit was missed on ${{ matrix.os }}; see the log of the step above."
+        run: echo "::warning title=Performance::A leak limit was missed on ${{ matrix.os }}, or the benchmarks did not run; see the log of the step above."
+      # The measurements, to compare between runs.
+      - if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Performance (${{ matrix.os }})"
+            echo
+            echo '```'
+            grep -E '^(limit|total|page|reopen|reopened|worst share)' performance.log ||
+              echo "No measurements; see the log."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
