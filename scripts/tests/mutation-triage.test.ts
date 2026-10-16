@@ -176,24 +176,31 @@ describe("the mutation triage's state", () => {
 
 // The summary each mutation script writes when no line it mutates changed, read from the script
 // itself, so that the test follows the script's wording.
+// Every summary a mutation script writes when it has nothing to report (no line it mutates
+// changed, or no test reaches them), as the script prints it against origin/main.
+function nothingToJudgeSummaries(script: string): string[] {
+  const summaries = [
+    ...readFileSync(script, "utf8").matchAll(
+      /printf '(## Mutation testing[^']*since %s[^']*)'/gu,
+    ),
+  ].map((match) =>
+    (match[1] ?? "").replaceAll("\\n", "\n").replace("%s", "origin/main"),
+  );
+  expect(summaries.length, script).toBeGreaterThan(0);
+  return summaries;
+}
+
 function nothingChangedSummary(script: string): string {
-  const match =
-    /printf '(## Mutation testing[^']*No [^']*source lines changed since %s\.\\n)'/u.exec(
-      readFileSync(script, "utf8"),
-    );
-  expect(match, script).not.toBeNull();
-  return (match?.[1] ?? "")
-    .replaceAll("\\n", "\n")
-    .replace("%s", "origin/main");
+  return nothingToJudgeSummaries(script)[0] ?? "";
 }
 
 describe("a pull request that changes no line a mutation job mutates", () => {
   test.each(["scripts/mutation.sh", "scripts/mutation-cpp.sh"])(
-    "is not incomplete for %s's summary",
+    "is not incomplete for any of %s's summaries with nothing to judge",
     (script) => {
-      expect(runOutcome("success", false, nothingChangedSummary(script))).toBe(
-        "none",
-      );
+      for (const summary of nothingToJudgeSummaries(script)) {
+        expect(runOutcome("success", false, summary), summary).toBe("none");
+      }
     },
   );
 });
