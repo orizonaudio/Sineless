@@ -1,7 +1,7 @@
 // The rules that decide the mutation-triage check: a mutant the triage did not judge, and a gap no
 // verifier confirmed, must never let the check pass; a gap the verifier rejects does not fail it.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -127,6 +127,30 @@ describe("what a mutation job left to triage", () => {
   );
 });
 
+// The summary each mutation script writes when no line it mutates changed, read from the script
+// itself, so that the test follows the script's wording.
+function nothingChangedSummary(script: string): string {
+  const match =
+    /printf '(## Mutation testing[^']*No [^']*source lines changed since %s\.\\n)'/u.exec(
+      readFileSync(script, "utf8"),
+    );
+  expect(match, script).not.toBeNull();
+  return (match?.[1] ?? "")
+    .replaceAll("\\n", "\n")
+    .replace("%s", "origin/main");
+}
+
+describe("a pull request that changes no line a mutation job mutates", () => {
+  test.each(["scripts/mutation.sh", "scripts/mutation-cpp.sh"])(
+    "is not incomplete for %s's summary",
+    (script) => {
+      expect(runOutcome("success", false, nothingChangedSummary(script))).toBe(
+        "none",
+      );
+    },
+  );
+});
+
 describe("the mutation triage's comment", () => {
   test("says the check failed, and lists each gap with its verification", () => {
     const result = verify(
@@ -172,6 +196,36 @@ describe("the mutation triage's comment", () => {
 });
 
 describe("the mutation triage's command line, as the workflow runs it", () => {
+  test.each([
+    ["a report", true, undefined, "report"],
+    [
+      "a summary that nothing changed",
+      false,
+      "scripts/mutation-cpp.sh",
+      "none",
+    ],
+    ["neither", false, undefined, "incomplete"],
+  ] as const)(
+    "says what a finished job with %s left",
+    (_, hasReport, summaryFrom, outcome) => {
+      const dir = mkdtempSync(join(tmpdir(), "mutation-outcome-"));
+      const report = join(dir, "mull.json");
+      const summary = join(dir, "summary.md");
+      if (hasReport) {
+        writeFileSync(report, '{"files":{}}');
+      }
+      if (summaryFrom !== undefined) {
+        writeFileSync(summary, nothingChangedSummary(summaryFrom));
+      }
+      const printed = execFileSync(
+        process.execPath,
+        ["scripts/mutation-triage.ts", "outcome", "success", report, summary],
+        { encoding: "utf8" },
+      );
+      expect(printed.trim()).toBe(outcome);
+    },
+  );
+
   test("judges, then reports the gaps left and the comment", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-triage-"));
     const file = (name: string, value: unknown) => {
