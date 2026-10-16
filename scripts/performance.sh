@@ -37,19 +37,19 @@ fi
 # an M-series Mac measures: room for noise, not for a real regression.
 if ! "$bench/perf_bench" --mode=multi --lanes=7 --beatspan=fourBars --warmup=10 --duration=5 \
     --min-fps="$minFps" --max-analysis="$(speed 10)" --max-total="$(speed 65)" |
-    grep -E '^limit|^total|^page:'; then
+    grep -E '^limit|^total|^page:|^  thread Sineless analysis'; then
     failed=1
 fi
 if ! "$bench/perf_bench" --mode=compare --lanes=7 --beatspan=fourBars --warmup=10 --duration=5 \
     --min-fps="$minFps" --max-analysis="$(speed 30)" --max-total="$(speed 75)" |
-    grep -E '^limit|^total|^page:'; then
+    grep -E '^limit|^total|^page:|^  thread Sineless analysis'; then
     failed=1
 fi
 # The worst case: fifteen tracks over sixteen bars at 60 BPM and 96 kHz, a 64 s sweep that
 # takes over a minute to fill.
 if ! "$bench/perf_bench" --mode=multi --lanes=15 --beatspan=sixteenBars --rate=96000 --tempo=60 \
     --warmup=70 --duration=5 --min-fps="$minFps" --max-analysis="$(speed 20)" \
-    --max-total="$(speed 90)" | grep -E '^limit|^total|^page:'; then
+    --max-total="$(speed 90)" | grep -E '^limit|^total|^page:|^  thread Sineless analysis'; then
     failed=1
 fi
 # Opening and closing the editor leaves nothing behind.
