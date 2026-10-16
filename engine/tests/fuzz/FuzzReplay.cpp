@@ -5,6 +5,10 @@
 // Usage: <target> <file or directory>...   (directories are read whole, recursively)
 
 #include <algorithm>
+#ifdef _MSC_VER
+#include <crtdbg.h>
+#include <cstdlib>
+#endif
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -21,6 +25,15 @@ namespace fs = std::filesystem;
 
 int main(int argc, char** argv)
 {
+#ifdef _MSC_VER
+    // As GoogleTest's runner does: the debug C runtime's abort and assertion reports go to stderr,
+    // not a dialog that would hold a failing replay until ctest's timeout.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+#endif
     std::vector<fs::path> inputs;
     for (int i = 1; i < argc; ++i) {
         const fs::path path(argv[i]);
