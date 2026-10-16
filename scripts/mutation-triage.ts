@@ -2,6 +2,7 @@
 // the triage and the verification have answered, whether the check passes, and the comment that
 // says so. Kept here rather than in the workflow, so that the rules that decide the check have
 // tests.
+//   node scripts/mutation-triage.ts number <mutants.json>   (numbered, with repository paths)
 //   node scripts/mutation-triage.ts outcome <job conclusion> <report.json> [summary.md]
 //   node scripts/mutation-triage.ts judge <mutants.json> <triage.json>   (writes gaps to verify)
 //   node scripts/mutation-triage.ts report <judged.json> <verify.json>   (prints the comment)
@@ -59,6 +60,27 @@ export function runOutcome(
     return "none";
   }
   return "incomplete";
+}
+
+// A report's file as a path in the repository: the reports name files from the workspace CI ran
+// in, and one made elsewhere (in Docker, or another checkout) is cut back to the first of the
+// repository's source folders.
+export function repositoryPath(file: string): string {
+  if (!file.startsWith("/") && !file.startsWith("../")) {
+    return file;
+  }
+  const match =
+    /(?:^|\/)((?:engine|plugin|editor|protocol|ui|scripts)\/.*)$/u.exec(file);
+  return match?.[1] ?? file;
+}
+
+// The mutants of every report, numbered, with repository paths.
+export function numbered(mutants: Omit<Mutant, "id">[]): Mutant[] {
+  return mutants.map((mutant, id) => ({
+    ...mutant,
+    id,
+    file: repositoryPath(mutant.file),
+  }));
 }
 
 // Each mutant with the triage's verdict. A mutant left without one counts as a gap: unjudged, it
@@ -169,7 +191,14 @@ const read = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
 
 if (process.argv[1]?.endsWith("mutation-triage.ts") === true) {
   const [command, first, second, third] = process.argv.slice(2);
-  if (command === "outcome" && first !== undefined && second !== undefined) {
+  if (command === "number" && first !== undefined) {
+    // number <mutants.json>
+    console.log(JSON.stringify(numbered(read(first) as Omit<Mutant, "id">[])));
+  } else if (
+    command === "outcome" &&
+    first !== undefined &&
+    second !== undefined
+  ) {
     // outcome <job conclusion> <report.json> [summary.md]
     const summaryPath = third;
     console.log(

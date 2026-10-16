@@ -12,6 +12,8 @@ import {
   gapsLeft,
   gapsToVerify,
   judge,
+  numbered,
+  repositoryPath,
   runOutcome,
   verify,
   type Mutant,
@@ -152,35 +154,47 @@ describe("a pull request that changes no line a mutation job mutates", () => {
 });
 
 describe("the mutation triage's comment", () => {
-  test("says the check failed, and lists each gap with its verification", () => {
+  const gapsListed = (text: string) =>
+    text.split("\n").filter((line) => line.startsWith("- **Gap**"));
+
+  test("lists exactly the confirmed gaps, each with its verification, and asks for tests", () => {
     const result = verify(
       judge(
-        [mutant(0), mutant(1)],
+        [mutant(0), mutant(1), mutant(2)],
         [
           { id: 0, verdict: "gap", reason: "a frozen view redraws" },
-          { id: 1, verdict: "equivalent", reason: "never meet" },
+          { id: 1, verdict: "gap", reason: "r" },
+          { id: 2, verdict: "equivalent", reason: "never meet" },
         ],
       ),
-      [{ id: 0, verified: true, severity: "important", proof: "traced" }],
+      [
+        { id: 0, verified: true, severity: "important", proof: "traced" },
+        {
+          id: 1,
+          verified: false,
+          severity: "important",
+          proof: "redone later",
+        },
+      ],
     );
     const text = comment(result);
-    expect(text.split("\n").slice(0, 2)).toEqual([
-      "<!-- mutation-triage: failed -->",
-      "### Mutation triage: 1 untested gap(s)",
-    ]);
-    expect(text).toContain("- **Gap** `engine/src/Analyzer.cpp:100`");
+    expect(gapsListed(text)).toHaveLength(1);
+    expect(gapsListed(text)[0]).toContain("engine/src/Analyzer.cpp:100");
     expect(text).toContain("Verification: traced");
+    expect(text).toContain("Add a test");
+    // Every mutant is still listed, each with its verdict and why.
+    expect(text).toContain("| not a gap | redone later |");
     expect(text).toContain("| equivalent | never meet |");
   });
 
-  test("says it passed when no gap is left", () => {
+  test("lists no gap and asks for no test when none is left", () => {
     const result = verify(
-      judge([mutant(0)], [{ id: 0, verdict: "dead", reason: "cannot run" }]),
-      [],
+      judge([mutant(0)], [{ id: 0, verdict: "gap", reason: "r" }]),
+      [{ id: 0, verified: false, severity: "nit", proof: "harmless" }],
     );
-    expect(comment(result).split("\n")[0]).toBe(
-      "<!-- mutation-triage: passed -->",
-    );
+    const text = comment(result);
+    expect(gapsListed(text)).toHaveLength(0);
+    expect(text).not.toContain("Add a test");
   });
 
   test("names a removed call as removed, not as an empty change", () => {
@@ -192,6 +206,40 @@ describe("the mutation triage's comment", () => {
       "No test notices the call removed",
     );
     expect(comment(judged)).toContain("cxx_remove_void_call: removed");
+  });
+});
+
+describe("the paths the triagers read", () => {
+  test.each([
+    ["engine/src/Analyzer.cpp", "engine/src/Analyzer.cpp"],
+    ["ui/src/app.ts", "ui/src/app.ts"],
+    ["/src/engine/src/Roll.cpp", "engine/src/Roll.cpp"],
+    [
+      "/home/runner/work/Sineless/Sineless/plugin/src/Processor.cpp",
+      "plugin/src/Processor.cpp",
+    ],
+    ["../../work/Sineless/protocol/src/frame.ts", "protocol/src/frame.ts"],
+    ["/x/engine/src/engine/Nested.cpp", "engine/src/engine/Nested.cpp"],
+  ])("are %s as %s, a path in the repository", (from, to) => {
+    expect(repositoryPath(from)).toBe(to);
+  });
+
+  test("number every mutant of every report, from 0", () => {
+    const first = {
+      file: "engine/src/Analyzer.cpp",
+      line: 105,
+      mutator: "m",
+      replacement: "x",
+    };
+    expect(
+      numbered([first, { ...first, file: "/src/ui/src/app.ts" }]).map((m) => [
+        m.id,
+        m.file,
+      ]),
+    ).toEqual([
+      [0, "engine/src/Analyzer.cpp"],
+      [1, "ui/src/app.ts"],
+    ]);
   });
 });
 
