@@ -1122,7 +1122,8 @@ export class OscilloscopeApp {
     const wanted = this.levelCursors === undefined ? 0 : laneList.length * 2;
     if (container.children.length !== wanted) {
       const lines: HTMLElement[] = [];
-      laneList.forEach((_, lane) => {
+      // None while the cursors are off: lines built then would never be placed.
+      (wanted === 0 ? [] : laneList).forEach((_, lane) => {
         for (const key of ["first", "second"] as const) {
           const line = document.createElement("div");
           line.className = "level-cursor";
