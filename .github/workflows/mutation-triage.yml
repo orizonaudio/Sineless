@@ -164,8 +164,9 @@ jobs:
           path: mutation-triage/reports
 
       # Every mutant no test noticed, numbered, from each mutation job of the run. A job that ran
-      # and left no report (it failed, timed out or stopped short) makes the triage incomplete,
-      # never a pass (scripts/mutation-triage.ts, runOutcome).
+      # and left no report (it failed, timed out or was cancelled) makes the triage incomplete, and
+      # one whose report has mutants not run makes it partial: never a pass
+      # (scripts/mutation-triage.ts, runOutcome and checkState).
       - name: Collect the mutants
         if: steps.pr.outputs.action == 'triage'
         id: collect
@@ -186,6 +187,7 @@ jobs:
             --jq '.jobs[] | "\(.name)\t\(.conclusion // "")"' > mutation-triage/jobs.tsv
           echo '[]' > mutation-triage/mutants.json
           incomplete=()
+          notRun=0
           for kind in mutation:mutation-ts/mutation.json mutation-cpp:mutation-cpp/mull.json; do
             job="${kind%%:*}"
             report="mutation-triage/reports/${kind#*:}"
@@ -193,7 +195,8 @@ jobs:
             outcome=$(node scripts/mutation-triage.ts outcome "$conclusion" "$report" \
               "$(dirname "$report")/summary.md")
             case "$outcome" in
-            report)
+            report | partial)
+              notRun=$((notRun + $(node scripts/mutation-triage.ts not-run "$report")))
               node scripts/mutation-report.ts "$report" --survivors > mutation-triage/part.json
               jq -s 'add' mutation-triage/mutants.json mutation-triage/part.json > mutation-triage/all.json
               mv mutation-triage/all.json mutation-triage/mutants.json
@@ -215,8 +218,12 @@ jobs:
           node scripts/mutation-triage.ts number mutation-triage/mutants.json > mutation-triage/numbered.json
           count=$(jq length mutation-triage/numbered.json)
           echo "count=$count" >> "$GITHUB_OUTPUT"
-          if (( count == 0 )); then
+          echo "not-run=$notRun" >> "$GITHUB_OUTPUT"
+          if (( count == 0 && notRun == 0 )); then
             status success "No mutant left unnoticed"
+          elif (( count == 0 )); then
+            # Nothing to judge, but the report the Report step posts says what was not run.
+            echo '[]' > mutation-triage/judged.json
           else
             status pending "Judging $count mutant(s)"
           fi
@@ -340,12 +347,15 @@ jobs:
             --json-schema '{"type":"object","required":["verdicts"],"properties":{"verdicts":{"type":"array","items":{"type":"object","required":["id","verified","severity","proof"],"properties":{"id":{"type":"integer"},"verified":{"type":"boolean"},"severity":{"enum":["important","nit"]},"proof":{"type":"string"}}}}}}'
 
       - name: Report the result
-        if: always() && steps.pr.outputs.action == 'triage' && steps.collect.outputs.count != '0'
+        if: >-
+          always() && steps.pr.outputs.action == 'triage' &&
+          (steps.collect.outputs.count != '0' || steps.collect.outputs.not-run != '0')
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ steps.pr.outputs.number }}
           SHA: ${{ steps.pr.outputs.sha }}
           GAPS: ${{ steps.gaps.outputs.count }}
+          NOT_RUN: ${{ steps.collect.outputs.not-run }}
           VERIFY: ${{ steps.verify.outputs.structured_output }}
         run: |
           status() {
@@ -365,18 +375,14 @@ jobs:
           fi
           [[ -n "$VERIFY" ]] || VERIFY='{"verdicts":[]}'
           printf '%s' "$VERIFY" > mutation-triage/verify.json
-          # The verdicts once verified, the gaps left and the comment (scripts/mutation-triage.ts).
+          # The verdicts once verified, the gaps left, the check's state and the comment
+          # (scripts/mutation-triage.ts).
           node scripts/mutation-triage.ts report mutation-triage/judged.json mutation-triage/verify.json \
-            > mutation-triage/result.json
-          gaps=$(jq .gaps mutation-triage/result.json)
-          total=$(jq .total mutation-triage/result.json)
-          if (( gaps == 0 )); then
-            status success "No untested gap among $total mutant(s)"
-          else
-            status failure "$gaps untested gap(s) among $total mutant(s)"
-          fi
+            "${NOT_RUN:-0}" > mutation-triage/result.json
+          state=$(jq -r .state mutation-triage/result.json)
+          status "$state" "$(jq -r .description mutation-triage/result.json)"
           jq -r .comment mutation-triage/result.json | redact > mutation-triage/summary.md
           head -c 60000 mutation-triage/summary.md > mutation-triage/summary-posted.md
           gh pr comment "$NUMBER" --repo "$REPO" --body-file mutation-triage/summary-posted.md ||
             echo "::warning::Could not post the mutation triage."
-          (( gaps == 0 ))
+          [[ "$state" == success ]]

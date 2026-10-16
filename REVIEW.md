@@ -58,7 +58,9 @@ The `mutation-triage` check applies this to every pull request whose mutation ru
 mutants (`.github/workflows/mutation-triage.yml`): a `mutation-triager` gives each a verdict
 (gap, equivalent, speed, tuned, dead or message), a `review-verifier` checks each gap, and a
 comment lists them all. It fails while a verified gap is left; the author adds a test that
-fails with that mutant, or answers it, and a maintainer can waive it.
+fails with that mutant, or answers it, and a maintainer can waive it. A run that left mutants
+not run (it reached its deadline, or a share of it failed) leaves a partial report: the mutants
+it ran are judged all the same, but the check does not pass until the run is repeated or waived.
 
 ## Every finding
 

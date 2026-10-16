@@ -6,6 +6,13 @@
 # none changed); with --file, only the files named (an engine source or header each, repeatable);
 # with neither, all of engine/src and engine/include, about nine hours:
 #   scripts/mutation-cpp.sh [--file engine/src/Analyzer.cpp ...] [base revision, e.g. origin/main]
+# Mull lists the mutants (its dry run, which also times the tests with none), and
+# scripts/mutation-run.ts runs them: each stopped after MUTANT_TIMEOUT seconds (default 900), and
+# none started after MUTATION_DEADLINE seconds of running (default: none), those left being
+# reported as not run rather than lost. CI shares the mutants out:
+#   scripts/mutation-cpp.sh --list [--file ...] [base]   builds and lists them only
+#   scripts/mutation-cpp.sh --share <i>/<n>              runs share i of n, from that build and list
+#   scripts/mutation-cpp.sh --merge                      reports the shares' results together
 # Mull needs the Clang it was built for: Ubuntu 24.04's Clang 18, as on CI. Where mull-runner-18 is
 # not installed (on macOS), the script runs itself in tools/mutation/Dockerfile's image.
 # A report, not a check: writes build/mutation-cpp-report/ (mull.json and summary.md, which also
@@ -20,8 +27,23 @@ cd "$root"
 args=("$@")
 base=""
 files=()
+mode=all
+share=""
 while (($#)); do
     case "$1" in
+    --list)
+        mode=list
+        shift
+        ;;
+    --share)
+        mode=share
+        share="${2:-}"
+        shift 2
+        ;;
+    --merge)
+        mode=merge
+        shift
+        ;;
     --file)
         if ! [[ $# -ge 2 && -f "$2" && "$2" =~ ^engine/(src|include)/ ]]; then
             echo "--file needs an engine source or header, as engine/src/Analyzer.cpp." >&2
@@ -37,15 +59,53 @@ while (($#)); do
     esac
 done
 
-if ! command -v mull-runner-18 > /dev/null; then
+tests=(build/mutation-cpp/engine/engine_tests --gtest_fail_fast)
+mutantTimeout="${MUTANT_TIMEOUT:-900}"
+# Reports the results of the shares run so far against Mull's list: those of mutants no share ran
+# are reported as not run. Takes no Mull, so CI's merge job needs only Node.
+report() {
+    node scripts/mutation-run.ts merge "$out/dry.json" "$out"/results-*.jsonl > "$out/mull.json"
+    # With Mull's log and the limit, the summary also says how long the tests take with no mutant
+    # against each mutant's limit, and warns when the margin is too small
+    # (scripts/mutation-summary.ts).
+    node scripts/mutation-report.ts "$out/mull.json" "Mutation testing (C++)" ${1:+"$1"} \
+        --mull-log "$out/mull.log" --limit "$mutantTimeout" > "$out/summary.md"
+    cat "$out/summary.md"
+}
+if [[ "$mode" == merge ]]; then
+    if [[ ! -f "$out/dry.json" ]]; then
+        echo "--merge needs the list of a --list run in $out." >&2
+        exit 1
+    fi
+    report
+    exit 0
+fi
+
+# A share needs no Mull either, only the Linux build it runs.
+if [[ "$mode" != share || "$(uname)" != Linux ]] && ! command -v mull-runner-18 > /dev/null; then
     command -v docker > /dev/null ||
         { echo "Needs mull-runner-18 (Mull for Clang 18) or Docker." >&2; exit 1; }
     docker build -q -t sineless-mutation-cpp tools/mutation > /dev/null
     # The build stays in a volume of its own: Linux objects have no place in the host's build/.
-    # MUTANT_TIMEOUT goes in with the run, when set.
-    exec docker run --rm -e MUTANT_TIMEOUT -v "$root":/src \
+    # MUTANT_TIMEOUT and MUTATION_DEADLINE go in with the run, when set.
+    exec docker run --rm -e MUTANT_TIMEOUT -e MUTATION_DEADLINE -v "$root":/src \
         -v sineless-mutation-cpp:/src/build/mutation-cpp -w /src \
         sineless-mutation-cpp scripts/mutation-cpp.sh ${args[@]+"${args[@]}"}
+fi
+
+# Runs share $1 of the mutants Mull listed, from the build, recording each result as it is known.
+runShare() {
+    local deadline="${MUTATION_DEADLINE:-1000000000}"
+    node scripts/mutation-run.ts run "$out/dry.json" "$1" "$out/results-${1%%/*}.jsonl" \
+        --limit "$mutantTimeout" --deadline "$deadline" -- "${tests[@]}"
+}
+if [[ "$mode" == share ]]; then
+    if [[ ! -f "$out/dry.json" || ! -x "${tests[0]}" ]]; then
+        echo "--share needs the build and the list of a --list run in build/." >&2
+        exit 1
+    fi
+    runShare "$share"
+    exit 0
 fi
 
 rm -rf "$out"
@@ -92,32 +152,16 @@ MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --preset mutation > "$out/conf
 MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --build --preset mutation
 echo "$stamp" > build/mutation-cpp/settings.sha256
 start=$SECONDS
-# A full run of the tests takes about 5 minutes in this build in Docker on macOS (Mull's
-# instrumentation) and less on CI; a mutant may hang one, which then ends after MUTANT_TIMEOUT
-# seconds (default 900; CI sets 300, its runs being faster). A run against a base, as on CI, stops
-# after 75 minutes, so that CI's 90-minute limit never cancels the job; a run over the whole engine
-# is not limited.
-limit=()
-if [[ -n "$base" ]]; then
-    limit=(timeout 75m)
-fi
-status=0
-mutantTimeout=$((${MUTANT_TIMEOUT:-900} * 1000))
-MULL_CONFIG="$config" "${limit[@]}" mull-runner-18 --workers "$(nproc)" --timeout "$mutantTimeout" \
-    --reporters Elements --report-dir "$out" --report-name mull \
-    build/mutation-cpp/engine/engine_tests --gtest_fail_fast > "$out/mull.log" 2>&1 || status=$?
-if [[ -n "$base" ]] && ((status == 124)); then
-    printf '## Mutation testing (C++)\n\nStopped after 75 minutes: too many mutants on the lines changed since %s.\n' \
-        "$base" > "$out/summary.md"
-    cat "$out/summary.md"
-    exit 0
-fi
-if [[ ! -f "$out/mull.json" ]]; then
+# The mutants, listed with no test run: Mull's warm-up still runs the tests once with none, which
+# the summary reports against each mutant's limit.
+MULL_CONFIG="$config" mull-runner-18 --dry-run --timeout 3600000 --reporters Elements \
+    --report-dir "$out" --report-name dry "${tests[@]}" > "$out/mull.log" 2>&1 || true
+if [[ ! -f "$out/dry.json" ]]; then
     tail -n 20 "$out/mull.log" >&2
     exit 1
 fi
-# With Mull's log and the limit, the summary also says how long the tests take with no mutant
-# against each mutant's limit, and warns when the margin is too small (scripts/mutation-summary.ts).
-node scripts/mutation-report.ts "$out/mull.json" "Mutation testing (C++)" "$((SECONDS - start))" \
-    --mull-log "$out/mull.log" --limit "$((mutantTimeout / 1000))" > "$out/summary.md"
-cat "$out/summary.md"
+if [[ "$mode" == list ]]; then
+    exit 0
+fi
+runShare 1/1
+report "$((SECONDS - start))"

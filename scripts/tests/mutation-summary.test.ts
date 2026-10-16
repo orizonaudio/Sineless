@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   annotations,
   mullSeconds,
+  notRunCount,
   relativeTo,
   summarise,
   timeLimitNote,
@@ -103,6 +104,35 @@ describe("the mutation testing summary", () => {
 
   test("says when there is nothing to measure", () => {
     expect(summarise({ files: {} }, title)).toContain("No mutants to test.");
+  });
+
+  test("says a run that stopped at its deadline is partial, and how many mutants it did not run", () => {
+    const partial: Report = {
+      files: {
+        "a.cpp": {
+          mutants: [
+            mutant("Killed", 1),
+            mutant("Pending", 2),
+            mutant("Pending", 3),
+          ],
+        },
+      },
+    };
+    const text = summarise(partial, title);
+    expect(text).toContain("1 of 1 mutants noticed");
+    expect(text).toContain("**Partial:** 2 mutants were not run");
+    expect(notRunCount(partial)).toBe(2);
+    expect(summarise(report, title)).not.toContain("Partial");
+  });
+
+  test("does not call a run that ran no mutant one with nothing to test", () => {
+    const none: Report = {
+      files: { "a.cpp": { mutants: [mutant("Pending", 2)] } },
+    };
+    const text = summarise(none, title);
+    expect(text).not.toContain("No mutants to test.");
+    expect(text).toContain("No mutant was run.");
+    expect(text).toContain("**Partial:** 1 mutants were not run");
   });
 });
 
