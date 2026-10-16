@@ -18,6 +18,7 @@ on:
       - scripts/package.sh
       - scripts/package.ps1
       - scripts/windows-env.ps1
+      - scripts/release-on-main.ts
       - scripts/release-version.ts
   workflow_dispatch:
 
@@ -43,16 +44,18 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0 # main's history, to find the tagged commit in it.
-      - if: github.ref_type == 'tag'
-        name: The tagged commit is on main
-        run: |
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::$GITHUB_REF_NAME tags ${GITHUB_SHA:0:7}, which is not on main: tag a commit of main."
-            exit 1
-          fi
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
+      # The tagged commit is on main (scripts/release-on-main.ts). A dry run checks main's own
+      # newest commit instead, so that the check is seen to work before a release needs it.
+      - env:
+          COMMIT: ${{ github.ref_type == 'tag' && github.sha || 'origin/main' }}
+        run: |
+          node scripts/release-on-main.ts "$COMMIT" origin/main || {
+            echo "::error::${GITHUB_REF_NAME}: $(node scripts/release-on-main.ts "$COMMIT" origin/main 2>&1)"
+            exit 1
+          }
       - id: check
         env:
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
