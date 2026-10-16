@@ -4,9 +4,13 @@
 // tests.
 //   node scripts/mutation-triage.ts number <mutants.json>   (numbered, with repository paths)
 //   node scripts/mutation-triage.ts outcome <job conclusion> <report.json> [summary.md]
+//   node scripts/mutation-triage.ts not-run <report.json>   (how many mutants it did not run)
 //   node scripts/mutation-triage.ts judge <mutants.json> <triage.json>   (writes gaps to verify)
-//   node scripts/mutation-triage.ts report <judged.json> <verify.json>   (prints the comment)
+//   node scripts/mutation-triage.ts report <judged.json> <verify.json> [mutants not run]
+//       (prints the check's state and the comment)
 import { existsSync, readFileSync } from "node:fs";
+
+import { notRunCount, type Report } from "./mutation-summary.ts";
 
 export interface Mutant {
   id: number;
@@ -39,19 +43,20 @@ interface Verification {
 }
 
 // What a mutation job of the CI run left to triage: nothing (it did not run, or no source line it
-// mutates changed), its report, or nothing although it ran (it failed, timed out, was cancelled,
-// or stopped before the end, as scripts/mutation-cpp.sh does after 75 minutes). An incomplete run
-// must never read as one with no mutant left unnoticed.
+// mutates changed), its report, a report with some mutants not run (the run reached its deadline
+// first, scripts/mutation-run.ts), or nothing although it ran (it failed, timed out or was
+// cancelled). An incomplete or partial run must never read as one with no mutant left unnoticed.
 export function runOutcome(
   conclusion: string,
   hasReport: boolean,
   summary: string | undefined,
-): "none" | "report" | "incomplete" {
+  notRun = 0,
+): "none" | "report" | "partial" | "incomplete" {
   if (conclusion === "" || conclusion === "skipped") {
     return "none";
   }
   if (hasReport) {
-    return "report";
+    return notRun > 0 ? "partial" : "report";
   }
   if (
     summary !== undefined &&
@@ -138,6 +143,36 @@ export function gapsLeft(result: Judged[]): number {
   return result.filter((mutant) => mutant.verdict === "gap").length;
 }
 
+// The check's state: a failure while a gap is left; otherwise an error while some mutants were
+// not run, as what they would show is unknown; a success only when every mutant ran and no gap is
+// left.
+export function checkState(
+  gaps: number,
+  total: number,
+  notRun: number,
+): { state: "success" | "failure" | "error"; description: string } {
+  const unrun = notRun > 0 ? `; ${String(notRun)} not run` : "";
+  if (gaps > 0) {
+    return {
+      state: "failure",
+      description: `${String(gaps)} untested gap(s) among ${String(total)} mutant(s)${unrun}`,
+    };
+  }
+  if (notRun > 0) {
+    return {
+      state: "error",
+      description: `No untested gap among ${String(total)} mutant(s)${unrun}`,
+    };
+  }
+  return {
+    state: "success",
+    description:
+      total === 0
+        ? "No mutant left unnoticed"
+        : `No untested gap among ${String(total)} mutant(s)`,
+  };
+}
+
 // A mutant's change as Markdown: a removed call has no replacement.
 function change(mutant: Mutant, removed = "removed"): string {
   return mutant.replacement === ""
@@ -150,8 +185,15 @@ function oneLine(text: string): string {
 }
 
 // The comment on the pull request.
-export function comment(result: Judged[]): string {
+export function comment(result: Judged[], notRun = 0): string {
   const gaps = result.filter((mutant) => mutant.verdict === "gap");
+  const partial =
+    notRun > 0
+      ? [
+          "",
+          `**Partial:** ${String(notRun)} mutant(s) were not run (the mutation run reached its deadline, or a share of it failed), so the check cannot pass. Rerun the mutation jobs, or waive the check.`,
+        ]
+      : [];
   const lines =
     gaps.length > 0
       ? [
@@ -164,11 +206,18 @@ export function comment(result: Judged[]): string {
             (gap) =>
               `- **Gap** \`${gap.file}:${String(gap.line)}\` (${gap.mutator}: ${change(gap)}): ${oneLine(gap.reason)}\n  Verification: ${oneLine(gap.proof ?? "")}`,
           ),
+          ...partial,
         ]
-      : [
-          "<!-- mutation-triage: passed -->",
-          "### Mutation triage: no untested gap",
-        ];
+      : notRun > 0
+        ? [
+            "<!-- mutation-triage: partial -->",
+            "### Mutation triage: no untested gap among the mutants run",
+            ...partial,
+          ]
+        : [
+            "<!-- mutation-triage: passed -->",
+            "### Mutation triage: no untested gap",
+          ];
   lines.push(
     "",
     `<details><summary>Every mutant no test noticed (${String(result.length)})</summary>`,
@@ -201,15 +250,19 @@ if (process.argv[1]?.endsWith("mutation-triage.ts") === true) {
   ) {
     // outcome <job conclusion> <report.json> [summary.md]
     const summaryPath = third;
+    const hasReport = existsSync(second);
     console.log(
       runOutcome(
         first,
-        existsSync(second),
+        hasReport,
         summaryPath !== undefined && existsSync(summaryPath)
           ? readFileSync(summaryPath, "utf8")
           : undefined,
+        hasReport ? notRunCount(read(second) as Report) : 0,
       ),
     );
+  } else if (command === "not-run" && first !== undefined) {
+    console.log(notRunCount(read(first) as Report));
   } else if (
     command === "judge" &&
     first !== undefined &&
@@ -229,16 +282,18 @@ if (process.argv[1]?.endsWith("mutation-triage.ts") === true) {
       read(first) as Judged[],
       (read(second) as { verdicts: Verification[] }).verdicts,
     );
+    const notRun = Number(third ?? 0);
     console.log(
       JSON.stringify({
         gaps: gapsLeft(result),
         total: result.length,
-        comment: comment(result),
+        ...checkState(gapsLeft(result), result.length, notRun),
+        comment: comment(result, notRun),
       }),
     );
   } else {
     console.error(
-      "Usage: node scripts/mutation-triage.ts judge <mutants.json> <triage.json> | report <judged.json> <verify.json>",
+      "Usage: node scripts/mutation-triage.ts number <mutants.json> | outcome <conclusion> <report.json> [summary.md] | not-run <report.json> | judge <mutants.json> <triage.json> | report <judged.json> <verify.json> [not run]",
     );
     process.exit(2);
   }

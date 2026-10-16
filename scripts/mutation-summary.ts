@@ -5,6 +5,7 @@ import { isAbsolute, relative, sep } from "node:path";
 
 // The parts of the mutation testing report schema read here.
 export interface Mutant {
+  id?: string; // Mull's; Stryker's are numbers in its report, and unused here.
   mutatorName: string;
   replacement?: string;
   status: string;
@@ -20,6 +21,9 @@ const unnoticed = new Set(["Survived", "NoCoverage"]);
 // Noticed: a test failed, or the mutant hung a test (a timeout) or crashed it. The other statuses
 // (a mutant that does not compile, or one left out) count neither way.
 const noticed = new Set(["Killed", "Timeout", "RuntimeError"]);
+// Pending: listed but not run, as the run reached its deadline or a share of it failed
+// (scripts/mutation-run.ts).
+const notRunStatus = "Pending";
 // GitHub shows at most 10 warnings of a step on the pull request.
 const maxAnnotations = 10;
 
@@ -36,6 +40,13 @@ function missedMutants(report: Report): { file: string; mutant: Mutant }[] {
         a.file.localeCompare(b.file) ||
         a.mutant.location.start.line - b.mutant.location.start.line,
     );
+}
+
+// How many mutants the report lists as not run: a partial report.
+export function notRunCount(report: Report): number {
+  return Object.values(report.files)
+    .flatMap(({ mutants }) => mutants)
+    .filter((mutant) => mutant.status === notRunStatus).length;
 }
 
 // The mutants no test noticed, one entry each, for the mutation triage (CI's mutation-triage
@@ -95,19 +106,28 @@ export function summarise(
     );
   const caught = count(noticed);
   const measured = caught + count(unnoticed);
+  const notRun = counts.get(notRunStatus) ?? 0;
   const lines = [`## ${title}`, ""];
-  if (measured === 0) {
+  if (measured === 0 && notRun === 0) {
     lines.push("No mutants to test.");
   } else {
     lines.push(
-      `${String(caught)} of ${String(measured)} mutants noticed by the tests (${((100 * caught) / measured).toFixed(1)}%)` +
-        (seconds === undefined ? "." : `, in ${String(seconds)} s.`),
+      measured === 0
+        ? "No mutant was run."
+        : `${String(caught)} of ${String(measured)} mutants noticed by the tests (${((100 * caught) / measured).toFixed(1)}%)` +
+            (seconds === undefined ? "." : `, in ${String(seconds)} s.`),
       "",
       "| Status | Mutants |",
       "| --- | ---: |",
       ...[...counts].map(
         ([status, total]) => `| ${status} | ${String(total)} |`,
       ),
+    );
+  }
+  if (notRun > 0) {
+    lines.push(
+      "",
+      `**Partial:** ${String(notRun)} mutants were not run (the run reached its deadline, or a share of it failed); what they would show is unknown.`,
     );
   }
   const missed = missedMutants(report);

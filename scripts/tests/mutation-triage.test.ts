@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import {
+  checkState,
   comment,
   gapsLeft,
   gapsToVerify,
@@ -106,10 +107,10 @@ describe("what a mutation job left to triage", () => {
       "report",
     ],
     [
-      "stopped after 75 minutes",
+      "wrote only a summary that is not about an unchanged engine",
       "success",
       false,
-      "## Mutation testing (C++)\n\nStopped after 75 minutes: too many mutants on the lines changed since origin/main.\n",
+      "## Mutation testing (C++)\n\nMutation testing did not run.\n",
       "incomplete",
     ],
     [
@@ -127,6 +128,31 @@ describe("what a mutation job left to triage", () => {
       expect(runOutcome(conclusion, hasReport, summary)).toBe(outcome);
     },
   );
+
+  test("a report with mutants not run is partial, never a full report", () => {
+    expect(runOutcome("success", true, undefined, 3)).toBe("partial");
+    expect(runOutcome("failure", true, undefined, 1)).toBe("partial");
+  });
+});
+
+describe("the mutation triage's state", () => {
+  test.each([
+    [0, 0, 0, "success"],
+    [0, 5, 0, "success"],
+    [1, 5, 0, "failure"],
+    [1, 5, 2, "failure"],
+    [0, 5, 2, "error"],
+    [0, 0, 2, "error"],
+  ] as const)(
+    "%d gap(s) among %d mutant(s), %d not run: %s",
+    (gaps, total, notRun, state) => {
+      expect(checkState(gaps, total, notRun).state).toBe(state);
+    },
+  );
+
+  test("says in its description how many mutants were not run", () => {
+    expect(checkState(0, 5, 1).description).toContain("1 not run");
+  });
 });
 
 // The summary each mutation script writes when no line it mutates changed, read from the script
@@ -195,6 +221,17 @@ describe("the mutation triage's comment", () => {
     const text = comment(result);
     expect(gapsListed(text)).toHaveLength(0);
     expect(text).not.toContain("Add a test");
+  });
+
+  test("says a partial run cannot pass, and how many mutants it did not run", () => {
+    const result = verify(
+      judge([mutant(0)], [{ id: 0, verdict: "dead", reason: "cannot run" }]),
+      [],
+    );
+    const text = comment(result, 4);
+    expect(text.split("\n")[0]).toBe("<!-- mutation-triage: partial -->");
+    expect(text).toContain("**Partial:** 4 mutant(s) were not run");
+    expect(comment(result)).not.toContain("Partial");
   });
 
   test("names a removed call as removed, not as an empty change", () => {
@@ -311,5 +348,48 @@ describe("the mutation triage's command line, as the workflow runs it", () => {
     expect(report.gaps).toBe(1);
     expect(report.total).toBe(2);
     expect(report.comment).toContain("### Mutation triage: 1 untested gap(s)");
+  });
+
+  test("never passes a report with mutants not run, though no gap is left", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-partial-"));
+    const report = join(dir, "mull.json");
+    const reportMutant = (status: string, line: number) => ({
+      id: `m${String(line)}`,
+      mutatorName: "cxx_lt_to_le",
+      replacement: "<=",
+      location: { start: { line, column: 1 } },
+      status,
+    });
+    writeFileSync(
+      report,
+      JSON.stringify({
+        files: {
+          "engine/src/Roll.cpp": {
+            mutants: [
+              reportMutant("Killed", 1),
+              reportMutant("Pending", 2),
+              reportMutant("Pending", 3),
+            ],
+          },
+        },
+      }),
+    );
+    const cli = (...args: string[]) =>
+      execFileSync(process.execPath, ["scripts/mutation-triage.ts", ...args], {
+        encoding: "utf8",
+      }).trim();
+    expect(cli("outcome", "success", report)).toBe("partial");
+    const notRun = cli("not-run", report);
+    expect(notRun).toBe("2");
+    const judged = join(dir, "judged.json");
+    const verify = join(dir, "verify.json");
+    writeFileSync(judged, "[]");
+    writeFileSync(verify, '{"verdicts":[]}');
+    const result = JSON.parse(cli("report", judged, verify, notRun)) as {
+      state: string;
+      comment: string;
+    };
+    expect(result.state).not.toBe("success");
+    expect(result.comment).toContain("2 mutant(s) were not run");
   });
 });

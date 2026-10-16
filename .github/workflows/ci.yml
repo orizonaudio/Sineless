@@ -408,16 +408,25 @@ jobs:
   # Mutation testing of the engine lines a pull request changes (scripts/mutation-cpp.sh), with
   # Mull for the runner's Clang 18: a report in the job summary, with warnings on the lines whose
   # changes no engine test notices. Never a failure, and not required; nothing is built when no
-  # engine source changed. Each mutant runs the tests up to their first failure, and is stopped at
-  # 300 s (MUTANT_TIMEOUT) if it hangs one; the summary says how long the tests take unmutated, and
-  # warns when that is more than half the limit, as a mutant no test notices would then be reported
-  # as timed out. On every core; the script stops a run at 75 minutes, within the job's 90.
-  mutation-cpp:
-    name: mutation-cpp
+  # engine source changed. In three steps, so that a large change still gets a report: one job
+  # builds the tests with every mutant compiled in and lists the mutants; four share them out,
+  # each a quarter of every file; the mutation-cpp job reports their results together, those of
+  # mutants not reached in time as not run (a partial report, which the triage never passes).
+  # Each mutant runs the tests up to their first failure and is stopped at 600 s
+  # (MUTANT_TIMEOUT) if it hangs one: the tests take a few minutes with every mutant compiled in,
+  # and a mutant no test notices runs them all. The summary says how long they take unmutated,
+  # and warns when that is more than half the limit, as such a mutant would then be reported as
+  # timed out. No share starts a mutant after 70 minutes of running them (MUTATION_DEADLINE), so
+  # that with its setup and one unmutated run of the tests the job's 90 rarely end it; when they
+  # do, the results it wrote are kept and the rest reported as not run.
+  mutation-cpp-list:
+    name: mutation-cpp-list
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
+    outputs:
+      mutants: ${{ steps.list.outputs.mutants }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -429,25 +438,113 @@ jobs:
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
           key: mutation-cpp
+      - name: Build and list the mutants
+        id: list
+        env:
+          BASE: origin/${{ github.base_ref }}
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: |
+          scripts/mutation-cpp.sh --list "$BASE"
+          report=build/mutation-cpp-report/dry.json
+          echo "mutants=$([[ -f $report ]] && jq '[.files[].mutants[]] | length' $report || echo 0)" \
+            >> "$GITHUB_OUTPUT"
+      # The list (with Mull's log, for the tests' time) or the summary saying no engine line
+      # changed, and the tests to run the mutants with. Not named mutation-*: the triage takes
+      # only the reports.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cpp-mutants-list
+          path: build/mutation-cpp-report/
+          retention-days: 1
+      - if: steps.list.outputs.mutants != '0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cpp-mutants-tests
+          path: build/mutation-cpp/engine/engine_tests
+          retention-days: 1
+
+  mutation-cpp-share:
+    name: mutation-cpp-share-${{ matrix.share }}
+    needs: mutation-cpp-list
+    if: ${{ !cancelled() && needs.mutation-cpp-list.outputs.mutants != '0' && needs.mutation-cpp-list.outputs.mutants != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        share: [1, 2, 3, 4]
+    steps:
+      # At the list job's workspace path: the tests find their data by the source paths compiled
+      # in.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cpp-mutants-list
+          path: build/mutation-cpp-report
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cpp-mutants-tests
+          path: build/mutation-cpp/engine
+      - name: Run the share's mutants
+        env:
+          MUTANT_TIMEOUT: 600
+          MUTATION_DEADLINE: 4200
+        run: |
+          chmod +x build/mutation-cpp/engine/engine_tests # Artifacts keep no permissions.
+          scripts/mutation-cpp.sh --share "${{ matrix.share }}/4"
+      # Each result is written as it is known: whatever this job managed is kept, even if it fails.
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cpp-mutants-results-${{ matrix.share }}
+          path: build/mutation-cpp-report/results-*.jsonl
+          retention-days: 1
+          if-no-files-found: ignore
+
+  mutation-cpp:
+    name: mutation-cpp
+    needs: [mutation-cpp-list, mutation-cpp-share]
+    if: ${{ !cancelled() && needs.mutation-cpp-list.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: cpp-mutants-list
+          path: build/mutation-cpp-report
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: cpp-mutants-results-*
+          path: build/mutation-cpp-report
+          merge-multiple: true
       - name: Measure
         continue-on-error: true
         env:
-          BASE: origin/${{ github.base_ref }}
-          MUTANT_TIMEOUT: 300
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
-        run: scripts/mutation-cpp.sh "$BASE"
+          MUTANT_TIMEOUT: 600
+        run: |
+          if [[ -f build/mutation-cpp-report/dry.json ]]; then
+            scripts/mutation-cpp.sh --merge > /dev/null
+          fi
       - name: Report
         run: |
           if [[ -f build/mutation-cpp-report/mull.json ]]; then
             node scripts/mutation-report.ts build/mutation-cpp-report/mull.json --annotate
           fi
           cat build/mutation-cpp-report/summary.md >> "$GITHUB_STEP_SUMMARY" ||
-            echo "Mutation testing did not run; see the Measure step." >> "$GITHUB_STEP_SUMMARY"
+            echo "Mutation testing did not run; see the mutation-cpp-list job." >> "$GITHUB_STEP_SUMMARY"
       # For the mutation triage (mutation-triage.yml), which judges the mutants no test noticed.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mutation-cpp
-          # With its summary, which says whether nothing was mutated or the run stopped short.
+          # With its summary, which says whether nothing was mutated or some mutants were not run.
           path: |
             build/mutation-cpp-report/mull.json
             build/mutation-cpp-report/summary.md
