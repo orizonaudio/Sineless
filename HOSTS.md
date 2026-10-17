@@ -21,8 +21,8 @@ tested; update a row when a new version of Sineless or of the host is tested aga
 
 ## Protocol
 
-Run every step with a Release build installed from the release zip, at 48 kHz and a 256-sample
-buffer unless a step says otherwise. Note anything unexpected in the row's notes.
+Run every step with a Release build installed from the release (installer or zip), at 48 kHz
+and a 256-sample buffer unless a step says otherwise. Note anything unexpected in the row's notes.
 
 1. **Install and scan.** The host finds Sineless under Orizon Audio without warnings, and a rescan
    is quick.
