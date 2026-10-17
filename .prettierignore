@@ -1,5 +1,7 @@
 build/
 node_modules/
+# Local git worktrees: git ignores them through .git/info/exclude, which Prettier does not read.
+.claude/worktrees/
 package-lock.json
 *.md
 # Written by the released plugin; kept byte for byte.
