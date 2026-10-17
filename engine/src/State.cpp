@@ -23,7 +23,8 @@ void migrateToVersion2(nlohmann::json& settings)
 }
 
 // kMigrations[n - 1] upgrades the settings object of state version n to version n + 1.
-// Add an entry, and a golden state file, whenever kStateVersion is raised.
+// Add an entry, and a golden state file, whenever kStateVersion is raised. A release that adds
+// settings or values without raising it gets a golden state file too (state-v2-0.5.json).
 constexpr std::array<Migration, kStateVersion - 1> kMigrations{&migrateToVersion2};
 
 } // namespace

@@ -1,0 +1,25 @@
+{
+  "autoFreeze": ["off", "on"],
+  "beatSpan": [
+    "sixteenthBeat",
+    "eighthBeat",
+    "quarterBeat",
+    "halfBeat",
+    "oneBeat",
+    "twoBeats",
+    "oneBar",
+    "twoBars",
+    "fourBars",
+    "eightBars",
+    "sixteenBars"
+  ],
+  "channelViews": ["left", "right", "mid", "side"],
+  "displayMode": ["single", "multi", "compare"],
+  "group": ["a", "b", "c", "d"],
+  "hoverReadout": ["off", "on"],
+  "timeBase": ["seconds", "beats"],
+  "triggerMode": ["auto", "normal", "free", "single"],
+  "triggerSlope": ["rising", "falling"],
+  "triggerSource": ["left", "right", "mid", "side"],
+  "viewLayout": ["overlaid", "stacked"]
+}
