@@ -1,6 +1,6 @@
 name: Release
 
-# Pushing a tag vX.Y.Z builds the release zips and the macOS installer on GitHub's runners and
+# Pushing a tag vX.Y.Z builds the release zips and installers on GitHub's runners and
 # creates a draft release for them, with notes generated from the merged pull requests, a SHA-256
 # checksum of each download and a build provenance attestation, both in GitHub's attestation store and as a release asset
 # (Sineless-<version>.intoto.jsonl), so that a download can be verified from the files alone:
@@ -17,6 +17,7 @@ on:
       - .github/workflows/release.yml
       - scripts/package.sh
       - scripts/package.ps1
+      - scripts/installer.iss
       - scripts/windows-env.ps1
       - scripts/release-on-main.ts
       - scripts/release-version.ts
@@ -67,9 +68,9 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   # Each download is built and checked by its packaging script, as by hand: on macOS both
-  # architectures and the minimum macOS, and the installer, which the runner also installs (it is
-  # thrown away afterwards); on Windows, x64 (ARM64 is not built for now), the binary's machine
-  # type and no Visual C++ runtime DLLs.
+  # architectures and the minimum macOS; on Windows, x64 (ARM64 is not built for now), the binary's
+  # machine type and no Visual C++ runtime DLLs. Each installer is also installed (and on Windows
+  # uninstalled) on its runner, which is thrown away afterwards.
   macos:
     name: release-macos
     needs: version
@@ -108,10 +109,14 @@ jobs:
       - name: Package
         shell: powershell
         run: scripts/package.ps1
+        env:
+          INSTALL_CHECK: "1"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows
-          path: build/release/Sineless-${{ needs.version.outputs.version }}-Windows.zip
+          path: |
+            build/release/Sineless-${{ needs.version.outputs.version }}-Windows.zip
+            build/release/Sineless-${{ needs.version.outputs.version }}-Windows-Setup.exe
           if-no-files-found: error
 
   # From a pushed tag only: the checksums, the attestation and the draft release. Run by hand,
@@ -135,7 +140,7 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          sha256sum Sineless-*.zip Sineless-*.pkg > SHA256SUMS.txt
+          sha256sum Sineless-*.zip Sineless-*.pkg Sineless-*.exe > SHA256SUMS.txt
           {
             echo '### SHA-256'
             echo
@@ -158,6 +163,7 @@ jobs:
           subject-path: |
             dist/Sineless-*.zip
             dist/Sineless-*.pkg
+            dist/Sineless-*.exe
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -171,5 +177,5 @@ jobs:
           cp "$BUNDLE" "dist/Sineless-$VERSION.intoto.jsonl"
           gh release create "$TAG" --repo "$REPOSITORY" --draft --verify-tag \
             --title "Sineless $VERSION" --generate-notes --notes-file checksums.md \
-            dist/Sineless-*.zip dist/Sineless-*.pkg dist/SHA256SUMS.txt \
+            dist/Sineless-*.zip dist/Sineless-*.pkg dist/Sineless-*.exe dist/SHA256SUMS.txt \
             "dist/Sineless-$VERSION.intoto.jsonl"
