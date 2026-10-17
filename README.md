@@ -30,6 +30,15 @@ For the multi-track lanes to line up, put Sineless last on each track.
 
 ### macOS
 
+With the installer:
+
+1. Download `Sineless-<version>-macOS.pkg` from the releases page and open it.
+2. Releases are not signed with an Apple Developer ID yet, so the first time macOS says it could not verify the installer and does not open it. Click **Done**, then open **System Settings → Privacy & Security**, scroll down to **Security**, click **Open Anyway** next to the message about the installer, and confirm. Open the installer again.
+3. It installs Sineless in `~/Library/Audio/Plug-Ins/VST3/`, for your user only, without asking for a password.
+4. Rescan plugins in your host. Sineless appears under Orizon Audio.
+
+Or from the zip:
+
 1. Download `Sineless-<version>-macOS.zip` from the releases page and unzip it.
 2. Move `Sineless.vst3` to `~/Library/Audio/Plug-Ins/VST3/`.
 3. Releases are not signed with an Apple Developer ID yet, so macOS quarantines the download. Clear the quarantine flag in Terminal:

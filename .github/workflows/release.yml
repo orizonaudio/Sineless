@@ -1,13 +1,13 @@
 name: Release
 
-# Pushing a tag vX.Y.Z builds the release zips on GitHub's runners and creates a draft release
-# for them, with notes generated from the merged pull requests, a SHA-256 checksum of each zip
-# and a build provenance attestation, both in GitHub's attestation store and as a release asset
+# Pushing a tag vX.Y.Z builds the release zips and the macOS installer on GitHub's runners and
+# creates a draft release for them, with notes generated from the merged pull requests, a SHA-256
+# checksum of each download and a build provenance attestation, both in GitHub's attestation store and as a release asset
 # (Sineless-<version>.intoto.jsonl), so that a download can be verified from the files alone:
 # `gh attestation verify <zip> --repo orizonaudio/Sineless --bundle Sineless-<version>.intoto.jsonl`.
-# The draft is published by hand, once the zips pass the host protocol in HOSTS.md; see
+# The draft is published by hand, once the downloads pass the host protocol in HOSTS.md; see
 # "Releasing" in CONTRIBUTING.md. Run by hand, or on a pull request that changes this workflow or
-# the scripts it runs, it is a dry run: it builds and checks both zips and keeps them as the
+# the scripts it runs, it is a dry run: it builds and checks every download and keeps them as the
 # run's artifacts, but attests nothing and creates no release.
 on:
   push:
@@ -66,9 +66,10 @@ jobs:
           }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  # Each zip is built and checked by its packaging script, as by hand: on macOS both architectures
-  # and the minimum macOS; on Windows, x64 (ARM64 is not built for now), the binary's machine type
-  # and no Visual C++ runtime DLLs.
+  # Each download is built and checked by its packaging script, as by hand: on macOS both
+  # architectures and the minimum macOS, and the installer, which the runner also installs (it is
+  # thrown away afterwards); on Windows, x64 (ARM64 is not built for now), the binary's machine
+  # type and no Visual C++ runtime DLLs.
   macos:
     name: release-macos
     needs: version
@@ -82,10 +83,14 @@ jobs:
           node-version-file: .nvmrc
       - run: npm ci
       - run: scripts/package.sh
+        env:
+          INSTALL_CHECK: "1"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos
-          path: build/release/Sineless-${{ needs.version.outputs.version }}-macOS.zip
+          path: |
+            build/release/Sineless-${{ needs.version.outputs.version }}-macOS.zip
+            build/release/Sineless-${{ needs.version.outputs.version }}-macOS.pkg
           if-no-files-found: error
 
   windows:
@@ -130,7 +135,7 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          sha256sum Sineless-*.zip > SHA256SUMS.txt
+          sha256sum Sineless-*.zip Sineless-*.pkg > SHA256SUMS.txt
           {
             echo '### SHA-256'
             echo
@@ -140,7 +145,7 @@ jobs:
             echo
             echo '### Build provenance'
             echo
-            echo "Each zip's build is attested by this repository's release workflow. To check a download"
+            echo "Each download's build is attested by this repository's release workflow. To check one"
             echo "against it, with the \`Sineless-$VERSION.intoto.jsonl\` asset:"
             echo
             echo '```'
@@ -150,7 +155,9 @@ jobs:
       - id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: dist/Sineless-*.zip
+          subject-path: |
+            dist/Sineless-*.zip
+            dist/Sineless-*.pkg
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -164,4 +171,5 @@ jobs:
           cp "$BUNDLE" "dist/Sineless-$VERSION.intoto.jsonl"
           gh release create "$TAG" --repo "$REPOSITORY" --draft --verify-tag \
             --title "Sineless $VERSION" --generate-notes --notes-file checksums.md \
-            dist/Sineless-*.zip dist/SHA256SUMS.txt "dist/Sineless-$VERSION.intoto.jsonl"
+            dist/Sineless-*.zip dist/Sineless-*.pkg dist/SHA256SUMS.txt \
+            "dist/Sineless-$VERSION.intoto.jsonl"
