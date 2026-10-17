@@ -4,3 +4,4 @@ package-lock.json
 *.md
 # Written by the released plugin; kept byte for byte.
 engine/tests/data/state-v1-beats.json
+engine/tests/data/state-v2-0.5.json
