@@ -225,6 +225,7 @@ struct SavedSetting
 std::vector<SavedSetting> everySetting()
 {
     std::vector<SavedSetting> cases;
+    cases.reserve(protocol::kSettings.size());
     for (const protocol::SettingDescriptor& setting : protocol::kSettings) {
         cases.push_back({.setting = &setting});
     }
