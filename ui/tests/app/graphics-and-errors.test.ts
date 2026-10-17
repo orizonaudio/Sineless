@@ -1,7 +1,7 @@
 // The graphics context lost and restored while the engine reports an error that nothing clears,
 // as when the editor has no engine or the page and the plugin come from different releases: the
 // error, which says why the screen is empty and what to do, stays on screen through both.
-import { beforeAll, describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 
 import { byId, startApp, type Started } from "./harness.ts";
 
@@ -35,15 +35,31 @@ describe("an engine error and the graphics context", () => {
     expect(shown()).toBe("Display unavailable");
   });
 
-  test("an error shown before the context is lost keeps its text through the loss and the restore", async () => {
+  // Losing the context again: browsers stop restoring a page's context after a few losses, so
+  // each test here loses it once.
+  test("an error shown keeps its text through a loss, and a restore that cannot draw the traces", async () => {
     expect(shown()).toBe("Display unavailable");
+    const lost = new Promise((resolve) => {
+      byId("trace").addEventListener("webglcontextlost", resolve, {
+        once: true,
+      });
+    });
     extension.loseContext();
-    await expect.poll(() => context().isContextLost()).toBe(true);
+    // A context is restored only once its loss has been dispatched (WEBGL_lose_context).
+    await lost;
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(shown()).toBe("Display unavailable");
-    extension.restoreContext();
-    await expect.poll(() => context().isContextLost()).toBe(false);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(shown()).toBe("Display unavailable");
+    const gl = context();
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue(null);
+    try {
+      extension.restoreContext();
+      await expect.poll(() => gl.isContextLost()).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(shown()).toBe("Display unavailable");
+    } finally {
+      getContext.mockRestore();
+    }
   });
 });

@@ -299,11 +299,9 @@ export class OscilloscopeApp {
     this.traceCanvas.addEventListener("webglcontextlost", (event) => {
       event.preventDefault();
       this.renderer = undefined;
-      if (!this.engineError) {
-        this.showGraphicsMessage(
-          "The system's graphics stopped drawing the traces. They return when it recovers.",
-        );
-      }
+      this.showGraphicsMessage(
+        "The system's graphics stopped drawing the traces. They return when it recovers.",
+      );
     });
     this.traceCanvas.addEventListener("webglcontextrestored", () => {
       this.renderer = this.createRenderer(style, traceView);
@@ -1793,7 +1791,12 @@ export class OscilloscopeApp {
     }
   }
 
+  // Shows the graphics message, unless an engine error is showing, which outranks it (see
+  // engineError): every way the graphics fail, at start, when lost, or rebuilt in vain, comes here.
   private showGraphicsMessage(text: string): void {
+    if (this.engineError) {
+      return;
+    }
     element("message-title").textContent = "Graphics unavailable";
     element("message-text").textContent = text;
     element("message").hidden = false;
