@@ -56,6 +56,7 @@ import {
 import { drawGrid } from "./view/grid.ts";
 import {
   hoverReadout,
+  traceAt,
   type HoverContext,
   type HoverTrace,
 } from "./view/hover.ts";
@@ -1360,11 +1361,21 @@ export class OscilloscopeApp {
         line.setPointerCapture(event.pointerId);
         const move = (moveEvent: PointerEvent) => {
           const frame = this.lastFrame;
-          const values = this.snapValues();
           if (this.timeCursors === undefined) {
             return;
           }
           const rectangle = this.screen.getBoundingClientRect();
+          // Stacked, the cursor snaps to the trace in the lane under the pointer.
+          const values = this.snapValues(
+            this.layout() === ViewLayout.stacked
+              ? traceAt(
+                  this.laneCount(),
+                  ViewLayout.stacked,
+                  (moveEvent.clientY - rectangle.top) / rectangle.height,
+                  0,
+                )
+              : undefined,
+          );
           const x = Math.min(
             1,
             Math.max(0, (moveEvent.clientX - rectangle.left) / rectangle.width),
