@@ -51,6 +51,15 @@ Or from the zip:
 
 ### Windows
 
+With the installer:
+
+1. Close your host, then download `Sineless-<version>-Windows-Setup.exe` from the releases page and open it.
+2. Releases are not code-signed yet, so Windows may say "Windows protected your PC". Click **More info**, then **Run anyway**, and allow the installer to make changes.
+3. It installs Sineless in `C:\Program Files\Common Files\VST3\`, for all users.
+4. Rescan plugins in your host. Sineless appears under Orizon Audio. To remove it, use **Settings → Apps → Installed apps → Sineless → Uninstall**.
+
+Or from the zip:
+
 1. Download `Sineless-<version>-Windows.zip` from the releases page and unzip it.
 2. Move `Sineless.vst3` to `C:\Program Files\Common Files\VST3\`.
 3. Rescan plugins in your host. Sineless appears under Orizon Audio.
