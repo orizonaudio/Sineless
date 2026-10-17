@@ -108,24 +108,51 @@ codesign --verify --strict "$payload"
 diff -r "$bundle" "$payload"
 
 if [[ "${INSTALL_CHECK:-}" == 1 ]]; then
-    # As a user meets it: the installer downloaded by a browser, so quarantined, and installed over
-    # an older Sineless from the zip, still quarantined and holding a file the new one lacks.
+    # As a user meets it: the installer downloaded by a browser, so quarantined.
     downloaded="$work/downloaded.pkg"
     cp "$package" "$downloaded"
     xattr -w com.apple.quarantine "0083;$(printf %x "$(date +%s)");Safari;" "$downloaded"
-    installed="$HOME/Library/Audio/Plug-Ins/VST3/Sineless.vst3"
+    plugins="$HOME/Library/Audio/Plug-Ins"
+    installed="$plugins/VST3/Sineless.vst3"
+    # The installed bundle equals the built one, signed, with no quarantine flag on any file.
+    check_installed() {
+        codesign --verify --strict "$installed"
+        diff -r "$bundle" "$installed"
+        if xattr -r "$installed" | grep -q com.apple.quarantine; then
+            echo "The installed bundle is quarantined" >&2
+            exit 1
+        fi
+    }
+    # A first install, into a home with no VST3 folder yet, as on most Macs. On a CI runner, one it
+    # has is moved aside meanwhile; elsewhere the check needs there to be none, since moving a
+    # user's plug-ins away is not this script's to do.
+    vst3="$plugins/VST3"
+    aside="$work/vst3-before"
+    move() { mv "$1" "$2" 2>/dev/null || sudo mv "$1" "$2"; }
+    if [[ -e "$vst3" && -n "${CI:-}" ]]; then
+        move "$vst3" "$aside"
+    fi
+    if [[ ! -e "$vst3" ]]; then
+        installer -pkg "$downloaded" -target CurrentUserHomeDirectory
+        check_installed
+        [[ -O "$vst3" ]] || { echo "$vst3 is not owned by the user" >&2; exit 1; }
+        echo "Installed and checked $installed in a home with no VST3 folder"
+    else
+        echo "Skipped the first install: $vst3 exists"
+    fi
+    if [[ -e "$aside" ]]; then
+        rm -rf "$vst3"
+        move "$aside" "$vst3"
+    fi
+    # An upgrade, over an older Sineless from the zip, still quarantined and holding a file the new
+    # one lacks.
     mkdir -p "$(dirname "$installed")"
     rm -rf "$installed"
     ditto "$bundle" "$installed"
     touch "$installed/Contents/Resources/left-by-an-older-version"
     xattr -w com.apple.quarantine "0083;$(printf %x "$(date +%s)");Safari;" "$installed"
     installer -pkg "$downloaded" -target CurrentUserHomeDirectory
-    codesign --verify --strict "$installed"
-    diff -r "$bundle" "$installed"
-    if xattr -r "$installed" | grep -q com.apple.quarantine; then
-        echo "The installed bundle is quarantined" >&2
-        exit 1
-    fi
-    echo "Installed and checked $installed"
+    check_installed
+    echo "Installed and checked $installed over an older copy"
 fi
 echo "Packaged $package ($(du -h "$package" | cut -f1))"
