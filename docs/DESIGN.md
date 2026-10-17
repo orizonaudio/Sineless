@@ -178,7 +178,7 @@ source (`ui/src/view/`) and its tests; where they differ, the source wins.
 #### Layout
 
 - The top bar, the screen and the control strip fill the window. The strip is always complete and
-  on one row; nothing is cropped, hidden or moved when the window is resized.
+  on one row; nothing is cropped, hidden or moved when the window is resized (AD-23).
 - The editor's minimum width, 900 px, is the narrowest that fits the top bar and the whole strip
   in every state (the editor tests check each state). Its minimum height is 250 px, or 144 px
   plus 40 px per stacked lane when that is more (Compare counts its sum lane); the editor asks the
@@ -278,7 +278,7 @@ press outside closes them.
 | ID | Constraint |
 | --- | --- |
 | C-1 | Plugin format: VST3 only. |
-| C-2 | Platforms shipped: macOS 13.1+ (universal binary, arm64 and x86_64) and Windows 10+ x64. Windows on Arm runs the x64 build in an x64 host or REAPER's ARM64EC build; a native ARM64 build is not shipped for now (its presets remain). Linux builds the engine, plugin and editor's shared code for the checks only, with no editor window. |
+| C-2 | Platforms shipped: macOS 13.1+ (universal binary, arm64 and x86_64) and Windows 10+ x64. Windows on Arm runs the x64 build in an x64 host or REAPER's ARM64EC build; a native ARM64 build is not shipped for now (AD-24). Linux builds the engine, plugin and editor's shared code for the checks only, with no editor window. |
 | C-3 | Licence: GPL-3.0-only. Every dependency must be GPL-3.0-compatible. |
 | C-4 | Engine and plugin back end: C++20; the macOS editor glue in Objective-C++. |
 | C-5 | User interface: TypeScript, hosted in the operating system's webview: WKWebView on macOS, the Evergreen WebView2 Runtime on Windows. The WebView2 loader and the C runtime are linked statically, so no other runtime is installed. |
@@ -1005,6 +1005,8 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | AD-20 | Accepted | Values are persisted in three tiers (8.4): saved with the project, kept while the plugin is loaded, reset when the editor closes. | Zoom, freeze, cursors and Compare's checks are viewing choices, not settings of the track; saving them would make the project change when it is only looked at. Compare's checks are kept while the plugin is loaded so that closing and opening the editor does not undo them. |
 | AD-21 | Accepted | Frames travel as the binary body of the response to the page's fetch of `orizon://ui/frame`, which is also the credit (AD-12). Replaces AD-3's frames as base64 text over the message channel. | Text encoding and decoding on both sides cost a fixed share of every frame in WebKit. A fetch carries bytes as they are, and the open request is a natural credit. |
 | AD-22 | Accepted | The page builds trace geometry on the GPU: instanced quads read from the frame's bytes as received, with no per-frame JavaScript geometry; the sweep playhead is drawn in WebGL, not as page elements. | Per-frame JavaScript geometry and DOM changes added fixed WebKit cost on every frame. The remaining cost is WebKit's per-frame display pipeline (QS-3). |
+| AD-23 | Accepted | The editor's layout is stable: nothing is cropped, hidden or moved as the window is resized. The minimum width (`minimumEditorWidth`) fits the widest content in every state, and content of unbounded width (the status chips) wraps in a place with room for it, the screen's top-right corner. No responsive breakpoints, compact labels or hidden elements. | A control that disappears, shortens or moves at some sizes is hard to find again and makes the window feel unreliable; and a plugin window is resized often. Rejected: a shrinking chip area, hiding the wordmark below a width, single-letter compact controls. Cost: a wider minimum window (900 px), checked in every state by the editor tests. |
+| AD-24 | Accepted | Windows ships x64 only; no native ARM64 build is built, tested or released for now. Windows on Arm runs the x64 build in an x64 host or in REAPER's ARM64EC build. The ARM64 presets stay, and `scripts/package.ps1` says how to bring the build back. | No native ARM64 Windows host is expected among users soon, and its CI job was among the slowest, waiting for an ARM runner. Shipping only what CI tests means dropping the binary with the job. Revisit when a user needs a native ARM64 host (R-5). |
 
 ## 10. Quality requirements
 
@@ -1048,7 +1050,7 @@ not reused.
 | R-2 | Lane alignment depends on the host | Lanes line up only when Sineless is last on each track (the host delays other tracks to compensate for later plugins' latency) and when the host reports a musical position (AD-15). | The README tells users to put Sineless last. | FR-14.4, AD-15 |
 | R-3 | Memory of long sweeps | The worst case (15 lanes, 16 bars at 60 BPM, 96 kHz) uses about 580 MB. | The sweep cap bounds it; the performance check and HOSTS.md step 10 keep it so. | AD-19, QS-4 |
 | R-4 | Releases are not signed with a Developer ID or code-signing certificate | macOS quarantines the download and users clear it by hand; Windows may warn. | Checksums and build provenance let a download be verified (7). | SECURITY.md |
-| R-5 | No native Windows ARM64 build | Windows on Arm needs an x64 host or REAPER's ARM64EC build. | Its presets remain; `scripts/package.ps1` names what to add. | C-2 |
+| R-5 | No native Windows ARM64 build | Windows on Arm needs an x64 host or REAPER's ARM64EC build. | Its presets remain; `scripts/package.ps1` names what to add. | C-2, AD-24 |
 | R-6 | Few hosts tested | Live (macOS, Windows) and REAPER (Windows) are tested; Cubase, Studio One, Bitwig and FL Studio are not. | pluginval and the VST3 validator on every change; the HOSTS.md protocol before each release. | HOSTS.md |
 | R-7 | Compare is in beta | Its matching and summing gain may change with use. | Labelled beta in the UI; the signal corpus pins its results. | FR-15 |
 | R-8 | Two security guards have no test: navigation refusal, and the viewport width cap | A regression would go unnoticed. | Both are small and reviewed; tests to be added. | 8.8 |
