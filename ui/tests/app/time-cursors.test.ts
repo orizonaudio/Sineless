@@ -84,6 +84,7 @@ describe("time cursors over stacked lanes", () => {
       const near = (a: number, b: number) => Math.abs(a - b) < 0.01 / width;
       const all = shown.map((values) => targets(frame as Frame, values));
       const missed: string[] = [];
+      let tested = 0;
       all.forEach((own, index) => {
         // A target of this lane alone, with no other of its own within two pixels: the pointer a
         // pixel beside it, towards the middle, snaps to it on this lane, and away from it (or
@@ -101,10 +102,13 @@ describe("time cursors over stacked lanes", () => {
             ),
         );
         const lane = laneList[index];
+        // A lane whose every crossing and peak another lane shares, as Compare's sum is while the
+        // tracks checked are silent and it is this track's trace, cannot tell the lanes apart:
+        // snapping to either is right.
         if (target === undefined || lane === undefined) {
-          missed.push(`lane ${String(index)}: no target of its own`);
           return;
         }
+        tested += 1;
         // Just inside the lane's top and bottom edges, where a pointer is closest to another lane.
         const top = (1 - (lane.center + lane.halfHeight)) / 2;
         const bottom = (1 - (lane.center - lane.halfHeight)) / 2;
@@ -121,6 +125,10 @@ describe("time cursors over stacked lanes", () => {
         }
       });
       expect(missed).toEqual([]);
+      // Two lanes at least, so that a cursor snapping to one lane whatever the pointer fails.
+      expect(tested, "lanes with a target of their own").toBeGreaterThanOrEqual(
+        2,
+      );
     },
   );
 });
