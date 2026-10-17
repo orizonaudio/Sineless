@@ -204,6 +204,9 @@ export class OscilloscopeApp {
   // are not drawn, and the message says why.
   private renderer: TraceRenderer | undefined;
   private graphicsMessage = false; // Whether the message shown is about the graphics.
+  // Whether an engine error is shown. Until a snapshot clears it, it outranks the graphics message:
+  // it says why the screen is empty and what to do, and the engine does not send it again.
+  private engineError = false;
   private readonly loop: RenderLoop;
   private lastFrame: Frame | undefined;
   private lastFrameTime = 0;
@@ -296,9 +299,11 @@ export class OscilloscopeApp {
     this.traceCanvas.addEventListener("webglcontextlost", (event) => {
       event.preventDefault();
       this.renderer = undefined;
-      this.showGraphicsMessage(
-        "The system's graphics stopped drawing the traces. They return when it recovers.",
-      );
+      if (!this.engineError) {
+        this.showGraphicsMessage(
+          "The system's graphics stopped drawing the traces. They return when it recovers.",
+        );
+      }
     });
     this.traceCanvas.addEventListener("webglcontextrestored", () => {
       this.renderer = this.createRenderer(style, traceView);
@@ -1700,6 +1705,7 @@ export class OscilloscopeApp {
       this.updateStatus();
     });
     this.backend.on("snapshot", (message) => {
+      this.engineError = false;
       element("message").hidden = !this.graphicsMessage;
       this.inputChannels = message.inputChannels;
       this.showSetting("channelViews", this.store.get("channelViews"));
@@ -1796,6 +1802,7 @@ export class OscilloscopeApp {
 
   private showError(message: ErrorMessage): void {
     this.graphicsMessage = false;
+    this.engineError = true;
     const texts: Record<string, [string, string]> = {
       protocolMismatch: [
         "Version mismatch",
