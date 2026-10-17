@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 import {
   annotations,
   mullSeconds,
+  noMutantFound,
   noTestReached,
   notRunCount,
   relativeTo,
@@ -260,6 +261,24 @@ describe("a Stryker run no unit test reaches", () => {
     expect(noTestReached(log, true)).toBe(false);
     expect(
       noTestReached("INFO DryRunExecutor Starting initial test run\n", false),
+    ).toBe(false);
+  });
+});
+
+describe("a Mull dry run with no mutant on the lines changed", () => {
+  // Mull's own log of such a run, from a pull request that changed only a comment of the engine.
+  const log = readFileSync(
+    join(import.meta.dirname, "fixtures", "mull-no-mutants.log"),
+    "utf8",
+  );
+
+  test("is told from its log", () => {
+    expect(noMutantFound(log)).toBe(true);
+  });
+
+  test("is not when the log gives another reason for no list", () => {
+    expect(
+      noMutantFound("[info] Dry run (threads: 1)\n[error] crashed\n"),
     ).toBe(false);
   });
 });

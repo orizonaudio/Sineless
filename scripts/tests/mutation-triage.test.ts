@@ -20,7 +20,7 @@ import {
   verify,
   type Mutant,
 } from "../mutation-triage.ts";
-import { noTestReachedSummary } from "../mutation-summary.ts";
+import { noMutantSummary, noTestReachedSummary } from "../mutation-summary.ts";
 
 const mutant = (id: number, replacement = "<="): Mutant => ({
   id,
@@ -224,6 +224,16 @@ describe("the reports the workflow triages", () => {
 });
 
 describe("a pull request that changes no line a mutation job mutates or tests", () => {
+  test("is not incomplete for the summary of a C++ run with no mutant on the lines changed", () => {
+    expect(
+      runOutcome(
+        "success",
+        false,
+        noMutantSummary("Mutation testing (C++)", "origin/main"),
+      ),
+    ).toBe("none");
+  });
+
   test("is not incomplete for the summary of a TypeScript run no unit test reaches", () => {
     expect(
       runOutcome(

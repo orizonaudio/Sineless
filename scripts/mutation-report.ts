@@ -11,6 +11,8 @@ import { parseArgs } from "node:util";
 
 import {
   annotations,
+  noMutantFound,
+  noMutantSummary,
   noTestReached,
   noTestReachedSummary,
   relativeTo,
@@ -31,6 +33,7 @@ const { positionals, values } = parseArgs({
     "mull-log": { type: "string" },
     limit: { type: "string" },
     "stryker-log": { type: "string" },
+    "mull-dry-log": { type: "string" },
     base: { type: "string" },
   },
 });
@@ -58,6 +61,17 @@ if (strykerLog !== undefined && option === title && !existsSync(path)) {
     process.exit(1);
   }
   console.log(noTestReachedSummary(title, values.base ?? "the base"));
+  process.exit(0);
+}
+// With Mull's dry-run log: a dry run that wrote no list because no mutant is on the lines changed is
+// summarised as such; one that wrote none for any other reason fails here.
+const mullDryLog = values["mull-dry-log"];
+if (mullDryLog !== undefined && option === title && !existsSync(path)) {
+  if (!noMutantFound(readFileSync(mullDryLog, "utf8"))) {
+    console.error(`Mull wrote no list (${path}); see its log, ${mullDryLog}.`);
+    process.exit(1);
+  }
+  console.log(noMutantSummary(title, values.base ?? "the base"));
   process.exit(0);
 }
 const report = relativeTo(

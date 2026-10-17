@@ -70,7 +70,7 @@ export function runOutcome(
   }
   if (
     summary !== undefined &&
-    /^No (TypeScript|engine) source lines changed since |^No unit test reaches the lines changed since /mu.test(
+    /^No (TypeScript|engine) source lines changed since |^No unit test reaches the lines changed since |^No mutant on the lines changed since /mu.test(
       summary,
     )
   ) {

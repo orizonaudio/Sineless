@@ -156,7 +156,15 @@ start=$SECONDS
 # the summary reports against each mutant's limit.
 MULL_CONFIG="$config" mull-runner-18 --dry-run --timeout 3600000 --reporters Elements \
     --report-dir "$out" --report-name dry "${tests[@]}" > "$out/mull.log" 2>&1 || true
+# No list: nothing to judge when no mutant is on the lines changed, as when only comments changed,
+# and a failed run otherwise (scripts/mutation-summary.ts, noMutantFound).
 if [[ ! -f "$out/dry.json" ]]; then
+    if node scripts/mutation-report.ts "$out/dry.json" "Mutation testing (C++)" \
+        --mull-dry-log "$out/mull.log" --base "${base:-HEAD}" > "$out/summary.md"; then
+        cat "$out/summary.md"
+        exit 0
+    fi
+    rm -f "$out/summary.md"
     tail -n 20 "$out/mull.log" >&2
     exit 1
 fi
