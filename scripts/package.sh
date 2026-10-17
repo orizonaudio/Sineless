@@ -150,6 +150,9 @@ if [[ "${INSTALL_CHECK:-}" == 1 ]]; then
     rm -rf "$installed"
     ditto "$bundle" "$installed"
     touch "$installed/Contents/Resources/left-by-an-older-version"
+    # Its binary differs from the new one, as an older release's would, so the check proves the
+    # upgrade replaces it.
+    printf older >> "$installed/Contents/MacOS/Sineless"
     xattr -w com.apple.quarantine "0083;$(printf %x "$(date +%s)");Safari;" "$installed"
     installer -pkg "$downloaded" -target CurrentUserHomeDirectory
     check_installed
