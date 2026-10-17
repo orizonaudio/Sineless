@@ -9,8 +9,9 @@
 
 namespace orizon::engine {
 
-// Indicative readouts of the trigger channel: sample peak and RMS over the visible span, and the
-// frequency over its newest second. Not standards-compliant metering.
+// Indicative readouts of the channel the display measures (the trigger source in Single mode in
+// Seconds, this track's Mid otherwise): sample peak and RMS over the whole span, whatever part of
+// it is on screen, and the frequency over its newest second. Not standards-compliant metering.
 struct Readouts
 {
     // Largest absolute sample value, and the RMS; NaN with nothing to measure.

@@ -21,9 +21,9 @@ namespace orizon::editor {
 class Editor : public Steinberg::CPluginView
 {
 public:
-    // The narrowest window that fits the whole control strip and the top bar with its usual
-    // status chips and its edge padding, in the embedded fonts (measured: 898). The page takes
-    // it as its minimum width too.
+    // The narrowest window that fits the whole control strip and the top bar (modes, groups and
+    // readouts) with their edge padding, in the embedded fonts; the editor tests check the page
+    // against it. The page takes it as its minimum width too.
     static constexpr int kMinimumWidth = protocol::kMinimumEditorWidth;
     static constexpr int kMinimumHeight = 250;
     static constexpr int kDefaultWidth = kMinimumWidth;
