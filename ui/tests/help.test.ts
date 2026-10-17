@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
+import { DisplayMode } from "../../protocol/src/enums.ts";
 import { helpTexts, isHelpTopic } from "../src/view/help.ts";
 
 const ui = join(import.meta.dirname, "..");
@@ -37,6 +38,21 @@ describe("help texts", () => {
         !page.includes(`data-help="${topic}"`) && !code.includes(`"${topic}"`),
     );
     expect(unused).toEqual([]);
+  });
+
+  // Compare shows what Multi shows, each track's Mid with no views or trigger source of its own
+  // (multiMode in app.ts), and more: help that says something of Multi says it of Compare too.
+  test("that say something of Multi mode say it of Compare mode too", () => {
+    const [, multi, compare] = Object.keys(DisplayMode).map(
+      (mode) => mode.charAt(0).toUpperCase() + mode.slice(1),
+    );
+    const partial = Object.entries(helpTexts)
+      .filter(
+        ([, { text }]) =>
+          text.includes(multi ?? "") && !text.includes(compare ?? ""),
+      )
+      .map(([topic]) => topic);
+    expect(partial).toEqual([]);
   });
 
   test("have a title and full sentences", () => {
