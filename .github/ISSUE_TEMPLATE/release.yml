@@ -1,0 +1,66 @@
+name: Release
+description: The steps of a release, from the version change to publishing, each ticked or answered.
+title: "Release x.y.z"
+labels: [release]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        One issue per release, opened when the version changes and closed once it is published.
+        The steps are in "Releasing" in
+        [CONTRIBUTING.md](https://github.com/orizonaudio/Sineless/blob/main/CONTRIBUTING.md#releasing)
+        and the host protocol in
+        [HOSTS.md](https://github.com/orizonaudio/Sineless/blob/main/HOSTS.md#protocol). A step
+        left unticked says why in a comment before the draft is published.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: 0.5.3
+    validations:
+      required: true
+  - type: checkboxes
+    id: before-tag
+    attributes:
+      label: Before the tag
+      options:
+        - label: The version is set in CMakeLists.txt and the issue templates.
+        - label: scripts/check.sh passes.
+        - label: scripts/soak.sh passes (scripts/soak.sh 60 after a change to something long-lived).
+        - label: The version change is merged and the tag pushed; the release workflow made the draft.
+  - type: checkboxes
+    id: downloads
+    attributes:
+      label: The draft's downloads
+      options:
+        - label: Every download matches SHA256SUMS.txt and its attestation.
+        - label: The macOS installer, opened as downloaded, installs without a password and leaves no quarantine flag.
+        - label: The Windows installer, run as downloaded, installs and uninstalls from Settings > Apps.
+  - type: checkboxes
+    id: macos
+    attributes:
+      label: Host protocol in Ableton Live on macOS (at 48 kHz and 256 samples, in 4/4, unless a step says otherwise)
+      options:
+        - label: 1. Install and scan.
+        - label: 2. Single.
+        - label: 3. Transport.
+        - label: 4. Tempo and time signature.
+        - label: 5. Editor.
+        - label: 6. Multi.
+        - label: 7. Compare.
+        - label: 8. State.
+        - label: 9. Rates and buffers.
+        - label: 10. Load.
+  - type: checkboxes
+    id: windows
+    attributes:
+      label: Host protocol on Windows (the same steps; say which host and which were run)
+      options:
+        - label: The protocol ran in a Windows host.
+  - type: checkboxes
+    id: publish
+    attributes:
+      label: Publishing
+      options:
+        - label: HOSTS.md records each host tested, with every step not run listed.
+        - label: The draft is published.
