@@ -59,6 +59,8 @@ On Windows, set `ORIZON_UPDATE_CORPUS=1` in the environment before running `ctes
 
 ## Releasing
 
+Open a **Release** issue from its template first: it lists every step below and every step of the host protocol, to be ticked, or answered in a comment, before the draft is published.
+
 1. Set the version in `project(... VERSION x.y.z ...)` in `CMakeLists.txt`.
 2. Run `scripts/check.sh`. Every check must pass.
 3. Run `scripts/soak.sh` (about 12 minutes): memory must not grow faster than 0.5 MB a minute, frames must stay steady, and reopening the editor must leave nothing behind. After changing something long-lived (capture buffers, the musical clock, the page's memory use), also run the hour-long `scripts/soak.sh 60`.
