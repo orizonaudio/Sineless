@@ -75,7 +75,7 @@ export const helpTexts = {
   },
   peak: {
     title: "Peak",
-    text: `The highest sample level over the whole span, in dBFS: of the trigger source in Single mode in Sec, and otherwise of this track's Mid. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
+    text: `The highest sample level over the whole span, in dBFS: of the trigger source in Single display mode with Sec, and otherwise of this track's Mid. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
   },
   rms: {
     title: "RMS",
@@ -83,7 +83,7 @@ export const helpTexts = {
   },
   frequency: {
     title: "Frequency",
-    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average: of the trigger source in Single mode in Sec, and otherwise of this track's Mid. A dash means no steady repetition was found, or the signal is below ${gate} dBFS.`,
+    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average: of the trigger source in Single display mode with Sec, and otherwise of this track's Mid. A dash means no steady repetition was found, or the signal is below ${gate} dBFS.`,
   },
   screen: {
     title: "Screen",
@@ -163,7 +163,7 @@ export const helpTexts = {
   },
   triggerSource: {
     title: "Trigger source",
-    text: "Which signal the trigger watches. In Single mode in Sec, the readouts measure it too, and cursors snap to it while the views are overlaid. Not used in Multi and Compare modes, which show each track's Mid.",
+    text: "Which signal the trigger watches. In Single display mode with Sec, the readouts measure it too, and cursors snap to it while the views are overlaid. Not used in Multi and Compare modes, which show each track's Mid.",
   },
   triggerSlope: {
     title: "Slope",

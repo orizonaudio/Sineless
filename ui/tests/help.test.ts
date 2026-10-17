@@ -46,6 +46,10 @@ describe("help texts", () => {
     const [, multi, compare] = Object.keys(DisplayMode).map(
       (mode) => mode.charAt(0).toUpperCase() + mode.slice(1),
     );
+    // Not vacuous: both names are found in help.
+    const texts = Object.values(helpTexts).map(({ text }) => text);
+    expect(texts.some((text) => text.includes(multi ?? "?"))).toBe(true);
+    expect(texts.some((text) => text.includes(compare ?? "?"))).toBe(true);
     const partial = Object.entries(helpTexts)
       .filter(
         ([, { text }]) =>
@@ -53,6 +57,28 @@ describe("help texts", () => {
       )
       .map(([topic]) => topic);
     expect(partial).toEqual([]);
+  });
+
+  // The trigger source applies only in the first display mode (Single) with Sec: Multi and Compare
+  // have no source of their own (multiMode in app.ts) and nothing triggers in Beats. Help that
+  // says something follows the trigger source (a readout, snapping) says so, rather than leaving
+  // it to apply in every mode.
+  test("that say something follows the trigger source say it does in Single display mode with Sec only", () => {
+    const [single] = Object.keys(DisplayMode).map(
+      (mode) => mode.charAt(0).toUpperCase() + mode.slice(1),
+    );
+    const following = Object.entries(helpTexts).filter(
+      ([topic, { text }]) =>
+        topic !== "triggerSource" && text.includes("trigger source"),
+    );
+    expect(following.length).toBeGreaterThan(0);
+    const unqualified = following
+      .filter(
+        ([, { text }]) =>
+          !text.includes(`${single ?? "?"} display mode with Sec`),
+      )
+      .map(([topic]) => topic);
+    expect(unqualified).toEqual([]);
   });
 
   test("have a title and full sentences", () => {
