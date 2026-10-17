@@ -70,6 +70,8 @@ The plugin is built at `build\windows-x64\VST3\Release\Sineless.vst3`; use `wind
 
 `scripts/check.sh` runs CI's build, test, lint and performance checks for macOS and the shared code, the Linux ones in Docker; fuzzing, coverage and mutation testing run in CI. It also needs Homebrew LLVM (`brew install llvm`) and Docker. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
+[docs/DESIGN.md](docs/DESIGN.md) describes how Sineless is built and why: its requirements, modules, threads, protocol and design decisions.
+
 Without macOS or Windows, the engine, plugin and the editor's shared code still build and test on Linux, as CI's Linux jobs do. They need LLVM 23 (on Ubuntu 24.04, `tools/linux-checks/install-llvm.sh` installs it), CMake and Ninja:
 
 ```bash
