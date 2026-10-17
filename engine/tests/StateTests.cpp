@@ -215,7 +215,18 @@ constexpr std::array kGoldenStates{
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
 // only one value of a setting, so the other released names are pinned here.
-constexpr std::array kGoldenValueNames{"value-names-0.5.json"};
+// Each released list of value names, with the state version its release saved: a state is built at
+// that version, so that its names go through every migration since, as a project of that release
+// does.
+struct GoldenValueNames
+{
+    const char* file = nullptr;
+    int version = 0;
+};
+
+constexpr std::array kGoldenValueNames{
+    GoldenValueNames{.file = "value-names-0.5.json", .version = 2},
+};
 
 struct SavedSetting
 {
@@ -310,8 +321,8 @@ TEST_P(SavedValueName, ReopensAsTheValueSaved)
     const double expected = isFlags ? static_cast<double>(1U << index) : static_cast<double>(index);
     const std::string key(setting->name);
     int heldBy = 0;
-    for (const char* file : kGoldenValueNames) {
-        const auto released = nlohmann::json::parse(readTestFile(file));
+    for (const GoldenValueNames& golden : kGoldenValueNames) {
+        const auto released = nlohmann::json::parse(readTestFile(golden.file));
         const auto names = released.find(key);
         if (names == released.end() || index >= names->size()) {
             continue;
@@ -319,9 +330,9 @@ TEST_P(SavedValueName, ReopensAsTheValueSaved)
         ++heldBy;
         const nlohmann::json& name = names->at(index);
         const nlohmann::json saved = isFlags ? nlohmann::json::array({name}) : name;
-        const nlohmann::json state = {{"version", kStateVersion}, {"settings", {{key, saved}}}};
+        const nlohmann::json state = {{"version", golden.version}, {"settings", {{key, saved}}}};
         EXPECT_EQ(deserializeState(state.dump()).value(setting->id), expected)
-            << file << ": " << name;
+            << golden.file << ": " << name;
     }
     EXPECT_GT(heldBy, 0) << "no released name list holds this value: add the list of the "
                             "release that adds it";
