@@ -181,3 +181,49 @@ describe("a TypeScript run that wrote no report (scripts/mutation.sh)", () => {
     expect(result.stdout).toBe("");
   });
 });
+
+// Mull's own dry-run log of a run with no mutant on the lines changed.
+const noMutantsLog = join(
+  import.meta.dirname,
+  "fixtures",
+  "mull-no-mutants.log",
+);
+
+describe("a C++ dry run that wrote no list (scripts/mutation-cpp.sh)", () => {
+  const missing = () => join(dir, "no-such-dry.json");
+  const runStatus = (...args: string[]) =>
+    spawnSync(process.execPath, ["scripts/mutation-report.ts", ...args], {
+      encoding: "utf8",
+    });
+  const asScript = (path: string, mullLog: string) =>
+    runStatus(
+      path,
+      "Mutation testing (C++)",
+      "--mull-dry-log",
+      mullLog,
+      "--base",
+      "origin/main",
+    );
+
+  test("is summarised as nothing to judge when no mutant is on the lines changed", () => {
+    const result = asScript(missing(), noMutantsLog);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "No mutant on the lines changed since origin/main",
+    );
+  });
+
+  test("fails when Mull's log gives no such reason, as a run that did not complete", () => {
+    const other = join(dir, "mull-crashed.log");
+    writeFileSync(other, "[info] Dry run (threads: 1)\n[error] crashed\n");
+    const result = asScript(missing(), other);
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  test("leaves a run that wrote its list to the usual summary", () => {
+    const result = asScript(report(), noMutantsLog);
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("No mutant on the lines changed");
+  });
+});

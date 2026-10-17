@@ -232,3 +232,16 @@ export function noTestReached(strykerLog: string, hasReport: boolean): boolean {
 export function noTestReachedSummary(title: string, base: string): string {
   return `## ${title}\n\nNo unit test reaches the lines changed since ${base}: they are left to the app tests.`;
 }
+
+// Whether Mull's dry run found no mutant on the lines it was given, as when only comments of the
+// engine changed: it then writes no list (scripts/mutation-cpp.sh). Its log says so; a dry run
+// that wrote no list for any other reason did not complete.
+export function noMutantFound(mullLog: string): boolean {
+  return /^\[info\] No mutants found\./mu.test(mullLog);
+}
+
+// The summary of such a run: nothing to judge, as the mutation triage reads it
+// (scripts/mutation-triage.ts).
+export function noMutantSummary(title: string, base: string): string {
+  return `## ${title}\n\nNo mutant on the lines changed since ${base}.`;
+}
