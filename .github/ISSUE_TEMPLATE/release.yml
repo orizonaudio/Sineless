@@ -16,7 +16,7 @@ body:
     id: version
     attributes:
       label: Version
-      placeholder: 0.5.3
+      placeholder: x.y.z
     validations:
       required: true
   - type: checkboxes
@@ -24,7 +24,7 @@ body:
     attributes:
       label: Before the tag
       options:
-        - label: The version is set in CMakeLists.txt and the issue templates.
+        - label: The version is set in CMakeLists.txt and the issue templates' placeholders.
         - label: scripts/check.sh passes.
         - label: scripts/soak.sh passes (scripts/soak.sh 60 after a change to something long-lived).
         - label: The version change is merged and the tag pushed; the release workflow made the draft.
