@@ -62,7 +62,7 @@ export const Toggle = { off: 0, on: 1 } as const;
 export type Toggle = (typeof Toggle)[keyof typeof Toggle];
 
 // Single shows this track's channels; Multi shows every track of the instance's group; Compare
-// shows this track, one partner of the group and their sum.
+// shows this track, the tracks of the group checked against it, and their sum.
 export const DisplayMode = { single: 0, multi: 1, compare: 2 } as const;
 export type DisplayMode = (typeof DisplayMode)[keyof typeof DisplayMode];
 

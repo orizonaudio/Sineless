@@ -40,4 +40,8 @@ if(ORIZON_FUZZ OR BUILD_TESTING)
     add_subdirectory(engine/tests/fuzz) # After the modules: it builds the editor's session too.
 endif()
 
-orizon_forbid_dependencies(engine sdk sdk_common pluginterfaces base)
+# The module order above, checked: a module linking one added after it fails configuration. The
+# engine also stays free of the VST3 SDK.
+orizon_forbid_dependencies(protocol engine editor plugin Sineless)
+orizon_forbid_dependencies(engine editor plugin Sineless sdk sdk_common pluginterfaces base)
+orizon_forbid_dependencies(editor plugin Sineless)
