@@ -28,7 +28,12 @@ import { Segmented } from "./components/segmented.ts";
 import { streamGap } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
-import { TraceRenderer, type Rgba } from "./render/trace-renderer.ts";
+import {
+  TraceRenderer,
+  type Rgba,
+  type TraceStyle,
+  type TraceView,
+} from "./render/trace-renderer.ts";
 import type { SettingsStore } from "./store/settings-store.ts";
 import {
   amplitudeLabels,
@@ -194,7 +199,10 @@ export class OscilloscopeApp {
   private readonly screen = element("screen");
   private readonly gridCanvas = element("grid") as HTMLCanvasElement;
   private readonly traceCanvas = element("trace") as HTMLCanvasElement;
-  private readonly renderer: TraceRenderer;
+  // Undefined while the web view gives the page no WebGL2 or has lost its context: the traces
+  // are not drawn, and the message says why.
+  private renderer: TraceRenderer | undefined;
+  private graphicsMessage = false; // Whether the message shown is about the graphics.
   private readonly loop: RenderLoop;
   private lastFrame: Frame | undefined;
   private lastFrameTime = 0;
@@ -256,39 +264,55 @@ export class OscilloscopeApp {
       }
       return colors ?? new Map();
     };
-    this.renderer = new TraceRenderer(
-      this.traceCanvas,
-      {
-        colors: resolveColors,
-        // Tracks left out of a comparison are drawn faint.
-        laneColors: () => {
-          const comparing = this.lastFrame?.comparison !== undefined;
-          return this.lanesOf(this.lastFrame).map((lane) => {
-            const [r, g, b, a] = rgba(cssColour(lane.colour));
-            const faint = comparing && !lane.compared && lane.id !== sumLaneId;
-            return [r, g, b, faint ? a * 0.2 : a] as const;
-          });
-        },
-        comparedLanes: () =>
-          this.lanesOf(this.lastFrame).map((lane) => lane.compared),
-        sweepColors: () => {
-          const [r, g, b] = rgba(token("--screen"));
-          return { cursor: rgba(token("--ink")), previous: [r, g, b, 0.5] };
-        },
-        lineWidthPixels: 1.5 * window.devicePixelRatio,
+    const style: TraceStyle = {
+      colors: resolveColors,
+      // Tracks left out of a comparison are drawn faint.
+      laneColors: () => {
+        const comparing = this.lastFrame?.comparison !== undefined;
+        return this.lanesOf(this.lastFrame).map((lane) => {
+          const [r, g, b, a] = rgba(cssColour(lane.colour));
+          const faint = comparing && !lane.compared && lane.id !== sumLaneId;
+          return [r, g, b, faint ? a * 0.2 : a] as const;
+        });
       },
-      () => ({
-        verticalScaleDb: store.number("verticalScale"),
-        layout: this.layout(),
-        dim: this.waiting,
-        view: this.view,
-      }),
-    );
+      comparedLanes: () =>
+        this.lanesOf(this.lastFrame).map((lane) => lane.compared),
+      sweepColors: () => {
+        const [r, g, b] = rgba(token("--screen"));
+        return { cursor: rgba(token("--ink")), previous: [r, g, b, 0.5] };
+      },
+      lineWidthPixels: 1.5 * window.devicePixelRatio,
+    };
+    const traceView = (): TraceView => ({
+      verticalScaleDb: store.number("verticalScale"),
+      layout: this.layout(),
+      dim: this.waiting,
+      view: this.view,
+    });
+    this.renderer = this.createRenderer(style, traceView);
+    // A lost context comes back only if the page says it will rebuild what it draws with (the
+    // WebGL specification, "The Context Lost Event"); until then nothing is drawn.
+    this.traceCanvas.addEventListener("webglcontextlost", (event) => {
+      event.preventDefault();
+      this.renderer = undefined;
+      this.showGraphicsMessage(
+        "The system's graphics stopped drawing the traces. They return when it recovers.",
+      );
+    });
+    this.traceCanvas.addEventListener("webglcontextrestored", () => {
+      this.renderer = this.createRenderer(style, traceView);
+      if (this.renderer !== undefined && this.graphicsMessage) {
+        this.graphicsMessage = false;
+        element("message").hidden = true;
+      }
+      // The restored canvas starts empty, and while frozen no frame may come to fill it.
+      this.loop.invalidate();
+    });
     this.loop = new RenderLoop(
       (callback) => requestAnimationFrame(callback),
       {
         draw: (frame) => {
-          this.renderer.draw(frame);
+          this.renderer?.draw(frame);
           this.showSweep(frame);
         },
       },
@@ -1665,7 +1689,7 @@ export class OscilloscopeApp {
       this.updateStatus();
     });
     this.backend.on("snapshot", (message) => {
-      element("message").hidden = true;
+      element("message").hidden = !this.graphicsMessage;
       this.inputChannels = message.inputChannels;
       this.showSetting("channelViews", this.store.get("channelViews"));
       this.drawScreen();
@@ -1736,7 +1760,31 @@ export class OscilloscopeApp {
     }
   }
 
+  // The renderer, or undefined with the message shown when the web view gives the page no
+  // WebGL2 or the shaders do not build.
+  private createRenderer(
+    style: TraceStyle,
+    view: () => TraceView,
+  ): TraceRenderer | undefined {
+    try {
+      return new TraceRenderer(this.traceCanvas, style, view);
+    } catch {
+      this.showGraphicsMessage(
+        "This system gives the editor no WebGL 2 graphics to draw the traces with. Updating the graphics driver may help. Audio still passes through unchanged.",
+      );
+      return undefined;
+    }
+  }
+
+  private showGraphicsMessage(text: string): void {
+    element("message-title").textContent = "Graphics unavailable";
+    element("message-text").textContent = text;
+    element("message").hidden = false;
+    this.graphicsMessage = true;
+  }
+
   private showError(message: ErrorMessage): void {
+    this.graphicsMessage = false;
     const texts: Record<string, [string, string]> = {
       protocolMismatch: [
         "Version mismatch",
