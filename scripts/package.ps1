@@ -104,6 +104,9 @@ if ($env:INSTALL_CHECK -eq '1') {
     if ($LASTEXITCODE -ge 8) { throw 'Could not place the older copy.' }
     $global:LASTEXITCODE = 0
     New-Item -ItemType File "$installed\Contents\Resources\left-by-an-older-version" -Force | Out-Null
+    # Its binary differs from the new one, as an older release's would, so the check proves the
+    # upgrade replaces it.
+    [IO.File]::AppendAllText((Resolve-Path "$installed\Contents\x86_64-win\Sineless.vst3").Path, 'older')
 
     & $install
     & $checkInstalled
