@@ -312,30 +312,51 @@ class SavedValueName : public ::testing::TestWithParam<NamedValue>
 };
 
 // A project saved with any value of a mode, group, span, trigger or channel reopens with that
-// value, under the name its release saved it with. A value no released name list holds fails
-// until the list of the release that adds it is in kGoldenValueNames.
+// value, under the name its release saved it with. Saved projects hold names, so the value is
+// looked up by name and the protocol may reorder its values. A value no released name list holds
+// fails until the list of the release that adds it is in kGoldenValueNames.
 TEST_P(SavedValueName, ReopensAsTheValueSaved)
 {
     const auto [setting, index] = GetParam();
     const bool isFlags = setting->kind == protocol::SettingKind::kFlags;
     const double expected = isFlags ? static_cast<double>(1U << index) : static_cast<double>(index);
     const std::string key(setting->name);
+    const std::string name(setting->valueNames[index]);
     int heldBy = 0;
     for (const GoldenValueNames& golden : kGoldenValueNames) {
         const auto released = nlohmann::json::parse(readTestFile(golden.file));
         const auto names = released.find(key);
-        if (names == released.end() || index >= names->size()) {
+        if (names == released.end() ||
+            std::find(names->begin(), names->end(), name) == names->end()) {
             continue;
         }
         ++heldBy;
-        const nlohmann::json& name = names->at(index);
-        const nlohmann::json saved = isFlags ? nlohmann::json::array({name}) : name;
+        const nlohmann::json saved = isFlags ? nlohmann::json::array({name}) : nlohmann::json(name);
         const nlohmann::json state = {{"version", golden.version}, {"settings", {{key, saved}}}};
         EXPECT_EQ(deserializeState(state.dump()).value(setting->id), expected)
             << golden.file << ": " << name;
     }
     EXPECT_GT(heldBy, 0) << "no released name list holds this value: add the list of the "
                             "release that adds it";
+}
+
+// A name a release saved is still one the protocol reads: renaming or dropping a value would
+// reset it to the default in every project saved with it.
+TEST(State, KeepsEveryReleasedValueName)
+{
+    for (const GoldenValueNames& golden : kGoldenValueNames) {
+        const auto released = nlohmann::json::parse(readTestFile(golden.file));
+        for (const auto& [key, names] : released.items()) {
+            const auto setting = std::ranges::find(protocol::kSettings, std::string_view(key),
+                                                   &protocol::SettingDescriptor::name);
+            ASSERT_NE(setting, protocol::kSettings.end()) << golden.file << ": " << key;
+            for (const auto& name : names) {
+                const std::string_view text = name.get_ref<const std::string&>();
+                EXPECT_NE(std::ranges::find(setting->valueNames, text), setting->valueNames.end())
+                    << golden.file << ": " << key << "." << name;
+            }
+        }
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(State, SavedValueName, ::testing::ValuesIn(everyNamedValue()),
