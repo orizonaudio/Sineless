@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.1" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
-project(OrizonOscilloscope VERSION 0.5.1 LANGUAGES CXX)
+project(OrizonOscilloscope VERSION 0.5.2 LANGUAGES CXX)
 if(APPLE)
     enable_language(OBJCXX) # The macOS editor uses Cocoa and WebKit.
 endif()
