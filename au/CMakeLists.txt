@@ -34,15 +34,8 @@ if(versionError)
 endif()
 configure_file(resource/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist.in @ONLY)
 
-# The licences travel with the component: Sineless's, the embedded fonts' and the Audio Unit
-# SDK's (Apache-2.0 asks that its text go with the object code; the SDK has no NOTICE file).
-configure_file(${audiounitsdk_SOURCE_DIR}/LICENSE.txt
-               ${CMAKE_CURRENT_BINARY_DIR}/LICENSE-AudioUnitSDK.txt COPYONLY)
-set(componentResources
-    ${PROJECT_SOURCE_DIR}/LICENSE
-    ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-Roboto.txt
-    ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-RobotoMono.txt
-    ${CMAKE_CURRENT_BINARY_DIR}/LICENSE-AudioUnitSDK.txt)
+# The licences travel with the component (cmake/Licences.cmake).
+orizon_licence_files(AU componentResources)
 set_source_files_properties(${componentResources} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
 add_library(SinelessAU MODULE src/ComponentEntry.cpp ${componentResources})
