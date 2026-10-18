@@ -25,6 +25,7 @@ add_custom_command(
 
 add_library(editor STATIC
     src/Editor.cpp
+    src/EditorCore.cpp
     src/EmbeddedAssets.cpp
     src/FrameFlow.cpp
     src/Session.cpp
