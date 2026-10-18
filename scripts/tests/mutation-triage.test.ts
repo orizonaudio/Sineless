@@ -113,14 +113,7 @@ describe("what a mutation job left to triage", () => {
       "none",
     ],
     [
-      "changed no engine, plugin or editor line",
-      "success",
-      false,
-      "## Mutation testing (C++)\n\nNo C++ source lines changed since origin/main.\n",
-      "none",
-    ],
-    [
-      "changed no engine line, written before the plugin and editor were mutated too",
+      "changed no engine line",
       "success",
       false,
       "## Mutation testing (C++)\n\nNo engine source lines changed since origin/main.\n",

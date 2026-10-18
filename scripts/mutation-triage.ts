@@ -68,11 +68,9 @@ export function runOutcome(
   if (hasReport) {
     return notRun > 0 ? "partial" : "report";
   }
-  // "No engine source lines changed" is the C++ run's wording from before it mutated the plugin and
-  // editor too: a pull request made before then still writes it, and is triaged by this script.
   if (
     summary !== undefined &&
-    /^No (TypeScript|C\+\+|engine|Audio Unit) source lines changed since |^No unit test reaches the lines changed since |^No mutant on the lines changed since /mu.test(
+    /^No (TypeScript|engine|Audio Unit) source lines changed since |^No unit test reaches the lines changed since |^No mutant on the lines changed since /mu.test(
       summary,
     )
   ) {

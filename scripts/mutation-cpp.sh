@@ -176,7 +176,9 @@ if [[ -n "$base" ]]; then
         git diff --quiet "$from" -- $(sourcesOf "$module") || changed+=("$module")
     done
     if ((${#changed[@]} == 0)); then
-        printf '## Mutation testing (C++)\n\nNo C++ source lines changed since %s.\n' "$base" \
+        # Worded as the engine's summary was, which the triage reads as nothing to judge.
+        printf '## Mutation testing (C++)\n\nNo engine source lines changed since %s, nor plugin or editor ones.\n' \
+            "$base" \
             > "$out/summary.md"
         cat "$out/summary.md"
         exit 0
