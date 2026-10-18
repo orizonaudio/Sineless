@@ -1,10 +1,10 @@
 name: CI
 
 # Every pull request, every merge-queue entry and every push to main runs the same checks; the
-# ruleset on main requires the jobs below except "fuzz" and "performance". A change to
-# documentation only skips them: a skipped job satisfies the ruleset and the queue, where a job
-# that never started would block them. Actions are pinned to commits, so a moved tag cannot
-# change what runs.
+# ruleset on main requires the jobs below except "fuzz" and "performance", and the engine-work
+# jobs until their counts have matched exactly for a week. A change to documentation only skips
+# them: a skipped job satisfies the ruleset and the queue, where a job that never started would
+# block them. Actions are pinned to commits, so a moved tag cannot change what runs.
 on:
   pull_request:
   merge_group:
@@ -655,6 +655,100 @@ jobs:
             build/mutation-au-report/mull.json
             build/mutation-au-report/summary.md
           if-no-files-found: ignore
+
+  # The engine's work per frame (scripts/engine-work.sh): every benchmark scenario's instructions
+  # per frame under Cachegrind, which are the same on every run of one build, so that a pull
+  # request can be judged against its base on these shared machines, where timings cannot. Each
+  # count is a job of its own, in parallel: the base (the merge commit's first parent), the head,
+  # and the head again, which must count exactly the same. See "Engine work" in CONTRIBUTING.md.
+  engine-work-count:
+    name: engine-work-${{ matrix.build }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [base, head, again]
+    env:
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2 # The merge commit and its first parent.
+      - if: matrix.build == 'base'
+        run: git checkout --detach HEAD^1
+      # A base from before the benchmark has nothing to count, and the comparison says so.
+      - id: bench
+        run: echo "present=$([[ -x scripts/engine-work.sh ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: steps.bench.outputs.present == 'true'
+        name: Install LLVM 23 and Valgrind
+        run: |
+          tools/linux-checks/install-llvm.sh
+          sudo apt-get install -y --no-install-recommends ninja-build valgrind
+      - if: steps.bench.outputs.present == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - if: steps.bench.outputs.present == 'true'
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          save: ${{ env.SAVE_CACHES }}
+          key: engine-work
+      - if: steps.bench.outputs.present == 'true'
+        run: scripts/engine-work.sh build/engine-work
+      - if: steps.bench.outputs.present == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-work-${{ matrix.build }}
+          path: |
+            build/engine-work/results.json
+            build/engine-work/scenarios.json
+
+  # The check: the head's counts against the base's (scripts/engine-work.ts). It fails when a
+  # gated scenario's instructions per frame rise by more than 1%, unless a maintainer has labelled
+  # the pull request performance-accepted, with a comment saying why, and run this job again; or
+  # when the head counted differently the second time. In the merge queue and on main it passes
+  # at once: the pull request's run compared the same change.
+  engine-work:
+    name: engine-work
+    needs: [changes, engine-work-count]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read # The performance-accepted label.
+    env:
+      COMPARE: ${{ github.event_name == 'pull_request' && needs.changes.outputs.code != 'false' }}
+    steps:
+      - if: env.COMPARE == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.COMPARE == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - if: env.COMPARE == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-work-*
+          path: build/engine-work-results
+      - if: env.COMPARE == 'true'
+        name: Compare
+        shell: bash # With pipefail, so that the comparison's failure is the step's through tee.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          accepted=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels \
+            --jq '[.labels[].name] | index("performance-accepted") != null')
+          flag=()
+          [[ "$accepted" == true ]] && flag=(--accepted)
+          results=build/engine-work-results
+          node scripts/engine-work.ts compare "$results/engine-work-base" \
+            "$results/engine-work-head" "$results/engine-work-again" "${flag[@]}" |
+            tee -a "$GITHUB_STEP_SUMMARY"
 
   # The performance limits (scripts/performance.sh): the leak limits (what reopening the editor
   # leaves behind) warn when missed; the speed limits, set for a developer's Mac, are measured and

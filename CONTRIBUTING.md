@@ -8,7 +8,7 @@ Assign yourself to an issue before you start on it, and leave issues someone els
 
 Every change:
 
-- [ ] `scripts/check.sh` passes locally. CI runs its parts as jobs of their own (TypeScript, the macOS main and glue jobs, the Linux checks), and `scripts\check.ps1`'s on Windows x64 (main and glue), on every pull request that changes more than documentation (Markdown; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all except the performance and fuzz jobs. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
+- [ ] `scripts/check.sh` passes locally. CI runs its parts as jobs of their own (TypeScript, the macOS main and glue jobs, the Linux checks), and `scripts\check.ps1`'s on Windows x64 (main and glue), on every pull request that changes more than documentation (Markdown; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all except the performance and fuzz jobs, and the engine-work jobs until their counts have matched exactly for a week. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
 - [ ] New or changed behaviour is covered by tests.
 - [ ] Code follows the naming conventions and is formatted and linted.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.
@@ -23,6 +23,14 @@ Every change:
 - `perf_bench`: the real editor page in a WKWebView, with tracks playing in real time. Seven tracks over four bars in Multi and in Compare, and fifteen tracks over sixteen bars at 60 BPM and 96 kHz (a 64 s sweep), must draw at 45 frames/s or more with the analysis thread under its budget, and opening and closing the editor 50 times must leave nothing behind.
 
 To compare changes, `scripts/bench.sh` prints CPU by part, frames/s, memory and data per frame for a fixed set of scenarios, at 48 kHz and 120 BPM unless a scenario says otherwise (`perf_bench` takes `--rate` and `--tempo`). CPU in % of a core varies with system load, so compare builds back to back. `scripts/soak.sh` plays seven tracks in the editor for 10 minutes, judging the rate memory grows at, then reopens the editor 200 times; `scripts/soak.sh 60` runs the hour-long version. Build the benchmarks with the `bench` preset (optimised) or `bench-debug` (as the development plugin).
+
+### Engine work
+
+On shared machines, time per frame cannot tell a slower change from a busier machine, but the instructions a frame takes can. `analysis_bench` (`engine/bench/AnalysisBench.cpp`) runs the editor's analysis with no editor, page or audio thread, on audio played in steps, so that two runs of one build do exactly the same work, for each scenario in `engine/bench/include/bench/Scenarios.h`: the worst case (Compare, 15 tracks all checked, Preview fix, 16 bars at 60 BPM and 96 kHz), Multi over the same sweep and zoomed into it, Compare rolling and frozen while panning, and Single over a sweep, triggered and on a mono track. `scripts/engine-work.sh` counts each scenario's instructions per measured frame under Valgrind's Cachegrind (on macOS, in Docker), with the worst case's last-level cache misses beside them, for the memory its sums read, which instructions do not show.
+
+On every pull request, CI counts the base and the head, and the head again, each in a job of its own (`engine-work-base`, `engine-work-head`, `engine-work-again`), and the `engine-work` job compares them (`scripts/engine-work.ts`). It fails when a gated scenario's instructions per frame rise by more than 1%, or when the head counts differently the second time, which means the measurement, not the change, moved. When a rise is intended, a maintainer adds the `performance-accepted` label with a comment saying why, and runs the `engine-work` job again. Results are in Bencher Metric Format (`build/engine-work/results.json`), so they can be kept and charted later.
+
+Run on its own, `analysis_bench --scenario=compare-15-worst` times each frame instead (median and 99th percentile); `--list` names the scenarios and `--columns` sets the screen width in device pixels (2560 by default, a 1280-pixel screen at twice its density).
 
 ## Test levels
 
@@ -41,6 +49,7 @@ CI marks where each will run.
 | Sanitizers | Real-time safety, data races, memory errors, leaks and undefined behaviour | The shared code on Linux (`scripts/check-linux.sh`): RealtimeSanitizer, ThreadSanitizer, AddressSanitizer with LeakSanitizer and UndefinedBehaviorSanitizer; the macOS editor's web view glue: AddressSanitizer with UndefinedBehaviorSanitizer, ThreadSanitizer; the Audio Unit: RealtimeSanitizer, AddressSanitizer with UndefinedBehaviorSanitizer, and for its view ThreadSanitizer; the Windows editor's: AddressSanitizer (MSVC has neither of the others) | Every PR |
 | Fault injection | Failed and short reads, a page that never loads | `engine/tests`, `plugin/tests`, `editor/tests` | Every PR |
 | Performance | Audio-thread deadline, frame rate, CPU, memory | `scripts/performance.sh`, `scripts/performance.ps1` | Every PR, reported |
+| Engine work | Instructions per frame of the analysis in each benchmark scenario, head against base, under Cachegrind | `engine/bench`, `scripts/engine-work.sh`, `scripts/engine-work.ts` | Every PR: fails on a rise over 1% in a gated scenario |
 | Soak | Memory growth and reopening over time | `scripts/soak.sh` | Before a release |
 | End-to-end | Sineless in REAPER, scripted | `scripts/windows` | Before a release |
 | Acceptance | The protocol in each host | [HOSTS.md](HOSTS.md) | Before a release |
