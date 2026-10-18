@@ -20,7 +20,7 @@
     },
     {
       "name": "tsan",
-      "displayName": "macOS glue: the editor's web view tests under ThreadSanitizer",
+      "displayName": "macOS glue: the editor's web view and Audio Unit view tests under ThreadSanitizer",
       "binaryDir": "${sourceDir}/build/tsan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -254,12 +254,12 @@
     {
       "name": "tsan",
       "configurePreset": "tsan",
-      "targets": ["editor_tests"]
+      "targets": ["editor_tests", "au_view_tests"]
     },
     {
       "name": "asan",
       "configurePreset": "asan",
-      "targets": ["editor_tests", "au_tests"]
+      "targets": ["editor_tests", "au_tests", "au_view_tests"]
     },
     {
       "name": "rtsan",
@@ -438,7 +438,7 @@
       },
       "filter": {
         "include": {
-          "name": "^EditorTest\\."
+          "name": "^(EditorTest\\.|AudioUnitView)"
         }
       },
       "execution": {

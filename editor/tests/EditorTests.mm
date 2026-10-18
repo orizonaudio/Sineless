@@ -1,4 +1,5 @@
 #include "FitStates.h"
+#include "MacPageTesting.h"
 #include "editor/Editor.h"
 #include "engine/Version.h"
 #include "mac/WebViewMacTesting.h"
@@ -43,17 +44,11 @@ namespace orizon::editor {
 namespace {
 
 using namespace Steinberg;
-
-constexpr std::chrono::seconds kPageTimeout{15};
-
-bool pumpUntil(const std::function<bool()>& condition, std::chrono::milliseconds timeout)
-{
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (!condition() && std::chrono::steady_clock::now() < deadline) {
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, true);
-    }
-    return condition();
-}
+using testing::evaluate;
+using testing::hasSnapshot;
+using testing::kPageTimeout;
+using testing::pumpUntil;
+using testing::saw;
 
 class EditorTest : public ::testing::Test
 {
@@ -79,39 +74,6 @@ protected:
         return owned(new Editor(std::move(engine), [&received](std::string_view message) {
             received.emplace_back(message);
         }));
-    }
-
-    // Evaluates `script` in the page and returns its result as a string ("" if none yet).
-    static std::string evaluate(WKWebView* webView, NSString* script)
-    {
-        struct Result
-        {
-            bool done = false;
-            std::string value;
-        };
-        auto result = std::make_shared<Result>();
-        [webView evaluateJavaScript:script
-                  completionHandler:^(id value, NSError* /*error*/) {
-                    if ([value isKindOfClass:[NSString class]]) {
-                        result->value = [value UTF8String];
-                    }
-                    result->done = true;
-                  }];
-        pumpUntil([&] { return result->done; }, std::chrono::seconds(5));
-        return result->value;
-    }
-
-    static bool hasSnapshot(WKWebView* webView)
-    {
-        return evaluate(webView, @"String(window.orizonDebug?.snapshot?.type ?? '')") == "snapshot";
-    }
-
-    // Whether any raw page message has the given type.
-    static bool saw(const std::vector<std::string>& messages, const std::string& type)
-    {
-        return std::ranges::any_of(messages, [&](const std::string& message) {
-            return message.find(R"("type":")" + type + "\"") != std::string::npos;
-        });
     }
 };
 

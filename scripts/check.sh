@@ -3,9 +3,9 @@
 #
 # Three parts, all by default; CI runs each as a job of its own:
 #   main   format, build, tests, the VST3 validator, pluginval, performance, TypeScript
-#   glue   the macOS editor's web view tests under AddressSanitizer and ThreadSanitizer, the
-#          Audio Unit's tests under AddressSanitizer and RealtimeSanitizer, and clang-tidy over
-#          the macOS sources
+#   glue   the macOS editor's web view tests and the Audio Unit's view tests under
+#          AddressSanitizer and ThreadSanitizer, the Audio Unit's other tests under AddressSanitizer
+#          and RealtimeSanitizer, and clang-tidy over the macOS sources
 #   linux  the shared code's checks, scripts/check-linux.sh (in Docker here)
 #
 # Environment:
@@ -115,7 +115,7 @@ if part glue; then
     # benchmark and showcase); Linux lints the shared ones. With the AddressSanitizer build's
     # commands: arm64 only (clang-tidy cannot handle a universal binary's two -arch flags), and
     # its generated headers are built.
-    git ls-files -co --exclude-standard -- 'editor/src/mac/*' 'editor/*.mm' 'au/*.cpp' |
+    git ls-files -co --exclude-standard -- 'editor/src/mac/*' 'editor/*.mm' 'au/*.cpp' 'au/*.mm' |
         xargs -P "$(sysctl -n hw.ncpu)" -n 4 \
             "$LLVM_BIN/clang-tidy" -p build/asan --quiet --extra-arg="-isysroot$(xcrun --show-sdk-path)"
 fi

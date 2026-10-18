@@ -246,9 +246,10 @@ jobs:
       - run: npm ci
       - run: scripts/check.sh
 
-  # scripts/check.sh's glue part: the macOS editor's web view tests (WKWebView, Cocoa) under
-  # AddressSanitizer and ThreadSanitizer, the Audio Unit's tests under AddressSanitizer and
-  # RealtimeSanitizer, and clang-tidy over the macOS sources. In parallel with the main job.
+  # scripts/check.sh's glue part: the macOS editor's and the Audio Unit view's web view tests
+  # (WKWebView, Cocoa) under AddressSanitizer and ThreadSanitizer, the Audio Unit's other tests
+  # under AddressSanitizer and RealtimeSanitizer, and clang-tidy over the macOS sources. In
+  # parallel with the main job.
   macos-glue:
     name: macos-glue
     needs: changes
