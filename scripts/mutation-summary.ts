@@ -202,15 +202,24 @@ export function warmUpSeconds(log: string): number | undefined {
 // How long the tests take against each mutant's time limit. A mutant no test notices runs every
 // test: past half the limit, the margin is too small, as one would be stopped and reported as
 // timed out, which counts as noticed and hides a line no test checks.
-export function timeLimitNote(warmUp: number, limit: number): string {
+// With perBinary, the limit stops each of several test binaries (scripts/mutation-au.sh), and
+// `warmUp` is the slowest one's time.
+export function timeLimitNote(
+  warmUp: number,
+  limit: number,
+  perBinary = false,
+): string {
+  const [tests, stopped] = perBinary
+    ? ["The slowest test binary takes", "each test binary is stopped"]
+    : ["The tests take", "each mutant is stopped"];
   const lines = [
-    `The tests take ${warmUp.toFixed(0)} s with no mutant; each mutant is stopped at ${limit.toFixed(0)} s.`,
+    `${tests} ${warmUp.toFixed(0)} s with no mutant; ${stopped} at ${limit.toFixed(0)} s.`,
   ];
   if (warmUp * 2 > limit) {
     lines.push(
       "",
       "> [!WARNING]",
-      "> The tests take more than half the time limit: raise MUTANT_TIMEOUT, or mutants no test notices may be reported as timed out.",
+      `> ${tests} more than half the time limit: raise MUTANT_TIMEOUT, or mutants no test notices may be reported as timed out.`,
     );
   }
   return lines.join("\n");

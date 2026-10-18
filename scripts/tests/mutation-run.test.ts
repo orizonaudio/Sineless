@@ -176,6 +176,52 @@ describe("running a share", () => {
     });
   });
 
+  test("counts a mutant only the first of several test binaries fails on as noticed, whatever the later ones do", async () => {
+    const results = join(
+      mkdtempSync(join(tmpdir(), "mutation-run-")),
+      "results.jsonl",
+    );
+    const done = await run({
+      ids: ["first:a", "survive:b"],
+      results,
+      limitSeconds: 5,
+      deadlineSeconds: 60,
+      tests: [
+        { command: process.execPath, args: [fake, "first"] },
+        { command: process.execPath, args: [fake] },
+      ],
+      workers: 2,
+    });
+    expect(Object.fromEntries(done.map((r) => [r.id, r.status]))).toEqual({
+      "first:a": "Killed",
+      "survive:b": "Survived",
+    });
+  });
+
+  test("runs no later test binary once one has noticed a mutant, so a later one that hangs costs nothing", async () => {
+    const results = join(
+      mkdtempSync(join(tmpdir(), "mutation-run-")),
+      "results.jsonl",
+    );
+    const started = Date.now();
+    const done = await run({
+      ids: ["kill:a"],
+      results,
+      limitSeconds: 10,
+      deadlineSeconds: 60,
+      tests: [
+        { command: process.execPath, args: [fake] },
+        {
+          command: process.execPath,
+          args: ["-e", "setInterval(() => undefined, 1000)"],
+        },
+      ],
+      workers: 1,
+    });
+    expect(done.map((r) => r.status)).toEqual(["Killed"]);
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
   test("runs one mutant at a time with --workers 1, for tests that cannot run beside each other", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const dry = join(dir, "dry.json");
