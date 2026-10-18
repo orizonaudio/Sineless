@@ -1,6 +1,7 @@
-// Running the C++ mutants a share at a time: each share gets some of every file, each mutant's
-// result is kept as soon as it is known, a mutant that hangs is stopped at the limit, and the
-// mutants left at the deadline are reported as not run rather than lost.
+// Running the C++ mutants a share at a time: each share gets some of every file, each mutant runs
+// against its own module's tests, its result is kept as soon as it is known, a mutant that hangs
+// is stopped at its module's limit, and the mutants left at the deadline are reported as not run
+// rather than lost.
 import {
   chmodSync,
   existsSync,
@@ -13,16 +14,20 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 
 import {
+  combine,
   merge,
   missingSwitches,
+  mutantFiles,
   mutantIds,
   run,
   shareOf,
   statusOf,
+  testsFor,
   testsPass,
+  type Tests,
 } from "../mutation-run.ts";
 import type { Report } from "../mutation-summary.ts";
 
@@ -44,6 +49,14 @@ const dryRun: Report = {
 };
 
 const fake = join(import.meta.dirname, "fixtures", "fake-tests.mjs");
+// The fake tests, stopped at `limitSeconds`.
+const fakeTests = (limitSeconds: number): Tests => ({
+  command: process.execPath,
+  args: [fake],
+  limitSeconds,
+});
+const withTests = (ids: string[], tests: Tests) =>
+  ids.map((id) => ({ id, tests }));
 
 describe("sharing out the mutants", () => {
   test("gives every mutant to exactly one share, whatever the number of shares", () => {
@@ -86,7 +99,70 @@ describe("a mutant's result", () => {
   });
 });
 
+describe("choosing each mutant's tests", () => {
+  const engine = fakeTests(900);
+  const plugin = fakeTests(60);
+  const editor = fakeTests(60);
+  const tests = new Map([
+    ["engine", engine],
+    ["plugin", plugin],
+    ["editor", editor],
+  ]);
+
+  test.each([
+    ["engine/src/Analyzer.cpp", engine],
+    ["/src/engine/include/engine/CaptureRing.h", engine],
+    ["/home/runner/work/Sineless/Sineless/plugin/src/Processor.cpp", plugin],
+    ["/src/editor/src/Session.cpp", editor],
+    ["/src/editor/include/editor/Session.h", editor],
+    // A checkout whose path names another module still runs a file's mutants against its own.
+    ["/work/engine/Sineless/editor/src/Session.cpp", editor],
+  ])("runs %s's mutants against its own module's tests", (file, expected) => {
+    expect(testsFor(file, tests)).toBe(expected);
+  });
+
+  test.each([
+    "/src/protocol/src/limits.ts",
+    "/src/plugin/tests/StateTests.cpp",
+  ])("gives %s no tests, as no module's sources hold it", (file) => {
+    expect(testsFor(file, tests)).toBeUndefined();
+  });
+
+  test("knows each mutant's file from the dry run", () => {
+    expect(mutantFiles(dryRun).get("survive:b1")).toBe("engine/src/B.cpp");
+  });
+});
+
 describe("running a share", () => {
+  test("runs each mutant against its own tests, stopped at their limit, not another module's", async () => {
+    const results = join(
+      mkdtempSync(join(tmpdir(), "mutation-run-")),
+      "results.jsonl",
+    );
+    // The plugin's tests pass whatever the mutant; the engine's are the fake ones, with a limit
+    // the test would outlast.
+    const passing: Tests = {
+      command: process.execPath,
+      args: ["-e", "process.exit(0)"],
+      limitSeconds: 60,
+    };
+    const done = await run({
+      mutants: [
+        { id: "kill:engine", tests: fakeTests(60) },
+        { id: "kill:plugin", tests: passing },
+        { id: "hang:editor", tests: fakeTests(1) },
+      ],
+      results,
+      deadlineSeconds: 60,
+      workers: 3,
+    });
+    expect(Object.fromEntries(done.map((r) => [r.id, r.status]))).toEqual({
+      "kill:engine": "Killed",
+      "kill:plugin": "Survived",
+      "hang:editor": "Timeout",
+    });
+  });
+
   test("writes each result as soon as it is known, so a share cut short keeps what it ran", async () => {
     const results = join(
       mkdtempSync(join(tmpdir(), "mutation-run-")),
@@ -94,12 +170,9 @@ describe("running a share", () => {
     );
     let finished = false;
     const running = run({
-      ids: ["kill:a", "hang:b"],
+      mutants: withTests(["kill:a", "hang:b"], fakeTests(3)),
       results,
-      limitSeconds: 3,
       deadlineSeconds: 60,
-      command: process.execPath,
-      args: [fake],
       workers: 2,
     }).then((done) => {
       finished = true;
@@ -119,12 +192,9 @@ describe("running a share", () => {
       "results.jsonl",
     );
     const done = await run({
-      ids: ["kill:a", "survive:b", "hang:c"],
+      mutants: withTests(["kill:a", "survive:b", "hang:c"], fakeTests(1)),
       results,
-      limitSeconds: 1,
       deadlineSeconds: 60,
-      command: process.execPath,
-      args: [fake],
       workers: 3,
     });
     const byId = Object.fromEntries(done.map((r) => [r.id, r.status]));
@@ -143,16 +213,28 @@ describe("running a share", () => {
       "results.jsonl",
     );
     const done = await run({
-      ids: ["hang:a", "kill:b", "kill:c"],
+      mutants: withTests(["hang:a", "kill:b", "kill:c"], fakeTests(1)),
       results,
-      limitSeconds: 1,
       deadlineSeconds: 0.5,
-      command: process.execPath,
-      args: [fake],
       workers: 1,
     });
     expect(done.map((r) => r.status)).toEqual(["Timeout", "NotRun", "NotRun"]);
     expect(readFileSync(results, "utf8").trim().split("\n")).toHaveLength(3);
+  });
+});
+
+describe("listing the mutants of several test binaries", () => {
+  test("lists every module's mutants together, so that each share gets some of each", () => {
+    const plugin: Report = {
+      files: { "plugin/src/Processor.cpp": { mutants: [mutant("kill:p1")] } },
+    };
+    expect(mutantIds(combine([dryRun, plugin]))).toEqual(
+      [...mutantIds(dryRun), "kill:p1"].sort(),
+    );
+  });
+
+  test("lists no mutant from no dry run", () => {
+    expect(mutantIds(combine([]))).toEqual([]);
   });
 });
 
@@ -223,17 +305,97 @@ describe("checking the test binary can switch each mutant on", () => {
           dry,
           "1/1",
           join(dir, "results.jsonl"),
-          "--limit",
-          "1",
           "--deadline",
           "1",
-          "--",
+          "--tests",
+          "engine",
+          "1",
           binary,
         ],
         { stdio: "pipe" },
       ),
     ).toThrow(/no switch for 4 of the 4 mutants/u);
   });
+});
+
+describe("checking each mutant has tests to run against", () => {
+  test("refuses to run a share with mutants of a module given no tests, rather than skip them", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const dry = join(dir, "dry.json");
+    writeFileSync(
+      dry,
+      JSON.stringify(
+        combine([
+          dryRun,
+          { files: { "plugin/src/C.cpp": { mutants: [mutant("kill:c1")] } } },
+        ]),
+      ),
+    );
+    const script = join(import.meta.dirname, "..", "mutation-run.ts");
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          script,
+          "run",
+          dry,
+          "1/1",
+          join(dir, "results.jsonl"),
+          "--deadline",
+          "5",
+          "--tests",
+          "engine",
+          "5",
+          process.execPath,
+        ],
+        { stdio: "pipe" },
+      ),
+    ).toThrow(/No tests for 1 mutant\(s\), as kill:c1 in plugin\/src\/C\.cpp/u);
+  });
+});
+
+describe("reading the tests to run against", () => {
+  test.each([
+    [
+      "a module given no limit",
+      [
+        "--tests",
+        "engine",
+        "5",
+        process.execPath,
+        "--tests",
+        "plugin",
+        "fast",
+        process.execPath,
+      ],
+    ],
+    ["a module given no binary", ["--tests", "engine", "5"]],
+    ["no tests at all", []],
+  ])(
+    "refuses --tests with %s, rather than leave a module's mutants out",
+    (_, tests) => {
+      const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+      const dry = join(dir, "dry.json");
+      writeFileSync(dry, JSON.stringify(dryRun));
+      const script = join(import.meta.dirname, "..", "mutation-run.ts");
+      const result = spawnSync(
+        process.execPath,
+        [
+          script,
+          "run",
+          dry,
+          "1/1",
+          join(dir, "r.jsonl"),
+          "--deadline",
+          "5",
+          ...tests,
+        ],
+        { encoding: "utf8" },
+      );
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("--tests <module> <s> <binary>");
+    },
+  );
 });
 
 describe("checking the tests pass with no mutant", () => {
@@ -259,16 +421,16 @@ describe("checking the tests pass with no mutant", () => {
           dry,
           "1/1",
           results,
-          "--limit",
-          "5",
           "--deadline",
           "5",
-          "--",
+          "--tests",
+          "engine",
+          "5",
           binary,
         ],
         { stdio: "pipe" },
       ),
-    ).toThrow(/The tests fail, or take more than 5 s, with no mutant/u);
+    ).toThrow(/engine_tests fails, or takes more than 5 s, with no mutant/u);
     expect(existsSync(results)).toBe(false);
   });
 

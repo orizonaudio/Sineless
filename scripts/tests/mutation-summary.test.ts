@@ -237,13 +237,19 @@ describe("the time limit note on a C++ mutation run", () => {
   ])(
     "for tests taking %d s against a %d s limit, warns: %s",
     (warmUp, limit, warns) => {
-      const note = timeLimitNote(warmUp, limit);
+      const note = timeLimitNote("engine_tests", warmUp, limit);
       expect(note.split("\n")[0]).toBe(
-        `The tests take ${String(warmUp)} s with no mutant; each mutant is stopped at ${String(limit)} s.`,
+        `engine_tests take ${String(warmUp)} s with no mutant; each of their mutants is stopped at ${String(limit)} s.`,
       );
       expect(note.includes("[!WARNING]")).toBe(warns);
     },
   );
+
+  test("names the tests that take too long, as each module's tests have a limit of their own", () => {
+    expect(timeLimitNote("plugin_tests", 40, 60)).toContain(
+      "plugin_tests take more than half their time limit",
+    );
+  });
 });
 
 describe("a Stryker run no unit test reaches", () => {

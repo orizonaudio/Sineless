@@ -1,10 +1,20 @@
-# Mull's settings for the C++ engine (scripts/mutation-cpp.sh): every mutator, in the engine's own
-# sources only. The script adds the changed-lines filter for a run against a base revision.
+# Mull's settings for the C++ engine, plugin and editor (scripts/mutation-cpp.sh): every mutator, in
+# their own sources only. The script adds the changed-lines filter for a run against a base
+# revision, and lists each module's mutants from that module's tests.
 mutators:
   - cxx_all
 includePaths:
   - ".*/engine/src/.*"
   - ".*/engine/include/.*"
+  - ".*/plugin/src/.*"
+  - ".*/editor/src/.*"
+  - ".*/editor/include/.*"
 excludePaths:
   - ".*/_deps/.*"
   - ".*/tests/.*"
+  # The editor's platform code: on Linux, where Mull runs, only a stub that opens no window.
+  - ".*/editor/src/(mac|win|linux)/.*"
+  # The editor's view and its core: they open the window and the web view, which only the macOS
+  # and Windows editor tests have, so on Linux no test reaches most of their mutants.
+  - ".*/editor/src/Editor(Core)?\\.cpp$"
+  - ".*/editor/include/editor/Editor(Core)?\\.h$"

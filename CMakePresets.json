@@ -188,7 +188,7 @@
     },
     {
       "name": "mutation",
-      "displayName": "Linux: engine tests built for mutation testing with Mull (scripts/mutation-cpp.sh)",
+      "displayName": "Linux: engine, plugin and editor tests for mutation testing with Mull (scripts/mutation-cpp.sh)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/mutation-cpp",
       "cacheVariables": {
@@ -196,7 +196,7 @@
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
         "CMAKE_CXX_FLAGS": "-fpass-plugin=/usr/lib/mull-ir-frontend-18 -g -grecord-command-line",
-        "ORIZON_ENGINE_ONLY": "ON"
+        "ORIZON_ENGINE_ONLY": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -393,7 +393,7 @@
     {
       "name": "mutation",
       "configurePreset": "mutation",
-      "targets": ["engine_tests"],
+      "targets": ["engine_tests", "plugin_tests", "editor_tests"],
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",

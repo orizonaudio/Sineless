@@ -70,7 +70,7 @@ is how to meet it the first time.
 | C++ build and tests (macOS) | `cmake --preset dev && cmake --build --preset dev && ctest --preset dev` |
 | One C++ test | `ctest --preset dev -R <Suite.Name>` |
 | Mutation testing (TypeScript lines changed since a base, or all without one) | `scripts/mutation.sh origin/main` |
-| Mutation testing (engine C++ lines changed since a base, or all without one; on macOS in Docker) | `scripts/mutation-cpp.sh origin/main`; a file at a time rather than the whole engine's nine hours: `scripts/mutation-cpp.sh --file engine/src/PairAnalysis.cpp` |
+| Mutation testing (engine, plugin and editor C++ lines changed since a base, or all without one; on macOS in Docker) | `scripts/mutation-cpp.sh origin/main`; a file at a time rather than the whole engine's nine hours: `scripts/mutation-cpp.sh --file engine/src/PairAnalysis.cpp` |
 | Coverage (Linux) | `cmake --preset coverage && cmake --build --preset coverage && scripts/coverage.sh origin/main` |
 | Everything on macOS | `scripts/check.sh` (format, build, tests, pluginval, performance; the macOS glue's sanitizers and lint; the Linux checks in Docker). `CHECKS="main glue"` skips the Linux part |
 | The shared code's sanitizers and clang-tidy (Linux, or Docker on macOS) | `scripts/check-linux.sh [asan\|tsan\|rtsan\|lint]` |

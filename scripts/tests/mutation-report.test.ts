@@ -48,20 +48,48 @@ describe("the mutation report's command line", () => {
     expect(summary).not.toContain("with no mutant");
   });
 
-  test("adds the tests' time against the limit from Mull's log (scripts/mutation-cpp.sh)", () => {
+  test("adds each test binary's time against its limit from its Mull log (scripts/mutation-cpp.sh)", () => {
+    const slow = join(dir, "mull-engine.log");
+    writeFileSync(
+      slow,
+      "[info] Warm up run (threads: 1)\n       [###] 1/1. Finished in 11m0s\n",
+    );
     const summary = run(
       report(),
       "Mutation testing (C++)",
       "525",
       "--mull-log",
-      log(),
+      `engine_tests=${slow}`,
       "--limit",
-      "300",
+      "engine_tests=1500",
+      "--mull-log",
+      `plugin_tests=${log()}`,
+      "--limit",
+      "plugin_tests=60",
     );
     expect(summary).toContain(
-      "The tests take 3 s with no mutant; each mutant is stopped at 300 s.",
+      "engine_tests take 660 s with no mutant; each of their mutants is stopped at 1500 s.",
+    );
+    expect(summary).toContain(
+      "plugin_tests take 3 s with no mutant; each of their mutants is stopped at 60 s.",
     );
     expect(summary).not.toContain("[!WARNING]");
+  });
+
+  test("refuses a Mull log given no limit, rather than leave its tests' time out", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "scripts/mutation-report.ts",
+        report(),
+        "Mutation testing (C++)",
+        "--mull-log",
+        `editor_tests=${log()}`,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("editor_tests");
   });
 
   test("lists the mutants no test notices as JSON, for the mutation triage", () => {

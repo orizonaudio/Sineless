@@ -1,9 +1,10 @@
 // Prints a mutation testing report (Stryker's or Mull's) as Markdown under a title, or with
 // --annotate as GitHub Actions warnings on the lines of the mutants no test noticed, with paths
-// relative to the working directory (scripts/mutation-summary.ts). With Mull's log and each
-// mutant's time limit, the summary also says how long the tests take against that limit.
+// relative to the working directory (scripts/mutation-summary.ts). With each test binary's Mull log
+// and the time limit of the mutants run against it, the summary also says how long each takes
+// against its limit.
 //   node scripts/mutation-report.ts <report.json> <title> [seconds the run took]
-//       [--mull-log <mull.log> --limit <seconds>]
+//       [--mull-log <tests>=<mull.log> --limit <tests>=<seconds>]...
 //   node scripts/mutation-report.ts <report.json> --annotate
 //   node scripts/mutation-report.ts <report.json> --survivors   (the mutants no test noticed, JSON)
 import { existsSync, readFileSync } from "node:fs";
@@ -30,8 +31,8 @@ const { positionals, values } = parseArgs({
   options: {
     annotate: { type: "boolean" },
     survivors: { type: "boolean" },
-    "mull-log": { type: "string" },
-    limit: { type: "string" },
+    "mull-log": { type: "string", multiple: true },
+    limit: { type: "string", multiple: true },
     "stryker-log": { type: "string" },
     "mull-dry-log": { type: "string" },
     base: { type: "string" },
@@ -88,12 +89,24 @@ if (values.survivors === true) {
     option,
     seconds === undefined ? undefined : Number(seconds),
   );
-  const log = values["mull-log"];
-  const limit = values.limit;
-  if (log !== undefined && limit !== undefined) {
+  // Each as <tests>=<value>: a test binary's Mull log, and its mutants' limit.
+  const byTests = (pairs: string[] | undefined) =>
+    new Map(
+      (pairs ?? []).map((pair) => {
+        const at = pair.indexOf("=");
+        return [pair.slice(0, at), pair.slice(at + 1)] as const;
+      }),
+    );
+  const limits = byTests(values.limit);
+  for (const [tests, log] of byTests(values["mull-log"])) {
+    const limit = limits.get(tests);
+    if (limit === undefined) {
+      console.error(`No --limit for ${tests}, whose Mull log is given.`);
+      process.exit(2);
+    }
     const warmUp = warmUpSeconds(readFileSync(log, "utf8"));
     if (warmUp !== undefined) {
-      summary += `\n\n${timeLimitNote(warmUp, Number(limit))}`;
+      summary += `\n\n${timeLimitNote(tests, warmUp, Number(limit))}`;
     }
   }
   console.log(summary);
