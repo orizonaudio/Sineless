@@ -46,11 +46,15 @@ endif()
 # The module order above, checked: a module linking one added after it fails configuration. The
 # engine also stays free of the VST3 SDK, and only the Audio Unit links Apple's AudioUnitSDK (which
 # also brings C++23 with it).
-orizon_forbid_dependencies(protocol engine editor plugin Sineless au audiounitsdk)
-orizon_forbid_dependencies(engine editor plugin Sineless au sdk sdk_common pluginterfaces base
+orizon_forbid_dependencies(protocol engine editor_core editor plugin Sineless au audiounitsdk)
+orizon_forbid_dependencies(engine editor_core editor plugin Sineless au sdk sdk_common
+                           pluginterfaces base audiounitsdk)
+# The editor's format-free core links neither plugin SDK; the VST3 view around it may link VST3's.
+orizon_forbid_dependencies(editor_core editor plugin Sineless au sdk sdk_common pluginterfaces base
                            audiounitsdk)
 orizon_forbid_dependencies(editor plugin Sineless au audiounitsdk)
 orizon_forbid_dependencies(plugin au audiounitsdk)
 orizon_forbid_dependencies(Sineless au audiounitsdk)
-# The two formats stay apart: the Audio Unit links neither the VST3 glue nor the VST3 SDK.
-orizon_forbid_dependencies(au plugin Sineless sdk sdk_common pluginterfaces base)
+# The two formats stay apart: the Audio Unit links neither the VST3 glue (processor or view) nor
+# the VST3 SDK.
+orizon_forbid_dependencies(au editor plugin Sineless sdk sdk_common pluginterfaces base)

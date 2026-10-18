@@ -23,8 +23,10 @@ add_custom_command(
     VERBATIM
 )
 
-add_library(editor STATIC
-    src/Editor.cpp
+# The editor whatever the plugin format (editor_core: EditorCore, the webview, the session with
+# the page), and the VST3 view around it (editor), which alone needs the VST3 SDK. The Audio Unit
+# links editor_core.
+add_library(editor_core STATIC
     src/EditorCore.cpp
     src/EmbeddedAssets.cpp
     src/FrameFlow.cpp
@@ -32,20 +34,23 @@ add_library(editor STATIC
     src/Transport.cpp
     ${embeddedAssetData}
 )
-target_include_directories(editor PUBLIC include PRIVATE src)
-target_link_libraries(editor PUBLIC engine sdk PRIVATE orizon_warnings)
+target_include_directories(editor_core PUBLIC include PRIVATE src)
+target_link_libraries(editor_core PUBLIC engine PRIVATE orizon_warnings)
 if(APPLE)
-    target_sources(editor PRIVATE src/mac/DisplayScaleMac.cpp src/mac/UiDispatcherMac.mm
-                                  src/mac/WebViewMac.mm)
-    target_link_libraries(editor PRIVATE "-framework Cocoa" "-framework WebKit")
+    target_sources(editor_core PRIVATE src/mac/DisplayScaleMac.cpp src/mac/UiDispatcherMac.mm
+                                       src/mac/WebViewMac.mm)
+    target_link_libraries(editor_core PRIVATE "-framework Cocoa" "-framework WebKit")
     set_source_files_properties(src/mac/WebViewMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 elseif(WIN32)
-    target_sources(editor PRIVATE src/win/DisplayScaleWin.cpp src/win/UiDispatcherWin.cpp
-                                  src/win/WebViewWin.cpp)
-    target_link_libraries(editor PRIVATE webview2 shlwapi shell32 ole32)
+    target_sources(editor_core PRIVATE src/win/DisplayScaleWin.cpp src/win/UiDispatcherWin.cpp
+                                       src/win/WebViewWin.cpp)
+    target_link_libraries(editor_core PRIVATE webview2 shlwapi shell32 ole32)
 else()
-    target_sources(editor PRIVATE src/linux/PlatformLinux.cpp) # Built for the checks; no editor.
+    target_sources(editor_core PRIVATE src/linux/PlatformLinux.cpp) # Built for the checks.
 endif()
+
+add_library(editor STATIC src/Editor.cpp)
+target_link_libraries(editor PUBLIC editor_core sdk PRIVATE orizon_warnings)
 
 if(BUILD_TESTING)
     add_executable(editor_tests
