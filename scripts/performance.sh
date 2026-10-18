@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # The performance limits, measured on an optimised build of the benchmarks (macOS). Run by
 # scripts/check.sh unless SKIP_PERFORMANCE=1, and by CI as a separate job. Two kinds:
-#   speed: frames/s, CPU and the audio thread's share of its deadline, set for a developer's Mac;
+#   speed: the audio thread's share of its deadline, and the editor's frames in each scenario of
+#     scripts/performance-limits.json: the time between new frames, the share that came late, and
+#     the CPU each part spent per frame, judged against the limits set there for this machine
+#     (PERF_MACHINE, by default developer-mac) at the display scale the window opened at;
 #   leaks: what reopening the editor leaves behind (memory, threads, web views), on any machine.
 # PERF_SPEED=report, as CI sets it (its shared machines are slower and noisier than any Mac the
 # speed limits are set for, and missed them on every run), measures the speed and reports it
-# without judging it; the leak limits are judged everywhere.
+# without judging it; the leak limits are judged everywhere. Each scenario's results are left in
+# build/performance/<scenario>.json, in Bencher Metric Format.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,9 +19,7 @@ step() { printf '\n==> %s\n' "$1"; }
 
 report=false
 [[ "${PERF_SPEED:-}" == report ]] && report=true
-# A speed limit, or -1 to measure without judging (perf_bench skips a negative limit).
-speed() { if $report; then echo -1; else echo "$1"; fi; }
-minFps="$(speed 45)" # frames/s every editor scenario must reach
+machine="${PERF_MACHINE:-developer-mac}"
 
 # Every limit is measured, and the script fails at the end if any was missed.
 failed=0
@@ -33,27 +35,28 @@ bench="build/bench/bin/Release"
 if ((status != 0)) && { ((status != 1)) || ! $report; }; then
     failed=1
 fi
-# The editor at full rate with seven tracks. CPU in % of one core, about 20 points above what
-# an M-series Mac measures: room for noise, not for a real regression.
-if ! "$bench/perf_bench" --mode=multi --lanes=7 --beatspan=fourBars --warmup=10 --duration=5 \
-    --min-fps="$minFps" --max-analysis="$(speed 10)" --max-total="$(speed 65)" |
-    grep -E '^limit|^total|^page:|^  thread Sineless analysis'; then
+# The editor's frames in each scenario, warmed up until its sweep is full (a 16-bar sweep at
+# 60 BPM takes over a minute), then judged together.
+results=build/performance
+rm -rf "$results"
+mkdir -p "$results"
+while read -r scenario warmup duration; do
+    step "Editor: $scenario"
+    if ! "$bench/perf_bench" --scenario="$scenario" --warmup="$warmup" --duration="$duration" \
+        --json="$results/$scenario.json" |
+        grep -E '^(view|cpu per frame|frames|ticks|page):|^  thread Sineless analysis'; then
+        failed=1
+    fi
+done < <(node scripts/performance-limits.ts scenarios)
+step "Editor limits ($machine)"
+if ! node scripts/performance-limits.ts judge "$machine" "$results"/*.json && ! $report; then
     failed=1
 fi
-if ! "$bench/perf_bench" --mode=compare --lanes=7 --beatspan=fourBars --warmup=10 --duration=5 \
-    --min-fps="$minFps" --max-analysis="$(speed 30)" --max-total="$(speed 75)" |
-    grep -E '^limit|^total|^page:|^  thread Sineless analysis'; then
-    failed=1
-fi
-# The worst case: fifteen tracks over sixteen bars at 60 BPM and 96 kHz, a 64 s sweep that
-# takes over a minute to fill.
-if ! "$bench/perf_bench" --mode=multi --lanes=15 --beatspan=sixteenBars --rate=96000 --tempo=60 \
-    --warmup=70 --duration=5 --min-fps="$minFps" --max-analysis="$(speed 20)" \
-    --max-total="$(speed 90)" | grep -E '^limit|^total|^page:|^  thread Sineless analysis'; then
-    failed=1
-fi
-# Opening and closing the editor leaves nothing behind.
-if ! "$bench/perf_bench" --mode=multi --lanes=7 --warmup=5 --reopen=50 --min-fps="$minFps" \
+# Opening and closing the editor leaves nothing behind, and it still draws afterwards (at 45
+# frames/s or more; not judged when reporting).
+reopenedFps=45
+if $report; then reopenedFps=-1; fi
+if ! "$bench/perf_bench" --mode=multi --lanes=7 --warmup=5 --reopen=50 --min-fps="$reopenedFps" \
     --max-memory-growth=20 | grep -E '^limit|^reopen'; then
     failed=1
 fi
