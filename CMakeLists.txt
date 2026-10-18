@@ -41,7 +41,11 @@ if(ORIZON_FUZZ OR BUILD_TESTING)
 endif()
 
 # The module order above, checked: a module linking one added after it fails configuration. The
-# engine also stays free of the VST3 SDK.
-orizon_forbid_dependencies(protocol engine editor plugin Sineless)
-orizon_forbid_dependencies(engine editor plugin Sineless sdk sdk_common pluginterfaces base)
-orizon_forbid_dependencies(editor plugin Sineless)
+# engine also stays free of the VST3 SDK, and only the Audio Unit links Apple's AudioUnitSDK (which
+# also brings C++23 with it).
+orizon_forbid_dependencies(protocol engine editor plugin Sineless audiounitsdk)
+orizon_forbid_dependencies(engine editor plugin Sineless sdk sdk_common pluginterfaces base
+                           audiounitsdk)
+orizon_forbid_dependencies(editor plugin Sineless audiounitsdk)
+orizon_forbid_dependencies(plugin audiounitsdk)
+orizon_forbid_dependencies(Sineless audiounitsdk)

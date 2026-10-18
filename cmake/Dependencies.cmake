@@ -45,6 +45,36 @@ if(BUILD_TESTING)
     FetchContent_MakeAvailable(googletest)
 endif()
 
+# Apple's AudioUnitSDK for the Audio Unit (macOS only): the AU base classes and their dispatch.
+# It ships an Xcode project and no CMake, so its sources build here as a static library: the ones
+# an effect needs, without the MIDI and instrument classes. Version 1.4.0 needs C++23 (its headers
+# use <expected>), which this target passes on to the Audio Unit module that links it; the rest of
+# the project stays on C++20, which every compiler it is built with supports in full.
+if(APPLE AND NOT ORIZON_ENGINE_ONLY)
+    FetchContent_Declare(audiounitsdk
+        URL https://github.com/apple/AudioUnitSDK/archive/refs/tags/AudioUnitSDK-1.4.0.tar.gz
+        URL_HASH SHA256=a3ac2f94e8df5370df46f8bdf5e34cc07d1329d011bfa61503c8e503309c29e7
+        SYSTEM
+    )
+    FetchContent_MakeAvailable(audiounitsdk)
+    set(audioUnitSdkSources ${audiounitsdk_SOURCE_DIR}/src/AudioUnitSDK)
+    add_library(audiounitsdk STATIC
+        ${audioUnitSdkSources}/AUBase.cpp
+        ${audioUnitSdkSources}/AUBuffer.cpp
+        ${audioUnitSdkSources}/AUBufferAllocator.cpp
+        ${audioUnitSdkSources}/AUEffectBase.cpp
+        ${audioUnitSdkSources}/AUInputElement.cpp
+        ${audioUnitSdkSources}/AUOutputElement.cpp
+        ${audioUnitSdkSources}/AUPlugInDispatch.cpp
+        ${audioUnitSdkSources}/AUScopeElement.cpp
+        ${audioUnitSdkSources}/ComponentBase.cpp
+    )
+    target_include_directories(audiounitsdk SYSTEM PUBLIC ${audiounitsdk_SOURCE_DIR}/include)
+    target_compile_features(audiounitsdk PUBLIC cxx_std_23)
+    target_link_libraries(audiounitsdk PUBLIC
+        "-framework AudioToolbox" "-framework CoreAudio" "-framework CoreFoundation")
+endif()
+
 # WebView2 SDK for the Windows editor: headers and the static loader, so that no WebView2Loader.dll
 # ships next to the plugin. The NuGet package is a zip under another extension.
 if(WIN32)
