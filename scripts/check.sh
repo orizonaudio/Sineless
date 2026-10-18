@@ -102,11 +102,11 @@ if part glue; then
     TSAN_OPTIONS=halt_on_error=1 ctest --preset tsan
 
     step "macOS glue: C++ lint"
-    # The macOS sources only (the web view glue, and the Objective-C++ tests, benchmark and
-    # showcase); Linux lints the shared ones. With the AddressSanitizer build's
+    # The macOS sources only (the web view glue, the Audio Unit, and the Objective-C++ tests,
+    # benchmark and showcase); Linux lints the shared ones. With the AddressSanitizer build's
     # commands: arm64 only (clang-tidy cannot handle a universal binary's two -arch flags), and
     # its generated headers are built.
-    git ls-files -co --exclude-standard -- 'editor/src/mac/*' 'editor/*.mm' |
+    git ls-files -co --exclude-standard -- 'editor/src/mac/*' 'editor/*.mm' 'au/*.cpp' |
         xargs -P "$(sysctl -n hw.ncpu)" -n 4 \
             "$LLVM_BIN/clang-tidy" -p build/asan --quiet --extra-arg="-isysroot$(xcrun --show-sdk-path)"
 fi
