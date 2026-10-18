@@ -1764,7 +1764,14 @@ TEST_F(CompareTest, SearchesTheMatchOverTheNewestPartOfTheView)
                         static_cast<double>(protocol::BeatSpan::kSixteenBars));
     analyzer->setColumns(1000);
     play(std::uint64_t{24} * 48000);
-    const auto frame = produce();
+    // The frames that follow with no more audio, until the match search (spread over a few
+    // frames, kMatchSearchWork) has ended.
+    auto frame = produce();
+    for (int step = 0; step < 16; ++step) {
+        if (auto next = produce()) {
+            frame = std::move(next);
+        }
+    }
     ASSERT_TRUE(frame);
     ASSERT_EQ(frame->laneCount, 3);
     EXPECT_NEAR(frame->cursor, 0.75f, 1e-3f) << "the playhead at 24 of 32 s";
@@ -2210,6 +2217,9 @@ TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
     play(9600);
     analyzer->setFrozen(true);
     ASSERT_TRUE(produce());
+    // Freezing makes the match due again: its search goes on over a few frames.
+    for (int step = 0; step < 16 && produce(); ++step) {
+    }
     ASSERT_FALSE(produce()) << "nothing new while frozen";
 
     analyzer->setPreviewFix(true);
@@ -2265,6 +2275,9 @@ TEST_F(CompareTest, SumsALongSweepAgainOverFrames)
     }
     analyzer->setFrozen(true);
     ASSERT_TRUE(produce());
+    // Freezing makes the match due again: its search goes on over a few frames.
+    for (int step = 0; step < 16 && produce(); ++step) {
+    }
     ASSERT_FALSE(produce()) << "nothing new while frozen";
 
     // Columns of lane `index`: (min, max) pairs.

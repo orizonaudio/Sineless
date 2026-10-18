@@ -31,14 +31,28 @@ namespace orizon::engine {
 // (or the newest of the view, zoomed away from it), continuing at the right edge into the end of
 // the previous pass when the playhead is near the left one: a match is a property of the routing,
 // not of the whole span, and a search over a long view would stall the frames. Each track's match
-// is searched again at most every kMatchRefreshSeconds of audio, one track per frame and at most
-// one every kMatchSpacingSeconds, so that many tracks share the analysis thread.
+// is searched again at most every kMatchRefreshSeconds of audio, one track at a time and at most
+// one every kMatchSpacingSeconds, so that many tracks share the analysis thread. A long search is
+// spread over frames (kMatchSearchWork), so at high rates the refreshes come further apart.
 inline constexpr double kMatchWindowSeconds = protocol::kMatchWindowSeconds;
 inline constexpr double kMatchRefreshSeconds = 0.5;
 inline constexpr double kMatchSpacingSeconds = 0.1;
+// A match search is spread over frames, at most about this many multiply-adds of it in each, so
+// that a long window at a high rate (8 s at 96 kHz takes some 36 million) does not stall one
+// frame: a few milliseconds' work on a fast machine, so a slower one still keeps its frames.
+inline constexpr std::size_t kMatchSearchWork = std::size_t{1} << 23U;
+// Seconds mode's Compare gains are measured over frames too, reading or passing over at most
+// about this many samples of the compared tracks in each: fifteen tracks over a 4 s view at
+// 96 kHz, as recorded and as fixed, are some 11 million read and twice as many passed over.
+inline constexpr std::size_t kGainReadWork = std::size_t{1} << 22U;
 // A match search that could not read all its audio is tried again this soon. Frozen or stopped,
 // searches are not spaced, and this keeps a search that keeps failing from running every frame.
 inline constexpr double kMatchRetrySeconds = 0.05;
+// Frozen, a match whose audio could not be read is tried again on the frames that follow (a held
+// copy caught short is captured again on the next one), at most this many times in all: one that
+// can never be read, such as a track holding too little of the view, then stops being tried, so
+// that it does not keep the frozen view drawing.
+inline constexpr int kFrozenReadTries = 3;
 
 // Levels (peak and energy) are kept per block of this many seconds of audio, so that readouts and
 // summing gains cost a pass over blocks; the Compare view judges per block whether tracks sound
@@ -92,8 +106,11 @@ struct AnalysisWork
     // Of those read, the samples read for match searches: of both tracks of each pair searched,
     // over the newest kMatchWindowSeconds (or less, of a shorter sweep or view).
     std::uint64_t samplesSearched = 0;
-    // Searches for a compared track's match.
+    // Searches for a compared track's match, and their multiply-adds (each spread over frames).
     std::uint64_t matchSearches = 0;
+    std::uint64_t searchWork = 0;
+    // Samples passed over measuring Compare's summing gains (each measurement spread over frames).
+    std::uint64_t gainWork = 0;
 };
 
 // Per-editor-session analysis: turns the capture into display frames. It is
@@ -248,6 +265,12 @@ private:
     void catchUpImageToHold();
     bool showFrozenParts(protocol::BeatSpan span, double start, double end);
     [[nodiscard]] std::uint32_t sumLaneBit(std::uint32_t laneBits) const;
+    // What produce draws, before it leaves out a frame that would repeat the last sent.
+    bool produceFrame(std::vector<std::byte>& frame);
+    // The frame was drawn only for analysis results (a search or gains that ended, with no new
+    // audio, input or format): if it came out as the last frame sent, it is not sent again.
+    bool resultsOnly = false;
+    std::vector<std::byte> lastSent;
     bool produceLanes(const Settings& settings, const Commands& command,
                       std::vector<std::byte>& frame);
     // `sampleRate` is the rate of the audio shown: frozen, the one it was held at.
@@ -266,8 +289,9 @@ private:
                           std::size_t playhead, double sampleRate);
     // The compared track whose match to search this frame, as a lane index, if any.
     std::optional<std::size_t> matchToSearch(std::uint32_t laneSet, std::size_t first,
-                                             std::size_t end, std::size_t length,
-                                             std::uint64_t now);
+                                             std::size_t end, std::size_t length, std::uint64_t now,
+                                             std::uint64_t shownFrom, double viewStart,
+                                             double viewEnd);
     void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
     [[nodiscard]] bool readoutsDue(std::uint64_t end) const;
     void storeReadouts(const Readouts& values, std::uint64_t end);
@@ -381,8 +405,63 @@ private:
         PairAnalysis analysis;
         std::uint64_t analysedAt = 0;
         std::uint64_t wait = 0; // Audio to pass after analysedAt before the next search.
+        int failedReads = 0;    // Tries since its audio was last read, in this view.
     };
     std::map<std::uint64_t, MatchState> matchStates;
+    // The search in progress, spread over frames (kMatchSearchWork): the track it measures, and the
+    // capture end when it started, which its match is dated by.
+    PairSearch matchSearch;
+    std::optional<std::uint64_t> searchingSerial;
+    std::uint64_t searchStartedAt = 0;
+    // Seconds mode, Compare: the summing gains being measured over frames (kGainReadWork), of
+    // the window where it was when they began (each lane's start then), with the parts then; the
+    // parts read so far, and then the gains measured so far (the sum as recorded, then fixed).
+    struct GainJob
+    {
+        bool active = false;
+        std::uint64_t at = 0; // The capture end when it began.
+        std::size_t first = 0;
+        std::size_t visibleCount = 0;
+        std::size_t fixedFirst = 0;
+        std::size_t fixedEnd = 0;
+        std::vector<std::uint64_t> laneStarts;
+        // Per lane, the oldest sample its parts read that its source held when they began.
+        std::vector<std::uint64_t> needFrom;
+        std::vector<std::uint64_t> tracks; // The tracks compared, in lane order.
+        std::vector<SumPart> raw;
+        std::vector<SumPart> fixed;
+        std::size_t next = 0;
+        int measured = 0;       // Gains measured: as recorded, then as fixed.
+        bool measuring = false; // The next gain's measurement has begun.
+        GainMeasure measure;
+        float sumGain = 0.0f;
+        double sampleRate = 0.0; // Of the audio read: positions mean nothing at another.
+        std::uint64_t count = 0; // The window's length when they began, and its levels' block.
+        std::size_t block = 0;
+        // A match ended while it ran: the parts it read are not the newest, so the gains are
+        // measured again once it ends.
+        bool stale = false;
+    };
+    GainJob gainJob;
+    // Steps the search in progress; true when it ended this frame and its match is stored.
+    bool continueMatchSearch(double liveRate);
+    // Steps the gains in progress by a frame's budget; true when they were published.
+    bool stepGainJob();
+    // The gains are due again for the live audio that arrived since they were measured.
+    [[nodiscard]] bool gainsDueByTime(std::uint64_t now, std::uint64_t interval) const;
+    // A track's capture has moved past audio the gains in progress need.
+    [[nodiscard]] bool gainAudioReplaced() const;
+    // Between frames that show something new: steps the search and gains in progress without
+    // drawing. True when one ended, so that a frame shows it.
+    bool stepSpreadWork(double liveRate);
+    bool spreadStepped = false; // This produce stepped them already.
+    bool searchEnded = false;   // ...and a search ended, which the frame drawn shows.
+    // Adds `part` to `into` over positions from `position` of a window of `count` samples: each
+    // shows the part's sample at position + offset, flipped if it is, and silence beyond the
+    // window, read by `read`. False if the part's capture does not hold its samples yet.
+    template <typename Read>
+    bool addPartFrom(const Read& read, const SumPart& part, std::size_t position,
+                     std::uint64_t count, std::span<float> into);
     std::uint64_t lastMatchSearch = 0; // Capture end of the last search.
     bool matchesPending = false;       // Matches remain to search: frames go on meanwhile.
     // Tempo-synced Compare frames: screen positions where compared tracks changed this frame, the
@@ -399,6 +478,7 @@ private:
         std::vector<float> matches;
         float sumGain = 0.0f;
         float fixedGain = 0.0f;
+        std::vector<std::uint64_t> tracks; // The tracks the gains were measured for.
         std::uint64_t at = 0;
         bool valid = false;
     };
@@ -448,6 +528,10 @@ private:
     std::size_t matchFirst = 0;
     std::size_t matchEnd = 0;
     std::size_t matchCount = 0;
+    std::uint64_t matchShownFrom = 0; // Frozen in Seconds: where the window starts, as panned.
+    double matchViewStart = 0.0;      // The view zoomed or panned, as the page asked.
+    double matchViewEnd = 1.0;
+    bool panning = false;      // Frozen and panned this frame: its searches and gains wait a frame.
     bool matchFrozen = false;  // Frozen or live: the audio the matches were searched over.
     bool searchAtOnce = false; // Matches made due with no audio to space their searches by.
     std::uint32_t lastLaneSet = 0;
