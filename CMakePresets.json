@@ -303,7 +303,9 @@
         "editor_tests",
         "au_tests",
         "au_view_tests",
-        "au_component_tests"
+        "au_component_tests",
+        "analysis_bench",
+        "perf_bench"
       ]
     },
     {
@@ -523,7 +525,7 @@
       },
       "filter": {
         "include": {
-          "name": "^(EditorTest\\.|AudioUnit|ComponentTest\\.)"
+          "name": "^(EditorTest\\.|AudioUnit|ComponentTest\\.|AnalysisBench\\.|PerfBench\\.)"
         }
       }
     },

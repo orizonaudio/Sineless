@@ -87,6 +87,18 @@ if(ORIZON_BENCH AND APPLE)
         PRIVATE editor engine_bench_support orizon_warnings "-framework Cocoa" "-framework WebKit"
                 "-framework IOKit")
     set_source_files_properties(bench/PerfBench.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    if(BUILD_TESTING)
+        # perf_bench refuses a scenario it cannot play, rather than playing another under its name:
+        # one that zooms, one that pans while frozen, and one that is not there. It refuses before
+        # it opens a window.
+        foreach(scenario multi-15-zoomed compare-15-frozen-pan no-such-scenario)
+            add_test(NAME PerfBench.Refuses.${scenario}
+                     COMMAND ${CMAKE_COMMAND} -DBENCH=$<TARGET_FILE:perf_bench>
+                             -DARGS=--scenario=${scenario}
+                             "-DREFUSES=no scenario perf_bench can play is named ${scenario}"
+                             -P ${PROJECT_SOURCE_DIR}/engine/bench/BenchTest.cmake)
+        endforeach()
+    endif()
 
     # The showcase video, filmed from the real page frame by frame. See showcase/Showcase.mm.
     add_executable(showcase showcase/Showcase.mm)
