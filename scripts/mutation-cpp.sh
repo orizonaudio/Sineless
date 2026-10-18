@@ -122,7 +122,10 @@ if [[ -n "$base" ]]; then
     # The tests run only the mutants on the lines changed since the base; the build compiles them
     # all, so a cached build serves any base.
     config="$out/mull.yml"
-    { cat tools/mutation/mull.yml; echo "gitDiffRef: $from"; echo "gitProjectRoot: $root"; } \
+    # Mull is given the base with the files added since it held empty, as its diff leaves out
+    # files the base lacks (scripts/mutation-base.ts).
+    diffBase="$(node scripts/mutation-base.ts "$from" engine/src engine/include)"
+    { cat tools/mutation/mull.yml; echo "gitDiffRef: $diffBase"; echo "gitProjectRoot: $root"; } \
         > "$config"
 fi
 if ((${#files[@]})); then
