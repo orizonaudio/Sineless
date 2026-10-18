@@ -31,7 +31,7 @@
     },
     {
       "name": "asan",
-      "displayName": "macOS glue: the editor's web view and Audio Unit tests under AddressSanitizer",
+      "displayName": "macOS glue: the editor's web view and Audio Unit tests under AddressSanitizer, with the benchmarks configured so that the lint reads their compile commands",
       "binaryDir": "${sourceDir}/build/asan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
