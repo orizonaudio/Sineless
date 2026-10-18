@@ -149,13 +149,43 @@ TEST(AudioUnitView, NamesTheFactoryForThisVersion)
     EXPECT_NE(name.find(version), std::string::npos) << name;
 }
 
-// Outside a component bundle (as here) no host could load the view, so none is offered.
-TEST_F(AudioUnitViewTest, OffersNoViewOutsideABundle)
+// A host asks the Audio Unit where its view comes from, loads that bundle and asks it for the
+// class by name. This test runs from a bundle, as the component does: the answer is the bundle
+// that holds this binary, and the class it names there makes the editor's view. The host releases
+// both values.
+TEST_F(AudioUnitViewTest, OffersItsViewToTheHost)
 {
     AudioUnitCocoaViewInfo info{};
     UInt32 size = sizeof info;
-    EXPECT_EQ(AudioUnitGetProperty(unit, kAudioUnitProperty_CocoaUI, kAudioUnitScope_Global, 0,
+    ASSERT_EQ(AudioUnitGetProperty(unit, kAudioUnitProperty_CocoaUI, kAudioUnitScope_Global, 0,
                                    &info, &size),
+              noErr);
+    EXPECT_EQ(size, sizeof info);
+
+    auto* location = (__bridge NSURL*)info.mCocoaAUViewBundleLocation;
+    EXPECT_EQ(std::string(location.URLByStandardizingPath.path.UTF8String),
+              std::string(NSBundle.mainBundle.bundleURL.URLByStandardizingPath.path.UTF8String));
+    NSBundle* bundle = [NSBundle bundleWithURL:location];
+    ASSERT_NE(bundle, nil);
+    Class factoryClass = [bundle classNamed:(__bridge NSString*)info.mCocoaAUViewClass[0]];
+    ASSERT_NE(factoryClass, nil);
+    ASSERT_TRUE([factoryClass conformsToProtocol:@protocol(AUCocoaUIBase)]);
+    NSView* view = nil;
+    @autoreleasepool {
+        id<AUCocoaUIBase> factory = [[factoryClass alloc] init];
+        view = [factory uiViewForAudioUnit:unit withSize:NSMakeSize(400, 300)];
+    }
+    EXPECT_NE(editorCoreOf(view), nullptr) << "the factory makes the editor's view";
+
+    CFRelease(info.mCocoaAUViewBundleLocation);
+    CFRelease(info.mCocoaAUViewClass[0]);
+}
+
+// A binary outside any bundle could not have its view loaded by a host, so none is offered.
+TEST(AudioUnitView, OffersNoViewOutsideABundle)
+{
+    AudioUnitCocoaViewInfo info{};
+    EXPECT_EQ(copyCocoaViewInfo("/usr/local/bin/au_view_tests", info),
               kAudioUnitErr_InvalidProperty);
 }
 
@@ -350,8 +380,9 @@ TEST_F(AudioUnitViewTest, ReturnsToItsMinimumAfterTheHostMakesItSmaller)
     NSView* view = openView(unit);
     NSWindow* window = windowFor(view);
     const NSSize minimum = NSMakeSize(EditorCore::kMinimumWidth, EditorCore::kMinimumHeight);
-    for (const NSSize small : {NSMakeSize(300, 200), NSMakeSize(minimum.width - 1, 600),
-                               NSMakeSize(900, minimum.height - 1)}) {
+    for (const NSSize small :
+         {NSMakeSize(0, 0), NSMakeSize(300, 200), NSMakeSize(minimum.width - 1, 600),
+          NSMakeSize(900, minimum.height - 1)}) {
         [view setFrameSize:small];
         EXPECT_TRUE(NSEqualSizes(view.frame.size, small)) << "not inside the host's resize";
         runQueuedWork();
@@ -363,6 +394,26 @@ TEST_F(AudioUnitViewTest, ReturnsToItsMinimumAfterTheHostMakesItSmaller)
         ASSERT_NE(webView, nil);
         EXPECT_TRUE(NSEqualSizes(webView.frame.size, expected)) << "the page has the room";
     }
+    closeWindow(window, view);
+}
+
+// The user drags the window smaller than the minimum: the view follows the drag without fighting
+// it, and returns to the minimum when the drag ends. AppKit tells every view in the window when a
+// live resize starts and ends.
+TEST_F(AudioUnitViewTest, ReturnsToItsMinimumWhenTheUserStopsDragging)
+{
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    [view viewWillStartLiveResize];
+    for (const NSSize dragged : {NSMakeSize(600, 220), NSMakeSize(500, 200)}) {
+        [view setFrameSize:dragged];
+        runQueuedWork();
+        EXPECT_TRUE(NSEqualSizes(view.frame.size, dragged)) << "follows the drag";
+    }
+    [view viewDidEndLiveResize];
+    runQueuedWork();
+    EXPECT_EQ(view.frame.size.width, EditorCore::kMinimumWidth);
+    EXPECT_EQ(view.frame.size.height, EditorCore::kMinimumHeight);
     closeWindow(window, view);
 }
 

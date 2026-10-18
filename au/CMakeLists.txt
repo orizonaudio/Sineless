@@ -29,8 +29,10 @@ if(BUILD_TESTING)
         PRIVATE au engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(au_tests DISCOVERY_TIMEOUT 30)
 
-    # The view loads the real page in WKWebView, so its tests run alone, as the editor's do.
-    add_executable(au_view_tests tests/AudioUnitViewTests.mm)
+    # The view loads the real page in WKWebView, so its tests run alone, as the editor's do. They
+    # run from a bundle, as the component does, so that a host's lookup of the view works as in a
+    # host.
+    add_executable(au_view_tests MACOSX_BUNDLE tests/AudioUnitViewTests.mm)
     target_include_directories(au_view_tests PRIVATE ${PROJECT_SOURCE_DIR}/editor/tests)
     target_link_libraries(au_view_tests
         PRIVATE au orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework WebKit")
