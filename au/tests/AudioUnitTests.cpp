@@ -535,18 +535,24 @@ TEST(AudioUnit, PassesAudioAndCapturesNothingWhenBypassed)
     EXPECT_EQ(instance.engine()->captureRing().writeIndex(), 0U);
 }
 
-// Sineless delays nothing, so a host has no latency to compensate on its track.
-TEST(AudioUnit, ReportsNoLatency)
+// Sineless delays nothing, so a host has no latency to compensate on its track; and its output
+// ends with its input, so a host may stop calling it as soon as the track goes quiet. Hosts (and
+// auval) expect both properties to be answered.
+TEST(AudioUnit, ReportsNoLatencyAndNoTail)
 {
     Host host;
     Instance instance(host);
     ASSERT_EQ(instance.open(48000.0, 2, 2), noErr);
-    Float64 seconds = -1.0;
-    UInt32 size = sizeof seconds;
-    ASSERT_EQ(AudioUnitGetProperty(instance.handle(), kAudioUnitProperty_Latency,
-                                   kAudioUnitScope_Global, 0, &seconds, &size),
-              noErr);
-    EXPECT_EQ(seconds, 0.0);
+    for (const AudioUnitPropertyID property :
+         {kAudioUnitProperty_Latency, kAudioUnitProperty_TailTime}) {
+        Float64 seconds = -1.0;
+        UInt32 size = sizeof seconds;
+        ASSERT_EQ(AudioUnitGetProperty(instance.handle(), property, kAudioUnitScope_Global, 0,
+                                       &seconds, &size),
+                  noErr)
+            << property;
+        EXPECT_EQ(seconds, 0.0) << property;
+    }
 }
 
 // --- Transport

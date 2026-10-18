@@ -2,7 +2,8 @@
 # Runs every check. Exits non-zero on the first failure.
 #
 # Three parts, all by default; CI runs each as a job of its own:
-#   main   format, build, tests, the VST3 validator, pluginval, performance, TypeScript
+#   main   format, build, tests, the VST3 validator, pluginval, the Audio Unit's validation
+#          (auval and pluginval, on a copy installed for this user), performance, TypeScript
 #   glue   the macOS editor's web view tests and the Audio Unit's view tests under
 #          AddressSanitizer and ThreadSanitizer, the Audio Unit's other tests under AddressSanitizer
 #          and RealtimeSanitizer, and clang-tidy over the macOS sources
@@ -72,6 +73,11 @@ if part main; then
     fi
     "$pluginval" --strictness-level 10 --validate-in-process \
         --validate "$buildDir/VST3/Debug/Sineless.vst3"
+
+    step "Audio Unit: auval and pluginval"
+    # Hosts and the validators find Audio Units only once installed, so this build is installed
+    # in ~/Library/Audio/Plug-Ins/Components, where it stays until replaced.
+    scripts/validate-au.sh "$buildDir/lib/Debug/Sineless.component" "$pluginval"
 
     if [[ "${SKIP_PERFORMANCE:-}" != 1 ]]; then
         scripts/performance.sh
