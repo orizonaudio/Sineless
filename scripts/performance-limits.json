@@ -8,7 +8,7 @@
   "machines": {
     "developer-mac": {
       "description": "The maintainer's M-series MacBook, the window on its 1x display at 100 Hz (ticks 10 ms apart, so a smooth 60 frames/s alternates 10 and 20 ms between new frames).",
-      "why": "Set on 2026-10-18 from five rounds of every scenario: frames/s at least the slowest round less 2; late frames at most the worst round plus 2.5 points; the 99th-percentile frame interval at most one display tick (10 ms) beyond the worst round; CPU per frame (the analysis thread, the main thread, which in a host is its own UI thread, WebKit, and their total) at most 1.5 times the worst round, as it varied by up to a third between rounds. The worst case does not hold 60 frames/s on this machine yet (36 to 51 frames/s, 19 to 32% of frames late, 11 to 19 ms of analysis per frame): its limits keep it from getting worse, not from being slow, until it is made smooth.",
+      "why": "Set on 2026-10-18 from five rounds of every scenario, and the worst case's from six more after its match searches and Compare gains were spread over frames: frames/s at least the slowest round less 2; late frames at most the worst round plus 2.5 points; the 99th-percentile frame interval at most one display tick (10 ms) beyond the worst round; CPU per frame (the analysis thread, the main thread, which in a host is its own UI thread, WebKit, and their total) at most 1.5 times the worst round, as it varied by up to a third between rounds.",
       "limits": {
         "1": {
           "multi-7-four-bars": {
@@ -39,13 +39,13 @@
             "total-ms-per-frame": { "max": 11.2 }
           },
           "compare-15-worst": {
-            "frames-per-second": { "min": 34.3 },
-            "late-frames-percent": { "max": 34.8 },
-            "frame-interval-p99-ms": { "max": 70 },
-            "analysis-ms-per-frame": { "max": 27.9 },
-            "webkit-ms-per-frame": { "max": 11.5 },
-            "main-ms-per-frame": { "max": 3.1 },
-            "total-ms-per-frame": { "max": 44.5 }
+            "frames-per-second": { "min": 57.6 },
+            "late-frames-percent": { "max": 2.5 },
+            "frame-interval-p99-ms": { "max": 31 },
+            "analysis-ms-per-frame": { "max": 9.6 },
+            "webkit-ms-per-frame": { "max": 6.6 },
+            "main-ms-per-frame": { "max": 1.4 },
+            "total-ms-per-frame": { "max": 17 }
           }
         }
       }
