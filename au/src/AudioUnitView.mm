@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <objc/runtime.h>
+#include <optional>
 #include <utility>
 
 // The classes' names come from ORIZON_AU_CLASS_PREFIX, which the build makes unique to it (see
@@ -34,9 +35,12 @@
     std::unique_ptr<orizon::editor::EditorCore> core;
     bool attached;
     bool restorePending;
-    // The last size below the minimum that the view returned from. A host that sets it again
-    // keeps it.
-    NSSize refusedSize;
+    // Between the live resize's start and end (the user dragging the window), as AppKit tells
+    // every view in the window.
+    bool liveResizing;
+    // The last size below the minimum that the view returned from, or none yet. A host that sets
+    // it again keeps it.
+    std::optional<NSSize> refusedSize;
 }
 
 - (instancetype)initWithEngine:(std::shared_ptr<orizon::engine::Engine>)engine
@@ -97,8 +101,7 @@
 {
     const NSSize minimum = [self minimumSize];
     const NSSize size = self.frame.size;
-    if (restorePending || self.inLiveResize ||
-        (size.width >= minimum.width && size.height >= minimum.height)) {
+    if (restorePending || (size.width >= minimum.width && size.height >= minimum.height)) {
         return;
     }
     restorePending = true;
@@ -113,18 +116,25 @@
     restorePending = false;
     const NSSize minimum = [self minimumSize];
     const NSSize size = self.frame.size;
-    if (self.inLiveResize || (size.width >= minimum.width && size.height >= minimum.height) ||
-        NSEqualSizes(size, refusedSize)) {
-        return; // Resized again meanwhile, or the host insists on this size.
+    if (liveResizing || (size.width >= minimum.width && size.height >= minimum.height) ||
+        (refusedSize && NSEqualSizes(size, *refusedSize))) {
+        return; // Being dragged, resized again meanwhile, or the host insists on this size.
     }
     refusedSize = size;
     [self setFrameSize:NSMakeSize(std::max(size.width, minimum.width),
                                   std::max(size.height, minimum.height))];
 }
 
+- (void)viewWillStartLiveResize
+{
+    [super viewWillStartLiveResize];
+    liveResizing = true;
+}
+
 - (void)viewDidEndLiveResize
 {
     [super viewDidEndLiveResize];
+    liveResizing = false;
     [self keepMinimumSize];
 }
 
