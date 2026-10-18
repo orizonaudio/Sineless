@@ -84,3 +84,10 @@ if(BUILD_TESTING)
     gtest_discover_tests(engine_tests DISCOVERY_TIMEOUT 30)
 
 endif()
+
+if(ORIZON_BENCH)
+    # What the benchmarks share: the material they play, the same every run.
+    add_library(engine_bench_support INTERFACE)
+    target_include_directories(engine_bench_support INTERFACE bench/include)
+    target_link_libraries(engine_bench_support INTERFACE protocol)
+endif()

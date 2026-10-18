@@ -22,6 +22,7 @@
 // with real material; --preview-fix
 // draws the sum as fixed. Any limit given makes the exit code 1 when it is broken, for automated
 // checks.
+#include "bench/Signals.h"
 #include "editor/Editor.h"
 #include "engine/Engine.h"
 #include "engine/InstanceRegistry.h"
@@ -40,7 +41,6 @@
 #include <mach/mach_time.h>
 #include <map>
 #include <memory>
-#include <numbers>
 #include <set>
 #include <span>
 #include <stdexcept>
@@ -147,32 +147,6 @@ Options parse(std::span<const char* const> arguments)
     return options;
 }
 
-// Track n's signal at host time `t` (seconds): kicks, bass, hats, noise beds and tones.
-float signalOf(int track, double t, double tempo)
-{
-    const double beat = 60.0 / tempo;
-    const double inBeat = std::fmod(t, beat);
-    const double pi = std::numbers::pi;
-    switch (track % 5) {
-    case 0:
-        return static_cast<float>(
-            0.9 * std::exp(-inBeat * 9.0) *
-            std::sin(2.0 * pi * (50.0 + 100.0 * std::exp(-inBeat / 0.03)) * inBeat));
-    case 1:
-        return static_cast<float>(0.45 * std::sin(2.0 * pi * 55.0 * t));
-    case 2: {
-        const double inEighth = std::fmod(t, beat / 2);
-        const auto noise = static_cast<double>(std::rand()) / RAND_MAX - 0.5;
-        return static_cast<float>(0.4 * std::exp(-inEighth * 40.0) * noise);
-    }
-    case 3:
-        return static_cast<float>(0.3 * std::sin(2.0 * pi * 220.0 * t) +
-                                  0.1 * std::sin(2.0 * pi * 660.0 * t));
-    default:
-        return static_cast<float>(0.2 * (static_cast<double>(std::rand()) / RAND_MAX - 0.5));
-    }
-}
-
 // Plays every track in real time: one block per engine every 10 ms, on one host clock at `rate`
 // and `tempo`.
 class Host
@@ -181,7 +155,8 @@ public:
     Host(std::vector<std::shared_ptr<engine::Engine>> engines, double rate, double tempo,
          bool jitter)
         : engines(std::move(engines)), rate(rate), tempo(tempo), jitter(jitter),
-          block(static_cast<int>(std::lround(rate / 100.0))), thread([this] { run(); })
+          block(static_cast<int>(std::lround(rate / 100.0))),
+          signals(this->engines.size(), rate, tempo), thread([this] { run(); })
     {}
     ~Host()
     {
@@ -201,16 +176,7 @@ private:
         auto next = std::chrono::steady_clock::now();
         while (!stopping) {
             for (std::size_t track = 0; track < engines.size(); ++track) {
-                for (int i = 0; i < block; ++i) {
-                    double t = static_cast<double>(sample + static_cast<std::uint64_t>(i)) / rate;
-                    if (jitter && track > 0) {
-                        // 0 to 3 ms late, changing every 0.7 s.
-                        const auto step = static_cast<std::size_t>(t / 0.7) + track;
-                        t -= 0.001 * static_cast<double>(step % 4);
-                    }
-                    left[static_cast<std::size_t>(i)] = signalOf(static_cast<int>(track), t, tempo);
-                    right[static_cast<std::size_t>(i)] = 0.8f * left[static_cast<std::size_t>(i)];
-                }
+                signals.fill(track, sample, jitter, left, right);
                 std::array<const float*, 2> channels{left.data(), right.data()};
                 engine::Engine& engine = *engines[track];
                 engine.captureRing().write(channels.data(), 2, block);
@@ -237,7 +203,8 @@ private:
     double rate;
     double tempo;
     bool jitter;
-    int block; // Samples per block: 10 ms.
+    int block;              // Samples per block: 10 ms.
+    bench::Signals signals; // The material analysis_bench plays too.
     std::atomic<bool> stopping{false};
     std::thread thread;
 };
