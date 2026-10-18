@@ -1,6 +1,7 @@
 #include "AllocationCounter.h"
 #include "AudioUnit.h"
 #include "SampleRates.h"
+#include "engine/CaptureRing.h"
 #include "engine/EngineRegistry.h"
 #include "engine/InstanceRegistry.h"
 #include "engine/RealtimeSafety.h"
@@ -181,6 +182,16 @@ public:
         const OSStatus result = AudioUnitInitialize(unit);
         initialized = result == noErr;
         return result;
+    }
+
+    // A format change as a host makes it: uninitialise, set the new formats, initialise again.
+    OSStatus reopen(double rate, UInt32 channels)
+    {
+        if (initialized) {
+            AudioUnitUninitialize(unit);
+            initialized = false;
+        }
+        return open(rate, channels, channels);
     }
 
     // Renders `frames` frames of the host's input; `inPlace` lets the Audio Unit pick the output
@@ -412,6 +423,48 @@ TEST(AudioUnit, AcceptsOnlyMonoAndStereo)
     }
 }
 
+// --- Sample rate ---------------------------------------------------------------------------------
+
+class PreparesForTheRate : public ::testing::TestWithParam<double>
+{
+};
+
+// The engine runs at the host's rate, so times and frequencies read true, and its capture is
+// sized for that rate, so a freeze holds its whole span up to 384 kHz.
+TEST_P(PreparesForTheRate, TheHostSetsUp)
+{
+    const double rate = GetParam();
+    Host host;
+    Instance instance(host);
+    ASSERT_EQ(instance.open(rate, 2, 2), noErr);
+    EXPECT_EQ(instance.engine()->sampleRate(), rate);
+    EXPECT_EQ(instance.engine()->captureRing().capacity(), engine::CaptureRing::capacityFor(rate));
+}
+
+INSTANTIATE_TEST_SUITE_P(AudioUnit, PreparesForTheRate, ::testing::ValuesIn(engine::kSampleRates),
+                         [](const ::testing::TestParamInfo<double>& info) {
+                             return std::to_string(static_cast<int>(info.param)) + "Hz";
+                         });
+
+// A host changes the rate by uninitialising, setting the new format and initialising again: the
+// engine follows each change, and the capture is resized for it.
+TEST(AudioUnit, FollowsAChangeOfRate)
+{
+    Host host;
+    Instance instance(host);
+    ASSERT_EQ(instance.open(48000.0, 2, 2), noErr);
+    for (const double rate : {384000.0, 44100.0}) {
+        SCOPED_TRACE(rate);
+        ASSERT_EQ(instance.reopen(rate, 2), noErr);
+        EXPECT_EQ(instance.engine()->sampleRate(), rate);
+        EXPECT_EQ(instance.engine()->captureRing().capacity(),
+                  engine::CaptureRing::capacityFor(rate));
+        host.input = noise(2, 512, 4);
+        const auto output = instance.render(512, true);
+        EXPECT_EQ(output, host.input);
+    }
+}
+
 // The editor learns how many channels the track has, so mono tracks show L alone.
 TEST(AudioUnit, TellsTheEngineTheChannelCount)
 {
@@ -520,35 +573,37 @@ class FollowsTheTransport : public ::testing::TestWithParam<TransportCase>
 // as a VST3 host's missing process context does.
 TEST_P(FollowsTheTransport, AsTheHostReportsIt)
 {
-    Host host = GetParam().host;
-    const double rate = 44100.0;
-    Instance instance(host);
-    ASSERT_EQ(instance.open(rate, 2, 2), noErr);
-    host.input = noise(2, 512, 1);
-    instance.render(512, true);
+    for (const double rate : engine::kSampleRates) {
+        SCOPED_TRACE(rate);
+        Host host = GetParam().host;
+        Instance instance(host);
+        ASSERT_EQ(instance.open(rate, 2, 2), noErr);
+        host.input = noise(2, 512, 1);
+        instance.render(512, true);
 
-    engine::HostTimeline expected;
-    expected.positionValid = host.beatAndTempo == noErr;
-    expected.quarterNotes = host.beat;
-    expected.tempoValid = host.beatAndTempo == noErr;
-    expected.tempo = host.tempo;
-    expected.timeSignatureValid = host.musicalTime == noErr;
-    expected.numerator = static_cast<int>(host.numerator);
-    expected.denominator = static_cast<int>(host.denominator);
-    expected.playing = host.transport == noErr && host.playing;
-    expected.secondsValid = host.transport == noErr;
-    expected.seconds = host.sampleInTimeline / rate;
-    engine::Timeline reference;
-    reference.advance(expected, 512, rate);
+        engine::HostTimeline expected;
+        expected.positionValid = host.beatAndTempo == noErr;
+        expected.quarterNotes = host.beat;
+        expected.tempoValid = host.beatAndTempo == noErr;
+        expected.tempo = host.tempo;
+        expected.timeSignatureValid = host.musicalTime == noErr;
+        expected.numerator = static_cast<int>(host.numerator);
+        expected.denominator = static_cast<int>(host.denominator);
+        expected.playing = host.transport == noErr && host.playing;
+        expected.secondsValid = host.transport == noErr;
+        expected.seconds = host.sampleInTimeline / rate;
+        engine::Timeline reference;
+        reference.advance(expected, 512, rate);
 
-    const engine::MusicalStamp got = instance.engine()->timeline().latest();
-    const engine::MusicalStamp want = reference.latest();
-    EXPECT_EQ(got.playing, want.playing);
-    EXPECT_DOUBLE_EQ(got.quarterNotes, want.quarterNotes);
-    EXPECT_DOUBLE_EQ(got.seconds, want.seconds);
-    EXPECT_DOUBLE_EQ(got.tempo, want.tempo);
-    EXPECT_EQ(got.numerator, want.numerator);
-    EXPECT_EQ(got.denominator, want.denominator);
+        const engine::MusicalStamp got = instance.engine()->timeline().latest();
+        const engine::MusicalStamp want = reference.latest();
+        EXPECT_EQ(got.playing, want.playing);
+        EXPECT_DOUBLE_EQ(got.quarterNotes, want.quarterNotes);
+        EXPECT_DOUBLE_EQ(got.seconds, want.seconds);
+        EXPECT_DOUBLE_EQ(got.tempo, want.tempo);
+        EXPECT_EQ(got.numerator, want.numerator);
+        EXPECT_EQ(got.denominator, want.denominator);
+    }
 }
 
 std::vector<TransportCase> transportCases()
