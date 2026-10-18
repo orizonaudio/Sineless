@@ -34,7 +34,8 @@ body:
       label: The draft's downloads
       options:
         - label: Every download matches SHA256SUMS.txt and its attestation.
-        - label: The macOS installer, opened as downloaded, installs without a password and leaves no quarantine flag.
+        - label: The macOS installer, opened as downloaded, installs the VST3 plugin and the Audio Unit without a password and leaves no quarantine flag.
+        - label: The installed Audio Unit passes `auval -strict -v aufx Snls Oriz`.
         - label: The Windows installer, run as downloaded, installs and uninstalls from Settings > Apps.
   - type: checkboxes
     id: macos
