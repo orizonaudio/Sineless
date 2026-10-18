@@ -156,9 +156,9 @@ describe("compare", () => {
     expect(result.markdown).toContain("**fails**");
     expect(result.markdown).toContain("performance-accepted");
     // The table shows both counts and the change, as the maintainer judges by them.
-    expect(result.markdown).toMatch(
-      /\| compare-15-worst \| 1,000,000 \| 1,011,000 \| \+1\.10% \|/,
-    );
+    expect(
+      compare(results(base), results(base * 2), undefined, false).markdown,
+    ).toMatch(/\| compare-15-worst \| 1,000,000 \| 2,000,000 \| \+100\.00% \|/);
   });
 
   test("passes a rise within the threshold, and names a notable one", () => {
