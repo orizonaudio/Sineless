@@ -95,4 +95,16 @@ if(ORIZON_BENCH)
     # (scripts/engine-work.sh), timed on its own.
     add_executable(analysis_bench bench/AnalysisBench.cpp)
     target_link_libraries(analysis_bench PRIVATE engine engine_bench_support orizon_warnings)
+
+    if(BUILD_TESTING)
+        # The bench refuses a scenario none of whose frames shows anything (here, with no
+        # columns to draw), so that CI never compares a scenario that measures nothing; the same
+        # scenario drawn passes.
+        add_test(NAME AnalysisBench.MeasuresAScenario
+                 COMMAND analysis_bench --scenario=single-one-bar --frames=2)
+        add_test(NAME AnalysisBench.RefusesAScenarioThatShowsNothing
+                 COMMAND analysis_bench --scenario=single-one-bar --frames=2 --columns=0)
+        set_tests_properties(AnalysisBench.RefusesAScenarioThatShowsNothing
+                             PROPERTIES WILL_FAIL TRUE)
+    endif()
 endif()
