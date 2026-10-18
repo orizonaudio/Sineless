@@ -260,7 +260,12 @@
     {
       "name": "asan",
       "configurePreset": "asan",
-      "targets": ["editor_tests", "au_tests", "au_view_tests"]
+      "targets": [
+        "editor_tests",
+        "au_tests",
+        "au_view_tests",
+        "au_component_tests"
+      ]
     },
     {
       "name": "rtsan",
@@ -459,7 +464,7 @@
       },
       "filter": {
         "include": {
-          "name": "^(EditorTest\\.|AudioUnit)"
+          "name": "^(EditorTest\\.|AudioUnit|ComponentTest\\.)"
         }
       }
     },

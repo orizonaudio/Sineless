@@ -21,6 +21,18 @@ string(REPLACE "." "_" auVersion "${PROJECT_VERSION}")
 target_compile_definitions(au
     PRIVATE ORIZON_AU_CLASS_PREFIX=Sineless_${auVersion}_${ORIZON_AU_BUILD_ID})
 
+# The component hosts load: Sineless.component, a loadable bundle around the Audio Unit whose
+# binary exports the factory function (src/ComponentEntry.cpp). Its Info.plist entry for hosts
+# (AudioComponents), signing and installation come with the packaging.
+add_library(SinelessAU MODULE src/ComponentEntry.cpp)
+target_link_libraries(SinelessAU PRIVATE au orizon_warnings)
+set_target_properties(SinelessAU PROPERTIES
+    BUNDLE TRUE
+    BUNDLE_EXTENSION component
+    OUTPUT_NAME Sineless
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.sineless.component
+    MACOSX_BUNDLE_BUNDLE_NAME Sineless)
+
 if(BUILD_TESTING)
     add_executable(au_tests tests/AudioUnitTests.cpp)
     target_compile_definitions(au_tests
@@ -38,4 +50,18 @@ if(BUILD_TESTING)
         PRIVATE au orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework WebKit")
     set_source_files_properties(tests/AudioUnitViewTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     gtest_discover_tests(au_view_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE)
+
+    # The component as a host meets it: an app of its own that loads Sineless.component and links
+    # none of the Audio Unit's code, so that the component's bundle and the host's differ.
+    add_executable(au_component_tests MACOSX_BUNDLE tests/ComponentTests.mm)
+    target_include_directories(au_component_tests
+        PRIVATE src ${PROJECT_SOURCE_DIR}/editor/tests)
+    target_compile_definitions(au_component_tests
+        PRIVATE ORIZON_TEST_COMPONENT="$<TARGET_BUNDLE_DIR:SinelessAU>")
+    target_link_libraries(au_component_tests
+        PRIVATE orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework AudioToolbox")
+    add_dependencies(au_component_tests SinelessAU)
+    set_source_files_properties(tests/ComponentTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    gtest_discover_tests(au_component_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE)
+    orizon_forbid_dependencies(au_component_tests au editor_core engine)
 endif()
