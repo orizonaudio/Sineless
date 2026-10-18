@@ -3,14 +3,16 @@
 #
 # Three parts, all by default; CI runs each as a job of its own:
 #   main   format, build, tests, the VST3 validator, pluginval, performance, TypeScript
-#   glue   the macOS editor's web view tests under AddressSanitizer and ThreadSanitizer, and
-#          clang-tidy over the macOS sources
+#   glue   the macOS editor's web view tests under AddressSanitizer and ThreadSanitizer, the
+#          Audio Unit's tests under AddressSanitizer and RealtimeSanitizer, and clang-tidy over
+#          the macOS sources
 #   linux  the shared code's checks, scripts/check-linux.sh (in Docker here)
 #
 # Environment:
 #   CHECKS    Parts to run, space-separated (default: "main glue linux")
 #   PRESET    CMake preset to use (default: dev-local if CMakeUserPresets.json exists, else dev)
-#   LLVM_BIN  Directory with clang-format and clang-tidy (default: Homebrew LLVM)
+#   LLVM_BIN  Directory with clang-format, clang-tidy and the Clang that builds RealtimeSanitizer
+#             (default: Homebrew LLVM)
 #   SKIP_PERFORMANCE=1  Skip the performance limits (they need a logged-in desktop session)
 #   SKIP_FORMAT=1       Skip the C++ format check (CI runs it once, with a pinned clang-format)
 #   SKIP_APP_TESTS=1    Skip the app tests in WebKit and Chromium (CI runs them once, on Linux)
@@ -42,7 +44,7 @@ if (( nodeMajor < 22 )); then
     echo "Node $(node -v) is too old; use the version in .nvmrc (nvm use)." >&2
     exit 1
 fi
-for tool in clang-format clang-tidy; do
+for tool in clang-format clang-tidy clang++; do
     [[ -x "$LLVM_BIN/$tool" ]] || { echo "Missing $LLVM_BIN/$tool (brew install llvm)." >&2; exit 1; }
 done
 
@@ -100,6 +102,13 @@ if part glue; then
     cmake --preset tsan
     cmake --build --preset tsan -j "$(sysctl -n hw.ncpu)"
     TSAN_OPTIONS=halt_on_error=1 ctest --preset tsan
+
+    step "macOS glue: real-time safety of the Audio Unit (RealtimeSanitizer build)"
+    # The shared code's render path is checked on Linux, where the Audio Unit is not built.
+    # AppleClang has no RealtimeSanitizer: LLVM's Clang builds it.
+    cmake --preset rtsan -DCMAKE_CXX_COMPILER="$LLVM_BIN/clang++"
+    cmake --build --preset rtsan -j "$(sysctl -n hw.ncpu)"
+    ctest --preset rtsan
 
     step "macOS glue: C++ lint"
     # The macOS sources only (the web view glue, the Audio Unit, and the Objective-C++ tests,

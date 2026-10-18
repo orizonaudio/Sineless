@@ -31,12 +31,23 @@
     },
     {
       "name": "asan",
-      "displayName": "macOS glue: the editor's web view tests under AddressSanitizer",
+      "displayName": "macOS glue: the editor's web view and Audio Unit tests under AddressSanitizer",
       "binaryDir": "${sourceDir}/build/asan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_OSX_ARCHITECTURES": "arm64",
         "ORIZON_ADDRESS_SANITIZER": "ON",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      }
+    },
+    {
+      "name": "rtsan",
+      "displayName": "macOS glue: the Audio Unit's render under RealtimeSanitizer (Clang 20+, not AppleClang)",
+      "binaryDir": "${sourceDir}/build/rtsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "ORIZON_REALTIME_SANITIZER": "ON",
         "SMTG_RUN_VST_VALIDATOR": "OFF"
       }
     },
@@ -248,7 +259,12 @@
     {
       "name": "asan",
       "configurePreset": "asan",
-      "targets": ["editor_tests"]
+      "targets": ["editor_tests", "au_tests"]
+    },
+    {
+      "name": "rtsan",
+      "configurePreset": "rtsan",
+      "targets": ["au_tests"]
     },
     {
       "name": "bench",
@@ -442,7 +458,23 @@
       },
       "filter": {
         "include": {
-          "name": "^EditorTest\\."
+          "name": "^(EditorTest\\.|AudioUnit)"
+        }
+      }
+    },
+    {
+      "name": "rtsan",
+      "configurePreset": "rtsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 4,
+        "noTestsAction": "error"
+      },
+      "filter": {
+        "include": {
+          "name": "^AudioUnit"
         }
       }
     },
