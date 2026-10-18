@@ -73,7 +73,7 @@ is how to meet it the first time.
 | Mutation testing (engine C++ lines changed since a base, or all without one; on macOS in Docker) | `scripts/mutation-cpp.sh origin/main`; a file at a time rather than the whole engine's nine hours: `scripts/mutation-cpp.sh --file engine/src/PairAnalysis.cpp` |
 | Mutation testing (Audio Unit lines changed since a base, or all of `au/src` in a few minutes without one; macOS, with `brew install llvm@20` and a macOS 26 SDK) | `scripts/mutation-au.sh origin/main` |
 | Coverage (Linux) | `cmake --preset coverage && cmake --build --preset coverage && scripts/coverage.sh origin/main` |
-| Everything on macOS | `scripts/check.sh` (format, build, tests, pluginval, performance; the macOS glue's sanitizers and lint; the Linux checks in Docker). `CHECKS="main glue"` skips the Linux part |
+| Everything on macOS | `scripts/check.sh` (format, build, tests, pluginval, the Audio Unit's auval and pluginval on a copy installed in `~/Library/Audio/Plug-Ins/Components`, performance; the macOS glue's sanitizers and lint; the Linux checks in Docker). `CHECKS="main glue"` skips the Linux part |
 | The shared code's sanitizers and clang-tidy (Linux, or Docker on macOS) | `scripts/check-linux.sh [asan\|tsan\|rtsan\|lint]` |
 | Windows | `scripts\check.ps1` (main: build, tests, pluginval; glue: the WebView2 editor tests under AddressSanitizer, preset `windows-x64-glue`), preset `windows-x64` (ARM64 is not built for now) |
 
