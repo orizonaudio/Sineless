@@ -4,6 +4,8 @@
 #include "engine/SampleSource.h"
 #include "protocol/Protocol.h"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -138,6 +140,23 @@ private:
 
 static_assert(CaptureRing::capacityFor(CaptureRing::kHighestSampleRate) ==
               CaptureRing::kMaximumCapacity);
+// Audio thread. Records one block of a plugin's input, whatever the plugin format: each channel
+// whose bit is set in `silentChannels` is recorded as silence, whatever its buffer holds (hosts
+// flag silence without clearing the buffer), and channels past kMaxChannels are left out.
+template <typename Sample>
+void captureBlock(CaptureRing& ring, const Sample* const* channels, int numChannels,
+                  std::uint64_t silentChannels, int numSamples) noexcept ORIZON_NONBLOCKING
+{
+    std::array<const Sample*, CaptureRing::kMaxChannels> sources{};
+    const int count = std::min(numChannels, CaptureRing::kMaxChannels);
+    for (int channel = 0; channel < count; ++channel) {
+        const bool silent =
+            (silentChannels & (std::uint64_t{1} << static_cast<unsigned>(channel))) != 0;
+        sources[static_cast<std::size_t>(channel)] = silent ? nullptr : channels[channel];
+    }
+    ring.write(sources.data(), count, numSamples);
+}
+
 static_assert(protocol::kFrozenHoldSeconds * CaptureRing::kHighestSampleRate <=
                   static_cast<double>(CaptureRing::readableLength(CaptureRing::kMaximumCapacity)),
               "the capture must keep a whole freeze at the highest sample rate");

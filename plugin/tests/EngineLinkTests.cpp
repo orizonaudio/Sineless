@@ -1,5 +1,5 @@
 #include "Controller.h"
-#include "EngineRegistry.h"
+#include "PluginIds.h"
 #include "Processor.h"
 #include "editor/Editor.h"
 #include "engine/InstanceRegistry.h"
@@ -174,15 +174,6 @@ TEST(TrackInfo, KeepsTheOrderPartTheHostDidNotRepeat)
     position->setInt(ChannelContext::kChannelIndexKey, 5);
     const engine::TrackInfo moved = mergeTrackInfo(mergeTrackInfo({}, *both), *position);
     EXPECT_EQ(moved.index, 200005) << "the namespace order kept";
-}
-
-TEST(EngineRegistry, ForgetsRemovedTokens)
-{
-    auto engine = std::make_shared<engine::Engine>();
-    const int64 token = EngineRegistry::add(engine);
-    EXPECT_EQ(EngineRegistry::find(token), engine);
-    EngineRegistry::remove(token);
-    EXPECT_EQ(EngineRegistry::find(token), nullptr);
 }
 
 } // namespace

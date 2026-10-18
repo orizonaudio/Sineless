@@ -1,17 +1,17 @@
-#include "EngineRegistry.h"
+#include "engine/EngineRegistry.h"
 
 #include <mutex>
 #include <random>
 #include <unordered_map>
 
-namespace orizon::plugin {
+namespace orizon::engine {
 
 namespace {
 
 struct Registry
 {
     std::mutex mutex;
-    std::unordered_map<std::int64_t, std::weak_ptr<engine::Engine>> engines;
+    std::unordered_map<std::int64_t, std::weak_ptr<Engine>> engines;
     std::mt19937_64 random{std::random_device{}()};
 };
 
@@ -23,7 +23,7 @@ Registry& registry()
 
 } // namespace
 
-std::int64_t EngineRegistry::add(const std::shared_ptr<engine::Engine>& engine)
+std::int64_t EngineRegistry::add(const std::shared_ptr<Engine>& engine)
 {
     Registry& state = registry();
     const std::scoped_lock lock(state.mutex);
@@ -42,7 +42,7 @@ void EngineRegistry::remove(std::int64_t token)
     state.engines.erase(token);
 }
 
-std::shared_ptr<engine::Engine> EngineRegistry::find(std::int64_t token)
+std::shared_ptr<Engine> EngineRegistry::find(std::int64_t token)
 {
     Registry& state = registry();
     const std::scoped_lock lock(state.mutex);
@@ -50,4 +50,4 @@ std::shared_ptr<engine::Engine> EngineRegistry::find(std::int64_t token)
     return found == state.engines.end() ? nullptr : found->second.lock();
 }
 
-} // namespace orizon::plugin
+} // namespace orizon::engine

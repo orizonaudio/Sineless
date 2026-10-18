@@ -1,7 +1,6 @@
 # The VST3 processor, controller and factory.
 add_library(plugin STATIC
     src/Controller.cpp
-    src/EngineRegistry.cpp
     src/Processor.cpp
 )
 target_include_directories(plugin PUBLIC src)
