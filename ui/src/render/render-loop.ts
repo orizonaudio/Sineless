@@ -2,6 +2,7 @@
 // replace the latest-frame slot; each tick draws the newest frame once and then returns the
 // credit, so the engine sends at most one frame per drawn frame.
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+import { frameTimes } from "../frame-times.ts";
 import { perf } from "../perf.ts";
 
 // The draw clock: requestAnimationFrame in the page, a manual clock in tests.
@@ -89,6 +90,7 @@ export class RenderLoop {
       perf.framesDrawn++;
       perf.drawMs += elapsed;
       perf.maxDrawMs = Math.max(perf.maxDrawMs, elapsed);
+      frameTimes.drawn(timestamp);
       this.lastDrawn = frame;
       this.returnCredit(); // Only engine frames earn a credit; redraws do not.
     } else if (redraw && this.lastDrawn !== undefined) {
