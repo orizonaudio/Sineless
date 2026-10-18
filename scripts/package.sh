@@ -208,12 +208,12 @@ if [[ "${INSTALL_CHECK:-}" == 1 ]]; then
     check_installed
     echo "Installed and checked both bundles over older copies"
 
-    # Customize: each format can be left out. With the Audio Unit unticked, only the VST3 plugin
-    # is installed.
-    for i in "${!names[@]}"; do
-        rm -rf "${plugins:?}/${folders[$i]}/${names[$i]}"
-    done
-    cat > "$work/without-au.xml" <<CHOICES
+    # Customize: either format can be left out, and only the other is then installed.
+    for left in "${!names[@]}"; do
+        for i in "${!names[@]}"; do
+            rm -rf "${plugins:?}/${folders[$i]}/${names[$i]}"
+        done
+        cat > "$work/without-$left.xml" <<CHOICES
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -221,17 +221,27 @@ if [[ "${INSTALL_CHECK:-}" == 1 ]]; then
     <dict>
         <key>attributeSetting</key><integer>0</integer>
         <key>choiceAttribute</key><string>selected</string>
-        <key>choiceIdentifier</key><string>${identifiers[1]}</string>
+        <key>choiceIdentifier</key><string>${identifiers[$left]}</string>
     </dict>
 </array>
 </plist>
 CHOICES
-    installer -pkg "$downloaded" -target CurrentUserHomeDirectory \
-        -applyChoiceChangesXML "$work/without-au.xml"
-    [[ -e "$plugins/${folders[0]}/${names[0]}" ]] ||
-        { echo "Customize left out the VST3 plugin as well" >&2; exit 1; }
-    [[ ! -e "$plugins/${folders[1]}/${names[1]}" ]] ||
-        { echo "Customize did not leave out the Audio Unit" >&2; exit 1; }
-    echo "Installed the VST3 plugin alone, with the Audio Unit left out"
+        installer -pkg "$downloaded" -target CurrentUserHomeDirectory \
+            -applyChoiceChangesXML "$work/without-$left.xml"
+        for i in "${!names[@]}"; do
+            installed="$plugins/${folders[$i]}/${names[$i]}"
+            if [[ "$i" == "$left" && -e "$installed" ]]; then
+                echo "Customize did not leave out the ${titles[$i]}" >&2
+                exit 1
+            elif [[ "$i" != "$left" && ! -e "$installed" ]]; then
+                echo "Leaving out the ${titles[$left]} left out the ${titles[$i]} as well" >&2
+                exit 1
+            fi
+        done
+        echo "Installed without the ${titles[$left]}: only the other format arrived"
+    done
+    # Both formats again, so that a run outside CI ends with this build installed.
+    installer -pkg "$downloaded" -target CurrentUserHomeDirectory
+    check_installed
 fi
 echo "Packaged $package ($(du -h "$package" | cut -f1))"
