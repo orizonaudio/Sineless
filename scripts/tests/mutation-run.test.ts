@@ -289,6 +289,49 @@ describe("checking the test binary can switch each mutant on", () => {
     ]);
   });
 
+  test("checks each module's test binary for its own mutants' switches only, as each holds no other's", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const plugin: Report = {
+      files: { "plugin/src/C.cpp": { mutants: [mutant("survive:c1")] } },
+    };
+    const dry = join(dir, "dry.json");
+    writeFileSync(dry, JSON.stringify(combine([dryRun, plugin])));
+    // Each passes whatever the mutant, and holds the switches of its own module's mutants only.
+    const binary = (name: string, report: Report) => {
+      const path = join(dir, name);
+      writeFileSync(
+        path,
+        `#!/bin/sh\nexit 0\n# ${mutantIds(report).join("\0")}\0\n`,
+      );
+      chmodSync(path, 0o755);
+      return path;
+    };
+    const results = join(dir, "results.jsonl");
+    const script = join(import.meta.dirname, "..", "mutation-run.ts");
+    execFileSync(
+      process.execPath,
+      [
+        script,
+        "run",
+        dry,
+        "1/1",
+        results,
+        "--deadline",
+        "5",
+        "--tests",
+        "engine",
+        "5",
+        binary("engine_tests", dryRun),
+        "--tests",
+        "plugin",
+        "5",
+        binary("plugin_tests", plugin),
+      ],
+      { stdio: "pipe" },
+    );
+    expect(readFileSync(results, "utf8").trim().split("\n")).toHaveLength(5);
+  });
+
   test("refuses to run a share whose mutants the binary cannot switch on, as all would go unnoticed", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const dry = join(dir, "dry.json");
