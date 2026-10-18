@@ -1,7 +1,7 @@
 #include "Processor.h"
 
-#include "EngineRegistry.h"
 #include "PluginIds.h"
+#include "engine/EngineRegistry.h"
 #include "engine/InstanceRegistry.h"
 #include "engine/PreciseFloatingPoint.h"
 #include "engine/State.h"
@@ -36,21 +36,6 @@ void copyChannels(Sample** source, Sample** destination, int32 numChannels,
                         static_cast<size_t>(numSamples) * sizeof(Sample));
         }
     }
-}
-
-// Records the input into the ring. Channels flagged silent are recorded as zeros, whatever
-// their buffers hold.
-template <typename Sample>
-void capture(engine::CaptureRing& ring, Sample** channels, int32 numChannels, uint64 silenceFlags,
-             int32 numSamples) noexcept ORIZON_NONBLOCKING
-{
-    std::array<const Sample*, engine::CaptureRing::kMaxChannels> sources{};
-    const int32 count = std::min(numChannels, int32{engine::CaptureRing::kMaxChannels});
-    for (int32 channel = 0; channel < count; ++channel) {
-        const bool silent = (silenceFlags & (uint64{1} << static_cast<uint64>(channel))) != 0;
-        sources[static_cast<size_t>(channel)] = silent ? nullptr : channels[channel];
-    }
-    ring.write(sources.data(), count, numSamples);
 }
 
 // The host's musical position for the block, as far as the process context says it is valid.
@@ -137,7 +122,7 @@ tresult PLUGIN_API Processor::initialize(FUnknown* context)
         return result;
     }
     engineState = std::make_shared<engine::Engine>();
-    engineToken = EngineRegistry::add(engineState);
+    engineToken = engine::EngineRegistry::add(engineState);
     engine::InstanceRegistry::shared().add(engineState);
     addAudioInput(STR16("Input"), SpeakerArr::kStereo);
     addAudioOutput(STR16("Output"), SpeakerArr::kStereo);
@@ -146,7 +131,7 @@ tresult PLUGIN_API Processor::initialize(FUnknown* context)
 
 tresult PLUGIN_API Processor::terminate()
 {
-    EngineRegistry::remove(engineToken);
+    engine::EngineRegistry::remove(engineToken);
     engineToken = 0;
     if (engineState) {
         engine::InstanceRegistry::shared().remove(*engineState);
@@ -247,14 +232,14 @@ tresult PLUGIN_API Processor::process(ProcessData& data) noexcept ORIZON_NONBLOC
     if (data.symbolicSampleSize == kSample64) {
         copyChannels(input.channelBuffers64, output.channelBuffers64, numChannels, data.numSamples);
         if (engineState) {
-            capture(engineState->captureRing(), input.channelBuffers64, input.numChannels,
-                    input.silenceFlags, data.numSamples);
+            engine::captureBlock(engineState->captureRing(), input.channelBuffers64,
+                                 input.numChannels, input.silenceFlags, data.numSamples);
         }
     } else {
         copyChannels(input.channelBuffers32, output.channelBuffers32, numChannels, data.numSamples);
         if (engineState) {
-            capture(engineState->captureRing(), input.channelBuffers32, input.numChannels,
-                    input.silenceFlags, data.numSamples);
+            engine::captureBlock(engineState->captureRing(), input.channelBuffers32,
+                                 input.numChannels, input.silenceFlags, data.numSamples);
         }
     }
     output.silenceFlags = input.silenceFlags;

@@ -341,5 +341,28 @@ TEST(CaptureRing, ConcurrentReadsNeverReturnTornData)
     EXPECT_GE(successfulReads.load(), kMinimumReads);
 }
 
+// Every plugin format records a block through captureBlock: a channel the host flags silent is
+// recorded as silence even when its buffer still holds old samples, the other channel as given.
+TEST(CaptureRing, CapturesFlaggedChannelsAsSilence)
+{
+    for (const std::uint64_t silent : {std::uint64_t{0b01}, std::uint64_t{0b10}}) {
+        CaptureRing ring(kSmallCapacity);
+        const std::array<float, 4> left{0.1F, 0.2F, 0.3F, 0.4F};
+        const std::array<float, 4> right{-0.1F, -0.2F, -0.3F, -0.4F};
+        const std::array<const float*, 2> channels{left.data(), right.data()};
+        captureBlock(ring, channels.data(), 2, silent, 4);
+        for (int channel = 0; channel < 2; ++channel) {
+            std::vector<float> copy(4);
+            ASSERT_TRUE(ring.read(channel, 0, copy));
+            const bool flagged =
+                (silent & (std::uint64_t{1} << static_cast<unsigned>(channel))) != 0;
+            const auto& given = channel == 0 ? left : right;
+            for (std::size_t i = 0; i < copy.size(); ++i) {
+                EXPECT_EQ(copy[i], flagged ? 0.0F : given[i]) << "channel " << channel;
+            }
+        }
+    }
+}
+
 } // namespace
 } // namespace orizon::engine

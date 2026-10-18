@@ -15,4 +15,9 @@ constexpr const char* kVendorEmail = "";
 constexpr const char* kProductName = "Sineless";
 constexpr const char* kSubCategories = "Fx|Analyzer";
 
+// Message the processor sends to the controller on connect, with its engine's token
+// (engine::EngineRegistry) as attribute.
+constexpr const char* kEngineTokenMessage = "OrizonEngineToken";
+constexpr const char* kEngineTokenAttribute = "token";
+
 } // namespace orizon::plugin

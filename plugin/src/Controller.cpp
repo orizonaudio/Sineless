@@ -1,7 +1,8 @@
 #include "Controller.h"
 
-#include "EngineRegistry.h"
+#include "PluginIds.h"
 #include "editor/Editor.h"
+#include "engine/EngineRegistry.h"
 #include "public.sdk/source/vst/utility/stringconvert.h"
 
 #include <array>
@@ -79,7 +80,7 @@ tresult PLUGIN_API Controller::notify(Vst::IMessage* message)
     }
     int64 token = 0;
     if (message->getAttributes()->getInt(kEngineTokenAttribute, token) == kResultOk) {
-        engineState = EngineRegistry::find(token);
+        engineState = engine::EngineRegistry::find(token);
         if (engineState && track) {
             engineState->setTrackInfo(*track);
         }

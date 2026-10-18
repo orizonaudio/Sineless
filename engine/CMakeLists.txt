@@ -5,6 +5,7 @@ add_library(engine STATIC
     src/Analyzer.cpp
     src/BlockStats.cpp
     src/CaptureRing.cpp
+    src/EngineRegistry.cpp
     src/ChannelViews.cpp
     src/FrameEncoder.cpp
     src/HoldBuffer.cpp
@@ -50,6 +51,7 @@ if(BUILD_TESTING)
         tests/BlockStatsTests.cpp
         tests/CaptureRingTests.cpp
         tests/ChannelViewsTests.cpp
+        tests/EngineRegistryTests.cpp
         tests/FrameEncoderTests.cpp
         tests/HoldBufferTests.cpp
         tests/InstanceRegistryTests.cpp
