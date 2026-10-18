@@ -13,6 +13,7 @@ import {
   instructions,
   lastLevelMisses,
   noteAbove,
+  parseBenchRun,
   parseCachegrind,
   readResults,
   type BenchRun,
@@ -59,21 +60,57 @@ describe("parseCachegrind", () => {
   });
 });
 
+// A run as analysis_bench writes it, with every field the gate reads.
+const benchRun: BenchRun = {
+  scenario: "compare-15-worst",
+  gated: true,
+  frames: 300,
+  shown: 300,
+  columns: 2560,
+  samplesRead: 3000,
+  samplesReduced: 600,
+  samplesSummed: 1500,
+  samplesSearched: 900,
+  matchSearches: 50,
+};
+
+describe("parseBenchRun", () => {
+  test("reads a run with every field the gate reads", () => {
+    expect(parseBenchRun(JSON.stringify(benchRun), "compare-15-worst")).toEqual(
+      benchRun,
+    );
+  });
+
+  // Without any one of them the gate would judge nothing, or NaN: refused, naming the run.
+  test.each(Object.keys(benchRun))(
+    "refuses a run without %s, rather than letting any rise pass",
+    (field) => {
+      const run = Object.fromEntries(
+        Object.entries(benchRun).filter(([key]) => key !== field),
+      );
+      expect(() =>
+        parseBenchRun(JSON.stringify(run), "compare-15-worst"),
+      ).toThrow(/compare-15-worst\.json/);
+    },
+  );
+
+  test("refuses a gated that is not true or false, no frames, or another scenario's run", () => {
+    const parse = (changes: Record<string, unknown>) => () =>
+      parseBenchRun(
+        JSON.stringify({ ...benchRun, ...changes }),
+        "compare-15-worst",
+      );
+    expect(parse({ gated: "yes" })).toThrow(/gated/);
+    expect(parse({ frames: 0 })).toThrow(/frames/);
+    expect(parse({ samplesRead: null })).toThrow(/samplesRead/);
+    expect(parse({ scenario: "single-one-bar" })).toThrow(/not the run/);
+  });
+});
+
 describe("readResults", () => {
   test("turns a run's totals into measures per measured frame, cache misses where simulated", () => {
     const dir = mkdtempSync(join(tmpdir(), "engine-work-"));
-    const run: BenchRun = {
-      scenario: "compare-15-worst",
-      gated: true,
-      frames: 300,
-      shown: 300,
-      columns: 2560,
-      samplesRead: 3000,
-      samplesReduced: 600,
-      samplesSummed: 1500,
-      samplesSearched: 900,
-      matchSearches: 50,
-    };
+    const run = benchRun;
     writeFileSync(join(dir, "compare-15-worst.json"), JSON.stringify(run));
     writeFileSync(
       join(dir, "compare-15-worst.cachegrind"),

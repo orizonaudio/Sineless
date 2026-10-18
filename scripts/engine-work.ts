@@ -2,12 +2,14 @@
 // one build, and the comparison of a pull request's head with its base that CI judges.
 //   node scripts/engine-work.ts results DIR
 //   node scripts/engine-work.ts compare BASE_DIR HEAD_DIR [AGAIN_DIR] [--accepted]
+//   node scripts/engine-work.ts check RUN.json
 // `results` reads what engine-work.sh left in DIR and writes DIR/results.json (Bencher Metric
 // Format: scenario, then measure, then value) and DIR/scenarios.json. `compare` prints Markdown
 // for the job summary and exits 1 when a gated scenario's instructions per frame rose by more
 // than failAbove (unless --accepted), or when the head counted differently the second time.
+// `check` reads one run the bench wrote, as `results` would, and exits 1 if it would be refused.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 // A gated scenario whose instructions per frame rise by more than this fails the check. Counts
 // are the same on every run of one build, so the threshold only has to clear the change itself:
@@ -99,6 +101,36 @@ export function scenarioMetrics(
   return metrics;
 }
 
+// A run as the bench wrote it for scenario `name`, refused unless every field the gate reads is
+// there: a run without `gated` would be judged as reported only, and one without `frames` would
+// count NaN per frame, and either would let any rise pass without a word.
+export function parseBenchRun(text: string, name: string): BenchRun {
+  const run = JSON.parse(text) as Record<string, unknown>;
+  const refuse = (problem: string): never => {
+    throw new Error(`${name}.json: ${problem}`);
+  };
+  if (run["scenario"] !== name) {
+    refuse(`not the run of ${name}`);
+  }
+  if (typeof run["gated"] !== "boolean") {
+    refuse("no gated: true or false");
+  }
+  if (typeof run["frames"] !== "number" || !(run["frames"] > 0)) {
+    refuse("no frames measured");
+  }
+  for (const field of [
+    "shown",
+    "columns",
+    ...counted.map(([key]) => key),
+  ] as const) {
+    const value = run[field];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      refuse(`no ${field}`);
+    }
+  }
+  return run as unknown as BenchRun;
+}
+
 export function readResults(dir: string): Results {
   const metrics: Metrics = {};
   const scenarios: Results["scenarios"] = {};
@@ -106,9 +138,10 @@ export function readResults(dir: string): Results {
     .filter((name) => name.endsWith(".cachegrind"))
     .sort()) {
     const name = file.slice(0, -".cachegrind".length);
-    const run = JSON.parse(
+    const run = parseBenchRun(
       readFileSync(join(dir, `${name}.json`), "utf8"),
-    ) as BenchRun;
+      name,
+    );
     metrics[name] = scenarioMetrics(
       run,
       parseCachegrind(readFileSync(join(dir, file), "utf8")),
@@ -296,6 +329,16 @@ function main(argv: readonly string[]): number {
     console.log(measuresTable(results));
     return 0;
   }
+  if (command === "check" && rest[0] !== undefined) {
+    const file = rest[0];
+    try {
+      parseBenchRun(readFileSync(file, "utf8"), basename(file, ".json"));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+    return 0;
+  }
   if (command === "compare") {
     const dirs = rest.filter((arg) => !arg.startsWith("--"));
     const head = dirs[1] === undefined ? undefined : loadResults(dirs[1]);
@@ -323,7 +366,7 @@ function main(argv: readonly string[]): number {
     return comparison.failed ? 1 : 0;
   }
   console.error(
-    "Usage: node scripts/engine-work.ts results DIR | compare BASE_DIR HEAD_DIR [AGAIN_DIR] [--accepted]",
+    "Usage: node scripts/engine-work.ts results DIR | compare BASE_DIR HEAD_DIR [AGAIN_DIR] [--accepted] | check RUN.json",
   );
   return 2;
 }
