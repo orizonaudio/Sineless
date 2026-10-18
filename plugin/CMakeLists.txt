@@ -11,12 +11,9 @@ target_link_libraries(plugin
 
 smtg_add_vst3plugin(Sineless src/Factory.cpp)
 target_link_libraries(Sineless PRIVATE plugin orizon_warnings)
-# The licences travel with the plugin: Sineless's, and the embedded fonts'.
-smtg_target_add_plugin_resources(Sineless RESOURCES
-    ${PROJECT_SOURCE_DIR}/LICENSE
-    ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-Roboto.txt
-    ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-RobotoMono.txt
-)
+# The licences travel with the plugin (cmake/Licences.cmake).
+orizon_licence_files(VST3 pluginLicences)
+smtg_target_add_plugin_resources(Sineless RESOURCES ${pluginLicences})
 set_target_properties(Sineless PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resource/Info.plist.in
     MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.sineless
@@ -44,6 +41,9 @@ if(BUILD_TESTING)
     target_link_libraries(plugin_tests
         PRIVATE plugin sdk_hosting engine_test_support orizon_warnings GTest::gtest_main)
     gtest_discover_tests(plugin_tests DISCOVERY_TIMEOUT 30)
+    add_test(NAME Plugin.CarriesItsLicences
+        COMMAND ${CMAKE_COMMAND} "-DRESOURCES=$<TARGET_FILE_DIR:Sineless>/../Resources"
+                -DWINDOWS=${WIN32} -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/CarriesItsLicences.cmake)
 endif()
 
 # The audio-thread benchmark: process() timed against the block deadline. See bench/ProcessBench.cpp.
