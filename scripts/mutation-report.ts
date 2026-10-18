@@ -3,7 +3,9 @@
 // relative to the working directory (scripts/mutation-summary.ts). With Mull's log and each
 // mutant's time limit, the summary also says how long the tests take against that limit.
 //   node scripts/mutation-report.ts <report.json> <title> [seconds the run took]
-//       [--mull-log <mull.log> --limit <seconds>]
+//       [--mull-log <mull.log> --limit <seconds> | --binary-seconds <seconds> --limit <seconds>]
+// (--binary-seconds: the slowest of several test binaries with no mutant, each stopped at the
+// limit, as scripts/mutation-au.sh runs them)
 //   node scripts/mutation-report.ts <report.json> --annotate
 //   node scripts/mutation-report.ts <report.json> --survivors   (the mutants no test noticed, JSON)
 import { existsSync, readFileSync } from "node:fs";
@@ -31,6 +33,7 @@ const { positionals, values } = parseArgs({
     annotate: { type: "boolean" },
     survivors: { type: "boolean" },
     "mull-log": { type: "string" },
+    "binary-seconds": { type: "string" },
     limit: { type: "string" },
     "stryker-log": { type: "string" },
     "mull-dry-log": { type: "string" },
@@ -90,7 +93,10 @@ if (values.survivors === true) {
   );
   const log = values["mull-log"];
   const limit = values.limit;
-  if (log !== undefined && limit !== undefined) {
+  const binarySeconds = values["binary-seconds"];
+  if (binarySeconds !== undefined && limit !== undefined) {
+    summary += `\n\n${timeLimitNote(Number(binarySeconds), Number(limit), true)}`;
+  } else if (log !== undefined && limit !== undefined) {
     const warmUp = warmUpSeconds(readFileSync(log, "utf8"));
     if (warmUp !== undefined) {
       summary += `\n\n${timeLimitNote(warmUp, Number(limit))}`;

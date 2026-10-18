@@ -64,6 +64,21 @@ describe("the mutation report's command line", () => {
     expect(summary).not.toContain("[!WARNING]");
   });
 
+  test("adds the slowest test binary's time against each binary's limit (scripts/mutation-au.sh)", () => {
+    const summary = run(
+      report(),
+      "Mutation testing (Audio Unit)",
+      "60",
+      "--binary-seconds",
+      "2",
+      "--limit",
+      "300",
+    );
+    expect(summary).toContain(
+      "The slowest test binary takes 2 s with no mutant; each test binary is stopped at 300 s.",
+    );
+  });
+
   test("lists the mutants no test notices as JSON, for the mutation triage", () => {
     expect(JSON.parse(run(report(), "--survivors"))).toEqual([
       {

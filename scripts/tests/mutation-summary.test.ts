@@ -244,6 +244,22 @@ describe("the time limit note on a C++ mutation run", () => {
       expect(note.includes("[!WARNING]")).toBe(warns);
     },
   );
+
+  // Each of several test binaries is stopped at the limit (scripts/mutation-au.sh): the slowest
+  // one must take well under it.
+  test.each([
+    [149, 300, false],
+    [151, 300, true],
+  ])(
+    "for a slowest test binary taking %d s against each binary's %d s limit, says so and warns: %s",
+    (slowest, limit, warns) => {
+      const note = timeLimitNote(slowest, limit, true);
+      expect(note.split("\n")[0]).toBe(
+        `The slowest test binary takes ${String(slowest)} s with no mutant; each test binary is stopped at ${String(limit)} s.`,
+      );
+      expect(note.includes("[!WARNING]")).toBe(warns);
+    },
+  );
 });
 
 describe("a Stryker run no unit test reaches", () => {
