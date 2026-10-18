@@ -34,6 +34,9 @@ public:
     // Host thread. Sizes the capture for the sample rate and takes the channel count.
     OSStatus Initialize() override;
     UInt32 SupportedNumChannels(const AUChannelInfo** outInfo) override;
+    // The output ends with the input: a tail of zero (the SDK's GetTailTime), offered as hosts
+    // expect.
+    bool SupportsTail() noexcept AUSDK_RTSAFE override { return true; }
     OSStatus GetPropertyInfo(AudioUnitPropertyID id, AudioUnitScope scope, AudioUnitElement element,
                              UInt32& outDataSize, bool& outWritable) override;
     OSStatus GetProperty(AudioUnitPropertyID id, AudioUnitScope scope, AudioUnitElement element,
