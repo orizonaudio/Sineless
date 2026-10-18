@@ -4,11 +4,10 @@
 // argument names one more prefix this binary fails on, as one test binary notices a mutant that
 // another misses.
 const failsOn = ["kill", ...process.argv.slice(2)];
-const prefix = new RegExp(
-  `^(${[...failsOn, "survive", "hang"].join("|")}):`,
-  "u",
+const prefixes = [...failsOn, "survive", "hang"].map((name) => `${name}:`);
+const id = Object.keys(process.env).find((key) =>
+  prefixes.some((prefix) => key.startsWith(prefix)),
 );
-const id = Object.keys(process.env).find((key) => prefix.test(key));
 if (id?.startsWith("hang:")) {
   setInterval(() => undefined, 1000);
 } else {
