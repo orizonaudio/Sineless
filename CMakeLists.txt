@@ -35,6 +35,9 @@ add_subdirectory(engine)
 if(NOT ORIZON_ENGINE_ONLY)
     add_subdirectory(editor)
     add_subdirectory(plugin)
+    if(APPLE)
+        add_subdirectory(au) # The Audio Unit, on Apple's AudioUnitSDK.
+    endif()
 endif()
 if(ORIZON_FUZZ OR BUILD_TESTING)
     add_subdirectory(engine/tests/fuzz) # After the modules: it builds the editor's session too.
@@ -43,9 +46,11 @@ endif()
 # The module order above, checked: a module linking one added after it fails configuration. The
 # engine also stays free of the VST3 SDK, and only the Audio Unit links Apple's AudioUnitSDK (which
 # also brings C++23 with it).
-orizon_forbid_dependencies(protocol engine editor plugin Sineless audiounitsdk)
-orizon_forbid_dependencies(engine editor plugin Sineless sdk sdk_common pluginterfaces base
+orizon_forbid_dependencies(protocol engine editor plugin Sineless au audiounitsdk)
+orizon_forbid_dependencies(engine editor plugin Sineless au sdk sdk_common pluginterfaces base
                            audiounitsdk)
-orizon_forbid_dependencies(editor plugin Sineless audiounitsdk)
-orizon_forbid_dependencies(plugin audiounitsdk)
-orizon_forbid_dependencies(Sineless audiounitsdk)
+orizon_forbid_dependencies(editor plugin Sineless au audiounitsdk)
+orizon_forbid_dependencies(plugin au audiounitsdk)
+orizon_forbid_dependencies(Sineless au audiounitsdk)
+# The two formats stay apart: the Audio Unit links neither the VST3 glue nor the VST3 SDK.
+orizon_forbid_dependencies(au plugin Sineless sdk sdk_common pluginterfaces base)
