@@ -228,6 +228,9 @@ public:
         }
     }
 
+    // What one track plays from here on, as when its routing changes.
+    void setSignal(std::size_t track, const Signal& signal) { tracks.at(track).signal = signal; }
+
     // Writes `samples` more to one track's capture only, as if its audio arrived early.
     void lead(std::size_t track, int samples)
     {
@@ -236,10 +239,12 @@ public:
         tracks.at(track).engine->captureRing().write(channels.data(), channelCount, samples);
     }
 
-    // The next frame, if one comes within a few tries.
+    // The next frame, if one comes within 64 ticks.
     std::optional<DecodedFrame> produce()
     {
-        for (int attempt = 0; attempt < 4; ++attempt) {
+        // As a page asks every tick: a search or gains running over frames draw nothing until
+        // they end, which may take dozens of ticks at the highest rates.
+        for (int attempt = 0; attempt < 64; ++attempt) {
             if (analyzer().produce(bytes)) {
                 return decode(bytes);
             }
@@ -2703,6 +2708,32 @@ TEST_P(FrozenMatch, DescribesTheAudioFrozen)
     expectCopies(*frame);
 }
 
+// Panned, a frozen Seconds view shows other held audio, and its matches are searched again over
+// what it shows: moved back to before this track sounds, nothing sounds together with it, and
+// each match is no value. (Beats pans by its crop, which is a new view as zooming is.)
+TEST_P(FrozenMatch, FollowsAPannedView)
+{
+    if (GetParam().timeBase == TimeBase::kBeats) {
+        GTEST_SKIP() << "Beats pans by its crop";
+    }
+    session->play(kStart, 0.01);
+    session->play(kBrief); // This track sounds.
+    ASSERT_TRUE(session->produce());
+    session->analyzer().setFrozen(true);
+    auto frame = settle();
+    ASSERT_TRUE(frame);
+    expectCopies(*frame);
+
+    session->analyzer().setPan(0.3); // Back to before it sounds.
+    frame = settle();
+    ASSERT_TRUE(frame) << "no frame for the pan";
+    for (const std::size_t track : {1U, 2U}) {
+        const std::size_t at =
+            std::size_t{frame->laneCount} * traceLength(*frame) + track * protocol::kMatchValues;
+        EXPECT_TRUE(std::isnan(frame->data.at(at))) << "track " << track << " still matched";
+    }
+}
+
 TEST_P(FrozenMatch, DescribesTheLiveAudioOnceUnfrozen)
 {
     session->play(kStart - kBrief, 0.01);
@@ -2733,8 +2764,9 @@ TEST_P(FrozenMatch, FollowsTheViewWithTheTransportStopped)
     session->play(2.0 * kBrief); // This track sounds.
 
     session->analyzer().setView(0.0, 0.9); // Still where it sounds, and the playhead.
+    // Both matches, each searched over a few frames.
     std::optional<DecodedFrame> frame;
-    for (int step = 0; step < 8; ++step) {
+    for (int step = 0; step < 64; ++step) {
         if (auto produced = session->produce()) {
             frame = std::move(produced);
         }
@@ -3251,7 +3283,9 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     session.join({.frequency = 1500.0, .offset = 0.0});
     configure(session.own(), c.mode, c.timeBase);
     session.play(2.0, 0.05);
-    (void)session.produce();
+    // Until any match search in progress (spread over frames) has ended.
+    for (int frame = 0; frame < 64 && session.produce(); ++frame) {
+    }
     std::vector<std::byte> bytes;
     ASSERT_FALSE(session.analyzer().produce(bytes)) << "nothing has changed";
 
@@ -3543,7 +3577,9 @@ AnalysisWork workSince(const AnalysisWork& before, const AnalysisWork& now)
             .samplesReduced = now.samplesReduced - before.samplesReduced,
             .samplesSummed = now.samplesSummed - before.samplesSummed,
             .samplesSearched = now.samplesSearched - before.samplesSearched,
-            .matchSearches = now.matchSearches - before.matchSearches};
+            .matchSearches = now.matchSearches - before.matchSearches,
+            .searchWork = now.searchWork - before.searchWork,
+            .gainWork = now.gainWork - before.gainWork};
 }
 
 // The work a session does per second of audio, once what it shows is full: played for `fill`
@@ -3784,6 +3820,731 @@ std::vector<ModeCase> compareCases()
 
 INSTANTIATE_TEST_SUITE_P(EveryTimeBase, MatchWork, ::testing::ValuesIn(compareCases()),
                          modeTestName);
+
+// A match search over a long window at a high rate (here 8 s, or a 4 s view, at 96 kHz) is
+// spread over frames, a budget of work in each (kMatchSearchWork), so that no frame stalls on it:
+// in both time bases.
+TEST_P(MatchWork, SpreadsALongSearchOverFrames)
+{
+    const ModeCase c = GetParam();
+    constexpr double kRate = 96000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = 40});
+    configure(session.own(), DisplayMode::kCompare, c.timeBase);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kEightBars));
+    session.own().settings().set(SettingId::kTimeSpan, setting(SettingId::kTimeSpan).maximum);
+    session.analyzer().setCompared(othersOf(session));
+    session.play(17.0, 1.0);
+    std::uint64_t most = 0;
+    std::uint64_t total = 0;
+    const double block = static_cast<double>(kBlock) / kRate;
+    const auto frames = static_cast<int>(std::lround(2.0 / block));
+    for (int frame = 0; frame < frames; ++frame) {
+        const AnalysisWork before = session.analyzer().work();
+        session.play(block, block);
+        const std::uint64_t work = workSince(before, session.analyzer().work()).searchWork;
+        most = std::max(most, work);
+        total += work;
+    }
+    ASSERT_GT(total, kMatchSearchWork) << "the searches were not long enough to spread";
+    // A frame stops once its budget is spent, finishing the offset it is on: at most one
+    // offset's work (the window's length) beyond it.
+    const auto window = static_cast<std::uint64_t>(kMatchWindowSeconds * kRate);
+    EXPECT_LE(most, kMatchSearchWork + window) << "a frame did a whole search's work at once";
+}
+
+// Frozen, the audio shown is held and does not change: once its matches are found, a frozen view
+// has nothing more to search or measure while the host plays on: it reads nothing and draws no
+// more frames, and redrawn at another width, it searches no match again. Nine
+// tracks over a long window at 96 kHz, whose searches take several frames each, in both time
+// bases.
+TEST_P(MatchWork, LeavesAFrozenViewAloneOnceItsMatchesAreFound)
+{
+    const ModeCase c = GetParam();
+    constexpr double kRate = 96000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1});
+    for (std::int64_t copy = 1; copy <= 8; ++copy) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = 10 * copy});
+    }
+    configure(session.own(), DisplayMode::kCompare, c.timeBase);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
+    session.own().settings().set(SettingId::kTimeSpan, setting(SettingId::kTimeSpan).maximum);
+    session.analyzer().setCompared(othersOf(session));
+    // The view filled: four bars at 120 beats a minute (8 s), or the longest span.
+    session.play(c.timeBase == TimeBase::kBeats ? 9.0 : 5.0, 1.0);
+    session.analyzer().setFrozen(true);
+    const double frame = 1.0 / 60.0;
+    for (int tick = 0; tick < 240; ++tick) { // Four seconds to find them all.
+        session.play(frame);
+        (void)session.produce();
+    }
+    int drawn = 0;
+    const AnalysisWork quietFrom = session.analyzer().work();
+    for (int tick = 0; tick < 60; ++tick) {
+        session.play(frame);
+        drawn += session.produce().has_value() ? 1 : 0;
+    }
+    EXPECT_EQ(drawn, 0) << "frames drawn in a second of a frozen view";
+    EXPECT_EQ(workSince(quietFrom, session.analyzer().work()).samplesRead, 0U)
+        << "the held audio read again, to search or measure it";
+    // Redrawn with nothing it shows changed (another window width), it has no match to find.
+    const AnalysisWork redrawFrom = session.analyzer().work();
+    session.analyzer().setColumns(kColumns / 2);
+    for (int tick = 0; tick < 240 && session.produce(); ++tick) {
+    }
+    EXPECT_EQ(workSince(redrawFrom, session.analyzer().work()).matchSearches, 0U)
+        << "matches searched again over the same held audio";
+}
+
+// Panned while a match search and the gains are still being found, a frozen view ends both: they
+// would describe audio no longer shown, and are work for nothing. This track and seven copies of
+// it, which start just as the frozen 1 s view does, at 384 kHz (more than a frame to search, and
+// to read for the gains): one frame in, panned back to before the copies sound, nothing sounds
+// together, so every match and both gains are no value.
+TEST(MatchWork, EndsTheSearchAndGainsOfAViewPannedAway)
+{
+    constexpr double kRate = 384000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 3});
+    const auto copiesStart = static_cast<std::int64_t>(1.52 * kRate);
+    for (std::int64_t copy = 0; copy < 7; ++copy) {
+        session.join(
+            {.kind = Signal::Kind::kNoise, .seed = 3, .delay = 10 * copy, .startsAt = copiesStart});
+    }
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTimeSpan, 1.0);
+    session.analyzer().setCompared(othersOf(session));
+    session.play(2.5);
+    session.analyzer().setFrozen(true);
+    const AnalysisWork before = session.analyzer().work();
+    ASSERT_TRUE(session.produce());
+    const AnalysisWork first = workSince(before, session.analyzer().work());
+    ASSERT_GE(first.searchWork, kMatchSearchWork) << "the search ended in its first frame";
+    ASSERT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
+        << "the gains were measured in their first frame: nothing to end";
+    session.analyzer().setPan(1.0); // Back to before the copies sound.
+    const AnalysisWork panned = session.analyzer().work();
+    std::optional<DecodedFrame> frame = session.produce();
+    ASSERT_TRUE(frame) << "no frame for the pan";
+    const AnalysisWork onPan = workSince(panned, session.analyzer().work());
+    EXPECT_EQ(onPan.searchWork, 0U) << "the search of the view panned away went on";
+    EXPECT_EQ(onPan.gainWork, 0U) << "the gains of the view panned away went on";
+    for (int step = 0; step < 400; ++step) {
+        auto produced = session.produce();
+        if (!produced) {
+            break;
+        }
+        frame = std::move(produced);
+    }
+    ASSERT_TRUE(frame);
+    for (std::size_t track = 1; track <= 7; ++track) {
+        const std::size_t at =
+            std::size_t{frame->laneCount} * traceLength(*frame) + track * protocol::kMatchValues;
+        EXPECT_TRUE(std::isnan(frame->data.at(at))) << "track " << track << " still matched";
+    }
+    EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
+        << "gains of the view panned away";
+    EXPECT_TRUE(std::isnan(session.field(FrameHeader::kFixedGainOffset)));
+}
+
+// Live with the transport stopped and no audio arriving, panning a zoomed roll shows other audio,
+// and its matches are searched again over what it shows: this track and two copies sound only in
+// the newest second of a 4 s roll; zoomed onto that second the copies match, and panned onto the
+// oldest, where nothing sounds, every match and the summing gain are no value.
+TEST(MatchWork, FollowsAZoomedRollPannedWithTheTransportStopped)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    const auto sounds = static_cast<std::int64_t>(3.0 * kRate);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 5, .startsAt = sounds});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 5, .startsAt = sounds});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 5, .startsAt = sounds});
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTimeSpan, 4.0);
+    session.analyzer().setCompared(othersOf(session));
+    session.playing = false;
+    session.play(4.0);
+    const auto settle = [&] {
+        std::optional<DecodedFrame> last;
+        for (int frame = 0; frame < 200; ++frame) {
+            auto produced = session.produce();
+            if (!produced) {
+                break;
+            }
+            last = std::move(produced);
+        }
+        return last;
+    };
+    const auto matched = [](const DecodedFrame& frame, std::size_t track) {
+        const std::size_t at =
+            std::size_t{frame.laneCount} * traceLength(frame) + track * protocol::kMatchValues;
+        return frame.data.at(at);
+    };
+    session.analyzer().setView(0.75, 1.0);
+    auto frame = settle();
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(std::isfinite(matched(*frame, 1))) << "the copies match where they sound";
+    session.analyzer().setView(0.0, 0.25);
+    frame = settle();
+    ASSERT_TRUE(frame) << "no frame for the pan";
+    for (const std::size_t track : {1U, 2U}) {
+        EXPECT_TRUE(std::isnan(matched(*frame, track))) << "track " << track << " still matched";
+    }
+    EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
+        << "the gain of the second shown before";
+}
+
+// A compared track that cannot be read yet (it joined mid-play, so it holds less than the view)
+// takes its turn and is tried again soon, but does not take every turn: the other tracks' matches
+// still follow a change meanwhile. A copy's delay changes from 10 to 30 samples while a track
+// that joined just before holds too little to search; within two seconds, the copy reads 30.
+TEST(MatchWork, RefreshesTheOthersWhileATrackCannotBeRead)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 6});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 6, .delay = 10});
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTimeSpan, setting(SettingId::kTimeSpan).maximum);
+    session.play(5.0, 1.0 / 60.0);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7}); // Holds nothing of the view yet.
+    session.analyzer().setCompared(othersOf(session));
+    session.setSignal(1, {.kind = Signal::Kind::kNoise, .seed = 6, .delay = 30});
+    double offset = 0.0;
+    for (int frame = 0; frame < 120; ++frame) {
+        session.play(1.0 / 60.0);
+        if (const auto drawn = session.produce()) {
+            ASSERT_EQ(drawn->laneCount, 4) << "three tracks and the sum";
+            offset = drawn->data.at(std::size_t{drawn->laneCount} * traceLength(*drawn) +
+                                    (1 * protocol::kMatchValues) + 1);
+        }
+    }
+    EXPECT_EQ(offset, 30.0) << "the copy's match never refreshed";
+}
+
+// Frozen, the searches and gains of a zoomed view run over many frames, but what it shows changes
+// only when one ends: the frame is built only then, not at every step, and never sent again
+// unchanged. Eight tracks over a long window at 96 kHz, frozen and zoomed onto its second half,
+// in both time bases.
+TEST_P(MatchWork, BuildsAFrozenFrameOnlyWhenItsWorkEnds)
+{
+    const ModeCase c = GetParam();
+    constexpr double kRate = 96000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 11});
+    for (std::int64_t copy = 1; copy <= 7; ++copy) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = 11, .delay = 10 * copy});
+    }
+    configure(session.own(), DisplayMode::kCompare, c.timeBase);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
+    session.own().settings().set(SettingId::kTimeSpan, setting(SettingId::kTimeSpan).maximum);
+    session.analyzer().setCompared(othersOf(session));
+    session.play(c.timeBase == TimeBase::kBeats ? 9.0 : 5.0, 1.0);
+    session.analyzer().setFrozen(true);
+    session.analyzer().setView(0.5, 1.0);
+    std::vector<std::byte> last;
+    std::vector<std::byte> bytes;
+    int sent = 0;
+    int repeated = 0;
+    int working = 0; // Ticks that stepped a search or gains.
+    // Ticks that built a frame, sent or not: in Seconds its columns reduced, in Beats (whose
+    // frozen lanes keep their columns, and which has no gains to read) its readouts read.
+    int built = 0;
+    for (int tick = 0; tick < 600; ++tick) {
+        const AnalysisWork before = session.analyzer().work();
+        const bool drawn = session.analyzer().produce(bytes);
+        const AnalysisWork spent = workSince(before, session.analyzer().work());
+        working += spent.searchWork > 0 || spent.gainWork > 0 ? 1 : 0;
+        const bool build = c.timeBase == TimeBase::kBeats
+                               ? spent.samplesRead > spent.samplesSearched
+                               : spent.samplesReduced > 0;
+        built += build ? 1 : 0;
+        if (drawn) {
+            ++sent;
+            repeated += bytes == last ? 1 : 0;
+            last = bytes;
+        }
+    }
+    EXPECT_GT(sent, 1) << "the matches were never shown";
+    EXPECT_EQ(repeated, 0) << "frames sent again unchanged, of " << sent;
+    EXPECT_LT(built, working) << "a frame built at every step of the work";
+}
+
+// Frozen, a match whose audio could not be read (a held copy can be caught short, and is captured
+// again on the next frame) is tried again on the frames that follow, not left as no value until
+// the view changes, also with no audio arriving and nothing else to do; and tracks that can never
+// be read are not tried on and on. Tracks that joined just before the freeze hold too little of
+// the view: each is tried more than once, and within a second no more.
+TEST(MatchWork, TriesAFailedReadAgainWhileFrozen)
+{
+    constexpr double kRate = 48000.0;
+    constexpr double kSpan = 4.0;
+    // This track alone with one late track, so nothing else keeps the frames going; and with a
+    // copy and two late tracks, each of which would keep the other waiting.
+    for (const auto& [copies, late] : {std::pair{0, 1}, std::pair{1, 2}}) {
+        SCOPED_TRACE(testing::Message() << copies << " copies, " << late << " late tracks");
+        Session session(kRate, 2);
+        session.join({.kind = Signal::Kind::kNoise, .seed = 8});
+        for (int copy = 0; copy < copies; ++copy) {
+            session.join({.kind = Signal::Kind::kNoise, .seed = 8, .delay = 10});
+        }
+        configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+        session.own().settings().set(SettingId::kTimeSpan, kSpan);
+        session.play(5.0, 1.0);
+        for (int track = 0; track < late; ++track) { // Holding nothing of the view yet.
+            session.join({.kind = Signal::Kind::kNoise, .seed = 9U + static_cast<unsigned>(track)});
+        }
+        session.analyzer().setCompared(othersOf(session));
+        session.play(0.2);
+        const AnalysisWork before = session.analyzer().work();
+        session.analyzer().setFrozen(true);
+        std::vector<std::byte> bytes;
+        int triedAtEnd = 0; // Ticks of the second half that still read to search.
+        for (int tick = 0; tick < 120; ++tick) { // No audio arrives.
+            const AnalysisWork tickBefore = session.analyzer().work();
+            (void)session.analyzer().produce(bytes);
+            const bool tried = workSince(tickBefore, session.analyzer().work()).samplesSearched > 0;
+            triedAtEnd += tick >= 60 && tried ? 1 : 0;
+        }
+        // Each try reads the newest part of the view, of this track and the other: the copies'
+        // searches, then the late tracks' tries.
+        const auto window =
+            static_cast<std::uint64_t>(std::min(kMatchWindowSeconds, kSpan) * kRate) * 2;
+        const std::uint64_t tries =
+            workSince(before, session.analyzer().work()).samplesSearched / window -
+            static_cast<std::uint64_t>(copies);
+        EXPECT_GE(tries, 2U * static_cast<std::uint64_t>(late))
+            << "the late tracks' failed reads were not tried again";
+        EXPECT_EQ(triedAtEnd, 0) << "a read that keeps failing was tried on and on";
+    }
+}
+
+// Dragged, a frozen Seconds view moves a little each frame: a search or measurement begun in one
+// frame would be ended by the next frame's move, so none begins until the view stays where it is,
+// and then they do. Nine tracks over a 1 s view at 96 kHz, panned back through the audio held
+// for a second.
+TEST(MatchWork, WaitsForAFrozenViewToStopBeingDragged)
+{
+    constexpr double kRate = 96000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1});
+    for (std::int64_t copy = 1; copy <= 8; ++copy) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = 10 * copy});
+    }
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTimeSpan, 1.0);
+    session.analyzer().setCompared(othersOf(session));
+    session.play(5.0, 1.0);
+    session.analyzer().setFrozen(true);
+    for (int frame = 0; frame < 400 && session.produce(); ++frame) {
+    }
+    const AnalysisWork before = session.analyzer().work();
+    for (int frame = 1; frame <= 60; ++frame) {
+        session.analyzer().setPan(0.01 * frame);
+        ASSERT_TRUE(session.produce()) << "no frame for the move";
+    }
+    const AnalysisWork dragged = workSince(before, session.analyzer().work());
+    EXPECT_EQ(dragged.searchWork, 0U) << "searches begun while dragged";
+    EXPECT_EQ(dragged.gainWork, 0U) << "gains measured while dragged";
+    const AnalysisWork stopped = session.analyzer().work();
+    for (int frame = 0; frame < 400 && session.produce(); ++frame) {
+    }
+    const AnalysisWork after = workSince(stopped, session.analyzer().work());
+    EXPECT_GT(after.searchWork, 0U) << "nothing searched once it stopped";
+    EXPECT_GT(after.gainWork, 0U) << "nothing measured once it stopped";
+}
+
+// A Compare roll's gains measured over several frames are the ones measured at once would be:
+// this track, a copy and a copy 40 samples late, over the longest span at 384 kHz (more than a
+// frame's budget to read), sum as recorded to 10 log10(5/3) dB (two in phase, one unrelated)
+// and, fixed, to 10 log10(9/3) dB (all three in phase), live and then frozen. Until the first
+// measurement ends, both are no value, not 0.
+TEST(CompareGainWork, MeasuresALongRollsGainsOverFramesAsAtOnce)
+{
+    constexpr double kRate = 384000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7, .delay = 40});
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    const double span = setting(SettingId::kTimeSpan).maximum;
+    session.own().settings().set(SettingId::kTimeSpan, span);
+    session.play(span + 0.5); // No frames yet.
+    session.analyzer().setCompared(othersOf(session));
+    ASSERT_TRUE(session.produce());
+    EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
+        << "a gain before it was measured";
+    EXPECT_TRUE(std::isnan(session.field(FrameHeader::kFixedGainOffset)));
+
+    const auto expectGains = [&] {
+        // The frames that follow with no more audio, until the searches and gains have ended.
+        for (int frame = 0; frame < 200 && session.produce(); ++frame) {
+        }
+        EXPECT_NEAR(session.field(FrameHeader::kSumGainOffset), 10.0 * std::log10(5.0 / 3.0), 0.15);
+        EXPECT_NEAR(session.field(FrameHeader::kFixedGainOffset), 10.0 * std::log10(9.0 / 3.0),
+                    0.15);
+    };
+    {
+        SCOPED_TRACE("live");
+        expectGains();
+    }
+    {
+        SCOPED_TRACE("frozen");
+        session.analyzer().setFrozen(true);
+        expectGains();
+    }
+}
+
+// The gains read every compared track's view, stereo tracks as their Mid, which needs room for a
+// second channel: room enough for a view longer than any read before, though no match search
+// (with no other track compared, there is none) has made room for it. A playing stereo roll of
+// this track alone, lengthened from 2 s to the longest span, is drawn and measured.
+TEST(CompareGainWork, ReadsALongerViewThanAnyBefore)
+{
+    constexpr double kRate = 96000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 21});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 22});
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTimeSpan, 2.0);
+    session.analyzer().setCompared({});
+    session.play(5.0, 1.0 / 60.0);
+    session.own().settings().set(SettingId::kTimeSpan, setting(SettingId::kTimeSpan).maximum);
+    session.play(0.5, 1.0 / 60.0);
+    EXPECT_TRUE(session.produce()) << "the longer roll was not drawn";
+}
+
+// Frozen, the audio shown is held: its gains, once measured, stay while the host plays on, rather
+// than coming due again every 100 ms of live audio. A measurement that takes longer than that (four
+// tracks over the longest span at 384 kHz) would otherwise end in a frame that begins the next,
+// for as long as the view stays frozen. Within two seconds of the freeze, it reads nothing more.
+TEST(CompareGainWork, MeasuresAFrozenRollsGainsOnce)
+{
+    constexpr double kRate = 384000.0;
+    Session session(kRate, 2);
+    for (std::uint64_t seed = 1; seed <= 4; ++seed) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = seed});
+    }
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    const double span = setting(SettingId::kTimeSpan).maximum;
+    session.own().settings().set(SettingId::kTimeSpan, span);
+    session.analyzer().setCompared(othersOf(session));
+    session.play(span + 0.5);
+    session.analyzer().setFrozen(true);
+    std::vector<std::byte> bytes;
+    for (int tick = 0; tick < 120; ++tick) { // The host plays on.
+        session.play(1.0 / 60.0);
+        (void)session.analyzer().produce(bytes);
+    }
+    ASSERT_FALSE(bytes.empty()) << "no frame drawn";
+    ASSERT_TRUE(std::isfinite(get<float>(bytes, FrameHeader::kSumGainOffset))) << "never measured";
+    const AnalysisWork before = session.analyzer().work();
+    for (int tick = 0; tick < 60; ++tick) {
+        session.play(1.0 / 60.0);
+        (void)session.analyzer().produce(bytes);
+    }
+    const AnalysisWork spent = workSince(before, session.analyzer().work());
+    EXPECT_EQ(spent.gainWork, 0U) << "the held audio's gains measured again";
+    EXPECT_EQ(spent.samplesRead, 0U) << "the held audio read again";
+}
+
+// Playing, a long roll's window moves on between the frames over which its gains are measured:
+// each track is read where the window was when they began, so that the tracks the fix aligns stay
+// aligned. This track, a copy and a copy 40 samples late, at 384 kHz over the longest span with a
+// block of audio between frames: once the gains are measured with the matches found, every frame's
+// gains are the ones measured at once.
+TEST(CompareGainWork, KeepsALongRollsGainsWhilePlaying)
+{
+    constexpr double kRate = 384000.0;
+    const double sumGain = 10.0 * std::log10(5.0 / 3.0);
+    const double fixedGain = 10.0 * std::log10(9.0 / 3.0);
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7, .delay = 40});
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    const double span = setting(SettingId::kTimeSpan).maximum;
+    session.own().settings().set(SettingId::kTimeSpan, span);
+    session.play(span + 0.5); // No frames yet.
+    session.analyzer().setCompared(othersOf(session));
+    int fixedFrames = 0;
+    int wrong = 0;
+    for (int frame = 0; frame < 300; ++frame) {
+        session.play(static_cast<double>(kBlock) / kRate);
+        if (!session.produce()) {
+            continue;
+        }
+        const double sum = session.field(FrameHeader::kSumGainOffset);
+        const double fixed = session.field(FrameHeader::kFixedGainOffset);
+        // Until the matches are found, there is nothing to fix: the fixed gain is the sum's.
+        if (fixedFrames == 0 && !(std::abs(fixed - fixedGain) <= 0.15)) {
+            continue;
+        }
+        ++fixedFrames;
+        if (!(std::abs(sum - sumGain) <= 0.15 && std::abs(fixed - fixedGain) <= 0.15)) {
+            ++wrong;
+        }
+    }
+    EXPECT_GT(fixedFrames, 100) << "the fix was not measured, or late";
+    EXPECT_EQ(wrong, 0) << "of " << fixedFrames << " frames measured with the fix";
+}
+
+// A page that is hidden stops asking for frames, and the gains being measured wait: shown again
+// after the capture has moved past the audio they began on, they are measured afresh, not from
+// silence where that audio was. This track, a copy and a copy 40 samples late, at 384 kHz over the
+// longest span, hidden for six seconds partway through a measurement: every gain shown afterwards
+// is the one measured at once.
+TEST(CompareGainWork, MeasuresAfreshAfterThePageWasHidden)
+{
+    constexpr double kRate = 384000.0;
+    const double sumGain = 10.0 * std::log10(5.0 / 3.0);
+    const double fixedGain = 10.0 * std::log10(9.0 / 3.0);
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 7, .delay = 40});
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    const double span = setting(SettingId::kTimeSpan).maximum;
+    session.own().settings().set(SettingId::kTimeSpan, span);
+    session.play(span + 0.5);
+    session.analyzer().setCompared(othersOf(session));
+    const double block = static_cast<double>(kBlock) / kRate;
+    // Until the gains are measured with the matches found.
+    bool fixed = false;
+    for (int frame = 0; frame < 300 && !fixed; ++frame) {
+        session.play(block);
+        fixed = session.produce().has_value() &&
+                std::abs(session.field(FrameHeader::kFixedGainOffset) - fixedGain) <= 0.15;
+    }
+    ASSERT_TRUE(fixed);
+    // Hidden just after a frame that began the next measurement, which takes several frames at
+    // this rate: one that read a frame's budget of samples.
+    bool begun = false;
+    for (int frame = 0; frame < 300 && !begun; ++frame) {
+        const AnalysisWork before = session.analyzer().work();
+        session.play(block);
+        (void)session.produce();
+        begun = workSince(before, session.analyzer().work()).samplesRead > kGainReadWork / 2;
+    }
+    ASSERT_TRUE(begun);
+    session.play(6.0);
+    int wrong = 0;
+    for (int frame = 0; frame < 120; ++frame) {
+        session.play(block);
+        if (!session.produce()) {
+            continue;
+        }
+        const double sum = session.field(FrameHeader::kSumGainOffset);
+        const double fixedNow = session.field(FrameHeader::kFixedGainOffset);
+        if (!(std::abs(sum - sumGain) <= 0.15 && std::abs(fixedNow - fixedGain) <= 0.15)) {
+            ++wrong;
+        }
+    }
+    EXPECT_EQ(wrong, 0) << "frames with gains measured from audio since overwritten";
+}
+
+// Frozen, every match is searched again, one a frame, while the gains take more than a frame to
+// measure: a match found while they are being measured is in the fixed gain all the same, though
+// no audio arrives to make them due again. This track, six unrelated tracks, then two copies at
+// different delays, checked last so that their matches are the last found: fixed, the three
+// copies sum in phase, to 10 log10((9 + 6) / 9) dB; as recorded, none do, to about 0 dB.
+TEST(CompareGainWork, FixesTheGainWithEveryMatchFoundWhileMeasuring)
+{
+    constexpr double kRate = 48000.0;
+    constexpr double kSpan = 4.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 9});
+    for (std::uint64_t seed = 101; seed <= 106; ++seed) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = seed});
+    }
+    for (std::int64_t copy = 1; copy <= 2; ++copy) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = 9, .delay = 10 * copy});
+    }
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTimeSpan, kSpan);
+    // No frame until frozen, so every match is first found while frozen.
+    session.play(kSpan + 1.0);
+    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setFrozen(true);
+    for (int frame = 0; frame < 300 && session.produce(); ++frame) {
+    }
+    EXPECT_NEAR(session.field(FrameHeader::kFixedGainOffset), 10.0 * std::log10(15.0 / 9.0), 0.3);
+    EXPECT_NEAR(session.field(FrameHeader::kSumGainOffset), 0.0, 0.3);
+}
+
+// A triggered view starts a fraction of a sample after a sample, a different fraction each frame:
+// zoomed in, the samples shown begin one sample later in some frames than in others. That is the
+// same view, so the gains measured over several frames still end. A tone of 384.5 samples a cycle
+// triggers half a sample apart from frame to frame, and two zooms half a sample apart make sure
+// that one of them moves by a sample: fifteen tracks over the longest triggered span at 384 kHz
+// have their summing gains measured within a second of frames.
+TEST(CompareGainWork, MeasuresAZoomedTriggeredViewsGains)
+{
+    constexpr double kRate = 384000.0;
+    const double span = protocol::kRollThresholdSeconds;
+    const double count = span * kRate;
+    for (const double halfSamples : {0.0, 1.0}) {
+        SCOPED_TRACE(halfSamples);
+        Session session(kRate, 2);
+        session.join({.frequency = kRate / 384.5, .amplitude = 0.5, .offset = 0.0});
+        for (std::uint64_t seed = 1; seed < 15; ++seed) {
+            session.join({.kind = Signal::Kind::kNoise, .seed = seed});
+        }
+        configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+        session.own().settings().set(SettingId::kTriggerMode,
+                                     static_cast<double>(protocol::TriggerMode::kNormal));
+        session.own().settings().set(SettingId::kTimeSpan, span);
+        session.analyzer().setCompared(othersOf(session));
+        const double start = (std::floor(0.3 * count) + 0.25 + (0.5 * halfSamples)) / count;
+        session.analyzer().setView(start, 0.9);
+        session.play(span + 0.5);
+        bool measured = false;
+        for (int frame = 0; frame < 60 && !measured; ++frame) {
+            session.play(1.0 / 60.0);
+            measured = session.produce().has_value() &&
+                       std::isfinite(session.field(FrameHeader::kSumGainOffset));
+        }
+        EXPECT_TRUE(measured) << "the gains were begun again every few frames";
+    }
+}
+
+// Other tracks compared, the gains are no value until they are measured for them, rather than the
+// last tracks' gains under the new tracks' names: eight tracks over the longest span at 96 kHz
+// (more than a frame to read), one unchecked once their gains are measured.
+TEST(CompareGainWork, ShowsNoGainsForOtherTracksUntilMeasured)
+{
+    constexpr double kRate = 96000.0;
+    Session session(kRate, 2);
+    for (std::uint64_t seed = 1; seed <= 8; ++seed) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = seed});
+    }
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+    session.own().settings().set(SettingId::kTimeSpan, setting(SettingId::kTimeSpan).maximum);
+    std::vector<std::uint64_t> others = othersOf(session);
+    session.analyzer().setCompared(others);
+    session.play(5.0);
+    session.analyzer().setFrozen(true);
+    for (int frame = 0; frame < 400 && session.produce(); ++frame) {
+    }
+    ASSERT_TRUE(std::isfinite(session.field(FrameHeader::kSumGainOffset)));
+    others.pop_back();
+    session.analyzer().setCompared(others);
+    ASSERT_TRUE(session.produce()) << "no frame for the change";
+    EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
+        << "the last tracks' gain shown for other tracks";
+    EXPECT_TRUE(std::isnan(session.field(FrameHeader::kFixedGainOffset)));
+    for (int frame = 0; frame < 400 && session.produce(); ++frame) {
+    }
+    EXPECT_TRUE(std::isfinite(session.field(FrameHeader::kSumGainOffset))) << "never measured";
+}
+
+// Zoomed or panned, a long roll's gains are measured again over several frames, and meanwhile the
+// last ones stay on show, as they do between refreshes: a value, not "no value", in every frame of
+// a drag. Eight tracks over the longest span at 96 kHz (more than a frame to read), live and
+// frozen.
+TEST(CompareGainWork, KeepsTheLastGainsOnShowWhileAViewIsMeasured)
+{
+    constexpr double kRate = 96000.0;
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        Session session(kRate, 2);
+        for (std::uint64_t seed = 1; seed <= 8; ++seed) {
+            session.join({.kind = Signal::Kind::kNoise, .seed = seed});
+        }
+        configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+        const double span = setting(SettingId::kTimeSpan).maximum;
+        session.own().settings().set(SettingId::kTimeSpan, span);
+        session.analyzer().setCompared(othersOf(session));
+        session.play(span + 1.0);
+        session.analyzer().setFrozen(frozen);
+        for (int frame = 0; frame < 200 && session.produce(); ++frame) {
+        }
+        ASSERT_TRUE(std::isfinite(session.field(FrameHeader::kSumGainOffset)));
+        for (int step = 1; step <= 8; ++step) {
+            session.analyzer().setView(0.0, 1.0 - (0.05 * step));
+            ASSERT_TRUE(session.produce()) << "no frame for the zoom";
+            EXPECT_TRUE(std::isfinite(session.field(FrameHeader::kSumGainOffset)))
+                << "no value while zooming, step " << step;
+            EXPECT_TRUE(std::isfinite(session.field(FrameHeader::kFixedGainOffset)));
+        }
+    }
+}
+
+// Compare left for Single while its matches and gains are still being found, over frames, leaves
+// nothing to do: with no new audio, live or frozen, Single draws the frame for the change and then
+// none, as it does after any other change.
+TEST(CompareGainWork, LeavesNothingToRedrawInSingle)
+{
+    constexpr double kRate = 96000.0;
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        Session session(kRate, 2);
+        for (std::uint64_t seed = 1; seed <= 8; ++seed) {
+            session.join({.kind = Signal::Kind::kNoise, .seed = seed});
+        }
+        configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+        const double span = setting(SettingId::kTimeSpan).maximum;
+        session.own().settings().set(SettingId::kTimeSpan, span);
+        session.analyzer().setCompared(othersOf(session));
+        session.play(span + 1.0);
+        session.analyzer().setFrozen(frozen);
+        ASSERT_TRUE(session.produce());
+        ASSERT_TRUE(session.produce()) << "the gains took a single frame: nothing in progress";
+        session.own().settings().set(SettingId::kDisplayMode,
+                                     static_cast<double>(DisplayMode::kSingle));
+        ASSERT_TRUE(session.produce()) << "no frame for the change";
+        EXPECT_FALSE(session.produce()) << "Single drew the same frame again";
+    }
+}
+
+// A Compare roll measures its summing gains over the whole view of every compared track, as
+// recorded and as fixed. Eight tracks over the longest span are read, and passed over to
+// measure them, over several frames, so no frame reads every track's view at once, nor measures
+// a gain at once. At 96 kHz and at the highest rate.
+TEST(CompareGainWork, ReadsARollsTracksOverSeveralFrames)
+{
+    constexpr std::size_t kTracks = 8;
+    for (const double rate : {96000.0, kSampleRates.back()}) {
+        SCOPED_TRACE(rateName(rate));
+        Session session(rate, 2);
+        for (std::uint64_t seed = 1; seed <= kTracks; ++seed) {
+            session.join({.kind = Signal::Kind::kNoise, .seed = seed});
+        }
+        configure(session.own(), DisplayMode::kCompare, TimeBase::kSeconds);
+        const double span = setting(SettingId::kTimeSpan).maximum;
+        session.own().settings().set(SettingId::kTimeSpan, span);
+        session.analyzer().setCompared(othersOf(session));
+        session.play(span + 1.0);
+        (void)session.produce(); // The roll drawn whole, once, as on opening the view.
+        std::uint64_t mostRead = 0;
+        std::uint64_t mostPassed = 0;
+        bool measured = false;
+        const double block = static_cast<double>(kBlock) / rate;
+        for (int frame = 0; frame < 40; ++frame) {
+            const AnalysisWork before = session.analyzer().work();
+            session.play(block);
+            const bool drawn = session.produce().has_value();
+            const AnalysisWork spent = workSince(before, session.analyzer().work());
+            mostRead = std::max(mostRead, spent.samplesRead);
+            mostPassed = std::max(mostPassed, spent.gainWork);
+            measured =
+                measured || (drawn && std::isfinite(session.field(FrameHeader::kSumGainOffset)));
+        }
+        // As recorded and as fixed: what measuring them all at once reads.
+        const auto everyView = static_cast<std::uint64_t>(kTracks * span * rate);
+        EXPECT_LT(mostRead, 2 * everyView) << "one frame read every compared track's view, twice";
+        EXPECT_GT(mostPassed, 0U) << "nothing measured";
+        // A gain measured at once passes over every view; spread, when that is well beyond what a
+        // frame may pass over, no frame does.
+        if (everyView > 2 * kGainReadWork) {
+            EXPECT_LT(mostPassed, everyView) << "one frame measured a gain at once";
+        }
+        // And they are measured: unrelated noise sums to a gain near 0 dB, a number.
+        EXPECT_TRUE(measured);
+    }
+}
 
 } // namespace
 } // namespace orizon::engine
