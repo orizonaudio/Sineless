@@ -106,4 +106,4 @@ if(ORIZON_FUZZ)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-option(ORIZON_BENCH "Build the performance benchmarks (perf_bench, process_bench)" OFF)
+option(ORIZON_BENCH "Build the performance benchmarks (analysis_bench, perf_bench, process_bench)" OFF)
