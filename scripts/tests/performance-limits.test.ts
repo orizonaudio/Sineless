@@ -1,3 +1,7 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "vitest";
@@ -113,5 +117,75 @@ describe("performance-limits.json", () => {
         }
       }
     }
+  });
+});
+
+// The script as scripts/performance.sh runs it: the scenarios to play, then a judgement of the
+// results whose exit status is the only way the check fails.
+describe("the command", () => {
+  const script = fileURLToPath(
+    new URL("../performance-limits.ts", import.meta.url),
+  );
+  const run = (...args: string[]) =>
+    spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+  const file = readLimits(
+    fileURLToPath(new URL("../performance-limits.json", import.meta.url)),
+  );
+
+  test("lists each scenario to play as its name, warm-up and duration", () => {
+    const listed = run("scenarios");
+    expect(listed.status).toBe(0);
+    expect(listed.stdout.trim().split("\n")).toEqual(
+      Object.entries(file.scenarios).map(
+        ([name, { warmup, duration }]) =>
+          `${name} ${String(warmup)} ${String(duration)}`,
+      ),
+    );
+  });
+
+  test("exits 1 when a run misses a limit, and 0 when it keeps every one", () => {
+    // The first machine's first scale with limits, as performance.sh would judge it.
+    const [machine, entry] = Object.entries(file.machines)[0] ?? [
+      "",
+      undefined,
+    ];
+    const [scale, scenarios] = Object.entries(entry?.limits ?? {})[0] ?? [
+      "",
+      {},
+    ];
+    expect(Object.keys(scenarios)).not.toHaveLength(0);
+    // A run at each bound, then one just past every bound.
+    const at = (past: number): Metrics => {
+      const run: Metrics = {};
+      for (const [scenario, bounds] of Object.entries(scenarios)) {
+        const measures: Record<string, { value: number }> = {
+          "display-scale": { value: Number(scale) },
+        };
+        for (const [measure, { min, max }] of Object.entries(bounds)) {
+          measures[measure] = {
+            value: min === undefined ? (max ?? 0) + past : min - past,
+          };
+        }
+        run[scenario] = measures;
+      }
+      return run;
+    };
+    const dir = mkdtempSync(join(tmpdir(), "performance-limits-"));
+    const within = join(dir, "within.json");
+    const missed = join(dir, "missed.json");
+    writeFileSync(within, JSON.stringify(at(0)));
+    writeFileSync(missed, JSON.stringify(at(1)));
+    const kept = run("judge", machine, within);
+    expect(kept.status).toBe(0);
+    expect(kept.stdout).not.toContain("FAILED");
+    const failed = run("judge", machine, missed);
+    expect(failed.status).toBe(1);
+    expect(failed.stdout).toContain("FAILED");
+  });
+
+  test("refuses a command it does not know, rather than judging nothing", () => {
+    expect(run().status).toBe(2);
+    expect(run("judge").status).toBe(2);
+    expect(run("judge").stderr).toContain("Usage");
   });
 });
