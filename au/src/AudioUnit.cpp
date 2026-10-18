@@ -1,5 +1,6 @@
 #include "AudioUnit.h"
 
+#include "AudioUnitView.h"
 #include "engine/CaptureRing.h"
 #include "engine/EngineRegistry.h"
 #include "engine/InstanceRegistry.h"
@@ -96,6 +97,11 @@ OSStatus AudioUnit::GetPropertyInfo(AudioUnitPropertyID id, AudioUnitScope scope
         outWritable = false;
         return noErr;
     }
+    if (id == kAudioUnitProperty_CocoaUI && scope == kAudioUnitScope_Global) {
+        outDataSize = sizeof(AudioUnitCocoaViewInfo);
+        outWritable = false;
+        return noErr;
+    }
     return AUEffectBase::GetPropertyInfo(id, scope, element, outDataSize, outWritable);
 }
 
@@ -105,6 +111,9 @@ OSStatus AudioUnit::GetProperty(AudioUnitPropertyID id, AudioUnitScope scope,
     if (id == kEngineTokenProperty && scope == kAudioUnitScope_Global) {
         std::memcpy(outData, &engineToken, sizeof engineToken);
         return noErr;
+    }
+    if (id == kAudioUnitProperty_CocoaUI && scope == kAudioUnitScope_Global) {
+        return copyCocoaViewInfo(*static_cast<AudioUnitCocoaViewInfo*>(outData));
     }
     return AUEffectBase::GetProperty(id, scope, element, outData);
 }

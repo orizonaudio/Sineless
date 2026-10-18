@@ -1,0 +1,9 @@
+# Mull's settings for the Audio Unit (scripts/mutation-au.sh): every mutator, in the Audio Unit's
+# own sources only. The script adds the changed-lines filter for a run against a base revision.
+mutators:
+  - cxx_all
+includePaths:
+  - ".*/au/src/.*"
+excludePaths:
+  - ".*/_deps/.*"
+  - ".*/tests/.*"

@@ -47,11 +47,17 @@ The TypeScript mutants are run against the unit tests only (vitest.mutation.conf
 tests in `ui/tests/app/` drive real browsers, far too slowly to run once per mutant, so a mutant
 in code only they reach, such as most of `ui/src/app.ts`, comes back as no coverage although an
 app test may well notice it. Before calling such a mutant a gap, look for the app test that
-would fail with it; if there is one, the verdict is **tested**. Likewise each C++ mutant runs on
-Linux against its own module's tests only (scripts/mutation-cpp.sh): `engine_tests`,
-`plugin_tests` or `editor_tests`. Another module's tests, the macOS and Windows editor tests
-(`editor/tests/EditorTests.mm`, `editor/tests/EditorTestsWin.cpp`), the Audio Unit's tests and the
-fuzzers do not run: one of them that would fail with a mutant makes it **tested**.
+would fail with it; if there is one, the verdict is **tested**. Likewise each C++ mutant of the
+engine, plugin or editor runs on Linux against its own module's tests only
+(scripts/mutation-cpp.sh): `engine_tests`, `plugin_tests` or `editor_tests`. Another module's
+tests, the macOS and Windows editor tests (`editor/tests/EditorTests.mm`,
+`editor/tests/EditorTestsWin.cpp`) and the fuzzers do not run: one of them that would fail with a
+mutant makes it **tested**. (The editor's view and core, `Editor.cpp` and `EditorCore.cpp`, get
+no mutant at all: only the macOS and Windows tests open their window.) The Audio Unit's
+(`au/src`, scripts/mutation-au.sh) run against `au_tests`, `au_view_tests` and
+`au_component_tests`, all three, so only a test outside them makes one **tested**. Mull mutates
+C++ only: an Objective-C method in `AudioUnitView.mm` gets no mutant, so its lines never appear
+here, while the C++ functions of that file do.
 
 Choose **gap** only when you can name the user-visible failure and the state that triggers it;
 when in doubt between gap and another verdict, explain the doubt in the reason and choose gap,

@@ -94,8 +94,8 @@ report() {
     local times=() module
     for module in "${modules[@]}"; do
         if [[ -f "$out/dry-$module.json" ]]; then
-            times+=(--mull-log "${module}_tests=$out/mull-$module.log"
-                --limit "${module}_tests=$(limitOf "$module")")
+            times+=(--tests-log "${module}_tests=$out/mull-$module.log"
+                --tests-limit "${module}_tests=$(limitOf "$module")")
         fi
     done
     node scripts/mutation-report.ts "$out/mull.json" "Mutation testing (C++)" ${1:+"$1"} \
@@ -126,14 +126,20 @@ if [[ "$mode" != share || "$(uname)" != Linux ]] && ! command -v mull-runner-18 
             exec scripts/mutation-cpp.sh "$@"' mutation-cpp ${args[@]+"${args[@]}"}
 fi
 
-# Runs share $1 of the mutants Mull listed, from the build, recording each result as it is known.
+# Runs share $1 of the mutants Mull listed, from the build, recording each result as it is known:
+# share $1 of each module's mutants against its own tests, stopped at its own limit. The plugin's
+# and editor's take seconds, so they run first, and the engine's get what is left of the deadline;
+# a module none is left for has its mutants reported as not run.
 runShare() {
-    local deadline="${MUTATION_DEADLINE:-1000000000}" tests=() module
-    for module in "${modules[@]}"; do
-        tests+=(--tests "$module" "$(limitOf "$module")" "$(testsOf "$module")")
+    local deadline="${MUTATION_DEADLINE:-1000000000}" start=$SECONDS module left
+    for module in plugin editor engine; do
+        left=$((deadline - (SECONDS - start)))
+        if [[ -f "$out/dry-$module.json" ]] && ((left > 0)); then
+            node scripts/mutation-run.ts run "$out/dry-$module.json" "$1" \
+                "$out/results-${1%%/*}-$module.jsonl" --limit "$(limitOf "$module")" \
+                --deadline "$left" -- "$(testsOf "$module")" --gtest_fail_fast
+        fi
     done
-    node scripts/mutation-run.ts run "$out/dry.json" "$1" "$out/results-${1%%/*}.jsonl" \
-        --deadline "$deadline" "${tests[@]}" -- --gtest_fail_fast
 }
 if [[ "$mode" == share ]]; then
     for module in "${modules[@]}"; do
@@ -179,7 +185,13 @@ if [[ -n "$base" ]]; then
     # The tests run only the mutants on the lines changed since the base; the build compiles them
     # all, so a cached build serves any base.
     config="$out/mull.yml"
-    { cat tools/mutation/mull.yml; echo "gitDiffRef: $from"; echo "gitProjectRoot: $root"; } \
+    # Mull is given the base with the files added since it held empty, as its diff leaves out
+    # files the base lacks (scripts/mutation-base.ts).
+    # Unquoted: each source folder of the modules changed is a path of its own.
+    diffBase="$(node scripts/mutation-base.ts "$from" $(for module in "${selected[@]}"; do
+        sourcesOf "$module"
+    done))"
+    { cat tools/mutation/mull.yml; echo "gitDiffRef: $diffBase"; echo "gitProjectRoot: $root"; } \
         > "$config"
 fi
 

@@ -20,7 +20,7 @@
     },
     {
       "name": "tsan",
-      "displayName": "macOS glue: the editor's web view tests under ThreadSanitizer",
+      "displayName": "macOS glue: the editor's web view and Audio Unit view tests under ThreadSanitizer",
       "binaryDir": "${sourceDir}/build/tsan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -37,6 +37,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_OSX_ARCHITECTURES": "arm64",
         "ORIZON_ADDRESS_SANITIZER": "ON",
+        "ORIZON_BENCH": "ON",
         "SMTG_RUN_VST_VALIDATOR": "OFF"
       }
     },
@@ -205,6 +206,25 @@
       }
     },
     {
+      "name": "mutation-au",
+      "displayName": "macOS: the Audio Unit's tests built for mutation testing with Mull (scripts/mutation-au.sh)",
+      "binaryDir": "${sourceDir}/build/mutation-au",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang++",
+        "CMAKE_OBJCXX_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang++",
+        "CMAKE_CXX_FLAGS": "-fpass-plugin=${sourceDir}/build/mull-macos/lib/mull-ir-frontend-20 -g -grecord-command-line",
+        "CMAKE_OBJCXX_FLAGS": "-fpass-plugin=${sourceDir}/build/mull-macos/lib/mull-ir-frontend-20 -g -grecord-command-line",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
       "name": "coverage",
       "displayName": "Linux: engine and protocol tests with source-based coverage (Clang)",
       "generator": "Ninja",
@@ -254,12 +274,17 @@
     {
       "name": "tsan",
       "configurePreset": "tsan",
-      "targets": ["editor_tests"]
+      "targets": ["editor_tests", "au_view_tests"]
     },
     {
       "name": "asan",
       "configurePreset": "asan",
-      "targets": ["editor_tests", "au_tests"]
+      "targets": [
+        "editor_tests",
+        "au_tests",
+        "au_view_tests",
+        "au_component_tests"
+      ]
     },
     {
       "name": "rtsan",
@@ -401,6 +426,16 @@
       }
     },
     {
+      "name": "mutation-au",
+      "configurePreset": "mutation-au",
+      "targets": ["au_tests", "au_view_tests", "au_component_tests"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
       "name": "coverage",
       "configurePreset": "coverage",
       "condition": {
@@ -438,7 +473,7 @@
       },
       "filter": {
         "include": {
-          "name": "^EditorTest\\."
+          "name": "^(EditorTest\\.|AudioUnitView)"
         }
       },
       "execution": {
@@ -458,7 +493,7 @@
       },
       "filter": {
         "include": {
-          "name": "^(EditorTest\\.|AudioUnit)"
+          "name": "^(EditorTest\\.|AudioUnit|ComponentTest\\.)"
         }
       }
     },

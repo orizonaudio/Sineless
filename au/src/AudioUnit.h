@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ComponentDescription.h"
 #include "engine/Engine.h"
 #include "engine/RealtimeSafety.h"
 #include "engine/Timeline.h"
@@ -11,16 +12,6 @@
 #include <string_view>
 
 namespace orizon::au {
-
-// The component the AU registers as: an effect, Sineless by Orizon Audio. The codes are saved in
-// every project that uses the AU, so they never change.
-inline constexpr AudioComponentDescription kComponentDescription{
-    .componentType = kAudioUnitType_Effect,
-    .componentSubType = 'Snls',
-    .componentManufacturer = 'Oriz',
-    .componentFlags = 0,
-    .componentFlagsMask = 0,
-};
 
 // A private property (Apple reserves IDs below 64000) through which the AU's view, in the same
 // process, finds this instance's engine: its token in engine::EngineRegistry, as an int64.

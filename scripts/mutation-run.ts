@@ -1,17 +1,20 @@
-// Runs the C++ mutants Mull built into the test binaries, a share at a time, in place of
-// mull-runner: mull-runner has no way to split its mutants between jobs, runs one test binary,
-// writes nothing until every mutant has run, and limits each mutant only to ten times the tests'
-// own time. Here each mutant runs as Mull runs it (its module's test binary with an environment
-// variable named after the mutant set to 1), its result is written as soon as it is known, a
-// mutant that takes longer than its module's limit is stopped and counted as timed out, and the
-// mutants not reached by the deadline are reported as not run.
+// Runs the C++ mutants Mull built into a test binary, a share at a time, in place of mull-runner:
+// mull-runner has no way to split its mutants between jobs, writes nothing until every mutant has
+// run, and limits each mutant only to ten times the tests' own time. Here each mutant runs as Mull
+// runs it (the test binary with an environment variable named after the mutant set to 1), its
+// result is written as soon as it is known, a mutant that takes longer than the limit is stopped
+// and counted as timed out, and the mutants not reached by the deadline are reported as not run.
+// After the first binary, each further one (after another --) runs a mutant the ones before it
+// did not notice: the Audio Unit's view tests notice some of its mutants that its other tests
+// miss (scripts/mutation-au.sh). --workers sets how many mutants run at once (default: one a core).
 //   node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl>
-//       --deadline <seconds in all> --tests <module> <seconds a mutant> <test binary> [--tests ...]
-//       [-- <arguments for every test binary>]
-//   node scripts/mutation-run.ts combine <dry-run.json>...   (prints them as one list)
+//       --limit <seconds a binary> --deadline <seconds in all> [--workers <n>]
+//       -- <test binary> [arguments] [-- <test binary> [arguments]]...
 //   node scripts/mutation-run.ts merge <dry-run.json> <results.jsonl>...   (prints the report)
-// A dry run is Mull's report of every mutant with no test run (mull-runner --dry-run); there is
-// one for each module's test binary, with the mutants of that module's sources.
+//   node scripts/mutation-run.ts combine <dry-run.json>...   (prints the lists as one)
+// The dry run is Mull's report of every mutant with no test run (mull-runner --dry-run). A share
+// with no mutant runs no test: a module with fewer mutants than shares leaves some empty
+// (scripts/mutation-cpp.sh runs each module's share against its own tests).
 import { spawn } from "node:child_process";
 import {
   appendFileSync,
@@ -46,17 +49,8 @@ export function mutantIds(report: Report): string[] {
     .sort();
 }
 
-// Each mutant's file, by id.
-export function mutantFiles(report: Report): Map<string, string> {
-  return new Map(
-    Object.entries(report.files).flatMap(([file, { mutants }]) =>
-      (mutants as ReportMutant[]).map((mutant) => [mutant.id, file] as const),
-    ),
-  );
-}
-
-// The dry runs of several modules' test binaries as one list. Each lists the mutants in its own
-// module's files, so no file is in two.
+// The dry runs of several test binaries as one list, as each lists its own module's files
+// (scripts/mutation-cpp.sh): the list CI counts and the shares' results are merged into.
 export function combine(reports: Report[]): Report {
   return {
     ...reports[0],
@@ -64,34 +58,6 @@ export function combine(reports: Report[]): Report {
       reports.flatMap((report) => Object.entries(report.files)),
     ),
   };
-}
-
-// A test binary, with its arguments, and how long it may run with one mutant.
-export interface Tests {
-  command: string;
-  args: string[];
-  limitSeconds: number;
-}
-
-// The tests a mutant runs against: its module's, the module whose sources (`<module>/src/` or
-// `<module>/include/`) hold its file. Only those: run against the other test binaries that hold
-// them, the mutants their own module's tests miss go unnoticed all the same (measured on the
-// plugin's, the editor's and the engine's).
-export function testsFor(
-  file: string,
-  tests: Map<string, Tests>,
-): Tests | undefined {
-  for (const [module, moduleTests] of tests) {
-    const folders = [`${module}/src/`, `${module}/include/`];
-    if (
-      folders.some(
-        (folder) => file.startsWith(folder) || file.includes(`/${folder}`),
-      )
-    ) {
-      return moduleTests;
-    }
-  }
-  return undefined;
 }
 
 // Share `share` of `shares` (from 1): every shares-th mutant, so that each share gets some of
@@ -160,17 +126,45 @@ export function statusOf(
   return exitCode === 0 ? "Survived" : "Killed";
 }
 
-interface RunOptions {
-  mutants: { id: string; tests: Tests }[];
-  results: string;
-  deadlineSeconds: number;
-  workers?: number;
+// A test binary and its arguments.
+export interface TestCommand {
+  command: string;
+  args: string[];
 }
 
-// The tests run with the mutant `id` switched on, or with none.
-function runTests(tests: Tests, id?: string): Promise<Result["status"]> {
+interface RunOptions {
+  ids: string[];
+  results: string;
+  limitSeconds: number;
+  deadlineSeconds: number;
+  tests: TestCommand[];
+  workers?: number | undefined;
+}
+
+type TestOptions = Pick<RunOptions, "limitSeconds" | "tests">;
+
+// The tests run with the mutant `id` switched on, or with none: each binary in turn, until one
+// fails or is stopped at the limit, which notices the mutant.
+async function runTests(
+  options: TestOptions,
+  id?: string,
+): Promise<Result["status"]> {
+  for (const test of options.tests) {
+    const status = await runBinary(test, options.limitSeconds, id);
+    if (status !== "Survived") {
+      return status;
+    }
+  }
+  return "Survived";
+}
+
+function runBinary(
+  test: TestCommand,
+  limitSeconds: number,
+  id?: string,
+): Promise<Result["status"]> {
   return new Promise((resolve) => {
-    const child = spawn(tests.command, tests.args, {
+    const child = spawn(test.command, test.args, {
       env: id === undefined ? process.env : { ...process.env, [id]: "1" },
       stdio: "ignore",
     });
@@ -178,7 +172,7 @@ function runTests(tests: Tests, id?: string): Promise<Result["status"]> {
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGKILL");
-    }, tests.limitSeconds * 1000);
+    }, limitSeconds * 1000);
     child.on("error", () => {
       clearTimeout(timer);
       resolve("Killed");
@@ -192,31 +186,31 @@ function runTests(tests: Tests, id?: string): Promise<Result["status"]> {
 
 // Whether the tests pass with no mutant, within the limit. Where they do not (the binary cannot
 // find its data on this machine, say), every mutant would read as noticed.
-export async function testsPass(tests: Tests): Promise<boolean> {
-  return (await runTests(tests)) === "Survived";
+export async function testsPass(options: TestOptions): Promise<boolean> {
+  return (await runTests(options)) === "Survived";
+}
+
+async function runOne(options: RunOptions, id: string): Promise<Result> {
+  return { id, status: await runTests(options, id) };
 }
 
 // Runs the mutants on every core, appending each result as it is known. Once the deadline has
 // passed no new mutant starts, and those left are written as not run.
 export async function run(options: RunOptions): Promise<Result[]> {
   const deadline = Date.now() + options.deadlineSeconds * 1000;
-  const queue = [...options.mutants];
+  const queue = [...options.ids];
   const done: Result[] = [];
   const record = (result: Result) => {
     done.push(result);
     appendFileSync(options.results, `${JSON.stringify(result)}\n`);
   };
   const worker = async () => {
-    for (
-      let mutant = queue.shift();
-      mutant !== undefined;
-      mutant = queue.shift()
-    ) {
-      const { id, tests } = mutant;
-      record({
-        id,
-        status: Date.now() < deadline ? await runTests(tests, id) : "NotRun",
-      });
+    for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+      record(
+        Date.now() < deadline
+          ? await runOne(options, id)
+          : { id, status: "NotRun" },
+      );
     }
   };
   await Promise.all(
@@ -225,6 +219,19 @@ export async function run(options: RunOptions): Promise<Result[]> {
     ),
   );
   return done;
+}
+
+// The test binaries after the first --, each with its arguments, split at each further --.
+export function testCommands(args: string[]): TestCommand[] {
+  const groups: string[][] = [[]];
+  for (const arg of args.slice(args.indexOf("--") + 1)) {
+    if (arg === "--") {
+      groups.push([]);
+    } else {
+      groups.at(-1)?.push(arg);
+    }
+  }
+  return groups.map(([command = "", ...rest]) => ({ command, args: rest }));
 }
 
 function readResults(path: string): Result[] {
@@ -239,9 +246,13 @@ function readResults(path: string): Result[] {
 
 if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
   const args = process.argv.slice(2);
+  // The options come before the test binaries, whose own arguments are not read as options.
+  const options = args.includes("--")
+    ? args.slice(0, args.indexOf("--"))
+    : args;
   const option = (name: string) => {
-    const at = args.indexOf(name);
-    return at === -1 ? undefined : args[at + 1];
+    const at = options.indexOf(name);
+    return at === -1 ? undefined : options[at + 1];
   };
   const [command, dryRun] = args;
   const report =
@@ -251,83 +262,56 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
   if (command === "run" && report !== undefined) {
     const [share, shares] = (args[2] ?? "").split("/").map(Number);
     const results = args[3];
+    const tests = testCommands(args);
+    const limit = Number(option("--limit"));
     const deadline = Number(option("--deadline"));
-    const separator = args.indexOf("--");
-    const common = separator === -1 ? [] : args.slice(separator + 1);
-    const options = separator === -1 ? args : args.slice(0, separator);
-    // Each --tests names a module, its limit in seconds and its test binary.
-    const tests = new Map<string, Tests>();
-    let malformed = false;
-    for (const [at, arg] of options.entries()) {
-      if (arg === "--tests") {
-        const [module, limit, binary] = options.slice(at + 1, at + 4);
-        if (module !== undefined && binary !== undefined && Number(limit) > 0) {
-          tests.set(module, {
-            command: binary,
-            args: common,
-            limitSeconds: Number(limit),
-          });
-        } else {
-          malformed = true;
-        }
-      }
-    }
+    const workers =
+      option("--workers") === undefined
+        ? undefined
+        : Number(option("--workers"));
     if (
       results === undefined ||
-      tests.size === 0 ||
-      malformed ||
-      !(deadline > 0)
+      !args.includes("--") ||
+      tests.some((test) => test.command === "") ||
+      !(limit > 0) ||
+      !(deadline > 0) ||
+      (workers !== undefined && !(Number.isInteger(workers) && workers > 0))
     ) {
       console.error(
-        "run needs <share>/<shares> <results.jsonl> --deadline <s> --tests <module> <s> <binary>",
+        "run needs <share>/<shares> <results.jsonl> --limit --deadline [--workers] -- <binary> [-- <binary>]...",
       );
       process.exit(2);
     }
-    const files = mutantFiles(report);
-    const mutants = shareOf(mutantIds(report), share ?? 0, shares ?? 0).map(
-      (id) => ({
-        id,
-        file: files.get(id) ?? "",
-        tests: testsFor(files.get(id) ?? "", tests),
-      }),
-    );
-    const untested = mutants.filter((mutant) => mutant.tests === undefined);
-    if (untested[0] !== undefined) {
+    // The first binary holds every mutant's switch. The later ones may not: the component's tests
+    // load the component built with the mutants rather than link them.
+    const binary = tests[0]?.command ?? "";
+    const ids = shareOf(mutantIds(report), share ?? 0, shares ?? 0);
+    if (ids.length === 0) {
+      writeFileSync(results, "");
+      console.log("0 mutants run, 0 not run.");
+      process.exit(0);
+    }
+    const missing = missingSwitches(readFileSync(binary), ids);
+    if (missing.length > 0) {
       console.error(
-        `No tests for ${String(untested.length)} mutant(s), as ${untested[0].id} in ${untested[0].file}: give their module's with --tests.`,
+        `${binary} has no switch for ${String(missing.length)} of the ${String(ids.length)} mutants, as ${missing[0] ?? ""}: Mull no longer switches them on by environment variable, so none would be tested.`,
       );
       process.exit(1);
     }
-    // Each test binary this share runs: it must switch each of its mutants on, and pass with none.
-    for (const moduleTests of new Set(mutants.map((mutant) => mutant.tests))) {
-      if (moduleTests === undefined) {
-        continue;
-      }
-      const binary = moduleTests.command;
-      const ids = mutants
-        .filter((mutant) => mutant.tests === moduleTests)
-        .map((mutant) => mutant.id);
-      const missing = missingSwitches(readFileSync(binary), ids);
-      if (missing.length > 0) {
-        console.error(
-          `${binary} has no switch for ${String(missing.length)} of the ${String(ids.length)} mutants, as ${missing[0] ?? ""}: Mull no longer switches them on by environment variable, so none would be tested.`,
-        );
-        process.exit(1);
-      }
-      if (!(await testsPass(moduleTests))) {
-        console.error(
-          `${binary} fails, or takes more than ${String(moduleTests.limitSeconds)} s, with no mutant: every mutant would read as noticed.`,
-        );
-        process.exit(1);
-      }
+    if (!(await testsPass({ limitSeconds: limit, tests }))) {
+      console.error(
+        `The tests fail, or take more than ${String(limit)} s, with no mutant: every mutant would read as noticed.`,
+      );
+      process.exit(1);
     }
     writeFileSync(results, "");
     const done = await run({
-      mutants: mutants.flatMap(({ id, tests: moduleTests }) =>
-        moduleTests === undefined ? [] : [{ id, tests: moduleTests }],
-      ),
+      ids,
       results,
+      limitSeconds: limit,
       deadlineSeconds: deadline,
+      tests,
+      workers,
     });
     const notRun = done.filter((result) => result.status === "NotRun").length;
     console.log(
@@ -343,7 +327,7 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
     console.log(JSON.stringify(merge(report, results)));
   } else {
     console.error(
-      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --deadline <s> --tests <module> <s> <binary>... [-- args] | combine <dry-run.json>... | merge <dry-run.json> <results.jsonl>...",
+      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --limit <s> --deadline <s> [--workers <n>] -- <binary> [args] [-- <binary> [args]]... | merge <dry-run.json> <results.jsonl>... | combine <dry-run.json>...",
     );
     process.exit(2);
   }

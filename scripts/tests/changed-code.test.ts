@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
-import { changedFiles, changesCode } from "../changed-code.ts";
+import { changedFiles, changesCode, changesUnder } from "../changed-code.ts";
 
 describe("a change", () => {
   test.each([
@@ -33,6 +33,68 @@ describe("a change", () => {
   test("that lists no files runs the builds and tests", () => {
     expect(changesCode([])).toBe(true);
   });
+});
+
+describe("whether a change touches the Audio Unit's sources, which decides whether its mutation job runs", () => {
+  test.each([
+    [["au/src/AudioUnit.cpp"]],
+    [["README.md", "au/src/AudioUnitView.mm"]],
+  ])("%j does", (files) => {
+    expect(changesUnder(files, "au/src")).toBe(true);
+  });
+
+  test.each([
+    [["au/tests/AudioUnitTests.cpp"]],
+    [["engine/src/Analyzer.cpp", "au/CMakeLists.txt"]],
+    [["autumn/src/a.cpp"]],
+    [["au/srcs/a.cpp"]],
+  ])("%j does not", (files) => {
+    expect(changesUnder(files, "au/src")).toBe(false);
+  });
+
+  test("counts a change whose files could not be listed, or that lists none, as touching them, so a failure here never skips the job", () => {
+    expect(changesUnder(undefined, "au/src")).toBe(true);
+    expect(changesUnder([], "au/src")).toBe(true);
+  });
+
+  // CI's changes job asks both: whether code changed, which gates every build, and whether au/src
+  // did, which gates the Audio Unit's mutation job.
+  test.each([
+    ["engine/src/a.cpp", [], "true"],
+    ["engine/src/a.cpp", ["au/src"], "false"],
+    ["au/src/a.cpp", ["au/src"], "true"],
+    ["README.md", [], "false"],
+  ])(
+    "is printed for a change to %s, asked %j, as %s",
+    (file, folder, printed) => {
+      const repository = mkdtempSync(join(tmpdir(), "changed-code-"));
+      const git = (...args: string[]) =>
+        execFileSync("git", args, { cwd: repository, stdio: "ignore" });
+      try {
+        git("init", "-q");
+        git("config", "user.email", "test@example.com");
+        git("config", "user.name", "Test");
+        mkdirSync(join(repository, file, ".."), { recursive: true });
+        writeFileSync(join(repository, file), "a\n");
+        git("add", ".");
+        git("commit", "-q", "-m", "Add");
+        writeFileSync(join(repository, file), "b\n");
+        git("commit", "-q", "-am", "Change");
+        const output = execFileSync(
+          process.execPath,
+          [
+            join(import.meta.dirname, "..", "changed-code.ts"),
+            "HEAD~1..HEAD",
+            ...folder,
+          ],
+          { cwd: repository, encoding: "utf8" },
+        );
+        expect(output.trim()).toBe(printed);
+      } finally {
+        rmSync(repository, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("the files a change touches", () => {

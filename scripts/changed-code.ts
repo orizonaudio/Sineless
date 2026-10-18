@@ -1,6 +1,8 @@
 // Whether a change touches more than documentation, which decides whether CI builds and tests it
-// (.github/workflows/ci.yml). Prints "true" or "false".
-//   node scripts/changed-code.ts <git range>
+// (.github/workflows/ci.yml), or with a folder, whether it touches a file in that folder, which
+// decides whether a job for that folder alone runs (the Audio Unit's mutation testing, au/src).
+// Prints "true" or "false".
+//   node scripts/changed-code.ts <git range> [folder]
 import { execFileSync } from "node:child_process";
 
 // Documentation: Markdown, which none of the build, the page, the tests or the format check reads
@@ -18,6 +20,18 @@ export function changesCode(files: readonly string[] | undefined): boolean {
     return true;
   }
   return !files.every(isDocumentation);
+}
+
+// Whether `files` include one in `folder`. Unknown files, or none listed, count as doing so, as in
+// changesCode.
+export function changesUnder(
+  files: readonly string[] | undefined,
+  folder: string,
+): boolean {
+  if (files === undefined || files.length === 0) {
+    return true;
+  }
+  return files.some((file) => file.startsWith(`${folder}/`));
 }
 
 // The paths changed in `range`, both sides of a rename included (a code file renamed to a .md
@@ -43,5 +57,11 @@ export function changedFiles(
 }
 
 if (process.argv[1]?.endsWith("changed-code.ts") === true) {
-  console.log(String(changesCode(changedFiles(process.argv[2] ?? ""))));
+  const files = changedFiles(process.argv[2] ?? "");
+  const folder = process.argv[3];
+  console.log(
+    String(
+      folder === undefined ? changesCode(files) : changesUnder(files, folder),
+    ),
+  );
 }

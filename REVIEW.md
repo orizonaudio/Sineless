@@ -48,12 +48,12 @@ converge.
 
 ## Mutation testing
 
-The mutation reports on a pull request (the `mutation` and `mutation-cpp` jobs) list changes to
-the code that no test fails on. Each is a question, not a finding: a test is worth adding only
-when a user would see that change go wrong. A change that alters nothing a user relies on
-(mutants equivalent in practice, such as `<` for `<=` where the two values never meet, wording,
-code that cannot run) is left as it is, or the code is removed when it does nothing. Survivors
-are never reported as findings on their own, and no score is a goal.
+The mutation reports on a pull request (the `mutation`, `mutation-cpp` and `mutation-au` jobs)
+list changes to the code that no test fails on. Each is a question, not a finding: a test is
+worth adding only when a user would see that change go wrong. A change that alters nothing a user
+relies on (mutants equivalent in practice, such as `<` for `<=` where the two values never meet,
+wording, code that cannot run) is left as it is, or the code is removed when it does nothing.
+Survivors are never reported as findings on their own, and no score is a goal.
 
 The `mutation-triage` check applies this to every pull request whose mutation run leaves
 mutants (`.github/workflows/mutation-triage.yml`): a `mutation-triager` gives each a verdict

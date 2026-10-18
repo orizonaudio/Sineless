@@ -199,22 +199,32 @@ export function warmUpSeconds(log: string): number | undefined {
   return match?.[1] === undefined ? undefined : mullSeconds(match[1]);
 }
 
-// How long a test binary takes against the time limit of each mutant run against it. A mutant no
-// test notices runs every test: past half the limit, the margin is too small, as one would be
-// stopped and reported as timed out, which counts as noticed and hides a line no test checks.
+// How long the tests take against each mutant's time limit. A mutant no test notices runs every
+// test: past half the limit, the margin is too small, as one would be stopped and reported as
+// timed out, which counts as noticed and hides a line no test checks.
+// With perBinary, the limit stops each of several test binaries (scripts/mutation-au.sh), and
+// `warmUp` is the slowest one's time. With `name`, they are one module's tests, with a limit of
+// their own (scripts/mutation-cpp.sh).
 export function timeLimitNote(
-  tests: string,
   warmUp: number,
   limit: number,
+  perBinary = false,
+  name?: string,
 ): string {
+  const [tests, stopped] =
+    name !== undefined
+      ? [`${name} take`, "each of their mutants is stopped"]
+      : perBinary
+        ? ["The slowest test binary takes", "each test binary is stopped"]
+        : ["The tests take", "each mutant is stopped"];
   const lines = [
-    `${tests} take ${warmUp.toFixed(0)} s with no mutant; each of their mutants is stopped at ${limit.toFixed(0)} s.`,
+    `${tests} ${warmUp.toFixed(0)} s with no mutant; ${stopped} at ${limit.toFixed(0)} s.`,
   ];
   if (warmUp * 2 > limit) {
     lines.push(
       "",
       "> [!WARNING]",
-      `> ${tests} take more than half their time limit: raise it (MUTANT_TIMEOUT for the engine's, scripts/mutation-cpp.sh for the others), or mutants no test notices may be reported as timed out.`,
+      `> ${tests} more than half the time limit: raise ${name === undefined || name === "engine_tests" ? "MUTANT_TIMEOUT" : "it (scripts/mutation-cpp.sh)"}, or mutants no test notices may be reported as timed out.`,
     );
   }
   return lines.join("\n");
@@ -237,8 +247,8 @@ export function noTestReachedSummary(title: string, base: string): string {
   return `## ${title}\n\nNo unit test reaches the lines changed since ${base}: they are left to the app tests.`;
 }
 
-// Whether Mull's dry run found no mutant on the lines it was given, as when only comments of a
-// module changed: it then writes no list (scripts/mutation-cpp.sh). Its log says so; a dry run
+// Whether Mull's dry run found no mutant on the lines it was given, as when only comments of the
+// engine changed: it then writes no list (scripts/mutation-cpp.sh). Its log says so; a dry run
 // that wrote no list for any other reason did not complete.
 export function noMutantFound(mullLog: string): boolean {
   return /^\[info\] No mutants found\./mu.test(mullLog);
