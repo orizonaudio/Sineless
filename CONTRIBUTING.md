@@ -45,6 +45,7 @@ CI marks where each will run.
 | End-to-end | Sineless in REAPER, scripted | `scripts/windows` | Before a release |
 | Acceptance | The protocol in each host | [HOSTS.md](HOSTS.md) | Before a release |
 | Matrix | Every sample rate from 44.1 to 384 kHz, spans around each tolerance, mono and stereo, live and frozen | `engine/tests/MatrixTests.cpp` | Every PR |
+| Work per frame | A frame's cost follows what changed, not the size of what is shown: samples reduced, summed and read and matches searched, counted (`AnalysisWork`), not timed | `engine/tests/MatrixTests.cpp` ("Work per frame") | Every PR |
 | Signal corpus | Approved frames for tones, DC, silence, NaN, inverted and delayed pairs | `engine/tests/corpus`, from `engine/tests/SignalCorpusTests.cpp` | Every PR |
 | Fuzzing | State loading, setting values, the page's messages and frame decoding against malformed input | `engine/tests/fuzz` (libFuzzer, Linux: `cmake --preset fuzz && cmake --build --preset fuzz && scripts/fuzz.sh [seconds]`), `*.properties.test.ts` (fast-check) | Every PR, five minutes, and nightly, half an hour, from a corpus kept on main; their seeds and fixed crashes' inputs (`engine/tests/fuzz/regressions/<fuzzer>/`) replay in every platform's tests (`ctest -R '^fuzz\.'`) |
 | Coverage | Lines the tests run, reported on changed lines | `scripts/coverage.sh` (llvm-cov, Vitest V8) | Every PR, reported |

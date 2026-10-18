@@ -75,6 +75,27 @@ struct LaneSet
     std::size_t hidden = 0;
 };
 
+// The analysis's work since it was created, counted rather than timed, so that tests and
+// benchmarks can check that a frame's cost follows what changed, not the size of what is shown.
+// Copying audio is not counted: placing it into sweeps (all of a sweep when one is rebuilt, as
+// when its length changes) and holding it on freeze. A rebuilt sweep's columns are then all
+// reduced again, which is.
+struct AnalysisWork
+{
+    // Samples read back from the capture, held audio or sweep images to reduce, measure, sum or
+    // search them: one per channel view read, so a Mid read from a stereo capture counts once.
+    std::uint64_t samplesRead = 0;
+    // Of those, the samples reduced into screen columns: views, lanes and the Compare sum lane.
+    std::uint64_t samplesReduced = 0;
+    // Samples of compared tracks added into a Compare sum, for its columns or its levels.
+    std::uint64_t samplesSummed = 0;
+    // Of those read, the samples read for match searches: of both tracks of each pair searched,
+    // over the newest kMatchWindowSeconds (or less, of a shorter sweep or view).
+    std::uint64_t samplesSearched = 0;
+    // Searches for a compared track's match.
+    std::uint64_t matchSearches = 0;
+};
+
 // Per-editor-session analysis: turns the capture into display frames. It is
 // created when the editor opens, so the hold buffer is allocated only then.
 //
@@ -116,6 +137,9 @@ public:
 
     // The lanes of the latest multi-track frames; the id changes whenever they do. Any thread.
     [[nodiscard]] LaneSet laneSet() const;
+
+    // The work done so far. On the analysis worker, like produce().
+    [[nodiscard]] const AnalysisWork& work() const { return workDone; }
 
 private:
     struct Commands
@@ -205,6 +229,13 @@ private:
 
     Commands takeCommands();
     Commands peekCommands();
+    // readView and readViewHeld (ChannelViews.h), counted in AnalysisWork::samplesRead.
+    [[nodiscard]] bool readSamples(const SampleSource& source, int inputChannels,
+                                   protocol::ChannelView view, std::uint64_t start,
+                                   std::span<float> destination, std::span<float> working);
+    bool readSamplesHeld(const SampleSource& source, int inputChannels, protocol::ChannelView view,
+                         std::uint64_t start, std::span<float> destination,
+                         std::span<float> working);
     std::uint64_t selectLanes(const Settings& settings);
     // Live: places each lane's new audio into its sweep. True if any lane changed.
     [[nodiscard]] bool inputsChanged(const Settings& settings, const Commands& command,
@@ -286,6 +317,7 @@ private:
 
     Engine& engine;
     const InstanceRegistry& registry;
+    AnalysisWork workDone;
     HoldBuffer hold;
     SweepImage image;
     std::optional<SweepWindow> imageWindow; // The window `image` was built for.

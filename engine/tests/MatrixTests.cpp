@@ -14,6 +14,7 @@
 #include "engine/CaptureRing.h"
 #include "engine/HoldBuffer.h"
 #include "engine/InstanceRegistry.h"
+#include "engine/Roll.h"
 #include "engine/Sweep.h"
 
 #include <algorithm>
@@ -3444,6 +3445,290 @@ std::vector<ModeCase> laneRateCases()
 }
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenLaneAtAnotherRate, ::testing::ValuesIn(laneRateCases()),
+                         modeTestName);
+
+// --- Work per frame -------------------------------------------------------------------------
+//
+// A frame's cost follows what changed, not the size of what is shown (DESIGN.md, AD-17): a sweep
+// or a roll reduces only the columns its new audio landed in or that scrolled in, a frozen view
+// with nothing new costs nothing, a Compare sum whose parts change is redone over several frames
+// rather than in one, and compared tracks are searched one per frame. Work is counted in samples
+// (AnalysisWork), so these tests do not depend on the machine's speed: a change that made every
+// frame redo the whole span would pass every other test, and only show as a slow editor.
+
+// The other tracks of the group, by lane id.
+std::vector<std::uint64_t> othersOf(Session& session)
+{
+    std::vector<std::uint64_t> others;
+    for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+        if (member.engine.get() != &session.own()) {
+            others.push_back(member.serial);
+        }
+    }
+    return others;
+}
+
+// A session of `mode` with one track in Single and three otherwise, unrelated, each compared.
+std::unique_ptr<Session> workSession(const ModeCase& c)
+{
+    auto session = std::make_unique<Session>(c.rate, c.channels);
+    const std::size_t tracks = c.mode == DisplayMode::kSingle ? 1 : 3;
+    for (std::size_t track = 0; track < tracks; ++track) {
+        session->join({.kind = Signal::Kind::kNoise, .seed = track + 1});
+    }
+    configure(session->own(), c.mode, c.timeBase);
+    if (c.mode == DisplayMode::kCompare) {
+        session->analyzer().setCompared(othersOf(*session));
+    }
+    return session;
+}
+
+AnalysisWork workSince(const AnalysisWork& before, const AnalysisWork& now)
+{
+    return {.samplesRead = now.samplesRead - before.samplesRead,
+            .samplesReduced = now.samplesReduced - before.samplesReduced,
+            .samplesSummed = now.samplesSummed - before.samplesSummed,
+            .samplesSearched = now.samplesSearched - before.samplesSearched,
+            .matchSearches = now.matchSearches - before.matchSearches};
+}
+
+// The work a session does per second of audio, once what it shows is full: played for `fill`
+// seconds with a frame each second, then for a second with a frame per block, as a page asks for
+// them, so that no frame still has the fill's audio to place; then measured over two seconds, a
+// frame per block.
+struct WorkPerSecond
+{
+    double reduced = 0.0;
+    double read = 0.0; // Not for match searches, which read up to their window whatever the span.
+    double summed = 0.0;
+};
+
+WorkPerSecond workPerSecond(Session& session, double fill)
+{
+    session.play(fill, 1.0);
+    const double block = static_cast<double>(kBlock) / session.rate;
+    session.play(1.0, block);
+    const AnalysisWork before = session.analyzer().work();
+    constexpr double kMeasured = 2.0;
+    session.play(kMeasured, block);
+    const AnalysisWork spent = workSince(before, session.analyzer().work());
+    return {.reduced = static_cast<double>(spent.samplesReduced) / kMeasured,
+            .read = static_cast<double>(spent.samplesRead - spent.samplesSearched) / kMeasured,
+            .summed = static_cast<double>(spent.samplesSummed) / kMeasured};
+}
+
+// Every mode, mono and stereo, at the lowest and highest rates, in `timeBase`.
+std::vector<ModeCase> workCases(TimeBase timeBase)
+{
+    std::vector<ModeCase> cases;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        for (const DisplayMode mode : everyMode()) {
+            for (const int channels : {1, 2}) {
+                cases.push_back(
+                    {.rate = rate, .mode = mode, .channels = channels, .timeBase = timeBase});
+            }
+        }
+    }
+    return cases;
+}
+
+// Two shows of the same audio that differ only in size: the longer span in as many more
+// columns, so that a column holds as many samples in both. Reducing only what changed costs both
+// the same, as each frame reduces the columns its new audio landed in; reducing the whole span
+// costs the longer one as many times more as it is longer (four times for the sweeps, twice for
+// the rolls). They measure the same exactly; the allowance is for a frame whose new audio
+// would straddle a column boundary in one show and not in the other.
+constexpr double kSameCost = 1.1;
+
+class SweepWork : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+// A sweep's frames reduce, measure (its levels per block) and, in Compare, sum only where new
+// audio landed, and its readouts measure the newest second: none of them costs more for a longer
+// sweep. Match searches are left out of the reads: each reads the newest kMatchWindowSeconds of
+// two tracks, or all of a shorter sweep, such as the shorter one here.
+TEST_P(SweepWork, CostsNoMoreForALongerSweep)
+{
+    const auto work = [&](BeatSpan span, std::size_t columns) {
+        const auto session = workSession(GetParam());
+        session->own().settings().set(SettingId::kBeatSpan, static_cast<double>(span));
+        session->analyzer().setColumns(columns);
+        // Two and eight bars at 120 beats a minute: 4 and 16 seconds.
+        const double seconds = beatSpanQuarterNotes(span, 4.0) * 60.0 / 120.0;
+        return workPerSecond(*session, seconds + 1.0);
+    };
+    const WorkPerSecond shorter = work(BeatSpan::kTwoBars, kColumns);
+    const WorkPerSecond longer = work(BeatSpan::kEightBars, 4 * kColumns);
+    ASSERT_GT(shorter.reduced, 0.0) << "the sweep reduces its new audio";
+    EXPECT_LE(longer.reduced, shorter.reduced * kSameCost)
+        << "a longer sweep reduces more than its new audio: " << longer.reduced << " against "
+        << shorter.reduced << " samples a second";
+    EXPECT_LE(longer.read, shorter.read * kSameCost)
+        << "a longer sweep reads more than its new audio: " << longer.read << " against "
+        << shorter.read << " samples a second";
+    EXPECT_LE(longer.summed, shorter.summed * kSameCost)
+        << "a longer sweep sums more than its new audio: " << longer.summed << " against "
+        << shorter.summed << " samples a second";
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, SweepWork, ::testing::ValuesIn(workCases(TimeBase::kBeats)),
+                         modeTestName);
+
+class RollWork : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(RollWork, ReducesNoMoreForALongerRoll)
+{
+    const double longest = setting(SettingId::kTimeSpan).maximum;
+    // Reductions alone: a window's readouts read its whole span, every 100 ms of audio.
+    const auto reduced = [&](double span, std::size_t columns) {
+        const auto session = workSession(GetParam());
+        session->own().settings().set(SettingId::kTimeSpan, span);
+        session->analyzer().setColumns(columns);
+        return workPerSecond(*session, span + 1.0).reduced;
+    };
+    // Both roll: half the longest span is still above the roll threshold.
+    static_assert(isRollSpan(
+        protocol::kSettings[static_cast<std::size_t>(SettingId::kTimeSpan)].maximum / 2.0));
+    const double shorter = reduced(longest / 2.0, kColumns);
+    const double longer = reduced(longest, 2 * kColumns);
+    ASSERT_GT(shorter, 0.0) << "the roll reduces the columns that scrolled in";
+    EXPECT_LE(longer, shorter * kSameCost)
+        << "a longer roll reduces more than what scrolled in: " << longer << " against " << shorter
+        << " samples a second";
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, RollWork, ::testing::ValuesIn(workCases(TimeBase::kSeconds)),
+                         modeTestName);
+
+// Every mode in both time bases, stereo.
+std::vector<ModeCase> everyModeAndTimeBase()
+{
+    std::vector<ModeCase> cases;
+    for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+        for (const DisplayMode mode : everyMode()) {
+            cases.push_back({.mode = mode, .timeBase = static_cast<TimeBase>(timeBase)});
+        }
+    }
+    return cases;
+}
+
+class FrozenWork : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(FrozenWork, ReadsNothingWhileNothingChanges)
+{
+    const auto session = workSession(GetParam());
+    session->own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    session->own().settings().set(SettingId::kTimeSpan, 0.5);
+    session->play(3.0, 1.0);
+    // Live frames read their audio: a count that never moved would pass below for nothing.
+    ASSERT_GT(session->analyzer().work().samplesRead, 0U) << "live frames read no audio";
+    session->analyzer().setFrozen(true);
+    // The frozen frame, and any that finish what it started (a Compare sum, the matches).
+    ASSERT_TRUE(session->produce()) << "no frozen frame";
+    for (int frame = 0; frame < 64 && session->produce(); ++frame) {
+    }
+    const AnalysisWork before = session->analyzer().work();
+    // The host plays on: new audio arrives, but nothing on screen changes.
+    session->play(1.0, static_cast<double>(kBlock) / session->rate);
+    const AnalysisWork spent = workSince(before, session->analyzer().work());
+    EXPECT_EQ(spent.samplesRead, 0U) << "an unchanged frozen view read audio again";
+    EXPECT_EQ(spent.matchSearches, 0U) << "an unchanged frozen view searched again";
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenWork, ::testing::ValuesIn(everyModeAndTimeBase()),
+                         modeTestName);
+
+// Checking another track changes every column and level of a Compare sweep's sum. A long sweep of
+// several tracks is redone over the next frames, so that no frame stalls the display; it is
+// redone in full, so that the sum is right once it has.
+TEST(CompareSumWork, IsRedoneOverSeveralFramesWhenATrackIsChecked)
+{
+    // The worst case's sweep: sixteen bars at 60 beats a minute and 96 kHz, 64 s of each track.
+    constexpr double kRate = 96000.0;
+    constexpr double kTempo = 60.0;
+    Session session(kRate, 2);
+    for (std::uint64_t seed = 1; seed <= 3; ++seed) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = seed}, kTempo);
+    }
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kSixteenBars));
+    const std::vector<std::uint64_t> others = othersOf(session);
+    session.analyzer().setCompared({others.front()});
+    const double sweepSeconds = beatSpanQuarterNotes(BeatSpan::kSixteenBars, 4.0) * 60.0 / kTempo;
+    session.play(sweepSeconds + 1.0, 1.0);
+    for (int frame = 0; frame < 64 && session.produce(); ++frame) {
+    }
+
+    // Both others checked: this track and two more, each over the whole sweep.
+    session.analyzer().setCompared(others);
+    const auto whole = 3 * static_cast<std::uint64_t>(std::llround(sweepSeconds * kRate));
+    std::uint64_t most = 0;
+    std::uint64_t total = 0;
+    for (int frame = 0; frame < 64; ++frame) {
+        const AnalysisWork before = session.analyzer().work();
+        session.play(static_cast<double>(kBlock) / kRate, static_cast<double>(kBlock) / kRate);
+        const std::uint64_t summed = workSince(before, session.analyzer().work()).samplesSummed;
+        most = std::max(most, summed);
+        total += summed;
+    }
+    EXPECT_LT(most, whole) << "one frame summed the whole sweep of every compared track";
+    EXPECT_GE(total, whole) << "no recomputation summed the whole sweep";
+}
+
+class MatchWork : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+// Every compared track is searched for its match, but one per frame, so that many tracks share
+// the analysis thread.
+TEST_P(MatchWork, SearchesOneComparedTrackPerFrame)
+{
+    const ModeCase c = GetParam();
+    Session session(c.rate, c.channels);
+    for (std::uint64_t seed = 1; seed <= 5; ++seed) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = seed});
+    }
+    configure(session.own(), DisplayMode::kCompare, c.timeBase);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    session.own().settings().set(SettingId::kTimeSpan, 0.5);
+    const std::vector<std::uint64_t> others = othersOf(session);
+    session.analyzer().setCompared(others);
+    std::uint64_t most = 0;
+    std::uint64_t total = 0;
+    // Three seconds of audio, a block and a frame at a time.
+    const double block = static_cast<double>(kBlock) / c.rate;
+    const auto frames = static_cast<int>(std::lround(3.0 / block));
+    for (int frame = 0; frame < frames; ++frame) {
+        const AnalysisWork before = session.analyzer().work();
+        session.play(block, block);
+        const std::uint64_t searches = workSince(before, session.analyzer().work()).matchSearches;
+        most = std::max(most, searches);
+        total += searches;
+    }
+    EXPECT_LE(most, 1U) << "a frame searched more than one compared track";
+    // With fewer searches than compared tracks, some were never searched (and a bound on each
+    // frame's searches would hold for nothing).
+    EXPECT_GE(total, others.size()) << "fewer searches than compared tracks";
+}
+
+// Compare in both time bases, stereo.
+std::vector<ModeCase> compareCases()
+{
+    std::vector<ModeCase> cases;
+    cases.reserve(protocol::kTimeBaseCount);
+    for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+        cases.push_back(
+            {.mode = DisplayMode::kCompare, .timeBase = static_cast<TimeBase>(timeBase)});
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryTimeBase, MatchWork, ::testing::ValuesIn(compareCases()),
                          modeTestName);
 
 } // namespace
