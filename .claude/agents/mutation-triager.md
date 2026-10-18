@@ -47,9 +47,12 @@ The TypeScript mutants are run against the unit tests only (vitest.mutation.conf
 tests in `ui/tests/app/` drive real browsers, far too slowly to run once per mutant, so a mutant
 in code only they reach, such as most of `ui/src/app.ts`, comes back as no coverage although an
 app test may well notice it. Before calling such a mutant a gap, look for the app test that
-would fail with it; if there is one, the verdict is **tested**. Likewise the C++ mutants run
-against `engine_tests` only (scripts/mutation-cpp.sh): a plugin or editor test that would fail
-with one makes it **tested**.
+would fail with it; if there is one, the verdict is **tested**. Likewise the engine's C++
+mutants run against `engine_tests` only (scripts/mutation-cpp.sh): a plugin or editor test that
+would fail with one makes it **tested**. The Audio Unit's (`au/src`, scripts/mutation-au.sh) run
+against `au_tests`, `au_view_tests` and `au_component_tests`, all three, so only a test outside
+them makes one **tested**. Mull mutates C++ only: an Objective-C method in `AudioUnitView.mm`
+gets no mutant, so its lines never appear here, while the C++ functions of that file do.
 
 Choose **gap** only when you can name the user-visible failure and the state that triggers it;
 when in doubt between gap and another verdict, explain the doubt in the reason and choose gap,

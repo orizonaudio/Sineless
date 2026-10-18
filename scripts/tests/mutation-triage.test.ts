@@ -208,8 +208,8 @@ describe("the reports the workflow triages", () => {
     ),
   ].map((match) => match[1] ?? "");
 
-  test("are the two mutation jobs'", () => {
-    expect(read).toEqual(["mutation-ts", "mutation-cpp"]);
+  test("are the three mutation jobs'", () => {
+    expect(read).toEqual(["mutation-ts", "mutation-cpp", "mutation-au"]);
   });
 
   test.each(read)(
@@ -244,7 +244,11 @@ describe("a pull request that changes no line a mutation job mutates or tests", 
     ).toBe("none");
   });
 
-  test.each(["scripts/mutation.sh", "scripts/mutation-cpp.sh"])(
+  test.each([
+    "scripts/mutation.sh",
+    "scripts/mutation-cpp.sh",
+    "scripts/mutation-au.sh",
+  ])(
     "is not incomplete for any of %s's summaries with nothing to judge",
     (script) => {
       for (const summary of nothingToJudgeSummaries(script)) {
@@ -332,6 +336,14 @@ describe("the paths the triagers read", () => {
     ],
     ["../../work/Sineless/protocol/src/frame.ts", "protocol/src/frame.ts"],
     ["/x/engine/src/engine/Nested.cpp", "engine/src/engine/Nested.cpp"],
+    [
+      "/Users/runner/work/Sineless/Sineless/au/src/AudioUnit.cpp",
+      "au/src/AudioUnit.cpp",
+    ],
+    [
+      "../../../../Users/runner/work/Sineless/Sineless/au/src/AudioUnitView.mm",
+      "au/src/AudioUnitView.mm",
+    ],
   ])("are %s as %s, a path in the repository", (from, to) => {
     expect(repositoryPath(from)).toBe(to);
   });
@@ -362,6 +374,12 @@ describe("the mutation triage's command line, as the workflow runs it", () => {
       "a summary that nothing changed",
       false,
       "scripts/mutation-cpp.sh",
+      "none",
+    ],
+    [
+      "a summary that no Audio Unit line changed",
+      false,
+      "scripts/mutation-au.sh",
       "none",
     ],
     ["neither", false, undefined, "incomplete"],

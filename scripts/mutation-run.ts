@@ -4,8 +4,12 @@
 // runs it (the test binary with an environment variable named after the mutant set to 1), its
 // result is written as soon as it is known, a mutant that takes longer than the limit is stopped
 // and counted as timed out, and the mutants not reached by the deadline are reported as not run.
+// After the first binary, each further one (after another --) runs a mutant the ones before it
+// did not notice: the Audio Unit's view tests notice some of its mutants that its other tests
+// miss (scripts/mutation-au.sh). --workers sets how many mutants run at once (default: one a core).
 //   node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl>
-//       --limit <seconds a mutant> --deadline <seconds in all> -- <test binary> [arguments]
+//       --limit <seconds a binary> --deadline <seconds in all> [--workers <n>]
+//       -- <test binary> [arguments] [-- <test binary> [arguments]]...
 //   node scripts/mutation-run.ts merge <dry-run.json> <results.jsonl>...   (prints the report)
 // The dry run is Mull's report of every mutant with no test run (mull-runner --dry-run).
 import { spawn } from "node:child_process";
@@ -108,23 +112,45 @@ export function statusOf(
   return exitCode === 0 ? "Survived" : "Killed";
 }
 
+// A test binary and its arguments.
+export interface TestCommand {
+  command: string;
+  args: string[];
+}
+
 interface RunOptions {
   ids: string[];
   results: string;
   limitSeconds: number;
   deadlineSeconds: number;
-  command: string;
-  args: string[];
-  workers?: number;
+  tests: TestCommand[];
+  workers?: number | undefined;
 }
 
-// The tests run with the mutant `id` switched on, or with none.
-function runTests(
-  options: Omit<RunOptions, "ids" | "results" | "deadlineSeconds">,
+type TestOptions = Pick<RunOptions, "limitSeconds" | "tests">;
+
+// The tests run with the mutant `id` switched on, or with none: each binary in turn, until one
+// fails or is stopped at the limit, which notices the mutant.
+async function runTests(
+  options: TestOptions,
+  id?: string,
+): Promise<Result["status"]> {
+  for (const test of options.tests) {
+    const status = await runBinary(test, options.limitSeconds, id);
+    if (status !== "Survived") {
+      return status;
+    }
+  }
+  return "Survived";
+}
+
+function runBinary(
+  test: TestCommand,
+  limitSeconds: number,
   id?: string,
 ): Promise<Result["status"]> {
   return new Promise((resolve) => {
-    const child = spawn(options.command, options.args, {
+    const child = spawn(test.command, test.args, {
       env: id === undefined ? process.env : { ...process.env, [id]: "1" },
       stdio: "ignore",
     });
@@ -132,7 +158,7 @@ function runTests(
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGKILL");
-    }, options.limitSeconds * 1000);
+    }, limitSeconds * 1000);
     child.on("error", () => {
       clearTimeout(timer);
       resolve("Killed");
@@ -146,9 +172,7 @@ function runTests(
 
 // Whether the tests pass with no mutant, within the limit. Where they do not (the binary cannot
 // find its data on this machine, say), every mutant would read as noticed.
-export async function testsPass(
-  options: Omit<RunOptions, "ids" | "results" | "deadlineSeconds">,
-): Promise<boolean> {
+export async function testsPass(options: TestOptions): Promise<boolean> {
   return (await runTests(options)) === "Survived";
 }
 
@@ -183,6 +207,19 @@ export async function run(options: RunOptions): Promise<Result[]> {
   return done;
 }
 
+// The test binaries after the first --, each with its arguments, split at each further --.
+export function testCommands(args: string[]): TestCommand[] {
+  const groups: string[][] = [[]];
+  for (const arg of args.slice(args.indexOf("--") + 1)) {
+    if (arg === "--") {
+      groups.push([]);
+    } else {
+      groups.at(-1)?.push(arg);
+    }
+  }
+  return groups.map(([command = "", ...rest]) => ({ command, args: rest }));
+}
+
 function readResults(path: string): Result[] {
   if (!existsSync(path)) {
     return [];
@@ -195,9 +232,13 @@ function readResults(path: string): Result[] {
 
 if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
   const args = process.argv.slice(2);
+  // The options come before the test binaries, whose own arguments are not read as options.
+  const options = args.includes("--")
+    ? args.slice(0, args.indexOf("--"))
+    : args;
   const option = (name: string) => {
-    const at = args.indexOf(name);
-    return at === -1 ? undefined : args[at + 1];
+    const at = options.indexOf(name);
+    return at === -1 ? undefined : options[at + 1];
   };
   const [command, dryRun] = args;
   const report =
@@ -207,21 +248,29 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
   if (command === "run" && report !== undefined) {
     const [share, shares] = (args[2] ?? "").split("/").map(Number);
     const results = args[3];
-    const separator = args.indexOf("--");
+    const tests = testCommands(args);
     const limit = Number(option("--limit"));
     const deadline = Number(option("--deadline"));
+    const workers =
+      option("--workers") === undefined
+        ? undefined
+        : Number(option("--workers"));
     if (
       results === undefined ||
-      separator === -1 ||
+      !args.includes("--") ||
+      tests.some((test) => test.command === "") ||
       !(limit > 0) ||
-      !(deadline > 0)
+      !(deadline > 0) ||
+      (workers !== undefined && !(Number.isInteger(workers) && workers > 0))
     ) {
       console.error(
-        "run needs <share>/<shares> <results.jsonl> --limit --deadline -- <binary>",
+        "run needs <share>/<shares> <results.jsonl> --limit --deadline [--workers] -- <binary> [-- <binary>]...",
       );
       process.exit(2);
     }
-    const binary = args[separator + 1] ?? "";
+    // The first binary holds every mutant's switch. The later ones may not: the component's tests
+    // load the component built with the mutants rather than link them.
+    const binary = tests[0]?.command ?? "";
     const ids = shareOf(mutantIds(report), share ?? 0, shares ?? 0);
     const missing = missingSwitches(readFileSync(binary), ids);
     if (missing.length > 0) {
@@ -230,13 +279,7 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       );
       process.exit(1);
     }
-    if (
-      !(await testsPass({
-        limitSeconds: limit,
-        command: binary,
-        args: args.slice(separator + 2),
-      }))
-    ) {
+    if (!(await testsPass({ limitSeconds: limit, tests }))) {
       console.error(
         `The tests fail, or take more than ${String(limit)} s, with no mutant: every mutant would read as noticed.`,
       );
@@ -248,8 +291,8 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       results,
       limitSeconds: limit,
       deadlineSeconds: deadline,
-      command: binary,
-      args: args.slice(separator + 2),
+      tests,
+      workers,
     });
     const notRun = done.filter((result) => result.status === "NotRun").length;
     console.log(
@@ -260,7 +303,7 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
     console.log(JSON.stringify(merge(report, results)));
   } else {
     console.error(
-      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --limit <s> --deadline <s> -- <binary> [args] | merge <dry-run.json> <results.jsonl>...",
+      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --limit <s> --deadline <s> [--workers <n>] -- <binary> [args] [-- <binary> [args]]... | merge <dry-run.json> <results.jsonl>...",
     );
     process.exit(2);
   }

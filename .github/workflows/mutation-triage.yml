@@ -1,7 +1,7 @@
 name: Mutation triage
 
 # Claude judges the mutants no test noticed on a pull request's changed lines (the reports of CI's
-# mutation and mutation-cpp jobs) by REVIEW.md's "Mutation testing", and sets the
+# mutation, mutation-cpp and mutation-au jobs) by REVIEW.md's "Mutation testing", and sets the
 # "mutation-triage" commit status: it fails while a verified gap is left, a mutant a user could
 # see go wrong with no test noticing. Equivalent, speed-only, tuned-value, dead-code and
 # message-only mutants pass. Not a required check: it does not block merging.
@@ -171,6 +171,14 @@ jobs:
           github-token: ${{ github.token }}
           name: mutation-cpp
           path: mutation-triage/reports/mutation-cpp
+      - if: steps.pr.outputs.action == 'triage'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true # A job that did not run uploaded no report.
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          name: mutation-au
+          path: mutation-triage/reports/mutation-au
 
       # Every mutant no test noticed, numbered, from each mutation job of the run. A job that ran
       # and left no report (it failed, timed out or was cancelled) makes the triage incomplete, and
@@ -190,14 +198,15 @@ jobs:
               -f description="$2" -f target_url="$RUN_URL" > /dev/null
           }
           # The folder the downloads make, absent when no mutation job uploaded a report (a pull
-          # request that changes no code skips both).
+          # request that changes no code skips them all).
           mkdir -p mutation-triage
           gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate \
             --jq '.jobs[] | "\(.name)\t\(.conclusion // "")"' > mutation-triage/jobs.tsv
           echo '[]' > mutation-triage/mutants.json
           incomplete=()
           notRun=0
-          for kind in mutation:mutation-ts/mutation.json mutation-cpp:mutation-cpp/mull.json; do
+          for kind in mutation:mutation-ts/mutation.json mutation-cpp:mutation-cpp/mull.json \
+            mutation-au:mutation-au/mull.json; do
             job="${kind%%:*}"
             report="mutation-triage/reports/${kind#*:}"
             conclusion=$(awk -F'\t' -v job="$job" '$1 == job { print $2 }' mutation-triage/jobs.tsv)

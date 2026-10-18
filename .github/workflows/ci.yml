@@ -38,12 +38,14 @@ jobs:
   # with what it builds on: a pull request with its base, a queue entry with the entry before it
   # (whose own run built everything before), a push with the commit before it. Anything that
   # cannot be compared, a run by hand included, counts as code. The jobs below skip only when this
-  # job has answered "documentation only"; if it fails, they all run.
+  # job has answered "documentation only"; if it fails, they all run. It also says whether the
+  # Audio Unit's sources changed, which alone runs its mutation job (on a macOS runner).
   changes:
     name: changes
     runs-on: ubuntu-24.04
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      au: ${{ steps.diff.outputs.au }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,6 +72,7 @@ jobs:
           esac
           code=$(node scripts/changed-code.ts "$range")
           echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "au=$(node scripts/changed-code.ts "$range" au/src)" >> "$GITHUB_OUTPUT"
           if [[ "$code" == false ]]; then
             echo "Documentation only; the builds and tests are skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -581,6 +584,69 @@ jobs:
           path: |
             build/mutation-cpp-report/mull.json
             build/mutation-cpp-report/summary.md
+          if-no-files-found: ignore
+
+  # Mutation testing of the Audio Unit lines a pull request changes (scripts/mutation-au.sh), with
+  # Mull for Homebrew's LLVM 20 on macOS, as the Audio Unit builds nowhere else: a report in the job
+  # summary, with warnings on the lines whose changes none of the Audio Unit's tests notices. Never
+  # a failure, and not required; pull requests that change au/src only, so that no other takes a
+  # macOS runner for it. On macos-26: Mull's macOS builds need macOS 26.5 or later, and the image's
+  # Xcode has the macOS 26 SDK that Clang 20 builds against. The whole of au/src runs in minutes,
+  # so the mutants are not shared out. Each test binary is stopped at 300 s rather than the
+  # engine's MUTANT_TIMEOUT: the Audio Unit's tests take seconds unmutated, so 300 s still lets a
+  # slow runner finish them, and a mutant that hangs one costs five minutes, not twenty-five. No
+  # mutant starts after 30 minutes of running them (MUTATION_DEADLINE), so that with the build the
+  # job ends within its 60 with the results it wrote, the rest reported as not run.
+  mutation-au:
+    name: mutation-au
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.au != 'false' && github.event_name == 'pull_request' }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
+      MUTANT_TIMEOUT: 300
+      MUTATION_DEADLINE: 1800
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # The changed lines are found against the base branch.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          save: ${{ env.SAVE_CACHES }}
+          key: mutation-au
+          max-size: 2G
+      # The image has it; installed if a newer image drops it.
+      - name: Install LLVM 20
+        run: brew list llvm@20 > /dev/null 2>&1 || brew install llvm@20
+      - run: npm ci # The editor embeds the page, which Vite builds.
+      - name: Measure
+        continue-on-error: true
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: scripts/mutation-au.sh "$BASE"
+      - name: Report
+        if: always()
+        run: |
+          if [[ -f build/mutation-au-report/mull.json ]]; then
+            node scripts/mutation-report.ts build/mutation-au-report/mull.json --annotate
+          fi
+          cat build/mutation-au-report/summary.md >> "$GITHUB_STEP_SUMMARY" ||
+            echo "Mutation testing did not run; see the Measure step." >> "$GITHUB_STEP_SUMMARY"
+      # For the mutation triage (mutation-triage.yml), which judges the mutants no test noticed.
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-au
+          # With its summary, which says whether nothing was mutated or some mutants were not run.
+          path: |
+            build/mutation-au-report/mull.json
+            build/mutation-au-report/summary.md
           if-no-files-found: ignore
 
   # The performance limits (scripts/performance.sh): the leak limits (what reopening the editor

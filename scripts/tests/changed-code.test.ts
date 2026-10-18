@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
-import { changedFiles, changesCode } from "../changed-code.ts";
+import { changedFiles, changesCode, changesUnder } from "../changed-code.ts";
 
 describe("a change", () => {
   test.each([
@@ -32,6 +32,57 @@ describe("a change", () => {
 
   test("that lists no files runs the builds and tests", () => {
     expect(changesCode([])).toBe(true);
+  });
+});
+
+describe("whether a change touches the Audio Unit's sources, which decides whether its mutation job runs", () => {
+  test.each([
+    [["au/src/AudioUnit.cpp"]],
+    [["README.md", "au/src/AudioUnitView.mm"]],
+  ])("%j does", (files) => {
+    expect(changesUnder(files, "au/src")).toBe(true);
+  });
+
+  test.each([
+    [["au/tests/AudioUnitTests.cpp"]],
+    [["engine/src/Analyzer.cpp", "au/CMakeLists.txt"]],
+    [["autumn/src/a.cpp"]],
+    [["au/srcs/a.cpp"]],
+  ])("%j does not", (files) => {
+    expect(changesUnder(files, "au/src")).toBe(false);
+  });
+
+  test("counts a change whose files could not be listed, or that lists none, as touching them, so a failure here never skips the job", () => {
+    expect(changesUnder(undefined, "au/src")).toBe(true);
+    expect(changesUnder([], "au/src")).toBe(true);
+  });
+
+  test("is printed for a range and a folder, as CI's changes job asks", () => {
+    const repository = mkdtempSync(join(tmpdir(), "changed-code-"));
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: repository, stdio: "ignore" });
+    try {
+      git("init", "-q");
+      git("config", "user.email", "test@example.com");
+      git("config", "user.name", "Test");
+      writeFileSync(join(repository, "a.cpp"), "int a = 0;\n");
+      git("add", "a.cpp");
+      git("commit", "-q", "-m", "Add a.cpp");
+      writeFileSync(join(repository, "a.cpp"), "int a = 1;\n");
+      git("commit", "-q", "-am", "Change a.cpp");
+      const printed = execFileSync(
+        process.execPath,
+        [
+          join(import.meta.dirname, "..", "changed-code.ts"),
+          "HEAD~1..HEAD",
+          "au/src",
+        ],
+        { cwd: repository, encoding: "utf8" },
+      );
+      expect(printed.trim()).toBe("false");
+    } finally {
+      rmSync(repository, { recursive: true, force: true });
+    }
   });
 });
 
