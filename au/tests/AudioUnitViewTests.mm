@@ -480,8 +480,9 @@ TEST_F(AudioUnitViewTest, GrowsForStackedLanes)
 // and closes cleanly afterwards.
 TEST_F(AudioUnitViewTest, ClosesCleanlyAfterTheAudioUnitIsDisposed)
 {
-    const auto engine = engineOf(unit);
-    engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per request.
+    // Only a weak reference here: after the dispose, the engine is alive only if the view holds it.
+    const std::weak_ptr<engine::Engine> held = engineOf(unit);
+    held.lock()->settings().set(protocol::SettingId::kTriggerMode, 2.0); // A frame per request.
     NSView* view = openView(unit);
     NSWindow* window = windowFor(view);
     WKWebView* webView = webViewOf(view);
@@ -497,6 +498,8 @@ TEST_F(AudioUnitViewTest, ClosesCleanlyAfterTheAudioUnitIsDisposed)
 
     AudioComponentInstanceDispose(unit);
     unit = nullptr;
+    const auto engine = held.lock();
+    ASSERT_NE(engine, nullptr) << "the view holds the engine";
     std::vector<float> tone(480, 0.5F);
     std::array<const float*, 2> channels{tone.data(), tone.data()};
     engine->captureRing().write(channels.data(), 2, static_cast<int>(tone.size()));
