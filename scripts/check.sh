@@ -114,7 +114,8 @@ if part glue; then
     # The macOS sources only (the web view glue, the Audio Unit, and the Objective-C++ tests,
     # benchmark and showcase); Linux lints the shared ones. With the AddressSanitizer build's
     # commands: arm64 only (clang-tidy cannot handle a universal binary's two -arch flags), and
-    # its generated headers are built.
+    # its generated headers are built. It configures the benchmark and showcase (ORIZON_BENCH)
+    # without building them, so that they are linted with their own flags, not a neighbour's.
     git ls-files -co --exclude-standard -- 'editor/src/mac/*' 'editor/*.mm' 'au/*.cpp' 'au/*.mm' |
         xargs -P "$(sysctl -n hw.ncpu)" -n 4 \
             "$LLVM_BIN/clang-tidy" -p build/asan --quiet --extra-arg="-isysroot$(xcrun --show-sdk-path)"

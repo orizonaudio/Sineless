@@ -37,6 +37,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_OSX_ARCHITECTURES": "arm64",
         "ORIZON_ADDRESS_SANITIZER": "ON",
+        "ORIZON_BENCH": "ON",
         "SMTG_RUN_VST_VALIDATOR": "OFF"
       }
     },
