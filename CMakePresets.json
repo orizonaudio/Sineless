@@ -206,6 +206,25 @@
       }
     },
     {
+      "name": "mutation-au",
+      "displayName": "macOS: the Audio Unit's tests built for mutation testing with Mull (scripts/mutation-au.sh)",
+      "binaryDir": "${sourceDir}/build/mutation-au",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang++",
+        "CMAKE_OBJCXX_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang++",
+        "CMAKE_CXX_FLAGS": "-fpass-plugin=${sourceDir}/build/mull-macos/lib/mull-ir-frontend-20 -g -grecord-command-line",
+        "CMAKE_OBJCXX_FLAGS": "-fpass-plugin=${sourceDir}/build/mull-macos/lib/mull-ir-frontend-20 -g -grecord-command-line",
+        "SMTG_RUN_VST_VALIDATOR": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
       "name": "coverage",
       "displayName": "Linux: engine and protocol tests with source-based coverage (Clang)",
       "generator": "Ninja",
@@ -404,6 +423,16 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
+      }
+    },
+    {
+      "name": "mutation-au",
+      "configurePreset": "mutation-au",
+      "targets": ["au_tests", "au_view_tests", "au_component_tests"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
       }
     },
     {

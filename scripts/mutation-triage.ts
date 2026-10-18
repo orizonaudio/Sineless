@@ -70,7 +70,7 @@ export function runOutcome(
   }
   if (
     summary !== undefined &&
-    /^No (TypeScript|engine) source lines changed since |^No unit test reaches the lines changed since |^No mutant on the lines changed since /mu.test(
+    /^No (TypeScript|engine|Audio Unit) source lines changed since |^No unit test reaches the lines changed since |^No mutant on the lines changed since /mu.test(
       summary,
     )
   ) {
@@ -87,7 +87,9 @@ export function repositoryPath(file: string): string {
     return file;
   }
   const match =
-    /(?:^|\/)((?:engine|plugin|editor|protocol|ui|scripts)\/.*)$/u.exec(file);
+    /(?:^|\/)((?:engine|plugin|editor|au|protocol|ui|scripts)\/.*)$/u.exec(
+      file,
+    );
   return match?.[1] ?? file;
 }
 
