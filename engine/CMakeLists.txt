@@ -97,14 +97,23 @@ if(ORIZON_BENCH)
     target_link_libraries(analysis_bench PRIVATE engine engine_bench_support orizon_warnings)
 
     if(BUILD_TESTING)
-        # The bench refuses a scenario none of whose frames shows anything (here, with no
-        # columns to draw), so that CI never compares a scenario that measures nothing; the same
-        # scenario drawn passes.
-        add_test(NAME AnalysisBench.MeasuresAScenario
-                 COMMAND analysis_bench --scenario=single-one-bar --frames=2)
+        # The bench writes the run the engine-work gate reads; it refuses a scenario none of whose
+        # frames shows anything (here, with no columns to draw), so that CI never compares one
+        # that measures nothing; and it fails when it cannot write its results.
+        set(benchTest ${CMAKE_COMMAND} -DBENCH=$<TARGET_FILE:analysis_bench>)
+        set(benchScript ${CMAKE_CURRENT_SOURCE_DIR}/bench/BenchTest.cmake)
+        set(benchRun "--scenario=single-one-bar --frames=2")
+        add_test(NAME AnalysisBench.WritesARunTheGateReads
+                 COMMAND ${benchTest} "-DARGS=${benchRun}"
+                         -DJSON=${CMAKE_CURRENT_BINARY_DIR}/bench-test/single-one-bar.json
+                         -DNODE=${NODE_EXECUTABLE}
+                         -DGATE=${PROJECT_SOURCE_DIR}/scripts/engine-work.ts -P ${benchScript})
         add_test(NAME AnalysisBench.RefusesAScenarioThatShowsNothing
-                 COMMAND analysis_bench --scenario=single-one-bar --frames=2 --columns=0)
-        set_tests_properties(AnalysisBench.RefusesAScenarioThatShowsNothing
-                             PROPERTIES WILL_FAIL TRUE)
+                 COMMAND ${benchTest} "-DARGS=${benchRun} --columns=0"
+                         "-DREFUSES=the scenario measures nothing" -P ${benchScript})
+        add_test(NAME AnalysisBench.SaysWhenItCannotWriteItsResults
+                 COMMAND ${benchTest} "-DARGS=${benchRun}"
+                         -DJSON=${CMAKE_CURRENT_BINARY_DIR}/bench-test-missing/single-one-bar.json
+                         "-DREFUSES=Could not write" -P ${benchScript})
     endif()
 endif()
