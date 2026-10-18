@@ -247,8 +247,8 @@ jobs:
       - run: scripts/check.sh
 
   # scripts/check.sh's glue part: the macOS editor's web view tests (WKWebView, Cocoa) under
-  # AddressSanitizer and ThreadSanitizer, and clang-tidy over the macOS sources. In parallel with the
-  # main job.
+  # AddressSanitizer and ThreadSanitizer, the Audio Unit's tests under AddressSanitizer and
+  # RealtimeSanitizer, and clang-tidy over the macOS sources. In parallel with the main job.
   macos-glue:
     name: macos-glue
     needs: changes

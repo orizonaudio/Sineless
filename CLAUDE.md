@@ -14,7 +14,8 @@ is how to meet it the first time.
 
 - **Nothing on the audio thread may allocate, lock, block or do I/O.** `Processor::process`
   and everything it calls run in the host's real-time thread; a stall there is an audible
-  dropout. The RealtimeSanitizer build in `scripts/check-linux.sh` checks this.
+  dropout. The RealtimeSanitizer builds in `scripts/check-linux.sh` (the shared code) and
+  `scripts/check.sh` (the Audio Unit) check this.
 - **The engine is the source of truth.** The UI shows what the frame carries (lanes,
   views, roll, pan reach, sample rate) and does not work it out again from settings.
 - **"No value" is NaN, never 0.** Not measured, silent or never sounding together travel
