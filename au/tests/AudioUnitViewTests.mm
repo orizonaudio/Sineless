@@ -404,16 +404,21 @@ TEST_F(AudioUnitViewTest, ReturnsToItsMinimumWhenTheUserStopsDragging)
 {
     NSView* view = openView(unit);
     NSWindow* window = windowFor(view);
-    [view viewWillStartLiveResize];
-    for (const NSSize dragged : {NSMakeSize(600, 220), NSMakeSize(500, 200)}) {
-        [view setFrameSize:dragged];
+    // Twice to the same smallest size, as a window stops at its own minimum each time: every drag
+    // is the user's, never a size the host insists on.
+    for (int drag = 0; drag < 2; ++drag) {
+        SCOPED_TRACE(drag);
+        [view viewWillStartLiveResize];
+        for (const NSSize dragged : {NSMakeSize(600, 220), NSMakeSize(500, 200)}) {
+            [view setFrameSize:dragged];
+            runQueuedWork();
+            EXPECT_TRUE(NSEqualSizes(view.frame.size, dragged)) << "follows the drag";
+        }
+        [view viewDidEndLiveResize];
         runQueuedWork();
-        EXPECT_TRUE(NSEqualSizes(view.frame.size, dragged)) << "follows the drag";
+        EXPECT_EQ(view.frame.size.width, EditorCore::kMinimumWidth);
+        EXPECT_EQ(view.frame.size.height, EditorCore::kMinimumHeight);
     }
-    [view viewDidEndLiveResize];
-    runQueuedWork();
-    EXPECT_EQ(view.frame.size.width, EditorCore::kMinimumWidth);
-    EXPECT_EQ(view.frame.size.height, EditorCore::kMinimumHeight);
     closeWindow(window, view);
 }
 

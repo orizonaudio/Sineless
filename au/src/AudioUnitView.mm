@@ -39,7 +39,8 @@
     // every view in the window.
     bool liveResizing;
     // The last size below the minimum that the view returned from, or none yet. A host that sets
-    // it again keeps it.
+    // it again keeps it; a user's drag starts afresh, since a window stops at the same smallest
+    // size every time.
     std::optional<NSSize> refusedSize;
 }
 
@@ -129,6 +130,7 @@
 {
     [super viewWillStartLiveResize];
     liveResizing = true;
+    refusedSize.reset();
 }
 
 - (void)viewDidEndLiveResize
