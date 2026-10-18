@@ -269,6 +269,17 @@ describe("the command", () => {
     return dir;
   }
 
+  test("checks one run as `results` reads it: 0 for a whole run, 1 naming what is missing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "engine-work-"));
+    const file = join(dir, "compare-15-worst.json");
+    writeFileSync(file, JSON.stringify(benchRun));
+    expect(run("check", file).status).toBe(0);
+    writeFileSync(file, JSON.stringify({ ...benchRun, gated: undefined }));
+    const refused = run("check", file);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("gated");
+  });
+
   test("fails a gated scenario's rise once its results have been written and read back", () => {
     const root = mkdtempSync(join(tmpdir(), "engine-work-"));
     const base = build(root, "base", 1000);
