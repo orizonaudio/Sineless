@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Validates the Audio Unit as hosts meet it: installs the component for this user, waits until
-# macOS has registered this build, then runs Apple's auval on it (strict, and once out of process,
+# macOS has registered it, then runs Apple's auval on it (strict, and once out of process,
 # as Logic and GarageBand load it) and pluginval. The installed copy stays: the next build or the
 # installer replaces it.
 #
@@ -20,23 +20,32 @@ version="$(/usr/libexec/PlistBuddy -c 'Print :AudioComponents:0:version' \
 versionHex="$(printf '0x%X' "$version")"
 
 mkdir -p "$(dirname "$installed")"
+replacing=false
+[[ -e "$installed" ]] && replacing=true
 rm -rf "$installed"
 ditto "$component" "$installed"
 codesign --force --sign - "$installed"
 
-# Registration is not immediate, and macOS may still serve the previous build's: wait until auval
-# finds the component at this build's version. Restarting the registrar makes it rescan every
-# component, so it is done at most once.
+# Registration is not immediate. A copy that replaces an earlier one may keep the earlier one's
+# registration (same version, other metadata), so the registrar is restarted at once to rescan;
+# a first install is left to the registrar, which normally notices it within a few seconds, and
+# restarted only if it has not after 10 s. A restart rescans every component, so there is at most
+# one. Then the script waits until auval finds the component at this build's version: 30 tries 2 s
+# apart, 60 s in all, far beyond the few seconds registration takes, for slow CI runners.
+restartRegistrar() {
+    killall -9 AudioComponentRegistrar 2> /dev/null || true
+    restarted=true
+}
 registered() {
     auval -v "${codes[@]}" > "$log" 2>&1 || true
     grep -q "Component Version: .*($versionHex)" "$log"
 }
 restarted=false
+[[ "$replacing" == true ]] && restartRegistrar
 for attempt in $(seq 1 30); do
     registered && break
-    if [[ "$restarted" == false && "$attempt" -ge 5 ]]; then
-        killall -9 AudioComponentRegistrar 2> /dev/null || true
-        restarted=true
+    if [[ "$restarted" == false && "$attempt" -gt 5 ]]; then
+        restartRegistrar
     fi
     sleep 2
 done
