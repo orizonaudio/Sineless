@@ -663,6 +663,53 @@ TEST(FrozenTrigger, StaysAtTheMarkerWhenTheSpanShortens)
     }
 }
 
+// A mono track triggers at the level set, in every mode: Single triggers on its one channel and
+// Multi and Compare on its Mid, which for a mono track is that channel, not half of it. A 0.5 tone
+// triggered at 0.3 (above half its peak) in Normal mode is triggered, and crosses 0.3 rising at
+// the trigger marker. At the lowest and highest rates.
+class MonoTrigger : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(MonoTrigger, TriggersAtTheLevelSet)
+{
+    constexpr float kLevel = 0.3f;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        SCOPED_TRACE(rateName(rate));
+        Session session(rate, 1);
+        session.join({.frequency = 1100.0, .amplitude = 0.5, .offset = 0.0});
+        configure(session.own(), GetParam(), TimeBase::kSeconds);
+        session.own().settings().set(SettingId::kTriggerMode,
+                                     static_cast<double>(protocol::TriggerMode::kNormal));
+        session.own().settings().set(SettingId::kTriggerLevel, kLevel);
+        session.own().settings().set(SettingId::kTimeSpan, 0.02);
+        session.analyzer().setColumns(std::size_t{1} << 16U); // Raw samples.
+        session.play(1.0, protocol::kReadoutIntervalSeconds / 2.0);
+        auto frame = session.produce();
+        if (!frame) {
+            session.play(0.01);
+            frame = session.produce();
+        }
+        ASSERT_TRUE(frame) << "never triggered";
+        ASSERT_TRUE(frame->has(FrameFlag::kTriggered));
+        ASSERT_EQ(frame->mode, FrameMode::kRaw);
+        const std::span<const float> values = trace(*frame, 0);
+        const auto marker = static_cast<std::ptrdiff_t>(
+            std::llround(kTriggerPosition * frame->visibleSamples + frame->startFraction));
+        bool rising = false;
+        for (std::ptrdiff_t i = std::max<std::ptrdiff_t>(marker - 1, 1);
+             i <= marker + 1 && i < std::ssize(values); ++i) {
+            rising = rising || (values[i - 1] <= kLevel && values[i] > kLevel);
+        }
+        EXPECT_TRUE(rising) << "no rising crossing of " << kLevel << " at sample " << marker;
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, MonoTrigger, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
+                         });
+
 // Frozen in Seconds, a shorter span shows the part around the trigger marker of the last live
 // window, and its readouts describe that part: a tone four times louder in its newest 6 ms, which
 // the 10 ms span chosen after freezing at 20 ms no longer shows, reads at its quiet level. In every
