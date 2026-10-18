@@ -86,8 +86,13 @@ if(BUILD_TESTING)
 endif()
 
 if(ORIZON_BENCH)
-    # What the benchmarks share: the material they play, the same every run.
+    # What the benchmarks share: the scenarios they play and the material, the same every run.
     add_library(engine_bench_support INTERFACE)
     target_include_directories(engine_bench_support INTERFACE bench/include)
     target_link_libraries(engine_bench_support INTERFACE protocol)
+
+    # The analysis's work per frame, deterministic: counted under Cachegrind in CI
+    # (scripts/engine-work.sh), timed on its own.
+    add_executable(analysis_bench bench/AnalysisBench.cpp)
+    target_link_libraries(analysis_bench PRIVATE engine engine_bench_support orizon_warnings)
 endif()
