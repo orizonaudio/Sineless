@@ -769,6 +769,8 @@ jobs:
             runner: windows-2022
     env:
       PERF_SPEED: report
+      # No limits are set for these machines (scripts/performance-limits.json): measured only.
+      PERF_MACHINE: github-${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -796,8 +798,15 @@ jobs:
         run: |
           # No log at all (the benchmarks did not build or run) is reported, not an error.
           $lines = @(Select-String -Path performance.log -ErrorAction SilentlyContinue `
-            -Pattern '^(limit|total|page|reopen|reopened|worst share|  thread Sineless analysis)' |
+            -Pattern '^(limit|total|page|view|cpu per frame|frames|ticks|reopen|reopened|worst share|  thread Sineless analysis)' |
             ForEach-Object { $_.Line })
           if ($lines.Count -eq 0) { $lines = @('No measurements; see the log.') }
           @("## Performance (${{ matrix.os }})", '', '```') + $lines + @('```') |
             Add-Content -Path $env:GITHUB_STEP_SUMMARY
+      # Each editor scenario's measurements, in Bencher Metric Format.
+      - if: always() && matrix.os == 'macos'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: performance-macos
+          path: build/performance/*.json
+          if-no-files-found: ignore
