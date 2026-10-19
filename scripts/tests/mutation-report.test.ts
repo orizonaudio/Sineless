@@ -64,6 +64,49 @@ describe("the mutation report's command line", () => {
     expect(summary).not.toContain("[!WARNING]");
   });
 
+  test("adds each module's tests' time against their own limit (scripts/mutation-cpp.sh)", () => {
+    const engineLog = join(dir, "mull-engine.log");
+    writeFileSync(
+      engineLog,
+      "[info] Warm up run (threads: 1)\n       [###] 1/1. Finished in 11m0s\n",
+    );
+    const summary = run(
+      report(),
+      "Mutation testing (C++)",
+      "525",
+      "--tests-log",
+      `engine_tests=${engineLog}`,
+      "--tests-limit",
+      "engine_tests=1500",
+      "--tests-log",
+      `plugin_tests=${log()}`,
+      "--tests-limit",
+      "plugin_tests=60",
+    );
+    const notes = summary
+      .split("\n")
+      .filter((line) => line.includes(" s with no mutant"));
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toMatch(/^engine_tests take 660 s .* 1500 s\.$/u);
+    expect(notes[1]).toMatch(/^plugin_tests take 3 s .* 60 s\.$/u);
+  });
+
+  test("refuses a module's tests given a log but no limit, rather than leave their time out", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "scripts/mutation-report.ts",
+        report(),
+        "Mutation testing (C++)",
+        "--tests-log",
+        `editor_tests=${log()}`,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("editor_tests");
+  });
+
   test("adds the slowest test binary's time against each binary's limit (scripts/mutation-au.sh)", () => {
     const summary = run(
       report(),

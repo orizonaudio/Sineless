@@ -16,6 +16,7 @@ import { describe, expect, test } from "vitest";
 import { execFileSync } from "node:child_process";
 
 import {
+  combine,
   merge,
   missingSwitches,
   mutantIds,
@@ -261,6 +262,45 @@ describe("running a share", () => {
   });
 });
 
+describe("listing several test binaries' mutants together", () => {
+  test("lists every module's mutants, so that a share of the list holds some of each", () => {
+    const plugin: Report = {
+      files: { "plugin/src/C.cpp": { mutants: [mutant("kill:c1")] } },
+    };
+    expect(mutantIds(combine([dryRun, plugin]))).toEqual(
+      [...mutantIds(dryRun), "kill:c1"].sort(),
+    );
+  });
+
+  test("lists no mutant from no dry run", () => {
+    expect(mutantIds(combine([]))).toEqual([]);
+  });
+
+  test("prints the lists as one from the command line (scripts/mutation-cpp.sh)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const engine = join(dir, "dry-engine.json");
+    const plugin = join(dir, "dry-plugin.json");
+    writeFileSync(engine, JSON.stringify(dryRun));
+    writeFileSync(
+      plugin,
+      JSON.stringify({
+        files: { "plugin/src/C.cpp": { mutants: [mutant("kill:c1")] } },
+      }),
+    );
+    const script = join(import.meta.dirname, "..", "mutation-run.ts");
+    const printed = JSON.parse(
+      execFileSync(process.execPath, [script, "combine", engine, plugin], {
+        encoding: "utf8",
+      }),
+    ) as Report;
+    expect(Object.keys(printed.files)).toEqual([
+      "engine/src/A.cpp",
+      "engine/src/B.cpp",
+      "plugin/src/C.cpp",
+    ]);
+  });
+});
+
 describe("merging the shares' results", () => {
   test("reports every mutant as not run when no share left a results file", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
@@ -423,6 +463,42 @@ describe("checking the tests pass with no mutant", () => {
       ),
     ).toThrow(/The tests fail, or take more than 5 s, with no mutant/u);
     expect(existsSync(results)).toBe(false);
+  });
+
+  test("runs no test for a share with no mutant, as a module with fewer mutants than shares leaves", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const dry = join(dir, "dry.json");
+    writeFileSync(
+      dry,
+      JSON.stringify({
+        files: { "plugin/src/C.cpp": { mutants: [mutant("kill:c1")] } },
+      }),
+    );
+    // Fails with no mutant: run, it would refuse the share. Share 2 of 2 holds no mutant.
+    const binary = join(dir, "plugin_tests");
+    writeFileSync(binary, "#!/bin/sh\nexit 1\n");
+    chmodSync(binary, 0o755);
+    const results = join(dir, "results.jsonl");
+    const script = join(import.meta.dirname, "..", "mutation-run.ts");
+    const printed = execFileSync(
+      process.execPath,
+      [
+        script,
+        "run",
+        dry,
+        "2/2",
+        results,
+        "--limit",
+        "5",
+        "--deadline",
+        "5",
+        "--",
+        binary,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(printed).toContain("0 mutants run");
+    expect(readFileSync(results, "utf8")).toBe("");
   });
 
   test("passes tests that pass", async () => {

@@ -203,15 +203,20 @@ export function warmUpSeconds(log: string): number | undefined {
 // test: past half the limit, the margin is too small, as one would be stopped and reported as
 // timed out, which counts as noticed and hides a line no test checks.
 // With perBinary, the limit stops each of several test binaries (scripts/mutation-au.sh), and
-// `warmUp` is the slowest one's time.
+// `warmUp` is the slowest one's time. With `name`, they are one module's tests, with a limit of
+// their own (scripts/mutation-cpp.sh).
 export function timeLimitNote(
   warmUp: number,
   limit: number,
   perBinary = false,
+  name?: string,
 ): string {
-  const [tests, stopped] = perBinary
-    ? ["The slowest test binary takes", "each test binary is stopped"]
-    : ["The tests take", "each mutant is stopped"];
+  const [tests, stopped] =
+    name !== undefined
+      ? [`${name} take`, "each of their mutants is stopped"]
+      : perBinary
+        ? ["The slowest test binary takes", "each test binary is stopped"]
+        : ["The tests take", "each mutant is stopped"];
   const lines = [
     `${tests} ${warmUp.toFixed(0)} s with no mutant; ${stopped} at ${limit.toFixed(0)} s.`,
   ];
@@ -219,7 +224,7 @@ export function timeLimitNote(
     lines.push(
       "",
       "> [!WARNING]",
-      `> ${tests} more than half the time limit: raise MUTANT_TIMEOUT, or mutants no test notices may be reported as timed out.`,
+      `> ${tests} more than half the time limit: raise ${name === undefined || name === "engine_tests" ? "MUTANT_TIMEOUT" : "it (scripts/mutation-cpp.sh)"}, or mutants no test notices may be reported as timed out.`,
     );
   }
   return lines.join("\n");

@@ -4,8 +4,10 @@
 // mutant's time limit, the summary also says how long the tests take against that limit.
 //   node scripts/mutation-report.ts <report.json> <title> [seconds the run took]
 //       [--mull-log <mull.log> --limit <seconds> | --binary-seconds <seconds> --limit <seconds>]
+//       [--tests-log <tests>=<mull.log> --tests-limit <tests>=<seconds>]...
 // (--binary-seconds: the slowest of several test binaries with no mutant, each stopped at the
-// limit, as scripts/mutation-au.sh runs them)
+// limit, as scripts/mutation-au.sh runs them; --tests-log and --tests-limit: each module's tests,
+// with a limit of their own, as scripts/mutation-cpp.sh runs them)
 //   node scripts/mutation-report.ts <report.json> --annotate
 //   node scripts/mutation-report.ts <report.json> --survivors   (the mutants no test noticed, JSON)
 import { existsSync, readFileSync } from "node:fs";
@@ -34,6 +36,8 @@ const { positionals, values } = parseArgs({
     survivors: { type: "boolean" },
     "mull-log": { type: "string" },
     "binary-seconds": { type: "string" },
+    "tests-log": { type: "string", multiple: true },
+    "tests-limit": { type: "string", multiple: true },
     limit: { type: "string" },
     "stryker-log": { type: "string" },
     "mull-dry-log": { type: "string" },
@@ -100,6 +104,26 @@ if (values.survivors === true) {
     const warmUp = warmUpSeconds(readFileSync(log, "utf8"));
     if (warmUp !== undefined) {
       summary += `\n\n${timeLimitNote(warmUp, Number(limit))}`;
+    }
+  }
+  // Each as <tests>=<value>.
+  const byTests = (pairs: string[] | undefined) =>
+    new Map(
+      (pairs ?? []).map((pair) => {
+        const at = pair.indexOf("=");
+        return [pair.slice(0, at), pair.slice(at + 1)] as const;
+      }),
+    );
+  const limits = byTests(values["tests-limit"]);
+  for (const [tests, testsLog] of byTests(values["tests-log"])) {
+    const testsLimit = limits.get(tests);
+    if (testsLimit === undefined) {
+      console.error(`No --tests-limit for ${tests}, whose Mull log is given.`);
+      process.exit(2);
+    }
+    const warmUp = warmUpSeconds(readFileSync(testsLog, "utf8"));
+    if (warmUp !== undefined) {
+      summary += `\n\n${timeLimitNote(warmUp, Number(testsLimit), false, tests)}`;
     }
   }
   console.log(summary);

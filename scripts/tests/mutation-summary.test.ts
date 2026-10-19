@@ -245,6 +245,28 @@ describe("the time limit note on a C++ mutation run", () => {
     },
   );
 
+  // Each module's tests have a limit of their own (scripts/mutation-cpp.sh): the note names them.
+  test.each([
+    [0.1, 60, false],
+    [40, 60, true],
+  ])(
+    "for plugin_tests taking %d s against their own %d s limit, names them and warns: %s",
+    (warmUp, limit, warns) => {
+      const [first = "", ...rest] = timeLimitNote(
+        warmUp,
+        limit,
+        false,
+        "plugin_tests",
+      ).split("\n");
+      expect(first).toMatch(/^plugin_tests /u);
+      const warning = rest.join("\n");
+      expect(warning.includes("[!WARNING]")).toBe(warns);
+      if (warns) {
+        expect(warning).toContain("plugin_tests");
+      }
+    },
+  );
+
   // Each of several test binaries is stopped at the limit (scripts/mutation-au.sh): the slowest
   // one must take well under it.
   test.each([

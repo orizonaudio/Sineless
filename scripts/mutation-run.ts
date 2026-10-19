@@ -11,7 +11,10 @@
 //       --limit <seconds a binary> --deadline <seconds in all> [--workers <n>]
 //       -- <test binary> [arguments] [-- <test binary> [arguments]]...
 //   node scripts/mutation-run.ts merge <dry-run.json> <results.jsonl>...   (prints the report)
-// The dry run is Mull's report of every mutant with no test run (mull-runner --dry-run).
+//   node scripts/mutation-run.ts combine <dry-run.json>...   (prints the lists as one)
+// The dry run is Mull's report of every mutant with no test run (mull-runner --dry-run). A share
+// with no mutant runs no test: a module with fewer mutants than shares leaves some empty
+// (scripts/mutation-cpp.sh runs each module's share against its own tests).
 import { spawn } from "node:child_process";
 import {
   appendFileSync,
@@ -44,6 +47,17 @@ export function mutantIds(report: Report): string[] {
       (mutants as ReportMutant[]).map((mutant) => mutant.id),
     )
     .sort();
+}
+
+// The dry runs of several test binaries as one list, as each lists its own module's files
+// (scripts/mutation-cpp.sh): the list CI counts and the shares' results are merged into.
+export function combine(reports: Report[]): Report {
+  return {
+    ...reports[0],
+    files: Object.fromEntries(
+      reports.flatMap((report) => Object.entries(report.files)),
+    ),
+  };
 }
 
 // Share `share` of `shares` (from 1): every shares-th mutant, so that each share gets some of
@@ -272,6 +286,11 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
     // load the component built with the mutants rather than link them.
     const binary = tests[0]?.command ?? "";
     const ids = shareOf(mutantIds(report), share ?? 0, shares ?? 0);
+    if (ids.length === 0) {
+      writeFileSync(results, "");
+      console.log("0 mutants run, 0 not run.");
+      process.exit(0);
+    }
     const missing = missingSwitches(readFileSync(binary), ids);
     if (missing.length > 0) {
       console.error(
@@ -298,12 +317,17 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
     console.log(
       `${String(done.length - notRun)} mutants run, ${String(notRun)} not run.`,
     );
+  } else if (command === "combine") {
+    const reports = args
+      .slice(1)
+      .map((path) => JSON.parse(readFileSync(path, "utf8")) as Report);
+    console.log(JSON.stringify(combine(reports)));
   } else if (command === "merge" && report !== undefined) {
     const results = args.slice(2).flatMap(readResults);
     console.log(JSON.stringify(merge(report, results)));
   } else {
     console.error(
-      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --limit <s> --deadline <s> [--workers <n>] -- <binary> [args] [-- <binary> [args]]... | merge <dry-run.json> <results.jsonl>...",
+      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --limit <s> --deadline <s> [--workers <n>] -- <binary> [args] [-- <binary> [args]]... | merge <dry-run.json> <results.jsonl>... | combine <dry-run.json>...",
     );
     process.exit(2);
   }
