@@ -23,6 +23,21 @@
 #define ORIZON_AU_VIEW_FACTORY ORIZON_JOIN(ORIZON_AU_CLASS_PREFIX, _ViewFactory)
 #define ORIZON_AU_VIEW ORIZON_JOIN(ORIZON_AU_CLASS_PREFIX, _View)
 
+namespace {
+
+// How long a size the view gives itself holds against an Auto Layout host's own (Logic's, out of
+// process): long enough for the host's window to catch up, which takes about 0.1 s in Logic, and
+// short enough that the host decides the size again soon after.
+constexpr double kOwnSizeHoldSeconds = 1.0;
+
+// How firmly the view keeps its intrinsic size: the "minimum" side always, at AppKit's default;
+// the "maximum" side only while it holds a size of its own, at the same priority, and otherwise
+// not at all, so that a host may make the view any size above the editor's minimum.
+const NSLayoutPriority kHoldingPriority = NSLayoutPriorityDefaultHigh;
+const NSLayoutPriority kNotHoldingPriority = 1;
+
+} // namespace
+
 // The view a host shows in the plugin's window: the editor filling it. The editor opens when the
 // view is shown in a window and closes when it leaves; hosts make a new view each time they open
 // the window and release it when they close it, which closes the editor too.
@@ -44,6 +59,10 @@
     std::optional<NSSize> refusedSize;
     // The editor's minimum as last given to Auto Layout, as the view's intrinsic size.
     NSSize givenMinimumSize;
+    // A size the view gave itself (the editor asked for room or the user dragged the resize grip),
+    // held for a moment, and which hold is the latest.
+    std::optional<NSSize> heldSize;
+    unsigned holds;
 }
 
 - (instancetype)initWithEngine:(std::shared_ptr<orizon::engine::Engine>)engine
@@ -57,19 +76,15 @@
         if (@available(macOS 14.0, *)) {
             self.clipsToBounds = YES; // No longer the default from macOS 14.
         }
-        // Its intrinsic size is a minimum only: a host laying the view out with Auto Layout may
-        // make it any size larger, whatever priority its own constraints have.
-        for (const NSLayoutConstraintOrientation orientation :
-             {NSLayoutConstraintOrientationHorizontal, NSLayoutConstraintOrientationVertical}) {
-            [self setContentHuggingPriority:1 forOrientation:orientation];
-        }
-        // The editor asks for room (stacked lanes, or a display scale): the view takes the size,
-        // and the host follows the view's frame. A host laying the view out with Auto Layout
-        // learns the editor's minimum from the view's intrinsic size, which follows each change of
-        // it (followMinimumSize), with or without a request.
+        [self setHugging:kNotHoldingPriority];
+        // The editor asks for room (stacked lanes, a display scale, the user's drag of the resize
+        // grip): the view takes the size, and the host follows the view's frame. A host laying the
+        // view out with Auto Layout learns the size from the view's intrinsic size, held while its
+        // window catches up (holdSize), and the editor's minimum, which follows each change of it
+        // (followMinimumSize), with or without a request.
         __weak ORIZON_AU_VIEW* weakSelf = self;
         core->setSizeRequest([weakSelf](int width, int height) {
-            [weakSelf invalidateIntrinsicContentSize];
+            [weakSelf holdSize:NSMakeSize(width, height)];
             [weakSelf setFrameSize:NSMakeSize(width, height)];
         });
         core->setMinimumCheck([weakSelf] { [weakSelf followMinimumSize]; });
@@ -114,13 +129,46 @@
 - (NSSize)intrinsicContentSize
 {
     givenMinimumSize = [self minimumSize];
-    // The size the user dragged the resize grip to holds too, while the host's window catches up.
-    NSSize size = givenMinimumSize;
-    if (const auto dragged = core->draggedSize()) {
-        size.width = std::max(size.width, static_cast<CGFloat>(dragged->width));
-        size.height = std::max(size.height, static_cast<CGFloat>(dragged->height));
+    if (!heldSize) {
+        return givenMinimumSize;
     }
-    return size;
+    return NSMakeSize(std::max(givenMinimumSize.width, heldSize->width),
+                      std::max(givenMinimumSize.height, heldSize->height));
+}
+
+- (void)setHugging:(NSLayoutPriority)priority
+{
+    for (const NSLayoutConstraintOrientation orientation :
+         {NSLayoutConstraintOrientationHorizontal, NSLayoutConstraintOrientationVertical}) {
+        [self setContentHuggingPriority:priority forOrientation:orientation];
+    }
+}
+
+// Holds `size` against an Auto Layout host's layout, larger or smaller than the host's window,
+// until the window has caught up (kOwnSizeHoldSeconds); then the editor's minimum is all that
+// holds, and the host decides the size again.
+- (void)holdSize:(NSSize)size
+{
+    heldSize = size;
+    const unsigned hold = ++holds;
+    [self setHugging:kHoldingPriority];
+    [self invalidateIntrinsicContentSize];
+    __weak ORIZON_AU_VIEW* weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                 static_cast<std::int64_t>(kOwnSizeHoldSeconds * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+                     [weakSelf releaseSize:hold];
+                   });
+}
+
+- (void)releaseSize:(unsigned)hold
+{
+    if (hold != holds) {
+        return; // A later size holds.
+    }
+    heldSize.reset();
+    [self setHugging:kNotHoldingPriority];
+    [self invalidateIntrinsicContentSize];
 }
 
 // Auto Layout keeps the intrinsic size it was given until told it changed: each time the editor

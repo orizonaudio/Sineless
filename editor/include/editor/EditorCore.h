@@ -11,9 +11,7 @@
 
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string_view>
-#include <utility>
 
 namespace orizon::editor {
 
@@ -73,15 +71,6 @@ public:
     [[nodiscard]] int height() const { return toHostUnits(cssHeight); }
     [[nodiscard]] int toHostUnits(double cssPixels) const;
 
-    // The size the resize grip was last dragged to, in window units, or none: for a format's view
-    // that gives the host a size of its own (the Audio Unit's, as its intrinsic size).
-    struct Size
-    {
-        int width = 0;
-        int height = 0;
-    };
-    [[nodiscard]] std::optional<Size> draggedSize() const;
-
     // The minimum height now, in CSS pixels: kMinimumHeight, or more with stacked lanes on show.
     [[nodiscard]] int minimumHeight() const;
     // The same for given settings, track channels and lanes: kMinimumLaneHeight for each stacked
@@ -127,8 +116,6 @@ private:
     int windowWidth = 0;
     int windowHeight = 0;
     int lastMinimumHeight = kMinimumHeight;
-    // The size the resize grip was last dragged to, in CSS pixels, or none.
-    std::optional<std::pair<double, double>> dragged;
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;
     std::unique_ptr<WebViewTransport> transport;
