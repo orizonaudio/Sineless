@@ -3540,9 +3540,9 @@ AnalysisWork workSince(const AnalysisWork& before, const AnalysisWork& now)
 }
 
 // The work a session does per second of audio, once what it shows is full: played for `fill`
-// seconds with a frame each second, then for a second with a frame per block, as a page asks for
-// them, so that no frame still has the fill's audio to place; then measured over two seconds, a
-// frame per block.
+// seconds with a frame each second, then for a second with 60 frames a second, as a page asks for
+// them, so that no frame still has the fill's audio to place; then measured over two seconds, 60
+// frames a second.
 struct WorkPerSecond
 {
     double reduced = 0.0;
@@ -3553,11 +3553,11 @@ struct WorkPerSecond
 WorkPerSecond workPerSecond(Session& session, double fill)
 {
     session.play(fill, 1.0);
-    const double block = static_cast<double>(kBlock) / session.rate;
-    session.play(1.0, block);
+    constexpr double kFrame = 1.0 / 60.0;
+    session.play(1.0, kFrame);
     const AnalysisWork before = session.analyzer().work();
     constexpr double kMeasured = 2.0;
-    session.play(kMeasured, block);
+    session.play(kMeasured, kFrame);
     const AnalysisWork spent = workSince(before, session.analyzer().work());
     return {.reduced = static_cast<double>(spent.samplesReduced) / kMeasured,
             .read = static_cast<double>(spent.samplesRead - spent.samplesSearched) / kMeasured,
@@ -3601,12 +3601,12 @@ TEST_P(SweepWork, CostsNoMoreForALongerSweep)
         const auto session = workSession(GetParam());
         session->own().settings().set(SettingId::kBeatSpan, static_cast<double>(span));
         session->analyzer().setColumns(columns);
-        // Two and eight bars at 120 beats a minute: 4 and 16 seconds.
+        // One and four bars at 120 beats a minute: 2 and 8 seconds.
         const double seconds = beatSpanQuarterNotes(span, 4.0) * 60.0 / 120.0;
         return workPerSecond(*session, seconds + 1.0);
     };
-    const WorkPerSecond shorter = work(BeatSpan::kTwoBars, kColumns);
-    const WorkPerSecond longer = work(BeatSpan::kEightBars, 4 * kColumns);
+    const WorkPerSecond shorter = work(BeatSpan::kOneBar, kColumns);
+    const WorkPerSecond longer = work(BeatSpan::kFourBars, 4 * kColumns);
     ASSERT_GT(shorter.reduced, 0.0) << "the sweep reduces its new audio";
     EXPECT_LE(longer.reduced, shorter.reduced * kSameCost)
         << "a longer sweep reduces more than its new audio: " << longer.reduced << " against "
