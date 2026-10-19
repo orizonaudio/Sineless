@@ -16,7 +16,9 @@ tested; update a row when a new version of Sineless or of the host is tested aga
 | Cubase / Nuendo | — | — | VST3 | Shared | — | — | Not tested | |
 | Studio One | — | — | VST3 | Shared | — | — | Not tested | |
 | FL Studio | — | — | VST3 | Shared unless bridged | — | — | Not tested | |
-| Logic Pro | — | — | — | — | — | — | Not applicable | Loads Audio Units only; Sineless is VST3. |
+| Logic Pro | — | — | AU | Out of process (AUHostingService); a project's instances share one process | — | — | Not tested | |
+| GarageBand | — | — | AU | Out of process (AUHostingService); a project's instances share one process | — | — | Not tested | |
+| Ableton Live | — | — | AU | Shared, in Live's own process | — | — | Not tested | A VST3 and an AU instance of Sineless never see each other in Multi or Compare. |
 | Pro Tools | — | — | — | — | — | — | Not applicable | Loads AAX only. |
 
 ## Protocol

@@ -30,15 +30,17 @@ quality scenario, R risk. IDs are stable: a removed one is not reused.
 
 ### 1.1 Purpose
 
-An open-source VST3 oscilloscope and multi-track analyser that displays the audio on its input in
-real time and passes it through unchanged, with zero latency.
+An open-source oscilloscope and multi-track analyser, as a VST3 plugin and, on macOS, an Audio
+Unit, that displays the audio on its input in real time and passes it through unchanged, with zero
+latency.
 
 | | |
 | --- | --- |
 | Product | Sineless |
 | Vendor | Orizon Audio |
-| Bundle | `Sineless.vst3`; macOS bundle identifier `com.orizonaudio.sineless` |
+| Bundles | `Sineless.vst3`; macOS bundle identifier `com.orizonaudio.sineless`. On macOS also the Audio Unit `Sineless.component`, bundle identifier `com.orizonaudio.sineless.component` |
 | VST3 subcategory | `Fx\|Analyzer` |
+| Audio Unit | Effect (`aufx`), subtype `Snls`, manufacturer `Oriz`, factory `SinelessFactory`; the codes are saved in projects and never change |
 | Repository | github.com/orizonaudio/Sineless |
 | Release assets | `Sineless-<version>-macOS.zip`, `Sineless-<version>-Windows.zip`, `SHA256SUMS.txt`, build provenance |
 
@@ -277,10 +279,10 @@ press outside closes them.
 
 | ID | Constraint |
 | --- | --- |
-| C-1 | Plugin format: VST3 only. |
+| C-1 | Plugin formats: VST3 on macOS and Windows, and Audio Unit v2 on macOS (AD-25). |
 | C-2 | Platforms shipped: macOS 13.1+ (universal binary, arm64 and x86_64) and Windows 10+ x64. Windows on Arm runs the x64 build in an x64 host or REAPER's ARM64EC build; a native ARM64 build is not shipped for now (AD-24). Linux builds the engine, plugin and editor's shared code for the checks only, with no editor window. |
 | C-3 | Licence: GPL-3.0-only. Every dependency must be GPL-3.0-compatible. |
-| C-4 | Engine and plugin back end: C++20; the macOS editor glue in Objective-C++. |
+| C-4 | Engine and plugin back end: C++20; the Audio Unit module C++23 (AudioUnitSDK's headers need it); the macOS editor glue and the Audio Unit's view in Objective-C++. |
 | C-5 | User interface: TypeScript, hosted in the operating system's webview: WKWebView on macOS, the Evergreen WebView2 Runtime on Windows. The WebView2 loader and the C runtime are linked statically, so no other runtime is installed. |
 | C-6 | Toolchain: Xcode 16+, Visual Studio 2022 or 2026, CMake 3.25+, Node.js 22.18+. |
 
@@ -291,7 +293,7 @@ press outside closes them.
 ```mermaid
 flowchart LR
   User([User])
-  subgraph Host["DAW host process"]
+  subgraph Host["DAW host process (for Audio Units in Logic and GarageBand, its plugin-hosting process)"]
     AudioThread["Host audio thread"]
     HostUI["Host UI thread"]
     Project[("Project file")]
@@ -308,7 +310,7 @@ flowchart LR
   S1 <-- "capture rings (same process)" --> S2
   S1 <-- "page, messages, frames" --> Webview
   User -- "pointer, keys" --> Webview
-  User -- "download zip" --> Releases
+  User -- "download zip or installer" --> Releases
 ```
 
 | Interface | Partner | What crosses it |
@@ -329,7 +331,7 @@ In scope: everything in 1.2.
 Deferred: XY/vectorscope, spectrum analyser and phosphor persistence. The capture and frame design
 must not preclude them.
 
-Out of scope: other plugin formats (C-1); sound-shaping or automatable parameters (AD-6);
+Out of scope: other plugin formats (C-1), such as AUv3, AAX, CLAP and LV2; sound-shaping or automatable parameters (AD-6);
 standards-compliant loudness metering (FR-7 readouts are indicative).
 
 ## 4. Solution strategy
@@ -340,7 +342,7 @@ standards-compliant loudness metering (FR-7 readouts are indicative).
 | Transparency (QG-2) | Pass-through by copy (or nothing, in place); no processing, no latency. | FR-1 |
 | Truthful display (QG-3) | The engine measures and renders; the UI draws what the frame carries and does not work it out again. Shared numbers are defined once in the protocol module and generated into C++. "No value" is NaN. | AD-2, AD-18, 8.6 |
 | Light on the host (QG-4) | Cost follows change, not size; one frame in flight, paced by the display; binary frames drawn by the GPU. | AD-12, AD-17, AD-19, AD-21, AD-22 |
-| Minimal dependencies (QG-5) | VST3 SDK directly, the OS webview, no UI framework. | AD-1, AD-4, AD-7 |
+| Minimal dependencies (QG-5) | Each format's SDK directly (VST3 SDK, AudioUnitSDK), the OS webview, no UI framework. | AD-1, AD-4, AD-7, AD-25 |
 | Maintainability (QG-6) | Format-agnostic engine; protocol defined once; tests at every level, sanitizers, fuzzing, mutation testing. | 5.1, 8.3 |
 
 ## 5. Building block view
@@ -354,6 +356,7 @@ flowchart TB
   ui["ui<br/>(TypeScript page)"]
   editor["editor<br/>(C++ / Objective-C++)"]
   plugin["plugin<br/>(C++, VST3)"]
+  au["au<br/>(C++23 / Objective-C++, Audio Unit, macOS)"]
 
   engine --> protocol
   ui --> protocol
@@ -361,6 +364,8 @@ flowchart TB
   editor --> ui
   plugin --> editor
   plugin --> engine
+  au --> editor
+  au --> engine
 ```
 
 Arrows point from a module to what it depends on. Each module is a top-level folder with its own
@@ -369,14 +374,16 @@ Arrows point from a module to what it depends on. Each module is a top-level fol
 | Module | Language | Responsibility |
 | --- | --- | --- |
 | `protocol` | TypeScript | Defines enums, settings, shared limits (`limits.ts`), setting validation, message types and the frame layout once, as `as const` modules, with a frame encoder and decoder. The UI imports it directly; at build time a Node script generates the matching C++ header (never committed). Golden frames and messages in `protocol/tests/data` are shared by the C++ and TypeScript tests. |
-| `engine` | C++ (static library) | Capture, musical clock, analysis (trigger, reduction, sweeps, readouts, Compare), settings (the store of record), saved state, frame encoding and the instance registry. No dependency on the VST3 SDK or any webview; the build forbids it. Optimised in Debug builds too. |
+| `engine` | C++ (static library) | Capture, musical clock, analysis (trigger, reduction, sweeps, readouts, Compare), settings (the store of record), saved state, frame encoding, the instance registry, and the engine token registry the formats' editors find their engine by (AD-10). No dependency on the VST3 SDK or any webview; the build forbids it. Optimised in Debug builds too. |
 | `ui` | TypeScript | The page: a typed bridge behind a transport interface, an observable settings store, a render loop, a WebGL2 trace renderer, DOM views for labels, readouts and controls (`view/`, `components/`), and an in-memory mock back end for running in a browser. No runtime dependencies. |
-| `editor` | C++ / Objective-C++ | `IPlugView`, the webview wrapper per platform (`mac/`, `win/`, a `linux/` stub), the embedded assets and their URL scheme, the session (protocol handling), frame flow, the UI-thread dispatcher and display scale; benchmarks (`bench/`). It builds the `ui` page with Vite and embeds it. |
-| `plugin` | C++ | VST3 processor, controller, factory and the engine registry (token lookup, AD-10); the process benchmark. |
+| `editor` | C++ / Objective-C++ | Two libraries. `editor_core`, whatever the format: `EditorCore` (the window's contents and sizing rules), the webview wrapper per platform (`mac/`, `win/`, a `linux/` stub), the embedded assets and their URL scheme, the session (protocol handling), frame flow, the UI-thread dispatcher and display scale. `editor`: the VST3 view (`IPlugView`) around it. Benchmarks (`bench/`). It builds the `ui` page with Vite and embeds it. |
+| `plugin` | C++ | VST3 processor, controller and factory; the process benchmark. |
+| `au` | C++23 / Objective-C++ (macOS) | The Audio Unit on AudioUnitSDK (AD-25): the effect (pass-through, capture, timeline from the host's callbacks, state, track name from the context name), its Cocoa view around `EditorCore`, the factory the component exports, and `Sineless.component` with its Info.plist. |
 
 The build enforces the C++ boundaries (`orizon_forbid_dependencies` in `CMakeLists.txt`): protocol,
-engine and editor fail configuration if they link a module above them, and the engine may not link
-the VST3 SDK. What the `ui` page imports, and C++ file names, are kept by review.
+engine and editor fail configuration if they link a module above them; the engine and
+`editor_core` link neither plugin SDK; `au` links neither `plugin`, the VST3 view nor the VST3 SDK;
+and only `au` links AudioUnitSDK. What the `ui` page imports, and C++ file names, are kept by review.
 
 ### 5.2 Level 2: engine
 
@@ -629,9 +636,13 @@ flowchart LR
   Manual --> Publish["Published by hand"]
 ```
 
-- One `.vst3` bundle per platform: universal (arm64 and x86_64) on macOS, x64 on Windows.
-- Releases are zip files on GitHub Releases, with no installer; users move the bundle into the
-  system's VST3 folder (`~/Library/Audio/Plug-Ins/VST3` or `C:\Program Files\Common Files\VST3`).
+- One `.vst3` bundle per platform: universal (arm64 and x86_64) on macOS, x64 on Windows; on
+  macOS also the Audio Unit, `Sineless.component`, universal.
+- Each platform's release on GitHub Releases is a zip and an installer. The macOS installer
+  installs both formats for the user, without a password, into `~/Library/Audio/Plug-Ins/VST3`
+  and `~/Library/Audio/Plug-Ins/Components` (either can be left out under Customize); the Windows
+  installer installs into `C:\Program Files\Common Files\VST3` for all users. From a zip, users
+  move the bundles into those folders.
 - At run time the plugin writes to disk only on Windows: WebView2's profile, in
   `%LOCALAPPDATA%\Orizon Audio\Sineless\WebView2-<n>` (8.7).
 - The macOS bundle is ad-hoc signed (no Developer ID, so users clear the quarantine flag); the
@@ -642,8 +653,11 @@ flowchart LR
 - A release is built only from a commit on `main` whose tag names the version in
   `CMakeLists.txt` (`scripts/release-on-main.ts`, `scripts/release-version.ts`); anything else
   stops the workflow.
-- Packaging checks the bundle: the macOS minimum version and both architectures, and on Windows
-  the x64 machine type and no dependency on the Visual C++ runtime DLLs.
+- Packaging checks each bundle: the macOS minimum version and both architectures, and on Windows
+  the x64 machine type and no dependency on the Visual C++ runtime DLLs. The release runner
+  installs each installer and checks what it installed.
+- Each bundle carries the licences of the third-party code compiled into it
+  (`cmake/Licences.cmake`).
 - The release workflow can be run as a dry run by hand, and runs as one on a pull request that
   changes its scripts.
 
@@ -655,6 +669,7 @@ flowchart LR
 | --- | --- | --- | --- | --- |
 | VST3 SDK | MIT | shipped | Plugin API. | FetchContent, git tag |
 | WebView2 SDK | BSD-3-Clause | shipped (Windows) | Webview embedding; static loader. | NuGet version + SHA-256 |
+| AudioUnitSDK | Apache-2.0 | shipped (macOS Audio Unit) | The Audio Unit (AUv2) API: dispatch, buses, state, render. Its headers need C++23. | FetchContent, URL + SHA-256 |
 | nlohmann/json | MIT | shipped | Control messages and saved state. | FetchContent, URL + SHA-256 |
 | Roboto, Roboto Condensed, Roboto Mono | SIL OFL 1.1 | shipped (embedded in the UI) | The UI's fonts, the same on every system (subset; see `ui/src/fonts/README.md`). | In repo |
 | GoogleTest (with GMock) | BSD-3-Clause | tests | C++ unit tests. | FetchContent, URL + SHA-256 |
@@ -663,7 +678,7 @@ flowchart LR
 | fast-check | MIT | dev | Property tests. | `package-lock.json` |
 | @vitest/coverage-v8 | MIT | dev | TypeScript coverage. | `package-lock.json` |
 | Stryker | Apache-2.0 | dev | TypeScript mutation testing (`tools/mutation`). | its own lock file |
-| pluginval | GPL-3.0 | checks | Host-like stress testing of the built plugin. | download, version + SHA-256 |
+| pluginval | GPL-3.0 | checks | Host-like stress testing of the built VST3 plugin and Audio Unit. | download, version + SHA-256 |
 | LLVM 23 (clang, clang-tidy, clang-format, sanitizers, libFuzzer, llvm-cov) | Apache-2.0 with LLVM exception | checks | Lint, sanitizers, fuzzing, coverage on Linux. | apt.llvm.org; clang-format via pipx version |
 | Mull | Apache-2.0 | checks | C++ mutation testing. | `.deb` + SHA-256 |
 | GitHub Actions, Docker base images | various | CI | CI and release. | commit SHA; image digest |
@@ -745,7 +760,7 @@ and benchmark builds. Test levels, where each runs and the definition of done ar
 | Static | `tsc -b` (strict, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), ESLint (strict type-checked), Prettier, clang-format, clang-tidy | Linux; clang-tidy for the macOS glue on macOS |
 | Unit, component, contract | GoogleTest and Vitest; golden frames and messages shared by C++ and TypeScript, golden saved states for C++; a signal corpus of approved frames; a matrix of sample rates, spans, mono/stereo, live/frozen | All platforms |
 | Integration and app | The editor with its page in a real WKWebView or WebView2; the real page against the mock in WebKit and Chromium (Playwright) | macOS, Windows; Linux |
-| Conformance | Steinberg VST3 validator (part of the build); pluginval at strictness 10 | macOS, Windows |
+| Conformance | Steinberg VST3 validator (part of the build); pluginval at strictness 10; for the Audio Unit, Apple's auval (strict, in and out of process) and pluginval on a copy installed for the user (`scripts/validate-au.sh`) | macOS, Windows |
 | Sanitizers | RealtimeSanitizer, ThreadSanitizer, AddressSanitizer + LeakSanitizer + UBSan on the shared code (Linux); ASan + UBSan and TSan on the macOS glue; MSVC ASan on the Windows glue | Linux, macOS, Windows |
 | Fuzzing | libFuzzer on state loading, setting values, the session's messages; fast-check on frame decoding and transport. Five minutes per pull request, 30 nightly, from a corpus kept on main | Linux |
 | Coverage, mutation | Changed-line coverage (llvm-cov, V8); mutation testing of changed lines (Stryker, Mull), the mutants no test noticed triaged in CI (below) | Linux |
@@ -983,7 +998,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 
 | ID | Status | Decision | Rationale |
 | --- | --- | --- | --- |
-| AD-1 | Accepted | Build directly on the VST3 SDK, with no plugin framework. | With VST3 as the only format, a framework's cross-format layer adds nothing. Using the SDK directly runs no third-party code per block and avoids a large dependency. Cost: editor and webview embedding are written in-house. |
+| AD-1 | Accepted; amended by AD-25 | Build directly on each format's SDK (the VST3 SDK; AudioUnitSDK for the Audio Unit), with no plugin framework. | With two formats sharing a format-agnostic engine and editor core, a framework's cross-format layer adds little: each format's glue is thin. Using the SDKs directly runs no third-party code per block and avoids a large dependency. Cost: editor and webview embedding, and each format's view, are written in-house. |
 | AD-2 | Accepted | Trigger, reduction, readouts and Compare analysis run in C++ on a worker per open editor; the UI only draws. | Deterministic and unit-testable in C++. Small frames over the bridge instead of raw samples, and no analysis on the DAW's UI thread or in the webview. No editor, no worker: a closed editor costs only the capture. |
 | AD-3 | Accepted; its frame transport superseded by AD-21 | Engine and UI exchange control messages as JSON over the webview's native message channel (page to native through `webkit.messageHandlers` or `chrome.webview.postMessage`; native to page through `evaluateJavaScript` or `PostWebMessageAsString`). Display frames travel separately, as binary (AD-21). Each side reaches both through one transport interface. | No sockets and no local attack surface. The interface lets the transport change, as it did for frames when profiling demanded it. |
 | AD-4 | Accepted | Own thin webview wrapper per platform, and a stub on Linux for the checks. | Full control over plugin-specific issues: class-name collisions between plugins in one process, keyboard handoff to the host, the WebView2 user-data folder, teardown order, crash recovery. |
@@ -996,7 +1011,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | AD-11 | Accepted | The built UI, fonts included, is embedded in the binary at build time and served through a custom URL scheme on both platforms. | Self-contained binary with one stable origin; nothing on disk can go missing or be altered; the same fonts on every system. |
 | AD-12 | Accepted | Frame flow is credit-based with one frame in flight. The credit is the page's open request for a frame; the worker hands over a frame only while one is open, and the page asks again after drawing, at most 60 times a second. | Production follows the display's refresh rate, no backlog can build up, and it stops by itself while the page is hidden. |
 | AD-13 | Accepted | The audio thread publishes the host's latest musical position (position, tempo, time signature, playing, at a capture index) through a seqlock. Readers map sample indices to quarter notes and back by extrapolating from it; while stopped the clock free-runs at the last tempo. | Tempo sync needs to map sample indices to beats off the audio thread. One small write per block, no locks, no waiting. A single stamp suffices because the mapping is only needed near the present and tempo changes restart sweeps that move by more than the tolerance (FR-9.4). |
-| AD-14 | Accepted | Instances find each other through a process-wide registry in the engine module, holding weak references to the engines in a flat list; a group's members are those whose group setting matches, ordered by host track position, then creation. Each engine carries its track name, colour and position. Readers get shared ownership for as long as they read, and the editor's worker reads other instances' capture rings directly. | Needs no routing in the host and no audio-thread work: capture rings already allow lock-free writing alongside readers, and shared ownership keeps a ring alive while another editor reads it; weak references let an instance vanish even if it was never removed. It works wherever instances share a process, which is every major host's default (R-1). Instances of different Sineless versions keep separate registries, so they never read each other's data. |
+| AD-14 | Accepted | Instances find each other through a process-wide registry in the engine module, holding weak references to the engines in a flat list; a group's members are those whose group setting matches, ordered by host track position, then creation. Each engine carries its track name, colour and position. Readers get shared ownership for as long as they read, and the editor's worker reads other instances' capture rings directly. | Needs no routing in the host and no audio-thread work: capture rings already allow lock-free writing alongside readers, and shared ownership keeps a ring alive while another editor reads it; weak references let an instance vanish even if it was never removed. It works wherever instances share a process, which is every major host's default (R-1). Instances of different Sineless versions, or of different formats (VST3 and Audio Unit), keep separate registries, so they never read each other's data. |
 | AD-15 | Accepted | Lanes align on the musical clock (AD-13) that every instance receives from the host. In Beats each lane's sweep follows its own instance's clock. In Seconds the own track's window start is mapped to quarter notes on its clock, then to each other track's sample index on that track's clock. | All instances see the same host position while their capture indices start at different moments. The clocks already exist, so the audio thread does no new work. While stopped, every clock free-runs at the same tempo from the same position, so lanes stay aligned; a host that reports no position would leave tracks offset by when they started. |
 | AD-16 | Accepted | The engine renders Compare frames through the multi-track lane path: the tracks, then the sum of the checked ones, and computes the analysis on raw samples, each track against this one. The summing gains travel in the frame header and each track's match after the lane data. The UI names tracks by the lane id that each `lanes` entry carries, which also says which are checked. The checked set lives on the Engine. | Summing and correlating min/max columns in the UI would be wrong; only the engine has the samples. Results in the frame stay in step with the lanes they describe, at no extra message traffic. Correlation and offset are pairwise, so each track is measured against one reference: this track. On the Engine, the choice outlives the editor but not the project (8.4). |
 | AD-17 | Accepted | Display cost follows change, not size. Lanes and views keep their screen columns between frames: a sweep reduces again only the columns its newest samples landed in (SweepImage reports changed ranges), a roll window only the columns that scrolled in (columns on fixed absolute indices), and a Compare sum lane only where compared tracks changed. Readouts and summing gains are measured at most every 0.1 s of audio (always while frozen), from per-block statistics; Compare matches at most every 0.5 s per track, one track per frame, one every 0.1 s at most. The engine is optimised in Debug builds too. Measured with `editor/bench/PerfBench.mm` (`scripts/bench.sh`). | The analysis thread spent 70% of a core re-reducing whole lanes every frame, and Debug builds dropped to 5–16 frames/s. After: costs nearly flat in tracks, span and window width (doubling the width adds about 1 point). |
@@ -1007,6 +1022,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | AD-22 | Accepted | The page builds trace geometry on the GPU: instanced quads read from the frame's bytes as received, with no per-frame JavaScript geometry; the sweep playhead is drawn in WebGL, not as page elements. | Per-frame JavaScript geometry and DOM changes added fixed WebKit cost on every frame. The remaining cost is WebKit's per-frame display pipeline (QS-3). |
 | AD-23 | Accepted | The editor's layout is stable: nothing is cropped, hidden or moved as the window is resized. The minimum width (`minimumEditorWidth`) fits the widest content in every state, and content of unbounded width (the status chips) wraps in a place with room for it, the screen's top-right corner. No responsive breakpoints, compact labels or hidden elements. | A control that disappears, shortens or moves at some sizes is hard to find again and makes the window feel unreliable; and a plugin window is resized often. Rejected: a shrinking chip area, hiding the wordmark below a width, single-letter compact controls. Cost: a wider minimum window (900 px), checked in every state by the editor tests. |
 | AD-24 | Accepted | Windows ships x64 only; no native ARM64 build is built, tested or released for now. Windows on Arm runs the x64 build in an x64 host or in REAPER's ARM64EC build. The ARM64 presets stay, and `scripts/package.ps1` says how to bring the build back. | No native ARM64 Windows host is expected among users soon, and its CI job was among the slowest, waiting for an ARM runner. Shipping only what CI tests means dropping the binary with the job. Revisit when a user needs a native ARM64 host (R-5). |
+| AD-25 | Accepted | On macOS, also an Audio Unit v2, native on Apple's AudioUnitSDK, in its own module (`au`) beside the VST3 glue, sharing the engine and `editor_core`. Codes `aufx`/`Snls`/`Oriz`. Its view is a Cocoa view factory named per build; it exports only its factory and leaves out `sandboxSafe`, so sandboxed hosts load it out of process. | Logic Pro and GarageBand load Audio Units only. AUv2 with the host's context name keeps track names, and a spike showed Logic and GarageBand keep a project's instances in one process (out of process, in AUHostingService) and Live in its own, so Multi and Compare work. Rejected: Steinberg's VST3-to-AU wrapper (no track names, Xcode generator only), clap-wrapper (needs a CLAP port first, no track names), AUv3 (an app extension in a sandboxed process where instances do not reliably share a process, which Multi and Compare need, and a Developer ID for distribution). |
 
 ## 10. Quality requirements
 
@@ -1056,6 +1072,7 @@ not reused.
 | R-8 | Two security guards have no test: navigation refusal, and the viewport width cap | A regression would go unnoticed. | Both are small and reviewed; tests to be added. | 8.8 |
 | R-9 | Mutation testing holds Vitest for Stryker at 4 | Its Vitest lags the project's until Stryker supports Vitest 5. | Pinned in `.github/dependabot.yml`, with the upstream issues named. | 8.3 |
 | R-10 | The C++ dependencies are updated by hand | Fixes upstream arrive only when someone updates them. | Each is pinned by version and hash (8.1). | 8.1 |
+| R-11 | Audio Unit hosts tell the plugin less, and run it apart from the VST3 plugin | Audio Units get no track colour or position: lanes take palette colours and creation order. A VST3 and an Audio Unit instance of Sineless in one host keep separate registries, so they never see each other in Multi or Compare. Logic and GarageBand run Audio Units out of process; Multi relies on them keeping a project's instances in one process, and closing a project leaves its instances for about ten seconds. | The track name comes from the host's context name; HOSTS.md records each host's process model; the README names the formats. | AD-14, AD-25, HOSTS.md |
 
 ## 12. Glossary
 
