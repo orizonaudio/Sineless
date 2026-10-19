@@ -143,7 +143,9 @@ protected:
             [view.heightAnchor constraintEqualToAnchor:container.heightAnchor],
         ];
         for (NSLayoutConstraint* constraint : fill) {
-            constraint.priority = NSLayoutPriorityDefaultLow; // Below a view's own size.
+            // Below a view's own size, and below its default hugging (DefaultLow): a host's
+            // constraints may rank anywhere under its compression resistance.
+            constraint.priority = NSLayoutPriorityDefaultLow - 1;
         }
         [NSLayoutConstraint
             activateConstraints:[fill arrayByAddingObjectsFromArray:@[
