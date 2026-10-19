@@ -369,8 +369,10 @@ TEST_F(EditorTest, AsksTheHostForTheSizeTheGripIsDraggedTo)
                                          "width: 1200", "height: 700", ""}) {
             postResize(webView, fields);
         }
-        pumpUntil([] { return false; }, std::chrono::milliseconds(300));
-        EXPECT_EQ(frame.requests, 3) << "no request for a size that is not one";
+        dragGrip(webView, larger, taller); // Handled after them: the page's order is kept.
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests >= 4; }, kPageTimeout));
+        EXPECT_EQ(frame.requests, 4) << "no request for a size that is not one";
+        EXPECT_EQ(frame.requested.getWidth(), larger);
 
         editor->removed();
         [window close];
