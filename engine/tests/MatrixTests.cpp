@@ -1142,7 +1142,8 @@ TEST_P(ZoomedHalves, ShowTheSameColumnsAsTheWholeView)
     while (half % columns != 0) {
         --columns;
     }
-    session.play(captureSeconds(c.rate) + 1.0, protocol::kReadoutIntervalSeconds / 2.0);
+    session.play(captureSeconds(c.rate) + 0.9);
+    session.play(0.1, protocol::kReadoutIntervalSeconds / 2.0);
     session.analyzer().setFrozen(true);
     session.analyzer().setColumns(2 * columns);
     session.play(0.01);
@@ -2315,7 +2316,7 @@ TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
 
     // Once they are past what the frame shows, nothing is flagged any more: with frames along the
     // way, so a rolling lane keeps its columns and moves their flags with them.
-    session.play(span * 2.0 + 0.5, 0.02);
+    session.play(span * 2.0 + 0.5, 0.1);
     session.play(static_cast<double>(kBlock) / rate); // Audio since the last frame, for one more.
     frame = session.produce();
     ASSERT_TRUE(frame);
@@ -2472,7 +2473,9 @@ TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
             session.join({.frequency = 1500.0});
             configure(session.own(), mode, TimeBase::kSeconds);
             session.own().settings().set(SettingId::kTimeSpan, 2.0);
-            session.play(played, 0.01);
+            // The capture wraps; frames only once the roll is nearly where it is checked.
+            session.play(played - 0.1);
+            session.play(0.1, 0.01);
             // The first frame shows newly arrived audio; the second redraws the roll as it
             // stands, from its kept columns: a setting changes, no audio arrives.
             for (int again = 0; again < 2; ++again) {
@@ -2497,7 +2500,8 @@ TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
             session.join({.frequency = 1500.0});
             configure(session.own(), mode, TimeBase::kSeconds);
             session.own().settings().set(SettingId::kTimeSpan, 0.2);
-            session.play(played, 0.01); // Its last frame shows the newest audio live.
+            session.play(played - 0.1);
+            session.play(0.1, 0.01); // Its last frame shows the newest audio live.
             session.analyzer().setFrozen(true);
             const auto whole = session.produce();
             ASSERT_TRUE(whole) << "no frozen frame";
@@ -3333,7 +3337,8 @@ TEST_P(FrozenRateChange, KeepsTheHeldPictureAndItsTimes)
         session.join({.frequency = 1000.0, .offset = 0.0}); // This track.
         session.join({.frequency = 1500.0, .offset = 0.0});
         configure(session.own(), c.mode, c.timeBase);
-        session.play(2.0, 0.05);
+        session.play(1.9);
+        session.play(0.1, 0.05);
         session.analyzer().setFrozen(true);
         (void)session.produce();
         std::vector<std::byte> before;
@@ -3386,7 +3391,8 @@ TEST_P(FrozenRateChange, KeepsTheHeldPictureThroughOtherSpans)
         session.join({.frequency = 1500.0, .offset = 0.0});
         configure(session.own(), c.mode, c.timeBase);
         session.own().settings().set(spanId, frozenOn);
-        session.play(2.0, 0.05);
+        session.play(1.9);
+        session.play(0.1, 0.05);
         session.analyzer().setFrozen(true);
         (void)session.produce();
         if (change == Change::kPreparedAgain) {
@@ -3445,7 +3451,8 @@ TEST_P(FrozenLaneAtAnotherRate, DrawsNoAudio)
         late->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kB));
         configure(session.own(), c.mode, c.timeBase);
         session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
-        session.play(4.0, 0.05);
+        session.play(3.9);
+        session.play(0.1, 0.05);
         session.analyzer().setFrozen(true);
         (void)session.produce();
         if (rateChanged) {
