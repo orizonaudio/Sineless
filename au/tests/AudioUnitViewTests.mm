@@ -706,6 +706,35 @@ TEST_F(AudioUnitViewTest, KeepsTheSizeTheGripIsDraggedToInAHostThatUsesAutoLayou
     closeWindow(window, view);
 }
 
+// The view opens again at the size it was left at while the plugin stays loaded, and at the
+// editor's minimum, not cropped, after a host insisted on a smaller one.
+TEST_F(AudioUnitViewTest, OpensAgainAtTheSizeItWasLeftAt)
+{
+    const NSSize left =
+        NSMakeSize(EditorCore::kDefaultWidth + 400, EditorCore::kDefaultHeight + 300);
+    {
+        NSView* view = openView(unit);
+        NSWindow* window = windowFor(view);
+        [view setFrameSize:left];
+        closeWindow(window, view);
+    }
+    NSView* reopened = openView(unit);
+    EXPECT_TRUE(NSEqualSizes(reopened.frame.size, left))
+        << reopened.frame.size.width << "x" << reopened.frame.size.height;
+
+    NSWindow* window = windowFor(reopened);
+    const NSSize small = NSMakeSize(300, 200);
+    [reopened setFrameSize:small];
+    runQueuedWork();
+    [reopened setFrameSize:small]; // The host insists.
+    runQueuedWork();
+    ASSERT_TRUE(NSEqualSizes(reopened.frame.size, small));
+    closeWindow(window, reopened);
+    NSView* again = openView(unit);
+    EXPECT_EQ(again.frame.size.width, EditorCore::kMinimumWidth);
+    EXPECT_EQ(again.frame.size.height, EditorCore::kMinimumHeight);
+}
+
 // A host may dispose of the Audio Unit before it closes the view: the view keeps what it shows
 // and closes cleanly afterwards.
 TEST_F(AudioUnitViewTest, ClosesCleanlyAfterTheAudioUnitIsDisposed)

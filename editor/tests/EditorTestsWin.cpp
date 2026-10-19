@@ -239,6 +239,66 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
     DestroyWindow(window);
 }
 
+// Stands in for the host's window: records the sizes the editor asks for and grants them.
+class TestFrame final : public IPlugFrame
+{
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override
+    {
+        if (FUnknownPrivate::iidEqual(iid, IPlugFrame::iid) ||
+            FUnknownPrivate::iidEqual(iid, FUnknown::iid)) {
+            *obj = this;
+            return kResultOk;
+        }
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() override { return 1; }
+    uint32 PLUGIN_API release() override { return 1; }
+    tresult PLUGIN_API resizeView(IPlugView* view, ViewRect* newSize) override
+    {
+        requested = *newSize;
+        ++requests;
+        return view->onSize(newSize);
+    }
+
+    ViewRect requested;
+    int requests = 0;
+};
+
+// The resize grip's size is in CSS pixels: the editor asks the host for it in window units, so
+// the page gets the size the user dragged to whatever the display scaling. Meaningful on a
+// display scaled above 100 %; the scale is printed.
+TEST_F(EditorTest, AsksTheHostForTheGripSizeInWindowUnits)
+{
+    const ScopedDpiAwareness awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    HWND window = makeWindow();
+    TestFrame frame; // Outlives the editor, which keeps a pointer to it.
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    editor->setFrame(&frame);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    const double scale = displayScale(window);
+    std::cout << "display scale " << scale << "\n";
+    const int requestsBefore = frame.requests;
+
+    const int width = Editor::kDefaultWidth + 300;
+    const int height = Editor::kDefaultHeight + 200;
+    evaluate(view, "window.chrome.webview.postMessage(JSON.stringify({type: 'resize', width: " +
+                       std::to_string(width) + ", height: " + std::to_string(height) + "})); ''");
+    ASSERT_TRUE(pumpUntil([&] { return frame.requests > requestsBefore; }, kPageTimeout));
+    EXPECT_EQ(frame.requested.getWidth(), static_cast<int>(std::ceil(width * scale - 1e-6)));
+    EXPECT_EQ(frame.requested.getHeight(), static_cast<int>(std::ceil(height * scale - 1e-6)));
+    EXPECT_TRUE(
+        pumpUntil([&] { return evaluate(view, "String(innerWidth)") == std::to_string(width); },
+                  kPageTimeout))
+        << "the page has the width dragged to, in CSS pixels";
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
 // The page lays out in CSS pixels at the editor's default size whatever the display scaling, in
 // a DPI-aware host window (sized in physical pixels) and in an unaware one (sized in 96-dpi
 // units, which WebView2 still draws sharp, at the display's scale). Meaningful on a display
