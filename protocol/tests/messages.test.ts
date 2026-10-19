@@ -8,6 +8,7 @@ import {
   type HelloMessage,
   type PanMessage,
   type PreviewFixMessage,
+  type ResizeMessage,
   type SetSettingMessage,
   type ViewMessage,
   type ViewportMessage,
@@ -39,6 +40,7 @@ const typed = {
   view: examples.view satisfies Shape<ViewMessage>,
   compare: examples.compare satisfies Shape<CompareMessage>,
   previewFix: examples.previewFix satisfies Shape<PreviewFixMessage>,
+  resize: examples.resize satisfies Shape<ResizeMessage>,
 };
 
 test("every example names a known message type", () => {

@@ -99,6 +99,11 @@ export class Backend {
     this.transport.send({ type: "arm" });
   }
 
+  // The size the user dragged the resize grip to, for the whole editor in CSS pixels.
+  resize(width: number, height: number): void {
+    this.transport.send({ type: "resize", width, height });
+  }
+
   // Asks for the next display frame: once at the start, then after each frame drawn.
   requestFrame(): void {
     this.transport.requestFrame();

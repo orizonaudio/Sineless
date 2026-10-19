@@ -24,6 +24,7 @@ import type { Backend } from "./bridge/backend.ts";
 import { DragField } from "./components/drag-field.ts";
 import { numberFields, type NumberField } from "./view/fields.ts";
 import { HelpTips } from "./components/help-tips.ts";
+import { attachResizeGrip } from "./components/resize-grip.ts";
 import { Segmented } from "./components/segmented.ts";
 import { streamGap } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
@@ -536,6 +537,9 @@ export class OscilloscopeApp {
       const frozen = this.lastFrame?.frozen !== true;
       this.panSeconds = 0;
       this.backend.freeze(frozen);
+    });
+    attachResizeGrip(element("resize-grip"), (width, height) => {
+      this.backend.resize(width, height);
     });
     const help = new HelpTips(element("help-tip"));
     element("help").addEventListener("click", () => {

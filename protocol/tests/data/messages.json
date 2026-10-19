@@ -49,5 +49,10 @@
   "previewFix": {
     "type": "previewFix",
     "on": true
+  },
+  "resize": {
+    "type": "resize",
+    "width": 1200,
+    "height": 700
   }
 }

@@ -101,6 +101,10 @@ export const helpTexts = {
     title: "Level cursor",
     text: `Drag up or down to move it. It snaps to the highest and lowest levels and to zero; hold ${option} to place it freely.`,
   },
+  resizeGrip: {
+    title: "Resize",
+    text: "Drag to resize the window. It stays wide enough for every control and, with stacked lanes, tall enough for every lane.",
+  },
   timeSpan: {
     title: "Time span",
     text: `How much time the screen shows, from ${shortestSpan} to ${longestSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one, such as 20 ms. Spans above ${rollSpan} scroll continuously.`,

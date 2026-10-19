@@ -642,6 +642,70 @@ TEST_F(AudioUnitViewTest, FollowsASmallerWindowOnceTheLanesAreGoneInAHostThatUse
     removeTracks(others);
 }
 
+// Dragging the editor's resize grip resizes the view, which the host's window follows: in Logic,
+// and in REAPER for Audio Units, the only way to resize the editor. Never smaller than the
+// editor's minimum.
+TEST_F(AudioUnitViewTest, ResizesToTheSizeTheGripIsDraggedTo)
+{
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    WKWebView* webView = webViewOf(view);
+    ASSERT_NE(webView, nil);
+    ASSERT_TRUE(pumpUntil([&] { return testing::hasSnapshot(webView); }, kPageTimeout));
+    const auto drag = [&](int width, int height) {
+        evaluate(webView, [NSString stringWithFormat:@"window.webkit.messageHandlers.orizon."
+                                                     @"postMessage(JSON.stringify({type: "
+                                                     @"'resize', width: %d, height: %d})); ''",
+                                                     width, height]);
+    };
+
+    const NSSize larger =
+        NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 200);
+    drag(static_cast<int>(larger.width), static_cast<int>(larger.height));
+    EXPECT_TRUE(pumpUntil([&] { return NSEqualSizes(view.frame.size, larger); }, kPageTimeout))
+        << view.frame.size.width << "x" << view.frame.size.height;
+    EXPECT_TRUE(NSEqualSizes(webView.frame.size, larger)) << "the page has the room";
+
+    drag(300, 200);
+    const NSSize minimum =
+        NSMakeSize(EditorCore::kMinimumWidth, editorCoreOf(view)->minimumHeight());
+    EXPECT_TRUE(pumpUntil([&] { return NSEqualSizes(view.frame.size, minimum); }, kPageTimeout))
+        << view.frame.size.width << "x" << view.frame.size.height;
+    closeWindow(window, view);
+}
+
+// In a host that lays the view out with Auto Layout, as Logic does, the size the grip was dragged
+// to holds while the host's window catches up, rather than being set back to the window's size.
+TEST_F(AudioUnitViewTest, KeepsTheSizeTheGripIsDraggedToInAHostThatUsesAutoLayout)
+{
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    pinWithAutoLayout(view);
+    WKWebView* webView = webViewOf(view);
+    ASSERT_NE(webView, nil);
+    ASSERT_TRUE(pumpUntil([&] { return testing::hasSnapshot(webView); }, kPageTimeout));
+    const NSSize larger =
+        NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 200);
+    evaluate(webView, [NSString stringWithFormat:@"window.webkit.messageHandlers.orizon."
+                                                 @"postMessage(JSON.stringify({type: 'resize', "
+                                                 @"width: %d, height: %d})); ''",
+                                                 static_cast<int>(larger.width),
+                                                 static_cast<int>(larger.height)]);
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            layOut(view);
+            return NSEqualSizes(view.frame.size, larger);
+        },
+        kPageTimeout))
+        << view.frame.size.width << "x" << view.frame.size.height;
+    for (int pass = 0; pass < 3; ++pass) {
+        layOut(view);
+        runQueuedWork();
+    }
+    EXPECT_TRUE(NSEqualSizes(view.frame.size, larger)) << "through the host's layout passes";
+    closeWindow(window, view);
+}
+
 // A host may dispose of the Audio Unit before it closes the view: the view keeps what it shows
 // and closes cleanly afterwards.
 TEST_F(AudioUnitViewTest, ClosesCleanlyAfterTheAudioUnitIsDisposed)

@@ -311,6 +311,140 @@ TEST_F(EditorTest, GrowsTheMinimumHeightWithStackedLanes)
     }
 }
 
+// What the page sends when the user drags its resize grip; `fields` is the message's body.
+void postResize(WKWebView* webView, const std::string& fields)
+{
+    evaluate(webView,
+             [NSString stringWithFormat:@"window.webkit.messageHandlers.orizon.postMessage("
+                                        @"JSON.stringify({type: 'resize', %s})); ''",
+                                        fields.c_str()]);
+}
+void dragGrip(WKWebView* webView, int width, int height)
+{
+    postResize(webView, "width: " + std::to_string(width) + ", height: " + std::to_string(height));
+}
+
+// Dragging the editor's resize grip asks the host for that size, which works in hosts that offer
+// no edge of their own to drag; never smaller than the editor's minimum, and nothing for a size
+// that is not one.
+TEST_F(EditorTest, AsksTheHostForTheSizeTheGripIsDraggedTo)
+{
+    for (const bool callsOnSize : {true, false}) {
+        SCOPED_TRACE(callsOnSize ? "host calls onSize" : "host resizes without onSize");
+        TestFrame frame; // Outlives the editor, which keeps a pointer to it.
+        frame.callsOnSize = callsOnSize;
+        std::vector<std::string> received;
+        auto editor = makeEditor(received);
+        editor->setFrame(&frame);
+        NSView* content = [[OrizonTestKeyRecorder alloc]
+            initWithFrame:NSMakeRect(0, 0, Editor::kDefaultWidth, Editor::kDefaultHeight)];
+        NSWindow* window = makeWindow(content);
+        ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+        auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+        ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+
+        const int larger = Editor::kDefaultWidth + 300;
+        const int taller = Editor::kDefaultHeight + 200;
+        dragGrip(webView, larger, taller);
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout));
+        EXPECT_EQ(frame.requested.getWidth(), larger);
+        EXPECT_EQ(frame.requested.getHeight(), taller);
+        EXPECT_EQ(editor->getRect().getWidth(), larger) << "granted";
+        EXPECT_TRUE(pumpUntil([&] { return webView.frame.size.height == taller; }, kPageTimeout))
+            << "the page has the room";
+
+        dragGrip(webView, 300, 200);
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 2; }, kPageTimeout));
+        EXPECT_EQ(frame.requested.getWidth(), Editor::kMinimumWidth);
+        EXPECT_EQ(frame.requested.getHeight(), editor->minimumHeight());
+
+        dragGrip(webView, 1000000, 1000000);
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 3; }, kPageTimeout));
+        EXPECT_GT(frame.requested.getWidth(), larger);
+        EXPECT_LT(frame.requested.getWidth(), 1000000)
+            << "a size within reason, not the absurd one";
+        EXPECT_LT(frame.requested.getHeight(), 1000000);
+
+        for (const std::string fields : {"width: 'wide', height: 700", "width: 1200, height: null",
+                                         "width: 1200", "height: 700", ""}) {
+            postResize(webView, fields);
+        }
+        pumpUntil([] { return false; }, std::chrono::milliseconds(300));
+        EXPECT_EQ(frame.requests, 3) << "no request for a size that is not one";
+
+        editor->removed();
+        [window close];
+    }
+}
+
+// With stacked lanes on show, the grip cannot make the editor too short for every lane.
+TEST_F(EditorTest, KeepsTheLanesHeightWhenTheGripIsDraggedIn)
+{
+    auto own = std::make_shared<engine::Engine>();
+    own->settings().set(protocol::SettingId::kDisplayMode,
+                        static_cast<double>(protocol::DisplayMode::kMulti));
+    own->settings().set(protocol::SettingId::kViewLayout,
+                        static_cast<double>(protocol::ViewLayout::kStacked));
+    std::vector<std::shared_ptr<engine::Engine>> group{own};
+    for (int track = 1; track < 16; ++track) {
+        group.push_back(std::make_shared<engine::Engine>());
+    }
+    for (const auto& engine : group) {
+        engine::InstanceRegistry::shared().add(engine);
+    }
+    TestFrame frame;
+    std::vector<std::string> received;
+    auto editor = makeEditor(received, own);
+    editor->setFrame(&frame);
+    NSView* content = [[OrizonTestKeyRecorder alloc]
+        initWithFrame:NSMakeRect(0, 0, Editor::kDefaultWidth, Editor::kDefaultHeight)];
+    NSWindow* window = makeWindow(content);
+    ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    const int wanted = Editor::kChromeHeight + 16 * Editor::kMinimumLaneHeight;
+    ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout))
+        << "the editor asks for the height its sixteen lanes need";
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+
+    dragGrip(webView, Editor::kMinimumWidth, Editor::kMinimumHeight);
+    ASSERT_TRUE(pumpUntil([&] { return frame.requests == 2; }, kPageTimeout));
+    EXPECT_EQ(frame.requested.getHeight(), wanted);
+
+    editor->removed();
+    [window close];
+    for (const auto& engine : group) {
+        engine::InstanceRegistry::shared().remove(*engine);
+    }
+}
+
+// The editor opens again at the size it was left at, for as long as the plugin stays loaded.
+TEST_F(EditorTest, OpensAtTheSizeItWasLeftAt)
+{
+    auto engine = std::make_shared<engine::Engine>();
+    TestFrame frame;
+    std::vector<std::string> received;
+    {
+        auto editor = makeEditor(received, engine);
+        editor->setFrame(&frame);
+        NSView* content = [[OrizonTestKeyRecorder alloc]
+            initWithFrame:NSMakeRect(0, 0, Editor::kDefaultWidth, Editor::kDefaultHeight)];
+        NSWindow* window = makeWindow(content);
+        ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+        auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+        ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+        dragGrip(webView, 1300, 800);
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout));
+        editor->removed();
+        [window close];
+    }
+    auto reopened = makeEditor(received, engine);
+    EXPECT_EQ(reopened->getRect().getWidth(), 1300);
+    EXPECT_EQ(reopened->getRect().getHeight(), 800);
+
+    auto another = makeEditor(received);
+    EXPECT_EQ(another->getRect().getWidth(), Editor::kDefaultWidth) << "another instance's own";
+}
+
 // The page loads from the embedded UI and completes the session handshake across
 // 50 open/close cycles.
 TEST_F(EditorTest, RoundTripsMessagesAcrossOpenCloseCycles)
