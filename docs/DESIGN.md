@@ -131,7 +131,7 @@ against it and the UI builds its controls from it.
 | Time span | 0.5 ms – 4 s, logarithmic | 1 s |
 | Vertical scale (top of screen) | −60 dBFS … +6 dBFS | 0 dBFS |
 | Channel views | Any non-empty set of L, R, Mid, Side | L + R |
-| View layout | Overlaid, stacked | Overlaid |
+| View layout | Overlaid, stacked | Stacked |
 | Trigger mode | Auto, Normal, Free, Single | Auto |
 | Trigger source | L, R, Mid, Side | Mid |
 | Trigger slope | Rising, falling | Rising |

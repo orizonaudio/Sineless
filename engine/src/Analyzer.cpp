@@ -592,7 +592,8 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
                 ? ChannelView::kMid
                 : effectiveTriggerSource(settings.enumValue<ChannelView>(SettingId::kTriggerSource),
                                          engine.inputChannels());
-        if (!readView(ring, engine.inputChannels(), triggerView, first, triggerSamples, scratch)) {
+        if (!readSamples(ring, engine.inputChannels(), triggerView, first, triggerSamples,
+                         scratch)) {
             return false;
         }
         const TriggerDecision decision = trigger.decide(
@@ -703,9 +704,11 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             continue;
         }
         const auto view = static_cast<ChannelView>(index);
+        // Reads for the view's columns: a sweep's or a roll's.
         const auto read = [&](std::uint64_t first, std::span<float> destination) {
+            workDone.samplesReduced += destination.size();
             readScratch.resize(std::max(readScratch.size(), destination.size()));
-            return readView(source, inputChannels, view, first, destination, readScratch);
+            return readSamples(source, inputChannels, view, first, destination, readScratch);
         };
         if (synced) {
             ColumnReduction& reduction = viewReductions.at(index);
@@ -748,12 +751,13 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         // A window (at most a few seconds) is read whole; a sweep never is.
         viewSamples.resize(static_cast<std::size_t>(sampleCount));
         scratch.resize(std::max(scratch.size(), viewSamples.size()));
-        if (!readView(source, inputChannels, view, start, viewSamples, scratch)) {
+        if (!readSamples(source, inputChannels, view, start, viewSamples, scratch)) {
             return false;
         }
         const std::span<const float> visible =
             std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
         header.invalidLanes |= holdsInvalid(visible) ? 1U : 0U;
+        workDone.samplesReduced += visible.size();
         header.mode = reduceToColumns(visible, columns, reduced);
         pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
@@ -803,7 +807,8 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                 window.readoutCount > 0 ? window.readoutCount : sampleCount;
             viewSamples.resize(static_cast<std::size_t>(readoutCount));
             scratch.resize(std::max(scratch.size(), viewSamples.size()));
-            if (!readView(source, inputChannels, readoutView, readoutStart, viewSamples, scratch)) {
+            if (!readSamples(source, inputChannels, readoutView, readoutStart, viewSamples,
+                             scratch)) {
                 return false;
             }
             storeReadouts(computeReadouts(viewSamples, sampleRate), end);
@@ -820,7 +825,7 @@ bool Analyzer::updateStats(BlockStats& stats, const SweepImage& sweep, ChannelVi
 {
     const auto read = [&](std::size_t first, std::span<float> destination) {
         readScratch.resize(std::max(readScratch.size(), destination.size()));
-        return readView(sweep, channels, view, first, destination, readScratch);
+        return readSamples(sweep, channels, view, first, destination, readScratch);
     };
     const auto length = static_cast<std::size_t>(sweep.length());
     if (fresh) {
@@ -847,7 +852,7 @@ bool Analyzer::measureSweepReadouts(const BlockStats& stats, std::size_t first, 
         static_cast<std::size_t>(std::min<std::uint64_t>(available, end - first)), sampleRate);
     viewSamples.resize(window);
     scratch.resize(std::max(scratch.size(), viewSamples.size()));
-    if (!readView(live, channels, view, liveEnd - window, viewSamples, scratch)) {
+    if (!readSamples(live, channels, view, liveEnd - window, viewSamples, scratch)) {
         return false;
     }
     readouts = levelsOf(stats, first, end);
@@ -1187,8 +1192,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         ColumnReduction& reduction = lane.reduction;
         // The image holds the Mid alone: read as is, with no working space.
         const auto read = [&](std::size_t first, std::span<float> destination) {
-            return readView(lane.image, lane.image.channels(), ChannelView::kMid,
-                            crop.first + first, destination, {});
+            workDone.samplesReduced += destination.size();
+            return readSamples(lane.image, lane.image.channels(), ChannelView::kMid,
+                               crop.first + first, destination, {});
         };
         bool updated = false;
         if (lane.image.length() == count) {
@@ -1413,9 +1419,10 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
             const auto values = lane.roll.update(
                 laneStart, columns, sampleCount / columns,
                 [&](std::uint64_t first, std::span<float> destination) {
+                    workDone.samplesReduced += destination.size();
                     readScratch.resize(std::max(readScratch.size(), destination.size()));
-                    return readView(*source, channels, ChannelView::kMid, first, destination,
-                                    readScratch);
+                    return readSamples(*source, channels, ChannelView::kMid, first, destination,
+                                       readScratch);
                 });
             header.mode = protocol::FrameMode::kMinMax;
             pointCount = columns;
@@ -1425,10 +1432,12 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         }
         lane.roll.clear();
         // What the lane holds of the window; silence where it does not (yet, or any more).
-        (void)readViewHeld(*source, channels, ChannelView::kMid, laneStart, viewSamples, scratch);
+        (void)readSamplesHeld(*source, channels, ChannelView::kMid, laneStart, viewSamples,
+                              scratch);
         const std::span<const float> visible =
             std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
         header.invalidLanes |= holdsInvalid(visible) ? laneBit(index) : 0U;
+        workDone.samplesReduced += visible.size();
         header.mode = reduceToColumns(visible, columns, reduced);
         pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
@@ -1443,8 +1452,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
             window.readoutCount > 0 ? window.readoutCount : sampleCount;
         viewSamples.resize(static_cast<std::size_t>(readoutCount));
         scratch.resize(std::max(scratch.size(), viewSamples.size()));
-        if (readView(ownSource, engine.inputChannels(), ChannelView::kMid, readoutStart,
-                     viewSamples, scratch)) {
+        if (readSamples(ownSource, engine.inputChannels(), ChannelView::kMid, readoutStart,
+                        viewSamples, scratch)) {
             storeReadouts(computeReadouts(viewSamples, sampleRate), ownEnd);
         }
     }
@@ -1518,13 +1527,29 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
     return chosen;
 }
 
+bool Analyzer::readSamples(const SampleSource& source, int inputChannels, ChannelView view,
+                           std::uint64_t start, std::span<float> destination,
+                           std::span<float> working)
+{
+    workDone.samplesRead += destination.size();
+    return readView(source, inputChannels, view, start, destination, working);
+}
+
+bool Analyzer::readSamplesHeld(const SampleSource& source, int inputChannels, ChannelView view,
+                               std::uint64_t start, std::span<float> destination,
+                               std::span<float> working)
+{
+    workDone.samplesRead += destination.size();
+    return readViewHeld(source, inputChannels, view, start, destination, working);
+}
+
 void Analyzer::readLaneImage(std::size_t index, std::size_t length, std::uint64_t from,
                              std::span<float> into)
 {
     const Lane& lane = *lanes.at(laneOrder[index]);
     // The image holds the Mid alone: read as is, with no working space.
     if (lane.image.length() != length ||
-        !readView(lane.image, lane.image.channels(), ChannelView::kMid, from, into, {})) {
+        !readSamples(lane.image, lane.image.channels(), ChannelView::kMid, from, into, {})) {
         std::ranges::fill(into, 0.0f);
     }
 }
@@ -1543,6 +1568,7 @@ void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, st
             continue;
         }
         sumScratch.resize(static_cast<std::size_t>(stop - begin));
+        workDone.samplesSummed += sumScratch.size();
         const std::ptrdiff_t from = source + begin;
         readLaneImage(part.lane, length, static_cast<std::uint64_t>(from), sumScratch);
         for (std::ptrdiff_t i = begin; i < stop; ++i) {
@@ -1701,6 +1727,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         playheadShown ? windowSamples : std::min(windowSamples, end - first);
     // Positions [searchEnd - searchCount, searchEnd), the part before 0 from the right edge.
     const auto readSearch = [&](std::size_t index, std::span<float> into) {
+        workDone.samplesSearched += into.size();
         const std::size_t wrapped = searchCount > searchEnd ? searchCount - searchEnd : 0;
         readLaneImage(index, length, length - wrapped, into.first(wrapped));
         readLaneImage(index, length, searchEnd + wrapped - searchCount, into.subspan(wrapped));
@@ -1711,6 +1738,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         matchTrack.resize(searchCount);
         readSearch(ownIndex, matchOwn);
         readSearch(*lane, matchTrack);
+        ++workDone.matchSearches;
         matchStates[laneOrder[*lane]] = {
             .analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch),
             .analysedAt = now,
@@ -1831,6 +1859,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
                                      part.sign < 0.0f ? 1 : 0});
     }
     const auto readVisibleSum = [&](std::size_t from, std::span<float> into) {
+        workDone.samplesReduced += into.size();
         readSum(parts, length, first + from, into);
         return true;
     };
@@ -1902,8 +1931,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     const auto readLaneWindow = [&](std::size_t index, std::uint64_t from, std::span<float> into) {
         const auto [source, laneStart] = laneSources[index];
         readScratch.resize(std::max(readScratch.size(), into.size()));
-        return readViewHeld(*source, lanes.at(laneOrder[index])->engine->inputChannels(),
-                            ChannelView::kMid, laneStart + from, into, readScratch);
+        return readSamplesHeld(*source, lanes.at(laneOrder[index])->engine->inputChannels(),
+                               ChannelView::kMid, laneStart + from, into, readScratch);
     };
 
     // Adds `part` to `into` over window positions from `position`: each shows the part's sample
@@ -1918,6 +1947,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             return true;
         }
         sumScratch.resize(static_cast<std::size_t>(stop - begin));
+        workDone.samplesSummed += sumScratch.size();
         const std::ptrdiff_t from = source + begin;
         const bool read = readLaneWindow(part.lane, static_cast<std::uint64_t>(from), sumScratch);
         for (std::ptrdiff_t i = begin; i < stop; ++i) {
@@ -1941,8 +1971,12 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         // track's turn, so the others are searched first, but is tried again soon rather than at
         // the next refresh.
         MatchState& state = matchStates[laneOrder[*lane]];
-        if (readLaneWindow(ownIndex, searchFirst, matchOwn) &&
-            readLaneWindow(*lane, searchFirst, matchTrack)) {
+        const auto readSearch = [&](std::size_t index, std::span<float> into) {
+            workDone.samplesSearched += into.size();
+            return readLaneWindow(index, searchFirst, into);
+        };
+        if (readSearch(ownIndex, matchOwn) && readSearch(*lane, matchTrack)) {
+            ++workDone.matchSearches;
             state.analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch);
             state.wait = static_cast<std::uint64_t>(std::lround(kMatchRefreshSeconds * liveRate));
             searched = true;
@@ -2029,6 +2063,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         frameData.insert(frameData.end(), values.begin(), values.end());
     };
     const auto addVisible = [&](std::span<const float> samples) {
+        workDone.samplesReduced += samples.size();
         header.mode = reduceToColumns(samples, columns, reduced);
         pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : samples.size();
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
@@ -2039,6 +2074,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             const std::uint64_t laneStart = laneSources[lane].second;
             addColumns(roll.update(laneStart, columns, count / columns,
                                    [&](std::uint64_t from, std::span<float> destination) {
+                                       workDone.samplesReduced += destination.size();
                                        return readLaneWindow(lane, from - laneStart, destination);
                                    }));
             header.invalidLanes |= roll.holdsInvalid() ? laneBit(lane) : 0U;
@@ -2077,6 +2113,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     if (rolling) {
         addColumns(sumRoll.update(
             start, columns, count / columns, [&](std::uint64_t from, std::span<float> destination) {
+                workDone.samplesReduced += destination.size();
                 return readSumWindow(static_cast<std::size_t>(from - start), destination);
             }));
     } else {
@@ -2101,8 +2138,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             window.readoutCount > 0 ? window.readoutCount : sampleCount;
         viewSamples.resize(static_cast<std::size_t>(readoutCount));
         scratch.resize(std::max(scratch.size(), viewSamples.size()));
-        if (readView(*laneSources[ownIndex].first, engine.inputChannels(), ChannelView::kMid,
-                     readoutStart, viewSamples, scratch)) {
+        if (readSamples(*laneSources[ownIndex].first, engine.inputChannels(), ChannelView::kMid,
+                        readoutStart, viewSamples, scratch)) {
             storeReadouts(computeReadouts(viewSamples, sampleRate), ownEnd);
         }
     }

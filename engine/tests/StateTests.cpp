@@ -160,7 +160,7 @@ TEST(State, LoadsTheVersion2GoldenFile)
     EXPECT_EQ(settings.enumValue<protocol::Group>(SettingId::kGroup), protocol::Group::kA);
 }
 
-// What Sineless 0.5.x saved in state-v2-0.5.json: every setting away from its default, using
+// What Sineless 0.5.x saved in state-v2-0.5.json: every setting away from its default then, using
 // the settings and values added since 0.2.0 where there are some. Written with the protocol's
 // constants rather than the saved names, so a renamed key or value fails to load it.
 struct GoldenValue
@@ -184,7 +184,8 @@ constexpr std::array kVersion2Release05Values{
     GoldenValue{.id = SettingId::kVerticalScale, .value = -9.0},
     GoldenValue{.id = SettingId::kChannelViews,
                 .value = flag(ChannelView::kRight) + flag(ChannelView::kSide)},
-    GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kStacked)},
+    // viewLayout: stacked in the file, which is the default now: the new instance's file holds the
+    // layout away from it.
     GoldenValue{.id = SettingId::kTriggerMode, .value = asValue(TriggerMode::kSingle)},
     GoldenValue{.id = SettingId::kTriggerSource, .value = asValue(ChannelView::kSide)},
     GoldenValue{.id = SettingId::kTriggerSlope, .value = asValue(TriggerSlope::kFalling)},
@@ -200,6 +201,14 @@ constexpr std::array kVersion2Release05Values{
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
 };
 
+// What Sineless 0.5.x saved in state-v2-0.5-new-instance.json: a new instance, every setting at
+// the default of its time, as serializeState of v0.5.2 wrote it. It holds the layout overlaid,
+// 0.5.x's default, which projects saved by an untouched instance keep although new instances are
+// stacked since.
+constexpr std::array kVersion2Release05NewInstanceValues{
+    GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kOverlaid)},
+};
+
 // Golden states saved by released builds that added settings without a state version raise,
 // each with the values it holds. A release that adds a setting adds its own file here; the
 // files already here stay as their release saved them.
@@ -211,6 +220,8 @@ struct GoldenState
 
 constexpr std::array kGoldenStates{
     GoldenState{.file = "state-v2-0.5.json", .values = kVersion2Release05Values},
+    GoldenState{.file = "state-v2-0.5-new-instance.json",
+                .values = kVersion2Release05NewInstanceValues},
 };
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
