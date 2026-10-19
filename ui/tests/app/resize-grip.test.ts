@@ -91,6 +91,30 @@ describe("resize grip", () => {
     });
   });
 
+  test.each(["pointercancel", "lostpointercapture"])(
+    "ends the drag on %s: moving the pointer after it resizes nothing",
+    async (ending) => {
+      const grip = byId("resize-grip");
+      const at = (x: number) => ({
+        pointerId: 1,
+        bubbles: true,
+        button: 0,
+        buttons: 1,
+        screenX: x,
+        screenY: 400,
+      });
+      grip.dispatchEvent(new PointerEvent("pointerdown", at(500)));
+      grip.dispatchEvent(new PointerEvent("pointermove", at(520)));
+      grip.dispatchEvent(new PointerEvent(ending, at(520)));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const before = resizes(app).length;
+      grip.dispatchEvent(new PointerEvent("pointermove", at(600)));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(resizes(app).length).toBe(before);
+    },
+  );
+
   test("ignores buttons other than the main one", async () => {
     const before = resizes(app).length;
     drag(byId("resize-grip"), { x: 500, y: 400 }, [{ x: 700, y: 600 }], 2);
