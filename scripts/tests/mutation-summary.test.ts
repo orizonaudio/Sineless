@@ -267,6 +267,26 @@ describe("the time limit note on a C++ mutation run", () => {
     },
   );
 
+  // The warning says which limit to raise: the engine's is MUTANT_TIMEOUT, set in CI; the others'
+  // are in scripts/mutation-cpp.sh, where raising MUTANT_TIMEOUT would change nothing.
+  test.each([
+    ["engine_tests", 900, 1500, "MUTANT_TIMEOUT"],
+    ["plugin_tests", 40, 60, "scripts/mutation-cpp.sh"],
+    ["editor_tests", 40, 60, "scripts/mutation-cpp.sh"],
+  ])(
+    "tells whoever reads a warning on %s to raise the limit they run at",
+    (name, warmUp, limit, where) => {
+      const warning = timeLimitNote(warmUp, limit, false, name)
+        .split("\n")
+        .slice(1)
+        .join("\n");
+      expect(warning).toContain(where);
+      if (where !== "MUTANT_TIMEOUT") {
+        expect(warning).not.toContain("MUTANT_TIMEOUT");
+      }
+    },
+  );
+
   // Each of several test binaries is stopped at the limit (scripts/mutation-au.sh): the slowest
   // one must take well under it.
   test.each([
