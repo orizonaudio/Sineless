@@ -7,7 +7,7 @@ name: Mutation triage
 # message-only mutants pass. Not a required check: it does not block merging.
 #
 # It runs when a pull request's CI run completes, in two passes as the AI review does
-# (ai-review.yml), on claude-opus-5-5 at extra high effort:
+# (ai-review.yml), on claude-opus-5-5 at medium effort:
 # - Triage: mutation-triager subagents (.claude/agents) give each mutant a verdict.
 # - Verify: a review-verifier checks each "gap", keeping it only if it can prove it from the code.
 # This workflow, not Claude, posts the comment and sets the status, from the structured output.
@@ -279,7 +279,7 @@ jobs:
         id: triage
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         env:
-          CLAUDE_CODE_EFFORT_LEVEL: xhigh
+          CLAUDE_CODE_EFFORT_LEVEL: medium
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
@@ -334,7 +334,7 @@ jobs:
         id: verify
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         env:
-          CLAUDE_CODE_EFFORT_LEVEL: xhigh
+          CLAUDE_CODE_EFFORT_LEVEL: medium
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
