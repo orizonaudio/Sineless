@@ -193,16 +193,7 @@ void EditorCore::resize(const nlohmann::json& message)
         std::clamp(*askedWidth, static_cast<double>(kMinimumWidth), kMaximumGripSize);
     const double newHeight =
         std::clamp(*askedHeight, static_cast<double>(minimumHeight()), kMaximumGripSize);
-    dragged = {newWidth, newHeight};
     sizeRequest(toHostUnits(newWidth), toHostUnits(newHeight));
-}
-
-std::optional<EditorCore::Size> EditorCore::draggedSize() const
-{
-    if (!dragged) {
-        return std::nullopt;
-    }
-    return Size{.width = toHostUnits(dragged->first), .height = toHostUnits(dragged->second)};
 }
 
 int EditorCore::minimumHeight() const
