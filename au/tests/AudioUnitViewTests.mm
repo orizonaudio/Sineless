@@ -109,6 +109,55 @@ protected:
         pumpUntil([reached] { return *reached; }, std::chrono::seconds(5));
     }
 
+    // Puts `view` in Multi, stacked, with `count` tracks in its group: the others' engines, which
+    // removeTracks takes out of the group again.
+    [[nodiscard]] std::vector<std::shared_ptr<engine::Engine>> stackTracks(int count) const
+    {
+        const auto own = engineOf(unit);
+        own->settings().set(protocol::SettingId::kDisplayMode,
+                            static_cast<double>(protocol::DisplayMode::kMulti));
+        own->settings().set(protocol::SettingId::kViewLayout,
+                            static_cast<double>(protocol::ViewLayout::kStacked));
+        std::vector<std::shared_ptr<engine::Engine>> others;
+        for (int track = 1; track < count; ++track) {
+            others.push_back(std::make_shared<engine::Engine>());
+            engine::InstanceRegistry::shared().add(others.back());
+        }
+        return others;
+    }
+    static void removeTracks(const std::vector<std::shared_ptr<engine::Engine>>& others)
+    {
+        for (const auto& engine : others) {
+            engine::InstanceRegistry::shared().remove(*engine);
+        }
+    }
+
+    // Lays `view` out as Logic does when it hosts Audio Units out of process: with Auto Layout,
+    // pinned to its window's content at the corner and, at a low priority, to its size.
+    static void pinWithAutoLayout(NSView* view)
+    {
+        NSView* container = view.superview;
+        view.translatesAutoresizingMaskIntoConstraints = NO;
+        NSArray<NSLayoutConstraint*>* fill = @[
+            [view.widthAnchor constraintEqualToAnchor:container.widthAnchor],
+            [view.heightAnchor constraintEqualToAnchor:container.heightAnchor],
+        ];
+        for (NSLayoutConstraint* constraint : fill) {
+            constraint.priority = NSLayoutPriorityDefaultLow; // Below a view's own size.
+        }
+        [NSLayoutConstraint
+            activateConstraints:[fill arrayByAddingObjectsFromArray:@[
+                [view.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+                [view.topAnchor constraintEqualToAnchor:container.topAnchor],
+            ]]];
+    }
+    // A layout pass of the host's, which applies its constraints again.
+    static void layOut(NSView* view)
+    {
+        view.superview.needsLayout = YES;
+        [view.superview layoutSubtreeIfNeeded];
+    }
+
     // What a host does when it closes the window: the view leaves it, which closes the editor.
     static void closeWindow(NSWindow* window, NSView* view)
     {
@@ -474,6 +523,121 @@ TEST_F(AudioUnitViewTest, GrowsForStackedLanes)
     for (const auto& engine : others) {
         engine::InstanceRegistry::shared().remove(*engine);
     }
+}
+
+// Logic hosts Audio Units out of process, where the view is laid out with Auto Layout: pinned to a
+// container the size the view had when it opened, and the container's constraints applied again on
+// every layout pass. The view still keeps the height its stacked lanes need, rather than being set
+// back to the container's height with the lanes squeezed into it.
+TEST_F(AudioUnitViewTest, GrowsForStackedLanesInAHostThatUsesAutoLayout)
+{
+    const auto others = stackTracks(16);
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    pinWithAutoLayout(view);
+    const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            layOut(view);
+            return view.frame.size.height == wanted;
+        },
+        kPageTimeout))
+        << "the view has the height sixteen lanes need, not " << view.frame.size.height;
+    runQueuedWork();
+    layOut(view);
+    EXPECT_EQ(view.frame.size.height, wanted) << "and keeps it through the host's layout";
+    WKWebView* webView = webViewOf(view);
+    ASSERT_NE(webView, nil);
+    EXPECT_EQ(webView.frame.size.height, wanted) << "the page has the room";
+
+    closeWindow(window, view);
+    removeTracks(others);
+}
+
+// In a host that lays the view out with Auto Layout, a window made larger than the editor's
+// minimum is filled: the editor's minimum holds the view no smaller, never no larger.
+TEST_F(AudioUnitViewTest, FillsALargerWindowInAHostThatUsesAutoLayout)
+{
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    pinWithAutoLayout(view);
+    const NSSize larger =
+        NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 400);
+    [window setContentSize:larger];
+    layOut(view);
+    EXPECT_TRUE(NSEqualSizes(view.frame.size, larger))
+        << view.frame.size.width << "x" << view.frame.size.height;
+    WKWebView* webView = webViewOf(view);
+    ASSERT_NE(webView, nil);
+    EXPECT_TRUE(NSEqualSizes(webView.frame.size, larger)) << "the page has the room";
+    closeWindow(window, view);
+}
+
+// In a host that lays the view out with Auto Layout, the editor's minimum holds however it changed:
+// the lanes grew while the window had room, so the editor asked for none, and the window is then
+// made smaller. The view keeps the height the lanes need.
+TEST_F(AudioUnitViewTest, KeepsLanesThatGrewInRoomInAHostThatUsesAutoLayout)
+{
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    pinWithAutoLayout(view);
+    const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
+    [window setContentSize:NSMakeSize(EditorCore::kDefaultWidth, wanted + 100)];
+    layOut(view);
+    runQueuedWork();
+    const auto others = stackTracks(16); // Tracks added while the editor is open.
+    ASSERT_TRUE(pumpUntil(
+        [&] {
+            layOut(view);
+            return view.fittingSize.height == wanted;
+        },
+        kPageTimeout))
+        << "Auto Layout has the lanes' height as the view's minimum, not "
+        << view.fittingSize.height;
+    ASSERT_EQ(view.frame.size.height, wanted + 100) << "the window had room: none was asked for";
+
+    [window setContentSize:NSMakeSize(EditorCore::kDefaultWidth, wanted - 100)];
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            layOut(view);
+            return view.frame.size.height == wanted;
+        },
+        kPageTimeout))
+        << "the view keeps the height the lanes need, not " << view.frame.size.height;
+    closeWindow(window, view);
+    removeTracks(others);
+}
+
+// In a host that lays the view out with Auto Layout, the view follows the window down to the
+// editor's minimum as it is now: after the stacked lanes are no longer shown, a smaller window is
+// filled rather than cut off at the lanes' old height.
+TEST_F(AudioUnitViewTest, FollowsASmallerWindowOnceTheLanesAreGoneInAHostThatUsesAutoLayout)
+{
+    const auto others = stackTracks(16);
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    pinWithAutoLayout(view);
+    const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
+    ASSERT_TRUE(pumpUntil(
+        [&] {
+            layOut(view);
+            return view.frame.size.height == wanted;
+        },
+        kPageTimeout));
+
+    engineOf(unit)->settings().set(protocol::SettingId::kDisplayMode,
+                                   static_cast<double>(protocol::DisplayMode::kSingle));
+    const NSSize smaller = NSMakeSize(EditorCore::kDefaultWidth, EditorCore::kDefaultHeight);
+    [window setContentSize:smaller];
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            layOut(view);
+            return NSEqualSizes(view.frame.size, smaller);
+        },
+        kPageTimeout))
+        << view.frame.size.width << "x" << view.frame.size.height;
+    closeWindow(window, view);
+    removeTracks(others);
 }
 
 // A host may dispose of the Audio Unit before it closes the view: the view keeps what it shows

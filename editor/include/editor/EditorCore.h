@@ -40,6 +40,9 @@ public:
     // Asks the host for a size in window units. The format's view applies it if the host agrees
     // (through setSize, as the host's own resizes are), and otherwise leaves it.
     using SizeRequest = std::function<void(int width, int height)>;
+    // Called at each check of the minimum height (every state sync), whether or not more room
+    // is asked for: for a format's view that gives the minimum to the host itself.
+    using MinimumCheck = std::function<void()>;
 
     // `engine` is null when the format's glue could not reach the processor's engine.
     explicit EditorCore(std::shared_ptr<engine::Engine> engine, MessageObserver observer = {});
@@ -48,6 +51,7 @@ public:
     EditorCore& operator=(const EditorCore&) = delete;
 
     void setSizeRequest(SizeRequest request) { sizeRequest = std::move(request); }
+    void setMinimumCheck(MinimumCheck check) { minimumCheck = std::move(check); }
 
     // Takes the scale of `parent`, the host's window, before attaching to it: the host sized the
     // window before attaching, possibly at a guessed scale. True if the scale changed, so that
@@ -97,6 +101,7 @@ private:
 
     MessageObserver observer;
     SizeRequest sizeRequest;
+    MinimumCheck minimumCheck;
     void* parent = nullptr;
     double scale = 1.0;
     // The editor's size in CSS pixels, the truth that the size in window units follows: a scale

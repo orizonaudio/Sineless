@@ -42,6 +42,8 @@
     // it again keeps it; a user's drag starts afresh, since a window stops at the same smallest
     // size every time.
     std::optional<NSSize> refusedSize;
+    // The editor's minimum as last given to Auto Layout, as the view's intrinsic size.
+    NSSize givenMinimumSize;
 }
 
 - (instancetype)initWithEngine:(std::shared_ptr<orizon::engine::Engine>)engine
@@ -55,12 +57,22 @@
         if (@available(macOS 14.0, *)) {
             self.clipsToBounds = YES; // No longer the default from macOS 14.
         }
-        // The editor asks for room (stacked lanes): the view takes the size, and the host follows
-        // the view's frame.
+        // Its intrinsic size is a minimum only: a host laying the view out with Auto Layout may
+        // make it any size larger, whatever priority its own constraints have.
+        for (const NSLayoutConstraintOrientation orientation :
+             {NSLayoutConstraintOrientationHorizontal, NSLayoutConstraintOrientationVertical}) {
+            [self setContentHuggingPriority:1 forOrientation:orientation];
+        }
+        // The editor asks for room (stacked lanes, or a display scale): the view takes the size,
+        // and the host follows the view's frame. A host laying the view out with Auto Layout
+        // learns the editor's minimum from the view's intrinsic size, which follows each change of
+        // it (followMinimumSize), with or without a request.
         __weak ORIZON_AU_VIEW* weakSelf = self;
         core->setSizeRequest([weakSelf](int width, int height) {
+            [weakSelf invalidateIntrinsicContentSize];
             [weakSelf setFrameSize:NSMakeSize(width, height)];
         });
+        core->setMinimumCheck([weakSelf] { [weakSelf followMinimumSize]; });
     }
     return self;
 }
@@ -92,6 +104,28 @@
 {
     return NSMakeSize(core->toHostUnits(orizon::editor::EditorCore::kMinimumWidth),
                       core->toHostUnits(core->minimumHeight()));
+}
+
+// Logic hosts Audio Units out of process, where the view is laid out with Auto Layout: pinned to
+// its container, whose size the host applies again on every layout pass, which would set back each
+// resize of the view's own. The editor's minimum as the view's intrinsic size keeps it at least
+// that large there; hosts that size the view by its autoresizing mask (required constraints) are
+// not affected.
+- (NSSize)intrinsicContentSize
+{
+    givenMinimumSize = [self minimumSize];
+    return givenMinimumSize;
+}
+
+// Auto Layout keeps the intrinsic size it was given until told it changed: each time the editor
+// checks its minimum, the view tells it if the minimum is no longer the one it gave.
+- (void)followMinimumSize
+{
+    const NSSize minimum = [self minimumSize];
+    if (!NSEqualSizes(minimum, givenMinimumSize)) {
+        givenMinimumSize = minimum; // Once per change, in hosts that never ask for it too.
+        [self invalidateIntrinsicContentSize];
+    }
 }
 
 // AUv2 has no way to refuse a size. Below the editor's minimum the view takes the host's size for

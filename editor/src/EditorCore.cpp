@@ -86,6 +86,9 @@ void EditorCore::attach(void* window)
         if (session) {
             session->sync();
             requestMinimumHeight();
+            if (minimumCheck) {
+                minimumCheck();
+            }
         }
         updateScale();
     });
