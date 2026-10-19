@@ -16,6 +16,7 @@ import {
   parseBenchRun,
   parseCachegrind,
   readResults,
+  scenarioMetrics,
   type BenchRun,
   type Results,
 } from "../engine-work.ts";
@@ -140,6 +141,27 @@ describe("readResults", () => {
     expect(read.scenarios["single-one-bar"]?.gated).toBe(false);
     expect(read.scenarios["compare-15-worst"]?.gated).toBe(true);
     expect(read.valgrind).toBe("valgrind-3.22.0");
+  });
+});
+
+describe("scenarioMetrics", () => {
+  // A run whose markers counted nothing would read as a gain, and every rise after it as nothing.
+  test.each([
+    ["no instructions", { Ir: 0 }],
+    ["no instruction count", { Dr: 300 }],
+  ])(
+    "refuses a run that counted %s, rather than judging it a gain",
+    (_, events) => {
+      expect(() => scenarioMetrics(benchRun, events)).toThrow(
+        /compare-15-worst: Cachegrind counted no instructions/,
+      );
+    },
+  );
+
+  test("measures a run that counted instructions, per frame", () => {
+    expect(scenarioMetrics(benchRun, { Ir: 3000 })[instructions]).toEqual({
+      value: 10,
+    });
   });
 });
 

@@ -89,8 +89,16 @@ export function scenarioMetrics(
   events: Record<string, number>,
 ): Record<string, { value: number }> {
   const perFrame = (total: number) => ({ value: total / run.frames });
+  // Cachegrind counts only between the bench's markers: a run that counted no instructions was not
+  // measured, and judged it would pass as a gain, and every later rise against it.
+  const instructionCount = events["Ir"];
+  if (instructionCount === undefined || !(instructionCount > 0)) {
+    throw new Error(
+      `${run.scenario}: Cachegrind counted no instructions between the bench's markers`,
+    );
+  }
   const metrics: Record<string, { value: number }> = {};
-  metrics[instructions] = perFrame(events["Ir"] ?? Number.NaN);
+  metrics[instructions] = perFrame(instructionCount);
   // With the caches simulated: misses in the last level, of data read and written.
   if (events["DLmr"] !== undefined && events["DLmw"] !== undefined) {
     metrics[lastLevelMisses] = perFrame(events["DLmr"] + events["DLmw"]);
