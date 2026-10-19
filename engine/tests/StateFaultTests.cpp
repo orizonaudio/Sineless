@@ -264,7 +264,7 @@ TEST(StateFaults, FallsBackToDefaultsForEmptyAndUndecodableInput)
     for (const std::string_view input :
          {""sv, " "sv, "\n\n"sv, "\0"sv, "\xEF\xBB\xBF"sv, "null"sv, "0"sv, R"("")"sv, "{"sv, "}"sv,
           R"({"settings": null})"sv, R"({"settings": []})"sv,
-          R"({"version": 2, "settings": {"viewLayout": "stacked"}} trailing)"sv,
+          R"({"version": 2, "settings": {"viewLayout": "overlaid"}} trailing)"sv,
           "{\"version\": 2, \"settings\": {\"viewLayout\": \"\xFF\"}}"sv,
           R"({"version": 2, "settings": {"viewLayout": "\ud800"}})"sv}) {
         EXPECT_EQ(deserializeState(input), Settings()) << testing::PrintToString(input);
@@ -272,9 +272,9 @@ TEST(StateFaults, FallsBackToDefaultsForEmptyAndUndecodableInput)
     // The parser stops at a NUL, as at the end of a C string: a host that hands back the text with
     // its terminator loses nothing.
     const Settings terminated =
-        deserializeState("{\"version\": 2, \"settings\": {\"viewLayout\": \"stacked\"}}\0"sv);
+        deserializeState("{\"version\": 2, \"settings\": {\"viewLayout\": \"overlaid\"}}\0"sv);
     EXPECT_EQ(terminated.enumValue<protocol::ViewLayout>(protocol::SettingId::kViewLayout),
-              protocol::ViewLayout::kStacked);
+              protocol::ViewLayout::kOverlaid);
 }
 
 // A state nested far deeper than any we write, in a field and around the whole state.

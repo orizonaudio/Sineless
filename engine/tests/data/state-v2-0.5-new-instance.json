@@ -1,0 +1,25 @@
+{
+  "settings": {
+    "autoFreeze": "off",
+    "beatSpan": "oneBar",
+    "channelViews": [
+      "left",
+      "right"
+    ],
+    "concertPitch": 440.0,
+    "displayMode": "single",
+    "group": "a",
+    "hoverReadout": "off",
+    "timeBase": "beats",
+    "timeSpan": 1.0,
+    "triggerHoldOff": 0.0,
+    "triggerHysteresis": 0.01,
+    "triggerLevel": 0.0,
+    "triggerMode": "auto",
+    "triggerSlope": "rising",
+    "triggerSource": "mid",
+    "verticalScale": 0.0,
+    "viewLayout": "overlaid"
+  },
+  "version": 2
+}

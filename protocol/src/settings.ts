@@ -62,7 +62,7 @@ export const settings = {
   viewLayout: {
     kind: "enum",
     values: "ViewLayout",
-    defaultValue: ViewLayout.overlaid,
+    defaultValue: ViewLayout.stacked,
   },
   triggerMode: {
     kind: "enum",
