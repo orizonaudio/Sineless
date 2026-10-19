@@ -70,7 +70,7 @@ is how to meet it the first time.
 | C++ build and tests (macOS) | `cmake --preset dev && cmake --build --preset dev && ctest --preset dev` |
 | One C++ test | `ctest --preset dev -R <Suite.Name>` |
 | Mutation testing (TypeScript lines changed since a base, or all without one) | `scripts/mutation.sh origin/main` |
-| Mutation testing (engine C++ lines changed since a base, or all without one; on macOS in Docker) | `scripts/mutation-cpp.sh origin/main`; a file at a time rather than the whole engine's nine hours: `scripts/mutation-cpp.sh --file engine/src/PairAnalysis.cpp` |
+| Mutation testing (engine, plugin and editor C++ lines changed since a base, or all without one; on macOS in Docker) | `scripts/mutation-cpp.sh origin/main`; a file at a time rather than the whole engine's nine hours: `scripts/mutation-cpp.sh --file engine/src/PairAnalysis.cpp` |
 | Mutation testing (Audio Unit lines changed since a base, or all of `au/src` in a few minutes without one; macOS, with `brew install llvm@20` and a macOS 26 SDK) | `scripts/mutation-au.sh origin/main` |
 | Coverage (Linux) | `cmake --preset coverage && cmake --build --preset coverage && scripts/coverage.sh origin/main` |
 | Everything on macOS | `scripts/check.sh` (format, build, tests, pluginval, the Audio Unit's auval and pluginval on a copy installed in `~/Library/Audio/Plug-Ins/Components`, performance; the macOS glue's sanitizers and lint; the Linux checks in Docker). `CHECKS="main glue"` skips the Linux part |

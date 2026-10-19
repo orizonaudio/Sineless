@@ -26,9 +26,10 @@ env:
   # caches no later run can read (caches are scoped to the branch that saved them); pull requests
   # keep theirs for their next push, and cache-cleanup.yml deletes them when they close.
   SAVE_CACHES: ${{ github.event_name != 'merge_group' }}
-  # Each C++ mutant's time limit, in seconds (scripts/mutation-cpp.sh): the shares stop a mutant
-  # at it, and the merged summary weighs the tests' own time against it, so both read this one
-  # value. The tests take about 540 s here with every mutant compiled in, longer with four mutants
+  # Each engine mutant's time limit, in seconds (scripts/mutation-cpp.sh, which gives the plugin's
+  # and editor's, whose tests take a tenth of a second, a minute): the shares stop a mutant at it,
+  # and the merged summary weighs the tests' own time against it, so both read this one value.
+  # The engine's tests take about 540 s here with every mutant compiled in, longer with four mutants
   # running at once; a mutant no test notices runs them all, and one stopped at the limit would
   # read as noticed. 1500 s is near three times their time, the margin the summary asks for.
   MUTANT_TIMEOUT: 1500
@@ -441,20 +442,21 @@ jobs:
             build/mutation/summary.md
           if-no-files-found: ignore
 
-  # Mutation testing of the engine lines a pull request changes (scripts/mutation-cpp.sh), with
-  # Mull for the runner's Clang 18: a report in the job summary, with warnings on the lines whose
-  # changes no engine test notices. Never a failure, and not required; nothing is built when no
-  # engine source changed. In three steps, so that a large change still gets a report: one job
-  # builds the tests with every mutant compiled in and lists the mutants; four share them out,
-  # each a quarter of every file; the mutation-cpp job reports their results together, those of
-  # mutants not reached in time as not run (a partial report, which the triage never passes).
-  # Each mutant runs the tests up to their first failure and is stopped at MUTANT_TIMEOUT (set for
-  # the whole workflow) if it hangs one. The summary says how long the tests take unmutated, and
-  # warns when that is more than half the limit, as a mutant no test notices would then be
-  # reported as timed out. No share starts a mutant after 50 minutes of running them
-  # (MUTATION_DEADLINE): with the limit's 25 and the setup and one unmutated run of the tests
-  # before them, the job's 90 rarely end it; when they do, the results it wrote are kept and the
-  # rest reported as not run.
+  # Mutation testing of the engine, plugin and editor lines a pull request changes
+  # (scripts/mutation-cpp.sh), with Mull for the runner's Clang 18: a report in the job summary,
+  # with warnings on the lines whose changes no test notices. Never a failure, and not required;
+  # nothing is built when none of their sources changed. In three steps, so that a large change
+  # still gets a report: one job builds the tests with every mutant compiled in and lists the
+  # mutants; four share them out, each a quarter of every file; the mutation-cpp job reports their
+  # results together, those of mutants not reached in time as not run (a partial report, which
+  # the triage never passes). Each mutant runs its own module's tests (engine_tests, plugin_tests
+  # or editor_tests) up to their first failure and is stopped at that module's limit if it hangs
+  # one (MUTANT_TIMEOUT, set for the whole workflow, for the engine's). The summary says how long
+  # each module's tests take unmutated, and warns when that is more than half its limit, as a
+  # mutant no test notices would then be reported as timed out. No share starts a mutant after 50
+  # minutes of running them (MUTATION_DEADLINE): with the engine's limit of 25 and the setup and
+  # one unmutated run of the tests before them, the job's 90 rarely end it; when they do, the
+  # results it wrote are kept and the rest reported as not run.
   mutation-cpp-list:
     name: mutation-cpp-list
     needs: changes
@@ -470,6 +472,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci # The editor embeds the page, built with Vite.
       - run: sudo tools/mutation/install-mull.sh
       - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
@@ -486,9 +490,9 @@ jobs:
           report=build/mutation-cpp-report/dry.json
           echo "mutants=$([[ -f $report ]] && jq '[.files[].mutants[]] | length' $report || echo 0)" \
             >> "$GITHUB_OUTPUT"
-      # The list (with Mull's log, for the tests' time) or the summary saying no engine line
-      # changed, and the tests to run the mutants with. Not named mutation-*: the triage takes
-      # only the reports.
+      # The list (with each module's Mull log, for its tests' time) or the summary saying no C++
+      # source line changed, and the tests to run the mutants with. Not named mutation-*: the
+      # triage takes only the reports.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cpp-mutants-list
@@ -498,7 +502,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cpp-mutants-tests
-          path: build/mutation-cpp/engine/engine_tests
+          path: |
+            build/mutation-cpp/bin/RelWithDebInfo/engine_tests
+            build/mutation-cpp/bin/RelWithDebInfo/plugin_tests
+            build/mutation-cpp/bin/RelWithDebInfo/editor_tests
           retention-days: 1
 
   mutation-cpp-share:
@@ -525,13 +532,13 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cpp-mutants-tests
-          path: build/mutation-cpp/engine
+          path: build/mutation-cpp/bin/RelWithDebInfo
       - name: Run the share's mutants
         continue-on-error: true # Its mutants are then reported as not run.
         env:
           MUTATION_DEADLINE: 3000
         run: |
-          chmod +x build/mutation-cpp/engine/engine_tests # Artifacts keep no permissions.
+          chmod +x build/mutation-cpp/bin/RelWithDebInfo/*_tests # Artifacts keep no permissions.
           scripts/mutation-cpp.sh --share "${{ matrix.share }}/4"
       # Each result is written as it is known: whatever this job managed is kept, even if it fails.
       - if: always()
