@@ -73,6 +73,9 @@ export function summarise(
     }
     worstSecondLate = Math.max(worstSecondLate, lateEnds.length);
   });
+  if (intervals.length === 0) {
+    worstSecondLate = Number.NaN; // Nothing measured, not a second with none late.
+  }
   return {
     count: intervals.length,
     median,

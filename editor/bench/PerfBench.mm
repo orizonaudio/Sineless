@@ -813,7 +813,7 @@ int run(const Options& options)
             const nlohmann::json view = nlohmann::json::parse(
                 evaluate(webView,
                          @"JSON.stringify({columns: window.orizonDebug?.lastFrame?.pointCount "
-                         @"?? 0, scale: window.devicePixelRatio})"),
+                         @"?? null, scale: window.devicePixelRatio})"),
                 nullptr, false);
             std::printf("plugin process: %.1f%% of a core, %.0f MB resident\n",
                         100.0 * interval.process, interval.resident);
