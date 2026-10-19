@@ -443,6 +443,13 @@ TEST_F(EditorTest, OpensAtTheSizeItWasLeftAt)
 
     auto another = makeEditor(received);
     EXPECT_EQ(another->getRect().getWidth(), Editor::kDefaultWidth) << "another instance's own";
+
+    // A host that left it smaller than its minimum: it opens again at the minimum, not cropped.
+    ViewRect small(0, 0, 300, 200);
+    reopened->onSize(&small);
+    auto again = makeEditor(received, engine);
+    EXPECT_EQ(again->getRect().getWidth(), Editor::kMinimumWidth);
+    EXPECT_EQ(again->getRect().getHeight(), Editor::kMinimumHeight);
 }
 
 // The page loads from the embedded UI and completes the session handshake across
