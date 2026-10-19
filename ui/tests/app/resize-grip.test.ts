@@ -63,7 +63,15 @@ describe("resize grip", () => {
     expect(resizes(app).at(-1)).toMatchObject({
       width: window.innerWidth + 40,
     });
-    grip.dispatchEvent(new PointerEvent("pointerup", at(540)));
+    // And keeps following it in later frames, before the button is released.
+    grip.dispatchEvent(new PointerEvent("pointermove", at(560)));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(resizes(app).length).toBe(before + 2);
+    expect(resizes(app).at(-1)).toMatchObject({
+      width: window.innerWidth + 60,
+    });
+    grip.dispatchEvent(new PointerEvent("pointerup", at(560)));
   });
 
   test("asks for the window's size plus how far the grip was dragged", async () => {
