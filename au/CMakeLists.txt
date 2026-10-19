@@ -93,7 +93,7 @@ if(BUILD_TESTING)
     set_source_files_properties(tests/ComponentTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     gtest_discover_tests(au_component_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE)
     orizon_forbid_dependencies(au_component_tests au editor_core engine)
-    add_test(NAME Component.VersionCode
+    add_test(NAME Component.GivesEachVersionItsOwnCode
         COMMAND ${CMAKE_COMMAND} -DMODULE=${PROJECT_SOURCE_DIR}/cmake/AudioUnitVersion.cmake
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/VersionCode.cmake)
     add_test(NAME Component.ExportsOnlyTheFactory
