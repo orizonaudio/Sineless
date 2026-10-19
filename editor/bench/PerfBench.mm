@@ -36,6 +36,7 @@
 #include "editor/Editor.h"
 #include "engine/Engine.h"
 #include "engine/InstanceRegistry.h"
+#include "engine/Roll.h"
 #include "engine/SettingJson.h"
 #include "pluginterfaces/gui/iplugview.h"
 
@@ -104,12 +105,15 @@ struct Options
 };
 
 // The options a named scenario sets. False if perf_bench cannot play it: it has no zoom or
-// panning of its own.
+// panning of its own, and plays a triggered span (Seconds, no longer than the roll threshold)
+// free-running, which is not the scenario its name means.
 bool applyScenario(const std::string& name, Options& options)
 {
     const auto scenario = bench::scenarioNamed(name);
     if (!scenario || scenario->viewStart != 0.0 || scenario->viewEnd != 1.0 ||
-        scenario->frozenPan) {
+        scenario->frozenPan ||
+        (scenario->timeBase == protocol::TimeBase::kSeconds &&
+         !orizon::engine::isRollSpan(scenario->span))) {
         return false;
     }
     const auto nameOf = [](const auto& names, auto value) {
