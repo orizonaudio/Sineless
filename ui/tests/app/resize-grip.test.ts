@@ -37,6 +37,35 @@ describe("resize grip", () => {
     app = await startApp();
   });
 
+  // First in the file: the page's first drag, which must follow the pointer before release too.
+  test("follows the drag while the button is held, once a frame however often the pointer moves", async () => {
+    const grip = byId("resize-grip");
+    const before = resizes(app).length;
+    const at = (x: number) => ({
+      pointerId: 1,
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      screenX: x,
+      screenY: 400,
+    });
+    // The grip keeps the pointer when it moves ahead of the window's corner.
+    const capture = vi.spyOn(grip, "setPointerCapture");
+    grip.dispatchEvent(new PointerEvent("pointerdown", at(500)));
+    expect(capture).toHaveBeenCalledWith(1);
+    capture.mockRestore();
+    for (const x of [510, 520, 530, 540]) {
+      grip.dispatchEvent(new PointerEvent("pointermove", at(x)));
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(resizes(app).length).toBe(before + 1);
+    expect(resizes(app).at(-1)).toMatchObject({
+      width: window.innerWidth + 40,
+    });
+    grip.dispatchEvent(new PointerEvent("pointerup", at(540)));
+  });
+
   test("asks for the window's size plus how far the grip was dragged", async () => {
     const before = resizes(app).length;
     drag(byId("resize-grip"), { x: 500, y: 400 }, [
@@ -50,30 +79,6 @@ describe("resize grip", () => {
       width: window.innerWidth + 300,
       height: window.innerHeight + 200,
     });
-  });
-
-  test("asks the host once a frame, however often the pointer moves", async () => {
-    const grip = byId("resize-grip");
-    const before = resizes(app).length;
-    const at = (x: number) => ({
-      pointerId: 1,
-      bubbles: true,
-      button: 0,
-      buttons: 1,
-      screenX: x,
-      screenY: 400,
-    });
-    grip.dispatchEvent(new PointerEvent("pointerdown", at(500)));
-    for (const x of [510, 520, 530, 540]) {
-      grip.dispatchEvent(new PointerEvent("pointermove", at(x)));
-    }
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    expect(resizes(app).length).toBe(before + 1);
-    expect(resizes(app).at(-1)).toMatchObject({
-      width: window.innerWidth + 40,
-    });
-    grip.dispatchEvent(new PointerEvent("pointerup", at(540)));
   });
 
   test("asks for a smaller size when dragged in", async () => {
