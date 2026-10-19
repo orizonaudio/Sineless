@@ -243,10 +243,10 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
 class TestFrame final : public IPlugFrame
 {
 public:
-    tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override
+    tresult PLUGIN_API queryInterface(const TUID queried, void** obj) override
     {
-        if (FUnknownPrivate::iidEqual(iid, IPlugFrame::iid) ||
-            FUnknownPrivate::iidEqual(iid, FUnknown::iid)) {
+        if (FUnknownPrivate::iidEqual(queried, IPlugFrame::iid) ||
+            FUnknownPrivate::iidEqual(queried, FUnknown::iid)) {
             *obj = this;
             return kResultOk;
         }
