@@ -234,7 +234,7 @@ jobs:
       - name: Find
         if: steps.pr.outputs.action == 'review'
         id: find
-        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
         env:
           CLAUDE_CODE_EFFORT_LEVEL: medium
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
@@ -304,7 +304,7 @@ jobs:
       - name: Verify
         if: steps.pr.outputs.action == 'review' && steps.collect.outputs.count != '0'
         id: verify
-        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
         env:
           CLAUDE_CODE_EFFORT_LEVEL: medium
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
