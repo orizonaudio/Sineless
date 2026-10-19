@@ -17,6 +17,7 @@ export const MessageType = {
   lanes: "lanes",
   compare: "compare",
   previewFix: "previewFix",
+  resize: "resize",
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
@@ -134,6 +135,14 @@ export interface PreviewFixMessage {
   readonly on: boolean;
 }
 
+// UI to editor. The user dragged the resize grip: the size the whole editor should have, in CSS
+// pixels. The editor keeps it no smaller than its minimum and asks the host for it.
+export interface ResizeMessage {
+  readonly type: "resize";
+  readonly width: number;
+  readonly height: number;
+}
+
 export type UiToEngineMessage =
   | HelloMessage
   | SetSettingMessage
@@ -143,7 +152,8 @@ export type UiToEngineMessage =
   | ArmMessage
   | ViewMessage
   | CompareMessage
-  | PreviewFixMessage;
+  | PreviewFixMessage
+  | ResizeMessage;
 
 export type EngineToUiMessage =
   SnapshotMessage | StateChangedMessage | ErrorMessage | LanesMessage;

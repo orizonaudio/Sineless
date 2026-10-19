@@ -191,6 +191,32 @@ body {
   border-color: var(--hold);
 }
 
+/* In the window's corner, over the footer's padding: three short diagonal strokes. */
+.resize-grip {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(
+    135deg,
+    transparent 0 45%,
+    var(--ink-faint) 45% 52%,
+    transparent 52% 64%,
+    var(--ink-faint) 64% 71%,
+    transparent 71% 83%,
+    var(--ink-faint) 83% 90%,
+    transparent 90%
+  );
+}
+
+.resize-grip:hover {
+  --ink-faint: var(--ink-dim);
+}
+
 .help-tip {
   position: fixed;
   z-index: 10;

@@ -7,6 +7,7 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <optional>
 #include <utility>
 
 namespace orizon::editor {
@@ -16,11 +17,29 @@ namespace {
 // How often host state changes (setState) are reported to the page.
 constexpr std::chrono::milliseconds kStateSyncInterval{100};
 
+// The largest size the resize grip may ask for, in CSS pixels on either side: beyond any display,
+// and small enough that the size in window units stays well within an int.
+constexpr double kMaximumGripSize = 16384.0;
+
+// A size the page gave, or none. JSON numbers are finite.
+std::optional<double> dimension(const nlohmann::json& message, const char* name)
+{
+    if (!message.contains(name) || !message[name].is_number()) {
+        return std::nullopt;
+    }
+    return message[name].get<double>();
+}
+
 } // namespace
 
 EditorCore::EditorCore(std::shared_ptr<engine::Engine> engine, MessageObserver observer)
     : observer(std::move(observer)), scale(displayScale(nullptr)), engineState(std::move(engine))
 {
+    // The size the editor was left at, while the plugin stays loaded.
+    if (const auto size = engineState ? engineState->editorSize() : std::nullopt) {
+        cssWidth = std::max(size->width, static_cast<double>(kMinimumWidth));
+        cssHeight = std::max(size->height, static_cast<double>(kMinimumHeight));
+    }
     windowWidth = width();
     windowHeight = height();
 }
@@ -134,7 +153,9 @@ void EditorCore::receive(std::string_view message)
     if (!parsed) {
         return;
     }
-    if (session) {
+    if ((*parsed)["type"] == "resize") {
+        resize(*parsed);
+    } else if (session) {
         session->receive(*parsed);
     } else if ((*parsed)["type"] == "hello" && transport) {
         // No engine: tell the page, so it can explain instead of waiting forever.
@@ -153,9 +174,35 @@ void EditorCore::setSize(int newWidth, int newHeight)
     windowHeight = newHeight;
     cssWidth = newWidth / scale;
     cssHeight = newHeight / scale;
+    if (engineState) {
+        engineState->setEditorSize({.width = cssWidth, .height = cssHeight});
+    }
     if (view) {
         view->setSize(newWidth, newHeight);
     }
+}
+
+void EditorCore::resize(const nlohmann::json& message)
+{
+    const auto askedWidth = dimension(message, "width");
+    const auto askedHeight = dimension(message, "height");
+    if (!askedWidth || !askedHeight || !sizeRequest) {
+        return;
+    }
+    const double newWidth =
+        std::clamp(*askedWidth, static_cast<double>(kMinimumWidth), kMaximumGripSize);
+    const double newHeight =
+        std::clamp(*askedHeight, static_cast<double>(minimumHeight()), kMaximumGripSize);
+    dragged = {newWidth, newHeight};
+    sizeRequest(toHostUnits(newWidth), toHostUnits(newHeight));
+}
+
+std::optional<EditorCore::Size> EditorCore::draggedSize() const
+{
+    if (!dragged) {
+        return std::nullopt;
+    }
+    return Size{.width = toHostUnits(dragged->first), .height = toHostUnits(dragged->second)};
 }
 
 int EditorCore::minimumHeight() const

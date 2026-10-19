@@ -73,6 +73,26 @@ public:
         return comparedIds;
     }
 
+    // The editor's size in CSS pixels, as last given (by the host, or the user's drag of the
+    // resize grip), or none yet. Kept with the instance, not its editor, so that the editor opens
+    // again at the size it was left at; not saved, like the Compare view's tracks. Non-audio
+    // threads only.
+    struct EditorSize
+    {
+        double width = 0.0;
+        double height = 0.0;
+    };
+    void setEditorSize(EditorSize size)
+    {
+        const std::scoped_lock lock(trackMutex);
+        editorSizeValue = size;
+    }
+    [[nodiscard]] std::optional<EditorSize> editorSize() const
+    {
+        const std::scoped_lock lock(trackMutex);
+        return editorSizeValue;
+    }
+
     // Sets the sample rate and sizes the capture for it (CaptureRing::capacityFor), emptying the
     // capture if its size changes. Called by the processor in setupProcessing, before processing
     // starts: it allocates, so never on the audio thread, nor while it writes.
@@ -98,6 +118,7 @@ private:
     mutable std::mutex trackMutex;
     TrackInfo track;
     std::optional<std::vector<std::uint64_t>> comparedIds;
+    std::optional<EditorSize> editorSizeValue;
 };
 
 } // namespace orizon::engine

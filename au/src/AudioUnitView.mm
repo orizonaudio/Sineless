@@ -114,7 +114,13 @@
 - (NSSize)intrinsicContentSize
 {
     givenMinimumSize = [self minimumSize];
-    return givenMinimumSize;
+    // The size the user dragged the resize grip to holds too, while the host's window catches up.
+    NSSize size = givenMinimumSize;
+    if (const auto dragged = core->draggedSize()) {
+        size.width = std::max(size.width, static_cast<CGFloat>(dragged->width));
+        size.height = std::max(size.height, static_cast<CGFloat>(dragged->height));
+    }
+    return size;
 }
 
 // Auto Layout keeps the intrinsic size it was given until told it changed: each time the editor
