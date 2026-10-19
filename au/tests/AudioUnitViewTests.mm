@@ -674,9 +674,20 @@ TEST_F(AudioUnitViewTest, ResizesToTheSizeTheGripIsDraggedTo)
     closeWindow(window, view);
 }
 
+// What the page sends when the user drags the resize grip to `size`.
+void dragGrip(WKWebView* webView, NSSize size)
+{
+    evaluate(webView, [NSString stringWithFormat:@"window.webkit.messageHandlers.orizon."
+                                                 @"postMessage(JSON.stringify({type: 'resize', "
+                                                 @"width: %d, height: %d})); ''",
+                                                 static_cast<int>(size.width),
+                                                 static_cast<int>(size.height)]);
+}
+
 // In a host that lays the view out with Auto Layout, as Logic does, the size the grip was dragged
-// to holds while the host's window catches up, rather than being set back to the window's size.
-TEST_F(AudioUnitViewTest, KeepsTheSizeTheGripIsDraggedToInAHostThatUsesAutoLayout)
+// to holds while the host's window catches up, larger or smaller, rather than being set back to
+// the window's size.
+TEST_F(AudioUnitViewTest, HoldsTheGripsSizeWhileAnAutoLayoutHostCatchesUp)
 {
     NSView* view = openView(unit);
     NSWindow* window = windowFor(view);
@@ -686,23 +697,58 @@ TEST_F(AudioUnitViewTest, KeepsTheSizeTheGripIsDraggedToInAHostThatUsesAutoLayou
     ASSERT_TRUE(pumpUntil([&] { return testing::hasSnapshot(webView); }, kPageTimeout));
     const NSSize larger =
         NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 200);
-    evaluate(webView, [NSString stringWithFormat:@"window.webkit.messageHandlers.orizon."
-                                                 @"postMessage(JSON.stringify({type: 'resize', "
-                                                 @"width: %d, height: %d})); ''",
-                                                 static_cast<int>(larger.width),
-                                                 static_cast<int>(larger.height)]);
-    EXPECT_TRUE(pumpUntil(
+    const NSSize smaller = NSMakeSize(EditorCore::kDefaultWidth, EditorCore::kDefaultHeight - 100);
+    for (const NSSize dragged : {larger, smaller}) {
+        SCOPED_TRACE(dragged.height);
+        dragGrip(webView, dragged);
+        EXPECT_TRUE(pumpUntil(
+            [&] {
+                layOut(view);
+                return NSEqualSizes(view.frame.size, dragged);
+            },
+            kPageTimeout))
+            << view.frame.size.width << "x" << view.frame.size.height;
+        for (int pass = 0; pass < 3; ++pass) {
+            layOut(view);
+            runQueuedWork();
+        }
+        EXPECT_TRUE(NSEqualSizes(view.frame.size, dragged)) << "through the host's layout passes";
+        [window setContentSize:dragged]; // The host's window catches up.
+        layOut(view);
+    }
+    closeWindow(window, view);
+}
+
+// Once the host's window has caught up, the host decides the view's size again, down to the
+// editor's minimum: a size dragged to with the grip does not stop the host making it smaller.
+TEST_F(AudioUnitViewTest, FollowsAnAutoLayoutHostAfterTheGripsSize)
+{
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    pinWithAutoLayout(view);
+    WKWebView* webView = webViewOf(view);
+    ASSERT_NE(webView, nil);
+    ASSERT_TRUE(pumpUntil([&] { return testing::hasSnapshot(webView); }, kPageTimeout));
+    const NSSize larger =
+        NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 200);
+    dragGrip(webView, larger);
+    ASSERT_TRUE(pumpUntil(
         [&] {
             layOut(view);
             return NSEqualSizes(view.frame.size, larger);
         },
+        kPageTimeout));
+    [window setContentSize:larger];
+
+    const NSSize host = NSMakeSize(EditorCore::kDefaultWidth + 100, EditorCore::kDefaultHeight);
+    [window setContentSize:host];
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            layOut(view);
+            return NSEqualSizes(view.frame.size, host);
+        },
         kPageTimeout))
         << view.frame.size.width << "x" << view.frame.size.height;
-    for (int pass = 0; pass < 3; ++pass) {
-        layOut(view);
-        runQueuedWork();
-    }
-    EXPECT_TRUE(NSEqualSizes(view.frame.size, larger)) << "through the host's layout passes";
     closeWindow(window, view);
 }
 
