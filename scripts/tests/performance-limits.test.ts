@@ -86,6 +86,22 @@ describe("judge", () => {
 });
 
 describe("performance-limits.json", () => {
+  // In a host the plugin's main thread is the host's own UI thread, and the total is what the
+  // editor costs the machine: a scenario judged on speed alone would let either grow unseen.
+  test("bounds the main thread's and the total CPU in every scenario it judges", () => {
+    const file = readLimits(
+      fileURLToPath(new URL("../performance-limits.json", import.meta.url)),
+    );
+    for (const machine of Object.values(file.machines)) {
+      for (const scenarios of Object.values(machine.limits)) {
+        for (const bounds of Object.values(scenarios)) {
+          expect(bounds["main-ms-per-frame"]?.max).toBeGreaterThan(0);
+          expect(bounds["total-ms-per-frame"]?.max).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
   test("sets limits only for scenarios it plays, on measures perf_bench writes", () => {
     const file = readLimits(
       fileURLToPath(new URL("../performance-limits.json", import.meta.url)),
