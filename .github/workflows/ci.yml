@@ -447,7 +447,7 @@ jobs:
   # with warnings on the lines whose changes no test notices. Never a failure, and not required;
   # nothing is built when none of their sources changed. In three steps, so that a large change
   # still gets a report: one job builds the tests with every mutant compiled in and lists the
-  # mutants; four share them out, each a quarter of every file; the mutation-cpp job reports their
+  # mutants; eight share them out, each an eighth of every file; the mutation-cpp job reports their
   # results together, those of mutants not reached in time as not run (a partial report, which
   # the triage never passes). Each mutant runs its own module's tests (engine_tests, plugin_tests
   # or editor_tests) up to their first failure and is stopped at that module's limit if it hangs
@@ -517,7 +517,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        share: [1, 2, 3, 4]
+        share: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       # At the list job's workspace path: the tests find their data by the source paths compiled
       # in.
@@ -539,7 +539,7 @@ jobs:
           MUTATION_DEADLINE: 3000
         run: |
           chmod +x build/mutation-cpp/bin/RelWithDebInfo/*_tests # Artifacts keep no permissions.
-          scripts/mutation-cpp.sh --share "${{ matrix.share }}/4"
+          scripts/mutation-cpp.sh --share "${{ matrix.share }}/8"
       # Each result is written as it is known: whatever this job managed is kept, even if it fails.
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
