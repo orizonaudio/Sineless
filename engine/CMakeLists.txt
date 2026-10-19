@@ -115,6 +115,11 @@ if(ORIZON_BENCH)
         add_test(NAME AnalysisBench.RefusesAnUnknownScenario
                  COMMAND ${benchTest} -DARGS=--scenario=no-such-scenario
                          "-DREFUSES=Unknown scenario" -P ${benchScript})
+        # Frozen and panned, every frame shows another part of the held audio: measured, it shows
+        # something, so the refusal above covers it as well.
+        add_test(NAME AnalysisBench.MeasuresAFrozenViewPanned
+                 COMMAND ${benchTest} "-DARGS=--scenario=compare-15-frozen-pan --frames=4"
+                         -P ${benchScript})
         add_test(NAME AnalysisBench.RefusesAFrameCountThatIsNotANumber
                  COMMAND ${benchTest} "-DARGS=${benchRun} --frames=abc"
                          "-DREFUSES=analysis_bench:" -P ${benchScript})

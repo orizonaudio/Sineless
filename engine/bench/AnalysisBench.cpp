@@ -310,7 +310,7 @@ int run(const bench::Scenario& scenario, const Options& options)
             return 1;
         }
     }
-    if (shown == 0 && !scenario.frozenPan) {
+    if (shown == 0) {
         std::fprintf(stderr, "No frame showed anything: the scenario measures nothing.\n");
         return 1;
     }
