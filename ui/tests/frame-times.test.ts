@@ -24,6 +24,23 @@ describe("summarise", () => {
     expect(summary.worstSecondLate).toBe(0);
   });
 
+  test("measures nothing, not a perfect run, when no frame was drawn", () => {
+    for (const times of [[], [100]]) {
+      const summary = summarise(times, 1000 / 60);
+      expect(summary.count).toBe(0);
+      for (const measure of [
+        summary.median,
+        summary.p95,
+        summary.p99,
+        summary.max,
+        summary.lateShare,
+        summary.worstSecondLate,
+      ]) {
+        expect(measure).toBeNaN();
+      }
+    }
+  });
+
   test("counts a skipped tick as late, and shows it in the slowest percentiles", () => {
     const times = steady(10, 101);
     times.splice(50, 1); // One tick missing: a 20 ms interval among 10 ms ones.
