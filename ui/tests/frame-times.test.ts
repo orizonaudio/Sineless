@@ -157,6 +157,26 @@ describe("the page's draw loop", () => {
     vi.unstubAllGlobals();
   });
 
+  test("measures the display's ticks through the page's own scheduler", () => {
+    const pending: ((timestamp: number) => void)[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: (timestamp: number) => void) => {
+        pending.push(callback);
+        return pending.length;
+      },
+    );
+    frameTimes.start();
+    for (const at of [0, 10, 20, 30]) {
+      for (const callback of pending.splice(0)) {
+        callback(at);
+      }
+    }
+    const ticks = frameTimes.summary().ticks;
+    expect(ticks.count).toBe(3);
+    expect(ticks.median).toBe(10);
+  });
+
   test("records the engine frames it draws, not its redraws", () => {
     vi.stubGlobal("requestAnimationFrame", () => 0); // The recorder's own ticks are not wanted.
     const pending: ((timestamp: number) => void)[] = [];
