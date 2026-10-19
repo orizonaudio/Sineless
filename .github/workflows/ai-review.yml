@@ -3,8 +3,8 @@ name: AI review
 # Claude reviews every pull request against REVIEW.md and sets the "ai-review" commit status,
 # which the ruleset on main requires: it fails while any verified finding is Important.
 #
-# The review runs in two passes, on claude-opus-5-5 at extra high effort (a full model ID, so that
-# a new model behind an alias cannot change the gate unannounced):
+# The review runs in two passes, on claude-opus-5-5 at medium effort (a full model ID, so that a
+# new model behind an alias cannot change the gate unannounced):
 # - Find: the specialist reviewers in .claude/agents each look for findings in their own area.
 #   Which ones run follows from the changed paths, as the review skill describes.
 # - Verify: a separate run gives each Important finding to its own review-verifier, which keeps
@@ -237,7 +237,7 @@ jobs:
         id: find
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         env:
-          CLAUDE_CODE_EFFORT_LEVEL: xhigh
+          CLAUDE_CODE_EFFORT_LEVEL: medium
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
           # Subagents run in the foreground, so that the run cannot return before they report.
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
@@ -307,7 +307,7 @@ jobs:
         id: verify
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         env:
-          CLAUDE_CODE_EFFORT_LEVEL: xhigh
+          CLAUDE_CODE_EFFORT_LEVEL: medium
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
           # Subagents run in the foreground, so that the run cannot return before they report.
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
