@@ -280,6 +280,8 @@ body {
   border-radius: 3px;
   overflow: hidden;
   min-height: 0;
+  /* Drags here select, zoom and move cursors: a touch the browser took for a pan would cancel them. */
+  touch-action: none;
 }
 
 .screen.panning {
@@ -656,6 +658,7 @@ body {
   border-left: 9px solid var(--marker, var(--mid));
   transform: translateY(-6px);
   cursor: ns-resize;
+  touch-action: none;
 }
 
 .trigger-marker::before {
