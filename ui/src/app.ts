@@ -22,6 +22,7 @@ import type {
 } from "../../protocol/src/settings.ts";
 import type { Backend } from "./bridge/backend.ts";
 import { DragField } from "./components/drag-field.ts";
+import { followDrag } from "./components/follow-drag.ts";
 import { numberFields, type NumberField } from "./view/fields.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { attachResizeGrip } from "./components/resize-grip.ts";
@@ -1407,8 +1408,7 @@ export class OscilloscopeApp {
       const line = element(id);
       line.addEventListener("pointerdown", (event) => {
         event.stopPropagation();
-        line.setPointerCapture(event.pointerId);
-        const move = (moveEvent: PointerEvent) => {
+        followDrag(line, event, (moveEvent) => {
           const frame = this.lastFrame;
           if (this.timeCursors === undefined) {
             return;
@@ -1449,13 +1449,7 @@ export class OscilloscopeApp {
           }
           this.timeCursors = { ...this.timeCursors, [key]: position };
           this.placeCursors();
-        };
-        const up = () => {
-          line.removeEventListener("pointermove", move);
-          line.removeEventListener("pointerup", up);
-        };
-        line.addEventListener("pointermove", move);
-        line.addEventListener("pointerup", up);
+        });
       });
       // A double-click on a cursor must not reset the zoom.
       line.addEventListener("dblclick", (event) => {
@@ -1471,10 +1465,9 @@ export class OscilloscopeApp {
         return;
       }
       event.stopPropagation();
-      line.setPointerCapture(event.pointerId);
       const laneIndex = Number(line.dataset["lane"]);
       const key = line.dataset["key"] === "first" ? "first" : "second";
-      const move = (moveEvent: PointerEvent) => {
+      followDrag(line, event, (moveEvent) => {
         const lane = lanes(this.laneCount(), this.layout())[laneIndex];
         if (this.levelCursors === undefined || lane === undefined) {
           return;
@@ -1501,13 +1494,7 @@ export class OscilloscopeApp {
         }
         this.levelCursors = { ...this.levelCursors, [key]: level };
         this.placeCursors();
-      };
-      const up = () => {
-        line.removeEventListener("pointermove", move);
-        line.removeEventListener("pointerup", up);
-      };
-      line.addEventListener("pointermove", move);
-      line.addEventListener("pointerup", up);
+      });
     });
     levelLines.addEventListener("dblclick", (event) => {
       event.stopPropagation();
@@ -1515,8 +1502,7 @@ export class OscilloscopeApp {
     const marker = element("trigger-marker");
     marker.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
-      marker.setPointerCapture(event.pointerId);
-      const move = (moveEvent: PointerEvent) => {
+      followDrag(marker, event, (moveEvent) => {
         const rectangle = this.screen.getBoundingClientRect();
         const { center, halfHeight } = this.markerGeometry();
         const relative =
@@ -1526,13 +1512,7 @@ export class OscilloscopeApp {
           "triggerLevel",
           Number(clampTo("triggerLevel", level).toFixed(3)),
         );
-      };
-      const up = () => {
-        marker.removeEventListener("pointermove", move);
-        marker.removeEventListener("pointerup", up);
-      };
-      marker.addEventListener("pointermove", move);
-      marker.addEventListener("pointerup", up);
+      });
     });
 
     // View zoom: ⌘ + scroll or pinch zooms around the pointer, a horizontal
@@ -1606,7 +1586,6 @@ export class OscilloscopeApp {
       }
       const from = screenPosition(event.clientX);
       let to = from;
-      this.screen.setPointerCapture(event.pointerId);
       const move = (moveEvent: PointerEvent) => {
         to = screenPosition(moveEvent.clientX);
         const dragged =
@@ -1616,16 +1595,12 @@ export class OscilloscopeApp {
         selection.style.left = `${String(Math.min(from, to) * 100)}%`;
         selection.style.width = `${String(Math.abs(to - from) * 100)}%`;
       };
-      const up = () => {
-        if (!selection.hidden) {
+      followDrag(this.screen, event, move, (released) => {
+        if (released && !selection.hidden) {
           this.setView(zoomTo(this.view, from, to));
         }
         selection.hidden = true;
-        this.screen.removeEventListener("pointermove", move);
-        this.screen.removeEventListener("pointerup", up);
-      };
-      this.screen.addEventListener("pointermove", move);
-      this.screen.addEventListener("pointerup", up);
+      });
     });
     this.screen.addEventListener("dblclick", () => {
       this.setView(fullView);
