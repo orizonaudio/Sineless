@@ -3816,6 +3816,62 @@ TEST_P(CompareTrackWork, SumsEachTracksNewAudioOnce)
 INSTANTIATE_TEST_SUITE_P(EveryRate, CompareTrackWork, ::testing::ValuesIn(compareWorkCases()),
                          modeTestName);
 
+class MovingMatchWork : public ::testing::TestWithParam<double>
+{
+};
+
+// When every compared track's match moves, as when a session's routing changes, the fixed sum's
+// levels, each shifted track's levels and the drawn sum's columns are all redone over the next
+// frames. Together they take at most one frame's share of that work (kSumRefreshSamples), so that
+// frames keep their pace however many matches moved, and at a high rate, where each takes longer.
+TEST_P(MovingMatchWork, RedoesTheSumsWithinOneFramesShare)
+{
+    const double rate = GetParam();
+    Session session(rate, 2);
+    constexpr std::int64_t kTracks = 5;
+    for (std::int64_t track = 0; track < kTracks; ++track) {
+        session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = track * 8});
+    }
+    configure(session.own(), DisplayMode::kCompare, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
+    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setPreviewFix(true);
+    // A frame at display rate.
+    const double frame = 1.0 / 60.0;
+    const double sweepSeconds = beatSpanQuarterNotes(BeatSpan::kFourBars, 4.0) * 60.0 / 120.0;
+    // The sweep filled, every match found and every sum measured with it.
+    session.play(sweepSeconds + 1.0, 1.0);
+    session.play(protocol::kMatchWindowSeconds, frame);
+    const auto mostPerFrame = [&](double seconds) {
+        std::uint64_t most = 0;
+        const auto frames = static_cast<int>(std::lround(seconds / frame));
+        for (int index = 0; index < frames; ++index) {
+            const AnalysisWork before = session.analyzer().work();
+            session.play(frame, frame);
+            most = std::max(most, workSince(before, session.analyzer().work()).samplesSummed);
+        }
+        return most;
+    };
+    // What a frame sums with nothing to redo: its own new audio.
+    const std::uint64_t steady = mostPerFrame(1.0);
+
+    for (std::int64_t track = 1; track < kTracks; ++track) {
+        session.setSignal(static_cast<std::size_t>(track),
+                          {.kind = Signal::Kind::kNoise, .seed = 1, .delay = (track * 8) + 40});
+    }
+    // Each match moves once the new routing holds most of what it is searched over.
+    const std::uint64_t moving = mostPerFrame(protocol::kMatchWindowSeconds);
+    ASSERT_GT(moving, steady) << "the moved matches' sums were not redone";
+    // Beside the share, such a frame sums its own new audio, as a steady one does, and measures
+    // the gains again, as they follow the recomputation: at most a steady frame's work again.
+    EXPECT_LE(moving, kSumRefreshSamples + (2 * steady))
+        << "the sums redone after the matches moved took more than one frame's share: " << moving
+        << " samples summed in a frame, " << steady << " in a steady one";
+}
+
+INSTANTIATE_TEST_SUITE_P(Rates, MovingMatchWork, ::testing::Values(48000.0, 96000.0, 384000.0),
+                         rateTestName);
+
 class MatchWork : public ::testing::TestWithParam<ModeCase>
 {
 };

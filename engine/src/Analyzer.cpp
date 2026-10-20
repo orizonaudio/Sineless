@@ -200,10 +200,11 @@ void assignNoMatches(std::vector<float>& values, std::size_t lanes)
     }
 }
 
-// How many positions of a sum of `parts` tracks to recompute per frame.
-std::size_t refreshStep(std::size_t parts)
+// How many positions of a sum of `parts` tracks to recompute per frame, as one of `shares`
+// recomputations under way together, which share the frame's kSumRefreshSamples.
+std::size_t refreshStep(std::size_t parts, std::size_t shares)
 {
-    return kSumRefreshSamples / std::max<std::size_t>(parts, 1);
+    return kSumRefreshSamples / std::max<std::size_t>(shares, 1) / std::max<std::size_t>(parts, 1);
 }
 
 // Where the fixed sum is measured, of positions [first, end) of a span of `count`: where every
@@ -1687,7 +1688,8 @@ void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, st
 bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
                               const std::vector<std::int64_t>& key,
                               std::vector<std::int64_t>& lastKey, const std::vector<SumPart>& parts,
-                              std::size_t reach, std::size_t length, std::size_t block)
+                              std::size_t reach, std::size_t length, std::size_t block,
+                              std::size_t shares)
 {
     const auto read = [&](std::size_t from, std::span<float> into) {
         readSum(parts, length, from, into);
@@ -1715,7 +1717,7 @@ bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
         }
     }
     const bool refreshing = refresh.remaining > 0;
-    continueRefresh(refresh, length, refreshStep(parts.size()),
+    continueRefresh(refresh, length, refreshStep(parts.size(), shares),
                     [&](std::size_t from, std::size_t to) { stats.update(from, to, read); });
     return refreshing;
 }
@@ -1872,30 +1874,76 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         fixedSumKey.insert(fixedSumKey.end(), {static_cast<std::int64_t>(serial), fixed.offset,
                                                fixed.sign < 0.0f ? 1 : 0});
     }
-    // Measured again beyond this frame's changes: the gains follow, so they settle as the
-    // recomputation ends.
-    const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey,
-                                            rawParts, 0, length, block);
-    bool fixedMeasured = updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey,
-                                        lastFixedSumKey, fixedParts, maxOffset, length, block);
     // Each track the fix shifts: its levels per block as shifted, which the fixed gain weighs the
     // fixed sum against. A track it does not shift (or no longer compared) keeps none pending, and
     // measures them all again once shifted.
-    for (const std::uint64_t serial : laneOrder) {
-        Lane& lane = *lanes.at(serial);
+    const auto shiftedPart = [&](std::uint64_t serial) {
         const auto part = std::ranges::find_if(fixedParts, [&](const SumPart& candidate) {
             return laneOrder[candidate.lane] == serial;
         });
-        if (part == fixedParts.end() || part->offset == 0) {
+        return part == fixedParts.end() || part->offset == 0 ? nullptr : &*part;
+    };
+    for (const std::uint64_t serial : laneOrder) {
+        Lane& lane = *lanes.at(serial);
+        if (const SumPart* const part = shiftedPart(serial)) {
+            lane.fixedKey.assign({static_cast<std::int64_t>(length), part->offset});
+        } else {
             lane.fixedRefresh = {};
+            lane.fixedKey.clear();
             lane.lastFixedKey.clear();
+        }
+    }
+
+    // The sum lane, with its parts as previewed. Its geometry: the span and visible part, and the
+    // columns; its key: each part as summed.
+    const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
+    sumGeometry.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
+                        static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns)});
+    sumKey.clear();
+    for (const SumPart& part : parts) {
+        sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
+                                     part.sign < 0.0f ? 1 : 0});
+    }
+    const std::size_t visibleCount = end - first;
+    const bool sumRebuilt =
+        sumGeometry != lastSumGeometry || !sumReduction.fits(visibleCount, columns);
+
+    // The recomputations under way this frame, which share its kSumRefreshSamples, so that many
+    // at once (every match moved) take no longer per frame than one.
+    const auto pending = [&](const BlockStats& stats, const SumRefresh& refresh,
+                             const std::vector<std::int64_t>& key,
+                             const std::vector<std::int64_t>& lastKey) {
+        return stats.fits(length, block) && (refresh.remaining > 0 || key != lastKey) ? 1U : 0U;
+    };
+    std::size_t shares = pending(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey) +
+                         pending(fixedSumStats, fixedSumRefresh, fixedSumKey, lastFixedSumKey);
+    for (const std::uint64_t serial : laneOrder) {
+        const Lane& lane = *lanes.at(serial);
+        if (!lane.fixedKey.empty()) {
+            shares += pending(lane.fixedStats, lane.fixedRefresh, lane.fixedKey, lane.lastFixedKey);
+        }
+    }
+    if (!sumRebuilt && (sumRefresh.remaining > 0 || sumKey != lastSumKey)) {
+        ++shares;
+    }
+
+    // Measured again beyond this frame's changes: the gains follow, so they settle as the
+    // recomputation ends.
+    const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey,
+                                            rawParts, 0, length, block, shares);
+    bool fixedMeasured =
+        updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey, lastFixedSumKey, fixedParts,
+                       maxOffset, length, block, shares);
+    for (const std::uint64_t serial : laneOrder) {
+        Lane& lane = *lanes.at(serial);
+        if (lane.fixedKey.empty()) {
             continue;
         }
-        lane.fixedKey.assign({static_cast<std::int64_t>(length), part->offset});
-        onePart.assign(1, *part);
-        fixedMeasured = updateSumStats(lane.fixedStats, lane.fixedRefresh, lane.fixedKey,
-                                       lane.lastFixedKey, onePart, maxOffset, length, block) ||
-                        fixedMeasured;
+        onePart.assign(1, *shiftedPart(serial));
+        fixedMeasured =
+            updateSumStats(lane.fixedStats, lane.fixedRefresh, lane.fixedKey, lane.lastFixedKey,
+                           onePart, maxOffset, length, block, shares) ||
+            fixedMeasured;
     }
 
     // The matches' values and the gains, when due.
@@ -1953,23 +2001,13 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         comparisonCache.valid = true;
     }
 
-    // The sum lane, with its parts as previewed. Its geometry: the span and visible part, and the
-    // columns; its key: each part as summed.
-    const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
-    sumGeometry.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
-                        static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns)});
-    sumKey.clear();
-    for (const SumPart& part : parts) {
-        sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
-                                     part.sign < 0.0f ? 1 : 0});
-    }
+    // The sum lane's columns.
     const auto readVisibleSum = [&](std::size_t from, std::span<float> into) {
         workDone.samplesReduced += into.size();
         readSum(parts, length, first + from, into);
         return true;
     };
-    const std::size_t visibleCount = end - first;
-    if (sumGeometry != lastSumGeometry || !sumReduction.fits(visibleCount, columns)) {
+    if (sumRebuilt) {
         sumReduction.reset(visibleCount, columns);
         sumReduction.update(0, visibleCount, readVisibleSum);
         lastSumGeometry = sumGeometry;
@@ -1992,7 +2030,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
                                     static_cast<std::size_t>(to) - first, readVisibleSum);
             }
         }
-        continueRefresh(sumRefresh, visibleCount, refreshStep(parts.size()),
+        continueRefresh(sumRefresh, visibleCount, refreshStep(parts.size(), shares),
                         [&](std::size_t from, std::size_t to) {
                             sumReduction.update(from, to, readVisibleSum);
                         });
