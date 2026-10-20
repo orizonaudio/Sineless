@@ -215,8 +215,12 @@ int run(const bench::Scenario& scenario, const Options& options)
     const auto sampleAt = [&](double seconds) {
         return static_cast<std::uint64_t>(std::llround(seconds * scenario.rate));
     };
-    // Fill: a frame a second, which places the audio as frames at 60 a second would.
-    const auto fillSeconds = static_cast<int>(std::ceil(spanSeconds(scenario) + 1.0));
+    // Fill: a frame a second, which places the audio as frames at 60 a second would. A sweep
+    // longer than kMaxSweepSamples steps down to one that fits (see sweepWindow), so no more than
+    // that is shown, and filling more would only lengthen the run.
+    const double shownSeconds = std::min(
+        spanSeconds(scenario), static_cast<double>(engine::kMaxSweepSamples) / scenario.rate);
+    const auto fillSeconds = static_cast<int>(std::ceil(shownSeconds + 1.0));
     for (int second = 1; second <= fillSeconds; ++second) {
         host.playTo(sampleAt(second));
         (void)analyzer.produce(frame);
