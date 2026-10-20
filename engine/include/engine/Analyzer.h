@@ -388,6 +388,8 @@ private:
     // The beat span the sweeps (Single mode's, or the lanes') were last drawn with, live.
     protocol::BeatSpan placedSpan = protocol::BeatSpan::kOneBar;
     std::uint64_t ownLane = 0; // Serial of this instance's lane.
+    // New audio placed in the lanes between frames (advance), which the next frame draws.
+    bool lanesPlaced = false;
     // Compare view: whether this frame compares tracks; in Seconds mode, each lane's source and
     // where this frame's window starts in it, the sum lane's columns as the window rolls, and
     // the compared lanes' visible samples, as recorded and as fixed, for the gains.

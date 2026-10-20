@@ -3770,6 +3770,39 @@ TEST(CompareSumWork, IsRedoneOverSeveralFramesWhenATrackIsChecked)
     EXPECT_GE(total, whole) << "no recomputation summed the whole sweep";
 }
 
+// Every mode at the lowest and highest rates, mono and stereo, in both time bases.
+std::vector<ModeCase> everyWorkCase()
+{
+    std::vector<ModeCase> cases = workCases(TimeBase::kBeats);
+    std::ranges::copy(workCases(TimeBase::kSeconds), std::back_inserter(cases));
+    return cases;
+}
+
+class AdvancedFrame : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+// While the page has not asked for a frame, the analysis places new audio in the sweeps as it
+// arrives (advance), also advancing in between when nothing new has. The frame asked for next
+// shows that audio at once: it is not left waiting for more audio to arrive, which delayed it by
+// up to a host block, every frame.
+TEST_P(AdvancedFrame, DrawsTheAudioPlacedSinceTheLastFrame)
+{
+    const auto session = workSession(GetParam());
+    session->own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    session->own().settings().set(SettingId::kTimeSpan, 0.5);
+    session->play(3.0, 1.0 / 60.0);
+    session->play(1.0 / 60.0);
+    session->analyzer().advance();
+    // The worker advances more often than the host's blocks arrive: one that finds nothing new.
+    session->analyzer().advance();
+    std::vector<std::byte> frame;
+    EXPECT_TRUE(session->analyzer().produce(frame)) << "the new audio was not drawn";
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, AdvancedFrame, ::testing::ValuesIn(everyWorkCase()),
+                         modeTestName);
+
 // Compare at the lowest and highest rates, mono and stereo, in both time bases.
 std::vector<ModeCase> compareWorkCases()
 {

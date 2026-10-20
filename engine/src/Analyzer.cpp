@@ -1115,7 +1115,7 @@ void Analyzer::advance()
     if (settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
         protocol::DisplayMode::kSingle) {
         selectLanes(settings);
-        placeLanes(settings, beatSpan);
+        lanesPlaced = placeLanes(settings, beatSpan) || lanesPlaced;
         return;
     }
     const CaptureRing& ring = engine.captureRing();
@@ -1150,8 +1150,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     std::optional<SweepWindow> shown;
     double subStart = 0.0;
     double subEnd = 1.0;
+    const bool placedBefore = std::exchange(lanesPlaced, false);
     if (!isFrozen) {
-        fresh = placeLanes(settings, beatSpan);
+        fresh = placeLanes(settings, beatSpan) || placedBefore;
         shown = own.window;
     } else if (own.hold.held()) {
         const auto frozen =
