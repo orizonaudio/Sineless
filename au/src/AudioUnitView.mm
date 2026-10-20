@@ -328,6 +328,11 @@ OSStatus copyCocoaViewInfo(std::string_view imagePath, AudioUnitCocoaViewInfo& i
     return noErr;
 }
 
+double ownSizeHoldSeconds()
+{
+    return kOwnSizeHoldSeconds;
+}
+
 editor::EditorCore* editorCoreOf(NSView* view)
 {
     if (![view isKindOfClass:[ORIZON_AU_VIEW class]]) {
