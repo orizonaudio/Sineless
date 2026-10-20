@@ -6,7 +6,7 @@
 //   These are ticks of the page's main thread, not frames on the screen, which WebKit composites
 //   in another process.
 // - the engine frames the page draws, which are what a user sees move: one per tick at most, and
-//   at most 60 a second (render-loop.ts).
+//   60 a second on a faster display, every tick on one up to 66 Hz (render-loop.ts).
 import type { Scheduler } from "./render/render-loop.ts";
 
 // The pace engine frames are drawn at, in ms: 60 a second on any display rate (at most the
