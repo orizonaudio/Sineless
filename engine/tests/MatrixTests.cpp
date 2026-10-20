@@ -3770,6 +3770,52 @@ TEST(CompareSumWork, IsRedoneOverSeveralFramesWhenATrackIsChecked)
     EXPECT_GE(total, whole) << "no recomputation summed the whole sweep";
 }
 
+// Compare at the lowest and highest rates, mono and stereo, in both time bases.
+std::vector<ModeCase> compareWorkCases()
+{
+    std::vector<ModeCase> cases;
+    for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+        for (const ModeCase& c : workCases(static_cast<TimeBase>(timeBase))) {
+            if (c.mode == DisplayMode::kCompare) {
+                cases.push_back(c);
+            }
+        }
+    }
+    return cases;
+}
+
+class CompareTrackWork : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+// All tracks' new audio lands at the same positions of the sweep; each frame sums those positions
+// once for each compared track, not once more for every other track compared, so checking many
+// tracks costs each of them no more than checking few.
+TEST_P(CompareTrackWork, SumsEachTracksNewAudioOnce)
+{
+    const ModeCase c = GetParam();
+    const auto summedPerTrack = [&](std::size_t tracks) {
+        Session session(c.rate, c.channels);
+        for (std::size_t track = 0; track <= tracks; ++track) {
+            session.join({.kind = Signal::Kind::kNoise, .seed = track + 1});
+        }
+        configure(session.own(), DisplayMode::kCompare, c.timeBase);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+        session.own().settings().set(SettingId::kTimeSpan, 0.5);
+        session.analyzer().setCompared(othersOf(session));
+        return workPerSecond(session, 3.0).summed / static_cast<double>(tracks);
+    };
+    const double few = summedPerTrack(2);
+    const double many = summedPerTrack(6);
+    ASSERT_GT(few, 0.0) << "nothing summed";
+    EXPECT_LE(many, few * kSameCost)
+        << "each compared track summed " << many << " samples a second with six compared, " << few
+        << " with two";
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, CompareTrackWork, ::testing::ValuesIn(compareWorkCases()),
+                         modeTestName);
+
 class MatchWork : public ::testing::TestWithParam<ModeCase>
 {
 };

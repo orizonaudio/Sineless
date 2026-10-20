@@ -150,6 +150,22 @@ void continueRefresh(Refresh& refresh, std::size_t length, std::size_t step, con
     }
 }
 
+// Merges `ranges` that overlap or touch, in place, in position order: the positions where several
+// tracks' sweeps changed (all of them alike, as tracks play together) are then summed once.
+void mergeRanges(std::vector<SweepImage::Range>& ranges)
+{
+    std::ranges::sort(ranges, {}, &SweepImage::Range::first);
+    std::size_t kept = 0;
+    for (std::size_t index = 0; index < ranges.size(); ++index) {
+        if (kept > 0 && ranges[index].first <= ranges[kept - 1].end) {
+            ranges[kept - 1].end = std::max(ranges[kept - 1].end, ranges[index].end);
+        } else {
+            ranges[kept++] = ranges[index];
+        }
+    }
+    ranges.resize(kept);
+}
+
 // Lane `index`'s bit in a frame's `invalidLanes`: the lanes, then the sum after them.
 static_assert(kMaxLanes < 32, "every lane and the sum have a bit");
 std::uint32_t laneBit(std::size_t index)
@@ -1273,6 +1289,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         frameData.insert(frameData.end(), reduction.values().begin(), reduction.values().end());
     }
     header.pointCount = static_cast<std::uint32_t>(pointCount);
+    mergeRanges(frameChanges);
 
     if (partial) {
         header.flags = static_cast<std::uint8_t>(header.flags | flag(FrameFlag::kPartial));
