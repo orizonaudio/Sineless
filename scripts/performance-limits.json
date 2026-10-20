@@ -3,12 +3,13 @@
     "multi-7-four-bars": { "warmup": 10, "duration": 10 },
     "compare-7-four-bars": { "warmup": 10, "duration": 10 },
     "multi-15-sixteen-bars": { "warmup": 70, "duration": 10 },
-    "compare-15-worst": { "warmup": 70, "duration": 10 }
+    "compare-15-worst": { "warmup": 70, "duration": 10 },
+    "compare-15-worst-384k": { "warmup": 70, "duration": 10 }
   },
   "machines": {
     "developer-mac": {
-      "description": "The maintainer's M-series MacBook, the window on its 1x display at 100 Hz (ticks 10 ms apart, so a smooth 60 frames/s alternates 10 and 20 ms between new frames).",
-      "why": "Set on 2026-10-18 from five rounds of every scenario, and the worst case's from six more after its match searches and Compare gains were spread over frames: frames/s at least the slowest round less 2; late frames at most the worst round plus 2.5 points; the 99th-percentile frame interval at most one display tick (10 ms) beyond the worst round; CPU per frame (the analysis thread, the main thread, which in a host is its own UI thread, WebKit, and their total) at most 1.5 times the worst round, as it varied by up to a third between rounds.",
+      "description": "The maintainer's M-series MacBook. Scale 1: the window on its 1x display at 100 Hz (ticks 10 ms apart, so a smooth 60 frames/s alternates 10 and 20 ms between new frames). Scale 2: the window on its built-in Retina display at 60 Hz.",
+      "why": "Set on 2026-10-18 from five rounds of every scenario, and the worst case's from six more after its match searches and Compare gains were spread over frames: frames/s at least the slowest round less 2; late frames at most the worst round plus 2.5 points; the 99th-percentile frame interval at most one display tick (10 ms) beyond the worst round; CPU per frame (the analysis thread, the main thread, which in a host is its own UI thread, WebKit, and their total) at most 1.5 times the worst round, as it varied by up to a third between rounds. Scale 2 set on 2026-10-20 the same way from five rounds of every scenario, a display tick there being 17 ms; one round of compare-15-worst-384k is left out, in which the engine drew 2.4 frames/s and could not be made to do so again in eleven more runs.",
       "limits": {
         "1": {
           "multi-7-four-bars": {
@@ -46,6 +47,53 @@
             "webkit-ms-per-frame": { "max": 6.6 },
             "main-ms-per-frame": { "max": 1.4 },
             "total-ms-per-frame": { "max": 17 }
+          }
+        },
+        "2": {
+          "multi-7-four-bars": {
+            "frames-per-second": { "min": 57.6 },
+            "late-frames-percent": { "max": 3.0 },
+            "frame-interval-p99-ms": { "max": 36 },
+            "analysis-ms-per-frame": { "max": 0.6 },
+            "webkit-ms-per-frame": { "max": 6.9 },
+            "main-ms-per-frame": { "max": 2.0 },
+            "total-ms-per-frame": { "max": 10.7 }
+          },
+          "compare-7-four-bars": {
+            "frames-per-second": { "min": 57.9 },
+            "late-frames-percent": { "max": 2.7 },
+            "frame-interval-p99-ms": { "max": 35 },
+            "analysis-ms-per-frame": { "max": 0.9 },
+            "webkit-ms-per-frame": { "max": 7.1 },
+            "main-ms-per-frame": { "max": 1.9 },
+            "total-ms-per-frame": { "max": 11 }
+          },
+          "multi-15-sixteen-bars": {
+            "frames-per-second": { "min": 56.9 },
+            "late-frames-percent": { "max": 3.2 },
+            "frame-interval-p99-ms": { "max": 37 },
+            "analysis-ms-per-frame": { "max": 1.6 },
+            "webkit-ms-per-frame": { "max": 8.7 },
+            "main-ms-per-frame": { "max": 2.5 },
+            "total-ms-per-frame": { "max": 14.4 }
+          },
+          "compare-15-worst": {
+            "frames-per-second": { "min": 57.5 },
+            "late-frames-percent": { "max": 3.3 },
+            "frame-interval-p99-ms": { "max": 36 },
+            "analysis-ms-per-frame": { "max": 12 },
+            "webkit-ms-per-frame": { "max": 11.7 },
+            "main-ms-per-frame": { "max": 1.8 },
+            "total-ms-per-frame": { "max": 26.8 }
+          },
+          "compare-15-worst-384k": {
+            "frames-per-second": { "min": 58 },
+            "late-frames-percent": { "max": 2.5 },
+            "frame-interval-p99-ms": { "max": 35 },
+            "analysis-ms-per-frame": { "max": 6.6 },
+            "webkit-ms-per-frame": { "max": 6.5 },
+            "main-ms-per-frame": { "max": 1.4 },
+            "total-ms-per-frame": { "max": 15.6 }
           }
         }
       }
