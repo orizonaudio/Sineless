@@ -9,13 +9,12 @@
   "machines": {
     "developer-mac": {
       "description": "The maintainer's M-series MacBook. Scale 1: the window on its 1x display at 100 Hz (ticks 10 ms apart, so a smooth 60 frames/s alternates 10 and 20 ms between new frames). Scale 2: the window on its built-in Retina display at 60 Hz.",
-      "why": "Scale 1 set on 2026-10-20 from five rounds of every scenario, after the render loop was paced by the display's measured tick period: frames/s at least the slowest round less 2; late frames at most 0.5% of a run, and at most 2 in any one second (why: below); the 99th-percentile frame interval at most one display tick (10 ms) beyond the worst round; CPU per frame (the analysis thread, the main thread, which in a host is its own UI thread, WebKit, and their total) at most 1.5 times the worst round, as it varied by up to a third between rounds. Scale 2 set the same day the same way, a display tick there being 17 ms. Late frames: a late frame stays on screen a tick longer, about 16.7 ms of hitch at 60 frames/s. Apple counts under 5 ms of hitch per second as a good experience and 10 or more as critical (WWDC20, Eliminate animation hitches with XCTest); 0.5% of frames late is about 5 ms/s: at most 2 late frames in a 10 s run of about 600, so a lone stall of the page's own does not fail a run but the stutter of a skipped tick (0.5 to 1.2% of frames) does. At most 2 late frames in any one second catches a burst that the share over the run would hide.",
+      "why": "Scale 1 set on 2026-10-20 from five rounds of every scenario, after the render loop was paced by the display's measured tick period: frames/s at least the slowest round less 2; late frames at most 0.45% of a run (why: below); the 99th-percentile frame interval at most one display tick (10 ms) beyond the worst round; CPU per frame (the analysis thread, the main thread, which in a host is its own UI thread, WebKit, and their total) at most 1.5 times the worst round, as it varied by up to a third between rounds. Scale 2 set the same day the same way, a display tick there being 17 ms. Late frames: 0.45% passes at most 2 late frames in a 10 s run of about 600, and fails 3 whatever the frame rate. A late frame stays on screen a tick longer, 16.7 ms of hitch at 60 Hz and 10 ms at 100 Hz, so 2 in 10 s is at most about 3.3 ms of hitch per second: under the 5 ms/s Apple counts as a good experience, against 10 or more as critical (WWDC20, Eliminate animation hitches with XCTest). A lone pause of the page's own passes; the stutter of a skipped tick (0.5 to 1.2% of frames) fails.",
       "limits": {
         "1": {
           "multi-7-four-bars": {
             "frames-per-second": { "min": 57.9 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 31 },
             "analysis-ms-per-frame": { "max": 0.6 },
             "webkit-ms-per-frame": { "max": 7.1 },
@@ -24,8 +23,7 @@
           },
           "compare-7-four-bars": {
             "frames-per-second": { "min": 57.9 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 31 },
             "analysis-ms-per-frame": { "max": 0.9 },
             "webkit-ms-per-frame": { "max": 7.7 },
@@ -34,8 +32,7 @@
           },
           "multi-15-sixteen-bars": {
             "frames-per-second": { "min": 57.9 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 31 },
             "analysis-ms-per-frame": { "max": 1.2 },
             "webkit-ms-per-frame": { "max": 7.2 },
@@ -44,8 +41,7 @@
           },
           "compare-15-worst": {
             "frames-per-second": { "min": 57.9 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 31 },
             "analysis-ms-per-frame": { "max": 7.5 },
             "webkit-ms-per-frame": { "max": 5.4 },
@@ -54,8 +50,7 @@
           },
           "compare-15-worst-384k": {
             "frames-per-second": { "min": 58 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 31 },
             "analysis-ms-per-frame": { "max": 6 },
             "webkit-ms-per-frame": { "max": 5.5 },
@@ -66,8 +61,7 @@
         "2": {
           "multi-7-four-bars": {
             "frames-per-second": { "min": 57.8 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 38 },
             "analysis-ms-per-frame": { "max": 0.6 },
             "webkit-ms-per-frame": { "max": 7.6 },
@@ -76,8 +70,7 @@
           },
           "compare-7-four-bars": {
             "frames-per-second": { "min": 57.8 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 36 },
             "analysis-ms-per-frame": { "max": 1.1 },
             "webkit-ms-per-frame": { "max": 7.9 },
@@ -86,8 +79,7 @@
           },
           "multi-15-sixteen-bars": {
             "frames-per-second": { "min": 57.9 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 35 },
             "analysis-ms-per-frame": { "max": 1.4 },
             "webkit-ms-per-frame": { "max": 7.7 },
@@ -96,8 +88,7 @@
           },
           "compare-15-worst": {
             "frames-per-second": { "min": 57.9 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 35 },
             "analysis-ms-per-frame": { "max": 7.6 },
             "webkit-ms-per-frame": { "max": 5.9 },
@@ -106,8 +97,7 @@
           },
           "compare-15-worst-384k": {
             "frames-per-second": { "min": 57.9 },
-            "late-frames-percent": { "max": 0.5 },
-            "late-frames-worst-second": { "max": 2 },
+            "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 35 },
             "analysis-ms-per-frame": { "max": 6 },
             "webkit-ms-per-frame": { "max": 6.1 },
