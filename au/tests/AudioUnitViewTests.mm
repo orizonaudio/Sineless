@@ -14,6 +14,7 @@
 #import <WebKit/WebKit.h>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <memory>
@@ -729,23 +730,24 @@ TEST_F(AudioUnitViewTest, HoldsTheLatestSizeOfADragLongerThanAHold)
     WKWebView* webView = webViewOf(view);
     ASSERT_NE(webView, nil);
     ASSERT_TRUE(pumpUntil([&] { return testing::hasSnapshot(webView); }, kPageTimeout));
-    const auto layOutFor = [&](std::chrono::milliseconds duration) {
+    // Waits in fractions of a hold: the second drag after more than half of the first's hold,
+    // the check after the first's hold has ended and before the latest's does.
+    const auto layOutFor = [&](double holds) {
         pumpUntil(
             [&] {
                 layOut(view);
                 return false;
             },
-            duration);
+            std::chrono::milliseconds(std::lround(holds * ownSizeHoldSeconds() * 1000.0)));
     };
     const NSSize first =
         NSMakeSize(EditorCore::kDefaultWidth + 200, EditorCore::kDefaultHeight + 100);
     const NSSize latest =
         NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 200);
     dragGrip(webView, first);
-    layOutFor(std::chrono::milliseconds(600));
+    layOutFor(0.6);
     dragGrip(webView, latest);
-    // Past the first size's hold, within the latest's.
-    layOutFor(std::chrono::milliseconds(700));
+    layOutFor(0.7);
     EXPECT_TRUE(NSEqualSizes(view.frame.size, latest))
         << view.frame.size.width << "x" << view.frame.size.height;
     closeWindow(window, view);
