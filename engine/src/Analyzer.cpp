@@ -1192,11 +1192,11 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     const bool newFormat = !isFrozen && formatsChanged(true);
     const bool inputs = fresh || newFormat || inputsChanged(settings, command, laneSetId);
     resultsOnly = !inputs;
-    bool changed =
-        inputs || (comparing && ((matchesPending && !searchingSerial) || sumsRefreshing()));
-    // A search running over frames is stepped without drawing until it ends (see produce).
-    if (!changed && comparing && searchingSerial) {
-        changed = stepSpreadWork(engine.sampleRate());
+    bool changed = inputs || (comparing && matchesPending && !searchingSerial);
+    // A search running over frames is stepped without drawing until it ends (see produce); sums
+    // still being recomputed go on in the frames drawn between searches.
+    if (!changed && comparing) {
+        changed = searchingSerial ? stepSpreadWork(engine.sampleRate()) : sumsRefreshing();
     }
     if (!changed) {
         return false;
@@ -1876,7 +1876,9 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     }
     // Each track the fix shifts: its levels per block as shifted, which the fixed gain weighs the
     // fixed sum against. A track it does not shift (or no longer compared) keeps none pending, and
-    // measures them all again once shifted.
+    // measures them all again once shifted: starting from its levels as recorded, which a shift of
+    // at most kMatchReachSeconds barely changes, and redone over the next frames, as when its match
+    // moves.
     const auto shiftedPart = [&](std::uint64_t serial) {
         const auto part = std::ranges::find_if(fixedParts, [&](const SumPart& candidate) {
             return laneOrder[candidate.lane] == serial;
@@ -1887,6 +1889,9 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         Lane& lane = *lanes.at(serial);
         if (const SumPart* const part = shiftedPart(serial)) {
             lane.fixedKey.assign({static_cast<std::int64_t>(length), part->offset});
+            if (!lane.fixedStats.fits(length, block) && lane.stats.fits(length, block)) {
+                lane.fixedStats = lane.stats;
+            }
         } else {
             lane.fixedRefresh = {};
             lane.fixedKey.clear();
