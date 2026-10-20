@@ -99,4 +99,21 @@ describe("a cancelled drag", () => {
       ).toEqual([]);
     },
   );
+
+  // A touch or pen drag the browser may take for a pan or zoom is cancelled: on what the user
+  // drags, the page takes every touch itself.
+  test("leaves no touch drag on the screen, its cursors or the trigger marker to the browser", () => {
+    const dragged = [
+      byId("screen"),
+      byId("cursor-a"),
+      byId("cursor-b"),
+      byId("trigger-marker"),
+      ...byId("level-cursor-lines").querySelectorAll<HTMLElement>(
+        ".level-cursor",
+      ),
+    ];
+    for (const element of dragged) {
+      expect(getComputedStyle(element).touchAction, element.id).toBe("none");
+    }
+  });
 });
