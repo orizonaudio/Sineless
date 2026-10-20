@@ -3904,12 +3904,30 @@ TEST_P(MovingMatchWork, RedoesTheSumsWithinOneFramesShare)
         << " samples summed in a frame, " << steady << " in a steady one";
 }
 
-INSTANTIATE_TEST_SUITE_P(Rates, MovingMatchWork, ::testing::Values(48000.0, 96000.0, 384000.0),
+INSTANTIATE_TEST_SUITE_P(EveryRate, MovingMatchWork, ::testing::ValuesIn(kSampleRates),
                          rateTestName);
 
 class FirstShiftWork : public ::testing::TestWithParam<double>
 {
 };
+
+// Four bars at 60 beats a minute: 16 s of each track.
+constexpr double kFirstShiftTempo = 60.0;
+double firstShiftSweepSeconds()
+{
+    return beatSpanQuarterNotes(BeatSpan::kFourBars, 4.0) * 60.0 / kFirstShiftTempo;
+}
+
+// The rates at which that sweep holds more of a track than one frame's share, which a measurement
+// at once would exceed.
+std::vector<double> firstShiftRates()
+{
+    std::vector<double> rates;
+    std::ranges::copy_if(kSampleRates, std::back_inserter(rates), [](double rate) {
+        return firstShiftSweepSeconds() * rate > static_cast<double>(kSumRefreshSamples);
+    });
+    return rates;
+}
 
 // A compared track the fix shifts for the first time needs its levels as shifted over the whole
 // sweep. Measured in the frame its match was found, a long sweep at a high rate stalled that frame;
@@ -3917,16 +3935,14 @@ class FirstShiftWork : public ::testing::TestWithParam<double>
 TEST_P(FirstShiftWork, MeasuresTheShiftedTrackOverFrames)
 {
     const double rate = GetParam();
-    // Four bars at 60 beats a minute: 16 s, more of each track than one frame's share.
-    constexpr double kTempo = 60.0;
     Session session(rate, 2);
-    session.join({.kind = Signal::Kind::kNoise, .seed = 1}, kTempo);
-    session.join({.kind = Signal::Kind::kNoise, .seed = 1}, kTempo);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1}, kFirstShiftTempo);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1}, kFirstShiftTempo);
     configure(session.own(), DisplayMode::kCompare, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
     session.analyzer().setCompared(othersOf(session));
     session.analyzer().setPreviewFix(true);
-    const double sweepSeconds = beatSpanQuarterNotes(BeatSpan::kFourBars, 4.0) * 60.0 / kTempo;
+    const double sweepSeconds = firstShiftSweepSeconds();
     ASSERT_GT(sweepSeconds * rate, static_cast<double>(kSumRefreshSamples))
         << "the sweep fits in one frame's share";
     session.play(sweepSeconds + 1.0, 1.0);
@@ -3943,7 +3959,7 @@ TEST_P(FirstShiftWork, MeasuresTheShiftedTrackOverFrames)
         << " samples summed in a frame, " << steady << " in a steady one";
 }
 
-INSTANTIATE_TEST_SUITE_P(Rates, FirstShiftWork, ::testing::Values(192000.0, 384000.0),
+INSTANTIATE_TEST_SUITE_P(LongSweeps, FirstShiftWork, ::testing::ValuesIn(firstShiftRates()),
                          rateTestName);
 
 class MatchWork : public ::testing::TestWithParam<ModeCase>
