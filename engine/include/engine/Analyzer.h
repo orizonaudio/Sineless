@@ -61,7 +61,8 @@ inline constexpr double kStatsBlockSeconds = 0.01;
 
 // When the parts of a Compare sum change (a track checked, or a match moved), its levels and
 // columns are summed again over the whole sweep, at most this many samples of compared tracks per
-// frame: a long sweep of many tracks is redone over a few frames instead of stalling one.
+// frame in all, shared by the sums and shifted tracks being redone: a long sweep of many tracks,
+// or many matches moved at once, is redone over a few frames instead of stalling one.
 inline constexpr std::size_t kSumRefreshSamples = std::size_t{1} << 21U;
 
 // At most this many lanes are drawn in the multi-track view: tracks, and in the Compare view
@@ -318,12 +319,13 @@ private:
                  std::span<float> into);
     // Keeps `stats`, the levels of the sum of `parts` per block, in step: where compared tracks
     // changed this frame, widened by `reach`, and when `key` differs from `lastKey`, all of them
-    // again over the next frames (see kSumRefreshSamples); all at once for a new length. True if
-    // levels were measured again beyond this frame's changes.
+    // again over the next frames, as one of `shares` recomputations under way (see
+    // kSumRefreshSamples); all at once for a new length. True if levels were measured again beyond
+    // this frame's changes.
     bool updateSumStats(BlockStats& stats, SumRefresh& refresh,
                         const std::vector<std::int64_t>& key, std::vector<std::int64_t>& lastKey,
                         const std::vector<SumPart>& parts, std::size_t reach, std::size_t length,
-                        std::size_t block);
+                        std::size_t block, std::size_t shares);
     // The energies a summing gain over screen positions `ranges` needs: into `tracks`, each of
     // `parts` (shifted as it is), and into `sums` their sum, whose levels per block `sumStats`
     // keeps; per block inside each range and per piece of a block at its edges, so that the gain
