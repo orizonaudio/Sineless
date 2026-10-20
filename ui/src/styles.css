@@ -765,6 +765,7 @@ body {
   text-align: right;
   cursor: ns-resize;
   font-variant-numeric: tabular-nums;
+  touch-action: none;
 }
 
 .field input {
