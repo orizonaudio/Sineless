@@ -11,7 +11,16 @@
 //              [--soak-interval=SECONDS] [--reopen=COUNT] [--view-changes=COUNT]
 //              [--min-fps=N] [--max-total=PERCENT] [--max-analysis=PERCENT]
 //              [--max-memory-growth=MB] [--max-memory-rate=MB_PER_MINUTE]
-//              [--max-view-latency=MS]
+//              [--max-view-latency=MS] [--max-late-frames=PERCENT] [--max-p99-frame=MS]
+//              [--max-analysis-ms=MS] [--max-webkit-ms=MS] [--max-total-ms=MS]
+//              [--scenario=NAME] [--json=PATH]
+//
+// --scenario plays one of the benchmarks' named scenarios (engine/bench/include/bench/
+// Scenarios.h) in place of the options it sets; --json writes the measurements under its name
+// (or "custom") in Bencher Metric Format. The page records when new frames were drawn and when
+// the display ticked (ui/src/frame-times.ts): the time between new frames at percentiles and the
+// share that came late is what a user sees as smooth or not, and the CPU each process spent per
+// frame drawn is the cost, which frames/s alone hides once it reaches the page's 60.
 //
 // Soak: with --soak-interval, the run is measured in intervals, one line each, and judged on the
 // rate memory grows at (a least-squares slope over the intervals after the first, so a slow leak
@@ -22,9 +31,12 @@
 // with real material; --preview-fix
 // draws the sum as fixed. Any limit given makes the exit code 1 when it is broken, for automated
 // checks.
+#include "bench/Scenarios.h"
+#include "bench/Signals.h"
 #include "editor/Editor.h"
 #include "engine/Engine.h"
 #include "engine/InstanceRegistry.h"
+#include "engine/Roll.h"
 #include "engine/SettingJson.h"
 #include "pluginterfaces/gui/iplugview.h"
 
@@ -35,12 +47,12 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <libproc.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <map>
 #include <memory>
-#include <numbers>
 #include <set>
 #include <span>
 #include <stdexcept>
@@ -64,6 +76,7 @@ struct Options
     double rate = 48000.0; // The host's sample rate.
     double tempo = 120.0;  // Beats per minute.
     std::string layout = "stacked";
+    int channels = 2;
     int width = 1400;
     int height = 800;
     double warmup = 3.0;
@@ -82,7 +95,44 @@ struct Options
     double maxMemoryGrowth = -1.0;
     double maxMemoryRate = -1.0;
     double maxViewLatency = -1.0;
+    double maxLateFrames = -1.0; // Percent of the intervals between new frames.
+    double maxP99Frame = -1.0;   // ms between new frames, at the 99th percentile.
+    double maxAnalysisMs = -1.0; // CPU ms per drawn frame.
+    double maxWebKitMs = -1.0;
+    double maxTotalMs = -1.0;
+    std::string scenario; // Its name, when one was played.
+    std::string json;
 };
+
+// The options a named scenario sets. False if perf_bench cannot play it: it has no zoom or
+// panning of its own, and plays a triggered span (Seconds, no longer than the roll threshold)
+// free-running, which is not the scenario its name means.
+bool applyScenario(const std::string& name, Options& options)
+{
+    const auto scenario = bench::scenarioNamed(name);
+    if (!scenario || scenario->viewStart != 0.0 || scenario->viewEnd != 1.0 ||
+        scenario->frozenPan ||
+        (scenario->timeBase == protocol::TimeBase::kSeconds &&
+         !orizon::engine::isRollSpan(scenario->span))) {
+        return false;
+    }
+    const auto nameOf = [](const auto& names, auto value) {
+        return std::string(names.at(static_cast<std::size_t>(value)));
+    };
+    options.scenario = name;
+    options.mode = nameOf(protocol::kDisplayModeNames, scenario->mode);
+    options.lanes = scenario->tracks;
+    options.channels = scenario->channels;
+    options.timeBase = nameOf(protocol::kTimeBaseNames, scenario->timeBase);
+    options.beatSpan = nameOf(protocol::kBeatSpanNames, scenario->beatSpan);
+    options.span = scenario->span;
+    options.rate = scenario->rate;
+    options.tempo = scenario->tempo;
+    options.compareAll = scenario->compareAll;
+    options.previewFix = scenario->previewFix;
+    options.jitter = scenario->jitter;
+    return true;
+}
 
 Options parse(std::span<const char* const> arguments)
 {
@@ -136,6 +186,22 @@ Options parse(std::span<const char* const> arguments)
             options.maxAnalysis = std::stod(value);
         } else if (key == "--max-memory-growth") {
             options.maxMemoryGrowth = std::stod(value);
+        } else if (key == "--max-late-frames") {
+            options.maxLateFrames = std::stod(value);
+        } else if (key == "--max-p99-frame") {
+            options.maxP99Frame = std::stod(value);
+        } else if (key == "--max-analysis-ms") {
+            options.maxAnalysisMs = std::stod(value);
+        } else if (key == "--max-webkit-ms") {
+            options.maxWebKitMs = std::stod(value);
+        } else if (key == "--max-total-ms") {
+            options.maxTotalMs = std::stod(value);
+        } else if (key == "--json") {
+            options.json = value;
+        } else if (key == "--scenario") {
+            if (!applyScenario(value, options)) {
+                throw std::invalid_argument("no scenario perf_bench can play is named " + value);
+            }
         } else if (key == "--max-memory-rate") {
             options.maxMemoryRate = std::stod(value);
         } else if (key == "--view-changes") {
@@ -147,41 +213,16 @@ Options parse(std::span<const char* const> arguments)
     return options;
 }
 
-// Track n's signal at host time `t` (seconds): kicks, bass, hats, noise beds and tones.
-float signalOf(int track, double t, double tempo)
-{
-    const double beat = 60.0 / tempo;
-    const double inBeat = std::fmod(t, beat);
-    const double pi = std::numbers::pi;
-    switch (track % 5) {
-    case 0:
-        return static_cast<float>(
-            0.9 * std::exp(-inBeat * 9.0) *
-            std::sin(2.0 * pi * (50.0 + 100.0 * std::exp(-inBeat / 0.03)) * inBeat));
-    case 1:
-        return static_cast<float>(0.45 * std::sin(2.0 * pi * 55.0 * t));
-    case 2: {
-        const double inEighth = std::fmod(t, beat / 2);
-        const auto noise = static_cast<double>(std::rand()) / RAND_MAX - 0.5;
-        return static_cast<float>(0.4 * std::exp(-inEighth * 40.0) * noise);
-    }
-    case 3:
-        return static_cast<float>(0.3 * std::sin(2.0 * pi * 220.0 * t) +
-                                  0.1 * std::sin(2.0 * pi * 660.0 * t));
-    default:
-        return static_cast<float>(0.2 * (static_cast<double>(std::rand()) / RAND_MAX - 0.5));
-    }
-}
-
 // Plays every track in real time: one block per engine every 10 ms, on one host clock at `rate`
 // and `tempo`.
 class Host
 {
 public:
     Host(std::vector<std::shared_ptr<engine::Engine>> engines, double rate, double tempo,
-         bool jitter)
-        : engines(std::move(engines)), rate(rate), tempo(tempo), jitter(jitter),
-          block(static_cast<int>(std::lround(rate / 100.0))), thread([this] { run(); })
+         bool jitter, int channels)
+        : engines(std::move(engines)), rate(rate), tempo(tempo), jitter(jitter), channels(channels),
+          block(static_cast<int>(std::lround(rate / 100.0))),
+          signals(this->engines.size(), rate, tempo), thread([this] { run(); })
     {}
     ~Host()
     {
@@ -201,19 +242,10 @@ private:
         auto next = std::chrono::steady_clock::now();
         while (!stopping) {
             for (std::size_t track = 0; track < engines.size(); ++track) {
-                for (int i = 0; i < block; ++i) {
-                    double t = static_cast<double>(sample + static_cast<std::uint64_t>(i)) / rate;
-                    if (jitter && track > 0) {
-                        // 0 to 3 ms late, changing every 0.7 s.
-                        const auto step = static_cast<std::size_t>(t / 0.7) + track;
-                        t -= 0.001 * static_cast<double>(step % 4);
-                    }
-                    left[static_cast<std::size_t>(i)] = signalOf(static_cast<int>(track), t, tempo);
-                    right[static_cast<std::size_t>(i)] = 0.8f * left[static_cast<std::size_t>(i)];
-                }
-                std::array<const float*, 2> channels{left.data(), right.data()};
+                signals.fill(track, sample, jitter, left, right);
+                std::array<const float*, 2> buffers{left.data(), right.data()};
                 engine::Engine& engine = *engines[track];
-                engine.captureRing().write(channels.data(), 2, block);
+                engine.captureRing().write(buffers.data(), channels, block);
                 const double seconds = static_cast<double>(sample) / rate;
                 engine.timeline().advance({.playing = true,
                                            .positionValid = true,
@@ -237,7 +269,9 @@ private:
     double rate;
     double tempo;
     bool jitter;
-    int block; // Samples per block: 10 ms.
+    int channels;           // 1 or 2: the right channel plays only on a stereo track.
+    int block;              // Samples per block: 10 ms.
+    bench::Signals signals; // The material analysis_bench plays too.
     std::atomic<bool> stopping{false};
     std::thread thread;
 };
@@ -464,6 +498,7 @@ int run(const Options& options)
         for (int i = 0; i < tracks; ++i) {
             auto engine = std::make_shared<engine::Engine>();
             engine->prepare(options.rate);
+            engine->setInputChannels(options.channels);
             engine->setTrackInfo(
                 {.name = "Track " + std::to_string(i + 1), .colour = std::nullopt, .index = i});
             engine::InstanceRegistry::shared().add(engine);
@@ -481,9 +516,9 @@ int run(const Options& options)
             own.settings().set(SettingId::kChannelViews, 15.0); // L, R, M and S.
         }
         const std::unique_ptr<Host> host =
-            options.idle
-                ? nullptr
-                : std::make_unique<Host>(engines, options.rate, options.tempo, options.jitter);
+            options.idle ? nullptr
+                         : std::make_unique<Host>(engines, options.rate, options.tempo,
+                                                  options.jitter, options.channels);
 
         const auto before = webKitTimes();
         NSWindow* window =
@@ -768,10 +803,22 @@ int run(const Options& options)
                 judge("busiest total CPU (%)", 100.0 * busiest, options.maxTotal, false);
             }
         } else {
+            auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+            evaluate(webView, @"window.orizonDebug?.frameTimes?.start(); ''");
             const Snapshot from = take();
             pump(options.duration);
             const Snapshot to = take();
             const Interval interval = between(from, to);
+            const nlohmann::json times = nlohmann::json::parse(
+                evaluate(webView,
+                         @"JSON.stringify(window.orizonDebug?.frameTimes?.summary() ?? {})"),
+                nullptr, false);
+            // The columns the engine drew (its frame says), at the page's pixel density.
+            const nlohmann::json view = nlohmann::json::parse(
+                evaluate(webView,
+                         @"JSON.stringify({columns: window.orizonDebug?.lastFrame?.pointCount "
+                         @"?? null, scale: window.devicePixelRatio})"),
+                nullptr, false);
             std::printf("plugin process: %.1f%% of a core, %.0f MB resident\n",
                         100.0 * interval.process, interval.resident);
             for (const auto& [name, end] : to.threads) {
@@ -805,9 +852,81 @@ int run(const Options& options)
             std::printf("page: receive %.2f ms/frame, draw %.2f ms/frame (max %.1f ms overall)\n",
                         received > 0 ? delta("receiveMs") / received : 0.0,
                         drawn > 0 ? delta("drawMs") / drawn : 0.0, to.page.value("maxDrawMs", 0.0));
+            // CPU per frame drawn, in ms: the cost of a frame, whatever the frame rate.
+            const auto perFrame = [&](double coreShare) {
+                return drawn > 0 ? coreShare * interval.seconds * 1000.0 / drawn : std::nan("");
+            };
+            const auto threadShare = [&](const std::string& name) {
+                const auto end = to.threads.find(name);
+                const auto start = from.threads.find(name);
+                return end == to.threads.end()
+                           ? 0.0
+                           : (end->second - (start == from.threads.end() ? 0.0 : start->second)) /
+                                 interval.seconds;
+            };
+            const double analysisMs = perFrame(interval.analysis);
+            const double mainMs = perFrame(threadShare("main"));
+            const double webKitMs = perFrame(interval.webKit);
+            const double totalMs = perFrame(interval.total);
+            const auto number = [](const nlohmann::json& object, const char* key) {
+                const auto found = object.find(key);
+                return found != object.end() && found->is_number() ? found->get<double>()
+                                                                   : std::nan("");
+            };
+            const nlohmann::json none = nlohmann::json::object();
+            const nlohmann::json& frames = times.is_object() ? times.value("frames", none) : none;
+            const nlohmann::json& ticks = times.is_object() ? times.value("ticks", none) : none;
+            std::printf("view: scale %.0f, %.0f columns\n", number(view, "scale"),
+                        number(view, "columns"));
+            std::printf("cpu per frame: analysis %.2f ms, main thread %.2f ms, webkit %.2f ms, "
+                        "total %.2f ms\n",
+                        analysisMs, mainMs, webKitMs, totalMs);
+            std::printf("frames: %.1f ms median, %.1f p95, %.1f p99, %.1f max between new frames; "
+                        "%.1f%% late (worst second %.0f)\n",
+                        number(frames, "median"), number(frames, "p95"), number(frames, "p99"),
+                        number(frames, "max"), 100.0 * number(frames, "lateShare"),
+                        number(frames, "worstSecondLate"));
+            std::printf("ticks: %.1f ms median, %.1f p99, %.1f max; %.1f%% late\n",
+                        number(ticks, "median"), number(ticks, "p99"), number(ticks, "max"),
+                        100.0 * number(ticks, "lateShare"));
             judge("frames/s", interval.framesPerSecond, options.minFps, true);
             judge("total CPU (%)", 100.0 * interval.total, options.maxTotal, false);
             judge("analysis thread (%)", 100.0 * interval.analysis, options.maxAnalysis, false);
+            judge("late frames (%)", 100.0 * number(frames, "lateShare"), options.maxLateFrames,
+                  false);
+            judge("frame interval p99 (ms)", number(frames, "p99"), options.maxP99Frame, false);
+            judge("analysis per frame (ms)", analysisMs, options.maxAnalysisMs, false);
+            judge("webkit per frame (ms)", webKitMs, options.maxWebKitMs, false);
+            judge("total per frame (ms)", totalMs, options.maxTotalMs, false);
+            if (!options.json.empty()) {
+                // Bencher Metric Format: scenario, measure, value. NaN (not measured) is left out.
+                nlohmann::json measures = nlohmann::json::object();
+                const auto add = [&](const char* name, double value) {
+                    if (std::isfinite(value)) {
+                        measures[name] = {{"value", value}};
+                    }
+                };
+                add("frames-per-second", interval.framesPerSecond);
+                add("frame-interval-median-ms", number(frames, "median"));
+                add("frame-interval-p95-ms", number(frames, "p95"));
+                add("frame-interval-p99-ms", number(frames, "p99"));
+                add("frame-interval-max-ms", number(frames, "max"));
+                add("late-frames-percent", 100.0 * number(frames, "lateShare"));
+                add("late-frames-worst-second", number(frames, "worstSecondLate"));
+                add("tick-interval-median-ms", number(ticks, "median"));
+                add("tick-interval-p99-ms", number(ticks, "p99"));
+                add("late-ticks-percent", 100.0 * number(ticks, "lateShare"));
+                add("analysis-ms-per-frame", analysisMs);
+                add("main-ms-per-frame", mainMs);
+                add("webkit-ms-per-frame", webKitMs);
+                add("total-ms-per-frame", totalMs);
+                add("resident-mb", interval.resident);
+                add("display-scale", number(view, "scale"));
+                add("columns", number(view, "columns"));
+                const nlohmann::json results = {
+                    {options.scenario.empty() ? "custom" : options.scenario, measures}};
+                std::ofstream(options.json) << results.dump(2) << '\n';
+            }
         }
 
         editor->removed();

@@ -28,6 +28,7 @@ import { attachResizeGrip } from "./components/resize-grip.ts";
 import { Segmented } from "./components/segmented.ts";
 import { streamGap } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
+import { frameMilliseconds } from "./frame-times.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
 import {
   TraceRenderer,
@@ -148,9 +149,6 @@ interface GestureEvent extends UIEvent {
 // Room taken by the amplitude labels at the left edge (CSS px).
 const amplitudeLabelWidth = 56;
 const readoutInterval = readoutIntervalSeconds * 1000; // ms, as the engine measures them.
-// 60 engine frames a second on any display rate (at most the display's): more would cost work
-// in every part of the pipeline for motion the eye barely tells apart.
-const frameInterval = 1000 / 60;
 // Group titles that open a popover: the group, its title button and the popover.
 const popovers = [
   ["trigger-group", "trigger-details", "trigger-popover"],
@@ -324,7 +322,7 @@ export class OscilloscopeApp {
       () => {
         backend.requestFrame();
       },
-      frameInterval,
+      frameMilliseconds,
     );
     this.buildControls();
     this.listenToScreen();

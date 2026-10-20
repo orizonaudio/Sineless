@@ -64,33 +64,6 @@ double correlationAt(std::span<const float> a, std::span<const float> b, std::pt
            norm;
 }
 
-struct Match
-{
-    std::ptrdiff_t offset = 0;
-    double value = 0.0;
-};
-
-// The offset in [from, to] with the strongest match. Offsets are visited from the smallest shift
-// out, and a larger shift wins only if its match is clearly (more than 2%) stronger.
-Match bestMatch(std::span<const float> a, std::span<const float> b, std::ptrdiff_t from,
-                std::ptrdiff_t to, double norm)
-{
-    const std::ptrdiff_t nearest = std::clamp<std::ptrdiff_t>(0, from, to);
-    Match best{.offset = nearest, .value = correlationAt(a, b, nearest, norm)};
-    for (std::ptrdiff_t step = 1; nearest - step >= from || nearest + step <= to; ++step) {
-        for (const std::ptrdiff_t offset : {nearest - step, nearest + step}) {
-            if (offset < from || offset > to) {
-                continue;
-            }
-            const double value = correlationAt(a, b, offset, norm);
-            if (std::abs(value) * kPreferSmallerShift > std::abs(best.value)) {
-                best = {.offset = offset, .value = value};
-            }
-        }
-    }
-    return best;
-}
-
 void decimate(std::span<const float> values, std::span<float> out)
 {
     for (std::size_t i = 0; i < out.size(); ++i) {
@@ -100,24 +73,6 @@ void decimate(std::span<const float> values, std::span<float> out)
         }
         out[i] = total / static_cast<float>(kDecimation);
     }
-}
-
-// Each track's energy per block of `block` samples.
-std::vector<std::vector<double>> blockEnergies(std::span<const std::span<const float>> tracks,
-                                               std::size_t block)
-{
-    std::vector<std::vector<double>> energies(tracks.size());
-    for (std::size_t track = 0; track < tracks.size(); ++track) {
-        const std::span<const float> samples = tracks[track];
-        const std::size_t blocks = (samples.size() + block - 1) / block;
-        energies[track].assign(blocks, 0.0);
-        for (std::size_t index = 0; index < blocks; ++index) {
-            const std::size_t first = index * block;
-            energies[track][index] =
-                energyOf(samples.subspan(first, std::min(block, samples.size() - first)));
-        }
-    }
-    return energies;
 }
 
 std::vector<std::span<const double>> spansOf(const std::vector<std::vector<double>>& energies)
@@ -160,24 +115,31 @@ std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energi
     return together;
 }
 
-// Which blocks of `block` samples (more than 0) hold at least two of `tracks` (two or more, of
-// equal length) sounding together.
-std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, std::size_t block)
-{
-    assert(tracks.size() >= 2 && block > 0);
-    return togetherBlocks(spansOf(blockEnergies(tracks, block)), block);
-}
-
 } // namespace
 
 // Of the finite values: one that is not (from a broken signal upstream) is measured around.
+// Eight independent sums, with no branch, so the compiler can run them as vector lanes: a match
+// search measures a few million samples this way, and one running sum would take as long as
+// the search itself.
 double energyOf(std::span<const float> values)
 {
-    double total = 0.0;
-    for (const float value : values) {
-        if (std::isfinite(value)) {
-            total += static_cast<double>(value) * value;
+    constexpr std::size_t kLanes = 8;
+    std::array<double, kLanes> sums{};
+    const std::size_t count = values.size();
+    std::size_t i = 0;
+    for (; i + kLanes <= count; i += kLanes) {
+        for (std::size_t lane = 0; lane < kLanes; ++lane) {
+            const double value = values[i + lane];
+            sums[lane] += std::isfinite(value) ? value * value : 0.0;
         }
+    }
+    double total = 0.0;
+    for (const double sum : sums) {
+        total += sum;
+    }
+    for (; i < count; ++i) {
+        const double value = values[i];
+        total += std::isfinite(value) ? value * value : 0.0;
     }
     return total;
 }
@@ -192,93 +154,360 @@ double summingGain(double sumEnergy, double partsEnergy)
     return 10.0 * std::log10(sumEnergy / partsEnergy);
 }
 
-PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
-                         std::size_t block, std::vector<float>& scratch)
+void PairSearch::start(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
+                       std::size_t block)
 {
-    // Only where both sound: elsewhere a sample of one meets silence in the other, which would
-    // water the correlation down.
     const std::size_t length = std::min(a.size(), b.size());
-    const std::size_t coarseLength = length / kDecimation;
-    scratch.resize(2 * length + 2 * coarseLength);
-    const std::span<float> maskedA(scratch.data(), length);
-    const std::span<float> maskedB(scratch.data() + length, length);
-    const std::array<std::span<const float>, 2> pair{a.first(length), b.first(length)};
-    const std::vector<bool> together = overlapBlocks(pair, block == 0 ? length : block);
-    // A sample that is not finite (from a broken signal upstream) counts as silence in both, so
-    // the match is measured around it.
-    for (std::size_t i = 0; i < length; ++i) {
-        const bool keep = !together.empty() && together[i / (block == 0 ? length : block)] &&
-                          std::isfinite(a[i]) && std::isfinite(b[i]);
-        maskedA[i] = keep ? a[i] : 0.0f;
-        maskedB[i] = keep ? b[i] : 0.0f;
+    maskedA.assign(a.begin(), a.begin() + static_cast<std::ptrdiff_t>(length));
+    maskedB.assign(b.begin(), b.begin() + static_cast<std::ptrdiff_t>(length));
+    maxReach = maxOffset;
+    blockLength = block == 0 ? std::max<std::size_t>(length, 1) : block;
+    const std::size_t blocks = (length + blockLength - 1) / blockLength;
+    energiesA.assign(blocks, 0.0);
+    energiesB.assign(blocks, 0.0);
+    coarseA.assign(length / kDecimation, 0.0f);
+    coarseB.assign(length / kDecimation, 0.0f);
+    cursor = 0;
+    energyA = 0.0;
+    energyB = 0.0;
+    coarseEnergyA = 0.0;
+    coarseEnergyB = 0.0;
+    dotAtNone = 0.0;
+    found = {};
+    stage = Stage::kEnergies;
+}
+
+// Two passes over the stretch, a block at a time: each track's energy per block, then, once it
+// is known where both sound, only there (elsewhere a sample of one meets silence in the other,
+// which would water the correlation down) the samples kept, measured and decimated.
+bool PairSearch::prepare(std::size_t& budget)
+{
+    const std::size_t length = maskedA.size();
+    const std::size_t blocks = energiesA.size();
+    const auto spend = [&](std::size_t cost) {
+        budget -= std::min(budget, cost);
+        done += cost;
+    };
+    while (stage == Stage::kEnergies) {
+        if (cursor == blocks) {
+            const std::array<std::span<const double>, 2> energies{energiesA, energiesB};
+            together = blocks == 0 ? std::vector<bool>{} : togetherBlocks(energies, blockLength);
+            cursor = 0;
+            stage = Stage::kMask;
+            break;
+        }
+        const std::size_t first = cursor * blockLength;
+        const std::size_t size = std::min(blockLength, length - first);
+        energiesA[cursor] = energyOf(std::span(maskedA).subspan(first, size));
+        energiesB[cursor] = energyOf(std::span(maskedB).subspan(first, size));
+        ++cursor;
+        spend(2 * size);
+        if (budget == 0) {
+            return false;
+        }
     }
-    a = maskedA;
-    b = maskedB;
-    const double energyA = energyOf(a);
-    const double energyB = energyOf(b);
-    const double norm = std::sqrt(energyA * energyB);
-    PairAnalysis result;
+    while (cursor < blocks) {
+        const std::size_t first = cursor * blockLength;
+        const std::size_t end = std::min(length, first + blockLength);
+        const auto from = static_cast<std::ptrdiff_t>(first);
+        const auto to = static_cast<std::ptrdiff_t>(end);
+        if (!together[cursor]) {
+            std::fill(maskedA.begin() + from, maskedA.begin() + to, 0.0f);
+            std::fill(maskedB.begin() + from, maskedB.begin() + to, 0.0f);
+        } else {
+            // A sample that is not finite (from a broken signal upstream) counts as silence in
+            // both, so the match is measured around it. Block by block, so the copy runs as
+            // vector lanes.
+            for (std::size_t i = first; i < end; ++i) {
+                // Both finite, tested without a branch: their difference is finite then, and NaN
+                // or infinite when either is not (or both are the same infinity); only values
+                // near float's largest, far beyond any audio, would overflow it.
+                const float x = maskedA[i];
+                const float y = maskedB[i];
+                const bool keep = std::abs(x - y) <= std::numeric_limits<float>::max();
+                maskedA[i] = keep ? x : 0.0f;
+                maskedB[i] = keep ? y : 0.0f;
+            }
+            const std::span<const float> keptA = std::span(maskedA).subspan(first, end - first);
+            const std::span<const float> keptB = std::span(maskedB).subspan(first, end - first);
+            energyA += energyOf(keptA);
+            energyB += energyOf(keptB);
+            dotAtNone += dot(keptA.data(), keptB.data(), keptA.size());
+        }
+        // The coarse samples whose eight samples are all kept now: from the one that straddles
+        // this block's start, whose first samples the block before kept, when a block is not a
+        // whole number of them (441 samples, at 44.1 kHz).
+        const std::size_t coarseFirst = first / kDecimation;
+        const std::size_t coarseEnd = std::min(coarseA.size(), end / kDecimation);
+        if (coarseFirst < coarseEnd) {
+            const std::size_t count = coarseEnd - coarseFirst;
+            const auto pieceA = std::span(coarseA).subspan(coarseFirst, count);
+            const auto pieceB = std::span(coarseB).subspan(coarseFirst, count);
+            decimate(std::span(maskedA).subspan(coarseFirst * kDecimation), pieceA);
+            decimate(std::span(maskedB).subspan(coarseFirst * kDecimation), pieceB);
+            coarseEnergyA += energyOf(pieceA);
+            coarseEnergyB += energyOf(pieceB);
+        }
+        ++cursor;
+        spend(3 * (end - first));
+        if (budget == 0 && cursor < blocks) {
+            return false;
+        }
+    }
+
+    norm = std::sqrt(energyA * energyB);
     if (norm <= 0.0) {
-        return result;
+        stage = Stage::kDone;
+        return true;
     }
-    result.measured = true;
-    result.correlation = correlationAt(a, b, 0, norm);
+    found.measured = true;
+    found.correlation = dotAtNone / norm;
 
     // Coarse search on decimated copies, then a fine one around the coarse match.
-    const auto reach = static_cast<std::ptrdiff_t>(std::min(maxOffset, length / 2));
-    const std::span<float> coarseA(scratch.data() + 2 * length, coarseLength);
-    const std::span<float> coarseB(scratch.data() + 2 * length + coarseLength, coarseLength);
-    decimate(a, coarseA);
-    decimate(b, coarseB);
+    reach = static_cast<std::ptrdiff_t>(std::min(maxReach, length / 2));
     const auto coarseReach = reach / static_cast<std::ptrdiff_t>(kDecimation);
-    const double coarseNorm = std::sqrt(energyOf(coarseA) * energyOf(coarseB));
-    const Match coarse = bestMatch(coarseA, coarseB, -coarseReach, coarseReach, coarseNorm);
-    const auto centre = coarse.offset * static_cast<std::ptrdiff_t>(kDecimation);
-    const auto span = static_cast<std::ptrdiff_t>(kDecimation);
-    Match fine =
-        bestMatch(a, b, std::max(-reach, centre - span), std::min(reach, centre + span), norm);
+    coarseNorm = std::sqrt(coarseEnergyA * coarseEnergyB);
+    beginScan(scan, -coarseReach, coarseReach);
+    stage = Stage::kCoarse;
+    return true;
+}
+
+void PairSearch::beginScan(Scan& scan, std::ptrdiff_t from, std::ptrdiff_t to)
+{
+    scan = {.from = from, .to = to, .nearest = std::clamp<std::ptrdiff_t>(0, from, to)};
+}
+
+// The offset in [from, to] with the strongest match. Offsets are visited from the smallest shift
+// out, and a larger shift wins only if its match is clearly (more than 2%) stronger.
+bool PairSearch::advance(std::span<const float> a, std::span<const float> b, double scale,
+                         std::size_t& budget)
+{
+    const auto size = static_cast<std::ptrdiff_t>(a.size());
+    // One offset's cost: the samples both have at it.
+    const auto spend = [&](std::ptrdiff_t offset) {
+        const auto cost =
+            static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, size - std::abs(offset)));
+        budget -= std::min(budget, cost);
+        done += cost;
+    };
+    while (true) {
+        if (scan.step == 0) {
+            scan.bestOffset = scan.nearest;
+            scan.bestValue = correlationAt(a, b, scan.nearest, scale);
+            spend(scan.nearest);
+            scan.step = 1;
+        } else {
+            if (scan.nearest - scan.step < scan.from && scan.nearest + scan.step > scan.to) {
+                return true;
+            }
+            const std::ptrdiff_t offset =
+                scan.side == 0 ? scan.nearest - scan.step : scan.nearest + scan.step;
+            if (scan.side == 1) {
+                scan.side = 0;
+                ++scan.step;
+            } else {
+                scan.side = 1;
+            }
+            if (offset < scan.from || offset > scan.to) {
+                continue;
+            }
+            const double value = correlationAt(a, b, offset, scale);
+            spend(offset);
+            if (std::abs(value) * kPreferSmallerShift > std::abs(scan.bestValue)) {
+                scan.bestOffset = offset;
+                scan.bestValue = value;
+            }
+        }
+        if (budget == 0) {
+            return scan.nearest - scan.step < scan.from && scan.nearest + scan.step > scan.to;
+        }
+    }
+}
+
+bool PairSearch::step(std::size_t budget)
+{
+    if (stage == Stage::kEnergies || stage == Stage::kMask) {
+        if (!prepare(budget)) {
+            return false;
+        }
+        if (stage == Stage::kDone) {
+            return true;
+        }
+        if (budget == 0) {
+            return false;
+        }
+    }
+    if (stage == Stage::kCoarse) {
+        if (!advance(coarseA, coarseB, coarseNorm, budget)) {
+            return false;
+        }
+        const auto centre = scan.bestOffset * static_cast<std::ptrdiff_t>(kDecimation);
+        const auto span = static_cast<std::ptrdiff_t>(kDecimation);
+        beginScan(scan, std::max(-reach, centre - span), std::min(reach, centre + span));
+        stage = Stage::kFine;
+        if (budget == 0) {
+            return false;
+        }
+    }
+    if (stage == Stage::kFine) {
+        if (!advance(maskedA, maskedB, norm, budget)) {
+            return false;
+        }
+        finish();
+    }
+    return stage == Stage::kDone;
+}
+
+void PairSearch::finish()
+{
+    double value = scan.bestValue;
+    std::ptrdiff_t offset = scan.bestOffset;
     // A shift that is not clearly better than none is not worth suggesting.
-    if (std::abs(fine.value) * kPreferSmallerShift <= std::abs(result.correlation)) {
-        fine = {.offset = 0, .value = result.correlation};
+    if (std::abs(value) * kPreferSmallerShift <= std::abs(found.correlation)) {
+        offset = 0;
+        value = found.correlation;
     }
-    result.related = std::abs(fine.value) >= kRelatedMatch;
-    if (result.related) {
-        result.offset = fine.offset;
-        result.inverted = fine.value < 0.0;
+    found.related = std::abs(value) >= kRelatedMatch;
+    if (found.related) {
+        found.offset = offset;
+        found.inverted = value < 0.0;
     }
-    return result;
+    stage = Stage::kDone;
+}
+
+PairAnalysis analysePair(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
+                         std::size_t block)
+{
+    PairSearch search;
+    search.start(a, b, maxOffset, block);
+    while (!search.step(std::numeric_limits<std::size_t>::max())) {
+    }
+    return search.result();
 }
 
 double overlapGain(std::span<const std::span<const float>> tracks, std::size_t block)
 {
-    if (tracks.size() < 2 || block == 0) {
-        return 0.0;
+    GainMeasure measure;
+    measure.start(tracks, block);
+    while (!measure.step(std::numeric_limits<std::size_t>::max())) {
     }
-    // Positions where a track is not finite (a broken signal upstream) are left out of the sum
-    // and of every part alike, so that the gain is measured around them.
-    const std::size_t length = tracks.front().size();
+    return measure.result();
+}
+
+void GainMeasure::start(std::span<const std::span<const float>> measured, std::size_t blockSize)
+{
+    tracks.assign(measured.begin(), measured.end());
+    block = blockSize;
+    next = 0;
+    if (tracks.size() < 2 || block == 0) {
+        gain = 0.0;
+        stage = Stage::kDone;
+        return;
+    }
+    length = tracks.front().size();
+    totals.assign(length, 0.0);
+    energies.resize(tracks.size());
+    stage = Stage::kFused;
+}
+
+bool GainMeasure::step(std::size_t budget)
+{
+    if (stage == Stage::kDone) {
+        return true; // Also with fewer than two tracks, or no block, which measure nothing.
+    }
     const std::size_t blocks = (length + block - 1) / block;
-    std::vector<double> sums(blocks, 0.0);
-    std::vector<std::vector<double>> energies(tracks.size(), std::vector<double>(blocks, 0.0));
-    for (std::size_t index = 0; index < blocks; ++index) {
-        const std::size_t first = index * block;
-        const std::size_t last = std::min(first + block, length);
-        for (std::size_t i = first; i < last; ++i) {
-            if (!std::ranges::all_of(tracks, [i](std::span<const float> track) {
-                    return std::isfinite(track[i]);
-                })) {
-                continue;
+    // Each block's energy, of the values valueAt gives where keep says, eight sums at a time so
+    // that they run as vector lanes; along the way, visit sees each position and its value.
+    const auto blockEnergies = [&](std::vector<double>& into, const auto& valueAt, const auto& keep,
+                                   const auto& visit) {
+        into.assign(blocks, 0.0);
+        for (std::size_t index = 0; index < blocks; ++index) {
+            const std::size_t first = index * block;
+            const std::size_t last = std::min(first + block, length);
+            constexpr std::size_t kLanes = 8;
+            std::array<double, kLanes> lanes{};
+            std::size_t i = first;
+            for (; i + kLanes <= last; i += kLanes) {
+                for (std::size_t lane = 0; lane < kLanes; ++lane) {
+                    const double value = valueAt(i + lane);
+                    visit(i + lane, value);
+                    const double kept = keep(i + lane) ? value : 0.0;
+                    lanes[lane] += kept * kept;
+                }
             }
-            double total = 0.0;
-            for (std::size_t track = 0; track < tracks.size(); ++track) {
-                const double value = tracks[track][i];
-                total += value;
-                energies[track][index] += value * value;
+            double energy = 0.0;
+            for (const double sum : lanes) {
+                energy += sum;
             }
-            sums[index] += total * total;
+            for (; i < last; ++i) {
+                const double value = valueAt(i);
+                visit(i, value);
+                const double kept = keep(i) ? value : 0.0;
+                energy += kept * kept;
+            }
+            into[index] = energy;
+        }
+    };
+    const auto always = [](std::size_t) { return true; };
+    const auto nothing = [](std::size_t, double) {};
+    const auto finiteHere = [&](std::size_t i) { return broken[i] == 0; };
+    bool passed = false; // At least one pass a step, whatever the budget.
+    while (stage != Stage::kDone && (!passed || budget > 0)) {
+        passed = true;
+        budget -= std::min(budget, length);
+        done += length;
+        if (stage == Stage::kFused) {
+            // A track's energies and its part of the sum in one pass, as long as every value is
+            // finite: value - value is 0 for each one that is, and not for one that is not.
+            if (next < tracks.size()) {
+                const std::span<const float> track = tracks[next];
+                double check = 0.0;
+                blockEnergies(
+                    energies[next], [&](std::size_t i) { return static_cast<double>(track[i]); },
+                    always,
+                    [&](std::size_t i, double value) {
+                        totals[i] += value;
+                        check += value - value;
+                    });
+                ++next;
+                if (check != 0.0) {
+                    // A broken signal upstream: measured again around the positions it breaks.
+                    totals.assign(length, 0.0);
+                    broken.assign(length, 0);
+                    stage = Stage::kTotals;
+                    next = 0;
+                }
+            } else {
+                blockEnergies(sums, [&](std::size_t i) { return totals[i]; }, always, nothing);
+                gain = overlapGainOfBlocks(spansOf(energies), sums, block);
+                stage = Stage::kDone;
+            }
+        } else if (stage == Stage::kTotals) {
+            // Positions where a track is not finite are left out of the sum and of every part
+            // alike, so that the gain is measured around them.
+            const std::span<const float> track = tracks[next];
+            for (std::size_t i = 0; i < length; ++i) {
+                const double value = track[i];
+                const bool finite = std::abs(value) <= std::numeric_limits<double>::max();
+                broken[i] = static_cast<std::uint8_t>(broken[i] | (finite ? 0U : 1U));
+                totals[i] += finite ? value : 0.0;
+            }
+            if (++next == tracks.size()) {
+                stage = Stage::kEnergies;
+                next = 0;
+            }
+        } else if (next < tracks.size()) {
+            const std::span<const float> track = tracks[next++];
+            blockEnergies(
+                energies[next - 1], [&](std::size_t i) { return static_cast<double>(track[i]); },
+                finiteHere, nothing);
+        } else {
+            blockEnergies(sums, [&](std::size_t i) { return totals[i]; }, finiteHere, nothing);
+            gain = overlapGainOfBlocks(spansOf(energies), sums, block);
+            stage = Stage::kDone;
         }
     }
-    return overlapGainOfBlocks(spansOf(energies), sums, block);
+    return stage == Stage::kDone;
 }
 
 double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,

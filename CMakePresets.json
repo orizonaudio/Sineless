@@ -31,7 +31,7 @@
     },
     {
       "name": "asan",
-      "displayName": "macOS glue: the editor's web view and Audio Unit tests under AddressSanitizer",
+      "displayName": "macOS glue: the editor's web view and Audio Unit tests under AddressSanitizer, with the benchmarks configured so that the lint reads their compile commands",
       "binaryDir": "${sourceDir}/build/asan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -161,10 +161,11 @@
     {
       "name": "linux",
       "inherits": "linux-checks",
-      "displayName": "Linux: engine, plugin and editor tests under AddressSanitizer and LeakSanitizer",
+      "displayName": "Linux: engine, plugin and editor tests under AddressSanitizer and LeakSanitizer, with the benchmarks built so that the lint reads their compile commands",
       "binaryDir": "${sourceDir}/build/linux",
       "cacheVariables": {
-        "ORIZON_ADDRESS_SANITIZER": "ON"
+        "ORIZON_ADDRESS_SANITIZER": "ON",
+        "ORIZON_BENCH": "ON"
       }
     },
     {
@@ -185,6 +186,25 @@
       "cacheVariables": {
         "ORIZON_REALTIME_SANITIZER": "ON",
         "SMTG_RUN_VST_VALIDATOR": "OFF"
+      }
+    },
+    {
+      "name": "linux-bench",
+      "displayName": "Linux: the engine's work per frame, counted under Cachegrind (scripts/engine-work.sh)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-23",
+        "CMAKE_CXX_COMPILER": "clang++-23",
+        "BUILD_TESTING": "OFF",
+        "ORIZON_ENGINE_ONLY": "ON",
+        "ORIZON_BENCH": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
       }
     },
     {
@@ -283,7 +303,9 @@
         "editor_tests",
         "au_tests",
         "au_view_tests",
-        "au_component_tests"
+        "au_component_tests",
+        "analysis_bench",
+        "perf_bench"
       ]
     },
     {
@@ -294,12 +316,12 @@
     {
       "name": "bench",
       "configurePreset": "bench",
-      "targets": ["perf_bench", "process_bench"]
+      "targets": ["analysis_bench", "perf_bench", "process_bench"]
     },
     {
       "name": "bench-debug",
       "configurePreset": "bench-debug",
-      "targets": ["perf_bench", "process_bench"]
+      "targets": ["analysis_bench", "perf_bench", "process_bench"]
     },
     {
       "name": "windows-x64",
@@ -416,6 +438,16 @@
       }
     },
     {
+      "name": "linux-bench",
+      "configurePreset": "linux-bench",
+      "targets": ["analysis_bench"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
       "name": "mutation",
       "configurePreset": "mutation",
       "targets": ["engine_tests", "plugin_tests", "editor_tests"],
@@ -493,7 +525,7 @@
       },
       "filter": {
         "include": {
-          "name": "^(EditorTest\\.|AudioUnit|ComponentTest\\.)"
+          "name": "^(EditorTest\\.|AudioUnit|ComponentTest\\.|AnalysisBench\\.|PerfBench\\.)"
         }
       }
     },

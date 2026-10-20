@@ -150,6 +150,22 @@ void continueRefresh(Refresh& refresh, std::size_t length, std::size_t step, con
     }
 }
 
+// Merges `ranges` that overlap or touch, in place, in position order: the positions where several
+// tracks' sweeps changed (all of them alike, as tracks play together) are then summed once.
+void mergeRanges(std::vector<SweepImage::Range>& ranges)
+{
+    std::ranges::sort(ranges, {}, &SweepImage::Range::first);
+    std::size_t kept = 0;
+    for (std::size_t index = 0; index < ranges.size(); ++index) {
+        if (kept > 0 && ranges[index].first <= ranges[kept - 1].end) {
+            ranges[kept - 1].end = std::max(ranges[kept - 1].end, ranges[index].end);
+        } else {
+            ranges[kept++] = ranges[index];
+        }
+    }
+    ranges.resize(kept);
+}
+
 // Lane `index`'s bit in a frame's `invalidLanes`: the lanes, then the sum after them.
 static_assert(kMaxLanes < 32, "every lane and the sum have a bit");
 std::uint32_t laneBit(std::size_t index)
@@ -184,10 +200,11 @@ void assignNoMatches(std::vector<float>& values, std::size_t lanes)
     }
 }
 
-// How many positions of a sum of `parts` tracks to recompute per frame.
-std::size_t refreshStep(std::size_t parts)
+// How many positions of a sum of `parts` tracks to recompute per frame, as one of `shares`
+// recomputations under way together, which share the frame's kSumRefreshSamples.
+std::size_t refreshStep(std::size_t parts, std::size_t shares)
 {
-    return kSumRefreshSamples / std::max<std::size_t>(parts, 1);
+    return kSumRefreshSamples / std::max<std::size_t>(shares, 1) / std::max<std::size_t>(parts, 1);
 }
 
 // Where the fixed sum is measured, of positions [first, end) of a span of `count`: where every
@@ -412,6 +429,26 @@ bool Analyzer::freeze(double sampleRate, std::uint64_t minimumSamples)
 
 bool Analyzer::produce(std::vector<std::byte>& frame)
 {
+    if (!produceFrame(frame)) {
+        return false;
+    }
+    // Only Compare draws frames for its results alone; other frames are not kept to compare.
+    if (!comparing) {
+        lastSent.clear();
+        return true;
+    }
+    if (resultsOnly && frame == lastSent) {
+        return false; // The same frame again: a search or gains ended with the same values.
+    }
+    lastSent.assign(frame.begin(), frame.end());
+    return true;
+}
+
+bool Analyzer::produceFrame(std::vector<std::byte>& frame)
+{
+    spreadStepped = false;
+    searchEnded = false;
+    resultsOnly = false;
     Commands command = takeCommands();
     const Settings settings = engine.settings().get();
     frameSettings = settings;
@@ -448,6 +485,7 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
         selectLanes(settings);
     } else {
         lanes.clear(); // Frees the lanes' sweeps and holds outside the multi-track view.
+        comparing = false;
     }
 
     const double spanSeconds = settings.value(SettingId::kTimeSpan);
@@ -470,10 +508,19 @@ bool Analyzer::produce(std::vector<std::byte>& frame)
     const bool newFormat = !isFrozen && formatsChanged(multi);
     // Other lanes, or other tracks compared, change the frame too. A match still to search does
     // only when its search can run: live with the transport playing, searches are spaced by audio,
-    // so without new audio none would, and the frame drawn would be the same.
+    // so without new audio none would, and the frame drawn would be the same; and not while
+    // another runs. Gains not measured for what is shown do, to begin measuring them.
     const std::uint32_t laneSetId = multi ? laneSet().id : 0;
-    const bool changed = inputsChanged(settings, command, laneSetId) || newFormat ||
-                         (comparing && matchesPending && (newAudio || searchAtOnce));
+    const bool inputs = inputsChanged(settings, command, laneSetId) || newFormat;
+    resultsOnly = !inputs && (isFrozen || !newAudio);
+    bool changed = inputs || (comparing &&
+                              ((matchesPending && !searchingSerial && (newAudio || searchAtOnce)) ||
+                               (!comparisonCache.valid && !gainJob.active)));
+    // A search or gains running over frames go on whatever arrives, but change what is shown only
+    // when one ends: until then they are stepped without drawing the same frame again.
+    if (!changed && comparing && (searchingSerial || gainJob.active)) {
+        changed = stepSpreadWork(liveRate);
+    }
     if (liveSeconds && !changed && !newAudio && lastShown && !lastShown->synced) {
         return false;
     }
@@ -1068,7 +1115,7 @@ void Analyzer::advance()
     if (settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
         protocol::DisplayMode::kSingle) {
         selectLanes(settings);
-        placeLanes(settings, beatSpan);
+        lanesPlaced = placeLanes(settings, beatSpan) || lanesPlaced;
         return;
     }
     const CaptureRing& ring = engine.captureRing();
@@ -1103,8 +1150,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     std::optional<SweepWindow> shown;
     double subStart = 0.0;
     double subEnd = 1.0;
+    const bool placedBefore = std::exchange(lanesPlaced, false);
     if (!isFrozen) {
-        fresh = placeLanes(settings, beatSpan);
+        fresh = placeLanes(settings, beatSpan) || placedBefore;
         shown = own.window;
     } else if (own.hold.held()) {
         const auto frozen =
@@ -1143,8 +1191,14 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
 
     // Checked whatever else changed, so that the formats drawn are always the ones remembered.
     const bool newFormat = !isFrozen && formatsChanged(true);
-    const bool changed = fresh || newFormat || inputsChanged(settings, command, laneSetId) ||
-                         (comparing && (matchesPending || sumsRefreshing()));
+    const bool inputs = fresh || newFormat || inputsChanged(settings, command, laneSetId);
+    resultsOnly = !inputs;
+    bool changed = inputs || (comparing && matchesPending && !searchingSerial);
+    // A search running over frames is stepped without drawing until it ends (see produce); sums
+    // still being recomputed go on in the frames drawn between searches.
+    if (!changed && comparing) {
+        changed = searchingSerial ? stepSpreadWork(engine.sampleRate()) : sumsRefreshing();
+    }
     if (!changed) {
         return false;
     }
@@ -1237,6 +1291,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         frameData.insert(frameData.end(), reduction.values().begin(), reduction.values().end());
     }
     header.pointCount = static_cast<std::uint32_t>(pointCount);
+    mergeRanges(frameChanges);
 
     if (partial) {
         header.flags = static_cast<std::uint8_t>(header.flags | flag(FrameFlag::kPartial));
@@ -1463,20 +1518,31 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     return true;
 }
 
-// The compared track whose match to search this frame: a track without a match first, else the
+// The compared track whose match to search next: a track without a match first, else the
 // one with the oldest match that is due, provided kMatchSpacingSeconds of audio passed since the
 // last search. A change of the tracks compared, the view or the span, or a freeze or its end,
-// makes every match due, but keeps it on show until its search. Frozen, or with the transport
-// stopped, no audio may arrive to space those searches by: they come one per frame instead, and
-// the later refreshes are spaced again. Notes whether matches remain to search.
+// makes every match due, but keeps it on show until its search; so does panning a frozen view
+// (`shownFrom`, where its window starts). Frozen, or with the transport stopped, no audio may
+// arrive to space those searches by: they come one after another instead, and the later
+// refreshes are spaced again; frozen, the audio is held, so there are none. None while a search
+// runs. Notes whether matches remain to search.
 std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::size_t first,
                                                    std::size_t end, std::size_t length,
-                                                   std::uint64_t now)
+                                                   std::uint64_t now, std::uint64_t shownFrom,
+                                                   double viewStart, double viewEnd)
 {
-    if (laneSet != matchLaneSet || first != matchFirst || end != matchEnd || length != matchCount ||
-        isFrozen != matchFrozen) {
+    // A zoomed live roll draws only its visible part, so a pan of the same width changes no crop
+    // or length: the view itself says where it is.
+    const bool sameView = laneSet == matchLaneSet && first == matchFirst && end == matchEnd &&
+                          length == matchCount && isFrozen == matchFrozen &&
+                          viewStart == matchViewStart && viewEnd == matchViewEnd;
+    // Panned and nothing else: a drag moves the view a little each frame.
+    const bool panned = sameView && isFrozen && shownFrom != matchShownFrom;
+    panning = false;
+    if (!sameView || panned) {
         for (auto& [serial, state] : matchStates) {
             state.wait = 0;
+            state.failedReads = 0;
         }
         comparisonCache.valid = false;
         matchLaneSet = laneSet;
@@ -1484,11 +1550,30 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
         matchEnd = end;
         matchCount = length;
         matchFrozen = isFrozen;
+        matchShownFrom = shownFrom;
+        matchViewStart = viewStart;
+        matchViewEnd = viewEnd;
         searchAtOnce = isFrozen || !engine.timeline().latest().playing;
+        // A search of the audio shown before measures what is no longer shown, and so do gains:
+        // forgotten, it is not stepped again, and the next search starts afresh.
+        searchingSerial.reset();
+        gainJob.active = false;
+        if (panned) {
+            // Nothing begins until the view stays where it is for a frame: while it is dragged,
+            // each search and measurement would be ended by the next frame's move.
+            panning = true;
+            matchesPending = true;
+            return std::nullopt;
+        }
     }
     std::erase_if(matchStates, [&](const auto& entry) {
         return std::ranges::find(laneOrder, entry.first) == laneOrder.end();
     });
+    // One search at a time: frames go on meanwhile, as they do while matches remain to search.
+    if (searchingSerial) {
+        matchesPending = true;
+        return std::nullopt;
+    }
     const double sampleRate = engine.sampleRate();
     std::optional<std::size_t> chosen;
     std::uint64_t chosenAt = 0;
@@ -1506,8 +1591,11 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
                 chosen = lane;
                 missing = true;
             }
-        } else if (now < found->second.analysedAt ||
-                   now - found->second.analysedAt >= found->second.wait) {
+        } else if (found->second.wait == 0 ||
+                   (!isFrozen && (now < found->second.analysedAt ||
+                                  now - found->second.analysedAt >= found->second.wait))) {
+            // Made due by a change of view, or by the audio played since its search. Frozen,
+            // the audio shown is held and does not change: a match found there stays.
             ++candidates;
             if (!missing && (!chosen || found->second.analysedAt < chosenAt)) {
                 chosen = lane;
@@ -1525,6 +1613,26 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
     searchAtOnce = searchAtOnce && matchesPending;
     lastMatchSearch = now;
     return chosen;
+}
+
+bool Analyzer::continueMatchSearch(double liveRate)
+{
+    if (!searchingSerial) {
+        return false;
+    }
+    const std::uint64_t before = matchSearch.work();
+    const bool ended = matchSearch.step(kMatchSearchWork);
+    workDone.searchWork += matchSearch.work() - before;
+    if (!ended) {
+        matchesPending = true; // Frames go on until it ends, frozen too.
+        return false;
+    }
+    matchStates[*searchingSerial] = {
+        .analysis = matchSearch.result(),
+        .analysedAt = searchStartedAt,
+        .wait = static_cast<std::uint64_t>(std::lround(kMatchRefreshSeconds * liveRate))};
+    searchingSerial.reset();
+    return true;
 }
 
 bool Analyzer::readSamples(const SampleSource& source, int inputChannels, ChannelView view,
@@ -1581,7 +1689,8 @@ void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, st
 bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
                               const std::vector<std::int64_t>& key,
                               std::vector<std::int64_t>& lastKey, const std::vector<SumPart>& parts,
-                              std::size_t reach, std::size_t length, std::size_t block)
+                              std::size_t reach, std::size_t length, std::size_t block,
+                              std::size_t shares)
 {
     const auto read = [&](std::size_t from, std::span<float> into) {
         readSum(parts, length, from, into);
@@ -1609,7 +1718,7 @@ bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
         }
     }
     const bool refreshing = refresh.remaining > 0;
-    continueRefresh(refresh, length, refreshStep(parts.size()),
+    continueRefresh(refresh, length, refreshStep(parts.size(), shares),
                     [&](std::size_t from, std::size_t to) { stats.update(from, to, read); });
     return refreshing;
 }
@@ -1715,7 +1824,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     const auto ownIndex =
         static_cast<std::size_t>(std::ranges::find(laneOrder, ownLane) - laneOrder.begin());
 
-    // The match search: one track per frame, over the audio just before the playhead, continuing
+    // The match search: one track at a time, over the audio just before the playhead, continuing
     // at the right edge into the end of the previous pass when the playhead is near the left one
     // (the sweep's positions there are the moments just before), or over the newest part visible
     // when the playhead is elsewhere.
@@ -1732,19 +1841,18 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         readLaneImage(index, length, length - wrapped, into.first(wrapped));
         readLaneImage(index, length, searchEnd + wrapped - searchCount, into.subspan(wrapped));
     };
-    bool searched = false;
-    if (const auto lane = matchToSearch(header.laneSet, first, end, length, now)) {
+    if (const auto lane = matchToSearch(header.laneSet, first, end, length, now, 0, 0.0, 1.0)) {
         matchOwn.resize(searchCount);
         matchTrack.resize(searchCount);
         readSearch(ownIndex, matchOwn);
         readSearch(*lane, matchTrack);
         ++workDone.matchSearches;
-        matchStates[laneOrder[*lane]] = {
-            .analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch),
-            .analysedAt = now,
-            .wait = static_cast<std::uint64_t>(std::lround(kMatchRefreshSeconds * liveRate))};
-        searched = true;
+        matchSearch.start(matchOwn, matchTrack, maxOffset, block);
+        searchingSerial = laneOrder[*lane];
+        searchStartedAt = now;
     }
+    const bool searched =
+        spreadStepped ? std::exchange(searchEnded, false) : continueMatchSearch(liveRate);
 
     // The compared tracks as parts of the sum: as recorded, and shifted and flipped as matched.
     rawParts.clear();
@@ -1767,37 +1875,88 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         fixedSumKey.insert(fixedSumKey.end(), {static_cast<std::int64_t>(serial), fixed.offset,
                                                fixed.sign < 0.0f ? 1 : 0});
     }
-    // Measured again beyond this frame's changes: the gains follow, so they settle as the
-    // recomputation ends.
-    const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey,
-                                            rawParts, 0, length, block);
-    bool fixedMeasured = updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey,
-                                        lastFixedSumKey, fixedParts, maxOffset, length, block);
     // Each track the fix shifts: its levels per block as shifted, which the fixed gain weighs the
     // fixed sum against. A track it does not shift (or no longer compared) keeps none pending, and
-    // measures them all again once shifted.
-    for (const std::uint64_t serial : laneOrder) {
-        Lane& lane = *lanes.at(serial);
+    // measures them all again once shifted: starting from its levels as recorded, which a shift of
+    // at most kMatchReachSeconds barely changes, and redone over the next frames, as when its match
+    // moves.
+    const auto shiftedPart = [&](std::uint64_t serial) {
         const auto part = std::ranges::find_if(fixedParts, [&](const SumPart& candidate) {
             return laneOrder[candidate.lane] == serial;
         });
-        if (part == fixedParts.end() || part->offset == 0) {
+        return part == fixedParts.end() || part->offset == 0 ? nullptr : &*part;
+    };
+    for (const std::uint64_t serial : laneOrder) {
+        Lane& lane = *lanes.at(serial);
+        if (const SumPart* const part = shiftedPart(serial)) {
+            lane.fixedKey.assign({static_cast<std::int64_t>(length), part->offset});
+            if (!lane.fixedStats.fits(length, block) && lane.stats.fits(length, block)) {
+                lane.fixedStats = lane.stats;
+            }
+        } else {
             lane.fixedRefresh = {};
+            lane.fixedKey.clear();
             lane.lastFixedKey.clear();
+        }
+    }
+
+    // The sum lane, with its parts as previewed. Its geometry: the span and visible part, and the
+    // columns; its key: each part as summed.
+    const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
+    sumGeometry.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
+                        static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns)});
+    sumKey.clear();
+    for (const SumPart& part : parts) {
+        sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
+                                     part.sign < 0.0f ? 1 : 0});
+    }
+    const std::size_t visibleCount = end - first;
+    const bool sumRebuilt =
+        sumGeometry != lastSumGeometry || !sumReduction.fits(visibleCount, columns);
+
+    // The recomputations under way this frame, which share its kSumRefreshSamples, so that many
+    // at once (every match moved) take no longer per frame than one.
+    const auto pending = [&](const BlockStats& stats, const SumRefresh& refresh,
+                             const std::vector<std::int64_t>& key,
+                             const std::vector<std::int64_t>& lastKey) {
+        return stats.fits(length, block) && (refresh.remaining > 0 || key != lastKey) ? 1U : 0U;
+    };
+    std::size_t shares = pending(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey) +
+                         pending(fixedSumStats, fixedSumRefresh, fixedSumKey, lastFixedSumKey);
+    for (const std::uint64_t serial : laneOrder) {
+        const Lane& lane = *lanes.at(serial);
+        if (!lane.fixedKey.empty()) {
+            shares += pending(lane.fixedStats, lane.fixedRefresh, lane.fixedKey, lane.lastFixedKey);
+        }
+    }
+    if (!sumRebuilt && (sumRefresh.remaining > 0 || sumKey != lastSumKey)) {
+        ++shares;
+    }
+
+    // Measured again beyond this frame's changes: the gains follow, so they settle as the
+    // recomputation ends.
+    const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey,
+                                            rawParts, 0, length, block, shares);
+    bool fixedMeasured =
+        updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey, lastFixedSumKey, fixedParts,
+                       maxOffset, length, block, shares);
+    for (const std::uint64_t serial : laneOrder) {
+        Lane& lane = *lanes.at(serial);
+        if (lane.fixedKey.empty()) {
             continue;
         }
-        lane.fixedKey.assign({static_cast<std::int64_t>(length), part->offset});
-        onePart.assign(1, *part);
-        fixedMeasured = updateSumStats(lane.fixedStats, lane.fixedRefresh, lane.fixedKey,
-                                       lane.lastFixedKey, onePart, maxOffset, length, block) ||
-                        fixedMeasured;
+        onePart.assign(1, *shiftedPart(serial));
+        fixedMeasured =
+            updateSumStats(lane.fixedStats, lane.fixedRefresh, lane.fixedKey, lane.lastFixedKey,
+                           onePart, maxOffset, length, block, shares) ||
+            fixedMeasured;
     }
 
     // The matches' values and the gains, when due.
     const auto gainInterval =
         static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * liveRate);
     if (searched || rawMeasured || fixedMeasured || !comparisonCache.valid ||
-        now < comparisonCache.at || now - comparisonCache.at >= gainInterval) {
+        gainsDueByTime(now, gainInterval)) {
         std::vector<float>& matchValues = comparisonCache.matches;
         assignNoMatches(matchValues, laneOrder.size());
         for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
@@ -1848,23 +2007,13 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         comparisonCache.valid = true;
     }
 
-    // The sum lane, with its parts as previewed. Its geometry: the span and visible part, and the
-    // columns; its key: each part as summed.
-    const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
-    sumGeometry.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
-                        static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns)});
-    sumKey.clear();
-    for (const SumPart& part : parts) {
-        sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
-                                     part.sign < 0.0f ? 1 : 0});
-    }
+    // The sum lane's columns.
     const auto readVisibleSum = [&](std::size_t from, std::span<float> into) {
         workDone.samplesReduced += into.size();
         readSum(parts, length, first + from, into);
         return true;
     };
-    const std::size_t visibleCount = end - first;
-    if (sumGeometry != lastSumGeometry || !sumReduction.fits(visibleCount, columns)) {
+    if (sumRebuilt) {
         sumReduction.reset(visibleCount, columns);
         sumReduction.update(0, visibleCount, readVisibleSum);
         lastSumGeometry = sumGeometry;
@@ -1887,7 +2036,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
                                     static_cast<std::size_t>(to) - first, readVisibleSum);
             }
         }
-        continueRefresh(sumRefresh, visibleCount, refreshStep(parts.size()),
+        continueRefresh(sumRefresh, visibleCount, refreshStep(parts.size(), shares),
                         [&](std::size_t from, std::size_t to) {
                             sumReduction.update(from, to, readVisibleSum);
                         });
@@ -1901,13 +2050,142 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     header.fixedGain = comparisonCache.fixedGain;
 }
 
+template <typename Read>
+bool Analyzer::addPartFrom(const Read& read, const SumPart& part, std::size_t position,
+                           std::uint64_t count, std::span<float> into)
+{
+    const std::ptrdiff_t source = static_cast<std::ptrdiff_t>(position) + part.offset;
+    const std::ptrdiff_t begin = std::max<std::ptrdiff_t>(0, -source);
+    const std::ptrdiff_t stop = std::min<std::ptrdiff_t>(
+        static_cast<std::ptrdiff_t>(into.size()), static_cast<std::ptrdiff_t>(count) - source);
+    if (begin >= stop) {
+        return true;
+    }
+    sumScratch.resize(static_cast<std::size_t>(stop - begin));
+    workDone.samplesSummed += sumScratch.size();
+    const std::ptrdiff_t from = source + begin;
+    const bool held = read(part.lane, static_cast<std::uint64_t>(from), sumScratch);
+    for (std::ptrdiff_t i = begin; i < stop; ++i) {
+        into[static_cast<std::size_t>(i)] +=
+            part.sign * sumScratch[static_cast<std::size_t>(i - begin)];
+    }
+    return held;
+}
+
+bool Analyzer::gainsDueByTime(std::uint64_t now, std::uint64_t interval) const
+{
+    // Frozen, the audio shown is held and does not change: gains measured there stay until the
+    // view or the matches change.
+    return !isFrozen && (now < comparisonCache.at || now - comparisonCache.at >= interval);
+}
+
+bool Analyzer::gainAudioReplaced() const
+{
+    // Resumed after the frames stopped for a while (a hidden page asks for none): a track's
+    // capture may have moved past audio the gains need since they began.
+    for (std::size_t index = 0; index < laneOrder.size(); ++index) {
+        if (laneSources[index].first->beginIndex() > gainJob.needFrom[index]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Analyzer::stepGainJob()
+{
+    if (gainAudioReplaced()) {
+        gainJob.active = false; // Measured again once due, rather than from silence.
+        return false;
+    }
+    // Lane `index`'s Mid where the window was when the gains began.
+    const auto readJobWindow = [&](std::size_t index, std::uint64_t from, std::span<float> into) {
+        readScratch.resize(std::max(readScratch.size(), into.size()));
+        return readSamplesHeld(
+            *laneSources[index].first, lanes.at(laneOrder[index])->engine->inputChannels(),
+            ChannelView::kMid, gainJob.laneStarts[index] + from, into, readScratch);
+    };
+    laneSamples.resize(laneOrder.size());
+    fixedLanes.resize(laneOrder.size());
+    // Reads the parts, each lane as recorded and as the fix shifts it, then measures the sum as
+    // recorded, then fixed: as much as the frame's budget allows, so a short view is done at once,
+    // as it was before it could be spread.
+    std::size_t budget = kGainReadWork;
+    while (gainJob.active && budget > 0) {
+        if (gainJob.next < gainJob.raw.size()) {
+            const std::size_t part = gainJob.next++;
+            const std::size_t lane = gainJob.raw[part].lane;
+            std::vector<float>& samples = laneSamples[lane];
+            samples.resize(gainJob.visibleCount);
+            readJobWindow(lane, gainJob.first, samples);
+            std::vector<float>& fixed = fixedLanes[lane];
+            fixed.assign(gainJob.fixedEnd - gainJob.fixedFirst, 0.0f);
+            addPartFrom(readJobWindow, gainJob.fixed[part], gainJob.fixedFirst, gainJob.count,
+                        fixed);
+            budget -= std::min(budget, samples.size() + fixed.size());
+            continue;
+        }
+        if (!gainJob.measuring) {
+            std::vector<std::span<const float>>& tracks =
+                gainJob.measured == 0 ? rawTracks : fixedTracks;
+            tracks.clear();
+            for (const SumPart& part : gainJob.raw) {
+                tracks.emplace_back(gainJob.measured == 0 ? laneSamples[part.lane]
+                                                          : fixedLanes[part.lane]);
+            }
+            gainJob.measure.start(tracks, gainJob.block);
+            gainJob.measuring = true;
+        }
+        const std::uint64_t before = gainJob.measure.work();
+        const bool ended = gainJob.measure.step(budget);
+        const std::uint64_t passed = gainJob.measure.work() - before;
+        workDone.gainWork += passed;
+        budget -= static_cast<std::size_t>(std::min<std::uint64_t>(budget, passed));
+        if (!ended) {
+            continue;
+        }
+        gainJob.measuring = false;
+        const auto gain = static_cast<float>(gainJob.measure.result());
+        if (gainJob.measured == 0) {
+            gainJob.sumGain = gain;
+            gainJob.measured = 1;
+        } else {
+            comparisonCache.sumGain = gainJob.sumGain;
+            comparisonCache.fixedGain = gain;
+            comparisonCache.tracks = gainJob.tracks;
+            // A match that ended meanwhile is measured next: due at once, frozen too.
+            comparisonCache.valid = !gainJob.stale;
+            comparisonCache.at = gainJob.at;
+            gainJob.active = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Analyzer::stepSpreadWork(double liveRate)
+{
+    spreadStepped = true;
+    bool ended = false;
+    if (searchingSerial && continueMatchSearch(liveRate)) {
+        searchEnded = true;
+        ended = true;
+        if (gainJob.active) {
+            gainJob.stale = true; // As when the search ends in a frame drawn.
+        }
+    }
+    if (gainJob.active && stepGainJob()) {
+        ended = true;
+    }
+    return ended;
+}
+
 // A Compare frame with the seconds time base: every track's lane over the window, then the sum of
 // the compared tracks, then each track's match against this track. Rolling, each lane and the
 // sum keep their columns and reduce only those that scrolled in, the sum through a reader that
 // adds the compared lanes (shifted and flipped as previewed); otherwise the visible part
-// [first, end) is reduced afresh. Matches are searched one per frame, over the newest part of the
+// [first, end) is reduced afresh. Matches are searched one at a time, over the newest part of the
 // visible part; the summing gains (over the visible part) and the readouts (over the whole
-// window) are measured at most every 100 ms of audio.
+// window) are measured at most every 100 ms of audio, the gains over frames.
 void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std::uint64_t start,
                              std::uint64_t sampleCount, std::size_t first, std::size_t end,
                              bool rolling, double sampleRate, const Commands& command,
@@ -1935,56 +2213,50 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
                                ChannelView::kMid, laneStart + from, into, readScratch);
     };
 
-    // Adds `part` to `into` over window positions from `position`: each shows the part's sample
-    // at position + offset, flipped if it is, and silence beyond the window. False if the part's
-    // capture does not hold its samples yet.
     const auto addPart = [&](const SumPart& part, std::size_t position, std::span<float> into) {
-        const std::ptrdiff_t source = static_cast<std::ptrdiff_t>(position) + part.offset;
-        const std::ptrdiff_t begin = std::max<std::ptrdiff_t>(0, -source);
-        const std::ptrdiff_t stop = std::min<std::ptrdiff_t>(
-            static_cast<std::ptrdiff_t>(into.size()), static_cast<std::ptrdiff_t>(count) - source);
-        if (begin >= stop) {
-            return true;
-        }
-        sumScratch.resize(static_cast<std::size_t>(stop - begin));
-        workDone.samplesSummed += sumScratch.size();
-        const std::ptrdiff_t from = source + begin;
-        const bool read = readLaneWindow(part.lane, static_cast<std::uint64_t>(from), sumScratch);
-        for (std::ptrdiff_t i = begin; i < stop; ++i) {
-            into[static_cast<std::size_t>(i)] +=
-                part.sign * sumScratch[static_cast<std::size_t>(i - begin)];
-        }
-        return read;
+        return addPartFrom(readLaneWindow, part, position, count, into);
     };
 
-    // The match search: one track per frame, over the newest part of the visible part, which
+    // The match search: one track at a time, over the newest part of the visible part, which
     // ends at its right edge.
     const auto windowSamples =
         static_cast<std::size_t>(std::lround(kMatchWindowSeconds * sampleRate));
     const std::size_t searchFirst = end - std::min(windowSamples, visibleCount);
-    bool searched = false;
-    if (const auto lane = matchToSearch(header.laneSet, first, end, count, now)) {
+    // The view as zoomed: a triggered window starts a different fraction of a sample in each
+    // frame, which moves the samples shown by one now and then, and that is not another view.
+    const Crop view = cropOf(static_cast<double>(count), 0.0, window.cropStart, window.cropEnd);
+    if (const auto lane = matchToSearch(header.laneSet, view.first, view.end, count, now, start,
+                                        window.viewStart, window.viewEnd)) {
         matchOwn.resize(end - searchFirst);
         matchTrack.resize(end - searchFirst);
         // A failed read (a capture overwritten during the copy, or not holding this audio yet)
         // keeps the match as it was rather than one from partly silent audio. It counts as this
         // track's turn, so the others are searched first, but is tried again soon rather than at
         // the next refresh.
-        MatchState& state = matchStates[laneOrder[*lane]];
         const auto readSearch = [&](std::size_t index, std::span<float> into) {
             workDone.samplesSearched += into.size();
             return readLaneWindow(index, searchFirst, into);
         };
         if (readSearch(ownIndex, matchOwn) && readSearch(*lane, matchTrack)) {
             ++workDone.matchSearches;
-            state.analysis = analysePair(matchOwn, matchTrack, maxOffset, block, scratch);
-            state.wait = static_cast<std::uint64_t>(std::lround(kMatchRefreshSeconds * liveRate));
-            searched = true;
+            matchSearch.start(matchOwn, matchTrack, maxOffset, block);
+            searchingSerial = laneOrder[*lane];
+            searchStartedAt = now;
         } else {
+            MatchState& state = matchStates.try_emplace(laneOrder[*lane]).first->second;
             state.wait = static_cast<std::uint64_t>(std::lround(kMatchRetrySeconds * liveRate));
+            state.analysedAt = now;
+            // Frozen, no audio comes due again by time: due again at once, a few times.
+            if (isFrozen && ++state.failedReads < kFrozenReadTries) {
+                state.wait = 0;
+                // A frame to try it in, though nothing else is due, and no audio to wait for.
+                matchesPending = true;
+                searchAtOnce = true;
+            }
         }
-        state.analysedAt = now;
     }
+    const bool searched =
+        spreadStepped ? std::exchange(searchEnded, false) : continueMatchSearch(liveRate);
 
     // The compared tracks as parts of the sum: as recorded, and shifted and flipped as matched.
     rawParts.clear();
@@ -2003,11 +2275,18 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         fixedParts.push_back(fixed);
     }
 
-    // The matches' values and the gains, when due, over the visible part.
+    // The matches' values when due, and the summing gains over the visible part: measured over
+    // the next frames (kGainReadWork samples read in each), of the window as it was when they
+    // began, so that no frame reads every compared track's whole view at once.
     const auto gainInterval =
         static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * liveRate);
-    if (searched || !comparisonCache.valid || now < comparisonCache.at ||
-        now - comparisonCache.at >= gainInterval) {
+    if (gainJob.active && gainAudioReplaced()) {
+        gainJob.active = false; // They begin afresh below.
+    }
+    if (searched && gainJob.active) {
+        gainJob.stale = true;
+    }
+    if (searched || !comparisonCache.valid || gainsDueByTime(now, gainInterval)) {
         std::vector<float>& matchValues = comparisonCache.matches;
         assignNoMatches(matchValues, laneOrder.size());
         for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
@@ -2024,33 +2303,57 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
                                       : std::numeric_limits<float>::quiet_NaN();
             values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
         }
-        // The fix is measured where every shifted track has samples in the window.
-        std::ptrdiff_t earliest = 0;
-        std::ptrdiff_t latest = 0;
-        for (const SumPart& part : fixedParts) {
-            earliest = std::min(earliest, part.offset);
-            latest = std::max(latest, part.offset);
+        if (!gainJob.active && !panning) {
+            // The fix is measured where every shifted track has samples in the window.
+            std::ptrdiff_t earliest = 0;
+            std::ptrdiff_t latest = 0;
+            for (const SumPart& part : fixedParts) {
+                earliest = std::min(earliest, part.offset);
+                latest = std::max(latest, part.offset);
+            }
+            const auto [fixedFirst, fixedEnd] = fixedPart(first, end, count, earliest, latest);
+            gainJob.active = true;
+            gainJob.at = now;
+            gainJob.sampleRate = sampleRate;
+            gainJob.count = count;
+            gainJob.block = block;
+            gainJob.first = first;
+            gainJob.visibleCount = visibleCount;
+            gainJob.fixedFirst = fixedFirst;
+            gainJob.fixedEnd = fixedEnd;
+            gainJob.raw = rawParts;
+            gainJob.fixed = fixedParts;
+            gainJob.next = 0;
+            gainJob.measured = 0;
+            gainJob.measuring = false;
+            // The oldest sample each lane's parts read, as recorded or shifted, or the oldest
+            // its source holds now if later: audio it loses before the end is audio since replaced.
+            const auto reach = static_cast<std::uint64_t>(std::max(-earliest, latest));
+            const std::size_t oldest = std::min(first, fixedFirst);
+            gainJob.laneStarts.clear();
+            gainJob.needFrom.clear();
+            for (const auto& [source, laneStart] : laneSources) {
+                gainJob.laneStarts.push_back(laneStart);
+                const std::uint64_t from = laneStart + oldest;
+                gainJob.needFrom.push_back(
+                    std::max(from - std::min(from, reach), source->beginIndex()));
+            }
+            gainJob.stale = false;
+            gainJob.tracks.clear();
+            for (const SumPart& part : rawParts) {
+                gainJob.tracks.push_back(laneOrder[part.lane]);
+            }
+            if (!comparisonCache.valid && comparisonCache.tracks != gainJob.tracks) {
+                // Nothing measured for these tracks yet: no value until it is. For the same
+                // tracks over another view (while panning or zooming), or under other lanes'
+                // labels, the last stays shown.
+                comparisonCache.sumGain = std::numeric_limits<float>::quiet_NaN();
+                comparisonCache.fixedGain = std::numeric_limits<float>::quiet_NaN();
+            }
         }
-        const auto [fixedFirst, fixedEnd] = fixedPart(first, end, count, earliest, latest);
-        laneSamples.resize(laneOrder.size());
-        fixedLanes.resize(laneOrder.size());
-        rawTracks.clear();
-        fixedTracks.clear();
-        for (std::size_t part = 0; part < rawParts.size(); ++part) {
-            const std::size_t lane = rawParts[part].lane;
-            std::vector<float>& samples = laneSamples[lane];
-            samples.resize(visibleCount);
-            readLaneWindow(lane, first, samples);
-            std::vector<float>& fixed = fixedLanes[lane];
-            fixed.assign(fixedEnd - fixedFirst, 0.0f);
-            addPart(fixedParts[part], fixedFirst, fixed);
-            rawTracks.emplace_back(samples);
-            fixedTracks.emplace_back(fixed);
-        }
-        comparisonCache.sumGain = static_cast<float>(overlapGain(rawTracks, block));
-        comparisonCache.fixedGain = static_cast<float>(overlapGain(fixedTracks, block));
-        comparisonCache.at = now;
-        comparisonCache.valid = true;
+    }
+    if (gainJob.active && !spreadStepped) {
+        (void)stepGainJob();
     }
 
     // The lanes' columns: rolling, each lane keeps its columns and reduces only those that

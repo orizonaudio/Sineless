@@ -110,6 +110,117 @@ describe("render loop", () => {
     },
   );
 
+  // A display's ticks reach the page a little early or late: on a 60 Hz MacBook display their
+  // timestamps wander by up to 2.5 ms either way, 15% of a tick. A tick that comes early is still
+  // the tick to draw on; skipping it leaves a frame on screen for two ticks, a visible stutter.
+  test.each([60, 75, 100, 120, 144, 165])(
+    "skips no tick it should draw on at %i Hz when ticks wander by 15% of a tick",
+    (refreshRate) => {
+      const interval = 1000 / 60;
+      const period = 1000 / refreshRate;
+      const wander = 0.15 * period;
+      const pending: ((timestamp: number) => void)[] = [];
+      const drawnAt: number[] = [];
+      let now = 0;
+      const loop = new RenderLoop(
+        (callback) => pending.push(callback),
+        {
+          draw: () => {
+            drawnAt.push(now);
+          },
+        },
+        () => {
+          loop.submit(frame(drawnAt.length)); // The engine always has the next frame ready.
+        },
+        interval,
+      );
+      loop.submit(frame(0));
+      let seed = 1;
+      for (let tick = 0; tick <= refreshRate * 10; tick++) {
+        seed = (seed * 16807) % 2147483647; // Park and Miller's: exact in a double.
+        now = tick * period + wander * (2 * (seed / 2147483647) - 1);
+        for (const callback of pending.splice(0)) {
+          callback(now);
+        }
+      }
+      // The longest the 60 frames/s schedule needs between draws: the ticks one interval
+      // spans, each of which may have wandered.
+      const longest = Math.ceil(interval / period) * period + 2 * wander;
+      const gaps = drawnAt
+        .slice(1)
+        .map((at, index) => at - (drawnAt[index] ?? 0));
+      expect(Math.max(...gaps)).toBeLessThanOrEqual(longest);
+      expect(drawnAt.length / 10).toBeCloseTo(60, 0); // Over 10 seconds.
+    },
+  );
+
+  // Ticks at `rates` (Hz) in turn, `seconds` of each, wandering by 15% of a tick, with the
+  // engine's next frame always ready: when each frame was drawn, and how many ticks there were.
+  function drawsAt(rates: readonly number[], seconds: number) {
+    const pending: ((timestamp: number) => void)[] = [];
+    const drawnAt: number[] = [];
+    let now = 0;
+    const loop = new RenderLoop(
+      (callback) => pending.push(callback),
+      {
+        draw: () => {
+          drawnAt.push(now);
+        },
+      },
+      () => {
+        loop.submit(frame(drawnAt.length));
+      },
+      1000 / 60,
+    );
+    loop.submit(frame(0));
+    let seed = 7;
+    let start = 0;
+    let ticks = 0;
+    for (const rate of rates) {
+      const period = 1000 / rate;
+      for (let tick = 0; tick < rate * seconds; tick++) {
+        seed = (seed * 16807) % 2147483647; // Park and Miller's: exact in a double.
+        now =
+          start + tick * period + 0.15 * period * (2 * (seed / 2147483647) - 1);
+        ticks++;
+        for (const callback of pending.splice(0)) {
+          callback(now);
+        }
+      }
+      start += seconds * 1000;
+    }
+    return { drawnAt, ticks };
+  }
+
+  // A display at or near 60 Hz is not paced: its ticks drift from an exact 60 a second, and a
+  // fixed schedule would sooner or later find one early and skip it, a stutter. (The slowest
+  // displays paced, at 75 Hz, are covered above.)
+  test.each([59.94, 60, 60.5, 61])(
+    "draws on every tick of a %f Hz display",
+    (refreshRate) => {
+      const { drawnAt, ticks } = drawsAt([refreshRate], 30);
+      expect(drawnAt).toHaveLength(ticks);
+    },
+  );
+
+  // Moved to a display of another rate, the loop measures the new one's ticks and paces for
+  // it within a second: 60 frames a second at 120 Hz, and every tick again back at 60 Hz.
+  // From a display it does not pace, including one a little faster than 60 Hz, whose ticks
+  // would otherwise leave a 60 frames/s schedule behind.
+  test.each([60, 64])(
+    "follows the display when the window moves from %i Hz to 120 Hz and back",
+    (first) => {
+      const { drawnAt } = drawsAt([first, 120, first], 5);
+      const inSecond = (second: number) =>
+        drawnAt.filter((at) => at >= second * 1000 && at < (second + 1) * 1000)
+          .length;
+      expect(inSecond(4)).toBeGreaterThanOrEqual(first - 1); // Every tick.
+      expect(inSecond(9)).toBeCloseTo(60, -1); // 120 Hz, settled.
+      expect(inSecond(9)).toBeLessThanOrEqual(61);
+      expect(inSecond(14)).toBeGreaterThanOrEqual(first - 1); // Every tick again.
+    },
+  );
+
   test("does not catch up with a quick pair of draws after a stall", () => {
     const pending: ((timestamp: number) => void)[] = [];
     const drawn: number[] = [];

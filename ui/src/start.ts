@@ -9,6 +9,7 @@ import type {
 import { OscilloscopeApp, type DebugState } from "./app.ts";
 import { Backend } from "./bridge/backend.ts";
 import type { NativeReceiver, Transport } from "./bridge/transport.ts";
+import { frameTimes, type FrameTimes } from "./frame-times.ts";
 import { perf, type Perf } from "./perf.ts";
 import { SettingsStore } from "./store/settings-store.ts";
 
@@ -38,6 +39,7 @@ declare global {
       lastState?: StateChangedMessage;
       lastFrame?: Frame;
       perf?: Perf;
+      frameTimes?: Pick<FrameTimes, "start" | "stop" | "summary">;
       requestFrame?: () => void;
     };
   }
@@ -51,6 +53,16 @@ export function startSineless(transport: Transport): void {
   const debug: NonNullable<Window["orizonDebug"]> = {
     frameCount: 0,
     perf,
+    // For the editor's benchmark: when the display ticked, and when new frames were drawn.
+    frameTimes: {
+      start: () => {
+        frameTimes.start();
+      },
+      stop: () => {
+        frameTimes.stop();
+      },
+      summary: () => frameTimes.summary(),
+    },
     // For the editor's tests, where WebKit pauses the draw loop that normally asks.
     requestFrame: () => {
       backend.requestFrame();

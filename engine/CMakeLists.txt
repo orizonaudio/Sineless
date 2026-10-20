@@ -84,3 +84,48 @@ if(BUILD_TESTING)
     gtest_discover_tests(engine_tests DISCOVERY_TIMEOUT 30)
 
 endif()
+
+if(ORIZON_BENCH)
+    # What the benchmarks share: the scenarios they play and the material, the same every run.
+    add_library(engine_bench_support INTERFACE)
+    target_include_directories(engine_bench_support INTERFACE bench/include)
+    target_link_libraries(engine_bench_support INTERFACE protocol)
+
+    # The analysis's work per frame, deterministic: counted under Cachegrind in CI
+    # (scripts/engine-work.sh), timed on its own.
+    add_executable(analysis_bench bench/AnalysisBench.cpp)
+    target_link_libraries(analysis_bench PRIVATE engine engine_bench_support orizon_warnings)
+
+    if(BUILD_TESTING)
+        # The bench writes the run the engine-work gate reads; it refuses a scenario none of whose
+        # frames shows anything (here, with no columns to draw), so that CI never compares one
+        # that measures nothing; it refuses a name or a number it cannot read; and it fails when
+        # it cannot write its results.
+        set(benchTest ${CMAKE_COMMAND} -DBENCH=$<TARGET_FILE:analysis_bench>)
+        set(benchScript ${CMAKE_CURRENT_SOURCE_DIR}/bench/BenchTest.cmake)
+        set(benchRun "--scenario=single-one-bar --frames=2")
+        add_test(NAME AnalysisBench.WritesARunTheGateReads
+                 COMMAND ${benchTest} "-DARGS=${benchRun}"
+                         -DJSON=${CMAKE_CURRENT_BINARY_DIR}/bench-test/single-one-bar.json
+                         -DNODE=${NODE_EXECUTABLE}
+                         -DGATE=${PROJECT_SOURCE_DIR}/scripts/engine-work.ts -P ${benchScript})
+        add_test(NAME AnalysisBench.RefusesAScenarioThatShowsNothing
+                 COMMAND ${benchTest} "-DARGS=${benchRun} --columns=0"
+                         "-DREFUSES=the scenario measures nothing" -P ${benchScript})
+        add_test(NAME AnalysisBench.RefusesAnUnknownScenario
+                 COMMAND ${benchTest} -DARGS=--scenario=no-such-scenario
+                         "-DREFUSES=Unknown scenario" -P ${benchScript})
+        # Frozen and panned, every frame shows another part of the held audio: measured, it shows
+        # something, so the refusal above covers it as well.
+        add_test(NAME AnalysisBench.MeasuresAFrozenViewPanned
+                 COMMAND ${benchTest} "-DARGS=--scenario=compare-15-frozen-pan --frames=4"
+                         -P ${benchScript})
+        add_test(NAME AnalysisBench.RefusesAFrameCountThatIsNotANumber
+                 COMMAND ${benchTest} "-DARGS=${benchRun} --frames=abc"
+                         "-DREFUSES=analysis_bench:" -P ${benchScript})
+        add_test(NAME AnalysisBench.SaysWhenItCannotWriteItsResults
+                 COMMAND ${benchTest} "-DARGS=${benchRun}"
+                         -DJSON=${CMAKE_CURRENT_BINARY_DIR}/bench-test-missing/single-one-bar.json
+                         "-DREFUSES=Could not write" -P ${benchScript})
+    endif()
+endif()
