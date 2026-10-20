@@ -8,8 +8,12 @@ import { perf } from "../perf.ts";
 // The draw clock: requestAnimationFrame in the page, a manual clock in tests.
 export type Scheduler = (callback: (timestamp: number) => void) => void;
 
-// How early a tick may come and still count as on time (ms).
-const tickJitter = 1;
+// How early a tick may come, as a share of the interval, and still be the tick to draw on. Tick
+// timestamps wander: on a 60 Hz MacBook display by up to 2 to 3 ms either way, and a tick
+// skipped for coming a little early leaves a frame on screen for two ticks. A quarter of a 60
+// frames/s interval (4.2 ms) takes in that wander, and is still under half a tick at 120 Hz,
+// whose in-between ticks come half an interval early and are skipped.
+const tickTolerance = 0.25;
 
 export interface FrameRenderer {
   draw(frame: Frame): void;
@@ -68,7 +72,7 @@ export class RenderLoop {
     this.tickPending = false;
     if (
       this.latest !== undefined &&
-      timestamp < this.nextDrawTime - tickJitter
+      timestamp < this.nextDrawTime - tickTolerance * this.interval
     ) {
       this.requestTick(); // Before the next frame's time: wait for a later tick.
       return;
