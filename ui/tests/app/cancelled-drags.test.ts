@@ -1,6 +1,6 @@
 // A drag the browser cancels (a touch it takes for a pan, or the pointer captured elsewhere) ends
 // there: moving the pointer or clicking later changes nothing it was dragging.
-import { beforeAll, describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { byId, settle, startApp, type Started } from "./harness.ts";
@@ -8,11 +8,17 @@ import { byId, settle, startApp, type Started } from "./harness.ts";
 const endings = ["pointercancel", "lostpointercapture"] as const;
 
 // Sends a pointer event to `target` at (`x`, `y`), fractions of the screen.
-function pointer(type: string, target: Element, x: number, y = 0.5): void {
+function pointer(
+  type: string,
+  target: Element,
+  x: number,
+  y = 0.5,
+  pointerId = 1,
+): void {
   const screen = byId("screen").getBoundingClientRect();
   target.dispatchEvent(
     new PointerEvent(type, {
-      pointerId: 1,
+      pointerId,
       bubbles: true,
       button: 0,
       buttons: type === "pointerup" ? 0 : 1,
@@ -120,5 +126,30 @@ describe("a cancelled drag", () => {
         element.id || element.className,
       ).toBe("none");
     }
+  });
+
+  // A second finger on the screen while one drags a selection (a pinch on a touch screen).
+  test("zooms to the first finger's selection only, whatever a second finger does", () => {
+    const screen = byId("screen");
+    const trace = byId("trace");
+    // Synthetic pointers other than the mouse have nothing to capture.
+    const capture = vi
+      .spyOn(screen, "setPointerCapture")
+      .mockImplementation(() => undefined);
+    trace.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    const before = app.sent.length;
+    pointer("pointerdown", trace, 0.2, 0.5, 1);
+    pointer("pointerdown", trace, 0.5, 0.5, 2);
+    pointer("pointermove", trace, 0.9, 0.5, 2);
+    pointer("pointerup", trace, 0.9, 0.5, 2);
+    pointer("pointermove", trace, 0.6, 0.5, 1);
+    pointer("pointerup", trace, 0.6, 0.5, 1);
+    capture.mockRestore();
+    const views = app.sent
+      .slice(before)
+      .filter((message) => message.type === "view");
+    expect(views).toHaveLength(1);
+    expect(views[0]?.["start"]).toBeCloseTo(0.2);
+    expect(views[0]?.["end"]).toBeCloseTo(0.6);
   });
 });

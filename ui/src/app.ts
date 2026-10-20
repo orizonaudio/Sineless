@@ -1580,8 +1580,10 @@ export class OscilloscopeApp {
     });
 
     const selection = element("selection");
+    // One selection at a time: a second finger on a touch screen starts none.
+    let selecting = false;
     this.screen.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) {
+      if (event.button !== 0 || selecting) {
         return;
       }
       const from = screenPosition(event.clientX);
@@ -1596,11 +1598,13 @@ export class OscilloscopeApp {
         selection.style.width = `${String(Math.abs(to - from) * 100)}%`;
       };
       followDrag(this.screen, event, move, (released) => {
+        selecting = false;
         if (released && !selection.hidden) {
           this.setView(zoomTo(this.view, from, to));
         }
         selection.hidden = true;
       });
+      selecting = true;
     });
     this.screen.addEventListener("dblclick", () => {
       this.setView(fullView);

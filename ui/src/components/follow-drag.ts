@@ -6,8 +6,9 @@
 
 const endings = ["pointerup", "pointercancel", "lostpointercapture"] as const;
 
-// Calls `move` for each pointer move, then `end` once, with whether the button was released
-// (false for a cancelled drag, whose result is not applied).
+// Calls `move` for each move of the pointer that started the drag, then `end` once, with whether
+// the button was released (false for a cancelled drag, whose result is not applied). Other
+// pointers, such as a second finger on a touch screen, are not followed.
 export function followDrag(
   element: HTMLElement,
   down: PointerEvent,
@@ -15,14 +16,22 @@ export function followDrag(
   end: (released: boolean) => void = () => undefined,
 ): void {
   element.setPointerCapture(down.pointerId);
+  const follow = (event: PointerEvent) => {
+    if (event.pointerId === down.pointerId) {
+      move(event);
+    }
+  };
   const stop = (event: PointerEvent) => {
-    element.removeEventListener("pointermove", move);
+    if (event.pointerId !== down.pointerId) {
+      return;
+    }
+    element.removeEventListener("pointermove", follow);
     for (const type of endings) {
       element.removeEventListener(type, stop);
     }
     end(event.type === "pointerup");
   };
-  element.addEventListener("pointermove", move);
+  element.addEventListener("pointermove", follow);
   for (const type of endings) {
     element.addEventListener(type, stop);
   }
