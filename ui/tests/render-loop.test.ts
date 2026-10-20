@@ -256,6 +256,38 @@ describe("render loop", () => {
     expect(credits()).toBe(1);
   });
 
+  test("returns the credit and keeps drawing after a draw that throws", () => {
+    const pending: ((timestamp: number) => void)[] = [];
+    const drawn: number[] = [];
+    let credits = 0;
+    const loop = new RenderLoop(
+      (callback) => pending.push(callback),
+      {
+        draw: (drawnFrame) => {
+          if (drawnFrame.pointCount === 1) {
+            throw new Error("draw failed");
+          }
+          drawn.push(drawnFrame.pointCount);
+        },
+      },
+      () => {
+        credits++;
+      },
+    );
+    const tick = () => {
+      for (const callback of pending.splice(0)) {
+        callback(0);
+      }
+    };
+    loop.submit(frame(1));
+    expect(tick).toThrow("draw failed");
+    expect(credits).toBe(1);
+    loop.submit(frame(2));
+    tick();
+    expect(drawn).toEqual([2]);
+    expect(credits).toBe(2);
+  });
+
   test("draws only the newest of several frames per tick", () => {
     const { loop, drawn, tick, credits, pending } = setup();
     loop.submit(frame(1));
