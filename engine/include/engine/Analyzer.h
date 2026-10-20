@@ -37,9 +37,10 @@ namespace orizon::engine {
 inline constexpr double kMatchWindowSeconds = protocol::kMatchWindowSeconds;
 inline constexpr double kMatchRefreshSeconds = 0.5;
 inline constexpr double kMatchSpacingSeconds = 0.1;
-// A match search is spread over frames, at most about this many multiply-adds of it in each, so
-// that a long window at a high rate (8 s at 96 kHz takes some 36 million) does not stall one
-// frame: a few milliseconds' work on a fast machine, so a slower one still keeps its frames.
+// A match search is spread over frames, at most about this many multiply-adds of it in each,
+// preparing its window and searching it, so that a long window at a high rate (8 s at 96 kHz
+// takes some 36 million) does not stall one frame: a few milliseconds' work on a fast machine, so
+// a slower one still keeps its frames.
 inline constexpr std::size_t kMatchSearchWork = std::size_t{1} << 23U;
 // Seconds mode's Compare gains are measured over frames too, reading or passing over at most
 // about this many samples of the compared tracks in each: fifteen tracks over a 4 s view at

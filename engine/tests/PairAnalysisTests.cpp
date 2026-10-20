@@ -132,6 +132,70 @@ TEST(PairSearch, SpreadsALongSearchOverSteps)
     EXPECT_EQ(search.result().offset, 100);
 }
 
+// Preparing a stretch (finding where both tracks sound, keeping only those samples, decimating
+// them for the coarse scan) passes over all of it, so it is spread over steps like the scan:
+// starting does none of it, and even tracks that never sound together, which leave no offset to
+// search, take several steps of a moderate budget, each counted as work.
+TEST(PairSearch, PreparesALongStretchOverSteps)
+{
+    const std::vector<float> silence(kLength, 0.0f);
+    PairSearch search;
+    search.start(silence, noise(45), kMaxOffset, kBlock);
+    EXPECT_EQ(search.work(), 0U) << "starting did work";
+    int steps = 1;
+    std::uint64_t most = 0;
+    while (true) {
+        const std::uint64_t before = search.work();
+        const bool ended = search.step(kLength / 4);
+        most = std::max(most, search.work() - before);
+        if (ended) {
+            break;
+        }
+        ++steps;
+    }
+    EXPECT_GT(steps, 2) << "the stretch was prepared in one step";
+    EXPECT_GE(search.work(), 2 * kLength) << "preparing both tracks was not counted";
+    EXPECT_LE(most, (kLength / 4) + (3 * kBlock)) << "a step went far beyond its budget";
+    EXPECT_FALSE(search.result().measured);
+}
+
+// At 44.1 kHz and its multiples a block of 10 ms (441 samples) is not a whole number of the coarse
+// scan's decimated samples; the one that straddles each block edge is decimated from both blocks.
+// Tracks that sound throughout are searched alike in blocks of 441 samples and in one block: a
+// coarse sample left empty at each edge moved the coarse match, and with it the offset found.
+TEST(PairSearch, FindsTheSameMatchWhateverTheBlockLength)
+{
+    constexpr std::size_t kRateLength = 44100;
+    constexpr std::size_t kEdgeBlock = 441;
+    // Tones from 40 Hz to 2 kHz and delays of up to 200 samples either way, spread over trials.
+    for (int trial = 0; trial < 100; ++trial) {
+        const double low = 40.0 + ((trial * 97) % 1960);
+        const double high = 40.0 + (((trial * 53) + 700) % 1960);
+        auto a = noise(static_cast<unsigned>(100 + trial), kRateLength);
+        for (std::size_t i = 0; i < kRateLength; ++i) {
+            const double t = static_cast<double>(i) / 44100.0;
+            a[i] = (0.2f * a[i]) +
+                   static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * low * t)) +
+                   static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * high * t));
+        }
+        // Late by `delay` (early when negative), wrapping round, so both sound in every block.
+        const int delay = ((trial * 37) % 401) - 200;
+        std::vector<float> b(kRateLength);
+        for (std::size_t i = 0; i < kRateLength; ++i) {
+            const auto from = (static_cast<std::ptrdiff_t>(i) - delay +
+                               static_cast<std::ptrdiff_t>(kRateLength)) %
+                              static_cast<std::ptrdiff_t>(kRateLength);
+            b[i] = a[static_cast<std::size_t>(from)];
+        }
+        const std::vector<float>& first = a;
+        const std::vector<float>& second = b;
+        const PairAnalysis inBlocks = analysePair(first, second, kEdgeBlock, kEdgeBlock);
+        const PairAnalysis whole = analysePair(first, second, kEdgeBlock, kRateLength);
+        EXPECT_EQ(inBlocks.offset, whole.offset) << "trial " << trial << ", delay " << delay;
+        EXPECT_EQ(inBlocks.inverted, whole.inverted) << "trial " << trial;
+    }
+}
+
 // Where a track is not finite (a broken signal upstream), the summing gain is measured around it,
 // in every track alike: the gain of tracks with runs of NaN or infinity in each of them, all far
 // above full scale, is the gain of the same tracks silenced there, as if those positions were not
