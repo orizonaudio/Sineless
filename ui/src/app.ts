@@ -336,6 +336,7 @@ export class OscilloscopeApp {
     window.addEventListener("resize", () => {
       this.resize();
     });
+    this.watchPixelRatio();
     window.setInterval(() => {
       this.statusDue(); // Without frames too: the chips say when none arrive.
     }, readoutInterval);
@@ -729,6 +730,22 @@ export class OscilloscopeApp {
   }
 
   // ----- Screen -----
+
+  // Moving the window to a display of another pixel ratio changes no size, so no resize event
+  // comes. A query for the current resolution stops matching then; it is asked again for each
+  // new ratio.
+  private watchPixelRatio(): void {
+    window
+      .matchMedia(`(resolution: ${String(window.devicePixelRatio)}dppx)`)
+      .addEventListener(
+        "change",
+        () => {
+          this.watchPixelRatio();
+          this.resize();
+        },
+        { once: true },
+      );
+  }
 
   private resize(): void {
     for (const [group, , id] of popovers) {
