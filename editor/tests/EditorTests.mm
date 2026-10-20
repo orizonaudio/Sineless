@@ -358,21 +358,22 @@ TEST_F(EditorTest, AsksTheHostForTheSizeTheGripIsDraggedTo)
         EXPECT_EQ(frame.requested.getWidth(), Editor::kMinimumWidth);
         EXPECT_EQ(frame.requested.getHeight(), editor->minimumHeight());
 
-        dragGrip(webView, 1000000, 1000000);
-        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 3; }, kPageTimeout));
-        EXPECT_GT(frame.requested.getWidth(), larger);
-        EXPECT_LT(frame.requested.getWidth(), 1000000)
-            << "a size within reason, not the absurd one";
-        EXPECT_LT(frame.requested.getHeight(), 1000000);
-
         for (const std::string fields : {"width: 'wide', height: 700", "width: 1200, height: null",
                                          "width: 1200", "height: 700", ""}) {
             postResize(webView, fields);
         }
         dragGrip(webView, larger, taller); // Handled after them: the page's order is kept.
-        ASSERT_TRUE(pumpUntil([&] { return frame.requests >= 4; }, kPageTimeout));
-        EXPECT_EQ(frame.requests, 4) << "no request for a size that is not one";
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests >= 3; }, kPageTimeout));
+        EXPECT_EQ(frame.requests, 3) << "no request for a size that is not one";
         EXPECT_EQ(frame.requested.getWidth(), larger);
+
+        // Last: the page at the size granted is far larger than any display, and slow to draw.
+        dragGrip(webView, 1000000, 1000000);
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 4; }, kPageTimeout));
+        EXPECT_GT(frame.requested.getWidth(), larger);
+        EXPECT_LT(frame.requested.getWidth(), 1000000)
+            << "a size within reason, not the absurd one";
+        EXPECT_LT(frame.requested.getHeight(), 1000000);
 
         editor->removed();
         [window close];
