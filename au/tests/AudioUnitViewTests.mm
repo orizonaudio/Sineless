@@ -719,6 +719,38 @@ TEST_F(AudioUnitViewTest, HoldsTheGripsSizeWhileAnAutoLayoutHostCatchesUp)
     closeWindow(window, view);
 }
 
+// A drag lasts longer than one size's hold: each new size holds for its own moment, and an earlier
+// size's hold ending does not let the host set the view back while the user still drags.
+TEST_F(AudioUnitViewTest, HoldsTheLatestSizeOfADragLongerThanAHold)
+{
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    pinWithAutoLayout(view);
+    WKWebView* webView = webViewOf(view);
+    ASSERT_NE(webView, nil);
+    ASSERT_TRUE(pumpUntil([&] { return testing::hasSnapshot(webView); }, kPageTimeout));
+    const auto layOutFor = [&](std::chrono::milliseconds duration) {
+        pumpUntil(
+            [&] {
+                layOut(view);
+                return false;
+            },
+            duration);
+    };
+    const NSSize first =
+        NSMakeSize(EditorCore::kDefaultWidth + 200, EditorCore::kDefaultHeight + 100);
+    const NSSize latest =
+        NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 200);
+    dragGrip(webView, first);
+    layOutFor(std::chrono::milliseconds(600));
+    dragGrip(webView, latest);
+    // Past the first size's hold, within the latest's.
+    layOutFor(std::chrono::milliseconds(700));
+    EXPECT_TRUE(NSEqualSizes(view.frame.size, latest))
+        << view.frame.size.width << "x" << view.frame.size.height;
+    closeWindow(window, view);
+}
+
 // Once the host's window has caught up, the host decides the view's size again, down to the
 // editor's minimum: a size dragged to with the grip does not stop the host making it smaller.
 TEST_F(AudioUnitViewTest, FollowsAnAutoLayoutHostAfterTheGripsSize)
