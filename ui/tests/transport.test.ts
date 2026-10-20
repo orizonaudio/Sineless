@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   NativeTransport,
@@ -56,6 +56,36 @@ describe("native transport", () => {
     expect(frames.map((frame) => Array.from(new Uint8Array(frame)))).toEqual([
       [0, 1, 2, 255],
     ]);
+  });
+
+  test("asks for the next frame after one the page could not take, so the display goes on", async () => {
+    let fetches = 0;
+    const host: NativeHost = {
+      channel: undefined,
+      receiver: {},
+      fetchFrame: () => {
+        fetches++;
+        return Promise.resolve(new Uint8Array([fetches]).buffer);
+      },
+    };
+    const transport = new NativeTransport(host);
+    const taken: number[] = [];
+    transport.onFrame((frame) => {
+      const id = new Uint8Array(frame)[0] ?? 0;
+      if (id === 1) {
+        throw new Error("malformed frame");
+      }
+      taken.push(id);
+    });
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    transport.requestFrame();
+    await vi.waitFor(() => {
+      expect(taken).toEqual([2]);
+    });
+    expect(logged).toHaveBeenCalledOnce();
+    logged.mockRestore();
   });
 
   test("drops an empty answer to a superseded request", async () => {

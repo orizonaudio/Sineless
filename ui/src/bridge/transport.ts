@@ -73,7 +73,15 @@ export class NativeTransport implements Transport {
           return; // Superseded by a newer request.
         }
         const started = performance.now();
-        this.frameHandler?.(frame);
+        try {
+          this.frameHandler?.(frame);
+        } catch (error) {
+          // The frame is dropped. Nothing else asks for the next one: without this, the
+          // display would stop until the editor is opened again.
+          console.error(error);
+          this.requestFrame();
+          return;
+        }
         perf.framesReceived++;
         perf.bytesReceived += frame.byteLength;
         perf.receiveMs += performance.now() - started;
