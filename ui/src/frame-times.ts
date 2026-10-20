@@ -9,9 +9,9 @@
 //   60 a second on a faster display, every tick on one up to 66 Hz (render-loop.ts).
 import type { Scheduler } from "./render/render-loop.ts";
 
-// The pace engine frames are drawn at, in ms: 60 a second on any display rate (at most the
-// display's), as more would cost work in every part of the pipeline for motion the eye barely
-// tells apart.
+// The pace engine frames are drawn at, in ms: 60 a second on a faster display, as more would
+// cost work in every part of the pipeline for motion the eye barely tells apart; on a display up
+// to 66 Hz, every tick, which the loop does not pace (render-loop.ts).
 export const frameMilliseconds = 1000 / 60;
 // An interval this many times the expected one is late: a tick the display skipped, or a frame
 // that came a whole frame's worth of ticks after the one before. A tick early or late by a
