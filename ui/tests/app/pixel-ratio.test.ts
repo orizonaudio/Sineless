@@ -1,6 +1,13 @@
 // Moving the window to a display of another pixel ratio (a Retina screen and a 1x monitor)
 // changes no size, so no resize event arrives: the page watches the ratio itself.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import {
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { byId, settle, startApp, type Started } from "./harness.ts";
 
@@ -9,6 +16,28 @@ describe("on a display of another pixel ratio", () => {
   const after = window.devicePixelRatio * 2;
   // The browser's signal: a resolution query that stops matching.
   const watching: (() => void)[] = [];
+  // The trace's line width as a share of the screen's height, at each draw, before and after
+  // the move: the default view draws min/max columns at least this wide.
+  let widths: number[] = [];
+  let locations: MockInstance<WebGL2RenderingContext["getUniformLocation"]>;
+  let uniforms: MockInstance<WebGL2RenderingContext["uniform1f"]>;
+
+  function drawnWidths(): number[] {
+    const minimumHalf = new Set<WebGLUniformLocation>();
+    locations.mock.calls.forEach(([, name], index) => {
+      const result = locations.mock.results[index];
+      if (
+        name === "minimumHalf" &&
+        result?.type === "return" &&
+        result.value !== null
+      ) {
+        minimumHalf.add(result.value);
+      }
+    });
+    return uniforms.mock.calls
+      .filter(([location]) => location !== null && minimumHalf.has(location))
+      .map(([, value]) => value);
+  }
 
   beforeAll(async () => {
     const matchMedia = window.matchMedia.bind(window);
@@ -29,6 +58,11 @@ describe("on a display of another pixel ratio", () => {
       }
       return list;
     });
+    locations = vi.spyOn(
+      WebGL2RenderingContext.prototype,
+      "getUniformLocation",
+    );
+    uniforms = vi.spyOn(WebGL2RenderingContext.prototype, "uniform1f");
     app = await startApp();
     await settle();
     Object.defineProperty(window, "devicePixelRatio", {
@@ -39,6 +73,7 @@ describe("on a display of another pixel ratio", () => {
       changed();
     }
     await settle();
+    widths = drawnWidths();
   });
 
   test("draws at the new display's resolution", () => {
@@ -52,6 +87,11 @@ describe("on a display of another pixel ratio", () => {
       type: "viewport",
       pixelRatio: after,
     });
+  });
+
+  test("draws traces as thick as on the display before", () => {
+    const [first = Number.NaN] = widths;
+    expect((widths.at(-1) ?? 0) / first).toBeCloseTo(1);
   });
 
   test("keeps watching for the next move", () => {

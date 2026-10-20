@@ -284,7 +284,10 @@ export class OscilloscopeApp {
         const [r, g, b] = rgba(token("--screen"));
         return { cursor: rgba(token("--ink")), previous: [r, g, b, 0.5] };
       },
-      lineWidthPixels: 1.5 * window.devicePixelRatio,
+      // Read at each draw: the ratio changes when the window moves to another display.
+      get lineWidthPixels() {
+        return 1.5 * window.devicePixelRatio;
+      },
     };
     const traceView = (): TraceView => ({
       verticalScaleDb: store.number("verticalScale"),
