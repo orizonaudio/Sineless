@@ -685,6 +685,10 @@ void dragGrip(WKWebView* webView, NSSize size)
                                                  static_cast<int>(size.height)]);
 }
 
+// How long an Auto Layout host's window may take to catch up with the view's own size: Logic's
+// took about 0.1 s (measured with a diagnostic build); three times that, for margin.
+constexpr std::chrono::milliseconds kHostCatchUp{300};
+
 // In a host that lays the view out with Auto Layout, as Logic does, the size the grip was dragged
 // to holds while the host's window catches up, larger or smaller, rather than being set back to
 // the window's size.
@@ -709,11 +713,16 @@ TEST_F(AudioUnitViewTest, HoldsTheGripsSizeWhileAnAutoLayoutHostCatchesUp)
             },
             kPageTimeout))
             << view.frame.size.width << "x" << view.frame.size.height;
-        for (int pass = 0; pass < 3; ++pass) {
-            layOut(view);
-            runQueuedWork();
-        }
-        EXPECT_TRUE(NSEqualSizes(view.frame.size, dragged)) << "through the host's layout passes";
+        // The host lays the view out again and again until its window catches up.
+        bool held = true;
+        pumpUntil(
+            [&] {
+                layOut(view);
+                held = held && NSEqualSizes(view.frame.size, dragged);
+                return false;
+            },
+            kHostCatchUp);
+        EXPECT_TRUE(held) << "through the host's layout passes until its window caught up";
         [window setContentSize:dragged]; // The host's window catches up.
         layOut(view);
     }
