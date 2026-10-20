@@ -104,7 +104,13 @@ export class RenderLoop {
           ? this.nextDrawTime + this.interval
           : timestamp + this.interval;
       const started = performance.now();
-      this.renderer.draw(frame);
+      try {
+        this.renderer.draw(frame);
+      } finally {
+        // A draw that throws still asks for the next frame: nothing else would.
+        this.requestTick();
+        this.returnCredit(); // Only engine frames earn a credit; redraws do not.
+      }
       const elapsed = performance.now() - started;
       perf.framesDrawn++;
       perf.drawMs += elapsed;
@@ -113,8 +119,6 @@ export class RenderLoop {
       this.lastDrawn = frame;
       // The next tick, whether or not a frame waits for it, measures the display's period.
       this.lastDrawTime = timestamp;
-      this.requestTick();
-      this.returnCredit(); // Only engine frames earn a credit; redraws do not.
     } else if (redraw && this.lastDrawn !== undefined) {
       this.renderer.draw(this.lastDrawn);
     }
