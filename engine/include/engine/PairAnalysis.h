@@ -34,30 +34,36 @@ struct PairAnalysis
                                        std::size_t maxOffset, std::size_t block);
 
 // analysePair spread over calls, so that a long stretch's search does not stall one frame: each
-// step does about `budget` multiply-adds of it (at least one offset's), and the search visits
-// the same offsets in the same order as analysePair, so the result is the same.
+// step does about `budget` multiply-adds of it (at least one block's or one offset's), and the
+// search visits the same offsets in the same order as analysePair, so the result is the same.
+// Preparing the stretch, a few passes over it, is spread the same way, a block at a time.
 class PairSearch
 {
 public:
     // Starts a search of `a` and `b` (equal length) as analysePair would, ending any search in
-    // progress. It keeps its own copies, so they may change afterwards. Prepares them here.
+    // progress. It keeps its own copies, so they may change afterwards; the steps prepare them.
     void start(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
                std::size_t block);
     // Searches on for about `budget` multiply-adds. True once the result is ready.
     bool step(std::size_t budget);
     // The result, once a step has returned true.
     [[nodiscard]] const PairAnalysis& result() const { return found; }
-    // The multiply-adds of the offsets searched so far, over every search.
+    // The multiply-adds done so far, preparing stretches and searching their offsets, over every
+    // search.
     [[nodiscard]] std::uint64_t work() const { return done; }
 
 private:
     enum class Stage : std::uint8_t
     {
         kIdle,
+        kEnergies, // Each track's energy per block, to find where both sound.
+        kMask,     // Keeping the samples where both sound, measuring and decimating them.
         kCoarse,
         kFine,
         kDone,
     };
+    // Prepares on for about `budget` multiply-adds. True once the stretch is prepared.
+    bool prepare(std::size_t& budget);
     // The offsets in [from, to], from the smallest shift out, and the strongest match so far.
     struct Scan
     {
@@ -77,10 +83,21 @@ private:
     void finish();
 
     Stage stage = Stage::kIdle;
-    std::vector<float> maskedA;
+    std::vector<float> maskedA; // The tracks as given, then as kept.
     std::vector<float> maskedB;
     std::vector<float> coarseA;
     std::vector<float> coarseB;
+    std::size_t maxReach = 0;
+    std::size_t blockLength = 0;
+    std::size_t cursor = 0; // The next block to prepare.
+    std::vector<double> energiesA;
+    std::vector<double> energiesB;
+    std::vector<bool> together;
+    double energyA = 0.0;
+    double energyB = 0.0;
+    double coarseEnergyA = 0.0;
+    double coarseEnergyB = 0.0;
+    double dotAtNone = 0.0;
     std::ptrdiff_t reach = 0;
     double norm = 0.0;
     double coarseNorm = 0.0;

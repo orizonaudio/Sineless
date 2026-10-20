@@ -75,24 +75,6 @@ void decimate(std::span<const float> values, std::span<float> out)
     }
 }
 
-// Each track's energy per block of `block` samples.
-std::vector<std::vector<double>> blockEnergies(std::span<const std::span<const float>> tracks,
-                                               std::size_t block)
-{
-    std::vector<std::vector<double>> energies(tracks.size());
-    for (std::size_t track = 0; track < tracks.size(); ++track) {
-        const std::span<const float> samples = tracks[track];
-        const std::size_t blocks = (samples.size() + block - 1) / block;
-        energies[track].assign(blocks, 0.0);
-        for (std::size_t index = 0; index < blocks; ++index) {
-            const std::size_t first = index * block;
-            energies[track][index] =
-                energyOf(samples.subspan(first, std::min(block, samples.size() - first)));
-        }
-    }
-    return energies;
-}
-
 std::vector<std::span<const double>> spansOf(const std::vector<std::vector<double>>& energies)
 {
     return {energies.begin(), energies.end()};
@@ -131,14 +113,6 @@ std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energi
                           second[index] > silentBlock;
     }
     return together;
-}
-
-// Which blocks of `block` samples (more than 0) hold at least two of `tracks` (two or more, of
-// equal length) sounding together.
-std::vector<bool> overlapBlocks(std::span<const std::span<const float>> tracks, std::size_t block)
-{
-    assert(tracks.size() >= 2 && block > 0);
-    return togetherBlocks(spansOf(blockEnergies(tracks, block)), block);
 }
 
 } // namespace
@@ -183,57 +157,119 @@ double summingGain(double sumEnergy, double partsEnergy)
 void PairSearch::start(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
                        std::size_t block)
 {
-    // Only where both sound: elsewhere a sample of one meets silence in the other, which would
-    // water the correlation down.
     const std::size_t length = std::min(a.size(), b.size());
-    maskedA.resize(length);
-    maskedB.resize(length);
-    const std::array<std::span<const float>, 2> pair{a.first(length), b.first(length)};
-    const std::size_t blockLength = block == 0 ? length : block;
-    const std::vector<bool> together =
-        length == 0 ? std::vector<bool>{} : overlapBlocks(pair, blockLength);
-    // A sample that is not finite (from a broken signal upstream) counts as silence in both, so
-    // the match is measured around it. Block by block, so the copy runs as vector lanes.
-    for (std::size_t first = 0; first < length; first += blockLength) {
+    maskedA.assign(a.begin(), a.begin() + static_cast<std::ptrdiff_t>(length));
+    maskedB.assign(b.begin(), b.begin() + static_cast<std::ptrdiff_t>(length));
+    maxReach = maxOffset;
+    blockLength = block == 0 ? std::max<std::size_t>(length, 1) : block;
+    const std::size_t blocks = (length + blockLength - 1) / blockLength;
+    energiesA.assign(blocks, 0.0);
+    energiesB.assign(blocks, 0.0);
+    coarseA.assign(length / kDecimation, 0.0f);
+    coarseB.assign(length / kDecimation, 0.0f);
+    cursor = 0;
+    energyA = 0.0;
+    energyB = 0.0;
+    coarseEnergyA = 0.0;
+    coarseEnergyB = 0.0;
+    dotAtNone = 0.0;
+    found = {};
+    stage = Stage::kEnergies;
+}
+
+// Two passes over the stretch, a block at a time: each track's energy per block, then, once it
+// is known where both sound, only there (elsewhere a sample of one meets silence in the other,
+// which would water the correlation down) the samples kept, measured and decimated.
+bool PairSearch::prepare(std::size_t& budget)
+{
+    const std::size_t length = maskedA.size();
+    const std::size_t blocks = energiesA.size();
+    const auto spend = [&](std::size_t cost) {
+        budget -= std::min(budget, cost);
+        done += cost;
+    };
+    while (stage == Stage::kEnergies) {
+        if (cursor == blocks) {
+            const std::array<std::span<const double>, 2> energies{energiesA, energiesB};
+            together = blocks == 0 ? std::vector<bool>{} : togetherBlocks(energies, blockLength);
+            cursor = 0;
+            stage = Stage::kMask;
+            break;
+        }
+        const std::size_t first = cursor * blockLength;
+        const std::size_t size = std::min(blockLength, length - first);
+        energiesA[cursor] = energyOf(std::span(maskedA).subspan(first, size));
+        energiesB[cursor] = energyOf(std::span(maskedB).subspan(first, size));
+        ++cursor;
+        spend(2 * size);
+        if (budget == 0) {
+            return false;
+        }
+    }
+    while (cursor < blocks) {
+        const std::size_t first = cursor * blockLength;
         const std::size_t end = std::min(length, first + blockLength);
         const auto from = static_cast<std::ptrdiff_t>(first);
         const auto to = static_cast<std::ptrdiff_t>(end);
-        if (together.empty() || !together[first / blockLength]) {
+        if (!together[cursor]) {
             std::fill(maskedA.begin() + from, maskedA.begin() + to, 0.0f);
             std::fill(maskedB.begin() + from, maskedB.begin() + to, 0.0f);
-            continue;
+        } else {
+            // A sample that is not finite (from a broken signal upstream) counts as silence in
+            // both, so the match is measured around it. Block by block, so the copy runs as
+            // vector lanes.
+            for (std::size_t i = first; i < end; ++i) {
+                // Both finite, tested without a branch: their difference is finite then, and NaN
+                // or infinite when either is not (or both are the same infinity); only values
+                // near float's largest, far beyond any audio, would overflow it.
+                const float x = maskedA[i];
+                const float y = maskedB[i];
+                const bool keep = std::abs(x - y) <= std::numeric_limits<float>::max();
+                maskedA[i] = keep ? x : 0.0f;
+                maskedB[i] = keep ? y : 0.0f;
+            }
+            const std::span<const float> keptA = std::span(maskedA).subspan(first, end - first);
+            const std::span<const float> keptB = std::span(maskedB).subspan(first, end - first);
+            energyA += energyOf(keptA);
+            energyB += energyOf(keptB);
+            dotAtNone += dot(keptA.data(), keptB.data(), keptA.size());
         }
-        for (std::size_t i = first; i < end; ++i) {
-            // Both finite, tested without a branch: their difference is finite then, and NaN or
-            // infinite when either is not (or both are the same infinity); only values near
-            // float's largest, far beyond any audio, would overflow it.
-            const float x = a[i];
-            const float y = b[i];
-            const bool keep = std::abs(x - y) <= std::numeric_limits<float>::max();
-            maskedA[i] = keep ? x : 0.0f;
-            maskedB[i] = keep ? y : 0.0f;
+        // The coarse samples whose eight samples are all kept now: from the one that straddles
+        // this block's start, whose first samples the block before kept, when a block is not a
+        // whole number of them (441 samples, at 44.1 kHz).
+        const std::size_t coarseFirst = first / kDecimation;
+        const std::size_t coarseEnd = std::min(coarseA.size(), end / kDecimation);
+        if (coarseFirst < coarseEnd) {
+            const std::size_t count = coarseEnd - coarseFirst;
+            const auto pieceA = std::span(coarseA).subspan(coarseFirst, count);
+            const auto pieceB = std::span(coarseB).subspan(coarseFirst, count);
+            decimate(std::span(maskedA).subspan(coarseFirst * kDecimation), pieceA);
+            decimate(std::span(maskedB).subspan(coarseFirst * kDecimation), pieceB);
+            coarseEnergyA += energyOf(pieceA);
+            coarseEnergyB += energyOf(pieceB);
+        }
+        ++cursor;
+        spend(3 * (end - first));
+        if (budget == 0 && cursor < blocks) {
+            return false;
         }
     }
-    found = {};
-    norm = std::sqrt(energyOf(maskedA) * energyOf(maskedB));
+
+    norm = std::sqrt(energyA * energyB);
     if (norm <= 0.0) {
         stage = Stage::kDone;
-        return;
+        return true;
     }
     found.measured = true;
-    found.correlation = correlationAt(maskedA, maskedB, 0, norm);
+    found.correlation = dotAtNone / norm;
 
     // Coarse search on decimated copies, then a fine one around the coarse match.
-    reach = static_cast<std::ptrdiff_t>(std::min(maxOffset, length / 2));
-    const std::size_t coarseLength = length / kDecimation;
-    coarseA.resize(coarseLength);
-    coarseB.resize(coarseLength);
-    decimate(maskedA, coarseA);
-    decimate(maskedB, coarseB);
+    reach = static_cast<std::ptrdiff_t>(std::min(maxReach, length / 2));
     const auto coarseReach = reach / static_cast<std::ptrdiff_t>(kDecimation);
-    coarseNorm = std::sqrt(energyOf(coarseA) * energyOf(coarseB));
+    coarseNorm = std::sqrt(coarseEnergyA * coarseEnergyB);
     beginScan(scan, -coarseReach, coarseReach);
     stage = Stage::kCoarse;
+    return true;
 }
 
 void PairSearch::beginScan(Scan& scan, std::ptrdiff_t from, std::ptrdiff_t to)
@@ -290,6 +326,17 @@ bool PairSearch::advance(std::span<const float> a, std::span<const float> b, dou
 
 bool PairSearch::step(std::size_t budget)
 {
+    if (stage == Stage::kEnergies || stage == Stage::kMask) {
+        if (!prepare(budget)) {
+            return false;
+        }
+        if (stage == Stage::kDone) {
+            return true;
+        }
+        if (budget == 0) {
+            return false;
+        }
+    }
     if (stage == Stage::kCoarse) {
         if (!advance(coarseA, coarseB, coarseNorm, budget)) {
             return false;
