@@ -110,6 +110,50 @@ describe("render loop", () => {
     },
   );
 
+  // A display's ticks reach the page a little early or late: on a 60 Hz MacBook display their
+  // timestamps wander by up to 2.5 ms either way, 15% of a tick. A tick that comes early is still
+  // the tick to draw on; skipping it leaves a frame on screen for two ticks, a visible stutter.
+  test.each([60, 75, 100, 120, 144, 165])(
+    "skips no tick it should draw on at %i Hz when ticks wander by 15% of a tick",
+    (refreshRate) => {
+      const interval = 1000 / 60;
+      const period = 1000 / refreshRate;
+      const wander = 0.15 * period;
+      const pending: ((timestamp: number) => void)[] = [];
+      const drawnAt: number[] = [];
+      let now = 0;
+      const loop = new RenderLoop(
+        (callback) => pending.push(callback),
+        {
+          draw: () => {
+            drawnAt.push(now);
+          },
+        },
+        () => {
+          loop.submit(frame(drawnAt.length)); // The engine always has the next frame ready.
+        },
+        interval,
+      );
+      loop.submit(frame(0));
+      let seed = 1;
+      for (let tick = 0; tick <= refreshRate * 10; tick++) {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        now = tick * period + wander * (2 * (seed / 2147483648) - 1);
+        for (const callback of pending.splice(0)) {
+          callback(now);
+        }
+      }
+      // The longest the 60 frames/s schedule needs between draws: the ticks one interval
+      // spans, each of which may have wandered.
+      const longest = Math.ceil(interval / period) * period + 2 * wander;
+      const gaps = drawnAt
+        .slice(1)
+        .map((at, index) => at - (drawnAt[index] ?? 0));
+      expect(Math.max(...gaps)).toBeLessThanOrEqual(longest);
+      expect(drawnAt.length / 10).toBeCloseTo(60, 0); // Over 10 seconds.
+    },
+  );
+
   test("does not catch up with a quick pair of draws after a stall", () => {
     const pending: ((timestamp: number) => void)[] = [];
     const drawn: number[] = [];
