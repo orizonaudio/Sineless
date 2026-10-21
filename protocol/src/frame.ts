@@ -86,6 +86,8 @@ export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];
 // Bits of the `flags` field.
 // `synced`: a tempo-synced sweep. `limited`: the span was shortened to what can be kept.
 // `partial`: a sweep longer than what the capture held is still filling in its first pass.
+// `noTempo`: a Beats frame before the host has reported a tempo (an instance it has not played
+// through yet): no sweep, grid or bar positions, which a default tempo would make up.
 export const FrameFlag = {
   triggered: 1,
   frozen: 2,
@@ -94,6 +96,7 @@ export const FrameFlag = {
   limited: 16,
   compared: 32,
   partial: 64,
+  noTempo: 128,
 } as const;
 
 // Values per track in a Compare frame's matches: correlation, offset and polarity. The

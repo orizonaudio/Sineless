@@ -301,6 +301,7 @@ describe("status chips", () => {
     synced: false,
     limited: false,
     partial: false,
+    noTempo: false,
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,
@@ -420,6 +421,21 @@ describe("status chips", () => {
     expect(
       statusChips(frame(flags), "auto", 0, 0).map((chip) => chip.text),
     ).not.toContain("Span limited");
+  });
+
+  // Beats before the host reports a tempo: nothing placed, live or frozen, and no "Sync" claimed.
+  test("says when the host has reported no tempo", () => {
+    expect(
+      statusChips(frame({ synced: true, noTempo: true }), "auto", 0, 0),
+    ).toEqual([{ text: "No tempo", tone: "warn" }]);
+    expect(
+      statusChips(
+        frame({ synced: true, frozen: true, noTempo: true }),
+        "auto",
+        0,
+        0,
+      ).map((chip) => chip.text),
+    ).toEqual(["Frozen", "No tempo"]);
   });
 
   test("shows roll and frozen with the pan offset", () => {

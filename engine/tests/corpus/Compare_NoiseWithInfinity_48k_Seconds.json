@@ -4,6 +4,7 @@
     "compared": true,
     "frozen": false,
     "limited": false,
+    "noTempo": false,
     "partial": false,
     "roll": false,
     "synced": false,

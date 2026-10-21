@@ -33,6 +33,7 @@ function frame(
     synced: false,
     limited: false,
     partial: false,
+    noTempo: false,
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,

@@ -355,6 +355,9 @@ private:
 
     // Worker-only state.
     bool isFrozen = false;
+    // A Beats frame saying the host has not reported a tempo was the last sent: whether it was
+    // frozen.
+    std::optional<bool> sentNoTempo;
     std::optional<Window> lastLive;
     std::optional<Window> lastShown;
     // Seconds mode, live: the capture end of this track and of each lane shown, now and when the

@@ -37,6 +37,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     synced: false,
     limited: false,
     partial: false,
+    noTempo: false,
     cursor: undefined,
     cycleStart: 0,
     cycleSeconds: 0,

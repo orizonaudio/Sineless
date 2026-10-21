@@ -29,6 +29,8 @@ struct MusicalStamp
     double quarterNotes = 0.0;
     double seconds = 0.0; // Project time, in seconds.
     double tempo = 120.0;
+    // Whether the host has reported a tempo yet; until it has, `tempo` is only a default.
+    bool tempoKnown = false;
     int numerator = 4;
     int denominator = 4;
     bool playing = false;
@@ -75,6 +77,7 @@ private:
     std::atomic<double> quarterNotesValue{0.0};
     std::atomic<double> secondsValue{0.0};
     std::atomic<double> tempoValue{120.0};
+    std::atomic<bool> tempoKnownValue{false};
     std::atomic<int> numeratorValue{4};
     std::atomic<int> denominatorValue{4};
     std::atomic<bool> playingValue{false};

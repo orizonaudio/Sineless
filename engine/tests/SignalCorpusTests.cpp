@@ -532,6 +532,7 @@ constexpr std::array<std::pair<FrameFlag, std::string_view>, protocol::kFrameFla
     {FrameFlag::kLimited, "limited"},
     {FrameFlag::kCompared, "compared"},
     {FrameFlag::kPartial, "partial"},
+    {FrameFlag::kNoTempo, "noTempo"},
 }};
 // A flag added to the protocol enlarges the array; its unnamed entry fails here.
 static_assert(std::ranges::all_of(kFlags, [](const auto& flag) { return !flag.second.empty(); }),

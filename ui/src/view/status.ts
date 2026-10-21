@@ -38,6 +38,8 @@ export function statusChips(
 // The span was shortened to what can be kept: a beat span stepped down, or a Seconds span longer
 // than the capture.
 const spanLimited: Chip = { text: "Span limited", tone: "warn" };
+// Beats mode before the host has reported a tempo: nothing is placed until it does.
+const noTempo: Chip = { text: "No tempo", tone: "warn" };
 
 function modeChips(
   frame: Frame | undefined,
@@ -51,6 +53,9 @@ function modeChips(
     if (panSeconds > 0) {
       chips.push({ text: `−${formatSeconds(panSeconds)}`, tone: "neutral" });
     }
+    if (frame.noTempo) {
+      chips.push(noTempo);
+    }
     if (frame.limited) {
       chips.push(spanLimited);
     }
@@ -58,6 +63,9 @@ function modeChips(
       chips.push({ text: "Partial", tone: "neutral" });
     }
     return chips;
+  }
+  if (frame?.synced === true && frame.noTempo) {
+    return [noTempo];
   }
   if (frame?.synced === true) {
     chips.push({ text: "Sync", tone: "ok" });
