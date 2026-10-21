@@ -859,6 +859,29 @@ TEST_P(FrozenSpans, StaysWholeWhenTheHostLowersTheRate)
     expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
 }
 
+// At a rate that is not a whole number, the longest span's length has a fraction that holds round
+// away; with the margin Multi and Compare keep for other tracks' lanes, a whole freeze is still
+// whole, and not limited. At rates just under 192 and 384 kHz, where that margin is all the
+// capture spares beyond the span.
+TEST_P(FrozenSpans, DoesNotLimitAWholeFreezeAtARateThatIsNotAWholeNumber)
+{
+    for (const double rate : {192000.0 / 1.001, 384000.0 / 1.001}) {
+        SCOPED_TRACE(rate);
+        Session session(rate, 2);
+        session.join({.frequency = 1000.0});
+        session.join({.frequency = 1500.0});
+        configure(session.own(), GetParam(), TimeBase::kSeconds);
+        ASSERT_TRUE(session.own().settings().set(SettingId::kTimeSpan, 4.0));
+        session.play(4.5);
+        ASSERT_TRUE(session.produce()) << "no live frame";
+        session.analyzer().setFrozen(true);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame) << "no frozen frame";
+        EXPECT_FALSE(frame->has(FrameFlag::kLimited));
+        EXPECT_NEAR(frame->visibleSamples, 4.0 * rate, kColumns);
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSpans, ::testing::ValuesIn(everyMode()),
                          [](const ::testing::TestParamInfo<DisplayMode>& info) {
                              return modeName(info.param);
