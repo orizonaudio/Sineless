@@ -45,7 +45,9 @@ if(APPLE)
     target_sources(editor_core PRIVATE src/mac/DisplayScaleMac.cpp src/mac/UiDispatcherMac.mm
                                        src/mac/WebViewMac.mm)
     target_link_libraries(editor_core PRIVATE "-framework Cocoa" "-framework WebKit")
-    set_source_files_properties(src/mac/WebViewMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    # With ARC, dispatch objects are released as Objective-C objects: the timers too.
+    set_source_files_properties(src/mac/UiDispatcherMac.mm src/mac/WebViewMac.mm
+                                PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 elseif(WIN32)
     target_sources(editor_core PRIVATE src/win/DisplayScaleWin.cpp src/win/UiDispatcherWin.cpp
                                        src/win/WebViewWin.cpp)
