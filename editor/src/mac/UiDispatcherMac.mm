@@ -1,5 +1,7 @@
 #include "editor/UiDispatcher.h"
+#include "mac/UiDispatcherMacTesting.h"
 
+#include <atomic>
 #include <dispatch/dispatch.h>
 #include <memory>
 #include <utility>
@@ -7,6 +9,14 @@
 
 namespace orizon::editor {
 namespace {
+
+// The timers created and not yet freed: libdispatch calls a source's finalizer when it frees it.
+std::atomic<int> liveTimers{0};
+
+void timerFreed(void* /*context*/)
+{
+    liveTimers.fetch_sub(1, std::memory_order_relaxed);
+}
 
 class UiDispatcherMac final : public UiDispatcher
 {
@@ -36,6 +46,9 @@ public:
         auto task = std::make_shared<std::function<void()>>(std::move(work));
         dispatch_source_t timer =
             dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        liveTimers.fetch_add(1, std::memory_order_relaxed);
+        dispatch_set_finalizer_f(timer, timerFreed); // A finalizer runs only with a context.
+        dispatch_set_context(timer, &liveTimers);
         const auto nanoseconds = static_cast<uint64_t>(std::chrono::nanoseconds(interval).count());
         dispatch_source_set_timer(
             timer, dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(nanoseconds)), nanoseconds,
@@ -57,6 +70,11 @@ private:
 };
 
 } // namespace
+
+int liveTimersForTests()
+{
+    return liveTimers.load(std::memory_order_relaxed);
+}
 
 std::unique_ptr<UiDispatcher> UiDispatcher::create()
 {
