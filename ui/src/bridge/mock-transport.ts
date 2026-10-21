@@ -169,6 +169,9 @@ export interface MockOptions {
   // processing: a longer span shows this much, limited, as the engine sends it. Unlimited by
   // default.
   readonly keptSeconds?: number;
+  // Whether the host has reported a tempo, as an instance it has not played through yet has not:
+  // Beats frames then say so and hold nothing, until reportTempo(). Reported by default.
+  readonly hostTempo?: boolean;
 }
 
 export class MockTransport implements Transport {
@@ -190,6 +193,7 @@ export class MockTransport implements Transport {
   private readonly sampleRate: number;
   private readonly inputChannels: 1 | 2;
   private readonly brokenSamples: number;
+  private tempoKnown: boolean;
   private readonly keptSeconds: number;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
@@ -206,6 +210,7 @@ export class MockTransport implements Transport {
     this.inputChannels = options.inputChannels ?? 2;
     this.brokenSamples = options.brokenSamples ?? 0;
     this.keptSeconds = options.keptSeconds ?? Infinity;
+    this.tempoKnown = options.hostTempo ?? true;
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -441,8 +446,33 @@ export class MockTransport implements Transport {
     return this.frozenWindow(this.secondsSpan()).reach;
   }
 
+  // The host reports its tempo, as when it first plays the instance through.
+  reportTempo(): void {
+    this.tempoKnown = true;
+  }
+
   private sendFrame(): void {
     if (this.columns === 0) {
+      return;
+    }
+    if (this.setting("timeBase") === "beats" && !this.tempoKnown) {
+      this.frameHandler?.(
+        encodeFrame({
+          mode: FrameMode.raw,
+          triggered: false,
+          frozen: this.frozenAt !== undefined,
+          roll: false,
+          synced: true,
+          noTempo: true,
+          pointCount: 0,
+          startFraction: 0,
+          peak: Number.NaN,
+          rms: Number.NaN,
+          frequency: undefined,
+          sampleRate: this.sampleRate,
+          views: new Map(),
+        }),
+      );
       return;
     }
     // A pan keeps within the reach, which shrinks when the span grows.

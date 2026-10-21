@@ -3,6 +3,7 @@
     "compared": false,
     "frozen": true,
     "limited": false,
+    "noTempo": false,
     "partial": false,
     "roll": false,
     "synced": false,

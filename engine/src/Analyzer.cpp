@@ -479,6 +479,23 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     if (command.columns == 0) {
         return false;
     }
+    // A Beats sweep is placed by the host's tempo. Until the host has reported one (an instance
+    // it has not played through), the clock's tempo is only a default: no sweep is drawn, and the
+    // frame says why, again only when it would say something else (frozen or not, or settings).
+    if (synced && !(isFrozen ? frozenStamp : engine.timeline().latest()).tempoKnown) {
+        if (sentNoTempo == isFrozen && settings == lastSettings) {
+            return false;
+        }
+        sentNoTempo = isFrozen;
+        lastSettings = settings; // What was shown, so that a change draws again.
+        const FrameHeaderValues header{.flags = static_cast<std::uint8_t>(
+                                           flag(FrameFlag::kSynced) | flag(FrameFlag::kNoTempo) |
+                                           (isFrozen ? flag(FrameFlag::kFrozen) : 0U)),
+                                       .sampleRate = static_cast<float>(sampleRate)};
+        encodeFrame(header, {}, frame);
+        return true;
+    }
+    sentNoTempo.reset();
     // Multi and Compare both draw lanes of the group's tracks.
     const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
                        protocol::DisplayMode::kSingle;

@@ -18,6 +18,7 @@ void Timeline::advance(const HostTimeline& host, int numSamples,
     stamp.sampleIndex = nextSampleIndex;
     if (host.tempoValid && host.tempo > 0.0) {
         stamp.tempo = host.tempo;
+        stamp.tempoKnown = true;
     }
     if (host.timeSignatureValid && host.numerator > 0 && host.denominator > 0) {
         stamp.numerator = host.numerator;
@@ -52,6 +53,7 @@ void Timeline::publish(const MusicalStamp& stamp) noexcept ORIZON_NONBLOCKING
     quarterNotesValue.store(stamp.quarterNotes, std::memory_order_relaxed);
     secondsValue.store(stamp.seconds, std::memory_order_relaxed);
     tempoValue.store(stamp.tempo, std::memory_order_relaxed);
+    tempoKnownValue.store(stamp.tempoKnown, std::memory_order_relaxed);
     numeratorValue.store(stamp.numerator, std::memory_order_relaxed);
     denominatorValue.store(stamp.denominator, std::memory_order_relaxed);
     playingValue.store(stamp.playing, std::memory_order_relaxed);
@@ -70,6 +72,7 @@ MusicalStamp Timeline::latest() const
         stamp.quarterNotes = quarterNotesValue.load(std::memory_order_relaxed);
         stamp.seconds = secondsValue.load(std::memory_order_relaxed);
         stamp.tempo = tempoValue.load(std::memory_order_relaxed);
+        stamp.tempoKnown = tempoKnownValue.load(std::memory_order_relaxed);
         stamp.numerator = numeratorValue.load(std::memory_order_relaxed);
         stamp.denominator = denominatorValue.load(std::memory_order_relaxed);
         stamp.playing = playingValue.load(std::memory_order_relaxed);

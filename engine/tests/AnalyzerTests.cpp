@@ -212,6 +212,103 @@ void playBeatsThenSilence(Engine& engine, Analyzer& analyzer, double silence = 1
     }
 }
 
+// An instance the host has not played through has no tempo: in Beats, its clock's 120 BPM is only a
+// default, and a sweep placed by it would show bars that are not the project's. Until the host
+// reports a tempo, one frame says so and nothing is drawn; then the sweep follows the host's.
+// Audio without a tempo, as from a host that reports none, is not placed either. In every display
+// mode.
+TEST_F(AnalyzerTest, DrawsNoBeatsSweepUntilTheHostReportsATempo)
+{
+    for (const auto display : everyDisplayMode()) {
+        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+        Engine fresh;
+        fresh.prepare(kSampleRate);
+        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        Analyzer view(fresh);
+        view.setColumns(300);
+        std::vector<float> block(480, 0.25f);
+        std::array<const float*, 2> channels{block.data(), block.data()};
+        const auto play = [&](bool tempoValid, int blocks) {
+            for (int step = 0; step < blocks; ++step) {
+                fresh.captureRing().write(channels.data(), 2, 480);
+                fresh.timeline().advance({.playing = true,
+                                          .positionValid = true,
+                                          .tempoValid = tempoValid,
+                                          .tempo = 90.0},
+                                         480, kSampleRate);
+            }
+        };
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(view.produce(bytes)) << "it says why nothing is drawn";
+        DecodedFrame frame = decode(bytes);
+        EXPECT_TRUE(frame.has(FrameFlag::kSynced));
+        EXPECT_TRUE(frame.has(FrameFlag::kNoTempo));
+        EXPECT_EQ(frame.pointCount, 0U);
+        EXPECT_EQ(get<float>(bytes, FrameHeader::kSpanQuarterNotesOffset), 0.0f)
+            << "no bars made up";
+        EXPECT_FALSE(view.produce(bytes)) << "once";
+
+        play(false, 20);
+        EXPECT_FALSE(view.produce(bytes)) << "audio without a tempo is not placed";
+
+        play(true, 20);
+        ASSERT_TRUE(view.produce(bytes));
+        frame = decode(bytes);
+        EXPECT_FALSE(frame.has(FrameFlag::kNoTempo));
+        EXPECT_GT(frame.pointCount, 0U);
+        EXPECT_GT(get<float>(bytes, FrameHeader::kSpanQuarterNotesOffset), 0.0f)
+            << "bars placed by the host";
+    }
+}
+
+// Without a host tempo, the frame saying so follows what the user does: frozen and unfrozen, so the
+// page's Freeze button and chips follow it. A freeze made before the tempo holds none, so it
+// places nothing even once the host reports one; live again, the sweep follows the host. In every
+// display mode.
+TEST_F(AnalyzerTest, SaysThereIsNoTempoFrozenAndUnfrozen)
+{
+    for (const auto display : everyDisplayMode()) {
+        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+        Engine fresh;
+        fresh.prepare(kSampleRate);
+        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        Analyzer view(fresh);
+        view.setColumns(300);
+        std::vector<float> block(480, 0.25f);
+        std::array<const float*, 2> channels{block.data(), block.data()};
+        const auto play = [&](bool tempoValid) {
+            for (int step = 0; step < 20; ++step) {
+                fresh.captureRing().write(channels.data(), 2, 480);
+                fresh.timeline().advance({.playing = true,
+                                          .positionValid = true,
+                                          .tempoValid = tempoValid,
+                                          .tempo = 90.0},
+                                         480, kSampleRate);
+            }
+        };
+        const auto noTempoFrame = [&](bool frozen) {
+            std::vector<std::byte> bytes;
+            ASSERT_TRUE(view.produce(bytes));
+            const DecodedFrame frame = decode(bytes);
+            EXPECT_TRUE(frame.has(FrameFlag::kNoTempo));
+            EXPECT_EQ(frame.has(FrameFlag::kFrozen), frozen);
+            EXPECT_EQ(frame.pointCount, 0U);
+        };
+        std::vector<std::byte> bytes;
+
+        noTempoFrame(false);
+        play(false);
+        view.setFrozen(true);
+        noTempoFrame(true);
+        play(true); // The host reports a tempo while frozen.
+        EXPECT_FALSE(view.produce(bytes)) << "the freeze holds no tempo: still nothing placed";
+        view.setFrozen(false);
+        ASSERT_TRUE(view.produce(bytes)) << "live, the sweep follows the host";
+        EXPECT_FALSE(decode(bytes).has(FrameFlag::kNoTempo));
+        EXPECT_GT(decode(bytes).pointCount, 0U);
+    }
+}
+
 // Switched from Beats to Seconds with nothing to trigger on, Normal and Single show the newest
 // span at once, untriggered, rather than wait on a Beats sweep or show the capture's oldest
 // audio as if it were now; then they wait for a trigger as usual. In every display mode.
@@ -300,6 +397,28 @@ void playSecondsTone(Engine& engine, Analyzer& analyzer, double seconds, double 
     engine.captureRing().write(channels.data(), 2, static_cast<int>(tone.size()));
     std::vector<std::byte> bytes;
     (void)analyzer.produce(bytes);
+}
+
+// Back in Beats after Seconds, before the host has reported a tempo, the page is told again: it
+// shows the Seconds frame until then.
+TEST_F(AnalyzerTest, SaysThereIsNoTempoAgainBackFromSeconds)
+{
+    for (const auto display : everyDisplayMode()) {
+        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+        Engine fresh;
+        fresh.prepare(kSampleRate);
+        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        Analyzer view(fresh);
+        view.setColumns(300);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(view.produce(bytes));
+        ASSERT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+        playSecondsTone(fresh, view, 0.5, 0.25); // Seconds, a frame drawn.
+        fresh.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+        ASSERT_TRUE(view.produce(bytes)) << "told again";
+        EXPECT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+        EXPECT_TRUE(decode(bytes).has(FrameFlag::kSynced));
+    }
 }
 
 // Frozen in Seconds, a look at Beats and back keeps the view where it was frozen, on its trigger

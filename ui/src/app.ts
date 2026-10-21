@@ -1002,7 +1002,7 @@ export class OscilloscopeApp {
   // The musical grid of the last synced frame, when in Beats mode.
   private musicalLayout(): ReturnType<typeof musicalGrid> | undefined {
     const frame = this.lastFrame;
-    if (!this.beatsMode() || frame?.synced !== true) {
+    if (!this.beatsMode() || frame?.synced !== true || frame.noTempo) {
       return undefined;
     }
     const covered = frame.viewEnd - frame.viewStart;
@@ -1080,8 +1080,10 @@ export class OscilloscopeApp {
       node.style.top = `${String(Math.min(height - 14, Math.max(2, label.position * height - 6)))}px`;
       labels.push(node);
     }
+    // Beats without the host's tempo: no positions to label.
+    const untimed = this.beatsMode() && this.lastFrame?.noTempo === true;
     for (const label of this.musicalLayout()?.labels ??
-      timeLabels(span, roll, this.view)) {
+      (untimed ? [] : timeLabels(span, roll, this.view))) {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;
@@ -1658,7 +1660,12 @@ export class OscilloscopeApp {
   private listenToBackend(): void {
     this.backend.on("frame", (frame) => {
       const rolled = this.rolling();
+      const hadTempo = this.lastFrame?.noTempo !== true;
       this.lastFrame = frame;
+      // The host's tempo arriving, or not yet: the grid and labels follow.
+      if (frame.noTempo === hadTempo) {
+        this.drawScreen();
+      }
       // A limited span labels the axis anew; a change below what the labels show does not.
       const span = this.secondsSpan();
       if (

@@ -16,6 +16,7 @@ export interface FrameContent {
   readonly synced?: boolean;
   readonly limited?: boolean;
   readonly partial?: boolean;
+  readonly noTempo?: boolean;
   readonly cursor?: number | undefined;
   readonly cycleStart?: number;
   readonly cycleSeconds?: number;
@@ -76,6 +77,7 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     (content.synced === true ? FrameFlag.synced : 0) |
     (content.limited === true ? FrameFlag.limited : 0) |
     (content.partial === true ? FrameFlag.partial : 0) |
+    (content.noTempo === true ? FrameFlag.noTempo : 0) |
     (content.comparison === undefined ? 0 : FrameFlag.compared);
   header.setUint8(offsets.mode, content.mode);
   header.setUint8(offsets.flags, flags);

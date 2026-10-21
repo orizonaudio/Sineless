@@ -67,6 +67,7 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       synced: fc.boolean(),
       limited: fc.boolean(),
       partial: fc.boolean(),
+      noTempo: fc.boolean(),
       pointCount: fc.constant(pointCount),
       startFraction: f32,
       peak: f32,
@@ -128,6 +129,7 @@ function expectedHeader(
     (content.synced === true ? FrameFlag.synced : 0) |
     (content.limited === true ? FrameFlag.limited : 0) |
     (content.partial === true ? FrameFlag.partial : 0) |
+    (content.noTempo === true ? FrameFlag.noTempo : 0) |
     (content.comparison === undefined ? 0 : FrameFlag.compared);
   const views = [...content.views.keys()].reduce<number>(
     (mask, view) => mask | (1 << view),
@@ -201,6 +203,7 @@ function expectedFrame(content: FrameContent): Frame {
     synced: content.synced === true,
     limited: content.limited === true,
     partial: content.partial === true,
+    noTempo: content.noTempo === true,
     cursor: cursor >= 0 ? cursor : undefined,
     cycleStart: f(header.cycleStart),
     cycleSeconds: f(header.cycleSeconds),
