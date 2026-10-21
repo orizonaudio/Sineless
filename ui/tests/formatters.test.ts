@@ -56,6 +56,28 @@ describe.each(Object.entries(linearFormatters))("%s", (_, format) => {
   });
 });
 
+describe("formatBeats", () => {
+  test.each([
+    [1, "1 beat"],
+    [0.25, "0.25 beats"],
+    [0, "0 beats"],
+    [6.1e-7, "0.00000061 beats"],
+    [0.99996, "1 beat"],
+  ])("reads %s quarter notes as %s", (quarterNotes, text) => {
+    expect(format.formatBeats(quarterNotes)).toBe(text);
+  });
+});
+
+describe("formatDbDifference", () => {
+  test.each([
+    [6, "6.0 dB"],
+    [0.04, "0.0 dB"],
+    [12.96, "13.0 dB"],
+  ])("reads %s dB as %s", (db, text) => {
+    expect(format.formatDbDifference(db)).toBe(text);
+  });
+});
+
 describe("formatGain", () => {
   test.each([
     -Infinity,

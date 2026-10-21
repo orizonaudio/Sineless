@@ -3,6 +3,8 @@
 // two horizontal lines, 1 and 2, at sample values, so that they follow the vertical scale.
 // Temporary display state only; they are never saved.
 import {
+  formatBeats,
+  formatDbDifference,
   formatDbfs,
   formatFrequency,
   formatSamples,
@@ -96,8 +98,7 @@ export function cursorReadout(
     );
   }
   if (measurement.quarterNotes !== undefined) {
-    const beats = Number(measurement.quarterNotes.toPrecision(3));
-    lines.push(`${String(beats)} ${beats === 1 ? "beat" : "beats"}`);
+    lines.push(formatBeats(measurement.quarterNotes));
   }
   return lines;
 }
@@ -123,6 +124,6 @@ export function levelReadout(levels: LevelPair): string[] {
   return [
     `1 ${formatDbfs(Math.abs(levels.first))} dBFS`,
     `2 ${formatDbfs(Math.abs(levels.second))} dBFS`,
-    `\u0394 ${Number.isFinite(difference) ? difference.toFixed(1) : "\u2014"} dB`,
+    `\u0394 ${formatDbDifference(difference)}`,
   ];
 }

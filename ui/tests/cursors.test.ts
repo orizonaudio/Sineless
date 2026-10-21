@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
 
+import { beatSpanLengths } from "../../protocol/src/enums.ts";
+import {
+  minimumEditorWidth,
+  minimumViewWidth,
+} from "../../protocol/src/limits.ts";
+
 import {
   cursorReadout,
   initialCursors,
@@ -76,6 +82,27 @@ describe("time cursors", () => {
   });
 });
 
+// Time cursors a pixel apart at the deepest zoom of the shortest beat span, on screens from the
+// narrowest editor to an 8K display: millionths of a beat, read as plain decimals.
+describe("beats between the closest time cursors", () => {
+  const shortest = Math.min(
+    ...beatSpanLengths
+      .filter((length) => !length.inBars)
+      .map((length) => length.amount),
+  );
+  test.each([minimumEditorWidth, 7680])("are readable %i px wide", (width) => {
+    const quarterNotes = (shortest * minimumViewWidth) / width;
+    const lines = cursorReadout({
+      seconds: 1e-6,
+      hertz: undefined,
+      quarterNotes,
+    });
+    const beats = lines.at(-1) ?? "";
+    expect(beats).toMatch(/^0\.0+\d+ beats$/u);
+    expect(Number(beats.split(" ")[0])).toBeCloseTo(quarterNotes, 9);
+  });
+});
+
 describe("level cursors", () => {
   test("start 6 and 12 dB below the top", () => {
     expect(initialLevels(1)).toEqual({ first: 0.5, second: 0.25 });
@@ -90,12 +117,12 @@ describe("level cursors", () => {
     expect(levelReadout({ first: 0, second: 1 })).toEqual([
       `1 ${minus}∞ dBFS`,
       "2 0.0 dBFS",
-      "Δ — dB",
+      "Δ —",
     ]);
     expect(levelReadout({ first: 1e-6, second: 1 })).toEqual([
       `1 ${minus}∞ dBFS`,
       "2 0.0 dBFS",
-      "Δ — dB",
+      "Δ —",
     ]);
   });
 });
