@@ -241,6 +241,7 @@ function frame(): Frame {
     invalidSamples: 0,
     invalidLanes: 0,
     sampleRate: 48000,
+    spanSeconds: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

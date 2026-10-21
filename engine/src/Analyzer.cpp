@@ -60,7 +60,8 @@ constexpr std::uint8_t flag(FrameFlag value)
 
 // The part of a window of `count` samples that the screen shows, as sample indices from its first
 // sample, with one extra point beyond each edge so a raw trace reaches the screen edges. The
-// window starts `fraction` of a sample after its first sample.
+// window starts `fraction` of a sample after its first sample. A window of no samples (a failed
+// read, or a rolling span before its first column of audio) shows none.
 struct Crop
 {
     std::size_t first = 0;
@@ -71,6 +72,9 @@ struct Crop
 
 Crop cropOf(double count, double fraction, double cropStart, double cropEnd)
 {
+    if (count < 1.0) {
+        return {};
+    }
     const double visibleFrom = fraction + cropStart * count;
     const double visibleTo = fraction + cropEnd * count;
     const auto first = static_cast<std::size_t>(
@@ -489,8 +493,32 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     }
 
     const double spanSeconds = settings.value(SettingId::kTimeSpan);
-    const double span = spanSeconds * sampleRate;
     const bool roll = isRollSpan(spanSeconds);
+    // The capture is sized for the longest span at its rate, but a host that changes the rate
+    // while processing leaves it as it was, and above the highest rate it grows no more: a longer
+    // span shows what is kept, and says so. Live, that is all the capture can be read of. Frozen,
+    // all that is held of what the capture could be read of then (the host may have prepared it
+    // again since). Other tracks' lanes hold no more, placed by their own clocks, so a margin is
+    // kept for the offset between tracks: what the capture spares beyond the longest span, up to
+    // a lane's margin, or an eighth of what it keeps when it cannot hold that span.
+    const auto readable = static_cast<double>(CaptureRing::readableLength(
+        isFrozen ? hold.heldCapacity() : engine.captureRing().capacity()));
+    // In whole samples, as holds are: the longest span held whole is then never short of a margin
+    // by a fraction of a sample.
+    const double spare =
+        readable - static_cast<double>(std::llround(HoldBuffer::kHoldSeconds * sampleRate));
+    const double laneMargin = !multi        ? 0.0
+                              : spare > 0.0 ? std::min(spare, kLaneMarginSeconds * sampleRate)
+                                            : readable / 8.0;
+    const double kept = isFrozen
+                            ? std::min(static_cast<double>(hold.endIndex() - hold.beginIndex()),
+                                       readable - laneMargin)
+                            : readable;
+    // Holds are whole samples: at a rate that is not, a held span a fraction of a sample short
+    // of the span's length holds all of it.
+    const bool spanLimited =
+        !synced && static_cast<double>(std::llround(spanSeconds * sampleRate)) > kept;
+    const double span = spanLimited ? kept : spanSeconds * sampleRate;
     // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown
     // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
     // at display rate, also when the transport is stopped or the host has stopped processing.
@@ -525,7 +553,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         return false;
     }
 
-    Window window{.span = span, .roll = roll};
+    Window window{.span = span, .roll = roll, .limited = spanLimited};
     auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
     bool freezeAfterRender = false;
     const SampleSource* source =
@@ -724,7 +752,8 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         .viewEnd = static_cast<float>(window.viewEnd),
         .visibleSamples = static_cast<float>(visibleSamples),
         .panReach = static_cast<float>(window.panReach),
-        .sampleRate = static_cast<float>(sampleRate)};
+        .sampleRate = static_cast<float>(sampleRate),
+        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate)};
     frameData.clear();
     std::size_t pointCount = 0;
     // Each view keeps its columns from frame to frame where it can: a tempo-synced sweep reduces
@@ -1414,7 +1443,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     FrameHeaderValues header{
         .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
                                            (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
-                                           (window.roll ? flag(FrameFlag::kRoll) : 0U)),
+                                           (window.roll ? flag(FrameFlag::kRoll) : 0U) |
+                                           (window.limited ? flag(FrameFlag::kLimited) : 0U)),
         .laneCount = static_cast<std::uint8_t>(laneOrder.size()),
         .startFraction = static_cast<float>(crop.startFraction),
         .viewStart = static_cast<float>(window.viewStart),
@@ -1422,7 +1452,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         .visibleSamples = static_cast<float>(crop.visibleSamples),
         .laneSet = laneSet().id,
         .panReach = static_cast<float>(window.panReach),
-        .sampleRate = static_cast<float>(sampleRate)};
+        .sampleRate = static_cast<float>(sampleRate),
+        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate)};
     // Where each lane's part of the window starts in its own capture (or hold).
     const auto sourceOf =
         [&](std::uint64_t serial) -> std::pair<const SampleSource*, std::uint64_t> {

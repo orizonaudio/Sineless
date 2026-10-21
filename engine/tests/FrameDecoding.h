@@ -30,6 +30,7 @@ struct DecodedFrame
     std::uint32_t invalidSamples = 0;
     std::uint32_t invalidLanes = 0;
     float sampleRate = 0.0f;
+    float spanSeconds = 0.0f;
     std::vector<float> data;
 
     [[nodiscard]] bool has(protocol::FrameFlag value) const
@@ -66,9 +67,12 @@ inline DecodedFrame decode(const std::vector<std::byte>& bytes)
     frame.invalidSamples = get<std::uint32_t>(bytes, protocol::FrameHeader::kInvalidSamplesOffset);
     frame.invalidLanes = get<std::uint32_t>(bytes, protocol::FrameHeader::kInvalidLanesOffset);
     frame.sampleRate = get<float>(bytes, protocol::FrameHeader::kSampleRateOffset);
+    frame.spanSeconds = get<float>(bytes, protocol::FrameHeader::kSpanSecondsOffset);
     frame.data.resize((bytes.size() - protocol::FrameHeader::kSize) / sizeof(float));
-    std::memcpy(frame.data.data(), bytes.data() + protocol::FrameHeader::kSize,
-                frame.data.size() * sizeof(float));
+    if (!frame.data.empty()) { // A frame of no points: no data to copy from or to.
+        std::memcpy(frame.data.data(), bytes.data() + protocol::FrameHeader::kSize,
+                    frame.data.size() * sizeof(float));
+    }
     return frame;
 }
 

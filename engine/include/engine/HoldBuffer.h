@@ -34,6 +34,9 @@ public:
     // Samples to hold at `sampleRate`: kHoldSeconds, limited to the capacity.
     [[nodiscard]] std::size_t holdLength(double sampleRate) const;
 
+    // The capture's capacity when it was last held: it may have changed since.
+    [[nodiscard]] std::size_t heldCapacity() const { return capacity; }
+
     [[nodiscard]] std::uint64_t endIndex() const override { return end; }
     [[nodiscard]] std::uint64_t beginIndex() const override { return begin; }
     [[nodiscard]] bool read(int channel, std::uint64_t start,

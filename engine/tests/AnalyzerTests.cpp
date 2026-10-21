@@ -435,6 +435,124 @@ TEST_F(AnalyzerTest, RollsSpansAboveOneSecond)
     EXPECT_FALSE(frame->has(FrameFlag::kTriggered));
 }
 
+// Just after the plugin starts, a rolling span has less audio than one of its columns: there is
+// nothing to draw yet, which must not be taken for a window to crop.
+TEST_F(AnalyzerTest, RollsFromNothingBeforeAColumnOfAudioArrives)
+{
+    engine.settings().set(SettingId::kTimeSpan, 2.0);
+    analyzer.setColumns(500); // 192 samples a column at 48 kHz.
+    writeSilence(100.0 / kSampleRate);
+    if (const auto frame = produce()) {
+        EXPECT_TRUE(frame->has(FrameFlag::kRoll));
+        EXPECT_EQ(frame->pointCount, 0U) << "no column is complete";
+    }
+    writeTone(5.0, 1.0, 0.5);
+    const auto rolling = produce();
+    ASSERT_TRUE(rolling);
+    EXPECT_GT(rolling->pointCount, 0U);
+}
+
+// A host that changes the sample rate while processing (the VST3 rules allow it only while
+// inactive) leaves the capture sized for the old rate: at 384 kHz, 2^20 samples can be read for
+// 2.4 s. A
+// longer span shows what is kept, live and frozen, and says it is limited, rather than drawing a
+// flat trace or no frame.
+TEST_F(AnalyzerTest, ShowsWhatTheCaptureKeepsOfASpanLongerThanIt)
+{
+    engine.prepare(192000.0);
+    engine.setSampleRate(384000.0);
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    analyzer.setColumns(500);
+    writeTone(5.0, 30.0, 0.5); // More than the capture holds.
+    const auto live = produce();
+    ASSERT_TRUE(live);
+    EXPECT_TRUE(live->has(FrameFlag::kRoll));
+    EXPECT_TRUE(live->has(FrameFlag::kLimited));
+    EXPECT_GT(*std::ranges::max_element(live->data), 0.4f) << "the tone, not a flat line";
+
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen) << "frozen, the display goes on";
+    EXPECT_TRUE(frozen->has(FrameFlag::kLimited));
+    EXPECT_GT(*std::ranges::max_element(frozen->data), 0.4f);
+}
+
+// Frozen before a span of audio arrived, the freeze holds less than the span: it shows what is
+// held, limited, rather than no frame.
+TEST_F(AnalyzerTest, ShowsWhatAFreezeHoldsOfALongerSpan)
+{
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    analyzer.setColumns(500);
+    writeTone(5.0, 1.0, 0.5);
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    EXPECT_TRUE(frozen->has(FrameFlag::kLimited));
+    EXPECT_GT(*std::ranges::max_element(frozen->data), 0.4f);
+}
+
+// Frozen at 384 kHz, the freeze holds the whole 4 s span. The host preparing again at 48 kHz
+// shrinks the capture, not what was held: the frozen picture stays whole.
+TEST_F(AnalyzerTest, KeepsAFreezeWholeWhenTheHostLowersTheRate)
+{
+    engine.prepare(384000.0);
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    analyzer.setColumns(500);
+    writeTone(5.0, 40.0, 0.5); // 1.92 M samples: more than the span.
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    ASSERT_FALSE(frozen->has(FrameFlag::kLimited));
+
+    engine.prepare(48000.0);
+    analyzer.setColumns(400); // Something to draw again for.
+    const auto after = produce();
+    ASSERT_TRUE(after);
+    EXPECT_TRUE(after->has(FrameFlag::kFrozen));
+    EXPECT_FALSE(after->has(FrameFlag::kLimited));
+    EXPECT_NEAR(after->visibleSamples, 4.0 * 384000.0, 400.0);
+}
+
+// A host may run at a rate that is not a whole number, 44.1 kHz pulled up by 1.001 for one. A
+// freeze holds a whole number of samples, a fraction short of the longest span's length, and it is
+// still the whole span.
+TEST_F(AnalyzerTest, DoesNotLimitAWholeFreezeAtARateThatIsNotAWholeNumber)
+{
+    for (const double rate : {44100.0 * 1.001, 48000.0 / 1.001}) {
+        SCOPED_TRACE(rate);
+        Engine pulled;
+        pulled.prepare(rate);
+        pulled.settings().set(SettingId::kTimeBase,
+                              static_cast<double>(protocol::TimeBase::kSeconds));
+        pulled.settings().set(SettingId::kTimeSpan, 4.0);
+        std::vector<float> tone(static_cast<std::size_t>(5.0 * rate), 0.25f);
+        std::array<const float*, 2> channels{tone.data(), tone.data()};
+        pulled.captureRing().write(channels.data(), 2, static_cast<int>(tone.size()));
+        Analyzer view{pulled};
+        view.setColumns(500);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(view.produce(bytes));
+        view.setFrozen(true);
+        ASSERT_TRUE(view.produce(bytes));
+        const DecodedFrame frozen = decode(bytes);
+        EXPECT_TRUE(frozen.has(FrameFlag::kFrozen));
+        EXPECT_FALSE(frozen.has(FrameFlag::kLimited));
+    }
+}
+
+// A span the capture keeps is not limited.
+TEST_F(AnalyzerTest, DoesNotLimitASpanTheCaptureKeeps)
+{
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    analyzer.setColumns(500);
+    writeTone(5.0, 5.0, 0.5);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_FALSE(frame->has(FrameFlag::kLimited));
+}
+
 TEST_F(AnalyzerTest, FreezeKeepsShowingHeldDataWhileViewsStillChange)
 {
     writeTone(440.0, 0.5, 0.5);

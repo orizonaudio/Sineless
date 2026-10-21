@@ -45,6 +45,9 @@ struct FrameHeaderValues
     std::uint32_t invalidLanes = 0;
     // The rate of the audio shown (frozen, the one it was held at), for the frame's times.
     float sampleRate = 0.0f;
+    // The time the whole screen width shows in Seconds mode (what is kept of the span when
+    // limited); 0 in a tempo-synced sweep.
+    float spanSeconds = 0.0f;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,

@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <utility>
 
 namespace orizon::engine {
@@ -17,14 +18,16 @@ constexpr std::size_t kChunkSamples = 16384;
 
 // The smallest and largest of `samples` (not empty), found per lane first so that the compiler
 // can run the lanes as vector registers. std::minmax_element must find the first minimum and the
-// last maximum, which keeps it a scalar loop: several times slower over long columns.
+// last maximum, which keeps it a scalar loop: several times slower over long columns. A sample
+// that is not a number is left out (std::min and std::max keep their first argument when the
+// other is NaN), as BlockStats leaves it out of levels; a column of nothing else is NaN.
 std::pair<float, float> minMax(std::span<const float> samples)
 {
     constexpr std::size_t kLanes = 8;
     std::array<float, kLanes> low{};
     std::array<float, kLanes> high{};
-    low.fill(samples.front());
-    high.fill(samples.front());
+    low.fill(std::numeric_limits<float>::infinity());
+    high.fill(-std::numeric_limits<float>::infinity());
     std::size_t index = 0;
     for (; index + kLanes <= samples.size(); index += kLanes) {
         for (std::size_t lane = 0; lane < kLanes; ++lane) {
@@ -37,6 +40,10 @@ std::pair<float, float> minMax(std::span<const float> samples)
     for (; index < samples.size(); ++index) {
         minimum = std::min(minimum, samples[index]);
         maximum = std::max(maximum, samples[index]);
+    }
+    if (minimum > maximum) {
+        constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
+        return {kNaN, kNaN};
     }
     return {minimum, maximum};
 }

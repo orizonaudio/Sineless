@@ -165,6 +165,10 @@ export interface MockOptions {
   // Samples of this track that are not finite (NaN or infinite) in what each frame measures, as
   // from a broken plugin upstream; none by default.
   readonly brokenSamples?: number;
+  // The longest Seconds span the capture keeps, as after a host changed the sample rate while
+  // processing: a longer span shows this much, limited, as the engine sends it. Unlimited by
+  // default.
+  readonly keptSeconds?: number;
 }
 
 export class MockTransport implements Transport {
@@ -186,6 +190,7 @@ export class MockTransport implements Transport {
   private readonly sampleRate: number;
   private readonly inputChannels: 1 | 2;
   private readonly brokenSamples: number;
+  private readonly keptSeconds: number;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
   // The last live Seconds window before a freeze (none when frozen in Beats mode), from which a
@@ -200,6 +205,7 @@ export class MockTransport implements Transport {
     this.sampleRate = options.sampleRate ?? mockSampleRate;
     this.inputChannels = options.inputChannels ?? 2;
     this.brokenSamples = options.brokenSamples ?? 0;
+    this.keptSeconds = options.keptSeconds ?? Infinity;
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -252,7 +258,7 @@ export class MockTransport implements Transport {
           this.lastLive = undefined;
         } else if (this.frozenAt === undefined) {
           this.frozenAt = this.now();
-          const span = this.setting("timeSpan") as number;
+          const span = this.secondsSpan();
           this.lastLive =
             this.setting("timeBase") === "beats"
               ? undefined
@@ -423,11 +429,16 @@ export class MockTransport implements Transport {
     };
   }
 
+  // The Seconds span shown: the setting, or what the capture keeps of it.
+  private secondsSpan(): number {
+    return Math.min(this.setting("timeSpan") as number, this.keptSeconds);
+  }
+
   private panReach(): number {
     if (this.frozenAt === undefined || this.setting("timeBase") === "beats") {
       return 0;
     }
-    return this.frozenWindow(this.setting("timeSpan") as number).reach;
+    return this.frozenWindow(this.secondsSpan()).reach;
   }
 
   private sendFrame(): void {
@@ -444,6 +455,10 @@ export class MockTransport implements Transport {
     let cycleStart = 0;
     let spanQuarterNotes = 0;
     const roll = !synced && span > rollThresholdSeconds;
+    const limited = !synced && span > this.keptSeconds;
+    if (limited) {
+      span = this.keptSeconds;
+    }
     if (synced) {
       // A transport playing at the mock tempo since start-up.
       const name = this.setting("beatSpan") as keyof typeof BeatSpan;
@@ -597,6 +612,8 @@ export class MockTransport implements Transport {
         sampleRate: this.sampleRate,
         roll,
         synced,
+        limited,
+        spanSeconds: synced ? 0 : span,
         cursor,
         cycleStart,
         cycleSeconds: (cycleStart * 60) / mockTempo,
@@ -604,7 +621,12 @@ export class MockTransport implements Transport {
         barQuarterNotes: synced ? mockBarQuarterNotes : 0,
         viewStart: this.view.start,
         viewEnd: this.view.end,
-        visibleSamples: sampleCount,
+        // As the engine places a live roll (Roll.cpp, rollWindow), its part on screen is whole
+        // columns of whole samples: zoomed far in, more than the samples there.
+        visibleSamples:
+          roll && this.frozenAt === undefined
+            ? this.columns * Math.max(1, Math.round(sampleCount / this.columns))
+            : sampleCount,
         pointCount,
         startFraction: 0,
         peak: readoutSamples > 0 ? peak : Number.NaN,

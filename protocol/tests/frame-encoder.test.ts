@@ -31,6 +31,7 @@ test("encodes the golden frame byte for byte", () => {
     invalidSamples: golden.header.invalidSamples,
     invalidLanes: golden.header.invalidLanes,
     sampleRate: golden.header.sampleRate,
+    spanSeconds: golden.header.spanSeconds,
     views: new Map([
       [ChannelView.mid, golden.views.mid],
       [ChannelView.left, golden.views.left],

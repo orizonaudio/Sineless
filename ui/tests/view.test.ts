@@ -308,6 +308,7 @@ describe("status chips", () => {
     invalidSamples: 0,
     invalidLanes: 0,
     sampleRate: 48000,
+    spanSeconds: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,
@@ -404,6 +405,21 @@ describe("status chips", () => {
       text: "Span limited",
       tone: "warn",
     });
+  });
+
+  // A span is shortened to what can be kept in every time base: a beat span stepped down, a
+  // Seconds span longer than the capture (a host changed the rate while processing), and frozen.
+  test.each([
+    ["a sweep", { synced: true }],
+    ["a roll", { roll: true }],
+    ["a frozen frame", { frozen: true }],
+  ])("says the span is limited on %s", (_, flags) => {
+    expect(
+      statusChips(frame({ ...flags, limited: true }), "auto", 0, 0),
+    ).toContainEqual({ text: "Span limited", tone: "warn" });
+    expect(
+      statusChips(frame(flags), "auto", 0, 0).map((chip) => chip.text),
+    ).not.toContain("Span limited");
   });
 
   test("shows roll and frozen with the pan offset", () => {

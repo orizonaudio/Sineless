@@ -148,8 +148,7 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
 }
 
 // The page runs only the script it was built with: a script put into it some other way (a host
-// track name that ever reached markup, say) is refused. Its own stylesheet applies, and every font
-// it declares loads.
+// track name that ever reached markup, say) is refused.
 TEST_F(EditorTest, RunsNoScriptThePageWasNotBuiltWith)
 {
     NSView* parent = [[NSView alloc] init];
@@ -167,6 +166,22 @@ TEST_F(EditorTest, RunsNoScriptThePageWasNotBuiltWith)
                                  "  return String(window.injected === true);"
                                  "})()"),
               "false");
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
+// What the page may load lets in everything it was built with: its stylesheet applies, and every
+// font it declares loads.
+TEST_F(EditorTest, LoadsItsOwnStylesAndFonts)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    auto editor = owned(new Editor(nullptr));
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil(
+        [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
+        kPageTimeout));
     evaluate(webView, @"(document.styleSheets.length > 0 && document.fonts.size > 0"
                        "   ? Promise.all([...document.fonts].map((font) => font.load()))"
                        "   : Promise.reject()).then("
