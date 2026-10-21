@@ -626,6 +626,7 @@ TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
     ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
     EXPECT_NEAR(frame->visibleSamples, spanSamples, kColumns / 2.0 + 1.0);
     EXPECT_FALSE(frame->has(FrameFlag::kLimited));
+    EXPECT_NEAR(frame->spanSeconds, c.span.seconds, 1e-6) << "frozen, the span still";
     expectTraces(*frame, traces);
 }
 
@@ -807,6 +808,8 @@ TEST_P(RateChangedWhileProcessing, ShowsWhatTheCaptureKeepsOfALongerSpan)
     // the offset between tracks.
     EXPECT_LE(frame->visibleSamples, kept + kColumns);
     EXPECT_GT(frame->visibleSamples, kept / 2.0);
+    EXPECT_NEAR(frame->spanSeconds, frame->visibleSamples / frame->sampleRate, 1e-6)
+        << "frozen, what is held, less the margin kept for other tracks";
     EXPECT_LT(frame->visibleSamples, 4.0 * session.rate);
     expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
 }
@@ -838,6 +841,8 @@ TEST_P(FrozenSpans, ShowsWhatAFreezeHoldsOfALongerSpan)
     EXPECT_TRUE(frame->has(FrameFlag::kLimited));
     EXPECT_LT(frame->visibleSamples, 1.0 * session.rate + kColumns);
     EXPECT_GT(frame->visibleSamples, 0.5 * session.rate);
+    EXPECT_NEAR(frame->spanSeconds, frame->visibleSamples / frame->sampleRate, 1e-6)
+        << "the second held, not the span set";
     expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
 }
 
@@ -858,6 +863,7 @@ TEST_P(FrozenSpans, StaysWholeWhenTheHostLowersTheRate)
     ASSERT_TRUE(frame) << "no frozen frame after the rate change";
     EXPECT_FALSE(frame->has(FrameFlag::kLimited));
     EXPECT_NEAR(frame->visibleSamples, 4.0 * 384000.0, kColumns);
+    EXPECT_NEAR(frame->spanSeconds, 4.0, 1e-6) << "at the rate held, not the new one";
     expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
 }
 
