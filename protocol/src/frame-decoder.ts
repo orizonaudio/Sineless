@@ -33,6 +33,9 @@ export interface Frame {
   readonly invalidLanes: number;
   // The rate of the audio shown (frozen, the one it was held at), for the frame's times.
   readonly sampleRate: number;
+  // The time the whole screen width shows in Seconds mode: the span, or what is kept of it when
+  // `limited`. 0 in a tempo-synced sweep.
+  readonly spanSeconds: number;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
   // The part of the span this frame covers, and its length in samples.
@@ -146,6 +149,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     invalidSamples: u32("invalidSamples"),
     invalidLanes: u32("invalidLanes"),
     sampleRate: f32("sampleRate"),
+    spanSeconds: f32("spanSeconds"),
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
     viewStart: f32("viewStart"),

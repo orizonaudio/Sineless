@@ -258,7 +258,7 @@ export class MockTransport implements Transport {
           this.lastLive = undefined;
         } else if (this.frozenAt === undefined) {
           this.frozenAt = this.now();
-          const span = this.setting("timeSpan") as number;
+          const span = this.secondsSpan();
           this.lastLive =
             this.setting("timeBase") === "beats"
               ? undefined
@@ -429,11 +429,16 @@ export class MockTransport implements Transport {
     };
   }
 
+  // The Seconds span shown: the setting, or what the capture keeps of it.
+  private secondsSpan(): number {
+    return Math.min(this.setting("timeSpan") as number, this.keptSeconds);
+  }
+
   private panReach(): number {
     if (this.frozenAt === undefined || this.setting("timeBase") === "beats") {
       return 0;
     }
-    return this.frozenWindow(this.setting("timeSpan") as number).reach;
+    return this.frozenWindow(this.secondsSpan()).reach;
   }
 
   private sendFrame(): void {
@@ -608,6 +613,7 @@ export class MockTransport implements Transport {
         roll,
         synced,
         limited,
+        spanSeconds: synced ? 0 : span,
         cursor,
         cycleStart,
         cycleSeconds: (cycleStart * 60) / mockTempo,

@@ -215,8 +215,6 @@ export class OscilloscopeApp {
   private lastFrame: Frame | undefined;
   // The span in seconds the time labels were last placed for.
   private labelledSpan = 0;
-  // The span the engine last limited a Seconds frame of the whole span to.
-  private limitedSpan: number | undefined;
   private lastFrameTime = 0;
   // Readouts refresh on a fixed schedule of one per readoutInterval, as frames are drawn (see
   // RenderLoop), whether frames or the idle timer prompt them.
@@ -1051,24 +1049,13 @@ export class OscilloscopeApp {
     }
   }
 
-  // The time the whole screen width shows in Seconds mode: the Span setting, or, when the engine
-  // limited the span to what is kept, what the frame shows. That is measured on a frame of the
-  // whole span: zoomed into a roll, the engine rounds the part shown to whole columns.
+  // The time the whole screen width shows in Seconds mode, as the engine says: the span, or what is
+  // kept of it when limited. The Span setting until a Seconds frame comes.
   private secondsSpan(): number {
     const frame = this.lastFrame;
-    if (frame === undefined || frame.synced || !frame.limited) {
-      this.limitedSpan = undefined;
-      return this.store.number("timeSpan");
-    }
-    if (
-      frame.viewStart === 0 &&
-      frame.viewEnd === 1 &&
-      frame.sampleRate > 0 &&
-      frame.visibleSamples > 0
-    ) {
-      this.limitedSpan = frame.visibleSamples / frame.sampleRate;
-    }
-    return this.limitedSpan ?? this.store.number("timeSpan");
+    return frame !== undefined && !frame.synced && frame.spanSeconds > 0
+      ? frame.spanSeconds
+      : this.store.number("timeSpan");
   }
 
   private placeLabels(): void {
@@ -1643,7 +1630,7 @@ export class OscilloscopeApp {
       this.setView(panBy(this.view, screenWidths));
     } else if (this.lastFrame?.frozen === true && !this.lastFrame.synced) {
       // No further back than the engine says this frozen view reaches.
-      const span = this.store.number("timeSpan");
+      const span = this.secondsSpan();
       this.panSeconds = clampPan(
         this.panSeconds - screenWidths * span,
         this.lastFrame.panReach,

@@ -1,12 +1,20 @@
 // A Seconds span longer than the capture keeps (a host changed the sample rate while processing)
-// shows what is kept: the time axis measures that, not the Span setting.
+// shows what is kept: the time axis and a frozen pan measure that, not the Span setting.
 import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { timeLabels as axisTimeLabels } from "../../src/view/axis-labels.ts";
-import { parseQuantity } from "../../src/view/format.ts";
+import { formatSeconds, parseQuantity } from "../../src/view/format.ts";
 import { fullView, type ViewWindow } from "../../src/view/zoom.ts";
-import { byId, choice, chips, settle, startApp, typeInto } from "./harness.ts";
+import {
+  byId,
+  choice,
+  chips,
+  settle,
+  startApp,
+  swipe,
+  typeInto,
+} from "./harness.ts";
 
 const kept = 2.4;
 
@@ -84,5 +92,17 @@ describe("a span longer than the capture keeps", () => {
     const frame = window.orizonDebug?.lastFrame;
     const view = { start: frame?.viewStart ?? 0, end: frame?.viewEnd ?? 1 };
     expect(marksSpan(view, kept), timeLabels().join(", ")).toBe(true);
+  });
+
+  // Frozen, the held audio reaches further back than the limited span shows (Multi and Compare
+  // keep a margin for other tracks): a swipe of a quarter of the screen pans a quarter of what
+  // the screen shows.
+  test("pans a frozen view by the span shown", async () => {
+    byId("trace").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    await userEvent.click(byId("freeze"));
+    await expect.poll(chips).toContain("Frozen");
+    await settle();
+    swipe(-0.25);
+    await expect.poll(chips).toContain(`−${formatSeconds(0.25 * kept)}`);
   });
 });
