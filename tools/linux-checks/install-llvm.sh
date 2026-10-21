@@ -12,7 +12,7 @@ sudo=$([[ "$(id -u)" == 0 ]] || echo sudo)
 $sudo apt-get update
 DEBIAN_FRONTEND=noninteractive $sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg
 curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | $sudo gpg --dearmor --yes -o /usr/share/keyrings/llvm.gpg
-echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-$llvm main" |
+echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-$llvm main" |
     $sudo tee /etc/apt/sources.list.d/llvm.list > /dev/null
 $sudo apt-get update
 DEBIAN_FRONTEND=noninteractive $sudo apt-get install -y --no-install-recommends \
