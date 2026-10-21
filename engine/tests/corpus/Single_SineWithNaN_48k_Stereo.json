@@ -28,12 +28,12 @@
     "left": {
       "max": 0.5,
       "min": -0.5,
-      "nanPoints": 2
+      "nanPoints": 0
     },
     "right": {
       "max": 0.5,
       "min": -0.5,
-      "nanPoints": 2
+      "nanPoints": 0
     }
   },
   "visibleSamples": 4800

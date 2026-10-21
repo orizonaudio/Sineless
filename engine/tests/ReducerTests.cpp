@@ -1,6 +1,7 @@
 #include "engine/Reducer.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <limits>
@@ -60,6 +61,33 @@ TEST(Reducer, MatchesBruteForceAcrossSpansAndWidths)
                 << count << " samples, " << columns << " columns";
         }
     }
+}
+
+// A sample that is not a number (a broken signal upstream) is left out of its column, wherever it
+// falls in it: its first sample, which starts the search, as any other. The rest of the column
+// still shows.
+TEST(Reducer, LeavesOutSamplesThatAreNotNumbersWhereverTheyFall)
+{
+    auto samples = randomSamples(4800, 21);
+    constexpr std::size_t kColumns = 100; // 48 samples a column.
+    for (const std::size_t index : {0U, 480U, 489U, 1000U, 4799U}) {
+        samples[index] = std::numeric_limits<float>::quiet_NaN();
+    }
+    std::vector<float> output;
+    ASSERT_EQ(reduceToColumns(samples, kColumns, output), FrameMode::kMinMax);
+    EXPECT_EQ(output, bruteForceMinMax(samples, kColumns));
+}
+
+// A column with no number in it has no level to draw: "no value", not a full-scale bar.
+TEST(Reducer, ShowsNoValueForAColumnOfNothingButNotANumbers)
+{
+    auto samples = randomSamples(4800, 22);
+    constexpr std::size_t kColumns = 100;
+    std::fill_n(samples.begin() + 480, 48, std::numeric_limits<float>::quiet_NaN()); // Column 10.
+    std::vector<float> output;
+    ASSERT_EQ(reduceToColumns(samples, kColumns, output), FrameMode::kMinMax);
+    EXPECT_TRUE(std::isnan(output[20]) && std::isnan(output[21]));
+    EXPECT_TRUE(std::isfinite(output[18]) && std::isfinite(output[23]));
 }
 
 TEST(Reducer, KeepsASinglePeakVisible)
