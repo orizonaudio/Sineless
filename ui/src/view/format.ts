@@ -135,6 +135,23 @@ export function formatDb(db: number): string {
   return Number.isFinite(db) ? `${formatDbValue(db)} dB` : none;
 }
 
+// A difference between two levels, in dB with one decimal, as the levels are shown: "6.0 dB".
+export function formatDbDifference(db: number): string {
+  if (!Number.isFinite(db)) {
+    return none;
+  }
+  return `${Math.abs(rounded(db, 1)).toFixed(1)} dB`;
+}
+
+// Quarter notes as beats, to three significant digits: "1 beat", "0.25 beats".
+export function formatBeats(quarterNotes: number): string {
+  if (!Number.isFinite(quarterNotes)) {
+    return none;
+  }
+  const text = significant(quarterNotes, 3);
+  return `${text.replace("-", minus)} ${Number(text) === 1 ? "beat" : "beats"}`;
+}
+
 // Frequency readout: approximate, or a dash when unavailable.
 export function formatFrequency(hertz: number | undefined): string {
   if (hertz === undefined || !Number.isFinite(hertz)) {
