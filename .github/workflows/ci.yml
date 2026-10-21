@@ -320,6 +320,11 @@ jobs:
         shell: powershell
         run: |
           Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile installwebview.exe
+          # The evergreen bootstrapper changes, so it has no fixed hash: run it only signed by Microsoft.
+          $signature = Get-AuthenticodeSignature installwebview.exe
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw "The WebView2 bootstrapper is not signed by Microsoft: $($signature.Status) $($signature.SignerCertificate.Subject)"
+          }
           Start-Process -Wait installwebview.exe -ArgumentList '/silent', '/install'
       - if: env.CODE == 'true'
         name: Run the checks
@@ -360,6 +365,11 @@ jobs:
         shell: powershell
         run: |
           Invoke-WebRequest https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile installwebview.exe
+          # The evergreen bootstrapper changes, so it has no fixed hash: run it only signed by Microsoft.
+          $signature = Get-AuthenticodeSignature installwebview.exe
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw "The WebView2 bootstrapper is not signed by Microsoft: $($signature.Status) $($signature.SignerCertificate.Subject)"
+          }
           Start-Process -Wait installwebview.exe -ArgumentList '/silent', '/install'
       - if: env.CODE == 'true'
         name: Run the checks

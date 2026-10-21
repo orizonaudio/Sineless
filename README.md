@@ -28,6 +28,18 @@ For the multi-track lanes to line up, put Sineless last on each track.
 
 ## Install
 
+Releases are not signed yet, so the steps below get past macOS's and Windows's warnings. Before that, check the download is the one released: its SHA-256 must match the release page's (also in `SHA256SUMS.txt`).
+
+```bash
+shasum -a 256 ~/Downloads/Sineless-<version>-macOS.pkg
+```
+
+On Windows, in PowerShell:
+
+```powershell
+Get-FileHash $HOME\Downloads\Sineless-<version>-Windows-Setup.exe
+```
+
 ### macOS
 
 With the installer:

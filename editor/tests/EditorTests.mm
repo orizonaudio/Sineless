@@ -114,6 +114,20 @@ TEST_F(EditorTest, FreesItsTimersWhenClosed)
         << liveTimersForTests() - before << " timers left";
 }
 
+// The page keeps nothing it needs in WebKit's storage (settings live in the engine), so it leaves
+// nothing of its own on disk, in the host's data folder.
+TEST_F(EditorTest, KeepsNoWebsiteDataOnDisk)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    auto editor = owned(new Editor(nullptr));
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    EXPECT_FALSE(webView.configuration.websiteDataStore.persistent);
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
 TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
 {
     NSView* parent = [[NSView alloc] init];
@@ -133,16 +147,34 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
     [window close];
 }
 
-// The page keeps nothing it needs in WebKit's storage (settings live in the engine), so it leaves
-// nothing of its own on disk, in the host's data folder.
-TEST_F(EditorTest, KeepsNoWebsiteDataOnDisk)
+// The page runs only the script it was built with: a script put into it some other way (a host
+// track name that ever reached markup, say) is refused. Its own stylesheet applies, and every font
+// it declares loads.
+TEST_F(EditorTest, RunsNoScriptThePageWasNotBuiltWith)
 {
     NSView* parent = [[NSView alloc] init];
     NSWindow* window = makeWindow(parent);
     auto editor = owned(new Editor(nullptr));
     ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
     auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
-    EXPECT_FALSE(webView.configuration.websiteDataStore.persistent);
+    ASSERT_TRUE(pumpUntil(
+        [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
+        kPageTimeout));
+    EXPECT_EQ(evaluate(webView, @"(() => {"
+                                 "  const script = document.createElement('script');"
+                                 "  script.textContent = 'window.injected = true';"
+                                 "  document.head.append(script);"
+                                 "  return String(window.injected === true);"
+                                 "})()"),
+              "false");
+    evaluate(webView, @"(document.styleSheets.length > 0 && document.fonts.size > 0"
+                       "   ? Promise.all([...document.fonts].map((font) => font.load()))"
+                       "   : Promise.reject()).then("
+                       "  () => { window.fonts = 'loaded'; }, () => { window.fonts = 'failed'; });"
+                       "''");
+    EXPECT_TRUE(
+        pumpUntil([&] { return evaluate(webView, @"String(window.fonts ?? '')") == "loaded"; },
+                  kPageTimeout));
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
 }
