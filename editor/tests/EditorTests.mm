@@ -1,7 +1,9 @@
 #include "FitStates.h"
 #include "MacPageTesting.h"
 #include "editor/Editor.h"
+#include "editor/UiDispatcher.h"
 #include "engine/Version.h"
+#include "mac/UiDispatcherMacTesting.h"
 #include "mac/WebViewMacTesting.h"
 #include "pluginterfaces/gui/iplugview.h"
 
@@ -95,6 +97,21 @@ TEST_F(EditorTest, RunsTheWorkerOnlyWhileAttachedWithAnEngine)
             [window close];
         }
     }
+}
+
+// Each editor opened starts a repeating timer on the UI thread. Closing the editor frees it: one
+// left behind per editor would stay for as long as the host runs.
+TEST_F(EditorTest, FreesItsTimersWhenClosed)
+{
+    const int before = liveTimersForTests();
+    for (int opened = 0; opened < 3; ++opened) {
+        auto dispatcher = UiDispatcher::create();
+        dispatcher->every(std::chrono::milliseconds(10), [] {});
+        pumpUntil([] { return false; }, std::chrono::milliseconds(30)); // It runs.
+        EXPECT_EQ(liveTimersForTests(), before + 1);
+    }
+    EXPECT_TRUE(pumpUntil([&] { return liveTimersForTests() == before; }, std::chrono::seconds(2)))
+        << liveTimersForTests() - before << " timers left";
 }
 
 TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
