@@ -453,7 +453,8 @@ TEST_F(AnalyzerTest, RollsFromNothingBeforeAColumnOfAudioArrives)
 }
 
 // A host that changes the sample rate while processing (the VST3 rules allow it only while
-// inactive) leaves the capture sized for the old rate: at 384 kHz, 2^20 samples keep 2.7 s. A
+// inactive) leaves the capture sized for the old rate: at 384 kHz, 2^20 samples can be read for
+// 2.4 s. A
 // longer span shows what is kept, live and frozen, and says it is limited, rather than drawing a
 // flat trace or no frame.
 TEST_F(AnalyzerTest, ShowsWhatTheCaptureKeepsOfASpanLongerThanIt)
@@ -489,6 +490,29 @@ TEST_F(AnalyzerTest, ShowsWhatAFreezeHoldsOfALongerSpan)
     ASSERT_TRUE(frozen);
     EXPECT_TRUE(frozen->has(FrameFlag::kLimited));
     EXPECT_GT(*std::ranges::max_element(frozen->data), 0.4f);
+}
+
+// Frozen at 384 kHz, the freeze holds the whole 4 s span. The host preparing again at 48 kHz
+// shrinks the capture, not what was held: the frozen picture stays whole.
+TEST_F(AnalyzerTest, KeepsAFreezeWholeWhenTheHostLowersTheRate)
+{
+    engine.prepare(384000.0);
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    analyzer.setColumns(500);
+    writeTone(5.0, 40.0, 0.5); // 1.92 M samples: more than the span.
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    ASSERT_FALSE(frozen->has(FrameFlag::kLimited));
+
+    engine.prepare(48000.0);
+    analyzer.setColumns(400); // Something to draw again for.
+    const auto after = produce();
+    ASSERT_TRUE(after);
+    EXPECT_TRUE(after->has(FrameFlag::kFrozen));
+    EXPECT_FALSE(after->has(FrameFlag::kLimited));
+    EXPECT_NEAR(after->visibleSamples, 4.0 * 384000.0, 400.0);
 }
 
 // A span the capture keeps is not limited.

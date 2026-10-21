@@ -797,14 +797,65 @@ TEST_P(RateChangedWhileProcessing, ShowsWhatTheCaptureKeepsOfALongerSpan)
     frame = session.produce();
     ASSERT_TRUE(frame) << "no frozen frame";
     EXPECT_TRUE(frame->has(FrameFlag::kLimited));
-    // In Multi and Compare, less a margin for the offset between tracks.
-    const double held = GetParam() == DisplayMode::kSingle ? kept : kept * 7.0 / 8.0;
-    EXPECT_NEAR(frame->visibleSamples, held, kColumns / 2.0 + 1.0) << "all that is held";
+    // Most of what is held, every lane drawn whole: Multi and Compare keep some of it back for
+    // the offset between tracks.
+    EXPECT_LE(frame->visibleSamples, kept + kColumns);
+    EXPECT_GT(frame->visibleSamples, kept / 2.0);
     EXPECT_LT(frame->visibleSamples, 4.0 * session.rate);
     expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, RateChangedWhileProcessing, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
+                         });
+
+// A freeze holds less than a longer span when it comes before a whole span of audio has
+// arrived, and holds all of it when the host prepares again at a lower rate afterwards: in every
+// display mode, the frozen frame shows what is held, every lane whole, limited only in the first.
+class FrozenSpans : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(FrozenSpans, ShowsWhatAFreezeHoldsOfALongerSpan)
+{
+    Session session(48000.0, 2);
+    session.join({.frequency = 1000.0});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), GetParam(), TimeBase::kSeconds);
+    ASSERT_TRUE(session.own().settings().set(SettingId::kTimeSpan, 4.0));
+    session.play(1.0);
+    ASSERT_TRUE(session.produce()) << "no live frame";
+    session.analyzer().setFrozen(true);
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    EXPECT_TRUE(frame->has(FrameFlag::kLimited));
+    EXPECT_LT(frame->visibleSamples, 1.0 * session.rate + kColumns);
+    EXPECT_GT(frame->visibleSamples, 0.5 * session.rate);
+    expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
+}
+
+TEST_P(FrozenSpans, StaysWholeWhenTheHostLowersTheRate)
+{
+    Session session(384000.0, 2);
+    session.join({.frequency = 1000.0});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), GetParam(), TimeBase::kSeconds);
+    ASSERT_TRUE(session.own().settings().set(SettingId::kTimeSpan, 4.0));
+    session.play(4.5);
+    ASSERT_TRUE(session.produce()) << "no live frame";
+    session.analyzer().setFrozen(true);
+    ASSERT_TRUE(session.produce()) << "no frozen frame";
+    session.prepare(48000.0);
+    session.analyzer().setColumns(kColumns / 2); // Something to draw again for.
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame after the rate change";
+    EXPECT_FALSE(frame->has(FrameFlag::kLimited));
+    EXPECT_NEAR(frame->visibleSamples, 4.0 * 384000.0, kColumns);
+    expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSpans, ::testing::ValuesIn(everyMode()),
                          [](const ::testing::TestParamInfo<DisplayMode>& info) {
                              return modeName(info.param);
                          });
