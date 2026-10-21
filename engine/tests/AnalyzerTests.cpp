@@ -515,6 +515,33 @@ TEST_F(AnalyzerTest, KeepsAFreezeWholeWhenTheHostLowersTheRate)
     EXPECT_NEAR(after->visibleSamples, 4.0 * 384000.0, 400.0);
 }
 
+// A host may run at a rate that is not a whole number, 44.1 kHz pulled up by 1.001 for one. A
+// freeze holds a whole number of samples, a fraction short of the longest span's length, and it is
+// still the whole span.
+TEST_F(AnalyzerTest, DoesNotLimitAWholeFreezeAtARateThatIsNotAWholeNumber)
+{
+    for (const double rate : {44100.0 * 1.001, 48000.0 / 1.001}) {
+        SCOPED_TRACE(rate);
+        Engine pulled;
+        pulled.prepare(rate);
+        pulled.settings().set(SettingId::kTimeBase,
+                              static_cast<double>(protocol::TimeBase::kSeconds));
+        pulled.settings().set(SettingId::kTimeSpan, 4.0);
+        std::vector<float> tone(static_cast<std::size_t>(5.0 * rate), 0.25f);
+        std::array<const float*, 2> channels{tone.data(), tone.data()};
+        pulled.captureRing().write(channels.data(), 2, static_cast<int>(tone.size()));
+        Analyzer view{pulled};
+        view.setColumns(500);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(view.produce(bytes));
+        view.setFrozen(true);
+        ASSERT_TRUE(view.produce(bytes));
+        const DecodedFrame frozen = decode(bytes);
+        EXPECT_TRUE(frozen.has(FrameFlag::kFrozen));
+        EXPECT_FALSE(frozen.has(FrameFlag::kLimited));
+    }
+}
+
 // A span the capture keeps is not limited.
 TEST_F(AnalyzerTest, DoesNotLimitASpanTheCaptureKeeps)
 {
