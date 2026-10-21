@@ -511,8 +511,11 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
                             ? std::min(static_cast<double>(hold.endIndex() - hold.beginIndex()),
                                        readable - laneMargin)
                             : readable;
-    const double span = std::min(spanSeconds * sampleRate, kept);
-    const bool spanLimited = !synced && spanSeconds * sampleRate > kept;
+    // Holds are whole samples: at a rate that is not, a held span a fraction of a sample short
+    // of the span's length holds all of it.
+    const bool spanLimited =
+        !synced && static_cast<double>(std::llround(spanSeconds * sampleRate)) > kept;
+    const double span = spanLimited ? kept : spanSeconds * sampleRate;
     // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown
     // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
     // at display rate, also when the transport is stopped or the host has stopped processing.

@@ -793,7 +793,11 @@ TEST_P(RateChangedWhileProcessing, ShowsWhatTheCaptureKeepsOfALongerSpan)
         expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
     }
 
+    // Frozen with another track's capture a little ahead of this one's, as tracks are: its lane
+    // is placed by its own clock, and still drawn whole.
+    session.lead(1, kBlock * 4);
     session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / session.rate);
     frame = session.produce();
     ASSERT_TRUE(frame) << "no frozen frame";
     EXPECT_TRUE(frame->has(FrameFlag::kLimited));
