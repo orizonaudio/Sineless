@@ -252,9 +252,9 @@ press outside closes them.
 | Trig'd | A trigger placed the frame. |
 | Waiting | Normal or Single trigger mode with no frame for 0.25 s. |
 | *trigger mode* (Auto, Normal, Free, Single) | Seconds span up to 1 s, after Trig'd or Waiting. |
-| Roll | Seconds span above 1 s. |
+| Roll | Seconds span above 1 s. With **Span limited** when the span is longer than the capture keeps (a host changed the sample rate while processing, or a rate above 384 kHz). |
 | Sync | Beats. With **Span limited** when the beat span was stepped down (FR-9.3), **Filling** while the sweep fills in. |
-| Frozen | Frozen; followed by the pan offset (for example "−1.2 s") when panned, and **Partial** when the held audio does not cover the span. |
+| Frozen | Frozen; followed by the pan offset (for example "−1.2 s") when panned, **Span limited** when the span was shortened to what is held, and **Partial** when the held audio does not cover the span. |
 | Zoom ×n | Zoomed in. |
 | +n hidden | Multi or Compare with more tracks than lanes. |
 | Invalid samples | A drawn trace holds samples that are not finite (warning tone). |
@@ -1102,7 +1102,7 @@ not reused.
 | Seconds | The time base whose span is a time; labelled "Sec" in the UI. |
 | Single | A display mode (one track, its channel views) and, separately, a trigger mode (capture one triggered frame, then freeze). Always qualified. |
 | Span | The time the full screen width shows: seconds, or a beat span. |
-| Span limited | A beat span stepped down because its sweep would exceed the cap. |
+| Span limited | A span shortened to what can be kept: a beat span stepped down because its sweep would exceed the cap, or a Seconds span longer than the capture or the freeze holds. |
 | Sum lane | Compare's lane with the sample-by-sample sum of the checked tracks. |
 | Summing gain | The level of the checked tracks' sum against the level they would give if unrelated, in dB. |
 | Sweep | The Beats display: written left to right by a playhead, cycle after cycle. |

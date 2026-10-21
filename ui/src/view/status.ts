@@ -35,6 +35,10 @@ export function statusChips(
   return chips;
 }
 
+// The span was shortened to what can be kept: a beat span stepped down, or a Seconds span longer
+// than the capture.
+const spanLimited: Chip = { text: "Span limited", tone: "warn" };
+
 function modeChips(
   frame: Frame | undefined,
   mode: string,
@@ -47,6 +51,9 @@ function modeChips(
     if (panSeconds > 0) {
       chips.push({ text: `−${formatSeconds(panSeconds)}`, tone: "neutral" });
     }
+    if (frame.limited) {
+      chips.push(spanLimited);
+    }
     if (frame.partial) {
       chips.push({ text: "Partial", tone: "neutral" });
     }
@@ -55,7 +62,7 @@ function modeChips(
   if (frame?.synced === true) {
     chips.push({ text: "Sync", tone: "ok" });
     if (frame.limited) {
-      chips.push({ text: "Span limited", tone: "warn" });
+      chips.push(spanLimited);
     }
     if (frame.partial) {
       chips.push({ text: "Filling", tone: "neutral" });
@@ -63,7 +70,10 @@ function modeChips(
     return chips;
   }
   if (frame?.roll === true) {
-    return [{ text: "Roll", tone: "neutral" }];
+    return [
+      { text: "Roll", tone: "neutral" },
+      ...(frame.limited ? [spanLimited] : []),
+    ];
   }
   const waiting =
     (mode === "normal" || mode === "single") &&
