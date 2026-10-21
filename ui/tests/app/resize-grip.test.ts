@@ -123,6 +123,34 @@ describe("resize grip", () => {
     },
   );
 
+  // On a touch screen, a second finger on the grip while one drags it.
+  test("follows the first finger only", async () => {
+    const grip = byId("resize-grip");
+    const capture = vi
+      .spyOn(grip, "setPointerCapture")
+      .mockImplementation(() => undefined);
+    const at = (x: number, pointerId: number) => ({
+      pointerId,
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      screenX: x,
+      screenY: 400,
+    });
+    grip.dispatchEvent(new PointerEvent("pointerdown", at(500, 1)));
+    grip.dispatchEvent(new PointerEvent("pointerdown", at(300, 2)));
+    grip.dispatchEvent(new PointerEvent("pointermove", at(250, 2)));
+    grip.dispatchEvent(new PointerEvent("pointermove", at(530, 1)));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    grip.dispatchEvent(new PointerEvent("pointerup", at(250, 2)));
+    grip.dispatchEvent(new PointerEvent("pointerup", at(530, 1)));
+    capture.mockRestore();
+    expect(resizes(app).at(-1)).toMatchObject({
+      width: window.innerWidth + 30,
+    });
+  });
+
   test("ignores buttons other than the main one", async () => {
     const before = resizes(app).length;
     drag(byId("resize-grip"), { x: 500, y: 400 }, [{ x: 700, y: 600 }], 2);
