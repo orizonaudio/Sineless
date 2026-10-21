@@ -19,3 +19,4 @@ CMakeUserPresets.json
 
 # Local tooling
 .claude/launch.json
+.claude/worktrees/
