@@ -595,7 +595,8 @@ class SecondsSpans : public ::testing::TestWithParam<SpanCase>
 };
 
 // Live, the frame holds the whole span, rolls exactly above the threshold, and measures it.
-// Frozen, it holds the same.
+// Frozen, it holds the same. Neither says the span is limited: the capture and the freeze keep
+// the longest span at every rate, the freeze exactly.
 TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
 {
     const SpanCase& c = GetParam();
@@ -610,6 +611,7 @@ TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
     EXPECT_EQ(frame->has(FrameFlag::kRoll), c.span.seconds > protocol::kRollThresholdSeconds);
     EXPECT_EQ(frame->has(FrameFlag::kCompared), c.mode == DisplayMode::kCompare);
     EXPECT_NEAR(frame->visibleSamples, spanSamples, kColumns / 2.0 + 1.0);
+    EXPECT_FALSE(frame->has(FrameFlag::kLimited));
     expectTraces(*frame, traces);
     EXPECT_TRUE(std::isfinite(frame->peak));
     EXPECT_GT(frame->peak, 0.1f) << "readouts measured nothing";
@@ -622,6 +624,7 @@ TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
     ASSERT_TRUE(frame) << "no frozen frame";
     ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
     EXPECT_NEAR(frame->visibleSamples, spanSamples, kColumns / 2.0 + 1.0);
+    EXPECT_FALSE(frame->has(FrameFlag::kLimited));
     expectTraces(*frame, traces);
 }
 
@@ -755,6 +758,53 @@ TEST_P(FrozenSecondsShorterSpan, ReadsThePartShown)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSecondsShorterSpan, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                             return modeName(info.param);
+                         });
+
+// A host that changes the sample rate while processing (the VST3 rules allow it only while
+// inactive) leaves every track's capture sized for the old rate: at 384 kHz after 192 kHz it keeps
+// 2.4 s. A 4 s span shows all that is kept, live and frozen, and says it is limited, in every
+// display mode.
+class RateChangedWhileProcessing : public ::testing::TestWithParam<DisplayMode>
+{
+};
+
+TEST_P(RateChangedWhileProcessing, ShowsWhatTheCaptureKeepsOfALongerSpan)
+{
+    Session session(192000.0, 2);
+    const auto own = session.join({.frequency = 1000.0});
+    const auto other = session.join({.frequency = 1500.0});
+    session.rate = 384000.0;
+    own->setSampleRate(session.rate);
+    other->setSampleRate(session.rate);
+    configure(session.own(), GetParam(), TimeBase::kSeconds);
+    ASSERT_TRUE(session.own().settings().set(SettingId::kTimeSpan, 4.0));
+    session.play(4.0);
+    const auto kept =
+        static_cast<double>(CaptureRing::readableLength(own->captureRing().capacity()));
+
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no live frame";
+    EXPECT_TRUE(frame->has(FrameFlag::kLimited));
+    EXPECT_NEAR(frame->visibleSamples, kept, kColumns / 2.0 + 1.0) << "all that is kept";
+    {
+        SCOPED_TRACE("live");
+        expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
+    }
+
+    session.analyzer().setFrozen(true);
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frozen frame";
+    EXPECT_TRUE(frame->has(FrameFlag::kLimited));
+    // In Multi and Compare, less a margin for the offset between tracks.
+    const double held = GetParam() == DisplayMode::kSingle ? kept : kept * 7.0 / 8.0;
+    EXPECT_NEAR(frame->visibleSamples, held, kColumns / 2.0 + 1.0) << "all that is held";
+    EXPECT_LT(frame->visibleSamples, 4.0 * session.rate);
+    expectTraces(*frame, expectedTraces(GetParam(), 2, 2));
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, RateChangedWhileProcessing, ::testing::ValuesIn(everyMode()),
                          [](const ::testing::TestParamInfo<DisplayMode>& info) {
                              return modeName(info.param);
                          });
