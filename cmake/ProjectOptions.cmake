@@ -20,6 +20,16 @@ else()
     endif()
 endif()
 
+# Debug builds check the standard library's preconditions: an index out of range, the front of an
+# empty container, bounds passed to std::clamp the wrong way round. A broken one is undefined
+# behaviour, which a release build may run through silently. libc++'s extensive mode and
+# libstdc++'s assertions keep the ABI; MSVC's debug library checks these already.
+if(NOT MSVC)
+    add_compile_definitions(
+        $<$<CONFIG:Debug>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE>
+        $<$<CONFIG:Debug>:_GLIBCXX_ASSERTIONS>)
+endif()
+
 # Run-time check: RealtimeSanitizer aborts when a nonblocking function allocates, locks or blocks.
 option(ORIZON_THREAD_SANITIZER "Build with ThreadSanitizer" OFF)
 if(ORIZON_THREAD_SANITIZER)
