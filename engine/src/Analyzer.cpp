@@ -1028,12 +1028,6 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
     return ownSerial;
 }
 
-Analyzer::Commands Analyzer::peekCommands()
-{
-    const std::scoped_lock lock(commandMutex);
-    return commands;
-}
-
 // Live, the channel count and sample rate of this track and of each lane shown, against those
 // of the last frame drawn live: a track turning mono, or a new sample rate with the same capture
 // size, changes what a frame shows though no audio is new and no setting changed.

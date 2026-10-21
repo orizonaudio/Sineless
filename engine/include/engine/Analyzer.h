@@ -247,7 +247,6 @@ private:
     };
 
     Commands takeCommands();
-    Commands peekCommands();
     // readView and readViewHeld (ChannelViews.h), counted in AnalysisWork::samplesRead.
     [[nodiscard]] bool readSamples(const SampleSource& source, int inputChannels,
                                    protocol::ChannelView view, std::uint64_t start,
