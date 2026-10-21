@@ -116,6 +116,20 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
     [window close];
 }
 
+// The page keeps nothing it needs in WebKit's storage (settings live in the engine), so it leaves
+// nothing of its own on disk, in the host's data folder.
+TEST_F(EditorTest, KeepsNoWebsiteDataOnDisk)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    auto editor = owned(new Editor(nullptr));
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    EXPECT_FALSE(webView.configuration.websiteDataStore.persistent);
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
 // Frames flow while the page asks for them, and host state changes reach the page.
 // Test windows are occluded (an unbundled test process never becomes a foreground app), so
 // WebKit pauses requestAnimationFrame here; the test asks for frames itself, through the page's

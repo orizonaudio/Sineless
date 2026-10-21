@@ -362,6 +362,9 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     : onMessage(std::move(onMessage)), onFrameRequest(std::move(onFrameRequest))
 {
     WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
+    // The page keeps nothing in WebKit's storage: settings live in the engine. Without this,
+    // WebKit would keep its caches and storage on disk in the host's data folder.
+    configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     schemeHandler = [[schemeHandlerClass() alloc] init];
     setOwner(schemeHandler, this);
     [configuration setURLSchemeHandler:schemeHandler forURLScheme:kSchemeName];
