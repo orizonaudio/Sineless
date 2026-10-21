@@ -503,7 +503,10 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     // a lane's margin, or an eighth of what it keeps when it cannot hold that span.
     const auto readable = static_cast<double>(CaptureRing::readableLength(
         isFrozen ? hold.heldCapacity() : engine.captureRing().capacity()));
-    const double spare = readable - HoldBuffer::kHoldSeconds * sampleRate;
+    // In whole samples, as holds are: the longest span held whole is then never short of a margin
+    // by a fraction of a sample.
+    const double spare =
+        readable - static_cast<double>(std::llround(HoldBuffer::kHoldSeconds * sampleRate));
     const double laneMargin = !multi        ? 0.0
                               : spare > 0.0 ? std::min(spare, kLaneMarginSeconds * sampleRate)
                                             : readable / 8.0;
