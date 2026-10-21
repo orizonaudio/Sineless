@@ -38,6 +38,15 @@ FetchContent_Declare(nlohmann_json
 # An engine-only build needs no VST3 SDK (see ORIZON_ENGINE_ONLY).
 if(NOT ORIZON_ENGINE_ONLY)
     FetchContent_MakeAvailable(vst3sdk)
+    # A tag can be moved; the other dependencies are pinned by their archives' hashes. The tag is
+    # fetched shallow, and must name this commit.
+    set(vst3sdkCommit 3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96)
+    find_package(Git REQUIRED)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse HEAD WORKING_DIRECTORY ${vst3sdk_SOURCE_DIR}
+                    OUTPUT_VARIABLE fetchedCommit OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT fetchedCommit STREQUAL vst3sdkCommit)
+        message(FATAL_ERROR "VST3 SDK: v3.8.1_build_84 is ${fetchedCommit}, not ${vst3sdkCommit}")
+    endif()
 endif()
 FetchContent_MakeAvailable(nlohmann_json)
 # The fuzzers build without tests, and need no GoogleTest.
