@@ -1643,7 +1643,7 @@ export class OscilloscopeApp {
       this.setView(panBy(this.view, screenWidths));
     } else if (this.lastFrame?.frozen === true && !this.lastFrame.synced) {
       // No further back than the engine says this frozen view reaches.
-      const span = this.secondsSpan();
+      const span = this.store.number("timeSpan");
       this.panSeconds = clampPan(
         this.panSeconds - screenWidths * span,
         this.lastFrame.panReach,

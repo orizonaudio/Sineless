@@ -615,7 +615,12 @@ export class MockTransport implements Transport {
         barQuarterNotes: synced ? mockBarQuarterNotes : 0,
         viewStart: this.view.start,
         viewEnd: this.view.end,
-        visibleSamples: sampleCount,
+        // As the engine places a live roll (Roll.cpp, rollWindow), its part on screen is whole
+        // columns of whole samples: zoomed far in, more than the samples there.
+        visibleSamples:
+          roll && this.frozenAt === undefined
+            ? this.columns * Math.max(1, Math.round(sampleCount / this.columns))
+            : sampleCount,
         pointCount,
         startFraction: 0,
         peak: readoutSamples > 0 ? peak : Number.NaN,
