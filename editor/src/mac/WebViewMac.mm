@@ -27,6 +27,7 @@ NSString* const kSchemeName = @"orizon";
 NSString* const kStartUrl = @"orizon://ui/index.html";
 NSString* const kMessageHandlerName = @"orizon";
 NSString* const kFocusHandlerName = @"orizonFocus";
+NSString* const kCursorHandlerName = @"orizonCursor";
 // The page fetches each display frame from here; the request is held until a frame is ready.
 NSString* const kFramePath = @"/frame";
 // The page's own origin: the only one it may navigate to or send messages from.
@@ -53,6 +54,89 @@ constexpr const char* kFocusTrackingScript = R"JS(
   document.addEventListener("focusout", () => setTimeout(report, 0), true);
 })();
 )JS";
+
+// Reports the page's mouse cursor (its CSS cursor under the pointer, or of the element a drag
+// holds) to native code whenever it changes. WebKit sets CSS cursors itself only while the view's
+// window is key and under the mouse, which an Audio Unit's view hosted out of process never is (in
+// Logic, AUHostingService mirrors it into Logic's window): the view sets the reported cursor
+// itself.
+constexpr const char* kCursorTrackingScript = R"JS(
+(() => {
+  let reported = "";
+  const report = (event) => {
+    const target = event.target instanceof Element ? event.target : document.documentElement;
+    const cursor = getComputedStyle(target).cursor;
+    if (cursor !== reported) {
+      reported = cursor;
+      window.webkit.messageHandlers.orizonCursor.postMessage(cursor);
+    }
+  };
+  for (const type of ["pointerover", "pointermove", "pointerdown", "pointerup"]) {
+    document.addEventListener(type, report, true);
+  }
+})();
+)JS";
+
+// The diagonal resize cursor of the page's resize grip. macOS has a public one from 15 on; before,
+// one drawn from the matching system symbol.
+NSCursor* diagonalResizeCursor()
+{
+    if (@available(macOS 15.0, *)) {
+        return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionBottomRight
+                                          inDirections:NSCursorFrameResizeDirectionsAll];
+    }
+    static NSCursor* drawn = [] {
+        NSImage* symbol = [NSImage imageWithSystemSymbolName:@"arrow.up.left.and.arrow.down.right"
+                                    accessibilityDescription:nil];
+        NSImage* image = [symbol
+            imageWithSymbolConfiguration:[NSImageSymbolConfiguration
+                                             configurationWithPointSize:14
+                                                                 weight:NSFontWeightSemibold]];
+        const NSSize size = image.size;
+        return [[NSCursor alloc] initWithImage:image
+                                       hotSpot:NSMakePoint(size.width / 2, size.height / 2)];
+    }();
+    return drawn;
+}
+
+// The macOS cursor for a CSS cursor the page uses, or nil for one without a match, which is left to
+// WebKit.
+NSCursor* cursorFor(NSString* css)
+{
+    if ([css isEqualToString:@"auto"] || [css isEqualToString:@"default"]) {
+        return [NSCursor arrowCursor];
+    }
+    if ([css isEqualToString:@"pointer"]) {
+        return [NSCursor pointingHandCursor];
+    }
+    if ([css isEqualToString:@"text"]) {
+        return [NSCursor IBeamCursor];
+    }
+    if ([css isEqualToString:@"crosshair"]) {
+        return [NSCursor crosshairCursor];
+    }
+    if ([css isEqualToString:@"ns-resize"] || [css isEqualToString:@"row-resize"]) {
+        return [NSCursor resizeUpDownCursor];
+    }
+    if ([css isEqualToString:@"ew-resize"] || [css isEqualToString:@"col-resize"]) {
+        return [NSCursor resizeLeftRightCursor];
+    }
+    if ([css isEqualToString:@"nwse-resize"]) {
+        return diagonalResizeCursor();
+    }
+    return nil;
+}
+
+// Whether WebKit shows the page's cursors itself: it sets one only while the view's window is key
+// and the window under the mouse (PageClientImpl::setCursor). An Audio Unit's view hosted out of
+// process never is; an in-process host's usually is, and is left to WebKit.
+bool webKitShowsCursors(NSView* view)
+{
+    NSWindow* window = view.window;
+    return window != nil && window.isKeyWindow &&
+           [NSWindow windowNumberAtPoint:[NSEvent mouseLocation]
+               belowWindowWithWindowNumber:0] == window.windowNumber;
+}
 
 const char kOwnerKeyTag = 0;
 const void* const kOwnerKey = static_cast<const void*>(&kOwnerKeyTag);
@@ -113,6 +197,7 @@ public:
     void requestFrame(id<WKURLSchemeTask> task);
     void cancelFrameRequest(id<WKURLSchemeTask> task);
     [[nodiscard]] bool editableFocused() const { return isEditableFocused; }
+    [[nodiscard]] NSCursor* cursor() const { return pageCursor; }
 
     void pageLoaded();
     void pageFailed(NSError* error);
@@ -136,6 +221,8 @@ private:
     bool loaded = false;
     std::deque<std::chrono::steady_clock::time_point> reloads; // In the last minute.
     bool isEditableFocused = false;
+    // As the page last reported it; nil when it has no macOS match, left to WebKit.
+    NSCursor* pageCursor = [NSCursor arrowCursor];
     // The page's open frame request, and a frame produced while none was open.
     id<WKURLSchemeTask> frameTask = nil;
     NSData* heldFrame = nil;
@@ -322,6 +409,19 @@ BOOL performKeyEquivalent(id self, SEL cmd, NSEvent* event)
     return NO; // Let the host handle shortcuts.
 }
 
+// Lets WebKit handle the move or drag, then, where WebKit's cursor is not shown (the view hosted
+// out of process), sets the page's cursor, as native plugin views do on every move.
+void setCursorOnMove(id self, SEL cmd, NSEvent* event)
+{
+    objc_super superInfo{.receiver = self, .super_class = [WKWebView class]};
+    reinterpret_cast<void (*)(objc_super*, SEL, NSEvent*)>(objc_msgSendSuper)(&superInfo, cmd,
+                                                                              event);
+    WebViewMac* owner = ownerOf(self);
+    if (owner != nullptr && owner->cursor() != nil && !webKitShowsCursors(self)) {
+        [owner->cursor() set];
+    }
+}
+
 BOOL acceptsFirstMouse(id /*self*/, SEL /*cmd*/, NSEvent* /*event*/)
 {
     return YES; // A click in an inactive plugin window acts immediately.
@@ -344,6 +444,10 @@ Class webViewClass()
         class_addMethod(created, @selector(performKeyEquivalent:),
                         reinterpret_cast<IMP>(&performKeyEquivalent),
                         superclassMethodTypes(superclass, @selector(performKeyEquivalent:)));
+        for (SEL selector : { @selector(mouseMoved:), @selector(mouseDragged:) }) {
+            class_addMethod(created, selector, reinterpret_cast<IMP>(&setCursorOnMove),
+                            superclassMethodTypes(superclass, selector));
+        }
         class_addMethod(created, @selector(acceptsFirstMouse:),
                         reinterpret_cast<IMP>(&acceptsFirstMouse),
                         superclassMethodTypes(superclass, @selector(acceptsFirstMouse:)));
@@ -372,11 +476,14 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     WKUserContentController* contentController = configuration.userContentController;
     [contentController addScriptMessageHandler:messageHandler name:kMessageHandlerName];
     [contentController addScriptMessageHandler:messageHandler name:kFocusHandlerName];
-    [contentController
-        addUserScript:[[WKUserScript alloc]
-                            initWithSource:[NSString stringWithUTF8String:kFocusTrackingScript]
-                             injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-                          forMainFrameOnly:YES]];
+    [contentController addScriptMessageHandler:messageHandler name:kCursorHandlerName];
+    for (const char* script : {kFocusTrackingScript, kCursorTrackingScript}) {
+        [contentController
+            addUserScript:[[WKUserScript alloc]
+                                initWithSource:[NSString stringWithUTF8String:script]
+                                 injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                              forMainFrameOnly:YES]];
+    }
 
     // The page's background colour behind it, so the editor never shows white while it loads;
     // the page is shown once loaded, and a message in its place if it cannot be.
@@ -592,6 +699,13 @@ void WebViewMac::receive(WKScriptMessage* message)
         isEditableFocused = [body isEqualToString:@"1"];
         return;
     }
+    if ([message.name isEqualToString:kCursorHandlerName]) {
+        pageCursor = cursorFor(body);
+        if (pageCursor != nil && !webKitShowsCursors(webView)) {
+            [pageCursor set];
+        }
+        return;
+    }
     if (onMessage) {
         onMessage(*this, std::string_view(body.UTF8String));
     }
@@ -610,6 +724,11 @@ std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
 bool terminateContentProcessForTests(WebView& view)
 {
     return static_cast<WebViewMac&>(view).terminateForTests();
+}
+
+const void* cursorForTests(WebView& view)
+{
+    return (__bridge const void*)static_cast<WebViewMac&>(view).cursor();
 }
 
 } // namespace orizon::editor
