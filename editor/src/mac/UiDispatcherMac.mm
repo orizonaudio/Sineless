@@ -52,6 +52,7 @@ public:
 private:
     // Shared with queued blocks; only read and written on the UI thread.
     std::shared_ptr<bool> alive = std::make_shared<bool>(true);
+    // Owned (the file builds with ARC): released after they are cancelled.
     std::vector<dispatch_source_t> timers;
 };
 
