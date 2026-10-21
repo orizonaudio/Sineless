@@ -81,7 +81,6 @@ jobs:
       pull-requests: write
       issues: write
       statuses: write
-      id-token: write
     env:
       REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
