@@ -1,5 +1,6 @@
 // A numeric field: drag vertically or scroll to step, double-click to type. It shows
 // only values set with show(), i.e. values the engine reported; requests go through onRequest.
+import { followDrag } from "./follow-drag.ts";
 import { WheelSteps } from "./wheel-steps.ts";
 
 export interface DragFieldOptions {
@@ -50,35 +51,28 @@ export class DragField {
 
   private listen(): void {
     const wheel = new WheelSteps();
-    let startY = 0;
-    let applied = 0;
-    let dragging = false;
     this.element.addEventListener("pointerdown", (event) => {
       if (this.element.querySelector("input") !== null) {
         return;
       }
-      dragging = true;
-      startY = event.clientY;
-      applied = 0;
-      this.dragValue = this.value;
-      this.element.setPointerCapture(event.pointerId);
-    });
-    this.element.addEventListener("pointermove", (event) => {
-      if (!dragging) {
-        return;
+      const startY = event.clientY;
+      let applied = 0;
+      const from = this.value;
+      if (
+        followDrag(this.element, event, (moveEvent) => {
+          const steps =
+            Math.trunc((startY - moveEvent.clientY) / pixelsPerStep) - applied;
+          if (steps !== 0) {
+            applied += steps;
+            this.request(
+              this.options.step(this.dragValue, steps, moveEvent.shiftKey),
+            );
+          }
+        })
+      ) {
+        this.dragValue = from;
       }
-      const steps =
-        Math.trunc((startY - event.clientY) / pixelsPerStep) - applied;
-      if (steps !== 0) {
-        applied += steps;
-        this.request(this.options.step(this.dragValue, steps, event.shiftKey));
-      }
     });
-    const stop = () => {
-      dragging = false;
-    };
-    this.element.addEventListener("pointerup", stop);
-    this.element.addEventListener("pointercancel", stop);
     this.element.addEventListener(
       "wheel",
       (event) => {

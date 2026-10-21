@@ -3,6 +3,7 @@
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { DragField } from "../../src/components/drag-field.ts";
 import { byId, settle, startApp, type Started } from "./harness.ts";
 
 const endings = ["pointercancel", "lostpointercapture"] as const;
@@ -128,21 +129,21 @@ describe("a cancelled drag", () => {
     }
   });
 
-  // A second finger on the screen while one drags a selection (a pinch on a touch screen).
+  // A second finger on the screen while one drags a selection (a pinch on a touch screen): it
+  // neither starts a selection of its own nor moves this one, even when it moves last.
   test("zooms to the first finger's selection only, whatever a second finger does", () => {
-    const screen = byId("screen");
     const trace = byId("trace");
     // Synthetic pointers other than the mouse have nothing to capture.
     const capture = vi
-      .spyOn(screen, "setPointerCapture")
+      .spyOn(byId("screen"), "setPointerCapture")
       .mockImplementation(() => undefined);
     trace.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     const before = app.sent.length;
     pointer("pointerdown", trace, 0.2, 0.5, 1);
+    pointer("pointermove", trace, 0.6, 0.5, 1);
     pointer("pointerdown", trace, 0.5, 0.5, 2);
     pointer("pointermove", trace, 0.9, 0.5, 2);
     pointer("pointerup", trace, 0.9, 0.5, 2);
-    pointer("pointermove", trace, 0.6, 0.5, 1);
     pointer("pointerup", trace, 0.6, 0.5, 1);
     capture.mockRestore();
     const views = app.sent
@@ -151,5 +152,140 @@ describe("a cancelled drag", () => {
     expect(views).toHaveLength(1);
     expect(views[0]?.["start"]).toBeCloseTo(0.2);
     expect(views[0]?.["end"]).toBeCloseTo(0.6);
+  });
+
+  test("zooms to each selection in turn", () => {
+    const trace = byId("trace");
+    for (const [from, to] of [
+      [0.1, 0.3],
+      [0.5, 0.9],
+    ] as const) {
+      trace.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      const before = app.sent.length;
+      pointer("pointerdown", trace, from);
+      pointer("pointermove", trace, to);
+      pointer("pointerup", trace, to);
+      const views = app.sent
+        .slice(before)
+        .filter((message) => message.type === "view");
+      expect(views).toHaveLength(1);
+      expect(views[0]?.["start"]).toBeCloseTo(from);
+      expect(views[0]?.["end"]).toBeCloseTo(to);
+    }
+  });
+
+  // Every element the page drags, with what a drag of it changes.
+  const draggable = [
+    {
+      name: "a time cursor",
+      element: () => byId("cursor-a"),
+      state: () => byId("cursor-a").style.left,
+    },
+    {
+      name: "a level cursor",
+      element: () =>
+        byId("level-cursor-lines").querySelector(
+          ".level-cursor",
+        ) as HTMLElement,
+      state: () =>
+        (
+          byId("level-cursor-lines").querySelector(
+            ".level-cursor",
+          ) as HTMLElement
+        ).style.top,
+    },
+    {
+      name: "the trigger marker",
+      element: () => byId("trigger-marker"),
+      state: () =>
+        JSON.stringify(app.sent.filter((m) => m.type === "setSetting")),
+    },
+    {
+      name: "a value field",
+      element: () => document.querySelector(".field") as HTMLElement,
+      state: () =>
+        JSON.stringify(app.sent.filter((m) => m.type === "setSetting")),
+    },
+  ];
+
+  // Captured, the drag goes on when the pointer slips off a thin line or out of the window.
+  test.each(draggable)(
+    "captures the pointer that drags $name",
+    ({ element }) => {
+      const target = element();
+      const capture = vi.spyOn(target, "setPointerCapture");
+      pointer("pointerdown", target, 0.5, 0.4, 1);
+      pointer("pointerup", target, 0.5, 0.4, 1);
+      expect(capture).toHaveBeenCalledWith(1);
+      capture.mockRestore();
+    },
+  );
+
+  test.each(draggable)(
+    "moves $name with the first finger only",
+    ({ element, state }) => {
+      const target = element();
+      // Synthetic pointers other than the mouse have nothing to capture.
+      const capture = vi
+        .spyOn(target, "setPointerCapture")
+        .mockImplementation(() => undefined);
+      pointer("pointerdown", target, 0.4, 0.4, 1);
+      pointer("pointermove", target, 0.45, 0.2, 1);
+      const moved = state();
+      pointer("pointerdown", target, 0.6, 0.6, 2);
+      pointer("pointermove", target, 0.8, 0.8, 2);
+      pointer("pointerup", target, 0.8, 0.8, 2);
+      pointer("pointermove", target, 0.9, 0.9, 2);
+      expect(state()).toBe(moved);
+      pointer("pointerup", target, 0.45, 0.2, 1);
+      capture.mockRestore();
+    },
+  );
+
+  test.each(endings)("ends a value field's drag on %s", (ending) => {
+    const field = document.querySelector(".field") as HTMLElement;
+    pointer("pointerdown", field, 0.5, 0.5);
+    pointer("pointermove", field, 0.5, 0.45);
+    pointer(ending, field, 0.5, 0.45);
+    const before = app.sent.length;
+    pointer("pointermove", field, 0.5, 0.1);
+    expect(app.sent.slice(before)).toEqual([]);
+  });
+
+  // Steps add up from the value last asked for until the engine answers. A second finger, which
+  // starts no drag, must not set them back to the value the engine last reported.
+  test("keeps a value field's drag adding up when a second finger touches it", () => {
+    const asked: number[] = [];
+    const field = new DragField({
+      label: "Test",
+      format: String,
+      parse: Number,
+      step: (value, delta) => value + delta,
+      onRequest: (value) => asked.push(value),
+    });
+    document.body.append(field.element);
+    field.show(10); // The engine's last answer; it gives no other.
+    const capture = vi
+      .spyOn(field.element, "setPointerCapture")
+      .mockImplementation(() => undefined);
+    const at = (type: string, y: number, pointerId: number) => {
+      field.element.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId,
+          bubbles: true,
+          button: 0,
+          clientY: y,
+        }),
+      );
+    };
+    at("pointerdown", 500, 1);
+    at("pointermove", 476, 1); // Three steps up.
+    at("pointerdown", 300, 2);
+    at("pointermove", 468, 1); // A fourth.
+    at("pointerup", 300, 2);
+    at("pointerup", 468, 1);
+    capture.mockRestore();
+    field.element.remove();
+    expect(asked).toEqual([13, 14]);
   });
 });
