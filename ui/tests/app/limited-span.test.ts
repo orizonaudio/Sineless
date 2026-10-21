@@ -6,7 +6,7 @@ import { userEvent } from "vitest/browser";
 import { formatSeconds } from "../../src/view/format.ts";
 import { byId, choice, chips, settle, startApp, typeInto } from "./harness.ts";
 
-const kept = 2;
+const kept = 2.4;
 
 function timeLabels(): string[] {
   return [...byId("labels").querySelectorAll(".axis-label")]
@@ -19,12 +19,15 @@ describe("a span longer than the capture keeps", () => {
     await startApp({ keptSeconds: kept });
   });
 
+  // Both spans roll: only the span the frame shows tells the axis to change.
   test("labels the time axis with the span shown", async () => {
     await userEvent.click(choice("time-base", "Sec"));
-    await typeInto("span-field", "4 s");
-    await expect.poll(chips).toContain("Span limited");
+    await typeInto("span-field", "2 s");
     await settle();
     // Rolling, the leftmost label is a fifth into the screen: four fifths of the span ago.
+    await expect.poll(timeLabels).toContain(`−${formatSeconds(0.8 * 2)}`);
+    await typeInto("span-field", "4 s");
+    await expect.poll(chips).toContain("Span limited");
     await expect.poll(timeLabels).toContain(`−${formatSeconds(0.8 * kept)}`);
     expect(timeLabels()).not.toContain(`−${formatSeconds(0.8 * 4)}`);
   });
