@@ -14,12 +14,12 @@
     "sum": {
       "max": 0.9999566,
       "min": -0.9998596,
-      "nanPoints": 2
+      "nanPoints": 0
     },
     "track0": {
       "max": 0.4999783,
       "min": -0.4999298,
-      "nanPoints": 2
+      "nanPoints": 0
     },
     "track1": {
       "max": 0.4999783,
