@@ -4,6 +4,11 @@
 # Vite runs through node directly: npm is a batch file on Windows, and a build step that calls a
 # batch file without `call` never returns to its next command.
 find_program(NODE_EXECUTABLE node REQUIRED)
+# Vite comes with the packages npm ci installs; without them the build would stop at this step on a
+# bare Node error.
+if(NOT EXISTS ${PROJECT_SOURCE_DIR}/node_modules/vite/bin/vite.js)
+    message(FATAL_ERROR "The editor's page is built with Vite: run npm ci in ${PROJECT_SOURCE_DIR}")
+endif()
 set(uiOutputDir ${CMAKE_CURRENT_BINARY_DIR}/ui-dist)
 set(embeddedAssetData ${CMAKE_CURRENT_BINARY_DIR}/generated/EmbeddedAssetData.cpp)
 file(GLOB_RECURSE uiInputs CONFIGURE_DEPENDS
