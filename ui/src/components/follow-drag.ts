@@ -6,16 +6,25 @@
 
 const endings = ["pointerup", "pointercancel", "lostpointercapture"] as const;
 
+// The elements being dragged: one drag at a time each, so a second finger on a touch screen
+// neither starts another nor moves this one.
+const dragging = new WeakSet<HTMLElement>();
+
 // Calls `move` for each move of the pointer that started the drag, then `end` once, with whether
 // the button was released (false for a cancelled drag, whose result is not applied). Other
-// pointers, such as a second finger on a touch screen, are not followed.
+// pointers, such as a second finger on a touch screen, are not followed. Returns false, starting
+// nothing, while the element is already being dragged.
 export function followDrag(
   element: HTMLElement,
   down: PointerEvent,
   move: (event: PointerEvent) => void,
   end: (released: boolean) => void = () => undefined,
-): void {
+): boolean {
+  if (dragging.has(element)) {
+    return false;
+  }
   element.setPointerCapture(down.pointerId);
+  dragging.add(element);
   const follow = (event: PointerEvent) => {
     if (event.pointerId === down.pointerId) {
       move(event);
@@ -29,10 +38,12 @@ export function followDrag(
     for (const type of endings) {
       element.removeEventListener(type, stop);
     }
+    dragging.delete(element);
     end(event.type === "pointerup");
   };
   element.addEventListener("pointermove", follow);
   for (const type of endings) {
     element.addEventListener(type, stop);
   }
+  return true;
 }
