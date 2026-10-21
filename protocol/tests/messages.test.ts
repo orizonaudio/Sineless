@@ -15,6 +15,7 @@ import {
 } from "../src/messages.ts";
 
 import examples from "./data/messages.json" with { type: "json" };
+import { protocolVersion } from "../src/version.ts";
 
 // JSON imports widen `type` to string; every other field must match its payload type exactly.
 type Shape<Message extends { type: string }> = Omit<Message, "type"> & {
@@ -47,4 +48,10 @@ test("every example names a known message type", () => {
   for (const message of Object.values(typed)) {
     expect(Object.values(MessageType)).toContain(message.type);
   }
+});
+
+// The C++ session tests start a session with the example hello, which the engine answers only at
+// the protocol version it speaks: a version bump must move the example with it.
+test("the example hello carries the current protocol version", () => {
+  expect(typed.hello.protocolVersion).toBe(protocolVersion);
 });
