@@ -173,8 +173,7 @@ TEST_F(EditorTest, LoadsThePageAndCompletesTheHandshake)
 }
 
 // The page runs only the script it was built with: a script put into it some other way (a host
-// track name that ever reached markup, say) is refused. Its own stylesheet applies, and every font
-// it declares loads.
+// track name that ever reached markup, say) is refused.
 TEST_F(EditorTest, RunsNoScriptThePageWasNotBuiltWith)
 {
     HWND window = makeWindow();
@@ -190,6 +189,20 @@ TEST_F(EditorTest, RunsNoScriptThePageWasNotBuiltWith)
                              "  return String(window.injected === true);"
                              "})()"),
               "false");
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
+// What the page may load lets in everything it was built with: its stylesheet applies, and every
+// font it declares loads.
+TEST_F(EditorTest, LoadsItsOwnStylesAndFonts)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
     evaluate(view, "(document.styleSheets.length > 0 && document.fonts.size > 0"
                    "   ? Promise.all([...document.fonts].map((font) => font.load()))"
                    "   : Promise.reject()).then("
