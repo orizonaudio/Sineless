@@ -209,6 +209,8 @@ export class OscilloscopeApp {
   private engineError = false;
   private readonly loop: RenderLoop;
   private lastFrame: Frame | undefined;
+  // The span in seconds the time labels were last placed for.
+  private labelledSpan = 0;
   private lastFrameTime = 0;
   // Readouts refresh on a fixed schedule of one per readoutInterval, as frames are drawn (see
   // RenderLoop), whether frames or the idle timer prompt them.
@@ -1043,11 +1045,28 @@ export class OscilloscopeApp {
     }
   }
 
+  // The time the whole screen width shows in Seconds mode, as the last frame says: shorter than
+  // the Span setting when the engine limited it to what is kept. The setting until a frame comes.
+  private secondsSpan(): number {
+    const frame = this.lastFrame;
+    const covered = frame === undefined ? 0 : frame.viewEnd - frame.viewStart;
+    if (
+      frame === undefined ||
+      frame.synced ||
+      covered <= 0 ||
+      frame.sampleRate <= 0
+    ) {
+      return this.store.number("timeSpan");
+    }
+    return frame.visibleSamples / frame.sampleRate / covered;
+  }
+
   private placeLabels(): void {
     const container = element("labels");
     const height = this.screen.clientHeight;
     const width = this.screen.clientWidth;
-    const span = this.store.number("timeSpan");
+    const span = this.secondsSpan();
+    this.labelledSpan = span;
     const roll = this.rolling();
     const labels: HTMLElement[] = [];
     for (const label of amplitudeLabels(
@@ -1618,7 +1637,7 @@ export class OscilloscopeApp {
       this.setView(panBy(this.view, screenWidths));
     } else if (this.lastFrame?.frozen === true && !this.lastFrame.synced) {
       // No further back than the engine says this frozen view reaches.
-      const span = this.store.number("timeSpan");
+      const span = this.secondsSpan();
       this.panSeconds = clampPan(
         this.panSeconds - screenWidths * span,
         this.lastFrame.panReach,
@@ -1647,7 +1666,12 @@ export class OscilloscopeApp {
     this.backend.on("frame", (frame) => {
       const rolled = this.rolling();
       this.lastFrame = frame;
-      if (frame.roll !== rolled) {
+      // A limited span labels the axis anew; a change below what the labels show does not.
+      const span = this.secondsSpan();
+      if (
+        frame.roll !== rolled ||
+        Math.abs(span - this.labelledSpan) > 1e-3 * this.labelledSpan
+      ) {
         this.placeLabels();
         this.placeTriggerMarker();
       }
