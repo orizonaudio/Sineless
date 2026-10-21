@@ -163,6 +163,75 @@ TEST_F(EditorTest, LoadsItsOwnStylesAndFonts)
     [window close];
 }
 
+// The view shows the page's cursor itself: WebKit does not when the view is hosted out of process
+// (an Audio Unit in Logic). A pointer over each kind of control the page has, and over nothing
+// in particular, gives that control's cursor.
+TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    auto editor = owned(new Editor(nullptr));
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    WebView& view = *editor->webView();
+    auto* webView = (__bridge WKWebView*)view.nativeView();
+    ASSERT_TRUE(pumpUntil(
+        [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
+        kPageTimeout));
+    const std::vector<std::pair<NSString*, NSCursor*>> cases = {
+        {@".field", [NSCursor resizeUpDownCursor]},       // A value field, dragged up and down.
+        {@"#cursor-a", [NSCursor resizeLeftRightCursor]}, // A time cursor.
+        {@"#trigger-marker", [NSCursor resizeUpDownCursor]},
+        {@"button", [NSCursor pointingHandCursor]},
+        {@"#labels", [NSCursor arrowCursor]},
+    };
+    for (const auto& [selector, expected] : cases) {
+        SCOPED_TRACE(selector.UTF8String);
+        evaluate(webView, [NSString stringWithFormat:@"document.querySelector('%@').dispatchEvent("
+                                                      "new PointerEvent('pointerover', "
+                                                      "{bubbles: true})); ''",
+                                                     selector]);
+        EXPECT_TRUE(pumpUntil([&] { return (__bridge NSCursor*)cursorForTests(view) == expected; },
+                              std::chrono::seconds(2)));
+    }
+    // The resize grip's diagonal cursor, on every macOS the plugin runs on.
+    evaluate(webView, @"document.querySelector('#resize-grip').dispatchEvent("
+                       "new PointerEvent('pointerover', {bubbles: true})); ''");
+    EXPECT_TRUE(pumpUntil(
+        [&] {
+            auto* cursor = (__bridge NSCursor*)cursorForTests(view);
+            return cursor != nil && cursor != [NSCursor arrowCursor];
+        },
+        std::chrono::seconds(2)));
+
+    // The test window is never key, as an out-of-process Audio Unit's is not: WebKit shows no
+    // cursor, and each move or drag over the view sets the page's.
+    evaluate(webView, @"document.querySelector('.field').dispatchEvent("
+                       "new PointerEvent('pointerover', {bubbles: true})); ''");
+    ASSERT_TRUE(pumpUntil(
+        [&] { return (__bridge NSCursor*)cursorForTests(view) == [NSCursor resizeUpDownCursor]; },
+        std::chrono::seconds(2)));
+    for (const NSEventType type : {NSEventTypeMouseMoved, NSEventTypeLeftMouseDragged}) {
+        [[NSCursor arrowCursor] set];
+        NSEvent* event = [NSEvent mouseEventWithType:type
+                                            location:NSMakePoint(10, 10)
+                                       modifierFlags:0
+                                           timestamp:0
+                                        windowNumber:window.windowNumber
+                                             context:nil
+                                         eventNumber:0
+                                          clickCount:type == NSEventTypeMouseMoved ? 0 : 1
+                                            pressure:0];
+        if (type == NSEventTypeMouseMoved) {
+            [webView mouseMoved:event];
+        } else {
+            [webView mouseDragged:event];
+        }
+        EXPECT_EQ([NSCursor currentCursor], [NSCursor resizeUpDownCursor]) << type;
+    }
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
 // Frames flow while the page asks for them, and host state changes reach the page.
 // Test windows are occluded (an unbundled test process never becomes a foreground app), so
 // WebKit pauses requestAnimationFrame here; the test asks for frames itself, through the page's

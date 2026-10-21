@@ -8,4 +8,7 @@ class WebView;
 // if WebKit offers no way to.
 bool terminateContentProcessForTests(WebView& view);
 
+// For tests: the NSCursor the view shows for the page, as the page last reported it.
+const void* cursorForTests(WebView& view);
+
 } // namespace orizon::editor
