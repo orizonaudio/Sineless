@@ -10,6 +10,7 @@ import {
   chips,
   settle,
   startApp,
+  typeInto,
   type Started,
 } from "./harness.ts";
 
@@ -191,5 +192,18 @@ describe("controls", () => {
     await expect
       .element(byId("message-title"))
       .toHaveTextContent("Display unavailable");
+  });
+
+  // The Trigger group's summary shows the level as its field does: a finer step than the
+  // summary's own rounding would read the same as the coarse value next to it.
+  test("sums up the trigger level as its field shows it", async () => {
+    await userEvent.click(choice("time-base", "Sec"));
+    if (byId("trigger-popover").hidden) {
+      await userEvent.click(byId("trigger-details"));
+    }
+    await typeInto("level-field", "0.253");
+    await expect
+      .poll(() => byId("trigger-summary").textContent)
+      .toContain("+0.253");
   });
 });

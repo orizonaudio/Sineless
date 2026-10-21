@@ -25,6 +25,11 @@ export interface NumberField {
   readonly bareScale?: number; // What a bare typed number is in: 0.001 for milliseconds.
 }
 
+// The trigger level, to its finest step (0.001), wherever it is shown.
+export function formatTriggerLevel(value: number): string {
+  return signed(value, 3);
+}
+
 export const numberFields: Partial<Record<SettingName, NumberField>> = {
   timeSpan: {
     host: "span-field",
@@ -48,7 +53,7 @@ export const numberFields: Partial<Record<SettingName, NumberField>> = {
   triggerLevel: {
     host: "level-field",
     label: "Trigger level",
-    format: (value) => signed(value, 3),
+    format: formatTriggerLevel,
     step: (value, delta, fine) =>
       stepLinear(value, delta, fine ? 0.001 : 0.01, -1, 1),
     quantity: "number",

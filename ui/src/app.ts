@@ -23,7 +23,11 @@ import type {
 import type { Backend } from "./bridge/backend.ts";
 import { DragField } from "./components/drag-field.ts";
 import { followDrag } from "./components/follow-drag.ts";
-import { numberFields, type NumberField } from "./view/fields.ts";
+import {
+  formatTriggerLevel,
+  numberFields,
+  type NumberField,
+} from "./view/fields.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { attachResizeGrip } from "./components/resize-grip.ts";
 import { Segmented } from "./components/segmented.ts";
@@ -730,7 +734,7 @@ export class OscilloscopeApp {
     const source = viewLabels[this.store.get("triggerSource") as ViewName];
     const slope = this.store.get("triggerSlope") === "rising" ? "↑" : "↓";
     element("trigger-summary").textContent =
-      `${source} ${slope} ${signed(this.store.number("triggerLevel"), 2)}`;
+      `${source} ${slope} ${formatTriggerLevel(this.store.number("triggerLevel"))}`;
   }
 
   // ----- Screen -----
