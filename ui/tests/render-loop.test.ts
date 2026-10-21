@@ -154,6 +154,54 @@ describe("render loop", () => {
     },
   );
 
+  // The engine answers a credit with the next frame only once new audio arrives: with 512-sample
+  // blocks at 48 kHz, up to 10.7 ms later, past the next tick of a fast display. The loop still
+  // measures the display's ticks, not the gaps between frames, and draws 60 evenly spaced frames
+  // a second.
+  test.each([120, 144, 165, 240])(
+    "draws 60 even frames a second at %i Hz when each frame comes a block after the credit",
+    (refreshRate) => {
+      const interval = 1000 / 60;
+      const period = 1000 / refreshRate;
+      const block = (512 / 48000) * 1000;
+      const pending: ((timestamp: number) => void)[] = [];
+      const drawnAt: number[] = [];
+      let now = 0;
+      let due: number | undefined;
+      const loop = new RenderLoop(
+        (callback) => pending.push(callback),
+        {
+          draw: () => {
+            drawnAt.push(now);
+          },
+        },
+        () => {
+          due = (Math.floor(now / block) + 1) * block;
+        },
+        interval,
+      );
+      loop.submit(frame(0));
+      for (let tick = 0; tick <= refreshRate * 10; tick++) {
+        now = tick * period;
+        if (due !== undefined && due <= now) {
+          due = undefined;
+          loop.submit(frame(drawnAt.length));
+        }
+        for (const callback of pending.splice(0)) {
+          callback(now);
+        }
+      }
+      const settled = drawnAt.filter((at) => at >= 1000);
+      expect(settled.length / 9).toBeCloseTo(60, 0);
+      const gaps = settled
+        .slice(1)
+        .map((at, index) => at - (settled[index] ?? 0));
+      expect(Math.max(...gaps)).toBeLessThanOrEqual(
+        Math.ceil(interval / period) * period + 1e-9,
+      );
+    },
+  );
+
   // Ticks at `rates` (Hz) in turn, `seconds` of each, wandering by 15% of a tick, with the
   // engine's next frame always ready: when each frame was drawn, and how many ticks there were.
   function drawsAt(rates: readonly number[], seconds: number) {
