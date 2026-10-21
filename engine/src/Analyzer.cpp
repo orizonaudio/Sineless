@@ -493,8 +493,27 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     }
 
     const double spanSeconds = settings.value(SettingId::kTimeSpan);
-    const double span = spanSeconds * sampleRate;
     const bool roll = isRollSpan(spanSeconds);
+    // The capture is sized for the longest span at its rate, but a host that changes the rate
+    // while processing leaves it as it was, and above the highest rate it grows no more: a longer
+    // span shows what is kept, and says so. Live, that is all the capture can be read of. Frozen,
+    // all that is held of that. Other tracks' lanes hold no more than the capture can be read of,
+    // placed by their own clocks, so a margin is kept for the offset between tracks: what the
+    // capture spares beyond the longest span, up to a lane's margin, or an eighth of what it keeps
+    // when it cannot hold that span.
+    const double readable =
+        static_cast<double>(CaptureRing::readableLength(engine.captureRing().capacity()));
+    const double spare = readable - HoldBuffer::kHoldSeconds * sampleRate;
+    const double laneMargin =
+        !multi        ? 0.0
+        : spare > 0.0 ? std::min(spare, kLaneMarginSeconds * sampleRate)
+                      : readable / 8.0;
+    const double kept =
+        isFrozen ? std::min(static_cast<double>(hold.endIndex() - hold.beginIndex()),
+                            readable - laneMargin)
+                 : readable;
+    const double span = std::min(spanSeconds * sampleRate, kept);
+    const bool spanLimited = !synced && spanSeconds * sampleRate > kept;
     // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown
     // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
     // at display rate, also when the transport is stopped or the host has stopped processing.
@@ -529,7 +548,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         return false;
     }
 
-    Window window{.span = span, .roll = roll};
+    Window window{.span = span, .roll = roll, .limited = spanLimited};
     auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
     bool freezeAfterRender = false;
     const SampleSource* source =
@@ -1424,7 +1443,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     FrameHeaderValues header{
         .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
                                            (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
-                                           (window.roll ? flag(FrameFlag::kRoll) : 0U)),
+                                           (window.roll ? flag(FrameFlag::kRoll) : 0U) |
+                                           (window.limited ? flag(FrameFlag::kLimited) : 0U)),
         .laneCount = static_cast<std::uint8_t>(laneOrder.size()),
         .startFraction = static_cast<float>(crop.startFraction),
         .viewStart = static_cast<float>(window.viewStart),

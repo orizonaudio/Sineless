@@ -452,6 +452,56 @@ TEST_F(AnalyzerTest, RollsFromNothingBeforeAColumnOfAudioArrives)
     EXPECT_GT(rolling->pointCount, 0U);
 }
 
+// A host that changes the sample rate while processing (the VST3 rules allow it only while
+// inactive) leaves the capture sized for the old rate: at 384 kHz, 2^20 samples keep 2.7 s. A
+// longer span shows what is kept, live and frozen, and says it is limited, rather than drawing a
+// flat trace or no frame.
+TEST_F(AnalyzerTest, ShowsWhatTheCaptureKeepsOfASpanLongerThanIt)
+{
+    engine.prepare(192000.0);
+    engine.setSampleRate(384000.0);
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    analyzer.setColumns(500);
+    writeTone(5.0, 30.0, 0.5); // More than the capture holds.
+    const auto live = produce();
+    ASSERT_TRUE(live);
+    EXPECT_TRUE(live->has(FrameFlag::kRoll));
+    EXPECT_TRUE(live->has(FrameFlag::kLimited));
+    EXPECT_GT(*std::ranges::max_element(live->data), 0.4f) << "the tone, not a flat line";
+
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen) << "frozen, the display goes on";
+    EXPECT_TRUE(frozen->has(FrameFlag::kLimited));
+    EXPECT_GT(*std::ranges::max_element(frozen->data), 0.4f);
+}
+
+// Frozen before a span of audio arrived, the freeze holds less than the span: it shows what is
+// held, limited, rather than no frame.
+TEST_F(AnalyzerTest, ShowsWhatAFreezeHoldsOfALongerSpan)
+{
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    analyzer.setColumns(500);
+    writeTone(5.0, 1.0, 0.5);
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    EXPECT_TRUE(frozen->has(FrameFlag::kLimited));
+    EXPECT_GT(*std::ranges::max_element(frozen->data), 0.4f);
+}
+
+// A span the capture keeps is not limited.
+TEST_F(AnalyzerTest, DoesNotLimitASpanTheCaptureKeeps)
+{
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    analyzer.setColumns(500);
+    writeTone(5.0, 5.0, 0.5);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_FALSE(frame->has(FrameFlag::kLimited));
+}
+
 TEST_F(AnalyzerTest, FreezeKeepsShowingHeldDataWhileViewsStillChange)
 {
     writeTone(440.0, 0.5, 0.5);
