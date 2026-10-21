@@ -612,6 +612,7 @@ TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
     EXPECT_EQ(frame->has(FrameFlag::kCompared), c.mode == DisplayMode::kCompare);
     EXPECT_NEAR(frame->visibleSamples, spanSamples, kColumns / 2.0 + 1.0);
     EXPECT_FALSE(frame->has(FrameFlag::kLimited));
+    EXPECT_NEAR(frame->spanSeconds, c.span.seconds, 1e-6);
     expectTraces(*frame, traces);
     EXPECT_TRUE(std::isfinite(frame->peak));
     EXPECT_GT(frame->peak, 0.1f) << "readouts measured nothing";
@@ -788,6 +789,7 @@ TEST_P(RateChangedWhileProcessing, ShowsWhatTheCaptureKeepsOfALongerSpan)
     ASSERT_TRUE(frame) << "no live frame";
     EXPECT_TRUE(frame->has(FrameFlag::kLimited));
     EXPECT_NEAR(frame->visibleSamples, kept, kColumns / 2.0 + 1.0) << "all that is kept";
+    EXPECT_NEAR(frame->spanSeconds, kept / session.rate, 1e-6) << "the span shown, said exactly";
     {
         SCOPED_TRACE("live");
         expectTraces(*frame, expectedTraces(GetParam(), 2, 2));

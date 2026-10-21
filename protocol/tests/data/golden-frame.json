@@ -1,5 +1,5 @@
 {
-  "description": "A frame encoded by Python's struct module, independently of both implementations. Mode 0 is minMax; flags 3 is triggered and frozen; views 5 is left + mid; cursor -1 and zero musical fields mean no tempo-synced sweep; the view fields say the frame covers a quarter of the span; frozen in Seconds mode, it can be panned back 1.5 s. Three samples this track's readouts measure are not finite (invalidSamples 3). The audio shown was held at 44.1 kHz (sampleRate 44100).",
+  "description": "A frame encoded by Python's struct module, independently of both implementations. Mode 0 is minMax; flags 3 is triggered and frozen; views 5 is left + mid; cursor -1 and zero musical fields mean no tempo-synced sweep; the view fields say the frame covers a quarter of the span; frozen in Seconds mode, it can be panned back 1.5 s. Three samples this track's readouts measure are not finite (invalidSamples 3). The audio shown was held at 44.1 kHz (sampleRate 44100). It shows 0.5 s across the whole screen (spanSeconds).",
   "header": {
     "mode": 0,
     "flags": 3,
@@ -24,11 +24,12 @@
     "panReach": 1.5,
     "invalidSamples": 3,
     "invalidLanes": 0,
-    "sampleRate": 44100.0
+    "sampleRate": 44100.0,
+    "spanSeconds": 0.5
   },
   "views": {
     "left": [-0.5, 0.5, -0.25, 0.75],
     "mid": [0.0, 0.125, -1.0, 1.0]
   },
-  "hex": "00030500020000000000803e0000403f0000003f0000dc43000080bf0000000000000000000000000000803e0000003f00004040000000000000000000000000000000000000c03f030000000000000000442c47000000bf0000003f000080be0000403f000000000000003e000080bf0000803f"
+  "hex": "00030500020000000000803e0000403f0000003f0000dc43000080bf0000000000000000000000000000803e0000003f00004040000000000000000000000000000000000000c03f030000000000000000442c470000003f000000bf0000003f000080be0000403f000000000000003e000080bf0000803f"
 }

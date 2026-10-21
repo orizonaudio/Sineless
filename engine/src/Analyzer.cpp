@@ -752,7 +752,8 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         .viewEnd = static_cast<float>(window.viewEnd),
         .visibleSamples = static_cast<float>(visibleSamples),
         .panReach = static_cast<float>(window.panReach),
-        .sampleRate = static_cast<float>(sampleRate)};
+        .sampleRate = static_cast<float>(sampleRate),
+        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate)};
     frameData.clear();
     std::size_t pointCount = 0;
     // Each view keeps its columns from frame to frame where it can: a tempo-synced sweep reduces
@@ -1457,7 +1458,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         .visibleSamples = static_cast<float>(crop.visibleSamples),
         .laneSet = laneSet().id,
         .panReach = static_cast<float>(window.panReach),
-        .sampleRate = static_cast<float>(sampleRate)};
+        .sampleRate = static_cast<float>(sampleRate),
+        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate)};
     // Where each lane's part of the window starts in its own capture (or hold).
     const auto sourceOf =
         [&](std::uint64_t serial) -> std::pair<const SampleSource*, std::uint64_t> {

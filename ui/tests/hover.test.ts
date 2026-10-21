@@ -44,6 +44,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     invalidSamples: 0,
     invalidLanes: 0,
     sampleRate,
+    spanSeconds: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,

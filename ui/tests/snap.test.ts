@@ -31,6 +31,7 @@ function frameOf(mode: FrameMode, pointCount: number): Frame {
     invalidSamples: 0,
     invalidLanes: 0,
     sampleRate: 48000,
+    spanSeconds: 0,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,

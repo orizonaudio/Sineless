@@ -37,6 +37,10 @@
 // (`visibleSamples`, match offsets) into time: frozen, the rate the audio was held at, which the
 // host may have changed since.
 //
+// `spanSeconds` is the time the whole screen width shows in Seconds mode, zoomed or not: the span
+// set, or, when the frame is `limited`, what is kept of it. 0 in a tempo-synced sweep, whose span
+// is `spanQuarterNotes`.
+//
 // View zoom: the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
 // 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
 // viewStart + (k - startFraction) / visibleSamples * (viewEnd - viewStart); min/max columns
@@ -74,6 +78,7 @@ export const frameHeaderFields = [
   { name: "invalidSamples", type: "u32" },
   { name: "invalidLanes", type: "u32" },
   { name: "sampleRate", type: "f32" },
+  { name: "spanSeconds", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];
