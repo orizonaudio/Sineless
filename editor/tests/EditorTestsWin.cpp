@@ -172,6 +172,35 @@ TEST_F(EditorTest, LoadsThePageAndCompletesTheHandshake)
     DestroyWindow(window);
 }
 
+// The page runs only the script it was built with: a script put into it some other way (a host
+// track name that ever reached markup, say) is refused. Its own stylesheet applies, and every font
+// it declares loads.
+TEST_F(EditorTest, RunsNoScriptThePageWasNotBuiltWith)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    EXPECT_EQ(evaluate(view, "(() => {"
+                             "  const script = document.createElement('script');"
+                             "  script.textContent = 'window.injected = true';"
+                             "  document.head.append(script);"
+                             "  return String(window.injected === true);"
+                             "})()"),
+              "false");
+    evaluate(view, "(document.styleSheets.length > 0 && document.fonts.size > 0"
+                   "   ? Promise.all([...document.fonts].map((font) => font.load()))"
+                   "   : Promise.reject()).then("
+                   "  () => { window.fonts = 'loaded'; }, () => { window.fonts = 'failed'; });"
+                   "''");
+    EXPECT_TRUE(pumpUntil([&] { return evaluate(view, "String(window.fonts ?? '')") == "loaded"; },
+                          kPageTimeout));
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
 // Frames flow as the page asks for them, one per request, as the binary body of its fetch.
 TEST_F(EditorTest, StreamsFramesOnePerRequest)
 {
