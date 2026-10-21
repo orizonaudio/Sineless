@@ -435,6 +435,23 @@ TEST_F(AnalyzerTest, RollsSpansAboveOneSecond)
     EXPECT_FALSE(frame->has(FrameFlag::kTriggered));
 }
 
+// Just after the plugin starts, a rolling span has less audio than one of its columns: there is
+// nothing to draw yet, which must not be taken for a window to crop.
+TEST_F(AnalyzerTest, RollsFromNothingBeforeAColumnOfAudioArrives)
+{
+    engine.settings().set(SettingId::kTimeSpan, 2.0);
+    analyzer.setColumns(500); // 192 samples a column at 48 kHz.
+    writeSilence(100.0 / kSampleRate);
+    if (const auto frame = produce()) {
+        EXPECT_TRUE(frame->has(FrameFlag::kRoll));
+        EXPECT_EQ(frame->pointCount, 0U) << "no column is complete";
+    }
+    writeTone(5.0, 1.0, 0.5);
+    const auto rolling = produce();
+    ASSERT_TRUE(rolling);
+    EXPECT_GT(rolling->pointCount, 0U);
+}
+
 TEST_F(AnalyzerTest, FreezeKeepsShowingHeldDataWhileViewsStillChange)
 {
     writeTone(440.0, 0.5, 0.5);
