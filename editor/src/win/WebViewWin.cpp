@@ -701,8 +701,9 @@ void WebViewWin::answer(ICoreWebView2WebResourceRequestedEventArgs* args, const 
 {
     ComPtr<IStream> stream;
     stream.Attach(SHCreateMemStream(static_cast<const BYTE*>(data), static_cast<UINT>(size)));
-    const std::wstring headers =
-        std::wstring(L"Content-Type: ") + contentType + L"\r\nCache-Control: no-store";
+    const std::wstring headers = std::wstring(L"Content-Type: ") + contentType +
+                                 L"\r\nCache-Control: no-store\r\nContent-Security-Policy: " +
+                                 widen(kContentSecurityPolicy);
     ComPtr<ICoreWebView2WebResourceResponse> response;
     environment->CreateWebResourceResponse(
         stream.Get(), status, status == 200 ? L"OK" : L"Not Found", headers.c_str(), &response);

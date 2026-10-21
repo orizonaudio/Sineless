@@ -116,6 +116,38 @@ TEST_F(EditorTest, RunsNoWorkerWithoutAnEngine)
     [window close];
 }
 
+// The page runs only the script it was built with: a script put into it some other way (a host
+// track name that ever reached markup, say) is refused. Its own stylesheet applies, and every font
+// it declares loads.
+TEST_F(EditorTest, RunsNoScriptThePageWasNotBuiltWith)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    auto editor = owned(new Editor(nullptr));
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil(
+        [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
+        kPageTimeout));
+    EXPECT_EQ(evaluate(webView, @"(() => {"
+                                 "  const script = document.createElement('script');"
+                                 "  script.textContent = 'window.injected = true';"
+                                 "  document.head.append(script);"
+                                 "  return String(window.injected === true);"
+                                 "})()"),
+              "false");
+    evaluate(webView, @"(document.styleSheets.length > 0 && document.fonts.size > 0"
+                       "   ? Promise.all([...document.fonts].map((font) => font.load()))"
+                       "   : Promise.reject()).then("
+                       "  () => { window.fonts = 'loaded'; }, () => { window.fonts = 'failed'; });"
+                       "''");
+    EXPECT_TRUE(
+        pumpUntil([&] { return evaluate(webView, @"String(window.fonts ?? '')") == "loaded"; },
+                  kPageTimeout));
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
 // Frames flow while the page asks for them, and host state changes reach the page.
 // Test windows are occluded (an unbundled test process never becomes a foreground app), so
 // WebKit pauses requestAnimationFrame here; the test asks for frames itself, through the page's

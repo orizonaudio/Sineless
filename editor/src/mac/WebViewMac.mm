@@ -196,6 +196,7 @@ void startUrlSchemeTask(id self, SEL /*cmd*/, WKWebView* /*webView*/, id<WKURLSc
         @"Content-Type" : mimeType,
         @"Content-Length" : [NSString stringWithFormat:@"%zu", asset->size],
         @"Cache-Control" : @"no-store",
+        @"Content-Security-Policy" : @(std::string(kContentSecurityPolicy).c_str()),
     };
     [task didReceiveResponse:[[NSHTTPURLResponse alloc] initWithURL:url
                                                          statusCode:200
@@ -551,6 +552,7 @@ void WebViewMac::answer(id<WKURLSchemeTask> task, NSData* frame)
         @"Content-Type" : @"application/octet-stream",
         @"Content-Length" : [NSString stringWithFormat:@"%lu", (unsigned long)frame.length],
         @"Cache-Control" : @"no-store",
+        @"Content-Security-Policy" : @(std::string(kContentSecurityPolicy).c_str()),
     };
     [task didReceiveResponse:[[NSHTTPURLResponse alloc] initWithURL:task.request.URL
                                                          statusCode:200
