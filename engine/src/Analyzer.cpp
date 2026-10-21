@@ -60,7 +60,8 @@ constexpr std::uint8_t flag(FrameFlag value)
 
 // The part of a window of `count` samples that the screen shows, as sample indices from its first
 // sample, with one extra point beyond each edge so a raw trace reaches the screen edges. The
-// window starts `fraction` of a sample after its first sample.
+// window starts `fraction` of a sample after its first sample. A window of no samples (a failed
+// read, or a rolling span before its first column of audio) shows none.
 struct Crop
 {
     std::size_t first = 0;
@@ -71,6 +72,9 @@ struct Crop
 
 Crop cropOf(double count, double fraction, double cropStart, double cropEnd)
 {
+    if (count < 1.0) {
+        return {};
+    }
     const double visibleFrom = fraction + cropStart * count;
     const double visibleTo = fraction + cropEnd * count;
     const auto first = static_cast<std::size_t>(
