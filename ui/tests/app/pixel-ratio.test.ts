@@ -14,23 +14,29 @@ import { byId, settle, startApp, type Started } from "./harness.ts";
 describe("on a display of another pixel ratio", () => {
   let app: Started;
   const after = window.devicePixelRatio * 2;
-  // The browser's signal: the queries the page watches, by the resolution they ask for. Moving
-  // to another ratio tells those that stop matching.
-  const watching: { query: string; changed: () => void }[] = [];
+  // The browser's signal, as a MediaQueryList gives it: a "change" when a resolution query starts
+  // or stops matching the ratio, to each listener still on it (a listener added once comes off
+  // after its first).
+  interface Watcher {
+    readonly resolution: number;
+    readonly once: boolean;
+    readonly changed: () => void;
+  }
+  const watching: Watcher[] = [];
   function moveTo(ratio: number): void {
-    const before = `(resolution: ${String(window.devicePixelRatio)}dppx)`;
+    const before = window.devicePixelRatio;
     Object.defineProperty(window, "devicePixelRatio", {
       configurable: true,
       get: () => ratio,
     });
-    const stopped = watching.filter(({ query }) => query === before);
-    watching.splice(
-      0,
-      watching.length,
-      ...watching.filter(({ query }) => query !== before),
+    const told = watching.filter(
+      ({ resolution }) => (resolution === before) !== (resolution === ratio),
     );
-    for (const { changed } of stopped) {
-      changed();
+    for (const watcher of told) {
+      if (watcher.once) {
+        watching.splice(watching.indexOf(watcher), 1);
+      }
+      watcher.changed();
     }
   }
   // The trace's line width as a share of the screen's height, at each draw, before and after
@@ -61,10 +67,15 @@ describe("on a display of another pixel ratio", () => {
     vi.spyOn(window, "matchMedia").mockImplementation((query) => {
       const list = matchMedia(query);
       if (query.includes("resolution")) {
+        const resolution = Number(/resolution: ([\d.]+)dppx/.exec(query)?.[1]);
         vi.spyOn(list, "addEventListener").mockImplementation(
-          (_type, listener) => {
+          (type, listener, options) => {
+            if (type !== "change") {
+              return;
+            }
             watching.push({
-              query,
+              resolution,
+              once: typeof options === "object" && options.once === true,
               changed: () => {
                 if (typeof listener === "function") {
                   listener(new Event("change"));
@@ -106,6 +117,19 @@ describe("on a display of another pixel ratio", () => {
   test("draws traces as thick as on the display before", () => {
     const [first = Number.NaN] = widths;
     expect((widths.at(-1) ?? 0) / first).toBeCloseTo(1);
+  });
+
+  // A move resizes once, however many moves came before: a listener left on an old query would
+  // be told again at each move back to its ratio, and the work would grow with every move.
+  test("resizes once a move, moving back and forth between displays", async () => {
+    for (const ratio of [1.25, after, 1.25, after, 1.25, after]) {
+      const before = app.sent.length;
+      moveTo(ratio);
+      await settle();
+      expect(
+        app.sent.slice(before).filter((message) => message.type === "viewport"),
+      ).toEqual([expect.objectContaining({ pixelRatio: ratio })]);
+    }
   });
 
   // Last: it moves the window on to a third display.
