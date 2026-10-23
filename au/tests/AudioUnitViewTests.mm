@@ -831,6 +831,9 @@ TEST_F(AudioUnitViewTest, ClosesCleanlyAfterTheAudioUnitIsDisposed)
     // Only a weak reference here: after the dispose, the engine is alive only if the view holds it.
     const std::weak_ptr<engine::Engine> held = engineOf(unit);
     held.lock()->settings().set(protocol::SettingId::kTriggerMode, 2.0); // A frame per request.
+    // The host plays, reporting its tempo: the Beats view draws a frame per request.
+    held.lock()->timeline().advance(
+        {.playing = true, .positionValid = true, .tempoValid = true, .tempo = 120.0}, 480, 48000.0);
     NSView* view = openView(unit);
     NSWindow* window = windowFor(view);
     WKWebView* webView = webViewOf(view);

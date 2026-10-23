@@ -171,6 +171,7 @@ TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
 {
     auto engine = std::make_shared<engine::Engine>();
     engine->prepare(48000.0);
+    engine->settings().set(protocol::SettingId::kTimeBase, 0.0);    // Seconds.
     engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per request.
     std::vector<float> tone(96000);
     for (std::size_t i = 0; i < tone.size(); ++i) {
@@ -203,6 +204,7 @@ TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
     EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.lastFrame.views.size)"), "2");
 
     engine::Settings restored;
+    restored.set(protocol::SettingId::kTimeBase, 0.0); // As before: only the level changes.
     restored.set(protocol::SettingId::kTriggerLevel, 0.5);
     engine->settings().replace(restored);
     EXPECT_TRUE(pumpUntil(

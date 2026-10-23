@@ -303,6 +303,10 @@ TEST_F(SessionTest, ReportsTheMultiTrackLanes)
     engine.settings().set(protocol::SettingId::kDisplayMode,
                           static_cast<double>(protocol::DisplayMode::kMulti));
     engine.setTrackInfo({.name = "Kick", .colour = 0xe03030, .index = std::nullopt});
+    // The host plays, reporting its tempo: a Beats sweep is placed by it.
+    engine.timeline().advance(
+        {.playing = true, .positionValid = true, .tempoValid = true, .tempo = 120.0}, 48000,
+        48000.0);
     session.receive(example("hello"));
     ASSERT_GT(producedPointCount(), 0u);
     session.sync();
