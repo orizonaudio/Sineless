@@ -11,4 +11,9 @@ bool terminateContentProcessForTests(WebView& view);
 // For tests: the NSCursor the view shows for the page, as the page last reported it.
 const void* cursorForTests(WebView& view);
 
+// For tests: the NSCursor the view shows for a CSS cursor (nil when left to WebKit), and the
+// diagonal resize cursor drawn for macOS before 15.
+const void* cursorForCssForTests(const char* css);
+const void* drawnDiagonalResizeCursorForTests();
+
 } // namespace orizon::editor

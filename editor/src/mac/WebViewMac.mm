@@ -77,14 +77,10 @@ constexpr const char* kCursorTrackingScript = R"JS(
 })();
 )JS";
 
-// The diagonal resize cursor of the page's resize grip. macOS has a public one from 15 on; before,
-// one drawn from the matching system symbol.
-NSCursor* diagonalResizeCursor()
+// A diagonal resize cursor drawn from the matching system symbol, for macOS before 15, which has
+// no public one.
+NSCursor* drawnDiagonalResizeCursor()
 {
-    if (@available(macOS 15.0, *)) {
-        return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionBottomRight
-                                          inDirections:NSCursorFrameResizeDirectionsAll];
-    }
     static NSCursor* drawn = [] {
         NSImage* symbol = [NSImage imageWithSystemSymbolName:@"arrow.up.left.and.arrow.down.right"
                                     accessibilityDescription:nil];
@@ -97,6 +93,16 @@ NSCursor* diagonalResizeCursor()
                                        hotSpot:NSMakePoint(size.width / 2, size.height / 2)];
     }();
     return drawn;
+}
+
+// The diagonal resize cursor of the page's resize grip: macOS's own from 15 on, drawn before.
+NSCursor* diagonalResizeCursor()
+{
+    if (@available(macOS 15.0, *)) {
+        return [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionBottomRight
+                                          inDirections:NSCursorFrameResizeDirectionsAll];
+    }
+    return drawnDiagonalResizeCursor();
 }
 
 // The macOS cursor for a CSS cursor the page uses, or nil for one without a match, which is left to
@@ -729,6 +735,16 @@ bool terminateContentProcessForTests(WebView& view)
 const void* cursorForTests(WebView& view)
 {
     return (__bridge const void*)static_cast<WebViewMac&>(view).cursor();
+}
+
+const void* cursorForCssForTests(const char* css)
+{
+    return (__bridge const void*)cursorFor([NSString stringWithUTF8String:css]);
+}
+
+const void* drawnDiagonalResizeCursorForTests()
+{
+    return (__bridge const void*)drawnDiagonalResizeCursor();
 }
 
 } // namespace orizon::editor
