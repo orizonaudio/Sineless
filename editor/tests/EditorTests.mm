@@ -177,31 +177,30 @@ TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
     ASSERT_TRUE(pumpUntil(
         [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
         kPageTimeout));
-    const std::vector<std::pair<NSString*, NSCursor*>> cases = {
+    std::vector<std::pair<NSString*, NSCursor*>> cases = {
         {@".field", [NSCursor resizeUpDownCursor]},       // A value field, dragged up and down.
         {@"#cursor-a", [NSCursor resizeLeftRightCursor]}, // A time cursor.
         {@"#trigger-marker", [NSCursor resizeUpDownCursor]},
         {@"button", [NSCursor pointingHandCursor]},
         {@"#labels", [NSCursor arrowCursor]},
     };
+    NSCursor* diagonal = (__bridge NSCursor*)drawnDiagonalResizeCursorForTests();
+    if (@available(macOS 15.0, *)) {
+        diagonal = [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionBottomRight
+                                              inDirections:NSCursorFrameResizeDirectionsAll];
+    }
+    cases.emplace_back(@"#resize-grip", diagonal);
     for (const auto& [selector, expected] : cases) {
         SCOPED_TRACE(selector.UTF8String);
+        [[NSCursor crosshairCursor] set]; // None the page uses: the message must set the cursor.
         evaluate(webView, [NSString stringWithFormat:@"document.querySelector('%@').dispatchEvent("
                                                       "new PointerEvent('pointerover', "
                                                       "{bubbles: true})); ''",
                                                      selector]);
         EXPECT_TRUE(pumpUntil([&] { return (__bridge NSCursor*)cursorForTests(view) == expected; },
                               std::chrono::seconds(2)));
+        EXPECT_EQ([NSCursor currentCursor], expected) << "shown at once, without a mouse move";
     }
-    // The resize grip's diagonal cursor, on every macOS the plugin runs on.
-    evaluate(webView, @"document.querySelector('#resize-grip').dispatchEvent("
-                       "new PointerEvent('pointerover', {bubbles: true})); ''");
-    EXPECT_TRUE(pumpUntil(
-        [&] {
-            auto* cursor = (__bridge NSCursor*)cursorForTests(view);
-            return cursor != nil && cursor != [NSCursor arrowCursor];
-        },
-        std::chrono::seconds(2)));
 
     // The test window is never key, as an out-of-process Audio Unit's is not: WebKit shows no
     // cursor, and each move or drag over the view sets the page's.
@@ -230,6 +229,48 @@ TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
     }
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
+}
+
+// Every cursor the page's stylesheet uses has a macOS cursor the view can show: one without would
+// leave the previous cursor showing over that control where WebKit shows none.
+TEST_F(EditorTest, HasAMacCursorForEveryCursorThePageUses)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    auto editor = owned(new Editor(nullptr));
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil(
+        [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
+        kPageTimeout));
+    const std::string used = evaluate(
+        webView, @"[...new Set([...document.styleSheets].flatMap((sheet) => [...sheet.cssRules])"
+                  "  .map((rule) => rule.style?.cursor ?? '').filter((cursor) => cursor !== ''))]"
+                  "  .join(',')");
+    ASSERT_FALSE(used.empty()) << "the page's stylesheet declares cursors";
+    std::size_t start = 0;
+    while (start <= used.size()) {
+        const std::size_t end = std::min(used.find(',', start), used.size());
+        const std::string cursor = used.substr(start, end - start);
+        EXPECT_NE(cursorForCssForTests(cursor.c_str()), nullptr) << cursor;
+        start = end + 1;
+    }
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
+// Before macOS 15, which has no public diagonal resize cursor, the resize grip shows one drawn
+// from the system symbol, with its hot spot at the arrows' centre. Drawn on any macOS, so the
+// tests check it whatever macOS they run on.
+TEST_F(EditorTest, DrawsADiagonalResizeCursorForMacOSBefore15)
+{
+    auto* cursor = (__bridge NSCursor*)drawnDiagonalResizeCursorForTests();
+    ASSERT_NE(cursor, nil);
+    const NSSize size = cursor.image.size;
+    EXPECT_GT(size.width, 0.0);
+    EXPECT_GT(size.height, 0.0);
+    EXPECT_DOUBLE_EQ(cursor.hotSpot.x, size.width / 2);
+    EXPECT_DOUBLE_EQ(cursor.hotSpot.y, size.height / 2);
 }
 
 // Frames flow while the page asks for them, and host state changes reach the page.
