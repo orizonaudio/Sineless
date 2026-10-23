@@ -309,6 +309,38 @@ TEST_F(AnalyzerTest, SaysThereIsNoTempoFrozenAndUnfrozen)
     }
 }
 
+// Switched to Seconds from Beats before the host reported a tempo, with nothing to trigger on,
+// Normal and Single show the newest span at once, as after a Beats sweep. In every display mode.
+TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingToSecondsBeforeATempo)
+{
+    for (const auto display : everyDisplayMode()) {
+        for (const auto mode : {protocol::TriggerMode::kNormal, protocol::TriggerMode::kSingle}) {
+            SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display)
+                                              << ", trigger " << static_cast<int>(mode));
+            Engine fresh;
+            fresh.prepare(kSampleRate);
+            fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+            fresh.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
+            fresh.settings().set(SettingId::kTimeSpan, 0.02);
+            Analyzer view(fresh);
+            view.setColumns(300);
+            std::vector<std::byte> bytes;
+            ASSERT_TRUE(view.produce(bytes));
+            ASSERT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+            std::vector<float> silence(24000, 0.0f);
+            std::array<const float*, 2> channels{silence.data(), silence.data()};
+            fresh.captureRing().write(channels.data(), 2, static_cast<int>(silence.size()));
+            fresh.settings().set(SettingId::kTimeBase,
+                                 static_cast<double>(protocol::TimeBase::kSeconds));
+            ASSERT_TRUE(view.produce(bytes)) << "the switch shows at once";
+            const DecodedFrame frame = decode(bytes);
+            EXPECT_FALSE(frame.has(FrameFlag::kSynced));
+            EXPECT_FALSE(frame.has(FrameFlag::kNoTempo));
+            EXPECT_FALSE(frame.has(FrameFlag::kTriggered));
+        }
+    }
+}
+
 // Switched from Beats to Seconds with nothing to trigger on, Normal and Single show the newest
 // span at once, untriggered, rather than wait on a Beats sweep or show the capture's oldest
 // audio as if it were now; then they wait for a trigger as usual. In every display mode.
@@ -413,6 +445,10 @@ TEST_F(AnalyzerTest, SaysThereIsNoTempoAgainBackFromSeconds)
         std::vector<std::byte> bytes;
         ASSERT_TRUE(view.produce(bytes));
         ASSERT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+        // A page reloaded after its process crashed asks for a redraw: it is told again.
+        view.redraw();
+        ASSERT_TRUE(view.produce(bytes)) << "told the reloaded page";
+        EXPECT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
         playSecondsTone(fresh, view, 0.5, 0.25); // Seconds, a frame drawn.
         fresh.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
         ASSERT_TRUE(view.produce(bytes)) << "told again";
