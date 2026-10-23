@@ -260,8 +260,8 @@ TEST_F(EditorTest, HasAMacCursorForEveryCursorThePageUses)
 }
 
 // Before macOS 15, which has no public diagonal resize cursor, the resize grip shows one drawn
-// from the system symbol, with its hot spot at the arrows' centre. Drawn on any macOS, so the
-// tests check it whatever macOS they run on.
+// from the system symbol, outlined, with its hot spot at the arrows' centre. Drawn on any macOS, so
+// the tests check it whatever macOS they run on.
 TEST_F(EditorTest, DrawsADiagonalResizeCursorForMacOSBefore15)
 {
     auto* cursor = (__bridge NSCursor*)drawnDiagonalResizeCursorForTests();
@@ -271,6 +271,25 @@ TEST_F(EditorTest, DrawsADiagonalResizeCursorForMacOSBefore15)
     EXPECT_GT(size.height, 0.0);
     EXPECT_DOUBLE_EQ(cursor.hotSpot.x, size.width / 2);
     EXPECT_DOUBLE_EQ(cursor.hotSpot.y, size.height / 2);
+
+    // Black on a white outline, so it shows over the page's dark panel as over light: the image
+    // holds opaque pixels of both.
+    NSBitmapImageRep* pixels = [[NSBitmapImageRep alloc]
+        initWithCGImage:[cursor.image CGImageForProposedRect:nil context:nil hints:nil]];
+    bool dark = false;
+    bool light = false;
+    for (NSInteger y = 0; y < pixels.pixelsHigh; ++y) {
+        for (NSInteger x = 0; x < pixels.pixelsWide; ++x) {
+            NSColor* colour =
+                [[pixels colorAtX:x y:y] colorUsingColorSpace:[NSColorSpace genericRGBColorSpace]];
+            if (colour.alphaComponent > 0.9) {
+                dark = dark || colour.brightnessComponent < 0.2;
+                light = light || colour.brightnessComponent > 0.8;
+            }
+        }
+    }
+    EXPECT_TRUE(dark) << "a black glyph";
+    EXPECT_TRUE(light) << "a white outline";
 }
 
 // Frames flow while the page asks for them, and host state changes reach the page.
