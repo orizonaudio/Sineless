@@ -184,7 +184,7 @@ TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
         {@"button", [NSCursor pointingHandCursor]},
         {@"#labels", [NSCursor arrowCursor]},
     };
-    NSCursor* diagonal = (__bridge NSCursor*)drawnDiagonalResizeCursorForTests();
+    auto* diagonal = (__bridge NSCursor*)drawnDiagonalResizeCursorForTests();
     if (@available(macOS 15.0, *)) {
         diagonal = [NSCursor frameResizeCursorFromPosition:NSCursorFrameResizePositionBottomRight
                                               inDirections:NSCursorFrameResizeDirectionsAll];
