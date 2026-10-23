@@ -78,17 +78,46 @@ constexpr const char* kCursorTrackingScript = R"JS(
 )JS";
 
 // A diagonal resize cursor drawn from the matching system symbol, for macOS before 15, which has
-// no public one.
+// no public one: black on a white outline, as the system's cursors are, so that it shows on dark
+// and light alike.
 NSCursor* drawnDiagonalResizeCursor()
 {
     static NSCursor* drawn = [] {
         NSImage* symbol = [NSImage imageWithSystemSymbolName:@"arrow.up.left.and.arrow.down.right"
                                     accessibilityDescription:nil];
-        NSImage* image = [symbol
-            imageWithSymbolConfiguration:[NSImageSymbolConfiguration
-                                             configurationWithPointSize:14
-                                                                 weight:NSFontWeightSemibold]];
-        const NSSize size = image.size;
+        const auto tinted = [&](NSColor* colour) {
+            NSImageSymbolConfiguration* configuration =
+                [[NSImageSymbolConfiguration configurationWithPointSize:14
+                                                                 weight:NSFontWeightSemibold]
+                    configurationByApplyingConfiguration:[NSImageSymbolConfiguration
+                                                             configurationWithPaletteColors:@[
+                                                                 colour
+                                                             ]]];
+            return [symbol imageWithSymbolConfiguration:configuration];
+        };
+        NSImage* black = tinted([NSColor blackColor]);
+        NSImage* white = tinted([NSColor whiteColor]);
+        constexpr CGFloat kOutline = 1.5;
+        const NSSize glyph = black.size;
+        const NSSize size = NSMakeSize(glyph.width + 2 * kOutline, glyph.height + 2 * kOutline);
+        NSImage* image =
+            [NSImage imageWithSize:size
+                           flipped:NO
+                    drawingHandler:^BOOL(NSRect /*rect*/) {
+                      for (const CGFloat dx : {-kOutline, 0.0, kOutline}) {
+                          for (const CGFloat dy : {-kOutline, 0.0, kOutline}) {
+                              [white drawAtPoint:NSMakePoint(kOutline + dx, kOutline + dy)
+                                        fromRect:NSZeroRect
+                                       operation:NSCompositingOperationSourceOver
+                                        fraction:1.0];
+                          }
+                      }
+                      [black drawAtPoint:NSMakePoint(kOutline, kOutline)
+                                fromRect:NSZeroRect
+                               operation:NSCompositingOperationSourceOver
+                                fraction:1.0];
+                      return YES;
+                    }];
         return [[NSCursor alloc] initWithImage:image
                                        hotSpot:NSMakePoint(size.width / 2, size.height / 2)];
     }();
