@@ -16,6 +16,7 @@
 #include <functional>
 #include <gtest/gtest.h>
 #include <memory>
+#include <objc/runtime.h>
 #include <string>
 #include <vector>
 
@@ -42,8 +43,68 @@
 }
 @end
 
+// Counts the times one view's cursor rectangles are invalidated, which AppKit then asks for anew.
+@interface OrizonTestCursorWindow : NSWindow {
+    int invalidations;
+    __weak NSView* watched;
+}
+- (void)watch:(NSView*)view;
+- (int)invalidationCount;
+@end
+
+@implementation OrizonTestCursorWindow
+- (void)invalidateCursorRectsForView:(NSView*)view
+{
+    if (view == watched) {
+        ++invalidations;
+    }
+    [super invalidateCursorRectsForView:view];
+}
+- (void)watch:(NSView*)view
+{
+    watched = view;
+}
+- (int)invalidationCount
+{
+    return invalidations;
+}
+@end
+
 namespace orizon::editor {
 namespace {
+
+// The cursor rectangles views add, as AppKit receives them.
+struct CursorRect
+{
+    NSRect rect;
+    NSCursor* cursor;
+};
+
+std::vector<CursorRect>& addedCursorRects()
+{
+    static std::vector<CursorRect> added;
+    return added;
+}
+
+void recordCursorRect(id self, SEL cmd, NSRect rect, NSCursor* cursor)
+{
+    addedCursorRects().push_back({.rect = rect, .cursor = cursor});
+    using Add = void (*)(id, SEL, NSRect, NSCursor*);
+    reinterpret_cast<Add>(class_getMethodImplementation([NSView class], cmd))(self, cmd, rect,
+                                                                              cursor);
+}
+
+// The cursor rectangles `view` gives AppKit when asked for them.
+std::vector<CursorRect> cursorRectsOf(NSView* view)
+{
+    const SEL add = @selector(addCursorRect:cursor:);
+    class_replaceMethod([view class], add, reinterpret_cast<IMP>(&recordCursorRect),
+                        method_getTypeEncoding(class_getInstanceMethod([NSView class], add)));
+    addedCursorRects().clear();
+    [view discardCursorRects];
+    [view resetCursorRects];
+    return addedCursorRects();
+}
 
 using namespace Steinberg;
 using testing::evaluate;
@@ -194,17 +255,25 @@ TEST_F(EditorTest, LoadsItsOwnStylesAndFonts)
     [window close];
 }
 
-// The view shows the page's cursor itself: WebKit does not when the view is hosted out of process
-// (an Audio Unit in Logic). A pointer over each kind of control the page has, and over nothing
-// in particular, gives that control's cursor.
+// The view gives AppKit the page's cursor through its cursor rectangle and cursorUpdate:, the
+// only cursor an Audio Unit's view hosted out of process (in Logic) shows: WebKit's and one set on
+// a mouse move are not. A pointer over each kind of control the page has, and over nothing in
+// particular, gives that control's cursor.
 TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
 {
     NSView* parent = [[NSView alloc] init];
-    NSWindow* window = makeWindow(parent);
+    OrizonTestCursorWindow* window = [[OrizonTestCursorWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, Editor::kDefaultWidth, Editor::kDefaultHeight)
+                  styleMask:NSWindowStyleMaskTitled
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    window.releasedWhenClosed = NO;
+    window.contentView = parent;
     auto editor = owned(new Editor(nullptr));
     ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
     WebView& view = *editor->webView();
     auto* webView = (__bridge WKWebView*)view.nativeView();
+    [window watch:webView];
     ASSERT_TRUE(pumpUntil(
         [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
         kPageTimeout));
@@ -221,43 +290,44 @@ TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
                                               inDirections:NSCursorFrameResizeDirectionsAll];
     }
     cases.emplace_back(@"#resize-grip", diagonal);
+    NSEvent* update = [NSEvent enterExitEventWithType:NSEventTypeCursorUpdate
+                                             location:NSMakePoint(10, 10)
+                                        modifierFlags:0
+                                            timestamp:0
+                                         windowNumber:window.windowNumber
+                                              context:nil
+                                          eventNumber:0
+                                       trackingNumber:0
+                                             userData:nullptr];
     for (const auto& [selector, expected] : cases) {
         SCOPED_TRACE(selector.UTF8String);
-        [[NSCursor crosshairCursor] set]; // None the page uses: the message must set the cursor.
+        const int invalidations = [window invalidationCount];
         evaluate(webView, [NSString stringWithFormat:@"document.querySelector('%@').dispatchEvent("
                                                       "new PointerEvent('pointerover', "
                                                       "{bubbles: true})); ''",
                                                      selector]);
         EXPECT_TRUE(pumpUntil([&] { return (__bridge NSCursor*)cursorForTests(view) == expected; },
                               std::chrono::seconds(2)));
-        EXPECT_EQ([NSCursor currentCursor], expected) << "shown at once, without a mouse move";
+        EXPECT_GT([window invalidationCount], invalidations)
+            << "AppKit is told to ask for the view's new cursor rectangle";
+        const std::vector<CursorRect> rects = cursorRectsOf(webView);
+        ASSERT_EQ(rects.size(), 1U);
+        EXPECT_TRUE(NSEqualRects(rects[0].rect, webView.bounds));
+        EXPECT_EQ(rects[0].cursor, expected);
+        [[NSCursor crosshairCursor] set]; // None the page uses: cursorUpdate: must set the cursor.
+        [webView cursorUpdate:update];
+        EXPECT_EQ([NSCursor currentCursor], expected);
     }
 
-    // The test window is never key, as an out-of-process Audio Unit's is not: WebKit shows no
-    // cursor, and each move or drag over the view sets the page's.
-    evaluate(webView, @"document.querySelector('.field').dispatchEvent("
-                       "new PointerEvent('pointerover', {bubbles: true})); ''");
-    ASSERT_TRUE(pumpUntil(
-        [&] { return (__bridge NSCursor*)cursorForTests(view) == [NSCursor resizeUpDownCursor]; },
-        std::chrono::seconds(2)));
-    for (const NSEventType type : {NSEventTypeMouseMoved, NSEventTypeLeftMouseDragged}) {
-        [[NSCursor arrowCursor] set];
-        NSEvent* event = [NSEvent mouseEventWithType:type
-                                            location:NSMakePoint(10, 10)
-                                       modifierFlags:0
-                                           timestamp:0
-                                        windowNumber:window.windowNumber
-                                             context:nil
-                                         eventNumber:0
-                                          clickCount:type == NSEventTypeMouseMoved ? 0 : 1
-                                            pressure:0];
-        if (type == NSEventTypeMouseMoved) {
-            [webView mouseMoved:event];
-        } else {
-            [webView mouseDragged:event];
-        }
-        EXPECT_EQ([NSCursor currentCursor], [NSCursor resizeUpDownCursor]) << type;
-    }
+    // A cursor without a macOS match is left to WebKit: the view gives AppKit none of its own, and
+    // AppKit is told to drop the previous control's rectangle.
+    const int invalidations = [window invalidationCount];
+    evaluate(webView, @"const grab = document.querySelector('#labels'); grab.style.cursor = 'grab';"
+                       "grab.dispatchEvent(new PointerEvent('pointerover', {bubbles: true})); ''");
+    EXPECT_TRUE(
+        pumpUntil([&] { return cursorForTests(view) == nullptr; }, std::chrono::seconds(2)));
+    EXPECT_GT([window invalidationCount], invalidations);
+    EXPECT_TRUE(cursorRectsOf(webView).empty());
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
 }

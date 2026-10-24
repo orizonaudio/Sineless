@@ -56,10 +56,10 @@ constexpr const char* kFocusTrackingScript = R"JS(
 )JS";
 
 // Reports the page's mouse cursor (its CSS cursor under the pointer, or of the element a drag
-// holds) to native code whenever it changes. WebKit sets CSS cursors itself only while the view's
-// window is key and under the mouse, which an Audio Unit's view hosted out of process never is (in
-// Logic, AUHostingService mirrors it into Logic's window): the view sets the reported cursor
-// itself.
+// holds) to native code whenever it changes. An Audio Unit's view hosted out of process (in Logic,
+// AUHostingService mirrors it into Logic's window) shows no cursor WebKit sets, nor one set on a
+// mouse move: only the cursor the view gives AppKit through its cursor rectangle and
+// cursorUpdate:, which the view takes from the page.
 constexpr const char* kCursorTrackingScript = R"JS(
 (() => {
   let reported = "";
@@ -160,17 +160,6 @@ NSCursor* cursorFor(NSString* css)
         return diagonalResizeCursor();
     }
     return nil;
-}
-
-// Whether WebKit shows the page's cursors itself: it sets one only while the view's window is key
-// and the window under the mouse (PageClientImpl::setCursor). An Audio Unit's view hosted out of
-// process never is; an in-process host's usually is, and is left to WebKit.
-bool webKitShowsCursors(NSView* view)
-{
-    NSWindow* window = view.window;
-    return window != nil && window.isKeyWindow &&
-           [NSWindow windowNumberAtPoint:[NSEvent mouseLocation]
-               belowWindowWithWindowNumber:0] == window.windowNumber;
 }
 
 const char kOwnerKeyTag = 0;
@@ -444,17 +433,27 @@ BOOL performKeyEquivalent(id self, SEL cmd, NSEvent* event)
     return NO; // Let the host handle shortcuts.
 }
 
-// Lets WebKit handle the move or drag, then, where WebKit's cursor is not shown (the view hosted
-// out of process), sets the page's cursor, as native plugin views do on every move.
-void setCursorOnMove(id self, SEL cmd, NSEvent* event)
+// Gives AppKit the page's cursor over the whole view, which it shows as the pointer enters or
+// moves over it. A cursor without a macOS match is left to WebKit.
+void addPageCursorRect(id self, SEL /*cmd*/)
 {
+    WebViewMac* owner = ownerOf(self);
+    if (owner != nullptr && owner->cursor() != nil) {
+        [self addCursorRect:[self bounds] cursor:owner->cursor()];
+    }
+}
+
+// Shows the page's cursor when AppKit asks for one; one without a macOS match is left to WebKit.
+void showPageCursor(id self, SEL cmd, NSEvent* event)
+{
+    WebViewMac* owner = ownerOf(self);
+    if (owner != nullptr && owner->cursor() != nil) {
+        [owner->cursor() set];
+        return;
+    }
     objc_super superInfo{.receiver = self, .super_class = [WKWebView class]};
     reinterpret_cast<void (*)(objc_super*, SEL, NSEvent*)>(objc_msgSendSuper)(&superInfo, cmd,
                                                                               event);
-    WebViewMac* owner = ownerOf(self);
-    if (owner != nullptr && owner->cursor() != nil && !webKitShowsCursors(self)) {
-        [owner->cursor() set];
-    }
 }
 
 BOOL acceptsFirstMouse(id /*self*/, SEL /*cmd*/, NSEvent* /*event*/)
@@ -479,10 +478,11 @@ Class webViewClass()
         class_addMethod(created, @selector(performKeyEquivalent:),
                         reinterpret_cast<IMP>(&performKeyEquivalent),
                         superclassMethodTypes(superclass, @selector(performKeyEquivalent:)));
-        for (SEL selector : { @selector(mouseMoved:), @selector(mouseDragged:) }) {
-            class_addMethod(created, selector, reinterpret_cast<IMP>(&setCursorOnMove),
-                            superclassMethodTypes(superclass, selector));
-        }
+        class_addMethod(created, @selector(resetCursorRects),
+                        reinterpret_cast<IMP>(&addPageCursorRect),
+                        superclassMethodTypes(superclass, @selector(resetCursorRects)));
+        class_addMethod(created, @selector(cursorUpdate:), reinterpret_cast<IMP>(&showPageCursor),
+                        superclassMethodTypes(superclass, @selector(cursorUpdate:)));
         class_addMethod(created, @selector(acceptsFirstMouse:),
                         reinterpret_cast<IMP>(&acceptsFirstMouse),
                         superclassMethodTypes(superclass, @selector(acceptsFirstMouse:)));
@@ -739,9 +739,7 @@ void WebViewMac::receive(WKScriptMessage* message)
     }
     if ([message.name isEqualToString:kCursorHandlerName]) {
         pageCursor = cursorFor(body);
-        if (pageCursor != nil && !webKitShowsCursors(webView)) {
-            [pageCursor set];
-        }
+        [webView.window invalidateCursorRectsForView:webView];
         return;
     }
     if (onMessage) {
