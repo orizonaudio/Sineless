@@ -10,6 +10,12 @@ is how to meet it the first time.
 - `protocol/`: frame format, settings and limits in TypeScript; the build generates the
   C++ header from it. `ui/`: the web page.
 
+[docs/DESIGN.md](docs/DESIGN.md) says what the product does and why: the functional
+requirements (FR-n, §1.2), the architecture decisions (AD-n, §9) and the quality scenarios
+(QS-n, §10). Check a change against the ones covering the behaviour it touches. One that
+contradicts them updates them in the same pull request, saying so, so the reversal is
+reviewed; a fix suggested in an issue does not override them.
+
 ## Rules the product relies on
 
 - **Nothing on the audio thread may allocate, lock, block or do I/O.** `Processor::process`
