@@ -8,13 +8,16 @@ on:
   pull_request:
     types: [closed]
 
+# Read-only unless a job needs more, as in every workflow here.
 permissions:
-  actions: write
+  contents: read
 
 jobs:
   cleanup:
     name: cache-cleanup
     runs-on: ubuntu-24.04
+    permissions:
+      actions: write # Deleting caches.
     steps:
       - name: Delete the pull request's and the merge queue's caches
         shell: bash # With pipefail: a list that fails fails the job, not deletes nothing quietly.
