@@ -255,8 +255,9 @@ TEST_F(EditorTest, LoadsItsOwnStylesAndFonts)
     [window close];
 }
 
-// The VST3 editor leaves the page's cursors to WebKit, as in every VST3 host: the page reports
-// none and the view takes over none of AppKit's cursor handling.
+// The VST3 editor leaves the page's cursors to WebKit, as in every VST3 host: over a control with
+// its own cursor, the view gives AppKit no cursor rectangle and shows no cursor of its own when
+// AppKit asks.
 TEST_F(EditorTest, LeavesTheCursorsToWebKit)
 {
     NSView* parent = [[NSView alloc] init];
@@ -267,14 +268,23 @@ TEST_F(EditorTest, LeavesTheCursorsToWebKit)
     ASSERT_TRUE(pumpUntil(
         [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
         kPageTimeout));
-    EXPECT_EQ(
-        evaluate(webView, @"String(window.webkit.messageHandlers.orizonCursor === undefined)"),
-        "true");
-    for (const SEL selector : { @selector(resetCursorRects), @selector(cursorUpdate:) }) {
-        EXPECT_EQ(class_getMethodImplementation([webView class], selector),
-                  class_getMethodImplementation([WKWebView class], selector))
-            << sel_getName(selector);
-    }
+    evaluate(webView, @"document.querySelector('.field').dispatchEvent("
+                       "new PointerEvent('pointerover', {bubbles: true})); ''");
+    // Long enough for a reported cursor to reach the view, as it does within the cursor test's
+    // waits.
+    pumpUntil([] { return false; }, std::chrono::milliseconds(500));
+    EXPECT_TRUE(cursorRectsOf(webView).empty());
+    [[NSCursor crosshairCursor] set];
+    [webView cursorUpdate:[NSEvent enterExitEventWithType:NSEventTypeCursorUpdate
+                                                 location:NSMakePoint(10, 10)
+                                            modifierFlags:0
+                                                timestamp:0
+                                             windowNumber:window.windowNumber
+                                                  context:nil
+                                              eventNumber:0
+                                           trackingNumber:0
+                                                 userData:nullptr]];
+    EXPECT_NE([NSCursor currentCursor], [NSCursor resizeUpDownCursor]);
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
 }
