@@ -6,7 +6,8 @@ specialist reviewers in `.claude/agents` (correctness, rules, tests and, for C++
 `plugin/` or `editor/`, real-time safety; `review-rules` alone for a change to Markdown only),
 then a `review-verifier` on each Important finding, which keeps
 it only if it can prove it from the code. Every reviewer reads this file; read CLAUDE.md and
-the `.claude/rules` file of each folder the change touches too.
+the `.claude/rules` file of each folder the change touches too, and the parts of
+`docs/DESIGN.md` that cover the behaviour it changes.
 
 ## Questions
 
@@ -27,6 +28,10 @@ Answer each, citing file and line:
    or widely adopted approach the change ignores?
 5. **Regressions:** can the change break a case that worked before: another mode, a host,
    real-time safety, performance on steady input?
+6. **Requirements and decisions:** does the change contradict a functional requirement
+   (FR-n), architecture decision (AD-n) or quality scenario (QS-n) in `docs/DESIGN.md`
+   covering the behaviour it touches, without updating it in the same pull request? Search
+   the document for the feature's terms and cite the ID.
 
 ## Severity
 
@@ -40,7 +45,9 @@ a rule the product relies on:
   a label's exact wording, the order of something no one reads in order): it fails on every
   intended change and on no defect, so it blocks the first and hides the absence of a test
   for the second;
-- a break of "Rules the product relies on" in CLAUDE.md.
+- a break of "Rules the product relies on" in CLAUDE.md;
+- a change that contradicts a requirement, decision or quality scenario in `docs/DESIGN.md`
+  without updating it.
 
 Everything else is a **nit**. Report at most three nits, and none once the pull request has
 had a review: after the first round, report Important findings only, so that reviews
