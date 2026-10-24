@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <memory>
+#include <objc/runtime.h>
 #include <string>
 #include <vector>
 
@@ -333,6 +334,25 @@ TEST_F(AudioUnitViewTest, ShowsTheInstancesEngine)
         },
         kPageTimeout))
         << "a change to the instance's settings reaches the page";
+    closeWindow(window, view);
+}
+
+// Logic and GarageBand host the view out of process, where WebKit's cursors do not show: the view
+// shows the page's cursors itself (the editor tests check how), with the page reporting them.
+TEST_F(AudioUnitViewTest, ShowsThePagesCursorsItself)
+{
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    WKWebView* webView = webViewOf(view);
+    ASSERT_NE(webView, nil);
+    ASSERT_TRUE(pumpUntil(
+        [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
+        kPageTimeout));
+    EXPECT_EQ(
+        evaluate(webView, @"String(window.webkit.messageHandlers.orizonCursor !== undefined)"),
+        "true");
+    EXPECT_NE(class_getMethodImplementation([webView class], @selector(cursorUpdate:)),
+              class_getMethodImplementation([WKWebView class], @selector(cursorUpdate:)));
     closeWindow(window, view);
 }
 

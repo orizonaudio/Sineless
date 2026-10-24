@@ -97,7 +97,8 @@ void EditorCore::attach(void* window)
             if (worker) {
                 worker->wake();
             }
-        });
+        },
+        cursors);
     view->setScale(scale);
     transport = std::make_unique<WebViewTransport>(*view);
     dispatcher = UiDispatcher::create();

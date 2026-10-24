@@ -15,6 +15,7 @@
 #include <objc/runtime.h>
 #include <string>
 #include <utility>
+#include <vector>
 
 // Objective-C classes are created at run time under names that include the product, the build
 // version and an id unique to this loaded image, so that several copies or versions of the
@@ -205,7 +206,7 @@ class WebViewMac final : public WebView
 {
 public:
     WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage,
-               FrameRequestHandler onFrameRequest);
+               FrameRequestHandler onFrameRequest, Cursors cursors);
     ~WebViewMac() override;
     WebViewMac(const WebViewMac&) = delete;
     WebViewMac& operator=(const WebViewMac&) = delete;
@@ -466,39 +467,47 @@ void willOpenMenu(id /*self*/, SEL /*cmd*/, NSMenu* menu, NSEvent* /*event*/)
     [menu removeAllItems]; // No browser menu (Reload, Back): an empty one does not open.
 }
 
-Class webViewClass()
+// The webview's class: WKWebView with the plugin's key, menu and click handling and, for a view
+// that shows the page's cursors itself, its cursor rectangle and cursorUpdate:.
+Class makeWebViewClass(const char* baseName, bool showsPageCursors)
 {
-    static Class cls = [] {
-        Class superclass = [WKWebView class];
-        Class created = objc_allocateClassPair(superclass, uniqueClassName("WebView").c_str(), 0);
-        for (SEL selector : { @selector(keyDown:), @selector(keyUp:), @selector(flagsChanged:) }) {
-            class_addMethod(created, selector, reinterpret_cast<IMP>(&forwardKeyEvent),
-                            superclassMethodTypes(superclass, selector));
-        }
-        class_addMethod(created, @selector(performKeyEquivalent:),
-                        reinterpret_cast<IMP>(&performKeyEquivalent),
-                        superclassMethodTypes(superclass, @selector(performKeyEquivalent:)));
+    Class superclass = [WKWebView class];
+    Class created = objc_allocateClassPair(superclass, uniqueClassName(baseName).c_str(), 0);
+    for (SEL selector : { @selector(keyDown:), @selector(keyUp:), @selector(flagsChanged:) }) {
+        class_addMethod(created, selector, reinterpret_cast<IMP>(&forwardKeyEvent),
+                        superclassMethodTypes(superclass, selector));
+    }
+    class_addMethod(created, @selector(performKeyEquivalent:),
+                    reinterpret_cast<IMP>(&performKeyEquivalent),
+                    superclassMethodTypes(superclass, @selector(performKeyEquivalent:)));
+    if (showsPageCursors) {
         class_addMethod(created, @selector(resetCursorRects),
                         reinterpret_cast<IMP>(&addPageCursorRect),
                         superclassMethodTypes(superclass, @selector(resetCursorRects)));
         class_addMethod(created, @selector(cursorUpdate:), reinterpret_cast<IMP>(&showPageCursor),
                         superclassMethodTypes(superclass, @selector(cursorUpdate:)));
-        class_addMethod(created, @selector(acceptsFirstMouse:),
-                        reinterpret_cast<IMP>(&acceptsFirstMouse),
-                        superclassMethodTypes(superclass, @selector(acceptsFirstMouse:)));
-        class_addMethod(created, @selector(willOpenMenu:withEvent:),
-                        reinterpret_cast<IMP>(&willOpenMenu),
-                        superclassMethodTypes(superclass, @selector(willOpenMenu:withEvent:)));
-        objc_registerClassPair(created);
-        return created;
-    }();
-    return cls;
+    }
+    class_addMethod(created, @selector(acceptsFirstMouse:),
+                    reinterpret_cast<IMP>(&acceptsFirstMouse),
+                    superclassMethodTypes(superclass, @selector(acceptsFirstMouse:)));
+    class_addMethod(created, @selector(willOpenMenu:withEvent:),
+                    reinterpret_cast<IMP>(&willOpenMenu),
+                    superclassMethodTypes(superclass, @selector(willOpenMenu:withEvent:)));
+    objc_registerClassPair(created);
+    return created;
+}
+
+Class webViewClass(WebView::Cursors cursors)
+{
+    static Class shownByWebKit = makeWebViewClass("WebView", false);
+    static Class shownByView = makeWebViewClass("CursorWebView", true);
+    return cursors == WebView::Cursors::kShownByView ? shownByView : shownByWebKit;
 }
 
 // ----- WebViewMac -----
 
 WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage,
-                       FrameRequestHandler onFrameRequest)
+                       FrameRequestHandler onFrameRequest, Cursors cursors)
     : onMessage(std::move(onMessage)), onFrameRequest(std::move(onFrameRequest))
 {
     WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
@@ -514,8 +523,12 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     WKUserContentController* contentController = configuration.userContentController;
     [contentController addScriptMessageHandler:messageHandler name:kMessageHandlerName];
     [contentController addScriptMessageHandler:messageHandler name:kFocusHandlerName];
-    [contentController addScriptMessageHandler:messageHandler name:kCursorHandlerName];
-    for (const char* script : {kFocusTrackingScript, kCursorTrackingScript}) {
+    std::vector<const char*> scripts = {kFocusTrackingScript};
+    if (cursors == Cursors::kShownByView) {
+        [contentController addScriptMessageHandler:messageHandler name:kCursorHandlerName];
+        scripts.push_back(kCursorTrackingScript);
+    }
+    for (const char* script : scripts) {
         [contentController
             addUserScript:[[WKUserScript alloc]
                                 initWithSource:[NSString stringWithUTF8String:script]
@@ -541,7 +554,7 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     notice.hidden = YES;
     [container addSubview:notice];
 
-    webView = [[webViewClass() alloc] initWithFrame:bounds configuration:configuration];
+    webView = [[webViewClass(cursors) alloc] initWithFrame:bounds configuration:configuration];
     setOwner(webView, this);
     webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     webView.hidden = YES;
@@ -751,10 +764,10 @@ void WebViewMac::receive(WKScriptMessage* message)
 
 std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
                                          MessageHandler onMessage,
-                                         FrameRequestHandler onFrameRequest)
+                                         FrameRequestHandler onFrameRequest, Cursors cursors)
 {
     return std::make_unique<WebViewMac>((__bridge NSView*)parent, width, height,
-                                        std::move(onMessage), std::move(onFrameRequest));
+                                        std::move(onMessage), std::move(onFrameRequest), cursors);
 }
 
 bool terminateContentProcessForTests(WebView& view)

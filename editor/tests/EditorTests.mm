@@ -255,10 +255,34 @@ TEST_F(EditorTest, LoadsItsOwnStylesAndFonts)
     [window close];
 }
 
-// The view gives AppKit the page's cursor through its cursor rectangle and cursorUpdate:, the
-// only cursor an Audio Unit's view hosted out of process (in Logic) shows: WebKit's and one set on
-// a mouse move are not. A pointer over each kind of control the page has, and over nothing in
-// particular, gives that control's cursor.
+// The VST3 editor leaves the page's cursors to WebKit, as in every VST3 host: the page reports
+// none and the view takes over none of AppKit's cursor handling.
+TEST_F(EditorTest, LeavesTheCursorsToWebKit)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    auto editor = owned(new Editor(nullptr));
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil(
+        [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
+        kPageTimeout));
+    EXPECT_EQ(
+        evaluate(webView, @"String(window.webkit.messageHandlers.orizonCursor === undefined)"),
+        "true");
+    for (const SEL selector : { @selector(resetCursorRects), @selector(cursorUpdate:) }) {
+        EXPECT_EQ(class_getMethodImplementation([webView class], selector),
+                  class_getMethodImplementation([WKWebView class], selector))
+            << sel_getName(selector);
+    }
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
+// A view that shows the page's cursors itself (the Audio Unit's, which Logic hosts out of process,
+// where WebKit's cursors and one set on a mouse move do not show) gives AppKit the page's cursor
+// through its cursor rectangle and cursorUpdate:. A pointer over each kind of control the page
+// has, and over nothing in particular, gives that control's cursor.
 TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
 {
     NSView* parent = [[NSView alloc] init];
@@ -269,9 +293,10 @@ TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
                       defer:NO];
     window.releasedWhenClosed = NO;
     window.contentView = parent;
-    auto editor = owned(new Editor(nullptr));
-    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
-    WebView& view = *editor->webView();
+    EditorCore core(nullptr);
+    core.setCursors(WebView::Cursors::kShownByView);
+    core.attach((__bridge void*)parent);
+    WebView& view = *core.webView();
     auto* webView = (__bridge WKWebView*)view.nativeView();
     [window watch:webView];
     ASSERT_TRUE(pumpUntil(
@@ -328,7 +353,7 @@ TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
         pumpUntil([&] { return cursorForTests(view) == nullptr; }, std::chrono::seconds(2)));
     EXPECT_GT([window invalidationCount], invalidations);
     EXPECT_TRUE(cursorRectsOf(webView).empty());
-    EXPECT_EQ(editor->removed(), kResultOk);
+    core.detach();
     [window close];
 }
 

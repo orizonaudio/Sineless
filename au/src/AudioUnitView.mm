@@ -71,6 +71,8 @@ const NSLayoutPriority kNotHoldingPriority = 1;
     self = [super initWithFrame:NSMakeRect(0, 0, editor->width(), editor->height())];
     if (self != nil) {
         core = std::move(editor);
+        // Logic and GarageBand host the view out of process, where WebKit's cursors do not show.
+        core->setCursors(orizon::editor::WebView::Cursors::kShownByView);
         // Resizable: hosts read the mask to decide whether the window may be resized.
         self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         if (@available(macOS 14.0, *)) {

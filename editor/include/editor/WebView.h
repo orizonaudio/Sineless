@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <span>
@@ -18,10 +19,20 @@ public:
     // Called on the UI thread when the page asks for the next display frame.
     using FrameRequestHandler = std::function<void(WebView& view)>;
 
+    // Who shows the page's mouse cursors. WebKit does, except in an Audio Unit's view hosted out of
+    // process (in Logic, AUHostingService), which shows none WebKit sets: there the view gives
+    // AppKit the page's cursor itself. Only the Audio Unit asks for that; macOS only.
+    enum class Cursors : std::uint8_t
+    {
+        kShownByWebKit,
+        kShownByView,
+    };
+
     // `parent` is the host's NSView or HWND. The page is loaded from the embedded UI.
     static std::unique_ptr<WebView> create(void* parent, int width, int height,
                                            MessageHandler onMessage,
-                                           FrameRequestHandler onFrameRequest = {});
+                                           FrameRequestHandler onFrameRequest = {},
+                                           Cursors cursors = Cursors::kShownByWebKit);
 
     WebView() = default;
     virtual ~WebView() = default;
