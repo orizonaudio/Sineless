@@ -52,6 +52,8 @@ public:
 
     void setSizeRequest(SizeRequest request) { sizeRequest = std::move(request); }
     void setMinimumCheck(MinimumCheck check) { minimumCheck = std::move(check); }
+    // Who shows the page's cursors in the webview attach() opens (WebView::Cursors).
+    void setCursors(WebView::Cursors shownBy) { cursors = shownBy; }
 
     // Takes the scale of `parent`, the host's window, before attaching to it: the host sized the
     // window before attaching, possibly at a guessed scale. True if the scale changed, so that
@@ -104,6 +106,7 @@ private:
     MessageObserver observer;
     SizeRequest sizeRequest;
     MinimumCheck minimumCheck;
+    WebView::Cursors cursors = WebView::Cursors::kShownByWebKit;
     void* parent = nullptr;
     double scale = 1.0;
     // The editor's size in CSS pixels, the truth that the size in window units follows: a scale

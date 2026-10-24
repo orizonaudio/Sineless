@@ -23,7 +23,8 @@ std::unique_ptr<UiDispatcher> UiDispatcher::create()
 // NOLINTBEGIN(performance-unnecessary-value-param)
 std::unique_ptr<WebView> WebView::create(void* /*parent*/, int /*width*/, int /*height*/,
                                          MessageHandler /*onMessage*/,
-                                         FrameRequestHandler /*onFrameRequest*/)
+                                         FrameRequestHandler /*onFrameRequest*/,
+                                         Cursors /*cursors*/)
 {
     return nullptr;
 }
