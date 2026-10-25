@@ -78,6 +78,17 @@ jobs:
             echo "Documentation only; the builds and tests are skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # Every file's copyright and licence (REUSE.toml, LICENSES/). It runs on documentation-only
+  # changes too: a file added anywhere needs licence information, and this check is quick.
+  reuse:
+    name: reuse
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: REUSE lint (reuse 6.2.0)
+        run: pipx run --spec 'reuse[charset-normalizer]==6.2.0' reuse lint
+
   typescript:
     name: typescript
     needs: changes
