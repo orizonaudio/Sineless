@@ -138,6 +138,13 @@ export function chips(): string[] {
   );
 }
 
+// The status chips shown in the status bar itself, in order: none folded into "+n".
+export function shownChips(): string[] {
+  return [...byId("chips").children]
+    .filter((child) => child.classList.contains("chip"))
+    .map((chip) => chip.textContent);
+}
+
 // A horizontal swipe over the traces of `screenWidths` (negative: back in time).
 export function swipe(screenWidths: number): void {
   const screen = byId("screen");
