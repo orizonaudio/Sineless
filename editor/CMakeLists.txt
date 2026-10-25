@@ -70,9 +70,11 @@ if(BUILD_TESTING)
         tests/TransportTests.cpp
     )
     target_compile_definitions(editor_tests
-        PRIVATE ORIZON_PROTOCOL_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data")
+        PRIVATE ORIZON_PROTOCOL_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data"
+                ORIZON_TEST_BRAND_MARK="${PROJECT_SOURCE_DIR}/ui/src/brand/mark.svg")
     target_include_directories(editor_tests PRIVATE src)
-    target_link_libraries(editor_tests PRIVATE editor engine_test_support orizon_warnings GTest::gtest_main)
+    target_link_libraries(editor_tests
+        PRIVATE editor engine_test_support branding orizon_warnings GTest::gtest_main)
     if(APPLE)
         target_sources(editor_tests PRIVATE tests/EditorTests.mm)
         target_link_libraries(editor_tests PRIVATE "-framework Cocoa" "-framework WebKit")
