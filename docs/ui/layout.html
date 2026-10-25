@@ -1,0 +1,520 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sineless Layout Concepts</title>
+<!-- System fonts until the plugin bundles Geist (the redesign's step 6); the previews in images/ were rendered with Geist. -->
+<style>
+  /* Layout: a reading column for text; each concept's frames break out to the full 1160 px, drawn at true plugin size and scaled to fit.
+     Page in the Orizon brand (dark first). Frames are grey wireframes on purpose: no colour until step 3. */
+  :root {
+    --paper: #000000; --surface: #111113; --surface-2: #1a1a1d; --line: #2a2a2e;
+    --ink: #f5f5f7; --ink-2: #9a9aa2; --accent: #ff5f1f; --accent-text: #ff5f1f;
+    --sans: "Geist", system-ui, -apple-system, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+    /* wireframe greys, the same in both page themes because the plugin is dark only */
+    --w-win: #0f0f11; --w-bar: #161618; --w-ctl: #242427; --w-line: #2c2c30; --w-ink: #dcdce0; --w-ink-2: #85858d;
+    --w-screen: #060607; --w-on: #e6e6e9; --w-on-ink: #0b0b0c;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+    --paper: #ffffff; --surface: #f6f6f7; --surface-2: #e3e3e6; --line: #e3e3e6;
+    --ink: #0b0b0c; --ink-2: #5f5f66; --accent-text: #c2410c; color-scheme: light; } }
+  :root[data-theme="light"] {
+    --paper: #ffffff; --surface: #f6f6f7; --surface-2: #e3e3e6; --line: #e3e3e6;
+    --ink: #0b0b0c; --ink-2: #5f5f66; --accent-text: #c2410c; color-scheme: light; }
+
+  * { box-sizing: border-box; }
+  body { background: var(--paper); color: var(--ink); font: 16px/1.6 var(--sans); letter-spacing: -0.005em; margin: 0; }
+  .wrap { max-width: 1192px; margin: 0 auto; padding-block: 56px 96px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .col { max-width: 720px; }
+  .eyebrow { font: 500 12px/1.4 var(--mono); color: var(--ink-2); letter-spacing: 0.02em; margin: 0 0 16px; }
+  h1 { font-size: clamp(36px, 6vw, 56px); line-height: 1.05; letter-spacing: -0.04em; font-weight: 600; margin: 0 0 16px; text-wrap: balance; }
+  h2 { font-size: 32px; line-height: 1.15; letter-spacing: -0.025em; font-weight: 600; margin: 0 0 8px; text-wrap: balance; }
+  h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .lead { font-size: 20px; line-height: 1.45; letter-spacing: -0.01em; color: var(--ink-2); margin: 0; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--ink-2); }
+  a { color: var(--accent-text); }
+
+  nav.jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+  nav.jump a { font-size: 14px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 9999px; padding: 6px 14px; }
+  nav.jump a:hover { border-color: var(--ink-2); }
+  nav.jump a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  section.concept { margin-top: 96px; scroll-margin-top: 24px; }
+  .tagline { font: 500 13px var(--mono); color: var(--accent-text); margin: 0 0 8px; }
+  .frames { display: grid; gap: 28px 24px; margin-top: 32px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .frames .wide { grid-column: 1 / -1; }
+  .cap { font-size: 13px; color: var(--ink-2); margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+  .cap b { color: var(--ink); font-weight: 500; }
+  .fit { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--line); background: var(--w-win); }
+  .notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 40px; margin-top: 32px; }
+  .notes ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 15px; }
+  .notes li { margin: 6px 0; }
+  .notes li b { color: var(--ink); font-weight: 500; }
+
+  .table-wrap { overflow-x: auto; margin-top: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 680px; }
+  th, td { text-align: left; vertical-align: top; padding: 12px 16px 12px 0; border-bottom: 1px solid var(--line); }
+  thead th { font-weight: 500; color: var(--ink-2); font-size: 13px; }
+  tbody th { font-weight: 500; width: 22%; }
+  td { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .rec { margin-top: 40px; background: var(--surface); border-radius: 16px; padding: 28px; }
+  .rec h3 { font-size: 20px; letter-spacing: -0.01em; }
+
+  @media (max-width: 760px) {
+    .frames { grid-template-columns: 1fr; }
+    .notes { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- wireframe UI (drawn at true size, then scaled) ---------- */
+  .ui { position: absolute; left: 0; top: 0; transform-origin: 0 0; display: grid; background: var(--w-win); color: var(--w-ink); font: 12px/1.3 var(--sans); letter-spacing: 0; overflow: hidden; }
+  .ui * { white-space: nowrap; }
+  .bar { display: flex; align-items: center; gap: 6px; padding: 0 12px; background: var(--w-bar); min-width: 0; overflow: hidden; }
+  .bar.top { border-bottom: 1px solid var(--w-line); }
+  .bar.bottom { border-top: 1px solid var(--w-line); }
+  .mark { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; letter-spacing: -0.01em; color: var(--w-ink); margin-right: 4px; }
+  .mark svg { width: 17px; height: 17px; }
+  .seg { display: inline-flex; background: var(--w-ctl); border-radius: 6px; padding: 2px; gap: 2px; }
+  .seg b { font-weight: 500; padding: 3px 8px; border-radius: 4px; color: var(--w-ink-2); }
+  .seg b.on { background: var(--w-on); color: var(--w-on-ink); }
+  .seg sup { font-size: 8px; font-weight: 600; letter-spacing: .04em; margin-left: 3px; vertical-align: 3px; opacity: .8; }
+  .fld { display: inline-flex; align-items: baseline; gap: 6px; background: var(--w-ctl); border-radius: 6px; padding: 4px 9px; }
+  .fld i { font-style: normal; color: var(--w-ink-2); }
+  .fld i svg { width: 12px; height: 12px; display: block; align-self: center; transform: translateY(1px); }
+  .fld b { font: 500 12px var(--mono); color: var(--w-ink); font-variant-numeric: tabular-nums; }
+  .tg { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--w-line); color: var(--w-ink-2); font-weight: 500; }
+  .tg.on { background: var(--w-on); color: var(--w-on-ink); border-color: transparent; }
+  .dv { width: 1px; height: 18px; background: var(--w-line); flex: none; }
+  .sp { flex: 1; }
+  .ro { display: inline-flex; align-items: baseline; gap: 5px; }
+  .ro i { font-style: normal; color: var(--w-ink-2); }
+  .ro b { font: 500 12px var(--mono); font-variant-numeric: tabular-nums; }
+  .ro u { text-decoration: none; color: var(--w-ink-2); font-size: 11px; margin-left: -2px; }
+  .rolabel { font-size: 11px; font-weight: 600; color: var(--w-ink); background: var(--w-ctl); border-radius: 4px; padding: 1px 6px; margin-right: 2px; }
+  .zl, .zc, .zr { display: flex; align-items: center; gap: 12px; flex: none; }
+  .zc { gap: 6px; }
+  .zr { width: 236px; justify-content: flex-end; gap: 10px; }
+  /* A: the buttons never change width and the state area has a fixed width, so the readouts centred between them never move */
+  .zl.side { width: auto; }
+  .zr.side { width: 200px; }
+  .zl.side { gap: 6px; }
+  .zc.ros { gap: 12px; }
+  .sw { width: 28px; height: 16px; border-radius: 9999px; background: var(--w-ctl); position: relative; display: inline-block; vertical-align: middle; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--w-ink-2); }
+  .sw.on { background: var(--w-on); }
+  .sw.on::after { left: 14px; background: var(--w-on-ink); }
+  .chip { font-weight: 600; font-size: 11px; color: var(--w-ink); display: inline-flex; align-items: center; gap: 6px; }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--w-ink); }
+  .help { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--w-line); display: inline-grid; place-items: center; color: var(--w-ink-2); font-weight: 600; font-size: 11px; }
+  .screen { position: relative; background: var(--w-screen); min-width: 0; min-height: 0; overflow: hidden; }
+  .screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ov { position: absolute; display: flex; gap: 8px; align-items: center; }
+  .grip { position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px; border-right: 2px solid var(--w-line); border-bottom: 2px solid var(--w-line); }
+
+  /* Concept B: inspector */
+  .insp { background: var(--w-bar); border-left: 1px solid var(--w-line); padding: 2px 14px 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .is { padding: 9px 0; border-top: 1px solid var(--w-line); display: grid; gap: 6px; }
+  .is:first-child { border-top: 0; }
+  .is h4 { margin: 0; font-size: 11px; font-weight: 500; color: var(--w-ink-2); display: flex; justify-content: space-between; }
+  .is .row { display: flex; gap: 6px; align-items: center; }
+  .is .kv { display: flex; justify-content: space-between; align-items: baseline; }
+  .is .kv i { font-style: normal; color: var(--w-ink-2); }
+  .is .kv b { font: 500 12px var(--mono); }
+  .bigro { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .bigro div { display: grid; gap: 1px; }
+  .bigro i { font-style: normal; font-size: 11px; color: var(--w-ink-2); }
+  .bigro b { font: 500 18px/1.1 var(--mono); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .bigro u { text-decoration: none; font-size: 10px; color: var(--w-ink-2); }
+  .trk { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+  .trk .bx { width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid var(--w-ink-2); }
+  .trk .bx.on { background: var(--w-ink); border-color: var(--w-ink); }
+  .trk .bx.sum { border-radius: 50%; background: var(--w-ink); border-color: var(--w-ink); }
+  .trk span { overflow: hidden; text-overflow: ellipsis; }
+  .trk span em { font-style: normal; color: var(--w-ink-2); }
+  .trk b { font: 500 11.5px var(--mono); color: var(--w-ink); }
+  .trk b.d { color: var(--w-ink-2); font-family: var(--sans); font-weight: 400; }
+  .btnfull { text-align: center; padding: 5px; border-radius: 6px; border: 1px solid var(--w-line); color: var(--w-ink); font-weight: 500; }
+
+  /* Popovers and menus (drawn open in some frames) */
+  .pop { position: absolute; z-index: 5; background: #1b1b1e; border: 1px solid #36363b; border-radius: 10px; padding: 12px 14px; box-shadow: 0 16px 40px rgba(0,0,0,.55); display: grid; gap: 10px; min-width: 260px; }
+  .pop h5 { margin: 0; font-size: 11px; font-weight: 500; color: var(--w-ink-2); }
+  .prow { display: grid; grid-template-columns: 84px auto; align-items: center; gap: 10px; justify-content: start; }
+  .prow > i { font-style: normal; color: var(--w-ink-2); }
+  .pop hr { border: 0; border-top: 1px solid var(--w-line); margin: 0; }
+  .insp .prow { grid-template-columns: 72px auto; }
+  .open-anchor { box-shadow: 0 0 0 1.5px var(--w-ink); }
+  .more { font: 600 11px var(--mono); color: var(--w-on-ink); background: var(--w-on); border-radius: 9999px; padding: 1px 7px; }
+  .pop.tip { min-width: 0; padding: 8px 10px; gap: 6px; border-radius: 8px; }
+  .curro { position: absolute; right: 10px; top: 26px; background: #151517; border: 1px solid var(--w-line); border-radius: 6px; padding: 6px 9px; display: grid; gap: 2px; font: 500 11px/1.35 var(--mono); font-variant-numeric: tabular-nums; }
+  .curro i { font-style: normal; color: var(--w-ink-2); font-family: var(--sans); font-weight: 400; }
+  .changes { margin: 28px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+  .changes li { display: grid; grid-template-columns: 20px minmax(0, 1fr); color: var(--ink-2); font-size: 15px; }
+  .changes li::before { content: "→"; color: var(--accent-text); }
+  .changes b { color: var(--ink); font-weight: 500; }
+  .fold { margin: 16px 0 0; padding-left: 22px; color: var(--ink-2); font-size: 15px; }
+  .fold li { margin: 4px 0; }
+  .fold b { color: var(--ink); font-weight: 500; }
+</style>
+
+<div class="wrap">
+  <header class="col">
+    <p class="eyebrow">Sineless · Plugin UI redesign · Step 2 of 6 · v6</p>
+    <h1>Sineless layout concepts</h1>
+    <p class="lead">Two ways to arrange the same interface, revised after the first round. Each holds every control from the brief, shown at its real size in the modes that matter. They are grey on purpose: colour, type details and the orange accent come in step 3.</p>
+    <p class="muted" style="margin-top:16px">v1 had three concepts; the Player bar was dropped in v2. This is v6. Frames are drawn at their real pixel size and scaled to fit. Traces use sample signals shaped like the plugin's mock tracks; lanes differ only by brightness for now. Brief and audit: <a href="audit.html">Sineless UI audit</a>.</p>
+    <nav class="jump" aria-label="Concepts"><a href="#toolbar">A · Toolbar</a><a href="#inspector">B · Inspector</a><a href="#compare">Side by side</a></nav>
+  </header>
+
+  <section class="concept" id="toolbar">
+    <div class="col">
+      <p class="tagline">A · Toolbar</p>
+      <h2>One bar on top, the screen below</h2>
+      <p class="muted">Like a Mac app's unified toolbar. Every control that applies in the current mode is in one row above the screen, always. A status bar under the screen holds the readouts, the cursor buttons and the state.</p>
+      <ul class="changes">
+        <li><span><b>Nothing folds away.</b> There is no ⋯ menu. The window can't get narrower than the widest toolbar, so every control always fits.</span></li>
+        <li><span><b>Span, Scale, Views and Trigger use icons, at every width.</b> Their labels are gone from the toolbar, so nothing changes shape as the window narrows; the Trigger popover still has its title. The icons are placeholders in grey: Span is a width between two stops, Scale a height between two stops, Views two traces, Trigger an edge crossing a level. Step 3 draws them properly.</span></li>
+        <li><span><b>Only the wordmark ever hides.</b> The widest case is Single · Seconds with the trigger mode on Single, where Re-arm shows. Measured on that case:
+          <ul class="fold" style="margin-top:8px">
+            <li><b>1080 px and wider:</b> mark and wordmark. This is the default, <b>1080 × 580</b>.</li>
+            <li><b>1020 to 1079 px:</b> the mark alone. The minimum is <b>1020 × 400</b>.</li>
+          </ul></span></li>
+        <li><span><b>Group is a dropdown</b> ("Group A ▾"), and Compare loses its "beta" tag. Help can say it's in beta instead.</span></li>
+        <li><span><b>Overlay | Stack is in the toolbar,</b> in every mode: it also arranges the lanes in Multi and Compare.</span></li>
+        <li><span><b>New status bar order.</b> Left: Time, Level, Hover, then A4. Centre: what the readouts measure, then Peak, RMS and Freq. Right: the state, then Help. The buttons never change width and the state area has a fixed width, so the readouts stay put. They are centred between the two sides, a few pixels off the window's centre.</span></li>
+        <li><span><b>Readouts hold still.</b> Each label sits right next to its value and unit, and each readout has a fixed width, so a longer value never pushes the next one.</span></li>
+        <li><span><b>The readout tag says Left, Right, Mid or Side in Single, and This track in Multi and Compare.</b> I didn't use Sum in Compare: the readouts measure this track's Mid there, not the sum (DESIGN.md §1.2.1). Showing Sum would need the engine to measure the sum instead, which is a behaviour change.</span></li>
+      </ul>
+    </div>
+    <div class="frames" data-concept="A"></div>
+    <div class="col" style="margin-top:32px">
+      <h3>More states than fit</h3>
+      <p class="muted" style="margin:0">The state area has a fixed width, sized for three chips and Help, so the readouts never move. When more states are active, the ones that don't fit fold into one "+n" chip, and resting the pointer on it lists them. Chips keep the order of the state table in DESIGN.md §1.5, so Frozen and the pan offset stay in view. The last frame shows five states with +3 open.</p>
+    </div>
+  </section>
+
+  <section class="concept" id="inspector">
+    <div class="col">
+      <p class="tagline">B · Inspector</p>
+      <h2>The screen, with a panel at its side</h2>
+      <p class="muted">Like the inspector in Logic or Final Cut. The top bar keeps the mode, the group and Freeze. Settings sit in a panel on the right, in labelled sections. In Multi and Compare the panel lists the tracks with their data. A status bar under the screen holds the readouts and the state.</p>
+      <ul class="changes">
+        <li><span><b>One control per line, each with a label,</b> as in the trigger section: Time base, Span and Scale; Channels and Layout; the six trigger settings; Time, Level and Hover as switches; Concert pitch and Help.</span></li>
+        <li><span><b>The panel is 225 px wide</b> (was 252). That needs one more change: in the panel the trigger mode is a dropdown, like Span. As the four-way Auto | Normal | Free | Single switch with a label beside it, it alone would make the panel 316 px wide.</span></li>
+        <li><span><b>The cost is height.</b> With every line separate, Single · Seconds needs a window 710 px tall, so that is B's default and minimum height with the panel open. Below that the panel would have to scroll.</span></li>
+      </ul>
+    </div>
+    <div class="frames" data-concept="B"></div>
+  </section>
+
+  <section class="concept" id="compare">
+    <div class="col">
+      <h2>Side by side</h2>
+      <p class="muted">Measured on the frames above.</p>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th></th><th>A · Toolbar</th><th>B · Inspector</th></tr></thead>
+      <tbody>
+        <tr><th>Default size</th><td>1080 × 580</td><td>1100 × 710</td></tr>
+        <tr><th>Minimum size</th><td>1020 × 400</td><td>640 × 360 with the panel closed; 870 × 710 open</td></tr>
+        <tr><th>Screen share, default size</th><td>87%</td><td>72%</td></tr>
+        <tr><th>Readouts</th><td>Status bar</td><td>Status bar</td></tr>
+        <tr><th>Trigger settings</th><td>One click away, in a popover</td><td>Always in view in the panel</td></tr>
+        <tr><th>Compare data</th><td>On the lane labels</td><td>Track list in the panel</td></tr>
+      </tbody>
+    </table></div>
+    <div class="rec">
+      <h3>My recommendation</h3>
+      <p class="muted" style="margin:0">Still <b style="color:var(--ink);font-weight:500">A</b>. With nothing folding away it is simple to describe: every control that applies is in the toolbar, always. B's one-control-per-line panel is easy to read, but it makes the plugin tall, and a tall plugin window competes with the DAW's own mixer and arrange views.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+const MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M53.592 9.187C52.022 8.352 50.315 7.711 48.538 7.182C46.761 6.653 44.911 6.241 43.052 5.986C41.193 5.731 39.331 5.644 37.519 5.751C35.706 5.858 33.942 6.155 32.204 6.591C30.467 7.027 28.746 7.594 27.024 8.249C25.301 8.903 23.575 9.646 21.905 10.483C20.235 11.321 18.628 12.256 17.138 13.302C15.647 14.347 14.272 15.504 12.996 16.771C11.721 18.038 10.537 19.417 9.453 20.904C8.369 22.391 7.389 23.988 6.584 25.665C5.779 27.343 5.159 29.099 4.744 30.882C4.329 32.664 4.113 34.471 4.035 36.276C3.957 38.082 4.005 39.891 4.178 41.706C4.351 43.521 4.655 45.347 5.186 47.125C5.717 48.904 6.487 50.631 7.53 52.168C8.574 53.705 9.887 55.045 11.38 56.061C12.873 57.077 14.537 57.77 16.277 58.089C18.016 58.408 19.839 58.356 21.641 57.926C23.442 57.496 25.227 56.685 26.759 55.542C28.292 54.4 29.55 52.925 30.322 51.272C31.094 49.619 31.362 47.798 31.301 45.996C31.24 44.195 30.877 42.42 30.724 40.75C30.571 39.08 30.667 37.505 31.307 36.039C31.948 34.573 33.128 33.21 34.647 32.057C36.166 30.903 37.988 29.976 39.8 29.393C41.613 28.811 43.409 28.587 45.15 28.559C46.892 28.531 48.606 28.678 50.329 28.572C52.052 28.467 53.793 28.073 55.343 27.148C56.893 26.223 58.226 24.767 59.048 23.011C59.87 21.256 60.166 19.234 59.906 17.365C59.646 15.496 58.847 13.798 57.722 12.434C56.596 11.069 55.161 10.022 53.592 9.187Z"/></svg>';
+// ---------- scenes: the same states for every concept ----------
+// readout: what Peak, RMS and Freq measure (DESIGN.md 1.2.1): the trigger source in Single, this track's Mid in Multi and Compare.
+const SCENES = {
+  single: { mode: 'Single', base: 'sec', trigger: 'Auto', frozen: false, auto: false,
+    lanes: [{ name: 'L', sig: 'L', tone: 0 }, { name: 'R', sig: 'R', tone: 2 }],
+    status: ["Trig'd", 'Auto'], readout: 'Mid', peak: '−3.2', rms: '−9.8', freq: '≈ 220.0' },
+  armed: { mode: 'Single', base: 'sec', trigger: 'Single', frozen: false, auto: false,
+    lanes: [{ name: 'L', sig: 'L', tone: 0 }, { name: 'R', sig: 'R', tone: 2 }],
+    status: ['Waiting', 'Single'], readout: 'Mid', peak: '−3.2', rms: '−9.8', freq: '≈ 220.0' },
+  compare: { mode: 'Compare', base: 'beats', playhead: 0.72, frozen: false, auto: true,
+    lanes: [
+      { name: 'Kick', sig: 'kick', tone: 0, own: true, check: true, extra: 'reference' },
+      { name: 'Kick 2', sig: 'kick2', tone: 1, check: true, extra: '+1.3 ms   Ø   −0.82' },
+      { name: 'Bass', sig: 'bass', tone: 2, check: false, extra: 'unrelated' },
+      { name: 'Sum', sig: 'sum', tone: 0, sum: true, extra: '−4.1 dB · cancels', fix: true }],
+    status: ['Sync'], readout: 'This track', peak: '−1.1', rms: '−19.2', freq: '—' },
+  busy: { mode: 'Multi', base: 'beats', playhead: 0.62, frozen: true, auto: true, shown: 2,
+    lanes: [
+      { name: 'Kick', sig: 'kick', tone: 1 }, { name: 'Clap', sig: 'clap', tone: 2 }, { name: 'Hats', sig: 'hats', tone: 3 },
+      { name: 'Bass', sig: 'bass', tone: 1 }, { name: 'Keys', sig: 'keys', tone: 0, own: true }],
+    status: ['Frozen', '−1.2 s', 'Span limited', 'Partial', 'Zoom ×4'], readout: 'This track', peak: '−4.6', rms: '−21.0', freq: '—' },
+  multi: { mode: 'Multi', base: 'beats', playhead: 0.62, frozen: true, auto: true,
+    lanes: [
+      { name: 'Kick', sig: 'kick', tone: 1 }, { name: 'Clap', sig: 'clap', tone: 2 }, { name: 'Hats', sig: 'hats', tone: 3 },
+      { name: 'Bass', sig: 'bass', tone: 1 }, { name: 'Keys', sig: 'keys', tone: 0, own: true }],
+    status: ['Frozen', '−1.2 s', 'Zoom ×4'], readout: 'This track', peak: '−4.6', rms: '−21.0', freq: '—' }
+};
+// Sizes measured from the worst case (Single · Seconds, trigger mode Single, so Re-arm shows): see the page text.
+const A_DEFAULT = 1080, A_MIN = 1020, B_PANEL_H = 710;
+const FRAMES = {
+  A: [
+    { scene: 'single', w: A_DEFAULT, h: 580, label: 'Single · Seconds, time cursors on', size: 'Default', cursors: true, wide: true },
+    { scene: 'single', w: A_DEFAULT, h: 580, label: 'Single · Seconds, trigger settings open', size: 'Default', open: 'trigger', wide: true },
+    { scene: 'compare', w: 1280, h: 720, label: 'Compare · Beats', size: 'Large', wide: true },
+    { scene: 'armed', w: A_MIN, h: 400, label: 'Single · Seconds, trigger mode Single: the widest toolbar', size: 'Minimum', nomark: true, nolabels: true },
+    { scene: 'busy', w: A_MIN, h: 400, label: 'Multi · Beats, five states at once, +3 open on hover', size: 'Minimum', nomark: true, nolabels: true, open: 'chips' }
+  ],
+  B: [
+    { scene: 'single', w: 1100, h: B_PANEL_H, label: 'Single · Seconds', size: 'Default', wide: true },
+    { scene: 'compare', w: 1280, h: 720, label: 'Compare · Beats', size: 'Large', wide: true },
+    { scene: 'multi', w: 640, h: 360, label: 'Multi · Beats, frozen, panel closed', size: 'Minimum', closed: true }
+  ]
+};
+
+// ---------- icons that label Span, Scale, Views and Trigger in the toolbar (12 px, stroke in currentColor) ----------
+const svg = d => `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  Span: svg('<path d="M1 3v6M11 3v6M2.5 6h7M4 4.5 2.5 6 4 7.5M8 4.5 9.5 6 8 7.5"/>'),
+  Scale: svg('<path d="M3 1h6M3 11h6M6 2.5v7M4.5 4 6 2.5 7.5 4M4.5 8 6 9.5 7.5 8"/>'),
+  Views: svg('<path d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"/>'),
+  Trigger: svg('<path d="M1 10h3.5L7.5 2H11"/><path d="M1 6h10" stroke-dasharray="1 1.6" stroke-width="1"/>')
+};
+
+// ---------- small builders ----------
+const seg = (items, on) => `<span class="seg">${items.map(t => `<b class="${[].concat(on).includes(t) ? 'on' : ''}">${t}</b>`).join('')}</span>`;
+const fld = (l, v, anchor = '', open = false) => `<span class="fld ${open ? 'open-anchor' : ''}" ${anchor ? `data-anchor="${anchor}"` : ''}>${l ? `<i>${l}</i>` : ''}<b>${v}</b></span>`;
+const tg = (t, on, anchor = '', open = false) => `<span class="tg ${on ? 'on' : ''} ${open ? 'open-anchor' : ''}" ${anchor ? `data-anchor="${anchor}"` : ''}>${t}</span>`;
+const sw = on => `<span class="sw ${on ? 'on' : ''}"></span>`;
+// Each readout keeps a fixed width, so a longer value never moves the next one.
+const ro = (l, v, u, w) => `<span class="ro" style="min-width:${w}px"><i>${l}</i><b>${v}</b><u>${u}</u></span>`;
+const readouts = s => `<span class="rolabel">${s.readout}</span>${ro('Peak', s.peak, 'dBFS', 104)}${ro('RMS', s.rms, 'dBFS', 104)}${ro('Freq', s.freq, 'Hz', 112)}`;
+// The state area has a fixed width: chips that don't fit fold into one "+n" chip, which lists them on hover.
+const chips = (s, anchor = '') => s.status.slice(0, s.shown ?? s.status.length).map(c => `<span class="chip">${c}</span>`).join('') +
+  (s.shown < s.status.length ? `<span class="more" ${anchor ? `data-anchor="${anchor}"` : ''}>+${s.status.length - s.shown}</span>` : '');
+const modes = s => seg(['Single', 'Multi', 'Compare'], s.mode);
+const span = s => s.base === 'sec' ? '10 ms' : '1 bar';
+const timebase = s => seg(['Beats', 'Sec'], s.base === 'sec' ? 'Sec' : 'Beats');
+const layout = () => seg(['Overlay', 'Stack'], 'Stack');
+const mark = (word = true) => `<span class="mark">${MARK}${word ? 'Sineless' : ''}</span>`;
+const screen = (f, opts, overlay = '') => `<div class="screen" data-scene="${f.scene}" data-opts='${JSON.stringify({ ...opts, cursors: !!f.cursors })}'><canvas></canvas>${overlay}</div>`;
+const prow = (l, v) => `<div class="prow"><i>${l}</i><span>${v}</span></div>`;
+const cursorReadout = `<div class="curro"><span><i>Δt</i> 3.33 ms · 160 smp</span><span><i>1/Δt</i> 300.0 Hz · D4 +37¢</span></div>`;
+const triggerRows = (s, panel = false) => [
+  prow('Mode', panel ? fld('', `${s.trigger} ▾`) : seg(['Auto', 'Normal', 'Free', 'Single'], s.trigger)),
+  prow('Source', seg(['L', 'R', 'M', 'S'], 'M')),
+  prow('Slope', seg(['Rising', 'Falling'], 'Rising')),
+  prow('Level', fld('', '+0.00')),
+  prow('Hysteresis', fld('', '0.01')),
+  prow('Hold-off', fld('', '0 ms'))
+].join('');
+
+// ---------- concept A: toolbar ----------
+// Top: mark · mode · group · time base, span, scale · views, layout · trigger (+ Re-arm) · Freeze, Auto-freeze.
+// Bottom: readouts and A4 left; cursor buttons centred between the two fixed-width sides; state and Help right.
+function toolbarA(s, f) {
+  const top = [mark(!f.nomark), modes(s)];
+  if (s.mode !== 'Single') top.push(fld('Group', 'A ▾'));
+  const lb = l => ICON[l];
+  top.push('<span class="dv"></span>', timebase(s), fld(lb('Span'), span(s)), fld(lb('Scale'), '0 dB'), '<span class="dv"></span>');
+  if (s.mode === 'Single') top.push(fld(lb('Views'), 'L R ▾'));
+  top.push(layout());
+  if (s.base === 'sec') {
+    top.push('<span class="dv"></span>', fld(lb('Trigger'), `${s.trigger} ▾`, 'trigger', f.open === 'trigger'));
+    if (s.trigger === 'Single') top.push(tg('Re-arm'));
+  }
+  top.push('<span class="sp"></span>', tg(s.frozen ? 'Frozen' : 'Freeze', s.frozen), tg('Auto-freeze', s.auto));
+  return top.join('');
+}
+function conceptA(f) {
+  const s = SCENES[f.scene];
+  const bottom = `<div class="zl side">${tg('Time', f.cursors)}${tg('Level')}${tg('Hover')}<span class="dv"></span>${fld('A4', '440 Hz')}</div><span class="sp"></span>
+    <div class="zc ros">${readouts(s)}</div><span class="sp"></span>
+    <div class="zr side">${chips(s, 'chips')}<span class="help">?</span></div>`;
+  let pop = f.open === 'trigger' ? `<div class="pop" data-for="trigger"><h5>Trigger</h5>${triggerRows(s)}</div>` : '';
+  if (f.open === 'chips') pop = `<div class="pop tip" data-for="chips" data-align="right" data-place="above">${s.status.slice(s.shown).map(c => `<span class="chip">${c}</span>`).join('')}</div>`;
+  return `<div class="ui" style="width:${f.w}px;height:${f.h}px;grid-template-rows:44px 1fr 30px">
+    <div class="bar top">${toolbarA(s, f)}</div>
+    ${screen(f, { labels: 'full' }, f.cursors ? cursorReadout : '')}
+    <div class="bar bottom" style="position:relative">${bottom}<span class="grip"></span></div>${pop}</div>`;
+}
+
+// ---------- concept B: inspector ----------
+// One control per line, each with a label, so the panel stays narrow.
+function conceptB(f) {
+  const s = SCENES[f.scene], open = !f.closed, small = f.w < 780;
+  const top = [mark(!small), modes(s)];
+  if (s.mode !== 'Single') top.push(fld('Group', 'A ▾'));
+  top.push('<span class="sp"></span>');
+  if (!open) top.push(fld('Span', span(s)));
+  top.push(tg(s.frozen ? 'Frozen' : 'Freeze', s.frozen), tg('Auto-freeze', s.auto), tg('▥', open));
+  const sec = (h, body) => `<div class="is"><h4><span>${h}</span></h4>${body}</div>`;
+  const parts = [sec('Display', prow('Time base', timebase(s)) + prow('Span', fld('', span(s))) + prow('Scale', fld('', '0 dB')))];
+  if (s.mode === 'Single') parts.push(sec('Views', prow('Channels', seg(['L', 'R', 'M', 'S'], ['L', 'R'])) + prow('Layout', layout())));
+  else {
+    const rows = s.lanes.map(l => {
+      const box = l.sum ? 'sum' : (s.mode === 'Compare' ? (l.check ? 'on' : '') : 'on');
+      let val = '';
+      if (s.mode === 'Compare') val = l.sum ? `<b>−4.1 dB</b>` : l.own ? `<b class="d">reference</b>` : l.check ? `<b>+1.3 ms Ø −0.82</b>` : `<b class="d">unrelated</b>`;
+      return `<div class="trk"><span class="bx ${box}"></span><span>${l.name}${l.own ? ' <em>· this track</em>' : ''}</span>${val}</div>`;
+    }).join('');
+    parts.push(sec('Tracks', prow('Layout', layout()) + rows + (s.mode === 'Compare' ? `<div class="btnfull">Preview fix</div>` : '')));
+  }
+  if (s.base === 'sec') parts.push(sec('Trigger', triggerRows(s, true)));
+  parts.push(sec('Cursors', prow('Time', sw(false)) + prow('Level', sw(false)) + prow('Hover', sw(false))));
+  parts.push(sec('Other', prow('Concert pitch', fld('A4', '440 Hz')) + prow('Help', sw(false))));
+  const bottom = `<div class="zl">${small ? `<span class="rolabel">${s.readout}</span>${ro('Peak', s.peak, '', 70)}${ro('RMS', s.rms, '', 70)}` : readouts(s)}</div><span class="sp"></span><div class="zr" style="width:auto">${chips(s)}</div>`;
+  return `<div class="ui" style="width:${f.w}px;height:${f.h}px;grid-template-rows:40px 1fr 30px">
+    <div class="bar top">${top.join('')}</div>
+    <div style="display:grid;grid-template-columns:${open ? '1fr auto' : '1fr'};min-height:0">
+      ${screen(f, { labels: 'names' })}${open ? `<div class="insp">${parts.join('')}</div>` : ''}</div>
+    <div class="bar bottom" style="position:relative">${bottom}<span class="grip"></span></div></div>`;
+}
+
+// ---------- signals (t from 0 to 1 across the span) ----------
+const rnd = i => { const x = Math.sin(i * 12.9898) * 43758.5453; return (x - Math.floor(x)) * 2 - 1; };
+const noise = (t, k = 1) => rnd(Math.floor(t * 60000) + k * 977);
+const TAU = Math.PI * 2;
+function kick(b, off = 0, inv = 1) {
+  let v = 0;
+  for (const h of [0, 2, 2.75]) { const x = b - h - off; if (x >= 0 && x < 1.2) v += inv * Math.sin(TAU * 26 * x * (1 + 1.2 * Math.exp(-x * 14))) * Math.exp(-x * 4.2) * 0.95; }
+  return v;
+}
+function clap(b) { let v = 0; for (const h of [1, 3]) { const x = b - h; if (x >= 0 && x < 0.8) v += noise(b, 2) * Math.exp(-x * 11) * 0.8; } return v; }
+function hats(b) { let v = 0; for (let h = 0; h < 4; h += 0.5) { const x = b - h; if (x >= 0 && x < 0.3) v += noise(b, 3) * Math.exp(-x * 38) * (h % 1 ? 0.6 : 0.38); } return v; }
+function bass(b) {
+  let v = 0;
+  for (const [h, len] of [[0, 0.45], [0.75, 0.3], [1.5, 0.45], [2.5, 0.3], [3, 0.45]]) { const x = b - h; if (x >= 0 && x < len) v += Math.sin(TAU * 13 * x) * 0.75 * Math.min(1, (len - x) * 25, x * 60); }
+  return v;
+}
+function keys(b) { let v = 0; for (const h of [0, 1.5, 2.5, 3.25]) { const x = b - h; if (x >= 0) v += (Math.sin(TAU * 90 * x) * 0.55 + Math.sin(TAU * 137 * x) * 0.35) * Math.exp(-x * 2.2); } return Math.max(-1, Math.min(1, v)); }
+const SIG = {
+  L: t => 0.72 * Math.sin(TAU * 2.2 * (t - 0.1)) + 0.1 * Math.sin(TAU * 4.4 * (t - 0.1)),
+  R: t => 0.55 * Math.sin(TAU * 2.2 * (t - 0.1) - 0.45) + 0.09 * Math.sin(TAU * 4.4 * (t - 0.1)),
+  kick: t => kick(t * 4), kick2: t => kick(t * 4, 0.005, -0.9), clap: t => clap(t * 4), hats: t => hats(t * 4),
+  bass: t => bass(t * 4), keys: t => keys(t * 4), sum: t => kick(t * 4) + kick(t * 4, 0.005, -0.9)
+};
+const TONES = ['#f0f0f2', '#b4b4ba', '#8c8c94', '#a0a0a7'];
+
+// ---------- screen drawing ----------
+function drawScreen(el) {
+  const s = SCENES[el.dataset.scene], o = JSON.parse(el.dataset.opts);
+  const c = el.querySelector('canvas'), W = el.offsetWidth, H = el.offsetHeight, d = 2;
+  c.width = W * d; c.height = H * d;
+  const g = c.getContext('2d'); g.scale(d, d);
+  const css = getComputedStyle(document.documentElement);
+  const ink2 = css.getPropertyValue('--w-ink-2').trim(), ink = css.getPropertyValue('--w-ink').trim();
+  const top = o.top || 0, bottom = 18, plotH = H - top - bottom;
+  // grid
+  const divs = s.base === 'beats' ? 16 : 10;
+  for (let i = 1; i < divs; i++) {
+    const x = Math.round(W * i / divs) + 0.5, strong = s.base === 'beats' ? i % 4 === 0 : false;
+    g.strokeStyle = strong ? '#24242a' : '#151518'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + plotH); g.stroke();
+  }
+  // time labels
+  g.font = '500 10px "Geist Mono", ui-monospace, monospace'; g.fillStyle = ink2; g.textBaseline = 'alphabetic';
+  if (s.base === 'sec') for (let i = 1; i < 10; i += 2) g.fillText(`${(i - 1)} ms`, W * i / 10 + 4, H - 5);
+  else for (let i = 0; i < 4; i++) g.fillText(`33.${i + 1}`, W * i / 4 + 4, H - 5);
+  // lanes
+  const n = s.lanes.length, lh = plotH / n;
+  s.lanes.forEach((l, k) => {
+    const y0 = top + k * lh, mid = y0 + lh / 2, amp = lh * 0.4;
+    g.strokeStyle = '#1c1c20'; g.beginPath(); g.moveTo(0, mid + 0.5); g.lineTo(W, mid + 0.5); g.stroke();
+    if (k > 0) { g.strokeStyle = '#26262b'; g.beginPath(); g.moveTo(0, Math.round(y0) + 0.5); g.lineTo(W, Math.round(y0) + 0.5); g.stroke(); }
+    const f = SIG[l.sig], faint = s.mode === 'Compare' && !l.sum && !l.check;
+    g.strokeStyle = TONES[l.tone]; g.lineWidth = 1.4; g.lineJoin = 'round';
+    let pmin = null, pmax = null;
+    for (let x = 0; x < W; x++) {
+      let mn = 9, mx = -9;
+      for (let j = 0; j < 4; j++) { const v = f((x + j / 4) / W); mn = Math.min(mn, v); mx = Math.max(mx, v); }
+      const a = pmax === null ? mn : Math.min(mn, pmax), b = pmin === null ? mx : Math.max(mx, pmin);
+      const t = x / W, dim = s.playhead && t > s.playhead;
+      g.globalAlpha = (faint ? 0.25 : 1) * (dim ? 0.35 : 1);
+      g.beginPath(); g.moveTo(x + 0.5, mid - b * amp - 0.5); g.lineTo(x + 0.5, mid - a * amp + 0.5); g.stroke();
+      pmin = mn; pmax = mx;
+    }
+    g.globalAlpha = 1;
+    // label
+    if (o.labels) {
+      let x = 10; const y = y0 + 16;
+      if (s.mode === 'Compare' && o.labels === 'full') {
+        g.lineWidth = 1.5; g.strokeStyle = ink; g.fillStyle = ink;
+        if (l.sum) { g.beginPath(); g.arc(x + 5, y - 4, 4.5, 0, TAU); g.fill(); }
+        else { g.beginPath(); g.roundRect(x, y - 9, 10, 10, 2); l.check ? g.fill() : (g.strokeStyle = ink2, g.stroke()); }
+        x += 17;
+      }
+      g.font = '600 11.5px Geist, system-ui, sans-serif'; g.fillStyle = ink; g.fillText(l.name, x, y); x += g.measureText(l.name).width + 8;
+      g.font = '400 11px Geist, system-ui, sans-serif'; g.fillStyle = ink2;
+      if (l.own) { g.fillText('this track', x, y); x += g.measureText('this track').width + 10; }
+      if (o.labels === 'full' && l.extra && !(l.own && l.extra === 'reference')) {
+        g.font = '500 11px "Geist Mono", ui-monospace, monospace'; g.fillStyle = l.sum || l.check ? ink : ink2;
+        g.fillText(l.extra, x, y); x += g.measureText(l.extra).width + 10;
+      }
+      if (o.labels === 'full' && l.fix) {
+        g.font = '500 11px Geist, system-ui, sans-serif'; const w = g.measureText('Preview fix').width + 16;
+        g.strokeStyle = '#3a3a40'; g.lineWidth = 1; g.beginPath(); g.roundRect(x, y - 12, w, 17, 5); g.stroke();
+        g.fillStyle = ink; g.fillText('Preview fix', x + 8, y);
+      }
+    }
+  });
+  // level label once, top right
+  g.font = '500 10px "Geist Mono", ui-monospace, monospace'; g.fillStyle = ink2; g.textAlign = 'right';
+  g.fillText('0 dB', W - 8, top + 14 + (o.labels === 'full' && s.mode === 'Single' ? 0 : 0)); g.textAlign = 'left';
+  // trigger line and marker
+  if (s.trigger) {
+    const x = Math.round(W * 0.1) + 0.5; g.setLineDash([3, 4]); g.strokeStyle = '#55555c';
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + plotH); g.stroke(); g.setLineDash([]);
+  }
+  // playhead
+  if (s.playhead) {
+    const x = Math.round(W * s.playhead) + 0.5; g.strokeStyle = s.frozen ? '#8c8c94' : '#f0f0f2'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + plotH); g.stroke();
+  }
+  // time cursors A and B at 1/3 and 2/3
+  if (o.cursors) {
+    [['A', 1 / 3], ['B', 2 / 3]].forEach(([t, p]) => {
+      const x = Math.round(W * p) + 0.5; g.strokeStyle = ink; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + plotH); g.stroke();
+      g.fillStyle = ink; g.beginPath(); g.roundRect(x - 8, top + 4, 16, 15, 3); g.fill();
+      g.fillStyle = '#0b0b0c'; g.font = '600 10px Geist, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText(t, x, top + 15); g.textAlign = 'left';
+    });
+  }
+}
+
+
+// ---------- build and fit ----------
+const BUILD = { A: conceptA, B: conceptB };
+document.querySelectorAll('.frames').forEach(box => {
+  const c = box.dataset.concept;
+  box.innerHTML = FRAMES[c].map(f => `<figure style="margin:0" class="${f.wide ? 'wide' : ''}"><div class="fit" data-w="${f.w}" data-h="${f.h}">${BUILD[c](f)}</div>
+      <figcaption class="cap"><b>${f.label}</b> · ${f.size} ${f.w} × ${f.h}</figcaption></figure>`).join('');
+});
+// Place each open popover under its anchor, in the frame's unscaled coordinates.
+function placePopovers(fitEl, sc) {
+  const ui = fitEl.firstElementChild, u = ui.getBoundingClientRect();
+  ui.querySelectorAll('.pop[data-for]').forEach(p => {
+    const a = ui.querySelector(`[data-anchor="${p.dataset.for}"]`).getBoundingClientRect();
+    const left = p.dataset.align === 'right' ? (a.right - u.left) / sc - p.offsetWidth : (a.left - u.left) / sc;
+    p.style.left = `${Math.max(8, Math.min(left, ui.offsetWidth - p.offsetWidth - 8))}px`;
+    p.style.top = p.dataset.place === 'above' ? `${(a.top - u.top) / sc - p.offsetHeight - 6}px` : `${(a.bottom - u.top) / sc + 6}px`;
+  });
+}
+function fit() {
+  document.querySelectorAll('.fit').forEach(f => {
+    const w = +f.dataset.w, h = +f.dataset.h, sc = f.clientWidth / w;
+    f.style.height = `${h * sc}px`;
+    f.firstElementChild.style.transform = `scale(${sc})`;
+    placePopovers(f, sc);
+  });
+}
+fit();
+new ResizeObserver(fit).observe(document.querySelector('.wrap'));
+const draw = () => document.querySelectorAll('.screen').forEach(drawScreen);
+draw();
+document.fonts.ready.then(() => { draw(); fit(); });
+</script>

@@ -1,0 +1,70 @@
+/* Sineless plugin tokens. Source of truth: sineless-tokens.json. Built on the Orizon brand tokens (Geist, Geist Mono, horizon orange).
+   Dark only: the plugin has no light theme. Graphite treatment, accent on Frozen (docs/ui/README.md, step 4). */
+
+:root {
+  /* Chrome and screen */
+  --sl-case: #18181b; /* Window chrome: toolbar, status bar and the frame around the screen */
+  --sl-control: #26262a; /* Fields, segmented controls and buttons at rest */
+  --sl-popover: #222226; /* Open popovers and the cursor readout */
+  --sl-line: #2b2b30; /* Dividers and the screen's edge */
+  --sl-selected: #f5f5f7; /* The selected option, and toggles that are on */
+  --sl-on-selected: #0b0b0c; /* Text on a selected option */
+  --sl-ink: #f5f5f7; /* Primary text, values, cursors */
+  --sl-ink-2: #9a9aa3; /* Labels, units, icons, grid labels */
+  --sl-screen: #030304; /* The screen behind the traces */
+  --sl-grid: #111114; /* Time and level grid lines */
+  --sl-grid-strong: #1c1c21; /* Bar lines in Beats; each lane's zero line */
+  --sl-lane-edge: #26262c; /* The line between stacked lanes */
+
+  /* States: the accent marks Frozen and nothing else */
+  --sl-accent: #ff5f1f; /* Frozen only: the Frozen button and the Frozen chip */
+  --sl-on-accent: #000000; /* Text on the accent */
+  --sl-warn: #ffd23f; /* Problems: Invalid samples, tracks that cancel when summed */
+
+  /* Channel traces in Single */
+  --sl-left: #5ab0ff; /* Left channel */
+  --sl-right: #ff5c8a; /* Right channel */
+  --sl-mid: #f5f5f7; /* Mid channel, and the sum lane in Compare */
+  --sl-side: #b3f06b; /* Side channel */
+
+  /* Track colours when the host gives none (Audio Units). Assigned in this order: neighbours stay distinct, also with colour blindness. */
+  --sl-track-01: #6fb6fe;
+  --sl-track-02: #e3636c;
+  --sl-track-03: #13efe9;
+  --sl-track-04: #8f7fed;
+  --sl-track-05: #e7a203;
+  --sl-track-06: #0bab83;
+  --sl-track-07: #dcd848;
+  --sl-track-08: #c76ac0;
+  --sl-track-09: #98c244;
+  --sl-track-10: #feb8e3;
+  --sl-track-11: #8bec8b;
+  --sl-track-12: #f485cd;
+  --sl-track-13: #879f03;
+  --sl-track-14: #e6c0fe;
+  --sl-track-15: #42ce85;
+  --sl-track-16: #e28bea;
+
+  /* Opacities */
+  --sl-dim-previous: 0.35; /* The previous sweep cycle, right of the playhead */
+  --sl-dim-unchecked: 0.25; /* Unchecked tracks in Compare */
+  --sl-dim-waiting: 0.5; /* A trace waiting for a trigger */
+  --sl-cancel-fill: 0.16; /* Warn colour over the sum lane where tracks cancel */
+  --sl-zoom-band: 0.1; /* Ink over the region being dragged to zoom */
+
+  /* Type and sizes */
+  --sl-font-ui: "Geist", system-ui, sans-serif;
+  --sl-font-value: "Geist Mono", ui-monospace, monospace;
+  --sl-toolbar-height: 48px;
+  --sl-status-height: 34px;
+  --sl-control-height: 24px;
+  --sl-control-radius: 6px;
+  --sl-screen-inset: 8px;
+  --sl-screen-radius: 10px;
+  --sl-trace-width: 1.5px;
+  --sl-cursor-width: 1px;
+  --sl-font-ui: 12.5px;
+  --sl-font-value: 12px;
+  --sl-font-label: 11px;
+  color-scheme: dark;
+}

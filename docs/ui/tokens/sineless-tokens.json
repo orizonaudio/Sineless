@@ -1,0 +1,259 @@
+{
+  "$description": "Sineless plugin tokens (DTCG format). Dark only, Graphite treatment, accent on Frozen.",
+  "sl": {
+    "color": {
+      "case": {
+        "$type": "color",
+        "$value": "#18181b",
+        "$description": "Window chrome: toolbar, status bar and the frame around the screen"
+      },
+      "control": {
+        "$type": "color",
+        "$value": "#26262a",
+        "$description": "Fields, segmented controls and buttons at rest"
+      },
+      "popover": {
+        "$type": "color",
+        "$value": "#222226",
+        "$description": "Open popovers and the cursor readout"
+      },
+      "line": {
+        "$type": "color",
+        "$value": "#2b2b30",
+        "$description": "Dividers and the screen's edge"
+      },
+      "selected": {
+        "$type": "color",
+        "$value": "#f5f5f7",
+        "$description": "The selected option, and toggles that are on"
+      },
+      "on-selected": {
+        "$type": "color",
+        "$value": "#0b0b0c",
+        "$description": "Text on a selected option"
+      },
+      "ink": {
+        "$type": "color",
+        "$value": "#f5f5f7",
+        "$description": "Primary text, values, cursors"
+      },
+      "ink-2": {
+        "$type": "color",
+        "$value": "#9a9aa3",
+        "$description": "Labels, units, icons, grid labels"
+      },
+      "screen": {
+        "$type": "color",
+        "$value": "#030304",
+        "$description": "The screen behind the traces"
+      },
+      "grid": {
+        "$type": "color",
+        "$value": "#111114",
+        "$description": "Time and level grid lines"
+      },
+      "grid-strong": {
+        "$type": "color",
+        "$value": "#1c1c21",
+        "$description": "Bar lines in Beats; each lane's zero line"
+      },
+      "lane-edge": {
+        "$type": "color",
+        "$value": "#26262c",
+        "$description": "The line between stacked lanes"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#ff5f1f",
+        "$description": "Frozen only: the Frozen button and the Frozen chip"
+      },
+      "on-accent": {
+        "$type": "color",
+        "$value": "#000000",
+        "$description": "Text on the accent"
+      },
+      "warn": {
+        "$type": "color",
+        "$value": "#ffd23f",
+        "$description": "Problems: Invalid samples, tracks that cancel when summed"
+      },
+      "left": {
+        "$type": "color",
+        "$value": "#5ab0ff",
+        "$description": "Left channel"
+      },
+      "right": {
+        "$type": "color",
+        "$value": "#ff5c8a",
+        "$description": "Right channel"
+      },
+      "mid": {
+        "$type": "color",
+        "$value": "#f5f5f7",
+        "$description": "Mid channel, and the sum lane in Compare"
+      },
+      "side": {
+        "$type": "color",
+        "$value": "#b3f06b",
+        "$description": "Side channel"
+      }
+    },
+    "track": {
+      "01": {
+        "$type": "color",
+        "$value": "#6fb6fe"
+      },
+      "02": {
+        "$type": "color",
+        "$value": "#e3636c"
+      },
+      "03": {
+        "$type": "color",
+        "$value": "#13efe9"
+      },
+      "04": {
+        "$type": "color",
+        "$value": "#8f7fed"
+      },
+      "05": {
+        "$type": "color",
+        "$value": "#e7a203"
+      },
+      "06": {
+        "$type": "color",
+        "$value": "#0bab83"
+      },
+      "07": {
+        "$type": "color",
+        "$value": "#dcd848"
+      },
+      "08": {
+        "$type": "color",
+        "$value": "#c76ac0"
+      },
+      "09": {
+        "$type": "color",
+        "$value": "#98c244"
+      },
+      "10": {
+        "$type": "color",
+        "$value": "#feb8e3"
+      },
+      "11": {
+        "$type": "color",
+        "$value": "#8bec8b"
+      },
+      "12": {
+        "$type": "color",
+        "$value": "#f485cd"
+      },
+      "13": {
+        "$type": "color",
+        "$value": "#879f03"
+      },
+      "14": {
+        "$type": "color",
+        "$value": "#e6c0fe"
+      },
+      "15": {
+        "$type": "color",
+        "$value": "#42ce85"
+      },
+      "16": {
+        "$type": "color",
+        "$value": "#e28bea"
+      }
+    },
+    "opacity": {
+      "dim-previous": {
+        "$type": "number",
+        "$value": 0.35,
+        "$description": "The previous sweep cycle, right of the playhead"
+      },
+      "dim-unchecked": {
+        "$type": "number",
+        "$value": 0.25,
+        "$description": "Unchecked tracks in Compare"
+      },
+      "dim-waiting": {
+        "$type": "number",
+        "$value": 0.5,
+        "$description": "A trace waiting for a trigger"
+      },
+      "cancel-fill": {
+        "$type": "number",
+        "$value": 0.16,
+        "$description": "Warn colour over the sum lane where tracks cancel"
+      },
+      "zoom-band": {
+        "$type": "number",
+        "$value": 0.1,
+        "$description": "Ink over the region being dragged to zoom"
+      }
+    },
+    "font": {
+      "ui": {
+        "$type": "fontFamily",
+        "$value": [
+          "Geist",
+          "system-ui",
+          "sans-serif"
+        ]
+      },
+      "value": {
+        "$type": "fontFamily",
+        "$value": [
+          "Geist Mono",
+          "ui-monospace",
+          "monospace"
+        ]
+      }
+    },
+    "size": {
+      "toolbar-height": {
+        "$type": "dimension",
+        "$value": "48px"
+      },
+      "status-height": {
+        "$type": "dimension",
+        "$value": "34px"
+      },
+      "control-height": {
+        "$type": "dimension",
+        "$value": "24px"
+      },
+      "control-radius": {
+        "$type": "dimension",
+        "$value": "6px"
+      },
+      "screen-inset": {
+        "$type": "dimension",
+        "$value": "8px"
+      },
+      "screen-radius": {
+        "$type": "dimension",
+        "$value": "10px"
+      },
+      "trace-width": {
+        "$type": "dimension",
+        "$value": "1.5px"
+      },
+      "cursor-width": {
+        "$type": "dimension",
+        "$value": "1px"
+      },
+      "font-ui": {
+        "$type": "dimension",
+        "$value": "12.5px"
+      },
+      "font-value": {
+        "$type": "dimension",
+        "$value": "12px"
+      },
+      "font-label": {
+        "$type": "dimension",
+        "$value": "11px"
+      }
+    }
+  }
+}

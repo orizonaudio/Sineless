@@ -1,0 +1,214 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sineless UI Audit</title>
+<!-- System fonts until the plugin bundles Geist (the redesign's step 6); the previews in images/ were rendered with Geist. -->
+<style>
+  /* Layout: one reading column; the annotated screenshot breaks out wider. Orizon brand tokens, dark first. */
+  :root {
+    --paper: #000000; --surface: #111113; --surface-2: #1a1a1d; --line: #2a2a2e;
+    --ink: #f5f5f7; --ink-2: #9a9aa2; --accent: #ff5f1f; --accent-text: #ff5f1f; --on-accent: #000000;
+    --sans: "Geist", system-ui, -apple-system, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+    --paper: #ffffff; --surface: #f6f6f7; --surface-2: #e3e3e6; --line: #e3e3e6;
+    --ink: #0b0b0c; --ink-2: #5f5f66; --accent-text: #c2410c; color-scheme: light; } }
+  :root[data-theme="light"] {
+    --paper: #ffffff; --surface: #f6f6f7; --surface-2: #e3e3e6; --line: #e3e3e6;
+    --ink: #0b0b0c; --ink-2: #5f5f66; --accent-text: #c2410c; color-scheme: light; }
+
+  * { box-sizing: border-box; }
+  body { background: var(--paper); color: var(--ink); font: 16px/1.6 var(--sans); letter-spacing: -0.005em; margin: 0; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-block: 56px 96px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .col { max-width: 720px; }
+  .eyebrow { font: 500 12px/1.4 var(--mono); color: var(--ink-2); letter-spacing: 0.02em; margin: 0 0 16px; }
+  h1 { font-size: clamp(36px, 6vw, 56px); line-height: 1.05; letter-spacing: -0.04em; font-weight: 600; margin: 0 0 16px; text-wrap: balance; }
+  h2 { font-size: 24px; line-height: 1.25; letter-spacing: -0.02em; font-weight: 600; margin: 0 0 12px; text-wrap: balance; }
+  .lead { font-size: 20px; line-height: 1.45; letter-spacing: -0.01em; color: var(--ink-2); margin: 0; }
+  section { margin-top: 72px; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--ink-2); }
+
+  figure { margin: 40px 0 0; }
+  .shot { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #0a0d10; }
+  .shot img { display: block; width: 100%; height: auto; }
+  .pin { position: absolute; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font: 600 12px/26px var(--mono); text-align: center; box-shadow: 0 0 0 3px rgba(0,0,0,.55); }
+  figcaption { font-size: 14px; color: var(--ink-2); margin-top: 10px; }
+
+  ol.findings { list-style: none; margin: 32px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 40px; }
+  ol.findings li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .num { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); font: 500 12px/24px var(--mono); text-align: center; color: var(--accent-text); }
+  ol.findings b { display: block; font-weight: 600; margin-bottom: 2px; }
+  ol.findings span { color: var(--ink-2); font-size: 15px; }
+
+  .tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+  .tier { background: var(--surface); border-radius: 10px; padding: 20px; }
+  .tier h3 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+  .tier ul { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--ink-2); }
+  .tier li { padding: 6px 0; border-top: 1px solid var(--line); }
+  .tier li:first-child { border-top: 0; }
+  .val { font-family: var(--mono); font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .table-wrap { overflow-x: auto; margin-top: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 560px; }
+  th, td { text-align: left; vertical-align: top; padding: 12px 16px 12px 0; border-bottom: 1px solid var(--line); }
+  th { font-weight: 500; color: var(--ink-2); font-size: 13px; }
+  td:first-child { font-weight: 500; width: 42%; }
+
+  .released { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .released span { font-size: 14px; border: 1px solid var(--line); border-radius: 9999px; padding: 4px 12px; color: var(--ink-2); text-decoration: line-through; text-decoration-color: var(--accent); }
+
+  ol.principles { margin: 20px 0 0; padding: 0; list-style: none; counter-reset: p; display: grid; gap: 18px; }
+  ol.principles li { counter-increment: p; display: grid; grid-template-columns: 32px minmax(0, 1fr); }
+  ol.principles li::before { content: counter(p); font: 500 14px/1.6 var(--mono); color: var(--accent-text); }
+  ol.principles b { font-weight: 600; }
+
+  .steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; margin-top: 24px; border-radius: 10px; overflow: hidden; }
+  .step { background: var(--surface); padding: 16px; font-size: 14px; }
+  .step .n { font: 500 12px var(--mono); color: var(--ink-2); }
+  .step b { display: block; font-weight: 600; margin: 4px 0; font-size: 15px; }
+  .step.now { background: var(--surface-2); }
+  .step.now .n { color: var(--accent-text); }
+
+  ul.qs { margin: 16px 0 0; padding-left: 20px; }
+  ul.qs li { margin: 8px 0; }
+
+  @media (max-width: 860px) {
+    ol.findings, .tiers { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pin { width: 20px; height: 20px; font-size: 10px; line-height: 20px; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="col">
+    <p class="eyebrow">Sineless 0.6 · Plugin UI redesign · Step 1 of 6</p>
+    <h1>Sineless UI audit</h1>
+    <p class="lead">The plugin works well and measures honestly, but its interface was built feature by feature. This is where it stands today, what the new design has to carry, and the principles we start from, taken from the Orizon brand.</p>
+  </header>
+
+  <figure>
+    <div class="shot">
+      <img src="images/audit-before.png" alt="The current Sineless window: Multi view, Beats time base, frozen, with five coloured track lanes (Kick, Clap, Hats, Bass, Keys), a top bar with mode, group and readouts, and a bottom strip of boxed control groups.">
+      <span class="pin" style="left:94.3%;top:92.3%">1</span>
+      <span class="pin" style="left:4.4%;top:85.5%">2</span>
+      <span class="pin" style="left:43%;top:88.5%">3</span>
+      <span class="pin" style="left:22.8%;top:88.5%">4</span>
+      <span class="pin" style="left:86%;top:88.5%">5</span>
+      <span class="pin" style="left:72.8%;top:7.4%">6</span>
+      <span class="pin" style="left:4%;top:25.6%">7</span>
+      <span class="pin" style="left:91%;top:13%">8</span>
+      <span class="pin" style="left:96.4%;top:7.4%">9</span>
+      <span class="pin" style="left:8%;top:7.4%">10</span>
+    </div>
+    <figcaption>Current UI, Multi view in Beats, frozen, five tracks. Window 900 × 500 at 1.37× scale.</figcaption>
+  </figure>
+
+  <ol class="findings">
+    <li><span class="num">1</span><div><b>Everything has the same weight</b><span>About 30 controls in small uppercase, in boxes of the same size. Freeze, used constantly, looks like Hover, rarely touched.</span></div></li>
+    <li><span class="num">2</span><div><b>The strip spends space on structure</b><span>Each group has a box and a title that restates its control. Top bar and strip take about 140 of 500 px.</span></div></li>
+    <li><span class="num">3</span><div><b>Controls that don't apply stay on screen</b><span>In Beats the whole Trigger group sits there dimmed; in Multi the channel toggles do too.</span></div></li>
+    <li><span class="num">4</span><div><b>Toggle state is ambiguous</b><span>"On" is a muted channel colour, "off" is grey. L and R read as disabled when they are selected.</span></div></li>
+    <li><span class="num">5</span><div><b>No colour system</b><span>Amber, cyan, lilac and bone for channels; blue for active, focus and selection; green, orange and pink for states and cursors; then the host's track colours on top.</span></div></li>
+    <li><span class="num">6</span><div><b>Readouts are detached</b><span>Peak, RMS and Freq sit far from the traces, and it isn't clear which channel or track they measure.</span></div></li>
+    <li><span class="num">7</span><div><b>Lane labels are cluttered</b><span>Every lane repeats "0 dB", sharing its corner with the track name.</span></div></li>
+    <li><span class="num">8</span><div><b>Important state is small</b><span>"Frozen" is a small chip in the corner. The sweep's playhead and dimmed previous cycle are easy to miss.</span></div></li>
+    <li><span class="num">9</span><div><b>Interaction is hidden</b><span>Zoom, pan, cursor snapping and drag-to-change values are explained only in Help, which is off by default behind a "?".</span></div></li>
+    <li><span class="num">10</span><div><b>The identity is generic</b><span>"SINELESS · ORIZON" in condensed caps and no mark. It doesn't feel like the Orizon brand.</span></div></li>
+  </ol>
+
+  <section class="col">
+    <h2>Starting from scratch</h2>
+    <p class="muted">This redesign covers the interface and how it's used. What the plugin does, its default values and its keyboard behaviour stay as they are. The old design's layout rules don't carry over.</p>
+    <div class="released"><span>900 px minimum width</span><span>Bottom control strip on one row</span><span>144 px chrome budget</span><span>Layout never adapts to size</span><span>Roboto faces</span><span>Blue-grey palette</span><span>Sineless · Orizon header</span></div>
+  </section>
+
+  <section>
+    <div class="col">
+      <h2>What the interface has to carry</h2>
+      <p class="muted">Every feature stays. Ranked by how often someone reaches for it; a first guess to confirm in the next step.</p>
+    </div>
+    <div class="tiers">
+      <div class="tier"><h3>Always visible</h3><ul>
+        <li>The screen: traces, grid, labels, playhead, lanes</li>
+        <li>Display mode: Single · Multi · Compare</li>
+        <li>Span: Beats <span class="val">1/16 beat – 16 bars</span> or Seconds <span class="val">0.5 ms – 4 s</span></li>
+        <li>Vertical scale <span class="val">−60 to +6 dBFS</span></li>
+        <li>Freeze and Auto-freeze, and whether it's frozen</li>
+        <li>Peak, RMS <span class="val">dBFS</span> · Freq <span class="val">≈ Hz</span></li>
+        <li>State: triggered, waiting, roll, sync, filling, no tempo</li>
+      </ul></div>
+      <div class="tier"><h3>Often, one step away</h3><ul>
+        <li>Channel views L · R · Mid · Side, overlaid or stacked</li>
+        <li>Trigger mode: Auto · Normal · Free · Single, Re-arm</li>
+        <li>Time cursors A/B and level cursors 1/2</li>
+        <li>Hover readout</li>
+        <li>Group A–D</li>
+        <li>Compare: checked tracks, offset, polarity, correlation, summing gain, Preview fix</li>
+      </ul></div>
+      <div class="tier"><h3>Rarely</h3><ul>
+        <li>Trigger source, slope, level, hysteresis, hold-off <span class="val">0–1 s</span></li>
+        <li>Concert pitch <span class="val">A4 400–500 Hz</span></li>
+        <li>Help</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <h2>What still holds</h2>
+      <p class="muted">These come from the platform and the product, not from the old design.</p>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Constraint</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Runs in Safari 16.2's engine and WebView2</td><td>The interface is a web page inside the plugin, on macOS 13.1+ and Windows 10+.</td></tr>
+        <tr><td>Fonts and images bundled with the plugin</td><td>A strict security policy: no network, no inline code.</td></tr>
+        <tr><td>At least 45 frames/s with 15 tracks</td><td>The plugin must stay light on the host. Blur and constant page updates cost frames.</td></tr>
+        <tr><td>Show only what was measured</td><td>"—" when there is no value, never 0.</td></tr>
+        <tr><td>Keys go to the host</td><td>Space for play and stop must keep working while the plugin is focused.</td></tr>
+        <tr><td>Any track name and colour</td><td>Lanes take the host's colours, which can be anything; Audio Units give none.</td></tr>
+        <tr><td>Hosts resize windows differently</td><td>Some give no resize edge, so the plugin needs its own grip or size presets.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="col">
+    <h2>Principles</h2>
+    <p class="muted">A draft, drawn from the brand: Apple, OpenAI and Spotify as references; minimal, confident, precise, warm.</p>
+    <ol class="principles">
+      <li><div><b>The signal is the hero.</b> Most of the window is the screen; the chrome recedes.</div></li>
+      <li><div><b>Colour is data.</b> The interface is black, white and greys, so a colour always means a channel or a track. Orange is reserved for the one thing that needs attention, never for a track.</div></li>
+      <li><div><b>Show what applies now.</b> Controls that don't apply in the current mode are folded away, not dimmed in place.</div></li>
+      <li><div><b>Exact, quiet numbers.</b> Geist Mono with even figures, units in grey, readouts next to what they measure.</div></li>
+      <li><div><b>Gestures you can find.</b> Hints when they're useful, not only in a help mode.</div></li>
+      <li><div><b>Calm in motion.</b> Traces never animate; panels open with the brand's short, single easing.</div></li>
+    </ol>
+  </section>
+
+  <section>
+    <div class="col"><h2>The process</h2></div>
+    <div class="steps">
+      <div class="step now"><span class="n">1 · now</span><b>Brief and audit</b>This page.</div>
+      <div class="step"><span class="n">2</span><b>Structure</b>2–3 layout concepts in grey, at small and large sizes.</div>
+      <div class="step"><span class="n">3</span><b>Direction</b>The chosen layout in the Orizon brand, two variants.</div>
+      <div class="step"><span class="n">4</span><b>Colour</b>Screen, channels, a 16-colour track palette, states.</div>
+      <div class="step"><span class="n">5</span><b>Screens</b>Every mode and state, on the real UI with sample data.</div>
+      <div class="step"><span class="n">6</span><b>Build</b>The new UI in the plugin, tested.</div>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>Decisions</h2>
+    <ul class="qs">
+      <li>The ranking above holds. Auto-freeze is used a lot, so it sits with Freeze.</li>
+      <li>The new design sets its own minimum window size.</li>
+      <li>Dark only.</li>
+      <li>Keyboard unchanged: keys go to the host, no shortcuts of its own.</li>
+      <li>Defaults and behaviour unchanged, including opening in Single.</li>
+      <li>Which element carries the orange accent is chosen in step 3.</li>
+    </ul>
+  </section>
+</div>
