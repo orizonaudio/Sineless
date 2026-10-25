@@ -97,6 +97,9 @@ describe("a track sending samples that are not finite", () => {
     expect((more as HTMLElement).firstChild?.textContent).toBe(
       `+${String(folded.length)}`,
     );
+    expect(more?.getAttribute("aria-label")).toBe(
+      `${String(folded.length)} more: ${folded.join(", ")}`,
+    );
     // Every state is shown or listed once, in order, the problem among the shown.
     const shown = [...host.children].filter((child) => child !== more);
     expect([...shown.map((child) => child.textContent), ...folded]).toEqual(
