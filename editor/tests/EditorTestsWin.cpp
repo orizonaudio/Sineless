@@ -214,6 +214,30 @@ TEST_F(EditorTest, LoadsItsOwnStylesAndFonts)
     DestroyWindow(window);
 }
 
+// Behind the page, while it loads or reloads, the editor shows the page's own background colour,
+// so nothing flashes another colour. The container's brush and WebView2's default background take
+// the same colour.
+TEST_F(EditorTest, ShowsThePageBackgroundBehindThePage)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    HWND container = FindWindowExW(window, nullptr, L"OrizonSinelessWebViewHost", nullptr);
+    ASSERT_NE(container, nullptr);
+    const auto brush = reinterpret_cast<HBRUSH>(GetClassLongPtrW(container, GCLP_HBRBACKGROUND));
+    LOGBRUSH native{};
+    ASSERT_EQ(GetObjectW(brush, sizeof(native), &native), static_cast<int>(sizeof(native)));
+    const std::string expected = "rgb(" + std::to_string(GetRValue(native.lbColor)) + ", " +
+                                 std::to_string(GetGValue(native.lbColor)) + ", " +
+                                 std::to_string(GetBValue(native.lbColor)) + ")";
+    EXPECT_EQ(evaluate(view, "getComputedStyle(document.body).backgroundColor"), expected);
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
 // Frames flow as the page asks for them, one per request, as the binary body of its fetch.
 TEST_F(EditorTest, StreamsFramesOnePerRequest)
 {

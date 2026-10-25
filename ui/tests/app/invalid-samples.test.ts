@@ -109,6 +109,21 @@ describe("a track sending samples that are not finite", () => {
       expect(box.left).toBeGreaterThanOrEqual(area.left - 0.5);
       expect(box.right).toBeLessThanOrEqual(area.right + 0.5);
     }
+    // Resting the pointer on "+n" shows the folded states, whole, inside the window.
+    const list = (more as HTMLElement).querySelector<HTMLElement>(".chip-list");
+    expect(list, "the folded list").not.toBeNull();
+    await expect.element(list as HTMLElement).not.toBeVisible();
+    await userEvent.hover(more as HTMLElement);
+    await expect.element(list as HTMLElement).toBeVisible();
+    const box = (list as HTMLElement).getBoundingClientRect();
+    expect(box.left).toBeGreaterThanOrEqual(0);
+    expect(box.top).toBeGreaterThanOrEqual(0);
+    expect(box.right).toBeLessThanOrEqual(window.innerWidth);
+    expect(box.bottom).toBeLessThanOrEqual(window.innerHeight);
+    for (const chip of (list as HTMLElement).querySelectorAll(".chip")) {
+      await expect.element(chip as HTMLElement).toBeVisible();
+    }
+    await userEvent.unhover(more as HTMLElement);
     await userEvent.click(byId("freeze"));
   });
 });
