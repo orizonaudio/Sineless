@@ -1,0 +1,46 @@
+name: Notify website
+
+# Publishing a release tells orizonaudio.com to rebuild, so its download section shows the new version
+# (the website reads releases from GitHub at build time). It runs only after the release is published,
+# which is done by hand once every download is attached and checked (see release.yml), so the website
+# never sees a release that is still missing files. Prereleases are skipped; the website ignores them.
+#
+# repository_dispatch needs a token with write access to the website repository, which GITHUB_TOKEN
+# can't have. The token comes from the orizonaudio-release-dispatch GitHub App, installed on that
+# repository alone, and its key lives in the website-dispatch environment, which only release tags
+# (v*) may use.
+on:
+  release:
+    types: [published]
+
+# Read-only unless a job needs more, as in every workflow here.
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: notify-website
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-24.04
+    environment: website-dispatch
+    permissions: {} # The App's token does the work; this job needs nothing from GITHUB_TOKEN.
+    steps:
+      - name: Get a token for the website repository
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DISPATCH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DISPATCH_APP_PRIVATE_KEY }}
+          owner: orizonaudio
+          repositories: website
+          permission-contents: write
+
+      - name: Ask the website to rebuild
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh api repos/orizonaudio/website/dispatches \
+            -f event_type=product-release \
+            -f "client_payload[product]=sineless" \
+            -f "client_payload[tag]=${TAG}"
