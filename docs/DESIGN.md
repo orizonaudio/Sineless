@@ -101,7 +101,7 @@ audio thread keeps writing into the last eighth while a freeze copies (5.2, Capt
 | FR-12.2 | Level cursors: two horizontal lines, 1 and 2, drawn in every lane at a sample value, starting 6 and 12 dB below the top of the screen (−6 and −12 dBFS at the default scale); the readout gives each level in dBFS and the difference in dB. | |
 | FR-12.3 | While dragged, time cursors snap to zero crossings and to where the trace reaches its highest and lowest values, and level cursors to the trace's highest and lowest values and to zero, within 10 px; holding ⌥ (Alt on Windows) places them freely. They snap to the readout channel (1.2.1); level cursors in stacked lanes use the lane's own trace. | |
 | FR-12.4 | Cursors work live and frozen, and are temporary (not saved). | |
-| FR-13 | Help: a toggle at the right end of the top bar, off whenever the editor opens. While on, resting the pointer on any control, readout or the screen for 400 ms shows a tooltip that explains what it is, what it does and how to use it, with numbers read from the shared limits. While off, the UI shows no tooltips except the help switch's own, so it can be found. | `help.test.ts` |
+| FR-13 | Help: a toggle at the right end of the status bar, off whenever the editor opens. While on, resting the pointer on any control, readout or the screen for 400 ms shows a tooltip that explains what it is, what it does and how to use it, with numbers read from the shared limits. While off, the UI shows no tooltips except the help switch's own, so it can be found. | `help.test.ts` |
 | FR-14 | Multi-track view. | `InstanceRegistryTests`, `AnalyzerTests`, `ui/tests/app/multi-track.test.ts` |
 | FR-14.1 | Every Sineless instance in a host process belongs to one of four groups, A to D, and contributes its track to its group whatever its own display mode. | |
 | FR-14.2 | An instance in Multi mode shows each track of its group, at most 16 (`maxLanes`), as the track's Mid, stacked in lanes or overlaid. Further tracks are counted ("+n hidden"), not drawn; the instance's own track is always drawn, in the last lane if it would otherwise be hidden. | |
@@ -119,7 +119,7 @@ audio thread keeps writing into the last eighth while a freeze copies (5.2, Capt
 | FR-16 | Hover readout and measuring extras. | `hover.test.ts`, `musical-grid.test.ts` |
 | FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace shows beside it the trace's name, the position (bar.beat.sixteenth and project time in Beats; time from the trigger point when triggered; time back from now in roll), the peak level there, and the cycle around the pointer: its length in ms and samples and its frequency and note. Cycles are found as in FR-7 (rising crossings of the mean, with neighbouring cycles within 15%, above −90 dBFS); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and without cents. A dotted line marks the point read and a band the cycle. | |
 | FR-16.2 | Beats-mode grid labels carry the project time under bar.beat. | |
-| FR-16.3 | A concert pitch setting (A4, 400–500 Hz, default 440) in the Display popover tunes every note name. | |
+| FR-16.3 | A concert pitch setting (A4, 400–500 Hz, default 440) in the status bar tunes every note name. | |
 
 #### 1.2.3 Settings
 
@@ -175,36 +175,40 @@ The top goals, in priority order. Section 10 states each as measurable scenarios
 
 What the editor shows and how it responds, in every mode. The requirements above say what each
 feature does; this section says where it is and how it looks. The values here are in the UI's
-source (`ui/src/view/`) and its tests; where they differ, the source wins.
-
-A redesign of the UI is in progress in [docs/ui/](ui/README.md). This section describes the UI
-that ships until the redesign is built; that change rewrites it, supersedes AD-23, and moves
-Help (FR-13) and the A4 setting (FR-16.3) to their new places.
+source (`ui/src/view/`) and its tests; where they differ, the source wins. The design work behind
+it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 
 #### Layout
 
-- The top bar, the screen and the control strip fill the window. The strip is always complete and
-  on one row; nothing is cropped, hidden or moved when the window is resized (AD-23).
-- The editor's minimum width, 900 px, is the narrowest that fits the top bar and the whole strip
-  in every state (the editor tests check each state). Its minimum height is 250 px, or 144 px
-  plus 40 px per stacked lane when that is more (Compare counts its sum lane); the editor asks the
-  host to grow when lanes are added. The default size is 900 × 500. The size is kept in CSS
+- A toolbar, the screen and a status bar fill the window. Every control that applies in the
+  current mode is in the toolbar, always; one that does not apply is hidden, not dimmed. Nothing
+  folds away as the window narrows: only the wordmark hides below the default width, and the mark
+  stays (AD-26).
+- The editor's minimum width, 1020 px, is the narrowest that fits the widest toolbar (Seconds, the
+  Single trigger mode and frozen) and the status bar in every state, with the mark alone (the
+  editor tests check each state). Its minimum height is 400 px, or 84 px plus 40 px per stacked
+  lane when that is more (Compare counts its sum lane); the editor asks the host to grow when lanes
+  are added. The default size is 1080 × 580, which also fits the wordmark. The size is kept in CSS
   pixels across display-scale changes.
 
 | Area | Left to right |
 | --- | --- |
-| Top bar | Wordmark · Single \| Multi \| Compare (beta) · A \| B \| C \| D · Peak, RMS, Freq readouts · Help switch |
-| Screen, top right | Status chips; the cursor readout below them |
-| Strip: Time | Span field (beat span in Beats) · Beats \| Sec |
-| Strip: Vertical | Vertical scale field |
-| Strip: Views | L, R, M, S toggles · Overlay \| Stack |
-| Strip: Trigger | Title with a summary (for example "M ↑ +0.00") opening the trigger popover · Auto \| Normal \| Free \| Single · Re-arm (Single trigger mode only) |
-| Strip: Display (right end) | Title with a summary ("A4 440") opening the Display popover · Freeze, Auto-freeze · Time, Level, Hover |
-| Trigger popover | Source, Slope, Level, Hysteresis, Hold-off |
-| Display popover | A4 (concert pitch) |
+| Toolbar | Mark and wordmark · Single \| Multi \| Compare · Group (Multi and Compare) · Beats \| Sec · Span (beat span in Beats) · Vertical scale · Views (Single) · Overlay \| Stack · Trigger (Seconds), and Re-arm in the Single trigger mode · Freeze, Auto-freeze |
+| Group popover | A \| B \| C \| D |
+| Views popover | L, R, M, S toggles, each with its trace's colour |
+| Trigger popover | Mode (Auto \| Normal \| Free \| Single), Source (Single), Slope, Level, Hysteresis, Hold-off |
+| Screen, top right | The cursor readout |
+| Status bar | Left: Time, Level, Hover · A4 (concert pitch). Centre: what the readouts measure · Peak, RMS, Freq. Right: the state chips, in a fixed width · Help switch |
 
-Popovers open above their group, aligned with its left edge and kept 8 px inside the window; a
-press outside closes them.
+- Span, scale, Views and Trigger show icons, not labels; the Views field reads the views drawn and
+  the Trigger field the mode, and their popovers carry the labels.
+- A field's button opens its popover under it, aligned with its left edge and kept 8 px inside the
+  window; it closes any other popover, and a press outside closes it.
+- The status bar never moves: the cursor buttons and A4 keep their width, each readout has a fixed
+  width, and the chips have a fixed area. The readouts are labelled with the channel they measure
+  (1.2.1): Left, Right, Mid or Side in Single (Left on a mono track), "This track" in Multi and
+  Compare. Chips that do not fit fold, from the last, into one "+n" chip that lists them on hover
+  or focus; the first stays shown.
 
 #### Screen
 
@@ -220,11 +224,11 @@ press outside closes them.
 - Beats: grid lines on bars with stronger lines every four bars when 8 bars or more are visible; on
   beats with stronger bar lines from one bar; below a bar on sixteenths, halving down to
   1/1024 beat. At most five labels, each bar.beat with the project time under it. The playhead is
-  a vertical line; the previous cycle is dimmed. Trigger controls do not apply: they are dimmed
-  and disabled, the trigger popover closes, and the trigger line and marker are hidden.
-- Lane labels at the top of each stacked lane, or as a legend when overlaid; the own track is
-  marked "· this track". Compare adds check-box swatches, match readouts, the sum's gain coloured
-  by whether tracks cancel or reinforce, and Preview fix.
+  a vertical line; the previous cycle is dimmed. Trigger controls do not apply: they are hidden,
+  the trigger popover closes, and the trigger line and marker are hidden.
+- Lane labels at the top of each stacked lane, or as a legend when overlaid: a dot in the lane's
+  colour, the name, and "this track" on the own track. Compare adds check-box swatches, match
+  readouts, the sum's gain (yellow where tracks cancel), and Preview fix.
 - A trace waiting for a trigger is dimmed.
 
 #### Interaction
@@ -259,10 +263,10 @@ press outside closes them.
 | Roll | Seconds span above 1 s. With **Span limited** when the span is longer than the capture keeps (a host changed the sample rate while processing, or a rate above 384 kHz). |
 | Sync | Beats. With **Span limited** when the beat span was stepped down (FR-9.3), **Filling** while the sweep fills in. |
 | No tempo | Beats before the host has reported a tempo (FR-9.1): nothing is placed until it does. Also after **Frozen**. |
-| Frozen | Frozen; followed by the pan offset (for example "−1.2 s") when panned, **Span limited** when the span was shortened to what is held, and **Partial** when the held audio does not cover the span. |
+| Frozen | Frozen (in the accent colour); followed by the pan offset (for example "−1.2 s") when panned, **Span limited** when the span was shortened to what is held, and **Partial** when the held audio does not cover the span. |
 | Zoom ×n | Zoomed in. |
 | +n hidden | Multi or Compare with more tracks than lanes. |
-| Invalid samples | A drawn trace holds samples that are not finite (warning tone). |
+| Invalid samples | A drawn trace holds samples that are not finite (in yellow, the problem colour). |
 
 - Messages over the screen replace the traces and explain what to do: **Version mismatch**,
   **Display unavailable** (no engine) and **Display error** come from the engine; **Graphics
@@ -272,11 +276,20 @@ press outside closes them.
 
 #### Style
 
-- Dark theme only; the panel colour is also the webview's native background, so nothing flashes
-  while loading.
-- Trace colours: L amber, R cyan, Mid bone, Side lilac. Lanes take the host's track colour, or a
-  16-colour fallback palette; the sum lane is bone. Cursors are pink.
+The colours are tokens (`ui/src/tokens.css`, from `docs/ui/tokens/`), checked for contrast and
+colour blindness in `docs/ui/colour.html`.
+
+- Dark theme only: graphite chrome around an inset black screen; the selected option is white. The
+  case colour is also the webview's native background, so nothing flashes while loading.
+- Colour belongs to traces. Trace colours: L blue, R pink, Mid white, Side lime. Lanes take the
+  host's track colour, or a 16-colour fallback palette ordered so that neighbouring lanes differ
+  with colour blindness too; the sum lane is white. Cursors, the playhead, the hover line and the
+  focus ring are white or grey.
+- Orange, the brand's accent, marks Frozen alone: the Frozen button and chip. Yellow marks a
+  problem: invalid samples, tracks that cancel when summed.
 - Geist for text and labels, Geist Mono for values (embedded).
+- The mark and the product's name come from `ui/src/brand/`, which has terms of its own (README,
+  TRADEMARKS.md); a build without the brand shows neutral ones (AD-27).
 - A visible focus ring on every control.
 
 ## 2. Constraints
@@ -285,7 +298,7 @@ press outside closes them.
 | --- | --- |
 | C-1 | Plugin formats: VST3 on macOS and Windows, and Audio Unit v2 on macOS (AD-25). |
 | C-2 | Platforms shipped: macOS 13.1+ (universal binary, arm64 and x86_64) and Windows 10+ x64. Windows on Arm runs the x64 build in an x64 host or REAPER's ARM64EC build; a native ARM64 build is not shipped for now (AD-24). Linux builds the engine, plugin and editor's shared code for the checks only, with no editor window. |
-| C-3 | Licence: GPL-3.0-only, with an additional permission under section 7 for the logo files in `ui/src/brand/`, which arrive with the UI redesign (README, Licence); the names and the logo are not under the GPL (TRADEMARKS.md). `REUSE.toml` gives every file's licence. Every dependency must be GPL-3.0-compatible. |
+| C-3 | Licence: GPL-3.0-only, with an additional permission under section 7 for the logo files in `ui/src/brand/`, under their own terms in `LICENSES/LicenseRef-Orizon-Brand.txt` (README, Licence); the names and the logo are not under the GPL (TRADEMARKS.md). `REUSE.toml` gives every file's licence. Every dependency must be GPL-3.0-compatible. |
 | C-4 | Engine and plugin back end: C++20; the Audio Unit module C++23 (AudioUnitSDK's headers need it); the macOS editor glue and the Audio Unit's view in Objective-C++. |
 | C-5 | User interface: TypeScript, hosted in the operating system's webview: WKWebView on macOS, the Evergreen WebView2 Runtime on Windows. The WebView2 loader and the C runtime are linked statically, so no other runtime is installed. |
 | C-6 | Toolchain: Xcode 16+, Visual Studio 2022 or 2026, CMake 3.25+, Node.js 22.18+. |
@@ -886,7 +899,7 @@ floats of min/max pairs, then 3 × 3 match values.
   below −120 dBFS; a summing gain shows −∞ at or below −140 dB; analysis (frequency, Compare)
   ignores audio at or below −90 dBFS RMS.
 - Samples that are not finite are left out of measurements, counted, and shown: an "Invalid
-  samples" chip, and affected lanes named in orange.
+  samples" chip, and affected lanes named in yellow, the problem colour.
 
 Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file explains each):
 
@@ -907,9 +920,9 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `matchWindowSeconds` | 8 s | Audio Compare matches over. |
 | `summingMarginDb` | 1 dB | Harmless summing band. |
 | `frequencyWindowSeconds` | 1 s | Audio the frequency readout measures. |
-| `minimumEditorWidth` | 900 px | Editor minimum width. |
+| `minimumEditorWidth` | 1020 px | Editor minimum width. |
 | `minimumLaneHeight` | 40 px | Stacked lane minimum height. |
-| `chromeHeight` | 144 px | Height around the screen. |
+| `chromeHeight` | 84 px | Height around the screen. |
 
 Engine-only thresholds live in the engine source, each with its reason; the requirements state
 the behaviour they set: the Auto timeout (FR-3), the steady share of cycles (FR-7), the sweep cap
@@ -1025,9 +1038,11 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | AD-20 | Accepted | Values are persisted in three tiers (8.4): saved with the project, kept while the plugin is loaded, reset when the editor closes. | Zoom, freeze, cursors and Compare's checks are viewing choices, not settings of the track; saving them would make the project change when it is only looked at. Compare's checks are kept while the plugin is loaded so that closing and opening the editor does not undo them. |
 | AD-21 | Accepted | Frames travel as the binary body of the response to the page's fetch of `orizon://ui/frame`, which is also the credit (AD-12). Replaces AD-3's frames as base64 text over the message channel. | Text encoding and decoding on both sides cost a fixed share of every frame in WebKit. A fetch carries bytes as they are, and the open request is a natural credit. |
 | AD-22 | Accepted | The page builds trace geometry on the GPU: instanced quads read from the frame's bytes as received, with no per-frame JavaScript geometry; the sweep playhead is drawn in WebGL, not as page elements. | Per-frame JavaScript geometry and DOM changes added fixed WebKit cost on every frame. The remaining cost is WebKit's per-frame display pipeline (QS-3). |
-| AD-23 | Accepted | The editor's layout is stable: nothing is cropped, hidden or moved as the window is resized. The minimum width (`minimumEditorWidth`) fits the widest content in every state, and content of unbounded width (the status chips) wraps in a place with room for it, the screen's top-right corner. No responsive breakpoints, compact labels or hidden elements. | A control that disappears, shortens or moves at some sizes is hard to find again and makes the window feel unreliable; and a plugin window is resized often. Rejected: a shrinking chip area, hiding the wordmark below a width, single-letter compact controls. Cost: a wider minimum window (900 px), checked in every state by the editor tests. |
+| AD-23 | Superseded by AD-26 | The editor's layout is stable: nothing is cropped, hidden or moved as the window is resized. The minimum width (`minimumEditorWidth`) fits the widest content in every state, and content of unbounded width (the status chips) wraps in a place with room for it, the screen's top-right corner. No responsive breakpoints, compact labels or hidden elements. | A control that disappears, shortens or moves at some sizes is hard to find again and makes the window feel unreliable; and a plugin window is resized often. Rejected: a shrinking chip area, hiding the wordmark below a width, single-letter compact controls. Cost: a wider minimum window (900 px), checked in every state by the editor tests. |
 | AD-24 | Accepted | Windows ships x64 only; no native ARM64 build is built, tested or released for now. Windows on Arm runs the x64 build in an x64 host or in REAPER's ARM64EC build. The ARM64 presets stay, and `scripts/package.ps1` says how to bring the build back. | No native ARM64 Windows host is expected among users soon, and its CI job was among the slowest, waiting for an ARM runner. Shipping only what CI tests means dropping the binary with the job. Revisit when a user needs a native ARM64 host (R-5). |
-| AD-25 | Accepted | On macOS, also an Audio Unit v2, native on Apple's AudioUnitSDK, in its own module (`au`) beside the VST3 glue, sharing the engine and `editor_core`. Codes `aufx`/`Snls`/`Oriz`. Its view is a Cocoa view factory named per build; it exports only its factory and leaves out `sandboxSafe`, so sandboxed hosts load it out of process. | Logic Pro and GarageBand load Audio Units only. AUv2 with the host's context name keeps track names, and a spike showed Logic and GarageBand keep a project's instances in one process (out of process, in AUHostingService) and Live in its own, so Multi and Compare work. Rejected: Steinberg's VST3-to-AU wrapper (no track names, Xcode generator only), clap-wrapper (needs a CLAP port first, no track names), AUv3 (an app extension in a sandboxed process where instances do not reliably share a process, which Multi and Compare need, and a Developer ID for distribution). |
+| AD-25 | Accepted | On macOS, also an Audio Unit v2, native on Apple's AudioUnitSDK, in its own module (`au`) beside the VST3 glue, sharing the engine and `editor_core`. Codes `aufx`/`Snls`/`Oriz` (placeholders in a build without the brand, AD-27). Its view is a Cocoa view factory named per build; it exports only its factory and leaves out `sandboxSafe`, so sandboxed hosts load it out of process. | Logic Pro and GarageBand load Audio Units only. AUv2 with the host's context name keeps track names, and a spike showed Logic and GarageBand keep a project's instances in one process (out of process, in AUHostingService) and Live in its own, so Multi and Compare work. Rejected: Steinberg's VST3-to-AU wrapper (no track names, Xcode generator only), clap-wrapper (needs a CLAP port first, no track names), AUv3 (an app extension in a sandboxed process where instances do not reliably share a process, which Multi and Compare need, and a Developer ID for distribution). |
+| AD-26 | Accepted | The editor's layout (1.5, `docs/ui/`): a toolbar holding every control that applies in the current mode, always; controls that don't apply are hidden; popovers carry the details (Group, Views, Trigger); a status bar with the cursor buttons and A4, the readouts labelled with what they measure, and the state chips in a fixed width, folding into "+n". Nothing folds away as the window narrows: the minimum width (`minimumEditorWidth`, 1020 px) fits the widest toolbar with the mark alone, and the wordmark is the only thing that hides, below the default 1080 px. Replaces AD-23. | The redesign gives the signal most of the window (the screen gets about 85% at the default size, against about 70% with the old strip) and shows what applies instead of dimming what doesn't, which the audit found cluttered and ambiguous. AD-23's stability is kept where it matters: no control moves, shortens or folds as the window is resized, and the status bar never moves when values or states change. Hiding the wordmark costs nothing a user operates. Rejected: folding controls into a ⋯ menu (controls move between places), a side panel of settings (a third less screen, and a tall window). Cost: a wider minimum window (1020 px), checked in every state by the editor tests. |
+| AD-27 | Accepted | The product's name, logo and plugin IDs come from one switch, `SINELESS_BRANDING` (cmake/Branding.cmake, on by default). The logo lives in `ui/src/brand/` under terms of its own (LICENSES/LicenseRef-Orizon-Brand.txt), shipped beside it; with the switch off, the page takes `ui/src/unbranded/`, and the plugin a neutral name, placeholder VST3 IDs and Audio Unit codes, and no logo or its terms. | The code is GPL, and forks are welcome, but the names and the logo identify official releases (TRADEMARKS.md, GPLv3 section 7(c) and (e)); a fork must be able to build without them in one step, and must not collide with Sineless in a host's plugin list or saved projects. Keeping the logo in files of its own, never inlined in GPL source, keeps the split clear in REUSE.toml and the build. The switch also names the VST3 and Audio Unit bundles and the Audio Unit's view class. Not covered: internal identifiers (CMake target names, Windows window classes, the WebView2 data folder, thread names), which a fork renames with the project. |
 
 ## 10. Quality requirements
 
@@ -1073,7 +1088,7 @@ not reused.
 | R-4 | Releases are not signed with a Developer ID or code-signing certificate | macOS quarantines the download and users clear it by hand; Windows may warn. | Checksums and build provenance let a download be verified (7). | SECURITY.md |
 | R-5 | No native Windows ARM64 build | Windows on Arm needs an x64 host or REAPER's ARM64EC build. | Its presets remain; `scripts/package.ps1` names what to add. | C-2, AD-24 |
 | R-6 | Few hosts tested | Live (macOS, Windows) and REAPER (Windows) are tested; Cubase, Studio One, Bitwig and FL Studio are not. | pluginval and the VST3 validator on every change; the HOSTS.md protocol before each release. | HOSTS.md |
-| R-7 | Compare is in beta | Its matching and summing gain may change with use. | Labelled beta in the UI; the signal corpus pins its results. | FR-15 |
+| R-7 | Compare is in beta | Its matching and summing gain may change with use. | Called beta in its help and in the docs; the signal corpus pins its results. The tag on its button was dropped with the redesign, to keep the toolbar's width (AD-26). | FR-15 |
 | R-8 | Two security guards have no test: navigation refusal, and the viewport width cap | A regression would go unnoticed. | Both are small and reviewed; tests to be added. | 8.8 |
 | R-9 | Mutation testing holds Vitest for Stryker at 4 | Its Vitest lags the project's until Stryker supports Vitest 5. | Pinned in `.github/dependabot.yml`, with the upstream issues named. | 8.3 |
 | R-10 | The C++ dependencies are updated by hand | Fixes upstream arrive only when someone updates them. | Each is pinned by version and hash (8.1). | 8.1 |
