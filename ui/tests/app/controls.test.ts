@@ -37,6 +37,28 @@ describe("controls", () => {
     expect(byId("brand-mark").querySelector("svg")).not.toBeNull();
   });
 
+  // One popover at a time: opening one closes the other, and a popover whose field the host hides
+  // (a state change) closes with it and doesn't come back with the field.
+  test("shows one popover at a time, and none for a hidden field", async () => {
+    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("display-mode", "Multi"));
+    await userEvent.click(byId("group-details"));
+    await expect.element(byId("group-popover")).toBeVisible();
+    await userEvent.click(byId("trigger-details"));
+    await expect.element(byId("trigger-popover")).toBeVisible();
+    await expect.element(byId("group-popover")).not.toBeVisible();
+    expect(byId("group-details").getAttribute("aria-expanded")).toBe("false");
+
+    await userEvent.click(byId("group-details"));
+    await expect.element(byId("group-popover")).toBeVisible();
+    app.deliver({ type: "stateChanged", name: "displayMode", value: "single" });
+    await expect.element(byId("group-details")).not.toBeVisible();
+    app.deliver({ type: "stateChanged", name: "displayMode", value: "multi" });
+    await expect.element(byId("group-details")).toBeVisible();
+    await expect.element(byId("group-popover")).not.toBeVisible();
+    await userEvent.click(choice("display-mode", "Single"));
+  });
+
   // Only the controls that apply are shown: a tempo-synced sweep has no trigger.
   test("Beats mode shows the beat span and hides the trigger", async () => {
     // In the Single trigger mode, so Re-arm would show in Seconds.
