@@ -518,7 +518,7 @@
       },
       "filter": {
         "include": {
-          "name": "^(PluginIds\\.|Plugin\\.CarriesItsLicences|Component\\.|AudioUnitView\\.)"
+          "name": "^(PluginIds\\.|Plugin\\.CarriesItsLicences|Component\\.|AudioUnitView\\.|EmbeddedAssets\\.)"
         }
       },
       "execution": {

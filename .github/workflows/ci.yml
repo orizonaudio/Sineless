@@ -296,7 +296,7 @@ jobs:
       - run: scripts/check.sh
 
   # A build without the brand (SINELESS_BRANDING=OFF), as a fork builds it: the tests that depend
-  # on the brand (plugin IDs, Audio Unit codes and names, the licences each bundle carries). On
+  # on the brand (plugin IDs, Audio Unit codes, names, the embedded page, the licences). On
   # macOS, so that the Audio Unit is built too.
   macos-unbranded:
     name: macos-unbranded
