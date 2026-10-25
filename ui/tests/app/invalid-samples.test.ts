@@ -3,7 +3,15 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { byId, choice, settle, startApp } from "./harness.ts";
+import {
+  byId,
+  chips,
+  choice,
+  settle,
+  startApp,
+  swipe,
+  typeInto,
+} from "./harness.ts";
 
 const chipTexts = () =>
   [...byId("chips").children].map((chip) => chip.textContent);
@@ -24,7 +32,7 @@ const markedColours = () =>
 // The warning colour, as the page computes it.
 const warnColour = () => {
   const probe = document.createElement("span");
-  probe.style.color = "var(--warn)";
+  probe.style.color = "var(--sl-warn)";
   document.body.append(probe);
   const colour = getComputedStyle(probe).color;
   probe.remove();
@@ -45,7 +53,7 @@ describe("a track sending samples that are not finite", () => {
     },
   );
 
-  test("names this track's lane in orange, and in Compare the sum's", async () => {
+  test("names this track's lane in the warning colour, and in Compare the sum's", async () => {
     await userEvent.click(choice("display-mode", "Multi"));
     await userEvent.click(choice("layout", "Stack"));
     await settle();
@@ -59,5 +67,47 @@ describe("a track sending samples that are not finite", () => {
     expect(marked[0]).toBe("Kick");
     expect(marked[1]).toMatch(/^Sum/u);
     expect(markedColours()).toEqual([warnColour(), warnColour()]);
+  });
+
+  // More states than the status bar's fixed area holds: frozen, panned back, and invalid samples.
+  // The first stays shown, the rest fold into one "+n" chip that still lists them, and nothing
+  // runs outside the area, so the readouts beside it never move.
+  test("folds the states that don't fit into one chip that lists them", async () => {
+    await userEvent.click(choice("display-mode", "Single"));
+    await userEvent.click(choice("time-base", "Sec"));
+    await typeInto("span-field", "100 ms");
+    if (byId("freeze").getAttribute("aria-pressed") !== "true") {
+      await userEvent.click(byId("freeze"));
+    }
+    // Panned back once frozen, which adds the offset's chip.
+    await expect.poll(chips).toContain("Frozen");
+    swipe(-0.5);
+    await expect.poll(() => chips().length).toBe(3);
+    await expect.poll(chips).toContain("Invalid samples");
+    const states = chips();
+    expect(states[0]).toBe("Frozen");
+
+    const host = byId("chips");
+    const more = host.querySelector<HTMLElement>(".chip-more");
+    expect(more, "the +n chip").not.toBeNull();
+    const folded = [...(more as HTMLElement).querySelectorAll(".chip")].map(
+      (chip) => chip.textContent,
+    );
+    expect(folded.length).toBeGreaterThan(0);
+    expect((more as HTMLElement).firstChild?.textContent).toBe(
+      `+${String(folded.length)}`,
+    );
+    // Every state is shown or listed once, in order, Frozen among the shown.
+    const shown = [...host.children]
+      .filter((child) => child !== more)
+      .map((child) => child.textContent);
+    expect([...shown, ...folded]).toEqual(states);
+    const area = host.getBoundingClientRect();
+    for (const child of host.children) {
+      const box = child.getBoundingClientRect();
+      expect(box.left).toBeGreaterThanOrEqual(area.left - 0.5);
+      expect(box.right).toBeLessThanOrEqual(area.right + 0.5);
+    }
+    await userEvent.click(byId("freeze"));
   });
 });

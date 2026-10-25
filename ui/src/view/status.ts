@@ -91,6 +91,10 @@ function modeChips(
   } else if (frame?.triggered === true) {
     chips.push({ text: "Trig’d", tone: "ok" });
   }
-  chips.push({ text: mode, tone: "neutral" });
+  // Named as the Trigger field names it: "Auto", not the setting's value "auto".
+  chips.push({
+    text: mode.charAt(0).toUpperCase() + mode.slice(1),
+    tone: "neutral",
+  });
   return chips;
 }

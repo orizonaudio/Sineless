@@ -2,14 +2,16 @@
 // "Track n" by its lane position; one without a host colour takes the fallback palette.
 import type { LaneLabel } from "../../../protocol/src/messages.ts";
 
-// The Compare view's sum lane: a neutral colour no track gets from the palette.
-export const sumLaneColour = 0xe6e2d8;
+// The Compare view's sum lane: white, which no track gets from the palette (--sl-mid).
+export const sumLaneColour = 0xf5f5f7;
 
-// One colour per lane up to the lane limit (16), none of them the Compare sum lane's neutral.
+// For tracks without a host colour (every Audio Unit host): the redesign's 16-colour track
+// palette (docs/ui/tokens/, step 4), in its order, which keeps neighbouring lanes distinct with
+// colour blindness too. None is near the orange accent or the sum's white.
 export const fallbackPalette = [
-  0xe8b04b, 0x5ec8e5, 0xc48be0, 0x7fcf8f, 0xe8a35a, 0x7fa8e8, 0xf0708a,
-  0xc8a070, 0x5fd3b8, 0xe0d060, 0xd86060, 0x9f7fe8, 0xb8e07a, 0xf0a080,
-  0x80c8f0, 0xe080c0,
+  0x6fb6fe, 0xe3636c, 0x13efe9, 0x8f7fed, 0xe7a203, 0x0bab83, 0xdcd848,
+  0xc76ac0, 0x98c244, 0xfeb8e3, 0x8bec8b, 0xf485cd, 0x879f03, 0xe6c0fe,
+  0x42ce85, 0xe28bea,
 ] as const;
 
 export interface LaneStyle {

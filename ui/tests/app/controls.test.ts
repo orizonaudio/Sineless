@@ -5,12 +5,12 @@ import { userEvent } from "vitest/browser";
 import { DisplayMode } from "../../../protocol/src/enums.ts";
 
 import {
+  press,
   byId,
   choice,
   chips,
   settle,
   startApp,
-  typeInto,
   type Started,
 } from "./harness.ts";
 
@@ -28,28 +28,53 @@ describe("controls", () => {
     app = await startApp();
   });
 
-  test("Beats mode shows the beat span and disables the trigger", async () => {
+  // Only the controls that apply are shown: a tempo-synced sweep has no trigger.
+  test("Beats mode shows the beat span and hides the trigger", async () => {
+    // In the Single trigger mode, so Re-arm would show in Seconds.
+    await userEvent.click(choice("time-base", "Sec"));
+    await press(choice("mode", "Single"));
+    await expect.element(byId("arm")).toBeVisible();
     await userEvent.click(choice("time-base", "Beats"));
     await expect.element(byId("beat-span-field")).toBeVisible();
     await expect.element(byId("span-field")).not.toBeVisible();
-    for (const button of byId("trigger-group").querySelectorAll("button")) {
-      expect(button.disabled, button.textContent).toBe(true);
-    }
+    await expect.element(byId("trigger-group")).not.toBeVisible();
+    await expect.element(byId("arm")).not.toBeVisible();
 
     await userEvent.click(choice("time-base", "Sec"));
     await expect.element(byId("span-field")).toBeVisible();
     await expect.element(byId("beat-span-field")).not.toBeVisible();
-    await expect.element(byId("trigger-details")).toBeEnabled();
+    await expect.element(byId("trigger-details")).toBeVisible();
+    await expect.element(byId("arm")).toBeVisible();
+    await press(choice("mode", "Auto"));
   });
 
-  test("Re-arm applies to the Single trigger mode only", async () => {
+  // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): the trigger source in
+  // Single and Seconds, Mid in Beats, this track's Mid in Multi and Compare.
+  test("labels the readouts with the channel they measure", async () => {
+    const tag = () => byId("readout-tag").textContent;
+    await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Sec"));
-    await userEvent.click(choice("mode", "Auto"));
-    await expect.element(byId("arm")).toBeDisabled();
-    await userEvent.click(choice("mode", "Single"));
-    await expect.element(byId("arm")).toBeEnabled();
-    await userEvent.click(choice("mode", "Auto"));
-    await expect.element(byId("arm")).toBeDisabled();
+    // Away from the default source, then back: the tag follows it.
+    await press(choice("source", "S"));
+    await expect.poll(tag).toBe("Side");
+    await userEvent.click(choice("time-base", "Beats"));
+    await expect.poll(tag).toBe("Mid");
+    await userEvent.click(choice("display-mode", "Multi"));
+    await expect.poll(tag).toBe("This track");
+    await userEvent.click(choice("display-mode", "Single"));
+    await userEvent.click(choice("time-base", "Sec"));
+    await press(choice("source", "M"));
+    await expect.poll(tag).toBe("Mid");
+  });
+
+  test("Re-arm shows in the Single trigger mode only", async () => {
+    await userEvent.click(choice("time-base", "Sec"));
+    await press(choice("mode", "Auto"));
+    await expect.element(byId("arm")).not.toBeVisible();
+    await press(choice("mode", "Single"));
+    await expect.element(byId("arm")).toBeVisible();
+    await press(choice("mode", "Auto"));
+    await expect.element(byId("arm")).not.toBeVisible();
   });
 
   test("the view toggles keep at least one view shown", async () => {
@@ -58,11 +83,11 @@ describe("controls", () => {
       viewToggle(label).getAttribute("aria-pressed") === "true";
     // L alone.
     if (!pressed("L")) {
-      await userEvent.click(viewToggle("L"));
+      await press(viewToggle("L"));
     }
     for (const label of ["R", "M", "S"]) {
       if (pressed(label)) {
-        await userEvent.click(viewToggle(label));
+        await press(viewToggle(label));
       }
       await expect.poll(() => pressed(label)).toBe(false);
     }
@@ -70,7 +95,7 @@ describe("controls", () => {
 
     // Hiding the last view shown asks nothing and changes nothing.
     const before = app.sent.length;
-    await userEvent.click(viewToggle("L"));
+    await press(viewToggle("L"));
     await settle();
     expect(pressed("L")).toBe(true);
     expect(
@@ -79,26 +104,25 @@ describe("controls", () => {
         .filter((message) => message["name"] === "channelViews"),
     ).toEqual([]);
 
-    await userEvent.click(viewToggle("M"));
+    await press(viewToggle("M"));
     await expect.poll(() => pressed("M")).toBe(true);
     await settle();
     expect(window.orizonDebug?.lastFrame?.views.size).toBe(2);
   });
 
-  test("the multi-track views disable the view toggles and trigger source", async () => {
+  // Multi and Compare show each track's Mid: the channel views and the trigger source don't
+  // apply, so they are hidden; the group applies only there.
+  test("the multi-track views hide the channel views and trigger source", async () => {
     for (const mode of ["Multi", "Compare"]) {
       await userEvent.click(choice("display-mode", mode));
-      for (const label of ["L", "R", "M", "S"]) {
-        await expect.element(viewToggle(label)).toBeDisabled();
-      }
-      for (const button of byId("source").querySelectorAll("button")) {
-        expect(button.disabled).toBe(true);
-      }
+      await expect.element(byId("views-group")).not.toBeVisible();
+      expect(byId("source-row").hidden).toBe(true);
+      await expect.element(byId("group-group")).toBeVisible();
     }
     await userEvent.click(choice("display-mode", "Single"));
-    for (const label of ["L", "R", "M", "S"]) {
-      await expect.element(viewToggle(label)).toBeEnabled();
-    }
+    await expect.element(byId("views-group")).toBeVisible();
+    expect(byId("source-row").hidden).toBe(false);
+    await expect.element(byId("group-group")).not.toBeVisible();
   });
 
   test("Freeze holds the view and says so", async () => {
@@ -116,13 +140,13 @@ describe("controls", () => {
 
   test("Normal mode says it is waiting while no trace triggers", async () => {
     await userEvent.click(choice("time-base", "Sec"));
-    await userEvent.click(choice("mode", "Normal"));
+    await press(choice("mode", "Normal"));
     await settle();
     app.holdFrames(true);
     await expect.poll(chips, { timeout: 3000 }).toContain("Waiting");
     app.holdFrames(false);
     await expect.poll(chips, { timeout: 3000 }).not.toContain("Waiting");
-    await userEvent.click(choice("mode", "Auto"));
+    await press(choice("mode", "Auto"));
   });
 
   // Each overlay the Display group toggles, and everything it puts over the screen. Turning one
@@ -194,16 +218,12 @@ describe("controls", () => {
       .toHaveTextContent("Display unavailable");
   });
 
-  // The Trigger group's summary shows the level as its field does: a finer step than the
-  // summary's own rounding would read the same as the coarse value next to it.
-  test("sums up the trigger level as its field shows it", async () => {
+  // The Trigger field names the mode; its popover holds the rest.
+  test("names the trigger mode in its field", async () => {
     await userEvent.click(choice("time-base", "Sec"));
-    if (byId("trigger-popover").hidden) {
-      await userEvent.click(byId("trigger-details"));
-    }
-    await typeInto("level-field", "0.253");
-    await expect
-      .poll(() => byId("trigger-summary").textContent)
-      .toContain("+0.253");
+    await press(choice("mode", "Normal"));
+    await expect.poll(() => byId("trigger-summary").textContent).toBe("Normal");
+    await press(choice("mode", "Auto"));
+    await expect.poll(() => byId("trigger-summary").textContent).toBe("Auto");
   });
 });

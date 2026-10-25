@@ -21,6 +21,12 @@ describe("a mono track", () => {
     await expectOnlyLeftEnabled(toggles);
   });
 
+  test("labels the readouts Left, whatever the trigger source", async () => {
+    await userEvent.click(choice("time-base", "Sec"));
+    await expect.poll(() => byId("readout-tag").textContent).toBe("Left");
+    await expect.poll(() => byId("views-summary").textContent).toBe("L");
+  });
+
   test("draws one lane when stacked, with the trigger marker in it", async () => {
     await userEvent.click(choice("time-base", "Sec"));
     await userEvent.click(choice("layout", "Stack"));
