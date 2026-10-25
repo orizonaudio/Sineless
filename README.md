@@ -123,7 +123,9 @@ GPL-3.0-only, © 2026 Bruno Lima, trading as Orizon Audio. See [LICENSE](LICENSE
 `ui/src/fonts/` are under the SIL Open Font License 1.1; `REUSE.toml` gives every file's licence.
 
 Additional permission under GNU GPL version 3 section 7: you may convey Sineless combined with the
-files in `ui/src/brand/`, which are under their own terms, stated in that folder.
+files in `ui/src/brand/`, which are under their own terms, stated in that folder. The folder holds
+the logo and arrives with the UI redesign (`docs/ui/`); the permission is stated now so that every
+contribution from today allows it.
 
 ## Name and logo
 
