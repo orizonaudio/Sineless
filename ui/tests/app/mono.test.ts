@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
-import { byId, choice, settle, startApp } from "./harness.ts";
+import { byId, choice, settle, startApp, type Started } from "./harness.ts";
 
 describe("a mono track", () => {
   beforeAll(async () => {
@@ -60,3 +60,27 @@ async function expectOnlyLeftEnabled(
     await expect.element(button).toBeDisabled();
   }
 }
+
+// The host changes the track's channels with the editor open: the frames change at once, and the
+// snapshot that reports it follows later. The Views field follows the frames.
+describe("a track that changes channels", () => {
+  let app: Started;
+  beforeAll(async () => {
+    app = await startApp({ inputChannels: 2 });
+  });
+
+  const lit = () =>
+    [...byId("views-summary").querySelectorAll(".on")].map(
+      (letter) => letter.textContent,
+    );
+
+  test("names the views the frames draw before any snapshot says", async () => {
+    await userEvent.click(choice("display-mode", "Single"));
+    await userEvent.click(choice("time-base", "Sec"));
+    await expect.poll(lit).toEqual(["L", "R"]);
+    app.transport.changeChannels(1);
+    await expect.poll(lit).toEqual(["L"]);
+    app.transport.changeChannels(2);
+    await expect.poll(lit).toEqual(["L", "R"]);
+  });
+});

@@ -191,7 +191,7 @@ export class MockTransport implements Transport {
   private compared: readonly number[] | undefined;
   private previewFix = false;
   private readonly sampleRate: number;
-  private readonly inputChannels: 1 | 2;
+  private inputChannels: 1 | 2;
   private readonly brokenSamples: number;
   private tempoKnown: boolean;
   private readonly keptSeconds: number;
@@ -449,6 +449,22 @@ export class MockTransport implements Transport {
   // The host reports its tempo, as when it first plays the instance through.
   reportTempo(): void {
     this.tempoKnown = true;
+  }
+
+  // The host changes the track's channels with the editor open. As in the engine, frames follow
+  // at once; the snapshot that reports the new count comes at the next sync, here only when
+  // `snapshot` is set, so a test can tell what follows the frames from what follows snapshots.
+  changeChannels(channels: 1 | 2, snapshot = false): void {
+    this.inputChannels = channels;
+    if (snapshot) {
+      this.reply({
+        type: "snapshot",
+        protocolVersion,
+        settings: { ...this.settings },
+        sampleRate: this.sampleRate,
+        inputChannels: this.inputChannels,
+      });
+    }
   }
 
   private sendFrame(): void {
