@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <gtest/gtest.h>
+#include <string_view>
 
 namespace orizon::plugin {
 namespace {
@@ -185,6 +186,13 @@ TEST(PluginIds, AreSinelessOnlyInABrandedBuild)
     EXPECT_EQ(FUID::fromTUID(kProcessorUid) == processor, SINELESS_BRANDED == 1);
     EXPECT_EQ(FUID::fromTUID(kControllerUid) == controller, SINELESS_BRANDED == 1);
     EXPECT_NE(FUID::fromTUID(kProcessorUid), FUID::fromTUID(kControllerUid));
+}
+
+// Hosts list the plugin by these names: a build without the brand shows neither.
+TEST(PluginIds, NameSinelessOnlyInABrandedBuild)
+{
+    EXPECT_EQ(std::string_view(kProductName) == "Sineless", SINELESS_BRANDED == 1);
+    EXPECT_EQ(std::string_view(kVendorName) == "Orizon Audio", SINELESS_BRANDED == 1);
 }
 
 } // namespace

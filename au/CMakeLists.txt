@@ -86,7 +86,8 @@ if(BUILD_TESTING)
     target_compile_definitions(au_component_tests
         PRIVATE ORIZON_TEST_COMPONENT="$<TARGET_BUNDLE_DIR:SinelessAU>"
                 ORIZON_TEST_VERSION="${PROJECT_VERSION}"
-                ORIZON_TEST_VST3_IDENTIFIER="$<TARGET_PROPERTY:Sineless,MACOSX_BUNDLE_GUI_IDENTIFIER>")
+                ORIZON_TEST_VST3_IDENTIFIER="$<TARGET_PROPERTY:Sineless,MACOSX_BUNDLE_GUI_IDENTIFIER>"
+                ORIZON_TEST_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:Sineless>")
     target_link_libraries(au_component_tests
         PRIVATE branding orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework AudioToolbox")
     add_dependencies(au_component_tests SinelessAU)
