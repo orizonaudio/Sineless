@@ -56,6 +56,18 @@ describe("controls", () => {
     app.deliver({ type: "stateChanged", name: "displayMode", value: "multi" });
     await expect.element(byId("group-details")).toBeVisible();
     await expect.element(byId("group-popover")).not.toBeVisible();
+
+    // Views has no field in Multi: its popover closes the same way.
+    app.deliver({ type: "stateChanged", name: "displayMode", value: "single" });
+    await expect.element(byId("views-details")).toBeVisible();
+    await userEvent.click(byId("views-details"));
+    await expect.element(byId("views-popover")).toBeVisible();
+    app.deliver({ type: "stateChanged", name: "displayMode", value: "multi" });
+    await expect.element(byId("views-details")).not.toBeVisible();
+    app.deliver({ type: "stateChanged", name: "displayMode", value: "single" });
+    await expect.element(byId("views-details")).toBeVisible();
+    await expect.element(byId("views-popover")).not.toBeVisible();
+    expect(byId("views-details").getAttribute("aria-expanded")).toBe("false");
     await userEvent.click(choice("display-mode", "Single"));
   });
 
