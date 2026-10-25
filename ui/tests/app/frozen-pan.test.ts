@@ -9,6 +9,7 @@ import {
   choice,
   chips,
   settle,
+  shownChips,
   startApp,
   swipe,
   typeInto,
@@ -45,6 +46,9 @@ describe("a frozen view", () => {
 
     swipe(-2); // Two screens back: 200 ms.
     await expect.poll(chips).toEqual(["Frozen", panChip(0.2)]);
+    // Both fit the status bar: neither folds into "+n".
+    expect(shownChips()).toEqual(["Frozen", panChip(0.2)]);
+    expect(byId("chips").querySelector(".chip-more")).toBeNull();
 
     swipe(-1000); // Far beyond the hold: as far as it reaches.
     await settle();

@@ -59,6 +59,22 @@ describe("controls", () => {
     await userEvent.click(choice("display-mode", "Single"));
   });
 
+  // The Group field names the group shown, whether the user picks it or the host restores it.
+  test("names the current group in its field", async () => {
+    const field = () => [
+      byId("group-summary").textContent,
+      byId("group-details").getAttribute("aria-label"),
+    ];
+    await userEvent.click(choice("display-mode", "Multi"));
+    await press(choice("group", "B"));
+    await expect.poll(field).toEqual(["B", "Group B"]);
+    app.deliver({ type: "stateChanged", name: "group", value: "c" });
+    await expect.poll(field).toEqual(["C", "Group C"]);
+    await press(choice("group", "A"));
+    await expect.poll(field).toEqual(["A", "Group A"]);
+    await userEvent.click(choice("display-mode", "Single"));
+  });
+
   // Only the controls that apply are shown: a tempo-synced sweep has no trigger.
   test("Beats mode shows the beat span and hides the trigger", async () => {
     // In the Single trigger mode, so Re-arm would show in Seconds.
