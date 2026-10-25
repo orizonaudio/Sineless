@@ -1,21 +1,36 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ESLint } from "eslint";
+import * as prettier from "prettier";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { changedFiles, changesCode, changesUnder } from "../changed-code.ts";
 
+// Changes to documentation only, which CI does not check.
+const documentation = [
+  ["HOSTS.md"],
+  ["CONTRIBUTING.md", "README.md", "engine/README.md"],
+  [".github/PULL_REQUEST_TEMPLATE.md"],
+  ["docs/ui/layout.html", "docs/ui/tokens/sineless-tokens.json"],
+  ["docs/ui/images/layout.png", "docs/DESIGN.md"],
+  ["docs/ui/layout.js", "docs/ui/tokens/sineless-tokens.css", "docs/ui/a.cpp"],
+];
+
 describe("a change", () => {
-  test.each([
-    [["HOSTS.md"]],
-    [["CONTRIBUTING.md", "README.md", "engine/README.md"]],
-    [[".github/PULL_REQUEST_TEMPLATE.md"]],
-    [["docs/ui/layout.html", "docs/ui/tokens/sineless-tokens.json"]],
-    [["docs/ui/images/layout.png", "docs/DESIGN.md"]],
-  ])("to documentation only, %j, skips the builds and tests", (files) => {
-    expect(changesCode(files)).toBe(false);
-  });
+  test.each(documentation.map((files) => [files]))(
+    "to documentation only, %j, skips the builds and tests",
+    (files) => {
+      expect(changesCode(files)).toBe(false);
+    },
+  );
 
   test.each([
     [["engine/src/Analyzer.cpp"]],
@@ -141,5 +156,86 @@ describe("the files a change touches", () => {
     expect(
       changedFiles("0000000000000000000000000000000000000000..HEAD", renamed()),
     ).toBeUndefined();
+  });
+});
+
+// A change to documentation alone skips CI, so no check a later change runs may read
+// documentation: a file merged unchecked would fail that change's checks instead.
+describe("documentation, which CI does not check", () => {
+  const root = join(import.meta.dirname, "..", "..");
+  const files = documentation.flat();
+  // Only the top-level docs/ folder is documentation.
+  const code = [
+    "ui/src/app.ts",
+    "ui/docs/a.ts",
+    "engine/src/Analyzer.cpp",
+    "editor/docs/a.cpp",
+  ];
+
+  test("is ignored by the format check, and code is not", async () => {
+    const ignored = async (file: string) =>
+      (
+        await prettier.getFileInfo(join(root, file), {
+          ignorePath: join(root, ".prettierignore"),
+        })
+      ).ignored;
+    for (const file of files) {
+      expect(await ignored(file), file).toBe(true);
+    }
+    for (const file of code.filter((file) => !file.endsWith(".cpp"))) {
+      expect(await ignored(file), file).toBe(false);
+    }
+  });
+
+  test("is not linted, and code is", async () => {
+    const eslint = new ESLint({ cwd: root });
+    const linted = async (file: string) =>
+      !(await eslint.isPathIgnored(join(root, file))) &&
+      (await eslint.calculateConfigForFile(join(root, file))) !== undefined;
+    for (const file of files) {
+      expect(await linted(file), file).toBe(false);
+    }
+    expect(await linted("ui/src/app.ts")).toBe(true);
+    expect(await linted("ui/docs/a.ts")).toBe(true);
+  });
+
+  // The file lists are read from the scripts and the workflow, then run in a repository holding
+  // C++ both in and outside docs/.
+  test.each([
+    ["scripts/check.sh"],
+    ["scripts/check.ps1"],
+    [".github/workflows/ci.yml"],
+  ])("is not in %s's clang-format file list, and code is", (script) => {
+    const line = readFileSync(join(root, script), "utf8")
+      .split("\n")
+      .find((text) => text.includes("ls-files -co --exclude-standard --"));
+    expect(line, "the clang-format file list").toBeDefined();
+    const pathspecs = [...(line ?? "").matchAll(/'([^']+)'/g)].map(
+      (match) => match[1] ?? "",
+    );
+    const repository = mkdtempSync(join(tmpdir(), "changed-code-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repository });
+      const sources = [
+        ...files.filter((file) => /\.(cpp|h|mm)$/.test(file)),
+        ...code.filter((file) => file.endsWith(".cpp")),
+      ];
+      for (const file of sources) {
+        mkdirSync(join(repository, file, ".."), { recursive: true });
+        writeFileSync(join(repository, file), "int a;\n");
+      }
+      const listed = execFileSync(
+        "git",
+        ["ls-files", "-co", "--exclude-standard", "--", ...pathspecs],
+        { cwd: repository, encoding: "utf8" },
+      )
+        .split("\n")
+        .filter((file) => file !== "");
+      expect(listed).toEqual(
+        code.filter((file) => file.endsWith(".cpp")).sort(),
+      );
+    } finally {
+      rmSync(repository, { recursive: true, force: true });
+    }
   });
 });
