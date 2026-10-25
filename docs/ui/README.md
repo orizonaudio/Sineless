@@ -111,7 +111,7 @@ From [images/audit-before.png](images/audit-before.png) (Multi, Beats, frozen, 5
 ## 7. Design principles
 
 1. **The signal is the hero.** Most of the window is the screen. Chrome recedes.
-2. **Colour is data.** The interface is black, white and greys. Colour belongs to traces, so a colour always means a channel or a track. The orange accent marks Frozen and nothing else, and is never a track colour.
+2. **Colour is data.** The interface is black, white and greys. Colour belongs to traces, so a colour always means a channel or a track. The orange accent marks Frozen and nothing else. Sineless never gives it to a trace: the channel colours and the fallback track palette stay clear of it. A host's track colour is used as it comes and may be orange; the accent stays distinct because it only ever appears on the Frozen button and chip, never as a line.
 3. **Show what applies now.** Controls that don't apply in the current mode are hidden, not dimmed in place.
 4. **Exact and quiet numbers.** Readouts in Geist Mono with tabular figures, units in the secondary ink, "—" for no value, readouts labelled with what they measure.
 5. **Discoverable gestures.** Hints at the moment they are useful rather than a separate help mode alone.
