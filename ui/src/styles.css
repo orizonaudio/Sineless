@@ -74,11 +74,9 @@ body {
   height: 100%;
 }
 
-/* Below the default width only the mark stays. */
-@media (max-width: 1079px) {
-  .wordmark {
-    display: none;
-  }
+/* Below the default width (defaultEditorWidth, set by the page) only the mark stays. */
+.narrow .wordmark {
+  display: none;
 }
 
 .divider {
