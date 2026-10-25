@@ -6,7 +6,7 @@ package-lock.json
 *.md
 # Documentation, which CI does not check (scripts/changed-code.ts): a change to it alone skips
 # the format check, so it must not be able to fail the next change's.
-docs/
+/docs/
 # Written by the released plugin; kept byte for byte.
 engine/tests/data/state-v1-beats.json
 engine/tests/data/state-v2-0.5.json
