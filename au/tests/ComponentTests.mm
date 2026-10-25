@@ -108,6 +108,33 @@ TEST(Component, NamesItselfToHosts)
     EXPECT_TRUE([entry[@"tags"] containsObject:@"Effects"]);
 }
 
+// Hosts show both bundles by these names and identifiers: a build without the brand takes none of
+// Sineless's or Orizon Audio's, so a fork's bundles never collide with Sineless's.
+TEST(Component, NamesTheBundlesAfterTheBrandOnlyInABrandedBuild)
+{
+    NSBundle* component = [NSBundle bundleWithPath:@ORIZON_TEST_COMPONENT];
+    NSBundle* vst3 = [NSBundle bundleWithPath:@ORIZON_TEST_VST3_BUNDLE];
+    ASSERT_NE(component, nil);
+    ASSERT_NE(vst3, nil);
+    NSArray<NSDictionary*>* entries = component.infoDictionary[@"AudioComponents"];
+    ASSERT_EQ(entries.count, 1U);
+    const bool branded = SINELESS_BRANDED == 1;
+    for (NSString* text in @[
+             entries[0][@"name"], component.bundleIdentifier,
+             component.infoDictionary[@"CFBundleName"], vst3.bundleIdentifier,
+             vst3.infoDictionary[@"CFBundleName"], @ORIZON_TEST_COMPONENT.lastPathComponent,
+             @ORIZON_TEST_VST3_BUNDLE.lastPathComponent
+         ]) {
+        const NSStringCompareOptions any = NSCaseInsensitiveSearch;
+        EXPECT_EQ([text rangeOfString:@"Sineless" options:any].location != NSNotFound, branded)
+            << text.UTF8String;
+        if (!branded) {
+            EXPECT_EQ([text rangeOfString:@"Orizon" options:any].location, NSNotFound)
+                << text.UTF8String;
+        }
+    }
+}
+
 // Projects saved with Sineless name its Audio Unit by these codes: a build without the brand takes
 // neither, so a fork's component is never loaded in Sineless's place.
 TEST(Component, HasSinelessCodesOnlyInABrandedBuild)
