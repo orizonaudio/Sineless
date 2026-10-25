@@ -14,9 +14,6 @@ import { fullView, type ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
 import { cancellationBands, fullScale, lanes } from "./trace-geometry.ts";
 
-// Behind a Compare frame's sum lane, where the compared tracks cancel.
-const cancellationColor: Rgba = [0.94, 0.44, 0.54, 0.16];
-
 export type Rgba = readonly [number, number, number, number];
 
 export interface TraceStyle {
@@ -31,6 +28,8 @@ export interface TraceStyle {
     readonly cursor: Rgba;
     readonly previous: Rgba;
   };
+  // Behind a Compare frame's sum lane, where the compared tracks cancel.
+  readonly cancellationColor: () => Rgba;
   readonly lineWidthPixels: number;
 }
 
@@ -315,8 +314,9 @@ export class TraceRenderer implements FrameRenderer {
       this.style.comparedLanes(),
     );
     if (shading.length > 0) {
-      const [r, g, b] = cancellationColor;
-      this.drawTriangles(shading, [r, g, b, alpha(cancellationColor)]);
+      const color = this.style.cancellationColor();
+      const [r, g, b] = color;
+      this.drawTriangles(shading, [r, g, b, alpha(color)]);
     }
 
     // A tempo-synced sweep's playhead, as a fraction of the screen from the left.

@@ -55,7 +55,7 @@ export const helpTexts = {
   },
   sumGain: {
     title: "Summing gain",
-    text: `How loud the checked tracks are together, against unrelated signals of the same levels. Within ${margin} dB of 0 is harmless; above that they reinforce, and below it they cancel. Where they cancel strongly, the sum's lane is shaded red, provided a checked track is related to yours: unrelated tracks only beat against each other. A dash means they never sound together, or nothing is measured yet. Measured over the visible part, but only where at least two of them sound together above ${gate} dBFS, so a long view does not water down a short clash.`,
+    text: `How loud the checked tracks are together, against unrelated signals of the same levels. Within ${margin} dB of 0 is harmless; above that they reinforce, and below it they cancel. Where they cancel strongly, the sum's lane is shaded yellow, provided a checked track is related to yours: unrelated tracks only beat against each other. A dash means they never sound together, or nothing is measured yet. Measured over the visible part, but only where at least two of them sound together above ${gate} dBFS, so a long view does not water down a short clash.`,
   },
   match: {
     title: "Against this track",
