@@ -184,8 +184,8 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   current mode is in the toolbar, always; one that does not apply is hidden, not dimmed. Nothing
   folds away as the window narrows: only the wordmark hides below the default width, and the mark
   stays (AD-26).
-- The editor's minimum width, 1020 px, is the narrowest that fits the widest toolbar (Seconds, the
-  Single trigger mode and frozen) and the status bar in every state, with the mark alone (the
+- The editor's minimum width, 1020 px, is the narrowest that fits the widest toolbar (Multi or
+  Compare, Seconds, the Single trigger mode and frozen) and the status bar in every state, with the mark alone (the
   editor tests check each state). Its minimum height is 400 px, or 84 px plus 40 px per stacked
   lane when that is more (Compare counts its sum lane); the editor asks the host to grow when lanes
   are added. The default size is 1080 × 580, which also fits the wordmark. The size is kept in CSS
