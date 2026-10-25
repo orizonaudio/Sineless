@@ -85,6 +85,7 @@ import {
 import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
 import {
   laneHoldsInvalid,
+  shownChipCount,
   statusChips,
   triggerModeNames,
 } from "./view/status.ts";
@@ -1892,21 +1893,10 @@ export class OscilloscopeApp {
     const gap = parseFloat(getComputedStyle(host).columnGap) || 0;
     const widths = nodes.map((chip) => chip.getBoundingClientRect().width);
     const moreWidth = more.getBoundingClientRect().width;
-    const room = host.clientWidth;
-    const total = widths.reduce((sum, width) => sum + width, 0);
-    if (total + gap * Math.max(0, nodes.length - 1) <= room) {
+    const shown = shownChipCount(widths, gap, moreWidth, host.clientWidth);
+    if (shown === nodes.length) {
       more.remove();
       return;
-    }
-    let shown = 1;
-    let used = widths[0] ?? 0;
-    while (shown < nodes.length - 1) {
-      const next = used + gap + (widths[shown] ?? 0);
-      if (next + gap + moreWidth > room) {
-        break;
-      }
-      used = next;
-      shown++;
     }
     const folded = chips.slice(shown);
     const list = document.createElement("span");
