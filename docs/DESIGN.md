@@ -200,8 +200,9 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Screen, top right | The cursor readout |
 | Status bar | Left: Time, Level, Hover · A4 (concert pitch). Centre: what the readouts measure · Peak, RMS, Freq. Right: the state chips, in a fixed width · Help switch |
 
-- Span, scale, Views and Trigger show icons, not labels; the Views field reads the views drawn and
-  the Trigger field the mode, and their popovers carry the labels.
+- Span, scale, Views and Trigger show icons, not labels; the Views field shows all four letters,
+  those the frame draws lit, so it keeps its width, and the Trigger field the mode; their popovers
+  carry the labels.
 - A field's button opens its popover under it, aligned with its left edge and kept 8 px inside the
   window; it closes any other popover, and a press outside closes it.
 - The status bar never moves: the cursor buttons and A4 keep their width, each readout has a fixed

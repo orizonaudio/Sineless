@@ -257,6 +257,7 @@ export class OscilloscopeApp {
   private hiddenTracks = 0;
   private drawnLaneCount = 0;
   private drawnLaneSet = 0;
+  private viewSummary: string | undefined;
 
   constructor(backend: Backend, store: SettingsStore, debug: DebugState) {
     this.backend = backend;
@@ -647,17 +648,33 @@ export class OscilloscopeApp {
     }
   }
 
+  // The Views field names the views the frame draws (a mono track's L alone, whatever was asked
+  // for): all four letters, those drawn lit, so the field keeps its width whichever are shown.
+  private updateViewSummary(): void {
+    const drawn = this.drawnViews();
+    const text = drawn.map((view) => viewLabels[view]).join(" ");
+    if (text === this.viewSummary) {
+      return;
+    }
+    this.viewSummary = text;
+    element("views-summary").replaceChildren(
+      ...viewOrder.map((view) => {
+        const letter = document.createElement("span");
+        letter.textContent = viewLabels[view];
+        letter.className = drawn.includes(view) ? "on" : "";
+        return letter;
+      }),
+    );
+    element("views-details").setAttribute("aria-label", `Views: ${text}`);
+  }
+
   // The view toggles: pressed as asked for; disabled in Multi and Compare, which show each
   // track's Mid, and for R, M and S on a mono track, which would only repeat L. The one place
   // that decides, for every case.
   private updateViewToggles(): void {
     const shown = this.shownViews();
     const multi = this.multiMode();
-    // The views drawn: a mono track's L alone, whatever was asked for.
-    const drawn: ViewName[] = this.inputChannels === 1 ? ["left"] : shown;
-    const summary = drawn.map((view) => viewLabels[view]).join(" ");
-    element("views-summary").textContent = summary;
-    element("views-details").setAttribute("aria-label", `Views: ${summary}`);
+    this.updateViewSummary();
     for (const [view, button] of this.viewToggles) {
       const state = viewToggleState(view, shown, multi, this.inputChannels);
       button.setAttribute("aria-pressed", String(state.pressed));
@@ -1750,6 +1767,7 @@ export class OscilloscopeApp {
         }
       }
       this.loop.submit(frame);
+      this.updateViewSummary();
       // A track joined or left, or the views drawn changed (a track turned mono): lanes, grid
       // and labels change with it. A new lane set (a track checked, a renamed track) changes the
       // labels.
