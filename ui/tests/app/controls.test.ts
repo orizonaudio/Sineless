@@ -75,6 +75,17 @@ describe("controls", () => {
     await userEvent.click(choice("display-mode", "Single"));
   });
 
+  // The mode chip and the Trigger field name each trigger mode alike.
+  test("names the trigger mode alike in its field and its chip", async () => {
+    await userEvent.click(choice("display-mode", "Single"));
+    await userEvent.click(choice("time-base", "Sec"));
+    for (const label of ["Normal", "Free", "Single", "Auto"]) {
+      await press(choice("mode", label));
+      await expect.poll(() => byId("trigger-summary").textContent).toBe(label);
+      await expect.poll(chips).toContain(label);
+    }
+  });
+
   // Only the controls that apply are shown: a tempo-synced sweep has no trigger.
   test("Beats mode shows the beat span and hides the trigger", async () => {
     // In the Single trigger mode, so Re-arm would show in Seconds.

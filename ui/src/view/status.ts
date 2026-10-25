@@ -10,6 +10,14 @@ export interface Chip {
   readonly tone: Tone;
 }
 
+// The trigger modes as the Trigger field and the mode chip name them.
+export const triggerModeNames: Readonly<Record<string, string>> = {
+  auto: "Auto",
+  normal: "Normal",
+  free: "Free",
+  single: "Single",
+};
+
 // Normal and Single show "Waiting" once no frame has arrived for this long.
 export const waitingAfterSeconds = 0.25;
 
@@ -93,9 +101,6 @@ function modeChips(
     chips.push({ text: "Trig’d", tone: "ok" });
   }
   // Named as the Trigger field names it: "Auto", not the setting's value "auto".
-  chips.push({
-    text: mode.charAt(0).toUpperCase() + mode.slice(1),
-    tone: "neutral",
-  });
+  chips.push({ text: triggerModeNames[mode] ?? mode, tone: "neutral" });
   return chips;
 }

@@ -29,6 +29,7 @@ import {
 import {
   laneHoldsInvalid,
   statusChips,
+  triggerModeNames,
   waitingAfterSeconds,
 } from "../src/view/status.ts";
 import {
@@ -322,8 +323,8 @@ describe("status chips", () => {
     ...overrides,
   });
 
-  // The mode as the chip names it: "Auto" for the setting's value "auto".
-  const named = (mode: string) => mode.charAt(0).toUpperCase() + mode.slice(1);
+  // The mode as the chip names it: as the Trigger field does, from the one table.
+  const named = (mode: string) => triggerModeNames[mode];
 
   test("shows triggered frames with the mode", () => {
     expect(statusChips(frame({ triggered: true }), "auto", 0, 0)).toEqual([
