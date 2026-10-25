@@ -484,9 +484,9 @@ TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
     [window close];
 }
 
-// With the embedded fonts as WebKit renders them, everything fits at the minimum size, in
-// every state that changes the labels' widths.
-TEST_F(EditorTest, FitsTheMinimumSizeInEveryState)
+// With the embedded fonts as WebKit renders them, everything fits at the minimum size and, with the
+// wordmark, at the default size, in every state that changes the labels' widths.
+TEST_F(EditorTest, FitsTheMinimumAndDefaultSizesInEveryState)
 {
     auto engine = std::make_shared<engine::Engine>();
     NSView* parent = [[NSView alloc] init];
@@ -498,27 +498,41 @@ TEST_F(EditorTest, FitsTheMinimumSizeInEveryState)
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
     ViewRect minimum(0, 0, 0, 0);
     editor->checkSizeConstraint(&minimum);
-    ASSERT_EQ(editor->onSize(&minimum), kResultTrue);
-    ASSERT_TRUE(pumpUntil(
-        [&] {
-            return evaluate(webView, @"String(innerWidth)") ==
-                   std::to_string(Editor::kMinimumWidth);
-        },
-        std::chrono::seconds(5)));
-    for (const fit::State& state : fit::states()) {
-        engine::Settings settings;
-        for (const auto& [id, value] : state.settings) {
-            settings.set(id, value);
+    // The minimum size with the mark alone, then the default size with the wordmark.
+    for (ViewRect size : {minimum, ViewRect(0, 0, Editor::kDefaultWidth, Editor::kDefaultHeight)}) {
+        ASSERT_EQ(editor->onSize(&size), kResultTrue);
+        ASSERT_TRUE(pumpUntil(
+            [&] {
+                return evaluate(webView, @"String(innerWidth)") == std::to_string(size.getWidth());
+            },
+            std::chrono::seconds(5)));
+        const bool isDefault = size.getWidth() == Editor::kDefaultWidth;
+        // The page shows or hides it on the resize event that follows.
+        EXPECT_TRUE(pumpUntil(
+            [&] {
+                return evaluate(webView, @(fit::kWordmarkScript)) ==
+                       (isDefault ? "shown" : "hidden");
+            },
+            std::chrono::seconds(5)))
+            << "the wordmark at " << size.getWidth();
+        for (const fit::State& state : fit::states()) {
+            engine::Settings settings;
+            for (const auto& [id, value] : state.settings) {
+                settings.set(id, value);
+            }
+            engine->settings().replace(settings);
+            // A state sync or more.
+            pumpUntil([] { return false; }, std::chrono::milliseconds(400));
+            if (!state.script.empty()) {
+                evaluate(webView,
+                         [NSString stringWithUTF8String:std::string(state.script).c_str()]);
+                pumpUntil([] { return false; }, std::chrono::milliseconds(200));
+            }
+            EXPECT_EQ(evaluate(webView, @(fit::kOverflowScript)), "")
+                << state.name << " at " << size.getWidth();
+            EXPECT_LE(std::stoi(evaluate(webView, @(fit::kChromeScript))), Editor::kChromeHeight)
+                << state.name << " at " << size.getWidth();
         }
-        engine->settings().replace(settings);
-        pumpUntil([] { return false; }, std::chrono::milliseconds(400)); // A state sync or more.
-        if (!state.script.empty()) {
-            evaluate(webView, [NSString stringWithUTF8String:std::string(state.script).c_str()]);
-            pumpUntil([] { return false; }, std::chrono::milliseconds(200));
-        }
-        EXPECT_EQ(evaluate(webView, @(fit::kOverflowScript)), "") << state.name;
-        EXPECT_LE(std::stoi(evaluate(webView, @(fit::kChromeScript))), Editor::kChromeHeight)
-            << state.name;
     }
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];

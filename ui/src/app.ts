@@ -3,6 +3,7 @@
 import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
+  defaultEditorWidth,
   minimumEditorWidth,
   readoutIntervalSeconds,
   summingMarginDb,
@@ -801,6 +802,11 @@ export class OscilloscopeApp {
   }
 
   private resize(): void {
+    // Below the default width only the mark stays.
+    document.documentElement.classList.toggle(
+      "narrow",
+      window.innerWidth < defaultEditorWidth,
+    );
     for (const [group, , id] of popovers) {
       this.placePopover(id, group);
     }

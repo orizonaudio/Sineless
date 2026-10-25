@@ -22,15 +22,16 @@ namespace orizon::editor {
 class EditorCore
 {
 public:
-    // The narrowest window that fits the whole control strip and the top bar (modes, groups and
-    // readouts) with their edge padding, in the embedded fonts; the editor tests check the page
-    // against it. The page takes it as its minimum width too.
+    // The narrowest window that fits the whole toolbar and status bar with their edge padding, in
+    // the embedded fonts, with only the mark beside them; the editor tests check the page against
+    // it. The page takes it as its minimum width too. The default size also fits the wordmark,
+    // which the page shows from that width (docs/ui/README.md).
     static constexpr int kMinimumWidth = protocol::kMinimumEditorWidth;
-    static constexpr int kMinimumHeight = 250;
-    static constexpr int kDefaultWidth = kMinimumWidth;
-    static constexpr int kDefaultHeight = 500;
+    static constexpr int kMinimumHeight = 400;
+    static constexpr int kDefaultWidth = protocol::kDefaultEditorWidth;
+    static constexpr int kDefaultHeight = 580;
     // Stacked lanes of the multi-track view need this much height each, for their label chip
-    // and a clear trace, above the top bar and control strip (kChromeHeight, measured): the
+    // and a clear trace, above the toolbar and status bar (kChromeHeight, measured): the
     // minimum height grows with the lanes shown, and the editor asks the host for the room.
     static constexpr int kMinimumLaneHeight = protocol::kMinimumLaneHeight;
     static constexpr int kChromeHeight = protocol::kChromeHeight;

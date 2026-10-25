@@ -6,9 +6,11 @@
 #include <utility>
 #include <vector>
 
-// The editor's states whose labels set the widths of the top bar and the control strip. The
-// editor tests of each platform check that everything fits at the minimum width in each, with
-// the embedded fonts as that platform's webview renders them.
+// The editor's states whose controls and labels set the widths of the toolbar and the status bar.
+// The editor tests of each platform check that everything fits in each, at the minimum width and
+// at the default width with the wordmark, with the embedded fonts as that platform's webview
+// renders them. A state's script presses buttons that are not pressed yet, so that the states
+// apply in any order.
 namespace orizon::editor::fit {
 
 struct State
@@ -38,6 +40,12 @@ inline std::vector<State> states()
         {.name = "16 bars", .settings = {{SettingId::kBeatSpan, 10.0}}, .script = ""},
         {.name = "1/16 beat", .settings = {{SettingId::kBeatSpan, 0.0}}, .script = ""},
         {.name = "-60 dB", .settings = {{SettingId::kVerticalScale, -60.0}}, .script = ""},
+        // The widest toolbar: Seconds shows the Trigger field, its Single mode adds Re-arm, and
+        // Freeze reads Frozen.
+        {.name = "Sec, trigger Single, frozen",
+         .settings = {{SettingId::kTimeBase, 0.0}, {SettingId::kTriggerMode, 3.0}},
+         .script = "{ const freeze = document.getElementById('freeze');"
+                   "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
         {.name = "trigger Side, falling, -1, Single",
          .settings = {{SettingId::kTriggerSource, 3.0},
                       {SettingId::kTriggerSlope, 1.0},
@@ -50,18 +58,24 @@ inline std::vector<State> states()
         {.name = "A4 432.5", .settings = {{SettingId::kConcertPitch, 432.5}}, .script = ""},
         {.name = "frozen, auto-freeze, cursors, hover",
          .settings = {{SettingId::kAutoFreeze, 1.0}, {SettingId::kHoverReadout, 1.0}},
-         .script = "for (const id of ['freeze', 'time-cursors', 'level-cursors'])"
-                   "  document.getElementById(id).click(); ''"},
+         .script = "for (const id of ['freeze', 'time-cursors', 'level-cursors']) {"
+                   "  const button = document.getElementById(id);"
+                   "  if (button.getAttribute('aria-pressed') !== 'true') button.click();"
+                   "} ''"},
     };
 }
 
-// Lists the page's elements that reach past its right edge or clip their content, "" if none.
+// "shown" when the toolbar shows the wordmark beside the mark.
+inline constexpr const char* kWordmarkScript =
+    "getComputedStyle(document.getElementById('wordmark')).display === 'none' ? 'hidden' : 'shown'";
+
 // The height of everything but the screen (CSS px): the editor's minimum height counts on it
 // being at most protocol::kChromeHeight.
 inline constexpr const char* kChromeScript =
     "String(Math.ceil(innerHeight - "
     "document.getElementById('screen').getBoundingClientRect().height))";
 
+// Lists the page's elements that reach past its right edge or clip their content, "" if none.
 inline constexpr const char* kOverflowScript = R"JS(
 (() => {
   const found = [];
