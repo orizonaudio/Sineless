@@ -3,7 +3,8 @@
 How changes to Sineless are reviewed: by the `review` skill before a push, and by the
 `ai-review` check on every pull request that is not a draft and not from a fork. Both run the
 specialist reviewers in `.claude/agents` (correctness, rules, tests and, for C++ in `engine/`,
-`plugin/` or `editor/`, real-time safety; `review-rules` alone for a change to Markdown only),
+`plugin/` or `editor/`, real-time safety; `review-rules` alone for a change to documentation
+only: Markdown, or files under `docs/`),
 then a `review-verifier` on each Important finding, which keeps
 it only if it can prove it from the code. Every reviewer reads this file; read CLAUDE.md and
 the `.claude/rules` file of each folder the change touches too, and the parts of

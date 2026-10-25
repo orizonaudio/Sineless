@@ -40,7 +40,7 @@ if ($checks -contains 'main') {
         if (-not (Test-Path "$llvmBin\clang-format.exe")) { throw "Missing $llvmBin\clang-format.exe (winget install LLVM.LLVM)." }
 
         Step 'C++ format'
-        $sources = git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm'
+        $sources = git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' ':!docs/'
         Run "$llvmBin\clang-format.exe" --dry-run --Werror @sources
     }
 

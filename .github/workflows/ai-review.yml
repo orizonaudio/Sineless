@@ -172,10 +172,13 @@ jobs:
           earlier=$(gh api "repos/$REPO/issues/$number/comments" --paginate \
             --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-review:")))] | length' |
             jq -s 'add // 0')
-          # The specialists, by the review skill's rule. A diff gh cannot list (too large) gets
-          # them all.
-          if files=$(gh pr diff "$number" --repo "$REPO" --name-only); then
-            if ! grep -qv '\.md$' <<< "$files"; then
+          # The specialists, by the review skill's rule. Documentation is Markdown anywhere and
+          # every file under docs/, as in scripts/changed-code.ts, and as there both sides of a
+          # rename count, so code moved into docs/ is still reviewed as code. A change whose
+          # files cannot be listed gets them all.
+          if files=$(gh api "repos/$REPO/pulls/$number/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)'); then
+            if ! grep -qvE '(\.md$|^docs/)' <<< "$files"; then
               specialists="review-rules"
             else
               specialists="review-correctness review-rules review-tests"

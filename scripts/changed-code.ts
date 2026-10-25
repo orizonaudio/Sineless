@@ -5,11 +5,12 @@
 //   node scripts/changed-code.ts <git range> [folder]
 import { execFileSync } from "node:child_process";
 
-// Documentation: Markdown, which none of the build, the page, the tests or the format check reads
-// (.prettierignore). Not the licence, which the plugin bundles, nor YAML such as the issue
+// Documentation: Markdown anywhere, and every file under docs/ (design pages, their images and
+// token files), which none of the build, the page, the tests, the format checks or the lint reads
+// (.prettierignore, eslint.config.js, the clang-format file lists). Not the licence, which the plugin bundles, nor YAML such as the issue
 // templates, which the format check covers.
 export function isDocumentation(path: string): boolean {
-  return path.endsWith(".md");
+  return path.endsWith(".md") || path.startsWith("docs/");
 }
 
 // Whether `files`, the paths a change touches, call for the builds and tests: unless every one is

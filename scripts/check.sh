@@ -52,7 +52,7 @@ done
 if part main; then
     if [[ "${SKIP_FORMAT:-}" != 1 ]]; then
         step "C++ format"
-        git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' |
+        git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' ':!docs/' |
             xargs "$LLVM_BIN/clang-format" --dry-run --Werror
     fi
 
