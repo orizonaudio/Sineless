@@ -1,6 +1,7 @@
-# The licence texts that travel in a plugin bundle's Resources: Sineless's, the embedded fonts', and
-# those of the third-party code compiled into the bundle, whose licences ask that their text go
-# with the binary. Third-party texts are copied into the build tree under names of their own.
+# The licence texts that travel in a plugin bundle's Resources: Sineless's, the embedded fonts',
+# the logo's in a branded build (cmake/Branding.cmake), and those of the third-party code compiled
+# into the bundle, whose licences ask that their text go with the binary. Texts are copied into the
+# build tree under names of their own.
 # Sets <out> to the files for <format> (VST3 or AU).
 function(orizon_licence_files format out)
     set(licences "${CMAKE_BINARY_DIR}/licences")
@@ -9,6 +10,10 @@ function(orizon_licence_files format out)
         ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-Geist.txt)
     # Both formats: the engine's and the editor's JSON (MIT).
     set(thirdParty "${nlohmann_json_SOURCE_DIR}/LICENSE.MIT=LICENSE-nlohmann-json.txt")
+    if(SINELESS_BRANDING)
+        list(APPEND thirdParty
+             "${PROJECT_SOURCE_DIR}/LICENSES/LicenseRef-Orizon-Brand.txt=LICENSE-Orizon-Brand.txt")
+    endif()
     if(format STREQUAL "VST3")
         list(APPEND thirdParty "${vst3sdk_SOURCE_DIR}/LICENSE.txt=LICENSE-VST3-SDK.txt") # MIT
         if(WIN32)

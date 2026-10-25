@@ -1,0 +1,15 @@
+#pragma once
+
+// The product's names and whether this is an official, branded build; generated from
+// cmake/Branding.cmake (SINELESS_BRANDING). Plugin IDs that depend on it check SINELESS_BRANDED.
+#define SINELESS_BRANDED @SINELESS_BRANDED@
+// The Audio Unit's subtype and manufacturer codes, as its Info.plist has them.
+#define SINELESS_AU_SUBTYPE '@SINELESS_AU_SUBTYPE@'
+#define SINELESS_AU_MANUFACTURER '@SINELESS_AU_MANUFACTURER@'
+
+namespace orizon::branding {
+
+inline constexpr const char* kProductName = "@SINELESS_PRODUCT_NAME@";
+inline constexpr const char* kVendorName = "@SINELESS_VENDOR_NAME@";
+
+} // namespace orizon::branding

@@ -13,3 +13,9 @@ SPDX-License-Identifier = "GPL-3.0-only"
 path = ["ui/src/fonts/Geist.woff2", "ui/src/fonts/GeistMono.woff2", "ui/src/fonts/OFL-Geist.txt"]
 SPDX-FileCopyrightText = "2024 The Geist Project Authors (https://github.com/vercel/geist-font)"
 SPDX-License-Identifier = "OFL-1.1"
+
+# The logo: not under the GPL. Last, so that it wins over the catch-all above.
+[[annotations]]
+path = "ui/src/brand/*.svg"
+SPDX-FileCopyrightText = "2026 Bruno Lima, trading as Orizon Audio"
+SPDX-License-Identifier = "LicenseRef-Orizon-Brand"

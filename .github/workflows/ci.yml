@@ -295,6 +295,34 @@ jobs:
       - run: npm ci
       - run: scripts/check.sh
 
+  # A build without the brand (SINELESS_BRANDING=OFF), as a fork builds it: the tests that depend
+  # on the brand (plugin IDs, Audio Unit codes and names, the licences each bundle carries). On
+  # macOS, so that the Audio Unit is built too.
+  macos-unbranded:
+    name: macos-unbranded
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: macos-15
+    env:
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          save: ${{ env.SAVE_CACHES }}
+          key: macos-unbranded
+          max-size: 2G
+      - run: npm ci
+      - run: cmake --preset unbranded
+      - run: cmake --build --preset unbranded -j "$(sysctl -n hw.ncpu)"
+      - run: ctest --preset unbranded
+
   # scripts\check.ps1's main part except the performance limit and the format, on x64: build,
   # all C++ tests including the editor's in a real WebView2, the VST3 validator, and pluginval.
   # The TypeScript is the typescript job's. ARM64 is not built for now (the windows-arm64 presets

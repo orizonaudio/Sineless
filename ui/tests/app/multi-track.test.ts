@@ -139,7 +139,7 @@ describe("the Compare view", () => {
         () => byId("lane-labels").querySelector(".compare-note")?.textContent,
       )
       .toBe(
-        "No other track in group B to compare with. Insert Sineless on another track.",
+        "No other track in group B to compare with. Insert Sineless on another track.", // The branded name (vitest.config.ts).
       );
   });
 });

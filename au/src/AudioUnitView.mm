@@ -2,6 +2,7 @@
 
 #include "AudioUnit.h"
 #include "AudioUnitViewTesting.h"
+#include "Branding.h"
 #include "editor/EditorCore.h"
 #include "engine/EngineRegistry.h"
 
@@ -261,7 +262,7 @@ const NSLayoutPriority kNotHoldingPriority = 1;
 
 - (NSString*)description
 {
-    return @"Sineless";
+    return @(orizon::branding::kProductName);
 }
 
 // The size a host asks for is a hint only (some send nonsense): the editor has its own. The view

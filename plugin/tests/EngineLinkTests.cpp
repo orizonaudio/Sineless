@@ -176,5 +176,16 @@ TEST(TrackInfo, KeepsTheOrderPartTheHostDidNotRepeat)
     EXPECT_EQ(moved.index, 200005) << "the namespace order kept";
 }
 
+// Hosts save Sineless's class IDs in every project that uses it: a build without the brand takes
+// neither, so a fork's plugin is never loaded in Sineless's place.
+TEST(PluginIds, AreSinelessOnlyInABrandedBuild)
+{
+    const FUID processor(0xB704D89D, 0x96B24108, 0x878CA953, 0x316956A4);
+    const FUID controller(0x46B0AF97, 0x85904BB3, 0x99DC138A, 0x997DE554);
+    EXPECT_EQ(FUID::fromTUID(kProcessorUid) == processor, SINELESS_BRANDED == 1);
+    EXPECT_EQ(FUID::fromTUID(kControllerUid) == controller, SINELESS_BRANDED == 1);
+    EXPECT_NE(FUID::fromTUID(kProcessorUid), FUID::fromTUID(kControllerUid));
+}
+
 } // namespace
 } // namespace orizon::plugin

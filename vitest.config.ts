@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
@@ -21,6 +23,12 @@ export default defineConfig({
     projects: [
       { test: unitTests },
       {
+        // The page's brand, as an official build has it (ui/vite.config.ts).
+        resolve: {
+          alias: {
+            "@brand": fileURLToPath(new URL("./ui/src/brand", import.meta.url)),
+          },
+        },
         test: {
           name: "app",
           include: ["ui/tests/app/**/*.test.ts"],

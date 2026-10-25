@@ -43,7 +43,7 @@ export const helpTexts = {
   },
   displayMode: {
     title: "Single, Multi or Compare",
-    text: `Single shows this track's channels. Multi shows every track of this instance's group that has Sineless inserted, one lane each as the track's Mid, at most ${lanesMulti}. Compare (in beta) shows the same tracks, at most ${lanesCompare}, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put Sineless last on each track so lanes line up.`,
+    text: `Single shows this track's channels. Multi shows every track of this instance's group that has this plugin inserted, one lane each as the track's Mid, at most ${lanesMulti}. Compare (in beta) shows the same tracks, at most ${lanesCompare}, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.`,
   },
   compareTrack: {
     title: "Compare",

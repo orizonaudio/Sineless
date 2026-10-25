@@ -618,7 +618,7 @@ void WebViewMac::pageFailed(NSError* error)
     if (loaded || refused || cancelled) {
         return;
     }
-    showMessage(@"Sineless's editor could not load its page.\nClose and reopen it; if that does "
+    showMessage(@"The editor could not load its page.\nClose and reopen it; if that does "
                 @"not help, restart the host.");
 }
 
@@ -635,7 +635,7 @@ void WebViewMac::processTerminated()
     heldFrame = nil;
     isEditableFocused = false;
     if (reloads.size() >= kMaxReloadsPerMinute) {
-        showMessage(@"Sineless's editor keeps failing.\nClose and reopen it; if that does not "
+        showMessage(@"The editor keeps failing.\nClose and reopen it; if that does not "
                     @"help, restart the host.");
         return;
     }

@@ -18,7 +18,9 @@ file(GLOB_RECURSE uiInputs CONFIGURE_DEPENDS
 list(APPEND uiInputs ${PROJECT_SOURCE_DIR}/ui/index.html ${PROJECT_SOURCE_DIR}/ui/vite.config.ts)
 add_custom_command(
     OUTPUT ${embeddedAssetData}
-    COMMAND ${NODE_EXECUTABLE} ${PROJECT_SOURCE_DIR}/node_modules/vite/bin/vite.js build ui
+    # The page's brand follows SINELESS_BRANDING (cmake/Branding.cmake, ui/vite.config.ts).
+    COMMAND ${CMAKE_COMMAND} -E env "SINELESS_BRANDING=$<IF:$<BOOL:${SINELESS_BRANDING}>,ON,OFF>"
+            ${NODE_EXECUTABLE} ${PROJECT_SOURCE_DIR}/node_modules/vite/bin/vite.js build ui
             --outDir ${uiOutputDir} --emptyOutDir --logLevel warn
     COMMAND ${CMAKE_COMMAND} -DINPUT_DIR=${uiOutputDir} -DOUTPUT_FILE=${embeddedAssetData}
             -P ${PROJECT_SOURCE_DIR}/cmake/EmbedAssets.cmake
