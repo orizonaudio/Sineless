@@ -294,6 +294,11 @@ export class OscilloscopeApp {
         const [r, g, b] = rgba(token("--sl-screen"));
         return { cursor: rgba(token("--sl-ink")), previous: [r, g, b, 0.5] };
       },
+      // Cancelling is a problem in the audio: the problem colour, faint behind the sum.
+      cancellationColor: () => {
+        const [r, g, b] = rgba(token("--sl-warn"));
+        return [r, g, b, 0.16];
+      },
       // Read at each draw: the ratio changes when the window moves to another display.
       get lineWidthPixels() {
         return 1.5 * window.devicePixelRatio;
