@@ -25,12 +25,13 @@ export function statusChips(
   panSeconds: number,
 ): Chip[] {
   const chips = modeChips(frame, mode, secondsSinceFrame, panSeconds);
-  // Samples that are not finite reached the measurements, which measure around them.
+  // Samples that are not finite reached the measurements, which measure around them. A problem
+  // in the audio comes first, so it is never folded away when the chips don't all fit.
   if (
     frame !== undefined &&
     (frame.invalidSamples > 0 || frame.invalidLanes !== 0)
   ) {
-    chips.push({ text: "Invalid samples", tone: "warn" });
+    chips.unshift({ text: "Invalid samples", tone: "warn" });
   }
   return chips;
 }

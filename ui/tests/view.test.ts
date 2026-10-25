@@ -376,11 +376,11 @@ describe("status chips", () => {
     { state: "rolling", overrides: { roll: true } },
     { state: "frozen", overrides: { frozen: true } },
   ])(
-    "warns of samples that are not finite whatever the display does ($state)",
+    "warns of samples that are not finite whatever the display does, first ($state)",
     ({ overrides }) => {
       for (const invalid of [{ invalidSamples: 3 }, { invalidLanes: 0b100 }]) {
         expect(
-          statusChips(frame({ ...overrides, ...invalid }), "auto", 0, 0).at(-1),
+          statusChips(frame({ ...overrides, ...invalid }), "auto", 0, 0)[0],
         ).toEqual({ text: "Invalid samples", tone: "warn" });
       }
       expect(
