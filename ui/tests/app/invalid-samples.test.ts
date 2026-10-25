@@ -69,9 +69,9 @@ describe("a track sending samples that are not finite", () => {
     expect(markedColours()).toEqual([warnColour(), warnColour()]);
   });
 
-  // More states than the status bar's fixed area holds: frozen, panned back, and invalid samples.
-  // The first stays shown, the rest fold into one "+n" chip that still lists them, and nothing
-  // runs outside the area, so the readouts beside it never move.
+  // More states than the status bar's fixed area holds: invalid samples, frozen and panned back.
+  // The first, the problem, stays shown in yellow; the rest fold into one "+n" chip that still
+  // lists them, and nothing runs outside the area, so the readouts beside it never move.
   test("folds the states that don't fit into one chip that lists them", async () => {
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Sec"));
@@ -85,7 +85,7 @@ describe("a track sending samples that are not finite", () => {
     await expect.poll(() => chips().length).toBe(3);
     await expect.poll(chips).toContain("Invalid samples");
     const states = chips();
-    expect(states[0]).toBe("Frozen");
+    expect(states[0]).toBe("Invalid samples");
 
     const host = byId("chips");
     const more = host.querySelector<HTMLElement>(".chip-more");
@@ -97,11 +97,12 @@ describe("a track sending samples that are not finite", () => {
     expect((more as HTMLElement).firstChild?.textContent).toBe(
       `+${String(folded.length)}`,
     );
-    // Every state is shown or listed once, in order, Frozen among the shown.
-    const shown = [...host.children]
-      .filter((child) => child !== more)
-      .map((child) => child.textContent);
-    expect([...shown, ...folded]).toEqual(states);
+    // Every state is shown or listed once, in order, the problem among the shown.
+    const shown = [...host.children].filter((child) => child !== more);
+    expect([...shown.map((child) => child.textContent), ...folded]).toEqual(
+      states,
+    );
+    expect(shown[0]?.classList.contains("problem")).toBe(true);
     const area = host.getBoundingClientRect();
     for (const child of host.children) {
       const box = child.getBoundingClientRect();

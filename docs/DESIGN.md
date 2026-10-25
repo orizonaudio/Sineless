@@ -207,8 +207,9 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 - The status bar never moves: the cursor buttons and A4 keep their width, each readout has a fixed
   width, and the chips have a fixed area. The readouts are labelled with the channel they measure
   (1.2.1): Left, Right, Mid or Side in Single (Left on a mono track), "This track" in Multi and
-  Compare. Chips that do not fit fold, from the last, into one "+n" chip that lists them on hover
-  or focus; the first stays shown.
+  Compare. Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
+  do not fit fold, from the last, into one "+n" chip that lists them on hover or focus; the first
+  stays shown.
 
 #### Screen
 
