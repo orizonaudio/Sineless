@@ -240,8 +240,10 @@ describe("documentation, which CI does not check", () => {
   });
 });
 
-// ai-review.yml picks its reviewers with a grep of its own: review-rules alone for a change to
-// documentation only, the same changes changesCode skips.
+// ai-review.yml picks its reviewers from the files gh lists, with a grep of its own:
+// review-rules alone for a change to documentation only, the same changes changesCode skips.
+// The pattern is run as a JavaScript regular expression, which reads this one the same as grep
+// -E, so the test needs no grep (Git for Windows does not put it on the PATH).
 describe("ai-review's choice of reviewers", () => {
   const workflow = readFileSync(
     join(
@@ -254,11 +256,22 @@ describe("ai-review's choice of reviewers", () => {
     ),
     "utf8",
   );
-  const pattern = /grep -qvE '([^']+)'/.exec(workflow)?.[1] ?? "";
-  // grep -qv succeeds when a listed file is not documentation.
-  const listsCode = (files: string[]) =>
-    spawnSync("grep", ["-qvE", pattern], { input: `${files.join("\n")}\n` })
-      .status === 0;
+  const pattern = /grep -qvE '([^']+)'/.exec(workflow)?.[1];
+  // The listing must page through every file: gh returns 30 a page.
+  const filter =
+    /gh api "repos\/\$REPO\/pulls\/\$number\/files" --paginate \\\s*--jq '([^']+)'/.exec(
+      workflow,
+    )?.[1];
+  // grep -qv succeeds when a listed file is not documentation: the specialists for code run.
+  const reviewsAsCode = (files: string[]) => {
+    const documentation = new RegExp(pattern ?? "");
+    return files.some((file) => !documentation.test(file));
+  };
+
+  test("reads the pattern and the file listing from the workflow", () => {
+    expect(pattern).toBeDefined();
+    expect(filter).toBeDefined();
+  });
 
   test.each(
     [
@@ -270,11 +283,36 @@ describe("ai-review's choice of reviewers", () => {
       ["docsite/index.html"],
     ].map((files) => [files]),
   )("agrees with changesCode on %j", (files) => {
-    expect(pattern).not.toBe("");
-    expect(listsCode(files)).toBe(changesCode(files));
+    expect(reviewsAsCode(files)).toBe(changesCode(files));
   });
 
-  test("lists both sides of a rename, as changedFiles does", () => {
-    expect(workflow).toContain(".filename, (.previous_filename // empty)");
+  // gh applies the --jq filter itself and prints strings raw, as jq -r does. jq is on CI's
+  // runners; a machine without it skips this test.
+  const jq = spawnSync("jq", ["--version"]).status === 0;
+  // GitHub's response, as JSON: its keys are snake_case.
+  test.skipIf(!jq).each([
+    [
+      "code moved into docs/, as code",
+      '[{"filename": "docs/Analyzer.cpp", "previous_filename": "engine/src/Analyzer.cpp"}]',
+      true,
+    ],
+    [
+      "documentation moved within docs/, as documentation",
+      '[{"filename": "docs/ui/layout.html", "previous_filename": "docs/layout.html"}, {"filename": "README.md"}]',
+      false,
+    ],
+    [
+      "a new file under docs/, as documentation",
+      '[{"filename": "docs/ui/a.png"}]',
+      false,
+    ],
+  ])("reviews %s", (_, response, asCode) => {
+    const listed = execFileSync("jq", ["-r", filter ?? "."], {
+      input: response,
+      encoding: "utf8",
+    })
+      .split("\n")
+      .filter((file) => file !== "");
+    expect(reviewsAsCode(listed)).toBe(asCode);
   });
 });
