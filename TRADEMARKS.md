@@ -26,8 +26,10 @@ require that modified versions be marked as different from the original.
 ## If you fork Sineless
 
 - Give your fork its own name and logo.
-- Change the plugin's VST3 class IDs and Audio Unit codes (`plugin/src/PluginIds.h`,
-  `au/src/ComponentDescription.h`), so hosts don't confuse your plugin with Sineless.
-- When the logo is added to the plugin, the build gets an option to leave it out. Forks use it.
+- Configure with `-DSINELESS_BRANDING=OFF`. The build then leaves the logo and its terms out,
+  takes a neutral name, and uses placeholder VST3 class IDs and Audio Unit codes, so hosts don't
+  confuse your plugin with Sineless.
+- Put your own name, IDs and codes in `cmake/Branding.cmake`, `plugin/src/PluginIds.h` and
+  `au/src/ComponentDescription.h` before you release it.
 
 Questions and requests: [hello@orizonaudio.com](mailto:hello@orizonaudio.com).

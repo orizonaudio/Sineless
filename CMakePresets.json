@@ -10,6 +10,15 @@
       }
     },
     {
+      "name": "unbranded",
+      "displayName": "Debug build without the brand (SINELESS_BRANDING=OFF), as a fork builds it",
+      "binaryDir": "${sourceDir}/build/unbranded",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SINELESS_BRANDING": "OFF"
+      }
+    },
+    {
       "name": "release",
       "displayName": "Release build",
       "binaryDir": "${sourceDir}/build/release",
@@ -288,6 +297,10 @@
       "configurePreset": "dev"
     },
     {
+      "name": "unbranded",
+      "configurePreset": "unbranded"
+    },
+    {
       "name": "release",
       "configurePreset": "release"
     },
@@ -495,6 +508,22 @@
       },
       "execution": {
         "jobs": 4
+      }
+    },
+    {
+      "name": "unbranded",
+      "configurePreset": "unbranded",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "name": "^(PluginIds\\.|Plugin\\.CarriesItsLicences|Component\\.|AudioUnitView\\.)"
+        }
+      },
+      "execution": {
+        "jobs": 4,
+        "noTestsAction": "error"
       }
     },
     {

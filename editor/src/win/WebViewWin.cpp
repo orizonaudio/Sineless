@@ -398,12 +398,12 @@ void WebViewWin::showFailure(HRESULT result)
     if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
         result == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND)) {
         std::swprintf(text, std::size(text),
-                      L"Sineless needs the Microsoft Edge WebView2 Runtime.\n"
+                      L"This plugin needs the Microsoft Edge WebView2 Runtime.\n"
                       L"Install it from developer.microsoft.com/microsoft-edge/webview2/consumer,\n"
                       L"then reopen the editor.");
     } else {
         std::swprintf(text, std::size(text),
-                      L"Sineless's editor could not start (WebView2 error 0x%08lX).\n"
+                      L"The editor could not start (WebView2 error 0x%08lX).\n"
                       L"Close and reopen it; if that does not help, restart the host.",
                       static_cast<unsigned long>(result));
     }
@@ -422,7 +422,7 @@ void WebViewWin::processFailed(ICoreWebView2ProcessFailedEventArgs* args)
     args->get_ProcessFailedKind(&kind);
     if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED) {
         controller->put_IsVisible(FALSE); // Shows the message underneath.
-        showMessage(L"Sineless's editor stopped: its WebView2 browser exited.\n"
+        showMessage(L"The editor stopped: its WebView2 browser exited.\n"
                     L"Close and reopen the editor.");
         return;
     }
@@ -436,7 +436,7 @@ void WebViewWin::processFailed(ICoreWebView2ProcessFailedEventArgs* args)
     }
     if (reloads.size() >= kMaxReloadsPerMinute) {
         controller->put_IsVisible(FALSE);
-        showMessage(L"Sineless's editor keeps failing.\nClose and reopen it; if that does not "
+        showMessage(L"The editor keeps failing.\nClose and reopen it; if that does not "
                     L"help, restart the host.");
         return;
     }

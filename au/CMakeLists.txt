@@ -5,11 +5,11 @@
 
 add_library(au STATIC src/AudioUnit.cpp src/AudioUnitView.mm)
 target_include_directories(au PUBLIC src)
-target_link_libraries(au PUBLIC engine editor_core audiounitsdk
+target_link_libraries(au PUBLIC engine editor_core audiounitsdk branding
                          PRIVATE orizon_warnings "-framework Cocoa" "-framework WebKit")
 set_source_files_properties(src/AudioUnitView.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 
-# The view's Objective-C classes are named for this build: Sineless, the version and an id made
+# The view's Objective-C classes are named for this build: the product, the version and an id made
 # once per build directory, so that two copies or versions in one host (an installed release
 # beside a development build) never share a class. Hosts look the factory up by name in the
 # component's bundle, so it is named at compile time, in the bundle's own image.
@@ -19,9 +19,9 @@ if(NOT ORIZON_AU_BUILD_ID)
 endif()
 string(REPLACE "." "_" auVersion "${PROJECT_VERSION}")
 target_compile_definitions(au
-    PRIVATE ORIZON_AU_CLASS_PREFIX=Sineless_${auVersion}_${ORIZON_AU_BUILD_ID})
+    PRIVATE ORIZON_AU_CLASS_PREFIX=${SINELESS_PRODUCT_NAME}_${auVersion}_${ORIZON_AU_BUILD_ID})
 
-# The component hosts load: Sineless.component, a loadable bundle around the Audio Unit whose
+# The component hosts load: Sineless.component (named after the product, cmake/Branding.cmake), a loadable bundle around the Audio Unit whose
 # binary exports the factory function (src/ComponentEntry.cpp) and nothing else, so that none of
 # its code can clash with another plugin's in the same host. Hosts find it through the
 # AudioComponents entry in its Info.plist, whose codes and factory name are those in
@@ -45,13 +45,13 @@ target_link_options(SinelessAU
 set_target_properties(SinelessAU PROPERTIES
     BUNDLE TRUE
     BUNDLE_EXTENSION component
-    OUTPUT_NAME Sineless
+    OUTPUT_NAME ${SINELESS_PRODUCT_NAME}
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN TRUE
     LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resource/exports.txt
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist.in
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.sineless.component
-    MACOSX_BUNDLE_BUNDLE_NAME Sineless
+    MACOSX_BUNDLE_GUI_IDENTIFIER ${SINELESS_BUNDLE_ID}.component
+    MACOSX_BUNDLE_BUNDLE_NAME ${SINELESS_PRODUCT_NAME}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
 # Finder shows the bundle as one item only with a PkgInfo file, as for the VST3 plugin.
@@ -78,7 +78,7 @@ if(BUILD_TESTING)
     set_source_files_properties(tests/AudioUnitViewTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     gtest_discover_tests(au_view_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE)
 
-    # The component as a host meets it: an app of its own that loads Sineless.component and links
+    # The component as a host meets it: an app of its own that loads the component and links
     # none of the Audio Unit's code, so that the component's bundle and the host's differ.
     add_executable(au_component_tests MACOSX_BUNDLE tests/ComponentTests.mm)
     target_include_directories(au_component_tests
@@ -88,7 +88,7 @@ if(BUILD_TESTING)
                 ORIZON_TEST_VERSION="${PROJECT_VERSION}"
                 ORIZON_TEST_VST3_IDENTIFIER="$<TARGET_PROPERTY:Sineless,MACOSX_BUNDLE_GUI_IDENTIFIER>")
     target_link_libraries(au_component_tests
-        PRIVATE orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework AudioToolbox")
+        PRIVATE branding orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework AudioToolbox")
     add_dependencies(au_component_tests SinelessAU)
     set_source_files_properties(tests/ComponentTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     gtest_discover_tests(au_component_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE)

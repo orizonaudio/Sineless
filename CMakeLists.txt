@@ -28,6 +28,7 @@ option(ORIZON_ENGINE_ONLY "Build only the engine and protocol, without the VST3 
 
 include(cmake/ProjectOptions.cmake)
 include(cmake/Dependencies.cmake)
+include(cmake/Branding.cmake)
 include(cmake/Licences.cmake)
 
 # Module order: each module may depend only on modules added before it.

@@ -1,6 +1,7 @@
 #include "AudioUnit.h"
 #include "AudioUnitView.h"
 #include "AudioUnitViewTesting.h"
+#include "Branding.h"
 #include "MacPageTesting.h"
 #include "editor/EditorCore.h"
 #include "editor/WebView.h"
@@ -198,7 +199,7 @@ TEST(AudioUnitView, NamesTheFactoryForThisVersion)
     std::string version = engine::kVersionString;
     std::ranges::replace(version, '.', '_');
     const std::string name = viewFactoryClassName();
-    EXPECT_NE(name.find("Sineless"), std::string::npos) << name;
+    EXPECT_NE(name.find(orizon::branding::kProductName), std::string::npos) << name;
     EXPECT_NE(name.find(version), std::string::npos) << name;
 }
 

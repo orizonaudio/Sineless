@@ -108,17 +108,27 @@ TEST(Component, NamesItselfToHosts)
     EXPECT_TRUE([entry[@"tags"] containsObject:@"Effects"]);
 }
 
-// The licences travel with the component: Sineless's, the embedded fonts', and those of the
-// third-party code compiled into it (nlohmann_json's, the Audio Unit SDK's), whose licences ask
-// that their text go with the binary.
+// Projects saved with Sineless name its Audio Unit by these codes: a build without the brand takes
+// neither, so a fork's component is never loaded in Sineless's place.
+TEST(Component, HasSinelessCodesOnlyInABrandedBuild)
+{
+    EXPECT_EQ(kComponentDescription.componentSubType == 'Snls', SINELESS_BRANDED == 1);
+    EXPECT_EQ(kComponentDescription.componentManufacturer == 'Oriz', SINELESS_BRANDED == 1);
+}
+
+// The licences travel with the component: Sineless's, the embedded fonts', the logo's in a branded
+// build (and only there), and those of the third-party code compiled into it (nlohmann_json's, the
+// Audio Unit SDK's), whose licences ask that their text go with the binary.
 TEST(Component, CarriesItsLicences)
 {
     NSBundle* component = [NSBundle bundleWithPath:@ORIZON_TEST_COMPONENT];
     ASSERT_NE(component, nil);
-    for (NSString* name :
-         @[ @"LICENSE", @"OFL-Geist.txt", @"LICENSE-nlohmann-json.txt" ]) {
+    for (NSString* name : @[ @"LICENSE", @"OFL-Geist.txt", @"LICENSE-nlohmann-json.txt" ]) {
         EXPECT_NE([component pathForResource:name ofType:nil], nil) << name.UTF8String;
     }
+    const bool hasBrandTerms = [component pathForResource:@"LICENSE-Orizon-Brand.txt"
+                                                   ofType:nil] != nil;
+    EXPECT_EQ(hasBrandTerms, SINELESS_BRANDED == 1);
     NSString* sdk = [component pathForResource:@"LICENSE-AudioUnitSDK.txt" ofType:nil];
     ASSERT_NE(sdk, nil);
     NSString* text = [NSString stringWithContentsOfFile:sdk

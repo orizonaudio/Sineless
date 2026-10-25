@@ -1,0 +1,30 @@
+Orizon Audio brand files
+
+Copyright 2026 Bruno Lima, trading as Orizon Audio. All rights reserved.
+
+These terms cover the image files (*.svg) in ui/src/brand/ of the Sineless repository: the Orizon
+logo and its variants. They are not covered by the GNU General Public License that covers the rest of
+Sineless, and they are not part of it under that licence. The names "Sineless", "Orizon" and
+"Orizon Audio" are trademarks of Orizon Audio; TRADEMARKS.md says what they allow.
+
+You may:
+
+- copy these files as part of verbatim or modified copies of the Sineless source code (clones,
+  mirrors, forks, and source packages of a software distribution);
+- redistribute unmodified official Sineless releases, as Orizon Audio publishes them, that
+  contain these files;
+- package official Sineless releases for a software distribution with the changes packaging and
+  security fixes need, and keep these files in them.
+
+You may not, without written permission from Orizon Audio:
+
+- use these files in distributed builds of modified versions of Sineless (build without them:
+  configure with -DSINELESS_BRANDING=OFF);
+- use them in, or to promote, any other product;
+- modify them, or use them in a way that suggests Orizon Audio made, endorses or supports
+  something it did not.
+
+The GNU GPL version 3, section 7, additional permission stated in Sineless's README lets
+Sineless be conveyed together with these files under these terms.
+
+Questions and requests: hello@orizonaudio.com

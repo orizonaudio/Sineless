@@ -5,19 +5,20 @@ add_library(plugin STATIC
 )
 target_include_directories(plugin PUBLIC src)
 target_link_libraries(plugin
-    PUBLIC engine editor sdk "$<$<PLATFORM_ID:Darwin>:-framework CoreFoundation>"
+    PUBLIC engine editor sdk branding "$<$<PLATFORM_ID:Darwin>:-framework CoreFoundation>"
     PRIVATE orizon_warnings
 )
 
-smtg_add_vst3plugin(Sineless src/Factory.cpp)
+# The bundle takes the product's name (cmake/Branding.cmake): Sineless.vst3, or the unbranded one.
+smtg_add_vst3plugin(Sineless PACKAGE_NAME ${SINELESS_PRODUCT_NAME} SOURCES_LIST src/Factory.cpp)
 target_link_libraries(Sineless PRIVATE plugin orizon_warnings)
 # The licences travel with the plugin (cmake/Licences.cmake).
 orizon_licence_files(VST3 pluginLicences)
 smtg_target_add_plugin_resources(Sineless RESOURCES ${pluginLicences})
 set_target_properties(Sineless PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resource/Info.plist.in
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.orizonaudio.sineless
-    MACOSX_BUNDLE_BUNDLE_NAME Sineless
+    MACOSX_BUNDLE_GUI_IDENTIFIER ${SINELESS_BUNDLE_ID}
+    MACOSX_BUNDLE_BUNDLE_NAME ${SINELESS_PRODUCT_NAME}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
 )
@@ -43,7 +44,8 @@ if(BUILD_TESTING)
     gtest_discover_tests(plugin_tests DISCOVERY_TIMEOUT 30)
     add_test(NAME Plugin.CarriesItsLicences
         COMMAND ${CMAKE_COMMAND} "-DRESOURCES=$<TARGET_FILE_DIR:Sineless>/../Resources"
-                -DWINDOWS=${WIN32} -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/CarriesItsLicences.cmake)
+                -DWINDOWS=${WIN32} -DBRANDED=${SINELESS_BRANDING}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/CarriesItsLicences.cmake)
 endif()
 
 # The audio-thread benchmark: process() timed against the block deadline. See bench/ProcessBench.cpp.

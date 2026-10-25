@@ -75,7 +75,7 @@ import {
   type LaneStyle,
 } from "./view/lanes.ts";
 import { isMac, type HelpTopic } from "./view/help.ts";
-import brandMark from "./brand/mark.svg?raw";
+import { brand } from "@brand/brand.ts";
 import {
   extremePositions,
   levelTargets,
@@ -525,7 +525,9 @@ export class OscilloscopeApp {
       ["falling", "Falling"],
     ]);
 
-    element("brand-mark").innerHTML = brandMark;
+    element("brand-mark").innerHTML = brand.mark;
+    element("wordmark").textContent = brand.name;
+    document.title = brand.name;
 
     // A field's button opens its popover, and closes any other; a press elsewhere closes it.
     for (const [group, button, id] of popovers) {
@@ -987,7 +989,7 @@ export class OscilloscopeApp {
     if (this.compareMode() && frame?.lanes.length === 1) {
       const note = document.createElement("div");
       note.className = "compare-note";
-      note.textContent = `No other track in group ${String(this.store.get("group")).toUpperCase()} to compare with. Insert Sineless on another track.`;
+      note.textContent = `No other track in group ${String(this.store.get("group")).toUpperCase()} to compare with. Insert ${brand.name} on another track.`;
       container.append(note);
     }
     this.updateMatches(frame);

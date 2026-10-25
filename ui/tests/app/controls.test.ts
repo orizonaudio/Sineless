@@ -2,6 +2,8 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { brand } from "@brand/brand.ts";
+
 import { DisplayMode } from "../../../protocol/src/enums.ts";
 
 import {
@@ -26,6 +28,13 @@ describe("controls", () => {
   let app: Started;
   beforeAll(async () => {
     app = await startApp();
+  });
+
+  // The product's name and mark come from the brand folder the build takes (cmake/Branding.cmake).
+  test("names the product beside its mark and in the title", () => {
+    expect(byId("wordmark").textContent).toBe(brand.name);
+    expect(document.title).toBe(brand.name);
+    expect(byId("brand-mark").querySelector("svg")).not.toBeNull();
   });
 
   // Only the controls that apply are shown: a tempo-synced sweep has no trigger.
