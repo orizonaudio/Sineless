@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -237,5 +237,44 @@ describe("documentation, which CI does not check", () => {
     } finally {
       rmSync(repository, { recursive: true, force: true });
     }
+  });
+});
+
+// ai-review.yml picks its reviewers with a grep of its own: review-rules alone for a change to
+// documentation only, the same changes changesCode skips.
+describe("ai-review's choice of reviewers", () => {
+  const workflow = readFileSync(
+    join(
+      import.meta.dirname,
+      "..",
+      "..",
+      ".github",
+      "workflows",
+      "ai-review.yml",
+    ),
+    "utf8",
+  );
+  const pattern = /grep -qvE '([^']+)'/.exec(workflow)?.[1] ?? "";
+  // grep -qv succeeds when a listed file is not documentation.
+  const listsCode = (files: string[]) =>
+    spawnSync("grep", ["-qvE", pattern], { input: `${files.join("\n")}\n` })
+      .status === 0;
+
+  test.each(
+    [
+      ...documentation,
+      ["engine/src/Analyzer.cpp"],
+      ["README.md", "ui/src/app.ts"],
+      ["docs/ui/layout.html", "ui/src/styles.css"],
+      ["ui/docs/a.ts"],
+      ["docsite/index.html"],
+    ].map((files) => [files]),
+  )("agrees with changesCode on %j", (files) => {
+    expect(pattern).not.toBe("");
+    expect(listsCode(files)).toBe(changesCode(files));
+  });
+
+  test("lists both sides of a rename, as changedFiles does", () => {
+    expect(workflow).toContain(".filename, (.previous_filename // empty)");
   });
 });
