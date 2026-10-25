@@ -178,7 +178,8 @@ feature does; this section says where it is and how it looks. The values here ar
 source (`ui/src/view/`) and its tests; where they differ, the source wins.
 
 A redesign of the UI is in progress in [docs/ui/](ui/README.md). This section describes the UI
-that ships until the redesign is built; that change rewrites it and supersedes AD-23.
+that ships until the redesign is built; that change rewrites it, supersedes AD-23, and moves
+Help (FR-13) and the A4 setting (FR-16.3) to their new places.
 
 #### Layout
 

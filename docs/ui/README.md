@@ -20,7 +20,7 @@ GitHub shows HTML files as source. To see the pages, clone the repository and op
 ## 1. Purpose and scope
 
 - **Changes:** the look, the layout and how the controls are reached. Nothing from the current UI is kept by default, including its layout rules (AD-23), the 900 px minimum width, the bottom control strip, the 144 px chrome budget, the Roboto faces and the blue-grey palette.
-- **Stays:** what the plugin does and how it behaves. The functional requirements (FR-1 to FR-16), the settings and their defaults (§1.2.3, including opening in Single display mode), and the keyboard behaviour (keys go to the host; no shortcuts of its own).
+- **Stays:** what the plugin does and how it behaves. The functional requirements (FR-1 to FR-16), the settings and their defaults (§1.2.3, including opening in Single display mode), and the keyboard behaviour (keys go to the host; no shortcuts of its own). Two requirements also say where a control sits, and only that part changes: Help moves from the right end of the top bar to the right end of the status bar (FR-13), and the A4 setting from the Display popover to the status bar (FR-16.3). The build (step 6) updates them with §1.5.
 - **Out of scope:** DSP, behaviour, default values, keyboard shortcuts, and the engine–UI protocol beyond what the UI needs.
 
 ## 2. Process
