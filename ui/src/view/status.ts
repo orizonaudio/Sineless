@@ -1,4 +1,4 @@
-// Status chips of the top bar, derived from the latest frame and the trigger mode.
+// Status chips of the status bar, derived from the latest frame and the trigger mode.
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 
 import { formatSeconds } from "./format.ts";

@@ -2,7 +2,7 @@
 
 The plugin's interface is being redesigned from scratch on the Orizon Audio brand: what the UI shows and how it's used, not what the plugin does. This folder holds the design work so far: the brief and decisions (this file), the design pages, and the colour tokens.
 
-**Status:** steps 1–4 done (brief, layout, visual direction, colour and tokens). Next: step 5, every component and screen built on the real UI, then step 6, the restyled UI in the plugin with `DESIGN.md` §1.5 rewritten. Until then, `DESIGN.md` §1.5 and `ui/src/` describe the UI that ships.
+**Status:** built. Steps 1–4 (brief, layout, visual direction, colour and tokens) are below; steps 5 and 6 built them into the plugin: `ui/` holds the page, `ui/src/tokens.css` the colours, `ui/src/fonts/` Geist, and `DESIGN.md` §1.5 (with AD-26 and AD-27) describes the UI as it ships.
 
 ![The new layout at its default size: toolbar, screen with left and right channels, status bar](images/direction-graphite.png)
 
@@ -129,7 +129,7 @@ From 2026-10-24 and 2026-10-25.
 6. **Layout:** concept A (Toolbar), as in [layout.html](layout.html).
 7. **Treatment:** Graphite, with the accent on Frozen ([direction.html](direction.html)).
 8. **Colour:** the tokens in [tokens/](tokens/) ([colour.html](colour.html)).
-9. **Sizes:** the design sets them. In step 6 every size the engine shares (minimum width, chrome height) goes into `protocol/src/limits.ts` with the design's values, replacing today's 900 and 144, and leaves the tokens, so each size is still defined once. The size tokens in `tokens/` are the design's values until then. Colours, fonts and UI-only sizes move into `ui/src/`, and these docs then link there instead of keeping their own copy.
+9. **Sizes:** the design sets them, and `protocol/src/limits.ts` holds the ones the engine shares: `minimumEditorWidth` 1020 (the widest toolbar, measured at 1018 px in Geist) and `chromeHeight` 84 (toolbar and status bar, measured at 82). The native default is 1080 × 580 and the minimum height 400 (`editor/include/editor/EditorCore.h`). The size tokens in `tokens/` record the design; `ui/src/tokens.css` holds the colours the page uses.
 
 ## 9. The layout: concept A, Toolbar
 
@@ -137,7 +137,7 @@ From 2026-10-24 and 2026-10-25.
 
 - **Toolbar, left to right:** mark and wordmark; Single | Multi | Compare; Group (Multi and Compare, a dropdown); Beats | Sec; Span; Scale; Views (Single); Overlay | Stack; Trigger (Seconds up to 1 s), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
-- **Sizes**, measured on the widest toolbar (Single · Seconds with trigger mode Single, so Re-arm shows): default **1080 × 580** (the toolbar needs 1076 px with the wordmark); minimum **1020 × 400** (1017 px with the mark alone). Between the two, only the wordmark hides.
+- **Sizes**, measured on the widest toolbar (Single · Seconds with trigger mode Single, so Re-arm shows): default **1080 × 580** (the toolbar needs 1076 px with the wordmark); minimum **1020 × 400** (1018 px with the mark alone). Between the two, only the wordmark hides.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.
 - **Status bar:** Time, Level, Hover and A4 on the left; what the readouts measure (Left, Right, Mid or Side in Single; "This track" in Multi and Compare, where the readouts measure this track's Mid, DESIGN §1.2.1), then Peak, RMS and Freq in the centre; the state and Help on the right. The left group never changes width and the state area has a fixed width, so the readouts never move.
 - **More states than fit** fold into a "+n" chip that lists them on hover, keeping the order of the state table in DESIGN §1.5.
