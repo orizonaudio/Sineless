@@ -4,6 +4,10 @@
 
 Assign yourself to an issue before you start on it, and leave issues someone else is assigned to alone. Unassign yourself if you stop.
 
+## Licence of contributions
+
+You contribute under the project's licence: GPL-3.0-only, with the additional permission stated in the README's Licence section, which lets Sineless be conveyed together with the logo files in `ui/src/brand/`. Opening a pull request means you agree to that.
+
 ## Definition of Done
 
 Every change:

@@ -2,7 +2,7 @@
 
 [![CI on main](https://github.com/orizonaudio/Sineless/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/orizonaudio/Sineless/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush) [![Latest release](https://img.shields.io/github/v/release/orizonaudio/Sineless)](https://github.com/orizonaudio/Sineless/releases/latest) [![Licence: GPL-3.0](https://img.shields.io/github/license/orizonaudio/Sineless)](LICENSE) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/orizonaudio/Sineless/badge)](https://scorecard.dev/viewer/?uri=github.com/orizonaudio/Sineless) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15526/badge)](https://www.bestpractices.dev/projects/15526)
 
-An open-source oscilloscope by Orizon Audio, as a VST3 plugin and, on macOS, an Audio Unit. It shows the audio on its track in real time and passes it through unchanged, with zero latency.
+Sineless™ is an open-source oscilloscope by Orizon Audio, as a VST3 plugin and, on macOS, an Audio Unit. It shows the audio on its track in real time and passes it through unchanged, with zero latency.
 
 ![Sineless's multi-track view, frozen in Beats mode: kick, clap, hi-hat, bass and keys lanes stacked in their track colours](assets/sineless.png)
 
@@ -119,4 +119,14 @@ Report a bug or suggest a feature in [Issues](https://github.com/orizonaudio/Sin
 
 ## Licence
 
-GPL-3.0. See [LICENSE](LICENSE).
+GPL-3.0-only, © 2026 Bruno Lima, trading as Orizon Audio. See [LICENSE](LICENSE). The fonts in
+`ui/src/fonts/` are under the SIL Open Font License 1.1; `REUSE.toml` gives every file's licence.
+
+Additional permission under GNU GPL version 3 section 7: you may convey Sineless combined with the
+files in `ui/src/brand/`, which are under their own terms, stated in that folder.
+
+## Name and logo
+
+"Sineless", "Orizon" and "Orizon Audio" and the Orizon logo are trademarks of Orizon Audio, and the
+GPL doesn't cover them (sections 7(c) and 7(e)). Forks use their own name and logo; what you may
+do with them is in [TRADEMARKS.md](TRADEMARKS.md).
