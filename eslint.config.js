@@ -23,7 +23,8 @@ const local = {
 };
 
 export default tseslint.config(
-  { ignores: ["build/", "node_modules/"] },
+  // docs/ is documentation, which CI does not check (scripts/changed-code.ts).
+  { ignores: ["build/", "node_modules/", "docs/"] },
   js.configs.recommended,
   {
     files: ["**/*.ts"],

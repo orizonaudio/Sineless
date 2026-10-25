@@ -11,6 +11,8 @@ describe("a change", () => {
     [["HOSTS.md"]],
     [["CONTRIBUTING.md", "README.md", "engine/README.md"]],
     [[".github/PULL_REQUEST_TEMPLATE.md"]],
+    [["docs/ui/layout.html", "docs/ui/tokens/sineless-tokens.json"]],
+    [["docs/ui/images/layout.png", "docs/DESIGN.md"]],
   ])("to documentation only, %j, skips the builds and tests", (files) => {
     expect(changesCode(files)).toBe(false);
   });
@@ -22,6 +24,9 @@ describe("a change", () => {
     [[".github/ISSUE_TEMPLATE/bug.yml"]], // The format check covers it.
     [[".github/workflows/ci.yml"]],
     [["CMakeLists.txt"]],
+    [["docs/ui/layout.html", "ui/src/styles.css"]],
+    [["ui/docs/a.ts"]], // Only the top-level docs/ folder is documentation.
+    [["docsite/index.html"]],
   ])("that touches code, %j, runs the builds and tests", (files) => {
     expect(changesCode(files)).toBe(true);
   });

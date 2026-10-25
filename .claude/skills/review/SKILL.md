@@ -22,7 +22,8 @@ nothing else about the change:
 - `review-realtime`, when C++ or Objective-C++ (`.cpp`, `.cc`, `.h`, `.hpp`, `.mm`) under
   `engine/`, `plugin/` or `editor/` changed.
 
-When only Markdown files changed, run `review-rules` alone.
+When only documentation changed (Markdown, or files under `docs/`, as in
+`scripts/changed-code.ts`), run `review-rules` alone.
 
 ## 3. Verify each Important finding
 
