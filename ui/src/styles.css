@@ -39,7 +39,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding-inline: 12px;
+  padding-inline: 10px;
   min-width: 0;
   font-size: 12px;
 }
@@ -160,7 +160,6 @@ body {
 .action.freeze[aria-pressed="true"] {
   color: var(--sl-on-accent);
   background: var(--sl-accent);
-  font-weight: 600;
 }
 
 .action:disabled {

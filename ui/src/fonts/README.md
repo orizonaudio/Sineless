@@ -4,20 +4,20 @@ The UI's fonts, embedded so that it looks the same on every system and needs no 
 
 | File | Family | Use | Licence |
 | --- | --- | --- | --- |
-| `RobotoCondensed.woff2` | Roboto Condensed | labels | SIL Open Font License 1.1 ([OFL-Roboto.txt](OFL-Roboto.txt)) |
-| `RobotoMono.woff2` | Roboto Mono | values | SIL Open Font License 1.1 ([OFL-RobotoMono.txt](OFL-RobotoMono.txt)) |
-| `Roboto.woff2` | Roboto | text | SIL Open Font License 1.1 ([OFL-Roboto.txt](OFL-Roboto.txt)) |
+| `Geist.woff2` | Geist | text and labels | SIL Open Font License 1.1 ([OFL-Geist.txt](OFL-Geist.txt)) |
+| `GeistMono.woff2` | Geist Mono | values | SIL Open Font License 1.1 ([OFL-Geist.txt](OFL-Geist.txt)) |
 
 ## Source
 
-[google/fonts](https://github.com/google/fonts) at commit
-`2eb0b48d5f760f62e286216f0859a8c540dbc1bd`:
+[vercel/geist-font](https://github.com/vercel/geist-font) release
+[v1.7.2](https://github.com/vercel/geist-font/releases/tag/v1.7.2), `geist-font-v1.7.2.zip`
+(SHA-256 `7fc800d2ac6b92844895196e5041aca55d814c15db70c44f79b3b83ab82b04e2`):
 
 | File | SHA-256 |
 | --- | --- |
-| `ofl/robotocondensed/RobotoCondensed[wght].ttf` | `dace262afcee68a5276f200d8026c57221735c0118ab5fda8c2c0d3dc409a8d0` |
-| `ofl/robotomono/RobotoMono[wght].ttf` | `66a80e79d17e4c7cabd162e2916578a4cc08fd19eef6e2a643305eae9c567b2b` |
-| `ofl/roboto/Roboto[wdth,wght].ttf` | `d7598e12c5dbef095ff8272cfc55da0250bd07fbdecbac8a530b9b277872a134` |
+| `geist-font/Geist/variable/Geist[wght].ttf` | `cdcc4815cbf5f9882fa74e48f8ab410a0495781a58ff7316570f664e7e987753` |
+| `geist-font/GeistMono/variable/GeistMono[wght].ttf` | `0e1af3f507a1c8dfbb03d13ffad585834cd45ed7ccb78c756c7ce7873d180d30` |
+| `geist-font/OFL.txt` | copied as `OFL-Geist.txt` |
 
 ## How they were made
 
@@ -26,12 +26,11 @@ Extended-A (for track names) and the symbols in the UI, keeping every name recor
 and licence), with fonttools 4.60.1:
 
 ```bash
-fonttools varLib.instancer "Roboto[wdth,wght].ttf" wdth=100 wght=400:700 -o roboto.ttf
-fonttools varLib.instancer "RobotoCondensed[wght].ttf" wght=400:700 -o condensed.ttf
-fonttools varLib.instancer "RobotoMono[wght].ttf" wght=400:600 -o mono.ttf
+fonttools varLib.instancer "Geist[wght].ttf" wght=400:600 -o geist.ttf
+fonttools varLib.instancer "GeistMono[wght].ttf" wght=400:600 -o mono.ttf
 pyftsubset <each>.ttf --flavor=woff2 --name-IDs='*' --name-languages='*' \
     --layout-features='kern,liga,calt,tnum,lnum' \
     --unicodes='U+0020-007E,U+00A0-017F,U+0394,U+2013-2014,U+2018-201D,U+2022,U+2026,U+2191,U+2193,U+2212,U+221E,U+2248,U+2318,U+2325,U+2713'
 ```
 
-Roboto has no ↑ ↓ ⌘ ⌥ ✓; those come from a system font.
+Geist has no Δ ⌘ ⌥ ✓; those come from a system font.

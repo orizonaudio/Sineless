@@ -3,8 +3,7 @@
 # Run with -DRESOURCES=<the bundle's Resources folder> -DWINDOWS=<ON on Windows>.
 set(expected
     LICENSE
-    OFL-Roboto.txt
-    OFL-RobotoMono.txt
+    OFL-Geist.txt
     LICENSE-nlohmann-json.txt
     LICENSE-VST3-SDK.txt)
 if(WINDOWS)

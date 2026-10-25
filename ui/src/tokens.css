@@ -1,3 +1,19 @@
+/* The fonts are embedded (see fonts/README.md), so the UI looks the same on every system and
+   needs no network. */
+@font-face {
+  font-family: Geist;
+  src: url("./fonts/Geist.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./fonts/GeistMono.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: block;
+}
+
 /* The UI's colours, from the redesign's tokens (docs/ui/tokens/sineless-tokens.json, step 4).
    Dark only. The chrome is greys; colour belongs to traces; orange marks Frozen and nothing else;
    yellow marks a problem. The engine-shared sizes live in protocol/src/limits.ts. */

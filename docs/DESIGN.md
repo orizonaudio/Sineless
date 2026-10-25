@@ -276,8 +276,7 @@ press outside closes them.
   while loading.
 - Trace colours: L amber, R cyan, Mid bone, Side lilac. Lanes take the host's track colour, or a
   16-colour fallback palette; the sum lane is bone. Cursors are pink.
-- A condensed face for labels, a monospaced face for values (Roboto Condensed, Roboto Mono,
-  embedded).
+- Geist for text and labels, Geist Mono for values (embedded).
 - A visible focus ring on every control.
 
 ## 2. Constraints
@@ -676,7 +675,7 @@ flowchart LR
 | WebView2 SDK | BSD-3-Clause | shipped (Windows) | Webview embedding; static loader. | NuGet version + SHA-256 |
 | AudioUnitSDK | Apache-2.0 | shipped (macOS Audio Unit) | The Audio Unit (AUv2) API: dispatch, buses, state, render. Its headers need C++23. | FetchContent, URL + SHA-256 |
 | nlohmann/json | MIT | shipped | Control messages and saved state. | FetchContent, URL + SHA-256 |
-| Roboto, Roboto Condensed, Roboto Mono | SIL OFL 1.1 | shipped (embedded in the UI) | The UI's fonts, the same on every system (subset; see `ui/src/fonts/README.md`). | In repo |
+| Geist, Geist Mono | SIL OFL 1.1 | shipped (embedded in the UI) | The UI's fonts, the same on every system (subset; see `ui/src/fonts/README.md`). | In repo |
 | GoogleTest (with GMock) | BSD-3-Clause | tests | C++ unit tests. | FetchContent, URL + SHA-256 |
 | TypeScript, Vite, Vitest, ESLint, typescript-eslint, Prettier, @types/node | Apache-2.0 / MIT | dev | UI build, dev server, tests, lint. | `package-lock.json` |
 | Playwright, @vitest/browser-playwright | Apache-2.0 / MIT | dev | App tests in WebKit and Chromium. | `package-lock.json` |
