@@ -7,11 +7,16 @@ export const viewOrder = ["left", "right", "mid", "side"] as const;
 export type ViewName = (typeof viewOrder)[number];
 
 // The channel the readouts, the hover and snapping measure when views are overlaid: the trigger
-// source, or the Mid in Beats mode, where the trigger does not apply.
+// source, or the Mid in Beats mode, where the trigger does not apply; on a mono track, whose R
+// repeats L, L whatever was asked for, as the engine's readView reads it.
 export function readoutView(
   beats: boolean,
   triggerSource: ViewName,
+  inputChannels: number,
 ): ChannelView {
+  if (inputChannels === 1) {
+    return ChannelView.left;
+  }
   return beats ? ChannelView.mid : ChannelView[triggerSource];
 }
 

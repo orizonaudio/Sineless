@@ -11,10 +11,14 @@ import {
 
 describe.each(viewOrder)("triggering on %s", (source) => {
   test("Seconds mode measures the trigger source", () => {
-    expect(readoutView(false, source)).toBe(ChannelView[source]);
+    expect(readoutView(false, source, 2)).toBe(ChannelView[source]);
   });
   test("Beats mode measures the Mid, as no trigger applies", () => {
-    expect(readoutView(true, source)).toBe(ChannelView.mid);
+    expect(readoutView(true, source, 2)).toBe(ChannelView.mid);
+  });
+  test("a mono track measures L, in either mode", () => {
+    expect(readoutView(false, source, 1)).toBe(ChannelView.left);
+    expect(readoutView(true, source, 1)).toBe(ChannelView.left);
   });
 });
 
