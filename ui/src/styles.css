@@ -38,7 +38,7 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding-inline: 10px;
   min-width: 0;
   font-size: 12px;
@@ -191,6 +191,11 @@ body {
   font: 500 12px var(--sl-font-value);
   color: var(--sl-ink);
   font-variant-numeric: tabular-nums;
+}
+
+/* The Views field: every view's letter, those not drawn dimmed. */
+#views-summary span:not(.on) {
+  opacity: 0.35;
 }
 
 .icon {

@@ -63,8 +63,8 @@ export const summingMarginDb = 1;
 export const frequencyWindowSeconds = 1;
 
 // The editor's layout (CSS pixels): its default width, from which the widest toolbar fits with the
-// wordmark (measured at 1078); its minimum width, the widest toolbar's (Seconds, the Single
-// trigger mode and frozen, measured at 1018 without the wordmark, docs/ui/README.md); the minimum
+// wordmark (measured at 1070); its minimum width, the widest toolbar's (Seconds, the Single
+// trigger mode and frozen, measured at 1011 without the wordmark, docs/ui/README.md); the minimum
 // height of a stacked lane; and the height of everything around the screen (toolbar and status
 // bar), at most: measured at 82, with room for rounding at other display scales. The editor tests
 // check the page against them.

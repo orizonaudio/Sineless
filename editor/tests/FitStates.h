@@ -41,9 +41,11 @@ inline std::vector<State> states()
         {.name = "1/16 beat", .settings = {{SettingId::kBeatSpan, 0.0}}, .script = ""},
         {.name = "-60 dB", .settings = {{SettingId::kVerticalScale, -60.0}}, .script = ""},
         // The widest toolbar: Seconds shows the Trigger field, its Single mode adds Re-arm, and
-        // Freeze reads Frozen.
-        {.name = "Sec, trigger Single, frozen",
-         .settings = {{SettingId::kTimeBase, 0.0}, {SettingId::kTriggerMode, 3.0}},
+        // Freeze reads Frozen; with every view shown.
+        {.name = "Sec, trigger Single, frozen, L R M S",
+         .settings = {{SettingId::kTimeBase, 0.0},
+                      {SettingId::kTriggerMode, 3.0},
+                      {SettingId::kChannelViews, 15.0}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
         {.name = "trigger Side, falling, -1, Single",

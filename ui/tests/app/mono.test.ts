@@ -24,7 +24,15 @@ describe("a mono track", () => {
   test("labels the readouts Left, whatever the trigger source", async () => {
     await userEvent.click(choice("time-base", "Sec"));
     await expect.poll(() => byId("readout-tag").textContent).toBe("Left");
-    await expect.poll(() => byId("views-summary").textContent).toBe("L");
+    // The Views field lights L alone, as the frame draws it.
+    await expect
+      .poll(() =>
+        [...byId("views-summary").querySelectorAll(".on")].map(
+          (letter) => letter.textContent,
+        ),
+      )
+      .toEqual(["L"]);
+    expect(byId("views-details").getAttribute("aria-label")).toBe("Views: L");
   });
 
   test("draws one lane when stacked, with the trigger marker in it", async () => {
