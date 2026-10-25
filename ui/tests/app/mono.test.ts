@@ -3,7 +3,14 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
-import { byId, choice, settle, startApp, type Started } from "./harness.ts";
+import {
+  byId,
+  choice,
+  press,
+  settle,
+  startApp,
+  type Started,
+} from "./harness.ts";
 
 describe("a mono track", () => {
   beforeAll(async () => {
@@ -82,5 +89,25 @@ describe("a track that changes channels", () => {
     await expect.poll(lit).toEqual(["L"]);
     app.transport.changeChannels(2);
     await expect.poll(lit).toEqual(["L", "R"]);
+  });
+
+  // The snapshot reporting the new count relabels the readouts and the view toggles by itself,
+  // with no control touched.
+  test("relabels the readouts and the toggles when the snapshot says", async () => {
+    const tag = () => byId("readout-tag").textContent;
+    const toggles = [...byId("views").querySelectorAll("button")];
+    await userEvent.click(choice("display-mode", "Single"));
+    await userEvent.click(choice("time-base", "Sec"));
+    await press(choice("source", "M"));
+    await expect.poll(tag).toBe("Mid");
+    app.transport.changeChannels(1, true);
+    await expect.poll(tag).toBe("Left");
+    await expectOnlyLeftEnabled(toggles);
+    app.transport.changeChannels(2, true);
+    await expect.poll(tag).toBe("Mid");
+    for (const button of toggles) {
+      await expect.element(button).toBeEnabled();
+    }
+    await press(choice("source", "L"));
   });
 });
