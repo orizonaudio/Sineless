@@ -3,7 +3,14 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { byId, choice, settle, startApp, type Started } from "./harness.ts";
+import {
+  byId,
+  choice,
+  press,
+  settle,
+  startApp,
+  type Started,
+} from "./harness.ts";
 
 function laneNames(): string[] {
   return [...byId("lane-labels").querySelectorAll(".lane-label")].map(
@@ -25,12 +32,9 @@ function compareCheck(name: string): HTMLButtonElement {
 async function show(mode: "Multi" | "Compare"): Promise<void> {
   await userEvent.click(choice("time-base", "Sec"));
   await userEvent.click(choice("display-mode", "Single"));
-  if (byId("trigger-popover").hidden) {
-    await userEvent.click(byId("trigger-details"));
-  }
-  await userEvent.click(choice("source", "R"));
-  await userEvent.click(choice("group", "A"));
+  await press(choice("source", "R"));
   await userEvent.click(choice("display-mode", mode));
+  await press(choice("group", "A"));
   await userEvent.click(choice("layout", "Stack"));
   await settle();
 }
@@ -128,7 +132,7 @@ describe("the Compare view", () => {
 
   test("says when the group has no other track", async () => {
     await show("Compare");
-    await userEvent.click(choice("group", "B"));
+    await press(choice("group", "B"));
     await settle();
     await expect
       .poll(

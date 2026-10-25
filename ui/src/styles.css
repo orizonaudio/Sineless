@@ -1,48 +1,6 @@
-/* The fonts are embedded (see fonts/README.md), so the UI looks the same on every system and
-   needs no network. */
-@font-face {
-  font-family: "Roboto Condensed";
-  src: url("./fonts/RobotoCondensed.woff2") format("woff2");
-  font-weight: 400 700;
-  font-display: block;
-}
-
-@font-face {
-  font-family: "Roboto Mono";
-  src: url("./fonts/RobotoMono.woff2") format("woff2");
-  font-weight: 400 600;
-  font-display: block;
-}
-
-@font-face {
-  font-family: Roboto;
-  src: url("./fonts/Roboto.woff2") format("woff2");
-  font-weight: 400 700;
-  font-display: block;
-}
-
-:root {
-  color-scheme: dark;
-  --panel: #161b21;
-  --screen: #0a0d10;
-  --line: #252d36;
-  --grid: #1c2731;
-  --grid-axis: #2d3d4b;
-  --ink: #e6e2d8;
-  --ink-dim: #8b96a2;
-  --ink-faint: #56616c;
-  --left: #e8b04b;
-  --right: #5ec8e5;
-  --mid: #e6e2d8;
-  --side: #c48be0;
-  --ok: #7fcf8f;
-  --hold: #7fa8e8;
-  --cursor: #f0708a;
-  --warn: #e8a35a;
-  --font-label: "Roboto Condensed", sans-serif;
-  --font-value: "Roboto Mono", monospace;
-  --font-body: Roboto, sans-serif;
-}
+/* The UI's look: the Graphite treatment of the redesign (docs/ui/). Colours come from tokens.css;
+   the chrome is greys, colour belongs to traces, and orange marks Frozen alone. */
+@import "./tokens.css";
 
 [hidden] {
   display: none !important;
@@ -55,233 +13,313 @@ body {
   /* clip, not hidden: a hidden overflow can still be scrolled, by focus or by script, which
      shifted the whole UI sideways at the minimum width. */
   overflow: clip;
-  background: var(--panel);
-  color: var(--ink);
-  font-family: var(--font-body);
-  font-size: 13px;
+  background: var(--sl-case);
+  color: var(--sl-ink);
+  font-family: var(--sl-font-ui);
+  font-size: 12.5px;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* The toolbar, the screen inset in the case, and the status bar. */
 .app {
   display: grid;
-  grid-template-rows: 34px minmax(0, 1fr) auto;
+  grid-template-rows: 48px minmax(0, 1fr) 34px;
   height: 100%;
   /* The editor's minimum width (minimumEditorWidth in protocol/src/limits.ts, set at start-up):
-     the strip and top bar fit. */
+     the widest toolbar fits. */
   min-width: var(--minimum-width);
 }
 
-.bar {
+/* ----- Toolbar ----- */
+
+.toolbar {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-inline: 12px;
-  border-bottom: 1px solid var(--line);
-  min-width: 0;
-}
-
-.wordmark {
-  font-family: var(--font-label);
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  font-size: 13px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.wordmark span {
-  color: var(--ink-faint);
-}
-
-/* Everything in the top bar keeps its size; the minimum window width fits all of it. */
-.bar > * {
-  flex: none;
-  white-space: nowrap;
-}
-
-/* The screen's top-right corner: the status chips, and below them the cursor readout. The chips
-   wrap within a fixed width, which the lane labels keep clear, so nothing moves when they change. */
-.screen {
-  --corner-width: 150px;
-}
-
-.screen-corner {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
   gap: 6px;
-  pointer-events: none;
-}
-
-.screen-corner .chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px;
-  max-width: var(--corner-width);
-  pointer-events: auto;
-}
-
-.chip {
-  font-family: var(--font-label);
-  font-weight: 600;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 1px 6px;
-  border-radius: 3px;
-  border: 1px solid var(--line);
-  color: var(--ink-dim);
-  white-space: nowrap;
-  background: color-mix(in srgb, var(--screen) 85%, transparent);
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
-}
-
-.chip.ok {
-  color: var(--ok);
-  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
-}
-
-.chip.hold {
-  color: var(--hold);
-  border-color: color-mix(in srgb, var(--hold) 45%, transparent);
-}
-
-.chip.warn {
-  color: var(--warn);
-  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
-}
-
-.readouts {
-  margin-left: auto;
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The help switch, and the tooltips it turns on. */
-.help-toggle {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  font-family: var(--font-label);
+  padding-inline: 12px;
+  min-width: 0;
   font-size: 12px;
+}
+
+/* Everything in a bar keeps its size; the minimum window width fits all of it. */
+.toolbar > *,
+.statusbar > *,
+.status-left > *,
+.status-right > * {
+  flex: none;
+  white-space: nowrap;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 2px;
   font-weight: 600;
-  color: var(--ink-dim);
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.brand-mark {
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+}
+
+.brand-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Below the default width only the mark stays. */
+@media (max-width: 1079px) {
+  .wordmark {
+    display: none;
+  }
+}
+
+.divider {
+  width: 1px;
+  height: 18px;
+  background: var(--sl-line);
+}
+
+.spacer {
+  flex: 1 1 auto !important;
+}
+
+/* ----- Controls ----- */
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--sl-control);
+  border-radius: 6px;
+  width: max-content;
+}
+
+.segmented button,
+.action,
+.field-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 7px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--sl-ink-2);
   background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 50%;
+  border: 0;
+  border-radius: 4px;
   cursor: pointer;
 }
 
-.help-toggle:hover {
-  color: var(--ink);
+.segmented button:not([aria-pressed="true"]):hover:not(:disabled),
+.action:not([aria-pressed="true"]):hover:not(:disabled),
+.field-button:hover {
+  color: var(--sl-ink);
 }
 
-.help-toggle[aria-pressed="true"] {
-  color: var(--panel);
-  background: var(--hold);
-  border-color: var(--hold);
+.segmented button[aria-pressed="true"] {
+  color: var(--sl-on-selected);
+  background: var(--sl-selected);
 }
 
-/* In the window's corner, over the footer's padding: three short diagonal strokes. */
-.resize-grip {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  z-index: 5;
+/* Channel toggles: each marked by its trace's colour. */
+.segmented .toggle::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color);
+}
+
+.segmented button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.action {
+  height: 24px;
+  padding: 0 10px;
+  background: var(--sl-control);
+  border-radius: 6px;
+}
+
+.action[aria-pressed="true"] {
+  color: var(--sl-on-selected);
+  background: var(--sl-selected);
+}
+
+/* The one accent: the display is frozen. */
+.action.freeze[aria-pressed="true"] {
+  color: var(--sl-on-accent);
+  background: var(--sl-accent);
+  font-weight: 600;
+}
+
+.action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* A field with an icon or a short label before its value, or a button that opens a popover. */
+.icon-field,
+.field-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  background: var(--sl-control);
+  border-radius: 6px;
+}
+
+.field-button[aria-expanded="true"] {
+  box-shadow: 0 0 0 1.5px var(--sl-ink);
+}
+
+.icon-field i,
+.field-button i {
+  font-style: normal;
+  color: var(--sl-ink-2);
+}
+
+.field-button b {
+  font: 500 12px var(--sl-font-value);
+  color: var(--sl-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.icon {
   width: 12px;
   height: 12px;
-  cursor: nwse-resize;
-  touch-action: none;
-  background: linear-gradient(
-    135deg,
-    transparent 0 45%,
-    var(--ink-faint) 45% 52%,
-    transparent 52% 64%,
-    var(--ink-faint) 64% 71%,
-    transparent 71% 83%,
-    var(--ink-faint) 83% 90%,
-    transparent 90%
-  );
+  fill: none;
+  stroke: var(--sl-ink-2);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.resize-grip:hover {
-  --ink-faint: var(--ink-dim);
+.icon .dashed {
+  stroke-width: 1;
+  stroke-dasharray: 1 1.6;
 }
 
-.help-tip {
-  position: fixed;
-  z-index: 10;
-  display: grid;
-  gap: 4px;
-  max-width: 260px;
-  padding: 8px 10px;
-  font-family: var(--font-body);
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
-  pointer-events: none;
+.chevron {
+  width: 8px;
+  height: 8px;
+  fill: none;
+  stroke: var(--sl-ink-2);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.help-tip strong {
-  font-family: var(--font-label);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-}
-
-.readout {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-}
-
-.readout b {
-  font-family: var(--font-label);
-  font-weight: 500;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  color: var(--ink-faint);
-  text-transform: uppercase;
-}
-
-.readout span {
-  font-family: var(--font-value);
-  font-size: 12.5px;
+/* A numeric value: drag vertically or scroll to change it, double-click to type. In the bars it
+   sits beside its icon or label, in a fixed width so a longer value moves nothing. */
+.field {
   min-width: 6ch;
-  text-align: right;
+  font: 500 12px var(--sl-font-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--sl-ink);
+  text-align: left;
+  cursor: ns-resize;
+  touch-action: none;
+  border-radius: 3px;
 }
 
-.readout small {
-  font-family: var(--font-value);
-  font-size: 10.5px;
-  color: var(--ink-faint);
+/* The longest beat span, "1/16 beat". */
+#beat-span-field .field {
+  min-width: 9ch;
 }
+
+.popover .field {
+  min-width: 7ch;
+  text-align: right;
+  padding: 4px 9px;
+  background: var(--sl-control);
+  border-radius: 6px;
+}
+
+.field input {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  width: 9ch;
+  text-align: right;
+  padding: 0;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+button:focus-visible,
+.field:focus-visible {
+  outline: 2px solid var(--sl-ink);
+  outline-offset: 2px;
+}
+
+/* A selected option's fill is the ring's colour: the ring goes inside, with a case-coloured edge. */
+button[aria-pressed="true"]:focus-visible {
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 4px var(--sl-case);
+}
+
+/* ----- Popovers ----- */
+
+.popover {
+  position: absolute;
+  top: calc(100% + 2px);
+  z-index: 4;
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+  padding: 12px 14px;
+  background: var(--sl-popover);
+  border: 1px solid var(--sl-line);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 55%);
+}
+
+.popover-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--sl-ink-2);
+}
+
+.popover-row {
+  display: grid;
+  grid-template-columns: 84px auto;
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
+}
+
+.popover-row > span {
+  color: var(--sl-ink-2);
+}
+
+/* ----- Screen ----- */
 
 .screen {
   position: relative;
-  background: var(--screen);
-  margin: 8px 8px 0;
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  margin: 0 8px;
+  background: var(--sl-screen);
+  border: 1px solid var(--sl-line);
+  border-radius: 10px;
   overflow: hidden;
   min-height: 0;
   /* Drags here select, zoom and move cursors: a touch the browser took for a pan would cancel them. */
   touch-action: none;
+  /* Room kept clear at the top right for the cursor readout. */
+  --corner-width: 150px;
 }
 
 .screen.panning {
@@ -305,9 +343,8 @@ body {
 
 .axis-label {
   position: absolute;
-  font-family: var(--font-value);
-  font-size: 10px;
-  color: var(--ink-faint);
+  font: 500 10px var(--sl-font-value);
+  color: var(--sl-ink-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -324,46 +361,20 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: color-mix(in srgb, var(--hold) 18%, transparent);
-  border-inline: 1px solid var(--hold);
+  background: color-mix(in srgb, var(--sl-ink) 10%, transparent);
+  border-inline: 1px solid var(--sl-ink-2);
   pointer-events: none;
 }
 
-.group.inactive > :not(.group-label) {
-  opacity: 0.4;
-}
-
-/* Disabled controls ignore the pointer, so hovering shows the group's explanation instead. */
-.group.inactive button,
-.inactive > button {
+.screen-corner {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
   pointer-events: none;
-}
-
-.row.inactive,
-.segmented.inactive {
-  opacity: 0.4;
-}
-
-/* Single | Multi and the group in the top bar: compact versions of the strip's switches. */
-.bar-switch button {
-  padding: 2px 7px;
-  font-size: 11px;
-}
-
-/* A feature still being shaped, such as Compare. */
-.segmented .badge {
-  margin-left: 4px;
-  padding: 0 3px;
-  font-size: 8px;
-  letter-spacing: 0.06em;
-  vertical-align: 1px;
-  color: var(--warn);
-  border: 1px solid currentcolor;
-  border-radius: 2px;
-}
-
-.segmented button[aria-pressed="true"] .badge {
-  color: var(--panel);
 }
 
 /* Multi-track lane names: one per stacked lane, or a legend when overlaid. */
@@ -379,36 +390,33 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 6px;
-  font-family: var(--font-label);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--ink);
+  color: var(--sl-ink);
 }
 
 /* Each name sits on a chip of the screen's colour, so traces never run through it. */
 .lane-label > span {
   padding: 2px 6px;
-  background: color-mix(in srgb, var(--screen) 85%, transparent);
-  border-radius: 3px;
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
+  background: color-mix(in srgb, var(--sl-screen) 85%, transparent);
+  border-radius: 5px;
 }
 
 /* A lane showing samples that are not finite (NaN or infinite). In Compare a track's name is its
    check box's, which sets its own colour. */
 .lane-label > span.invalid,
 .lane-label > span.invalid > .compare-check {
-  color: var(--warn);
+  color: var(--sl-warn);
 }
 
+/* The lane's colour key. */
 .lane-label > span::before {
   content: "";
   display: inline-block;
   width: 8px;
   height: 8px;
-  margin-right: 5px;
-  border-radius: 2px;
+  margin-right: 6px;
+  border-radius: 50%;
   background: var(--swatch);
 }
 
@@ -424,16 +432,15 @@ body {
   pointer-events: auto;
   padding: 0 4px;
   font: inherit;
-  letter-spacing: inherit;
-  color: var(--ink);
+  color: var(--sl-ink);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
 }
 
 .lane-label button:hover:not(:disabled) {
-  border-color: var(--line);
+  border-color: var(--sl-line);
 }
 
 .lane-label > .checkable::before {
@@ -443,9 +450,9 @@ body {
 .lane-label .compare-check {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   padding-left: 0;
-  color: var(--ink-faint);
+  color: var(--sl-ink-2);
 }
 
 .lane-label .compare-check::before {
@@ -457,17 +464,17 @@ body {
   height: 10px;
   font-size: 8px;
   line-height: 1;
-  color: var(--panel);
+  color: var(--sl-screen);
   border: 1.5px solid var(--swatch);
-  border-radius: 2px;
+  border-radius: 2.5px;
 }
 
 .lane-label .compare-check[aria-checked="false"] {
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .lane-label .compare-check[aria-checked="true"] {
-  color: var(--ink);
+  color: var(--sl-ink);
 }
 
 .lane-label .compare-check[aria-checked="true"]::before {
@@ -481,25 +488,25 @@ body {
 
 .lane-label .lane-readout {
   pointer-events: auto;
-  font-weight: 500;
+  font: 500 11px var(--sl-font-value);
   font-variant-numeric: tabular-nums;
-  color: var(--ink-dim);
+  color: var(--sl-ink-2);
 }
 
 .lane-label .preview-fix {
   margin-left: 4px;
-  background: var(--panel);
-  border-color: var(--ink-faint);
+  font-weight: 500;
+  border-color: var(--sl-line);
 }
 
 .lane-label button.preview-fix:hover {
-  border-color: var(--ink-dim);
+  border-color: var(--sl-ink-2);
 }
 
 .lane-label .preview-fix[aria-pressed="true"] {
-  color: var(--panel);
-  background: var(--ok);
-  border-color: var(--ok);
+  color: var(--sl-on-selected);
+  background: var(--sl-selected);
+  border-color: var(--sl-selected);
 }
 
 .compare-note {
@@ -507,27 +514,26 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--ink-dim);
+  color: var(--sl-ink-2);
 }
 
-/* Compare readouts: the summing gain coloured by what the tracks do together. */
+/* Compare's summing gain: the words say what the tracks do together; cancelling is a problem. */
 .lane-label .cancels {
-  color: var(--warn);
+  color: var(--sl-warn);
 }
 
 .lane-label .reinforces {
-  color: var(--ok);
+  color: var(--sl-ink);
 }
 
 .lane-label > .own::after {
-  content: " · this track";
-  font-weight: 500;
-  color: var(--ink-faint);
+  content: "this track";
+  margin-left: 8px;
+  font-weight: 400;
+  color: var(--sl-ink-2);
 }
 
-/* Time cursors: a line with a wider grab area, labelled at the top. */
+/* Time cursors: a line with a wider grab area, tagged at the top. */
 .time-cursor {
   position: absolute;
   top: 0;
@@ -544,16 +550,22 @@ body {
   top: 0;
   bottom: 0;
   left: 4px;
-  border-left: 1px solid var(--cursor);
+  border-left: 1px solid var(--sl-ink);
 }
 
 .time-cursor span {
   position: absolute;
-  top: 3px;
-  left: 8px;
-  font-family: var(--font-value);
-  font-size: 11px;
-  color: var(--cursor);
+  top: 4px;
+  left: -3px;
+  width: 16px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sl-on-selected);
+  background: var(--sl-ink);
+  border-radius: 4px;
 }
 
 /* Level cursors: one line per lane, labelled at the right edge. */
@@ -573,69 +585,54 @@ body {
   left: 0;
   right: 0;
   top: 4px;
-  border-top: 1px dashed var(--cursor);
+  border-top: 1px dashed var(--sl-ink);
 }
 
 .level-cursor span {
   position: absolute;
   right: 8px;
   bottom: 6px;
-  font-family: var(--font-value);
-  font-size: 11px;
-  color: var(--cursor);
+  font: 600 10px var(--sl-font-ui);
+  color: var(--sl-ink);
 }
 
 /* What lies under the pointer, beside it. */
+.hover-readout,
+.cursor-readout {
+  display: grid;
+  gap: 2px;
+  padding: 6px 9px;
+  font: 500 11px/1.35 var(--sl-font-value);
+  font-variant-numeric: tabular-nums;
+  color: var(--sl-ink);
+  white-space: nowrap;
+  background: var(--sl-popover);
+  border: 1px solid var(--sl-line);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
 .hover-readout {
   position: absolute;
   z-index: 2;
-  display: grid;
-  gap: 1px;
-  padding: 5px 8px;
-  font-family: var(--font-value);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  white-space: nowrap;
-  background: color-mix(in srgb, var(--panel) 90%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  pointer-events: none;
+}
+
+.hover-readout strong {
+  font: 600 11px var(--sl-font-ui);
+  color: var(--sl-ink-2);
 }
 
 /* The hover readout's marks, over the trace's lane: a dotted line at the column or point read,
    and a faint band over the cycle measured. */
 .hover-line {
   position: absolute;
-  border-left: 1px dotted var(--ink-dim);
+  border-left: 1px dotted var(--sl-ink-2);
   pointer-events: none;
 }
 
 .hover-cycle {
   position: absolute;
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
-  pointer-events: none;
-}
-
-.hover-readout strong {
-  font-family: var(--font-label);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-}
-
-.cursor-readout {
-  display: grid;
-  gap: 2px;
-  padding: 5px 8px;
-  font-family: var(--font-value);
-  font-size: 11px;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--panel) 85%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--sl-ink) 7%, transparent);
   pointer-events: none;
 }
 
@@ -644,7 +641,8 @@ body {
   top: 0;
   bottom: 0;
   left: 10%;
-  border-left: 1px dashed var(--ink-faint);
+  border-left: 1px dashed var(--sl-ink-2);
+  opacity: 0.6;
   pointer-events: none;
 }
 
@@ -655,7 +653,7 @@ body {
   height: 0;
   border-top: 6px solid transparent;
   border-bottom: 6px solid transparent;
-  border-left: 9px solid var(--marker, var(--mid));
+  border-left: 9px solid var(--marker, var(--sl-mid));
   transform: translateY(-6px);
   cursor: ns-resize;
   touch-action: none;
@@ -678,213 +676,241 @@ body {
   gap: 6px;
   text-align: center;
   padding: 24px;
-  background: color-mix(in srgb, var(--screen) 88%, transparent);
+  background: color-mix(in srgb, var(--sl-screen) 90%, transparent);
 }
 
 .message strong {
-  font-family: var(--font-label);
-  font-weight: 600;
   font-size: 18px;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .message span {
-  color: var(--ink-dim);
+  color: var(--sl-ink-2);
   max-width: 44ch;
   justify-self: center;
 }
 
-.controls {
-  position: relative;
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  padding: 8px;
-  align-items: stretch;
-}
+/* ----- Status bar ----- */
 
-.controls > * {
-  flex-shrink: 0;
-}
-
-.group {
-  display: grid;
-  gap: 4px;
-  align-content: start;
-  padding: 5px 8px 7px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-}
-
-.group-label {
-  font-family: var(--font-label);
-  font-weight: 600;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  text-align: left;
-}
-
-.group-button {
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-}
-
-.group-button:hover,
-.group-button[aria-expanded="true"] {
-  color: var(--ink-dim);
-}
-
-.group-button span {
-  letter-spacing: 0.06em;
-  text-transform: none;
-  font-weight: 500;
-}
-
-.row {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.push {
-  margin-left: auto;
-}
-
-.field {
-  font-family: var(--font-value);
-  font-size: 12.5px;
-  background: var(--screen);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 3px 7px;
-  min-width: 68px;
-  text-align: right;
-  cursor: ns-resize;
-  font-variant-numeric: tabular-nums;
-  touch-action: none;
-}
-
-.field input {
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  width: 9ch;
-  text-align: right;
-  padding: 0;
-  outline: none;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  overflow: hidden;
-  width: max-content;
-}
-
-.segmented button,
-.toggle,
-.action {
-  font-family: var(--font-label);
-  font-weight: 600;
+.statusbar {
   font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: transparent;
-  color: var(--ink-dim);
-  border: 0;
-  padding: 4px 8px;
-  cursor: pointer;
-}
-
-.segmented button + button {
-  border-left: 1px solid var(--line);
-}
-
-.segmented button[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--panel);
-}
-
-.toggle {
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  min-width: 26px;
-}
-
-.toggle[aria-pressed="true"] {
-  color: var(--panel);
-  background: var(--color);
-  border-color: var(--color);
-}
-
-.action {
-  border: 1px solid var(--line);
-  border-radius: 3px;
-}
-
-.action[aria-pressed="true"] {
-  background: var(--hold);
-  color: var(--panel);
-  border-color: var(--hold);
-}
-
-.action:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-button:focus-visible,
-.field:focus-visible {
-  outline: 2px solid var(--hold);
-  outline-offset: 1px;
-}
-
-/* Inside, since the group clips what lies outside its rounded border. */
-.segmented button:focus-visible {
-  outline-offset: -2px;
-}
-
-/* A pressed button's fill (light, or the ring's own blue on toggles such as Freeze and Help) is
-   too close to the ring to tell apart: the ring goes inside, with a panel-coloured edge
-   between it and the fill. */
-button[aria-pressed="true"]:focus-visible {
-  outline-offset: -2px;
-  box-shadow: inset 0 0 0 4px var(--panel);
-}
-
-.popover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
-  z-index: 2;
-}
-
-.popover-row {
-  display: grid;
-  grid-template-columns: 80px auto;
+  display: flex;
   align-items: center;
+  gap: 16px;
+  padding-inline: 12px;
+  min-width: 0;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A fixed width, so the state coming and going never moves the readouts. */
+.status-right {
   gap: 10px;
 }
 
-.popover-row > span {
-  font-family: var(--font-label);
-  font-weight: 600;
+.chips {
+  position: relative;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  width: 200px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
+  font-weight: 600;
+  color: var(--sl-ink);
+  white-space: nowrap;
+}
+
+.chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sl-ink);
+}
+
+/* Right-aligned by an automatic margin, so chips that don't fit run off the end, where the
+   page measures them, rather than the start. */
+.chips > :first-child {
+  margin-left: auto;
+}
+
+.chip.problem {
+  color: var(--sl-warn);
+}
+
+.chip.problem::before {
+  background: var(--sl-warn);
+}
+
+.chip.frozen {
+  color: var(--sl-accent);
+}
+
+.chip.frozen::before {
+  background: var(--sl-accent);
+}
+
+/* States beyond the area's width fold into one chip; resting the pointer on it lists them. */
+.chip-more {
+  position: relative;
+  padding: 1px 7px;
+  border: 0;
+  font: 600 11px var(--sl-font-value);
+  color: var(--sl-on-selected);
+  background: var(--sl-selected);
+  border-radius: 9999px;
+  cursor: default;
+}
+
+.chip-more .chip-list {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 4;
+  display: none;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--sl-popover);
+  border: 1px solid var(--sl-line);
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 55%);
+}
+
+.chip-more:hover .chip-list,
+.chip-more:focus-visible .chip-list {
+  display: grid;
+}
+
+.readouts {
+  flex: 1 1 auto !important;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A fixed width, for "This track", so the tag's text never moves the readouts. */
+.readout-tag {
+  min-width: 72px;
+  box-sizing: border-box;
+  text-align: center;
+  align-self: center;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--sl-line);
+  border-radius: 4px;
+}
+
+/* Each readout keeps a fixed width, so a longer value never moves the next one. */
+.readout {
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+  min-width: 104px;
+}
+
+.readout:last-child {
+  min-width: 112px;
+}
+
+.readout b {
+  font-weight: 400;
+  color: var(--sl-ink-2);
+}
+
+.readout span {
+  font: 500 12px var(--sl-font-value);
+}
+
+.readout small {
+  font-size: 11px;
+  color: var(--sl-ink-2);
+}
+
+/* The help switch, and the tooltips it turns on. */
+.help-toggle {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font: 600 11px var(--sl-font-ui);
+  color: var(--sl-ink-2);
+  background: transparent;
+  border: 1px solid var(--sl-line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.help-toggle:hover {
+  color: var(--sl-ink);
+}
+
+.help-toggle[aria-pressed="true"] {
+  color: var(--sl-on-selected);
+  background: var(--sl-selected);
+  border-color: var(--sl-selected);
+}
+
+.help-tip {
+  position: fixed;
+  z-index: 10;
+  display: grid;
+  gap: 4px;
+  max-width: 260px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--sl-ink);
+  background: var(--sl-popover);
+  border: 1px solid var(--sl-line);
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 55%);
+  pointer-events: none;
+}
+
+.help-tip strong {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sl-ink-2);
+}
+
+/* In the window's corner, over the status bar's padding: three short diagonal strokes. */
+.resize-grip {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  touch-action: none;
+  --stroke: var(--sl-line);
+  background: linear-gradient(
+    135deg,
+    transparent 0 45%,
+    var(--stroke) 45% 52%,
+    transparent 52% 64%,
+    var(--stroke) 64% 71%,
+    transparent 71% 83%,
+    var(--stroke) 83% 90%,
+    transparent 90%
+  );
+}
+
+.resize-grip:hover {
+  --stroke: var(--sl-ink-2);
 }

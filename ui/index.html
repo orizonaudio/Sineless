@@ -8,33 +8,143 @@
   </head>
   <body>
     <div class="app">
-      <header class="bar">
-        <div class="wordmark">Sineless <span>· Orizon</span></div>
-        <div
-          class="segmented bar-switch"
-          id="display-mode"
-          data-help="displayMode"
-        ></div>
-        <div class="segmented bar-switch" id="group" data-help="group"></div>
-        <div class="readouts">
-          <div class="readout" data-help="peak">
-            <b>Peak</b><span id="peak">—</span><small>dBFS</small>
-          </div>
-          <div class="readout" data-help="rms">
-            <b>RMS</b><span id="rms">—</span><small>dBFS</small>
-          </div>
-          <div class="readout" data-help="frequency">
-            <b>Freq</b><span id="frequency">—</span><small>Hz</small>
+      <!-- Every control that applies in the current mode, in one row; nothing folds away, so the
+           editor's minimum width is the widest row's. Only the wordmark hides when it is narrow. -->
+      <header class="toolbar" id="toolbar">
+        <div class="brand">
+          <span class="brand-mark" id="brand-mark" aria-hidden="true"></span>
+          <span class="wordmark">Sineless</span>
+        </div>
+        <div class="segmented" id="display-mode" data-help="displayMode"></div>
+        <!-- Each field that opens a popover holds it, so the popover follows its button in the
+             focus order and shares its help. -->
+        <div class="tool" id="group-group" data-help="group">
+          <button
+            class="field-button"
+            id="group-details"
+            aria-expanded="false"
+            aria-controls="group-popover"
+          >
+            <i>Group</i><b id="group-summary">A</b
+            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+              <path d="M1.5 3 4 5.5 6.5 3" />
+            </svg>
+          </button>
+          <div class="popover" id="group-popover" hidden>
+            <div class="popover-title">Group</div>
+            <div class="segmented" id="group"></div>
           </div>
         </div>
-        <button
-          class="help-toggle"
-          id="help"
-          aria-pressed="false"
-          aria-label="Help"
-          data-help="help"
+        <span class="divider"></span>
+        <div class="segmented" id="time-base" data-help="timeBase"></div>
+        <div class="tool icon-field" id="time-group" data-help="timeSpan">
+          <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+            <path
+              d="M1 3v6M11 3v6M2.5 6h7M4 4.5 2.5 6 4 7.5M8 4.5 9.5 6 8 7.5"
+            />
+          </svg>
+          <div id="span-field" data-help="timeSpan"></div>
+          <div id="beat-span-field" data-help="beatSpan" hidden></div>
+        </div>
+        <div
+          class="tool icon-field"
+          id="vertical-group"
+          data-help="verticalScale"
         >
-          ?
+          <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+            <path
+              d="M3 1h6M3 11h6M6 2.5v7M4.5 4 6 2.5 7.5 4M4.5 8 6 9.5 7.5 8"
+            />
+          </svg>
+          <div id="scale-field" data-help="verticalScale"></div>
+        </div>
+        <span class="divider"></span>
+        <div class="tool" id="views-group" data-help="channelViews">
+          <button
+            class="field-button"
+            id="views-details"
+            aria-expanded="false"
+            aria-controls="views-popover"
+          >
+            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"
+              /></svg
+            ><b id="views-summary"></b
+            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+              <path d="M1.5 3 4 5.5 6.5 3" />
+            </svg>
+          </button>
+          <div class="popover" id="views-popover" hidden>
+            <div class="popover-title">Views</div>
+            <div class="popover-row">
+              <span>Channels</span>
+              <div class="segmented toggles" id="views"></div>
+            </div>
+          </div>
+        </div>
+        <div class="segmented" id="layout" data-help="layout"></div>
+        <span class="divider" id="trigger-divider"></span>
+        <div class="tool" id="trigger-group" data-help="trigger">
+          <button
+            class="field-button"
+            id="trigger-details"
+            aria-expanded="false"
+            aria-controls="trigger-popover"
+          >
+            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M1 10h3.5L7.5 2H11" />
+              <path class="dashed" d="M1 6h10" /></svg
+            ><b id="trigger-summary"></b
+            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+              <path d="M1.5 3 4 5.5 6.5 3" />
+            </svg>
+          </button>
+          <div class="popover" id="trigger-popover" hidden>
+            <div class="popover-title">Trigger</div>
+            <div class="popover-row">
+              <span>Mode</span>
+              <div class="segmented" id="mode"></div>
+            </div>
+            <div class="popover-row" id="source-row" data-help="triggerSource">
+              <span>Source</span>
+              <div class="segmented" id="source"></div>
+            </div>
+            <div class="popover-row" data-help="triggerSlope">
+              <span>Slope</span>
+              <div class="segmented" id="slope"></div>
+            </div>
+            <div class="popover-row" data-help="triggerLevel">
+              <span>Level</span>
+              <div id="level-field"></div>
+            </div>
+            <div class="popover-row" data-help="triggerHysteresis">
+              <span>Hysteresis</span>
+              <div id="hysteresis-field"></div>
+            </div>
+            <div class="popover-row" data-help="triggerHoldOff">
+              <span>Hold-off</span>
+              <div id="hold-off-field"></div>
+            </div>
+          </div>
+        </div>
+        <button class="action" id="arm" data-help="rearm" hidden>Re-arm</button>
+        <span class="spacer"></span>
+        <button
+          class="action freeze"
+          id="freeze"
+          aria-pressed="false"
+          data-help="freeze"
+        >
+          Freeze
+        </button>
+        <button
+          class="action"
+          id="auto-freeze"
+          aria-pressed="false"
+          data-help="autoFreeze"
+        >
+          Auto-freeze
         </button>
       </header>
       <main class="screen" id="screen" data-help="screen">
@@ -55,7 +165,6 @@
         <div class="hover-line" id="hover-line" hidden></div>
         <div class="hover-readout" id="hover-readout" hidden></div>
         <div class="screen-corner">
-          <div class="chips" id="chips" data-help="status"></div>
           <div class="cursor-readout" id="cursor-readout" hidden></div>
         </div>
         <div
@@ -68,120 +177,68 @@
           <span id="message-text"></span>
         </div>
       </main>
-      <footer class="controls">
-        <section class="group" id="time-group">
-          <div class="group-label">Time</div>
-          <div class="row">
-            <div id="span-field" data-help="timeSpan"></div>
-            <div id="beat-span-field" data-help="beatSpan" hidden></div>
-          </div>
-          <div class="segmented" id="time-base" data-help="timeBase"></div>
-        </section>
-        <section class="group" id="vertical-group">
-          <div class="group-label">Vertical</div>
-          <div id="scale-field" data-help="verticalScale"></div>
-        </section>
-        <section class="group" id="views-group">
-          <div class="group-label">Views</div>
-          <div class="row" id="views" data-help="channelViews"></div>
-          <div class="segmented" id="layout" data-help="layout"></div>
-        </section>
-        <section class="group" id="trigger-group" data-help="trigger">
+      <!-- Left: the cursor buttons and concert pitch, which never change width. Centre: the
+           readouts, labelled with what they measure. Right: the state, in a fixed width, and
+           Help. Nothing here moves when the state or a value changes. -->
+      <footer class="statusbar">
+        <div class="status-left">
           <button
-            class="group-label group-button"
-            id="trigger-details"
-            aria-expanded="false"
+            class="action"
+            id="time-cursors"
+            aria-pressed="false"
+            data-help="timeCursors"
           >
-            Trigger <span id="trigger-summary"></span>
+            Time
           </button>
-          <div class="segmented" id="mode"></div>
-          <div class="row" id="arm-row">
-            <button class="action" id="arm" data-help="rearm" disabled>
-              Re-arm
-            </button>
-          </div>
-        </section>
-        <section class="group push" id="display-group">
           <button
-            class="group-label group-button"
-            id="display-details"
-            aria-expanded="false"
-            data-help="displayOptions"
+            class="action"
+            id="level-cursors"
+            aria-pressed="false"
+            data-help="levelCursors"
           >
-            Display <span id="display-summary"></span>
+            Level
           </button>
-          <div class="row">
-            <button
-              class="action"
-              id="freeze"
-              aria-pressed="false"
-              data-help="freeze"
-            >
-              Freeze
-            </button>
-            <button
-              class="action"
-              id="auto-freeze"
-              aria-pressed="false"
-              data-help="autoFreeze"
-            >
-              Auto-freeze
-            </button>
-          </div>
-          <div class="row">
-            <button
-              class="action"
-              id="time-cursors"
-              aria-pressed="false"
-              data-help="timeCursors"
-            >
-              Time
-            </button>
-            <button
-              class="action"
-              id="level-cursors"
-              aria-pressed="false"
-              data-help="levelCursors"
-            >
-              Level
-            </button>
-            <button
-              class="action"
-              id="hover-toggle"
-              aria-pressed="false"
-              data-help="hoverReadout"
-            >
-              Hover
-            </button>
-          </div>
-        </section>
-        <div class="popover" id="display-popover" hidden>
-          <div class="popover-row" data-help="concertPitch">
-            <span>A4</span>
+          <button
+            class="action"
+            id="hover-toggle"
+            aria-pressed="false"
+            data-help="hoverReadout"
+          >
+            Hover
+          </button>
+          <span class="divider"></span>
+          <div class="tool icon-field" data-help="concertPitch">
+            <i>A4</i>
             <div id="concert-pitch-field"></div>
           </div>
         </div>
-        <div class="popover" id="trigger-popover" hidden>
-          <div class="popover-row" data-help="triggerSource">
-            <span>Source</span>
-            <div class="segmented" id="source"></div>
+        <div class="readouts">
+          <span
+            class="readout-tag"
+            id="readout-tag"
+            data-help="readoutSource"
+          ></span>
+          <div class="readout" data-help="peak">
+            <b>Peak</b><span id="peak">—</span><small>dBFS</small>
           </div>
-          <div class="popover-row" data-help="triggerSlope">
-            <span>Slope</span>
-            <div class="segmented" id="slope"></div>
+          <div class="readout" data-help="rms">
+            <b>RMS</b><span id="rms">—</span><small>dBFS</small>
           </div>
-          <div class="popover-row" data-help="triggerLevel">
-            <span>Level</span>
-            <div id="level-field"></div>
+          <div class="readout" data-help="frequency">
+            <b>Freq</b><span id="frequency">—</span><small>Hz</small>
           </div>
-          <div class="popover-row" data-help="triggerHysteresis">
-            <span>Hysteresis</span>
-            <div id="hysteresis-field"></div>
-          </div>
-          <div class="popover-row" data-help="triggerHoldOff">
-            <span>Hold-off</span>
-            <div id="hold-off-field"></div>
-          </div>
+        </div>
+        <div class="status-right">
+          <div class="chips" id="chips" data-help="status"></div>
+          <button
+            class="help-toggle"
+            id="help"
+            aria-pressed="false"
+            aria-label="Help"
+            data-help="help"
+          >
+            ?
+          </button>
         </div>
       </footer>
     </div>

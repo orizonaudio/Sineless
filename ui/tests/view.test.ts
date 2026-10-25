@@ -322,10 +322,13 @@ describe("status chips", () => {
     ...overrides,
   });
 
+  // The mode as the chip names it: "Auto" for the setting's value "auto".
+  const named = (mode: string) => mode.charAt(0).toUpperCase() + mode.slice(1);
+
   test("shows triggered frames with the mode", () => {
     expect(statusChips(frame({ triggered: true }), "auto", 0, 0)).toEqual([
       { text: "Trig’d", tone: "ok" },
-      { text: "auto", tone: "neutral" },
+      { text: "Auto", tone: "neutral" },
     ]);
   });
 
@@ -351,7 +354,7 @@ describe("status chips", () => {
           (chip) => chip.text === "Waiting",
         ),
       ).toEqual(waits ? { text: "Waiting", tone: "warn" } : undefined);
-      expect(texts(undefined, 0).at(-1)).toBe(mode);
+      expect(texts(undefined, 0).at(-1)).toBe(named(mode));
       expect(
         texts(frame({ triggered: true }), waitingAfterSeconds * 2).includes(
           "Waiting",
@@ -359,10 +362,10 @@ describe("status chips", () => {
       ).toBe(waits);
       expect(
         texts(frame({ triggered: true }), waitingAfterSeconds / 2),
-      ).toEqual(["Trig’d", mode]);
+      ).toEqual(["Trig’d", named(mode)]);
       // A fresh frame drawn without a trigger, as Auto and Free draw: the mode alone.
       if (!waits) {
-        expect(texts(frame({}), 0)).toEqual([mode]);
+        expect(texts(frame({}), 0)).toEqual([named(mode)]);
       }
     },
   );

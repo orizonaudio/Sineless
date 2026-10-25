@@ -97,6 +97,16 @@ export function choice(groupId: string, label: string): HTMLButtonElement {
   return button as HTMLButtonElement;
 }
 
+// Clicks a control, first opening the toolbar popover it sits in (Group, Views, Trigger) if that
+// is closed, as a user would.
+export async function press(button: HTMLElement): Promise<void> {
+  const popover = button.closest<HTMLElement>(".popover");
+  if (popover?.hidden === true) {
+    await userEvent.click(byId(popover.id.replace(/-popover$/, "-details")));
+  }
+  await userEvent.click(button);
+}
+
 // Waits until the page has drawn frames that reflect everything asked so far.
 export async function settle(frames = 3): Promise<void> {
   const from = window.orizonDebug?.frameCount ?? 0;
@@ -121,9 +131,11 @@ export async function typeInto(hostId: string, text: string): Promise<void> {
   await userEvent.keyboard("{Enter}");
 }
 
-// The status chips' texts, in order.
+// The status chips' texts, in order, those folded into "+n" included.
 export function chips(): string[] {
-  return [...byId("chips").children].map((chip) => chip.textContent);
+  return [...byId("chips").querySelectorAll(".chip")].map(
+    (chip) => chip.textContent,
+  );
 }
 
 // A horizontal swipe over the traces of `screenWidths` (negative: back in time).

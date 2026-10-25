@@ -1,0 +1,36 @@
+/* The UI's colours, from the redesign's tokens (docs/ui/tokens/sineless-tokens.json, step 4).
+   Dark only. The chrome is greys; colour belongs to traces; orange marks Frozen and nothing else;
+   yellow marks a problem. The engine-shared sizes live in protocol/src/limits.ts. */
+:root {
+  color-scheme: dark;
+
+  /* Chrome and screen */
+  --sl-case: #18181b;
+  --sl-control: #26262a;
+  --sl-popover: #222226;
+  --sl-line: #2b2b30;
+  --sl-selected: #f5f5f7;
+  --sl-on-selected: #0b0b0c;
+  --sl-ink: #f5f5f7;
+  --sl-ink-2: #9a9aa3;
+  --sl-screen: #030304;
+  --sl-grid: #111114;
+  --sl-grid-strong: #1c1c21;
+  --sl-lane-edge: #26262c;
+
+  /* States */
+  --sl-accent: #ff5f1f;
+  --sl-on-accent: #000000;
+  --sl-warn: #ffd23f;
+
+  /* Channel traces in Single */
+  --sl-left: #5ab0ff;
+  --sl-right: #ff5c8a;
+  --sl-mid: #f5f5f7;
+  --sl-side: #b3f06b;
+
+  /* Type */
+  --sl-font-ui: Geist, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-font-value:
+    "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}

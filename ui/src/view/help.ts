@@ -71,7 +71,7 @@ export const helpTexts = {
   },
   status: {
     title: "Status",
-    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, Roll, Sync, Frozen or Zoom for the current mode, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in orange.",
+    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, Roll, Sync, Frozen or Zoom for the current mode, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in yellow.",
   },
   peak: {
     title: "Peak",
@@ -143,7 +143,7 @@ export const helpTexts = {
   },
   trigger: {
     title: "Trigger",
-    text: "Decides when the display draws, so a repeating signal stands still. Click the title for source, slope, level, hysteresis and hold-off. Not used in Beats mode, where the display follows the host tempo instead.",
+    text: "Decides when the display draws, so a repeating signal stands still. Click it for the mode, source, slope, level, hysteresis and hold-off. Not used in Beats mode, where the display follows the host tempo instead.",
   },
   modeAuto: {
     title: "Auto",
@@ -189,9 +189,9 @@ export const helpTexts = {
     title: "Hover readout",
     text: "When on, resting the pointer on a trace shows, beside it, the position there, the level, and the length, frequency and note of the cycle around it. A dotted line marks the column or point read, and a faint band the cycle measured.",
   },
-  displayOptions: {
-    title: "Display options",
-    text: "Click the title for further display settings, such as the concert pitch that note names refer to.",
+  readoutSource: {
+    title: "What the readouts measure",
+    text: "The channel Peak, RMS and Freq read: the trigger source in Single display mode with Sec, Mid in Single display mode with Beats, Left on a mono track, and this track's Mid in Multi and Compare.",
   },
   concertPitch: {
     title: "Concert pitch",

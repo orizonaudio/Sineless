@@ -23,11 +23,7 @@ import type {
 import type { Backend } from "./bridge/backend.ts";
 import { DragField } from "./components/drag-field.ts";
 import { followDrag } from "./components/follow-drag.ts";
-import {
-  formatTriggerLevel,
-  numberFields,
-  type NumberField,
-} from "./view/fields.ts";
+import { numberFields, type NumberField } from "./view/fields.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { attachResizeGrip } from "./components/resize-grip.ts";
 import { Segmented } from "./components/segmented.ts";
@@ -51,7 +47,6 @@ import {
   formatDbfs,
   formatGain,
   formatOffset,
-  formatPitch,
   formatFrequency,
   parseQuantity,
   signed,
@@ -79,6 +74,7 @@ import {
   type LaneStyle,
 } from "./view/lanes.ts";
 import { isMac, type HelpTopic } from "./view/help.ts";
+import brandMark from "./brand/mark.svg?raw";
 import {
   extremePositions,
   levelTargets,
@@ -126,10 +122,10 @@ const viewNames: Record<ChannelView, string> = {
   [ChannelView.side]: "Side",
 };
 const viewColorTokens: Record<ViewName, string> = {
-  left: "--left",
-  right: "--right",
-  mid: "--mid",
-  side: "--side",
+  left: "--sl-left",
+  right: "--sl-right",
+  mid: "--sl-mid",
+  side: "--sl-side",
 };
 // How fast ⌘ + scroll and pinch zoom, per wheel delta unit.
 const wheelZoomRate = 0.01;
@@ -154,11 +150,19 @@ interface GestureEvent extends UIEvent {
 // Room taken by the amplitude labels at the left edge (CSS px).
 const amplitudeLabelWidth = 56;
 const readoutInterval = readoutIntervalSeconds * 1000; // ms, as the engine measures them.
-// Group titles that open a popover: the group, its title button and the popover.
+// Toolbar fields that open a popover: the field's container, its button and the popover.
 const popovers = [
+  ["group-group", "group-details", "group-popover"],
+  ["views-group", "views-details", "views-popover"],
   ["trigger-group", "trigger-details", "trigger-popover"],
-  ["display-group", "display-details", "display-popover"],
 ] as const;
+// The trigger modes as the Trigger field names them.
+const triggerModeNames: Record<string, string> = {
+  auto: "Auto",
+  normal: "Normal",
+  free: "Free",
+  single: "Single",
+};
 // The hover readout keeps this far (CSS px) from the pointer.
 const hoverOffset = 14;
 
@@ -264,7 +268,7 @@ export class OscilloscopeApp {
     // Resolved on first use: in development the stylesheet may apply after start-up.
     let colors: Map<ChannelView, Rgba> | undefined;
     const resolveColors = (): ReadonlyMap<ChannelView, Rgba> => {
-      if (colors === undefined && token("--left") !== "") {
+      if (colors === undefined && token("--sl-left") !== "") {
         colors = new Map(
           viewOrder.map((name) => [
             ChannelView[name],
@@ -288,8 +292,8 @@ export class OscilloscopeApp {
       comparedLanes: () =>
         this.lanesOf(this.lastFrame).map((lane) => lane.compared),
       sweepColors: () => {
-        const [r, g, b] = rgba(token("--screen"));
-        return { cursor: rgba(token("--ink")), previous: [r, g, b, 0.5] };
+        const [r, g, b] = rgba(token("--sl-screen"));
+        return { cursor: rgba(token("--sl-ink")), previous: [r, g, b, 0.5] };
       },
       // Read at each draw: the ratio changes when the window moves to another display.
       get lineWidthPixels() {
@@ -488,7 +492,7 @@ export class OscilloscopeApp {
     segment("displayMode", "display-mode", [
       ["single", "Single"],
       ["multi", "Multi"],
-      ["compare", "Compare", undefined, "beta"],
+      ["compare", "Compare"],
     ]);
     segment("group", "group", [
       ["a", "A"],
@@ -520,13 +524,21 @@ export class OscilloscopeApp {
       ["falling", "Falling"],
     ]);
 
-    // A group's title opens its popover of further settings; a press elsewhere closes it.
+    element("brand-mark").innerHTML = brandMark;
+
+    // A field's button opens its popover, and closes any other; a press elsewhere closes it.
     for (const [group, button, id] of popovers) {
       const details = element(button);
       const popover = element(id);
       details.addEventListener("click", () => {
-        popover.hidden = !popover.hidden;
-        details.setAttribute("aria-expanded", String(!popover.hidden));
+        const open = popover.hidden;
+        for (const [, otherButton, otherId] of popovers) {
+          if (otherId !== id) {
+            this.closePopover(otherButton, otherId);
+          }
+        }
+        popover.hidden = !open;
+        details.setAttribute("aria-expanded", String(open));
         this.placePopover(id, group);
       });
       document.addEventListener("pointerdown", (event) => {
@@ -595,19 +607,41 @@ export class OscilloscopeApp {
     });
   }
 
-  // A tempo-synced sweep is not triggered: in Beats mode the trigger controls are disabled, and
-  // the popover closes. Re-arm applies to Single mode only.
-  // Multi mode shows each track's Mid: the channel views and the trigger source do not apply.
+  // Only the controls that apply are shown. Multi and Compare show each track's Mid: the channel
+  // views and the trigger source do not apply, and the group does only there.
   private updateMultiControls(): void {
     const multi = this.multiMode();
-    for (const id of ["views", "source"]) {
-      element(id).classList.toggle("inactive", multi);
+    for (const id of ["views-group", "source-row"]) {
+      element(id).hidden = multi;
     }
-    for (const button of element("source").querySelectorAll("button")) {
-      button.disabled = multi;
+    element("group-group").hidden = !multi;
+    if (multi) {
+      this.closePopover("views-details", "views-popover");
+    } else {
+      this.closePopover("group-details", "group-popover");
     }
     this.updateViewToggles();
+    this.updateReadoutTag();
     this.updateStatus();
+  }
+
+  private closePopover(button: string, id: string): void {
+    element(id).hidden = true;
+    element(button).setAttribute("aria-expanded", "false");
+  }
+
+  // What Peak, RMS and Freq measure (DESIGN.md 1.2.1): the readout channel in Single, this track's
+  // Mid in Multi and Compare.
+  private updateReadoutTag(): void {
+    const text = this.multiMode()
+      ? "This track"
+      : this.inputChannels === 1
+        ? viewNames[ChannelView.left]
+        : viewNames[this.readoutView()];
+    const tag = element("readout-tag");
+    if (tag.textContent !== text) {
+      tag.textContent = text;
+    }
   }
 
   // The view toggles: pressed as asked for; disabled in Multi and Compare, which show each
@@ -616,6 +650,11 @@ export class OscilloscopeApp {
   private updateViewToggles(): void {
     const shown = this.shownViews();
     const multi = this.multiMode();
+    // The views drawn: a mono track's L alone, whatever was asked for.
+    const drawn: ViewName[] = this.inputChannels === 1 ? ["left"] : shown;
+    const summary = drawn.map((view) => viewLabels[view]).join(" ");
+    element("views-summary").textContent = summary;
+    element("views-details").setAttribute("aria-label", `Views: ${summary}`);
     for (const [view, button] of this.viewToggles) {
       const state = viewToggleState(view, shown, multi, this.inputChannels);
       button.setAttribute("aria-pressed", String(state.pressed));
@@ -623,36 +662,30 @@ export class OscilloscopeApp {
     }
   }
 
+  // A tempo-synced sweep is not triggered: in Beats mode the trigger controls are hidden, and the
+  // popover closes. Re-arm shows in the Single trigger mode only.
   private updateTriggerControls(): void {
     const beats = this.beatsMode();
-    const group = element("trigger-group");
-    group.classList.toggle("inactive", beats);
-    for (const button of group.querySelectorAll("button")) {
-      button.disabled =
-        beats ||
-        (button.id === "arm" && this.store.get("triggerMode") !== "single");
+    for (const id of ["trigger-group", "trigger-divider"]) {
+      element(id).hidden = beats;
     }
+    element("arm").hidden = beats || this.store.get("triggerMode") !== "single";
     if (beats) {
-      element("trigger-popover").hidden = true;
-      element("trigger-details").setAttribute("aria-expanded", "false");
+      this.closePopover("trigger-details", "trigger-popover");
     }
+    this.updateReadoutTag();
   }
 
-  // Opens the trigger popover above the Trigger group, aligned with its left edge, kept inside
-  // the window.
-  // Above its group, left-aligned with it as far as the strip allows.
+  // Under its field, left-aligned with it as far as the window allows.
   private placePopover(id: string, groupId: string): void {
     const popover = element(id);
     if (popover.hidden) {
       return;
     }
     const group = element(groupId);
-    const strip = popover.offsetParent?.clientWidth ?? window.innerWidth;
+    const bar = popover.offsetParent?.clientWidth ?? window.innerWidth;
     const margin = 8;
-    const left = Math.min(
-      group.offsetLeft,
-      strip - popover.offsetWidth - margin,
-    );
+    const left = Math.min(group.offsetLeft, bar - popover.offsetWidth - margin);
     popover.style.left = `${String(Math.max(margin, left))}px`;
   }
 
@@ -705,9 +738,18 @@ export class OscilloscopeApp {
       element("beat-span-field").hidden = !beats;
     }
     this.updateTriggerSummary();
-    if (name === "concertPitch" && typeof value === "number") {
-      element("display-summary").textContent = `A4 ${formatPitch(value)}`;
+    if (name === "concertPitch") {
       this.updateCursorReadout();
+    }
+    if (name === "group" && typeof value === "string") {
+      element("group-summary").textContent = value.toUpperCase();
+      element("group-details").setAttribute(
+        "aria-label",
+        `Group ${value.toUpperCase()}`,
+      );
+    }
+    if (name === "triggerSource") {
+      this.updateReadoutTag();
     }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
     if (
@@ -732,11 +774,12 @@ export class OscilloscopeApp {
     this.placeTriggerMarker();
   }
 
+  // The Trigger field names the mode; the popover holds the rest.
   private updateTriggerSummary(): void {
-    const source = viewLabels[this.store.get("triggerSource") as ViewName];
-    const slope = this.store.get("triggerSlope") === "rising" ? "↑" : "↓";
-    element("trigger-summary").textContent =
-      `${source} ${slope} ${formatTriggerLevel(this.store.number("triggerLevel"))}`;
+    const mode = this.store.get("triggerMode") as string;
+    const name = triggerModeNames[mode] ?? mode;
+    element("trigger-summary").textContent = name;
+    element("trigger-details").setAttribute("aria-label", `Trigger: ${name}`);
   }
 
   // ----- Screen -----
@@ -1026,7 +1069,7 @@ export class OscilloscopeApp {
     drawGrid(
       this.gridCanvas,
       this.laneCount(),
-      { grid: token("--grid"), axis: token("--grid-axis") },
+      { grid: token("--sl-grid"), axis: token("--sl-grid-strong") },
       this.musicalLayout()?.lines,
     );
     this.drawnLaneCount = this.laneCount();
@@ -1685,6 +1728,7 @@ export class OscilloscopeApp {
       if (frame.frozen !== this.shownFrozen) {
         this.shownFrozen = frame.frozen;
         element("freeze").setAttribute("aria-pressed", String(frame.frozen));
+        element("freeze").textContent = frame.frozen ? "Frozen" : "Freeze";
       }
       // The engine may resume on its own (auto-freeze); a new freeze starts unpanned.
       if (!frame.frozen) {
@@ -1731,6 +1775,8 @@ export class OscilloscopeApp {
       this.engineError = false;
       element("message").hidden = !this.graphicsMessage;
       this.inputChannels = message.inputChannels;
+      this.updateReadoutTag();
+      this.updateViewToggles();
       this.showSetting("channelViews", this.store.get("channelViews"));
       this.drawScreen();
       this.placeTriggerMarker();
@@ -1780,14 +1826,7 @@ export class OscilloscopeApp {
     const shown = JSON.stringify(chips);
     if (shown !== this.shownChips) {
       this.shownChips = shown;
-      element("chips").replaceChildren(
-        ...chips.map((chip) => {
-          const node = document.createElement("span");
-          node.className = `chip ${chip.tone}`;
-          node.textContent = chip.text;
-          return node;
-        }),
-      );
+      this.showChips(chips);
     }
     this.updateCursorReadout();
     this.updateHover(); // Live data changes under a resting pointer.
@@ -1798,6 +1837,60 @@ export class OscilloscopeApp {
       element("frequency").textContent = formatFrequency(frame.frequency);
       this.updateMatches(frame);
     }
+  }
+
+  // The state chips, in the status bar's fixed width. Those that don't fit fold, from the last,
+  // into one "+n" chip that lists them on hover or focus; the first always stays shown. Widths
+  // are read once per change of the chips, and the fold is worked out from them.
+  private showChips(chips: readonly { text: string; tone: string }[]): void {
+    const host = element("chips");
+    const node = (chip: { text: string; tone: string }) => {
+      const span = document.createElement("span");
+      // Orange marks Frozen alone; yellow, a problem in the audio.
+      const kind =
+        chip.text === "Frozen"
+          ? "frozen"
+          : chip.text === "Invalid samples"
+            ? "problem"
+            : "";
+      span.className = `chip ${kind}`.trim();
+      span.textContent = chip.text;
+      return span;
+    };
+    const nodes = chips.map(node);
+    const more = document.createElement("button");
+    more.className = "chip-more";
+    more.textContent = "+9";
+    host.replaceChildren(...nodes, more);
+    const gap = parseFloat(getComputedStyle(host).columnGap) || 0;
+    const widths = nodes.map((chip) => chip.getBoundingClientRect().width);
+    const moreWidth = more.getBoundingClientRect().width;
+    const room = host.clientWidth;
+    const total = widths.reduce((sum, width) => sum + width, 0);
+    if (total + gap * Math.max(0, nodes.length - 1) <= room) {
+      more.remove();
+      return;
+    }
+    let shown = 1;
+    let used = widths[0] ?? 0;
+    while (shown < nodes.length - 1) {
+      const next = used + gap + (widths[shown] ?? 0);
+      if (next + gap + moreWidth > room) {
+        break;
+      }
+      used = next;
+      shown++;
+    }
+    const folded = chips.slice(shown);
+    const list = document.createElement("span");
+    list.className = "chip-list";
+    list.replaceChildren(...folded.map(node));
+    more.replaceChildren(`+${String(folded.length)}`, list);
+    more.setAttribute(
+      "aria-label",
+      `${String(folded.length)} more: ${folded.map((chip) => chip.text).join(", ")}`,
+    );
+    host.replaceChildren(...nodes.slice(0, shown), more);
   }
 
   // The renderer, or undefined with the message shown when the web view gives the page no

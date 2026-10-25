@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { cssColour, fallbackPalette, laneStyles } from "../src/view/lanes.ts";
+import {
+  cssColour,
+  fallbackPalette,
+  laneStyles,
+  sumLaneColour,
+} from "../src/view/lanes.ts";
 
 describe("lane styles", () => {
   test("use the host's names and colours", () => {
@@ -35,6 +40,6 @@ describe("lane styles", () => {
   test("has a distinct colour for every lane, none the sum lane's", () => {
     expect(fallbackPalette).toHaveLength(16);
     expect(new Set(fallbackPalette).size).toBe(16);
-    expect(fallbackPalette).not.toContain(0xe6e2d8);
+    expect(fallbackPalette).not.toContain(sumLaneColour);
   });
 });
