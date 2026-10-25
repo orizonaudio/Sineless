@@ -78,8 +78,8 @@ constexpr const wchar_t* kKeyScript = LR"JS(
 })();
 )JS";
 
-// The page's background (--panel), shown until the page draws.
-constexpr COREWEBVIEW2_COLOR kBackground{255, 0x16, 0x1b, 0x21};
+// The page's background (--sl-case in ui/src/tokens.css), shown until the page draws.
+constexpr COREWEBVIEW2_COLOR kBackground{255, 0x18, 0x18, 0x1b};
 constexpr wchar_t kContainerClass[] = L"OrizonSinelessWebViewHost";
 constexpr UINT_PTR kVisibilityTimer = 1;
 constexpr UINT kVisibilityInterval = 250; // ms
@@ -468,7 +468,7 @@ void paintFailure(HWND window)
                                GetDpiForWindow(window));
     HFONT font = CreateFontIndirectW(&metrics.lfMessageFont);
     HGDIOBJ previousFont = SelectObject(context, font);
-    SetTextColor(context, RGB(0xe6, 0xe2, 0xd8)); // --ink
+    SetTextColor(context, RGB(0xf5, 0xf5, 0xf7)); // --sl-ink
     SetBkMode(context, TRANSPARENT);
     RECT measured = bounds;
     DrawTextW(context, text.c_str(), -1, &measured, DT_CENTER | DT_WORDBREAK | DT_CALCRECT);

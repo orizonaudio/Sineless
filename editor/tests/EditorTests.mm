@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <gtest/gtest.h>
@@ -885,6 +886,30 @@ TEST_F(EditorTest, ExplainsWhenThePageKeepsFailing)
     };
     EXPECT_TRUE(pumpUntil(noticeShown, std::chrono::seconds(5)));
     EXPECT_TRUE(webView.hidden);
+    EXPECT_EQ(editor->removed(), kResultOk);
+    [window close];
+}
+
+// Behind the page, while it loads or reloads, the editor shows the page's own background colour,
+// so nothing flashes another colour.
+TEST_F(EditorTest, ShowsThePageBackgroundBehindThePage)
+{
+    NSView* parent = [[NSView alloc] init];
+    NSWindow* window = makeWindow(parent);
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    ASSERT_EQ(editor->attached((__bridge void*)parent, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+    const CGColorRef native = webView.superview.layer.backgroundColor;
+    ASSERT_NE(native, nullptr);
+    NSColor* colour =
+        [[NSColor colorWithCGColor:native] colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    const std::string expected = "rgb(" + std::to_string(std::lround(colour.redComponent * 255)) +
+                                 ", " + std::to_string(std::lround(colour.greenComponent * 255)) +
+                                 ", " + std::to_string(std::lround(colour.blueComponent * 255)) +
+                                 ")";
+    EXPECT_EQ(evaluate(webView, @"getComputedStyle(document.body).backgroundColor"), expected);
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
 }

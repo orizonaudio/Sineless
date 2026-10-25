@@ -536,19 +536,23 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
                               forMainFrameOnly:YES]];
     }
 
-    // The page's background colour behind it, so the editor never shows white while it loads;
+    // The page's background colour (--sl-case in ui/src/tokens.css) behind it, so the editor never
+    // shows white, or another colour, while it loads;
     // the page is shown once loaded, and a message in its place if it cannot be.
     const NSRect bounds = NSMakeRect(0, 0, width, height);
     container = [[NSView alloc] initWithFrame:bounds];
     container.wantsLayer = YES;
-    container.layer.backgroundColor = [NSColor colorWithSRGBRed:0x16 / 255.0
-                                                          green:0x1b / 255.0
-                                                           blue:0x21 / 255.0
+    container.layer.backgroundColor = [NSColor colorWithSRGBRed:0x18 / 255.0
+                                                          green:0x18 / 255.0
+                                                           blue:0x1b / 255.0
                                                           alpha:1.0]
                                           .CGColor;
     notice = [NSTextField wrappingLabelWithString:@""];
     notice.alignment = NSTextAlignmentCenter;
-    notice.textColor = [NSColor colorWithSRGBRed:0.85 green:0.87 blue:0.9 alpha:1.0];
+    notice.textColor = [NSColor colorWithSRGBRed:0xf5 / 255.0 // --sl-ink
+                                           green:0xf5 / 255.0
+                                            blue:0xf7 / 255.0
+                                           alpha:1.0];
     notice.frame = NSInsetRect(bounds, 24, 24);
     notice.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     notice.hidden = YES;
