@@ -682,6 +682,7 @@ flowchart LR
 | pluginval | GPL-3.0 | checks | Host-like stress testing of the built VST3 plugin and Audio Unit. | download, version + SHA-256 |
 | LLVM 23 (clang, clang-tidy, clang-format, sanitizers, libFuzzer, llvm-cov) | Apache-2.0 with LLVM exception | checks | Lint, sanitizers, fuzzing, coverage on Linux. | apt.llvm.org; clang-format via pipx version |
 | Mull | Apache-2.0 | checks | C++ mutation testing. | `.deb` + SHA-256 |
+| reuse (with charset-normalizer) | GPL-3.0-or-later; MIT | checks | Every file's copyright and licence (`REUSE.toml`). | pipx version |
 | GitHub Actions, Docker base images | various | CI | CI and release. | commit SHA; image digest |
 
 Dependabot updates npm, Actions and Docker images weekly; the C++ dependencies are updated by hand.
