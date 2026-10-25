@@ -116,7 +116,7 @@ TEST(Component, CarriesItsLicences)
     NSBundle* component = [NSBundle bundleWithPath:@ORIZON_TEST_COMPONENT];
     ASSERT_NE(component, nil);
     for (NSString* name :
-         @[ @"LICENSE", @"OFL-Roboto.txt", @"OFL-RobotoMono.txt", @"LICENSE-nlohmann-json.txt" ]) {
+         @[ @"LICENSE", @"OFL-Geist.txt", @"LICENSE-nlohmann-json.txt" ]) {
         EXPECT_NE([component pathForResource:name ofType:nil], nil) << name.UTF8String;
     }
     NSString* sdk = [component pathForResource:@"LICENSE-AudioUnitSDK.txt" ofType:nil];

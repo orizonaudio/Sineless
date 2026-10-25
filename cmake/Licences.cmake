@@ -6,8 +6,7 @@ function(orizon_licence_files format out)
     set(licences "${CMAKE_BINARY_DIR}/licences")
     set(files
         ${PROJECT_SOURCE_DIR}/LICENSE
-        ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-Roboto.txt
-        ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-RobotoMono.txt)
+        ${PROJECT_SOURCE_DIR}/ui/src/fonts/OFL-Geist.txt)
     # Both formats: the engine's and the editor's JSON (MIT).
     set(thirdParty "${nlohmann_json_SOURCE_DIR}/LICENSE.MIT=LICENSE-nlohmann-json.txt")
     if(format STREQUAL "VST3")
