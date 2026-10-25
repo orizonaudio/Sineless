@@ -83,7 +83,11 @@ import {
   zeroCrossings,
 } from "./view/snap.ts";
 import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
-import { laneHoldsInvalid, statusChips } from "./view/status.ts";
+import {
+  laneHoldsInvalid,
+  statusChips,
+  triggerModeNames,
+} from "./view/status.ts";
 import {
   fullView,
   isZoomed,
@@ -157,13 +161,6 @@ const popovers = [
   ["views-group", "views-details", "views-popover"],
   ["trigger-group", "trigger-details", "trigger-popover"],
 ] as const;
-// The trigger modes as the Trigger field names them.
-const triggerModeNames: Record<string, string> = {
-  auto: "Auto",
-  normal: "Normal",
-  free: "Free",
-  single: "Single",
-};
 // The hover readout keeps this far (CSS px) from the pointer.
 const hoverOffset = 14;
 
