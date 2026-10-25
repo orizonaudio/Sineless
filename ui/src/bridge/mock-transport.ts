@@ -558,10 +558,11 @@ export class MockTransport implements Transport {
     const lanes: Float32Array[] = [];
     // The readouts measure what the engine's do: the trigger source, or the Mid in Beats mode.
     const mono = this.inputChannels === 1;
-    // A mono track measures L, whatever source was asked for, as the engine's readView does.
-    const source = mono
-      ? ChannelView.left
-      : readoutView(synced, this.setting("triggerSource") as ViewName);
+    const source = readoutView(
+      synced,
+      this.setting("triggerSource") as ViewName,
+      this.inputChannels,
+    );
     let readoutSignal = (time: number) => viewSample(source, time, mono);
     let comparison: FrameContent["comparison"];
     if (multi) {

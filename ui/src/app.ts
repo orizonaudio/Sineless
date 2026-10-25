@@ -641,9 +641,7 @@ export class OscilloscopeApp {
   private updateReadoutTag(): void {
     const text = this.multiMode()
       ? "This track"
-      : this.inputChannels === 1
-        ? viewNames[ChannelView.left]
-        : viewNames[this.readoutView()];
+      : viewNames[this.readoutView()];
     const tag = element("readout-tag");
     if (tag.textContent !== text) {
       tag.textContent = text;
@@ -1066,6 +1064,7 @@ export class OscilloscopeApp {
     return readoutView(
       this.beatsMode(),
       this.store.get("triggerSource") as ViewName,
+      this.inputChannels,
     );
   }
 
