@@ -48,6 +48,14 @@ describe("controls", () => {
     await expect.element(byId("trigger-popover")).toBeVisible();
     await expect.element(byId("group-popover")).not.toBeVisible();
     expect(byId("group-details").getAttribute("aria-expanded")).toBe("false");
+    // From the keyboard too, where no press lands outside the open popover.
+    byId("group-details").focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(byId("group-popover")).toBeVisible();
+    await expect.element(byId("trigger-popover")).not.toBeVisible();
+    expect(byId("trigger-details").getAttribute("aria-expanded")).toBe("false");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(byId("group-popover")).not.toBeVisible();
 
     await userEvent.click(byId("group-details"));
     await expect.element(byId("group-popover")).toBeVisible();
@@ -82,6 +90,11 @@ describe("controls", () => {
     await expect.poll(field).toEqual(["B", "Group B"]);
     app.deliver({ type: "stateChanged", name: "group", value: "c" });
     await expect.poll(field).toEqual(["C", "Group C"]);
+    // Another setting leaves it be.
+    app.deliver({ type: "stateChanged", name: "triggerMode", value: "free" });
+    await expect.poll(() => byId("trigger-summary").textContent).toBe("Free");
+    expect(field()).toEqual(["C", "Group C"]);
+    app.deliver({ type: "stateChanged", name: "triggerMode", value: "auto" });
     await press(choice("group", "A"));
     await expect.poll(field).toEqual(["A", "Group A"]);
     await userEvent.click(choice("display-mode", "Single"));
@@ -94,6 +107,9 @@ describe("controls", () => {
     for (const label of ["Normal", "Free", "Single", "Auto"]) {
       await press(choice("mode", label));
       await expect.poll(() => byId("trigger-summary").textContent).toBe(label);
+      expect(byId("trigger-details").getAttribute("aria-label")).toBe(
+        `Trigger: ${label}`,
+      );
       await expect.poll(chips).toContain(label);
     }
   });

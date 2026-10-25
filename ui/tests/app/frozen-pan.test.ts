@@ -35,6 +35,14 @@ async function freezeAt100Ms(): Promise<void> {
   await expect.poll(chips).toEqual(["Frozen"]);
 }
 
+// The Frozen chip, in the accent, and the button that says so.
+function expectFrozenShown(): void {
+  expect(byId("freeze").textContent.trim()).toBe("Frozen");
+  const chip = byId("chips").querySelector(".chip");
+  expect(chip?.textContent).toBe("Frozen");
+  expect(chip?.classList.contains("frozen")).toBe(true);
+}
+
 describe("a frozen view", () => {
   beforeAll(async () => {
     await startApp();
@@ -49,6 +57,8 @@ describe("a frozen view", () => {
     // Both fit the status bar: neither folds into "+n".
     expect(shownChips()).toEqual(["Frozen", panChip(0.2)]);
     expect(byId("chips").querySelector(".chip-more")).toBeNull();
+    // The offset is a plain state: neither the accent nor the problem colour.
+    expect(byId("chips").children[1]?.className).toBe("chip");
 
     swipe(-1000); // Far beyond the hold: as far as it reaches.
     await settle();
@@ -72,12 +82,15 @@ describe("a frozen view", () => {
 
   test("starts unpanned when frozen again", async () => {
     await freezeAt100Ms();
+    expectFrozenShown();
     swipe(-2);
     await expect.poll(chips).toEqual(["Frozen", panChip(0.2)]);
     await userEvent.click(byId("freeze"));
     await expect.poll(chips).not.toContain("Frozen");
+    expect(byId("freeze").textContent.trim()).toBe("Freeze");
     await userEvent.click(byId("freeze"));
     await settle();
     await expect.poll(chips).toEqual(["Frozen"]);
+    expectFrozenShown();
   });
 });
