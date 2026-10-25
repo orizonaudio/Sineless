@@ -28,6 +28,7 @@ import {
 } from "../src/view/format.ts";
 import {
   laneHoldsInvalid,
+  shownChipCount,
   statusChips,
   triggerModeNames,
   waitingAfterSeconds,
@@ -453,5 +454,35 @@ describe("status chips", () => {
     expect(
       statusChips(frame({ frozen: true, partial: true }), "auto", 5, 0)[1],
     ).toEqual({ text: "Partial", tone: "neutral" });
+  });
+});
+
+// The status bar's fixed area: chips that fit all show; those that don't fold, from the last, into
+// one "+n" chip beside the ones shown.
+describe("shownChipCount", () => {
+  test("shows every chip that fits, to the pixel", () => {
+    expect(shownChipCount([60, 50], 10, 30, 120)).toBe(2);
+    expect(shownChipCount([60, 50], 10, 30, 119)).toBe(1);
+    expect(shownChipCount([], 10, 30, 0)).toBe(0);
+    expect(shownChipCount([200], 10, 30, 200)).toBe(1);
+  });
+
+  test("keeps as many from the first as fit beside +n, to the pixel", () => {
+    // 50 + 10 + 50 + 10 + 30 = 150 with two shown beside "+n".
+    expect(shownChipCount([50, 50, 50, 50], 10, 30, 150)).toBe(2);
+    expect(shownChipCount([50, 50, 50, 50], 10, 30, 149)).toBe(1);
+    // Three beside "+n" need 210, short of the 230 all four do.
+    expect(shownChipCount([50, 50, 50, 50], 10, 30, 210)).toBe(3);
+    expect(shownChipCount([50, 50, 50, 50], 10, 30, 209)).toBe(2);
+  });
+
+  test("always shows the first, and never folds a lone chip", () => {
+    expect(shownChipCount([300, 50, 50], 10, 30, 100)).toBe(1);
+    expect(shownChipCount([300], 10, 30, 100)).toBe(1);
+  });
+
+  test("folds at least the last chip when not all fit", () => {
+    // The first two fit beside "+n" but all three don't: the last folds.
+    expect(shownChipCount([40, 40, 40], 10, 10, 129)).toBe(2);
   });
 });

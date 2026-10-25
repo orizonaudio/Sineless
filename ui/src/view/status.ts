@@ -18,6 +18,32 @@ export const triggerModeNames: Readonly<Record<string, string>> = {
   single: "Single",
 };
 
+// How many of the chips, of these widths and with this gap between them, the status bar shows in
+// `room`: all of them when they fit; otherwise as many from the first as fit beside the "+n" chip
+// (`moreWidth`) that lists the rest, and always the first, so that "+n" never folds a lone chip.
+export function shownChipCount(
+  widths: readonly number[],
+  gap: number,
+  moreWidth: number,
+  room: number,
+): number {
+  const total = widths.reduce((sum, width) => sum + width, 0);
+  if (total + gap * Math.max(0, widths.length - 1) <= room) {
+    return widths.length;
+  }
+  let shown = 1;
+  let used = widths[0] ?? 0;
+  while (shown < widths.length - 1) {
+    const next = used + gap + (widths[shown] ?? 0);
+    if (next + gap + moreWidth > room) {
+      break;
+    }
+    used = next;
+    shown++;
+  }
+  return shown;
+}
+
 // Normal and Single show "Waiting" once no frame has arrived for this long.
 export const waitingAfterSeconds = 0.25;
 
