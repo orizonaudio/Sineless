@@ -1,0 +1,549 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sineless Visual Direction</title>
+<!-- System fonts until the plugin bundles Geist (the redesign's step 6); the previews in images/ were rendered with Geist. -->
+<style>
+  /* Layout: a reading column for text; frames break out to the full 1160 px, drawn at true plugin size and scaled to fit.
+     Page in the Orizon brand (dark first). Frames use the two treatments' own tokens, defined below. */
+  :root {
+    --paper: #000000; --surface: #111113; --surface-2: #1a1a1d; --line: #2a2a2e;
+    --ink: #f5f5f7; --ink-2: #9a9aa2; --accent: #ff5f1f; --accent-text: #ff5f1f;
+    --sans: "Geist", system-ui, -apple-system, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+    /* wireframe greys, the same in both page themes because the plugin is dark only */
+    --w-win: #0f0f11; --w-bar: #161618; --w-ctl: #242427; --w-line: #2c2c30; --w-ink: #dcdce0; --w-ink-2: #85858d;
+    --w-screen: #060607; --w-on: #e6e6e9; --w-on-ink: #0b0b0c;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+    --paper: #ffffff; --surface: #f6f6f7; --surface-2: #e3e3e6; --line: #e3e3e6;
+    --ink: #0b0b0c; --ink-2: #5f5f66; --accent-text: #c2410c; color-scheme: light; } }
+  :root[data-theme="light"] {
+    --paper: #ffffff; --surface: #f6f6f7; --surface-2: #e3e3e6; --line: #e3e3e6;
+    --ink: #0b0b0c; --ink-2: #5f5f66; --accent-text: #c2410c; color-scheme: light; }
+
+  * { box-sizing: border-box; }
+  body { background: var(--paper); color: var(--ink); font: 16px/1.6 var(--sans); letter-spacing: -0.005em; margin: 0; }
+  .wrap { max-width: 1192px; margin: 0 auto; padding-block: 56px 96px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .col { max-width: 720px; }
+  .eyebrow { font: 500 12px/1.4 var(--mono); color: var(--ink-2); letter-spacing: 0.02em; margin: 0 0 16px; }
+  h1 { font-size: clamp(36px, 6vw, 56px); line-height: 1.05; letter-spacing: -0.04em; font-weight: 600; margin: 0 0 16px; text-wrap: balance; }
+  h2 { font-size: 32px; line-height: 1.15; letter-spacing: -0.025em; font-weight: 600; margin: 0 0 8px; text-wrap: balance; }
+  h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .lead { font-size: 20px; line-height: 1.45; letter-spacing: -0.01em; color: var(--ink-2); margin: 0; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--ink-2); }
+  a { color: var(--accent-text); }
+
+  nav.jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+  nav.jump a { font-size: 14px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 9999px; padding: 6px 14px; }
+  nav.jump a:hover { border-color: var(--ink-2); }
+  nav.jump a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  section.concept { margin-top: 96px; scroll-margin-top: 24px; }
+  .tagline { font: 500 13px var(--mono); color: var(--accent-text); margin: 0 0 8px; }
+  .frames { display: grid; gap: 28px 24px; margin-top: 32px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .frames .wide { grid-column: 1 / -1; }
+  .cap { font-size: 13px; color: var(--ink-2); margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+  .cap b { color: var(--ink); font-weight: 500; }
+  .fit { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--line); background: var(--w-win); }
+  .notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 40px; margin-top: 32px; }
+  .notes ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 15px; }
+  .notes li { margin: 6px 0; }
+  .notes li b { color: var(--ink); font-weight: 500; }
+
+  .table-wrap { overflow-x: auto; margin-top: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 680px; }
+  th, td { text-align: left; vertical-align: top; padding: 12px 16px 12px 0; border-bottom: 1px solid var(--line); }
+  thead th { font-weight: 500; color: var(--ink-2); font-size: 13px; }
+  tbody th { font-weight: 500; width: 22%; }
+  td { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .rec { margin-top: 40px; background: var(--surface); border-radius: 16px; padding: 28px; }
+  .rec h3 { font-size: 20px; letter-spacing: -0.01em; }
+
+  @media (max-width: 760px) {
+    .frames { grid-template-columns: 1fr; }
+    .notes { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- wireframe UI (drawn at true size, then scaled) ---------- */
+  .ui { position: absolute; left: 0; top: 0; transform-origin: 0 0; display: grid; background: var(--w-win); color: var(--w-ink); font: 12px/1.3 var(--sans); letter-spacing: 0; overflow: hidden; }
+  .ui * { white-space: nowrap; }
+  .bar { display: flex; align-items: center; gap: 6px; padding: 0 12px; background: var(--w-bar); min-width: 0; overflow: hidden; }
+  .bar.top { border-bottom: 1px solid var(--w-line); }
+  .bar.bottom { border-top: 1px solid var(--w-line); }
+  .mark { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; letter-spacing: -0.01em; color: var(--w-ink); margin-right: 4px; }
+  .mark svg { width: 17px; height: 17px; }
+  .seg { display: inline-flex; background: var(--w-ctl); border-radius: 6px; padding: 2px; gap: 2px; }
+  .seg b { font-weight: 500; padding: 3px 8px; border-radius: 4px; color: var(--w-ink-2); }
+  .seg b.on { background: var(--w-on); color: var(--w-on-ink); }
+  .seg sup { font-size: 8px; font-weight: 600; letter-spacing: .04em; margin-left: 3px; vertical-align: 3px; opacity: .8; }
+  .fld { display: inline-flex; align-items: baseline; gap: 6px; background: var(--w-ctl); border-radius: 6px; padding: 4px 9px; }
+  .fld i { font-style: normal; color: var(--w-ink-2); }
+  .fld i svg { width: 12px; height: 12px; display: block; align-self: center; transform: translateY(1px); }
+  .fld b { font: 500 12px var(--mono); color: var(--w-ink); font-variant-numeric: tabular-nums; }
+  .tg { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--w-line); color: var(--w-ink-2); font-weight: 500; }
+  .tg.on { background: var(--w-on); color: var(--w-on-ink); border-color: transparent; }
+  .dv { width: 1px; height: 18px; background: var(--w-line); flex: none; }
+  .sp { flex: 1; }
+  .ro { display: inline-flex; align-items: baseline; gap: 5px; }
+  .ro i { font-style: normal; color: var(--w-ink-2); }
+  .ro b { font: 500 12px var(--mono); font-variant-numeric: tabular-nums; }
+  .ro u { text-decoration: none; color: var(--w-ink-2); font-size: 11px; margin-left: -2px; }
+  .rolabel { font-size: 11px; font-weight: 600; color: var(--w-ink); background: var(--w-ctl); border-radius: 4px; padding: 1px 6px; margin-right: 2px; }
+  .zl, .zc, .zr { display: flex; align-items: center; gap: 12px; flex: none; }
+  .zc { gap: 6px; }
+  .zr { width: 236px; justify-content: flex-end; gap: 10px; }
+  /* A: the buttons never change width and the state area has a fixed width, so the readouts centred between them never move */
+  .zl.side { width: auto; }
+  .zr.side { width: 200px; }
+  .zl.side { gap: 6px; }
+  .zc.ros { gap: 12px; }
+  .sw { width: 28px; height: 16px; border-radius: 9999px; background: var(--w-ctl); position: relative; display: inline-block; vertical-align: middle; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--w-ink-2); }
+  .sw.on { background: var(--w-on); }
+  .sw.on::after { left: 14px; background: var(--w-on-ink); }
+  .chip { font-weight: 600; font-size: 11px; color: var(--w-ink); display: inline-flex; align-items: center; gap: 6px; }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--w-ink); }
+  .help { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--w-line); display: inline-grid; place-items: center; color: var(--w-ink-2); font-weight: 600; font-size: 11px; }
+  .screen { position: relative; background: var(--w-screen); min-width: 0; min-height: 0; overflow: hidden; }
+  .screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ov { position: absolute; display: flex; gap: 8px; align-items: center; }
+  .grip { position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px; border-right: 2px solid var(--w-line); border-bottom: 2px solid var(--w-line); }
+
+  /* Concept B: inspector */
+  .insp { background: var(--w-bar); border-left: 1px solid var(--w-line); padding: 2px 14px 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .is { padding: 9px 0; border-top: 1px solid var(--w-line); display: grid; gap: 6px; }
+  .is:first-child { border-top: 0; }
+  .is h4 { margin: 0; font-size: 11px; font-weight: 500; color: var(--w-ink-2); display: flex; justify-content: space-between; }
+  .is .row { display: flex; gap: 6px; align-items: center; }
+  .is .kv { display: flex; justify-content: space-between; align-items: baseline; }
+  .is .kv i { font-style: normal; color: var(--w-ink-2); }
+  .is .kv b { font: 500 12px var(--mono); }
+  .bigro { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .bigro div { display: grid; gap: 1px; }
+  .bigro i { font-style: normal; font-size: 11px; color: var(--w-ink-2); }
+  .bigro b { font: 500 18px/1.1 var(--mono); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .bigro u { text-decoration: none; font-size: 10px; color: var(--w-ink-2); }
+  .trk { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+  .trk .bx { width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid var(--w-ink-2); }
+  .trk .bx.on { background: var(--w-ink); border-color: var(--w-ink); }
+  .trk .bx.sum { border-radius: 50%; background: var(--w-ink); border-color: var(--w-ink); }
+  .trk span { overflow: hidden; text-overflow: ellipsis; }
+  .trk span em { font-style: normal; color: var(--w-ink-2); }
+  .trk b { font: 500 11.5px var(--mono); color: var(--w-ink); }
+  .trk b.d { color: var(--w-ink-2); font-family: var(--sans); font-weight: 400; }
+  .btnfull { text-align: center; padding: 5px; border-radius: 6px; border: 1px solid var(--w-line); color: var(--w-ink); font-weight: 500; }
+
+  /* Popovers and menus (drawn open in some frames) */
+  .pop { position: absolute; z-index: 5; background: #1b1b1e; border: 1px solid #36363b; border-radius: 10px; padding: 12px 14px; box-shadow: 0 16px 40px rgba(0,0,0,.55); display: grid; gap: 10px; min-width: 260px; }
+  .pop h5 { margin: 0; font-size: 11px; font-weight: 500; color: var(--w-ink-2); }
+  .prow { display: grid; grid-template-columns: 84px auto; align-items: center; gap: 10px; justify-content: start; }
+  .prow > i { font-style: normal; color: var(--w-ink-2); }
+  .pop hr { border: 0; border-top: 1px solid var(--w-line); margin: 0; }
+  .insp .prow { grid-template-columns: 72px auto; }
+  .open-anchor { box-shadow: 0 0 0 1.5px var(--w-ink); }
+  .more { font: 600 11px var(--mono); color: var(--w-on-ink); background: var(--w-on); border-radius: 9999px; padding: 1px 7px; }
+  .pop.tip { min-width: 0; padding: 8px 10px; gap: 6px; border-radius: 8px; }
+  .curro { position: absolute; right: 10px; top: 26px; background: #151517; border: 1px solid var(--w-line); border-radius: 6px; padding: 6px 9px; display: grid; gap: 2px; font: 500 11px/1.35 var(--mono); font-variant-numeric: tabular-nums; }
+  .curro i { font-style: normal; color: var(--w-ink-2); font-family: var(--sans); font-weight: 400; }
+  .changes { margin: 28px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+  .changes li { display: grid; grid-template-columns: 20px minmax(0, 1fr); color: var(--ink-2); font-size: 15px; }
+  .changes li::before { content: "→"; color: var(--accent-text); }
+  .changes b { color: var(--ink); font-weight: 500; }
+  .fold { margin: 16px 0 0; padding-left: 22px; color: var(--ink-2); font-size: 15px; }
+  .fold li { margin: 4px 0; }
+  .fold b { color: var(--ink); font-weight: 500; }
+
+  /* ---------- the two treatments: each redefines the frame tokens ---------- */
+  .ui { --w-accent: #ff5f1f; --w-on-accent: #000000; font-size: 12.5px; }
+  /* Black: one surface. Toolbar, screen and status bar share black, split by hairlines; selection is a raised grey. */
+  .ui.black { --w-win: #000000; --w-bar: #000000; --w-line: #1f1f23; --w-ctl: #131315; --w-on: #34343a; --w-on-ink: #f5f5f7;
+    --w-ink: #f5f5f7; --w-ink-2: #8a8a93; --w-screen: #000000; --w-grid: #111114; --w-grid-2: #1c1c21; --w-axis: #26262c; --w-pop: #161618; }
+  /* Graphite: a display in a case. Graphite chrome, an inset black screen with rounded corners; selection is white. */
+  .ui.graphite { --w-win: #18181b; --w-bar: #18181b; --w-line: #2b2b30; --w-ctl: #26262a; --w-on: #f5f5f7; --w-on-ink: #0b0b0c;
+    --w-ink: #f5f5f7; --w-ink-2: #9a9aa3; --w-screen: #030304; --w-grid: #111114; --w-grid-2: #1c1c21; --w-axis: #26262c; --w-pop: #222226; }
+  .ui.graphite .bar.top, .ui.graphite .bar.bottom { border: 0; }
+  .ui.graphite .screen { margin: 0 8px; border-radius: 10px; box-shadow: inset 0 0 0 1px #2b2b30; }
+  .ui.graphite .tg { border-color: transparent; background: var(--w-ctl); }
+  .ui.graphite .tg.on { background: var(--w-on); }
+  .ui .pop { background: var(--w-pop); border-color: var(--w-line); }
+  .ui .seg b, .ui .tg { font-weight: 500; }
+  .ui .rolabel { background: transparent; border: 1px solid var(--w-line); }
+  .ui .tg.acc { background: var(--w-accent); color: var(--w-on-accent); border-color: transparent; font-weight: 600; }
+  .ui .chip.acc::before { background: var(--w-accent); }
+  .ui .chip.acc { color: var(--w-accent); }
+  .ui .fld i { color: var(--w-ink-2); }
+  .ui .curro { background: var(--w-pop); }
+
+  /* icon sheet and swatches on the page */
+  .icons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+  .icon { background: var(--surface); border-radius: 10px; padding: 18px; display: grid; gap: 12px; justify-items: start; }
+  .icon .big { color: var(--ink); width: 40px; height: 40px; }
+  .icon .big svg { width: 40px; height: 40px; stroke-width: 1.1; }
+  .icon .small { display: inline-flex; align-items: center; gap: 6px; background: #131315; color: #f5f5f7; border-radius: 6px; padding: 4px 9px; font: 500 12px var(--mono); }
+  .icon .small svg { width: 12px; height: 12px; color: #8a8a93; }
+  .icon p { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .icon p b { color: var(--ink); font-weight: 500; display: block; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 16px; }
+  .sw2 { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: center; font-size: 14px; }
+  .sw2 span { width: 28px; height: 28px; border-radius: 6px; }
+  .sw2 b { font-weight: 500; display: block; }
+  .sw2 code { font: 12px var(--mono); color: var(--ink-2); }
+  .frames.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 760px) { .icons { grid-template-columns: repeat(2, minmax(0, 1fr)); } .frames.three { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <header class="col">
+    <p class="eyebrow">Sineless · Plugin UI redesign · Step 3 of 6 · v1</p>
+    <h1>Sineless visual direction</h1>
+    <p class="lead">The locked layout, concept A, dressed in the Orizon brand. Two treatments of the same toolbar and screen, and three places the one orange accent could go.</p>
+    <p class="muted" style="margin-top:16px">Frames are drawn at the default size, 1080 × 580, and scaled to fit. Colours here set the direction; step 4 tunes every value and checks contrast. Earlier steps: <a href="audit.html">UI audit</a> · <a href="layout.html">layout concepts</a>.</p>
+    <nav class="jump" aria-label="Sections"><a href="#shared">What both share</a><a href="#black">1 · Black</a><a href="#graphite">2 · Graphite</a><a href="#accent">The accent</a><a href="#decide">To decide</a></nav>
+  </header>
+
+  <section class="concept" id="shared">
+    <div class="col">
+      <h2>What both share</h2>
+      <ul class="changes">
+        <li><span><b>Type.</b> Geist for every control, in sentence case at 12.5 px; Geist Mono for every number, with even-width figures. The old wide-tracked capitals are gone.</span></li>
+        <li><span><b>Colour is data.</b> The chrome is black, white and greys. Colour appears only in the traces, so a colour always means a channel or a track.</span></li>
+        <li><span><b>Channel colours</b> in Single: Left blue, Right pink, Mid white, Side violet. None is orange or amber, so the accent stays unique. In Multi and Compare, lanes take the host's track colours as they come; the sum is white.</span></li>
+        <li><span><b>One accent.</b> Horizon orange marks a single thing. The frames below use it on Frozen; the last section compares the options.</span></li>
+        <li><span><b>Identity.</b> The cashew mark and "Sineless" in Geist Semibold open the toolbar.</span></li>
+      </ul>
+      <div class="swatches" aria-label="Channel colours">
+        <div class="sw2"><span style="background:#5ab0ff"></span><div><b>Left</b><code>#5AB0FF</code></div></div>
+        <div class="sw2"><span style="background:#ff5c8a"></span><div><b>Right</b><code>#FF5C8A</code></div></div>
+        <div class="sw2"><span style="background:#f5f5f7;box-shadow:inset 0 0 0 1px var(--line)"></span><div><b>Mid</b><code>#F5F5F7</code></div></div>
+        <div class="sw2"><span style="background:#a78bfa"></span><div><b>Side</b><code>#A78BFA</code></div></div>
+        <div class="sw2"><span style="background:#ff5f1f"></span><div><b>Accent</b><code>#FF5F1F</code></div></div>
+      </div>
+      <h3 style="margin-top:40px">Field icons</h3>
+      <p class="muted" style="margin:0">Drawn on a 12 px grid with a 1.3 px stroke and round ends, to sit beside Geist Mono values.</p>
+    </div>
+    <div class="icons" id="iconsheet"></div>
+  </section>
+
+  <section class="concept" id="black">
+    <div class="col">
+      <p class="tagline">1 · Black</p>
+      <h2>One surface</h2>
+      <p class="muted">Toolbar, screen and status bar share pure black, split only by hairlines. Controls sit on a faint grey; the selected option is a raised grey, not a white block. The signal runs edge to edge, and the brighter traces are the brightest things in the window. Closest to the Orizon website's dark theme and to Apple's pro apps in full screen.</p>
+    </div>
+    <div class="frames" data-variant="black"></div>
+    <div class="notes">
+      <div><h3>Strengths</h3><ul>
+        <li><b>The quietest chrome.</b> Nothing competes with the traces.</li>
+        <li><b>All of the window is the screen's width;</b> no margins.</li>
+        <li><b>Matches the brand's dark site</b> exactly: black paper, grey surfaces.</li>
+      </ul></div>
+      <div><h3>Trade-offs</h3><ul>
+        <li><b>Selection is subtle.</b> A raised grey is calm but easier to miss than white.</li>
+        <li><b>Edges are faint.</b> Where the toolbar ends and the screen starts is a hairline.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section class="concept" id="graphite">
+    <div class="col">
+      <p class="tagline">2 · Graphite</p>
+      <h2>A display in a case</h2>
+      <p class="muted">The chrome is dark graphite and the screen is an inset black display with rounded corners, like the glass on a hardware instrument. Controls are filled grey without outlines; the selected option is white. The brand's future hardware could carry the same idea.</p>
+    </div>
+    <div class="frames" data-variant="graphite"></div>
+    <div class="notes">
+      <div><h3>Strengths</h3><ul>
+        <li><b>Clear structure.</b> Controls and screen read as two separate things at a glance.</li>
+        <li><b>Selection is unmistakable:</b> white on graphite.</li>
+        <li><b>An object, not a page.</b> It feels like an instrument.</li>
+      </ul></div>
+      <div><h3>Trade-offs</h3><ul>
+        <li><b>The screen loses 16 px of width</b> to the case margins.</li>
+        <li><b>White selections draw the eye</b> away from the traces a little more.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section class="concept" id="accent">
+    <div class="col">
+      <h2>Where the orange goes</h2>
+      <p class="muted">The brand allows one accent, for emphasis only. The same frozen Multi view with time cursors on, three ways. Host track colours can include orange; the accent stays readable because it is always a specific shape, never a lane.</p>
+    </div>
+    <div class="frames three" data-variant="accent"></div>
+    <div class="notes">
+      <div><h3>On Frozen (recommended)</h3><ul>
+        <li>Frozen is the one state where the screen isn't live, and the audit found it too easy to miss.</li>
+        <li>It appears in two places, the Freeze button and the state chip, and both are text, so it never mixes with traces.</li>
+      </ul></div>
+      <div><h3>On the playhead, or on the cursors</h3><ul>
+        <li><b>Playhead:</b> exists only in Beats, and a thin orange line sits among host colours that may be orange too.</li>
+        <li><b>Cursors:</b> useful while measuring, but they're already labelled A and B, and a hidden cursor means no accent at all.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section class="concept" id="decide">
+    <div class="col">
+      <h2>To decide</h2>
+      <ul class="changes">
+        <li><span><b>Treatment:</b> Black or Graphite. My pick is Graphite: selection and structure read instantly, and the inset screen gives Sineless a look of its own while the traces stay the brightest thing in the window.</span></li>
+        <li><span><b>Accent:</b> on Frozen, the playhead or the cursors. My pick is Frozen.</span></li>
+        <li><span><b>Channel colours:</b> blue, pink, white and violet are a starting point. Step 4 checks them against each other, against the screen and for colour blindness, and builds the 16-colour fallback palette for tracks without a host colour.</span></li>
+      </ul>
+    </div>
+  </section>
+</div>
+<script>
+const MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M53.592 9.187C52.022 8.352 50.315 7.711 48.538 7.182C46.761 6.653 44.911 6.241 43.052 5.986C41.193 5.731 39.331 5.644 37.519 5.751C35.706 5.858 33.942 6.155 32.204 6.591C30.467 7.027 28.746 7.594 27.024 8.249C25.301 8.903 23.575 9.646 21.905 10.483C20.235 11.321 18.628 12.256 17.138 13.302C15.647 14.347 14.272 15.504 12.996 16.771C11.721 18.038 10.537 19.417 9.453 20.904C8.369 22.391 7.389 23.988 6.584 25.665C5.779 27.343 5.159 29.099 4.744 30.882C4.329 32.664 4.113 34.471 4.035 36.276C3.957 38.082 4.005 39.891 4.178 41.706C4.351 43.521 4.655 45.347 5.186 47.125C5.717 48.904 6.487 50.631 7.53 52.168C8.574 53.705 9.887 55.045 11.38 56.061C12.873 57.077 14.537 57.77 16.277 58.089C18.016 58.408 19.839 58.356 21.641 57.926C23.442 57.496 25.227 56.685 26.759 55.542C28.292 54.4 29.55 52.925 30.322 51.272C31.094 49.619 31.362 47.798 31.301 45.996C31.24 44.195 30.877 42.42 30.724 40.75C30.571 39.08 30.667 37.505 31.307 36.039C31.948 34.573 33.128 33.21 34.647 32.057C36.166 30.903 37.988 29.976 39.8 29.393C41.613 28.811 43.409 28.587 45.15 28.559C46.892 28.531 48.606 28.678 50.329 28.572C52.052 28.467 53.793 28.073 55.343 27.148C56.893 26.223 58.226 24.767 59.048 23.011C59.87 21.256 60.166 19.234 59.906 17.365C59.646 15.496 58.847 13.798 57.722 12.434C56.596 11.069 55.161 10.022 53.592 9.187Z"/></svg>';
+
+// ---------- colours: channels in Single, host track colours in Multi and Compare ----------
+const CH = { L: '#5ab0ff', R: '#ff5c8a', M: '#f5f5f7', S: '#a78bfa' };
+const HOST = { kick: '#e5484d', clap: '#f76b15', hats: '#ffc53d', bass: '#3e63dd', keys: '#30a46c', kick2: '#8e4ec6' };
+
+// ---------- scenes ----------
+// readout: what Peak, RMS and Freq measure (DESIGN.md 1.2.1): the trigger source in Single, this track's Mid in Multi and Compare.
+const SCENES = {
+  single: { mode: 'Single', base: 'sec', trigger: 'Auto', frozen: false, auto: false,
+    lanes: [{ name: 'L', sig: 'L', color: CH.L }, { name: 'R', sig: 'R', color: CH.R }],
+    status: ["Trig'd", 'Auto'], readout: 'Mid', peak: '−3.2', rms: '−9.8', freq: '≈ 220.0' },
+  compare: { mode: 'Compare', base: 'beats', playhead: 0.72, frozen: false, auto: true,
+    lanes: [
+      { name: 'Kick', sig: 'kick', color: HOST.kick, own: true, check: true, extra: 'reference' },
+      { name: 'Kick 2', sig: 'kick2', color: HOST.kick2, check: true, extra: '+1.3 ms   Ø   −0.82' },
+      { name: 'Bass', sig: 'bass', color: HOST.bass, check: false, extra: 'unrelated' },
+      { name: 'Sum', sig: 'sum', color: CH.M, sum: true, extra: '−4.1 dB · cancels', fix: true }],
+    status: ['Sync'], readout: 'This track', peak: '−1.1', rms: '−19.2', freq: '—' },
+  multi: { mode: 'Multi', base: 'beats', playhead: 0.62, frozen: true, auto: true,
+    lanes: [
+      { name: 'Kick', sig: 'kick', color: HOST.kick }, { name: 'Clap', sig: 'clap', color: HOST.clap }, { name: 'Hats', sig: 'hats', color: HOST.hats },
+      { name: 'Bass', sig: 'bass', color: HOST.bass }, { name: 'Keys', sig: 'keys', color: HOST.keys, own: true }],
+    status: ['Frozen', '−1.2 s'], readout: 'This track', peak: '−4.6', rms: '−21.0', freq: '—' }
+};
+const W = 1080, H = 580;
+const FRAMES = {
+  black: [
+    { scene: 'single', label: 'Single · Seconds, time cursors on', cursors: true, wide: true },
+    { scene: 'multi', label: 'Multi · Beats, frozen' },
+    { scene: 'compare', label: 'Compare · Beats' }
+  ],
+  accent: [
+    { scene: 'multi', label: 'Accent on Frozen', cursors: true, accent: 'freeze', variant: 'black' },
+    { scene: 'multi', label: 'Accent on the playhead', cursors: true, accent: 'playhead', variant: 'black' },
+    { scene: 'multi', label: 'Accent on the cursors', cursors: true, accent: 'cursors', variant: 'black' }
+  ]
+};
+FRAMES.graphite = FRAMES.black.map(f => ({ ...f }));
+// ---------- icons that label Span, Scale, Views and Trigger in the toolbar (12 px, stroke in currentColor) ----------
+const svg = d => `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  Span: svg('<path d="M1 3v6M11 3v6M2.5 6h7M4 4.5 2.5 6 4 7.5M8 4.5 9.5 6 8 7.5"/>'),
+  Scale: svg('<path d="M3 1h6M3 11h6M6 2.5v7M4.5 4 6 2.5 7.5 4M4.5 8 6 9.5 7.5 8"/>'),
+  Views: svg('<path d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"/>'),
+  Trigger: svg('<path d="M1 10h3.5L7.5 2H11"/><path d="M1 6h10" stroke-dasharray="1 1.6" stroke-width="1"/>')
+};
+
+// ---------- small builders ----------
+const seg = (items, on) => `<span class="seg">${items.map(t => `<b class="${[].concat(on).includes(t) ? 'on' : ''}">${t}</b>`).join('')}</span>`;
+const fld = (l, v, anchor = '', open = false) => `<span class="fld ${open ? 'open-anchor' : ''}" ${anchor ? `data-anchor="${anchor}"` : ''}>${l ? `<i>${l}</i>` : ''}<b>${v}</b></span>`;
+const tg = (t, on, anchor = '', open = false) => `<span class="tg ${on ? 'on' : ''} ${open ? 'open-anchor' : ''}" ${anchor ? `data-anchor="${anchor}"` : ''}>${t}</span>`;
+const sw = on => `<span class="sw ${on ? 'on' : ''}"></span>`;
+// Each readout keeps a fixed width, so a longer value never moves the next one.
+const ro = (l, v, u, w) => `<span class="ro" style="min-width:${w}px"><i>${l}</i><b>${v}</b><u>${u}</u></span>`;
+const readouts = s => `<span class="rolabel">${s.readout}</span>${ro('Peak', s.peak, 'dBFS', 104)}${ro('RMS', s.rms, 'dBFS', 104)}${ro('Freq', s.freq, 'Hz', 112)}`;
+// The state area has a fixed width: chips that don't fit fold into one "+n" chip, which lists them on hover.
+const chips = (s, anchor = '') => s.status.slice(0, s.shown ?? s.status.length).map(c => `<span class="chip">${c}</span>`).join('') +
+  (s.shown < s.status.length ? `<span class="more" ${anchor ? `data-anchor="${anchor}"` : ''}>+${s.status.length - s.shown}</span>` : '');
+const modes = s => seg(['Single', 'Multi', 'Compare'], s.mode);
+const span = s => s.base === 'sec' ? '10 ms' : '1 bar';
+const timebase = s => seg(['Beats', 'Sec'], s.base === 'sec' ? 'Sec' : 'Beats');
+const layout = () => seg(['Overlay', 'Stack'], 'Stack');
+const mark = (word = true) => `<span class="mark">${MARK}${word ? 'Sineless' : ''}</span>`;
+const screen = (f, opts, overlay = '') => `<div class="screen" data-scene="${f.scene}" data-opts='${JSON.stringify({ ...opts, cursors: !!f.cursors, accent: f.accent })}'><canvas></canvas>${overlay}</div>`;
+const prow = (l, v) => `<div class="prow"><i>${l}</i><span>${v}</span></div>`;
+const cursorReadout = `<div class="curro"><span><i>Δt</i> 3.33 ms · 160 smp</span><span><i>1/Δt</i> 300.0 Hz · D4 +37¢</span></div>`;
+const triggerRows = (s, panel = false) => [
+  prow('Mode', panel ? fld('', `${s.trigger} ▾`) : seg(['Auto', 'Normal', 'Free', 'Single'], s.trigger)),
+  prow('Source', seg(['L', 'R', 'M', 'S'], 'M')),
+  prow('Slope', seg(['Rising', 'Falling'], 'Rising')),
+  prow('Level', fld('', '+0.00')),
+  prow('Hysteresis', fld('', '0.01')),
+  prow('Hold-off', fld('', '0 ms'))
+].join('');
+
+// ---------- concept A: toolbar ----------
+// Top: mark · mode · group · time base, span, scale · views, layout · trigger (+ Re-arm) · Freeze, Auto-freeze.
+// Bottom: readouts and A4 left; cursor buttons centred between the two fixed-width sides; state and Help right.
+function toolbarA(s, f) {
+  const top = [mark(!f.nomark), modes(s)];
+  if (s.mode !== 'Single') top.push(fld('Group', 'A ▾'));
+  const lb = l => ICON[l];
+  top.push('<span class="dv"></span>', timebase(s), fld(lb('Span'), span(s)), fld(lb('Scale'), '0 dB'), '<span class="dv"></span>');
+  if (s.mode === 'Single') top.push(fld(lb('Views'), 'L R ▾'));
+  top.push(layout());
+  if (s.base === 'sec') {
+    top.push('<span class="dv"></span>', fld(lb('Trigger'), `${s.trigger} ▾`, 'trigger', f.open === 'trigger'));
+    if (s.trigger === 'Single') top.push(tg('Re-arm'));
+  }
+  const fz = s.frozen ? `<span class="tg ${f.accent === 'freeze' ? 'acc' : 'on'}">Frozen</span>` : tg('Freeze');
+  top.push('<span class="sp"></span>', fz, tg('Auto-freeze', s.auto));
+  return top.join('');
+}
+function conceptA(f) {
+  const s = SCENES[f.scene];
+  const bottom = `<div class="zl side">${tg('Time', f.cursors)}${tg('Level')}${tg('Hover')}<span class="dv"></span>${fld('A4', '440 Hz')}</div><span class="sp"></span>
+    <div class="zc ros">${readouts(s)}</div><span class="sp"></span>
+    <div class="zr side">${chips(s, 'chips').replace('<span class="chip">Frozen', `<span class="chip ${f.accent === 'freeze' ? 'acc' : ''}">Frozen`)}<span class="help">?</span></div>`;
+  let pop = f.open === 'trigger' ? `<div class="pop" data-for="trigger"><h5>Trigger</h5>${triggerRows(s)}</div>` : '';
+  if (f.open === 'chips') pop = `<div class="pop tip" data-for="chips" data-align="right" data-place="above">${s.status.slice(s.shown).map(c => `<span class="chip">${c}</span>`).join('')}</div>`;
+  return `<div class="ui ${f.variant}" style="width:${f.w}px;height:${f.h}px;grid-template-rows:${f.variant === 'graphite' ? '48px 1fr 34px' : '44px 1fr 30px'}">
+    <div class="bar top">${toolbarA(s, f)}</div>
+    ${screen(f, { labels: 'full' }, f.cursors ? cursorReadout : '')}
+    <div class="bar bottom" style="position:relative">${bottom}<span class="grip"></span></div>${pop}</div>`;
+}
+
+// ---------- signals (t from 0 to 1 across the span) ----------
+const rnd = i => { const x = Math.sin(i * 12.9898) * 43758.5453; return (x - Math.floor(x)) * 2 - 1; };
+const noise = (t, k = 1) => rnd(Math.floor(t * 60000) + k * 977);
+const TAU = Math.PI * 2;
+function kick(b, off = 0, inv = 1) {
+  let v = 0;
+  for (const h of [0, 2, 2.75]) { const x = b - h - off; if (x >= 0 && x < 1.2) v += inv * Math.sin(TAU * 26 * x * (1 + 1.2 * Math.exp(-x * 14))) * Math.exp(-x * 4.2) * 0.95; }
+  return v;
+}
+function clap(b) { let v = 0; for (const h of [1, 3]) { const x = b - h; if (x >= 0 && x < 0.8) v += noise(b, 2) * Math.exp(-x * 11) * 0.8; } return v; }
+function hats(b) { let v = 0; for (let h = 0; h < 4; h += 0.5) { const x = b - h; if (x >= 0 && x < 0.3) v += noise(b, 3) * Math.exp(-x * 38) * (h % 1 ? 0.6 : 0.38); } return v; }
+function bass(b) {
+  let v = 0;
+  for (const [h, len] of [[0, 0.45], [0.75, 0.3], [1.5, 0.45], [2.5, 0.3], [3, 0.45]]) { const x = b - h; if (x >= 0 && x < len) v += Math.sin(TAU * 13 * x) * 0.75 * Math.min(1, (len - x) * 25, x * 60); }
+  return v;
+}
+function keys(b) { let v = 0; for (const h of [0, 1.5, 2.5, 3.25]) { const x = b - h; if (x >= 0) v += (Math.sin(TAU * 90 * x) * 0.55 + Math.sin(TAU * 137 * x) * 0.35) * Math.exp(-x * 2.2); } return Math.max(-1, Math.min(1, v)); }
+const SIG = {
+  L: t => 0.72 * Math.sin(TAU * 2.2 * (t - 0.1)) + 0.1 * Math.sin(TAU * 4.4 * (t - 0.1)),
+  R: t => 0.55 * Math.sin(TAU * 2.2 * (t - 0.1) - 0.45) + 0.09 * Math.sin(TAU * 4.4 * (t - 0.1)),
+  kick: t => kick(t * 4), kick2: t => kick(t * 4, 0.005, -0.9), clap: t => clap(t * 4), hats: t => hats(t * 4),
+  bass: t => bass(t * 4), keys: t => keys(t * 4), sum: t => kick(t * 4) + kick(t * 4, 0.005, -0.9)
+};
+const TONES = ['#f0f0f2', '#b4b4ba', '#8c8c94', '#a0a0a7'];
+
+
+// ---------- screen drawing (colours come from the frame's treatment tokens) ----------
+function drawScreen(el) {
+  const s = SCENES[el.dataset.scene], o = JSON.parse(el.dataset.opts);
+  const c = el.querySelector('canvas'), Wd = el.offsetWidth, Ht = el.offsetHeight, d = 2;
+  c.width = Wd * d; c.height = Ht * d;
+  const g = c.getContext('2d'); g.scale(d, d);
+  const css = getComputedStyle(el), tok = n => css.getPropertyValue(n).trim();
+  const ink = tok('--w-ink'), ink2 = tok('--w-ink-2'), accent = tok('--w-accent');
+  const top = 0, bottom = 18, plotH = Ht - top - bottom;
+  // grid
+  const divs = s.base === 'beats' ? 16 : 10;
+  for (let i = 1; i < divs; i++) {
+    const x = Math.round(Wd * i / divs) + 0.5, strong = s.base === 'beats' && i % 4 === 0;
+    g.strokeStyle = strong ? tok('--w-grid-2') : tok('--w-grid'); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + plotH); g.stroke();
+  }
+  g.font = '500 10px "Geist Mono", ui-monospace, monospace'; g.fillStyle = ink2;
+  if (s.base === 'sec') for (let i = 1; i < 10; i += 2) g.fillText(`${i - 1} ms`, Wd * i / 10 + 4, Ht - 5);
+  else for (let i = 0; i < 4; i++) g.fillText(`33.${i + 1}`, Wd * i / 4 + 4, Ht - 5);
+  // lanes
+  const n = s.lanes.length, lh = plotH / n;
+  s.lanes.forEach((l, k) => {
+    const y0 = top + k * lh, mid = y0 + lh / 2, amp = lh * 0.4;
+    g.strokeStyle = tok('--w-grid-2'); g.lineWidth = 1; g.beginPath(); g.moveTo(0, mid + 0.5); g.lineTo(Wd, mid + 0.5); g.stroke();
+    if (k > 0) { g.strokeStyle = tok('--w-axis'); g.beginPath(); g.moveTo(0, Math.round(y0) + 0.5); g.lineTo(Wd, Math.round(y0) + 0.5); g.stroke(); }
+    const f = SIG[l.sig], faint = s.mode === 'Compare' && !l.sum && !l.check;
+    g.strokeStyle = l.color; g.lineWidth = 1.5; g.lineJoin = 'round';
+    let pmin = null, pmax = null;
+    for (let x = 0; x < Wd; x++) {
+      let mn = 9, mx = -9;
+      for (let j = 0; j < 4; j++) { const v = f((x + j / 4) / Wd); mn = Math.min(mn, v); mx = Math.max(mx, v); }
+      const a = pmax === null ? mn : Math.min(mn, pmax), b = pmin === null ? mx : Math.max(mx, pmin);
+      const dim = s.playhead && x / Wd > s.playhead;
+      g.globalAlpha = (faint ? 0.25 : 1) * (dim ? 0.35 : 1);
+      g.beginPath(); g.moveTo(x + 0.5, mid - b * amp - 0.5); g.lineTo(x + 0.5, mid - a * amp + 0.5); g.stroke();
+      pmin = mn; pmax = mx;
+    }
+    g.globalAlpha = 1;
+    // label: a colour key (a check box in Compare), the name, then any data
+    let x = 12; const y = y0 + 17;
+    g.fillStyle = l.color; g.strokeStyle = l.color; g.lineWidth = 1.5;
+    if (s.mode === 'Compare' && !l.sum) { g.beginPath(); g.roundRect(x, y - 9, 10, 10, 2.5); l.check ? g.fill() : (g.globalAlpha = .6, g.stroke(), g.globalAlpha = 1); }
+    else { g.beginPath(); g.arc(x + 4, y - 4, 4, 0, Math.PI * 2); g.fill(); }
+    x += s.mode === 'Compare' && !l.sum ? 17 : 14;
+    g.font = '600 12px Geist, system-ui, sans-serif'; g.fillStyle = ink; g.fillText(l.name, x, y); x += g.measureText(l.name).width + 8;
+    g.font = '400 11.5px Geist, system-ui, sans-serif'; g.fillStyle = ink2;
+    if (l.own) { g.fillText('this track', x, y); x += g.measureText('this track').width + 12; }
+    if (l.extra && !(l.own && l.extra === 'reference')) {
+      g.font = '500 11px "Geist Mono", ui-monospace, monospace'; g.fillStyle = l.sum || l.check ? ink : ink2;
+      g.fillText(l.extra, x, y); x += g.measureText(l.extra).width + 12;
+    }
+    if (l.fix) {
+      g.font = '500 11.5px Geist, system-ui, sans-serif'; const w = g.measureText('Preview fix').width + 18;
+      g.strokeStyle = tok('--w-line'); g.lineWidth = 1; g.beginPath(); g.roundRect(x, y - 13, w, 19, 6); g.stroke();
+      g.fillStyle = ink; g.fillText('Preview fix', x + 9, y);
+    }
+  });
+  g.font = '500 10px "Geist Mono", ui-monospace, monospace'; g.fillStyle = ink2; g.textAlign = 'right';
+  g.fillText('0 dB', Wd - 10, top + 15); g.textAlign = 'left';
+  if (s.base === 'sec') {
+    const x = Math.round(Wd * 0.1) + 0.5; g.setLineDash([3, 4]); g.strokeStyle = ink2; g.globalAlpha = .6; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + plotH); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+  }
+  if (s.playhead) {
+    const x = Math.round(Wd * s.playhead) + 0.5;
+    g.strokeStyle = o.accent === 'playhead' ? accent : ink; g.globalAlpha = s.frozen && o.accent !== 'playhead' ? .55 : 1; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + plotH); g.stroke(); g.globalAlpha = 1;
+  }
+  if (o.cursors) {
+    const cc = o.accent === 'cursors' ? accent : ink;
+    [['A', 1 / 3], ['B', 2 / 3]].forEach(([t, p]) => {
+      const x = Math.round(Wd * p) + 0.5; g.strokeStyle = cc; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + plotH); g.stroke();
+      g.fillStyle = cc; g.beginPath(); g.roundRect(x - 8, top + 4, 16, 15, 4); g.fill();
+      g.fillStyle = '#000'; g.font = '600 10px Geist, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText(t, x, top + 15); g.textAlign = 'left';
+    });
+  }
+}
+
+// ---------- build and fit ----------
+document.querySelectorAll('.frames[data-variant]').forEach(box => {
+  const v = box.dataset.variant;
+  box.innerHTML = FRAMES[v].map(fr => {
+    const f = { w: W, h: H, accent: 'freeze', variant: v, ...fr };
+    return `<figure style="margin:0" class="${f.wide ? 'wide' : ''}"><div class="fit" data-w="${f.w}" data-h="${f.h}">${conceptA(f)}</div>
+      <figcaption class="cap"><b>${f.label}</b>${box.classList.contains('three') ? '' : ` · Default ${f.w} × ${f.h}`}</figcaption></figure>`;
+  }).join('');
+});
+document.getElementById('iconsheet').innerHTML = [
+  ['Span', 'Span', '10 ms', 'How much time fits across the screen'],
+  ['Scale', 'Scale', '0 dB', 'The level at the top of the screen'],
+  ['Views', 'Views', 'L R ▾', 'Which channels are drawn'],
+  ['Trigger', 'Trigger', 'Auto ▾', 'What starts each sweep']
+].map(([k, name, v, what]) => `<div class="icon"><span class="big">${ICON[k]}</span><span class="small">${ICON[k]}${v}</span><p><b>${name}</b>${what}</p></div>`).join('');
+function placePopovers(fitEl, sc) {
+  const ui = fitEl.firstElementChild, u = ui.getBoundingClientRect();
+  ui.querySelectorAll('.pop[data-for]').forEach(p => {
+    const a = ui.querySelector(`[data-anchor="${p.dataset.for}"]`).getBoundingClientRect();
+    const left = p.dataset.align === 'right' ? (a.right - u.left) / sc - p.offsetWidth : (a.left - u.left) / sc;
+    p.style.left = `${Math.max(8, Math.min(left, ui.offsetWidth - p.offsetWidth - 8))}px`;
+    p.style.top = p.dataset.place === 'above' ? `${(a.top - u.top) / sc - p.offsetHeight - 6}px` : `${(a.bottom - u.top) / sc + 6}px`;
+  });
+}
+function fit() {
+  document.querySelectorAll('.fit').forEach(f => {
+    const w = +f.dataset.w, h = +f.dataset.h, sc = f.clientWidth / w;
+    f.style.height = `${h * sc}px`;
+    f.firstElementChild.style.transform = `scale(${sc})`;
+    placePopovers(f, sc);
+  });
+}
+fit();
+new ResizeObserver(fit).observe(document.querySelector('.wrap'));
+const draw = () => document.querySelectorAll('.screen').forEach(drawScreen);
+draw();
+document.fonts.ready.then(() => { draw(); fit(); });
+</script>
