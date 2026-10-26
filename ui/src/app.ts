@@ -407,7 +407,17 @@ export class OscilloscopeApp {
       },
     });
     element(spec.host).append(field.element);
+    this.attachToPill(field, spec.host);
     this.fields.set(name, field);
+  }
+
+  // A field in a bar's pill (Span, Scale, A4) answers anywhere on the pill, its icon or label
+  // included, which looks like one control; the popovers' fields have no pill.
+  private attachToPill(field: DragField, host: string): void {
+    const pill = element(host).closest<HTMLElement>(".icon-field");
+    if (pill !== null) {
+      field.attach(pill);
+    }
   }
 
   private buildControls(): void {
@@ -435,6 +445,7 @@ export class OscilloscopeApp {
       },
     });
     element("beat-span-field").append(beatSpanField.element);
+    this.attachToPill(beatSpanField, "beat-span-field");
     this.beatSpanField = beatSpanField;
     this.beatSpanNames = beatSpanNames;
 

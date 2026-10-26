@@ -246,7 +246,8 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 
 - Numeric values are drag fields: drag vertically (8 px a step), scroll to step (one notch or
   100 px of trackpad a step), double-click to type (units are parsed; a bare number in a time
-  field is milliseconds). Shift gives fine steps.
+  field is milliseconds). Shift gives fine steps. In the bars (Span, Scale, A4) the whole pill,
+  icon or label included, does the same.
 - The time span steps through a 1-2-5 sequence from 0.5 ms to 2 s, then 4 s; hold-off 1-2-5 from
   0 to 1 s; vertical scale 3 dB (1 dB fine).
 - Every control shows only values reported by the engine.
