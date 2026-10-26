@@ -652,7 +652,7 @@ flowchart LR
   Version --> Win["release-windows:<br/>x64"]
   Mac --> Draft["release-draft:<br/>SHA256SUMS.txt,<br/>build provenance,<br/>draft release"]
   Win --> Draft
-  Draft --> Manual["HOSTS.md protocol,<br/>soak.sh"]
+  Draft --> Manual["HOSTS.md smoke test,<br/>soak.sh"]
   Manual --> Publish["Published by hand"]
 ```
 
@@ -786,7 +786,7 @@ and benchmark builds. Test levels, where each runs and the definition of done ar
 | Fuzzing | libFuzzer on state loading, setting values, the session's messages; fast-check on frame decoding and transport. Five minutes per pull request, 30 nightly, from a corpus kept on main | Linux |
 | Coverage, mutation | Changed-line coverage (llvm-cov, V8); mutation testing of changed lines (Stryker, Mull), the mutants no test noticed triaged in CI (below) | Linux |
 | Performance | Audio-thread deadline, frame rate, analysis CPU, reopen leaks (section 10); reported in CI, judged locally | macOS, Windows |
-| Release | Soak test (`scripts/soak.sh`), scripted REAPER test on Windows, the HOSTS.md protocol by hand | Before a release |
+| Release | Soak test (`scripts/soak.sh`), the HOSTS.md smoke test by hand; occasionally the full HOSTS.md protocol and the scripted REAPER test on Windows (CONTRIBUTING.md, Releasing) | Before a release |
 
 CI runs on pull requests, the merge queue and pushes to main; changes to documentation only skip
 the builds. `main` is changed only through the merge queue.
@@ -1067,7 +1067,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | QS-1 | Eight instances process audio together. | All eight together use at most 5% of each block's duration at the 99.9th percentile; zero allocations on the audio path. | `process_bench`; allocation-counting tests; RealtimeSanitizer |
 | QS-2 | Audio passes through any instance, in any state. | Bit-exact output; reported latency 0. | `ProcessorTests` |
 | QS-3 | The editor shows seven tracks over four bars, in Multi and in Compare. | At least 45 frames/s; analysis thread within 10% (Multi) and 30% (Compare) of a core. | `perf_bench` (judged locally, reported in CI) |
-| QS-4 | The worst case: fifteen tracks over sixteen bars at 60 BPM and 96 kHz. | At least 45 frames/s once filled; analysis within 20% of a core; host memory grows well under 1 GB. | `perf_bench`; HOSTS.md step 10 |
+| QS-4 | The worst case: fifteen tracks over sixteen bars at 60 BPM and 96 kHz. | At least 45 frames/s once filled; analysis within 20% of a core; host memory grows well under 1 GB. | `perf_bench`; HOSTS.md step 10, in the full protocol when due |
 | QS-5 | The editor is opened and closed 50 times while playing (200 before a release). | No threads or web views left behind; memory grows at most 20 MB (40 MB over 200). | `perf_bench --reopen=50`; `soak.sh` |
 | QS-6 | A project saved by any earlier release is opened. | Every setting it saved is restored; missing or invalid ones take their defaults; loading never throws. | `StateTests` golden files; state fuzzer |
 | QS-7 | A host passes malformed state, a page sends malformed messages, a frame is malformed. | No crash, no undefined behaviour; the input is refused. | libFuzzer and fast-check; ASan + UBSan |
@@ -1087,10 +1087,10 @@ not reused.
 | --- | --- | --- | --- | --- |
 | R-1 | Hosts that run plugins in separate processes (REAPER's "Dedicated process", Bitwig's "Individually") | Instances cannot find each other: Multi and Compare show each track alone. | Shared processes are every major host's default; HOSTS.md records each host's modes. A cross-process registry would need shared memory and is not planned. | AD-14, HOSTS.md |
 | R-2 | Lane alignment depends on the host | Lanes line up only when Sineless is last on each track (the host delays other tracks to compensate for later plugins' latency) and when the host reports a musical position (AD-15). | The README tells users to put Sineless last. | FR-14.4, AD-15 |
-| R-3 | Memory of long sweeps | The worst case (15 lanes, 16 bars at 60 BPM, 96 kHz) uses about 580 MB. | The sweep cap bounds it; the performance check and HOSTS.md step 10 keep it so. | AD-19, QS-4 |
+| R-3 | Memory of long sweeps | The worst case (15 lanes, 16 bars at 60 BPM, 96 kHz) uses about 580 MB. | The sweep cap bounds it; the performance check keeps it so, and HOSTS.md step 10 checks it in a host whenever memory or capture changes (CONTRIBUTING.md, Releasing). | AD-19, QS-4 |
 | R-4 | Releases are not signed with a Developer ID or code-signing certificate | macOS quarantines the download and users clear it by hand; Windows may warn. | Checksums and build provenance let a download be verified (7). | SECURITY.md |
 | R-5 | No native Windows ARM64 build | Windows on Arm needs an x64 host or REAPER's ARM64EC build. | Its presets remain; `scripts/package.ps1` names what to add. | C-2, AD-24 |
-| R-6 | Few hosts tested | Live (macOS, Windows) and REAPER (Windows) are tested; Cubase, Studio One, Bitwig and FL Studio are not. | pluginval and the VST3 validator on every change; the HOSTS.md protocol before each release. | HOSTS.md |
+| R-6 | Few hosts tested | Live (macOS, Windows) and REAPER (Windows) are tested; Cubase, Studio One, Bitwig and FL Studio are not. | pluginval and the VST3 validator on every change; the HOSTS.md smoke test before each release, and the full protocol occasionally; HOSTS.md lists the hosts tested, and reports add others. | HOSTS.md |
 | R-7 | Compare is in beta | Its matching and summing gain may change with use. | Called beta in its help and in the docs; the signal corpus pins its results. The tag on its button was dropped with the redesign, to keep the toolbar's width (AD-26). | FR-15 |
 | R-8 | Two security guards have no test: navigation refusal, and the viewport width cap | A regression would go unnoticed. | Both are small and reviewed; tests to be added. | 8.8 |
 | R-9 | Mutation testing holds Vitest for Stryker at 4 | Its Vitest lags the project's until Stryker supports Vitest 5. | Pinned in `.github/dependabot.yml`, with the upstream issues named. | 8.3 |

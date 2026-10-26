@@ -5,7 +5,7 @@ name: Release
 # checksum of each download and a build provenance attestation, both in GitHub's attestation store and as a release asset
 # (Sineless-<version>.intoto.jsonl), so that a download can be verified from the files alone:
 # `gh attestation verify <zip> --repo orizonaudio/Sineless --bundle Sineless-<version>.intoto.jsonl`.
-# The draft is published by hand, once the downloads pass the host protocol in HOSTS.md; see
+# The draft is published by hand, once the downloads pass the smoke test in HOSTS.md; see
 # "Releasing" in CONTRIBUTING.md. Run by hand, or on a pull request that changes this workflow or
 # the scripts it runs, it is a dry run: it builds and checks every download and keeps them as the
 # run's artifacts, but attests nothing and creates no release.

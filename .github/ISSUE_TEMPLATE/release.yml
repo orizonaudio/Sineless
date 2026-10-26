@@ -9,8 +9,8 @@ body:
         One issue per release, opened when the version changes and closed once it is published.
         The steps are in "Releasing" in
         [CONTRIBUTING.md](https://github.com/orizonaudio/Sineless/blob/main/CONTRIBUTING.md#releasing)
-        and the host protocol in
-        [HOSTS.md](https://github.com/orizonaudio/Sineless/blob/main/HOSTS.md#protocol). A step
+        and the smoke test and protocol in
+        [HOSTS.md](https://github.com/orizonaudio/Sineless/blob/main/HOSTS.md). A step
         left unticked says why in a comment before the draft is published.
   - type: input
     id: version
@@ -38,30 +38,29 @@ body:
         - label: The installed Audio Unit passes `auval -strict -v aufx Snls Oriz`.
         - label: The Windows installer, run as downloaded, installs and uninstalls from Settings > Apps.
   - type: checkboxes
-    id: macos
+    id: smoke
     attributes:
-      label: Host protocol in Ableton Live on macOS (at 48 kHz and 256 samples, in 4/4, unless a step says otherwise)
+      label: Smoke test (HOSTS.md), in the draft's downloads
       options:
-        - label: 1. Install and scan.
-        - label: 2. Single.
-        - label: 3. Transport.
-        - label: 4. Tempo and time signature.
-        - label: 5. Editor.
-        - label: 6. Multi.
-        - label: 7. Compare.
-        - label: 8. State.
-        - label: 9. Rates and buffers.
-        - label: 10. Load.
+        - label: Ableton Live on macOS.
+        - label: Logic Pro or GarageBand, if the release changes anything that builds into the Audio Unit or its package (au/, editor/src/mac/, cmake/AudioUnitVersion.cmake, cmake/Branding.cmake, scripts/package.sh, scripts/validate-au.sh).
+        - label: A Windows host, if the release changes any Windows-only code or build setting (editor/src/win/, _WIN32 branches, Windows conditions in the CMake files, scripts/package.ps1, scripts/installer.iss, scripts/windows-env.ps1).
   - type: checkboxes
-    id: windows
+    id: protocol
     attributes:
-      label: Host protocol on Windows (the same steps; say which host and which were run)
+      label: Full protocol (HOSTS.md), when due
+      description: >-
+        Due before a release that changes what Sineless takes from hosts (the transport, tempo,
+        track details, state, the editor's sizing) or its memory (the sweeps, capture buffers),
+        after a tested host's major update, and at least once a quarter in Live on macOS and on
+        Windows, with the scripted REAPER test on Windows. Say in a comment where it ran, or why
+        it is not due.
       options:
-        - label: The protocol ran in a Windows host.
+        - label: The full protocol ran where due, or is not due.
   - type: checkboxes
     id: publish
     attributes:
       label: Publishing
       options:
-        - label: HOSTS.md records each host tested, with every step not run listed.
+        - label: HOSTS.md records each host tested and which test ran.
         - label: The draft is published.

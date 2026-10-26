@@ -1,5 +1,5 @@
 name: Host compatibility report
-description: How Sineless behaves in a host, following the protocol in HOSTS.md.
+description: How Sineless behaves in a host, following the smoke test or the protocol in HOSTS.md.
 labels: [host compatibility]
 body:
   - type: markdown
@@ -35,6 +35,16 @@ body:
     attributes:
       label: How the host runs plugins
       description: In its own process, sandboxed, bridged, and so on, if the host lets you choose.
+  - type: dropdown
+    id: test
+    attributes:
+      label: Test run
+      options:
+        - The smoke test
+        - The full protocol
+        - Some steps (say which below)
+    validations:
+      required: true
   - type: dropdown
     id: result
     attributes:
