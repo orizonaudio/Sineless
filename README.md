@@ -4,7 +4,7 @@
 
 Sineless™ is an open-source oscilloscope by Orizon Audio, as a VST3 plugin and, on macOS, an Audio Unit. It shows the audio on its track in real time and passes it through unchanged, with zero latency.
 
-![Sineless's multi-track view, frozen in Beats mode: kick, clap, hi-hat, bass and keys lanes stacked in their track colours](assets/sineless.png)
+![Sineless's multi-track view, frozen in Beats mode: four tracks stacked in their colours, with the time cursors A and B and their readout](assets/sineless.png)
 
 - Triggered display from 0.5 ms to 1 s, with Auto, Normal, Free and Single trigger modes; spans up to 4 s scroll continuously.
 - Tempo-synced sweep: a span in beats or bars, up to 16 bars, aligned to the host's bar lines, with a beat grid and playhead.
