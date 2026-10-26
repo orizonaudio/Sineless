@@ -10,12 +10,13 @@ The plugin's interface is being redesigned from scratch on the Orizon Audio bran
 
 | Step | Page | What it holds |
 |---|---|---|
+| Overview | [overview.html](overview.html) | Start here: the final design on one page, with the decisions of steps 2–4, the sizes, the look, the colours and the built UI |
 | 1. Brief and audit | [audit.html](audit.html) | The current UI's problems, pinned on a screenshot; what the UI must carry; the constraints that still hold |
 | 2. Layout | [layout.html](layout.html) | The locked layout (A · Toolbar) at default, large and minimum sizes, with the trigger popover open; concept B · Inspector kept for reference |
 | 3. Visual direction | [direction.html](direction.html) | The layout in two treatments (Black, Graphite) and three places for the accent |
 | 4. Colour and tokens | [colour.html](colour.html), [tokens/](tokens/) | Every colour and its role, contrast and colour-blindness checks, the 16-colour track palette |
 
-GitHub shows HTML files as source. To see the pages, clone the repository and open them in a browser; they work offline. The pages use system fonts; the PNG previews below were rendered with Geist, which the plugin bundles in step 6.
+GitHub shows HTML files as source. To see the pages, clone the repository and open them in a browser; they work offline. The overview uses the plugin's own Geist (`ui/src/fonts/`); the step pages use system fonts, and the PNG previews below were rendered with Geist.
 
 ## 1. Purpose and scope
 
