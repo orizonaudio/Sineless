@@ -1,8 +1,15 @@
 # Tested hosts
 
-Which hosts Sineless has been tested in, how, and with what result. Add a row whenever a host is
-tested; update a row when a new version of Sineless or of the host is tested again. A host is
-"supported" only once it has a row with a passing result for the current release.
+Which hosts Sineless has been tested in, how, and with what result: the list of hosts each release
+was checked in. Other hosts that load VST3 plugins, or on macOS Audio Units, should work but have
+not been tested; a report through the host compatibility issue template adds them. Add a row
+whenever a host is tested; update a row when a new version of Sineless or of the host is tested
+again, saying which test ran: the smoke test or the full protocol.
+
+Every release passes the automated checks in CONTRIBUTING.md (the VST3 validator, pluginval,
+auval, and the installer checks on GitHub's runners) before any host is opened. In hosts, each
+release gets the smoke test below; the full protocol runs occasionally ("Releasing" in
+CONTRIBUTING.md says when).
 
 ## Matrix
 
@@ -21,10 +28,26 @@ tested; update a row when a new version of Sineless or of the host is tested aga
 | Ableton Live | — | — | AU | Shared, in Live's own process | — | — | Not tested | A VST3 and an AU instance of Sineless never see each other in Multi or Compare. |
 | Pro Tools | — | — | — | — | — | — | Not applicable | Loads AAX only. |
 
+## Smoke test
+
+About five minutes, with the release's own installer, at the host's usual rate and buffer:
+
+1. **Install and scan.** Install from the release's installer as downloaded (the draft's, before a
+   release); the host finds Sineless under Orizon Audio, at the new version.
+2. **Play.** Insert on two tracks with audio and play: the trace follows and the readouts move, in
+   Beats (the sweep on the bar lines) and in Sec (a steady tone held still).
+3. **Editor.** Open, resize and close the editor a few times while playing: it draws at once and
+   nothing is cropped.
+4. **Multi and Compare.** Multi shows both tracks as lanes with their names, in order; in Compare,
+   checking the other track shows its match and the sum.
+5. **Transport.** With Auto-freeze on, stop: the display freezes; play: it is live again.
+6. **State.** Save, close and reopen the project: every setting is restored.
+
 ## Protocol
 
-Run every step with a Release build installed from the release (installer or zip), at 48 kHz
-and a 256-sample buffer unless a step says otherwise. Note anything unexpected in the row's notes.
+The full protocol, run when "Releasing" in CONTRIBUTING.md says it is due. Run every step with a
+Release build installed from the release (installer or zip), at 48 kHz and a 256-sample buffer
+unless a step says otherwise. Note anything unexpected in the row's notes.
 
 1. **Install and scan.** The host finds Sineless under Orizon Audio without warnings, and a rescan
    is quick.

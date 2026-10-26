@@ -56,8 +56,8 @@ CI marks where each will run.
 | Performance | Audio-thread deadline, frame rate, CPU, memory | `scripts/performance.sh`, `scripts/performance.ps1` | Every PR, reported |
 | Engine work | Instructions per frame of the analysis in each benchmark scenario, head against base, under Cachegrind | `engine/bench`, `scripts/engine-work.sh`, `scripts/engine-work.ts` | Every PR: fails on a rise over 1% in a gated scenario |
 | Soak | Memory growth and reopening over time | `scripts/soak.sh` | Before a release |
-| End-to-end | Sineless in REAPER, scripted | `scripts/windows` | Before a release |
-| Acceptance | The protocol in each host | [HOSTS.md](HOSTS.md) | Before a release |
+| End-to-end | Sineless in REAPER, scripted | `scripts/windows` | With the full protocol (Releasing) |
+| Acceptance | The smoke test in Live on macOS, and in Logic or a Windows host when their code changes; occasionally the full protocol | [HOSTS.md](HOSTS.md) | Before a release (the full protocol when due, Releasing) |
 | Matrix | Every sample rate from 44.1 to 384 kHz, spans around each tolerance, mono and stereo, live and frozen | `engine/tests/MatrixTests.cpp` | Every PR |
 | Work per frame | A frame's cost follows what changed, not the size of what is shown: samples reduced, summed and read and matches searched, counted (`AnalysisWork`), not timed | `engine/tests/MatrixTests.cpp` ("Work per frame") | Every PR |
 | Signal corpus | Approved frames for tones, DC, silence, NaN, inverted and delayed pairs | `engine/tests/corpus`, from `engine/tests/SignalCorpusTests.cpp` | Every PR |
@@ -74,13 +74,18 @@ On Windows, set `ORIZON_UPDATE_CORPUS=1` in the environment before running `ctes
 
 ## Releasing
 
-Open a **Release** issue from its template first: it lists every step below and every step of the host protocol, to be ticked, or answered in a comment, before the draft is published.
+Open a **Release** issue from its template first: it lists every step below and the smoke test, to be ticked, or answered in a comment, before the draft is published.
 
 1. Set the version in `project(... VERSION x.y.z ...)` in `CMakeLists.txt`, and as the placeholder of the version field in the bug report and host compatibility issue templates.
 2. Run `scripts/check.sh`. Every check must pass.
 3. Run `scripts/soak.sh` (about 12 minutes): memory must not grow faster than 0.5 MB a minute, frames must stay steady, and reopening the editor must leave nothing behind. After changing something long-lived (capture buffers, the musical clock, the page's memory use), also run the hour-long `scripts/soak.sh 60`.
 4. Once the version change has merged, tag that commit of `main` `vx.y.z` and push the tag (`git tag vx.y.z <commit>`, then `git push origin vx.y.z`). The Release workflow (`.github/workflows/release.yml`) checks that the tagged commit is on `main` and that the tag matches the version in `CMakeLists.txt`, then builds both zips and both installers on GitHub's runners with `scripts/package.sh` (the VST3 plugin and the Audio Unit, each with both architectures and a macOS 13.1 minimum; the installer installs both into the user's home folder without a password, either of them left out under Customize, which the runner checks by installing it) and `scripts\package.ps1` (the x64 binary, of the right machine type and not needing the Visual C++ runtime DLLs; ARM64 is not built for now; the installer, built with Inno Setup from `scripts\installer.iss`, which the runner installs, checks and uninstalls). It attests where they were built and creates a draft release with them, their SHA-256 checksums and notes from the merged pull requests. To try it before tagging, run the workflow by hand from the Actions tab: it builds and checks every download and keeps them with the run, but creates no release.
-5. Install the draft's downloads (both installers at least) and test them in each host you can, following the protocol in [HOSTS.md](HOSTS.md), at least in Ableton Live, on macOS and on Windows. Update the matrix there.
+5. Install the draft's downloads and run the smoke test in [HOSTS.md](HOSTS.md):
+   - in Ableton Live on macOS, for every release;
+   - in Logic Pro or GarageBand too when the release changes anything that builds into the Audio Unit or its package (`au/`, the macOS editor in `editor/src/mac/`, `cmake/AudioUnitVersion.cmake`, `cmake/Branding.cmake`, `scripts/package.sh`, `scripts/validate-au.sh`);
+   - in a Windows host too when it changes any Windows-only code or build setting (`editor/src/win/`, `_WIN32` branches, Windows conditions in the CMake files, `scripts/package.ps1`, `scripts/installer.iss`, `scripts/windows-env.ps1`).
+
+   Run the full protocol there instead, in each host you can, before a release that changes what Sineless takes from hosts (the transport, tempo, track details, state, the editor's sizing) or its memory (the sweeps, capture buffers), after a tested host's major update, and at least once a quarter in Live on macOS and on Windows; on Windows, run the scripted REAPER test (`scripts/windows`) with it. Record the hosts and the test in the matrix in HOSTS.md.
 6. Publish the draft release.
 
 The packaging scripts also run locally, writing `build/release/Sineless-<version>-macOS.zip`, `build/release/Sineless-<version>-macOS.pkg`, `build\release\Sineless-<version>-Windows.zip` and `build\release\Sineless-<version>-Windows-Setup.exe` (with Inno Setup installed: `winget install JRSoftware.InnoSetup`).
