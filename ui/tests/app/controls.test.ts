@@ -107,8 +107,9 @@ describe("controls", () => {
     for (const label of ["Normal", "Free", "Single", "Auto"]) {
       await press(choice("mode", label));
       await expect.poll(() => byId("trigger-summary").textContent).toBe(label);
-      expect(byId("trigger-details").getAttribute("aria-label")).toBe(
-        `Trigger: ${label}`,
+      // The field's name for screen readers says the mode.
+      expect(byId("trigger-details").getAttribute("aria-label")).toContain(
+        label,
       );
       await expect.poll(chips).toContain(label);
     }

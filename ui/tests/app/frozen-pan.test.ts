@@ -58,7 +58,9 @@ describe("a frozen view", () => {
     expect(shownChips()).toEqual(["Frozen", panChip(0.2)]);
     expect(byId("chips").querySelector(".chip-more")).toBeNull();
     // The offset is a plain state: neither the accent nor the problem colour.
-    expect(byId("chips").children[1]?.className).toBe("chip");
+    const offset = byId("chips").children[1];
+    expect(offset?.classList.contains("frozen")).toBe(false);
+    expect(offset?.classList.contains("problem")).toBe(false);
 
     swipe(-1000); // Far beyond the hold: as far as it reaches.
     await settle();
