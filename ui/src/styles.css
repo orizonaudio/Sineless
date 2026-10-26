@@ -181,6 +181,12 @@ body {
   box-shadow: 0 0 0 1.5px var(--sl-ink);
 }
 
+/* The whole pill drags, scrolls and opens for typing like its value (DragField.attach). */
+.icon-field {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
 .icon-field i,
 .field-button i {
   font-style: normal;
