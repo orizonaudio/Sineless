@@ -38,8 +38,9 @@ About five minutes, with the release's own installer, at the host's usual rate a
    Beats (the sweep on the bar lines) and in Sec (a steady tone held still).
 3. **Editor.** Open, resize and close the editor a few times while playing: it draws at once and
    nothing is cropped.
-4. **Multi and Compare.** Multi shows both tracks as lanes with their names, in order; in Compare,
-   checking the other track shows its match and the sum.
+4. **Multi and Compare.** Multi shows both tracks as lanes with their names, in order; Compare
+   opens with the other track checked, showing its match and the sum; unchecking it leaves the sum
+   this track alone.
 5. **Transport.** With Auto-freeze on, stop: the display freezes; play: it is live again.
 6. **State.** Save, close and reopen the project: every setting is restored.
 
