@@ -97,15 +97,21 @@ describe("a track sending samples that are not finite", () => {
     expect((more as HTMLElement).firstChild?.textContent).toBe(
       `+${String(folded.length)}`,
     );
-    expect(more?.getAttribute("aria-label")).toBe(
-      `${String(folded.length)} more: ${folded.join(", ")}`,
-    );
     // Every state is shown or listed once, in order, the problem among the shown.
     const shown = [...host.children].filter((child) => child !== more);
     expect([...shown.map((child) => child.textContent), ...folded]).toEqual(
       states,
     );
     expect(shown[0]?.classList.contains("problem")).toBe(true);
+    // For screen readers, "+n" says how many are folded and names each, and none of those shown.
+    const label = more?.getAttribute("aria-label") ?? "";
+    expect(label).toContain(String(folded.length));
+    for (const state of folded) {
+      expect(label).toContain(state);
+    }
+    for (const child of shown) {
+      expect(label).not.toContain(child.textContent);
+    }
     const area = host.getBoundingClientRect();
     for (const child of host.children) {
       const box = child.getBoundingClientRect();
