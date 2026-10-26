@@ -7,7 +7,7 @@ body:
     attributes:
       label: Sineless version
       description: In the name of the release's zip file, or the host's plugin details.
-      placeholder: 0.6.0
+      placeholder: 0.7.0
     validations:
       required: true
   - type: input
