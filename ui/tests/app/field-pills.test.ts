@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import type { SettingName } from "../../../protocol/src/settings.ts";
+import { streamGap } from "../../src/components/wheel-steps.ts";
 import { numberFields } from "../../src/view/fields.ts";
 import { byId, choice, startApp, type Started } from "./harness.ts";
 
@@ -155,7 +156,7 @@ describe("a value's pill", () => {
     let from = app.sent.length;
     stream(iconOf("scale-field"));
     const onIcon = asked("verticalScale", from).length;
-    await new Promise((resolve) => setTimeout(resolve, 200)); // A new stream.
+    await new Promise((resolve) => setTimeout(resolve, 2 * streamGap)); // A new stream.
     from = app.sent.length;
     stream(fieldOf("scale-field"));
     expect(onIcon).toBeGreaterThan(1);
