@@ -273,6 +273,10 @@ jobs:
               > mutation-triage/pr.diff
           fi
 
+      # The triage and verify steps launch a subagent per file or per finding, so their turns grow
+      # with the change: 54 findings took the verify step 59 turns. Past --max-turns the action
+      # discards even a finished result. 100 leaves room for about 95 files or findings; a larger
+      # change fails the same way.
       - name: Triage
         if: steps.pr.outputs.action == 'triage' && steps.collect.outputs.count != '0'
         id: triage
@@ -304,7 +308,7 @@ jobs:
             Return one verdict per id, with each triager's verdict and reason unchanged.
           claude_args: |
             --model claude-opus-5-5
-            --max-turns 30
+            --max-turns 100
             --allowedTools "Agent,Task,Read(./**),Grep(./**),Glob(./**),Read(/${{ github.workspace }}/**),Grep(/${{ github.workspace }}/**),Glob(/${{ github.workspace }}/**)"
             --disallowedTools "Read(./.git/**),Grep(./.git/**),Glob(./.git/**),Read(./pr-head/.git/**),Grep(./pr-head/.git/**),Glob(./pr-head/.git/**),Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(/${{ runner.temp }}/**),Grep(/${{ runner.temp }}/**),Glob(/${{ runner.temp }}/**),Read(~/.claude/**),Grep(~/.claude/**),Glob(~/.claude/**)"
             --json-schema '{"type":"object","required":["verdicts"],"properties":{"verdicts":{"type":"array","items":{"type":"object","required":["id","verdict","reason"],"properties":{"id":{"type":"integer"},"verdict":{"enum":["gap","equivalent","speed","tuned","dead","message","tested"]},"reason":{"type":"string"}}}}}}'
@@ -360,7 +364,7 @@ jobs:
             Return one verdict per id, with each verifier's result unchanged.
           claude_args: |
             --model claude-opus-5-5
-            --max-turns 30
+            --max-turns 100
             --allowedTools "Agent,Task,Read(./**),Grep(./**),Glob(./**),Read(/${{ github.workspace }}/**),Grep(/${{ github.workspace }}/**),Glob(/${{ github.workspace }}/**)"
             --disallowedTools "Read(./.git/**),Grep(./.git/**),Glob(./.git/**),Read(./pr-head/.git/**),Grep(./pr-head/.git/**),Glob(./pr-head/.git/**),Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(/${{ runner.temp }}/**),Grep(/${{ runner.temp }}/**),Glob(/${{ runner.temp }}/**),Read(~/.claude/**),Grep(~/.claude/**),Glob(~/.claude/**)"
             --json-schema '{"type":"object","required":["verdicts"],"properties":{"verdicts":{"type":"array","items":{"type":"object","required":["id","verified","severity","proof"],"properties":{"id":{"type":"integer"},"verified":{"type":"boolean"},"severity":{"enum":["important","nit"]},"proof":{"type":"string"}}}}}}'
