@@ -16,6 +16,15 @@
 
 namespace orizon::engine {
 
+// Seconds of audio a freeze in Seconds mode holds: the longest span a frozen view pans back through
+// (protocol::kFrozenHoldSeconds), and a margin of twice the largest delay a paced edge trails the
+// newest audio by (protocol::kPacingDelayCapSeconds). The last frame shown ended at most one
+// delay before the newest audio when it was drawn, and at most a block more arrived before the
+// freeze, a block being no longer than the delay where pacing applies: so the frozen window of
+// the longest span is the one last shown, never moved forward to what is held.
+inline constexpr double kSecondsFreezeSeconds =
+    protocol::kFrozenHoldSeconds + 2.0 * protocol::kPacingDelayCapSeconds;
+
 // Per-instance history of the input signal. The audio thread is the only writer; any number of
 // non-real-time readers copy ranges out of it. The writer never waits for them.
 //
@@ -49,12 +58,13 @@ public:
     }
 
     // The capacity for `sampleRate`: the smallest power of two (for the index mask), from
-    // kMinimumCapacity, whose readableLength holds a freeze in Seconds mode (the longest span,
-    // protocol::kFrozenHoldSeconds), so a frame of the longest span can be read live and frozen,
-    // and a frozen view panned through all of its hold. 2^20 up to 229.376 kHz, 2^21 (16 MB) from
-    // there to the highest rate, at which it keeps 4.78 s: the 4 s hold and 0.78 s of the 1 s
-    // margin another track's lane holds beyond it. A live frame reads at most the 4 s span, and
-    // the trigger search two spans of up to 1 s. Above the highest rate, no larger.
+    // kMinimumCapacity, whose readableLength holds a freeze in Seconds mode
+    // (kSecondsFreezeSeconds: the longest span and its margin), so a frame of the longest span can
+    // be read live and frozen, and a frozen view panned through all of its hold. 2^20 up to
+    // 215.9 kHz, 2^21 (16 MB) from there to the highest rate, at which it keeps 4.78 s: the
+    // 4.25 s hold and 0.53 s of the 1 s margin another track's lane holds beyond it. A live frame
+    // reads at most the 4 s span, and the trigger search two spans of up to 1 s. Above the highest
+    // rate, no larger.
     [[nodiscard]] static constexpr std::size_t capacityFor(double sampleRate) noexcept
     {
         if (!(sampleRate > 0.0)) {
@@ -62,7 +72,7 @@ public:
         }
         const double rate = sampleRate < kHighestSampleRate ? sampleRate : kHighestSampleRate;
         std::size_t size = kMinimumCapacity;
-        while (static_cast<double>(readableLength(size)) < protocol::kFrozenHoldSeconds * rate) {
+        while (static_cast<double>(readableLength(size)) < kSecondsFreezeSeconds * rate) {
             size *= 2;
         }
         return size;
@@ -86,8 +96,8 @@ public:
     void write(const double* const* channels, int numChannels,
                int numSamples) noexcept ORIZON_NONBLOCKING;
 
-    // Index one past the newest sample published by the writer.
-    [[nodiscard]] std::uint64_t writeIndex() const noexcept;
+    // Index one past the newest sample published by the writer. Any thread, the audio thread too.
+    [[nodiscard]] std::uint64_t writeIndex() const noexcept ORIZON_NONBLOCKING;
 
     [[nodiscard]] std::uint64_t endIndex() const override { return writeIndex(); }
     [[nodiscard]] std::uint64_t beginIndex() const override;
@@ -157,7 +167,7 @@ void captureBlock(CaptureRing& ring, const Sample* const* channels, int numChann
     ring.write(sources.data(), count, numSamples);
 }
 
-static_assert(protocol::kFrozenHoldSeconds * CaptureRing::kHighestSampleRate <=
+static_assert(kSecondsFreezeSeconds * CaptureRing::kHighestSampleRate <=
                   static_cast<double>(CaptureRing::readableLength(CaptureRing::kMaximumCapacity)),
               "the capture must keep a whole freeze at the highest sample rate");
 

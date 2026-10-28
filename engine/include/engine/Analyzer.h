@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/BlockClock.h"
 #include "engine/BlockStats.h"
 #include "engine/Engine.h"
 #include "engine/FrameEncoder.h"
@@ -16,6 +17,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -145,6 +147,9 @@ public:
     // Draws the frame again at the next request, whatever has changed: for a page that has just
     // loaded (or loaded again after its process ended) and has no frame yet.
     void redraw();
+    // The time free-running windows are paced by: monotonicNanos, or a simulated clock in tests.
+    using Clock = std::function<std::uint64_t()>;
+    void setClock(Clock clock) { now = std::move(clock); }
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
     bool produce(std::vector<std::byte>& frame);
@@ -371,6 +376,9 @@ private:
     // last frame was drawn. A frame with the same ends and the same inputs would be the same.
     std::vector<std::uint64_t> liveEnds;
     std::vector<std::uint64_t> lastLiveEnds;
+    // This track's paced edge: free-running windows and Auto's untriggered fallback end there.
+    PacedEdge pacedEdge;
+    Clock now = monotonicNanos;
     // Live, in either time base: the channel counts and sample rates of this track and of each lane
     // shown, now and when the last frame was drawn, which are inputs too (formatsChanged).
     std::vector<std::uint64_t> liveFormats;

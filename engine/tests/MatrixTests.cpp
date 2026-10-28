@@ -115,7 +115,7 @@ double captureSeconds(double rate)
 // audio thread writes on (the most the engine reads at once, as frozenLength in Analyzer.cpp).
 bool captureHoldsTheFreeze(double rate)
 {
-    return protocol::kFrozenHoldSeconds * rate <=
+    return kSecondsFreezeSeconds * rate <=
            static_cast<double>(CaptureRing::readableLength(CaptureRing::capacityFor(rate)));
 }
 
@@ -427,8 +427,8 @@ std::string rateTestName(const ::testing::TestParamInfo<double>& info)
 }
 
 // An engine prepared for the rate sizes its capture for it: the smallest that holds what a freeze
-// holds, and the freeze holds the longest span, so a frame of the longest span can be read live
-// and frozen.
+// holds, and the freeze holds the longest span and its margin, so a frame of the longest span can
+// be read live and frozen.
 TEST_P(CaptureCapacity, HoldsAFreeze)
 {
     const double rate = GetParam();
@@ -437,14 +437,14 @@ TEST_P(CaptureCapacity, HoldsAFreeze)
     const std::size_t capacity = engine.captureRing().capacity();
     EXPECT_EQ(capacity, CaptureRing::capacityFor(rate));
     EXPECT_TRUE(captureHoldsTheFreeze(rate))
-        << protocol::kFrozenHoldSeconds * rate << " samples, " << capacity << " held";
+        << kSecondsFreezeSeconds * rate << " samples, " << capacity << " held";
     EXPECT_TRUE(capacity == CaptureRing::kMinimumCapacity ||
                 static_cast<double>(CaptureRing::readableLength(capacity / 2)) <
-                    protocol::kFrozenHoldSeconds * rate)
+                    kSecondsFreezeSeconds * rate)
         << "no larger than it needs";
     const HoldBuffer hold(capacity);
     EXPECT_EQ(hold.holdLength(rate),
-              static_cast<std::size_t>(std::llround(protocol::kFrozenHoldSeconds * rate)));
+              static_cast<std::size_t>(std::llround(kSecondsFreezeSeconds * rate)));
     EXPECT_EQ(protocol::kFrozenHoldSeconds, setting(SettingId::kTimeSpan).maximum)
         << "a freeze holds the longest span";
 }

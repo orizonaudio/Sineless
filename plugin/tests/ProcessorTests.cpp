@@ -249,6 +249,49 @@ TEST(Processor, CapturesInputIntoTheRing)
     EXPECT_EQ(captured, right);
 }
 
+// Each block with samples is stamped with when it arrived, which paces free-running windows; only
+// real-time processing is paced: offline and prefetch blocks come at no steady rate. A call with no
+// samples stamps nothing.
+TEST(Processor, StampsEachBlockPacedOnlyInRealTime)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
+    std::vector<Sample32> silence(kBlockSize);
+    std::array<Sample32*, 2> channels = {silence.data(), silence.data()};
+    AudioBusBuffers input{};
+    input.numChannels = 2;
+    input.channelBuffers32 = channels.data();
+    AudioBusBuffers output = input;
+    ProcessData data{};
+    data.symbolicSampleSize = kSample32;
+    data.numInputs = 1;
+    data.numOutputs = 1;
+    data.inputs = &input;
+    data.outputs = &output;
+    const engine::BlockStamp& stamp = processor->engine()->blockStamp();
+    EXPECT_FALSE(stamp.latest()) << "no block yet";
+
+    uint64 written = 0;
+    for (const auto [mode, paced] : {std::pair{kRealtime, true}, std::pair{kOffline, false},
+                                     std::pair{kPrefetch, false}, std::pair{kRealtime, true}}) {
+        SCOPED_TRACE(mode);
+        data.processMode = mode;
+        data.numSamples = kBlockSize;
+        ASSERT_EQ(processor->process(data), kResultOk);
+        written += kBlockSize;
+        const auto latest = stamp.latest();
+        ASSERT_TRUE(latest.has_value());
+        EXPECT_EQ(latest->index, written);
+        EXPECT_EQ(latest->paced, paced);
+    }
+    const auto before = stamp.latest();
+    ASSERT_TRUE(before.has_value());
+    data.numSamples = 0;
+    ASSERT_EQ(processor->process(data), kResultOk);
+    const auto after = stamp.latest();
+    ASSERT_TRUE(after.has_value());
+    EXPECT_EQ(after->nanos, before->nanos) << "a call with no samples is no block";
+}
+
 TEST(Processor, PassesTheSampleRateToTheEngine)
 {
     auto processor = owned(new Processor());

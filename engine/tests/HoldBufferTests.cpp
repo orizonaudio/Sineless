@@ -1,6 +1,7 @@
 #include "engine/HoldBuffer.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <vector>
@@ -76,11 +77,16 @@ TEST(HoldBuffer, RejectsReadsOutsideTheHeldRange)
     EXPECT_FALSE(hold.read(2, 900, copy)) << "invalid channel";
 }
 
-TEST(HoldBuffer, HoldsFourSecondsWithinCapacity)
+// The longest span and its margin for a paced edge, whole, at every rate up to the highest.
+TEST(HoldBuffer, HoldsTheLongestSpanAndItsMarginWithinCapacity)
 {
     for (const double rate : {48000.0, 192000.0, 384000.0}) {
         const HoldBuffer hold(CaptureRing::capacityFor(rate));
-        EXPECT_EQ(hold.holdLength(rate), static_cast<std::size_t>(rate * 4)) << rate;
+        EXPECT_EQ(hold.holdLength(rate),
+                  static_cast<std::size_t>(std::lround(kSecondsFreezeSeconds * rate)))
+            << rate;
+        EXPECT_GT(static_cast<double>(hold.holdLength(rate)), protocol::kFrozenHoldSeconds * rate)
+            << "more than the longest span";
     }
     const HoldBuffer shortHold(kCapacity);
     EXPECT_EQ(shortHold.holdLength(48000.0), kCapacity) << "limited by capacity";
