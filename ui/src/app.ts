@@ -780,9 +780,6 @@ export class OscilloscopeApp {
         `Group ${value.toUpperCase()}`,
       );
     }
-    if (name === "triggerSource") {
-      this.updateReadoutTag();
-    }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
     if (
       (name === "timeSpan" || name === "timeBase" || name === "beatSpan") &&
@@ -1073,11 +1070,7 @@ export class OscilloscopeApp {
   }
 
   private readoutView(): ChannelView {
-    return readoutView(
-      this.beatsMode(),
-      this.store.get("triggerSource") as ViewName,
-      this.inputChannels,
-    );
+    return readoutView(this.inputChannels);
   }
 
   // The musical grid of the last synced frame, when in Beats mode.
@@ -1305,8 +1298,8 @@ export class OscilloscopeApp {
     }
   }
 
-  // The view whose trace cursors snap to: the one in `lane` when stacked, otherwise the trigger
-  // source when shown, or the first view shown.
+  // The view whose trace cursors snap to: the one in `lane` when stacked, otherwise the readout
+  // channel when shown, or the first view shown.
   private snapValues(lane?: number): Float32Array | undefined {
     const frame = this.lastFrame;
     if (frame === undefined) {

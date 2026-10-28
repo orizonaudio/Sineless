@@ -64,16 +64,18 @@ and what a freeze holds.
 | | Seconds, triggered (≤ 1 s) | Seconds, roll (> 1 s) | Beats (sweep) |
 | --- | --- | --- | --- |
 | **Single display mode**: trigger reads | Trigger source | — | — |
-| **Single display mode**: readouts, cursor snap, hover | Trigger source | Trigger source | Mid |
+| **Single display mode**: readouts, cursor snap, hover | Mid | Mid | Mid |
 | **Multi, Compare**: trigger reads | This track's Mid | — | — |
 | **Multi, Compare**: readouts, cursor snap | This track's Mid | This track's Mid | This track's Mid |
 | Freeze holds | Newest 4 s; lanes 4 s + 1 s | Same | Readable capture (7/8); sweep image kept |
 | Pan while frozen | Yes, not zoomed | Yes, not zoomed | No |
 | Time labels | From the trigger point | Back from now | bar.beat over project time |
 
-On a mono track, L takes the place of the trigger source and of Mid in Single display mode. Level
-cursors in stacked lanes snap to each lane's own trace. Holds keep 7/8 of the capture because the
-audio thread keeps writing into the last eighth while a freeze copies (5.2, CaptureRing).
+The trigger source picks only the channel the trigger reads. On a mono track, L takes the place of
+the trigger source and of Mid in Single display mode. Overlaid, cursors and hover use the first
+drawn trace when the readout channel is not drawn. Level cursors in stacked lanes snap to each
+lane's own trace. Holds keep 7/8 of the capture because the audio thread keeps writing into the
+last eighth while a freeze copies (5.2, CaptureRing).
 
 #### 1.2.2 Requirements
 
@@ -99,7 +101,7 @@ audio thread keeps writing into the last eighth while a freeze copies (5.2, Capt
 | FR-12 | Cursors. | `cursors.test.ts`, `snap.test.ts` |
 | FR-12.1 | Time cursors: two vertical lines, A and B, starting at 1/3 and 2/3 of the screen. The readout gives Δt in time and samples, its frequency 1/Δt, with the nearest note and cent offset when 1/Δt is between 20 Hz and 20 kHz, and, in Beats, the distance in beats. They sit at positions in the signal, so they follow zoom and pan. | |
 | FR-12.2 | Level cursors: two horizontal lines, 1 and 2, drawn in every lane at a sample value, starting 6 and 12 dB below the top of the screen (−6 and −12 dBFS at the default scale); the readout gives each level in dBFS and the difference in dB. | |
-| FR-12.3 | While dragged, time cursors snap to zero crossings and to where the trace reaches its highest and lowest values, and level cursors to the trace's highest and lowest values and to zero, within 10 px; holding ⌥ (Alt on Windows) places them freely. They snap to the readout channel (1.2.1); level cursors in stacked lanes use the lane's own trace. | |
+| FR-12.3 | While dragged, time cursors snap to zero crossings and to where the trace reaches its highest and lowest values, and level cursors to the trace's highest and lowest values and to zero, within 10 px; holding ⌥ (Alt on Windows) places them freely. They snap to the readout channel (1.2.1), or overlaid to the first drawn trace when it is not drawn; level cursors in stacked lanes use the lane's own trace. | |
 | FR-12.4 | Cursors work live and frozen, and are temporary (not saved). | |
 | FR-13 | Help: a toggle at the right end of the status bar, off whenever the editor opens. While on, resting the pointer on any control, readout or the screen for 400 ms shows a tooltip that explains what it is, what it does and how to use it, with numbers read from the shared limits. While off, the UI shows no tooltips except the help switch's own, so it can be found. | `help.test.ts` |
 | FR-14 | Multi-track view. | `InstanceRegistryTests`, `AnalyzerTests`, `ui/tests/app/multi-track.test.ts` |
@@ -207,7 +209,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   window; it closes any other popover, and a press outside closes it.
 - The status bar never moves: the cursor buttons and A4 keep their width, each readout has a fixed
   width, and the chips have a fixed area. The readouts are labelled with the channel they measure
-  (1.2.1): Left, Right, Mid or Side in Single (Left on a mono track), "This track" in Multi and
+  (1.2.1): Mid in Single (Left on a mono track), "This track" in Multi and
   Compare. Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
   do not fit fold, from the last, into one "+n" chip that lists them on hover or focus; the first
   stays shown.
@@ -269,7 +271,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Frozen | Frozen (in the accent colour); followed by the pan offset (for example "−1.2 s") when panned, **Span limited** when the span was shortened to what is held, and **Partial** when the held audio does not cover the span. |
 | Zoom ×n | Zoomed in. |
 | +n hidden | Multi or Compare with more tracks than lanes. |
-| Invalid samples | A drawn trace holds samples that are not finite (in yellow, the problem colour). |
+| Invalid samples | A drawn trace, or the channel the readouts measure, holds samples that are not finite (in yellow, the problem colour). |
 
 - Messages over the screen replace the traces and explain what to do: **Version mismatch**,
   **Display unavailable** (no engine) and **Display error** come from the engine; **Graphics

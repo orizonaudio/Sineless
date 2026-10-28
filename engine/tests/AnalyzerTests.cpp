@@ -147,8 +147,8 @@ TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
     EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
 }
 
-// In Beats mode nothing triggers and the trigger source cannot be set: readouts measure the Mid,
-// as the multi-track lanes do, whatever views are on show.
+// In Beats mode readouts measure the Mid, as in Seconds mode and the multi-track lanes, whatever
+// views are on show.
 TEST_F(AnalyzerTest, MeasuresTheMidInBeatsMode)
 {
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
@@ -943,7 +943,7 @@ TEST_F(AnalyzerTest, MonoInputProducesASingleView)
     const auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->views, 0b0001);
-    EXPECT_NEAR(frame->peak, 0.5f, 1e-3f) << "the trigger source is the mono channel itself";
+    EXPECT_NEAR(frame->peak, 0.5f, 1e-3f) << "the Mid of a mono track is its one channel";
 }
 
 // View zoom: the left channel holds each sample's own index, so a zoomed frame's

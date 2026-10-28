@@ -135,15 +135,15 @@ describe("controls", () => {
     await press(choice("mode", "Auto"));
   });
 
-  // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): the trigger source in
-  // Single and Seconds, Mid in Beats, this track's Mid in Multi and Compare.
+  // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): Mid in Single, whatever
+  // the trigger source, this track's Mid in Multi and Compare.
   test("labels the readouts with the channel they measure", async () => {
     const tag = () => byId("readout-tag").textContent;
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Sec"));
-    // Away from the default source, then back: the tag follows it.
+    // Away from the default source: the tag stays.
     await press(choice("source", "S"));
-    await expect.poll(tag).toBe("Side");
+    await expect.poll(tag).toBe("Mid");
     await userEvent.click(choice("time-base", "Beats"));
     await expect.poll(tag).toBe("Mid");
     await userEvent.click(choice("display-mode", "Multi"));
