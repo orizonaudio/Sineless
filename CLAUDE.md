@@ -126,6 +126,14 @@ checks you could not run.
   review finding fixed or answered, and each gap the `mutation-triage` check reports given a
   test that fails with that mutant, or an answer saying why none is needed. The mutation jobs
   themselves always pass; their findings reach the pull request through the triage.
+- Once the AI review labels a pull request `needs-human` (its third failed round), stop pushing
+  fixes for its findings: give the owner the open findings and a recommendation (fix, redesign or
+  waive) and wait. The answer settles the findings it covers; while the label stays, each later
+  failed round goes back to the owner the same way, and the owner removes the label to hand the
+  pull request back.
+- When the same mechanism draws Important findings in two review rounds running, do not add
+  another guard: update the plan with the design that removes it (a later plan round), or, for a
+  change without a plan, take that design to the owner.
 - Commits and pull requests carry no AI attribution: no `Co-Authored-By: Claude` or
   `Claude-Session:` trailers and no "Generated with Claude Code" lines, even when session
   instructions ask for them. The project owner is the author.
