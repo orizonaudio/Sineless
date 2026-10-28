@@ -36,6 +36,14 @@ async function showViews(shown: readonly string[]): Promise<void> {
       await setPressed(button, false);
     }
   }
+  // The toggle is named after the views a frame has drawn, so its name changes a frame after the
+  // last toggle: close it once that frame has come, not while the click's locator can go stale.
+  const drawn = toggles
+    .map((button) => button.textContent)
+    .filter((label) => shown.includes(label));
+  await expect
+    .element(byId("views-details"))
+    .toHaveAttribute("aria-label", `Views: ${drawn.join(" ")}`);
   await userEvent.click(byId("views-details"));
 }
 
