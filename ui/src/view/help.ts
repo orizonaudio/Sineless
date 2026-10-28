@@ -8,7 +8,7 @@ import {
   matchReachSeconds,
   matchWindowSeconds,
   maxLanes,
-  rollThresholdSeconds,
+  freeRunningThresholdSeconds,
   summingMarginDb,
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
@@ -28,7 +28,7 @@ const levelFloor = String(levelFloorDbfs).replace("-", "−");
 const gate = String(analysisGateDbfs).replace("-", "−");
 const shortestSpan = formatSeconds(settings.timeSpan.minimum);
 const longestSpan = formatSeconds(settings.timeSpan.maximum);
-const rollSpan = formatSeconds(rollThresholdSeconds);
+const freeSpan = formatSeconds(freeRunningThresholdSeconds);
 const option = isMac ? "⌥" : "Alt";
 
 export interface HelpText {
@@ -71,7 +71,7 @@ export const helpTexts = {
   },
   status: {
     title: "Status",
-    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, Roll, Sync, Frozen or Zoom for the current mode, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in yellow.",
+    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode (Free whenever the trace runs free), Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in yellow.",
   },
   peak: {
     title: "Peak",
@@ -107,7 +107,7 @@ export const helpTexts = {
   },
   timeSpan: {
     title: "Time span",
-    text: `How much time the screen shows, from ${shortestSpan} to ${longestSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one, such as 20 ms. Spans above ${rollSpan} scroll continuously.`,
+    text: `How much time the screen shows, from ${shortestSpan} to ${longestSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one, such as 20 ms. Spans above ${freeSpan} run free, whatever the trigger mode: the trace moves with the newest audio.`,
   },
   beatSpan: {
     title: "Beat span",
@@ -155,7 +155,7 @@ export const helpTexts = {
   },
   modeFree: {
     title: "Free",
-    text: "Draws continuously without waiting for a trigger.",
+    text: `Draws continuously without waiting for a trigger: the trace moves with the newest audio, its times counted back from the right edge, as every span above ${freeSpan} does.`,
   },
   modeSingle: {
     title: "Single",

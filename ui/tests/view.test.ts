@@ -273,7 +273,7 @@ describe("axis labels", () => {
     expect(labels[4]?.position).toBe(0.5);
   });
 
-  test("counts time from the trigger point, or back from now when rolling", () => {
+  test("counts time from the trigger point, or back from the right edge when running free", () => {
     expect(timeLabels(0.02, false).map((label) => label.text)).toEqual([
       "2 ms",
       "6 ms",
@@ -294,7 +294,7 @@ describe("status chips", () => {
     mode: FrameMode.minMax,
     triggered: false,
     frozen: false,
-    roll: false,
+    freeRunning: false,
     pointCount: 0,
     startFraction: 0,
     peak: 0,
@@ -375,7 +375,7 @@ describe("status chips", () => {
   test.each([
     { state: "triggered", overrides: { triggered: true } },
     { state: "synced", overrides: { synced: true } },
-    { state: "rolling", overrides: { roll: true } },
+    { state: "free-running", overrides: { freeRunning: true } },
     { state: "frozen", overrides: { frozen: true } },
   ])(
     "warns of samples that are not finite whatever the display does, first ($state)",
@@ -417,7 +417,7 @@ describe("status chips", () => {
   // Seconds span longer than the capture (a host changed the rate while processing), and frozen.
   test.each([
     ["a sweep", { synced: true }],
-    ["a roll", { roll: true }],
+    ["a free-running frame", { freeRunning: true }],
     ["a frozen frame", { frozen: true }],
   ])("says the span is limited on %s", (_, flags) => {
     expect(
@@ -443,10 +443,18 @@ describe("status chips", () => {
     ).toEqual(["Frozen", "No tempo"]);
   });
 
-  test("shows roll and frozen with the pan offset", () => {
-    expect(statusChips(frame({ roll: true }), "auto", 0, 0)).toEqual([
-      { text: "Roll", tone: "neutral" },
-    ]);
+  // Free-running is one behaviour, whatever the trigger mode set: a span above the threshold
+  // runs free in Auto, Normal and Single too.
+  test.each(["auto", "normal", "free", "single"])(
+    "names a free-running frame Free in %s mode",
+    (mode) => {
+      expect(statusChips(frame({ freeRunning: true }), mode, 5, 0)).toEqual([
+        { text: "Free", tone: "neutral" },
+      ]);
+    },
+  );
+
+  test("shows frozen with the pan offset", () => {
     expect(statusChips(frame({ frozen: true }), "auto", 5, 0.12)).toEqual([
       { text: "Frozen", tone: "hold" },
       { text: "−120 ms", tone: "neutral" },

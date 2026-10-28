@@ -44,7 +44,7 @@ export interface HoverContext {
   readonly view: ViewWindow;
   readonly a4: number;
   // Seconds mode: the span rolls, so times count back from now.
-  readonly roll: boolean;
+  readonly freeRunning: boolean;
 }
 
 // A cycle needs this many min/max columns to be measured from them: each crossing is only known
@@ -292,7 +292,7 @@ export function hoverReadout(
       `${musicalPosition(quarterNotes, frame.barQuarterNotes)} · ${formatClock(seconds)}`,
     );
   } else {
-    const seconds = context.roll
+    const seconds = context.freeRunning
       ? -(1 - position) * spanSeconds
       : (position - triggerPosition) * spanSeconds;
     const text = formatSeconds(Math.abs(seconds));

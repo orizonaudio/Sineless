@@ -2,9 +2,9 @@
 
 #include "engine/ChannelViews.h"
 #include "engine/FrameEncoder.h"
+#include "engine/FreeRunning.h"
 #include "engine/Readouts.h"
 #include "engine/Reducer.h"
-#include "engine/Roll.h"
 #include "engine/Sweep.h"
 
 #include <algorithm>
@@ -61,7 +61,7 @@ constexpr std::uint8_t flag(FrameFlag value)
 // The part of a window of `count` samples that the screen shows, as sample indices from its first
 // sample, with one extra point beyond each edge so a raw trace reaches the screen edges. The
 // window starts `fraction` of a sample after its first sample. A window of no samples (a failed
-// read, or a rolling span before its first column of audio) shows none.
+// read, or a free-running span before its first column of audio) shows none.
 struct Crop
 {
     std::size_t first = 0;
@@ -522,7 +522,8 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     }
 
     const double spanSeconds = settings.value(SettingId::kTimeSpan);
-    const bool roll = isRollSpan(spanSeconds);
+    const bool freeRunning = isFreeRunning(
+        spanSeconds, settings.enumValue<protocol::TriggerMode>(SettingId::kTriggerMode));
     // The capture is sized for the longest span at its rate, but a host that changes the rate
     // while processing leaves it as it was, and above the highest rate it grows no more: a longer
     // span shows what is kept, and says so. Live, that is all the capture can be read of. Frozen,
@@ -582,7 +583,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         return false;
     }
 
-    Window window{.span = span, .roll = roll, .limited = spanLimited};
+    Window window{.span = span, .freeRunning = freeRunning, .limited = spanLimited};
     auto sampleCount = static_cast<std::uint64_t>(std::llround(span));
     bool freezeAfterRender = false;
     const SampleSource* source =
@@ -633,7 +634,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         source = &image;
         window.start = 0.0;
         window.span = static_cast<double>(image.length());
-        window.roll = false;
+        window.freeRunning = false;
         window.synced = true;
         window.limited = sweep.limited;
         window.partial = !(image.complete() || image.partComplete());
@@ -649,17 +650,19 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         if (!changed) {
             return false;
         }
-        // Keep the trigger point (triggered) or the right edge (roll) of the last live window
-        // where it was, so changing the scale while frozen zooms around it. A Beats sweep's
+        // Keep the trigger point (triggered) or the right edge (free-running) of the last live
+        // window where it was, so changing the scale while frozen zooms around it. A Beats sweep's
         // window is a place in the sweep, not in the capture: frozen from Beats, the view ends at
         // the newest audio held, as when frozen before any live frame.
         const auto held = static_cast<double>(hold.endIndex());
         const std::optional<Window> live =
             lastLive && !lastLive->synced ? lastLive : std::optional<Window>{};
+        const double rightEdge = live && live->freeRunning ? live->edge
+                                 : live                    ? live->start + live->span
+                                                           : held;
         const double anchor =
-            live ? (roll ? live->start + live->span : live->start + kTriggerPosition * live->span)
-                 : held;
-        const double anchorOffset = roll || !live ? span : kTriggerPosition * span;
+            !live || freeRunning ? rightEdge : live->start + kTriggerPosition * live->span;
+        const double anchorOffset = freeRunning || !live ? span : kTriggerPosition * span;
         const double latestStart = held - span;
         const auto earliestStart = static_cast<double>(hold.beginIndex());
         window.start = std::clamp(anchor - anchorOffset - command.panSeconds * sampleRate,
@@ -667,22 +670,37 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         // The UI keeps its pan within this, so it never asks for more than is held.
         window.panReach = std::max(0.0, (anchor - anchorOffset - earliestStart) / sampleRate);
         window.triggered = live && live->triggered;
-    } else if (roll) {
-        // Zoomed, the roll window covers only the visible part, so its columns keep fixed
-        // sample boundaries and do not shimmer; readouts still cover the whole span.
+    } else if (freeRunning) {
         const std::uint64_t end = engine.captureRing().endIndex();
-        const RollWindow whole = rollWindow(end, span, command.columns);
-        const auto visibleEnd = static_cast<std::uint64_t>(
-            std::llround(static_cast<double>(end) - (1.0 - command.viewEnd) * span));
-        const RollWindow rolled =
-            rollWindow(std::min(visibleEnd, end), (command.viewEnd - command.viewStart) * span,
-                       command.columns);
-        window.start = static_cast<double>(rolled.start);
-        window.cropStart = 0.0;
-        window.cropEnd = 1.0;
+        const auto spanSamples = static_cast<std::uint64_t>(std::llround(span));
+        const FreeWindow whole = freeWindow(end, spanSamples, command.columns);
+        const auto visibleSamples = std::max<std::uint64_t>(
+            1,
+            static_cast<std::uint64_t>(std::llround((command.viewEnd - command.viewStart) * span)));
+        window.edge = static_cast<double>(end);
         window.readoutStart = whole.start;
         window.readoutCount = whole.sampleCount;
-        sampleCount = rolled.sampleCount;
+        if (visibleSamples <= command.columns) {
+            // Raw samples: the whole span, cropped to the view as a triggered window is, so the
+            // trace reaches past the screen's edges.
+            sampleCount = std::min(spanSamples, end);
+            window.start = static_cast<double>(end - sampleCount);
+        } else {
+            // Columns: the window covers only the visible part, on a grid of its own, so its
+            // columns keep fixed sample boundaries and do not shimmer; readouts still cover the
+            // whole span.
+            const std::uint64_t hidden = std::min<std::uint64_t>(
+                end, static_cast<std::uint64_t>(std::llround((1.0 - command.viewEnd) * span)));
+            const FreeWindow shown = freeWindow(end - hidden, visibleSamples, command.columns);
+            window.start = static_cast<double>(shown.start);
+            window.visiblePart = true;
+            window.onGrid = shown.onGrid;
+            window.grid = {.spanSamples = visibleSamples, .columns = command.columns};
+            window.firstColumn = shown.firstColumn;
+            window.cropStart = 0.0;
+            window.cropEnd = 1.0;
+            sampleCount = shown.sampleCount;
+        }
     } else {
         const CaptureRing& ring = engine.captureRing();
         const double timeout = kAutoTimeoutSeconds * sampleRate;
@@ -703,12 +721,14 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         const TriggerDecision decision = trigger.decide(
             triggerSamples, first, span, timeout, triggerParameters(settings, sampleRate),
             settings.enumValue<protocol::TriggerMode>(SettingId::kTriggerMode));
-        if (decision.action == TriggerDecision::Action::kHold && lastShown && lastShown->synced) {
-            // Just switched from Beats: the last window was a place in a sweep, not in the
-            // capture. Show the newest span, untriggered, then wait for a trigger from there.
+        if (decision.action == TriggerDecision::Action::kHold && lastShown &&
+            (lastShown->synced || lastShown->freeRunning)) {
+            // Just switched from Beats, or from a free-running window: the last window was a
+            // place in a sweep, or another kind of window. Show the newest span, untriggered,
+            // then wait for a trigger from there.
             window.start = static_cast<double>(end) - span;
         } else if (decision.action == TriggerDecision::Action::kHold) {
-            if (!changed || !lastShown || lastShown->roll) {
+            if (!changed || !lastShown) {
                 return false;
             }
             window.start = lastShown->start;
@@ -722,7 +742,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
 
     window.viewStart = command.viewStart;
     window.viewEnd = command.viewEnd;
-    if (!roll || window.synced || isFrozen) {
+    if (!window.visiblePart) {
         const double shown = window.subEnd - window.subStart;
         window.cropStart = window.subStart + command.viewStart * shown;
         window.cropEnd = window.subStart + command.viewEnd * shown;
@@ -762,12 +782,13 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const double visibleSamples = crop.visibleSamples;
 
     FrameHeaderValues header{
-        .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
-                                           (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
-                                           (window.roll ? flag(FrameFlag::kRoll) : 0U) |
-                                           (window.synced ? flag(FrameFlag::kSynced) : 0U) |
-                                           (window.limited ? flag(FrameFlag::kLimited) : 0U) |
-                                           (window.partial ? flag(FrameFlag::kPartial) : 0U)),
+        .flags =
+            static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
+                                      (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
+                                      (window.freeRunning ? flag(FrameFlag::kFreeRunning) : 0U) |
+                                      (window.synced ? flag(FrameFlag::kSynced) : 0U) |
+                                      (window.limited ? flag(FrameFlag::kLimited) : 0U) |
+                                      (window.partial ? flag(FrameFlag::kPartial) : 0U)),
         .views = views,
         .startFraction = static_cast<float>(crop.startFraction),
         .cursor = static_cast<float>(window.cursor),
@@ -784,15 +805,14 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     frameData.clear();
     std::size_t pointCount = 0;
     // Each view keeps its columns from frame to frame where it can: a tempo-synced sweep reduces
-    // again only the columns its newest samples landed in, a roll window only the columns that
-    // scrolled in. A triggered window is new every time.
+    // again only the columns its newest samples landed in, a free-running window only the columns
+    // that scrolled in. A triggered window is new every time.
     const bool synced = window.synced;
     // Readouts measure the Mid in either time base, as the multi-track lanes do, whatever the
     // trigger reads; a mono track's Mid reads its one channel.
     const ChannelView readoutView = ChannelView::kMid;
-    const bool rolling = window.roll && !window.synced && window.cropStart == 0.0 &&
-                         window.cropEnd == 1.0 && sampleCount % columns == 0 &&
-                         sampleCount > columns;
+    const bool rolling = window.freeRunning && window.onGrid && !window.synced &&
+                         window.cropStart == 0.0 && window.cropEnd == 1.0;
     const std::size_t visibleCount = crop.end - crop.first;
     const bool sameReduction = viewReduction.first == crop.first &&
                                viewReduction.channels == inputChannels &&
@@ -807,7 +827,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             continue;
         }
         const auto view = static_cast<ChannelView>(index);
-        // Reads for the view's columns: a sweep's or a roll's.
+        // Reads for the view's columns: a sweep's or a free-running window's.
         const auto read = [&](std::uint64_t first, std::span<float> destination) {
             workDone.samplesReduced += destination.size();
             readScratch.resize(std::max(readScratch.size(), destination.size()));
@@ -844,7 +864,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         }
         if (rolling) {
             const auto values =
-                viewRolls.at(index).update(start, columns, sampleCount / columns, read);
+                viewRolls.at(index).update(0, window.firstColumn, window.grid, read);
             header.invalidLanes |= viewRolls.at(index).holdsInvalid() ? 1U : 0U;
             header.mode = protocol::FrameMode::kMinMax;
             pointCount = columns;
@@ -1451,7 +1471,7 @@ std::uint32_t Analyzer::sumLaneBit(std::uint32_t laneBits) const
 }
 
 // The multi-track view with the seconds time base: every lane shows this track's window (its
-// trigger, roll or frozen window), placed in each other track's capture through the musical
+// trigger, free-running or frozen window), placed in each other track's capture through the musical
 // clock that all instances share with the host.
 bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
                            std::uint64_t sampleCount, double sampleRate, const Commands& command,
@@ -1468,10 +1488,11 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     scratch.resize(std::max(scratch.size(), viewSamples.size()));
 
     FrameHeaderValues header{
-        .flags = static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
-                                           (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
-                                           (window.roll ? flag(FrameFlag::kRoll) : 0U) |
-                                           (window.limited ? flag(FrameFlag::kLimited) : 0U)),
+        .flags =
+            static_cast<std::uint8_t>((window.triggered ? flag(FrameFlag::kTriggered) : 0U) |
+                                      (isFrozen ? flag(FrameFlag::kFrozen) : 0U) |
+                                      (window.freeRunning ? flag(FrameFlag::kFreeRunning) : 0U) |
+                                      (window.limited ? flag(FrameFlag::kLimited) : 0U)),
         .laneCount = static_cast<std::uint8_t>(laneOrder.size()),
         .startFraction = static_cast<float>(crop.startFraction),
         .viewStart = static_cast<float>(window.viewStart),
@@ -1502,10 +1523,16 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
             static_cast<std::uint64_t>(std::max(
                 std::round(Timeline::sampleIndexAt(clock, startQuarterNotes, sampleRate)), 0.0))};
     };
-    // A whole roll window falls into columns on fixed sample indices: each lane keeps its columns
-    // and reduces only the new ones.
-    const bool rolling = window.roll && window.cropStart == 0.0 && window.cropEnd == 1.0 &&
-                         sampleCount % columns == 0 && sampleCount > columns;
+    // A free-running window falls into columns on a grid fixed to sample indices: each lane keeps
+    // its columns, on the same grid from where its part of the window starts, and reduces only
+    // the new ones.
+    const bool rolling =
+        window.freeRunning && window.onGrid && window.cropStart == 0.0 && window.cropEnd == 1.0;
+    // Where a lane's grid starts, from where its part of the window starts (wrapping arithmetic:
+    // the lane's columns are read from this plus the grid's boundaries).
+    const auto gridOrigin = [&](std::uint64_t laneStart) {
+        return laneStart - window.grid.boundary(window.firstColumn);
+    };
     if (comparing) {
         laneSources.clear();
         for (const std::uint64_t serial : laneOrder) {
@@ -1524,7 +1551,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         const int channels = lane.engine->inputChannels();
         if (rolling) {
             const auto values = lane.roll.update(
-                laneStart, columns, sampleCount / columns,
+                gridOrigin(laneStart), window.firstColumn, window.grid,
                 [&](std::uint64_t first, std::span<float> destination) {
                     workDone.samplesReduced += destination.size();
                     readScratch.resize(std::max(readScratch.size(), destination.size()));
@@ -1583,8 +1610,8 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
                                                    std::uint64_t now, std::uint64_t shownFrom,
                                                    double viewStart, double viewEnd)
 {
-    // A zoomed live roll draws only its visible part, so a pan of the same width changes no crop
-    // or length: the view itself says where it is.
+    // A zoomed live free-running window draws only its visible part, so a pan of the same width
+    // changes no crop or length: the view itself says where it is.
     const bool sameView = laneSet == matchLaneSet && first == matchFirst && end == matchEnd &&
                           length == matchCount && isFrozen == matchFrozen &&
                           viewStart == matchViewStart && viewEnd == matchViewEnd;
@@ -2411,7 +2438,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         RollColumns& roll = lanes.at(laneOrder[lane])->roll;
         if (rolling) {
             const std::uint64_t laneStart = laneSources[lane].second;
-            addColumns(roll.update(laneStart, columns, count / columns,
+            addColumns(roll.update(laneStart - window.grid.boundary(window.firstColumn),
+                                   window.firstColumn, window.grid,
                                    [&](std::uint64_t from, std::span<float> destination) {
                                        workDone.samplesReduced += destination.size();
                                        return readLaneWindow(lane, from - laneStart, destination);
@@ -2451,7 +2479,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     };
     if (rolling) {
         addColumns(sumRoll.update(
-            start, columns, count / columns, [&](std::uint64_t from, std::span<float> destination) {
+            start - window.grid.boundary(window.firstColumn), window.firstColumn, window.grid,
+            [&](std::uint64_t from, std::span<float> destination) {
                 workDone.samplesReduced += destination.size();
                 return readSumWindow(static_cast<std::size_t>(from - start), destination);
             }));

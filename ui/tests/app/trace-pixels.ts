@@ -128,7 +128,7 @@ export function frameOf(
     encodeFrame({
       triggered: false,
       frozen: false,
-      roll: false,
+      freeRunning: false,
       startFraction: 0,
       peak: 0,
       rms: 0,

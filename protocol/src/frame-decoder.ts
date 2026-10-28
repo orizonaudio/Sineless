@@ -11,7 +11,7 @@ export interface Frame {
   readonly mode: FrameMode;
   readonly triggered: boolean;
   readonly frozen: boolean;
-  readonly roll: boolean;
+  readonly freeRunning: boolean;
   readonly pointCount: number;
   readonly startFraction: number;
   readonly peak: number;
@@ -135,7 +135,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     mode,
     triggered: (flags & FrameFlag.triggered) !== 0,
     frozen: (flags & FrameFlag.frozen) !== 0,
-    roll: (flags & FrameFlag.roll) !== 0,
+    freeRunning: (flags & FrameFlag.freeRunning) !== 0,
     pointCount,
     startFraction: f32("startFraction"),
     peak: f32("peak"),

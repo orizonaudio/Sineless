@@ -10,7 +10,7 @@ function frame(id: number): Frame {
     mode: FrameMode.raw,
     triggered: false,
     frozen: false,
-    roll: false,
+    freeRunning: false,
     pointCount: id,
     startFraction: 0,
     peak: 0,

@@ -37,8 +37,11 @@ export const frozenHoldSeconds = settings.timeSpan.maximum;
 // Where a triggered trace's trigger point sits, as a fraction of the span from the left.
 export const triggerPosition = 0.1;
 
-// Spans longer than this (seconds) scroll continuously instead of triggering.
-export const rollThresholdSeconds = 1;
+// Spans longer than this (seconds) run free, ending at the newest audio and moving with it,
+// whatever the trigger mode; at or below it they are triggered, unless the trigger mode is Free.
+// Above 1 s a trigger would hold one trace for a long time and show little of the signal's
+// change, so the display keeps moving instead.
+export const freeRunningThresholdSeconds = 1;
 
 // The narrowest part of the span a view can zoom in to.
 export const minimumViewWidth = 1 / 256;
@@ -88,7 +91,11 @@ export const limits: readonly {
   { name: "periodTolerance", value: periodTolerance, kind: "double" },
   { name: "frozenHoldSeconds", value: frozenHoldSeconds, kind: "double" },
   { name: "triggerPosition", value: triggerPosition, kind: "double" },
-  { name: "rollThresholdSeconds", value: rollThresholdSeconds, kind: "double" },
+  {
+    name: "freeRunningThresholdSeconds",
+    value: freeRunningThresholdSeconds,
+    kind: "double",
+  },
   { name: "minimumViewWidth", value: minimumViewWidth, kind: "double" },
   { name: "maxLanes", value: maxLanes, kind: "count" },
   {

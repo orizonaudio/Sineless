@@ -201,7 +201,9 @@ TEST(RollColumns, MatchesAFullReductionAsTheWindowRolls)
     constexpr std::uint64_t kPerColumn = 96;
     for (const std::uint64_t start : {9600, 9600 + 96 * 3, 9600 + 96 * 40, 9600 + 96 * 41}) {
         reads = 0;
-        const auto values = roll.update(start, kColumns, kPerColumn, read);
+        const auto values =
+            roll.update(0, start / kPerColumn,
+                        {.spanSamples = kColumns * kPerColumn, .columns = kColumns}, read);
         std::vector<float> expected;
         reduceToColumns(std::span(signal).subspan(start, kColumns * kPerColumn), kColumns,
                         expected);
@@ -211,6 +213,9 @@ TEST(RollColumns, MatchesAFullReductionAsTheWindowRolls)
         }
     }
 }
+
+// 100 columns of 100 samples each.
+constexpr ColumnGrid kGrid{.spanSamples = 10000, .columns = 100};
 
 TEST(RollColumns, FillsInColumnsWhoseAudioArrivesLater)
 {
@@ -225,10 +230,10 @@ TEST(RollColumns, FillsInColumnsWhoseAudioArrivesLater)
         return true;
     };
     RollColumns roll;
-    auto values = roll.update(0, 100, 100, read); // Wants 10000 samples; 9000 are there.
+    auto values = roll.update(0, 0, kGrid, read); // Wants 10000 samples; 9000 are there.
     EXPECT_EQ(values[std::size_t{2} * 99], 0.0f) << "silent until its audio arrives";
     available = 10000;
-    values = roll.update(0, 100, 100, read);
+    values = roll.update(0, 0, kGrid, read);
     std::vector<float> expected;
     reduceToColumns(std::span(signal).first(10000), 100, expected);
     EXPECT_EQ(std::vector<float>(values.begin(), values.end()), expected);
@@ -258,13 +263,13 @@ TEST(RollColumns, LeavesALaneWithoutAudioSilentAndReturns)
         return true;
     };
     RollColumns roll;
-    auto values = roll.update(0, 100, 100, read);
+    auto values = roll.update(0, 0, kGrid, read);
     ASSERT_TRUE(roll.holdsInvalid()) << "drawn, with a sample that is not a number";
 
     // Further on than any column kept, and past the end of the lane's audio.
     available = 14000;
     reads = 0;
-    values = roll.update(15000, 100, 100, read);
+    values = roll.update(0, 150, kGrid, read);
     EXPECT_TRUE(std::ranges::all_of(values, [](float value) { return value == 0.0f; }));
     EXPECT_FALSE(roll.holdsInvalid());
 }
