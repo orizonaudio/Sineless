@@ -1467,16 +1467,33 @@ export class OscilloscopeApp {
     );
   }
 
+  // Where the pointer is on the screen, inside its border: as fractions of the trace, which fills
+  // the screen's padding box in fractional px, and in px from the trace's top. Elements drawn at a
+  // fraction of the screen (time cursors, hover, the selection) use the fractions; those drawn in
+  // px at clientHeight scale (level cursors, the trigger marker) use `top`, as clientHeight is a
+  // whole number while the screen need not be (Windows at 125% or 150%).
+  private screenPoint(event: { clientX: number; clientY: number }): {
+    x: number;
+    y: number;
+    top: number;
+    width: number;
+  } {
+    const box = this.traceCanvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - box.left) / box.width,
+      y: (event.clientY - box.top) / box.height,
+      top: event.clientY - box.top,
+      width: box.width,
+    };
+  }
+
   private listenToScreen(): void {
     // The hover readout follows the pointer over the traces while no button is held.
     this.screen.addEventListener("pointermove", (event) => {
-      const rectangle = this.screen.getBoundingClientRect();
+      const point = this.screenPoint(event);
       this.hover =
         event.buttons === 0 && event.target instanceof HTMLCanvasElement
-          ? {
-              x: (event.clientX - rectangle.left) / rectangle.width,
-              y: (event.clientY - rectangle.top) / rectangle.height,
-            }
+          ? { x: point.x, y: point.y }
           : undefined;
       this.updateHover();
     });
@@ -1512,22 +1529,14 @@ export class OscilloscopeApp {
           if (this.timeCursors === undefined) {
             return;
           }
-          const rectangle = this.screen.getBoundingClientRect();
+          const point = this.screenPoint(moveEvent);
           // Stacked, the cursor snaps to the trace in the lane under the pointer.
           const values = this.snapValues(
             this.layout() === ViewLayout.stacked
-              ? traceAt(
-                  this.laneCount(),
-                  ViewLayout.stacked,
-                  (moveEvent.clientY - rectangle.top) / rectangle.height,
-                  0,
-                )
+              ? traceAt(this.laneCount(), ViewLayout.stacked, point.y, 0)
               : undefined,
           );
-          const x = Math.min(
-            1,
-            Math.max(0, (moveEvent.clientX - rectangle.left) / rectangle.width),
-          );
+          const x = Math.min(1, Math.max(0, point.x));
           let position = toFrame(this.view, x);
           if (
             !moveEvent.altKey &&
@@ -1535,8 +1544,7 @@ export class OscilloscopeApp {
             values !== undefined
           ) {
             const radius =
-              (snapRadius / rectangle.width) *
-              (this.view.end - this.view.start);
+              (snapRadius / point.width) * (this.view.end - this.view.start);
             position = snap(
               position,
               [
@@ -1571,16 +1579,14 @@ export class OscilloscopeApp {
         if (this.levelCursors === undefined || lane === undefined) {
           return;
         }
-        const rectangle = this.screen.getBoundingClientRect();
-        const center = ((1 - lane.center) / 2) * rectangle.height;
-        const halfHeight = (lane.halfHeight / 2) * rectangle.height;
+        // In px at clientHeight scale, as the line is drawn.
+        const height = this.screen.clientHeight;
+        const center = ((1 - lane.center) / 2) * height;
+        const halfHeight = (lane.halfHeight / 2) * height;
         const scale = fullScale(this.store.number("verticalScale"));
         const relative = Math.max(
           -1,
-          Math.min(
-            1,
-            (center - (moveEvent.clientY - rectangle.top)) / halfHeight,
-          ),
+          Math.min(1, (center - this.screenPoint(moveEvent).top) / halfHeight),
         );
         let level = relative * scale;
         const values = this.snapValues(laneIndex);
@@ -1602,10 +1608,9 @@ export class OscilloscopeApp {
     marker.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
       followDrag(marker, event, (moveEvent) => {
-        const rectangle = this.screen.getBoundingClientRect();
         const { center, halfHeight } = this.markerGeometry();
         const relative =
-          (center - (moveEvent.clientY - rectangle.top)) / halfHeight;
+          (center - this.screenPoint(moveEvent).top) / halfHeight;
         const level = relative * fullScale(this.store.number("verticalScale"));
         this.request(
           "triggerLevel",
@@ -1617,10 +1622,9 @@ export class OscilloscopeApp {
     // View zoom: ⌘ + scroll or pinch zooms around the pointer, a horizontal
     // swipe pans, dragging zooms to the selection, double-click resets.
     const screenPosition = (clientX: number) => {
-      const rectangle = this.screen.getBoundingClientRect();
       return Math.min(
         1,
-        Math.max(0, (clientX - rectangle.left) / rectangle.width),
+        Math.max(0, this.screenPoint({ clientX, clientY: 0 }).x),
       );
     };
     this.screen.addEventListener(
