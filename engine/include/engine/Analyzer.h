@@ -13,7 +13,6 @@
 #include "engine/SweepImage.h"
 #include "engine/Trigger.h"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
