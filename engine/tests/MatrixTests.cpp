@@ -3802,7 +3802,8 @@ AnalysisWork workSince(const AnalysisWork& before, const AnalysisWork& now)
             .samplesSearched = now.samplesSearched - before.samplesSearched,
             .matchSearches = now.matchSearches - before.matchSearches,
             .searchWork = now.searchWork - before.searchWork,
-            .gainWork = now.gainWork - before.gainWork};
+            .gainWork = now.gainWork - before.gainWork,
+            .sweepUpdates = now.sweepUpdates - before.sweepUpdates};
 }
 
 // The work a session does per second of audio, once what it shows is full: played for `fill`
