@@ -28,7 +28,7 @@ import { numberFields, type NumberField } from "./view/fields.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { attachResizeGrip } from "./components/resize-grip.ts";
 import { Segmented } from "./components/segmented.ts";
-import { streamGap } from "./components/wheel-steps.ts";
+import { streamGap, wheelUnit } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
 import { frameMilliseconds } from "./frame-times.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
@@ -138,8 +138,6 @@ const wheelZoomRate = 0.01;
 // The most one wheel event zooms by, in wheel delta units: about 1.3×, which is also what a lone
 // mouse-wheel notch zooms by on every system. A trackpad's events are a few units each.
 const maxWheelZoomDelta = 25;
-// A wheel line in pixels, as browsers scroll it.
-const wheelLinePixels = 40;
 // The Compare view's sum lane: an id no track has, and a neutral colour.
 const sumLaneId = -100;
 // Cursors snap to a target within this distance (CSS px) unless Option is held.
@@ -1626,14 +1624,8 @@ export class OscilloscopeApp {
     this.screen.addEventListener(
       "wheel",
       (event) => {
-        // In pixels: Windows reports lines, or pages with "scroll one screen at a time", which
-        // would otherwise zoom and pan by almost nothing.
-        const unit =
-          event.deltaMode === WheelEvent.DOM_DELTA_LINE
-            ? wheelLinePixels
-            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-              ? this.screen.clientHeight
-              : 1;
+        // In pixels, so lines and pages zoom and pan as far as pixels do.
+        const unit = wheelUnit(event, this.screen.clientHeight);
         const deltaX = event.deltaX * unit;
         const deltaY = event.deltaY * unit;
         if (event.metaKey || event.ctrlKey) {
