@@ -128,9 +128,9 @@ checks you could not run.
   themselves always pass; their findings reach the pull request through the triage.
 - Once the AI review labels a pull request `needs-human` (its third failed round), stop pushing
   fixes for its findings: give the owner the open findings and a recommendation (fix, redesign or
-  waive) and wait. The answer settles the findings it covers; while the label stays, each later
-  failed round goes back to the owner the same way, and the owner removes the label to hand the
-  pull request back.
+  waive) and wait. The answer settles the findings it covers and hands the pull request back; from
+  then on each failed round goes back to the owner the same way (the count never resets, so a
+  removed label comes back at the next failure).
 - When the same mechanism draws Important findings in two review rounds running, do not add
   another guard: update the plan with the design that removes it (a later plan round), or, for a
   change without a plan, take that design to the owner.
