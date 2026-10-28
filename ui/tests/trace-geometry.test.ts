@@ -6,13 +6,20 @@ import {
   ViewLayout,
 } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
+import { maxLanes } from "../../protocol/src/limits.ts";
 import {
   cancellationBands,
   columnPosition,
+  coverageAttachments,
+  coverageGroups,
+  coverageSlot,
   fullScale,
   lanes,
   playheadEdges,
   pointPosition,
+  textureRowLength,
+  textureRows,
+  tracesPerGroup,
 } from "../src/render/trace-geometry.ts";
 
 function frame(
@@ -473,4 +480,55 @@ describe("cancellation bands", () => {
       cancellationBands({ ...plain, comparison: undefined }, layout, both),
     ).toHaveLength(0);
   });
+});
+
+// Each trace's coverage has a channel of its own until it is layered over the screen: two traces
+// sharing one would draw as one, and a trace with none would vanish.
+describe("the coverage channels of a frame's traces", () => {
+  test.each(Array.from({ length: maxLanes + 1 }, (_, k) => k + 1))(
+    "%i traces each get their own channel, layered in drawing order",
+    (traces) => {
+      const groups = coverageGroups(traces);
+      const drawn = groups.flatMap(({ first, count }) =>
+        Array.from({ length: count }, (_, k) => first + k),
+      );
+      expect(drawn).toEqual(Array.from({ length: traces }, (_, k) => k));
+      for (const { count, attachments } of groups) {
+        expect(count).toBeLessThanOrEqual(tracesPerGroup);
+        const slots = Array.from({ length: count }, (_, k) => coverageSlot(k));
+        const used = new Set(
+          slots.map(({ attachment, channel }) => attachment * 4 + channel),
+        );
+        expect(used.size).toBe(count);
+        for (const { attachment, channel } of slots) {
+          expect(attachment).toBeLessThan(attachments);
+          expect(channel).toBeGreaterThanOrEqual(0);
+          expect(channel).toBeLessThan(4);
+        }
+        // No target is cleared and read that no trace in the group uses.
+        expect(attachments).toBe(
+          Math.max(...slots.map(({ attachment }) => attachment)) + 1,
+        );
+        expect(attachments).toBeLessThanOrEqual(coverageAttachments);
+      }
+    },
+  );
+
+  test("a full multi-track frame is one group", () => {
+    expect(coverageGroups(maxLanes)).toHaveLength(1);
+  });
+});
+
+// A frame's values reach the GPU as rows of a texture: every value is uploaded once.
+describe("the texture rows of a frame's values", () => {
+  test.each([0, 1, 2047, 2048, 2049, 4095, 4096, 4097, 76800])(
+    "%i values",
+    (count) => {
+      const { rows, full, remainder } = textureRows(count);
+      expect(full * textureRowLength + remainder).toBe(count);
+      expect(remainder).toBeGreaterThanOrEqual(0);
+      expect(remainder).toBeLessThan(textureRowLength);
+      expect(rows).toBe(full + (remainder > 0 ? 1 : 0));
+    },
+  );
 });

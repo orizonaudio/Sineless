@@ -33,6 +33,7 @@ import { RenderLoop } from "./render/render-loop.ts";
 import { frameMilliseconds } from "./frame-times.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
 import {
+  TraceMemoryError,
   TraceRenderer,
   type Rgba,
   type TraceStyle,
@@ -108,6 +109,10 @@ import {
   viewToggleState,
   type ViewName,
 } from "./view/screen-state.ts";
+
+// When the graphics memory for drawing the traces is refused (DESIGN.md §8).
+const memoryMessage =
+  "The system's graphics could not give the editor the memory to draw the traces. Reopening the editor may help. Audio still passes through unchanged.";
 
 const viewHelp: Record<ViewName, HelpTopic> = {
   left: "viewLeft",
@@ -332,7 +337,16 @@ export class OscilloscopeApp {
       (callback) => requestAnimationFrame(callback),
       {
         draw: (frame) => {
-          this.renderer?.draw(frame);
+          try {
+            this.renderer?.draw(frame);
+          } catch (error) {
+            if (!(error instanceof TraceMemoryError)) {
+              throw error;
+            }
+            // After a resize, the graphics memory for the larger traces was refused.
+            this.renderer = undefined;
+            this.showGraphicsMessage(memoryMessage);
+          }
           this.showSweep(frame);
         },
       },
@@ -1925,7 +1939,11 @@ export class OscilloscopeApp {
   ): TraceRenderer | undefined {
     try {
       return new TraceRenderer(this.traceCanvas, style, view);
-    } catch {
+    } catch (error) {
+      if (error instanceof TraceMemoryError) {
+        this.showGraphicsMessage(memoryMessage);
+        return undefined;
+      }
       this.showGraphicsMessage(
         "This system gives the editor no WebGL 2 graphics to draw the traces with. Updating the graphics driver may help. Audio still passes through unchanged.",
       );

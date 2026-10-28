@@ -1,15 +1,12 @@
 // Moving the window to a display of another pixel ratio (a Retina screen and a 1x monitor)
 // changes no size, so no resize event arrives: the page watches the ratio itself.
-import {
-  beforeAll,
-  describe,
-  expect,
-  test,
-  vi,
-  type MockInstance,
-} from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 
+import { FrameMode } from "../../../protocol/src/enums.ts";
+import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+import { TraceRenderer } from "../../src/render/trace-renderer.ts";
 import { byId, settle, startApp, type Started } from "./harness.ts";
+import { traceFrame } from "./trace-pixels.ts";
 
 describe("on a display of another pixel ratio", () => {
   let app: Started;
@@ -39,29 +36,15 @@ describe("on a display of another pixel ratio", () => {
       watcher.changed();
     }
   }
-  // The trace's line width as a share of the screen's height, at each draw, before and after
-  // the move: the default view draws min/max columns at least this wide.
+  // The trace's thickness at each draw, before and after the move, in CSS pixels: the coverage
+  // summed down the middle pixel column of a silent trace, over the ratio. Each draw is of a
+  // silent frame, a flat line whatever the mock is playing.
+  const silent: Frame = traceFrame(
+    FrameMode.minMax,
+    Array.from({ length: 400 }, () => 0),
+  );
+  const thicknesses: number[] = [];
   let widths: number[] = [];
-  let locations: MockInstance<WebGL2RenderingContext["getUniformLocation"]>;
-  let uniforms: MockInstance<WebGL2RenderingContext["uniform1f"]>;
-
-  function drawnWidths(): number[] {
-    const minimumHalf = new Set<WebGLUniformLocation>();
-    locations.mock.calls.forEach(([, name], index) => {
-      const result = locations.mock.results[index];
-      if (
-        name === "minimumHalf" &&
-        result?.type === "return" &&
-        result.value !== null
-      ) {
-        minimumHalf.add(result.value);
-      }
-    });
-    return uniforms.mock.calls
-      .filter(([location]) => location !== null && minimumHalf.has(location))
-      .map(([, value]) => value);
-  }
-
   beforeAll(async () => {
     const matchMedia = window.matchMedia.bind(window);
     vi.spyOn(window, "matchMedia").mockImplementation((query) => {
@@ -89,16 +72,41 @@ describe("on a display of another pixel ratio", () => {
       }
       return list;
     });
-    locations = vi.spyOn(
-      WebGL2RenderingContext.prototype,
-      "getUniformLocation",
-    );
-    uniforms = vi.spyOn(WebGL2RenderingContext.prototype, "uniform1f");
+    // The renderer's own draw, called from the spy that replaces it.
+    const draw = Object.getOwnPropertyDescriptor(
+      TraceRenderer.prototype,
+      "draw",
+    )?.value as (this: TraceRenderer, frame: Frame) => void;
+    vi.spyOn(TraceRenderer.prototype, "draw").mockImplementation(function (
+      this: TraceRenderer,
+    ) {
+      draw.call(this, silent);
+      const canvas = byId("trace") as HTMLCanvasElement;
+      const gl = canvas.getContext("webgl2");
+      if (gl === null) {
+        return;
+      }
+      const column = new Uint8Array(canvas.height * 4);
+      gl.readPixels(
+        Math.floor(canvas.width / 2),
+        0,
+        1,
+        canvas.height,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        column,
+      );
+      let coverage = 0;
+      for (let y = 0; y < canvas.height; y++) {
+        coverage += (column[y * 4 + 3] ?? 0) / 255;
+      }
+      thicknesses.push(coverage / window.devicePixelRatio);
+    });
     app = await startApp();
     await settle();
     moveTo(after);
     await settle();
-    widths = drawnWidths();
+    widths = [...thicknesses];
   });
 
   test("draws at the new display's resolution", () => {
@@ -116,7 +124,8 @@ describe("on a display of another pixel ratio", () => {
 
   test("draws traces as thick as on the display before", () => {
     const [first = Number.NaN] = widths;
-    expect((widths.at(-1) ?? 0) / first).toBeCloseTo(1);
+    expect(first).toBeGreaterThan(0);
+    expect(Math.abs((widths.at(-1) ?? 0) / first - 1)).toBeLessThan(0.1);
   });
 
   // A move resizes once, however many moves came before: a listener left on an old query would
