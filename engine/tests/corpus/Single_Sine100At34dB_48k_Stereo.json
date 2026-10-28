@@ -5,7 +5,7 @@
     "limited": false,
     "noTempo": false,
     "partial": false,
-    "roll": false,
+    "freeRunning": false,
     "synced": false,
     "triggered": true
   },

@@ -7,7 +7,7 @@ export interface FrameContent {
   readonly mode: FrameMode;
   readonly triggered: boolean;
   readonly frozen: boolean;
-  readonly roll: boolean;
+  readonly freeRunning: boolean;
   readonly pointCount: number;
   readonly startFraction: number;
   readonly peak: number;
@@ -73,7 +73,7 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   const flags =
     (content.triggered ? FrameFlag.triggered : 0) |
     (content.frozen ? FrameFlag.frozen : 0) |
-    (content.roll ? FrameFlag.roll : 0) |
+    (content.freeRunning ? FrameFlag.freeRunning : 0) |
     (content.synced === true ? FrameFlag.synced : 0) |
     (content.limited === true ? FrameFlag.limited : 0) |
     (content.partial === true ? FrameFlag.partial : 0) |

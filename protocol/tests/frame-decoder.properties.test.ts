@@ -63,7 +63,7 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       mode: fc.constant(mode),
       triggered: fc.boolean(),
       frozen: fc.boolean(),
-      roll: fc.boolean(),
+      freeRunning: fc.boolean(),
       synced: fc.boolean(),
       limited: fc.boolean(),
       partial: fc.boolean(),
@@ -125,7 +125,7 @@ function expectedHeader(
   const flags =
     (content.triggered ? FrameFlag.triggered : 0) |
     (content.frozen ? FrameFlag.frozen : 0) |
-    (content.roll ? FrameFlag.roll : 0) |
+    (content.freeRunning ? FrameFlag.freeRunning : 0) |
     (content.synced === true ? FrameFlag.synced : 0) |
     (content.limited === true ? FrameFlag.limited : 0) |
     (content.partial === true ? FrameFlag.partial : 0) |
@@ -194,7 +194,7 @@ function expectedFrame(content: FrameContent): Frame {
     mode: content.mode,
     triggered: content.triggered,
     frozen: content.frozen,
-    roll: content.roll,
+    freeRunning: content.freeRunning,
     pointCount: content.pointCount,
     startFraction: f(header.startFraction),
     peak: f(header.peak),

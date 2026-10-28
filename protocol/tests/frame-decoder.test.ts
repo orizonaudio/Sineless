@@ -27,7 +27,7 @@ describe("frame decoder", () => {
     expect(frame.invalidLanes).toBe(golden.header.invalidLanes);
     expect(frame.sampleRate).toBe(golden.header.sampleRate);
     expect(frame.spanSeconds).toBe(golden.header.spanSeconds);
-    expect(frame.roll).toBe(false);
+    expect(frame.freeRunning).toBe(false);
     expect(frame.pointCount).toBe(golden.header.pointCount);
     expect(frame.startFraction).toBe(golden.header.startFraction);
     expect(frame.peak).toBe(golden.header.peak);

@@ -84,18 +84,18 @@ export function amplitudeLabels(
   return labels;
 }
 
-// Time labels every second grid division: relative to the trigger point, or back from now
-// while rolling. Under view zoom they show the times at those screen positions.
+// Time labels every second grid division: relative to the trigger point, or back from the right
+// edge (now, live) while running free. Under view zoom they show the times at those screen positions.
 export function timeLabels(
   spanSeconds: number,
-  roll: boolean,
+  freeRunning: boolean,
   view: ViewWindow = fullView,
 ): AxisLabel[] {
   const labels: AxisLabel[] = [];
   for (let division = 2; division < gridColumns; division += 2) {
     const x = division / gridColumns;
     const frame = toFrame(view, x);
-    const seconds = roll
+    const seconds = freeRunning
       ? -(1 - frame) * spanSeconds
       : (frame - triggerPosition) * spanSeconds;
     const text = formatSeconds(Math.abs(seconds));

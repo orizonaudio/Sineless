@@ -22,7 +22,7 @@ function frame(peak: number, spanSeconds = 1): string {
       mode: FrameMode.raw,
       triggered: false,
       frozen: false,
-      roll: false,
+      freeRunning: false,
       pointCount: 0,
       startFraction: 0,
       peak,

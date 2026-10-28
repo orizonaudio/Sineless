@@ -54,14 +54,15 @@ numbered parts. "Verified by" names the main tests; it is a pointer, not the ful
 
 **Display modes and time bases.** Most requirements depend on two settings: the display mode
 (Single, Multi, Compare) and the time base (Seconds, labelled "Sec" in the UI, or Beats). In
-Seconds, spans up to 1 s are *triggered* and longer spans *roll*; in Beats the display *sweeps*.
+Seconds, spans up to 1 s are *triggered*, unless the trigger mode is Free, and longer spans *run free*;
+in Beats the display *sweeps*.
 "Single" is both a display mode and a trigger mode; this document always says which. Section 1.2.1
 gives, for each combination, what the trigger reads, what readouts measure, what cursors snap to
 and what a freeze holds.
 
 #### 1.2.1 Behaviour by mode and time base
 
-| | Seconds, triggered (≤ 1 s) | Seconds, roll (> 1 s) | Beats (sweep) |
+| | Seconds, triggered (≤ 1 s) | Seconds, free-running (> 1 s, or Free) | Beats (sweep) |
 | --- | --- | --- | --- |
 | **Single display mode**: trigger reads | Trigger source | — | — |
 | **Single display mode**: readouts, cursor snap, hover | Mid | Mid | Mid |
@@ -69,7 +70,7 @@ and what a freeze holds.
 | **Multi, Compare**: readouts, cursor snap | This track's Mid | This track's Mid | This track's Mid |
 | Freeze holds | Newest 4 s; lanes 4 s + 1 s | Same | Readable capture (7/8); sweep image kept |
 | Pan while frozen | Yes, not zoomed | Yes, not zoomed | No |
-| Time labels | From the trigger point | Back from now | bar.beat over project time |
+| Time labels | From the trigger point | Back from the right edge | bar.beat over project time |
 
 The trigger source picks only the channel the trigger reads. On a mono track, L takes the place of
 the trigger source and of Mid in Single display mode. Overlaid, cursors and hover use the first
@@ -83,8 +84,8 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | --- | --- | --- |
 | FR-1 | Accepts a mono or stereo main input (one input and one output bus, of the same arrangement) and passes it to the output bit-exactly, in 32- or 64-bit as the host processes, with zero latency. Channels the host flags silent are captured as silence and the flags are passed on. There is no bypass of its own: the host's bypass applies. | `plugin/tests/ProcessorTests.cpp` |
 | FR-2 | Draws the input as a time-domain trace with an adjustable vertical scale (top of screen −60 to +6 dBFS) and span. In Seconds the visible span (full screen width) ranges from 0.5 ms to 4 s; in Beats it is a beat span (FR-9). | `AnalyzerTests`, `ui/tests/app/controls.test.ts` |
-| FR-3 | In Seconds, spans up to 1 s (`rollThresholdSeconds`) are triggered by an edge trigger with level, slope, hysteresis and hold-off, in one of four modes. **Auto** triggers on edges, and draws untriggered if no edge arrives within the larger of the span and 100 ms. **Normal** draws only on a trigger and otherwise holds the last trace. **Free** ignores the trigger. **Single** (the trigger mode) arms, captures one triggered frame and then freezes; Re-arm arms it again. The trigger point sits 10% of the span from the left edge (`triggerPosition`). A sample that is not finite neither arms nor crosses. The trigger is off in Beats. | `TriggerTests`, `AnalyzerTests` |
-| FR-4 | In Seconds, spans above 1 s scroll continuously (roll), on columns fixed to absolute sample positions so the trace does not shimmer. | `RollTests` |
+| FR-3 | In Seconds, spans up to 1 s (`freeRunningThresholdSeconds`) are triggered by an edge trigger with level, slope, hysteresis and hold-off, in one of four modes. **Auto** triggers on edges, and draws untriggered if no edge arrives within the larger of the span and 100 ms. **Normal** draws only on a trigger and otherwise holds the last trace; switched to from a free-running window, it first shows the newest span, untriggered. **Free** ignores the trigger: the window runs free (FR-4). **Single** (the trigger mode) arms, captures one triggered frame and then freezes; Re-arm arms it again. The trigger point sits 10% of the span from the left edge (`triggerPosition`). A sample that is not finite neither arms nor crosses. The trigger is off in Beats. | `TriggerTests`, `AnalyzerTests` |
+| FR-4 | In Seconds, spans above 1 s, in every trigger mode, and the Free trigger mode at any span *run free*: the window ends at the newest audio and moves with it. One behaviour in one code path: the window shows exactly the span, on columns on a grid fixed to absolute sample positions (column *k* covers ⌊*k*·span/columns⌋ onwards), so the trace does not shimmer; time labels and hover read back from the right edge; a freeze keeps the right edge; the chip says Free. | `FreeRunningTests`, `AnalyzerTests` |
 | FR-5 | Channel views L, R, Mid = (L+R)/2 and Side = (L−R)/2, overlaid or stacked, with the trigger source selectable among them. On a mono track only L exists: it is drawn, triggered on and measured, and the other views are disabled. Views apply in Single display mode; Multi and Compare show each track's Mid. | `ChannelViewsTests`, `ui/tests/app/mono.test.ts` |
 | FR-6 | Freeze holds recent audio, and scale, views, zoom, cursors and readouts keep working on it. In Seconds a freeze holds the newest 4 s (`frozenHoldSeconds`), which can be panned back through while not zoomed, as far as the frame's pan reach. In Beats it holds what the capture holds (FR-9.6). A frozen view keeps the sample rate its audio was recorded at. Freeze is never saved. | `HoldBufferTests`, `ui/tests/app/frozen-pan.test.ts`, `held-rate.test.ts` |
 | FR-7 | Readouts of sample peak, RMS and estimated frequency, for the readout channel (1.2.1). They are indicative, not standards-compliant metering; help says so. Peak and RMS cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen. Frequency is measured over the newest 1 s (`frequencyWindowSeconds`) from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`); it is shown only when at least 60% of cycles fall within 15% of the median (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`), as the mean of those cycles, marked ≈. Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/app/readouts.test.ts` |
@@ -96,7 +97,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-9.4 | A tempo change that alters the sweep's length by at most 1/1024 keeps the sweep; a larger one starts it again. Other tracks' lanes take this track's sweep length within the same tolerance. | |
 | FR-9.5 | Sweeps keep receiving audio while the editor's page is hidden, so it is complete when shown again. | |
 | FR-9.6 | Freezing a sweep keeps the image on screen and holds as much audio as the capture can (7/8 of it). Choosing a shorter span while frozen crops it from the image once the image is complete; a longer span is rebuilt from the held audio and, where the held audio does not reach, is drawn in part and flagged ("Partial"). A frozen sweep does not pan. | |
-| FR-10 | View zoom: the displayed frame can be magnified horizontally, to 1/256 of the span (`minimumViewWidth`), and panned, in every mode. Zoom is temporary: it never changes a setting, and it resets when the span, beat span or time base changes. The engine renders the zoomed region at full resolution: the trigger, roll or sweep window is placed from the whole span, and only the visible part is reduced to screen columns. Peak and RMS still cover the whole span. | `zoom.test.ts`, `AnalyzerTests` |
+| FR-10 | View zoom: the displayed frame can be magnified horizontally, to 1/256 of the span (`minimumViewWidth`), and panned, in every mode. Zoom is temporary: it never changes a setting, and it resets when the span, beat span or time base changes. The engine renders the zoomed region at full resolution: the trigger, free-running or sweep window is placed from the whole span, and only the visible part is reduced to screen columns. Peak and RMS still cover the whole span. | `zoom.test.ts`, `AnalyzerTests` |
 | FR-11 | Auto-freeze: when on, the display freezes when the host transport goes from playing to stopped while the editor is open, and resumes when it plays again. A freeze made by the user or by Single mode is never ended by playback; unfreezing by hand while stopped cancels the resume. Turning Auto-freeze off leaves a current freeze in place. When off, the transport does not affect freezing. | `AnalyzerTests` |
 | FR-12 | Cursors. | `cursors.test.ts`, `snap.test.ts` |
 | FR-12.1 | Time cursors: two vertical lines, A and B, starting at 1/3 and 2/3 of the screen. The readout gives Δt in time and samples, its frequency 1/Δt, with the nearest note and cent offset when 1/Δt is between 20 Hz and 20 kHz, and, in Beats, the distance in beats. They sit at positions in the signal, so they follow zoom and pan. | |
@@ -119,7 +120,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-15.6 | The sum lane is shaded where its peak is more than 3 dB below the louder compared track's, when at least one checked track is related to this one; very quiet stretches (about 26 dB below the loudest) are not shaded, and gaps of three columns or less are bridged. | `trace-geometry.test.ts` |
 | FR-15.7 | Freeze, zoom, cursors and both time bases work as in Multi mode. | |
 | FR-16 | Hover readout and measuring extras. | `hover.test.ts`, `musical-grid.test.ts` |
-| FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace shows beside it the trace's name, the position (bar.beat.sixteenth and project time in Beats; time from the trigger point when triggered; time back from now in roll), the peak level there, and the cycle around the pointer: its length in ms and samples and its frequency and note. Cycles are found as in FR-7 (rising crossings of the mean, with neighbouring cycles within 15%, above −90 dBFS); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and without cents. A dotted line marks the point read and a band the cycle. | |
+| FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace shows beside it the trace's name, the position (bar.beat.sixteenth and project time in Beats; time from the trigger point when triggered; time back from the right edge when free-running), the peak level there, and the cycle around the pointer: its length in ms and samples and its frequency and note. Cycles are found as in FR-7 (rising crossings of the mean, with neighbouring cycles within 15%, above −90 dBFS); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and without cents. A dotted line marks the point read and a band the cycle. | |
 | FR-16.2 | Beats-mode grid labels carry the project time under bar.beat. | |
 | FR-16.3 | A concert pitch setting (A4, 400–500 Hz, default 440) in the status bar tunes every note name. | |
 
@@ -268,8 +269,8 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | --- | --- |
 | Trig'd | A trigger placed the frame. |
 | Waiting | Normal or Single trigger mode with no frame for 0.25 s. |
-| *trigger mode* (Auto, Normal, Free, Single) | Seconds span up to 1 s, after Trig'd or Waiting. |
-| Roll | Seconds span above 1 s. With **Span limited** when the span is longer than the capture keeps (a host changed the sample rate while processing, or a rate above 384 kHz). |
+| *trigger mode* (Auto, Normal, Single) | Seconds span up to 1 s, triggered, after Trig'd or Waiting. |
+| Free | A free-running window: the Free trigger mode, or a Seconds span above 1 s in any trigger mode. With **Span limited** when the span is longer than the capture keeps (a host changed the sample rate while processing, or a rate above 384 kHz). |
 | Sync | Beats. With **Span limited** when the beat span was stepped down (FR-9.3), **Filling** while the sweep fills in. |
 | No tempo | Beats before the host has reported a tempo (FR-9.1): nothing is placed until it does. Also after **Frozen**. |
 | Frozen | Frozen (in the accent colour); followed by the pan offset (for example "−1.2 s") when panned, **Span limited** when the span was shortened to what is held, and **Partial** when the held audio does not cover the span. |
@@ -429,7 +430,7 @@ flowchart LR
     Source["SampleSource"]
     Hold["HoldBuffer, LaneHold"]
     Sweep["SweepImage"]
-    Reduce["Reducer, Roll, Trigger"]
+    Reduce["Reducer, FreeRunning, Trigger"]
     Stats["Readouts, BlockStats,<br/>PairAnalysis"]
     Enc["FrameEncoder"]
   end
@@ -459,9 +460,9 @@ The tables follow the diagram from the audio thread to the frame.
 | Timeline | The musical clock. The audio thread publishes the latest musical stamp (position, tempo, time signature, playing, at a capture index) through a seqlock; readers map sample indices to quarter notes and back by extrapolating from it, free-running at the last tempo while stopped (AD-13). |
 | Settings | The store of record, validated against the protocol's settings table, with its JSON form (`SettingJson`) shared by saved state and messages. |
 | AnalysisWorker | One thread per open editor, running the Analyzer every 2 ms or when a frame is requested. |
-| Analyzer | Produces each frame: places the trigger, roll or sweep window, reduces it to columns, measures readouts and Compare, and encodes the frame. Reads all sources through `SampleSource`, an abstraction over the ring, held audio and sweep images. |
+| Analyzer | Produces each frame: places the trigger, free-running or sweep window, reduces it to columns, measures readouts and Compare, and encodes the frame. Reads all sources through `SampleSource`, an abstraction over the ring, held audio and sweep images. |
 | SweepImage | One per lane in Beats: the sweep as columns that persist between frames, reporting which ranges changed (AD-17, AD-19). |
-| Reducer, Roll, Trigger | Min/max reduction to about one pair per device pixel (raw samples when zoomed in far enough), roll columns on fixed absolute indices, edge trigger (FR-3). |
+| Reducer, FreeRunning, Trigger | Min/max reduction to about one pair per device pixel (raw samples when zoomed in far enough), free-running columns on a grid fixed to absolute indices (FR-4), edge trigger (FR-3). |
 | Readouts, BlockStats | Peak, RMS and frequency (FR-7); per-10 ms block statistics that keep readout and summing-gain cost proportional to new audio. |
 | PairAnalysis | Compare's correlation, offset and polarity, and summing gains (FR-15). |
 | HoldBuffer, LaneHold | On freeze, this track's held audio (4 s in Seconds, the readable capture in Beats) and each other track's Mid (4 s + 1 s margin). HoldBuffer is allocated at the capture's size when the editor opens and kept until it closes; LaneHold is allocated on freeze and released on unfreeze. |
@@ -895,7 +896,7 @@ incompatible change.
 | Part | Contents |
 | --- | --- |
 | Header | mode (min/max or raw), flags, views, lane count, point count; start fraction; peak, RMS, frequency; sweep cursor, cycle start, span and bar in quarter notes; view start and end, visible samples; lane set; summing gain and fixed gain; cycle seconds; pan reach; invalid sample count and lane mask; sample rate. |
-| Flags | triggered, frozen, roll, synced, limited, compared, partial (shown as "Filling" live, "Partial" frozen). |
+| Flags | triggered, frozen, freeRunning, synced, limited, compared, partial (shown as "Filling" live, "Partial" frozen). |
 | Data | Per view (Single) or per lane (Multi, Compare; the sum last): min/max pairs or raw samples. Compare frames then carry correlation, offset and polarity for each track. |
 
 For example, a Compare frame with three tracks has four lanes (the sum last): 4 × point count × 2
@@ -926,7 +927,7 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `periodTolerance` | 0.15 | Steady cycles lie within this of the median. |
 | `frozenHoldSeconds` | 4 s | Freeze hold in Seconds (the longest span). |
 | `triggerPosition` | 0.1 | Trigger point from the left. |
-| `rollThresholdSeconds` | 1 s | Longer spans roll. |
+| `freeRunningThresholdSeconds` | 1 s | Longer spans run free in every trigger mode. |
 | `minimumViewWidth` | 1/256 | Narrowest zoom. |
 | `maxLanes` | 16 | Multi lanes; Compare shows one fewer. |
 | `readoutIntervalSeconds` | 0.1 s | Readout refresh. |
@@ -1046,7 +1047,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | AD-14 | Accepted | Instances find each other through a process-wide registry in the engine module, holding weak references to the engines in a flat list; a group's members are those whose group setting matches, ordered by host track position, then creation. Each engine carries its track name, colour and position. Readers get shared ownership for as long as they read, and the editor's worker reads other instances' capture rings directly. | Needs no routing in the host and no audio-thread work: capture rings already allow lock-free writing alongside readers, and shared ownership keeps a ring alive while another editor reads it; weak references let an instance vanish even if it was never removed. It works wherever instances share a process, which is every major host's default (R-1). Instances of different Sineless versions, or of different formats (VST3 and Audio Unit), keep separate registries, so they never read each other's data. |
 | AD-15 | Accepted | Lanes align on the musical clock (AD-13) that every instance receives from the host. In Beats each lane's sweep follows its own instance's clock. In Seconds the own track's window start is mapped to quarter notes on its clock, then to each other track's sample index on that track's clock. | All instances see the same host position while their capture indices start at different moments. The clocks already exist, so the audio thread does no new work. While stopped, every clock free-runs at the same tempo from the same position, so lanes stay aligned; a host that reports no position would leave tracks offset by when they started. |
 | AD-16 | Accepted | The engine renders Compare frames through the multi-track lane path: the tracks, then the sum of the checked ones, and computes the analysis on raw samples, each track against this one. The summing gains travel in the frame header and each track's match after the lane data. The UI names tracks by the lane id that each `lanes` entry carries, which also says which are checked. The checked set lives on the Engine. | Summing and correlating min/max columns in the UI would be wrong; only the engine has the samples. Results in the frame stay in step with the lanes they describe, at no extra message traffic. Correlation and offset are pairwise, so each track is measured against one reference: this track. On the Engine, the choice outlives the editor but not the project (8.4). |
-| AD-17 | Accepted | Display cost follows change, not size. Lanes and views keep their screen columns between frames: a sweep reduces again only the columns its newest samples landed in (SweepImage reports changed ranges), a roll window only the columns that scrolled in (columns on fixed absolute indices), and a Compare sum lane only where compared tracks changed. Readouts and summing gains are measured at most every 0.1 s of audio (always while frozen), from per-block statistics; Compare matches at most every 0.5 s per track, one track per frame, one every 0.1 s at most. The engine is optimised in Debug builds too. Measured with `editor/bench/PerfBench.mm` (`scripts/bench.sh`). | The analysis thread spent 70% of a core re-reducing whole lanes every frame, and Debug builds dropped to 5–16 frames/s. After: costs nearly flat in tracks, span and window width (doubling the width adds about 1 point). |
+| AD-17 | Accepted | Display cost follows change, not size. Lanes and views keep their screen columns between frames: a sweep reduces again only the columns its newest samples landed in (SweepImage reports changed ranges), a free-running window only the columns that scrolled in (columns on a grid fixed to absolute indices, exact for any span and width), and a Compare sum lane only where compared tracks changed. Readouts and summing gains are measured at most every 0.1 s of audio (always while frozen), from per-block statistics; Compare matches at most every 0.5 s per track, one track per frame, one every 0.1 s at most. The engine is optimised in Debug builds too. Measured with `editor/bench/PerfBench.mm` (`scripts/bench.sh`). | The analysis thread spent 70% of a core re-reducing whole lanes every frame, and Debug builds dropped to 5–16 frames/s. After: costs nearly flat in tracks, span and window width (doubling the width adds about 1 point). |
 | AD-18 | Accepted | Numbers the engine and UI share are defined once in `protocol/src/limits.ts`, with what each measures and why it has its value, and generated into the C++ header; help text reads them from there. "No value" is NaN end to end. | Two copies of a threshold drift apart, and a display that shows 0 for "not measured" misleads. One definition makes engine, UI and help agree by construction. |
 | AD-19 | Accepted | Long sweeps keep raw sample images per lane, with no lower-resolution tier: a sweep may be longer than the capture and fills in as it plays, up to 2^23 samples per lane. The worst case accepted is 15 lanes of 16 bars at 60 BPM and 96 kHz, about 580 MB, checked in Live. | One representation keeps zoom exact at every span and the code simple. The cap bounds memory; the worst case was measured acceptable in a host, and the performance check keeps it so. |
 | AD-20 | Accepted | Values are persisted in three tiers (8.4): saved with the project, kept while the plugin is loaded, reset when the editor closes. | Zoom, freeze, cursors and Compare's checks are viewing choices, not settings of the track; saving them would make the project change when it is only looked at. Compare's checks are kept while the plugin is loaded so that closing and opening the editor does not undo them. |
@@ -1133,7 +1134,7 @@ not reused.
 | Partial | A frozen sweep whose held audio does not cover the span. |
 | Readout channel | What readouts, cursors and hover measure in each mode (1.2.1). |
 | Related | A track whose best match with this track reaches 0.3. |
-| Roll | Continuous scrolling, for Seconds spans above 1 s. |
+| Free-running | A window that ends at the newest audio and moves with it: Seconds spans above 1 s, and the Free trigger mode. |
 | Seconds | The time base whose span is a time; labelled "Sec" in the UI. |
 | Single | A display mode (one track, its channel views) and, separately, a trigger mode (capture one triggered frame, then freeze). Always qualified. |
 | Span | The time the full screen width shows: seconds, or a beat span. |
