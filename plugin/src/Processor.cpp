@@ -244,6 +244,8 @@ tresult PLUGIN_API Processor::process(ProcessData& data) noexcept ORIZON_NONBLOC
     }
     output.silenceFlags = input.silenceFlags;
     if (engineState) {
+        // Offline and prefetch processing run at no steady rate: those blocks are not paced.
+        engineState->stampBlock(data.processMode == kRealtime);
         engineState->timeline().advance(hostTimeline(data.processContext), data.numSamples,
                                         processSetup.sampleRate);
     }

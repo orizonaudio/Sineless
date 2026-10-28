@@ -90,7 +90,7 @@ void CaptureRing::writeSamples(const Sample* const* channels, int numChannels,
     publishedIndex.store(end, std::memory_order_release);
 }
 
-std::uint64_t CaptureRing::writeIndex() const noexcept
+std::uint64_t CaptureRing::writeIndex() const noexcept ORIZON_NONBLOCKING
 {
     return publishedIndex.load(std::memory_order_acquire);
 }

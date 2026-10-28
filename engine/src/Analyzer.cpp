@@ -26,8 +26,8 @@ namespace {
 // In Seconds mode a freeze holds the longest span, which the view can be panned back through. The
 // lanes of other tracks hold up to this much more: their captures can run a little ahead of or
 // behind this one's, and each must still cover the whole span with the view panned as far back as
-// this track's hold allows. What the capture keeps cuts it short above 183.5 kHz with the smallest
-// capture, and above 367 kHz with the largest: to 0.78 s at 192 and 384 kHz (see
+// this track's hold allows. What the capture keeps cuts it short above 174.8 kHz with the smallest
+// capture, and above 349.5 kHz with the largest: to 0.53 s at 192 and 384 kHz (see
 // CaptureRing::capacityFor).
 constexpr double kLaneMarginSeconds = 1.0;
 
@@ -553,9 +553,23 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
     // at display rate, also when the transport is stopped or the host has stopped processing.
     const bool liveSeconds = !synced && !isFrozen;
+    // Where a free-running window, or Auto's untriggered fallback, ends: the paced edge, which
+    // moves evenly between blocks, or the newest sample where pacing does not apply (short spans,
+    // whose whole trace is new every frame anyway; before the block clock locks; offline).
+    const std::uint64_t newest = engine.captureRing().endIndex();
+    pacedEdge.observe(engine.blockStamp().latest(), liveRate);
+    const bool paceable = liveSeconds && span >= protocol::kPacedSpanMinimumSeconds * sampleRate;
+    const std::uint64_t edge =
+        paceable ? pacedEdge.edge(now(), newest, protocol::kPacingDelayCapSeconds) : newest;
+    // A free-running window, or Auto drawing untriggered, is new when its edge moved; a triggered
+    // window only with new audio, so no work is done between blocks.
+    const bool followsEdge =
+        freeRunning || (settings.enumValue<protocol::TriggerMode>(SettingId::kTriggerMode) ==
+                            protocol::TriggerMode::kAuto &&
+                        lastShown && !lastShown->triggered && !lastShown->synced);
     if (liveSeconds) {
         liveEnds.clear();
-        liveEnds.push_back(engine.captureRing().endIndex());
+        liveEnds.push_back(followsEdge ? edge : newest);
         if (multi) {
             for (const std::uint64_t serial : laneOrder) {
                 liveEnds.push_back(lanes.at(serial)->engine->captureRing().endIndex());
@@ -664,14 +678,22 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             !live || freeRunning ? rightEdge : live->start + kTriggerPosition * live->span;
         const double anchorOffset = freeRunning || !live ? span : kTriggerPosition * span;
         const double latestStart = held - span;
-        const auto earliestStart = static_cast<double>(hold.beginIndex());
-        window.start = std::clamp(anchor - anchorOffset - command.panSeconds * sampleRate,
-                                  earliestStart, std::max(earliestStart, latestStart));
+        // A view pans back through the newest frozenHoldSeconds held. The hold reaches a little
+        // further (kSecondsFreezeSeconds), so the unpanned window, which may end a paced delay
+        // before the newest audio, is never moved forward to fit.
+        const auto heldStart = static_cast<double>(hold.beginIndex());
+        const double earliestStart = std::max(
+            heldStart,
+            held - static_cast<double>(std::llround(protocol::kFrozenHoldSeconds * sampleRate)));
+        const double unpanned = anchor - anchorOffset;
+        const double lowest = std::max(heldStart, std::min(earliestStart, unpanned));
+        window.start = std::clamp(unpanned - command.panSeconds * sampleRate, lowest,
+                                  std::max(lowest, latestStart));
         // The UI keeps its pan within this, so it never asks for more than is held.
-        window.panReach = std::max(0.0, (anchor - anchorOffset - earliestStart) / sampleRate);
+        window.panReach = std::max(0.0, (unpanned - earliestStart) / sampleRate);
         window.triggered = live && live->triggered;
     } else if (freeRunning) {
-        const std::uint64_t end = engine.captureRing().endIndex();
+        const std::uint64_t end = edge;
         const auto spanSamples = static_cast<std::uint64_t>(std::llround(span));
         const FreeWindow whole = freeWindow(end, spanSamples, command.columns);
         const auto visibleSamples = std::max<std::uint64_t>(
@@ -734,7 +756,9 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             window.start = lastShown->start;
             window.triggered = lastShown->triggered;
         } else {
-            window.start = decision.windowStart;
+            // Auto drawing untriggered shows the newest span, ending at the paced edge.
+            window.start =
+                decision.triggered ? decision.windowStart : static_cast<double>(edge) - span;
             window.triggered = decision.triggered;
             freezeAfterRender = decision.freeze;
         }
@@ -756,6 +780,12 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         lastLive = window;
         lastLiveEnds = liveEnds;
         lastLiveFormats = liveFormats;
+        // For benchmarks: where a moving frame's right edge stood (a sweep's playhead in Beats).
+        if (window.freeRunning || window.synced) {
+            engine.recordEdge({.nanos = now(),
+                               .edge = window.synced ? lastEnd : edge,
+                               .newest = engine.captureRing().endIndex()});
+        }
     }
     lastShown = window;
     rememberInputs(settings, command, laneSetId);
@@ -1175,6 +1205,8 @@ std::uint64_t Analyzer::sharedLength(std::uint64_t serial, const SweepWindow& sw
 
 void Analyzer::advance()
 {
+    // The block clock sees every block's stamp it can, also between frames.
+    pacedEdge.observe(engine.blockStamp().latest(), engine.sampleRate());
     const Settings settings = engine.settings().get();
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
