@@ -1,6 +1,6 @@
 ---
 name: prior-art
-description: Research how a problem is officially and commonly solved before writing a fix. Use when a bug or feature involves a platform, SDK, host or standard - WebView2, WKWebView, Win32 (DPI, input, windows), VST3, Audio Units, CoreAudio, DAW host behaviour, DOM events, CSS, CMake/MSVC, or audio measurement conventions (levels, metering, pitch) - and before a second attempt at any fix whose first attempt failed.
+description: Research how a problem is officially and commonly solved before writing a change. Use when a change (a fix, a feature or any other) involves a platform, SDK, host or standard - WebView2, WKWebView, Win32 (DPI, input, windows), VST3, Audio Units, CoreAudio, DAW host behaviour, DOM events, CSS, CMake/MSVC, or audio measurement conventions (levels, metering, pitch) - and before a second attempt at any fix whose first attempt failed.
 ---
 
 # Prior art before code
@@ -32,11 +32,13 @@ into the session scratchpad, never into the repository.
 - Prefer the documented or widely adopted approach.
 - Do something different only with a written reason: what the documented approach does not
   cover, and the evidence.
-- Then find every place in Sineless that shares the cause (see CLAUDE.md, "Fixing a bug").
+- Then find every place in Sineless that shares the cause (see CLAUDE.md, "Fixing a bug"), or,
+  for a feature, every place that must change with it.
 
 ## 3. Record it
 
-End the fix's commit message with a short note:
+If the change has a plan (`plan-before-code`), put the findings in its Prior art section too.
+End the change's commit message with a short note:
 
 ```
 Prior art: WebView2 docs (put_IsVisible: "set to false when minimized"); JUCE

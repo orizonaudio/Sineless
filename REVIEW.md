@@ -6,7 +6,8 @@ specialist reviewers in `.claude/agents` (correctness, rules, tests and, for C++
 `plugin/` or `editor/`, real-time safety; `review-rules` alone for a change to documentation
 only: Markdown, or files under `docs/`),
 then a `review-verifier` on each Important finding, which keeps
-it only if it can prove it from the code. Every reviewer reads this file; read CLAUDE.md and
+it only if it can prove it from the code. The `plan-review-*` agents review plans before code,
+for the `plan-before-code` skill; they are not part of a review of a change. Every reviewer reads this file; read CLAUDE.md and
 the `.claude/rules` file of each folder the change touches too, and the parts of
 `docs/DESIGN.md` that cover the behaviour it changes.
 

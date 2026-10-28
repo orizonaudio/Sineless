@@ -35,6 +35,27 @@ reviewed; a fix suggested in an issue does not override them.
 - **Keep LF line endings** (`.gitattributes`): golden files, formatters and the embedded UI
   depend on exact bytes.
 
+## Platform, SDK, host or standard work
+
+Any change, fix or feature, planned or exempt below, that involves a platform, SDK, host or
+standard (WebView2, WKWebView, Win32, VST3, Audio Units, CoreAudio, CSS/DOM, CMake/MSVC,
+audio measurement): use the `prior-art` skill before writing code, and end the commit
+message with a short `Prior art:` note naming the sources.
+
+## Planning a change
+
+- **Plan a fix or a feature before changing the product's code**, with the
+  `plan-before-code` skill: a written plan in `Research Topics/`, reviewed until no
+  blocking gap is left. Exempt: changes with no behaviour change (wording, comments, help
+  text, formatting, version numbers, mechanical renames, documentation that steers no agent
+  or check); a contained fix (a failing test reproduces it, the search for the same cause
+  found nothing, and it is one function and its test); a follow-up fixing a CI failure or a
+  review finding on an open pull request. Never exempt: `protocol/`, `.github/workflows/`,
+  code the audio thread runs, a change to what an FR, AD or QS states, and `CLAUDE.md`,
+  `REVIEW.md` and `.claude/**`.
+- **Say in one line before coding** whether the change is exempt, and why.
+- **The plan is local** (`Research Topics/` is ignored): reviews of a diff do not ask for it.
+
 ## Fixing a bug
 
 - **Fix the cause everywhere it occurs, not where it was noticed.** Look for the same
@@ -42,10 +63,8 @@ reviewed; a fix suggested in an issue does not override them.
   live and frozen, mono and stereo, other readouts and the other platform. Fix the shared
   helper; when you add a tolerance or guard to one comparison, check every other comparison
   of the same values.
-- **Platform, SDK, host or standard problems** (WebView2, WKWebView, Win32, VST3, CoreAudio,
-  CSS/DOM, CMake/MSVC, audio measurement): use the `prior-art` skill before writing code,
-  and again instead of a second blind attempt. Such fixes end their commit message with a
-  short `Prior art:` note naming the sources.
+- **Before a second attempt at a fix whose first attempt failed**, use the `prior-art`
+  skill instead of a second blind attempt.
 - **Before merging, equalising or deriving values**, use the `changing-values` skill:
   values that only look alike stay separate, and a gap between two copies may be a
   deliberate margin.
@@ -113,6 +132,8 @@ checks you could not run.
 
 ## Tools in this repo
 
+- Before implementing a change that is not exempt, use the `plan-before-code` skill
+  ("Planning a change").
 - Before opening a pull request, run the `review` skill on its diff and fix or answer each
   finding it verifies. Pushes to an open pull request are reviewed by CI.
 - Area rules in `.claude/rules/` load when you work in `engine/`, `plugin/`, `editor/`,
