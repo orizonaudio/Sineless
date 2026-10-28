@@ -1,7 +1,9 @@
-// A numeric field: drag vertically or scroll to step, double-click to type. It shows
-// only values set with show(), i.e. values the engine reported; requests go through onRequest.
+// A numeric field: drag vertically or scroll to step, double-click to type; where the editor can,
+// a drag holds the pointer (pointer-hold.ts). It shows only values set with show(), i.e. values
+// the engine reported; requests go through onRequest.
 // attach() extends the same to an area around it, such as the pill that holds its icon.
 import { followDrag } from "./follow-drag.ts";
+import { pointerHoldFor } from "./pointer-hold.ts";
 import { WheelSteps, wheelUnit } from "./wheel-steps.ts";
 
 export interface DragFieldOptions {
@@ -105,19 +107,53 @@ export class DragField {
     const startY = event.clientY;
     let applied = 0;
     const from = this.value;
+    // Steps for `travel` up from the press, in CSS px.
+    const travelTo = (travel: number, fine: boolean) => {
+      const steps = Math.trunc(travel / pixelsPerStep) - applied;
+      if (steps !== 0) {
+        applied += steps;
+        this.request(this.options.step(this.dragValue, steps, fine));
+      }
+    };
+    // From the press the editor, where it can, holds the pointer and reports its travel instead.
+    // Both count from the press, so switching neither loses nor repeats a step; until the editor
+    // reports, the pointer's own travel goes on counting.
+    const hold = pointerHoldFor(event);
+    let reported = false;
+    let ended = false;
+    const onTravel = (travel: number, fine: boolean) => {
+      if (ended) {
+        return; // Sent before this drag ended, arriving after.
+      }
+      reported = true;
+      travelTo(-travel, fine);
+    };
     if (
-      followDrag(this.element, event, (moveEvent) => {
-        const steps =
-          Math.trunc((startY - moveEvent.clientY) / pixelsPerStep) - applied;
-        if (steps !== 0) {
-          applied += steps;
-          this.request(
-            this.options.step(this.dragValue, steps, moveEvent.shiftKey),
-          );
-        }
-      })
+      followDrag(
+        this.element,
+        event,
+        (moveEvent) => {
+          if (reported) {
+            return; // The held pointer stays where it is.
+          }
+          travelTo(startY - moveEvent.clientY, moveEvent.shiftKey);
+        },
+        () => {
+          ended = true;
+          if (hold !== undefined) {
+            if (hold.onTravel === onTravel) {
+              hold.onTravel = undefined;
+            }
+            hold.end();
+          }
+        },
+      )
     ) {
       this.dragValue = from;
+      if (hold !== undefined) {
+        hold.onTravel = onTravel;
+        hold.start();
+      }
     }
   }
 
