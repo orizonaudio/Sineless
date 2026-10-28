@@ -11,8 +11,12 @@ import {
   columnPosition,
   fullScale,
   lanes,
+  maxReach,
   playheadEdges,
   pointPosition,
+  reachCount,
+  textureRowLength,
+  textureRows,
 } from "../src/render/trace-geometry.ts";
 
 function frame(
@@ -473,4 +477,43 @@ describe("cancellation bands", () => {
       cancellationBands({ ...plain, comparison: undefined }, layout, both),
     ).toHaveLength(0);
   });
+});
+
+// The trace shader looks this many points either side of a pixel's own: too few leaves a gap or
+// a thin spot where a neighbour's line should reach; it is a loop bound, so it is capped.
+describe("the points a pixel can be reached from", () => {
+  const reaches = [1.25, 1.4375, 1.625, 2];
+  const spacings = [
+    0.01, 0.05, 0.0625, 0.07, 0.5, 0.99, 1, 1.01, 1.9, 2, 2.1, 2.56, 4, 40,
+    2560,
+  ];
+  test.each(
+    reaches.flatMap((reach) => spacings.map((spacing) => ({ reach, spacing }))),
+  )(
+    "covers every point within $reach px of a cell $spacing px wide",
+    ({ reach, spacing }) => {
+      const n = reachCount(reach, spacing);
+      if (Math.ceil(reach / spacing) + 1 <= maxReach) {
+        // The points read span the reach plus a whole cell either side of the pixel's cell centre,
+        // so a segment from the farthest one read still covers a pixel at the cell's far edge.
+        expect(n * spacing).toBeGreaterThanOrEqual(reach + spacing - 1e-9);
+      } else {
+        expect(n).toBe(maxReach);
+      }
+    },
+  );
+});
+
+// A frame's values reach the GPU as rows of a texture: every value is uploaded once.
+describe("the texture rows of a frame's values", () => {
+  test.each([0, 1, 2047, 2048, 2049, 4095, 4096, 4097, 76800])(
+    "%i values",
+    (count) => {
+      const { rows, full, remainder } = textureRows(count);
+      expect(full * textureRowLength + remainder).toBe(count);
+      expect(remainder).toBeGreaterThanOrEqual(0);
+      expect(remainder).toBeLessThan(textureRowLength);
+      expect(rows).toBe(full + (remainder > 0 ? 1 : 0));
+    },
+  );
 });

@@ -62,6 +62,16 @@ export function fullScale(verticalScaleDb: number): number {
   return 10 ** (verticalScaleDb / 20);
 }
 
+// The trace shader shades each pixel from the points around its own: n either side, enough that
+// every segment within `reachPixels` of the pixel's cell is read, for points `spacingPixels`
+// apart. A loop bound, so capped: only a frame stretched while zooming out (until the next frame
+// arrives) has points so close that the farthest ones are skipped, drawing it thinner a moment.
+export const maxReach = 32;
+
+export function reachCount(reachPixels: number, spacingPixels: number): number {
+  return Math.min(Math.ceil(reachPixels / spacingPixels) + 1, maxReach);
+}
+
 // The playhead's edges in clip space, at a position 0 to 1 across a screen widthPixels device
 // pixels wide. A line straddling pixels is antialiased dimmer and wider by an amount that changes
 // with its subpixel position, so a moving one flickers: its edges sit on whole device pixels, and
@@ -76,6 +86,20 @@ export function playheadEdges(
   const left = Math.round(position * widthPixels - width / 2);
   const clip = (pixels: number) => -1 + (2 * pixels) / widthPixels;
   return { left: clip(left), right: clip(left + width) };
+}
+
+// A frame's values reach the GPU as rows of a texture this wide (WebGL2's least maximum texture
+// size): the full rows in one upload, the rest in a second.
+export const textureRowLength = 2048;
+
+export function textureRows(count: number): {
+  readonly rows: number;
+  readonly full: number;
+  readonly remainder: number;
+} {
+  const full = Math.floor(count / textureRowLength);
+  const remainder = count - full * textureRowLength;
+  return { rows: full + (remainder > 0 ? 1 : 0), full, remainder };
 }
 
 function pushQuad(
