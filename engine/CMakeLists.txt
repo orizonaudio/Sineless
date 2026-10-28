@@ -63,6 +63,7 @@ if(BUILD_TESTING)
         tests/MatrixTests.cpp
         tests/MotionTests.cpp
         tests/PacedAnalyzerTests.cpp
+        tests/PacedSweepTests.cpp
         tests/PairAnalysisTests.cpp
         tests/ReadoutsTests.cpp
         tests/ReducerTests.cpp
