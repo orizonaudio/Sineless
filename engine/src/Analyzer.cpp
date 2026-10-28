@@ -1667,6 +1667,56 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
     return chosen;
 }
 
+void Analyzer::buildParts()
+{
+    rawParts.clear();
+    fixedParts.clear();
+    for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
+        const std::uint64_t serial = laneOrder[lane];
+        if (!lanes.at(serial)->compared) {
+            continue;
+        }
+        SumPart fixed{.lane = lane};
+        if (const auto found = matchStates.find(serial); found != matchStates.end()) {
+            fixed.offset = found->second.analysis.offset;
+            fixed.sign = found->second.analysis.inverted ? -1.0f : 1.0f;
+        }
+        rawParts.push_back({.lane = lane});
+        fixedParts.push_back(fixed);
+    }
+}
+
+void Analyzer::packMatches()
+{
+    std::vector<float>& matchValues = comparisonCache.matches;
+    assignNoMatches(matchValues, laneOrder.size());
+    for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
+        const std::uint64_t serial = laneOrder[lane];
+        const auto found = matchStates.find(serial);
+        if (!lanes.at(serial)->compared || found == matchStates.end()) {
+            continue; // This track, and tracks not compared, have none.
+        }
+        const PairAnalysis& match = found->second.analysis;
+        float* const values = matchValues.data() + lane * protocol::kMatchValues;
+        values[0] = match.measured ? static_cast<float>(match.correlation)
+                                   : std::numeric_limits<float>::quiet_NaN();
+        values[1] = match.related ? static_cast<float>(match.offset)
+                                  : std::numeric_limits<float>::quiet_NaN();
+        values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
+    }
+}
+
+std::pair<std::ptrdiff_t, std::ptrdiff_t> Analyzer::fixedReach(const std::vector<SumPart>& parts)
+{
+    std::ptrdiff_t earliest = 0;
+    std::ptrdiff_t latest = 0;
+    for (const SumPart& part : parts) {
+        earliest = std::min(earliest, part.offset);
+        latest = std::max(latest, part.offset);
+    }
+    return {earliest, latest};
+}
+
 bool Analyzer::continueMatchSearch(double liveRate)
 {
     if (!searchingSerial) {
@@ -1906,26 +1956,15 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     const bool searched =
         spreadStepped ? std::exchange(searchEnded, false) : continueMatchSearch(liveRate);
 
-    // The compared tracks as parts of the sum: as recorded, and shifted and flipped as matched.
-    rawParts.clear();
-    fixedParts.clear();
+    buildParts();
+    // What the incremental sums were built from: a change of tracks, shifts or signs starts them
+    // afresh.
     rawSumKey.assign({static_cast<std::int64_t>(length)});
     fixedSumKey.assign({static_cast<std::int64_t>(length)});
-    for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
-        const std::uint64_t serial = laneOrder[lane];
-        if (!lanes.at(serial)->compared) {
-            continue;
-        }
-        SumPart fixed{.lane = lane};
-        if (const auto found = matchStates.find(serial); found != matchStates.end()) {
-            fixed.offset = found->second.analysis.offset;
-            fixed.sign = found->second.analysis.inverted ? -1.0f : 1.0f;
-        }
-        rawParts.push_back({.lane = lane});
-        fixedParts.push_back(fixed);
-        rawSumKey.push_back(static_cast<std::int64_t>(serial));
-        fixedSumKey.insert(fixedSumKey.end(), {static_cast<std::int64_t>(serial), fixed.offset,
-                                               fixed.sign < 0.0f ? 1 : 0});
+    for (const SumPart& fixed : fixedParts) {
+        const auto serial = static_cast<std::int64_t>(laneOrder[fixed.lane]);
+        rawSumKey.push_back(serial);
+        fixedSumKey.insert(fixedSumKey.end(), {serial, fixed.offset, fixed.sign < 0.0f ? 1 : 0});
     }
     // Each track the fix shifts: its levels per block as shifted, which the fixed gain weighs the
     // fixed sum against. A track it does not shift (or no longer compared) keeps none pending, and
@@ -2009,31 +2048,11 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * liveRate);
     if (searched || rawMeasured || fixedMeasured || !comparisonCache.valid ||
         gainsDueByTime(now, gainInterval)) {
-        std::vector<float>& matchValues = comparisonCache.matches;
-        assignNoMatches(matchValues, laneOrder.size());
-        for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
-            const std::uint64_t serial = laneOrder[lane];
-            const auto found = matchStates.find(serial);
-            if (!lanes.at(serial)->compared || found == matchStates.end()) {
-                continue; // This track, and tracks not compared, have none.
-            }
-            const PairAnalysis& match = found->second.analysis;
-            float* const values = matchValues.data() + lane * protocol::kMatchValues;
-            values[0] = match.measured ? static_cast<float>(match.correlation)
-                                       : std::numeric_limits<float>::quiet_NaN();
-            values[1] = match.related ? static_cast<float>(match.offset)
-                                      : std::numeric_limits<float>::quiet_NaN();
-            values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
-        }
+        packMatches();
         // The sum as recorded over the visible part; the fix where every shifted track has
         // samples of the same moments as the others: not past the sweep's edges, nor where a shift
         // reaches across the playhead, beyond which the sweep holds the previous pass.
-        std::ptrdiff_t earliest = 0;
-        std::ptrdiff_t latest = 0;
-        for (const SumPart& part : fixedParts) {
-            earliest = std::min(earliest, part.offset);
-            latest = std::max(latest, part.offset);
-        }
+        const auto [earliest, latest] = fixedReach(fixedParts);
         const auto [fixedFirst, fixedEnd] = fixedPart(first, end, length, earliest, latest);
         std::array<Positions, 2> fixedRanges{Positions{.first = fixedFirst, .end = fixedEnd},
                                              Positions{.first = fixedEnd, .end = fixedEnd}};
@@ -2310,22 +2329,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     const bool searched =
         spreadStepped ? std::exchange(searchEnded, false) : continueMatchSearch(liveRate);
 
-    // The compared tracks as parts of the sum: as recorded, and shifted and flipped as matched.
-    rawParts.clear();
-    fixedParts.clear();
-    for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
-        const std::uint64_t serial = laneOrder[lane];
-        if (!lanes.at(serial)->compared) {
-            continue;
-        }
-        SumPart fixed{.lane = lane};
-        if (const auto found = matchStates.find(serial); found != matchStates.end()) {
-            fixed.offset = found->second.analysis.offset;
-            fixed.sign = found->second.analysis.inverted ? -1.0f : 1.0f;
-        }
-        rawParts.push_back({.lane = lane});
-        fixedParts.push_back(fixed);
-    }
+    buildParts();
 
     // The matches' values when due, and the summing gains over the visible part: measured over
     // the next frames (kGainReadWork samples read in each), of the window as it was when they
@@ -2339,30 +2343,10 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         gainJob.stale = true;
     }
     if (searched || !comparisonCache.valid || gainsDueByTime(now, gainInterval)) {
-        std::vector<float>& matchValues = comparisonCache.matches;
-        assignNoMatches(matchValues, laneOrder.size());
-        for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
-            const std::uint64_t serial = laneOrder[lane];
-            const auto found = matchStates.find(serial);
-            if (!lanes.at(serial)->compared || found == matchStates.end()) {
-                continue; // This track, and tracks not compared, have none.
-            }
-            const PairAnalysis& match = found->second.analysis;
-            float* const values = matchValues.data() + lane * protocol::kMatchValues;
-            values[0] = match.measured ? static_cast<float>(match.correlation)
-                                       : std::numeric_limits<float>::quiet_NaN();
-            values[1] = match.related ? static_cast<float>(match.offset)
-                                      : std::numeric_limits<float>::quiet_NaN();
-            values[2] = !match.related ? 0.0f : match.inverted ? -1.0f : 1.0f;
-        }
+        packMatches();
         if (!gainJob.active && !panning) {
             // The fix is measured where every shifted track has samples in the window.
-            std::ptrdiff_t earliest = 0;
-            std::ptrdiff_t latest = 0;
-            for (const SumPart& part : fixedParts) {
-                earliest = std::min(earliest, part.offset);
-                latest = std::max(latest, part.offset);
-            }
+            const auto [earliest, latest] = fixedReach(fixedParts);
             const auto [fixedFirst, fixedEnd] = fixedPart(first, end, count, earliest, latest);
             gainJob.active = true;
             gainJob.at = now;
