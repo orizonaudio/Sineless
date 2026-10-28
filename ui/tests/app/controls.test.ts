@@ -135,15 +135,15 @@ describe("controls", () => {
     await press(choice("mode", "Auto"));
   });
 
-  // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): the trigger source in
-  // Single and Seconds, Mid in Beats, this track's Mid in Multi and Compare.
+  // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): Mid in Single, whatever
+  // the trigger source, this track's Mid in Multi and Compare.
   test("labels the readouts with the channel they measure", async () => {
     const tag = () => byId("readout-tag").textContent;
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Sec"));
-    // Away from the default source, then back: the tag follows it.
+    // Away from the default source: the tag stays.
     await press(choice("source", "S"));
-    await expect.poll(tag).toBe("Side");
+    await expect.poll(tag).toBe("Mid");
     await userEvent.click(choice("time-base", "Beats"));
     await expect.poll(tag).toBe("Mid");
     await userEvent.click(choice("display-mode", "Multi"));
@@ -154,37 +154,16 @@ describe("controls", () => {
     await expect.poll(tag).toBe("Mid");
   });
 
-  // Peak, RMS and Freq on screen come from the last frame: until a frame measures the new time
-  // base, the tag keeps naming the channel the one on screen measured.
-  test("labels the readouts with the channel the frame on screen measured", async () => {
-    const tag = () => byId("readout-tag").textContent;
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
-    await press(choice("source", "S"));
-    await expect.poll(tag).toBe("Side");
-    app.holdFrames(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      await userEvent.click(choice("time-base", "Beats"));
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      expect(tag()).toBe("Side");
-    } finally {
-      app.holdFrames(false);
-    }
-    await expect.poll(tag).toBe("Mid");
-    await userEvent.click(choice("time-base", "Sec"));
-    await press(choice("source", "M"));
-  });
-
-  // The same while the display mode changes between Single, which measures the readout channel,
-  // and each mode that measures this track's Mid, either way.
+  // Peak, RMS and Freq on screen come from the last frame: until a frame measures the new display
+  // mode, between Single, which measures the readout channel, and each mode that measures this
+  // track's Mid, either way, the tag keeps naming what the one on screen measured.
   test.each(
     Object.keys(DisplayMode)
       .filter((key) => key !== "single")
       .map((key) => key.charAt(0).toUpperCase() + key.slice(1))
       .flatMap((mode) => [
-        ["Single", mode, "Side", "This track"],
-        [mode, "Single", "This track", "Side"],
+        ["Single", mode, "Mid", "This track"],
+        [mode, "Single", "This track", "Mid"],
       ]),
   )(
     "labels the readouts measured in %s until a frame measures them in %s",
@@ -192,7 +171,6 @@ describe("controls", () => {
       const tag = () => byId("readout-tag").textContent;
       await userEvent.click(choice("display-mode", "Single"));
       await userEvent.click(choice("time-base", "Sec"));
-      await press(choice("source", "S"));
       await userEvent.click(choice("display-mode", from));
       await expect.poll(tag).toBe(before);
       app.holdFrames(true);
@@ -206,7 +184,6 @@ describe("controls", () => {
       }
       await expect.poll(tag).toBe(after);
       await userEvent.click(choice("display-mode", "Single"));
-      await press(choice("source", "M"));
     },
   );
 

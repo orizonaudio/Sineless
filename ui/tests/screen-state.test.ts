@@ -9,16 +9,12 @@ import {
   viewToggleState,
 } from "../src/view/screen-state.ts";
 
-describe.each(viewOrder)("triggering on %s", (source) => {
-  test("Seconds mode measures the trigger source", () => {
-    expect(readoutView(false, source, 2)).toBe(ChannelView[source]);
+describe("readoutView", () => {
+  test("a stereo track measures the Mid", () => {
+    expect(readoutView(2)).toBe(ChannelView.mid);
   });
-  test("Beats mode measures the Mid, as no trigger applies", () => {
-    expect(readoutView(true, source, 2)).toBe(ChannelView.mid);
-  });
-  test("a mono track measures L, in either mode", () => {
-    expect(readoutView(false, source, 1)).toBe(ChannelView.left);
-    expect(readoutView(true, source, 1)).toBe(ChannelView.left);
+  test("a mono track measures L, its one channel", () => {
+    expect(readoutView(1)).toBe(ChannelView.left);
   });
 });
 
