@@ -28,7 +28,7 @@ import { numberFields, type NumberField } from "./view/fields.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { attachResizeGrip } from "./components/resize-grip.ts";
 import { Segmented } from "./components/segmented.ts";
-import { streamGap } from "./components/wheel-steps.ts";
+import { streamGap, wheelUnit } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
 import { frameMilliseconds } from "./frame-times.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
@@ -138,8 +138,6 @@ const wheelZoomRate = 0.01;
 // The most one wheel event zooms by, in wheel delta units: about 1.3×, which is also what a lone
 // mouse-wheel notch zooms by on every system. A trackpad's events are a few units each.
 const maxWheelZoomDelta = 25;
-// A wheel line in pixels, as browsers scroll it.
-const wheelLinePixels = 40;
 // The Compare view's sum lane: an id no track has, and a neutral colour.
 const sumLaneId = -100;
 // Cursors snap to a target within this distance (CSS px) unless Option is held.
@@ -649,11 +647,16 @@ export class OscilloscopeApp {
   }
 
   // What Peak, RMS and Freq measure (DESIGN.md 1.2.1): the readout channel in Single, this track's
-  // Mid in Multi and Compare.
+  // Mid in Multi and Compare. Read from the frame on screen, whose lanes say which it measured,
+  // whatever the setting now says until the next frame comes; a frame with no tempo has no lanes
+  // and no readouts, so the setting names it.
   private updateReadoutTag(): void {
-    const text = this.multiMode()
-      ? "This track"
-      : viewNames[this.readoutView()];
+    const frame = this.lastFrame;
+    const thisTrack =
+      frame === undefined || frame.noTempo
+        ? this.multiMode()
+        : frame.lanes.length > 0;
+    const text = thisTrack ? "This track" : viewNames[this.readoutView()];
     const tag = element("readout-tag");
     if (tag.textContent !== text) {
       tag.textContent = text;
@@ -1377,20 +1380,20 @@ export class OscilloscopeApp {
       band.hidden = true;
       return;
     }
-    // The marks cover the trace's lane only.
-    const width = this.screen.clientWidth;
-    const screenHeight = this.screen.clientHeight;
-    const laneTop = `${String(readout.top * screenHeight)}px`;
-    const laneHeight = `${String((readout.bottom - readout.top) * screenHeight)}px`;
-    line.style.left = `${String(readout.x * width)}px`;
+    // The marks cover the trace's lane only, in fractions of the screen as the readout gives
+    // them: its size in whole pixels need not be the trace's.
+    const percent = (fraction: number) => `${String(fraction * 100)}%`;
+    const laneTop = percent(readout.top);
+    const laneHeight = percent(readout.bottom - readout.top);
+    line.style.left = percent(readout.x);
     line.style.top = laneTop;
     line.style.height = laneHeight;
     line.hidden = false;
     if (readout.cycle === undefined) {
       band.hidden = true;
     } else {
-      band.style.left = `${String(readout.cycle.start * width)}px`;
-      band.style.width = `${String((readout.cycle.end - readout.cycle.start) * width)}px`;
+      band.style.left = percent(readout.cycle.start);
+      band.style.width = percent(readout.cycle.end - readout.cycle.start);
       band.style.top = laneTop;
       band.style.height = laneHeight;
       band.hidden = false;
@@ -1407,6 +1410,7 @@ export class OscilloscopeApp {
     );
     node.hidden = false;
     // Below and right of the pointer, flipped where the screen ends.
+    const width = this.screen.clientWidth;
     const height = this.screen.clientHeight;
     const x = this.hover.x * width;
     const y = this.hover.y * height;
@@ -1460,16 +1464,33 @@ export class OscilloscopeApp {
     );
   }
 
+  // Where the pointer is on the screen, inside its border: as fractions of the trace, which fills
+  // the screen's padding box in fractional px, and in px from the trace's top. Elements drawn at a
+  // fraction of the screen (time cursors, hover, the selection) use the fractions; those drawn in
+  // px at clientHeight scale (level cursors, the trigger marker) use `top`, as clientHeight is a
+  // whole number while the screen need not be (Windows at 125% or 150%).
+  private screenPoint(event: { clientX: number; clientY: number }): {
+    x: number;
+    y: number;
+    top: number;
+    width: number;
+  } {
+    const box = this.traceCanvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - box.left) / box.width,
+      y: (event.clientY - box.top) / box.height,
+      top: event.clientY - box.top,
+      width: box.width,
+    };
+  }
+
   private listenToScreen(): void {
     // The hover readout follows the pointer over the traces while no button is held.
     this.screen.addEventListener("pointermove", (event) => {
-      const rectangle = this.screen.getBoundingClientRect();
+      const point = this.screenPoint(event);
       this.hover =
         event.buttons === 0 && event.target instanceof HTMLCanvasElement
-          ? {
-              x: (event.clientX - rectangle.left) / rectangle.width,
-              y: (event.clientY - rectangle.top) / rectangle.height,
-            }
+          ? { x: point.x, y: point.y }
           : undefined;
       this.updateHover();
     });
@@ -1505,22 +1526,14 @@ export class OscilloscopeApp {
           if (this.timeCursors === undefined) {
             return;
           }
-          const rectangle = this.screen.getBoundingClientRect();
+          const point = this.screenPoint(moveEvent);
           // Stacked, the cursor snaps to the trace in the lane under the pointer.
           const values = this.snapValues(
             this.layout() === ViewLayout.stacked
-              ? traceAt(
-                  this.laneCount(),
-                  ViewLayout.stacked,
-                  (moveEvent.clientY - rectangle.top) / rectangle.height,
-                  0,
-                )
+              ? traceAt(this.laneCount(), ViewLayout.stacked, point.y, 0)
               : undefined,
           );
-          const x = Math.min(
-            1,
-            Math.max(0, (moveEvent.clientX - rectangle.left) / rectangle.width),
-          );
+          const x = Math.min(1, Math.max(0, point.x));
           let position = toFrame(this.view, x);
           if (
             !moveEvent.altKey &&
@@ -1528,8 +1541,7 @@ export class OscilloscopeApp {
             values !== undefined
           ) {
             const radius =
-              (snapRadius / rectangle.width) *
-              (this.view.end - this.view.start);
+              (snapRadius / point.width) * (this.view.end - this.view.start);
             position = snap(
               position,
               [
@@ -1564,16 +1576,14 @@ export class OscilloscopeApp {
         if (this.levelCursors === undefined || lane === undefined) {
           return;
         }
-        const rectangle = this.screen.getBoundingClientRect();
-        const center = ((1 - lane.center) / 2) * rectangle.height;
-        const halfHeight = (lane.halfHeight / 2) * rectangle.height;
+        // In px at clientHeight scale, as the line is drawn.
+        const height = this.screen.clientHeight;
+        const center = ((1 - lane.center) / 2) * height;
+        const halfHeight = (lane.halfHeight / 2) * height;
         const scale = fullScale(this.store.number("verticalScale"));
         const relative = Math.max(
           -1,
-          Math.min(
-            1,
-            (center - (moveEvent.clientY - rectangle.top)) / halfHeight,
-          ),
+          Math.min(1, (center - this.screenPoint(moveEvent).top) / halfHeight),
         );
         let level = relative * scale;
         const values = this.snapValues(laneIndex);
@@ -1595,10 +1605,9 @@ export class OscilloscopeApp {
     marker.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
       followDrag(marker, event, (moveEvent) => {
-        const rectangle = this.screen.getBoundingClientRect();
         const { center, halfHeight } = this.markerGeometry();
         const relative =
-          (center - (moveEvent.clientY - rectangle.top)) / halfHeight;
+          (center - this.screenPoint(moveEvent).top) / halfHeight;
         const level = relative * fullScale(this.store.number("verticalScale"));
         this.request(
           "triggerLevel",
@@ -1610,23 +1619,16 @@ export class OscilloscopeApp {
     // View zoom: ⌘ + scroll or pinch zooms around the pointer, a horizontal
     // swipe pans, dragging zooms to the selection, double-click resets.
     const screenPosition = (clientX: number) => {
-      const rectangle = this.screen.getBoundingClientRect();
       return Math.min(
         1,
-        Math.max(0, (clientX - rectangle.left) / rectangle.width),
+        Math.max(0, this.screenPoint({ clientX, clientY: 0 }).x),
       );
     };
     this.screen.addEventListener(
       "wheel",
       (event) => {
-        // In pixels: Windows reports lines, or pages with "scroll one screen at a time", which
-        // would otherwise zoom and pan by almost nothing.
-        const unit =
-          event.deltaMode === WheelEvent.DOM_DELTA_LINE
-            ? wheelLinePixels
-            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-              ? this.screen.clientHeight
-              : 1;
+        // In pixels, so lines and pages zoom and pan as far as pixels do.
+        const unit = wheelUnit(event, this.screen.clientHeight);
         const deltaX = event.deltaX * unit;
         const deltaY = event.deltaY * unit;
         if (event.metaKey || event.ctrlKey) {
@@ -1774,6 +1776,7 @@ export class OscilloscopeApp {
       }
       this.loop.submit(frame);
       this.updateViewSummary();
+      this.updateReadoutTag();
       // A track joined or left, or the views drawn changed (a track turned mono): lanes, grid
       // and labels change with it. A new lane set (a track checked, a renamed track) changes the
       // labels.

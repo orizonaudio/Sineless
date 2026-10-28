@@ -33,11 +33,11 @@ async function setPressed(id: string, pressed: boolean): Promise<void> {
     .toHaveAttribute("aria-pressed", String(pressed));
 }
 
-// Drags time cursor A to (`x`, `y`), fractions of the screen, and returns where it is left, as
-// a fraction of the screen's width.
+// Drags time cursor A to (`x`, `y`), fractions of the trace (the screen inside its border), and
+// returns where it is left, as a fraction of the trace's width.
 function dragCursorA(x: number, y: number): number {
   const line = byId("cursor-a");
-  const screen = byId("screen").getBoundingClientRect();
+  const screen = byId("trace").getBoundingClientRect();
   const at = {
     pointerId: 1,
     bubbles: true,
@@ -75,7 +75,7 @@ describe("time cursors over stacked lanes", () => {
       const shown = traces(frame as Frame);
       expect(shown.length).toBeGreaterThan(1);
       const laneList = lanes(shown.length, ViewLayout.stacked);
-      const { width, height } = byId("screen").getBoundingClientRect();
+      const { width, height } = byId("trace").getBoundingClientRect();
       // Two pixels inside a lane's edge.
       const inset = 2 / height;
       // A pixel beside a crossing or peak: well within snapping reach.

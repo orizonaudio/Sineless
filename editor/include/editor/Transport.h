@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor/WebView.h"
+#include "protocol/Protocol.h"
 
 #include <cstddef>
 #include <nlohmann/json.hpp>
@@ -9,6 +10,13 @@
 #include <string_view>
 
 namespace orizon::editor {
+
+// A message type's name on the wire, from the generated protocol table, so a renamed
+// type cannot leave a hand-written copy behind.
+[[nodiscard]] constexpr std::string_view messageName(protocol::MessageType type)
+{
+    return protocol::kMessageTypeNames[static_cast<std::size_t>(type)];
+}
 
 // Engine-to-UI delivery: JSON control messages and binary display frames. Every message
 // is a JSON object with a string `type` (protocol MessageType). Called on the UI thread.

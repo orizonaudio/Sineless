@@ -2,7 +2,7 @@
 // only values set with show(), i.e. values the engine reported; requests go through onRequest.
 // attach() extends the same to an area around it, such as the pill that holds its icon.
 import { followDrag } from "./follow-drag.ts";
-import { WheelSteps } from "./wheel-steps.ts";
+import { WheelSteps, wheelUnit } from "./wheel-steps.ts";
 
 export interface DragFieldOptions {
   readonly label: string;
@@ -14,8 +14,6 @@ export interface DragFieldOptions {
 }
 
 const pixelsPerStep = 8;
-// A wheel line in CSS px, as browsers scroll it.
-const wheelLinePixels = 40;
 
 export class DragField {
   readonly element: HTMLElement;
@@ -125,12 +123,7 @@ export class DragField {
 
   private scroll(event: WheelEvent): void {
     event.preventDefault();
-    const unit =
-      event.deltaMode === WheelEvent.DOM_DELTA_LINE
-        ? wheelLinePixels
-        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-          ? window.innerHeight
-          : 1;
+    const unit = wheelUnit(event, window.innerHeight);
     // macOS turns Shift + wheel (fine steps) into horizontal scrolling.
     const delta =
       event.deltaY === 0 && event.shiftKey ? event.deltaX : event.deltaY;

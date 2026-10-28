@@ -154,6 +154,39 @@ describe("controls", () => {
     await expect.poll(tag).toBe("Mid");
   });
 
+  // Peak, RMS and Freq on screen come from the last frame: until a frame measures the new display
+  // mode, between Single, which measures the readout channel, and each mode that measures this
+  // track's Mid, either way, the tag keeps naming what the one on screen measured.
+  test.each(
+    Object.keys(DisplayMode)
+      .filter((key) => key !== "single")
+      .map((key) => key.charAt(0).toUpperCase() + key.slice(1))
+      .flatMap((mode) => [
+        ["Single", mode, "Mid", "This track"],
+        [mode, "Single", "This track", "Mid"],
+      ]),
+  )(
+    "labels the readouts measured in %s until a frame measures them in %s",
+    async (from, to, before, after) => {
+      const tag = () => byId("readout-tag").textContent;
+      await userEvent.click(choice("display-mode", "Single"));
+      await userEvent.click(choice("time-base", "Sec"));
+      await userEvent.click(choice("display-mode", from));
+      await expect.poll(tag).toBe(before);
+      app.holdFrames(true);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await userEvent.click(choice("display-mode", to));
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(tag()).toBe(before);
+      } finally {
+        app.holdFrames(false);
+      }
+      await expect.poll(tag).toBe(after);
+      await userEvent.click(choice("display-mode", "Single"));
+    },
+  );
+
   test("Re-arm shows in the Single trigger mode only", async () => {
     await userEvent.click(choice("time-base", "Sec"));
     await press(choice("mode", "Auto"));
@@ -162,6 +195,15 @@ describe("controls", () => {
     await expect.element(byId("arm")).toBeVisible();
     await press(choice("mode", "Auto"));
     await expect.element(byId("arm")).not.toBeVisible();
+  });
+
+  test("Re-arm asks the engine to arm the trigger again", async () => {
+    await userEvent.click(choice("time-base", "Sec"));
+    await press(choice("mode", "Single"));
+    const before = app.sent.length;
+    await userEvent.click(byId("arm"));
+    expect(app.sent.slice(before)).toContainEqual({ type: "arm" });
+    await press(choice("mode", "Auto"));
   });
 
   test("the view toggles keep at least one view shown", async () => {

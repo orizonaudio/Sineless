@@ -13,7 +13,6 @@
 #include "engine/SweepImage.h"
 #include "engine/Trigger.h"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -452,6 +451,13 @@ private:
     GainJob gainJob;
     // Steps the search in progress; true when it ended this frame and its match is stored.
     bool continueMatchSearch(double liveRate);
+    // The compared tracks as parts of the sum, in rawParts and fixedParts: as recorded, and
+    // shifted and flipped as matched. Both time bases build them here, so they agree.
+    void buildParts();
+    // The matches' values, one set per lane, into comparisonCache.matches.
+    void packMatches();
+    // The earliest (at most 0) and latest (at least 0) shift of `parts`.
+    static std::pair<std::ptrdiff_t, std::ptrdiff_t> fixedReach(const std::vector<SumPart>& parts);
     // Steps the gains in progress by a frame's budget; true when they were published.
     bool stepGainJob();
     // The gains are due again for the live audio that arrived since they were measured.

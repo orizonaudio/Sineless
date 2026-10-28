@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace orizon::editor {
@@ -154,13 +155,14 @@ void EditorCore::receive(std::string_view message)
     if (!parsed) {
         return;
     }
-    if ((*parsed)["type"] == "resize") {
+    const auto& type = (*parsed)["type"].get_ref<const std::string&>();
+    if (type == messageName(protocol::MessageType::kResize)) {
         resize(*parsed);
     } else if (session) {
         session->receive(*parsed);
-    } else if ((*parsed)["type"] == "hello" && transport) {
+    } else if (type == messageName(protocol::MessageType::kHello) && transport) {
         // No engine: tell the page, so it can explain instead of waiting forever.
-        transport->sendMessage({{"type", "error"},
+        transport->sendMessage({{"type", messageName(protocol::MessageType::kError)},
                                 {"code", "engineUnavailable"},
                                 {"message", "The editor cannot reach the plugin's engine."}});
     }

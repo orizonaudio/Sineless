@@ -2291,6 +2291,37 @@ TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
     }
 }
 
+// A late track's match comes out alike in both time bases, live and frozen: its offset, its
+// polarity and a measured correlation (at no offset, so near 0 for noise this late), as Beats and
+// Seconds pack the matches the same way.
+TEST_F(CompareTest, MeasuresALateTrackAlikeInBothTimeBases)
+{
+    joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
+    own->settings().set(SettingId::kTimeSpan, 0.1);
+    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    for (const auto timeBase : {protocol::TimeBase::kBeats, protocol::TimeBase::kSeconds}) {
+        for (const bool frozen : {false, true}) {
+            SCOPED_TRACE(std::string(timeBase == protocol::TimeBase::kBeats ? "Beats" : "Seconds") +
+                         (frozen ? ", frozen" : ", live"));
+            analyzer->setFrozen(false);
+            own->settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
+            play(9600);
+            if (frozen) {
+                ASSERT_TRUE(produce()) << "measured live before the freeze";
+                analyzer->setFrozen(true);
+                play(480);
+            }
+            const auto frame = produce();
+            ASSERT_TRUE(frame);
+            EXPECT_FLOAT_EQ(match(*frame, 1).offset, 37.0f) << "37 late";
+            const float correlation = match(*frame, 1).correlation;
+            EXPECT_TRUE(std::isfinite(correlation)) << "measured";
+            EXPECT_LE(std::abs(correlation), 1.0f);
+            EXPECT_EQ(match(*frame, 1).polarity, 1.0f) << "related, not inverted";
+        }
+    }
+}
+
 // This track, and a track not compared, have no match in either time base, live and frozen: no
 // correlation or offset (NaN) and polarity 0, never a correlation or offset of 0.
 TEST_F(CompareTest, SendsNoMatchForThisTrackAndTracksNotCompared)

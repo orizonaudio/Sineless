@@ -7,6 +7,18 @@
 export const streamGap = 80;
 // In a stream, one step per this distance: one Windows mouse notch (CSS px).
 const pixelsPerStep = 100;
+// A wheel line in CSS px, as browsers scroll it.
+const wheelLinePixels = 40;
+
+// What one unit of a wheel event's delta is in CSS px. Windows reports lines, or pages with
+// "scroll one screen at a time", which would otherwise move by almost nothing; `pageHeight`
+// is the height of what the wheel scrolls.
+export function wheelUnit(event: WheelEvent, pageHeight: number): number {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    return wheelLinePixels;
+  }
+  return event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? pageHeight : 1;
+}
 
 export class WheelSteps {
   private pixels = 0;

@@ -134,7 +134,7 @@ void Session::hello(const nlohmann::json& message)
     if (!version || *version != protocol::kProtocolVersion) {
         isStarted = false;
         transport.sendMessage(
-            {{"type", "error"},
+            {{"type", messageName(MessageType::kError)},
              {"code", "protocolMismatch"},
              {"message", "The UI speaks protocol version " +
                              (version ? numberText(*version) : std::string("unknown")) +
@@ -162,7 +162,7 @@ void Session::sendSnapshot()
     }
     sentSampleRate = engine.sampleRate();
     sentInputChannels = engine.inputChannels();
-    transport.sendMessage({{"type", "snapshot"},
+    transport.sendMessage({{"type", messageName(MessageType::kSnapshot)},
                            {"protocolVersion", protocol::kProtocolVersion},
                            {"settings", values},
                            {"sampleRate", sentSampleRate},
@@ -228,15 +228,17 @@ void Session::syncLanes()
                           {"own", lane.own},
                           {"compared", lane.compared}});
     }
-    transport.sendMessage(
-        {{"type", "lanes"}, {"laneSet", lanes.id}, {"lanes", labels}, {"hidden", lanes.hidden}});
+    transport.sendMessage({{"type", messageName(MessageType::kLanes)},
+                           {"laneSet", lanes.id},
+                           {"lanes", labels},
+                           {"hidden", lanes.hidden}});
     lastLaneSet = lanes.id;
 }
 
 void Session::sendState(protocol::SettingId id, double value)
 {
     transport.sendMessage(
-        {{"type", "stateChanged"},
+        {{"type", messageName(MessageType::kStateChanged)},
          {"name", std::string(protocol::kSettings.at(static_cast<std::size_t>(id)).name)},
          {"value", engine::settingToJson(id, value)}});
     if (!lastSent) {
