@@ -4,8 +4,13 @@ find_program(NODE_EXECUTABLE node REQUIRED)
 execute_process(COMMAND ${NODE_EXECUTABLE} --version OUTPUT_VARIABLE nodeVersion
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
 string(REGEX REPLACE "^v" "" nodeVersion "${nodeVersion}")
-if(nodeVersion VERSION_LESS 22.18)
-    message(FATAL_ERROR "Node ${nodeVersion} found; 22.18 or newer is required (see .nvmrc)")
+# The oldest Node that runs the TypeScript directly, from package.json's engines field.
+file(READ ${PROJECT_SOURCE_DIR}/package.json packageJson)
+string(JSON nodeFloor GET "${packageJson}" engines node)
+string(REGEX REPLACE "^>=" "" nodeFloor "${nodeFloor}")
+if(nodeVersion VERSION_LESS nodeFloor)
+    message(FATAL_ERROR "Node ${nodeVersion} found; ${nodeFloor} or newer is required "
+                        "(nvm install 22, for the newest 22)")
 endif()
 
 set(generatedDir ${CMAKE_CURRENT_BINARY_DIR}/generated)

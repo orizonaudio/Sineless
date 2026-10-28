@@ -28,8 +28,10 @@ $checks = if ($env:CHECKS) { $env:CHECKS -split ' ' } else { @('main', 'glue') }
 Step 'Toolchain'
 . (Join-Path $PSScriptRoot 'windows-env.ps1')
 # Windows PowerShell 5.1 strips double quotes inside arguments to programs: single quotes only.
-$nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
-if ($nodeMajor -lt 22) { throw "Node $(node -v) is too old; install the version in .nvmrc." }
+# The floor is package.json's engines field, as the C++ build reads it.
+$nodeFloor = [version]((Get-Content package.json -Raw | ConvertFrom-Json).engines.node -replace '^>=', '')
+$nodeVersion = [version]((node -v) -replace '^v', '')
+if ($nodeVersion -lt $nodeFloor) { throw "Node $nodeVersion is too old; $nodeFloor or newer is required (install the newest Node 22)." }
 if (-not (Test-Path node_modules)) {
     Step 'npm packages'
     Run npm.cmd ci --no-audit --no-fund

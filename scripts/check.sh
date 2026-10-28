@@ -40,9 +40,13 @@ checks=" ${CHECKS:-main glue linux} "
 part() { [[ "$checks" == *" $1 "* ]]; }
 
 step "Toolchain"
-nodeMajor="$(node -p 'process.versions.node.split(".")[0]')"
-if (( nodeMajor < 22 )); then
-    echo "Node $(node -v) is too old; use the version in .nvmrc (nvm use)." >&2
+# The floor is package.json's engines field, as the C++ build reads it.
+if ! node -e '
+    const floor = require("./package.json").engines.node.replace(">=", "").split(".").map(Number);
+    const have = process.versions.node.split(".").map(Number);
+    const i = have.findIndex((part, index) => part !== floor[index]);
+    process.exit(i === -1 || have[i] > floor[i] ? 0 : 1);'; then
+    echo "Node $(node -v) is too old; package.json needs $(node -p 'require("./package.json").engines.node') (nvm install 22, for the newest 22)." >&2
     exit 1
 fi
 for tool in clang-format clang-tidy clang++; do
