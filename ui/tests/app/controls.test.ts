@@ -154,6 +154,28 @@ describe("controls", () => {
     await expect.poll(tag).toBe("Mid");
   });
 
+  // Peak, RMS and Freq on screen come from the last frame: until a frame measures the new time
+  // base, the tag keeps naming the channel the one on screen measured.
+  test("labels the readouts with the channel the frame on screen measured", async () => {
+    const tag = () => byId("readout-tag").textContent;
+    await userEvent.click(choice("display-mode", "Single"));
+    await userEvent.click(choice("time-base", "Sec"));
+    await press(choice("source", "S"));
+    await expect.poll(tag).toBe("Side");
+    app.holdFrames(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await userEvent.click(choice("time-base", "Beats"));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(tag()).toBe("Side");
+    } finally {
+      app.holdFrames(false);
+    }
+    await expect.poll(tag).toBe("Mid");
+    await userEvent.click(choice("time-base", "Sec"));
+    await press(choice("source", "M"));
+  });
+
   test("Re-arm shows in the Single trigger mode only", async () => {
     await userEvent.click(choice("time-base", "Sec"));
     await press(choice("mode", "Auto"));

@@ -1070,9 +1070,11 @@ export class OscilloscopeApp {
     return this.store.get("timeBase") === "beats";
   }
 
+  // From the frame on screen when there is one: its readouts were measured in its time base,
+  // whatever the setting now says until the next frame comes.
   private readoutView(): ChannelView {
     return readoutView(
-      this.beatsMode(),
+      this.lastFrame?.synced ?? this.beatsMode(),
       this.store.get("triggerSource") as ViewName,
       this.inputChannels,
     );
@@ -1773,6 +1775,7 @@ export class OscilloscopeApp {
       }
       this.loop.submit(frame);
       this.updateViewSummary();
+      this.updateReadoutTag();
       // A track joined or left, or the views drawn changed (a track turned mono): lanes, grid
       // and labels change with it. A new lane set (a track checked, a renamed track) changes the
       // labels.
