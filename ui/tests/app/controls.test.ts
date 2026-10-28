@@ -176,6 +176,40 @@ describe("controls", () => {
     await press(choice("source", "M"));
   });
 
+  // The same while the display mode changes between Single, which measures the readout channel,
+  // and each mode that measures this track's Mid, either way.
+  test.each(
+    Object.keys(DisplayMode)
+      .filter((key) => key !== "single")
+      .map((key) => key.charAt(0).toUpperCase() + key.slice(1))
+      .flatMap((mode) => [
+        ["Single", mode, "Side", "This track"],
+        [mode, "Single", "This track", "Side"],
+      ]),
+  )(
+    "labels the readouts measured in %s until a frame measures them in %s",
+    async (from, to, before, after) => {
+      const tag = () => byId("readout-tag").textContent;
+      await userEvent.click(choice("display-mode", "Single"));
+      await userEvent.click(choice("time-base", "Sec"));
+      await press(choice("source", "S"));
+      await userEvent.click(choice("display-mode", from));
+      await expect.poll(tag).toBe(before);
+      app.holdFrames(true);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await userEvent.click(choice("display-mode", to));
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(tag()).toBe(before);
+      } finally {
+        app.holdFrames(false);
+      }
+      await expect.poll(tag).toBe(after);
+      await userEvent.click(choice("display-mode", "Single"));
+      await press(choice("source", "M"));
+    },
+  );
+
   test("Re-arm shows in the Single trigger mode only", async () => {
     await userEvent.click(choice("time-base", "Sec"));
     await press(choice("mode", "Auto"));
