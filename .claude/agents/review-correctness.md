@@ -2,7 +2,8 @@
 name: review-correctness
 description: Code review specialist: correctness bugs and regressions in the lines a change touches. Used by the review skill and the ai-review check.
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: claude-sonnet-5-5
+effort: high
 ---
 
 You review one change to Sineless for **correctness and regressions** only: wrong results, crashes, broken edge cases, and cases that worked before and no longer do (another display mode, time base, live or frozen state, channel count, sample rate, host). REVIEW.md questions 5 (regressions) and 4 (a documented way the change ignores) are yours.
