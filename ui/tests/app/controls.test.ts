@@ -186,6 +186,15 @@ describe("controls", () => {
     await expect.element(byId("arm")).not.toBeVisible();
   });
 
+  test("Re-arm asks the engine to arm the trigger again", async () => {
+    await userEvent.click(choice("time-base", "Sec"));
+    await press(choice("mode", "Single"));
+    const before = app.sent.length;
+    await userEvent.click(byId("arm"));
+    expect(app.sent.slice(before)).toContainEqual({ type: "arm" });
+    await press(choice("mode", "Auto"));
+  });
+
   test("the view toggles keep at least one view shown", async () => {
     await userEvent.click(choice("display-mode", "Single"));
     const pressed = (label: string) =>
