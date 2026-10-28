@@ -33,30 +33,27 @@ describe("before the host reports a tempo", () => {
     expect(timeAxisLabels()).toEqual([]);
   });
 
+  // A frame with no tempo carries no lanes, even in Multi and Compare: the readout tag still
+  // names what those modes measure, this track, and in Single the readout channel. Single comes
+  // last, so the tests after these start where the page starts.
+  test.each(
+    Object.keys(DisplayMode)
+      .sort((a, b) => Number(a === "single") - Number(b === "single"))
+      .map((key) => [
+        key.charAt(0).toUpperCase() + key.slice(1),
+        key === "single" ? "Mid" : "This track",
+      ]),
+  )("in %s, the readout tag says %s", async (mode, tag) => {
+    await press(choice("display-mode", mode));
+    await expect.poll(chips).toEqual(["No tempo"]);
+    await settle();
+    expect(byId("readout-tag").textContent).toBe(tag);
+  });
+
   test("places the bars once the host reports its tempo", async () => {
     app.transport.reportTempo();
     await expect.poll(chips).toContain("Sync");
     await expect.poll(() => timeAxisLabels().length).toBeGreaterThan(0);
     expect(chips()).not.toContain("No tempo");
-  });
-});
-
-// A frame with no tempo carries no lanes, even in Multi and Compare: the readout tag still names
-// what those modes measure, this track, and in Single the readout channel.
-describe("the readout tag before the host reports a tempo", () => {
-  beforeAll(async () => {
-    await startApp({ hostTempo: false });
-  });
-
-  test.each(
-    Object.keys(DisplayMode).map((key) => [
-      key.charAt(0).toUpperCase() + key.slice(1),
-      key === "single" ? "Mid" : "This track",
-    ]),
-  )("in %s says %s", async (mode, tag) => {
-    await press(choice("display-mode", mode));
-    await expect.poll(chips).toEqual(["No tempo"]);
-    await settle();
-    expect(byId("readout-tag").textContent).toBe(tag);
   });
 });
