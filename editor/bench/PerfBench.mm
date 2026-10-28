@@ -35,8 +35,8 @@
 #include "bench/Signals.h"
 #include "editor/Editor.h"
 #include "engine/Engine.h"
+#include "engine/FreeRunning.h"
 #include "engine/InstanceRegistry.h"
-#include "engine/Roll.h"
 #include "engine/SettingJson.h"
 #include "pluginterfaces/gui/iplugview.h"
 
@@ -113,7 +113,7 @@ bool applyScenario(const std::string& name, Options& options)
     if (!scenario || scenario->viewStart != 0.0 || scenario->viewEnd != 1.0 ||
         scenario->frozenPan ||
         (scenario->timeBase == protocol::TimeBase::kSeconds &&
-         !orizon::engine::isRollSpan(scenario->span))) {
+         !orizon::engine::isFreeRunning(scenario->span, protocol::TriggerMode::kAuto))) {
         return false;
     }
     const auto nameOf = [](const auto& names, auto value) {

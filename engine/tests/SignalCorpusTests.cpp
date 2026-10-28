@@ -527,7 +527,7 @@ json summary(std::span<const float> values)
 constexpr std::array<std::pair<FrameFlag, std::string_view>, protocol::kFrameFlagCount> kFlags{{
     {FrameFlag::kTriggered, "triggered"},
     {FrameFlag::kFrozen, "frozen"},
-    {FrameFlag::kRoll, "roll"},
+    {FrameFlag::kFreeRunning, "freeRunning"},
     {FrameFlag::kSynced, "synced"},
     {FrameFlag::kLimited, "limited"},
     {FrameFlag::kCompared, "compared"},

@@ -108,7 +108,7 @@ TEST_F(AnalyzerTest, KeepsRollColumnsInStepWithAFreshReduction)
         }
     }
     ASSERT_TRUE(frame);
-    ASSERT_TRUE(frame->has(FrameFlag::kRoll));
+    ASSERT_TRUE(frame->has(FrameFlag::kFreeRunning));
     Analyzer fresh(engine);
     fresh.setColumns(400);
     std::vector<std::byte> bytes;
@@ -532,7 +532,7 @@ TEST_F(AnalyzerTest, ProducesATriggeredMinMaxFrameWithReadouts)
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->mode, FrameMode::kMinMax);
     EXPECT_TRUE(frame->has(FrameFlag::kTriggered));
-    EXPECT_FALSE(frame->has(FrameFlag::kRoll));
+    EXPECT_FALSE(frame->has(FrameFlag::kFreeRunning));
     EXPECT_EQ(frame->views, 0b0011) << "default views: L + R";
     EXPECT_EQ(frame->pointCount, 400u);
     EXPECT_EQ(frame->data.size(), 2u * 400u * 2u) << "two views of min/max pairs";
@@ -586,7 +586,7 @@ TEST_F(AnalyzerTest, RollsSpansAboveOneSecond)
     analyzer.setColumns(500);
     const auto frame = produce();
     ASSERT_TRUE(frame);
-    EXPECT_TRUE(frame->has(FrameFlag::kRoll));
+    EXPECT_TRUE(frame->has(FrameFlag::kFreeRunning));
     EXPECT_FALSE(frame->has(FrameFlag::kTriggered));
 }
 
@@ -598,13 +598,114 @@ TEST_F(AnalyzerTest, RollsFromNothingBeforeAColumnOfAudioArrives)
     analyzer.setColumns(500); // 192 samples a column at 48 kHz.
     writeSilence(100.0 / kSampleRate);
     if (const auto frame = produce()) {
-        EXPECT_TRUE(frame->has(FrameFlag::kRoll));
+        EXPECT_TRUE(frame->has(FrameFlag::kFreeRunning));
         EXPECT_EQ(frame->pointCount, 0U) << "no column is complete";
     }
     writeTone(5.0, 1.0, 0.5);
     const auto rolling = produce();
     ASSERT_TRUE(rolling);
     EXPECT_GT(rolling->pointCount, 0U);
+}
+
+// Free and spans above the threshold are one free-running window. Its columns sit on a grid fixed
+// to sample indices: a frame later, the same columns are shown shifted, whatever the span and the
+// column count (here neither divides the other), so peaks do not regroup and flicker. At 1 s in
+// Free, and at 1.3 s in Normal.
+TEST_F(AnalyzerTest, FreeRunningFramesShowTheSameColumnsShifted)
+{
+    for (const auto [span, mode] : {std::pair{1.0, protocol::TriggerMode::kFree},
+                                    std::pair{1.3, protocol::TriggerMode::kNormal}}) {
+        SCOPED_TRACE(span);
+        setTriggerMode(mode);
+        engine.settings().set(SettingId::kTimeSpan, span);
+        engine.settings().set(SettingId::kChannelViews, 0b0001);
+        analyzer.setColumns(1234);
+        std::uint64_t state = 12345;
+        const auto writeNoise = [&](std::size_t count) {
+            std::vector<float> noise(count);
+            for (float& sample : noise) {
+                state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+                sample = static_cast<float>(static_cast<double>(state >> 40U) / 16777216.0 - 0.5);
+            }
+            std::array<const float*, 2> channels{noise.data(), noise.data()};
+            engine.captureRing().write(channels.data(), 2, static_cast<int>(count));
+        };
+        writeNoise(static_cast<std::size_t>(2.0 * span * kSampleRate));
+        const auto first = produce();
+        ASSERT_TRUE(first);
+        EXPECT_TRUE(first->has(FrameFlag::kFreeRunning));
+        EXPECT_FALSE(first->has(FrameFlag::kTriggered));
+        ASSERT_EQ(first->mode, FrameMode::kMinMax);
+        writeNoise(512); // Not a whole number of columns.
+        const auto later = produce();
+        ASSERT_TRUE(later);
+        const std::size_t columns = first->pointCount;
+        // The shift that maps the later frame's columns onto the first's, if any.
+        std::optional<std::size_t> shift;
+        for (std::size_t candidate = 1; candidate < 20 && !shift; ++candidate) {
+            bool same = true;
+            for (std::size_t column = 0; column + candidate < columns && same; ++column) {
+                same = later->data[column * 2] == first->data[(column + candidate) * 2] &&
+                       later->data[column * 2 + 1] == first->data[(column + candidate) * 2 + 1];
+            }
+            if (same) {
+                shift = candidate;
+            }
+        }
+        EXPECT_TRUE(shift) << "the columns were regrouped";
+        EXPECT_NEAR(later->visibleSamples, std::round(span * kSampleRate), 0.5)
+            << "exactly the span";
+    }
+}
+
+// Switched from a free-running window to a triggered mode that holds the last trace until a
+// trigger, the newest span is shown, untriggered, rather than the free-running frame staying on
+// screen with its labels and chip. Every trigger mode; only Free still runs free.
+TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
+{
+    for (std::size_t index = 0; index < protocol::kTriggerModeCount; ++index) {
+        const auto mode = static_cast<protocol::TriggerMode>(index);
+        SCOPED_TRACE(protocol::kTriggerModeNames.at(index));
+        Analyzer fresh(engine);
+        fresh.setColumns(500);
+        setTriggerMode(mode);
+        engine.settings().set(SettingId::kTimeSpan, 2.0);
+        writeSilence(2.5); // No edge to trigger on.
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(fresh.produce(bytes));
+        ASSERT_TRUE(decode(bytes).has(FrameFlag::kFreeRunning));
+        engine.settings().set(SettingId::kTimeSpan, 0.02);
+        ASSERT_TRUE(fresh.produce(bytes)) << "the span changed: a frame of the new span";
+        const DecodedFrame frame = decode(bytes);
+        EXPECT_EQ(frame.has(FrameFlag::kFreeRunning), mode == protocol::TriggerMode::kFree);
+        EXPECT_FALSE(frame.has(FrameFlag::kTriggered));
+        EXPECT_NEAR(frame.spanSeconds, 0.02, 1e-6);
+    }
+}
+
+// Frozen while zoomed into a free-running window, the view stays on the samples it showed: the
+// freeze anchors on the whole span's right edge, not on the zoomed part's start plus the span
+// (which was off by the part left of the view, 24000 samples here, and only the hold's end hid
+// it while no audio came between the last live frame and the freeze). Live, the zoomed part ends on
+// its column grid, so the two agree to within a column (48 samples).
+TEST_F(AnalyzerTest, FreezesAZoomedFreeRunningWindowWhereItWas)
+{
+    engine.settings().set(SettingId::kTimeSpan, 2.0);
+    engine.settings().set(SettingId::kChannelViews, 0b0001);
+    analyzer.setColumns(500);
+    writeRamp(200'000);
+    analyzer.setView(0.25, 0.5);
+    const auto live = produce();
+    ASSERT_TRUE(live);
+    ASSERT_TRUE(live->has(FrameFlag::kFreeRunning));
+    writeRamp(14'400); // 0.3 s more before the freeze: the hold ends later than the view.
+    analyzer.setFrozen(true);
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    ASSERT_TRUE(frozen->has(FrameFlag::kFrozen));
+    constexpr float kColumn = 48.0f; // 24000 samples shown over 500 columns.
+    EXPECT_NEAR(frozen->data.front(), live->data.front(), kColumn) << "the first sample shown";
+    EXPECT_NEAR(frozen->data.back(), live->data.back(), kColumn) << "the last sample shown";
 }
 
 // A host that changes the sample rate while processing (the VST3 rules allow it only while
@@ -621,7 +722,7 @@ TEST_F(AnalyzerTest, ShowsWhatTheCaptureKeepsOfASpanLongerThanIt)
     writeTone(5.0, 30.0, 0.5); // More than the capture holds.
     const auto live = produce();
     ASSERT_TRUE(live);
-    EXPECT_TRUE(live->has(FrameFlag::kRoll));
+    EXPECT_TRUE(live->has(FrameFlag::kFreeRunning));
     EXPECT_TRUE(live->has(FrameFlag::kLimited));
     EXPECT_GT(*std::ranges::max_element(live->data), 0.4f) << "the tone, not a flat line";
 
@@ -988,8 +1089,8 @@ TEST_F(ZoomTest, ReducesTheVisiblePartAtFullResolution)
     ASSERT_EQ(frame->pointCount, 400u);
     EXPECT_EQ(frame->data[0], 48000.0f - 4800.0f) << "first column starts at the window start";
     EXPECT_LE(frame->data[1] - frame->data[0], 1.0f) << "a column holds one or two samples";
-    EXPECT_EQ(frame->data[2 * 399 + 1], 48000.0f - 4800.0f + 480.0f)
-        << "the last column ends at the visible part's right edge";
+    EXPECT_EQ(frame->data[2 * 399 + 1], 48000.0f - 4800.0f + 480.0f - 1.0f)
+        << "the last column ends with the visible part's last sample";
 }
 
 TEST_F(ZoomTest, KeepsReadoutsOverTheWholeSpan)
@@ -1028,7 +1129,7 @@ TEST_F(ZoomTest, KeepsRollColumnsOnFixedBoundaries)
     analyzer.setView(0.5, 1.0); // The newest 48000 samples: 96 per column.
     const auto frame = produce();
     ASSERT_TRUE(frame);
-    EXPECT_TRUE(frame->has(FrameFlag::kRoll));
+    EXPECT_TRUE(frame->has(FrameFlag::kFreeRunning));
     const float firstColumnMinimum = frame->data[0];
     EXPECT_EQ(static_cast<std::uint64_t>(firstColumnMinimum) % 96, 0u);
     EXPECT_EQ(frame->data[2] - firstColumnMinimum, 96.0f) << "each column holds 96 samples";
@@ -1520,6 +1621,57 @@ TEST_F(MultiTrackTest, KeepsReducedLanesInStepWithAFreshReduction)
     std::vector<std::byte> bytes;
     ASSERT_TRUE(fresh.produce(bytes));
     EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
+}
+
+// Free-running in Seconds, each lane keeps its columns on the same grid from where its part of the
+// window starts, also for a track whose capture started later (an offset of 1440 samples, not a
+// whole number of columns) and a span that does not divide into the columns: frame by frame, the
+// lanes (and Compare's sum) equal a fresh reduction.
+TEST_F(MultiTrackTest, KeepsFreeRunningLanesInStepWithAFreshReduction)
+{
+    for (const auto mode : {protocol::DisplayMode::kMulti, protocol::DisplayMode::kCompare}) {
+        SCOPED_TRACE(protocol::kDisplayModeNames.at(static_cast<std::size_t>(mode)));
+        own->settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
+        own->settings().set(SettingId::kTimeBase,
+                            static_cast<double>(protocol::TimeBase::kSeconds));
+        own->settings().set(SettingId::kTimeSpan, 2.0);
+        own->settings().set(SettingId::kTriggerMode,
+                            static_cast<double>(protocol::TriggerMode::kNormal));
+        tracks.front().second = [](std::uint64_t sample) {
+            return std::sin(static_cast<float>(sample) * 0.013f);
+        };
+        play(1440);
+        const auto later = joinWith(
+            [](std::uint64_t sample) { return std::sin(static_cast<float>(sample) * 0.0071f); });
+        analyzer = std::make_unique<Analyzer>(*own, registry);
+        analyzer->setColumns(1234);
+        std::optional<DecodedFrame> frame;
+        play(std::uint64_t{96000} * 2);
+        for (int step = 0; step < 40; ++step) {
+            play(480);
+            if (auto produced = produce()) {
+                frame = std::move(produced);
+            }
+        }
+        ASSERT_TRUE(frame);
+        ASSERT_TRUE(frame->has(FrameFlag::kFreeRunning));
+        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+        Analyzer fresh(*own, registry);
+        fresh.setColumns(1234);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(fresh.produce(bytes));
+        const DecodedFrame expected = decode(bytes);
+        const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;
+        ASSERT_EQ(expected.laneCount, frame->laneCount);
+        EXPECT_EQ(
+            std::vector<float>(frame->data.begin(),
+                               frame->data.begin() + static_cast<std::ptrdiff_t>(laneValues)),
+            std::vector<float>(expected.data.begin(),
+                               expected.data.begin() + static_cast<std::ptrdiff_t>(laneValues)))
+            << "frame by frame equals all at once";
+        registry.remove(*later);
+        tracks.pop_back();
+    }
 }
 
 TEST_F(MultiTrackTest, DrawsOneMidLanePerTrackOfTheGroup)
@@ -2276,7 +2428,7 @@ TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
             ASSERT_TRUE(fresh.produce(bytes));
         }
         ASSERT_TRUE(frame);
-        ASSERT_TRUE(frame->has(FrameFlag::kRoll));
+        ASSERT_TRUE(frame->has(FrameFlag::kFreeRunning));
         ASSERT_EQ(frame->mode, FrameMode::kMinMax);
         const DecodedFrame expected = decode(bytes);
         const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;

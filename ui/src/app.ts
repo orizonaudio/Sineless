@@ -1152,7 +1152,7 @@ export class OscilloscopeApp {
     const width = this.screen.clientWidth;
     const span = this.secondsSpan();
     this.labelledSpan = span;
-    const roll = this.rolling();
+    const free = this.freeRunning();
     const labels: HTMLElement[] = [];
     for (const label of amplitudeLabels(
       this.store.number("verticalScale"),
@@ -1171,7 +1171,7 @@ export class OscilloscopeApp {
     // Beats without the host's tempo: no positions to label.
     const untimed = this.beatsMode() && this.lastFrame?.noTempo === true;
     for (const label of this.musicalLayout()?.labels ??
-      (untimed ? [] : timeLabels(span, roll, this.view))) {
+      (untimed ? [] : timeLabels(span, free, this.view))) {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;
@@ -1191,11 +1191,7 @@ export class OscilloscopeApp {
     const triggerX = toScreen(this.view, triggerPosition);
     triggerLine.style.left = `${String(triggerX * 100)}%`;
     triggerLine.hidden =
-      roll ||
-      this.store.get("triggerMode") === "free" ||
-      this.beatsMode() ||
-      triggerX < 0 ||
-      triggerX > 1;
+      free || this.beatsMode() || triggerX < 0 || triggerX > 1;
   }
 
   // The level marker sits in the lane of the trigger source when stacked, else on the full height.
@@ -1226,17 +1222,14 @@ export class OscilloscopeApp {
     };
   }
 
-  // Whether the trace rolls, as the engine decided for the latest frame.
-  private rolling(): boolean {
-    return this.lastFrame?.roll === true;
+  // Whether the trace runs free, as the engine decided for the latest frame.
+  private freeRunning(): boolean {
+    return this.lastFrame?.freeRunning === true;
   }
 
   private placeTriggerMarker(): void {
     const marker = element("trigger-marker");
-    const hidden =
-      this.rolling() ||
-      this.store.get("triggerMode") === "free" ||
-      this.beatsMode();
+    const hidden = this.freeRunning() || this.beatsMode();
     marker.hidden = hidden;
     if (hidden) {
       return;
@@ -1367,7 +1360,7 @@ export class OscilloscopeApp {
       layout: this.layout(),
       view: this.view,
       a4: this.store.number("concertPitch"),
-      roll: frame.roll,
+      freeRunning: frame.freeRunning,
     };
   }
 
@@ -1746,7 +1739,7 @@ export class OscilloscopeApp {
 
   private listenToBackend(): void {
     this.backend.on("frame", (frame) => {
-      const rolled = this.rolling();
+      const wasFree = this.freeRunning();
       const hadTempo = this.lastFrame?.noTempo !== true;
       this.lastFrame = frame;
       // The host's tempo arriving, or not yet: the grid and labels follow.
@@ -1756,7 +1749,7 @@ export class OscilloscopeApp {
       // A limited span labels the axis anew; a change below what the labels show does not.
       const span = this.secondsSpan();
       if (
-        frame.roll !== rolled ||
+        frame.freeRunning !== wasFree ||
         Math.abs(span - this.labelledSpan) > 1e-3 * this.labelledSpan
       ) {
         this.placeLabels();

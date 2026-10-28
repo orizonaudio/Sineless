@@ -15,7 +15,7 @@ function frameOf(mode: FrameMode, pointCount: number): Frame {
     mode,
     triggered: false,
     frozen: false,
-    roll: false,
+    freeRunning: false,
     pointCount,
     startFraction: 0,
     peak: 0,

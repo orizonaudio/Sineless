@@ -24,7 +24,7 @@ function frame(
     mode,
     triggered: true,
     frozen: false,
-    roll: false,
+    freeRunning: false,
     pointCount: mode === FrameMode.minMax ? first.length / 2 : first.length,
     startFraction,
     peak: 0,

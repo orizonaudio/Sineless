@@ -14,7 +14,7 @@ add_library(engine STATIC
     src/PairAnalysis.cpp
     src/Readouts.cpp
     src/Reducer.cpp
-    src/Roll.cpp
+    src/FreeRunning.cpp
     src/SettingJson.cpp
     src/Settings.cpp
     src/State.cpp
@@ -59,7 +59,7 @@ if(BUILD_TESTING)
         tests/PairAnalysisTests.cpp
         tests/ReadoutsTests.cpp
         tests/ReducerTests.cpp
-        tests/RollTests.cpp
+        tests/FreeRunningTests.cpp
         tests/SettingsTests.cpp
         tests/SignalCorpusTests.cpp
         tests/StateFaultTests.cpp

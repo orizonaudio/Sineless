@@ -112,9 +112,9 @@ function modeChips(
     }
     return chips;
   }
-  if (frame?.roll === true) {
+  if (frame?.freeRunning === true) {
     return [
-      { text: "Roll", tone: "neutral" },
+      { text: "Free", tone: "neutral" },
       ...(frame.limited ? [spanLimited] : []),
     ];
   }

@@ -225,7 +225,7 @@ function frame(): Frame {
     mode: FrameMode.raw,
     triggered: false,
     frozen: false,
-    roll: false,
+    freeRunning: false,
     pointCount: 1,
     startFraction: 0,
     peak: 0,

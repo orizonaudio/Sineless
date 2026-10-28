@@ -125,14 +125,15 @@ bool ColumnReduction::update(std::size_t first, std::size_t end, const Reader& r
     return true;
 }
 
-std::span<const float> RollColumns::update(std::uint64_t start, std::size_t columns,
-                                           std::uint64_t perColumn, const Reader& read)
+std::span<const float> RollColumns::update(std::uint64_t origin, std::uint64_t firstColumn,
+                                           const ColumnGrid& grid, const Reader& read)
 {
+    const auto columns = static_cast<std::size_t>(grid.columns);
     // Keep the columns still on screen, moved to their new places, if they are the same columns.
     std::size_t kept = 0;
-    if (perColumn == samplesPerColumn && columns == columnCount && start >= firstSample &&
-        (start - firstSample) % perColumn == 0) {
-        const auto shift = (start - firstSample) / perColumn;
+    if (origin == gridOrigin && grid.spanSamples == columnGrid.spanSamples &&
+        grid.columns == columnGrid.columns && firstColumn >= firstColumnShown) {
+        const std::uint64_t shift = firstColumn - firstColumnShown;
         if (shift < readyColumns) {
             kept = readyColumns - static_cast<std::size_t>(shift);
             std::copy(output.begin() + static_cast<std::ptrdiff_t>(shift * 2),
@@ -142,9 +143,9 @@ std::span<const float> RollColumns::update(std::uint64_t start, std::size_t colu
                       invalid.begin() + static_cast<std::ptrdiff_t>(readyColumns), invalid.begin());
         }
     }
-    firstSample = start;
-    samplesPerColumn = perColumn;
-    columnCount = columns;
+    gridOrigin = origin;
+    firstColumnShown = firstColumn;
+    columnGrid = grid;
     output.resize(columns * 2);
     invalid.resize(columns);
     readyColumns = kept;
@@ -154,21 +155,26 @@ std::span<const float> RollColumns::update(std::uint64_t start, std::size_t colu
 
     // The rest in stretches of whole columns; columns past the end of the source stay silent and
     // unready.
-    const std::size_t stretch =
-        std::max<std::size_t>(1, static_cast<std::size_t>(kChunkSamples / perColumn));
+    const auto begin = [&](std::size_t column) { return grid.boundary(firstColumn + column); };
     std::size_t column = kept;
     while (column < columns) {
-        const std::size_t wanted = std::min(stretch, columns - column);
-        scratch.resize(static_cast<std::size_t>(wanted * perColumn));
+        std::size_t wanted = 1;
+        while (column + wanted < columns &&
+               begin(column + wanted + 1) - begin(column) <= kChunkSamples) {
+            ++wanted;
+        }
         std::size_t available = wanted;
-        while (available > 0 &&
-               !read(start + column * perColumn,
-                     std::span(scratch).first(static_cast<std::size_t>(available * perColumn)))) {
+        while (available > 0) {
+            scratch.resize(static_cast<std::size_t>(begin(column + available) - begin(column)));
+            if (read(origin + begin(column), scratch)) {
+                break;
+            }
             available /= 2; // The newest audio may not be there yet: try a shorter stretch.
         }
         for (std::size_t index = 0; index < available; ++index) {
             const std::span<const float> samples = std::span<const float>(scratch).subspan(
-                static_cast<std::size_t>(index * perColumn), static_cast<std::size_t>(perColumn));
+                static_cast<std::size_t>(begin(column + index) - begin(column)),
+                static_cast<std::size_t>(begin(column + index + 1) - begin(column + index)));
             const auto [minimum, maximum] = minMax(samples);
             output[(column + index) * 2] = minimum;
             output[(column + index) * 2 + 1] = maximum;

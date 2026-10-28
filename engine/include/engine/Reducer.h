@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/FreeRunning.h"
 #include "protocol/Protocol.h"
 
 #include <cstddef>
@@ -60,19 +61,21 @@ private:
     std::vector<float> scratch;
 };
 
-// The columns of a rolling window, kept from frame to frame. Roll columns sit on fixed absolute
-// sample indices (see RollWindow), and the past does not change, so a column once reduced stays
-// valid: each frame reduces only the columns that scrolled in, or that had no audio yet.
+// The columns of a free-running window, kept from frame to frame. Its columns sit on a grid fixed
+// to absolute sample indices (ColumnGrid), and the past does not change, so a column once reduced
+// stays valid: each frame reduces only the columns that scrolled in, or that had no audio yet.
 class RollColumns
 {
 public:
     // Reads `destination.size()` samples from absolute index `first`; false if not available.
     using Reader = std::function<bool(std::uint64_t first, std::span<float> destination)>;
 
-    // The `columns` columns of `perColumn` samples each from absolute sample `start`, as (min, max)
-    // pairs. Columns without audio yet are silent until a later update finds it.
-    std::span<const float> update(std::uint64_t start, std::size_t columns, std::uint64_t perColumn,
-                                  const Reader& read);
+    // The `grid.columns` columns from grid column `firstColumn`, as (min, max) pairs; column k
+    // covers the samples from `origin + grid.boundary(k)`. Another track's lane shows the same
+    // columns at its own `origin`. Columns without audio yet are silent until a later update
+    // finds it.
+    std::span<const float> update(std::uint64_t origin, std::uint64_t firstColumn,
+                                  const ColumnGrid& grid, const Reader& read);
 
     // Forgets every column, e.g. when the source changes.
     void clear() { readyColumns = 0; }
@@ -80,9 +83,9 @@ public:
     [[nodiscard]] bool holdsInvalid() const;
 
 private:
-    std::uint64_t firstSample = 0; // Absolute index where column 0 starts.
-    std::uint64_t samplesPerColumn = 0;
-    std::size_t columnCount = 0;
+    std::uint64_t gridOrigin = 0;
+    std::uint64_t firstColumnShown = 0; // Grid column shown first.
+    ColumnGrid columnGrid{};
     std::size_t readyColumns = 0; // Leading columns holding reduced audio.
     std::vector<float> output;
     std::vector<std::uint8_t> invalid; // Per column: holds a sample that is not finite.

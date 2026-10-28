@@ -24,7 +24,7 @@ import {
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import {
   frozenHoldSeconds,
-  rollThresholdSeconds,
+  freeRunningThresholdSeconds,
   triggerPosition,
 } from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
@@ -402,27 +402,35 @@ export class MockTransport implements Transport {
     return Math.floor((time - span) / period) * period;
   }
 
+  // Whether a Seconds window of `span` runs free, as the engine decides (FreeRunning.h).
+  private freeRunning(span: number): boolean {
+    return (
+      span > freeRunningThresholdSeconds ||
+      this.setting("triggerMode") === "free"
+    );
+  }
+
   // Where a live Seconds window of `span` at `time` starts: triggered spans one trigger offset
-  // before a period boundary, roll spans ending now.
+  // before a period boundary, free-running spans ending now.
   private liveStart(time: number, span: number): number {
-    return span > rollThresholdSeconds
+    return this.freeRunning(span)
       ? time - span
       : this.triggerTime(time, span) - triggerPosition * span;
   }
 
   // A frozen Seconds view, placed as the engine places it (Analyzer.cpp): the last live window's
-  // trigger point stays put, or its right edge when the span now rolls (the newest audio held
+  // trigger point stays put, or its right edge when the span now runs free (the newest audio held
   // when there was no live window), and the view reaches back to the oldest of the
   // frozenHoldSeconds of audio held.
   private frozenWindow(span: number): { start: number; reach: number } {
     const frozenAt = this.frozenAt ?? 0;
-    const roll = span > rollThresholdSeconds;
+    const free = this.freeRunning(span);
     const live = this.lastLive;
     const anchor =
       live === undefined
         ? frozenAt
-        : live.start + (roll ? live.span : triggerPosition * live.span);
-    const offset = roll || live === undefined ? span : triggerPosition * span;
+        : live.start + (free ? live.span : triggerPosition * live.span);
+    const offset = free || live === undefined ? span : triggerPosition * span;
     const unpanned = anchor - offset;
     const earliest = frozenAt - frozenHoldSeconds;
     return {
@@ -477,7 +485,7 @@ export class MockTransport implements Transport {
           mode: FrameMode.raw,
           triggered: false,
           frozen: this.frozenAt !== undefined,
-          roll: false,
+          freeRunning: false,
           synced: true,
           noTempo: true,
           pointCount: 0,
@@ -500,7 +508,7 @@ export class MockTransport implements Transport {
     let cursor: number | undefined;
     let cycleStart = 0;
     let spanQuarterNotes = 0;
-    const roll = !synced && span > rollThresholdSeconds;
+    const freeRunning = !synced && this.freeRunning(span);
     const limited = !synced && span > this.keptSeconds;
     if (limited) {
       span = this.keptSeconds;
@@ -653,11 +661,11 @@ export class MockTransport implements Transport {
     this.frameHandler?.(
       encodeFrame({
         mode: minMax ? FrameMode.minMax : FrameMode.raw,
-        triggered: !roll && !synced,
+        triggered: !freeRunning && !synced,
         frozen: this.frozenAt !== undefined,
         panReach: this.panReach(),
         sampleRate: this.sampleRate,
-        roll,
+        freeRunning,
         synced,
         limited,
         spanSeconds: synced ? 0 : span,
@@ -668,12 +676,9 @@ export class MockTransport implements Transport {
         barQuarterNotes: synced ? mockBarQuarterNotes : 0,
         viewStart: this.view.start,
         viewEnd: this.view.end,
-        // As the engine places a live roll (Roll.cpp, rollWindow), its part on screen is whole
-        // columns of whole samples: zoomed far in, more than the samples there.
-        visibleSamples:
-          roll && this.frozenAt === undefined
-            ? this.columns * Math.max(1, Math.round(sampleCount / this.columns))
-            : sampleCount,
+        // As the engine places a free-running window (FreeRunning.h), its part on screen is
+        // exactly the samples there.
+        visibleSamples: sampleCount,
         pointCount,
         startFraction: 0,
         peak: readoutSamples > 0 ? peak : Number.NaN,

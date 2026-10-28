@@ -28,7 +28,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     mode: FrameMode.raw,
     triggered: true,
     frozen: false,
-    roll: false,
+    freeRunning: false,
     pointCount: values.length,
     startFraction: 0,
     peak: 0,
@@ -63,7 +63,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
 function context(
   frame: Frame,
   values: Float32Array,
-  extra: { roll?: boolean; view?: ViewWindow } = {},
+  extra: { freeRunning?: boolean; view?: ViewWindow } = {},
 ) {
   return {
     frame,
@@ -72,7 +72,7 @@ function context(
     layout: ViewLayout.overlaid,
     view: extra.view ?? fullView,
     a4: 440,
-    roll: extra.roll ?? false,
+    freeRunning: extra.freeRunning ?? false,
   };
 }
 
@@ -209,7 +209,7 @@ describe("hover readout", () => {
         layout: ViewLayout.overlaid,
         view: fullView,
         a4: 440,
-        roll: false,
+        freeRunning: false,
       },
       150 / 480,
       0.5,
@@ -242,7 +242,7 @@ describe("hover readout", () => {
         layout: ViewLayout.stacked,
         view: fullView,
         a4: 440,
-        roll: false,
+        freeRunning: false,
       },
       0.5,
       0.5,
@@ -273,7 +273,7 @@ describe("hover readout", () => {
       layout: ViewLayout.overlaid,
       view: { start: 0.3, end: 0.8 },
       a4: 440,
-      roll: false,
+      freeRunning: false,
     };
     // Screen 0.025 is span 0.3125, sample 150: the cycle from 0.25 to 0.5 starts off screen.
     const readout = hoverReadout(context, 0.025, 0.5);
@@ -303,7 +303,7 @@ describe("hover readout", () => {
         layout: ViewLayout.overlaid,
         view: fullView,
         a4: 440,
-        roll: false,
+        freeRunning: false,
       },
       0.5,
       0.5,
@@ -330,7 +330,7 @@ describe("hover readout", () => {
         layout: ViewLayout.overlaid,
         view: fullView,
         a4: 440,
-        roll: false,
+        freeRunning: false,
       },
       0.625,
       0.5,
@@ -520,11 +520,11 @@ describe("hover readout", () => {
     expect(readout?.lines[0]).not.toContain(minus);
   });
 
-  test("counts time back from now in a rolling span", () => {
+  test("counts time back from the right edge in a free-running window", () => {
     // 480 samples at 48 kHz: the span is 10 ms, its end now.
     const values = sine(480, 4);
     const readout = hoverReadout(
-      context(rawFrame(values), values, { roll: true }),
+      context(rawFrame(values), values, { freeRunning: true }),
       0.75,
       0.5,
     );

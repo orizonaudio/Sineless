@@ -12,9 +12,9 @@
 #include "SampleRates.h"
 #include "engine/Analyzer.h"
 #include "engine/CaptureRing.h"
+#include "engine/FreeRunning.h"
 #include "engine/HoldBuffer.h"
 #include "engine/InstanceRegistry.h"
-#include "engine/Roll.h"
 #include "engine/Sweep.h"
 
 #include <algorithm>
@@ -517,9 +517,9 @@ struct SecondsSpan
 std::vector<SecondsSpan> secondsSpans()
 {
     return {{.name = "Shortest", .seconds = setting(SettingId::kTimeSpan).minimum},
-            {.name = "AtRollThreshold", .seconds = protocol::kRollThresholdSeconds},
-            {.name = "AboveRollThreshold",
-             .seconds = std::nextafter(protocol::kRollThresholdSeconds,
+            {.name = "AtFreeRunningThreshold", .seconds = protocol::kFreeRunningThresholdSeconds},
+            {.name = "AboveFreeRunningThreshold",
+             .seconds = std::nextafter(protocol::kFreeRunningThresholdSeconds,
                                        std::numeric_limits<double>::infinity())},
             {.name = "Longest", .seconds = setting(SettingId::kTimeSpan).maximum}};
 }
@@ -594,7 +594,8 @@ class SecondsSpans : public ::testing::TestWithParam<SpanCase>
 {
 };
 
-// Live, the frame holds the whole span, rolls exactly above the threshold, and measures it.
+// Live, the frame holds exactly the whole span, runs free (the cases are in Free) at every span,
+// and measures it.
 // Frozen, it holds the same. Neither says the span is limited: the capture and the freeze keep
 // the longest span at every rate, the freeze exactly.
 TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
@@ -608,9 +609,9 @@ TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
     auto frame = session.produce();
     ASSERT_TRUE(frame) << "no live frame";
     EXPECT_FALSE(frame->has(FrameFlag::kFrozen));
-    EXPECT_EQ(frame->has(FrameFlag::kRoll), c.span.seconds > protocol::kRollThresholdSeconds);
+    EXPECT_TRUE(frame->has(FrameFlag::kFreeRunning)) << "Free runs free at every span";
     EXPECT_EQ(frame->has(FrameFlag::kCompared), c.mode == DisplayMode::kCompare);
-    EXPECT_NEAR(frame->visibleSamples, spanSamples, kColumns / 2.0 + 1.0);
+    EXPECT_NEAR(frame->visibleSamples, spanSamples, 0.5) << "exactly the span, in whole samples";
     EXPECT_FALSE(frame->has(FrameFlag::kLimited));
     EXPECT_NEAR(frame->spanSeconds, c.span.seconds, 1e-6);
     expectTraces(*frame, traces);
@@ -722,8 +723,9 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, MonoTrigger, ::testing::ValuesIn(everyMode()
 
 // Frozen in Seconds, a shorter span shows the part around the trigger marker of the last live
 // window, and its readouts describe that part: a tone four times louder in its newest 6 ms, which
-// the 10 ms span chosen after freezing at 20 ms no longer shows, reads at its quiet level. In every
-// mode, at the lowest and highest rates.
+// the 10 ms span chosen after freezing at 20 ms no longer shows, reads at its quiet level. In Free,
+// the shorter span keeps the right edge instead, and reads the loud newest part. In every mode, at
+// the lowest and highest rates.
 class FrozenSecondsShorterSpan : public ::testing::TestWithParam<DisplayMode>
 {
 };
@@ -733,8 +735,10 @@ TEST_P(FrozenSecondsShorterSpan, ReadsThePartShown)
     const DisplayMode mode = GetParam();
     constexpr double kAmplitude = 0.1;
     constexpr double kPlayed = 2.0;
-    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
-        SCOPED_TRACE(rateName(rate));
+    for (const auto [rate, free] :
+         {std::pair{kSampleRates.front(), false}, std::pair{kSampleRates.back(), false},
+          std::pair{kSampleRates.front(), true}, std::pair{kSampleRates.back(), true}}) {
+        SCOPED_TRACE(rateName(rate) + (free ? " Free" : " Auto"));
         const auto played = static_cast<std::int64_t>(
             std::llround(kPlayed * rate / static_cast<double>(kBlock)) * kBlock);
         Session session(rate, 1);
@@ -745,6 +749,9 @@ TEST_P(FrozenSecondsShorterSpan, ReadsThePartShown)
              .louderFrom = played - static_cast<std::int64_t>(std::llround(0.006 * rate))});
         session.join({.frequency = 1500.0});
         configure(session.own(), mode, TimeBase::kSeconds);
+        session.own().settings().set(SettingId::kTriggerMode,
+                                     static_cast<double>(free ? protocol::TriggerMode::kFree
+                                                              : protocol::TriggerMode::kAuto));
         session.own().settings().set(SettingId::kTimeSpan, 0.02);
         session.play(static_cast<double>(played) / rate, protocol::kReadoutIntervalSeconds / 2.0);
         ASSERT_TRUE(session.produce()) << "no live frame";
@@ -754,6 +761,10 @@ TEST_P(FrozenSecondsShorterSpan, ReadsThePartShown)
         const auto frame = session.produce();
         ASSERT_TRUE(frame) << "no frame at the shorter span";
         ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+        if (free) {
+            EXPECT_NEAR(frame->peak, 4.0 * kAmplitude, 0.02 * kAmplitude) << "the loud part's peak";
+            continue;
+        }
         EXPECT_NEAR(frame->peak, kAmplitude, 0.02 * kAmplitude) << "the quiet part's peak";
         EXPECT_NEAR(frame->rms, kAmplitude / std::numbers::sqrt2, 0.05 * kAmplitude);
     }
@@ -999,7 +1010,7 @@ TEST_P(LongerSpan, ReadsMoreOfEveryTrackSafely)
             seconds.session.play(static_cast<double>(kBlock) / rate);
             const auto frame = seconds.session.produce();
             ASSERT_TRUE(frame) << "no frame at the longer span";
-            EXPECT_TRUE(frame->has(FrameFlag::kRoll));
+            EXPECT_TRUE(frame->has(FrameFlag::kFreeRunning));
             expectTraces(*frame, traces);
         }
     }
@@ -2627,7 +2638,7 @@ TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
                 }
                 const auto frame = session.produce();
                 ASSERT_TRUE(frame) << "no frame";
-                ASSERT_TRUE(frame->has(FrameFlag::kRoll));
+                ASSERT_TRUE(frame->has(FrameFlag::kFreeRunning));
                 EXPECT_NE(frame->invalidLanes & 1U, 0U) << "this track, frame " << again;
             }
         }
@@ -3815,9 +3826,10 @@ TEST_P(RollWork, ReducesNoMoreForALongerRoll)
         session->analyzer().setColumns(columns);
         return workPerSecond(*session, span + 1.0).reduced;
     };
-    // Both roll: half the longest span is still above the roll threshold.
-    static_assert(isRollSpan(
-        protocol::kSettings[static_cast<std::size_t>(SettingId::kTimeSpan)].maximum / 2.0));
+    // Both free-running: half the longest span is still above the threshold.
+    static_assert(isFreeRunning(
+        protocol::kSettings[static_cast<std::size_t>(SettingId::kTimeSpan)].maximum / 2.0,
+        protocol::TriggerMode::kAuto));
     const double shorter = reduced(longest / 2.0, kColumns);
     const double longer = reduced(longest, 2 * kColumns);
     ASSERT_GT(shorter, 0.0) << "the roll reduces the columns that scrolled in";
@@ -4711,7 +4723,7 @@ TEST(CompareGainWork, FixesTheGainWithEveryMatchFoundWhileMeasuring)
 TEST(CompareGainWork, MeasuresAZoomedTriggeredViewsGains)
 {
     constexpr double kRate = 384000.0;
-    const double span = protocol::kRollThresholdSeconds;
+    const double span = protocol::kFreeRunningThresholdSeconds;
     const double count = span * kRate;
     for (const double halfSamples : {0.0, 1.0}) {
         SCOPED_TRACE(halfSamples);
