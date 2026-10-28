@@ -1076,7 +1076,9 @@ export class OscilloscopeApp {
   }
 
   // From the frame on screen when there is one: its readouts were measured in its time base,
-  // whatever the setting now says until the next frame comes.
+  // whatever the setting now says until the next frame comes. The trigger source comes from the
+  // setting: the frame does not say which channel it measured, so a new source is named one frame
+  // before its readouts arrive.
   private readoutView(): ChannelView {
     return readoutView(
       this.lastFrame?.synced ?? this.beatsMode(),
