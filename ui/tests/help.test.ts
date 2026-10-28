@@ -59,26 +59,16 @@ describe("help texts", () => {
     expect(partial).toEqual([]);
   });
 
-  // The trigger source applies only in the first display mode (Single) with Sec: Multi and Compare
-  // have no source of their own (multiMode in app.ts) and nothing triggers in Beats. Help that
-  // says something follows the trigger source (a readout, snapping) says so, rather than leaving
-  // it to apply in every mode.
-  test("that say something follows the trigger source say it does in Single display mode with Sec only", () => {
-    const [single] = Object.keys(DisplayMode).map(
-      (mode) => mode.charAt(0).toUpperCase() + mode.slice(1),
-    );
-    const following = Object.entries(helpTexts).filter(
-      ([topic, { text }]) =>
-        topic !== "triggerSource" && text.includes("trigger source"),
-    );
-    expect(following.length).toBeGreaterThan(0);
-    const unqualified = following
+  // The trigger source picks only what the trigger reads: the readouts, cursors and hover measure
+  // the readout channel whatever it is, so no help but the source's own says something follows it.
+  test("say nothing but the trigger follows the trigger source", () => {
+    const following = Object.entries(helpTexts)
       .filter(
-        ([, { text }]) =>
-          !text.includes(`${single ?? "?"} display mode with Sec`),
+        ([topic, { text }]) =>
+          topic !== "triggerSource" && /trigger source/iu.test(text),
       )
       .map(([topic]) => topic);
-    expect(unqualified).toEqual([]);
+    expect(following).toEqual([]);
   });
 
   test("have a title and full sentences", () => {
