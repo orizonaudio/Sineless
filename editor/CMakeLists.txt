@@ -37,6 +37,7 @@ add_library(editor_core STATIC
     src/EditorCore.cpp
     src/EmbeddedAssets.cpp
     src/FrameFlow.cpp
+    src/PointerHold.cpp
     src/Session.cpp
     src/Transport.cpp
     ${embeddedAssetData}
@@ -66,6 +67,7 @@ if(BUILD_TESTING)
         tests/EmbeddedAssetsTests.cpp
         tests/FrameFlowTests.cpp
         tests/MinimumHeightTests.cpp
+        tests/PointerHoldTests.cpp
         tests/SessionTests.cpp
         tests/TransportTests.cpp
     )

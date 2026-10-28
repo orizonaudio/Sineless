@@ -1,4 +1,5 @@
 #include "EmbeddedAssets.h"
+#include "editor/PointerHold.h"
 #include "editor/WebView.h"
 #include "engine/Version.h"
 #include "mac/WebViewMacTesting.h"
@@ -11,6 +12,7 @@
 #include <csignal>
 #include <cstdio>
 #include <deque>
+#include <memory>
 #include <objc/message.h>
 #include <objc/runtime.h>
 #include <string>
@@ -29,6 +31,7 @@ NSString* const kStartUrl = @"orizon://ui/index.html";
 NSString* const kMessageHandlerName = @"orizon";
 NSString* const kFocusHandlerName = @"orizonFocus";
 NSString* const kCursorHandlerName = @"orizonCursor";
+NSString* const kPointerHoldHandlerName = @"orizonPointerHold";
 // The page fetches each display frame from here; the request is held until a frame is ready.
 NSString* const kFramePath = @"/frame";
 // The page's own origin: the only one it may navigate to or send messages from.
@@ -77,6 +80,56 @@ constexpr const char* kCursorTrackingScript = R"JS(
   }
 })();
 )JS";
+
+// The editor's pointer hold for the page (ui/src/components/pointer-hold.ts): the page asks for it
+// when a value is pressed and when the drag ends; the travel comes back through onTravel.
+constexpr const char* kPointerHoldScript = R"JS(
+(() => {
+  const post = (what) => window.webkit.messageHandlers.orizonPointerHold.postMessage(what);
+  window.orizonPointerHold = { start: () => post("start"), end: () => post("end"),
+                               onTravel: undefined };
+})();
+)JS";
+
+// Whether a process whose main bundle has this CFBundlePackageType holds the pointer. Logic and
+// GarageBand host Audio Units out of process, in AUHostingServiceXPC services (package type
+// "XPC!"), which are never the foreground application: the pointer can be frozen only while the
+// application is in the foreground (CGRemoteOperation.h), so there drags follow the pointer.
+bool holdsPointerInBundleOfType(NSString* type)
+{
+    return ![type isEqualToString:@"XPC!"];
+}
+
+// The real pointer, through Quartz as WebKit's own pointer lock uses it (WebPageProxyMac.mm).
+// Quartz's global coordinates have y down, as the page's have.
+class PointerControlMac final : public PointerControl
+{
+public:
+    ScreenPoint position() override
+    {
+        CGEventRef event = CGEventCreate(nullptr);
+        const CGPoint point = CGEventGetLocation(event);
+        CFRelease(event);
+        return {.x = point.x, .y = point.y};
+    }
+    bool primaryButtonDown() override { return ([NSEvent pressedMouseButtons] & 1U) != 0; }
+    // NSEvent's timestamps count from the system's start, as this does.
+    double now() override { return NSProcessInfo.processInfo.systemUptime; }
+    void hide() override { CGDisplayHideCursor(kCGDirectMainDisplay); }
+    void show() override { CGDisplayShowCursor(kCGDirectMainDisplay); }
+    void freeze() override { CGAssociateMouseAndMouseCursorPosition(false); }
+    void unfreeze() override { CGAssociateMouseAndMouseCursorPosition(true); }
+    void warp(ScreenPoint point) override
+    {
+        CGWarpMouseCursorPosition(CGPointMake(point.x, point.y));
+    }
+};
+
+PointerControl*& pointerControlForTests()
+{
+    static PointerControl* control = nullptr;
+    return control;
+}
 
 // A diagonal resize cursor drawn from the matching system symbol, for macOS before 15, which has
 // no public one: black on a white outline, as the system's cursors are, so that it shows on dark
@@ -223,6 +276,8 @@ public:
     void cancelFrameRequest(id<WKURLSchemeTask> task);
     [[nodiscard]] bool editableFocused() const { return isEditableFocused; }
     [[nodiscard]] NSCursor* cursor() const { return pageCursor; }
+    void pressed(NSEvent* event);
+    void pollPointerHold();
 
     void pageLoaded();
     void pageFailed(NSError* error);
@@ -231,6 +286,9 @@ public:
 
 private:
     void showMessage(NSString* text);
+    void startPointerHold();
+    void endPointerHold();
+    void reportTravel(double travel, bool fine, std::function<void()> done);
 
     void evaluate(NSString* script);
     static void answer(id<WKURLSchemeTask> task, NSData* frame);
@@ -251,6 +309,11 @@ private:
     // The page's open frame request, and a frame produced while none was open.
     id<WKURLSchemeTask> frameTask = nil;
     NSData* heldFrame = nil;
+    // The pointer hold, where the process can have one, and what follows the mouse during it.
+    PointerControlMac realPointer;
+    std::unique_ptr<PointerHold> pointerHold;
+    id dragMonitor = nil;
+    NSTimer* releaseCheck = nil;
 };
 
 // ----- Script message handler (page to native) -----
@@ -457,6 +520,17 @@ void showPageCursor(id self, SEL cmd, NSEvent* event)
                                                                               event);
 }
 
+// Records a left-button press for the pointer hold, then handles it as WKWebView does.
+void recordPress(id self, SEL cmd, NSEvent* event)
+{
+    if (WebViewMac* owner = ownerOf(self)) {
+        owner->pressed(event);
+    }
+    objc_super superInfo{.receiver = self, .super_class = [WKWebView class]};
+    reinterpret_cast<void (*)(objc_super*, SEL, NSEvent*)>(objc_msgSendSuper)(&superInfo, cmd,
+                                                                              event);
+}
+
 BOOL acceptsFirstMouse(id /*self*/, SEL /*cmd*/, NSEvent* /*event*/)
 {
     return YES; // A click in an inactive plugin window acts immediately.
@@ -467,7 +541,8 @@ void willOpenMenu(id /*self*/, SEL /*cmd*/, NSMenu* menu, NSEvent* /*event*/)
     [menu removeAllItems]; // No browser menu (Reload, Back): an empty one does not open.
 }
 
-// The webview's class: WKWebView with the plugin's key, menu and click handling and, for a view
+// The webview's class: WKWebView with the plugin's key, menu and click handling (presses recorded
+// for the pointer hold) and, for a view
 // that shows the page's cursors itself, its cursor rectangle and cursorUpdate:.
 Class makeWebViewClass(const char* baseName, bool showsPageCursors)
 {
@@ -487,6 +562,8 @@ Class makeWebViewClass(const char* baseName, bool showsPageCursors)
         class_addMethod(created, @selector(cursorUpdate:), reinterpret_cast<IMP>(&showPageCursor),
                         superclassMethodTypes(superclass, @selector(cursorUpdate:)));
     }
+    class_addMethod(created, @selector(mouseDown:), reinterpret_cast<IMP>(&recordPress),
+                    superclassMethodTypes(superclass, @selector(mouseDown:)));
     class_addMethod(created, @selector(acceptsFirstMouse:),
                     reinterpret_cast<IMP>(&acceptsFirstMouse),
                     superclassMethodTypes(superclass, @selector(acceptsFirstMouse:)));
@@ -524,6 +601,17 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     [contentController addScriptMessageHandler:messageHandler name:kMessageHandlerName];
     [contentController addScriptMessageHandler:messageHandler name:kFocusHandlerName];
     std::vector<const char*> scripts = {kFocusTrackingScript};
+    if (holdsPointerInBundleOfType(
+            [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundlePackageType"])) {
+        PointerControl* control = pointerControlForTests();
+        pointerHold = std::make_unique<PointerHold>(
+            control != nullptr ? *control : realPointer,
+            [this](double travel, bool fine, std::function<void()> done) {
+                reportTravel(travel, fine, std::move(done));
+            });
+        [contentController addScriptMessageHandler:messageHandler name:kPointerHoldHandlerName];
+        scripts.push_back(kPointerHoldScript);
+    }
     if (cursors == Cursors::kShownByView) {
         [contentController addScriptMessageHandler:messageHandler name:kCursorHandlerName];
         scripts.push_back(kCursorTrackingScript);
@@ -577,6 +665,8 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
 
 WebViewMac::~WebViewMac()
 {
+    endPointerHold(); // Never leaves the pointer hidden or frozen.
+    pointerHold.reset();
     // Detach every path back into this object before the webview can outlive it.
     setOwner(schemeHandler, nullptr);
     setOwner(messageHandler, nullptr);
@@ -635,7 +725,8 @@ void WebViewMac::processTerminated()
         reloads.pop_front();
     }
     loaded = false;
-    frameTask = nil; // The page that asked is gone.
+    endPointerHold(); // The page that held it is gone.
+    frameTask = nil;  // The page that asked is gone.
     heldFrame = nil;
     isEditableFocused = false;
     if (reloads.size() >= kMaxReloadsPerMinute) {
@@ -754,6 +845,14 @@ void WebViewMac::receive(WKScriptMessage* message)
         isEditableFocused = [body isEqualToString:@"1"];
         return;
     }
+    if ([message.name isEqualToString:kPointerHoldHandlerName]) {
+        if ([body isEqualToString:@"start"]) {
+            startPointerHold();
+        } else if ([body isEqualToString:@"end"]) {
+            endPointerHold();
+        }
+        return;
+    }
     if ([message.name isEqualToString:kCursorHandlerName]) {
         pageCursor = cursorFor(body);
         [webView.window invalidateCursorRectsForView:webView];
@@ -762,6 +861,83 @@ void WebViewMac::receive(WKScriptMessage* message)
     if (onMessage) {
         onMessage(*this, std::string_view(body.UTF8String));
     }
+}
+
+void WebViewMac::pressed(NSEvent* event)
+{
+    if (pointerHold) {
+        const CGPoint point = CGEventGetLocation(event.CGEvent);
+        pointerHold->pressed({.x = point.x, .y = point.y});
+    }
+}
+
+// From the hold's start, the mouse's motion comes from the drag events' deltas: the pointer stays
+// put, so their location does not change. A check every 100 ms ends the hold if the button was
+// released where no mouse-up reached this application.
+void WebViewMac::startPointerHold()
+{
+    if (!pointerHold || dragMonitor != nil) {
+        return;
+    }
+    pointerHold->start();
+    if (!pointerHold->holding()) {
+        return;
+    }
+    dragMonitor = [NSEvent
+        addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp
+                                     handler:^NSEvent*(NSEvent* event) {
+                                       const bool fine =
+                                           (event.modifierFlags & NSEventModifierFlagShift) != 0;
+                                       if (event.type == NSEventTypeLeftMouseDragged) {
+                                           pointerHold->moved(event.deltaY, fine, event.timestamp);
+                                       } else {
+                                           // The last motion reaches the page before the release.
+                                           pointerHold->moved(0, fine, event.timestamp);
+                                           pointerHold->flush();
+                                           endPointerHold();
+                                       }
+                                       return event;
+                                     }];
+    releaseCheck = [NSTimer timerWithTimeInterval:0.1
+                                          repeats:YES
+                                            block:^(NSTimer* /*timer*/) {
+                                              pollPointerHold();
+                                            }];
+    [NSRunLoop.currentRunLoop addTimer:releaseCheck forMode:NSRunLoopCommonModes];
+}
+
+void WebViewMac::pollPointerHold()
+{
+    if (pointerHold) {
+        pointerHold->poll();
+        if (!pointerHold->holding()) {
+            endPointerHold();
+        }
+    }
+}
+
+void WebViewMac::endPointerHold()
+{
+    if (dragMonitor != nil) {
+        [NSEvent removeMonitor:dragMonitor];
+        dragMonitor = nil;
+    }
+    [releaseCheck invalidate];
+    releaseCheck = nil;
+    if (pointerHold) {
+        pointerHold->end();
+    }
+}
+
+void WebViewMac::reportTravel(double travel, bool fine, std::function<void()> done)
+{
+    auto finished = std::make_shared<std::function<void()>>(std::move(done));
+    [webView evaluateJavaScript:[NSString stringWithFormat:@"window.orizonPointerHold?.onTravel?.("
+                                                           @"%.3f, %s)",
+                                                           travel, fine ? "true" : "false"]
+              completionHandler:^(id /*value*/, NSError* /*error*/) {
+                (*finished)();
+              }];
 }
 
 } // namespace
@@ -792,6 +968,21 @@ const void* cursorForCssForTests(const char* css)
 const void* drawnDiagonalResizeCursorForTests()
 {
     return (__bridge const void*)drawnDiagonalResizeCursor();
+}
+
+void setPointerControlForTests(PointerControl* control)
+{
+    pointerControlForTests() = control;
+}
+
+bool holdsPointerInBundleOfTypeForTests(const char* type)
+{
+    return holdsPointerInBundleOfType(type != nullptr ? @(type) : nil);
+}
+
+void pollPointerHoldForTests(WebView& view)
+{
+    static_cast<WebViewMac&>(view).pollPointerHold();
 }
 
 } // namespace orizon::editor
