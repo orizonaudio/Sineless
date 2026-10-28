@@ -100,7 +100,9 @@ describe("dragging on the screen", () => {
   });
 
   afterAll(() => {
-    (document.querySelector(".app") as HTMLElement).style.height = "";
+    const app = document.querySelector(".app") as HTMLElement;
+    app.style.height = "";
+    app.style.width = "";
   });
 
   test.each([0.1, 0.9])(
@@ -224,5 +226,32 @@ describe("dragging on the screen", () => {
     dragTo(line, 0.5, 0.9);
     expect(Math.abs(placedTop(line) - pointerTop(0.9))).toBeLessThan(tolerance);
     await dragMarker(0.9);
+  });
+
+  test("on a screen a fractional number of pixels wide and tall, the hover line sits under the pointer and spans the lane", async () => {
+    await userEvent.click(choice("layout", "Overlay"));
+    const app = document.querySelector(".app") as HTMLElement;
+    const box = app.getBoundingClientRect();
+    app.style.width = `${String(Math.floor(box.width) - 0.6)}px`;
+    app.style.height = `${String(Math.floor(box.height) - 0.6)}px`;
+    await settle();
+    expect(trace().width % 1, "a fractional trace width").not.toBe(0);
+    expect(trace().height % 1, "a fractional trace height").not.toBe(0);
+    await setPressed("hover-toggle", true);
+    try {
+      const at = columnCentre(0.9);
+      hoverAt(at, 0.5);
+      const line = byId("hover-line");
+      await expect.poll(() => line.hidden).toBe(false);
+      expect(Math.abs(placedLeft(line) - at * trace().width)).toBeLessThan(
+        tolerance,
+      );
+      // The overlaid lane is the whole height.
+      const bottom = line.getBoundingClientRect().bottom - trace().top;
+      expect(Math.abs(bottom - trace().height)).toBeLessThan(tolerance);
+    } finally {
+      leaveScreen();
+      await setPressed("hover-toggle", false);
+    }
   });
 });
