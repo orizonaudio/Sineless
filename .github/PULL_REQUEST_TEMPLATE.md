@@ -11,4 +11,4 @@ See [CONTRIBUTING.md](https://github.com/orizonaudio/Sineless/blob/main/CONTRIBU
 - [ ] `scripts/check.sh` (and `scripts\check.ps1` for Windows changes) pass locally, or the PR says which checks could not run.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.
 - [ ] Numbers the engine and the UI share live in `protocol/src/limits.ts`.
-- [ ] A fix for a platform, SDK, host or standard problem names its sources in a `Prior art:` note.
+- [ ] A change involving a platform, SDK, host or standard names its sources in a `Prior art:` note.

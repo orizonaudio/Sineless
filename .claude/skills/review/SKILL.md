@@ -13,6 +13,12 @@ change that passes here should pass there. REVIEW.md says what counts as a findi
 Take the base and head you were given, or `git merge-base origin/main HEAD` and `HEAD`. List
 the changed files with `git diff --name-only <base> <head>`.
 
+If the branch has a plan, compare the diff with it first: the `* plan.md` in `Research Topics/`
+whose `Branch:` line names the branch, never a `* plan reviewed.md` (search the folder by its
+path: it is ignored, so default searches skip it). A difference in what is built, how, or its
+tests goes back through the plan's review (`plan-before-code`) before this one. Say "no plan
+found" when there is none. The plan is local: the specialists below are not given it.
+
 ## 2. Specialists, in parallel
 
 Launch these subagents in one message, giving each the range (`git diff <base> <head>`) and
