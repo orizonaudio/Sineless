@@ -114,6 +114,9 @@ struct AnalysisWork
     std::uint64_t searchWork = 0;
     // Samples passed over measuring Compare's summing gains (each measurement spread over frames).
     std::uint64_t gainWork = 0;
+    // Live Beats sweeps updated to take new audio, one per sweep or lane each time: as audio
+    // arrives and for each frame, not on every analysis step.
+    std::uint64_t sweepUpdates = 0;
 };
 
 // Per-editor-session analysis: turns the capture into display frames. It is
@@ -233,7 +236,15 @@ private:
         std::shared_ptr<Engine> engine;
         SweepImage image{1}; // The track's Mid.
         std::optional<SweepWindow> window;
-        std::uint64_t end = 0; // Capture end of the last update.
+        std::uint64_t end = 0; // Where the last update placed the sweep to.
+        // Beats, live: the musical stamp its newest placed audio was played at
+        // (Analyzer::placingStamp).
+        std::optional<MusicalStamp> placing;
+        // Beats, live: this lane's capture index of the audio played with this track's index i
+        // is i + indexOffset (the captures started at different moments), and how many steps in
+        // a row a measurement disagreed with it.
+        std::optional<std::int64_t> indexOffset;
+        int offsetDisagreements = 0;
         LaneHold hold;
         bool compared = false;
         // The lane's screen columns, and the part of the sweep they reduce.
@@ -379,6 +390,19 @@ private:
     // This track's paced edge: free-running windows and Auto's untriggered fallback end there.
     PacedEdge pacedEdge;
     Clock now = monotonicNanos;
+    // Beats, live: the musical stamp this track's newest placed audio was played at.
+    std::optional<MusicalStamp> ownPlacing;
+    // Where a live sweep is placed to: this track's paced edge, and its stamp to place by.
+    [[nodiscard]] std::uint64_t ownSweepEdge(protocol::BeatSpan span);
+    // Whether the own sweep was paced when last placed (lanes follow it).
+    bool ownSweepPaced = false;
+    // Forgets the stamps sweeps were placed by, when they are not placed live.
+    void forgetPlacing(bool own, bool lanes);
+    [[nodiscard]] std::uint64_t laneSweepEdge(Lane& lane, const Lane& own);
+    static MusicalStamp
+    placingStamp(const MusicalStamp& latest, std::uint64_t end, double sampleRate,
+                 std::optional<MusicalStamp>& placing,
+                 const std::function<void(const MusicalStamp&, std::uint64_t)>& placeBefore);
     // Live, in either time base: the channel counts and sample rates of this track and of each lane
     // shown, now and when the last frame was drawn, which are inputs too (formatsChanged).
     std::vector<std::uint64_t> liveFormats;
@@ -408,6 +432,8 @@ private:
     std::uint64_t ownLane = 0; // Serial of this instance's lane.
     // New audio placed in the lanes between frames (advance), which the next frame draws.
     bool lanesPlaced = false;
+    // The captured audio, summed over the tracks placed, when advance last placed the sweeps.
+    std::uint64_t advancedCaptured = 0;
     // Compare view: whether this frame compares tracks; in Seconds mode, each lane's source and
     // where this frame's window starts in it, the sum lane's columns as the window rolls, and
     // the compared lanes' visible samples, as recorded and as fixed, for the gains.

@@ -2,6 +2,7 @@
 
 #include "engine/RealtimeSafety.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <optional>
@@ -122,6 +123,9 @@ public:
     [[nodiscard]] std::uint64_t edge(std::uint64_t nanos, std::uint64_t newest, double capSeconds);
     // Whether the last edge was paced.
     [[nodiscard]] bool paced() const { return pacedLast; }
+    // Another track drawn with this edge had `samples` less audio than the edge asked for (its
+    // blocks come later): the delay rises to cover it, as it does for a late block of its own.
+    void coverShortfall(double samples) { target = std::max(target, delaySamples + samples); }
     // The delay in samples (0 unpaced).
     [[nodiscard]] double delay() const { return delaySamples; }
     // Shares another edge's delay (a lane follows the own track's).
