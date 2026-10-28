@@ -62,6 +62,38 @@ export function fullScale(verticalScaleDb: number): number {
   return 10 ** (verticalScaleDb / 20);
 }
 
+// Each trace's coverage goes to one channel of an offscreen target: four channels a target, and
+// four targets (WebGL2's least number of colour attachments), so this many traces are layered over
+// the screen in one pass. It equals maxLanes, so a frame is one group; more would be drawn as
+// further groups, each layered over the last.
+export const coverageAttachments = 4;
+export const tracesPerGroup = coverageAttachments * 4;
+
+export interface CoverageGroup {
+  readonly first: number;
+  readonly count: number;
+  // The targets the group's traces use, from the first.
+  readonly attachments: number;
+}
+
+// The groups for `traces` traces, in drawing order.
+export function coverageGroups(traces: number): CoverageGroup[] {
+  const groups: CoverageGroup[] = [];
+  for (let first = 0; first < traces; first += tracesPerGroup) {
+    const count = Math.min(tracesPerGroup, traces - first);
+    groups.push({ first, count, attachments: Math.ceil(count / 4) });
+  }
+  return groups;
+}
+
+// Where the trace at `index` within its group writes its coverage.
+export function coverageSlot(index: number): {
+  readonly attachment: number;
+  readonly channel: number;
+} {
+  return { attachment: Math.floor(index / 4), channel: index % 4 };
+}
+
 // The playhead's edges in clip space, at a position 0 to 1 across a screen widthPixels device
 // pixels wide. A line straddling pixels is antialiased dimmer and wider by an amount that changes
 // with its subpixel position, so a moving one flickers: its edges sit on whole device pixels, and
@@ -76,6 +108,20 @@ export function playheadEdges(
   const left = Math.round(position * widthPixels - width / 2);
   const clip = (pixels: number) => -1 + (2 * pixels) / widthPixels;
   return { left: clip(left), right: clip(left + width) };
+}
+
+// A frame's values reach the GPU as rows of a texture this wide (WebGL2's least maximum texture
+// size): the full rows in one upload, the rest in a second.
+export const textureRowLength = 2048;
+
+export function textureRows(count: number): {
+  readonly rows: number;
+  readonly full: number;
+  readonly remainder: number;
+} {
+  const full = Math.floor(count / textureRowLength);
+  const remainder = count - full * textureRowLength;
+  return { rows: full + (remainder > 0 ? 1 : 0), full, remainder };
 }
 
 function pushQuad(
