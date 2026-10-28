@@ -647,11 +647,16 @@ export class OscilloscopeApp {
   }
 
   // What Peak, RMS and Freq measure (DESIGN.md 1.2.1): the readout channel in Single, this track's
-  // Mid in Multi and Compare.
+  // Mid in Multi and Compare. Read from the frame on screen, whose lanes say which it measured,
+  // whatever the setting now says until the next frame comes; a frame with no tempo has no lanes
+  // and no readouts, so the setting names it.
   private updateReadoutTag(): void {
-    const text = this.multiMode()
-      ? "This track"
-      : viewNames[this.readoutView()];
+    const frame = this.lastFrame;
+    const thisTrack =
+      frame === undefined || frame.noTempo
+        ? this.multiMode()
+        : frame.lanes.length > 0;
+    const text = thisTrack ? "This track" : viewNames[this.readoutView()];
     const tag = element("readout-tag");
     if (tag.textContent !== text) {
       tag.textContent = text;
