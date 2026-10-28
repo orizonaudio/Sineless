@@ -1,6 +1,7 @@
 #include "FitStates.h"
 #include "MacPageTesting.h"
 #include "editor/Editor.h"
+#include "editor/Transport.h"
 #include "editor/UiDispatcher.h"
 #include "engine/Version.h"
 #include "mac/UiDispatcherMacTesting.h"
@@ -643,10 +644,12 @@ TEST_F(EditorTest, GrowsTheMinimumHeightWithStackedLanes)
 // What the page sends when the user drags its resize grip; `fields` is the message's body.
 void postResize(WKWebView* webView, const std::string& fields)
 {
-    evaluate(webView,
-             [NSString stringWithFormat:@"window.webkit.messageHandlers.orizon.postMessage("
-                                        @"JSON.stringify({type: 'resize', %s})); ''",
-                                        fields.c_str()]);
+    evaluate(
+        webView,
+        [NSString stringWithFormat:@"window.webkit.messageHandlers.orizon.postMessage("
+                                   @"JSON.stringify({type: '%s', %s})); ''",
+                                   std::string(messageName(protocol::MessageType::kResize)).c_str(),
+                                   fields.c_str()]);
 }
 void dragGrip(WKWebView* webView, int width, int height)
 {

@@ -1,6 +1,7 @@
 #include "FitStates.h"
 #include "editor/DisplayScale.h"
 #include "editor/Editor.h"
+#include "editor/Transport.h"
 #include "editor/WebView.h"
 #include "engine/Engine.h"
 #include "win/WebViewWinTesting.h"
@@ -352,7 +353,8 @@ TEST_F(EditorTest, AsksTheHostForTheGripSizeInWindowUnits)
 
     const int width = Editor::kDefaultWidth + 300;
     const int height = Editor::kDefaultHeight + 200;
-    evaluate(view, "window.chrome.webview.postMessage(JSON.stringify({type: 'resize', width: " +
+    evaluate(view, "window.chrome.webview.postMessage(JSON.stringify({type: '" +
+                       std::string(messageName(protocol::MessageType::kResize)) + "', width: " +
                        std::to_string(width) + ", height: " + std::to_string(height) + "})); ''");
     ASSERT_TRUE(pumpUntil([&] { return frame.requests > requestsBefore; }, kPageTimeout));
     EXPECT_EQ(frame.requested.getWidth(), static_cast<int>(std::ceil(width * scale - 1e-6)));
