@@ -43,6 +43,19 @@ export const triggerPosition = 0.1;
 // change, so the display keeps moving instead.
 export const freeRunningThresholdSeconds = 1;
 
+// The most a free-running window's edge trails the newest audio (seconds). Hosts deliver audio in
+// blocks, and frames come at display rate; an edge at the newest sample moves by one block on some
+// frames and two on others. The edge is paced instead: a steady clock estimates the sample due now
+// and the edge stays a measured delay behind it, about a block. The cap covers 4096-sample blocks
+// at 44.1 kHz (93 ms), the longest hosts commonly use, with a third more for late deliveries; a
+// host whose blocks come further apart steps as before. A freeze holds twice this beyond the
+// longest span, so the frozen window is the one last shown.
+export const pacingDelayCapSeconds = 0.125;
+
+// Spans shorter than this (seconds) are not paced: below about one frame at 60 Hz the whole trace
+// is new every frame, and pacing would only show it later.
+export const pacedSpanMinimumSeconds = 0.02;
+
 // The narrowest part of the span a view can zoom in to.
 export const minimumViewWidth = 1 / 256;
 
@@ -94,6 +107,16 @@ export const limits: readonly {
   {
     name: "freeRunningThresholdSeconds",
     value: freeRunningThresholdSeconds,
+    kind: "double",
+  },
+  {
+    name: "pacingDelayCapSeconds",
+    value: pacingDelayCapSeconds,
+    kind: "double",
+  },
+  {
+    name: "pacedSpanMinimumSeconds",
+    value: pacedSpanMinimumSeconds,
     kind: "double",
   },
   { name: "minimumViewWidth", value: minimumViewWidth, kind: "double" },

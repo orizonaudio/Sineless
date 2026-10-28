@@ -1,6 +1,8 @@
 #pragma once
 
+#include "engine/BlockClock.h"
 #include "engine/CaptureRing.h"
+#include "engine/MonotonicClock.h"
 #include "engine/Settings.h"
 #include "engine/Timeline.h"
 
@@ -9,6 +11,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace orizon::engine {
@@ -35,6 +38,41 @@ public:
 
     [[nodiscard]] Timeline& timeline() { return timelineState; }
     [[nodiscard]] const Timeline& timeline() const { return timelineState; }
+
+    // The right edge of each live frame produced in Seconds or Beats: when it was produced
+    // (monotonicNanos), the capture index it ended at, and the newest sample captured then. For
+    // benchmarks, which report how evenly it moved (Motion.h). The analysis worker records; a
+    // benchmark takes them. Keeps the newest kEdgeRecords.
+    struct EdgeRecord
+    {
+        std::uint64_t nanos = 0;
+        std::uint64_t edge = 0;
+        std::uint64_t newest = 0;
+    };
+    static constexpr std::size_t kEdgeRecords = 8192;
+    void recordEdge(const EdgeRecord& record)
+    {
+        const std::scoped_lock lock(edgeMutex);
+        if (edgeLog.size() == kEdgeRecords) {
+            edgeLog.erase(edgeLog.begin(), edgeLog.begin() + kEdgeRecords / 2);
+        }
+        edgeLog.push_back(record);
+    }
+    [[nodiscard]] std::vector<EdgeRecord> takeEdges()
+    {
+        const std::scoped_lock lock(edgeMutex);
+        return std::exchange(edgeLog, {});
+    }
+
+    // When the newest block arrived, which paces free-running windows.
+    [[nodiscard]] BlockStamp& blockStamp() { return stamp; }
+    // Audio thread, after capturing a block that had samples: stamps it with the time now.
+    // `paced` says the host processes in real time (not offline or ahead of time).
+    void stampBlock(bool paced) noexcept ORIZON_NONBLOCKING
+    {
+        stamp.publish({.index = ring.writeIndex(), .nanos = monotonicNanos(), .paced = paced});
+    }
+    [[nodiscard]] const BlockStamp& blockStamp() const { return stamp; }
 
     [[nodiscard]] SettingsStore& settings() { return settingsStore; }
     [[nodiscard]] const SettingsStore& settings() const { return settingsStore; }
@@ -115,6 +153,9 @@ private:
     std::atomic<int> inputChannelCount{2};
     SettingsStore settingsStore;
     Timeline timelineState;
+    BlockStamp stamp;
+    std::mutex edgeMutex;
+    std::vector<EdgeRecord> edgeLog;
     mutable std::mutex trackMutex;
     TrackInfo track;
     std::optional<std::vector<std::uint64_t>> comparedIds;

@@ -70,8 +70,8 @@ class CapacityForRate : public ::testing::TestWithParam<RateCapacity>
 {
 };
 
-// The smallest capture up to the rate at which its readable part holds exactly the 4 s freeze
-// (229.376 kHz), the largest above it, and no larger above the highest rate; the smallest for
+// The smallest capture up to the rate at which its readable part holds exactly the 4.25 s freeze
+// (215.9 kHz), the largest above it, and no larger above the highest rate; the smallest for
 // what is not a rate.
 TEST_P(CapacityForRate, IsTheSmallestThatKeepsAFreeze)
 {
@@ -79,7 +79,7 @@ TEST_P(CapacityForRate, IsTheSmallestThatKeepsAFreeze)
     EXPECT_EQ(CaptureRing::capacityFor(rate), capacity);
     if (rate > 0.0 && rate <= CaptureRing::kHighestSampleRate) {
         EXPECT_GE(static_cast<double>(CaptureRing::readableLength(capacity)),
-                  protocol::kFrozenHoldSeconds * rate)
+                  kSecondsFreezeSeconds * rate)
             << "keeps a freeze";
     }
 }
@@ -87,7 +87,7 @@ TEST_P(CapacityForRate, IsTheSmallestThatKeepsAFreeze)
 constexpr std::size_t kSmallest = CaptureRing::kMinimumCapacity;
 constexpr std::size_t kLargest = CaptureRing::kMaximumCapacity;
 constexpr double kLastRateOfTheSmallest =
-    static_cast<double>(CaptureRing::readableLength(kSmallest)) / protocol::kFrozenHoldSeconds;
+    static_cast<double>(CaptureRing::readableLength(kSmallest)) / kSecondsFreezeSeconds;
 
 INSTANTIATE_TEST_SUITE_P(
     Rates, CapacityForRate,
