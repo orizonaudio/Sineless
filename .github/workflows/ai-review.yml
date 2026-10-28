@@ -17,7 +17,8 @@ name: AI review
 # - Pull requests from forks get no secrets, so a maintainer (anyone who can write to the
 #   repository) starts their review by commenting "/ai-review". "/ai-review waive <reason>"
 #   passes the check after a maintainer has decided the findings do not hold.
-# - After two failed reviews of a pull request it is labelled "needs-human".
+# - After three failed reviews of a pull request it is labelled "needs-human", and its author stops
+#   fixing findings until a maintainer has decided (CLAUDE.md, "Delivering").
 # - In the merge queue the reviewed pull requests pass at once.
 #
 # The base branch is checked out at the workspace root and the pull request's files into
@@ -440,11 +441,12 @@ jobs:
           failures=$(gh api "repos/$REPO/issues/$NUMBER/comments" --paginate \
             --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-review: failed -->")))] | length' |
             jq -s 'add')
-          # Once: from the second failure on, unless the label is already there (a count of exactly
-          # 2 could be missed by a run cancelled between posting its summary and counting).
+          # Once: from the third failure on, unless the label is already there (a count of exactly
+          # 3 could be missed by a run cancelled between posting its summary and counting). Two
+          # failures often pass on the next push; the rounds that run on fail five times or more.
           labelled=$(gh api "repos/$REPO/issues/$NUMBER" --jq '[.labels[].name] | index("needs-human") != null')
-          if (( failures >= 2 )) && [[ "$labelled" != true ]]; then
+          if (( failures >= 3 )) && [[ "$labelled" != true ]]; then
             gh api -X POST "repos/$REPO/issues/$NUMBER/labels" -f "labels[]=needs-human" > /dev/null
-            gh pr comment "$NUMBER" --repo "$REPO" --body "This pull request has failed the AI review $failures times; it needs a maintainer's decision."
+            gh pr comment "$NUMBER" --repo "$REPO" --body "This pull request has failed the AI review $failures times; it needs a maintainer's decision, and its author stops fixing findings until then."
           fi
           exit 1
