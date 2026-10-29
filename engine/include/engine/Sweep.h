@@ -37,13 +37,14 @@ struct SweepWindow
     double cycleSeconds = 0.0; // The left edge's project time.
 };
 
-// Whether two sweep lengths differ by no more than a thousandth: a tempo change moves the length
-// a little from block to block, which no screen column resolves, so a sweep image keeps its length
-// through it instead of being rebuilt.
+// Whether two sweep lengths differ by no more than kSweepLengthTolerance of the larger: a tempo
+// change moves the length a little from block to block, which no screen column resolves, so a
+// sweep image keeps its length through it instead of being rebuilt.
 [[nodiscard]] constexpr bool sweepLengthsSimilar(std::uint64_t a, std::uint64_t b)
 {
     const std::uint64_t larger = std::max(a, b);
-    return (larger - std::min(a, b)) <= larger / 1024;
+    return (larger - std::min(a, b)) <=
+           static_cast<std::uint64_t>(static_cast<double>(larger) * kSweepLengthTolerance);
 }
 
 // Cycles align to multiples of the span from the project start, i.e. to bars for bar spans.
