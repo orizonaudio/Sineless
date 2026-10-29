@@ -30,6 +30,7 @@
 #include <fstream>
 #include <functional>
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -157,8 +158,8 @@ struct Step
     double seconds = 0.0;
     // The page's message; or, when `fromFrame` is set, made from the last frame the page got (a
     // value only the engine decides, such as the pan reach).
-    json message;
-    std::function<json(std::span<const std::byte>)> fromFrame;
+    json message{};
+    std::function<json(std::span<const std::byte>)> fromFrame{};
     std::uint32_t rate = 0;
 };
 
@@ -184,16 +185,16 @@ Step hostRate(std::uint32_t rate)
 
 struct Scenario
 {
-    std::string_view name; // Test name and file name.
+    std::string_view name{}; // Test name and file name.
     std::uint32_t rate = 48000;
     // The rate the instances were prepared at, when the host has changed it since without
     // preparing them again (the capture keeps the size it was prepared at).
-    std::optional<std::uint32_t> preparedRate;
-    std::vector<Track> tracks;
-    std::vector<std::string> names; // Track names the host reports, as Multi and Compare show.
+    std::optional<std::uint32_t> preparedRate{};
+    std::vector<Track> tracks{};
+    std::vector<std::string> names{}; // Track names the host reports, as Multi and Compare show.
     bool tempoKnown = true;
-    std::vector<std::pair<SettingId, double>> settings; // Before the page connects.
-    std::vector<Step> steps;
+    std::vector<std::pair<SettingId, double>> settings{}; // Before the page connects.
+    std::vector<Step> steps{};
 };
 
 // The page's width in CSS pixels and its pixel ratio in the app tests, as both WebKit and
@@ -359,7 +360,9 @@ Recorded record(const Scenario& s)
         host.setSampleRate(s.rate);
     }
     for (std::size_t i = 0; i < s.names.size(); ++i) {
-        host.track(i).setTrackInfo({.name = s.names[i]});
+        engine::TrackInfo info;
+        info.name = s.names[i];
+        host.track(i).setTrackInfo(info);
     }
     for (const auto& [id, value] : s.settings) {
         host.own().settings().set(id, value);
@@ -461,6 +464,16 @@ Recorded record(const Scenario& s)
 
 // ----- Comparison -----
 
+// `parts` joined, without the temporaries that chained operator+ makes.
+std::string joined(std::initializer_list<std::string_view> parts)
+{
+    std::string out;
+    for (const std::string_view part : parts) {
+        out += part;
+    }
+    return out;
+}
+
 bool near(double approved, double actual)
 {
     if (std::isnan(approved) || std::isnan(actual)) {
@@ -513,8 +526,8 @@ void compareFrame(std::span<const std::byte> approved, std::span<const std::byte
             const auto a = read<std::uint32_t>(approved, offset);
             const auto b = read<std::uint32_t>(actual, offset);
             if (a != b) {
-                differences.push_back(path + ": " + at + ": approved " + std::to_string(a) +
-                                      ", now " + std::to_string(b));
+                differences.push_back(joined({path, ": ", at, ": approved ", std::to_string(a),
+                                              ", now ", std::to_string(b)}));
             }
             continue;
         }
@@ -558,15 +571,16 @@ void compareJson(const json& approved, const json& actual, const std::string& pa
     if (approved.is_object() && actual.is_object()) {
         for (const auto& [key, value] : approved.items()) {
             if (!actual.contains(key)) {
-                differences.push_back(path + "." + key + ": approved " + value.dump() +
-                                      ", now gone");
+                differences.push_back(
+                    joined({path, ".", key, ": approved ", value.dump(), ", now gone"}));
             } else {
-                compareJson(value, actual.at(key), path + "." + key, differences);
+                compareJson(value, actual.at(key), joined({path, ".", key}), differences);
             }
         }
         for (const auto& [key, value] : actual.items()) {
             if (!approved.contains(key)) {
-                differences.push_back(path + "." + key + ": not approved, now " + value.dump());
+                differences.push_back(
+                    joined({path, ".", key, ": not approved, now ", value.dump()}));
             }
         }
         return;
@@ -683,7 +697,7 @@ INSTANTIATE_TEST_SUITE_P(Scenarios, SessionRecording, ::testing::ValuesIn(scenar
 // once for the tests below.
 const json& sample()
 {
-    static const json recording = [] {
+    static const json kRecording = [] {
         for (const Scenario& s : scenarios()) {
             if (s.name == "CompareOtherSilent_48k") {
                 return record(s).recording;
@@ -691,7 +705,7 @@ const json& sample()
         }
         return json();
     }();
-    return recording;
+    return kRecording;
 }
 
 // The first frame of the last phase that holds one, as bytes.
@@ -700,7 +714,8 @@ std::vector<std::byte> lastFrameOf(const json& recording)
     const json& phases = recording.at("phases");
     for (auto it = phases.rbegin(); it != phases.rend(); ++it) {
         if (!it->at("frames").empty()) {
-            return *fromBase64(it->at("frames")[0].get<std::string>());
+            return fromBase64(it->at("frames")[0].get<std::string>())
+                .value_or(std::vector<std::byte>{});
         }
     }
     return {};
@@ -738,7 +753,7 @@ TEST(SessionRecordingComparison, PassesAPointMovedWithinTheToleranceAndFailsOneM
     std::vector<std::byte> frame = lastFrameOf(sample());
     ASSERT_GT(frame.size(), FrameHeader::kSize);
     const std::size_t offset = FrameHeader::kSize;
-    const float value = read<float>(frame, offset);
+    const auto value = read<float>(frame, offset);
     const double allowed =
         std::max(engine::kAbsoluteTolerance,
                  engine::kRelativeTolerance * std::abs(static_cast<double>(value)));
