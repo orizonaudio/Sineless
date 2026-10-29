@@ -10,6 +10,7 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -17,6 +18,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace orizon::au {
@@ -528,6 +530,27 @@ TEST(AudioUnit, StampsEachBlockPacedOnlyWhenNotOffline)
         EXPECT_EQ(stamp->index, written);
         EXPECT_EQ(stamp->paced, offline == 0U);
     }
+}
+
+// A render of no frames is no block: it publishes no stamp. A stamp at the same index but a later
+// time would read as the real block arriving late, and the paced edge would jump or stutter. As
+// the VST3 processor (ProcessorTests).
+TEST(AudioUnit, StampsNoBlockForARenderOfNoFrames)
+{
+    Host host;
+    Instance instance(host);
+    ASSERT_EQ(instance.open(48000.0, 2, 2), noErr);
+    host.input = noise(2, 256, 3);
+    const auto engine = instance.engine();
+    instance.render(256, true);
+    const auto before = engine->blockStamp().latest();
+    ASSERT_TRUE(before.has_value());
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    instance.render(0, true);
+    const auto after = engine->blockStamp().latest();
+    ASSERT_TRUE(after.has_value());
+    EXPECT_EQ(after->index, before->index);
+    EXPECT_EQ(after->nanos, before->nanos) << "a stamp for no frames";
 }
 
 // A value of the wrong size for kAudioUnitProperty_OfflineRender is refused and changes nothing.
