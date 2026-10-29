@@ -61,6 +61,39 @@ public:
         }
     }
 
+    // Plays `seconds` as the editor's frame flow drives the analyzer (editor/src/FrameFlow.cpp):
+    // the page grants a credit at each 60 Hz draw; each 2 ms step, while the credit is held, asks
+    // for a frame (which takes the credit when one comes) and otherwise advances.
+    void flow(double seconds)
+    {
+        const double end = time + seconds;
+        for (; time < end; time += 0.001) {
+            while (static_cast<double>(written + block) / rate <= time - kStart) {
+                writeBlock();
+            }
+            if (time >= nextDraw) {
+                nextDraw += 1.0 / 60.0;
+                credit = true;
+            }
+            if (std::fmod(time * 1000.0, 2.0) >= 1.0) {
+                continue;
+            }
+            if (!credit) {
+                analyzer.advance();
+                continue;
+            }
+            std::vector<std::byte> bytes;
+            if (analyzer.produce(bytes)) {
+                credit = false;
+                last = decode(bytes);
+                if (const auto shown = rightEdge(*last); shown && !last->has(FrameFlag::kFrozen)) {
+                    edges.push_back(
+                        {.seconds = time, .edge = *shown, .newest = static_cast<double>(written)});
+                }
+            }
+        }
+    }
+
     // One past the last sample a frame of the ramp shows, from its last column's maximum.
     static std::optional<double> rightEdge(const DecodedFrame& frame)
     {
@@ -85,6 +118,7 @@ public:
     double nextDraw = kStart;
     std::optional<DecodedFrame> last;
     std::vector<EdgeDraw> edges;
+    bool credit = false; // flow(): the page waits for a frame.
     // The audio, by sample index; the ramp when unset.
     std::function<float(std::uint64_t)> signal;
 
@@ -184,6 +218,28 @@ TEST(PacedWindowsMinimum, NeverStepBackWhenPacingStarts)
             << "stepped back at " << host.edges[index].seconds;
     }
     EXPECT_FALSE(measureMotion(host.edges, host.rate).ahead);
+}
+
+// While the page waits for a frame, the editor asks for one on every step and never advances, as
+// a freeze keeps it waiting (frozen frames do not change). Frames keep the block clock fed, so
+// once unfrozen the trace moves evenly at once: with the clock starved for the freeze it would
+// start over and step by whole blocks until it locked again (16 blocks, 0.2 s here).
+TEST(PacedFreeze, KeepsTheClockFedWhileTheEditorWaitsForAFrame)
+{
+    PacedHost host(48000.0, 512);
+    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kFree));
+    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    host.flow(3.0); // The clock locks.
+    host.analyzer.setFrozen(true);
+    host.flow(1.0);
+    host.analyzer.setFrozen(false);
+    host.edges.clear();
+    host.flow(0.3);
+    ASSERT_GT(host.edges.size(), 10U);
+    const Motion motion = measureMotion(host.edges, host.rate);
+    const double column = 0.5 * 1000.0 / 8000.0;
+    EXPECT_LE(motion.advanceErrorMax, 1.0 + 2.0 * column) << "the trace stepped after the freeze";
+    EXPECT_FALSE(motion.backwards);
 }
 
 // A triggered window changes only with new audio: between blocks no frame is made and nothing
