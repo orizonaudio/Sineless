@@ -4,6 +4,7 @@
 #include "protocol/Protocol.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -61,6 +62,37 @@ TEST(MonotonicClock, AdvancesInNanosecondsWithRealTime)
 
 // A steady host locks the clock, which then says which sample is due at any time within a sample:
 // small blocks at the highest rate, and the longest blocks, whose period no gap rule resets.
+// The analysis thread never reads a stamp mixed from two blocks while the audio thread publishes
+// them: one block's index with another's time would look like a jump or a stall to the clock,
+// which would start over and leave the edge unpaced. Here each block's time and flag follow from
+// its index.
+TEST(BlockStamp, ConcurrentReadsSeeWholeStamps)
+{
+    BlockStamp stamp;
+    std::atomic<bool> done{false};
+    std::thread writer([&] {
+        for (std::uint64_t block = 1; block <= 200'000; ++block) {
+            stamp.publish({.index = block * 512, .nanos = block * 7 + 3, .paced = block % 2 == 0});
+        }
+        done = true;
+    });
+    int mixed = 0;
+    int read = 0;
+    while (!done) {
+        if (const auto latest = stamp.latest()) {
+            const std::uint64_t block = latest->index / 512;
+            if (latest->index % 512 != 0 || latest->nanos != block * 7 + 3 ||
+                latest->paced != (block % 2 == 0)) {
+                ++mixed;
+            }
+            ++read;
+        }
+    }
+    writer.join();
+    EXPECT_GT(read, 0);
+    EXPECT_EQ(mixed, 0);
+}
+
 TEST(BlockClock, LocksOnASteadyHostAndEstimatesWithinASample)
 {
     for (const auto [block, rate] :
