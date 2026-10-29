@@ -483,9 +483,10 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     // Multi and Compare both draw lanes of the group's tracks.
     const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
                        protocol::DisplayMode::kSingle;
-    // A sweep keeps the stamp of the audio it placed last only while it is placed live: frozen,
-    // in Seconds or in the other display mode, the transport may jump meanwhile.
-    forgetPlacing(!synced || isFrozen || multi, !synced || isFrozen || !multi);
+    // A sweep keeps the positions it is placed by while it is kept: in Beats, in its display mode
+    // (frozen too, as advance notes positions meanwhile). In Seconds or the other display mode it
+    // is not placed, and the transport may jump unseen.
+    forgetPlacing(!synced || multi, !synced || !multi);
     // A Beats sweep is placed by the host's tempo. Until the host has reported one (an instance
     // it has not played through), the clock's tempo is only a default: no sweep is drawn, and the
     // frame says why, again whenever the inputs change or the page asks for a redraw.
@@ -1314,10 +1315,8 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
 // never moves audio played before it. Positions that only continue one another place audio at
 // the same columns, so the newest of them is used. Seen every 2 ms step that audio arrived, so a
 // change is placed late only when a shorter block followed it within the step.
-MusicalStamp
-Analyzer::placingStamp(const MusicalStamp& latest, std::uint64_t end, double sampleRate,
-                       SweepPlacing& placing,
-                       const std::function<void(const MusicalStamp&, std::uint64_t)>& placeBefore)
+// Notes the newest position seen, keeping it if it does not continue the one seen before.
+void Analyzer::notePosition(const MusicalStamp& latest, double sampleRate, SweepPlacing& placing)
 {
     constexpr std::size_t kMostChanges = 64; // Far more than a sweep's delay can hold.
     const auto continues = [&](const MusicalStamp& previous) {
@@ -1337,6 +1336,14 @@ Analyzer::placingStamp(const MusicalStamp& latest, std::uint64_t end, double sam
         placing.changes.push_back(latest);
     }
     placing.seen = latest;
+}
+
+MusicalStamp
+Analyzer::placingStamp(const MusicalStamp& latest, std::uint64_t end, double sampleRate,
+                       SweepPlacing& placing,
+                       const std::function<void(const MusicalStamp&, std::uint64_t)>& placeBefore)
+{
+    notePosition(latest, sampleRate, placing);
     if (!placing.placing) {
         placing.placing = latest;
         placing.changes.clear();
@@ -1384,9 +1391,23 @@ void Analyzer::advance()
     const Settings settings = engine.settings().get();
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
-    if (isFrozen || !synced) {
+    if (!synced) {
         forgetPlacing(true, true);
-        return; // Frozen sweeps stay as they are; windows are placed when a frame is made.
+        return;
+    }
+    if (isFrozen) {
+        // Frozen sweeps stay as they are, but the positions played meanwhile are noted, so that
+        // the audio is placed where it was played once live again.
+        if (settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) ==
+            protocol::DisplayMode::kSingle) {
+            notePosition(engine.timeline().latest(), engine.sampleRate(), ownPlacing);
+        } else {
+            for (auto& [serial, lane] : lanes) {
+                notePosition(lane->engine->timeline().latest(), lane->engine->sampleRate(),
+                             lane->placing);
+            }
+        }
+        return;
     }
     const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
     const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
@@ -1645,8 +1666,21 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
 // audio, on the span it was drawn with.
 void Analyzer::catchUpImageToHold()
 {
-    const auto held = sweepWindow(frozenStamp, frozenEnd, frozenRate, placedSpan, kMaxSweepSamples);
-    if (!held || image.length() == 0 || !imageWindow) {
+    if (image.length() == 0 || !imageWindow) {
+        return;
+    }
+    // Through the positions not yet reached, as live: audio is placed where it was played.
+    const auto placeBefore = [&](const MusicalStamp& previous, std::uint64_t until) {
+        if (const auto before =
+                sweepWindow(previous, until, frozenRate, placedSpan, kMaxSweepSamples)) {
+            ++workDone.sweepUpdates;
+            (void)image.update(hold, *before, false, engine.inputChannels(), image.length());
+        }
+    };
+    const auto held =
+        sweepWindow(placingStamp(frozenStamp, frozenEnd, frozenRate, ownPlacing, placeBefore),
+                    frozenEnd, frozenRate, placedSpan, kMaxSweepSamples);
+    if (!held) {
         return;
     }
     if (image.update(hold, *held, false, engine.inputChannels(), image.length())) {
