@@ -376,30 +376,41 @@ TEST(PacedSweep, ShowsASweepShorterThanTheMinimumAtTheNewestAudio)
 // newer position would put them elsewhere. In Single and in each lane of Multi, with a lane whose
 // blocks come 3 ms later and whose capture started 777 samples earlier. With 64-sample blocks the
 // playhead is several blocks behind the newest audio: each block's position is seen all the same.
+// At 384 kHz too, with 4096-sample blocks.
 TEST(PacedSweep, PlacesAudioFromBeforeAJumpWhereItWasPlayed)
 {
-    for (const auto [mode, block] : {std::pair{protocol::DisplayMode::kSingle, std::uint64_t{512}},
-                                     std::pair{protocol::DisplayMode::kMulti, std::uint64_t{512}},
-                                     std::pair{protocol::DisplayMode::kSingle, std::uint64_t{64}},
-                                     std::pair{protocol::DisplayMode::kMulti, std::uint64_t{64}}}) {
-        SCOPED_TRACE(std::string(protocol::kDisplayModeNames.at(static_cast<std::size_t>(mode))) +
-                     " " + std::to_string(block));
-        const std::size_t tracks = mode == protocol::DisplayMode::kSingle ? 1 : 2;
-        BeatsHost host(48000.0, block, tracks, mode, 777);
+    struct JumpCase
+    {
+        protocol::DisplayMode mode;
+        std::uint64_t block;
+        double rate;
+    };
+    for (const JumpCase c : {JumpCase{protocol::DisplayMode::kSingle, 512, 48000.0},
+                             JumpCase{protocol::DisplayMode::kMulti, 512, 48000.0},
+                             JumpCase{protocol::DisplayMode::kSingle, 64, 48000.0},
+                             JumpCase{protocol::DisplayMode::kMulti, 64, 48000.0},
+                             JumpCase{protocol::DisplayMode::kSingle, 4096, 384000.0},
+                             JumpCase{protocol::DisplayMode::kMulti, 4096, 384000.0}}) {
+        SCOPED_TRACE(std::string(protocol::kDisplayModeNames.at(static_cast<std::size_t>(c.mode))) +
+                     " " + std::to_string(c.block) + " at " + std::to_string(c.rate));
+        const std::size_t tracks = c.mode == protocol::DisplayMode::kSingle ? 1 : 2;
+        BeatsHost host(c.rate, c.block, tracks, c.mode, 777);
         if (tracks == 2) {
             host.tracks[1].lateSeconds = 0.003;
         }
         host.play(3.0);
-        const std::uint64_t jump = (host.tracks.front().played / 512 + 20) * 512;
+        const std::uint64_t jump = (host.tracks.front().played / c.block + 20) * c.block;
         host.jumpAt(jump, host.quarterNotesAt(jump) - 0.25);
         // Until each lane's playhead has just passed the jump: later audio comes back over the
-        // same place a quarter beat (6000 samples) on.
+        // same place a quarter beat (0.125 s) on.
+        const auto quarterBeat = static_cast<std::uint64_t>(0.125 * c.rate);
         const auto passed = [&] {
             if (host.frames.empty()) {
                 return false;
             }
             for (std::size_t lane = 0; lane < tracks; ++lane) {
-                if (newestDrawn(host.frames.back().frame, lane) < static_cast<float>(jump + 1024)) {
+                if (newestDrawn(host.frames.back().frame, lane) <
+                    static_cast<float>(jump + quarterBeat / 6)) {
                     return false;
                 }
             }
@@ -410,11 +421,12 @@ TEST(PacedSweep, PlacesAudioFromBeforeAJumpWhereItWasPlayed)
             host.play(1.0 / 60.0);
         }
         const DecodedFrame& frame = host.frames.back().frame;
+        const std::uint64_t after = jump + quarterBeat / 12;
         for (std::size_t lane = 0; lane < tracks; ++lane) {
-            ASSERT_LT(newestDrawn(frame, lane), static_cast<float>(jump + 6000));
+            ASSERT_LT(newestDrawn(frame, lane), static_cast<float>(jump + quarterBeat));
             EXPECT_TRUE(sitsWherePlayed(frame, lane, jump - 1, host.quarterNotesAt(jump - 1)))
                 << "lane " << lane << ": the last sample before the jump";
-            EXPECT_TRUE(sitsWherePlayed(frame, lane, jump + 512, host.quarterNotesAt(jump + 512)))
+            EXPECT_TRUE(sitsWherePlayed(frame, lane, after, host.quarterNotesAt(after)))
                 << "lane " << lane << ": audio after the jump";
         }
     }
@@ -663,51 +675,65 @@ TEST(PacedSweep, PlacesAudioPlayedWhileAwayWhereItWasPlayed)
 
 // A track whose processing restarted captures more than the host played, so its capture indices
 // move further ahead of this track's: the lanes' offset is measured again, and once the new one
-// has lasted, the lane's playhead is with this track's again, within a millisecond.
+// has lasted, the lane's playhead is with this track's again, within a millisecond. At every
+// rate, with blocks of about 10.7 ms.
 TEST(PacedSweep, FollowsATrackWhoseProcessingRestarted)
 {
-    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti);
-    host.play(4.0);
-    host.restart(1, 2400); // 50 ms.
-    host.frames.clear();
-    host.play(3.0);
-    std::size_t compared = 0;
-    for (const BeatsHost::Drawn& drawn : host.frames) {
-        if (drawn.seconds < host.time - 1.0) {
-            continue; // The new offset is taken.
+    for (const double rate : kSampleRates) {
+        SCOPED_TRACE(rate);
+        const auto block = static_cast<std::uint64_t>(std::llround(512.0 * rate / 48000.0));
+        BeatsHost host(rate, block, 2, protocol::DisplayMode::kMulti);
+        host.play(4.0);
+        host.restart(1, static_cast<std::uint64_t>(0.05 * rate));
+        host.frames.clear();
+        host.play(3.0);
+        std::size_t compared = 0;
+        for (const BeatsHost::Drawn& drawn : host.frames) {
+            if (drawn.seconds < host.time - 1.0) {
+                continue; // The new offset is taken.
+            }
+            EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
+                << "at " << drawn.seconds;
+            ++compared;
         }
-        EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
-            << "at " << drawn.seconds;
-        ++compared;
+        EXPECT_GT(compared, 30U);
     }
-    EXPECT_GT(compared, 30U);
 }
 
 // Other tracks' lanes keep their playheads with this track's on every frame, though their blocks
-// arrive 3 ms later and their captures started 777 samples earlier: each lane is placed up to
-// this track's playhead's musical position in its own capture, and the delay covers a lane whose
-// audio has not arrived yet. Mono and stereo.
+// arrive 3 ms later and their captures started 16 ms earlier: each lane is placed up to this
+// track's playhead's musical position in its own capture, and the delay covers a lane whose audio
+// has not arrived yet. At every rate, with blocks of about 10.7 ms; mono and stereo at 48 kHz.
 TEST(PacedSweep, KeepsTheLanesPlayheadsTogether)
 {
-    for (const int channels : {1, 2}) {
-        SCOPED_TRACE(channels);
-        BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 777);
-        host.tracks[1].lateSeconds = 0.003;
-        for (auto& track : host.tracks) {
-            track.engine->setInputChannels(channels);
-        }
-        host.play(6.0);
-        std::size_t compared = 0;
-        for (const BeatsHost::Drawn& drawn : host.frames) {
-            if (drawn.seconds < 4.0) {
-                continue; // The clock locks and the delay settles.
+    for (const double rate : kSampleRates) {
+        // Mono and stereo at 48 kHz; mono at the other rates.
+        for (const int channels : {1, 2}) {
+            if (channels == 2 && rate != 48000.0) {
+                continue;
             }
-            ASSERT_EQ(drawn.frame.laneCount, 2);
-            EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
-                << "within a millisecond at " << drawn.seconds;
-            ++compared;
+            SCOPED_TRACE(std::to_string(rate) + ", " + std::to_string(channels) + " channels");
+            const auto block = static_cast<std::uint64_t>(std::llround(512.0 * rate / 48000.0));
+            const auto offset = static_cast<std::uint64_t>(std::llround(777.0 * rate / 48000.0));
+            BeatsHost host(rate, block, 2, protocol::DisplayMode::kMulti, offset);
+            host.tracks[1].lateSeconds = 0.003;
+            for (auto& track : host.tracks) {
+                track.engine->setInputChannels(channels);
+            }
+            host.play(6.0);
+            std::size_t compared = 0;
+            for (const BeatsHost::Drawn& drawn : host.frames) {
+                if (drawn.seconds < 4.0) {
+                    continue; // The clock locks and the delay settles.
+                }
+                ASSERT_EQ(drawn.frame.laneCount, 2);
+                EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0),
+                            0.001 * host.rate)
+                    << "within a millisecond at " << drawn.seconds;
+                ++compared;
+            }
+            EXPECT_GT(compared, 100U);
         }
-        EXPECT_GT(compared, 100U);
     }
 }
 
