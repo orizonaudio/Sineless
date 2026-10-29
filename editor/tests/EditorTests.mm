@@ -998,18 +998,7 @@ class PointerHoldTest : public EditorTest, public ::testing::WithParamInterface<
 protected:
     void SetUp() override
     {
-        parent = [[NSView alloc] init];
-        window = makeWindow(parent);
-        setPointerControlForTests(&pointer);
-        core.setCursors(GetParam());
-        core.attach((__bridge void*)parent);
-        setPointerControlForTests(nullptr);
-        webView = (__bridge WKWebView*)core.webView()->nativeView();
-        ASSERT_TRUE(pumpUntil(
-            [&] {
-                return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true";
-            },
-            kPageTimeout));
+        open(nullptr);
         // What the page's drag field does when a value is pressed.
         evaluate(webView, @"window.travels = []; window.orizonPointerHold.onTravel = "
                            "(travel, fine) => window.travels.push(`${travel} ${fine}`); ''");
@@ -1019,6 +1008,26 @@ protected:
     {
         core.detach();
         [window close];
+    }
+
+    // Opens the view with the fake pointer, in a process whose main bundle has `bundleType`
+    // (nullptr: this one's), and waits for the page.
+    void open(const char* bundleType)
+    {
+        parent = [[NSView alloc] init];
+        window = makeWindow(parent);
+        setPointerControlForTests(&pointer);
+        setBundleTypeForTests(bundleType);
+        core.setCursors(GetParam());
+        core.attach((__bridge void*)parent);
+        setPointerControlForTests(nullptr);
+        setBundleTypeForTests(nullptr);
+        webView = (__bridge WKWebView*)core.webView()->nativeView();
+        ASSERT_TRUE(pumpUntil(
+            [&] {
+                return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true";
+            },
+            kPageTimeout));
     }
 
     // A left-button press on the view, where AppKit would deliver it; its location on the screen.
@@ -1161,14 +1170,38 @@ TEST_P(PointerHoldTest, HoldsNothingWithoutAPressOnTheView)
     EXPECT_EQ(travels(), "");
 }
 
+// The two kinds of view, named.
+const auto kCursorsName = [](const ::testing::TestParamInfo<WebView::Cursors>& info) {
+    return info.param == WebView::Cursors::kShownByView ? std::string("ShownByView")
+                                                        : std::string("ShownByWebKit");
+};
+
 INSTANTIATE_TEST_SUITE_P(Cursors, PointerHoldTest,
                          ::testing::Values(WebView::Cursors::kShownByWebKit,
                                            WebView::Cursors::kShownByView),
-                         [](const ::testing::TestParamInfo<WebView::Cursors>& info) {
-                             return info.param == WebView::Cursors::kShownByView
-                                        ? std::string("ShownByView")
-                                        : std::string("ShownByWebKit");
-                         });
+                         kCursorsName);
+
+// Logic and GarageBand host Audio Units in an XPC service, where the pointer cannot be frozen:
+// there the page gets no hold, and a drag follows the pointer as before.
+class OutOfProcessPointerHoldTest : public PointerHoldTest
+{
+protected:
+    void SetUp() override { open("XPC!"); }
+};
+
+TEST_P(OutOfProcessPointerHoldTest, LeavesThePointerAloneInAnXpcService)
+{
+    EXPECT_EQ(evaluate(webView, @"typeof window.orizonPointerHold"), "undefined");
+    pressOnView();
+    evaluate(webView, @"window.webkit.messageHandlers.orizonPointerHold?.postMessage('start'); ''");
+    pumpUntil([] { return false; }, std::chrono::milliseconds(300));
+    EXPECT_TRUE(pointer.calls.empty());
+}
+
+INSTANTIATE_TEST_SUITE_P(Cursors, OutOfProcessPointerHoldTest,
+                         ::testing::Values(WebView::Cursors::kShownByWebKit,
+                                           WebView::Cursors::kShownByView),
+                         kCursorsName);
 
 // Logic and GarageBand host Audio Units in XPC services, which cannot freeze the pointer: there
 // the page gets no hold and drags follow the pointer. Plugin hosts are applications.
