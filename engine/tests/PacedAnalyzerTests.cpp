@@ -186,25 +186,65 @@ TEST(PacedWindowsMinimum, NeverStepBackWhenPacingStarts)
     EXPECT_FALSE(measureMotion(host.edges, host.rate).ahead);
 }
 
-// A triggered window changes only with new audio: between blocks no frame is made, however often
-// the page asks, so no work is done for the same trace.
+// A triggered window changes only with new audio: between blocks no frame is made and nothing
+// is read, however often the page asks, so no work is done for the same trace. At a span that is
+// paced, in Normal and in Auto once it triggers.
 TEST(PacedWindowsTriggered, DrawNoFrameBetweenBlocks)
 {
-    PacedHost host(44100.0, 4096); // 93 ms blocks, under 11 a second.
-    host.signal = [](std::uint64_t sample) {
-        return static_cast<float>(std::sin(static_cast<double>(sample) * 0.0071)); // 50 Hz.
-    };
-    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kNormal));
-    host.engine.settings().set(SettingId::kTimeSpan, 0.01);
-    host.engine.settings().set(SettingId::kTriggerLevel, 0.0);
-    host.play(2.0, false);
+    for (const TriggerMode mode : {TriggerMode::kNormal, TriggerMode::kAuto}) {
+        SCOPED_TRACE(static_cast<int>(mode));
+        PacedHost host(44100.0, 4096); // 93 ms blocks, under 11 a second.
+        host.signal = [](std::uint64_t sample) {
+            return static_cast<float>(std::sin(static_cast<double>(sample) * 0.0071)); // 50 Hz.
+        };
+        host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
+        host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+        host.engine.settings().set(SettingId::kTriggerLevel, 0.0);
+        ASSERT_GE(0.5, protocol::kPacedSpanMinimumSeconds);
+        host.play(2.0, false);
+        std::vector<std::byte> first;
+        ASSERT_TRUE(host.analyzer.produce(first)); // The first frame reads its span.
+        std::size_t frames = 0;
+        std::size_t idle = 0;
+        for (int draw = 0; draw < 120; ++draw) {
+            const std::uint64_t written = host.written;
+            host.play(1.0 / 60.0, false);
+            const std::uint64_t read = host.analyzer.work().samplesRead;
+            std::vector<std::byte> bytes;
+            if (host.analyzer.produce(bytes)) {
+                ++frames;
+                ASSERT_TRUE(decode(bytes).has(FrameFlag::kTriggered));
+            }
+            if (host.written == written) {
+                ++idle;
+                EXPECT_EQ(host.analyzer.work().samplesRead, read) << "read between blocks";
+            }
+        }
+        EXPECT_LE(frames, 2U * 11U + 1U) << "at most one frame per block";
+        EXPECT_GT(idle, 60U);
+    }
+}
+
+// Auto drawing untriggered follows the paced edge, as a free-running window does: a frame at
+// nearly every draw, also when blocks come 93 ms apart, not only when a block arrives (about 11
+// a second, a visible stutter).
+TEST(PacedWindowsTriggered, DrawAutoUntriggeredAtEveryDraw)
+{
+    PacedHost host(44100.0, 4096);
+    host.signal = [](std::uint64_t) { return -0.5F; }; // Nothing crosses the level.
+    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kAuto));
+    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    host.play(3.0); // The clock locks; Auto times out.
     std::size_t frames = 0;
     for (int draw = 0; draw < 120; ++draw) {
         host.play(1.0 / 60.0, false);
         std::vector<std::byte> bytes;
-        frames += host.analyzer.produce(bytes) ? 1 : 0;
+        if (host.analyzer.produce(bytes)) {
+            ++frames;
+            ASSERT_FALSE(decode(bytes).has(FrameFlag::kTriggered));
+        }
     }
-    EXPECT_LE(frames, 2U * 11U + 1U) << "at most one frame per block";
+    EXPECT_GE(frames, 110U) << "a frame only when a block arrives";
 }
 
 // Freezing a paced window keeps the window last shown, also when another block arrived before
