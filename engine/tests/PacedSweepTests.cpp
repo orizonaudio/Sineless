@@ -496,6 +496,20 @@ TEST(PacedSweep, NeverStepsBackWhenPacingStarts)
     EXPECT_FALSE(measureMotion(playheads(engine), host.rate).backwards);
 }
 
+// A track whose host stops calling it (suspended or bypassed) stops its own playhead, at its
+// newest audio; the other tracks' lanes, still playing, go on with theirs.
+TEST(PacedSweep, KeepsTheLanesGoingWhenThisTrackStops)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti);
+    host.play(3.0);
+    host.tracks.front().lateSeconds = 1e6; // No more blocks for this track.
+    host.play(1.0);
+    ASSERT_FALSE(host.frames.empty());
+    const DecodedFrame& frame = host.frames.back().frame;
+    EXPECT_GT(newestDrawn(frame, 1), static_cast<float>(host.tracks[1].played) - 0.15F * 48000.0F)
+        << "the lane stopped with this track";
+}
+
 // Audio played while the view was not placing the sweeps live (in Seconds, or in the other
 // display mode) is placed by where it was played once it is again, also across a transport jump
 // made meanwhile: the positions seen before are forgotten, not taken for the newer audio.
