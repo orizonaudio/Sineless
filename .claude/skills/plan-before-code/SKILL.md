@@ -23,8 +23,10 @@ Every change needs a plan except:
   renames, and documentation that steers no agent or check;
 - **a contained fix:** a failing test reproduces it, the search for the same cause elsewhere
   (CLAUDE.md "Fixing a bug") found nothing, and the change is one function and its test;
-- **a follow-up** on an open pull request that fixes a CI failure or a review finding in the
-  change already built, or rebases it.
+- **a follow-up** on an open pull request that fixes a CI failure or a review finding within
+  the plan's design, or rebases it. A review fix that adds state or a mechanism, or removes or
+  changes a case the plan names, is a change to what is built: it updates the plan and goes
+  through a later round (section 4) before it is pushed. Without a plan, it goes to the owner.
 
 Never exempt otherwise: `protocol/`, `.github/workflows/`, code the audio thread runs, a change to
 what an FR, AD or QS states, and the files that steer agents (`CLAUDE.md`, `REVIEW.md`,

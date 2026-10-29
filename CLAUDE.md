@@ -50,7 +50,9 @@ message with a short `Prior art:` note naming the sources.
   text, formatting, version numbers, mechanical renames, documentation that steers no agent
   or check); a contained fix (a failing test reproduces it, the search for the same cause
   found nothing, and it is one function and its test); a follow-up fixing a CI failure or a
-  review finding on an open pull request. Never exempt: `protocol/`, `.github/workflows/`,
+  review finding on an open pull request within its plan's design. A fix that adds state or a
+  mechanism, or removes or changes a case the plan names, updates the plan and goes through a
+  later plan round before it is pushed; without a plan, it goes to the owner. Never exempt: `protocol/`, `.github/workflows/`,
   code the audio thread runs, a change to what an FR, AD or QS states, and `CLAUDE.md`,
   `REVIEW.md` and `.claude/**`.
 - **Say in one line before coding** whether the change is exempt, and why.
@@ -133,6 +135,8 @@ checks you could not run.
   and a recommendation (fix, redesign or waive) and wait. The answer settles the findings it
   covers; only the owner's removing the label hands the pull request back, for one more round
   (the count never resets, so the label comes back at the next failure). A hook enforces this.
+- Push the next fix only once the AI review of the previous push has finished, and read CI's
+  result for that push first: a push cancels the review and CI still running on the one before.
 - When the same mechanism draws Important findings in two review rounds running, do not add
   another guard: update the plan with the design that removes it (a later plan round), or, for a
   change without a plan, take that design to the owner.
