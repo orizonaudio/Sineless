@@ -1,4 +1,8 @@
 {
+  "page": {
+    "pixelRatio": 1.0,
+    "viewWidth": 1182
+  },
   "phases": [
     {
       "after": null,

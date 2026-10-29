@@ -39,12 +39,14 @@ function frame(peak: number, spanSeconds = 1): string {
 const viewStart = 0.25;
 const viewEnd = 0.75;
 const panSeconds = 0.5;
+const hello: ControlMessage = { type: "hello", viewWidth: 100, pixelRatio: 1 };
 const view: ControlMessage = { type: "view", start: viewStart, end: viewEnd };
 const pan: ControlMessage = { type: "pan", seconds: panSeconds };
 
 const recording: Recording = {
   scenario: "Test",
   protocolVersion: 0,
+  page: { viewWidth: 100, pixelRatio: 1 },
   snapshot: { type: "snapshot", sampleRate: 48000 },
   phases: [
     {
@@ -88,7 +90,7 @@ function started(of: Recording = recording) {
 describe("a replay of a recorded session", () => {
   test("answers hello with the recorded snapshot, then its replies after the first frame", () => {
     const { replay, messages, peaks, run } = started();
-    replay.send({ type: "hello" });
+    replay.send(hello);
     run();
     expect(messages.map((m) => m.type)).toEqual(["snapshot"]);
     replay.requestFrame();
@@ -99,7 +101,7 @@ describe("a replay of a recorded session", () => {
 
   test("repeats the phase's frame for every request", () => {
     const { replay, peaks, run } = started();
-    replay.send({ type: "hello" });
+    replay.send(hello);
     for (let i = 0; i < 3; i++) {
       replay.requestFrame();
     }
@@ -109,7 +111,7 @@ describe("a replay of a recorded session", () => {
 
   test("moves to the next phase on its message, and answers it at once", () => {
     const { replay, messages, peaks, run } = started();
-    replay.send({ type: "hello" });
+    replay.send(hello);
     replay.send({ ...view });
     run();
     expect(replay.currentPhase).toBe(1);
@@ -149,7 +151,7 @@ describe("a replay of a recorded session", () => {
 
   test("keeps the phase on a view that is a step on the way to the recorded one", () => {
     const { replay, peaks, run } = started();
-    replay.send({ type: "hello" });
+    replay.send(hello);
     replay.send({ type: "view", start: 0.1, end: 0.9 });
     replay.requestFrame();
     run();
@@ -161,7 +163,7 @@ describe("a replay of a recorded session", () => {
 
   test("collects a message the recording does not hold, with what it expected", () => {
     const { replay } = started();
-    replay.send({ type: "hello" });
+    replay.send(hello);
     const setting = { type: "setSetting", name: "timeSpan", value: 2 } as const;
     replay.send(setting);
     expect(replay.unexpected).toEqual([{ message: setting, expected: view }]);
@@ -173,7 +175,7 @@ describe("a replay of a recorded session", () => {
 
   test("ignores the page's viewport, which the recorded columns do not follow", () => {
     const { replay } = started();
-    replay.send({ type: "hello" });
+    replay.send(hello);
     replay.send({ type: "viewport", viewWidth: 500, pixelRatio: 2 });
     expect(replay.unexpected).toEqual([]);
     expect(replay.currentPhase).toBe(0);
@@ -181,7 +183,7 @@ describe("a replay of a recorded session", () => {
 
   test("enters a host phase only when the test says, and keeps the frame before it", () => {
     const { replay, messages, peaks, run } = started();
-    replay.send({ type: "hello" });
+    replay.send(hello);
     replay.send({ ...view });
     replay.send({ ...pan });
     expect(replay.currentPhase).toBe(2);
@@ -196,7 +198,7 @@ describe("a replay of a recorded session", () => {
 
   test("refuses a host event the recording does not hold next", () => {
     const { replay } = started();
-    replay.send({ type: "hello" });
+    replay.send(hello);
     expect(() => {
       replay.hostEvent();
     }).toThrow(/not a host event/u);
