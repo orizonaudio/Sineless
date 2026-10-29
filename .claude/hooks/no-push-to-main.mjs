@@ -14,11 +14,11 @@ for (const push of pushes) {
   const refspecs = push.args.filter((word) => !word.startsWith("-")).slice(1);
   const targetsMain =
     refspecs.length === 0
-      ? currentBranch() === "main"
+      ? currentBranch(push.dir) === "main"
       : refspecs.some(
           (spec) =>
             /(^|:)(refs\/heads\/)?main$/.test(spec) ||
-            (spec === "HEAD" && currentBranch() === "main"),
+            (spec === "HEAD" && currentBranch(push.dir) === "main"),
         );
   if (targetsMain) {
     process.stderr.write(

@@ -22,18 +22,21 @@ function block(message) {
   process.exit(2);
 }
 
+// A comment's text can sit on another part than its gh (a heredoc, `echo ... | gh ...`), so the
+// whole command is read for it. A path such as .github/workflows/ai-review.yml is not a command.
+const runsGh = ghParts.length > 0;
+const reviewCommand = /(?<![\w./-])\/ai-review(?![\w.-])/i;
+
 // Only a maintainer hands a pull request back or decides that its findings do not hold.
-if (ghParts.some((part) => /\/ai-review\s+waive/i.test(part))) {
+if (runsGh && /(?<![\w./-])\/ai-review\s+waive/i.test(command)) {
   block(
     "Waiving the AI review is a maintainer's decision: give the owner the findings and your recommendation.",
   );
 }
 if (
-  ghParts.some(
-    (part) =>
-      part.includes(label) &&
-      /--remove-label|(-X|--method)\s*DELETE/i.test(part),
-  )
+  runsGh &&
+  command.includes(label) &&
+  /--remove-label|(-X|--method)[\s=]*DELETE/i.test(command)
 ) {
   block(
     `Only the owner removes the ${label} label: it is how a pull request is handed back (CLAUDE.md, Delivering).`,
@@ -41,9 +44,7 @@ if (
 }
 
 const pushes = split.map(gitCall).filter((call) => call?.subcommand === "push");
-// The comment's text can sit on another part (a heredoc, `echo /ai-review | gh ...`), so the whole
-// command is read.
-const asksForReview = ghParts.length > 0 && command.includes("/ai-review");
+const asksForReview = runsGh && reviewCommand.test(command);
 if (pushes.length === 0 && !asksForReview) {
   process.exit(0);
 }
