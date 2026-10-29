@@ -481,6 +481,64 @@ TEST(PacedSweep, LeavesAStoppedTrackBehind)
     EXPECT_LE(motion.advanceErrorP99, 1.0);
 }
 
+// A transport jump in a block that arrives within the same 2 ms analysis step as the next block
+// is still placed where it was played: every sample of the jump's own block. With blocks of 1.5
+// per step, one block in three shares its step with the next; the jump lands on each of three
+// blocks in a row. At every rate.
+TEST(PacedSweep, PlacesAJumpsOwnBlockWhereItWasPlayed)
+{
+    for (const double rate : kSampleRates) {
+        const auto block = static_cast<std::uint64_t>(std::llround(rate * 0.002 / 1.5));
+        for (std::uint64_t shift = 0; shift < 3; ++shift) {
+            SCOPED_TRACE(std::to_string(rate) + ", jump on block +" + std::to_string(shift));
+            BeatsHost host(rate, block);
+            host.play(3.0);
+            const std::uint64_t jump = (host.tracks.front().played / block + 20 + shift) * block;
+            host.jumpAt(jump, host.quarterNotesAt(jump) - 0.25);
+            const auto quarterBeat = static_cast<std::uint64_t>(0.125 * rate);
+            const std::uint64_t passed = jump + (quarterBeat / 6);
+            while (host.frames.empty() ||
+                   newestDrawn(host.frames.back().frame) < static_cast<float>(passed)) {
+                host.frames.clear();
+                host.play(1.0 / 60.0);
+            }
+            const DecodedFrame& frame = host.frames.back().frame;
+            for (std::uint64_t sample = jump; sample < jump + block; ++sample) {
+                ASSERT_TRUE(sitsWherePlayed(frame, 0, sample, host.quarterNotesAt(sample)))
+                    << "sample " << sample - jump << " of the jump's block";
+            }
+        }
+    }
+}
+
+// More position changes within a sweep than the timeline keeps (a jump on each of 400 blocks in
+// a bar's sweep): the oldest audio is placed by the oldest change kept, and the playhead still
+// moves on, never back.
+TEST(PacedSweep, KeepsMovingThroughMorePositionChangesThanAreKept)
+{
+    BeatsHost host(48000.0, 64);
+    host.tracks.front().engine->settings().set(SettingId::kBeatSpan,
+                                               static_cast<double>(protocol::BeatSpan::kOneBar));
+    host.play(3.0);
+    const std::uint64_t first = (host.tracks.front().played / 64 + 4) * 64;
+    for (std::uint64_t block = 0; block < 400; ++block) {
+        host.jumpAt(first + block * 64,
+                    host.quarterNotesAt(first + block * 64) + (block % 2 == 0 ? 0.001 : -0.001));
+        host.play(64.0 / 48000.0);
+    }
+    (void)host.tracks.front().engine->takeEdges();
+    host.play(0.5);
+    const auto draws = playheads(*host.tracks.front().engine);
+    ASSERT_GT(draws.size(), 20U);
+    EXPECT_FALSE(measureMotion(draws, host.rate).backwards);
+    // Audio played after the last change sits where it was played: in a bar's sweep, at its
+    // fraction of the bar.
+    const DecodedFrame& frame = host.frames.back().frame;
+    const std::uint64_t after = first + (std::uint64_t{400} * 64) + 4096;
+    ASSERT_GT(newestDrawn(frame), static_cast<float>(after));
+    EXPECT_TRUE(sitsWherePlayed(frame, 0, after, host.quarterNotesAt(after) / 4.0));
+}
+
 // Frozen while the transport jumps, then live again: the audio played meanwhile is placed by
 // where it was played, before the jump and after it, not by the position the sweep was placed by
 // before the freeze nor by the newest. The audio half a beat before the jump (one-beat sweep) is

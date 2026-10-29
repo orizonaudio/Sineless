@@ -52,6 +52,8 @@ public:
     }
 
     [[nodiscard]] std::uint64_t length() const { return count; }
+    // One past the newest source sample placed: where the next update starts.
+    [[nodiscard]] std::uint64_t placedTo() const { return placedEnd; }
     [[nodiscard]] int channels() const { return channelCount; }
     // Whether every position has been drawn since the image was (re)built: false while a sweep
     // longer than what the source held fills in over its first pass.
