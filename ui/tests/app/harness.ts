@@ -1,7 +1,7 @@
 // Starts the real page, as the plugin's web view loads it, on the mock back end. Each test file
 // runs in a page of its own and starts the app once: the app finds its elements by id, so a
 // second one in the same page would draw into the first one's.
-import { expect, vi } from "vitest";
+import { afterEach, expect, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import html from "../../index.html?raw";
@@ -12,9 +12,14 @@ import {
 import type { ControlMessage, Transport } from "../../src/bridge/transport.ts";
 import { startSineless } from "../../src/start.ts";
 import "../../src/styles.css";
+import {
+  describeUnexpected,
+  loadRecording,
+  ReplayTransport,
+} from "./replay-transport.ts";
 
-export interface Started {
-  readonly transport: MockTransport;
+export interface Started<Back extends Transport = MockTransport> {
+  readonly transport: Back;
   // Messages the page sent, in order.
   readonly sent: ControlMessage[];
   // Holds the page's request for a frame, as the engine does while nothing triggers, and
@@ -30,6 +35,43 @@ export async function startApp(
   options: MockOptions = {},
   transport = new MockTransport(options),
 ): Promise<Started> {
+  return startOn(transport);
+}
+
+// The replay the page was started on by startRecorded, which fails the test on a message its
+// recording does not hold.
+let replay: { scenario: string; transport: ReplayTransport } | undefined;
+
+// Fails with the messages the page sent that the recording does not hold, and forgets them.
+export function checkReplay(): void {
+  if (replay === undefined || replay.transport.unexpected.length === 0) {
+    return;
+  }
+  const failure = describeUnexpected(
+    replay.scenario,
+    replay.transport.unexpected,
+  );
+  replay.transport.unexpected.length = 0;
+  throw new Error(failure);
+}
+
+afterEach(() => {
+  checkReplay();
+});
+
+// Starts the page on a session the real engine recorded (protocol/tests/data/sessions): it is
+// shown what the engine sent, and may send only what the recording holds.
+export async function startRecorded(
+  scenario: string,
+): Promise<Started<ReplayTransport>> {
+  const transport = new ReplayTransport(await loadRecording(scenario));
+  replay = { scenario, transport };
+  return startOn(transport);
+}
+
+async function startOn<Back extends Transport>(
+  transport: Back,
+): Promise<Started<Back>> {
   document.body.innerHTML = new DOMParser().parseFromString(
     html,
     "text/html",
@@ -109,6 +151,7 @@ export async function press(button: HTMLElement): Promise<void> {
 
 // Waits until the page has drawn frames that reflect everything asked so far.
 export async function settle(frames = 3): Promise<void> {
+  checkReplay();
   const from = window.orizonDebug?.frameCount ?? 0;
   await vi.waitFor(
     () => {
