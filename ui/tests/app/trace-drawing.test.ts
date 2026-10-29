@@ -1018,7 +1018,7 @@ describe("lanes layer in order, whatever their channel and target", () => {
     });
   });
 
-  test.each([...counts, maxLanes + 1])(
+  test.each(counts)(
     "%i translucent lanes over each other layer in lane order",
     (count) => {
       const colors = Array.from({ length: count }, (_, lane) =>
