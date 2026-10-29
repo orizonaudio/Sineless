@@ -559,8 +559,12 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     const std::uint64_t newest = engine.captureRing().endIndex();
     pacedEdge.observe(engine.blockStamp().latest(), liveRate);
     const bool paceable = liveSeconds && span >= protocol::kPacedSpanMinimumSeconds * sampleRate;
-    const std::uint64_t edge =
-        paceable ? pacedEdge.edge(clockNanos(), newest, protocol::kPacingDelayCapSeconds) : newest;
+    std::uint64_t edge = newest;
+    if (paceable) {
+        edge = pacedEdge.edge(clockNanos(), newest, protocol::kPacingDelayCapSeconds);
+    } else if (liveSeconds) {
+        edge = pacedEdge.showNewest(clockNanos(), newest);
+    }
     // A free-running window, or Auto drawing untriggered, is new when its edge moved; a triggered
     // window only with new audio, so no work is done between blocks.
     const bool followsEdge =

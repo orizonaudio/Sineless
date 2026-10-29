@@ -120,6 +120,15 @@ public:
     // The edge at `nanos`, with `newest` the index one past the newest sample captured, for a
     // view at `sampleRate` whose largest delay is `capSeconds`.
     [[nodiscard]] std::uint64_t edge(std::uint64_t nanos, std::uint64_t newest, double capSeconds);
+    // The view showed the newest sample at `nanos`, pacing not applying to it (a span shorter than
+    // pacedSpanMinimumSeconds): once it applies again, the edge goes on from there, never back.
+    std::uint64_t showNewest(std::uint64_t nanos, std::uint64_t newest)
+    {
+        pacedLast = false;
+        lastEdge = newest;
+        lastNanos = nanos;
+        return newest;
+    }
     // Whether the last edge was paced.
     [[nodiscard]] bool paced() const { return pacedLast; }
     // The delay in samples (0 unpaced).
