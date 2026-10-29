@@ -56,6 +56,13 @@ function fieldOf(host: string): HTMLElement {
   return byId(host).querySelector(".field") as HTMLElement;
 }
 
+// Shows the time base the pill's value is in, and waits for it: the page shows the value once the
+// back end answers with the new time base, not when the button is clicked.
+async function showTimeBase(timeBase: string, host: string): Promise<void> {
+  await userEvent.click(choice("time-base", timeBase));
+  await expect.element(fieldOf(host)).toBeVisible();
+}
+
 function pointer(type: string, target: Element, y: number): void {
   const box = target.getBoundingClientRect();
   target.dispatchEvent(
@@ -87,7 +94,7 @@ describe("a value's pill", () => {
   test.each(pills)(
     "$name: dragging from the icon steps the value",
     async ({ host, setting, timeBase }) => {
-      await userEvent.click(choice("time-base", timeBase));
+      await showTimeBase(timeBase, host);
       const icon = iconOf(host);
       const from = app.sent.length;
       const y = icon.getBoundingClientRect().top;
@@ -103,7 +110,7 @@ describe("a value's pill", () => {
   test.each(pills)(
     "$name: pressing the icon focuses the value",
     async ({ host, timeBase }) => {
-      await userEvent.click(choice("time-base", timeBase));
+      await showTimeBase(timeBase, host);
       await userEvent.click(iconOf(host));
       expect(document.activeElement).toBe(fieldOf(host));
     },
@@ -112,7 +119,7 @@ describe("a value's pill", () => {
   test.each(pills)(
     "$name: the wheel over the icon steps the value",
     async ({ host, setting, timeBase }) => {
-      await userEvent.click(choice("time-base", timeBase));
+      await showTimeBase(timeBase, host);
       const from = app.sent.length;
       iconOf(host).dispatchEvent(
         new WheelEvent("wheel", {
@@ -129,7 +136,7 @@ describe("a value's pill", () => {
   test.each(pills)(
     "$name: double-clicking the icon opens the value for typing",
     async ({ host, timeBase }) => {
-      await userEvent.click(choice("time-base", timeBase));
+      await showTimeBase(timeBase, host);
       await userEvent.dblClick(iconOf(host));
       const input = fieldOf(host).querySelector("input");
       expect(input).not.toBeNull();
@@ -187,7 +194,7 @@ describe("a value's pill", () => {
   // The time pill holds the span and the beat span, one shown at a time: only the one shown
   // answers.
   test("in Seconds, the time pill steps the span and not the beat span", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await showTimeBase("Sec", "span-field");
     const from = app.sent.length;
     iconOf("span-field").dispatchEvent(
       new WheelEvent("wheel", {
