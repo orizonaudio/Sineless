@@ -1098,11 +1098,17 @@ TEST_P(PointerHoldTest, FollowsTheMouseThroughTheApplicationsEventsUntilItsRelea
         << "travels: " << travels();
     // Still at the press: shown there with no warp.
     EXPECT_EQ(pointer.calls, (std::vector<std::string>{"hide", "freeze", "unfreeze", "show"}));
-    // The monitor is gone with the hold: later drags report nothing.
-    const std::string before = travels();
+    // The monitor went with the hold: the next drag's motion counts once, not once per drag so far.
+    evaluate(webView, @"window.travels = []; ''");
+    pointer.at = pressOnView();
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return travels() == "0 false"; }, std::chrono::seconds(2)));
     sendThroughApplication(kCGEventLeftMouseDragged, -20);
-    pumpUntil([] { return false; }, std::chrono::milliseconds(200));
-    EXPECT_EQ(travels(), before);
+    sendThroughApplication(kCGEventLeftMouseUp, 0);
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 8; }, std::chrono::seconds(2)));
+    EXPECT_TRUE(
+        pumpUntil([&] { return travels().ends_with("-20 false"); }, std::chrono::seconds(2)))
+        << "travels: " << travels();
 }
 
 TEST_P(PointerHoldTest, EndsWhenTheButtonIsFoundUpWithNoRelease)
