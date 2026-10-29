@@ -11,6 +11,7 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <cstdlib>
 #include <iterator>
 #include <limits>
 #include <utility>
