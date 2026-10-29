@@ -50,15 +50,20 @@ public:
                 const std::array<const float*, 2> channels{left.data(), right.data()};
                 engine->captureRing().write(channels.data(), track.channels,
                                             static_cast<int>(block));
+                // The project's time in seconds too, as hostTimeline in plugin/src/Processor.cpp
+                // reports it.
                 engine->timeline().advance({.playing = true,
                                             .positionValid = true,
                                             .quarterNotes = quarterNotes,
                                             .tempoValid = tempoKnown,
-                                            .tempo = kTempo},
+                                            .tempo = kTempo,
+                                            .secondsValid = true,
+                                            .seconds = seconds},
                                            static_cast<int>(block), rate);
             }
             sample += block;
             quarterNotes += static_cast<double>(block) * kTempo / (60.0 * rate);
+            seconds += static_cast<double>(block) / rate;
             std::vector<std::byte> produced;
             if (analyzer.produce(produced)) {
                 bytes = std::move(produced);
@@ -102,6 +107,7 @@ private:
     std::vector<Member> members;
     std::uint64_t sample = 0;
     double quarterNotes = 0.0;
+    double seconds = 0.0;
 };
 
 } // namespace orizon::engine
