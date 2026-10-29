@@ -1,0 +1,41 @@
+# Temporary: times the slow Chromium app test files on main's code and on this branch's, in one
+# job on one runner, and prints the runner's CPU. Not for merging.
+name: Probe timing
+on:
+  pull_request:
+    paths: [".github/workflows/probe-timing.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Runner
+        run: |
+          nproc
+          lscpu | grep -E 'Model name|Thread|Core|Socket|MHz'
+      - name: Main's code alongside
+        run: |
+          git worktree add ../main origin/main
+          ln -s "$PWD/node_modules" ../main/node_modules
+      - name: Time both, twice
+        run: |
+          for round in 1 2; do
+            for dir in ../main .; do
+              start=$(date +%s)
+              (cd "$dir" && APP_BROWSERS=chromium npx vitest run --project app --testTimeout=180000 \
+                ui/tests/app/controls.test.ts ui/tests/app/multi-track.test.ts 2>&1 |
+                sed 's/\x1b\[[0-9;]*m//g' | grep -E '^ (✓|❯)  app|Tests ') || true
+              echo "== round $round $dir: $(( $(date +%s) - start )) s"
+            done
+          done
