@@ -703,10 +703,22 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         window.readoutStart = whole.start;
         window.readoutCount = whole.sampleCount;
         if (visibleSamples <= command.columns) {
-            // Raw samples: the whole span, cropped to the view as a triggered window is, so the
-            // trace reaches past the screen's edges.
-            sampleCount = std::min(spanSamples, end);
-            window.start = static_cast<double>(end - sampleCount);
+            // Raw samples: the view of the whole span, as a triggered window crops it, read with
+            // a sample beyond each edge so the trace reaches past the screen's edges. Only those
+            // are read: the edge moves every frame, and the span may be seconds long.
+            const std::uint64_t count = std::min(spanSamples, end);
+            const double wholeStart = static_cast<double>(end - count);
+            const double from = wholeStart + command.viewStart * static_cast<double>(count);
+            const double to = wholeStart + command.viewEnd * static_cast<double>(count);
+            const double first = std::max(wholeStart, std::floor(from) - 1.0);
+            const double last = std::min(static_cast<double>(end), std::ceil(to) + 2.0);
+            sampleCount = static_cast<std::uint64_t>(std::max(0.0, last - first));
+            window.start = first;
+            if (sampleCount > 0) {
+                window.cropStart = (from - first) / static_cast<double>(sampleCount);
+                window.cropEnd = (to - first) / static_cast<double>(sampleCount);
+            }
+            window.visiblePart = true;
         } else {
             // Columns: the window covers only the visible part, on a grid of its own, so its
             // columns keep fixed sample boundaries and do not shimmer; readouts still cover the
