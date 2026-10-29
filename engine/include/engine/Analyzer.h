@@ -416,6 +416,7 @@ private:
     // Forgets the stamps sweeps were placed by, when they are not placed live.
     void forgetPlacing(bool own, bool lanes);
     [[nodiscard]] std::uint64_t laneSweepEdge(Lane& lane, const Lane& own);
+    static void notePosition(const MusicalStamp& latest, double sampleRate, SweepPlacing& placing);
     static MusicalStamp
     placingStamp(const MusicalStamp& latest, std::uint64_t end, double sampleRate,
                  SweepPlacing& placing,

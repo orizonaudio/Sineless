@@ -417,7 +417,9 @@ TEST(PacedSweep, LeavesAStoppedTrackBehind)
 }
 
 // Frozen while the transport jumps, then live again: the audio played meanwhile is placed by
-// where it was played, not by the position the sweep was placed by before the freeze.
+// where it was played, before the jump and after it, not by the position the sweep was placed by
+// before the freeze nor by the newest. The audio half a beat before the jump (one-beat sweep) is
+// where no audio after it reaches by the time of the check.
 TEST(PacedSweep, PlacesAudioPlayedDuringAFreezeWhereItWasPlayed)
 {
     for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
@@ -426,7 +428,7 @@ TEST(PacedSweep, PlacesAudioPlayedDuringAFreezeWhereItWasPlayed)
         BeatsHost host(48000.0, 512, tracks, mode);
         host.play(3.0);
         host.analyzer->setFrozen(true);
-        host.play(0.2);
+        host.play(0.4);
         const std::uint64_t jump = (host.tracks.front().played / 512 + 4) * 512;
         host.jumpAt(jump, host.quarterNotesAt(jump) - 0.375);
         host.play(0.3);
@@ -437,11 +439,45 @@ TEST(PacedSweep, PlacesAudioPlayedDuringAFreezeWhereItWasPlayed)
         const DecodedFrame& frame = host.frames.back().frame;
         ASSERT_FALSE(frame.has(FrameFlag::kFrozen));
         const std::uint64_t after = jump + 4096;
+        const std::uint64_t before = jump - 12000;
         for (std::size_t lane = 0; lane < tracks; ++lane) {
             ASSERT_GT(newestDrawn(frame, lane), static_cast<float>(after));
             EXPECT_TRUE(sitsWherePlayed(frame, lane, after, host.quarterNotesAt(after)))
                 << "lane " << lane << ": audio played after the jump, while frozen";
+            EXPECT_TRUE(sitsWherePlayed(frame, lane, before, host.quarterNotesAt(before)))
+                << "lane " << lane << ": audio played before the jump, while frozen";
         }
+    }
+}
+
+// Frozen just after a transport jump the playhead has not reached yet, the frozen sweep holds
+// the audio up to the newest, each block where it was played: the audio between the playhead and
+// the jump, and the jump's own. 2048-sample blocks, later from 3 s by 60 ms (absorbed, not a
+// jump), so the delay rises past a block and the playhead trails the jump when it arrives.
+TEST(PacedSweep, FreezesAJumpThePlayheadHadNotReachedWhereItWasPlayed)
+{
+    BeatsHost host(48000.0, 2048);
+    host.play(3.0);
+    host.tracks.front().lateSeconds = 0.06;
+    host.play(2.0);
+    const std::uint64_t jump = (host.tracks.front().played / 2048 + 4) * 2048;
+    host.jumpAt(jump, host.quarterNotesAt(jump) - 0.375);
+    while (host.tracks.front().played < jump + 2048) {
+        host.play(0.0005);
+    }
+    // A frame now, then the freeze at once: the playhead is where this frame drew it.
+    (void)host.tracks.front().engine->takeEdges();
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(host.analyzer->produce(bytes));
+    const auto playhead =
+        static_cast<std::uint64_t>(playheads(*host.tracks.front().engine).back().edge);
+    ASSERT_LT(playhead + 64, jump) << "the playhead had not reached the jump";
+    host.analyzer->setFrozen(true);
+    ASSERT_TRUE(host.analyzer->produce(bytes));
+    const DecodedFrame frame = decode(bytes);
+    ASSERT_TRUE(frame.has(FrameFlag::kFrozen));
+    for (const std::uint64_t sample : {(playhead + jump) / 2, jump + 256}) {
+        EXPECT_TRUE(sitsWherePlayed(frame, 0, sample, host.quarterNotesAt(sample))) << sample;
     }
 }
 
