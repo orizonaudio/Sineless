@@ -1250,7 +1250,7 @@ std::uint64_t Analyzer::ownSweepEdge(protocol::BeatSpan span)
 // (AD-15). A measurement more than a millisecond off means one track has seen a transport jump
 // the other has not yet: it is taken only when it lasts (the offset itself changed, as when a
 // track's processing restarted). Any rates: this track's indices are scaled to the lane's. The
-// lane's newest sample while this track is not paced, or while either transport is stopped.
+// lane's newest sample while this track is not paced, or until both have played with a position.
 std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
 {
     constexpr double kOffsetToleranceSeconds = 0.001;
@@ -1262,10 +1262,11 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
     const MusicalStamp ownLatest = own.engine->timeline().latest();
     const MusicalStamp laneLatest = lane.engine->timeline().latest();
     // Each lane follows its own newest audio while this track is not paced (its blocks stopped,
-    // or before its clock locks: its playhead may not move), and while either transport is
-    // stopped (each timeline then runs on from its own start, so positions do not say which
-    // audio was played together).
-    if (!pacedEdge.paced() || !ownLatest.playing || !laneLatest.playing) {
+    // or before its clock locks: its playhead may not move), and until both instances have played
+    // with a host position: before that, each timeline runs on from where it started, so
+    // positions do not say which audio was played together. After it, also while stopped, every
+    // clock runs on from the same last position (AD-15).
+    if (!pacedEdge.paced() || !ownLatest.anchored || !laneLatest.anchored) {
         lane.indexOffset.reset();
         return newest;
     }
