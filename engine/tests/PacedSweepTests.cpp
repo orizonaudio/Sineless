@@ -122,10 +122,28 @@ public:
         jumpTo = quarterNotes;
     }
 
+    // From host sample `sample` on, the transport plays at `newTempo` in `newNumerator`/4, its
+    // position going on.
+    void changeAt(std::uint64_t sample, double newTempo, int newNumerator)
+    {
+        changeSample = sample;
+        laterTempo = newTempo;
+        laterNumerator = newNumerator;
+    }
+
+    [[nodiscard]] bool changed(std::uint64_t sample) const
+    {
+        return changeSample && sample >= *changeSample;
+    }
+
     [[nodiscard]] double quarterNotesAt(std::uint64_t sample) const
     {
         if (jumpSample && sample >= *jumpSample) {
             return jumpTo + static_cast<double>(sample - *jumpSample) / rate * tempo / 60.0;
+        }
+        if (changed(sample)) {
+            return static_cast<double>(*changeSample) / rate * tempo / 60.0 +
+                   static_cast<double>(sample - *changeSample) / rate * laterTempo / 60.0;
         }
         return static_cast<double>(sample) / rate * tempo / 60.0;
     }
@@ -165,7 +183,9 @@ private:
                                    .positionValid = true,
                                    .quarterNotes = quarterNotesAt(track.played),
                                    .tempoValid = true,
-                                   .tempo = tempo},
+                                   .tempo = changed(track.played) ? laterTempo : tempo,
+                                   .timeSignatureValid = true,
+                                   .numerator = changed(track.played) ? laterNumerator : 4},
                                   static_cast<int>(block), rate);
         track.played += block;
         engine.blockStamp().publish(
@@ -174,6 +194,9 @@ private:
 
     std::optional<std::uint64_t> jumpSample;
     double jumpTo = 0.0;
+    std::optional<std::uint64_t> changeSample;
+    double laterTempo = 0.0;
+    int laterNumerator = 4;
 };
 
 std::vector<EdgeDraw> playheads(Engine& engine)
@@ -503,6 +526,62 @@ TEST(PacedSweep, NeverStepsBackWhenPacingStarts)
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
     host.play(1.0);
     EXPECT_FALSE(measureMotion(playheads(engine), host.rate).backwards);
+}
+
+// A tempo or metre change reaches the sweep when the playhead does: until then the cycle keeps
+// its length, and from there it takes the new one. 2048-sample blocks, later from 3 s by 60 ms
+// (absorbed), so the playhead trails the newest audio by more than a block. A one-beat sweep from
+// 120 to 100 BPM (0.5 s to 0.6 s), and a one-bar sweep from 4/4 to 3/4 (2 s to 1.5 s).
+TEST(PacedSweep, ChangesTheCycleWhenThePlayheadReachesTheChange)
+{
+    struct Change
+    {
+        std::string name;
+        protocol::BeatSpan span;
+        double tempo;
+        int numerator;
+        double before;
+        double after;
+    };
+    for (const Change& change : {Change{.name = "tempo",
+                                        .span = protocol::BeatSpan::kOneBeat,
+                                        .tempo = 100.0,
+                                        .numerator = 4,
+                                        .before = 0.5,
+                                        .after = 0.6},
+                                 Change{.name = "metre",
+                                        .span = protocol::BeatSpan::kOneBar,
+                                        .tempo = 120.0,
+                                        .numerator = 3,
+                                        .before = 2.0,
+                                        .after = 1.5}}) {
+        SCOPED_TRACE(change.name);
+        BeatsHost host(48000.0, 2048);
+        Engine& engine = *host.tracks.front().engine;
+        engine.settings().set(SettingId::kBeatSpan, static_cast<double>(change.span));
+        host.play(3.0);
+        host.tracks.front().lateSeconds = 0.06;
+        host.play(2.0);
+        const std::uint64_t at = (host.tracks.front().played / 2048 + 4) * 2048;
+        host.changeAt(at, change.tempo, change.numerator);
+        while (host.tracks.front().played < at + 2048) {
+            host.play(0.0005);
+        }
+        (void)engine.takeEdges();
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(host.analyzer->produce(bytes));
+        ASSERT_LT(playheads(engine).back().edge, static_cast<double>(at))
+            << "the playhead had not reached the change";
+        // The cycle's length: the samples a sweep shows, not zoomed.
+        const auto cycle = [&](const DecodedFrame& frame) {
+            return frame.visibleSamples / host.rate;
+        };
+        EXPECT_NEAR(cycle(decode(bytes)), change.before, 1e-3) << "before the playhead";
+        host.frames.clear();
+        host.play(0.2);
+        ASSERT_FALSE(host.frames.empty());
+        EXPECT_NEAR(cycle(host.frames.back().frame), change.after, 1e-3) << "reached";
+    }
 }
 
 // A track whose host stops calling it (suspended or bypassed) stops its own playhead, at its
