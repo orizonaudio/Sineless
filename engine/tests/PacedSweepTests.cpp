@@ -539,6 +539,29 @@ TEST(PacedSweep, KeepsMovingThroughMorePositionChangesThanAreKept)
     EXPECT_TRUE(sitsWherePlayed(frame, 0, after, host.quarterNotesAt(after) / 4.0));
 }
 
+// A lane at another sample rate than this track's (an instance in an oversampled FX chain) does
+// not hold this track's playhead back: at every pair of rates, this track's playhead stays within
+// four of the slower track's blocks of its own newest audio. Mapped into the lane's capture at this
+// track's rate, a lane at half the rate or less was mapped further past its audio each moment, and
+// its shortfall raised the delay to the largest.
+TEST(PacedSweep, LeavesThisTrackPacedBesideALaneAtAnyRate)
+{
+    for (const double own : kSampleRates) {
+        for (const double laneRate : kSampleRates) {
+            SCOPED_TRACE(std::to_string(own) + " beside " + std::to_string(laneRate));
+            BeatsHost host(own, 512, 2, protocol::DisplayMode::kMulti, 777);
+            host.setTrack(1, laneRate, true);
+            host.play(2.0);
+            (void)host.tracks.front().engine->takeEdges();
+            host.play(1.0);
+            const Motion motion = measureMotion(playheads(*host.tracks.front().engine), own);
+            // The delay covers the slower track's blocks: four of those at most.
+            EXPECT_LT(motion.lagMax, 4.0 * 512.0 / std::min(own, laneRate) * 1000.0)
+                << "ms behind its own audio";
+        }
+    }
+}
+
 // Frozen while the transport jumps, then live again: the audio played meanwhile is placed by
 // where it was played, before the jump and after it, not by the position the sweep was placed by
 // before the freeze nor by the newest. The audio half a beat before the jump (one-beat sweep) is
