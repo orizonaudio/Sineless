@@ -94,6 +94,7 @@ message with a short `Prior art:` note naming the sources.
 | One UI test | `npx vitest run ui/tests/<file> -t "<name>"` |
 | C++ build and tests (macOS) | `cmake --preset dev && cmake --build --preset dev && ctest --preset dev` |
 | One C++ test | `ctest --preset dev -R <Suite.Name>` |
+| Write the recorded engine sessions again (after an intended change to what the engine sends; review the diff) | `ORIZON_UPDATE_RECORDINGS=1 ctest --preset dev -R SessionRecording` |
 | Mutation testing (TypeScript lines changed since a base, or all without one) | `scripts/mutation.sh origin/main` |
 | Mutation testing (engine, plugin and editor C++ lines changed since a base, or all without one; on macOS in Docker) | `scripts/mutation-cpp.sh origin/main`; a file at a time rather than the whole engine's nine hours: `scripts/mutation-cpp.sh --file engine/src/PairAnalysis.cpp` |
 | Mutation testing (Audio Unit lines changed since a base, or all of `au/src` in a few minutes without one; macOS, with `brew install llvm@20` and a macOS 26 SDK) | `scripts/mutation-au.sh origin/main` |
