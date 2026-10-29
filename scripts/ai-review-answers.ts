@@ -43,7 +43,7 @@ const bot = "github-actions[bot]";
 // The workflow's inline comment for an Important finding starts with this.
 const important = "**Important:** ";
 // Anyone can comment on a public pull request; only people with write access answer for it.
-export const answering = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+const answering = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 
 const list = (value: unknown): Comment[] =>
   Array.isArray(value) ? (value as Comment[]) : [];
