@@ -12,8 +12,8 @@ describe("a recorded Compare of two unrelated noises", () => {
 
   test("calls the other track unrelated", async () => {
     await settle();
-    await expect
-      .poll(() => laneReadout("Other noise"))
-      .toMatch(/^unrelated · /u);
+    await expect.poll(() => laneReadout("Other noise")).toContain("unrelated");
+    // No offset or polarity is claimed for it.
+    expect(laneReadout("Other noise")).not.toMatch(/ms|Ø/u);
   });
 });
