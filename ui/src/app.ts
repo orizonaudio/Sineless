@@ -110,9 +110,14 @@ import {
   type ViewName,
 } from "./view/screen-state.ts";
 
-// When the graphics memory for drawing the traces is refused (DESIGN.md §8).
-const memoryMessage =
-  "The system's graphics could not give the editor the memory to draw the traces. Reopening the editor may help. Audio still passes through unchanged.";
+// What the page says when it cannot draw the traces at start (DESIGN.md §8): no WebGL2, or the
+// graphics memory for the traces refused, which also comes when the window grows.
+export const graphicsMessages = {
+  noWebGL2:
+    "This system gives the editor no WebGL 2 graphics to draw the traces with. Updating the graphics driver may help. Audio still passes through unchanged.",
+  memory:
+    "The system's graphics could not give the editor the memory to draw the traces. Reopening the editor may help. Audio still passes through unchanged.",
+};
 
 const viewHelp: Record<ViewName, HelpTopic> = {
   left: "viewLeft",
@@ -345,7 +350,7 @@ export class OscilloscopeApp {
             }
             // After a resize, the graphics memory for the larger traces was refused.
             this.renderer = undefined;
-            this.showGraphicsMessage(memoryMessage);
+            this.showGraphicsMessage(graphicsMessages.memory);
           }
           this.showSweep(frame);
         },
@@ -1941,12 +1946,10 @@ export class OscilloscopeApp {
       return new TraceRenderer(this.traceCanvas, style, view);
     } catch (error) {
       if (error instanceof TraceMemoryError) {
-        this.showGraphicsMessage(memoryMessage);
+        this.showGraphicsMessage(graphicsMessages.memory);
         return undefined;
       }
-      this.showGraphicsMessage(
-        "This system gives the editor no WebGL 2 graphics to draw the traces with. Updating the graphics driver may help. Audio still passes through unchanged.",
-      );
+      this.showGraphicsMessage(graphicsMessages.noWebGL2);
       return undefined;
     }
   }
