@@ -902,6 +902,51 @@ TEST(PacedSweep, KeepsTheLanesTogetherAfterATempoEditedWhileStopped)
     EXPECT_GT(compared, 30U);
 }
 
+// While this track's block clock locks (its first 16 blocks), its playhead is its newest audio,
+// and lanes are mapped to it as to the paced edge: together within a millisecond, though this
+// track's blocks come 3 ms after the lane's. Each lane was drawn at its own newest, 3 ms ahead.
+TEST(PacedSweep, MapsTheLanesWhileThisTracksClockLocks)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 777);
+    host.tracks[0].lateSeconds = 0.003;
+    host.play(0.17);
+    std::size_t compared = 0;
+    for (const BeatsHost::Drawn& drawn : host.frames) {
+        if (drawn.frame.laneCount != 2 || drawn.seconds < kStart + 0.05) {
+            continue; // The offset is measured from the first blocks.
+        }
+        EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
+            << "at " << drawn.seconds;
+        ++compared;
+    }
+    EXPECT_GT(compared, 3U);
+}
+
+// This track's blocks stop, then come again: the lanes, at their newest meanwhile, are with its
+// playhead again within a millisecond once it plays and its clock has settled (as the lanes are
+// compared after settling in KeepsTheLanesPlayheadsTogether).
+TEST(PacedSweep, MapsTheLanesAgainWhenThisTrackResumes)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 777);
+    host.tracks[1].lateSeconds = 0.003;
+    host.play(3.0);
+    host.tracks[0].lateSeconds = 1e6;
+    host.play(1.0);
+    host.tracks[0].lateSeconds = 0.0; // The blocks come again, the backlog first.
+    host.frames.clear();
+    host.play(4.0);
+    std::size_t compared = 0;
+    for (const BeatsHost::Drawn& drawn : host.frames) {
+        if (drawn.seconds < host.time - 1.0) {
+            continue;
+        }
+        EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
+            << "at " << drawn.seconds;
+        ++compared;
+    }
+    EXPECT_GT(compared, 30U);
+}
+
 // With the transport stopped, each track's timeline runs on from its own start, so musical
 // positions do not say which audio was played together: a lane whose capture started 2 s earlier
 // is drawn to its own newest audio, not 2 s back where the positions would map it.
