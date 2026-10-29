@@ -512,15 +512,19 @@ TEST(PacedSweep, PlacesAudioPlayedWhileAwayWhereItWasPlayed)
     };
     for (const Away& away : {Away{.name = "Single in Seconds",
                                   .mode = DisplayMode::kSingle,
-                                  .timeBase = TimeBase::kSeconds},
+                                  .timeBase = TimeBase::kSeconds,
+                                  .otherMode = std::nullopt},
                              Away{.name = "Multi in Seconds",
                                   .mode = DisplayMode::kMulti,
-                                  .timeBase = TimeBase::kSeconds},
+                                  .timeBase = TimeBase::kSeconds,
+                                  .otherMode = std::nullopt},
                              Away{.name = "Multi in Single",
                                   .mode = DisplayMode::kMulti,
+                                  .timeBase = std::nullopt,
                                   .otherMode = DisplayMode::kSingle},
                              Away{.name = "Single in Multi",
                                   .mode = DisplayMode::kSingle,
+                                  .timeBase = std::nullopt,
                                   .otherMode = DisplayMode::kMulti}}) {
         SCOPED_TRACE(away.name);
         BeatsHost host(48000.0, 512, 2, away.mode);
