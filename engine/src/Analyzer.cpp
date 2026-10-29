@@ -486,7 +486,9 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     // it has not played through), the clock's tempo is only a default: no sweep is drawn, and the
     // frame says why, again whenever the inputs change or the page asks for a redraw.
     if (synced && !(isFrozen ? frozenStamp : engine.timeline().latest()).tempoKnown) {
-        // Multi and Compare still list the group's tracks, so the page names their lanes.
+        // Multi and Compare still select the group's tracks and send their set, so the page has
+        // their names (and how many are hidden) ready; it names lanes only once a frame carries
+        // them, after the host reports a tempo (FR-9.1: nothing is placed until then).
         std::uint32_t laneSetId = 0;
         if (multi) {
             selectLanes(settings);
