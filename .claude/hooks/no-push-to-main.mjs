@@ -1,34 +1,17 @@
 // PreToolUse hook: blocks `git push` to main, so that changes reach main through a pull
 // request. Claude Code passes the tool call as JSON on stdin; exit code 2 blocks the call and
 // sends stderr back to Claude.
-import { execFileSync } from "node:child_process";
 import process from "node:process";
 
-let input = "";
-for await (const chunk of process.stdin) {
-  input += chunk;
-}
-const command = JSON.parse(input).tool_input?.command ?? "";
+import { bashCommand, currentBranch, gitCall, parts } from "./commands.mjs";
 
-const pushes = command
-  .split(/&&|\|\||;|\n/)
-  .map((part) => part.trim())
-  .filter((part) => /^git\s+(?:-C\s+\S+\s+)?push\b/.test(part));
-
-const currentBranch = () => {
-  try {
-    return execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      encoding: "utf8",
-    }).trim();
-  } catch {
-    return "";
-  }
-};
+const pushes = parts(await bashCommand())
+  .map(gitCall)
+  .filter((call) => call?.subcommand === "push");
 
 for (const push of pushes) {
-  const words = push.split(/\s+/).filter((word) => !word.startsWith("-"));
-  // After "git push": the remote, then refspecs.
-  const refspecs = words.slice(words.indexOf("push") + 2);
+  // After "push": the remote, then refspecs.
+  const refspecs = push.args.filter((word) => !word.startsWith("-")).slice(1);
   const targetsMain =
     refspecs.length === 0
       ? currentBranch() === "main"
