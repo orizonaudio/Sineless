@@ -1116,6 +1116,13 @@ TEST_P(PointerHoldTest, EndsWhenTheButtonIsFoundUpWithNoRelease)
     // The view's own check finds it, as the test's call would.
     EXPECT_TRUE(pumpUntil([&] { return pointer.calls.size() == 5; }, std::chrono::seconds(2)));
     EXPECT_EQ(pointer.calls.back(), "show");
+    // The view let go of it too: the next press holds again.
+    pointer.buttonDown = true;
+    pressOnView();
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 7; }, std::chrono::seconds(2)));
+    EXPECT_EQ(pointer.calls[5], "hide");
+    EXPECT_EQ(pointer.calls[6], "freeze");
 }
 
 TEST_P(PointerHoldTest, ShowsThePointerWhenClosedDuringAHold)

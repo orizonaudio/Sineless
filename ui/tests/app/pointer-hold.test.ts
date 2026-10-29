@@ -8,6 +8,7 @@ import { userEvent } from "vitest/browser";
 
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import type { PointerHold } from "../../src/components/pointer-hold.ts";
+import { pixelsPerStep as step } from "../../src/components/drag-field.ts";
 import { numberFields } from "../../src/view/fields.ts";
 import { byId, choice, startApp, type Started } from "./harness.ts";
 
@@ -128,11 +129,11 @@ describe("a value dragged where the editor holds the pointer", () => {
       install();
       const { y, field } = press(host, onIcon);
       expect(hold.starts).toBe(1);
-      pointer("pointermove", field, y - 8);
+      pointer("pointermove", field, y - step);
       expect(hold.starts).toBe(1);
-      pointer("pointermove", field, y - 30);
+      pointer("pointermove", field, y - 4 * step);
       expect(hold.starts).toBe(1);
-      pointer("pointerup", field, y - 30);
+      pointer("pointerup", field, y - 4 * step);
       expect(hold.ends).toBe(1);
     },
   );
@@ -144,17 +145,17 @@ describe("a value dragged where the editor holds the pointer", () => {
       install();
       const from = app.sent.length;
       const { y, field } = press(host, onIcon);
-      pointer("pointermove", field, y - 8);
+      pointer("pointermove", field, y - step);
       expect(asked(setting, from)).toHaveLength(1);
-      hold.travel(-8); // The travel the page already stepped for.
-      hold.travel(-15);
+      hold.travel(-step); // The travel the page already stepped for.
+      hold.travel(-(2 * step - 1));
       expect(asked(setting, from)).toHaveLength(1);
-      hold.travel(-16);
+      hold.travel(-2 * step);
       expect(asked(setting, from)).toHaveLength(2);
       // From now on the frozen pointer's position steps nothing.
-      pointer("pointermove", field, y + 100);
+      pointer("pointermove", field, y + 12 * step);
       expect(asked(setting, from)).toHaveLength(2);
-      pointer("pointerup", field, y + 100);
+      pointer("pointerup", field, y + 12 * step);
     },
   );
 
@@ -165,14 +166,14 @@ describe("a value dragged where the editor holds the pointer", () => {
       install();
       const from = app.sent.length;
       const { y, field } = press(host, onIcon);
-      pointer("pointermove", field, y + 8);
+      pointer("pointermove", field, y + step);
       expect(asked(setting, from)).toHaveLength(1);
-      hold.travel(8);
-      hold.travel(-7); // Back past the press, but not a step beyond it.
+      hold.travel(step);
+      hold.travel(-(step - 1)); // Back past the press, but not a step beyond it.
       expect(asked(setting, from)).toHaveLength(2);
-      hold.travel(-8);
+      hold.travel(-step);
       expect(asked(setting, from)).toHaveLength(3);
-      pointer("pointerup", field, y + 8);
+      pointer("pointerup", field, y + step);
     },
   );
 
@@ -202,24 +203,24 @@ describe("a value dragged where the editor holds the pointer", () => {
     const from = app.sent.length;
     const { y, field } = press("scale-field", false);
     hold.travel(0);
-    pointer("pointermove", field, y - 30);
+    pointer("pointermove", field, y - 4 * step);
     expect(asked("verticalScale", from)).toHaveLength(0);
-    hold.travel(-8);
+    hold.travel(-step);
     expect(asked("verticalScale", from)).toHaveLength(1);
-    pointer("pointerup", field, y - 30);
+    pointer("pointerup", field, y - 4 * step);
   });
 
   test("Shift gives fine steps from the editor's travel", () => {
     install();
     const from = app.sent.length;
     const { y, field } = press("scale-field", false);
-    pointer("pointermove", field, y + 8);
-    hold.travel(8);
-    hold.travel(16, true);
+    pointer("pointermove", field, y + step);
+    hold.travel(step);
+    hold.travel(2 * step, true);
     const [coarse, fine] = asked("verticalScale", from);
     const scale = numberFields.verticalScale;
     expect(fine).toBe(scale?.step(coarse ?? 0, -1, true));
-    pointer("pointerup", field, y + 8);
+    pointer("pointerup", field, y + step);
   });
 
   test.each(["pointerup", "pointercancel", "lostpointercapture"])(
@@ -228,20 +229,20 @@ describe("a value dragged where the editor holds the pointer", () => {
       install();
       const from = app.sent.length;
       let { y, field } = press("scale-field", false);
-      pointer("pointermove", field, y - 8);
+      pointer("pointermove", field, y - step);
       const first = hold.onTravel;
-      pointer(ending, field, y - 8);
+      pointer(ending, field, y - step);
       expect(hold.ends).toBe(1);
       expect(hold.onTravel).toBeUndefined();
       // A report the first drag's editor sent late changes nothing.
       const afterFirst = asked("verticalScale", from).length;
-      first?.(-40, false);
+      first?.(-5 * step, false);
       expect(asked("verticalScale", from)).toHaveLength(afterFirst);
       ({ y, field } = press("scale-field", false));
-      pointer("pointermove", field, y - 8);
+      pointer("pointermove", field, y - step);
       expect(hold.starts).toBe(2);
       expect(asked("verticalScale", from)).toHaveLength(afterFirst + 1);
-      pointer("pointerup", field, y - 8);
+      pointer("pointerup", field, y - step);
     },
   );
 
@@ -250,11 +251,11 @@ describe("a value dragged where the editor holds the pointer", () => {
     install();
     const from = app.sent.length;
     const { y, field } = press("scale-field", false);
-    pointer("pointermove", field, y - 8);
-    pointer("pointermove", field, y - 16);
+    pointer("pointermove", field, y - step);
+    pointer("pointermove", field, y - 2 * step);
     expect(hold.starts).toBe(1);
     expect(asked("verticalScale", from)).toHaveLength(2);
-    pointer("pointerup", field, y - 16);
+    pointer("pointerup", field, y - 2 * step);
     expect(hold.ends).toBe(1);
   });
 
@@ -267,12 +268,12 @@ describe("a value dragged where the editor holds the pointer", () => {
     ({ options }) => {
       install();
       let { y, field } = press("scale-field", false, options);
-      pointer("pointermove", field, y - 30, options);
-      pointer("pointerup", field, y - 30, options);
+      pointer("pointermove", field, y - 4 * step, options);
+      pointer("pointerup", field, y - 4 * step, options);
       expect(hold.starts).toBe(0);
       ({ y, field } = press("scale-field", false));
-      pointer("pointermove", field, y - 30);
-      pointer("pointerup", field, y - 30);
+      pointer("pointermove", field, y - 4 * step);
+      pointer("pointerup", field, y - 4 * step);
       expect(hold.starts).toBe(1);
     },
   );
@@ -280,8 +281,8 @@ describe("a value dragged where the editor holds the pointer", () => {
   test("drags from the pointer where the editor has no hold", () => {
     const from = app.sent.length;
     const { y, field } = press("scale-field", false);
-    pointer("pointermove", field, y - 16);
-    pointer("pointerup", field, y - 16);
+    pointer("pointermove", field, y - 2 * step);
+    pointer("pointerup", field, y - 2 * step);
     expect(asked("verticalScale", from)).toHaveLength(1);
   });
 });
