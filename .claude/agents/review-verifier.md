@@ -16,7 +16,8 @@ Bash: read the code with Read, Grep and Glob, and reason about tests rather than
 Confirm the finding only if you can write a proof from the code: the path from a real input or
 state to the failure, citing `file:line` at each step, with nothing in the code that prevents
 it (a guard, a caller that never passes that value, a test or check that already catches it).
-Confirm a missing-test finding only if you can name the behaviour no test would catch.
+Confirm a missing-test finding only if you can name the behaviour no test would catch, reached
+from a host and setup the product supports.
 
 When you are given the author's answers to earlier findings and one covers this finding (the same
 defect, wherever its line has moved), confirm the finding only if your proof also shows that
