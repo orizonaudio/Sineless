@@ -74,6 +74,9 @@ public:
     [[nodiscard]] double periodSeconds() const { return lastPeriodNanos / 1e9; }
     // Whether the host has stopped delivering: no stamp for a gap at `nanos`.
     [[nodiscard]] bool stalled(std::uint64_t nanos) const;
+    // How long with no block, in nanoseconds, means a host delivering blocks `periodNanos` apart
+    // stopped calling process.
+    [[nodiscard]] static double stallNanos(double periodNanos);
     // The capture index due at `nanos`, on the filtered line.
     [[nodiscard]] double estimate(std::uint64_t nanos) const;
     // At the last update: how far the line had run past the audio when the block came, in
@@ -124,10 +127,21 @@ public:
     // Whether the last edge was paced.
     [[nodiscard]] bool paced() const { return pacedLast; }
     // Another track drawn with this edge had `samples` less audio than the edge asked for (its
-    // blocks come later): the delay rises to cover it, as it does for a late block of its own.
-    void coverShortfall(double samples) { target = std::max(target, delaySamples + samples); }
+    // blocks come later): the next edge's delay rises to cover it, as it does for a late block of
+    // its own, while the shortfall lasts.
+    void coverShortfall(double samples)
+    {
+        shortfallTarget = std::max(shortfallTarget, delaySamples + samples);
+    }
     // The delay in samples (0 unpaced).
     [[nodiscard]] double delay() const { return delaySamples; }
+    // Whether another track, whose newest block arrived at `arrival`, stopped (suspended or
+    // bypassed) by `nanos`, judged by this track's block period as a stall of its own is.
+    [[nodiscard]] bool stopped(std::uint64_t arrival, std::uint64_t nanos) const
+    {
+        return static_cast<double>(nanos) - static_cast<double>(arrival) >
+               BlockClock::stallNanos(clock.periodSeconds() * 1e9);
+    }
     // Shares another edge's delay (a lane follows the own track's).
     void followDelay(double samples) { delaySamples = samples; }
 
@@ -137,8 +151,9 @@ private:
     double rate = 0.0;
     std::uint64_t knownRestarts = 0;
     double delaySamples = 0.0;
-    double target = 0.0;      // What the delay rises toward.
-    double lockingPeak = 0.0; // The largest lead seen while the clock locked.
+    double target = 0.0;          // What the delay rises toward.
+    double shortfallTarget = 0.0; // What another track's shortfall asks of the next edge.
+    double lockingPeak = 0.0;     // The largest lead seen while the clock locked.
     bool hadLock = false;
     std::optional<std::uint64_t> lastNanos;
     std::uint64_t lastEdge = 0;
