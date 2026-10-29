@@ -12,7 +12,7 @@ You review one implementation plan for Sineless against a rubric, before any cod
 
 - Each planned test fails without the change: write its assertion in a line and say against which code on the base commit it fails.
 - Each protects behaviour a user would see go wrong, not a tuned value or an implementation detail.
-- The dimensions the code branches on are covered, with their boundaries: sample rate (44.1 to 384 kHz), spans around each tolerance, mono and stereo, live and frozen; cases generated from the protocol's tables where they exist.
+- The dimensions the code branches on are covered, as far as a supported host and setup reaches them, with their boundaries: sample rate (44.1 to 384 kHz), spans around each tolerance, mono and stereo, live and frozen; cases generated from the protocol's tables where they exist.
 - Behaviour that depends on app state is tested through the app and the mock transport.
 
 Use Bash only to read (`git log`, `git show`, `git diff`, searches).

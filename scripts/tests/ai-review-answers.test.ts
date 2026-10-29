@@ -73,7 +73,7 @@ describe("the author's answers", () => {
     expect(threads[0]?.line).toBeNull();
   });
 
-  // Every association GitHub gives; only those with write access answer for the pull request.
+  // Every association GitHub gives; only the owner, members and collaborators answer for it.
   test.each([
     ["OWNER", true],
     ["MEMBER", true],
@@ -84,7 +84,7 @@ describe("the author's answers", () => {
     ["MANNEQUIN", false],
     ["NONE", false],
   ])(
-    "count a reply from an author who is %s only with write access (%s)",
+    "count a reply from an author who is %s only from the owner, members and collaborators (%s)",
     (association, counts) => {
       const reply = answerTo(unanswered, association);
       const threads = collect([...review, reply], []).threads;

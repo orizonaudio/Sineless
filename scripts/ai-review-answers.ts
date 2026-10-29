@@ -42,7 +42,9 @@ export interface Answers {
 const bot = "github-actions[bot]";
 // The workflow's inline comment for an Important finding starts with this.
 const important = "**Important:** ";
-// Anyone can comment on a public pull request; only people with write access answer for it.
+// Anyone can comment on a public pull request; only the repository's owner, the organisation's
+// members and its collaborators answer for it. This is GitHub's author association, not a
+// permission check, so an organisation member with read access counts too.
 const answering = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 
 const list = (value: unknown): Comment[] =>
