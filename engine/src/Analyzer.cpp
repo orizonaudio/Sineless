@@ -1249,8 +1249,8 @@ std::uint64_t Analyzer::ownSweepEdge(protocol::BeatSpan span)
 // so the same audio has indices a constant apart, measured from the tracks' musical stamps
 // (AD-15). A measurement more than a millisecond off means one track has seen a transport jump
 // the other has not yet: it is taken only when it lasts (the offset itself changed, as when a
-// track's processing restarted). The newest sample while this track is not paced, or the lane is
-// at another rate.
+// track's processing restarted). Any rates: this track's indices are scaled to the lane's. The
+// lane's newest sample while this track is not paced, or while either transport is stopped.
 std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
 {
     constexpr double kOffsetToleranceSeconds = 0.001;
@@ -1264,22 +1264,26 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
     // Each lane follows its own newest audio while this track is not paced (its blocks stopped,
     // or before its clock locks: its playhead may not move), and while either transport is
     // stopped (each timeline then runs on from its own start, so positions do not say which
-    // audio was played together). A lane at another sample rate is drawn silent, its sweep's
-    // length not this track's, so where it is placed is never shown.
+    // audio was played together).
     if (!pacedEdge.paced() || !ownLatest.playing || !laneLatest.playing) {
         lane.indexOffset.reset();
         return newest;
     }
+    // At any rates (a track in an oversampled FX chain runs at a multiple of the others'): this
+    // track's indices count at its rate, so they are scaled to the lane's before the offset,
+    // which is in the lane's samples, is added.
+    const double ownRate = own.engine->sampleRate();
+    const double scale = rate / ownRate;
     const std::int64_t measured =
         static_cast<std::int64_t>(laneLatest.sampleIndex) -
-        std::llround(Timeline::sampleIndexAt(ownLatest, laneLatest.quarterNotes, rate));
+        std::llround(Timeline::sampleIndexAt(ownLatest, laneLatest.quarterNotes, ownRate) * scale);
     if (!lane.indexOffset ||
         std::llabs(measured - *lane.indexOffset) <= std::llround(kOffsetToleranceSeconds * rate) ||
         ++lane.offsetDisagreements > kOffsetPersistence) {
         lane.indexOffset = measured;
         lane.offsetDisagreements = 0;
     }
-    const auto mapped = static_cast<std::int64_t>(own.end) + *lane.indexOffset;
+    const auto mapped = std::llround(static_cast<double>(own.end) * scale) + *lane.indexOffset;
     // A lane whose audio has not arrived as far as this track's playhead (its blocks come later)
     // stops at its newest sample; the delay rises to cover it, so the lanes stay together. Not
     // for a track whose blocks stopped (suspended or bypassed): it would hold every lane back by
@@ -1287,7 +1291,9 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
     const auto laneBlock = lane.engine->blockStamp().latest();
     if (laneBlock && !pacedEdge.stopped(laneBlock->nanos, clockNanos()) &&
         std::cmp_greater(mapped, newest)) {
-        pacedEdge.coverShortfall(static_cast<double>(mapped - static_cast<std::int64_t>(newest)));
+        // The shortfall in this track's samples, which the delay counts.
+        pacedEdge.coverShortfall(static_cast<double>(mapped - static_cast<std::int64_t>(newest)) /
+                                 scale);
     }
     const auto edge = static_cast<std::uint64_t>(std::max<std::int64_t>(mapped, 0));
     return std::clamp(edge, std::min(lane.end, newest), newest);
