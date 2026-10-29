@@ -59,7 +59,11 @@ unless a step says otherwise. Note anything unexpected in the row's notes.
 4. **Tempo and time signature.** Change the tempo while playing and use a 3/4 bar: the grid and
    beat span follow.
 5. **Editor.** Open and close the editor many times while playing, resize it to the minimum and
-   larger: nothing is cropped, and the host's CPU returns to where it was once it is closed.
+   larger: nothing is cropped, and the host's CPU returns to where it was once it is closed. On
+   macOS, drag Span up from near the top of the screen for several screens' worth: the pointer
+   hides on the press, the value keeps stepping, and the pointer shows again where it was pressed;
+   a double-click on a value still opens it for typing (where an
+   Audio Unit is hosted out of process, as in Logic, the pointer follows the drag instead).
 6. **Multi.** Insert on five or more tracks in group A and two in group B: lanes show the right
    names and colours, in order, and line up in time, and the window grows so that every stacked
    lane fits its label. Rename and recolour a track: its lane follows. In hosts with plugin

@@ -1,5 +1,6 @@
 // Help tooltips. While enabled, resting the pointer on an element with a data-help topic shows its
-// explanation after a short delay; moving, pressing or scrolling hides it again. The help switch
+// explanation after a short delay; moving, pressing or scrolling hides it again, and none shows
+// during a drag. The help switch
 // explains itself even while help is off, so it can be found.
 import { helpTexts, isHelpTopic } from "../view/help.ts";
 
@@ -20,7 +21,8 @@ export class HelpTips {
     };
     document.addEventListener("pointermove", (event) => {
       this.hide();
-      if (event.target instanceof Element) {
+      // A move with a button held is a drag, not a rest.
+      if (event.buttons === 0 && event.target instanceof Element) {
         const target = event.target.closest<HTMLElement>("[data-help]");
         if (
           target !== null &&

@@ -1,6 +1,7 @@
 #include "FitStates.h"
 #include "MacPageTesting.h"
 #include "editor/Editor.h"
+#include "editor/PointerHold.h"
 #include "editor/Transport.h"
 #include "editor/UiDispatcher.h"
 #include "engine/Version.h"
@@ -17,6 +18,7 @@
 #include <cstddef>
 #include <functional>
 #include <gtest/gtest.h>
+#include <mach/mach_time.h>
 #include <memory>
 #include <objc/runtime.h>
 #include <string>
@@ -963,6 +965,251 @@ TEST_F(EditorTest, ForwardsKeysToHostUnlessEditableElementHasFocus)
 
     EXPECT_EQ(editor->removed(), kResultOk);
     [window close];
+}
+
+// The pointer as a view's hold sees it, recording what the hold does to it; the real one is never
+// touched, as the tests run in the developer's session.
+class FakePointer final : public PointerControl
+{
+public:
+    ScreenPoint position() override { return at; }
+    bool primaryButtonDown() override { return buttonDown; }
+    double now() override { return 0; } // Before every event: none is from before a hold.
+    void hide() override { calls.emplace_back("hide"); }
+    void show() override { calls.emplace_back("show"); }
+    void freeze() override { calls.emplace_back("freeze"); }
+    void unfreeze() override { calls.emplace_back("unfreeze"); }
+    void warp(ScreenPoint point) override
+    {
+        warpedTo = point;
+        calls.emplace_back("warp");
+    }
+
+    ScreenPoint at{};
+    bool buttonDown = true;
+    std::vector<std::string> calls;
+    ScreenPoint warpedTo{};
+};
+
+// The pointer hold in both kinds of view: the VST3 editor's, whose cursors WebKit shows, and the
+// Audio Unit's, which shows them itself.
+class PointerHoldTest : public EditorTest, public ::testing::WithParamInterface<WebView::Cursors>
+{
+protected:
+    void SetUp() override
+    {
+        open(nullptr);
+        // What the page's drag field does when a value is pressed.
+        evaluate(webView, @"window.travels = []; window.orizonPointerHold.onTravel = "
+                           "(travel, fine) => window.travels.push(`${travel} ${fine}`); ''");
+    }
+
+    void TearDown() override
+    {
+        core.detach();
+        [window close];
+    }
+
+    // Opens the view with the fake pointer, in a process whose main bundle has `bundleType`
+    // (nullptr: this one's), and waits for the page.
+    void open(const char* bundleType)
+    {
+        parent = [[NSView alloc] init];
+        window = makeWindow(parent);
+        setPointerControlForTests(&pointer);
+        setBundleTypeForTests(bundleType);
+        core.setCursors(GetParam());
+        core.attach((__bridge void*)parent);
+        setPointerControlForTests(nullptr);
+        setBundleTypeForTests(nullptr);
+        webView = (__bridge WKWebView*)core.webView()->nativeView();
+        ASSERT_TRUE(pumpUntil(
+            [&] {
+                return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true";
+            },
+            kPageTimeout));
+    }
+
+    // A left-button press on the view, where AppKit would deliver it; its location on the screen.
+    ScreenPoint pressOnView()
+    {
+        NSEvent* down = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+                                           location:NSMakePoint(40, 40)
+                                      modifierFlags:0
+                                          timestamp:0
+                                       windowNumber:window.windowNumber
+                                            context:nil
+                                        eventNumber:0
+                                         clickCount:1
+                                           pressure:1];
+        const CGPoint point = CGEventGetLocation(down.CGEvent);
+        [webView mouseDown:down];
+        return {.x = point.x, .y = point.y};
+    }
+
+    void startHold() { evaluate(webView, @"window.orizonPointerHold.start(); ''"); }
+
+    std::string travels() { return evaluate(webView, @"window.travels.join(', ')"); }
+
+    // Sends a mouse event through the application, where its local monitors see it.
+    void sendThroughApplication(CGEventType type, int64_t dy, CGEventFlags flags = 0)
+    {
+        CGEventRef event =
+            CGEventCreateMouseEvent(nullptr, type, CGPointMake(10, 10), kCGMouseButtonLeft);
+        CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, dy);
+        CGEventSetFlags(event, flags);
+        CGEventSetTimestamp(event, mach_absolute_time()); // Stamped now, as the system stamps it.
+        [NSApp postEvent:[NSEvent eventWithCGEvent:event] atStart:NO];
+        CFRelease(event);
+        while (NSEvent* next =
+                   [NSApp nextEventMatchingMask:NSEventMaskAny
+                                      untilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]
+                                         inMode:NSDefaultRunLoopMode
+                                        dequeue:YES]) {
+            [NSApp sendEvent:next];
+        }
+    }
+
+    FakePointer pointer;
+    NSView* parent = nil;
+    NSWindow* window = nil;
+    EditorCore core{nullptr};
+    WKWebView* webView = nil;
+};
+
+TEST_P(PointerHoldTest, HidesAndFreezesThePointerWhenThePageAsks)
+{
+    const ScreenPoint press = pressOnView();
+    pointer.at = {.x = press.x, .y = press.y - 9}; // Moved before the page's start arrived.
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return travels() == "-9 false"; }, std::chrono::seconds(2)))
+        << travels();
+    EXPECT_EQ(pointer.calls, (std::vector<std::string>{"hide", "freeze"}));
+    evaluate(webView, @"window.orizonPointerHold.end(); ''");
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 5; }, std::chrono::seconds(2)));
+    EXPECT_EQ(pointer.calls.back(), "show");
+    EXPECT_DOUBLE_EQ(pointer.warpedTo.x, press.x); // Back where it was pressed.
+    EXPECT_DOUBLE_EQ(pointer.warpedTo.y, press.y);
+}
+
+TEST_P(PointerHoldTest, FollowsTheMouseThroughTheApplicationsEventsUntilItsRelease)
+{
+    pointer.at = pressOnView(); // Frozen where it was pressed, as on a press.
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return travels() == "0 false"; }, std::chrono::seconds(2)));
+    sendThroughApplication(kCGEventLeftMouseDragged, -20);
+    sendThroughApplication(kCGEventLeftMouseDragged, -20, kCGEventFlagMaskShift);
+    sendThroughApplication(kCGEventLeftMouseUp, 0, kCGEventFlagMaskShift);
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 4; }, std::chrono::seconds(2)))
+        << travels();
+    // The last report arrives with the release, however the reports were coalesced.
+    EXPECT_TRUE(pumpUntil([&] { return travels().ends_with("-40 true"); }, std::chrono::seconds(2)))
+        << "travels: " << travels();
+    // Still at the press: shown there with no warp.
+    EXPECT_EQ(pointer.calls, (std::vector<std::string>{"hide", "freeze", "unfreeze", "show"}));
+    // The monitor went with the hold: the next drag's motion counts once, not once per drag so far.
+    evaluate(webView, @"window.travels = []; ''");
+    pointer.at = pressOnView();
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return travels() == "0 false"; }, std::chrono::seconds(2)));
+    sendThroughApplication(kCGEventLeftMouseDragged, -20);
+    sendThroughApplication(kCGEventLeftMouseUp, 0);
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 8; }, std::chrono::seconds(2)));
+    EXPECT_TRUE(
+        pumpUntil([&] { return travels().ends_with("-20 false"); }, std::chrono::seconds(2)))
+        << "travels: " << travels();
+}
+
+TEST_P(PointerHoldTest, EndsWhenTheButtonIsFoundUpWithNoRelease)
+{
+    pressOnView();
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 2; }, std::chrono::seconds(2)));
+    pollPointerHoldForTests(*core.webView());
+    EXPECT_EQ(pointer.calls.size(), 2U); // Still held down.
+    pointer.buttonDown = false;
+    // The view's own check finds it, as the test's call would.
+    EXPECT_TRUE(pumpUntil([&] { return pointer.calls.size() == 5; }, std::chrono::seconds(2)));
+    EXPECT_EQ(pointer.calls.back(), "show");
+    // The view let go of it too: the next press holds again.
+    pointer.buttonDown = true;
+    pressOnView();
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 7; }, std::chrono::seconds(2)));
+    EXPECT_EQ(pointer.calls[5], "hide");
+    EXPECT_EQ(pointer.calls[6], "freeze");
+}
+
+TEST_P(PointerHoldTest, ShowsThePointerWhenClosedDuringAHold)
+{
+    pressOnView();
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 2; }, std::chrono::seconds(2)));
+    core.detach();
+    EXPECT_EQ(pointer.calls,
+              (std::vector<std::string>{"hide", "freeze", "warp", "unfreeze", "show"}));
+}
+
+// A page process that dies mid-drag cannot end its hold: the view does, with the button still down.
+TEST_P(PointerHoldTest, ShowsThePointerWhenThePageProcessEndsDuringAHold)
+{
+    pressOnView();
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 2; }, std::chrono::seconds(2)));
+    ASSERT_TRUE(terminateContentProcessForTests(*core.webView()));
+    EXPECT_TRUE(pumpUntil([&] { return pointer.calls.size() == 5; }, std::chrono::seconds(5)));
+    EXPECT_EQ(pointer.calls,
+              (std::vector<std::string>{"hide", "freeze", "warp", "unfreeze", "show"}));
+}
+
+TEST_P(PointerHoldTest, HoldsNothingWithoutAPressOnTheView)
+{
+    startHold();
+    pumpUntil([] { return false; }, std::chrono::milliseconds(300));
+    EXPECT_TRUE(pointer.calls.empty());
+    EXPECT_EQ(travels(), "");
+}
+
+// The two kinds of view, named.
+const auto kCursorsName = [](const ::testing::TestParamInfo<WebView::Cursors>& info) {
+    return info.param == WebView::Cursors::kShownByView ? std::string("ShownByView")
+                                                        : std::string("ShownByWebKit");
+};
+
+INSTANTIATE_TEST_SUITE_P(Cursors, PointerHoldTest,
+                         ::testing::Values(WebView::Cursors::kShownByWebKit,
+                                           WebView::Cursors::kShownByView),
+                         kCursorsName);
+
+// Logic and GarageBand host Audio Units in an XPC service, where the pointer cannot be frozen:
+// there the page gets no hold, and a drag follows the pointer as before.
+class OutOfProcessPointerHoldTest : public PointerHoldTest
+{
+protected:
+    void SetUp() override { open("XPC!"); }
+};
+
+TEST_P(OutOfProcessPointerHoldTest, LeavesThePointerAloneInAnXpcService)
+{
+    EXPECT_EQ(evaluate(webView, @"typeof window.orizonPointerHold"), "undefined");
+    pressOnView();
+    evaluate(webView, @"window.webkit.messageHandlers.orizonPointerHold?.postMessage('start'); ''");
+    pumpUntil([] { return false; }, std::chrono::milliseconds(300));
+    EXPECT_TRUE(pointer.calls.empty());
+}
+
+INSTANTIATE_TEST_SUITE_P(Cursors, OutOfProcessPointerHoldTest,
+                         ::testing::Values(WebView::Cursors::kShownByWebKit,
+                                           WebView::Cursors::kShownByView),
+                         kCursorsName);
+
+// Logic and GarageBand host Audio Units in XPC services, which cannot freeze the pointer: there
+// the page gets no hold and drags follow the pointer. Plugin hosts are applications.
+TEST(PointerHoldGate, HoldsThePointerOutsideXpcServicesOnly)
+{
+    EXPECT_FALSE(holdsPointerInBundleOfTypeForTests("XPC!"));
+    EXPECT_TRUE(holdsPointerInBundleOfTypeForTests("APPL"));
+    EXPECT_TRUE(holdsPointerInBundleOfTypeForTests(nullptr)); // A bare executable, as the tests.
 }
 
 } // namespace
