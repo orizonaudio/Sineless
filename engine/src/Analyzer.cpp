@@ -1253,12 +1253,9 @@ std::uint64_t Analyzer::ownSweepEdge(protocol::BeatSpan span)
     const double seconds =
         beatSpanQuarterNotes(span, Timeline::barQuarterNotes(stamp)) * 60.0 / stamp.tempo;
     if (seconds < protocol::kPacedSpanMinimumSeconds) {
-        ownSweepPaced = false;
-        return newest;
+        return pacedEdge.showNewest(clockNanos(), newest);
     }
-    const std::uint64_t edge = pacedEdge.edge(now(), newest, protocol::kPacingDelayCapSeconds);
-    ownSweepPaced = pacedEdge.paced();
-    return edge;
+    return pacedEdge.edge(clockNanos(), newest, protocol::kPacingDelayCapSeconds);
 }
 
 // Where another track's lane is placed to: where this track's playhead stands, in the lane's
@@ -1277,7 +1274,7 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
     constexpr int kOffsetPersistence = 100;
     const std::uint64_t newest = lane.engine->captureRing().endIndex();
     const double rate = lane.engine->sampleRate();
-    if (!ownSweepPaced || rate != own.engine->sampleRate()) {
+    if (rate != own.engine->sampleRate()) {
         lane.indexOffset.reset();
         return newest;
     }

@@ -411,8 +411,6 @@ private:
     SweepPlacing ownPlacing;
     // Where a live sweep is placed to: this track's paced edge, and its stamp to place by.
     [[nodiscard]] std::uint64_t ownSweepEdge(protocol::BeatSpan span);
-    // Whether the own sweep was paced when last placed (lanes follow it).
-    bool ownSweepPaced = false;
     // Forgets the stamps sweeps were placed by, when they are not placed live.
     void forgetPlacing(bool own, bool lanes);
     [[nodiscard]] std::uint64_t laneSweepEdge(Lane& lane, const Lane& own);

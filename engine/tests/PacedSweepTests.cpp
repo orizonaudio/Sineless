@@ -481,6 +481,21 @@ TEST(PacedSweep, FreezesAJumpThePlayheadHadNotReachedWhereItWasPlayed)
     }
 }
 
+// Lengthened from a sweep drawn at the newest audio to one that is paced, the playhead goes on
+// from the newest audio it showed: it may wait for the paced edge to catch up, but never steps
+// back. With 93 ms blocks the delay is longer than a frame.
+TEST(PacedSweep, NeverStepsBackWhenPacingStarts)
+{
+    BeatsHost host(44100.0, 4096, 1, protocol::DisplayMode::kSingle, 0, 200.0);
+    Engine& engine = *host.tracks.front().engine;
+    engine.settings().set(SettingId::kBeatSpan,
+                          static_cast<double>(protocol::BeatSpan::kSixteenthBeat));
+    host.play(3.0);
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    host.play(1.0);
+    EXPECT_FALSE(measureMotion(playheads(engine), host.rate).backwards);
+}
+
 // Audio played while the view was not placing the sweeps live (in Seconds, or in the other
 // display mode) is placed by where it was played once it is again, also across a transport jump
 // made meanwhile: the positions seen before are forgotten, not taken for the newer audio.
