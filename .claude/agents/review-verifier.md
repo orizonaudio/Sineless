@@ -18,6 +18,13 @@ state to the failure, citing `file:line` at each step, with nothing in the code 
 it (a guard, a caller that never passes that value, a test or check that already catches it).
 Confirm a missing-test finding only if you can name the behaviour no test would catch.
 
+When you are given the author's answers to earlier findings and one covers this finding (the same
+defect, wherever its line has moved), confirm the finding only if your proof also shows that
+answer wrong for the current code, and name it. Check the answer against the code and
+`docs/DESIGN.md`, not on its word: an answer that a case cannot happen holds only if nothing in
+the code or the requirements says it can. An answer that it was fixed in a commit is checked
+against the current code like any other.
+
 Reject it if any step does not hold, if it is pre-existing and the change does not touch it, if
 it is style, or if it is less severe than claimed (say what it is instead).
 

@@ -810,7 +810,8 @@ flowchart TB
 ```
 
 - **ai-review** reviews each push against REVIEW.md and fails while a verified finding is
-  Important. A maintainer can start it on a fork's pull request with `/ai-review`, or pass it with
+  Important. Its verifiers see the author's answers to earlier findings, and keep a finding an
+  answer covers only if they show the answer wrong. A maintainer can start it on a fork's pull request with `/ai-review`, or pass it with
   `/ai-review waive <reason>`; after three failed reviews the pull request is labelled
   `needs-human`, and its author stops fixing findings until a maintainer has decided: a Claude
   Code hook keeps an agent session from pushing to it, asking for another review or removing the
