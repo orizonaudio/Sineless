@@ -12,6 +12,10 @@ import { unitTests } from "./vitest.unit.ts";
 const chromium = process.env["CHROMIUM_EXECUTABLE"];
 const chromiumOnly =
   chromium !== undefined || process.env["APP_BROWSERS"] === "chromium";
+// CI's runners have no GPU, so Chromium draws the page's WebGL on their 4 CPUs (SwiftShader):
+// its slowest tests there have taken most of 30 s on a slow runner, so CI gives each test twice
+// that; a machine with a GPU keeps 30 s, so a test that hangs still fails soon.
+const testTimeout = process.env["CI"] === "true" ? 60000 : 30000;
 
 export default defineConfig({
   test: {
@@ -36,12 +40,12 @@ export default defineConfig({
           fileParallelism: false,
           // The page draws on animation frames; a busy machine draws them late.
           expect: { poll: { timeout: 5000 } },
-          testTimeout: 30000,
+          testTimeout,
           browser: {
             enabled: true,
             headless: true,
-            // Clicks wait up to 10 s for the page, well within a test's 30 s: under coverage,
-            // or on a busy machine, the page draws late.
+            // Clicks wait up to 10 s for the page, well within a test's 30 s (60 on CI): under
+            // coverage, or on a busy machine, the page draws late.
             provider: playwright({
               actionTimeout: 10000,
               ...(chromium === undefined
