@@ -68,11 +68,13 @@ if(BUILD_TESTING)
         tests/FrameFlowTests.cpp
         tests/MinimumHeightTests.cpp
         tests/PointerHoldTests.cpp
+        tests/SessionRecordingTests.cpp
         tests/SessionTests.cpp
         tests/TransportTests.cpp
     )
     target_compile_definitions(editor_tests
         PRIVATE ORIZON_PROTOCOL_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data"
+                ORIZON_RECORDINGS_DIR="${PROJECT_SOURCE_DIR}/protocol/tests/data/sessions"
                 ORIZON_TEST_BRAND_MARK="${PROJECT_SOURCE_DIR}/ui/src/brand/mark.svg")
     target_include_directories(editor_tests PRIVATE src)
     target_link_libraries(editor_tests

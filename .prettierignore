@@ -11,3 +11,6 @@ package-lock.json
 engine/tests/data/state-v1-beats.json
 engine/tests/data/state-v2-0.5.json
 engine/tests/data/state-v2-0.5-new-instance.json
+# Written by the recorded-session tests (editor/tests/SessionRecordingTests.cpp), as nlohmann::json
+# lays them out; compared there, not by hand.
+protocol/tests/data/sessions/
