@@ -12,8 +12,10 @@
 // review the diff; see "Test levels" in CONTRIBUTING.md.
 
 #include "FrameDecoding.h"
+#include "GoldenFiles.h"
+#include "Signals.h"
+#include "TestHost.h"
 #include "engine/Analyzer.h"
-#include "engine/InstanceRegistry.h"
 
 #include <algorithm>
 #include <array>
@@ -23,15 +25,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <gtest/gtest.h>
 #include <limits>
-#include <memory>
 #include <nlohmann/json.hpp>
-#include <numbers>
 #include <optional>
 #include <ostream>
-#include <regex>
 #include <set>
 #include <span>
 #include <sstream>
@@ -54,21 +52,6 @@ using protocol::TimeBase;
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kMinusInfinity = -std::numeric_limits<double>::infinity();
 
-// Approved numbers are compared within kRelativeTolerance of their size, or kAbsoluteTolerance,
-// whichever is larger. CI runs on Linux and macOS clang (x64 and arm64) and Windows MSVC (x64): the
-// engine is built without fast-math, so they differ only where one compiler fuses a
-// multiply-add (arm64) and another does not, or a libm rounds a sine the other way, each a float
-// ulp (6e-8 of the value) at a time. The longest float sums behind a frame (a correlation over a
-// 24000-sample sweep, in eight lanes) round by about 1e-6 of their result at worst, so 1e-4
-// leaves a hundred times that, and is still far tighter than any change a reader could see:
-// 0.001 dB on a level, 1e-4 on a correlation. The absolute part covers near-zero values of any
-// kind (a level, a correlation, a gain, a point of a trace), such as the chance correlation of
-// unrelated noise, where a relative tolerance would allow nothing: 1e-6 is far below the smallest
-// change a reader could see in any of them, and far above the rounding seen. Built with GCC at
-// -O3 for an FMA-capable x64, the corpus differs from Clang's only in such near-zero
-// correlations, by 3e-9.
-constexpr double kRelativeTolerance = 1e-4;
-constexpr double kAbsoluteTolerance = 1e-6;
 // Numbers are written with this many significant digits: a float32 holds about 7.2.
 constexpr int kSignificantDigits = 7;
 
@@ -94,102 +77,6 @@ constexpr double kChanceGainDb = 0.2;
 double dbfs(double linear)
 {
     return linear == 0.0 ? kMinusInfinity : 20.0 * std::log10(std::abs(linear));
-}
-
-// A track's audio: the sample at index `n`, playing at `rate`.
-using Signal = std::function<float(std::uint64_t n, std::uint32_t rate)>;
-
-// The phase is from integers, so it is exact however long the signal plays and the sine library
-// always sees a small argument.
-Signal sine(std::uint32_t hertz, double amplitude)
-{
-    return [=](std::uint64_t n, std::uint32_t rate) {
-        const auto cycle = static_cast<double>((n * hertz) % rate);
-        return static_cast<float>(
-            amplitude * std::sin(2.0 * std::numbers::pi * cycle / static_cast<double>(rate)));
-    };
-}
-
-Signal dc(double level)
-{
-    return [=](std::uint64_t, std::uint32_t) { return static_cast<float>(level); };
-}
-
-Signal silence()
-{
-    return dc(0.0);
-}
-
-// White noise from a hash of the sample index: the same on every platform, uniform in
-// [-amplitude, amplitude).
-Signal noise(std::uint64_t seed, double amplitude = 1.0)
-{
-    return [=](std::uint64_t n, std::uint32_t) {
-        std::uint64_t x = n * 0x9E3779B97F4A7C15ULL + seed * 0xBF58476D1CE4E5B9ULL;
-        x ^= x >> 30U;
-        x *= 0xBF58476D1CE4E5B9ULL;
-        x ^= x >> 27U;
-        const double unit = static_cast<double>(x >> 40U) / static_cast<double>(1U << 24U);
-        return static_cast<float>(amplitude * (2.0 * unit - 1.0));
-    };
-}
-
-Signal scaled(Signal signal, double gain)
-{
-    return [source = std::move(signal), gain](std::uint64_t n, std::uint32_t rate) {
-        return static_cast<float>(gain * source(n, rate));
-    };
-}
-
-Signal inverted(Signal signal)
-{
-    return scaled(std::move(signal), -1.0);
-}
-
-// `signal` arriving `samples` later (silent before it starts).
-Signal delayed(Signal signal, std::uint64_t samples)
-{
-    return [source = std::move(signal), samples](std::uint64_t n, std::uint32_t rate) {
-        return n < samples ? 0.0f : source(n - samples, rate);
-    };
-}
-
-// `signal` with `value` (NaN, an infinity) in place of every `every`-th sample.
-Signal spiked(Signal signal, float value, std::uint64_t every)
-{
-    return [source = std::move(signal), value, every](std::uint64_t n, std::uint32_t rate) {
-        return n % every == every / 2 ? value : source(n, rate);
-    };
-}
-
-// One instance's input: its left and right channels, or the left alone on a mono bus.
-struct Track
-{
-    Signal left;
-    Signal right;
-    int channels = 2;
-};
-
-Track stereo(const Signal& left, const Signal& right)
-{
-    Track track;
-    track.left = left;
-    track.right = right;
-    return track;
-}
-
-Track stereo(const Signal& both)
-{
-    return stereo(both, both);
-}
-
-Track mono(const Signal& signal)
-{
-    Track track;
-    track.left = signal;
-    track.right = signal;
-    track.channels = 1;
-    return track;
 }
 
 // What a case's signal must read, whatever the snapshot says. Unset: not stated.
@@ -398,79 +285,6 @@ void PrintTo(const Case& c, std::ostream* out)
     *out << c.name;
 }
 
-// Instances of group A on one host clock at 120 BPM in 4/4, the first viewed by an analyzer.
-class Host
-{
-public:
-    explicit Host(const Case& c) : rate(c.rate)
-    {
-        add(c.own);
-        if (c.other) {
-            add(*c.other);
-        }
-    }
-
-    [[nodiscard]] Engine& own() const { return *tracks.front().engine; }
-
-    // Plays `count` samples, in blocks of 10 ms, producing a frame after each as a page asks.
-    void play(std::uint64_t count, Analyzer& analyzer, std::optional<DecodedFrame>& frame,
-              std::vector<std::byte>& bytes)
-    {
-        const std::uint64_t block = rate / 100;
-        std::vector<float> left(block);
-        std::vector<float> right(block);
-        for (std::uint64_t done = 0; done < count; done += block) {
-            for (const auto& [engine, track] : tracks) {
-                for (std::uint64_t i = 0; i < block; ++i) {
-                    left[i] = track.left(sample + i, rate);
-                    right[i] = track.right ? track.right(sample + i, rate) : left[i];
-                }
-                const std::array<const float*, 2> channels{left.data(), right.data()};
-                engine->captureRing().write(channels.data(), track.channels,
-                                            static_cast<int>(block));
-                engine->timeline().advance({.playing = true,
-                                            .positionValid = true,
-                                            .quarterNotes = quarterNotes,
-                                            .tempoValid = true,
-                                            .tempo = kTempo},
-                                           static_cast<int>(block), rate);
-            }
-            sample += block;
-            quarterNotes += static_cast<double>(block) * kTempo / (60.0 * rate);
-            std::vector<std::byte> produced;
-            if (analyzer.produce(produced)) {
-                bytes = std::move(produced);
-                frame = decode(bytes);
-            }
-        }
-    }
-
-    InstanceRegistry registry;
-
-private:
-    static constexpr double kTempo = 120.0;
-
-    struct Member
-    {
-        std::shared_ptr<Engine> engine;
-        Track track;
-    };
-
-    void add(const Track& track)
-    {
-        auto engine = std::make_shared<Engine>();
-        engine->prepare(rate);
-        engine->setInputChannels(track.channels);
-        registry.add(engine);
-        tracks.push_back({.engine = std::move(engine), .track = track});
-    }
-
-    std::uint32_t rate;
-    std::vector<Member> tracks;
-    std::uint64_t sample = 0;
-    double quarterNotes = 0.0;
-};
-
 // Single mode shows the default views (L and R) over a triggered 100 ms span, or a quarter-beat
 // sweep (125 ms at 120 BPM); the multi-track view shows each track's Mid.
 void configure(Engine& engine, const Case& c)
@@ -646,35 +460,9 @@ void compare(const json& approved, const json& actual, const std::string& path,
     }
 }
 
-bool updating()
-{
-    constexpr const char* kVariable = "ORIZON_UPDATE_CORPUS";
-#ifdef _MSC_VER
-    // MSVC deprecates std::getenv (C4996, an error at /W4 /WX); _dupenv_s is its replacement.
-    char* value = nullptr;
-    std::size_t length = 0;
-    const bool set = _dupenv_s(&value, &length, kVariable) == 0 && value != nullptr;
-    const bool update = set && std::string_view(value) == "1";
-    std::free(value); // NOLINT(cppcoreguidelines-no-malloc): _dupenv_s allocates with malloc.
-    return update;
-#else
-    const char* value = std::getenv(kVariable); // NOLINT(concurrency-mt-unsafe)
-    return value != nullptr && std::string_view(value) == "1";
-#endif
-}
-
 std::filesystem::path corpusFile(std::string_view name)
 {
     return std::filesystem::path(ORIZON_CORPUS_DIR) / (std::string(name) + ".json");
-}
-
-// Sorted keys (nlohmann::json keeps objects sorted), two-space indents, LF line endings and a
-// final newline, and exponents without a plus or leading zeros (1.2e-7, not 1.2e-07): as Prettier
-// writes JSON, so `npm run format:check` passes on files the tests write.
-std::string serialise(const json& value)
-{
-    static const std::regex kExponent(R"((\d)e\+?(-?)0*(\d))");
-    return std::regex_replace(value.dump(2), kExponent, "$1e$2$3") + "\n";
 }
 
 // The value of an approved number: NaN and the infinities are written as strings.
@@ -731,7 +519,11 @@ class SignalCorpus : public ::testing::TestWithParam<Case>
 TEST_P(SignalCorpus, MatchesTheApprovedFrame)
 {
     const Case& c = GetParam();
-    Host host(c);
+    std::vector<Track> tracks{c.own};
+    if (c.other) {
+        tracks.push_back(*c.other);
+    }
+    TestHost host(c.rate, tracks);
     configure(host.own(), c);
     Analyzer analyzer(host.own(), host.registry);
     analyzer.setColumns(kColumns);
@@ -798,7 +590,7 @@ TEST_P(SignalCorpus, MatchesTheApprovedFrame)
 
     // What was approved.
     const std::filesystem::path file = corpusFile(c.name);
-    if (updating()) {
+    if (updating("ORIZON_UPDATE_CORPUS")) {
         std::ofstream output(file, std::ios::binary | std::ios::trunc); // LF on every platform.
         output << serialise(actual);
         ASSERT_TRUE(output.good()) << "could not write " << file;
