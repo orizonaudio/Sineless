@@ -149,7 +149,7 @@ public:
     void redraw();
     // The time free-running windows are paced by: monotonicNanos, or a simulated clock in tests.
     using Clock = std::function<std::uint64_t()>;
-    void setClock(Clock clock) { now = std::move(clock); }
+    void setClock(Clock clock) { clockNanos = std::move(clock); }
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
     bool produce(std::vector<std::byte>& frame);
@@ -378,7 +378,7 @@ private:
     std::vector<std::uint64_t> lastLiveEnds;
     // This track's paced edge: free-running windows and Auto's untriggered fallback end there.
     PacedEdge pacedEdge;
-    Clock now = monotonicNanos;
+    Clock clockNanos = monotonicNanos;
     // Live, in either time base: the channel counts and sample rates of this track and of each lane
     // shown, now and when the last frame was drawn, which are inputs too (formatsChanged).
     std::vector<std::uint64_t> liveFormats;
