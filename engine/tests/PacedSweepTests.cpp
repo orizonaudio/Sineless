@@ -301,13 +301,18 @@ TEST(PacedSweep, ShowsASweepShorterThanTheMinimumAtTheNewestAudio)
 // the jump, samples are placed by the musical position of their own block, not the newer one. A
 // one-beat sweep at 120 BPM (24000 samples); the transport jumps back a quarter of a beat, so the
 // newer position would put them elsewhere. In Single and in each lane of Multi, with a lane whose
-// blocks come 3 ms later and whose capture started 777 samples earlier.
+// blocks come 3 ms later and whose capture started 777 samples earlier. With 64-sample blocks the
+// playhead is several blocks behind the newest audio: each block's position is seen all the same.
 TEST(PacedSweep, PlacesAudioFromBeforeAJumpWhereItWasPlayed)
 {
-    for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
-        SCOPED_TRACE(std::string(protocol::kDisplayModeNames.at(static_cast<std::size_t>(mode))));
+    for (const auto [mode, block] : {std::pair{protocol::DisplayMode::kSingle, std::uint64_t{512}},
+                                     std::pair{protocol::DisplayMode::kMulti, std::uint64_t{512}},
+                                     std::pair{protocol::DisplayMode::kSingle, std::uint64_t{64}},
+                                     std::pair{protocol::DisplayMode::kMulti, std::uint64_t{64}}}) {
+        SCOPED_TRACE(std::string(protocol::kDisplayModeNames.at(static_cast<std::size_t>(mode))) +
+                     " " + std::to_string(block));
         const std::size_t tracks = mode == protocol::DisplayMode::kSingle ? 1 : 2;
-        BeatsHost host(48000.0, 512, tracks, mode, 777);
+        BeatsHost host(48000.0, block, tracks, mode, 777);
         if (tracks == 2) {
             host.tracks[1].lateSeconds = 0.003;
         }
