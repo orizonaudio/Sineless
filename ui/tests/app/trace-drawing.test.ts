@@ -1161,4 +1161,33 @@ describe("the coverage targets follow the canvas size", () => {
       draw(frame, { width: 300, height: 150, laneColors }),
     );
   });
+
+  // A window made only taller, or only wider: the targets follow either.
+  test.each([
+    { name: "taller", width: 300, height: 240 },
+    { name: "wider", width: 420, height: 150 },
+  ])("made only $name, it draws as a renderer made at that size", (size) => {
+    const surface = freshSurface(300, 150);
+    drawOn(surface, frame, { laneColors });
+    surface.canvas.width = size.width;
+    surface.canvas.height = size.height;
+    expectSame(
+      drawOn(surface, frame, { laneColors }),
+      draw(frame, { ...size, laneColors }),
+    );
+  });
+
+  // A renderer made afresh, as after the graphics context comes back, draws its first frame on
+  // the screen, not into its coverage targets: a frame with no points but a playhead.
+  test("a new renderer's first frame reaches the screen", () => {
+    const surface = freshSurface(300, 150);
+    const empty = frameOf({
+      mode: FrameMode.minMax,
+      pointCount: 0,
+      synced: true,
+      cursor: 0.5,
+    });
+    const drawing = drawOn(surface, empty);
+    expect(drawing.alpha(150, 75)).toBeGreaterThan(0.5);
+  });
 });

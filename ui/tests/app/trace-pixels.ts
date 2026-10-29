@@ -167,6 +167,8 @@ export function drawOn(
     throw new Error("No WebGL2 context");
   }
   const pixels = new Uint8Array(width * height * 4);
+  // The canvas, as the screen shows it, whatever the renderer left bound.
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
   const error = gl.getError();
   return {
