@@ -165,6 +165,27 @@ TEST(PacedWindowsMinimum, PaceOnlyFromTheMinimumSpan)
     }
 }
 
+// Lengthened from a span drawn at the newest audio to one that is paced, the edge goes on from
+// the newest audio it showed: it may wait for the paced edge to catch up, but never steps back.
+// With 93 ms blocks the delay is longer than a frame, so the paced edge starts behind it; it
+// stepped back by most of a block.
+TEST(PacedWindowsMinimum, NeverStepBackWhenPacingStarts)
+{
+    PacedHost host(44100.0, 4096);
+    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kFree));
+    host.engine.settings().set(SettingId::kTimeSpan, protocol::kPacedSpanMinimumSeconds * 0.9);
+    host.play(3.0);
+    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    host.play(1.0);
+    // Columns end on the last complete one: up to a column short of the edge.
+    const double column = 0.5 * host.rate / 8000.0;
+    for (std::size_t index = 1; index < host.edges.size(); ++index) {
+        ASSERT_GE(host.edges[index].edge, host.edges[index - 1].edge - column)
+            << "stepped back at " << host.edges[index].seconds;
+    }
+    EXPECT_FALSE(measureMotion(host.edges, host.rate).ahead);
+}
+
 // A triggered window changes only with new audio: between blocks no frame is made, however often
 // the page asks, so no work is done for the same trace.
 TEST(PacedWindowsTriggered, DrawNoFrameBetweenBlocks)
