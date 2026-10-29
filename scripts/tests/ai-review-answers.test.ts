@@ -16,7 +16,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { answering, collect } from "../ai-review-answers.ts";
+import { collect } from "../ai-review-answers.ts";
 
 const root = join(import.meta.dirname, "..", "..");
 const fixtures = join(import.meta.dirname, "fixtures", "ai-review-answers");
@@ -75,28 +75,28 @@ describe("the author's answers", () => {
 
   // Every association GitHub gives; only those with write access answer for the pull request.
   test.each([
-    "OWNER",
-    "MEMBER",
-    "COLLABORATOR",
-    "CONTRIBUTOR",
-    "FIRST_TIME_CONTRIBUTOR",
-    "FIRST_TIMER",
-    "MANNEQUIN",
-    "NONE",
+    ["OWNER", true],
+    ["MEMBER", true],
+    ["COLLABORATOR", true],
+    ["CONTRIBUTOR", false],
+    ["FIRST_TIME_CONTRIBUTOR", false],
+    ["FIRST_TIMER", false],
+    ["MANNEQUIN", false],
+    ["NONE", false],
   ])(
-    "count a reply from an author who is %s only with write access",
-    (association) => {
+    "count a reply from an author who is %s only with write access (%s)",
+    (association, counts) => {
       const reply = answerTo(unanswered, association);
       const threads = collect([...review, reply], []).threads;
       const answered = threads.some((t) =>
         t.finding.startsWith("No test triggers"),
       );
-      expect(answered).toBe(answering.has(association));
+      expect(answered).toBe(counts);
       const comments = collect(
         [],
         [{ ...reply, body: "The rate cannot differ." }],
       ).comments;
-      expect(comments.length > 0).toBe(answering.has(association));
+      expect(comments.length > 0).toBe(counts);
     },
   );
 
