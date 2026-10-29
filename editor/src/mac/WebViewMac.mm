@@ -131,6 +131,21 @@ PointerControl*& pointerControlForTests()
     return control;
 }
 
+NSString* __strong& bundleTypeForTests()
+{
+    static NSString* type = nil;
+    return type;
+}
+
+// The main bundle's CFBundlePackageType, or the one a test set.
+NSString* bundleType()
+{
+    NSString* const forTests = bundleTypeForTests();
+    return forTests != nil
+               ? forTests
+               : [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundlePackageType"];
+}
+
 // A diagonal resize cursor drawn from the matching system symbol, for macOS before 15, which has
 // no public one: black on a white outline, as the system's cursors are, so that it shows on dark
 // and light alike.
@@ -601,8 +616,7 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     [contentController addScriptMessageHandler:messageHandler name:kMessageHandlerName];
     [contentController addScriptMessageHandler:messageHandler name:kFocusHandlerName];
     std::vector<const char*> scripts = {kFocusTrackingScript};
-    if (holdsPointerInBundleOfType(
-            [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundlePackageType"])) {
+    if (holdsPointerInBundleOfType(bundleType())) {
         PointerControl* control = pointerControlForTests();
         pointerHold = std::make_unique<PointerHold>(
             control != nullptr ? *control : realPointer,
@@ -973,6 +987,11 @@ const void* drawnDiagonalResizeCursorForTests()
 void setPointerControlForTests(PointerControl* control)
 {
     pointerControlForTests() = control;
+}
+
+void setBundleTypeForTests(const char* type)
+{
+    bundleTypeForTests() = type != nullptr ? @(type) : nil;
 }
 
 bool holdsPointerInBundleOfTypeForTests(const char* type)
