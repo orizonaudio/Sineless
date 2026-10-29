@@ -15,7 +15,8 @@ export interface DragFieldOptions {
   readonly onRequest: (value: number) => void;
 }
 
-const pixelsPerStep = 8;
+// The drag's travel for one step, in CSS px.
+export const pixelsPerStep = 8;
 
 export class DragField {
   readonly element: HTMLElement;

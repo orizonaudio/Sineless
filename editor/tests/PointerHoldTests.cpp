@@ -240,6 +240,21 @@ TEST_F(PointerHoldTest, SendsNothingAfterTheHoldEnds)
     EXPECT_EQ(sent.size(), 1U);
 }
 
+// A report the last hold sent, answered during the next, must not free the next one's own.
+TEST_F(PointerHoldTest, KeepsSendingOneReportAtATimeWhenTheLastHoldsReportArrivesLate)
+{
+    holdFrom({.x = 100, .y = 200}, {.x = 100, .y = 191});
+    hold.end(); // Its report still on its way.
+    holdFrom({.x = 100, .y = 200}, {.x = 100, .y = 191});
+    ASSERT_EQ(sent.size(), 2U);
+    pending.front()(); // The first hold's report arrives.
+    pending.erase(pending.begin());
+    hold.moved(-4, false, 11);
+    EXPECT_EQ(sent.size(), 2U); // Still waiting for its own.
+    deliverAll();
+    EXPECT_EQ(sent.size(), 3U);
+}
+
 TEST_F(PointerHoldTest, EndsWhenThePollFindsTheButtonUp)
 {
     holdFrom({.x = 100, .y = 200}, {.x = 100, .y = 191});
