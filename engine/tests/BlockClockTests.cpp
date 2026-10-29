@@ -180,10 +180,11 @@ TEST(BlockClock, StartsOverOnAStallAJumpARateChangeAndOfflineBlocks)
 // periods, the gap rule, are further).
 TEST(BlockClock, AbsorbsALateBlockUpToTheJumpThreshold)
 {
-    for (const auto [block, rate, threshold] :
-         {std::tuple{64ULL, 48000.0, 0.005},
-          std::tuple{2048ULL, 44100.0, 2.0 * 2048.0 / 44100.0}}) {
+    // Small blocks, where the shortest jump decides, and long ones, where the periods do.
+    for (const auto [block, rate] : {std::pair{64ULL, 48000.0}, std::pair{2048ULL, 44100.0}}) {
         SCOPED_TRACE(block);
+        const double threshold = std::max(
+            BlockClock::kJumpPeriods * static_cast<double>(block) / rate, BlockClock::kJumpSeconds);
         for (const double share : {0.9, 1.1}) {
             BlockClock clock;
             SteadyHost host{.block = block, .rate = rate};
