@@ -113,8 +113,10 @@ describe("overlaid views", () => {
     },
   );
 
+  // Left is drawn too, before the Mid: snapping to the first drawn trace would pick it, so only
+  // snapping to the readout channel finds the Mid's crossing.
   test("time cursors snap to the Mid's zero crossings with the trigger on Side", async () => {
-    await showViews(["M", "S"]);
+    await showViews(["L", "M", "S"]);
     await useSource("S");
     await settle();
     await setPressed(byId("time-cursors"), true);
@@ -122,19 +124,24 @@ describe("overlaid views", () => {
     await settle();
     const frame = window.orizonDebug?.lastFrame as Frame;
     const mid = frame.views.get(ChannelView.mid);
-    const side = frame.views.get(ChannelView.side);
+    const others = [ChannelView.left, ChannelView.side].map((view) =>
+      frame.views.get(view),
+    );
     expect(mid).toBeDefined();
-    expect(side).toBeDefined();
+    expect(others).not.toContain(undefined);
     const { width } = byId("screen").getBoundingClientRect();
     const offset = 1 / width;
     const near = (a: number, b: number) => Math.abs(a - b) < 0.01 / width;
-    const sides = zeroCrossings(frame, side as Float32Array);
-    // A crossing of the Mid with no crossing of Side within three pixels, away from the edges.
+    const crossings = others.flatMap((samples) =>
+      zeroCrossings(frame, samples as Float32Array),
+    );
+    // A crossing of the Mid with no crossing of Left or Side within three pixels, away from the
+    // edges.
     const target = zeroCrossings(frame, mid as Float32Array).find(
       (crossing) =>
         crossing > 0.1 &&
         crossing < 0.9 &&
-        sides.every((other) => Math.abs(other - crossing) > 3 * offset),
+        crossings.every((other) => Math.abs(other - crossing) > 3 * offset),
     );
     expect(target, "a crossing of the Mid alone").toBeDefined();
     const at = target as number;
