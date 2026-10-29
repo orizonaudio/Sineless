@@ -1,3 +1,4 @@
+#include "SampleRates.h"
 #include "SimulatedHost.h"
 #include "engine/BlockClock.h"
 #include "engine/Motion.h"
@@ -91,7 +92,7 @@ TEST_P(EvenMotion, MovesTheEdgeEvenly)
 std::vector<HostPattern> patterns()
 {
     std::vector<HostPattern> result;
-    for (const double rate : {44100.0, 48000.0, 96000.0, 192000.0, 384000.0}) {
+    for (const double rate : kSampleRates) {
         for (std::uint64_t block = 32; block <= 4096; block *= 2) {
             for (const Arrivals arrivals :
                  {Arrivals::kSteady, Arrivals::kJittered, Arrivals::kSplit, Arrivals::kBurst}) {

@@ -152,7 +152,7 @@ public:
     void redraw();
     // The time free-running windows are paced by: monotonicNanos, or a simulated clock in tests.
     using Clock = std::function<std::uint64_t()>;
-    void setClock(Clock clock) { now = std::move(clock); }
+    void setClock(Clock clock) { clockNanos = std::move(clock); }
 
     // Writes the next frame into `frame`. Returns false when there is nothing new to show.
     bool produce(std::vector<std::byte>& frame);
@@ -389,7 +389,7 @@ private:
     std::vector<std::uint64_t> lastLiveEnds;
     // This track's paced edge: free-running windows and Auto's untriggered fallback end there.
     PacedEdge pacedEdge;
-    Clock now = monotonicNanos;
+    Clock clockNanos = monotonicNanos;
     // Beats, live: the musical stamp this track's newest placed audio was played at.
     std::optional<MusicalStamp> ownPlacing;
     // Where a live sweep is placed to: this track's paced edge, and its stamp to place by.

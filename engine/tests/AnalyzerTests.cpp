@@ -660,7 +660,8 @@ TEST_F(AnalyzerTest, FreeRunningFramesShowTheSameColumnsShifted)
 
 // Switched from a free-running window to a triggered mode that holds the last trace until a
 // trigger, the newest span is shown, untriggered, rather than the free-running frame staying on
-// screen with its labels and chip. Every trigger mode; only Free still runs free.
+// screen with its labels and chip, or a span from where the free-running window started, 2 s
+// before. Every trigger mode; only Free still runs free.
 TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
 {
     for (std::size_t index = 0; index < protocol::kTriggerModeCount; ++index) {
@@ -670,7 +671,16 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
         fresh.setColumns(500);
         setTriggerMode(mode);
         engine.settings().set(SettingId::kTimeSpan, 2.0);
-        writeSilence(2.5); // No edge to trigger on.
+        // A falling ramp, so no rising edge to trigger on, and each sample says which it is.
+        const auto count = static_cast<std::size_t>(2.5 * kSampleRate);
+        std::vector<float> ramp(count);
+        const std::uint64_t start = engine.captureRing().writeIndex();
+        for (std::size_t i = 0; i < count; ++i) {
+            ramp[i] = -static_cast<float>(start + i);
+        }
+        std::array<const float*, 2> channels{ramp.data(), ramp.data()};
+        engine.captureRing().write(channels.data(), 2, static_cast<int>(count));
+        const auto newest = static_cast<float>(engine.captureRing().writeIndex() - 1);
         std::vector<std::byte> bytes;
         ASSERT_TRUE(fresh.produce(bytes));
         ASSERT_TRUE(decode(bytes).has(FrameFlag::kFreeRunning));
@@ -680,6 +690,8 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
         EXPECT_EQ(frame.has(FrameFlag::kFreeRunning), mode == protocol::TriggerMode::kFree);
         EXPECT_FALSE(frame.has(FrameFlag::kTriggered));
         EXPECT_NEAR(frame.spanSeconds, 0.02, 1e-6);
+        ASSERT_FALSE(frame.data.empty());
+        EXPECT_NEAR(-std::ranges::min(frame.data), newest, 0.02 * kSampleRate) << "the newest span";
     }
 }
 

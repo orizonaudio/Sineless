@@ -200,7 +200,7 @@ describe("mock back end", () => {
     expect(frame?.mode).toBe(FrameMode.raw); // 480 samples fit in 800 columns.
   });
 
-  test("rolls long spans and reports freeze", () => {
+  test("runs long spans free and reports freeze", () => {
     const { transport, frames } = connect();
     useSeconds(transport);
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
