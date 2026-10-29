@@ -1277,11 +1277,11 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
     const MusicalStamp ownLatest = own.engine->timeline().latest();
     const MusicalStamp laneLatest = lane.engine->timeline().latest();
     // Each lane follows its own newest audio while this track is not paced (its blocks stopped,
-    // or before its clock locks: its playhead may not move), while either transport is stopped
-    // (each timeline then runs on from its own start, so positions do not say which audio was
-    // played together), or at another sample rate.
-    if (!pacedEdge.paced() || !ownLatest.playing || !laneLatest.playing ||
-        rate != own.engine->sampleRate()) {
+    // or before its clock locks: its playhead may not move), and while either transport is
+    // stopped (each timeline then runs on from its own start, so positions do not say which
+    // audio was played together). A lane at another sample rate is drawn silent, its sweep's
+    // length not this track's, so where it is placed is never shown.
+    if (!pacedEdge.paced() || !ownLatest.playing || !laneLatest.playing) {
         lane.indexOffset.reset();
         return newest;
     }
