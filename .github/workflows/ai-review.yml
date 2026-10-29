@@ -3,13 +3,15 @@ name: AI review
 # Claude reviews every pull request against REVIEW.md and sets the "ai-review" commit status,
 # which the ruleset on main requires: it fails while any verified finding is Important.
 #
-# The review runs in two passes, on claude-opus-5-5 at medium effort (a full model ID, so that a
-# new model behind an alias cannot change the gate unannounced):
-# - Find: the specialist reviewers in .claude/agents each look for findings in their own area.
-#   Which ones run follows from the changed paths, as the review skill describes.
+# The review runs in two passes, each model named by a full model ID, so that a new model behind
+# an alias cannot change the gate unannounced:
+# - Find: the specialist reviewers in .claude/agents each look for findings in their own area, on
+#   the model and effort their definitions name (claude-sonnet-5-5, high), launched by
+#   claude-opus-5-5. Which ones run follows from the changed paths, as the review skill describes.
 # - Verify: a separate run gives each Important finding to its own review-verifier, which keeps
-#   it only if it can prove it from the code. A finding left without a verdict is kept, and a
-#   review in which a specialist did not report ends in error, never in a pass.
+#   it only if it can prove it from the code, on claude-opus-5-5 at medium effort. A finding left
+#   without a verdict is kept, and a review in which a specialist did not report ends in error,
+#   never in a pass.
 # This workflow, not Claude, posts the comments and sets the status, from the structured output
 # of both passes.
 #
@@ -17,7 +19,8 @@ name: AI review
 # - Pull requests from forks get no secrets, so a maintainer (anyone who can write to the
 #   repository) starts their review by commenting "/ai-review". "/ai-review waive <reason>"
 #   passes the check after a maintainer has decided the findings do not hold.
-# - After two failed reviews of a pull request it is labelled "needs-human".
+# - After three failed reviews of a pull request it is labelled "needs-human", and its author stops
+#   fixing findings until a maintainer has decided (CLAUDE.md, "Delivering").
 # - In the merge queue the reviewed pull requests pass at once.
 #
 # The base branch is checked out at the workspace root and the pull request's files into
@@ -239,8 +242,12 @@ jobs:
         id: find
         uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
         env:
-          CLAUDE_CODE_EFFORT_LEVEL: medium
-          CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
+          # The specialists' definitions' model and effort: the effort variable overrides a
+          # definition's own, and the model variable keeps them on it whichever comes first in
+          # the action's Claude Code (scripts/tests/ai-review-models.test.ts). It raises the
+          # orchestrator's effort too, which only launches and merges.
+          CLAUDE_CODE_EFFORT_LEVEL: high
+          CLAUDE_CODE_SUBAGENT_MODEL: claude-sonnet-5-5
           # Subagents run in the foreground, so that the run cannot return before they report.
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
@@ -440,11 +447,12 @@ jobs:
           failures=$(gh api "repos/$REPO/issues/$NUMBER/comments" --paginate \
             --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- ai-review: failed -->")))] | length' |
             jq -s 'add')
-          # Once: from the second failure on, unless the label is already there (a count of exactly
-          # 2 could be missed by a run cancelled between posting its summary and counting).
+          # Once: from the third failure on, unless the label is already there (a count of exactly
+          # 3 could be missed by a run cancelled between posting its summary and counting). Two
+          # failures often pass on the next push; the rounds that run on fail five times or more.
           labelled=$(gh api "repos/$REPO/issues/$NUMBER" --jq '[.labels[].name] | index("needs-human") != null')
-          if (( failures >= 2 )) && [[ "$labelled" != true ]]; then
+          if (( failures >= 3 )) && [[ "$labelled" != true ]]; then
             gh api -X POST "repos/$REPO/issues/$NUMBER/labels" -f "labels[]=needs-human" > /dev/null
-            gh pr comment "$NUMBER" --repo "$REPO" --body "This pull request has failed the AI review $failures times; it needs a maintainer's decision."
+            gh pr comment "$NUMBER" --repo "$REPO" --body "This pull request has failed the AI review $failures times; it needs a maintainer's decision, and its author stops fixing findings until then."
           fi
           exit 1
