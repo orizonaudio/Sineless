@@ -304,7 +304,7 @@ const CH = { L: '#5ab0ff', R: '#ff5c8a', M: '#f5f5f7', S: '#a78bfa' };
 const HOST = { kick: '#e5484d', clap: '#f76b15', hats: '#ffc53d', bass: '#3e63dd', keys: '#30a46c', kick2: '#8e4ec6' };
 
 // ---------- scenes ----------
-// readout: what Peak, RMS and Freq measure (DESIGN.md 1.2.1): the trigger source in Single, this track's Mid in Multi and Compare.
+// readout: what Peak, RMS and Freq measure (DESIGN.md 1.2.1): the Mid in Single (Left on a mono track), this track's Mid in Multi and Compare.
 const SCENES = {
   single: { mode: 'Single', base: 'sec', trigger: 'Auto', frozen: false, auto: false,
     lanes: [{ name: 'L', sig: 'L', color: CH.L }, { name: 'R', sig: 'R', color: CH.R }],

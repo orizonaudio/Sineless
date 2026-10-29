@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { ChannelView, FrameMode } from "../../protocol/src/enums.ts";
+import { ChannelView, FrameMode, TimeBase } from "../../protocol/src/enums.ts";
 import { decodeFrame, type Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   frozenHoldSeconds,
@@ -13,6 +13,7 @@ import {
   type MockOptions,
 } from "../src/bridge/mock-transport.ts";
 import type { ControlMessage } from "../src/bridge/transport.ts";
+import { viewOrder } from "../src/view/screen-state.ts";
 
 function connect(options: MockOptions = {}): {
   transport: MockTransport;
@@ -210,31 +211,34 @@ describe("mock back end", () => {
     expect(frames.at(-1)?.frozen).toBe(true);
   });
 
-  test("measures the Mid in Beats mode, as the engine does", () => {
-    const { transport, frames } = connect();
-    transport.send({
-      type: "setSetting",
-      name: "triggerSource",
-      value: "left",
-    });
-    useSeconds(transport);
-    transport.requestFrame();
-    const left = frames.at(-1)?.peak ?? NaN;
-    transport.send({ type: "setSetting", name: "timeBase", value: "beats" });
-    transport.requestFrame();
-    const beats = frames.at(-1)?.peak ?? NaN;
-    // L is 0.6 sin; the Mid is half of L plus R: 0.45 sin + 0.125 sin(2x + 0.7).
-    let mid = 0;
-    for (let step = 0; step < 10000; step++) {
-      const phase = (2 * Math.PI * step) / 10000;
-      mid = Math.max(
-        mid,
-        Math.abs(0.45 * Math.sin(phase) + 0.125 * Math.sin(2 * phase + 0.7)),
-      );
-    }
-    expect(left).toBeCloseTo(0.6, 2);
-    expect(beats).toBeCloseTo(mid, 2);
-  });
+  test.each(
+    Object.keys(TimeBase).flatMap((timeBase) =>
+      viewOrder.map((source) => [timeBase, source] as const),
+    ),
+  )(
+    "measures the Mid in %s with the trigger on %s, as the engine does",
+    (timeBase, source) => {
+      const { transport, frames } = connect();
+      transport.send({
+        type: "setSetting",
+        name: "triggerSource",
+        value: source,
+      });
+      useSeconds(transport);
+      transport.send({ type: "setSetting", name: "timeBase", value: timeBase });
+      transport.requestFrame();
+      // L is 0.6 sin; the Mid is half of L plus R: 0.45 sin + 0.125 sin(2x + 0.7).
+      let mid = 0;
+      for (let step = 0; step < 10000; step++) {
+        const phase = (2 * Math.PI * step) / 10000;
+        mid = Math.max(
+          mid,
+          Math.abs(0.45 * Math.sin(phase) + 0.125 * Math.sin(2 * phase + 0.7)),
+        );
+      }
+      expect(frames.at(-1)?.peak).toBeCloseTo(mid, 2);
+    },
+  );
 
   test("keeps a frozen view's trigger point and pans back to the held audio", () => {
     const { transport, frames } = connect(); // now = 1 s.

@@ -834,8 +834,6 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
 
     const auto views = effectiveViews(
         static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)), inputChannels);
-    const ChannelView triggerView = effectiveTriggerSource(
-        settings.enumValue<ChannelView>(SettingId::kTriggerSource), inputChannels);
 
     const Crop crop = cropOf(static_cast<double>(sampleCount), window.start - first,
                              window.cropStart, window.cropEnd);
@@ -868,9 +866,9 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     // again only the columns its newest samples landed in, a free-running window only the columns
     // that scrolled in. A triggered window is new every time.
     const bool synced = window.synced;
-    // Readouts measure the trigger source, whose control is there in Seconds mode; in Beats mode,
-    // where nothing triggers, the Mid, as the multi-track lanes do.
-    const ChannelView readoutView = synced ? ChannelView::kMid : triggerView;
+    // Readouts measure the Mid in either time base, as the multi-track lanes do, whatever the
+    // trigger reads; a mono track's Mid reads its one channel.
+    const ChannelView readoutView = ChannelView::kMid;
     const bool rolling = window.freeRunning && window.onGrid && !window.synced &&
                          window.cropStart == 0.0 && window.cropEnd == 1.0;
     const std::size_t visibleCount = crop.end - crop.first;
