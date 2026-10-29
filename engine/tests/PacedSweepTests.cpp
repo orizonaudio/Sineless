@@ -40,8 +40,8 @@ public:
 
     BeatsHost(double rate, std::uint64_t block, std::size_t tracks = 1,
               protocol::DisplayMode mode = protocol::DisplayMode::kSingle, std::uint64_t offset = 0,
-              double tempo = 120.0)
-        : rate(rate), block(block), tempo(tempo)
+              double tempo = 120.0, bool playing = true)
+        : rate(rate), block(block), tempo(tempo), playing(playing)
     {
         for (std::size_t index = 0; index < tracks; ++index) {
             auto engine = std::make_shared<Engine>();
@@ -60,8 +60,8 @@ public:
                 std::array<const float*, 2> channels{silence.data(), silence.data()};
                 engine->captureRing().write(channels.data(), 2, static_cast<int>(track.offset));
                 engine->timeline().advance(
-                    {.playing = true,
-                     .positionValid = true,
+                    {.playing = playing,
+                     .positionValid = playing,
                      .quarterNotes = -static_cast<double>(track.offset) / rate * tempo / 60.0,
                      .tempoValid = true,
                      .tempo = tempo},
@@ -162,6 +162,9 @@ public:
     double rate;
     std::uint64_t block;
     double tempo;
+    // Whether the transport plays; stopped, the host reports no position, and each track's
+    // timeline runs on at the tempo from its own start.
+    bool playing;
     InstanceRegistry registry;
     std::vector<Track> tracks;
     std::unique_ptr<Analyzer> analyzer;
@@ -179,8 +182,8 @@ private:
         std::array<const float*, 2> channels{ramp.data(), ramp.data()};
         Engine& engine = *track.engine;
         engine.captureRing().write(channels.data(), 2, static_cast<int>(block));
-        engine.timeline().advance({.playing = true,
-                                   .positionValid = true,
+        engine.timeline().advance({.playing = playing,
+                                   .positionValid = playing,
                                    .quarterNotes = quarterNotesAt(track.played),
                                    .tempoValid = true,
                                    .tempo = changed(track.played) ? laterTempo : tempo,
@@ -673,6 +676,20 @@ TEST(PacedSweep, PlacesAudioPlayedWhileAwayWhereItWasPlayed)
                 << "lane " << lane << ": audio played after the jump, while away";
         }
     }
+}
+
+// With the transport stopped, each track's timeline runs on from its own start, so musical
+// positions do not say which audio was played together: a lane whose capture started 2 s earlier
+// is drawn to its own newest audio, not 2 s back where the positions would map it.
+TEST(PacedSweep, KeepsTheLanesWithTheirAudioWhileStopped)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 96000, 120.0, false);
+    host.play(4.0);
+    ASSERT_FALSE(host.frames.empty());
+    const DecodedFrame& frame = host.frames.back().frame;
+    ASSERT_EQ(frame.laneCount, 2);
+    EXPECT_GT(newestDrawn(frame, 1), static_cast<float>(host.tracks[1].played) - 0.15F * 48000.0F)
+        << "the lane was mapped back by the positions";
 }
 
 // A track whose processing restarted captures more than the host played, so its capture indices

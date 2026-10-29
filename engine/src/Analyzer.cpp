@@ -1272,14 +1272,17 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
     constexpr int kOffsetPersistence = 100;
     const std::uint64_t newest = lane.engine->captureRing().endIndex();
     const double rate = lane.engine->sampleRate();
-    // While this track is not paced (its blocks stopped, or before its clock locks), its playhead
-    // is its newest audio, which may not move: each lane follows its own.
-    if (!pacedEdge.paced() || rate != own.engine->sampleRate()) {
+    const MusicalStamp ownLatest = own.engine->timeline().latest();
+    const MusicalStamp laneLatest = lane.engine->timeline().latest();
+    // Each lane follows its own newest audio while this track is not paced (its blocks stopped,
+    // or before its clock locks: its playhead may not move), while either transport is stopped
+    // (each timeline then runs on from its own start, so positions do not say which audio was
+    // played together), or at another sample rate.
+    if (!pacedEdge.paced() || !ownLatest.playing || !laneLatest.playing ||
+        rate != own.engine->sampleRate()) {
         lane.indexOffset.reset();
         return newest;
     }
-    const MusicalStamp ownLatest = own.engine->timeline().latest();
-    const MusicalStamp laneLatest = lane.engine->timeline().latest();
     const std::int64_t measured =
         static_cast<std::int64_t>(laneLatest.sampleIndex) -
         std::llround(Timeline::sampleIndexAt(ownLatest, laneLatest.quarterNotes, rate));
