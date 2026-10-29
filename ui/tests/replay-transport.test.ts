@@ -204,6 +204,45 @@ describe("a replay of a recorded session", () => {
     }).toThrow(/not a host event/u);
   });
 
+  test("leaves a view the page stopped at short of the recorded one to the end of the test", () => {
+    const { replay } = started();
+    replay.send(hello);
+    const short = { type: "view", start: 0.1, end: 0.9 } as const;
+    replay.send(short);
+    expect(replay.unexpected).toEqual([]);
+    expect(replay.takePending()).toEqual({ message: short, expected: view });
+    expect(replay.takePending()).toBeUndefined();
+    // Reaching the recorded view leaves nothing pending.
+    replay.send(short);
+    replay.send({ ...view });
+    expect(replay.takePending()).toBeUndefined();
+  });
+
+  test("takes the last phase's pan sent again, but no other, once nothing further is recorded", () => {
+    const { replay } = started();
+    replay.send(hello);
+    replay.send({ ...view });
+    replay.send({ ...pan });
+    // The next phase is the host's: the page's pan cannot lead anywhere.
+    replay.send({ ...pan });
+    expect(replay.unexpected).toEqual([]);
+    expect(replay.takePending()).toBeUndefined();
+    const further = { type: "pan", seconds: panSeconds + 1 } as const;
+    replay.send(further);
+    expect(replay.unexpected).toEqual([
+      { message: further, expected: { host: "sampleRate", rate: 44100 } },
+    ]);
+  });
+
+  test("collects a hello from a page of another width than the recording's", () => {
+    const { replay } = started();
+    const other = { type: "hello", viewWidth: 200, pixelRatio: 1 } as const;
+    replay.send(other);
+    expect(replay.unexpected).toEqual([
+      { message: other, expected: recording.page },
+    ]);
+  });
+
   test("says how to write a recording that is missing", async () => {
     await expect(loadRecording("NoSuchScenario", {})).rejects.toThrow(
       /NoSuchScenario\.json is missing.*ORIZON_UPDATE_RECORDINGS=1/u,
