@@ -347,6 +347,25 @@ TEST(PacedSweep, PlacesAudioFromBeforeAJumpWhereItWasPlayed)
     }
 }
 
+// A grouped track whose host stops sending blocks (suspended while silent, or bypassed) does not
+// hold the others back: its lane stops at its newest audio, and this track's playhead stays about
+// a block behind its own audio, not the largest delay. A lane's audio only late is covered (see
+// KeepsTheLanesPlayheadsTogether).
+TEST(PacedSweep, LeavesAStoppedTrackBehind)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti);
+    host.play(3.0);
+    host.tracks[1].lateSeconds = 1e6; // No more blocks.
+    host.play(2.0);
+    (void)host.tracks.front().engine->takeEdges();
+    host.play(1.0);
+    const auto draws = playheads(*host.tracks.front().engine);
+    ASSERT_GT(draws.size(), 50U);
+    const Motion motion = measureMotion(draws, host.rate);
+    EXPECT_LT(motion.lagMax, 4.0 * 512.0 / 48.0) << "ms behind its own audio";
+    EXPECT_LE(motion.advanceErrorP99, 1.0);
+}
+
 // Frozen while the transport jumps, then live again: the audio played meanwhile is placed by
 // where it was played, not by the position the sweep was placed by before the freeze.
 TEST(PacedSweep, PlacesAudioPlayedDuringAFreezeWhereItWasPlayed)

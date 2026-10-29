@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <utility>
 
 namespace orizon::engine {
 
@@ -64,10 +65,15 @@ void BlockClock::start(const BlockStampValue& stamp, double sampleRate)
     nanosPerSample = kNanosPerSecond / sampleRate;
 }
 
+double BlockClock::stallNanos(double periodNanos)
+{
+    return std::max(4.0 * periodNanos, kGapSeconds * kNanosPerSecond);
+}
+
 bool BlockClock::stalled(std::uint64_t nanos) const
 {
-    const double gap = std::max(4.0 * lastPeriodNanos, kGapSeconds * kNanosPerSecond);
-    return started && static_cast<double>(nanos) - static_cast<double>(lastArrival) > gap;
+    return started && static_cast<double>(nanos) - static_cast<double>(lastArrival) >
+                          stallNanos(lastPeriodNanos);
 }
 
 bool BlockClock::observe(const BlockStampValue& stamp, double sampleRate)
@@ -85,8 +91,7 @@ bool BlockClock::observe(const BlockStampValue& stamp, double sampleRate)
     }
     const auto samples = static_cast<double>(stamp.index - lastIndex);
     const double period = samples * nanosPerSample;
-    const double gap = std::max(4.0 * period, kGapSeconds * kNanosPerSecond);
-    if (static_cast<double>(stamp.nanos) - static_cast<double>(lastArrival) > gap) {
+    if (static_cast<double>(stamp.nanos) - static_cast<double>(lastArrival) > stallNanos(period)) {
         start(stamp, sampleRate); // The host stopped calling process for a while.
         return true;
     }
@@ -165,8 +170,9 @@ std::uint64_t PacedEdge::edge(std::uint64_t nanos, std::uint64_t newest, double 
                 ? std::min(static_cast<double>(nanos - *lastNanos) / kNanosPerSecond,
                            kLongestStepSeconds)
                 : 0.0;
-        if (target > delaySamples) {
-            delaySamples = std::min(target, delaySamples + kRiseRate * seconds * rate);
+        const double wanted = std::max(target, std::exchange(shortfallTarget, 0.0));
+        if (wanted > delaySamples) {
+            delaySamples = std::min(wanted, delaySamples + kRiseRate * seconds * rate);
         } else {
             delaySamples -= delaySamples * kDecayRate * seconds;
             target = delaySamples;
