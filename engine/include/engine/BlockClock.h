@@ -144,6 +144,9 @@ public:
     }
     // The delay in samples (0 unpaced).
     [[nodiscard]] double delay() const { return delaySamples; }
+    // Whether this track's own blocks have stopped coming by `nanos` (the host stopped calling
+    // process), as the block clock judges a stall.
+    [[nodiscard]] bool stalled(std::uint64_t nanos) const { return clock.stalled(nanos); }
     // Whether another track, whose newest block arrived at `arrival`, stopped (suspended or
     // bypassed) by `nanos`, judged by this track's block period as a stall of its own is.
     [[nodiscard]] bool stopped(std::uint64_t arrival, std::uint64_t nanos) const
