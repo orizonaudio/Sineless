@@ -1,4 +1,5 @@
 #include "FrameDecoding.h"
+#include "SampleRates.h"
 #include "engine/Analyzer.h"
 #include "engine/Motion.h"
 
@@ -190,7 +191,7 @@ TEST(PacedWindowsTriggered, DrawNoFrameBetweenBlocks)
 // with blocks of about 93 ms. Not zoomed and zoomed.
 TEST(PacedFreeze, KeepsTheWindowLastShown)
 {
-    for (const double rate : {44100.0, 48000.0, 96000.0, 192000.0, 384000.0}) {
+    for (const double rate : kSampleRates) {
         for (const bool zoomed : {false, true}) {
             SCOPED_TRACE(std::to_string(rate) + (zoomed ? " zoomed" : ""));
             const auto block = static_cast<std::uint64_t>(std::llround(0.0929 * rate));

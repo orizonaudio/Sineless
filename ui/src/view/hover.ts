@@ -43,7 +43,7 @@ export interface HoverContext {
   readonly layout: ViewLayout;
   readonly view: ViewWindow;
   readonly a4: number;
-  // Seconds mode: the span rolls, so times count back from now.
+  // The frame runs free (Free, or a Seconds span above 1 s): times count back from its right edge.
   readonly freeRunning: boolean;
 }
 
