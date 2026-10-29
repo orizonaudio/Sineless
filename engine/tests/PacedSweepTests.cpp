@@ -181,6 +181,9 @@ public:
     // Whether the transport plays; stopped, the host reports no position, and each track's
     // timeline runs on at the tempo from its own start.
     bool playing;
+    // Whether the host reports its position while stopped, as most do: an instance takes it on
+    // its first block.
+    bool positionWhileStopped = false;
     InstanceRegistry registry;
     std::vector<Track> tracks;
     std::unique_ptr<Analyzer> analyzer;
@@ -199,7 +202,7 @@ private:
         Engine& engine = *track.engine;
         engine.captureRing().write(channels.data(), 2, static_cast<int>(block));
         engine.timeline().advance({.playing = track.playing,
-                                   .positionValid = track.playing,
+                                   .positionValid = track.playing || positionWhileStopped,
                                    .quarterNotes = quarterNotesAt(track.played, track.rate),
                                    .tempoValid = true,
                                    .tempo = changed(track.played) ? laterTempo : tempo,
@@ -783,6 +786,120 @@ TEST(PacedSweep, PlacesAudioPlayedWhileAwayWhereItWasPlayed)
                 << "lane " << lane << ": audio played after the jump, while away";
         }
     }
+}
+
+// Stopped after playing, every track's clock runs on from the same last position (AD-15): the
+// lanes stay mapped to this track's playhead, together within a millisecond though the lane's
+// blocks come 3 ms later. Each was drawn at its own newest audio while stopped.
+TEST(PacedSweep, KeepsTheLanesTogetherWhileStoppedAfterPlaying)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 777);
+    host.tracks[1].lateSeconds = 0.003;
+    host.positionWhileStopped = true;
+    host.play(3.0);
+    for (BeatsHost::Track& track : host.tracks) {
+        track.playing = false;
+    }
+    host.frames.clear();
+    host.play(2.0);
+    std::size_t compared = 0;
+    for (const BeatsHost::Drawn& drawn : host.frames) {
+        if (drawn.seconds < host.time - 1.0) {
+            continue;
+        }
+        ASSERT_EQ(drawn.frame.laneCount, 2);
+        EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
+            << "at " << drawn.seconds;
+        ++compared;
+    }
+    EXPECT_GT(compared, 30U);
+}
+
+// Two instances inserted 2 s apart while stopped take the host's cursor position on their first
+// blocks, at capture indices 2 s apart: the positions say nothing about which audio was played
+// together, so neither counts as anchored until it plays. Each lane is drawn at its own newest
+// audio, and this track's playhead is not held back by mapping them.
+TEST(PacedSweep, KeepsInstancesInsertedWhileStoppedWithTheirAudio)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 96000, 120.0, false);
+    host.positionWhileStopped = true;
+    host.play(3.0);
+    (void)host.tracks.front().engine->takeEdges();
+    host.play(1.0);
+    ASSERT_FALSE(host.frames.empty());
+    const DecodedFrame& frame = host.frames.back().frame;
+    ASSERT_EQ(frame.laneCount, 2);
+    EXPECT_GT(newestDrawn(frame, 1), static_cast<float>(host.tracks[1].played) - 0.15F * 48000.0F)
+        << "the lane was mapped by the positions";
+    const Motion motion = measureMotion(playheads(*host.tracks.front().engine), host.rate);
+    EXPECT_LT(motion.lagMax, 4.0 * 512.0 / 48.0) << "ms behind its own audio";
+}
+
+// Inserted while stopped, then played: once both have played a block, their lanes are mapped and
+// together within a millisecond, also when the lane's first played block comes later.
+TEST(PacedSweep, MapsInstancesInsertedWhileStoppedOnceBothPlay)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 96000, 120.0, false);
+    host.positionWhileStopped = true;
+    host.tracks[1].lateSeconds = 0.003;
+    host.play(2.0);
+    host.tracks[0].playing = true;
+    host.play(0.05);
+    host.tracks[1].playing = true;
+    host.frames.clear();
+    host.play(3.0);
+    std::size_t compared = 0;
+    for (const BeatsHost::Drawn& drawn : host.frames) {
+        if (drawn.seconds < host.time - 1.0) {
+            continue;
+        }
+        EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
+            << "at " << drawn.seconds;
+        ++compared;
+    }
+    EXPECT_GT(compared, 30U);
+}
+
+// This track never played while the other track's transport plays (from quarter note 8): its
+// timeline runs on from its own start, at quarter note 0, so the lane is drawn at its own newest
+// audio, not mapped by positions 4 s apart.
+TEST(PacedSweep, KeepsTheLanesWithTheirAudioWhileOnlyThisTransportIsStopped)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 96000, 120.0, false);
+    host.jumpAt(0, 8.0);
+    host.setTrack(1, 48000.0, true);
+    host.play(4.0);
+    ASSERT_FALSE(host.frames.empty());
+    const DecodedFrame& frame = host.frames.back().frame;
+    ASSERT_EQ(frame.laneCount, 2);
+    EXPECT_GT(newestDrawn(frame, 1), static_cast<float>(host.tracks[1].played) - 0.15F * 48000.0F)
+        << "the lane was mapped back by the positions";
+}
+
+// A tempo edited while stopped after playing reaches each instance at its own next block: the
+// lanes are together again within a millisecond once the offset has settled.
+TEST(PacedSweep, KeepsTheLanesTogetherAfterATempoEditedWhileStopped)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti, 777);
+    host.tracks[1].lateSeconds = 0.003;
+    host.play(3.0);
+    for (BeatsHost::Track& track : host.tracks) {
+        track.playing = false;
+    }
+    host.play(0.5);
+    host.changeAt(host.tracks.front().played + 2048, 90.0, 4);
+    host.frames.clear();
+    host.play(3.0);
+    std::size_t compared = 0;
+    for (const BeatsHost::Drawn& drawn : host.frames) {
+        if (drawn.seconds < host.time - 1.0) {
+            continue;
+        }
+        EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
+            << "at " << drawn.seconds;
+        ++compared;
+    }
+    EXPECT_GT(compared, 30U);
 }
 
 // With the transport stopped, each track's timeline runs on from its own start, so musical
