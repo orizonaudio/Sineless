@@ -49,6 +49,7 @@ CI marks where each will run.
 | Component | The plugin through the VST3 API; the editor's session, frame flow and sizing | `plugin/tests`, `editor/tests` | Every PR |
 | Integration | The editor with its page in a real WKWebView or WebView2 | `editor/tests/EditorTests.mm`, `editor/tests/EditorTestsWin.cpp` | Every PR |
 | App | The real page against the mock back end, in WebKit and Chromium: controls, readouts, lanes, pan limits | `ui/tests/app`, `npm run test:app` | Every PR |
+| Recorded sessions | The real page on what the real engine and session sent, in the states only the engine decides: a zoomed roll, a limited span, rates held while frozen, mono, lanes, Compare matches, no tempo | `editor/tests/SessionRecordingTests.cpp` records them in `protocol/tests/data/sessions`; `ui/tests/app/recorded-*.test.ts` replay them | Every PR |
 | Contract | C++ and TypeScript agree on frames, messages and saved state | `protocol/tests/data`, `engine/tests/data` | Every PR |
 | Conformance | The VST3 and Audio Unit rules hosts rely on | VST3 validator, pluginval at strictness 10; for the Audio Unit, Apple's auval (strict, in and out of process) and pluginval on a copy installed for the user | Every PR |
 | Sanitizers | Real-time safety, data races, memory errors, leaks and undefined behaviour | The shared code on Linux (`scripts/check-linux.sh`): RealtimeSanitizer, ThreadSanitizer, AddressSanitizer with LeakSanitizer and UndefinedBehaviorSanitizer; the macOS editor's web view glue: AddressSanitizer with UndefinedBehaviorSanitizer, ThreadSanitizer; the Audio Unit: RealtimeSanitizer, AddressSanitizer with UndefinedBehaviorSanitizer, and for its view ThreadSanitizer; the Windows editor's: AddressSanitizer (MSVC has neither of the others) | Every PR |
@@ -71,6 +72,14 @@ ORIZON_UPDATE_CORPUS=1 ctest --preset linux -R SignalCorpus   # or --preset dev 
 ```
 
 On Windows, set `ORIZON_UPDATE_CORPUS=1` in the environment before running `ctest`. The files are written with LF line endings and as Prettier formats them.
+
+The recorded sessions are kept current the same way: each run of the editor tests records every scenario of `editor/tests/SessionRecordingTests.cpp` again and compares it with its file, messages and frames within the corpus's tolerance, and the app tests replay the files to the page, which may send only the messages a recording holds. To add a state, add a scenario and a test that replays it; when a change to what the engine or the session sends is intended (a new frame layout included), write the files again and review what the comparison reported changed:
+
+```sh
+ORIZON_UPDATE_RECORDINGS=1 ctest --preset dev -R SessionRecording
+```
+
+A page change that sends other messages in a recorded state (another zoom step, a new setting on start) fails its replay until the scenario sends the same and is recorded again.
 
 ## Releasing
 

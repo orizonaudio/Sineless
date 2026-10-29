@@ -786,7 +786,7 @@ and benchmark builds. Test levels, where each runs and the definition of done ar
 | --- | --- | --- |
 | Static | `tsc -b` (strict, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), ESLint (strict type-checked), Prettier, clang-format, clang-tidy | Linux; clang-tidy for the macOS glue on macOS |
 | Unit, component, contract | GoogleTest and Vitest; golden frames and messages shared by C++ and TypeScript, golden saved states for C++; a signal corpus of approved frames; a matrix of sample rates, spans, mono/stereo, live/frozen | All platforms |
-| Integration and app | The editor with its page in a real WKWebView or WebView2; the real page against the mock in WebKit and Chromium (Playwright) | macOS, Windows; Linux |
+| Integration and app | The editor with its page in a real WKWebView or WebView2; the real page against the mock, and on sessions the real engine recorded, in WebKit and Chromium (Playwright) | macOS, Windows; Linux |
 | Conformance | Steinberg VST3 validator (part of the build); pluginval at strictness 10; for the Audio Unit, Apple's auval (strict, in and out of process) and pluginval on a copy installed for the user (`scripts/validate-au.sh`) | macOS, Windows |
 | Sanitizers | RealtimeSanitizer, ThreadSanitizer, AddressSanitizer + LeakSanitizer + UBSan on the shared code (Linux); ASan + UBSan and TSan on the macOS glue; MSVC ASan on the Windows glue | Linux, macOS, Windows |
 | Fuzzing | libFuzzer on state loading, setting values, the session's messages; fast-check on frame decoding and transport. Five minutes per pull request, 30 nightly, from a corpus kept on main | Linux |
@@ -1083,7 +1083,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | QS-6 | A project saved by any earlier release is opened. | Every setting it saved is restored; missing or invalid ones take their defaults; loading never throws. | `StateTests` golden files; state fuzzer |
 | QS-7 | A host passes malformed state, a page sends malformed messages, a frame is malformed. | No crash, no undefined behaviour; the input is refused. | libFuzzer and fast-check; ASan + UBSan |
 | QS-8 | Audio contains NaN or infinite samples. | They are left out of every measurement and reported; other values stay correct. | `ui/tests/app/invalid-samples.test.ts`; signal corpus |
-| QS-9 | Any sample rate from 44.1 to 384 kHz, mono or stereo, live or frozen. | Readouts, lanes and holds are correct at each. | `MatrixTests`, `high-sample-rate.test.ts` |
+| QS-9 | Any sample rate from 44.1 to 384 kHz, mono or stereo, live or frozen. | Readouts, lanes and holds are correct at each. | `MatrixTests`, `high-sample-rate.test.ts`, the recorded sessions (`ui/tests/app/recorded-*.test.ts`) |
 | QS-10 | A change adds a setting, mode or formatter. | Generated test cases cover it without new test code. | Parameterised tests over the protocol's tables |
 | QS-11 | The page's process crashes, or the graphics context is lost, while playing. | The editor recovers by itself (up to 3 page failures a minute) or says what to do; audio is unaffected. | Editor tests; `graphics-lost.test.ts`, `graphics-and-errors.test.ts` |
 | QS-12 | The host changes the sample rate or channel count with the editor open. | The page gets a new snapshot at the next sync, within 100 ms. | `SessionTests` |

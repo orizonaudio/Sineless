@@ -18,6 +18,7 @@ paths:
   width (the state chips) folds into "+n" within its fixed area.
 - Help text reads its numbers from `protocol/src/limits.ts` and describes what the code does
   in every mode it applies to.
-- Changing the frame layout means bumping `protocolVersion` (`protocol/src/version.ts`) and
+- Changing the frame layout means bumping `protocolVersion` (`protocol/src/version.ts`),
   updating both shared golden frames in `protocol/tests/data/`, which the C++ encoder tests and
-  the TypeScript decoder tests read.
+  the TypeScript decoder tests read, and writing the recorded sessions again
+  (`ORIZON_UPDATE_RECORDINGS=1`, CONTRIBUTING.md "Test levels").
