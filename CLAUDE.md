@@ -69,15 +69,17 @@ message with a short `Prior art:` note naming the sources.
   values that only look alike stay separate, and a gap between two copies may be a
   deliberate margin.
 - **Start with a test that fails without the fix**, and confirm it fails before fixing.
-  Every new failure branch (failed read, missing data) gets a test that triggers it.
+  Every new failure branch (failed read, missing data) that a supported host and setup can
+  reach gets a test that triggers it; one none can reach is removed, not tested.
 
 ## Tests
 
 - Generate cases from the protocol's enums, settings table, field table and formatter
   exports, so a new mode, setting or formatter is covered when it is added (GoogleTest
   `TEST_P` with a name generator; vitest `test.each`).
-- Cover the dimensions the changed code branches on, including boundaries: sample rate
-  (44.1 to 384 kHz), span lengths around every tolerance, mono and stereo, live and frozen.
+- Cover the dimensions the changed code branches on, as far as a supported host and setup
+  reaches them, including boundaries: sample rate (44.1 to 384 kHz), span lengths around every
+  tolerance, mono and stereo, live and frozen.
 - UI behaviour that depends on app state (marker placement, enabled controls, pan limits)
   needs a test through the app and mock transport, not only a helper's unit test.
 - A test protects behaviour a user would see go wrong, and its name says which. Never

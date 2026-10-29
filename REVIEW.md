@@ -19,8 +19,8 @@ Answer each, citing file and line:
    display mode, time base, live or frozen state, channel count, readout or platform?
 2. **Values:** does the change merge, equalise or derive values, or change a threshold,
    floor, tolerance or margin? Is each value's meaning, purpose and margin stated and true?
-3. **Tests:** does every fix have a test that fails without it? Does every new failure branch
-   have a test that triggers it? Would the test catch the bug at the boundaries (highest
+3. **Tests:** does every fix have a test that fails without it? Does every new branch that a
+   supported host and setup can reach have a test that triggers it? Would the test catch the bug at the boundaries (highest
    sample rate, shortest span, failed read)? Does each new test protect behaviour a user would
    see go wrong, named as such, rather than restate a value or an implementation detail? A
    test of a tuned value (a width, a gate, a tolerance) checks what the value is for, such as
@@ -42,7 +42,11 @@ a rule the product relies on:
 
 - a correctness bug or regression, with a concrete scenario that triggers it;
 - anything on the audio thread that can allocate, lock, block or do I/O;
-- a fix without a test that fails without it, or a new failure branch with no test;
+- a fix without a test that fails without it, or a new branch no test triggers, when the
+  finding names the input or state that reaches it with a host and setup the product supports
+  (HOSTS.md, `docs/DESIGN.md`). A case missing on a dimension (a sample rate, a display mode, a
+  block size) is Important only when the code branches on that dimension or the finding shows
+  it wrong there; otherwise it is a nit;
 - a new test that only restates a value or an implementation detail (`expect(limit).toBe(920)`,
   a label's exact wording, the order of something no one reads in order): it fails on every
   intended change and on no defect, so it blocks the first and hides the absence of a test
@@ -75,7 +79,9 @@ it ran are judged all the same, but the check does not pass until the run is rep
 ## Every finding
 
 - cites the file and line;
-- gives a concrete scenario: the input or state, and what goes wrong;
+- gives a concrete scenario: the input or state, and what goes wrong. The scenario is one a
+  supported host and setup can produce: a branch none can reach needs no test, and removing it
+  is no regression, as for code that cannot run under "Mutation testing";
 - is checked against the code before it is reported. Drop a finding you cannot back with the
   code; do not report style or ask for extra process.
 
