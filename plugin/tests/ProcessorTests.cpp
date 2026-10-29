@@ -342,7 +342,7 @@ class CaptureForRate : public ::testing::TestWithParam<double>
 };
 
 // The capture is sized for the rate the host sets up: the smallest at 44.1 and 192 kHz, the
-// largest from the first standard rate above 229.376 kHz, where the smallest no longer holds a
+// largest from the first standard rate above 215.9 kHz, where the smallest no longer holds a
 // freeze, to 384 kHz.
 TEST_P(CaptureForRate, IsSizedInSetupProcessing)
 {
