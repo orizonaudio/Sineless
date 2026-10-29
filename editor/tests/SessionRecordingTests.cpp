@@ -224,7 +224,8 @@ std::vector<Scenario> scenarios()
                       {SettingId::kTimeSpan, 0.01}, {SettingId::kHoverReadout, kOn}},
          .steps = {play(1.0)}},
         // A mono track: the views asked for are L and R (the default), the engine draws L alone.
-        {.name = "MonoSine440_48k", .tracks = {mono(sine(440, 1.0))},
+        // 400 Hz fits four whole cycles into the 10 ms span, so the RMS is exactly a sine's.
+        {.name = "MonoSine400_48k", .tracks = {mono(sine(400, 1.0))},
          .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kSeconds},
                       {SettingId::kTimeSpan, 0.01}},
          .steps = {play(1.0)}},
