@@ -153,15 +153,15 @@ public:
     // The quarter note host sample `sample` was played at, counted at `at` (the host's rate if 0).
     [[nodiscard]] double quarterNotesAt(std::uint64_t sample, double at = 0.0) const
     {
-        const double rate = at > 0.0 ? at : this->rate;
+        const double perSecond = at > 0.0 ? at : rate;
         if (jumpSample && sample >= *jumpSample) {
-            return jumpTo + static_cast<double>(sample - *jumpSample) / rate * tempo / 60.0;
+            return jumpTo + static_cast<double>(sample - *jumpSample) / perSecond * tempo / 60.0;
         }
         if (changeSample && sample >= *changeSample) {
-            return static_cast<double>(*changeSample) / rate * tempo / 60.0 +
-                   static_cast<double>(sample - *changeSample) / rate * laterTempo / 60.0;
+            return static_cast<double>(*changeSample) / perSecond * tempo / 60.0 +
+                   static_cast<double>(sample - *changeSample) / perSecond * laterTempo / 60.0;
         }
-        return static_cast<double>(sample) / rate * tempo / 60.0;
+        return static_cast<double>(sample) / perSecond * tempo / 60.0;
     }
 
     [[nodiscard]] std::uint64_t nanos() const
