@@ -1,0 +1,62 @@
+[
+  {
+    "id": 4407589277,
+    "in_reply_to_id": null,
+    "user": {
+      "login": "github-actions[bot]"
+    },
+    "author_association": "NONE",
+    "path": "engine/src/Analyzer.cpp",
+    "line": null,
+    "original_line": 1299,
+    "body": "**Important:** placingStamp stops following the host's timeline when the paced delay exceeds about two blocks\n\nThe host runs small, jittered blocks, for example 64 to 128 samples at 48 kHz (QS-14 covers 32-sample blocks, jittered). PacedEdge settles on a delay of two or more blocks: the largest lead plus 0.5 ms, decaying only 1% a second (BlockClock.cpp:137). The newest stamp's sampleIndex is newest - blockLength, and the paced edge is at most newest + blockLength - delay. So `latest.sampleIndex <= end` can only hold when delay <= 2*blockLength. With a larger delay the early return `if (placing && latest.sampleIndex > end && ...) return *placing;` fires every time. `placing` then stays at the first stamp after lock, and sweepWindow extrapolates from that stale stamp. A tempo change, loop wrap or relocation never reaches the sweep: the playhead runs past loop points and the cycle length stays at the old tempo. The same happens in every lane through lane.placing. This is a regression from using timeline().latest(), and it contradicts FR-9.2.\n\n**Verification:** Timeline::advance sets stamp.sampleIndex to the block start (Timeline.cpp:18), so latest.sampleIndex = newest - blockLen. PacedEdge::edge reaches at most about newest + nextBlockLen - delay. placingStamp returns the stale *placing whenever latest.sampleIndex > end and latest.sampleIndex >= placing->sampleIndex (Analyzer.cpp:1299-1300), so placing advances only if delay <= blockLen + nextBlockLen (about two blocks). forgetPlacing (Analyzer.cpp:487, 492, 1344) fires only on leaving Beats, freezing, a mode switch or having nothing to place, never during steady paced playback. So once the delay exceeds about two blocks, placing keeps the first stamp after the reset, and sweepWindow extrapolates from it: tempo changes, loops and relocations never reach the sweep, for the own track (653), the lanes (1194) and advance. Small jittered blocks or hosts that split one buffer into back-to-back calls reach this. PacedSweepTests uses only 512-sample blocks, where the delay is about one block. The logic is newly added in the diff."
+  },
+  {
+    "id": 4407589522,
+    "in_reply_to_id": null,
+    "user": {
+      "login": "github-actions[bot]"
+    },
+    "author_association": "NONE",
+    "path": "engine/src/Analyzer.cpp",
+    "line": null,
+    "original_line": 1257,
+    "body": "Nit: The kOffsetPersistence comment ('about 0.2 s') is not true\n\noffsetDisagreements is incremented once per laneSweepEdge call, not once per 2 ms step. Those calls come from placeLanes when new audio arrives in advance() and on every frame in produceLanes. With 512-sample blocks at 48 kHz that is about 94 + 60 calls a second, so 100 calls take about 0.65 s; with 2048-sample blocks it is about 1.2 s. A real offset change is therefore adopted several times later than stated."
+  },
+  {
+    "id": 4407827095,
+    "in_reply_to_id": 4407589277,
+    "user": {
+      "login": "zuurbr"
+    },
+    "author_association": "MEMBER",
+    "path": "engine/src/Analyzer.cpp",
+    "line": null,
+    "original_line": 1299,
+    "body": "Confirmed with 64-sample blocks: audio after a jump was placed by the old position. Each sweep now keeps every position change it sees (jump, tempo or metre) and applies them in order as the playhead reaches them (6061aee); the jump test now runs with 64-sample blocks too.\n\n_🤖 Addressed by [Claude Code](https://claude.com/claude-code)_"
+  },
+  {
+    "id": 4407827392,
+    "in_reply_to_id": 4407589522,
+    "user": {
+      "login": "zuurbr"
+    },
+    "author_association": "MEMBER",
+    "path": "engine/src/Analyzer.cpp",
+    "line": null,
+    "original_line": 1257,
+    "body": "The comment now says the count is placements and gives its duration at 512 and longer blocks (6061aee).\n\n_🤖 Addressed by [Claude Code](https://claude.com/claude-code)_"
+  },
+  {
+    "id": 4407858733,
+    "in_reply_to_id": null,
+    "user": {
+      "login": "github-actions[bot]"
+    },
+    "author_association": "NONE",
+    "path": "engine/src/Analyzer.cpp",
+    "line": null,
+    "original_line": 1263,
+    "body": "**Important:** No test triggers the new failure and fallback branches in laneSweepEdge and placingStamp\n\nSuppose a grouped track in Multi Beats runs at 44.1 kHz while the own track runs at 48 kHz, or a track's processing or capture restarts mid-play so its capture indices shift. The branches for these cases are untested. Removing the offset re-measure, the mixed-rate fallback or the capture-restart reset fails no test, so a lane could stay pinned to a stale offset or wrong index with its playhead permanently apart from the own track's. The untested branches are: the persistent-disagreement adoption (`++lane.offsetDisagreements > kOffsetPersistence` then `*lane.indexOffset = measured`); the mixed-rate and own-unpaced fallback (`!ownSweepPaced || rate != own.engine->sampleRate()`), including the lane-follows-newest path before lock, offline and after a stall; the capture-restart `placing.reset()` when `latest.sampleIndex < placing.seen->sampleIndex`; and the `kMostChanges` eviction.\n\n**Verification:** The finding names four branches. All of them are new in this change: laneSweepEdge and placingStamp are added in the diff, in engine/src/Analyzer.cpp (hunk starting at 1211). For at least the first three, no test drives the state they handle.\n\n1. Taking a lasting offset change (++lane.offsetDisagreements > kOffsetPersistence, then lane.indexOffset = measured, in laneSweepEdge).\n- In pr-head/engine/tests/PacedSweepTests.cpp, BeatsHost gives each non-first track one fixed offset (lines 54-67). writeBlock always publishes .index = track.offset + track.played (line 157).\n- So the gap between capture indices never changes for good in any test. The only disagreement comes from the transport jump in PlacesAudioFromBeforeAJumpWhereItWasPlayed. That one is brief: the measured offset comes back within 1 ms once both tracks have seen the jump.\n- If the > kOffsetPersistence clause is removed, a lane keeps its first offset forever, and no test fails.\n- Real trigger, named in the code's own comment: one grouped track's processing restarts while the others keep their indices. Its lane would then be pinned to a wrong offset, and its playhead would stay apart from this track's (clamped only to [min(lane.end, newest), newest]).\n\n2. Fallback for mixed rates (rate != own.engine->sampleRate()).\n- Only PacedSweepTests (line 157) and PacedAnalyzerTests (line 102) publish paced block stamps, which is what makes ownSweepPaced true. PacedAnalyzerTests never sets Beats or Multi.\n- BeatsHost calls engine->prepare(rate) with one rate for every track (line 47).\n- MatrixTests has mixed-rate sessions (lines 3530, 3580), but it publishes no block stamps. There, !ownSweepPaced short-circuits the condition before the rate is compared.\n- So no test reaches the rate comparison while paced. Without it, the offset is measured in the lane's rate (Timeline::sampleIndexAt(ownLatest, …, rate)) but added to own.end, which is in this track's rate. The lane would then be placed at the wrong index. That is the 44.1 kHz lane next to a 48 kHz own track that the finding describes.\n\n3. Reset when the capture starts over (latest.sampleIndex < placing.seen->sampleIndex → placing.reset(), in placingStamp).\n- No test in PacedSweepTests re-prepares an engine or restarts a capture mid-play.\n- The AnalyzerTests re-prepare cases (lines 225-500) use a fresh engine, so the old seen is never compared against a smaller index.\n- Without the reset, jump stamps still pending, with indices beyond the new capture's end, stay pending, and the sweep keeps placing by a stale position.\n\n4. Eviction at kMostChanges. No test produces 64 pending position changes. This branch is minor next to the three above.\n\nWhy the existing test does not cover this: PlacesAudioFromBeforeAJumpWhereItWasPlayed only exercises the path that holds the old offset for a moment. Taking the new offset after it lasts, and the mixed-rate guard, could be removed without failing it.\n\nRule broken: CLAUDE.md (\"Fixing a bug\": \"Every new failure branch … gets a test that triggers it\") and REVIEW.md (Severity: \"a new failure branch with no test\" is Important). Hence the severity stays important."
+  }
+]

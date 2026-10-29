@@ -9,6 +9,7 @@
     "vitest.config.ts",
     "vitest.mutation.config.ts",
     "vitest.unit.ts",
+    "scripts/ai-review-answers.ts",
     "scripts/changed-code.ts",
     "scripts/mutation-base.ts",
     "scripts/engine-work.ts",
