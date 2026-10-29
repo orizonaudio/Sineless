@@ -141,7 +141,7 @@ public:
         if (jumpSample && sample >= *jumpSample) {
             return jumpTo + static_cast<double>(sample - *jumpSample) / rate * tempo / 60.0;
         }
-        if (changed(sample)) {
+        if (changeSample && sample >= *changeSample) {
             return static_cast<double>(*changeSample) / rate * tempo / 60.0 +
                    static_cast<double>(sample - *changeSample) / rate * laterTempo / 60.0;
         }
@@ -385,12 +385,13 @@ TEST(PacedSweep, PlacesAudioFromBeforeAJumpWhereItWasPlayed)
         std::uint64_t block;
         double rate;
     };
-    for (const JumpCase c : {JumpCase{protocol::DisplayMode::kSingle, 512, 48000.0},
-                             JumpCase{protocol::DisplayMode::kMulti, 512, 48000.0},
-                             JumpCase{protocol::DisplayMode::kSingle, 64, 48000.0},
-                             JumpCase{protocol::DisplayMode::kMulti, 64, 48000.0},
-                             JumpCase{protocol::DisplayMode::kSingle, 4096, 384000.0},
-                             JumpCase{protocol::DisplayMode::kMulti, 4096, 384000.0}}) {
+    for (const JumpCase c :
+         {JumpCase{.mode = protocol::DisplayMode::kSingle, .block = 512, .rate = 48000.0},
+          JumpCase{.mode = protocol::DisplayMode::kMulti, .block = 512, .rate = 48000.0},
+          JumpCase{.mode = protocol::DisplayMode::kSingle, .block = 64, .rate = 48000.0},
+          JumpCase{.mode = protocol::DisplayMode::kMulti, .block = 64, .rate = 48000.0},
+          JumpCase{.mode = protocol::DisplayMode::kSingle, .block = 4096, .rate = 384000.0},
+          JumpCase{.mode = protocol::DisplayMode::kMulti, .block = 4096, .rate = 384000.0}}) {
         SCOPED_TRACE(std::string(protocol::kDisplayModeNames.at(static_cast<std::size_t>(c.mode))) +
                      " " + std::to_string(c.block) + " at " + std::to_string(c.rate));
         const std::size_t tracks = c.mode == protocol::DisplayMode::kSingle ? 1 : 2;
@@ -404,13 +405,13 @@ TEST(PacedSweep, PlacesAudioFromBeforeAJumpWhereItWasPlayed)
         // Until each lane's playhead has just passed the jump: later audio comes back over the
         // same place a quarter beat (0.125 s) on.
         const auto quarterBeat = static_cast<std::uint64_t>(0.125 * c.rate);
+        const std::uint64_t passedAt = jump + (quarterBeat / 6);
         const auto passed = [&] {
             if (host.frames.empty()) {
                 return false;
             }
             for (std::size_t lane = 0; lane < tracks; ++lane) {
-                if (newestDrawn(host.frames.back().frame, lane) <
-                    static_cast<float>(jump + quarterBeat / 6)) {
+                if (newestDrawn(host.frames.back().frame, lane) < static_cast<float>(passedAt)) {
                     return false;
                 }
             }
@@ -651,7 +652,8 @@ TEST(PacedSweep, PlacesAudioPlayedWhileAwayWhereItWasPlayed)
         if (away.timeBase) {
             set(SettingId::kTimeBase, static_cast<double>(*away.timeBase));
         } else {
-            set(SettingId::kDisplayMode, static_cast<double>(*away.otherMode));
+            set(SettingId::kDisplayMode,
+                static_cast<double>(away.otherMode.value_or(DisplayMode::kSingle)));
         }
         host.play(0.2);
         const std::uint64_t jump = (host.tracks.front().played / 512 + 4) * 512;
