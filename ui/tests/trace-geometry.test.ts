@@ -11,15 +11,15 @@ import {
   cancellationBands,
   columnPosition,
   coverageAttachments,
-  coverageGroups,
   coverageSlot,
+  coverageTargets,
   fullScale,
   lanes,
   playheadEdges,
   pointPosition,
   textureRowLength,
   textureRows,
-  tracesPerGroup,
+  tracesPerPass,
 } from "../src/render/trace-geometry.ts";
 
 function frame(
@@ -485,38 +485,29 @@ describe("cancellation bands", () => {
 // Each trace's coverage has a channel of its own until it is layered over the screen: two traces
 // sharing one would draw as one, and a trace with none would vanish.
 describe("the coverage channels of a frame's traces", () => {
-  test.each(Array.from({ length: maxLanes + 1 }, (_, k) => k + 1))(
-    "%i traces each get their own channel, layered in drawing order",
+  test("the most lanes a frame holds fit one pass", () => {
+    expect(maxLanes).toBeLessThanOrEqual(tracesPerPass);
+  });
+
+  test.each(Array.from({ length: maxLanes }, (_, k) => k + 1))(
+    "%i traces each get their own channel, in the targets cleared and read",
     (traces) => {
-      const groups = coverageGroups(traces);
-      const drawn = groups.flatMap(({ first, count }) =>
-        Array.from({ length: count }, (_, k) => first + k),
+      const slots = Array.from({ length: traces }, (_, k) => coverageSlot(k));
+      const used = new Set(
+        slots.map(({ attachment, channel }) => attachment * 4 + channel),
       );
-      expect(drawn).toEqual(Array.from({ length: traces }, (_, k) => k));
-      for (const { count, attachments } of groups) {
-        expect(count).toBeLessThanOrEqual(tracesPerGroup);
-        const slots = Array.from({ length: count }, (_, k) => coverageSlot(k));
-        const used = new Set(
-          slots.map(({ attachment, channel }) => attachment * 4 + channel),
-        );
-        expect(used.size).toBe(count);
-        for (const { attachment, channel } of slots) {
-          expect(attachment).toBeLessThan(attachments);
-          expect(channel).toBeGreaterThanOrEqual(0);
-          expect(channel).toBeLessThan(4);
-        }
-        // No target is cleared and read that no trace in the group uses.
-        expect(attachments).toBe(
-          Math.max(...slots.map(({ attachment }) => attachment)) + 1,
-        );
-        expect(attachments).toBeLessThanOrEqual(coverageAttachments);
+      expect(used.size).toBe(traces);
+      for (const { channel } of slots) {
+        expect(channel).toBeGreaterThanOrEqual(0);
+        expect(channel).toBeLessThan(4);
       }
+      // No target is cleared and read that no trace uses, and none used is left out.
+      expect(coverageTargets(traces)).toBe(
+        Math.max(...slots.map(({ attachment }) => attachment)) + 1,
+      );
+      expect(coverageTargets(traces)).toBeLessThanOrEqual(coverageAttachments);
     },
   );
-
-  test("a full multi-track frame is one group", () => {
-    expect(coverageGroups(maxLanes)).toHaveLength(1);
-  });
 });
 
 // A frame's values reach the GPU as rows of a texture: every value is uploaded once.
@@ -525,10 +516,13 @@ describe("the texture rows of a frame's values", () => {
     "%i values",
     (count) => {
       const { rows, full, remainder } = textureRows(count);
+      // The full rows and the part row hold every value once.
       expect(full * textureRowLength + remainder).toBe(count);
       expect(remainder).toBeGreaterThanOrEqual(0);
       expect(remainder).toBeLessThan(textureRowLength);
-      expect(rows).toBe(full + (remainder > 0 ? 1 : 0));
+      // The texture is tall enough for them, with no row left empty.
+      expect(rows * textureRowLength).toBeGreaterThanOrEqual(count);
+      expect((rows - 1) * textureRowLength).toBeLessThan(Math.max(count, 1));
     },
   );
 });
