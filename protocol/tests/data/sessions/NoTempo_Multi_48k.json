@@ -1,0 +1,64 @@
+{
+  "phases": [
+    {
+      "after": null,
+      "answers": [],
+      "frames": [
+        "AYgAAAAAAAAAAAAAAADAfwAAwH8AAMB/AACAvwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgDtHAAAAAA=="
+      ],
+      "replies": [
+        {
+          "hidden": 0,
+          "laneSet": 1,
+          "lanes": [
+            {
+              "colour": null,
+              "compared": false,
+              "id": 1,
+              "name": "Kick",
+              "own": true
+            },
+            {
+              "colour": null,
+              "compared": false,
+              "id": 2,
+              "name": "Bass",
+              "own": false
+            }
+          ],
+          "type": "lanes"
+        }
+      ]
+    }
+  ],
+  "protocolVersion": 7,
+  "scenario": "NoTempo_Multi_48k",
+  "snapshot": {
+    "inputChannels": 2,
+    "protocolVersion": 7,
+    "sampleRate": 48000.0,
+    "settings": {
+      "autoFreeze": "off",
+      "beatSpan": "oneBar",
+      "channelViews": [
+        "left",
+        "right"
+      ],
+      "concertPitch": 440.0,
+      "displayMode": "multi",
+      "group": "a",
+      "hoverReadout": "off",
+      "timeBase": "beats",
+      "timeSpan": 1.0,
+      "triggerHoldOff": 0.0,
+      "triggerHysteresis": 0.01,
+      "triggerLevel": 0.0,
+      "triggerMode": "auto",
+      "triggerSlope": "rising",
+      "triggerSource": "mid",
+      "verticalScale": 0.0,
+      "viewLayout": "stacked"
+    },
+    "type": "snapshot"
+  }
+}

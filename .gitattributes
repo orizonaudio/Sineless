@@ -3,3 +3,5 @@
 * text=auto eol=lf
 *.png binary
 *.woff2 binary
+# Written by the recorded-session tests: diffs show the code that records them, not their base64.
+protocol/tests/data/sessions/*.json linguist-generated=true
