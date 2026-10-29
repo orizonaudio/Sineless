@@ -286,6 +286,40 @@ TEST(PacedEdge, RaisesTheDelayBySlowingNotStalling)
     EXPECT_LE(motion.advanceErrorMax, 2.0) << "no frame stalls for the rise";
 }
 
+// After one late block the delay, raised to cover it, falls back: the display does not keep
+// trailing the audio by the worst lead it saw. One block 15 ms late (absorbed, not a jump) at
+// 4 s; over the next 8 s the edge trails the audio less, by about 1% a second, and never moves
+// back.
+TEST(PacedEdge, LowersTheDelayAfterALateBlock)
+{
+    PacedEdge edge;
+    const testing::HostPattern pattern{.block = 512, .rate = 48000.0, .seconds = 14.0};
+    const auto period = static_cast<std::uint64_t>(pattern.periodSeconds() * 1e9);
+    const auto draws =
+        playEdge(edge, pattern, protocol::kPacingDelayCapSeconds, [&](BlockStampValue stamp) {
+            if (stamp.nanos >= 4 * kSecond && stamp.nanos < 4 * kSecond + period) {
+                stamp.nanos += 15'000'000;
+            }
+            return stamp;
+        });
+    const auto meanLag = [&](double from, double to) {
+        double sum = 0.0;
+        int count = 0;
+        for (const EdgeDraw& draw : draws) {
+            if (draw.seconds >= from && draw.seconds < to) {
+                sum += draw.newest - draw.edge;
+                ++count;
+            }
+        }
+        return sum / count;
+    };
+    const double raised = meanLag(5.0, 6.0);
+    const double later = meanLag(12.0, 13.0);
+    EXPECT_GT(raised, meanLag(2.0, 3.0) + 0.01 * pattern.rate) << "the late block raised it";
+    EXPECT_LT(later, raised * 0.96) << "the delay stayed where the late block put it";
+    EXPECT_FALSE(measureMotion(draws, pattern.rate).backwards);
+}
+
 // Blocks further apart than the largest delay are not paced: the edge is the newest sample, as
 // before, never past it.
 TEST(PacedEdge, IsTheNewestSampleForBlocksBeyondTheCap)
