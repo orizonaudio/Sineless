@@ -723,7 +723,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             // a sample beyond each edge so the trace reaches past the screen's edges. Only those
             // are read: the edge moves every frame, and the span may be seconds long.
             const std::uint64_t count = std::min(spanSamples, end);
-            const double wholeStart = static_cast<double>(end - count);
+            const auto wholeStart = static_cast<double>(end - count);
             const double from = wholeStart + command.viewStart * static_cast<double>(count);
             const double to = wholeStart + command.viewEnd * static_cast<double>(count);
             const double first = std::max(wholeStart, std::floor(from) - 1.0);
