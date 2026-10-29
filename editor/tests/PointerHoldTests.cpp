@@ -266,7 +266,7 @@ TEST_F(PointerHoldTest, EndsWhenThePollFindsTheButtonUp)
     EXPECT_EQ(pointer.calls.back(), "show");
 }
 
-TEST_F(PointerHoldTest, NeverLeavesThePointerHiddenWhenDestroyed)
+TEST(PointerHoldLifetime, NeverLeavesThePointerHiddenWhenDestroyed)
 {
     FakePointer pointer;
     {
@@ -279,7 +279,7 @@ TEST_F(PointerHoldTest, NeverLeavesThePointerHiddenWhenDestroyed)
               (std::vector<std::string>{"hide", "freeze", "warp", "unfreeze", "show"}));
 }
 
-TEST_F(PointerHoldTest, IgnoresAReportDeliveredAfterItsHoldIsGone)
+TEST(PointerHoldLifetime, IgnoresAReportDeliveredAfterItsHoldIsGone)
 {
     std::vector<std::function<void()>> late;
     FakePointer pointer;
