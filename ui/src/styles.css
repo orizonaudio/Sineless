@@ -288,7 +288,7 @@ button[aria-pressed="true"]:focus-visible {
   z-index: 4;
   display: grid;
   gap: 10px;
-  min-width: 220px;
+  min-width: 100px;
   padding: 12px 14px;
   background: var(--sl-popover);
   border: 1px solid var(--sl-line);
