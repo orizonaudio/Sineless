@@ -63,6 +63,7 @@ const status = (state: string, minutesAgo = 0) => ({
 
 let repo = "";
 let other = "";
+let mainCheckout = "";
 let fakes = "";
 
 const git = (cwd: string, ...args: string[]) =>
@@ -71,7 +72,8 @@ const git = (cwd: string, ...args: string[]) =>
 beforeAll(() => {
   const base = mkdtempSync(join(tmpdir(), "review-stop-"));
   repo = join(base, "repo");
-  other = join(base, "other");
+  // A path with a space in it, as this repository's own is.
+  other = join(base, "other checkout");
   fakes = join(base, "fakes");
   execFileSync("mkdir", ["-p", repo, fakes]);
   git(repo, "init", "-q", "-b", "nopr");
@@ -92,6 +94,10 @@ beforeAll(() => {
   }
   // A second checkout, on the labelled branch (a clone: a worktree would hold the branch).
   git(base, "clone", "-q", "-b", labelled, repo, other);
+  // And one on main.
+  mainCheckout = join(base, "main checkout");
+  git(base, "clone", "-q", repo, mainCheckout);
+  git(mainCheckout, "checkout", "-q", "-b", "main");
 
   // The fake gh: `pr list` prints the open pull requests, `api .../commits/<sha>/statuses` the
   // statuses written for that commit; a file named fail-list or fail-status makes that call fail.
@@ -210,8 +216,9 @@ describe("an agent on a pull request that needs a maintainer", () => {
   );
 
   test("cannot push from a checkout of it named with -C", () => {
-    blocked(`git -C ${other} push`);
-    blocked(`git -c push.default=current -C ${other} push`);
+    blocked(`git -C "${other}" push`);
+    blocked(`git -C '${other}' push origin HEAD`);
+    blocked(`git -c push.default=current -C "${other}" push`);
   });
 
   test("can push to an unlabelled branch named with -C from its own checkout", () => {
@@ -273,7 +280,11 @@ describe("an agent never hands a pull request back or waives its review", () => 
     "gh issue edit 288 --remove-label needs-human",
     "gh api -X DELETE repos/o/r/issues/288/labels/needs-human",
     "gh api --method DELETE repos/o/r/issues/288/labels/needs-human",
+    "gh api --method=DELETE repos/o/r/issues/288/labels/needs-human",
+    "gh pr edit 288 \\\n  --remove-label needs-human",
     "gh pr comment 288 --body '/ai-review waive the findings do not hold'",
+    `gh pr comment 288 --body "$(cat <<'EOF'\n/ai-review waive the findings do not hold\nEOF\n)"`,
+    `echo "/ai-review waive x" | gh pr comment 288 -F -`,
   ])("%s is blocked on any pull request", (command) => {
     const { code } = run(hook, command, clean);
     expect(code).toBe(2);
@@ -284,6 +295,15 @@ describe("an agent never hands a pull request back or waives its review", () => 
     `gh pr comment 288 --body "Waiting for needs-human to be removed"`,
   ])("%s is allowed", (command) => {
     allowed(command, clean);
+  });
+});
+
+describe("an agent on a pull request that needs a maintainer can still read", () => {
+  test.each([
+    "gh run list --workflow .github/workflows/ai-review.yml",
+    "gh api repos/o/r/contents/.github/workflows/ai-review.yml",
+  ])("%s", (command) => {
+    allowed(command, labelled);
   });
 });
 
@@ -369,6 +389,7 @@ describe("pushing to main stays blocked", () => {
     ["git push", "main"],
     ["git push origin HEAD", "main"],
     ["git push origin main 2>&1 | tail -1", "nopr"],
+    ['git -C "/a path/with spaces" push origin main', "nopr"],
   ])("%s on %s is blocked", (command, branch) => {
     if (branch === "main") {
       git(repo, "branch", "-f", "main");
@@ -376,10 +397,19 @@ describe("pushing to main stays blocked", () => {
     expect(run(noPushToMain, command, branch).code).toBe(2);
   });
 
+  test.each(["push", "push origin HEAD"])(
+    "git -C <a checkout on main> %s from another branch is blocked",
+    (args) => {
+      expect(run(noPushToMain, `git -C "${mainCheckout}" ${args}`).code).toBe(
+        2,
+      );
+    },
+  );
+
   test.each([
     `git push origin ${clean}`,
     `git push origin ${clean}:other`,
-    `git -C ${other} push`,
+    `git -C "${other}" push`,
     `git commit -m "never push to main"`,
   ])("%s is allowed", (command) => {
     expect(run(noPushToMain, command).code).toBe(0);
