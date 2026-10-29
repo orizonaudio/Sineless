@@ -1691,10 +1691,23 @@ void Analyzer::catchUpImageToHold()
 // same moment: it is then cropped or rebuilt from them as drawn.
 void Analyzer::catchUpToHold(Lane& lane)
 {
-    const auto held = sweepWindow(lane.hold.clock(), lane.hold.endIndex(), lane.hold.sampleRate(),
-                                  placedSpan, kMaxSweepSamples);
     const std::uint64_t length = lane.image.length();
-    if (!held || length == 0 || !lane.window) {
+    if (length == 0 || !lane.window) {
+        return;
+    }
+    // Through the positions not yet reached, as live: audio is placed where it was played.
+    const double rate = lane.hold.sampleRate();
+    const auto placeBefore = [&](const MusicalStamp& previous, std::uint64_t until) {
+        if (const auto before = sweepWindow(previous, until, rate, placedSpan, kMaxSweepSamples)) {
+            ++workDone.sweepUpdates;
+            (void)lane.image.update(lane.hold, *before, false, lane.engine->inputChannels(),
+                                    length);
+        }
+    };
+    const auto held = sweepWindow(
+        placingStamp(lane.hold.clock(), lane.hold.endIndex(), rate, lane.placing, placeBefore),
+        lane.hold.endIndex(), rate, placedSpan, kMaxSweepSamples);
+    if (!held) {
         return;
     }
     if (lane.image.update(lane.hold, *held, false, lane.engine->inputChannels(), length)) {
