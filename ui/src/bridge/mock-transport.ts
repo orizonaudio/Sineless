@@ -28,7 +28,7 @@ import {
   triggerPosition,
 } from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
-import { clampPan, readoutView, type ViewName } from "../view/screen-state.ts";
+import { clampPan, readoutView } from "../view/screen-state.ts";
 import type { ControlMessage, Transport } from "./transport.ts";
 
 export const mockSampleRate = 48000;
@@ -580,13 +580,9 @@ export class MockTransport implements Transport {
     );
     const views = new Map<ChannelView, Float32Array>();
     const lanes: Float32Array[] = [];
-    // The readouts measure what the engine's do: the trigger source, or the Mid in Beats mode.
+    // The readouts measure what the engine's do: the Mid, whatever the trigger source.
     const mono = this.inputChannels === 1;
-    const source = readoutView(
-      synced,
-      this.setting("triggerSource") as ViewName,
-      this.inputChannels,
-    );
+    const source = readoutView(this.inputChannels);
     let readoutSignal = (time: number) => viewSample(source, time, mono);
     let comparison: FrameContent["comparison"];
     if (multi) {

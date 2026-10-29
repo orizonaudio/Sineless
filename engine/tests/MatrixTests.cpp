@@ -2246,37 +2246,109 @@ TEST(ChannelViewsInBeats, ShowAHiddenViewAsItIsNow)
     }
 }
 
-// In Beats, the readouts measure the Mid, as the lanes do, whatever the trigger source (which only
-// Seconds mode uses): with the source on any other view, a track whose right channel is half its
-// left reads at the Mid's level, three quarters of the left. At the lowest and highest rates, live
-// and frozen.
-TEST(ChannelViewsInBeats, MeasureTheMidWhateverTheTriggerSource)
+// Where the readouts are measured: a time base, a span, a trigger source, a rate and a track.
+struct ReadoutChannelCase
 {
+    double rate = 0.0;
+    int channels = 2;
+    TimeBase timeBase = TimeBase::kSeconds;
+    bool freeRunning = false;
+    protocol::ChannelView source = protocol::ChannelView::kLeft;
+};
+
+std::string nameOf(const ReadoutChannelCase& c)
+{
+    return rateName(c.rate) + "_" + channelsName(c.channels) + "_" + timeBaseName(c.timeBase) +
+           (c.freeRunning ? "FreeRunning" : "") + "_" +
+           capitalised(protocol::kChannelViewNames.at(static_cast<std::size_t>(c.source)));
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const ReadoutChannelCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+// In Single display mode the readouts measure the Mid, as Beats and the lanes do, whatever the
+// trigger source, which picks only what the trigger reads: with the source on any other view, a
+// track whose right channel is half its left reads at the Mid's level, three quarters of the left;
+// a mono track reads its one channel. Triggered and free-running Seconds windows and Beats sweeps,
+// live and frozen, at the lowest and highest rates.
+class ReadoutChannel : public ::testing::TestWithParam<ReadoutChannelCase>
+{
+};
+
+TEST_P(ReadoutChannel, IsTheMidWhateverTheTriggerSource)
+{
+    const ReadoutChannelCase c = GetParam();
     constexpr double kAmplitude = 0.5;
-    for (std::size_t source = 0; source < protocol::kChannelViewCount; ++source) {
-        if (static_cast<protocol::ChannelView>(source) == protocol::ChannelView::kMid) {
-            continue;
+    Session session(c.rate, c.channels);
+    session.join({.frequency = 1000.0, .amplitude = kAmplitude, .offset = 0.0});
+    session.own().settings().set(SettingId::kTriggerSource, static_cast<double>(c.source));
+    std::optional<DecodedFrame> frame;
+    if (c.freeRunning) {
+        configure(session.own(), DisplayMode::kSingle, TimeBase::kSeconds);
+        session.own().settings().set(SettingId::kTimeSpan,
+                                     2.0 * protocol::kFreeRunningThresholdSeconds);
+        session.play(3.0 * protocol::kFreeRunningThresholdSeconds);
+        frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        ASSERT_TRUE(frame->has(protocol::FrameFlag::kFreeRunning)) << "a free-running window";
+    } else {
+        configure(session.own(), DisplayMode::kSingle, c.timeBase);
+        frame = playForReadouts(session, c.timeBase);
+    }
+    // The Mid of L and half of L, or the one channel of a mono track.
+    const double expected = (c.channels == 1 ? 1.0 : 0.75) * kAmplitude;
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        if (frozen) {
+            session.analyzer().setFrozen(true);
+            session.play(static_cast<double>(kBlock) / c.rate);
+            frame = session.produce();
         }
-        for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
-            SCOPED_TRACE(testing::Message() << "source " << source << ", " << rateName(rate));
-            Session session(rate, 2);
-            session.join({.frequency = 1000.0, .amplitude = kAmplitude, .offset = 0.0});
-            configure(session.own(), DisplayMode::kSingle, TimeBase::kBeats);
-            session.own().settings().set(SettingId::kTriggerSource, static_cast<double>(source));
-            auto frame = playForReadouts(session, TimeBase::kBeats);
-            for (const bool frozen : {false, true}) {
-                SCOPED_TRACE(frozen ? "frozen" : "live");
-                if (frozen) {
-                    session.analyzer().setFrozen(true);
-                    session.play(static_cast<double>(kBlock) / rate);
-                    frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        EXPECT_NEAR(frame->peak, expected, 0.01 * kAmplitude);
+    }
+}
+
+// Every source but the Mid (which reads the same either way), in each time base and Seconds span
+// kind, stereo at the edge rates; and a mono track with each source, where only L exists.
+std::vector<ReadoutChannelCase> readoutChannelCases()
+{
+    std::vector<ReadoutChannelCase> cases;
+    for (std::size_t source = 0; source < protocol::kChannelViewCount; ++source) {
+        const auto view = static_cast<protocol::ChannelView>(source);
+        for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+            const auto base = static_cast<TimeBase>(timeBase);
+            for (const bool freeRunning : {false, true}) {
+                if (freeRunning && base != TimeBase::kSeconds) {
+                    continue;
                 }
-                ASSERT_TRUE(frame) << "no frame";
-                EXPECT_NEAR(frame->peak, 0.75 * kAmplitude, 0.01 * kAmplitude);
+                if (view != protocol::ChannelView::kMid) {
+                    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+                        cases.push_back({.rate = rate,
+                                         .channels = 2,
+                                         .timeBase = base,
+                                         .freeRunning = freeRunning,
+                                         .source = view});
+                    }
+                }
+                cases.push_back({.rate = kSampleRates.front(),
+                                 .channels = 1,
+                                 .timeBase = base,
+                                 .freeRunning = freeRunning,
+                                 .source = view});
             }
         }
     }
+    return cases;
 }
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, ReadoutChannel, ::testing::ValuesIn(readoutChannelCases()),
+                         [](const ::testing::TestParamInfo<ReadoutChannelCase>& info) {
+                             return nameOf(info.param);
+                         });
 
 // A mono track is its one channel, not a stereo pair with a silent right: its trace (Single's
 // view, or its lane in the multi-track view and Compare) reaches the tone's amplitude, and its
@@ -2483,9 +2555,9 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenSamples, ::testing::ValuesIn(brokenCas
 
 // Single has no lanes: bit 0 of `invalidLanes` says a trace drawn holds samples that are not
 // finite, whichever channel they are on. A stereo track broken on its right channel only, the
-// readouts on its left (the trigger source, in Seconds mode): drawn with R, the frame says so; with
-// L alone drawn, in Seconds mode nothing shown or measured holds any. In each time base, live and
-// rolling, at the lowest and highest rates.
+// trigger on its left: drawn with R, the frame says so; with L alone drawn, the readouts, which
+// measure the Mid, still count them and keep their levels, and in Seconds mode nothing shown holds
+// any. In each time base, live and rolling, at the lowest and highest rates.
 class BrokenChannel : public ::testing::TestWithParam<BrokenCase>
 {
 };
@@ -2512,9 +2584,13 @@ TEST_P(BrokenChannel, IsFlaggedWhenDrawn)
         ASSERT_TRUE(frame);
         if (drawn) {
             EXPECT_EQ(frame->invalidLanes, 1U) << "a trace drawn holds some";
-        } else if (c.mode.timeBase == TimeBase::kSeconds) {
-            EXPECT_EQ(frame->invalidLanes, 0U) << "none drawn";
-            EXPECT_EQ(frame->invalidSamples, 0U) << "none measured";
+        } else {
+            EXPECT_GT(frame->invalidSamples, 0U) << "the Mid measured holds some";
+            EXPECT_TRUE(std::isfinite(frame->peak) && std::isfinite(frame->rms))
+                << "measured around them";
+            if (c.mode.timeBase == TimeBase::kSeconds) {
+                EXPECT_EQ(frame->invalidLanes, 0U) << "none drawn";
+            }
         }
     }
 }

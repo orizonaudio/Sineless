@@ -2,8 +2,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { DisplayMode } from "../../protocol/src/enums.ts";
+import { ChannelView, DisplayMode } from "../../protocol/src/enums.ts";
 import { helpTexts, isHelpTopic } from "../src/view/help.ts";
+import { readoutView } from "../src/view/screen-state.ts";
 
 const ui = join(import.meta.dirname, "..");
 
@@ -59,27 +60,27 @@ describe("help texts", () => {
     expect(partial).toEqual([]);
   });
 
-  // The trigger source applies only in the first display mode (Single) with Sec: Multi and Compare
-  // have no source of their own (multiMode in app.ts) and nothing triggers in Beats. Help that
-  // says something follows the trigger source (a readout, snapping) says so, rather than leaving
-  // it to apply in every mode.
-  test("that say something follows the trigger source say it does in Single display mode with Sec only", () => {
-    const [single] = Object.keys(DisplayMode).map(
-      (mode) => mode.charAt(0).toUpperCase() + mode.slice(1),
-    );
-    const following = Object.entries(helpTexts).filter(
-      ([topic, { text }]) =>
-        topic !== "triggerSource" && text.includes("trigger source"),
-    );
-    expect(following.length).toBeGreaterThan(0);
-    const unqualified = following
-      .filter(
-        ([, { text }]) =>
-          !text.includes(`${single ?? "?"} display mode with Sec`),
-      )
-      .map(([topic]) => topic);
-    expect(unqualified).toEqual([]);
-  });
+  // The help for what the readouts measure names the channel they read, on a stereo and on a mono
+  // track, and no other: the trigger source picks only what the trigger reads.
+  const channelName = (view: ChannelView) => {
+    const key =
+      Object.entries(ChannelView).find(([, value]) => value === view)?.[0] ??
+      "";
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  };
+  test.each(["peak", "frequency", "readoutSource"] as const)(
+    "%s names the channel the readouts measure",
+    (topic) => {
+      const named = Object.values(ChannelView)
+        .map(channelName)
+        .filter((name) =>
+          new RegExp(`\\b${name}\\b`, "u").test(helpTexts[topic].text),
+        );
+      expect(named.sort()).toEqual(
+        [...new Set([readoutView(2), readoutView(1)].map(channelName))].sort(),
+      );
+    },
+  );
 
   test("have a title and full sentences", () => {
     for (const { title, text } of Object.values(helpTexts)) {

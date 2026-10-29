@@ -183,7 +183,7 @@
         <li><span><b>Overlay | Stack is in the toolbar,</b> in every mode: it also arranges the lanes in Multi and Compare.</span></li>
         <li><span><b>New status bar order.</b> Left: Time, Level, Hover, then A4. Centre: what the readouts measure, then Peak, RMS and Freq. Right: the state, then Help. The buttons never change width and the state area has a fixed width, so the readouts stay put. They are centred between the two sides, a few pixels off the window's centre.</span></li>
         <li><span><b>Readouts hold still.</b> Each label sits right next to its value and unit, and each readout has a fixed width, so a longer value never pushes the next one.</span></li>
-        <li><span><b>The readout tag says Left, Right, Mid or Side in Single, and This track in Multi and Compare.</b> I didn't use Sum in Compare: the readouts measure this track's Mid there, not the sum (DESIGN.md §1.2.1). Showing Sum would need the engine to measure the sum instead, which is a behaviour change.</span></li>
+        <li><span><b>The readout tag says Mid in Single (Left on a mono track), and This track in Multi and Compare.</b> I didn't use Sum in Compare: the readouts measure this track's Mid there, not the sum (DESIGN.md §1.2.1). Showing Sum would need the engine to measure the sum instead, which is a behaviour change.</span></li>
       </ul>
     </div>
     <div class="frames" data-concept="A"></div>
@@ -233,7 +233,7 @@
 <script>
 const MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M53.592 9.187C52.022 8.352 50.315 7.711 48.538 7.182C46.761 6.653 44.911 6.241 43.052 5.986C41.193 5.731 39.331 5.644 37.519 5.751C35.706 5.858 33.942 6.155 32.204 6.591C30.467 7.027 28.746 7.594 27.024 8.249C25.301 8.903 23.575 9.646 21.905 10.483C20.235 11.321 18.628 12.256 17.138 13.302C15.647 14.347 14.272 15.504 12.996 16.771C11.721 18.038 10.537 19.417 9.453 20.904C8.369 22.391 7.389 23.988 6.584 25.665C5.779 27.343 5.159 29.099 4.744 30.882C4.329 32.664 4.113 34.471 4.035 36.276C3.957 38.082 4.005 39.891 4.178 41.706C4.351 43.521 4.655 45.347 5.186 47.125C5.717 48.904 6.487 50.631 7.53 52.168C8.574 53.705 9.887 55.045 11.38 56.061C12.873 57.077 14.537 57.77 16.277 58.089C18.016 58.408 19.839 58.356 21.641 57.926C23.442 57.496 25.227 56.685 26.759 55.542C28.292 54.4 29.55 52.925 30.322 51.272C31.094 49.619 31.362 47.798 31.301 45.996C31.24 44.195 30.877 42.42 30.724 40.75C30.571 39.08 30.667 37.505 31.307 36.039C31.948 34.573 33.128 33.21 34.647 32.057C36.166 30.903 37.988 29.976 39.8 29.393C41.613 28.811 43.409 28.587 45.15 28.559C46.892 28.531 48.606 28.678 50.329 28.572C52.052 28.467 53.793 28.073 55.343 27.148C56.893 26.223 58.226 24.767 59.048 23.011C59.87 21.256 60.166 19.234 59.906 17.365C59.646 15.496 58.847 13.798 57.722 12.434C56.596 11.069 55.161 10.022 53.592 9.187Z"/></svg>';
 // ---------- scenes: the same states for every concept ----------
-// readout: what Peak, RMS and Freq measure (DESIGN.md 1.2.1): the trigger source in Single, this track's Mid in Multi and Compare.
+// readout: what Peak, RMS and Freq measure (DESIGN.md 1.2.1): the Mid in Single (Left on a mono track), this track's Mid in Multi and Compare.
 const SCENES = {
   single: { mode: 'Single', base: 'sec', trigger: 'Auto', frozen: false, auto: false,
     lanes: [{ name: 'L', sig: 'L', tone: 0 }, { name: 'R', sig: 'R', tone: 2 }],
