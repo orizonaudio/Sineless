@@ -695,6 +695,39 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
     }
 }
 
+// Zoomed in until a free-running window's view is drawn as raw samples, a frame reads only the
+// samples in view, with one beyond each edge so the trace reaches past the screen's edges, not
+// the whole span: the edge moves every frame, and the span is 4 s here (192,000 samples) for 750
+// in view.
+TEST_F(AnalyzerTest, ReadsOnlyTheViewOfAZoomedFreeRunningWindow)
+{
+    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    engine.settings().set(SettingId::kChannelViews, 0b0001);
+    analyzer.setColumns(2500);
+    const double viewStart = 0.5;
+    const double viewEnd = viewStart + 1.0 / 256.0;
+    analyzer.setView(viewStart, viewEnd);
+    writeRamp(250'000);
+    ASSERT_TRUE(produce());
+    writeRamp(512);
+    const std::uint64_t before = analyzer.work().samplesRead;
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(FrameFlag::kFreeRunning));
+    ASSERT_EQ(frame->mode, protocol::FrameMode::kRaw);
+    const double span = 4.0 * kSampleRate;
+    EXPECT_LT(analyzer.work().samplesRead - before, 2 * 750U) << "the whole span was read";
+    // The view's samples [from, to), reaching past each edge by a sample at most.
+    const auto end = static_cast<double>(engine.captureRing().writeIndex());
+    const double from = end - span + viewStart * span;
+    const double to = end - span + viewEnd * span;
+    EXPECT_LE(frame->data.front(), from);
+    EXPECT_GE(frame->data.front(), from - 1.0);
+    EXPECT_GE(frame->data.back(), to);
+    EXPECT_LE(frame->data.back(), to + 1.0);
+    EXPECT_NEAR(frame->visibleSamples, 750.0F, 1.0F);
+}
+
 // Frozen while zoomed into a free-running window, the view stays on the samples it showed: the
 // freeze anchors on the whole span's right edge, not on the zoomed part's start plus the span
 // (which was off by the part left of the view, 24000 samples here, and only the hold's end hid

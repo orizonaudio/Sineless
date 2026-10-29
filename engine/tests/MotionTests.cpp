@@ -89,6 +89,52 @@ TEST_P(EvenMotion, MovesTheEdgeEvenly)
     }
 }
 
+// The measure tells each way an edge can go wrong, at every rate: drawn at 60 Hz, 10 ms behind
+// the newest audio and moving steadily, nothing is wrong; one frame that moves back, one past the
+// newest audio, and one that stands still are each reported, and only as what they are.
+TEST(MeasureMotion, ReportsEachWayAnEdgeGoesWrong)
+{
+    constexpr double kFrame = 1.0 / 60.0;
+    for (const double rate : kSampleRates) {
+        SCOPED_TRACE(rate);
+        const auto steady = [&] {
+            std::vector<EdgeDraw> draws;
+            for (int index = 0; index < 120; ++index) {
+                const double seconds = 1.0 + index * kFrame;
+                draws.push_back({.seconds = seconds,
+                                 .edge = (seconds - 0.01) * rate,
+                                 .newest = seconds * rate});
+            }
+            return draws;
+        };
+        const Motion even = measureMotion(steady(), rate);
+        EXPECT_NEAR(even.advanceErrorMax, 0.0, 1e-6);
+        EXPECT_NEAR(even.lagMax, 10.0, 1e-6);
+        EXPECT_FALSE(even.backwards);
+        EXPECT_FALSE(even.ahead);
+
+        auto back = steady();
+        back[60].edge = back[59].edge - 1.0;
+        const Motion backwards = measureMotion(back, rate);
+        EXPECT_TRUE(backwards.backwards);
+        EXPECT_FALSE(backwards.ahead);
+
+        auto past = steady();
+        past[60].edge = past[60].newest + 1.0;
+        const Motion ahead = measureMotion(past, rate);
+        EXPECT_TRUE(ahead.ahead);
+        EXPECT_FALSE(ahead.backwards);
+
+        // Frame 60 stands still, frame 61 moves two frames' worth: a stutter of a frame each way.
+        auto jump = steady();
+        jump[60].edge = jump[59].edge;
+        const Motion stutter = measureMotion(jump, rate);
+        EXPECT_NEAR(stutter.advanceErrorMax, kFrame * 1000.0, 1e-6);
+        EXPECT_FALSE(stutter.backwards);
+        EXPECT_FALSE(stutter.ahead);
+    }
+}
+
 std::vector<HostPattern> patterns()
 {
     std::vector<HostPattern> result;

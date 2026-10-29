@@ -190,8 +190,9 @@ private:
         bool freeRunning = false;
         // Free-running and live: the right edge of the whole span, which a freeze anchors on.
         double edge = 0.0;
-        // Free-running in columns, zoomed or not: the window is the visible part alone, on a grid
-        // of its own (the grid of the part reduced and its first column), not cropped.
+        // Free-running: the window is the visible part alone. In columns, zoomed or not, on a
+        // grid of its own (the grid of the part reduced and its first column), not cropped; in
+        // raw samples, with a sample beyond each edge, cropped to the view.
         bool visiblePart = false;
         bool onGrid = false;
         ColumnGrid grid{};
