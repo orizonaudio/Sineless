@@ -1272,7 +1272,9 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
     constexpr int kOffsetPersistence = 100;
     const std::uint64_t newest = lane.engine->captureRing().endIndex();
     const double rate = lane.engine->sampleRate();
-    if (rate != own.engine->sampleRate()) {
+    // While this track is not paced (its blocks stopped, or before its clock locks), its playhead
+    // is its newest audio, which may not move: each lane follows its own.
+    if (!pacedEdge.paced() || rate != own.engine->sampleRate()) {
         lane.indexOffset.reset();
         return newest;
     }
