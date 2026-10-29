@@ -3,6 +3,7 @@
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { graphicsMessages } from "../../src/app.ts";
 import { byId, choice, settle, startApp } from "./harness.ts";
 
 describe("a web view without WebGL2", () => {
@@ -26,7 +27,10 @@ describe("a web view without WebGL2", () => {
   test("shows a message saying the graphics are unavailable", () => {
     expect(byId("message").hidden).toBe(false);
     expect(byId("message-title").textContent).not.toBe("");
-    expect(byId("message-text").textContent).not.toBe("");
+    // That WebGL2 is missing, which updating the driver may give, not that memory was refused.
+    expect(byId("message-text").textContent).toBe(graphicsMessages.noWebGL2);
+    expect(graphicsMessages.noWebGL2).not.toBe("");
+    expect(graphicsMessages.noWebGL2).not.toBe(graphicsMessages.memory);
   });
 
   test("keeps the message once the engine's state arrives", async () => {
