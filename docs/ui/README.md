@@ -140,7 +140,7 @@ From 2026-10-24 and 2026-10-25.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
 - **Sizes**, measured on the widest toolbar (Multi or Compare · Seconds with trigger mode Single, so Re-arm shows, and Frozen; Single is 1 px narrower): default **1080 × 580** (the toolbar needs 1071 px with the wordmark); minimum **1020 × 400** (1012 px with the mark alone). Between the two, only the wordmark hides.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.
-- **Status bar:** Time, Level, Hover and A4 on the left; what the readouts measure (Left, Right, Mid or Side in Single; "This track" in Multi and Compare, where the readouts measure this track's Mid, DESIGN §1.2.1), then Peak, RMS and Freq in the centre; the state and Help on the right. The left group never changes width and the state area has a fixed width, so the readouts never move.
+- **Status bar:** Time, Level, Hover and A4 on the left; what the readouts measure (Mid in Single, Left on a mono track; "This track" in Multi and Compare, where the readouts measure this track's Mid, DESIGN §1.2.1), then Peak, RMS and Freq in the centre; the state and Help on the right. The left group never changes width and the state area has a fixed width, so the readouts never move.
 - **More states than fit** fold into a "+n" chip that lists them on hover, keeping the order of the state table in DESIGN §1.5.
 
 ![Minimum size, five states at once with +3 open](images/layout-states.png)
