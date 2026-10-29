@@ -532,7 +532,13 @@ void compareJson(const json& approved, const json& actual, const std::string& pa
                  std::vector<std::string>& differences)
 {
     if (approved.is_number() && actual.is_number()) {
-        if (!near(approved.get<double>(), actual.get<double>())) {
+        // Whole numbers (rates, channel counts, ids) match exactly: the tolerance is for rounding,
+        // and would let 384000 pass for 384030.
+        const double a = approved.get<double>();
+        const double b = actual.get<double>();
+        const bool whole =
+            std::isfinite(a) && std::isfinite(b) && a == std::trunc(a) && b == std::trunc(b);
+        if (whole ? a != b : !near(a, b)) {
             differences.push_back(path + ": approved " + approved.dump() + ", now " +
                                   actual.dump());
         }
@@ -769,6 +775,16 @@ TEST(SessionRecordingComparison, PassesAMessageNumberWithinTheToleranceAndFailsO
     const auto differences = compareRecordings(approved, past);
     ASSERT_EQ(differences.size(), 1u);
     EXPECT_NE(differences[0].find("phases[0].after.start"), std::string::npos) << differences[0];
+}
+
+TEST(SessionRecordingComparison, ComparesWholeNumbersInMessagesExactly)
+{
+    const json approved = {{"snapshot", {{"sampleRate", 384000}}}};
+    json changed = approved;
+    changed["snapshot"]["sampleRate"] = 384030; // Within the relative tolerance.
+    const auto differences = compareRecordings(approved, changed);
+    ASSERT_EQ(differences.size(), 1u);
+    EXPECT_NE(differences[0].find("snapshot.sampleRate"), std::string::npos) << differences[0];
 }
 
 TEST(SessionRecordingComparison, FailsAChangedMessageField)
