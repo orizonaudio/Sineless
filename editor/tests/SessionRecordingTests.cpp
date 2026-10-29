@@ -315,7 +315,7 @@ std::vector<Scenario> scenarios()
                    pageFrom([](std::span<const std::byte> frame) {
                        return panBack(read<float>(frame, FrameHeader::kPanReachOffset));
                    })}},
-        // A host that reports no tempo, in Beats: Multi and Compare still name their lanes.
+        // A host that reports no tempo, in Beats: the frames carry the group's lane set but no lanes.
         {.name = "NoTempo_Multi_48k", .tracks = {stereo(sine(100, 0.5)), stereo(sine(200, 0.5))},
          .names = {"Kick", "Bass"}, .tempoKnown = false,
          .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kTimeBase, kBeats}},
