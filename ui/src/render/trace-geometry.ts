@@ -62,6 +62,22 @@ export function fullScale(verticalScaleDb: number): number {
   return 10 ** (verticalScaleDb / 20);
 }
 
+// The playhead's edges in clip space, at a position 0 to 1 across a screen widthPixels device
+// pixels wide. A line straddling pixels is antialiased dimmer and wider by an amount that changes
+// with its subpixel position, so a moving one flickers: its edges sit on whole device pixels, and
+// it is one CSS pixel wide snapped as CSS snaps a border (at least one device pixel, else rounded
+// down). At the screen's edges it stays centred on its position, and the screen clips it.
+export function playheadEdges(
+  position: number,
+  widthPixels: number,
+  pixelRatio: number,
+): { readonly left: number; readonly right: number } {
+  const width = Math.max(1, Math.floor(pixelRatio));
+  const left = Math.round(position * widthPixels - width / 2);
+  const clip = (pixels: number) => -1 + (2 * pixels) / widthPixels;
+  return { left: clip(left), right: clip(left + width) };
+}
+
 function pushQuad(
   out: number[],
   x0: number,
