@@ -69,11 +69,12 @@ describe("a free-running window", () => {
     },
   );
 
-  test("triggered again at a short span, counts from the trigger point", async () => {
+  test("triggered again at a short span, counts from the trigger point and shows its line", async () => {
     await typeInto("span-field", "500 ms");
     await press(choice("mode", "Auto"));
     await settle();
     await expect.poll(countsBack).toBe(false);
     await expect.poll(chips).toContain("Auto");
+    await expect.poll(() => byId("trigger-line").hidden).toBe(false);
   });
 });
