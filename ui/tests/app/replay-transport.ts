@@ -21,6 +21,8 @@ export interface RecordedPhase {
 export interface Recording {
   readonly scenario: string;
   readonly protocolVersion: number;
+  // The page the frames were recorded for (its width in CSS pixels and its pixel ratio).
+  readonly page: { readonly viewWidth: number; readonly pixelRatio: number };
   readonly snapshot: ControlMessage;
   readonly phases: readonly RecordedPhase[];
 }
@@ -36,8 +38,9 @@ export interface Unexpected {
 // difference (another zoom step, another swipe) is far larger.
 export const replayTolerance = 1e-6;
 
-// Messages that say nothing the recording depends on: the frames keep the columns recorded at
-// the page's width (editor/tests/SessionRecordingTests.cpp, kPageWidth).
+// Messages that say nothing the recording depends on: the frames keep the columns recorded for
+// the page's width at hello, which the replay checks (editor/tests/SessionRecordingTests.cpp,
+// kPageWidth).
 const ignored = new Set(["viewport"]);
 // Messages the page sends on its way to a recorded one: each wheel event of a zoom, each swipe.
 const steps = new Set(["view", "pan"]);
@@ -54,7 +57,8 @@ function bytesOf(base64: string): ArrayBuffer {
 export class ReplayTransport implements Transport {
   // Messages the recording does not hold, in order; the harness fails the test on any.
   readonly unexpected: Unexpected[] = [];
-  // `view` and `pan` messages that were steps on the way to a recorded one.
+  // `view` and `pan` messages that did not start a phase: steps on the way to a recorded one, or
+  // the last one sent again.
   readonly steps: ControlMessage[] = [];
 
   private readonly recording: Recording;
@@ -63,6 +67,9 @@ export class ReplayTransport implements Transport {
   private frameHandler: ((frame: ArrayBuffer) => void) | undefined;
   private phase = -1; // Before hello.
   private repliesDue = false;
+  // A step sent since the last phase began, which the page must still reach the next phase from:
+  // a test that ends there sent a view or pan the recording does not hold.
+  private pending: Unexpected | undefined;
 
   constructor(
     recording: Recording,
@@ -90,6 +97,14 @@ export class ReplayTransport implements Transport {
       return;
     }
     if (message.type === "hello") {
+      const { page } = this.recording;
+      if (
+        message["viewWidth"] !== page.viewWidth ||
+        message["pixelRatio"] !== page.pixelRatio
+      ) {
+        // The frames have the columns of another page.
+        this.unexpected.push({ message, expected: page });
+      }
       this.deliver([this.recording.snapshot]);
       this.enter(0);
       return;
@@ -105,9 +120,32 @@ export class ReplayTransport implements Transport {
     }
     if (steps.has(message.type)) {
       this.steps.push(message);
+      const current = this.recording.phases[this.phase]?.after;
+      if (
+        next !== undefined &&
+        next.after !== null &&
+        next.after["host"] === undefined
+      ) {
+        this.pending = { message, expected: next.after };
+      } else if (
+        current === null ||
+        current === undefined ||
+        !matches(message, current, this.span())
+      ) {
+        // Nothing further is recorded: only the last view or pan may be sent again.
+        this.unexpected.push({ message, expected: next?.after });
+      }
       return;
     }
     this.unexpected.push({ message, expected: next?.after });
+  }
+
+  // The view or pan the page stopped at without reaching the next recorded one, once; called when
+  // a test ends.
+  takePending(): Unexpected | undefined {
+    const pending = this.pending;
+    this.pending = undefined;
+    return pending;
   }
 
   // The host's event that starts the next phase (a rate change), when the test says it happens.
@@ -158,6 +196,7 @@ export class ReplayTransport implements Transport {
 
   private enter(index: number): void {
     this.phase = index;
+    this.pending = undefined;
     const phase = this.recording.phases[index];
     if (phase === undefined) {
       return;

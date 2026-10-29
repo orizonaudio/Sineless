@@ -455,8 +455,10 @@ Recorded record(const Scenario& s)
         }
     }
     phases.push_back(std::move(phase));
+    // The page the frames were recorded for: the replay fails on a page of another width.
     out.recording = {{"scenario", s.name},
                      {"protocolVersion", protocol::kProtocolVersion},
+                     {"page", {{"viewWidth", kPageWidth}, {"pixelRatio", kPagePixelRatio}}},
                      {"snapshot", std::move(snapshot)},
                      {"phases", std::move(phases)}};
     return out;
@@ -594,7 +596,7 @@ void compareJson(const json& approved, const json& actual, const std::string& pa
 std::vector<std::string> compareRecordings(const json& approved, const json& actual)
 {
     std::vector<std::string> differences;
-    for (const char* key : {"scenario", "protocolVersion", "snapshot"}) {
+    for (const char* key : {"scenario", "protocolVersion", "page", "snapshot"}) {
         compareJson(approved.value(key, json()), actual.value(key, json()), key, differences);
     }
     const json& a = approved.value("phases", json::array());
@@ -773,7 +775,71 @@ TEST(SessionRecordingComparison, ComparesAHeaderIntegerExactly)
     std::memcpy(frame.data() + FrameHeader::kPointCountOffset, &changed, sizeof(changed));
     const auto differences = compareRecordings(sample(), withLastFrame(sample(), frame));
     ASSERT_EQ(differences.size(), 1u);
-    EXPECT_NE(differences[0].find("header offset 4"), std::string::npos) << differences[0];
+    EXPECT_NE(
+        differences[0].find("header offset " + std::to_string(FrameHeader::kPointCountOffset)),
+        std::string::npos)
+        << differences[0];
+}
+
+TEST(SessionRecordingComparison, ComparesAHeaderByteExactly)
+{
+    std::vector<std::byte> frame = lastFrameOf(sample());
+    frame[FrameHeader::kFlagsOffset] ^= std::byte{1};
+    const auto differences = compareRecordings(sample(), withLastFrame(sample(), frame));
+    ASSERT_EQ(differences.size(), 1u);
+    EXPECT_NE(differences[0].find("header byte " + std::to_string(FrameHeader::kFlagsOffset)),
+              std::string::npos)
+        << differences[0];
+}
+
+// A frame of another size (a header field added, another point count) is reported as such, and
+// never read past its end.
+TEST(SessionRecordingComparison, FailsAFrameWhoseSizeChanged)
+{
+    std::vector<std::byte> longer = lastFrameOf(sample());
+    longer.resize(longer.size() + sizeof(float));
+    std::vector<std::byte> shorter = lastFrameOf(sample());
+    shorter.resize(shorter.size() - sizeof(float));
+    for (const auto& frame : {longer, shorter}) {
+        const auto differences = compareRecordings(sample(), withLastFrame(sample(), frame));
+        ASSERT_EQ(differences.size(), 1u);
+        EXPECT_NE(differences[0].find("bytes"), std::string::npos) << differences[0];
+    }
+}
+
+TEST(SessionRecordingComparison, FailsAFrameShorterThanAHeader)
+{
+    const std::vector<std::byte> stub(FrameHeader::kSize / 2);
+    const json approved = withLastFrame(sample(), stub);
+    const auto differences = compareRecordings(approved, approved);
+    ASSERT_EQ(differences.size(), 1u);
+    EXPECT_NE(differences[0].find("shorter than a frame header"), std::string::npos)
+        << differences[0];
+}
+
+TEST(SessionRecordingComparison, FailsAFrameThatIsNotBase64)
+{
+    json changed = sample();
+    for (auto it = changed["phases"].rbegin(); it != changed["phases"].rend(); ++it) {
+        if (!(*it)["frames"].empty()) {
+            (*it)["frames"][0] = "not base64!";
+            break;
+        }
+    }
+    const auto differences = compareRecordings(sample(), changed);
+    ASSERT_EQ(differences.size(), 1u);
+    EXPECT_NE(differences[0].find("not base64"), std::string::npos) << differences[0];
+}
+
+TEST(SessionRecordingComparison, FailsARecordingFileThatIsNotJson)
+{
+    const std::filesystem::path file =
+        std::filesystem::temp_directory_path() / "SessionRecordingNotJson.json";
+    std::ofstream(file, std::ios::binary) << "{ not json";
+    std::string problem;
+    EXPECT_FALSE(loadRecording(file, problem));
+    EXPECT_NE(problem.find("is not JSON"), std::string::npos) << problem;
+    std::filesystem::remove(file);
 }
 
 TEST(SessionRecordingComparison, PassesAMessageNumberWithinTheToleranceAndFailsOnePastIt)

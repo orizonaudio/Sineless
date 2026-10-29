@@ -42,9 +42,17 @@ export async function startApp(
 // recording does not hold.
 let replay: { scenario: string; transport: ReplayTransport } | undefined;
 
-// Fails with the messages the page sent that the recording does not hold, and forgets them.
-export function checkReplay(): void {
-  if (replay === undefined || replay.transport.unexpected.length === 0) {
+// Fails with the messages the page sent that the recording does not hold, and forgets them; at
+// the end of a test, also with a view or pan it stopped at short of the next recorded one.
+export function checkReplay(endOfTest = false): void {
+  if (replay === undefined) {
+    return;
+  }
+  const pending = endOfTest ? replay.transport.takePending() : undefined;
+  if (pending !== undefined) {
+    replay.transport.unexpected.push(pending);
+  }
+  if (replay.transport.unexpected.length === 0) {
     return;
   }
   const failure = describeUnexpected(
@@ -56,7 +64,7 @@ export function checkReplay(): void {
 }
 
 afterEach(() => {
-  checkReplay();
+  checkReplay(true);
 });
 
 // Starts the page on a session the real engine recorded (protocol/tests/data/sessions): it is
