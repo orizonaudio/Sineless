@@ -11,6 +11,7 @@ import {
   columnPosition,
   fullScale,
   lanes,
+  playheadEdges,
   pointPosition,
 } from "../src/render/trace-geometry.ts";
 
@@ -90,6 +91,64 @@ describe("trace placement", () => {
   test("maps the vertical scale in dBFS to full scale", () => {
     expect(fullScale(0)).toBe(1);
     expect(fullScale(-6)).toBeCloseTo(0.501, 3);
+  });
+});
+
+// Display scales in use: macOS (1, 2), Windows (1.25, 1.5, 1.75, 3) and browser zoom.
+describe.each([1, 1.25, 1.5, 1.75, 2, 3])("playhead at %sx", (pixelRatio) => {
+  const widthPixels = Math.round(737 * pixelRatio);
+  const positions = Array.from({ length: 2001 }, (_, step) => step / 2000);
+  const placed = positions.map((position) => {
+    const { left, right } = playheadEdges(position, widthPixels, pixelRatio);
+    return {
+      position,
+      left: ((left + 1) / 2) * widthPixels,
+      right: ((right + 1) / 2) * widthPixels,
+    };
+  });
+
+  // A line straddling pixels is antialiased into a dimmer, wider one, by a different amount at
+  // each subpixel position: as it sweeps, it flickers.
+  test("covers whole device pixels at every position, so it does not flicker as it moves", () => {
+    for (const { left, right } of placed) {
+      expect(left).toBeCloseTo(Math.round(left), 6);
+      expect(right).toBeCloseTo(Math.round(right), 6);
+    }
+  });
+
+  // A CSS pixel in whole device pixels, as a 1px border is: thinner on a 2x screen would be
+  // half as bright.
+  test("keeps one width: a CSS pixel snapped down to whole device pixels, at least one", () => {
+    const widths = new Set(
+      placed.map(({ left, right }) => (right - left).toFixed(6)),
+    );
+    expect(widths.size).toBe(1);
+    const width = Number([...widths][0]);
+    expect(width).toBeGreaterThanOrEqual(1);
+    expect(width).toBeLessThanOrEqual(Math.max(1, pixelRatio));
+    expect(width).toBeGreaterThan(pixelRatio - 1);
+  });
+
+  // Zoomed or panned away, the playhead can be left of the screen: the dimmed previous cycle,
+  // which starts at its left edge, then covers the whole screen.
+  test.each([-1e-4, -0.5, -3])(
+    "is left of the screen at position %s",
+    (position) => {
+      const { left } = playheadEdges(position, widthPixels, pixelRatio);
+      expect(left).toBeLessThanOrEqual(-1);
+    },
+  );
+
+  // At the screen's edges too: there the screen clips it, as it always has.
+  test("stays centred on its position to the nearest device pixel", () => {
+    let previous = -Infinity;
+    for (const { position, left, right } of placed) {
+      expect(
+        Math.abs((left + right) / 2 - position * widthPixels),
+      ).toBeLessThanOrEqual(0.5 + 1e-6);
+      expect(left).toBeGreaterThanOrEqual(previous - 1e-6);
+      previous = left;
+    }
   });
 });
 

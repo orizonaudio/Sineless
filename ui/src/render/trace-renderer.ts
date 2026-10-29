@@ -12,7 +12,12 @@ import {
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { fullView, type ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
-import { cancellationBands, fullScale, lanes } from "./trace-geometry.ts";
+import {
+  cancellationBands,
+  fullScale,
+  lanes,
+  playheadEdges,
+} from "./trace-geometry.ts";
 
 export type Rgba = readonly [number, number, number, number];
 
@@ -248,7 +253,11 @@ export class TraceRenderer implements FrameRenderer {
   // elements, so that a sweep changes nothing on the page but this canvas.
   private drawSweep(position: number): void {
     const { cursor, previous } = this.style.sweepColors();
-    const x = -1 + 2 * position;
+    const { left, right } = playheadEdges(
+      position,
+      this.canvas.width,
+      window.devicePixelRatio,
+    );
     const rectangle = (left: number, right: number) =>
       new Float32Array([
         left,
@@ -264,12 +273,12 @@ export class TraceRenderer implements FrameRenderer {
         right,
         1,
       ]);
+    // The dimming starts under the line, so its edge is on the same pixel boundary.
     if (position < 1) {
-      this.drawTriangles(rectangle(Math.max(x, -1), 1), previous);
+      this.drawTriangles(rectangle(left, 1), previous);
     }
     if (position >= 0 && position <= 1) {
-      const half = window.devicePixelRatio / this.canvas.width;
-      this.drawTriangles(rectangle(x - half, x + half), cursor);
+      this.drawTriangles(rectangle(left, right), cursor);
     }
   }
 
