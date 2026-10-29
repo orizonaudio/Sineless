@@ -10,8 +10,10 @@ const shown = () =>
   byId("message").hidden ? undefined : byId("message-title").textContent;
 // The message says the memory was refused, not that WebGL2 is missing, and that audio passes.
 const saysMemoryRefused = () => {
-  expect(byId("message-text").textContent).toBe(graphicsMessages.memory);
-  expect(graphicsMessages.memory).not.toBe(graphicsMessages.noWebGL2);
+  const text = byId("message-text").textContent;
+  expect(text).toBe(graphicsMessages.memory);
+  expect(text).not.toBe("");
+  expect(text).not.toBe(graphicsMessages.noWebGL2);
 };
 
 // The framebuffer the traces' coverage is drawn into reported incomplete from now on.
