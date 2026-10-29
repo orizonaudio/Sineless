@@ -29,9 +29,11 @@ export const crossingHysteresis = 0.1;
 // cycle; otherwise it has no frequency to show (noise, or several pitches at once).
 export const periodTolerance = 0.15;
 
-// Seconds of audio a freeze holds in Seconds mode: the longest span, which a frozen view can be
-// panned back through. The engine's capture is sized to keep it at 384 kHz, the highest rate hosts
-// run at (CaptureRing::capacityFor; the build checks it), so a longer hold needs a larger one.
+// Seconds a frozen Seconds view can be panned back through: the longest span. The freeze holds
+// twice pacingDelayCapSeconds more, as the paced edge may stand that far behind the newest audio
+// (kSecondsFreezeSeconds). The engine's capture is sized to keep that at 384 kHz, the highest
+// rate hosts run at (CaptureRing::capacityFor; the build checks it), so a longer hold needs a
+// larger one.
 export const frozenHoldSeconds = settings.timeSpan.maximum;
 
 // Where a triggered trace's trigger point sits, as a fraction of the span from the left.

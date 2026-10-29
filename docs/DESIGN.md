@@ -361,7 +361,7 @@ standards-compliant loudness metering (FR-7 readouts are indicative).
 
 | Goal | Approach | Decisions |
 | --- | --- | --- |
-| Real-time safety (QG-1) | The audio thread only copies samples into a preallocated ring and publishes the musical position; all analysis runs on a worker thread per open editor. | AD-2, AD-13, 8.2 |
+| Real-time safety (QG-1) | The audio thread only copies samples into a preallocated ring and publishes the musical position and when each block arrived; all analysis runs on a worker thread per open editor. | AD-2, AD-13, 8.2 |
 | Transparency (QG-2) | Pass-through by copy (or nothing, in place); no processing, no latency. | FR-1 |
 | Truthful display (QG-3) | The engine measures and renders; the UI draws what the frame carries and does not work it out again. Shared numbers are defined once in the protocol module and generated into C++. "No value" is NaN. | AD-2, AD-18, 8.6 |
 | Light on the host (QG-4) | Cost follows change, not size; one frame in flight, paced by the display; binary frames drawn by the GPU. | AD-12, AD-17, AD-19, AD-21, AD-22 |
@@ -451,7 +451,7 @@ The tables follow the diagram from the audio thread to the frame.
 
 | Block | Responsibility |
 | --- | --- |
-| CaptureRing | Per instance, preallocated in `setupProcessing` for the sample rate: a power of two of at least 2^20 samples (21.8 s at 48 kHz), 2^21 above 229 kHz, sized so a 4 s freeze fits at up to 384 kHz. Its writer, the audio thread, is lock-free and copies samples on every block whether or not an editor is open, so opening the editor shows recent history at once. Readers hold its storage by shared ownership across a resize. 7/8 of it is readable at any time: the last eighth (at least 0.57 s at any rate) is where the audio thread keeps writing while a reader copies, and a reader detects samples overwritten during its copy (8.2). Channels the host flags silent are written as silence. |
+| CaptureRing | Per instance, preallocated in `setupProcessing` for the sample rate: a power of two of at least 2^20 samples (21.8 s at 48 kHz), 2^21 above 215.9 kHz, sized so a Seconds freeze (4.25 s: the longest span and twice `pacingDelayCapSeconds`) fits at up to 384 kHz. Its writer, the audio thread, is lock-free and copies samples on every block whether or not an editor is open, so opening the editor shows recent history at once. Readers hold its storage by shared ownership across a resize. 7/8 of it is readable at any time: the last eighth (at least 0.57 s at any rate) is where the audio thread keeps writing while a reader copies, and a reader detects samples overwritten during its copy (8.2). Channels the host flags silent are written as silence. |
 | Timeline | The musical clock. The audio thread publishes the latest musical stamp (position, tempo, time signature, playing, at a capture index) through a seqlock; readers map sample indices to quarter notes and back by extrapolating from it, free-running at the last tempo while stopped (AD-13). |
 | Settings | The store of record, validated against the protocol's settings table, with its JSON form (`SettingJson`) shared by saved state and messages. |
 | AnalysisWorker | One thread per open editor, running the Analyzer every 2 ms or when a frame is requested. |
@@ -460,7 +460,7 @@ The tables follow the diagram from the audio thread to the frame.
 | Reducer, FreeRunning, Trigger | Min/max reduction to about one pair per device pixel (raw samples when zoomed in far enough), free-running columns on a grid fixed to absolute indices (FR-4), edge trigger (FR-3). |
 | Readouts, BlockStats | Peak, RMS and frequency (FR-7); per-10 ms block statistics that keep readout and summing-gain cost proportional to new audio. |
 | PairAnalysis | Compare's correlation, offset and polarity, and summing gains (FR-15). |
-| HoldBuffer, LaneHold | On freeze, this track's held audio (4 s in Seconds, the readable capture in Beats) and each other track's Mid (4 s + 1 s margin). HoldBuffer is allocated at the capture's size when the editor opens and kept until it closes; LaneHold is allocated on freeze and released on unfreeze. |
+| HoldBuffer, LaneHold | On freeze, this track's held audio (4.25 s in Seconds, the readable capture in Beats) and each other track's Mid (4.25 s + 1 s margin). HoldBuffer is allocated at the capture's size when the editor opens and kept until it closes; LaneHold is allocated on freeze and released on unfreeze. |
 | InstanceRegistry | Process-wide list of engines, held weakly, filtered by group and ordered by host position, then creation (AD-14). |
 | FrameEncoder | Writes the binary frame (8.5). |
 
@@ -718,8 +718,9 @@ A new dependency is agreed on first and pinned (CONTRIBUTING.md).
 - RealtimeSanitizer runs the processor tests on Linux with LLVM 23.
 - On every compiler, tests replace global `operator new`/`delete` with counting versions and
   assert that the audio path makes no allocations.
-- The audio thread's work per block: copy the block into the capture ring (a lock-free writer) and
-  publish one musical stamp (a seqlock writer). It never waits on a reader.
+- The audio thread's work per block: copy the block into the capture ring (a lock-free writer),
+  publish one musical stamp and one block stamp (seqlock writers; the block stamp's time is a
+  nonblocking read of the monotonic clock, AD-28). It never waits on a reader.
 - A performance benchmark runs eight instances and requires that all of them together use at most
   5% of each block's duration, at the 99.9th percentile (QS-1).
 
@@ -918,7 +919,7 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `analysisGateDbfs` | −90 dBFS | Analysis ignores audio at or below. |
 | `crossingHysteresis` | 0.1 | Of peak-to-peak, for finding cycles. |
 | `periodTolerance` | 0.15 | Steady cycles lie within this of the median. |
-| `frozenHoldSeconds` | 4 s | Freeze hold in Seconds (the longest span). |
+| `frozenHoldSeconds` | 4 s | How far a frozen Seconds view pans back (the longest span); the freeze holds twice `pacingDelayCapSeconds` more (AD-28). |
 | `triggerPosition` | 0.1 | Trigger point from the left. |
 | `freeRunningThresholdSeconds` | 1 s | Longer spans run free in every trigger mode. |
 | `pacingDelayCapSeconds` | 0.125 s | Most a paced edge trails the newest audio (4096-sample blocks at 44.1 kHz and a third). |
