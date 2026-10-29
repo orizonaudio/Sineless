@@ -64,29 +64,16 @@ export function fullScale(verticalScaleDb: number): number {
 
 // Each trace's coverage goes to one channel of an offscreen target: four channels a target, and
 // four targets (WebGL2's least number of colour attachments), so this many traces are layered over
-// the screen in one pass. It equals maxLanes, so a frame is one group; more would be drawn as
-// further groups, each layered over the last.
+// the screen in one pass: every frame's, since it is at least maxLanes.
 export const coverageAttachments = 4;
-export const tracesPerGroup = coverageAttachments * 4;
+export const tracesPerPass = coverageAttachments * 4;
 
-export interface CoverageGroup {
-  readonly first: number;
-  readonly count: number;
-  // The targets the group's traces use, from the first.
-  readonly attachments: number;
+// The targets `traces` traces use, from the first.
+export function coverageTargets(traces: number): number {
+  return Math.ceil(traces / 4);
 }
 
-// The groups for `traces` traces, in drawing order.
-export function coverageGroups(traces: number): CoverageGroup[] {
-  const groups: CoverageGroup[] = [];
-  for (let first = 0; first < traces; first += tracesPerGroup) {
-    const count = Math.min(tracesPerGroup, traces - first);
-    groups.push({ first, count, attachments: Math.ceil(count / 4) });
-  }
-  return groups;
-}
-
-// Where the trace at `index` within its group writes its coverage.
+// Where the trace at `index` writes its coverage.
 export function coverageSlot(index: number): {
   readonly attachment: number;
   readonly channel: number;

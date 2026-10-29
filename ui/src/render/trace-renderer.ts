@@ -22,12 +22,12 @@ import {
   fullScale,
   lanes,
   coverageAttachments,
-  coverageGroups,
   coverageSlot,
+  coverageTargets,
   playheadEdges,
   textureRowLength,
   textureRows,
-  tracesPerGroup,
+  tracesPerPass,
 } from "./trace-geometry.ts";
 
 export type Rgba = readonly [number, number, number, number];
@@ -248,7 +248,7 @@ void main() {
   gl_Position = vec4(corner, 0.0, 1.0);
 }`;
 
-// A group's traces layered at each pixel in drawing order, later over earlier, then blended over
+// The traces layered at each pixel in drawing order, later over earlier, then blended over
 // the screen once: the same as blending each in turn, since layering is associative.
 const compositeFragmentShader = `#version 300 es
 precision highp float;
@@ -256,7 +256,7 @@ uniform sampler2D coverage0;
 uniform sampler2D coverage1;
 uniform sampler2D coverage2;
 uniform sampler2D coverage3;
-uniform vec4 colors[${String(tracesPerGroup)}];
+uniform vec4 colors[${String(tracesPerPass)}];
 uniform int traces;
 uniform int attachments;
 out vec4 fragmentColor;
@@ -670,58 +670,51 @@ export class TraceRenderer implements FrameRenderer {
     gl.uniform1f(program.uniform("lineHalf"), lineHalf);
 
     const blockLanes = lanes(blocks.length, view.layout);
-    for (const group of coverageGroups(blocks.length)) {
-      // Each trace's coverage into its channel, the larger kept where its pieces overlap.
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.coverageTarget);
-      gl.drawBuffers(
-        this.coverage.map((_, attachment) =>
-          attachment < group.attachments
-            ? gl.COLOR_ATTACHMENT0 + attachment
-            : gl.NONE,
-        ),
+    // A frame holds at most maxLanes traces, which one pass holds.
+    const traces = blocks.slice(0, tracesPerPass);
+    const targets = coverageTargets(traces.length);
+    // Each trace's coverage into its channel, the larger kept where its pieces overlap.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.coverageTarget);
+    gl.drawBuffers(
+      this.coverage.map((_, attachment) =>
+        attachment < targets ? gl.COLOR_ATTACHMENT0 + attachment : gl.NONE,
+      ),
+    );
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.blendEquation(gl.MAX);
+    const colors = new Float32Array(tracesPerPass * 4);
+    traces.forEach(([values, color], index) => {
+      const lane = blockLanes[index] ?? { center: 0, halfHeight: 1 };
+      const { attachment, channel } = coverageSlot(index);
+      gl.uniform1f(program.uniform("center"), lane.center);
+      gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
+      gl.uniform1i(program.uniform("attachment"), attachment);
+      gl.uniform1i(program.uniform("channel"), channel);
+      gl.uniform1i(
+        program.uniform("blockStart"),
+        (values.byteOffset - start) / 4,
       );
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.blendEquation(gl.MAX);
-      gl.useProgram(program.program);
-      const colors = new Float32Array(tracesPerGroup * 4);
-      for (let k = 0; k < group.count; k++) {
-        const index = group.first + k;
-        const [values, color] = blocks[index] ?? [];
-        if (values === undefined || color === undefined) {
-          continue;
-        }
-        const lane = blockLanes[index] ?? { center: 0, halfHeight: 1 };
-        const { attachment, channel } = coverageSlot(k);
-        gl.uniform1f(program.uniform("center"), lane.center);
-        gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
-        gl.uniform1i(program.uniform("attachment"), attachment);
-        gl.uniform1i(program.uniform("channel"), channel);
-        gl.uniform1i(
-          program.uniform("blockStart"),
-          (values.byteOffset - start) / 4,
-        );
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, frame.pointCount);
-        colors.set([color[0], color[1], color[2], alpha(color)], k * 4);
-      }
-      // Then layered over the screen, once.
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.blendEquation(gl.FUNC_ADD);
-      const composite = this.composite;
-      gl.useProgram(composite.program);
-      this.coverage.forEach((texture, attachment) => {
-        gl.activeTexture(gl.TEXTURE1 + attachment);
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.uniform1i(
-          composite.uniform(`coverage${String(attachment)}`),
-          1 + attachment,
-        );
-      });
-      gl.activeTexture(gl.TEXTURE0);
-      gl.uniform4fv(composite.uniform("colors"), colors);
-      gl.uniform1i(composite.uniform("traces"), group.count);
-      gl.uniform1i(composite.uniform("attachments"), group.attachments);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-    }
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, frame.pointCount);
+      colors.set([color[0], color[1], color[2], alpha(color)], index * 4);
+    });
+    // Then layered over the screen, once.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.blendEquation(gl.FUNC_ADD);
+    const composite = this.composite;
+    gl.useProgram(composite.program);
+    this.coverage.forEach((texture, attachment) => {
+      gl.activeTexture(gl.TEXTURE1 + attachment);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(
+        composite.uniform(`coverage${String(attachment)}`),
+        1 + attachment,
+      );
+    });
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform4fv(composite.uniform("colors"), colors);
+    gl.uniform1i(composite.uniform("traces"), traces.length);
+    gl.uniform1i(composite.uniform("attachments"), targets);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
     if (sweep !== undefined) {
       this.drawSweep(sweep);
     }
