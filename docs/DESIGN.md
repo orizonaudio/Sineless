@@ -812,8 +812,10 @@ flowchart TB
 - **ai-review** reviews each push against REVIEW.md and fails while a verified finding is
   Important. A maintainer can start it on a fork's pull request with `/ai-review`, or pass it with
   `/ai-review waive <reason>`; after three failed reviews the pull request is labelled
-  `needs-human`, and its author stops fixing findings until a maintainer has decided. In the
-  merge queue it passes at once: the pull request was reviewed.
+  `needs-human`, and its author stops fixing findings until a maintainer has decided: a Claude
+  Code hook keeps an agent session from pushing to it, asking for another review or removing the
+  label, and from pushing while a review is running. In the merge queue it passes at once: the
+  pull request was reviewed.
 - **mutation-triage** runs after CI, from `main`'s version of the workflow, and passes or fails
   on whether each surviving mutant needs a test (REVIEW.md); `/mutation-triage waive <reason>`
   passes it.

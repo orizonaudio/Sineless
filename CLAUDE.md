@@ -126,11 +126,11 @@ checks you could not run.
   review finding fixed or answered, and each gap the `mutation-triage` check reports given a
   test that fails with that mutant, or an answer saying why none is needed. The mutation jobs
   themselves always pass; their findings reach the pull request through the triage.
-- Once the AI review labels a pull request `needs-human` (its third failed round), stop pushing
-  fixes for its findings: give the owner the open findings and a recommendation (fix, redesign or
-  waive) and wait. The answer settles the findings it covers and hands the pull request back; from
-  then on each failed round goes back to the owner the same way (the count never resets, so a
-  removed label comes back at the next failure).
+- Once the AI review labels a pull request `needs-human` (its third failed round), stop: no push
+  of any kind (CI repairs included), no `/ai-review` and no waive. Give the owner the open findings
+  and a recommendation (fix, redesign or waive) and wait. The answer settles the findings it
+  covers; only the owner's removing the label hands the pull request back, for one more round
+  (the count never resets, so the label comes back at the next failure). A hook enforces this.
 - When the same mechanism draws Important findings in two review rounds running, do not add
   another guard: update the plan with the design that removes it (a later plan round), or, for a
   change without a plan, take that design to the owner.
@@ -147,3 +147,6 @@ checks you could not run.
 - Area rules in `.claude/rules/` load when you work in `engine/`, `plugin/`, `editor/`,
   `ui/` or `protocol/`.
 - A hook blocks `git push` to `main` (`.claude/hooks/no-push-to-main.mjs`).
+- A hook blocks pushing to, `/ai-review` on and removing the label of a pull request labelled
+  `needs-human`, any waive, and pushing while a pull request's AI review is running
+  (`.claude/hooks/review-stop.mjs`).
