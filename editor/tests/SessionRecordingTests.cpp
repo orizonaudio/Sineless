@@ -134,6 +134,14 @@ std::optional<std::vector<std::byte>> fromBase64(std::string_view text)
     return out;
 }
 
+// A value of type T at `offset` in a frame.
+template <typename T> T read(std::span<const std::byte> bytes, std::size_t offset)
+{
+    T value{};
+    std::memcpy(&value, bytes.data() + offset, sizeof(T));
+    return value;
+}
+
 // ----- Scenarios -----
 
 // One step of a scenario: play audio, a message from the page, or the host changing its rate.
@@ -162,6 +170,11 @@ Step play(double seconds)
 Step page(json message)
 {
     return {.kind = Step::Kind::kPage, .message = std::move(message)};
+}
+
+Step pageFrom(std::function<json(std::span<const std::byte>)> make)
+{
+    return {.kind = Step::Kind::kPage, .fromFrame = std::move(make)};
 }
 
 Step hostRate(std::uint32_t rate)
@@ -199,6 +212,19 @@ constexpr double kOn = 1.0;
 json freeze()
 {
     return {{"type", "freeze"}, {"frozen", true}};
+}
+
+// The narrowest view, at the centre of the span, as the page asks for it after zooming in at the
+// screen's centre until the view stops narrowing (protocol/src/limits.ts, minimumViewWidth): the
+// same in WebKit and Chromium.
+json deepestZoom()
+{
+    return {{"type", "view"}, {"start", 0.5 - 0.5 / 256}, {"end", 0.5 + 0.5 / 256}};
+}
+
+json panBack(double seconds)
+{
+    return {{"type", "pan"}, {"seconds", seconds}};
 }
 
 json setSetting(std::string_view name, json value)
@@ -269,6 +295,26 @@ std::vector<Scenario> scenarios()
          .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kSeconds},
                       {SettingId::kTimeSpan, 0.1}},
          .steps = {play(1.0)}},
+        // A live 1.5 s roll, zoomed to the narrowest view: the engine draws at least a sample per
+        // column, so the frame's visible samples are not the samples in view.
+        {.name = "Roll1500msDeepestZoom_48k", .tracks = {stereo(sine(100, 0.5))},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kSeconds},
+                      {SettingId::kTimeSpan, 1.5}},
+         .steps = {play(2.0), page(deepestZoom()), play(0.2)}},
+        // A live Beats sweep of one bar, then zoomed to the narrowest view.
+        {.name = "BeatsLive_48k", .tracks = {stereo(sine(100, 0.5))},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kBeats},
+                      {SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar)}},
+         .steps = {play(3.0), page(deepestZoom()), play(0.2)}},
+        // A 1 s span frozen after 6 s: the page pans back a quarter of the screen, then to as far
+        // as the frame says the freeze reaches (the page sends the pan reach it read, a float32).
+        {.name = "FrozenPan_48k", .tracks = {stereo(sine(100, 0.5))},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kSeconds},
+                      {SettingId::kTimeSpan, 1.0}},
+         .steps = {play(6.0), page(freeze()), page(panBack(0.25)),
+                   pageFrom([](std::span<const std::byte> frame) {
+                       return panBack(read<float>(frame, FrameHeader::kPanReachOffset));
+                   })}},
         // A host that reports no tempo, in Beats: Multi and Compare still name their lanes.
         {.name = "NoTempo_Multi_48k", .tracks = {stereo(sine(100, 0.5)), stereo(sine(200, 0.5))},
          .names = {"Kick", "Bass"}, .tempoKnown = false,
@@ -427,13 +473,6 @@ bool near(double approved, double actual)
         std::max(engine::kAbsoluteTolerance,
                  engine::kRelativeTolerance * std::max(std::abs(approved), std::abs(actual)));
     return std::abs(approved - actual) <= allowed;
-}
-
-template <typename T> T read(std::span<const std::byte> bytes, std::size_t offset)
-{
-    T value{};
-    std::memcpy(&value, bytes.data() + offset, sizeof(T));
-    return value;
 }
 
 // The header's integer fields, compared exactly; every other header word is a float32.
