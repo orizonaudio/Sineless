@@ -316,6 +316,10 @@ jobs:
       # other comments on the pull request), for the verifiers: a finding an answer covers stays
       # Important only if its verifier shows the answer wrong. The script is the base branch's, like
       # the agents. Answers are advice: whatever fails, the review goes on without them.
+      - if: steps.pr.outputs.action == 'review' && steps.collect.outputs.count != '0'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
       - name: Collect the author's answers
         if: steps.pr.outputs.action == 'review' && steps.collect.outputs.count != '0'
         env:
