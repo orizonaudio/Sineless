@@ -1,4 +1,5 @@
 #include "FrameDecoding.h"
+#include "SampleRates.h"
 #include "engine/Analyzer.h"
 #include "engine/InstanceRegistry.h"
 #include "engine/Motion.h"
@@ -101,6 +102,19 @@ public:
         }
     }
 
+    // Track `index`'s processing restarts: its capture takes `samples` of silence the host did
+    // not play (no position known), so from then on its capture indices are further ahead.
+    void restart(std::size_t index, std::uint64_t samples)
+    {
+        Track& track = tracks.at(index);
+        std::vector<float> silence(samples);
+        std::array<const float*, 2> channels{silence.data(), silence.data()};
+        track.engine->captureRing().write(channels.data(), 2, static_cast<int>(samples));
+        track.engine->timeline().advance({.playing = true, .tempoValid = true, .tempo = tempo},
+                                         static_cast<int>(samples), rate);
+        track.offset += samples;
+    }
+
     // From host sample `sample` on, the transport plays from `quarterNotes`.
     void jumpAt(std::uint64_t sample, double quarterNotes)
     {
@@ -173,10 +187,12 @@ std::vector<EdgeDraw> playheads(Engine& engine)
     return draws;
 }
 
-// Lane `lane`'s (min, max) columns in a frame.
+// Lane `lane`'s points in a frame: (min, max) columns, or raw samples for a sweep shorter than
+// the screen's columns.
 std::span<const float> laneColumns(const DecodedFrame& frame, std::size_t lane)
 {
-    const std::size_t perLane = std::size_t{frame.pointCount} * 2;
+    const std::size_t perPoint = frame.mode == protocol::FrameMode::kRaw ? 1 : 2;
+    const std::size_t perLane = std::size_t{frame.pointCount} * perPoint;
     return std::span(frame.data).subspan(lane * perLane, perLane);
 }
 
@@ -206,23 +222,29 @@ bool sitsWherePlayed(const DecodedFrame& frame, std::size_t lane, std::uint64_t 
 // the newest sample as the playhead, 10.7 ms blocks at 60 Hz frames moved it by one block or two.
 TEST(PacedSweep, MovesThePlayheadEvenlyWithNothingNewBeyondIt)
 {
-    BeatsHost host(48000.0, 512);
-    host.play(3.0); // The clock locks.
-    (void)host.tracks.front().engine->takeEdges();
-    host.frames.clear();
-    host.play(4.0);
-    const auto draws = playheads(*host.tracks.front().engine);
-    ASSERT_GT(draws.size(), 200U);
-    const Motion motion = measureMotion(draws, host.rate);
-    EXPECT_LE(motion.advanceErrorP99, 1.0);
-    EXPECT_FALSE(motion.ahead);
-    EXPECT_FALSE(motion.backwards);
-    EXPECT_GT(motion.lagMax, 512.0 / 48.0 * 0.5) << "behind the newest audio";
-    ASSERT_EQ(host.frames.size(), draws.size());
-    for (std::size_t index = 0; index < draws.size(); ++index) {
-        ASSERT_LT(static_cast<double>(newestDrawn(host.frames[index].frame)),
-                  draws[index].edge + 1.0)
-            << index;
+    for (const double rate : kSampleRates) {
+        SCOPED_TRACE(rate);
+        // Blocks of about 10.7 ms at every rate.
+        const auto block = static_cast<std::uint64_t>(std::llround(512.0 * rate / 48000.0));
+        BeatsHost host(rate, block);
+        host.play(3.0); // The clock locks.
+        (void)host.tracks.front().engine->takeEdges();
+        host.frames.clear();
+        host.play(4.0);
+        const auto draws = playheads(*host.tracks.front().engine);
+        ASSERT_GT(draws.size(), 200U);
+        const Motion motion = measureMotion(draws, host.rate);
+        EXPECT_LE(motion.advanceErrorP99, 1.0);
+        EXPECT_FALSE(motion.ahead);
+        EXPECT_FALSE(motion.backwards);
+        EXPECT_GT(motion.lagMax, 512.0 / 48.0 * 0.5) << "behind the newest audio";
+        ASSERT_EQ(host.frames.size(), draws.size());
+        for (std::size_t index = 0; index < draws.size(); ++index) {
+            // The ramp holds float values: a sample's own index to within its precision.
+            ASSERT_LT(static_cast<double>(newestDrawn(host.frames[index].frame)),
+                      draws[index].edge + 1.0 + draws[index].edge * 1e-7)
+                << index;
+        }
     }
 }
 
@@ -247,7 +269,14 @@ TEST(PacedSweep, UpdatesTheSweepsOnlyAsAudioArrivesAndForEachFrame)
         const std::uint64_t frames = host.frames.size() - framesBefore;
         ASSERT_GT(frames, 100U);
         EXPECT_LE(updates, (blocks + frames + 2) * tracks) << "updated between blocks";
-        EXPECT_GE(updates, frames * tracks) << "a frame drew no new audio";
+        // Each frame still draws every lane's playhead further on.
+        for (std::size_t index = framesBefore + 1; index < host.frames.size(); ++index) {
+            for (std::size_t lane = 0; lane < tracks; ++lane) {
+                EXPECT_GT(newestDrawn(host.frames[index].frame, lane),
+                          newestDrawn(host.frames[index - 1].frame, lane))
+                    << "frame " << index << ", lane " << lane;
+            }
+        }
     }
 }
 
@@ -279,22 +308,43 @@ TEST(PacedSweep, PlacesAudioWhileTheFramesStop)
 }
 
 // A sweep shorter than pacedSpanMinimumSeconds is new across its width every frame: it is drawn
-// at the newest audio, as a short Seconds span is. A sixteenth of a beat at 200 BPM is 18.75 ms.
+// at the newest audio, as a short Seconds span is, in Single and in Multi, where the other lanes
+// follow. Just above the minimum it is paced, behind the newest audio. A sixteenth of a beat is
+// 18.75 ms at 200 BPM and 22.06 ms at 170 BPM.
 TEST(PacedSweep, ShowsASweepShorterThanTheMinimumAtTheNewestAudio)
 {
-    BeatsHost host(48000.0, 512, 1, protocol::DisplayMode::kSingle, 0, 200.0);
-    host.tracks.front().engine->settings().set(
-        SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kSixteenthBeat));
-    ASSERT_LT(60.0 / 200.0 / 16.0, protocol::kPacedSpanMinimumSeconds);
-    host.play(3.0);
-    std::size_t checked = 0;
-    for (const EdgeDraw& draw : playheads(*host.tracks.front().engine)) {
-        if (draw.seconds > 2.0) {
-            ASSERT_EQ(draw.edge, draw.newest) << draw.seconds;
-            ++checked;
+    for (const double tempo : {200.0, 170.0}) {
+        const bool shorter = 60.0 / tempo / 16.0 < protocol::kPacedSpanMinimumSeconds;
+        for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
+            SCOPED_TRACE(std::to_string(tempo) + " BPM, mode " +
+                         std::to_string(static_cast<int>(mode)));
+            const std::size_t tracks = mode == protocol::DisplayMode::kSingle ? 1 : 2;
+            BeatsHost host(48000.0, 512, tracks, mode, 0, tempo);
+            for (const BeatsHost::Track& track : host.tracks) {
+                track.engine->settings().set(
+                    SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kSixteenthBeat));
+            }
+            host.play(3.0);
+            std::size_t checked = 0;
+            for (const EdgeDraw& draw : playheads(*host.tracks.front().engine)) {
+                if (draw.seconds > 2.0) {
+                    if (shorter) {
+                        ASSERT_EQ(draw.edge, draw.newest) << draw.seconds;
+                    } else {
+                        ASSERT_LT(draw.edge, draw.newest) << "paced at " << draw.seconds;
+                    }
+                    ++checked;
+                }
+            }
+            EXPECT_GT(checked, 30U);
+            const DecodedFrame& frame = host.frames.back().frame;
+            ASSERT_EQ(frame.laneCount, mode == protocol::DisplayMode::kSingle ? 0 : tracks);
+            for (std::size_t lane = 1; lane < tracks; ++lane) {
+                EXPECT_NEAR(newestDrawn(frame, lane), newestDrawn(frame, 0), 0.001 * host.rate)
+                    << "lane " << lane;
+            }
         }
     }
-    EXPECT_GT(checked, 30U);
 }
 
 // Audio from before the transport jumped stays where it was played: until the playhead reaches
@@ -370,23 +420,110 @@ TEST(PacedSweep, LeavesAStoppedTrackBehind)
 // where it was played, not by the position the sweep was placed by before the freeze.
 TEST(PacedSweep, PlacesAudioPlayedDuringAFreezeWhereItWasPlayed)
 {
-    BeatsHost host(48000.0, 512);
-    host.play(3.0);
-    host.analyzer->setFrozen(true);
-    host.play(0.2);
-    const std::uint64_t jump = (host.tracks.front().played / 512 + 4) * 512;
-    host.jumpAt(jump, host.quarterNotesAt(jump) - 0.375);
-    host.play(0.3);
-    host.analyzer->setFrozen(false);
+    for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
+        SCOPED_TRACE(static_cast<int>(mode));
+        const std::size_t tracks = mode == protocol::DisplayMode::kSingle ? 1 : 2;
+        BeatsHost host(48000.0, 512, tracks, mode);
+        host.play(3.0);
+        host.analyzer->setFrozen(true);
+        host.play(0.2);
+        const std::uint64_t jump = (host.tracks.front().played / 512 + 4) * 512;
+        host.jumpAt(jump, host.quarterNotesAt(jump) - 0.375);
+        host.play(0.3);
+        host.analyzer->setFrozen(false);
+        host.frames.clear();
+        host.play(0.05);
+        ASSERT_FALSE(host.frames.empty());
+        const DecodedFrame& frame = host.frames.back().frame;
+        ASSERT_FALSE(frame.has(FrameFlag::kFrozen));
+        const std::uint64_t after = jump + 4096;
+        for (std::size_t lane = 0; lane < tracks; ++lane) {
+            ASSERT_GT(newestDrawn(frame, lane), static_cast<float>(after));
+            EXPECT_TRUE(sitsWherePlayed(frame, lane, after, host.quarterNotesAt(after)))
+                << "lane " << lane << ": audio played after the jump, while frozen";
+        }
+    }
+}
+
+// Audio played while the view was not placing the sweeps live (in Seconds, or in the other
+// display mode) is placed by where it was played once it is again, also across a transport jump
+// made meanwhile: the positions seen before are forgotten, not taken for the newer audio.
+TEST(PacedSweep, PlacesAudioPlayedWhileAwayWhereItWasPlayed)
+{
+    using protocol::DisplayMode;
+    using protocol::TimeBase;
+    struct Away
+    {
+        std::string name;
+        DisplayMode mode;
+        std::optional<TimeBase> timeBase;
+        std::optional<DisplayMode> otherMode;
+    };
+    for (const Away& away : {Away{.name = "Single in Seconds",
+                                  .mode = DisplayMode::kSingle,
+                                  .timeBase = TimeBase::kSeconds},
+                             Away{.name = "Multi in Seconds",
+                                  .mode = DisplayMode::kMulti,
+                                  .timeBase = TimeBase::kSeconds},
+                             Away{.name = "Multi in Single",
+                                  .mode = DisplayMode::kMulti,
+                                  .otherMode = DisplayMode::kSingle},
+                             Away{.name = "Single in Multi",
+                                  .mode = DisplayMode::kSingle,
+                                  .otherMode = DisplayMode::kMulti}}) {
+        SCOPED_TRACE(away.name);
+        BeatsHost host(48000.0, 512, 2, away.mode);
+        const auto set = [&](SettingId id, double value) {
+            for (const BeatsHost::Track& track : host.tracks) {
+                track.engine->settings().set(id, value);
+            }
+        };
+        host.play(3.0);
+        if (away.timeBase) {
+            set(SettingId::kTimeBase, static_cast<double>(*away.timeBase));
+        } else {
+            set(SettingId::kDisplayMode, static_cast<double>(*away.otherMode));
+        }
+        host.play(0.2);
+        const std::uint64_t jump = (host.tracks.front().played / 512 + 4) * 512;
+        host.jumpAt(jump, host.quarterNotesAt(jump) - 0.375);
+        host.play(0.3);
+        set(SettingId::kTimeBase, static_cast<double>(TimeBase::kBeats));
+        set(SettingId::kDisplayMode, static_cast<double>(away.mode));
+        host.frames.clear();
+        host.play(0.1);
+        ASSERT_FALSE(host.frames.empty());
+        const DecodedFrame& frame = host.frames.back().frame;
+        const std::uint64_t after = jump + 4096;
+        const std::size_t lanes = away.mode == DisplayMode::kSingle ? 1 : 2;
+        for (std::size_t lane = 0; lane < lanes; ++lane) {
+            ASSERT_GT(newestDrawn(frame, lane), static_cast<float>(after));
+            EXPECT_TRUE(sitsWherePlayed(frame, lane, after, host.quarterNotesAt(after)))
+                << "lane " << lane << ": audio played after the jump, while away";
+        }
+    }
+}
+
+// A track whose processing restarted captures more than the host played, so its capture indices
+// move further ahead of this track's: the lanes' offset is measured again, and once the new one
+// has lasted, the lane's playhead is with this track's again, within a millisecond.
+TEST(PacedSweep, FollowsATrackWhoseProcessingRestarted)
+{
+    BeatsHost host(48000.0, 512, 2, protocol::DisplayMode::kMulti);
+    host.play(4.0);
+    host.restart(1, 2400); // 50 ms.
     host.frames.clear();
-    host.play(0.05);
-    ASSERT_FALSE(host.frames.empty());
-    const DecodedFrame& frame = host.frames.back().frame;
-    ASSERT_FALSE(frame.has(FrameFlag::kFrozen));
-    const std::uint64_t after = jump + 4096;
-    ASSERT_GT(newestDrawn(frame), static_cast<float>(after));
-    EXPECT_TRUE(sitsWherePlayed(frame, 0, after, host.quarterNotesAt(after)))
-        << "audio played after the jump, while frozen";
+    host.play(3.0);
+    std::size_t compared = 0;
+    for (const BeatsHost::Drawn& drawn : host.frames) {
+        if (drawn.seconds < host.time - 1.0) {
+            continue; // The new offset is taken.
+        }
+        EXPECT_NEAR(newestDrawn(drawn.frame, 1), newestDrawn(drawn.frame, 0), 0.001 * host.rate)
+            << "at " << drawn.seconds;
+        ++compared;
+    }
+    EXPECT_GT(compared, 30U);
 }
 
 // Other tracks' lanes keep their playheads with this track's on every frame, though their blocks
