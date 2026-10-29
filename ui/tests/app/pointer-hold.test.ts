@@ -52,6 +52,15 @@ const drags = [
   })),
 ];
 
+// Switches the time base and waits until the page shows it: until then the span pill the drag
+// presses may still be hidden, and a hidden pill takes no press.
+async function inTimeBase(timeBase: string): Promise<void> {
+  await userEvent.click(choice("time-base", timeBase));
+  await expect
+    .element(byId(timeBase === "Beats" ? "beat-span-field" : "span-field"))
+    .toBeVisible();
+}
+
 function fieldOf(host: string): HTMLElement {
   return byId(host).querySelector(".field") as HTMLElement;
 }
@@ -125,7 +134,7 @@ describe("a value dragged where the editor holds the pointer", () => {
   test.each(drags)(
     "$name: holds the pointer from the press, once",
     async ({ host, onIcon, timeBase }) => {
-      await userEvent.click(choice("time-base", timeBase));
+      await inTimeBase(timeBase);
       install();
       const { y, field } = press(host, onIcon);
       expect(hold.starts).toBe(1);
@@ -141,7 +150,7 @@ describe("a value dragged where the editor holds the pointer", () => {
   test.each(drags)(
     "$name: switches to the editor's travel without losing or repeating a step",
     async ({ host, onIcon, setting, timeBase }) => {
-      await userEvent.click(choice("time-base", timeBase));
+      await inTimeBase(timeBase);
       install();
       const from = app.sent.length;
       const { y, field } = press(host, onIcon);
@@ -162,7 +171,7 @@ describe("a value dragged where the editor holds the pointer", () => {
   test.each(drags)(
     "$name: steps both ways from the press",
     async ({ host, onIcon, setting, timeBase }) => {
-      await userEvent.click(choice("time-base", timeBase));
+      await inTimeBase(timeBase);
       install();
       const from = app.sent.length;
       const { y, field } = press(host, onIcon);
@@ -180,7 +189,7 @@ describe("a value dragged where the editor holds the pointer", () => {
   test.each(drags)(
     "$name: a double-click holds and shows the pointer twice, then types",
     async ({ host, onIcon, timeBase }) => {
-      await userEvent.click(choice("time-base", timeBase));
+      await inTimeBase(timeBase);
       install();
       const target = pressTarget(host, onIcon);
       for (let click = 0; click < 2; click++) {
