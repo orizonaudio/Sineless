@@ -230,6 +230,25 @@ private:
         std::size_t remaining = 0;
     };
 
+    // Beats, live: the musical positions a sweep's audio is placed by (Analyzer::placingStamp).
+    struct SweepPlacing
+    {
+        // The position the audio placed last was played at.
+        std::optional<MusicalStamp> placing;
+        // The newest position seen, and those seen since `placing` that do not continue the one
+        // before them (a transport jump, a tempo or metre change), oldest first: the timeline
+        // keeps only its newest position.
+        std::optional<MusicalStamp> seen;
+        std::vector<MusicalStamp> changes;
+
+        void reset()
+        {
+            placing.reset();
+            seen.reset();
+            changes.clear();
+        }
+    };
+
     // One track of the multi-track view: its own persistent sweep, and its audio while frozen.
     struct Lane
     {
@@ -237,12 +256,10 @@ private:
         SweepImage image{1}; // The track's Mid.
         std::optional<SweepWindow> window;
         std::uint64_t end = 0; // Where the last update placed the sweep to.
-        // Beats, live: the musical stamp its newest placed audio was played at
-        // (Analyzer::placingStamp).
-        std::optional<MusicalStamp> placing;
+        SweepPlacing placing;
         // Beats, live: this lane's capture index of the audio played with this track's index i
-        // is i + indexOffset (the captures started at different moments), and how many steps in
-        // a row a measurement disagreed with it.
+        // is i + indexOffset (the captures started at different moments), and how many
+        // placements in a row a measurement disagreed with it.
         std::optional<std::int64_t> indexOffset;
         int offsetDisagreements = 0;
         LaneHold hold;
@@ -390,8 +407,7 @@ private:
     // This track's paced edge: free-running windows and Auto's untriggered fallback end there.
     PacedEdge pacedEdge;
     Clock clockNanos = monotonicNanos;
-    // Beats, live: the musical stamp this track's newest placed audio was played at.
-    std::optional<MusicalStamp> ownPlacing;
+    SweepPlacing ownPlacing;
     // Where a live sweep is placed to: this track's paced edge, and its stamp to place by.
     [[nodiscard]] std::uint64_t ownSweepEdge(protocol::BeatSpan span);
     // Whether the own sweep was paced when last placed (lanes follow it).
@@ -401,7 +417,7 @@ private:
     [[nodiscard]] std::uint64_t laneSweepEdge(Lane& lane, const Lane& own);
     static MusicalStamp
     placingStamp(const MusicalStamp& latest, std::uint64_t end, double sampleRate,
-                 std::optional<MusicalStamp>& placing,
+                 SweepPlacing& placing,
                  const std::function<void(const MusicalStamp&, std::uint64_t)>& placeBefore);
     // Live, in either time base: the channel counts and sample rates of this track and of each lane
     // shown, now and when the last frame was drawn, which are inputs too (formatsChanged).

@@ -1255,7 +1255,9 @@ std::uint64_t Analyzer::ownSweepEdge(protocol::BeatSpan span)
 std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
 {
     constexpr double kOffsetToleranceSeconds = 0.001;
-    constexpr int kOffsetPersistence = 100; // Steps: about 0.2 s.
+    // Placements, each as audio arrives and for each frame: about 0.6 s with 512-sample blocks at
+    // 48 kHz, longer with longer blocks.
+    constexpr int kOffsetPersistence = 100;
     const std::uint64_t newest = lane.engine->captureRing().endIndex();
     const double rate = lane.engine->sampleRate();
     if (!ownSweepPaced || rate != own.engine->sampleRate()) {
@@ -1284,33 +1286,54 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
 }
 
 // The musical stamp to place audio up to `end` by. The host gives each block its position; a
-// sweep placed a delay behind the newest audio has not reached the newest block yet, so while the
-// latest stamp starts beyond `end`, the stamp of the audio placed last stays in use. A transport
-// jump (a loop, a relocation, stop and start) then moves the sweep only when the playhead reaches
-// it, and audio from before the jump stays where it was played.
-// Moving on to a newer stamp, the audio from before its block is placed first, by `placeBefore`
-// with the stamp it was played at, so a jump never moves it. A stamp that only continues the one
-// before (the same tempo and metre, and its position where that one's leads) would place that
-// audio at the same columns, so it is not placed twice.
+// sweep placed a delay behind the newest audio has not reached the newest blocks yet, and the
+// timeline keeps only the newest position. So each position seen that does not continue the one
+// before (a transport jump: a loop, a relocation, stop and start; or a tempo or metre change) is
+// kept until the playhead reaches it. Audio before it is placed first, by `placeBefore` with the
+// position it was played at, so a jump moves the sweep only when the playhead reaches it and
+// never moves audio played before it. Positions that only continue one another place audio at
+// the same columns, so the newest of them is used. Seen every 2 ms step that audio arrived, so a
+// change is placed late only when a shorter block followed it within the step.
 MusicalStamp
 Analyzer::placingStamp(const MusicalStamp& latest, std::uint64_t end, double sampleRate,
-                       std::optional<MusicalStamp>& placing,
+                       SweepPlacing& placing,
                        const std::function<void(const MusicalStamp&, std::uint64_t)>& placeBefore)
 {
-    if (placing && latest.sampleIndex > end && latest.sampleIndex >= placing->sampleIndex) {
-        return *placing;
-    }
+    constexpr std::size_t kMostChanges = 64; // Far more than a sweep's delay can hold.
     const auto continues = [&](const MusicalStamp& previous) {
         return previous.tempo == latest.tempo && previous.numerator == latest.numerator &&
                previous.denominator == latest.denominator &&
                std::abs(Timeline::sampleIndexAt(previous, latest.quarterNotes, sampleRate) -
                         static_cast<double>(latest.sampleIndex)) <= 1.0;
     };
-    if (placing && latest.sampleIndex > placing->sampleIndex && !continues(*placing)) {
-        placeBefore(*placing, latest.sampleIndex);
+    if (placing.seen && latest.sampleIndex < placing.seen->sampleIndex) {
+        placing.reset(); // The capture started over.
     }
-    placing = latest;
-    return latest;
+    if (placing.seen && latest.sampleIndex > placing.seen->sampleIndex &&
+        !continues(*placing.seen)) {
+        if (placing.changes.size() == kMostChanges) {
+            placing.changes.erase(placing.changes.begin());
+        }
+        placing.changes.push_back(latest);
+    }
+    placing.seen = latest;
+    if (!placing.placing) {
+        placing.placing = latest;
+        placing.changes.clear();
+        return latest;
+    }
+    while (!placing.changes.empty() && placing.changes.front().sampleIndex <= end) {
+        const MusicalStamp change = placing.changes.front();
+        placing.changes.erase(placing.changes.begin());
+        if (change.sampleIndex > placing.placing->sampleIndex) {
+            placeBefore(*placing.placing, change.sampleIndex);
+        }
+        placing.placing = change;
+    }
+    if (placing.changes.empty()) {
+        placing.placing = latest; // Continues the position placed last.
+    }
+    return *placing.placing;
 }
 
 // Lanes are drawn on the own lane's grid, so their sweeps must hold as many samples. A tempo
