@@ -12,7 +12,7 @@ You contribute under the project's licence: GPL-3.0-only, with the additional pe
 
 Every change:
 
-- [ ] `scripts/check.sh` passes locally. CI runs its parts as jobs of their own (TypeScript, the macOS main and glue jobs, the Linux checks), and `scripts\check.ps1`'s on Windows x64 (main and glue), on every pull request that changes more than documentation (Markdown, or files under `docs/`; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all except the performance and fuzz jobs, and the engine-work jobs until their counts have matched exactly for a week. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
+- [ ] `scripts/check.sh` passes locally. CI runs its parts as jobs of their own (TypeScript, the app tests on macOS, the macOS main and glue jobs, the Linux checks), and `scripts\check.ps1`'s on Windows x64 (main and glue), on every pull request that changes more than documentation (Markdown, or files under `docs/`; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all except the performance and fuzz jobs, and the engine-work jobs until their counts have matched exactly for a week. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
 - [ ] New or changed behaviour is covered by tests.
 - [ ] Code follows the naming conventions and is formatted and linted.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.
