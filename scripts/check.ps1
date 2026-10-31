@@ -14,7 +14,7 @@
 #             since its limit means something on real x64 hardware alone (not under emulation)
 #   SKIP_PERFORMANCE  1 to skip the performance limits (scripts\performance.ps1)
 #   SKIP_FORMAT       1 to skip the C++ format check (CI runs it once, with a pinned clang-format)
-#   SKIP_APP_TESTS    1 to skip the app tests in WebKit and Chromium (CI runs them once, on Linux)
+#   SKIP_APP_TESTS    1 to skip the app tests in WebKit and Chromium (CI runs them once, on macOS)
 #   SKIP_TYPESCRIPT   1 to skip the TypeScript checks (CI's typescript job runs them)
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')

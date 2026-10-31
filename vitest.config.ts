@@ -12,6 +12,19 @@ import { unitTests } from "./vitest.unit.ts";
 const chromium = process.env["CHROMIUM_EXECUTABLE"];
 const chromiumOnly =
   chromium !== undefined || process.env["APP_BROWSERS"] === "chromium";
+// Chromium is Playwright's full build in its new headless mode (channel "chromium"), not its
+// headless shell, which draws WebGL in software even where a GPU exists: the full build draws on
+// the GPU, as WebView2 does (on a GPU-less machine it falls back to software).
+const chromiumInstance = {
+  browser: "chromium",
+  provider: playwright({
+    actionTimeout: 10000,
+    launchOptions:
+      chromium === undefined
+        ? { channel: "chromium" }
+        : { executablePath: chromium },
+  }),
+} as const;
 
 export default defineConfig({
   test: {
@@ -42,15 +55,10 @@ export default defineConfig({
             headless: true,
             // Clicks wait up to 10 s for the page, well within a test's 30 s: under coverage,
             // or on a busy machine, the page draws late.
-            provider: playwright({
-              actionTimeout: 10000,
-              ...(chromium === undefined
-                ? {}
-                : { launchOptions: { executablePath: chromium } }),
-            }),
+            provider: playwright({ actionTimeout: 10000 }),
             instances: chromiumOnly
-              ? [{ browser: "chromium" }]
-              : [{ browser: "webkit" }, { browser: "chromium" }],
+              ? [chromiumInstance]
+              : [{ browser: "webkit" }, chromiumInstance],
             // Wider than the editor's minimum width, as a host opens it.
             viewport: { width: 1200, height: 720 },
           },

@@ -105,12 +105,27 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
-      # The app tests run the real page in WebKit, as WKWebView does on macOS, and Chromium, as
-      # WebView2 does on Windows.
-      - name: Install the browsers for the app tests
-        run: npx playwright install --with-deps webkit chromium
-      - run: npm run test:app
       - run: npm run build
+
+  # The app tests run the real page in WebKit, as WKWebView does on macOS, and Chromium, as
+  # WebView2 does on Windows. On macOS, whose runner has a GPU both browsers draw the page on, as
+  # the product does; Linux's runner has none, and drawing in software there made the tests' pace
+  # the runner's CPU's. The other TypeScript checks are the typescript job's.
+  app:
+    name: app
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install the browsers for the app tests
+        run: npx playwright install webkit chromium
+      - run: npm run test:app
 
   # The C++ format, checked once with a pinned clang-format (the macOS and Windows machines carry
   # different versions), and the shared code's memory checks: the engine, protocol, plugin and
@@ -230,7 +245,7 @@ jobs:
 
   # scripts/check.sh's main part, on macOS, except the performance limits and the format: build,
   # all C++ tests including the editor's in a real WKWebView, the VST3 validator and pluginval. The
-  # TypeScript is the typescript job's; the shared code's sanitizers and lint are Linux's.
+  # TypeScript is the typescript and app jobs'; the shared code's sanitizers and lint are Linux's.
   macos:
     name: macos
     needs: changes
@@ -325,8 +340,8 @@ jobs:
 
   # scripts\check.ps1's main part except the performance limit and the format, on x64: build,
   # all C++ tests including the editor's in a real WebView2, the VST3 validator, and pluginval.
-  # The TypeScript is the typescript job's. ARM64 is not built for now (the windows-arm64 presets
-  # stay, to bring it back).
+  # The TypeScript is the typescript and app jobs'. ARM64 is not built for now (the
+  # windows-arm64 presets stay, to bring it back).
   windows:
     name: windows-x64
     needs: changes

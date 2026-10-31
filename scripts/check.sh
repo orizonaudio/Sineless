@@ -16,7 +16,7 @@
 #             (default: Homebrew LLVM)
 #   SKIP_PERFORMANCE=1  Skip the performance limits (they need a logged-in desktop session)
 #   SKIP_FORMAT=1       Skip the C++ format check (CI runs it once, with a pinned clang-format)
-#   SKIP_APP_TESTS=1    Skip the app tests in WebKit and Chromium (CI runs them once, on Linux)
+#   SKIP_APP_TESTS=1    Skip the app tests in WebKit and Chromium (CI runs them once, on macOS)
 #   SKIP_TYPESCRIPT=1   Skip the TypeScript checks (CI's typescript job runs them)
 set -euo pipefail
 
