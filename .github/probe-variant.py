@@ -5,7 +5,7 @@ path = "ui/src/render/trace-renderer.ts"
 s = open(path).read()
 never = "if (performance.now() < 0) "
 variant = sys.argv[1]
-if variant == "baseline":
+if variant in ("baseline", "baseline-2", "baseline-3"):
     pass
 elif variant == "no-composite":
     s = s.replace("gl.drawArrays(gl.TRIANGLES, 0, 3);", never + "gl.drawArrays(gl.TRIANGLES, 0, 3);")

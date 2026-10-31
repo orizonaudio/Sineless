@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, early-out, early-out-no-upload]
+        variant: [baseline, baseline-2, baseline-3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,7 +39,7 @@ jobs:
             for dir in ../main .; do
               start=$(date +%s)
               (cd "$dir" && APP_BROWSERS=chromium npx vitest run --project app --testTimeout=180000 \
-                ui/tests/app/multi-track.test.ts 2>&1 |
+                ui/tests/app/multi-track.test.ts ui/tests/app/controls.test.ts 2>&1 |
                 sed 's/\x1b\[[0-9;]*m//g' | grep -E '^ (✓|❯)  app|Tests ') || true
               echo "== round $round $dir: $(( $(date +%s) - start )) s"
             done
