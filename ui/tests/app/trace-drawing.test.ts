@@ -784,7 +784,7 @@ describe("joins on pixel centres shade once", () => {
   });
 });
 
-describe("frames longer than one texture row draw across the seams", () => {
+describe("long frames, and lanes that start mid-frame, draw whole", () => {
   const wide = 2100;
   const ramp = (count: number) => (point: number) =>
     -0.8 + (1.6 * point) / (count - 1);
@@ -827,7 +827,28 @@ describe("frames longer than one texture row draw across the seams", () => {
     checkRamp(drawing, (x) => shape((x - first) / spacing));
   });
 
-  test("a second lane starting mid-row", () => {
+  // The values' storage grows only when a frame needs more: a frame one point longer than the last
+  // still needs its own room, the last point reading one point past its data.
+  test.each([
+    { mode: FrameMode.raw, counts: [300, 301, 302, 303, 300, 299] },
+    { mode: FrameMode.minMax, counts: [150, 151, 152, 153, 150, 149] },
+  ])(
+    "mode $mode, a point longer or shorter each frame, draws each whole",
+    ({ mode, counts }) => {
+      const surface = freshSurface(width, height);
+      for (const count of counts) {
+        const spacing = (width * 0.9) / count;
+        const shape = ramp(count);
+        const frame = spaced(mode, count, spacing, (point) => shape(point));
+        const drawing = drawOn(surface, frame);
+        expect(drawing.error, `${String(count)} points`).toBe(0);
+        const first = centreX(drawing, 0);
+        checkRamp(drawing, (x) => shape((x - first) / spacing));
+      }
+    },
+  );
+
+  test("a second lane starting mid-frame", () => {
     const count = 1500;
     const shape = ramp(count);
     const frame = frameOf({
@@ -856,6 +877,21 @@ describe("frames longer than one texture row draw across the seams", () => {
         (row) => drawing.pixel(x, row)[1] > 100,
       );
       expect(near, `column ${String(x)}`).toBe(true);
+    }
+    // The first lane, in the top half, ends at its own last value: nothing runs from there to
+    // the second lane's first, which comes next in the frame's values.
+    const lastRow = Math.floor(
+      ((shape(count - 1) * 0.5 + 0.5 + 1) / 2) * height,
+    );
+    for (let x = wide - 4; x < wide; x++) {
+      for (let y = 0; y < height; y++) {
+        if (drawing.pixel(x, y)[0] > 100) {
+          expect(
+            Math.abs(y - lastRow),
+            `${String(x)}, ${String(y)}`,
+          ).toBeLessThanOrEqual(3);
+        }
+      }
     }
   });
 
@@ -1090,6 +1126,8 @@ describe("lanes layer in order, whatever their channel and target", () => {
       viewEnd: 1,
       lanes: [band(0.5), band(0.4), band(0)],
       comparison: { sumGain: -3, fixedGain: 3, matches: [own, alike, alike] },
+      synced: true,
+      cursor: 0.75,
     });
     const colors = [0, 1, 2].map((lane) => laneColor(lane, 0.5));
     const options: DrawOptions = {
@@ -1104,12 +1142,21 @@ describe("lanes layer in order, whatever their channel and target", () => {
       [rowOf(0.45), over(shaded, first)],
       [rowOf(0), over(over(over(shaded, first), second), sum)],
     ];
-    for (const drawing of [draw(frame, options), draw(frame, options)]) {
+    const drawings = [draw(frame, options), draw(frame, options)];
+    for (const drawing of drawings) {
       expect(drawing.error).toBe(0);
       for (const [y, expected] of places) {
         expectPixel(drawing, width / 2, y, expected, 3);
       }
     }
+    // The playhead, drawn after the traces with the shading's program, the same both times; the
+    // places above are left of it, in the current cycle.
+    const [once, twice] = drawings as [Drawing, Drawing];
+    const playhead = Math.round(width * 0.75);
+    expect(once.alpha(playhead, height / 2)).toBeGreaterThan(0.9);
+    expect(twice.pixel(playhead, height / 2)).toEqual(
+      once.pixel(playhead, height / 2),
+    );
   });
 });
 
