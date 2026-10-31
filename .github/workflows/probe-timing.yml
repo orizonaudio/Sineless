@@ -1,0 +1,66 @@
+# Temporary: whether the macOS runner gives the app tests' browsers a GPU, and how long the app
+# tests take there, on main's code and on this branch's. Not for merging.
+name: Probe timing
+on:
+  pull_request:
+    paths: [".github/workflows/probe-timing.yml", ".github/probe/**"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install the browsers
+        run: |
+          start=$(date +%s)
+          npx playwright install --with-deps webkit chromium
+          echo "== install: $(( $(date +%s) - start )) s"
+      - name: Runner
+        run: |
+          uname -a
+          (sysctl -n machdep.cpu.brand_string hw.ncpu 2>/dev/null; system_profiler SPDisplaysDataType 2>/dev/null) || (nproc; lscpu | grep 'Model name')
+      - name: Main's code alongside
+        run: |
+          git worktree add ../main origin/main
+          ln -s "$PWD/node_modules" ../main/node_modules
+      - name: The browsers' WebGL and the worst frame's draw time
+        run: |
+          cp .github/probe/zz-*.test.ts ui/tests/app/
+          for b in webkit chromium; do
+            npx vitest run --project app --browser=$b ui/tests/app/zz-gpu-info.test.ts ui/tests/app/zz-gpubench-2.test.ts 2>&1 |
+              grep -o 'RESULT {[^}]*}' | sed "s/^/$b /" || true
+          done
+          rm ui/tests/app/zz-*.test.ts
+      - name: The playhead test, main and this branch, each browser
+        run: |
+          for b in webkit chromium; do
+            for dir in ../main .; do
+              start=$(date +%s)
+              (cd "$dir" && npx vitest run --project app --browser=$b ui/tests/app/playhead.test.ts 2>&1 |
+                sed 's/\x1b\[[0-9;]*m//g' | grep -E '^ +(✓|×)|Tests ') || true
+              echo "== $b $dir: $(( $(date +%s) - start )) s"
+            done
+          done
+      - name: All app tests, this branch
+        run: |
+          start=$(date +%s)
+          (npm run test:app 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^ +×|FAIL|Test Files|Tests ') || true
+          echo "== test:app: $(( $(date +%s) - start )) s"
+      - name: All app tests, main
+        run: |
+          start=$(date +%s)
+          (cd ../main && npm run test:app 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^ +×|FAIL|Test Files|Tests ') || true
+          echo "== main test:app: $(( $(date +%s) - start )) s"
