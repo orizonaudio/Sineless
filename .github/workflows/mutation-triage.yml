@@ -280,7 +280,7 @@ jobs:
       - name: Triage
         if: steps.pr.outputs.action == 'triage' && steps.collect.outputs.count != '0'
         id: triage
-        uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
+        uses: anthropics/claude-code-action@925afb53776cf1a2b738c6bdbed37b4d4000ef13 # v1.0.262
         env:
           CLAUDE_CODE_EFFORT_LEVEL: medium
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
@@ -335,7 +335,7 @@ jobs:
       - name: Verify
         if: steps.pr.outputs.action == 'triage' && steps.collect.outputs.count != '0' && steps.gaps.outputs.count != '0'
         id: verify
-        uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
+        uses: anthropics/claude-code-action@925afb53776cf1a2b738c6bdbed37b4d4000ef13 # v1.0.262
         env:
           CLAUDE_CODE_EFFORT_LEVEL: medium
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5-5
