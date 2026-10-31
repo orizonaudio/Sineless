@@ -91,7 +91,8 @@ TEST_P(EvenMotion, MovesTheEdgeEvenly)
 
 // The measure tells each way an edge can go wrong, at every rate: drawn at 60 Hz, 10 ms behind
 // the newest audio and moving steadily, nothing is wrong; one frame that moves back, one past the
-// newest audio, and one that stands still are each reported, and only as what they are.
+// newest audio, and one that stands still are each reported, and only as what they are; frames
+// that often stand still show in the 99th percentile.
 TEST(MeasureMotion, ReportsEachWayAnEdgeGoesWrong)
 {
     constexpr double kFrame = 1.0 / 60.0;
@@ -132,6 +133,15 @@ TEST(MeasureMotion, ReportsEachWayAnEdgeGoesWrong)
         EXPECT_NEAR(stutter.advanceErrorMax, kFrame * 1000.0, 1e-6);
         EXPECT_FALSE(stutter.backwards);
         EXPECT_FALSE(stutter.ahead);
+
+        // One frame in ten stands still: more than 1% of the frames stutter, which the 99th
+        // percentile reports as the stutter, not as the steady frames around it.
+        auto often = steady();
+        for (std::size_t index = 10; index < often.size(); index += 10) {
+            often[index].edge = often[index - 1].edge;
+        }
+        EXPECT_NEAR(measureMotion(often, rate).advanceErrorP99, kFrame * 1000.0, 1e-6);
+        EXPECT_NEAR(even.advanceErrorP99, 0.0, 1e-6);
     }
 }
 
