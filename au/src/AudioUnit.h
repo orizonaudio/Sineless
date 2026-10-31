@@ -6,6 +6,7 @@
 #include "engine/Timeline.h"
 
 #include <AudioUnitSDK/AUEffectBase.h>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -41,6 +42,10 @@ public:
                              UInt32& outDataSize, bool& outWritable) override;
     OSStatus GetProperty(AudioUnitPropertyID id, AudioUnitScope scope, AudioUnitElement element,
                          void* outData) override;
+    // Takes kAudioUnitProperty_OfflineRender, which hosts set while they render faster than real
+    // time (bouncing): blocks then come at no steady rate and are not paced.
+    OSStatus SetProperty(AudioUnitPropertyID id, AudioUnitScope scope, AudioUnitElement element,
+                         const void* inData, UInt32 inDataSize) override;
     void PropertyChanged(AudioUnitPropertyID id, AudioUnitScope scope,
                          AudioUnitElement element) override;
     // Saved state: the SDK's dictionary, with the settings as JSON under kStateKey.
@@ -65,6 +70,8 @@ private:
 
     std::shared_ptr<engine::Engine> engineState;
     std::int64_t engineToken = 0;
+    // Set by the host on its thread, read by the render.
+    std::atomic<bool> offlineRender{false};
 };
 
 } // namespace orizon::au

@@ -35,8 +35,9 @@
 #include "bench/Signals.h"
 #include "editor/Editor.h"
 #include "engine/Engine.h"
+#include "engine/FreeRunning.h"
 #include "engine/InstanceRegistry.h"
-#include "engine/Roll.h"
+#include "engine/Motion.h"
 #include "engine/SettingJson.h"
 #include "pluginterfaces/gui/iplugview.h"
 
@@ -113,7 +114,7 @@ bool applyScenario(const std::string& name, Options& options)
     if (!scenario || scenario->viewStart != 0.0 || scenario->viewEnd != 1.0 ||
         scenario->frozenPan ||
         (scenario->timeBase == protocol::TimeBase::kSeconds &&
-         !orizon::engine::isRollSpan(scenario->span))) {
+         !orizon::engine::isFreeRunning(scenario->span, protocol::TriggerMode::kAuto))) {
         return false;
     }
     const auto nameOf = [](const auto& names, auto value) {
@@ -246,6 +247,7 @@ private:
                 std::array<const float*, 2> buffers{left.data(), right.data()};
                 engine::Engine& engine = *engines[track];
                 engine.captureRing().write(buffers.data(), channels, block);
+                engine.stampBlock(true); // As a host processing in real time.
                 const double seconds = static_cast<double>(sample) / rate;
                 engine.timeline().advance({.playing = true,
                                            .positionValid = true,
@@ -805,9 +807,22 @@ int run(const Options& options)
         } else {
             auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
             evaluate(webView, @"window.orizonDebug?.frameTimes?.start(); ''");
+            (void)engines.front()->takeEdges();
             const Snapshot from = take();
             pump(options.duration);
             const Snapshot to = take();
+            // How evenly the right edge (Seconds) or the playhead (Beats) moved from frame to
+            // frame, as the analyzer produced the frames: what a user sees as smooth or stuttering.
+            std::vector<engine::EdgeDraw> edges;
+            for (const engine::Engine::EdgeRecord& record : engines.front()->takeEdges()) {
+                edges.push_back({.seconds = static_cast<double>(record.nanos) / 1e9,
+                                 .edge = static_cast<double>(record.edge),
+                                 .newest = static_cast<double>(record.newest)});
+            }
+            const engine::Motion motion =
+                edges.size() > 1
+                    ? engine::measureMotion(edges, engines.front()->sampleRate())
+                    : engine::Motion{.advanceErrorP99 = NAN, .advanceErrorMax = NAN, .lagMax = NAN};
             const Interval interval = between(from, to);
             const nlohmann::json times = nlohmann::json::parse(
                 evaluate(webView,
@@ -889,6 +904,9 @@ int run(const Options& options)
             std::printf("ticks: %.1f ms median, %.1f p99, %.1f max; %.1f%% late\n",
                         number(ticks, "median"), number(ticks, "p99"), number(ticks, "max"),
                         100.0 * number(ticks, "lateShare"));
+            std::printf("edge motion: %.2f ms p99, %.2f ms max from steady per frame; %.1f ms "
+                        "behind the newest audio at most\n",
+                        motion.advanceErrorP99, motion.advanceErrorMax, motion.lagMax);
             judge("frames/s", interval.framesPerSecond, options.minFps, true);
             judge("total CPU (%)", 100.0 * interval.total, options.maxTotal, false);
             judge("analysis thread (%)", 100.0 * interval.analysis, options.maxAnalysis, false);
@@ -923,6 +941,9 @@ int run(const Options& options)
                 add("resident-mb", interval.resident);
                 add("display-scale", number(view, "scale"));
                 add("columns", number(view, "columns"));
+                add("edge-advance-error-p99-ms", motion.advanceErrorP99);
+                add("edge-advance-error-max-ms", motion.advanceErrorMax);
+                add("edge-lag-max-ms", motion.lagMax);
                 const nlohmann::json results = {
                     {options.scenario.empty() ? "custom" : options.scenario, measures}};
                 std::ofstream(options.json) << results.dump(2) << '\n';

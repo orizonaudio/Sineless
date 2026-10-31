@@ -10,6 +10,7 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -17,6 +18,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace orizon::au {
@@ -496,6 +498,89 @@ TEST(AudioUnit, CapturesTheInput)
             EXPECT_EQ(captured, host.input[channel]) << "channel " << channel;
         }
     }
+}
+
+// Each rendered block is stamped with when it arrived, which paces free-running windows; while the
+// host renders offline (kAudioUnitProperty_OfflineRender), blocks come at no steady rate and are
+// not paced. The property reads back as set, and is described as the writable UInt32 it is.
+TEST(AudioUnit, StampsEachBlockPacedOnlyWhenNotOffline)
+{
+    Host host;
+    Instance instance(host);
+    ASSERT_EQ(instance.open(48000.0, 2, 2), noErr);
+    host.input = noise(2, 256, 3);
+    const auto engine = instance.engine();
+    EXPECT_FALSE(engine->blockStamp().latest()) << "no block yet";
+    std::uint64_t written = 0;
+    for (const UInt32 offline : {0U, 1U, 0U}) {
+        SCOPED_TRACE(offline);
+        ASSERT_EQ(AudioUnitSetProperty(instance.handle(), kAudioUnitProperty_OfflineRender,
+                                       kAudioUnitScope_Global, 0, &offline, sizeof offline),
+                  noErr);
+        UInt32 read = 7;
+        UInt32 size = sizeof read;
+        ASSERT_EQ(AudioUnitGetProperty(instance.handle(), kAudioUnitProperty_OfflineRender,
+                                       kAudioUnitScope_Global, 0, &read, &size),
+                  noErr);
+        EXPECT_EQ(read, offline);
+        // Hosts ask the size first, and turn offline rendering on only for a writable UInt32.
+        UInt32 infoSize = 0;
+        Boolean writable = 0;
+        ASSERT_EQ(AudioUnitGetPropertyInfo(instance.handle(), kAudioUnitProperty_OfflineRender,
+                                           kAudioUnitScope_Global, 0, &infoSize, &writable),
+                  noErr);
+        EXPECT_EQ(infoSize, sizeof(UInt32));
+        EXPECT_TRUE(writable);
+        instance.render(256, true);
+        written += 256;
+        const auto stamp = engine->blockStamp().latest();
+        ASSERT_TRUE(stamp.has_value());
+        EXPECT_EQ(stamp->index, written);
+        EXPECT_EQ(stamp->paced, offline == 0U);
+    }
+}
+
+// A render of no frames is no block: it publishes no stamp. A stamp at the same index but a later
+// time would read as the real block arriving late, and the paced edge would jump or stutter. As
+// the VST3 processor (ProcessorTests).
+TEST(AudioUnit, StampsNoBlockForARenderOfNoFrames)
+{
+    Host host;
+    Instance instance(host);
+    ASSERT_EQ(instance.open(48000.0, 2, 2), noErr);
+    host.input = noise(2, 256, 3);
+    const auto engine = instance.engine();
+    instance.render(256, true);
+    const auto before = engine->blockStamp().latest();
+    ASSERT_TRUE(before.has_value());
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    instance.render(0, true);
+    const auto after = engine->blockStamp().latest();
+    ASSERT_TRUE(after.has_value());
+    EXPECT_EQ(after->index, before->index);
+    EXPECT_EQ(after->nanos, before->nanos) << "a stamp for no frames";
+}
+
+// A value of the wrong size for kAudioUnitProperty_OfflineRender is refused and changes nothing.
+TEST(AudioUnit, RefusesAnOfflineRenderValueOfTheWrongSize)
+{
+    Host host;
+    Instance instance(host);
+    ASSERT_EQ(instance.open(48000.0, 2, 2), noErr);
+    const UInt32 offline = 1;
+    ASSERT_EQ(AudioUnitSetProperty(instance.handle(), kAudioUnitProperty_OfflineRender,
+                                   kAudioUnitScope_Global, 0, &offline, sizeof offline),
+              noErr);
+    const std::uint16_t tooShort = 0;
+    EXPECT_NE(AudioUnitSetProperty(instance.handle(), kAudioUnitProperty_OfflineRender,
+                                   kAudioUnitScope_Global, 0, &tooShort, sizeof tooShort),
+              noErr);
+    UInt32 read = 7;
+    UInt32 size = sizeof read;
+    ASSERT_EQ(AudioUnitGetProperty(instance.handle(), kAudioUnitProperty_OfflineRender,
+                                   kAudioUnitScope_Global, 0, &read, &size),
+              noErr);
+    EXPECT_EQ(read, 1U) << "still offline";
 }
 
 // A host that marks its input silent may leave old samples in the buffers: the scope shows

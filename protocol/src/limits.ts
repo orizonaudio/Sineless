@@ -29,16 +29,34 @@ export const crossingHysteresis = 0.1;
 // cycle; otherwise it has no frequency to show (noise, or several pitches at once).
 export const periodTolerance = 0.15;
 
-// Seconds of audio a freeze holds in Seconds mode: the longest span, which a frozen view can be
-// panned back through. The engine's capture is sized to keep it at 384 kHz, the highest rate hosts
-// run at (CaptureRing::capacityFor; the build checks it), so a longer hold needs a larger one.
+// Seconds a frozen Seconds view can be panned back through: the longest span. The freeze holds
+// twice pacingDelayCapSeconds more, as the paced edge may stand that far behind the newest audio
+// (kSecondsFreezeSeconds). The engine's capture is sized to keep that at 384 kHz, the highest
+// rate hosts run at (CaptureRing::capacityFor; the build checks it), so a longer hold needs a
+// larger one.
 export const frozenHoldSeconds = settings.timeSpan.maximum;
 
 // Where a triggered trace's trigger point sits, as a fraction of the span from the left.
 export const triggerPosition = 0.1;
 
-// Spans longer than this (seconds) scroll continuously instead of triggering.
-export const rollThresholdSeconds = 1;
+// Spans longer than this (seconds) run free, ending at the newest audio and moving with it,
+// whatever the trigger mode; at or below it they are triggered, unless the trigger mode is Free.
+// Above 1 s a trigger would hold one trace for a long time and show little of the signal's
+// change, so the display keeps moving instead.
+export const freeRunningThresholdSeconds = 1;
+
+// The most a free-running window's edge trails the newest audio (seconds). Hosts deliver audio in
+// blocks, and frames come at display rate; an edge at the newest sample moves by one block on some
+// frames and two on others. The edge is paced instead: a steady clock estimates the sample due now
+// and the edge stays a measured delay behind it, about a block. The cap covers 4096-sample blocks
+// at 44.1 kHz (93 ms), the longest hosts commonly use, with a third more for late deliveries; a
+// host whose blocks come further apart steps as before. A freeze holds twice this beyond the
+// longest span, so the frozen window is the one last shown.
+export const pacingDelayCapSeconds = 0.125;
+
+// Spans shorter than this (seconds) are not paced: below about one frame at 60 Hz the whole trace
+// is new every frame, and pacing would only show it later.
+export const pacedSpanMinimumSeconds = 0.02;
 
 // The narrowest part of the span a view can zoom in to.
 export const minimumViewWidth = 1 / 256;
@@ -88,7 +106,21 @@ export const limits: readonly {
   { name: "periodTolerance", value: periodTolerance, kind: "double" },
   { name: "frozenHoldSeconds", value: frozenHoldSeconds, kind: "double" },
   { name: "triggerPosition", value: triggerPosition, kind: "double" },
-  { name: "rollThresholdSeconds", value: rollThresholdSeconds, kind: "double" },
+  {
+    name: "freeRunningThresholdSeconds",
+    value: freeRunningThresholdSeconds,
+    kind: "double",
+  },
+  {
+    name: "pacingDelayCapSeconds",
+    value: pacingDelayCapSeconds,
+    kind: "double",
+  },
+  {
+    name: "pacedSpanMinimumSeconds",
+    value: pacedSpanMinimumSeconds,
+    kind: "double",
+  },
   { name: "minimumViewWidth", value: minimumViewWidth, kind: "double" },
   { name: "maxLanes", value: maxLanes, kind: "count" },
   {

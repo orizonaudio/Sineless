@@ -201,13 +201,13 @@ describe("mock back end", () => {
     expect(frame?.mode).toBe(FrameMode.raw); // 480 samples fit in 800 columns.
   });
 
-  test("rolls long spans and reports freeze", () => {
+  test("runs long spans free and reports freeze", () => {
     const { transport, frames } = connect();
     useSeconds(transport);
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
     transport.send({ type: "freeze", frozen: true });
     transport.requestFrame();
-    expect(frames.at(-1)?.roll).toBe(true);
+    expect(frames.at(-1)?.freeRunning).toBe(true);
     expect(frames.at(-1)?.frozen).toBe(true);
   });
 
@@ -261,11 +261,11 @@ describe("mock back end", () => {
     transport.requestFrame();
     expect(frames.at(-1)?.panReach).toBeCloseTo(reach(0.5), 3);
 
-    // A roll span ends at the right edge of the last live window instead: the trigger point
+    // A free-running span ends at the right edge of the last live window instead: the trigger point
     // and the rest of that window after it.
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
     transport.requestFrame();
-    expect(frames.at(-1)?.roll).toBe(true);
+    expect(frames.at(-1)?.freeRunning).toBe(true);
     const liveEnd = trigger + (1 - triggerPosition) * 0.1;
     expect(frames.at(-1)?.panReach).toBeCloseTo(
       liveEnd - 2 - (1 - frozenHoldSeconds),
@@ -325,7 +325,7 @@ describe("mock back end", () => {
     expect(frame?.comparison?.matches[3]?.offset).toBe(125);
   });
 
-  test("places a view frozen while rolling around that window", () => {
+  test("places a view frozen while running free around that window", () => {
     const { transport, frames } = connect(); // now = 1 s.
     useSeconds(transport);
     transport.send({ type: "setSetting", name: "timeSpan", value: 2 });

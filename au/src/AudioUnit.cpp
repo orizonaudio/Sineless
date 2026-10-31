@@ -102,6 +102,11 @@ OSStatus AudioUnit::GetPropertyInfo(AudioUnitPropertyID id, AudioUnitScope scope
         outWritable = false;
         return noErr;
     }
+    if (id == kAudioUnitProperty_OfflineRender && scope == kAudioUnitScope_Global) {
+        outDataSize = sizeof(UInt32);
+        outWritable = true;
+        return noErr;
+    }
     return AUEffectBase::GetPropertyInfo(id, scope, element, outDataSize, outWritable);
 }
 
@@ -115,7 +120,27 @@ OSStatus AudioUnit::GetProperty(AudioUnitPropertyID id, AudioUnitScope scope,
     if (id == kAudioUnitProperty_CocoaUI && scope == kAudioUnitScope_Global) {
         return copyCocoaViewInfo(*static_cast<AudioUnitCocoaViewInfo*>(outData));
     }
+    if (id == kAudioUnitProperty_OfflineRender && scope == kAudioUnitScope_Global) {
+        const UInt32 value = offlineRender.load(std::memory_order_relaxed) ? 1 : 0;
+        std::memcpy(outData, &value, sizeof value);
+        return noErr;
+    }
     return AUEffectBase::GetProperty(id, scope, element, outData);
+}
+
+OSStatus AudioUnit::SetProperty(AudioUnitPropertyID id, AudioUnitScope scope,
+                                AudioUnitElement element, const void* inData, UInt32 inDataSize)
+{
+    if (id == kAudioUnitProperty_OfflineRender && scope == kAudioUnitScope_Global) {
+        if (inData == nullptr || inDataSize < sizeof(UInt32)) {
+            return kAudioUnitErr_InvalidPropertyValue;
+        }
+        UInt32 value = 0;
+        std::memcpy(&value, inData, sizeof value);
+        offlineRender.store(value != 0, std::memory_order_relaxed);
+        return noErr;
+    }
+    return AUEffectBase::SetProperty(id, scope, element, inData, inDataSize);
 }
 
 void AudioUnit::PropertyChanged(AudioUnitPropertyID id, AudioUnitScope scope,
@@ -237,6 +262,9 @@ OSStatus AudioUnit::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFlags
     const auto count = static_cast<int>(std::min<UInt32>(channels, sources.size()));
     engine::captureBlock(engineState->captureRing(), sources.data(), count, silentChannels,
                          static_cast<int>(frames));
+    if (frames > 0) {
+        engineState->stampBlock(!offlineRender.load(std::memory_order_relaxed));
+    }
     const double sampleRate = GetSampleRate();
     engineState->timeline().advance(hostTimeline(sampleRate), static_cast<int>(frames), sampleRate);
     return noErr;

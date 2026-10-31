@@ -3,18 +3,21 @@ configure_file(include/engine/Version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/e
 add_library(engine STATIC
     src/AnalysisWorker.cpp
     src/Analyzer.cpp
+    src/BlockClock.cpp
     src/BlockStats.cpp
     src/CaptureRing.cpp
-    src/EngineRegistry.cpp
     src/ChannelViews.cpp
+    src/EngineRegistry.cpp
     src/FrameEncoder.cpp
+    src/FreeRunning.cpp
     src/HoldBuffer.cpp
     src/InstanceRegistry.cpp
     src/LaneHold.cpp
+    src/MonotonicClock.cpp
+    src/Motion.cpp
     src/PairAnalysis.cpp
     src/Readouts.cpp
     src/Reducer.cpp
-    src/Roll.cpp
     src/SettingJson.cpp
     src/Settings.cpp
     src/State.cpp
@@ -48,24 +51,27 @@ if(BUILD_TESTING)
         tests/AnalysisWorkerTests.cpp
         tests/AnalyzerGridTests.cpp
         tests/AnalyzerTests.cpp
+        tests/BlockClockTests.cpp
         tests/BlockStatsTests.cpp
         tests/CaptureRingTests.cpp
         tests/ChannelViewsTests.cpp
         tests/EngineRegistryTests.cpp
         tests/FrameEncoderTests.cpp
+        tests/FreeRunningTests.cpp
         tests/HoldBufferTests.cpp
         tests/InstanceRegistryTests.cpp
         tests/MatrixTests.cpp
+        tests/MotionTests.cpp
+        tests/PacedAnalyzerTests.cpp
         tests/PairAnalysisTests.cpp
         tests/ReadoutsTests.cpp
         tests/ReducerTests.cpp
-        tests/RollTests.cpp
         tests/SettingsTests.cpp
         tests/SignalCorpusTests.cpp
         tests/StateFaultTests.cpp
         tests/StateTests.cpp
-        tests/SweepTests.cpp
         tests/SweepImageTests.cpp
+        tests/SweepTests.cpp
         tests/TimelineTests.cpp
         tests/TriggerTests.cpp
         tests/VersionTests.cpp

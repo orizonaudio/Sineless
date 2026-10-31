@@ -33,8 +33,8 @@ function labelSeconds(): number[] {
   });
 }
 
-// Whether the labels mark a span of `span` seconds: within the rounding of the part a roll
-// shows to whole columns (under a percent) and of the labels to three digits.
+// Whether the labels mark a span of `span` seconds: within the rounding of the part a
+// free-running window shows to whole samples and of the labels to three digits.
 function marksSpan(view: ViewWindow, span: number): boolean {
   const expected = axisTimeLabels(span, true, view).map((label) =>
     parseQuantity(label.text, "time"),
@@ -54,7 +54,7 @@ describe("a span longer than the capture keeps", () => {
     await startApp({ keptSeconds: kept });
   });
 
-  // Both spans roll: only the span the frame shows tells the axis to change.
+  // Both spans run free: only the span the frame shows tells the axis to change.
   test("labels the time axis with the span shown", async () => {
     await userEvent.click(choice("time-base", "Sec"));
     await typeInto("span-field", "2 s");
@@ -65,8 +65,8 @@ describe("a span longer than the capture keeps", () => {
     await expect.poll(() => marksSpan(fullView, kept)).toBe(true);
   });
 
-  // Zoomed far into the limited roll, the frame holds a few samples, rounded to whole columns: the
-  // axis still measures the span shown, not that part of it.
+  // Zoomed far into the limited free-running span, the frame holds a few samples: the axis still
+  // measures the span shown, not that part of it.
   test("keeps the axis to the span shown when zoomed in", async () => {
     const trace = byId("trace");
     const bounds = trace.getBoundingClientRect();
