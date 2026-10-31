@@ -1,6 +1,7 @@
 #include "FrameDecoding.h"
 #include "SampleRates.h"
 #include "engine/Analyzer.h"
+#include "engine/Engine.h"
 #include "engine/Motion.h"
 
 #include <array>
@@ -335,6 +336,22 @@ TEST(PacedFreeze, KeepsTheWindowLastShown)
             EXPECT_FALSE(frozen.has(FrameFlag::kLimited));
         }
     }
+}
+
+// Each live frame records its edge for the benchmark, but in a host nothing takes them: over a
+// long session the log keeps only the newest kEdgeRecords, so an instance's memory stays bounded.
+TEST(EdgeLog, KeepsOnlyTheNewestEdgesWhenNothingTakesThem)
+{
+    Engine engine;
+    const std::uint64_t recorded = 3 * Engine::kEdgeRecords;
+    for (std::uint64_t index = 0; index < recorded; ++index) {
+        engine.recordEdge({.nanos = index, .edge = index, .newest = index});
+    }
+    const auto edges = engine.takeEdges();
+    ASSERT_FALSE(edges.empty());
+    EXPECT_LE(edges.size(), Engine::kEdgeRecords);
+    EXPECT_EQ(edges.back().edge, recorded - 1) << "the newest kept";
+    EXPECT_TRUE(engine.takeEdges().empty()) << "taken";
 }
 
 } // namespace
