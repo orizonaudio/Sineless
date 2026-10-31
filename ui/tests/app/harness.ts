@@ -1,6 +1,9 @@
 // Starts the real page, as the plugin's web view loads it, on the mock back end. Each test file
-// runs in a page of its own and starts the app once: the app finds its elements by id, so a
-// second one in the same page would draw into the first one's.
+// runs in a page of its own. The app finds its elements by id, so an app started earlier in the
+// same file would write into the new one's page: starting an app retires the one before, as a
+// closed editor window. The retired app hears nothing from its back end and sends it nothing, and
+// the timers and listeners it set up as it started are removed; the elements it listened on are
+// gone with its page.
 import { afterEach, expect, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -77,9 +80,56 @@ export async function startRecorded(
   return startOn(transport);
 }
 
+// Cuts the app started last off from its back end and removes what it set up as it started.
+let retirePrevious: () => void = () => undefined;
+
+// Runs `start`, recording the listeners and timers it sets up (the app sets up all of its
+// window and document ones as it starts), and returns what removes them.
+function recordSetUp(start: () => void): () => void {
+  const listening = vi.spyOn(EventTarget.prototype, "addEventListener");
+  const intervals = vi.spyOn(window, "setInterval");
+  const timeouts = vi.spyOn(window, "setTimeout");
+  let listeners: (readonly [
+    EventTarget,
+    Parameters<EventTarget["addEventListener"]>,
+  ])[] = [];
+  let timers: number[] = [];
+  try {
+    start();
+  } finally {
+    // Read before restoring, which forgets the calls.
+    listeners = listening.mock.calls.map(
+      (call, index) =>
+        [listening.mock.contexts[index] as EventTarget, call] as const,
+    );
+    timers = [...intervals.mock.results, ...timeouts.mock.results].map(
+      (result) => result.value as number,
+    );
+    listening.mockRestore();
+    intervals.mockRestore();
+    timeouts.mockRestore();
+  }
+  return () => {
+    for (const [target, [type, listener, options]] of listeners) {
+      target.removeEventListener(type, listener, options);
+    }
+    for (const id of timers) {
+      // One id space for both: clearTimeout clears an interval too.
+      window.clearTimeout(id);
+    }
+  };
+}
+
 async function startOn<Back extends Transport>(
   transport: Back,
 ): Promise<Started<Back>> {
+  retirePrevious();
+  let retired = false;
+  let removeSetUp: () => void = () => undefined;
+  retirePrevious = () => {
+    retired = true;
+    removeSetUp();
+  };
   document.body.innerHTML = new DOMParser().parseFromString(
     html,
     "text/html",
@@ -91,16 +141,30 @@ async function startOn<Back extends Transport>(
   const watched: Transport = {
     onMessage(handler) {
       deliver = handler;
-      transport.onMessage(handler);
+      transport.onMessage((message) => {
+        if (!retired) {
+          handler(message);
+        }
+      });
     },
     onFrame(handler) {
-      transport.onFrame(handler);
+      transport.onFrame((frame) => {
+        if (!retired) {
+          handler(frame);
+        }
+      });
     },
     send(message) {
+      if (retired) {
+        return;
+      }
       sent.push(message);
       transport.send(message);
     },
     requestFrame() {
+      if (retired) {
+        return;
+      }
       if (held) {
         waiting = true;
       } else {
@@ -108,7 +172,9 @@ async function startOn<Back extends Transport>(
       }
     },
   };
-  startSineless(watched);
+  removeSetUp = recordSetUp(() => {
+    startSineless(watched);
+  });
   await vi.waitFor(
     () => {
       expect(window.orizonDebug?.frameCount ?? 0).toBeGreaterThan(0);
