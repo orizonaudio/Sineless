@@ -72,13 +72,33 @@ function surface(width: number, height: number): Surface {
   if (existing !== undefined) {
     return existing;
   }
-  const made = freshSurface(width, height);
+  const made = makeSurface(width, height);
   surfaces.set(key, made);
   return made;
 }
 
+// Renderers made for one test only. A page keeps only so many WebGL contexts (16 in Chromium):
+// past that the browser drops the oldest, which may be one the shared surfaces still draw on.
+const fresh: Surface[] = [];
+
+// Lets the browser free the contexts of the renderers made for one test.
+export function releaseFreshSurfaces(): void {
+  for (const { canvas } of fresh.splice(0)) {
+    canvas
+      .getContext("webgl2")
+      ?.getExtension("WEBGL_lose_context")
+      ?.loseContext();
+  }
+}
+
 // A renderer of its own, for a test that resizes its canvas.
 export function freshSurface(width: number, height: number): Surface {
+  const made = makeSurface(width, height);
+  fresh.push(made);
+  return made;
+}
+
+function makeSurface(width: number, height: number): Surface {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
