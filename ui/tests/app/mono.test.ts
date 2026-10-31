@@ -6,6 +6,7 @@ import { ChannelView } from "../../../protocol/src/enums.ts";
 import {
   byId,
   choice,
+  inTimeBase,
   press,
   settle,
   startApp,
@@ -97,7 +98,7 @@ describe("a track that changes channels", () => {
     const tag = () => byId("readout-tag").textContent;
     const toggles = [...byId("views").querySelectorAll("button")];
     await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
+    await inTimeBase("Sec");
     await press(choice("source", "M"));
     await expect.poll(tag).toBe("Mid");
     app.transport.changeChannels(1, true);

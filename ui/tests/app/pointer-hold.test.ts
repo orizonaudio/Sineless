@@ -4,13 +4,12 @@
 // a step when it switches from the pointer's travel to the editor's, and must drag as before
 // wherever the editor does not answer.
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
 
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import type { PointerHold } from "../../src/components/pointer-hold.ts";
 import { pixelsPerStep as step } from "../../src/components/drag-field.ts";
 import { numberFields } from "../../src/view/fields.ts";
-import { byId, choice, startApp, type Started } from "./harness.ts";
+import { byId, inTimeBase, startApp, type Started } from "./harness.ts";
 
 // The editor's hold as the page sees it, answering start() only when told to.
 class FakeHold implements PointerHold {
@@ -51,15 +50,6 @@ const drags = [
     onIcon: true,
   })),
 ];
-
-// Switches the time base and waits until the page shows it: until then the span pill the drag
-// presses may still be hidden, and a hidden pill takes no press.
-async function inTimeBase(timeBase: string): Promise<void> {
-  await userEvent.click(choice("time-base", timeBase));
-  await expect
-    .element(byId(timeBase === "Beats" ? "beat-span-field" : "span-field"))
-    .toBeVisible();
-}
 
 function fieldOf(host: string): HTMLElement {
   return byId(host).querySelector(".field") as HTMLElement;
