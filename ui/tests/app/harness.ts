@@ -149,6 +149,16 @@ export function choice(groupId: string, label: string): HTMLButtonElement {
 
 // Clicks a control, first opening the toolbar popover it sits in (Group, Views, Trigger) if that
 // is closed, as a user would.
+// Switches the time base and waits until the page shows it: until then the controls of that time
+// base (its span pill, Seconds' trigger source) may still be hidden, and a hidden control takes
+// no press.
+export async function inTimeBase(timeBase: string): Promise<void> {
+  await userEvent.click(choice("time-base", timeBase));
+  await expect
+    .element(byId(timeBase === "Beats" ? "beat-span-field" : "span-field"))
+    .toBeVisible();
+}
+
 export async function press(button: HTMLElement): Promise<void> {
   const popover = button.closest<HTMLElement>(".popover");
   if (popover?.hidden === true) {
