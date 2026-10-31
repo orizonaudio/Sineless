@@ -1,0 +1,47 @@
+# Temporary: times the playhead app test in Chromium on main's code and on this branch's with a
+# renderer variant, in one job on one runner. Not for merging.
+name: Probe timing
+on:
+  pull_request:
+    paths: [".github/workflows/probe-timing.yml", ".github/probe-variant.py"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, skip, no-composite, no-traces]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Runner
+        run: |
+          nproc
+          lscpu | grep -E 'Model name|Thread|Core|Socket|MHz'
+      - name: Main's code alongside
+        run: |
+          git worktree add ../main origin/main
+          ln -s "$PWD/node_modules" ../main/node_modules
+          python3 .github/probe-variant.py ../main baseline
+      - run: python3 .github/probe-variant.py . ${{ matrix.variant }}
+      - name: Time main and the variant
+        run: |
+          for round in 1 2 3; do
+            for dir in ../main .; do
+              start=$(date +%s)
+              (cd "$dir" && APP_BROWSERS=chromium npx vitest run --project app --testTimeout=180000 \
+                ui/tests/app/playhead.test.ts 2>&1 |
+                sed 's/\x1b\[[0-9;]*m//g' | grep -E 'PROBE|^ +(✓|×|❯)|Tests ') || true
+              echo "== round $round $dir: $(( $(date +%s) - start )) s"
+            done
+          done
