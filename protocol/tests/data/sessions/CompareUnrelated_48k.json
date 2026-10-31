@@ -35,11 +35,11 @@
       ]
     }
   ],
-  "protocolVersion": 7,
+  "protocolVersion": 8,
   "scenario": "CompareUnrelated_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 7,
+    "protocolVersion": 8,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "off",
