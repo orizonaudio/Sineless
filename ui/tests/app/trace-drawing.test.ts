@@ -1,7 +1,7 @@
 // The trace's shape as drawn by the GPU: smooth and anti-aliased at every slope and spacing,
 // blended once, with gaps only where values are missing, and each point where hover and snap
 // read it. Pixels are read back from a canvas of the test's own (trace-pixels.ts).
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
@@ -20,6 +20,7 @@ import {
   drawOn,
   freshSurface,
   frameOf,
+  releaseFreshSurfaces,
   traceFrame,
   type DrawOptions,
   type Drawing,
@@ -27,6 +28,8 @@ import {
 
 const width = 400;
 const height = 200;
+
+afterEach(releaseFreshSurfaces);
 const fullScreen: ViewWindow = { start: 0, end: 1 };
 const byte = 1 / 255;
 
