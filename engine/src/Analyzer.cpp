@@ -11,6 +11,7 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <cstdlib>
 #include <iterator>
 #include <limits>
 #include <utility>
@@ -610,7 +611,11 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         // as it is: a shorter span is cropped from it, and a longer one rebuilt from the held
         // audio, stepping down if it does not fit.
         const CaptureRing& ring = engine.captureRing();
-        const std::uint64_t end = isFrozen ? frozenEnd : ring.endIndex();
+        // Live, the sweep and its playhead reach the paced edge, so they move evenly between
+        // blocks and no audio newer than the playhead shows in the dimmed previous cycle.
+        const std::uint64_t end =
+            isFrozen ? frozenEnd
+                     : ownSweepEdge(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan));
         if (!changed && end == lastEnd) {
             return false;
         }
@@ -638,8 +643,19 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             window.subStart = frozen->start;
             window.subEnd = frozen->end;
         } else {
-            const auto live = sweepWindow(engine.timeline().latest(), end, sampleRate, beatSpan,
-                                          kMaxSweepSamples);
+            const auto placeBefore = [&](const MusicalStamp& previous, std::uint64_t until) {
+                if (const auto before =
+                        sweepWindow(previous, until, sampleRate, beatSpan, kMaxSweepSamples)) {
+                    ++workDone.sweepUpdates;
+                    (void)image.update(ring, *before, false, channels);
+                }
+            };
+            const auto live =
+                sweepWindow(placeThroughChanges(engine.timeline(),
+                                                std::max(image.placedTo(), ring.beginIndex()), end,
+                                                engine.timeline().latest(), placeBefore),
+                            end, sampleRate, beatSpan, kMaxSweepSamples);
+            ++workDone.sweepUpdates;
             if (!live || !image.update(ring, *live, false, channels)) {
                 return false;
             }
@@ -1176,10 +1192,24 @@ bool Analyzer::placeLanes(const Settings& settings, protocol::BeatSpan span)
     for (const std::uint64_t serial : order) {
         Lane& lane = *lanes.at(serial);
         const CaptureRing& ring = lane.engine->captureRing();
-        const std::uint64_t end = ring.endIndex();
+        const std::uint64_t end =
+            serial == ownLane ? ownSweepEdge(span) : laneSweepEdge(lane, *lanes.at(ownLane));
         if (end != lane.end || !lane.window || settings != lastSettings) {
-            const auto sweep = sweepWindow(lane.engine->timeline().latest(), end,
-                                           lane.engine->sampleRate(), span, kMaxSweepSamples);
+            const double rate = lane.engine->sampleRate();
+            const auto placeBefore = [&](const MusicalStamp& previous, std::uint64_t until) {
+                if (const auto before =
+                        sweepWindow(previous, until, rate, span, kMaxSweepSamples)) {
+                    ++workDone.sweepUpdates;
+                    (void)lane.image.update(ring, *before, false, lane.engine->inputChannels(),
+                                            sharedLength(serial, *before));
+                }
+            };
+            const auto sweep =
+                sweepWindow(placeThroughChanges(lane.engine->timeline(),
+                                                std::max(lane.image.placedTo(), ring.beginIndex()),
+                                                end, lane.engine->timeline().latest(), placeBefore),
+                            end, rate, span, kMaxSweepSamples);
+            ++workDone.sweepUpdates;
             const std::uint64_t length = sweep ? sharedLength(serial, *sweep) : 0;
             // Rebuilt only to take the shared length; otherwise the image keeps its own through
             // small changes.
@@ -1194,6 +1224,106 @@ bool Analyzer::placeLanes(const Settings& settings, protocol::BeatSpan span)
         }
     }
     return fresh;
+}
+
+// Where this track's live sweep is placed to: its paced edge, which moves evenly between blocks a
+// delay behind the newest audio (the newest sample while pacing does not apply).
+std::uint64_t Analyzer::ownSweepEdge(protocol::BeatSpan span)
+{
+    pacedEdge.observe(engine.blockStamp().latest(), engine.sampleRate());
+    const std::uint64_t newest = engine.captureRing().endIndex();
+    // A sweep shorter than pacedSpanMinimumSeconds is new across its width every frame: shown at
+    // the newest audio, as a short Seconds span is.
+    const MusicalStamp stamp = engine.timeline().latest();
+    const double seconds =
+        beatSpanQuarterNotes(span, Timeline::barQuarterNotes(stamp)) * 60.0 / stamp.tempo;
+    if (seconds < protocol::kPacedSpanMinimumSeconds) {
+        return pacedEdge.showNewest(clockNanos(), newest);
+    }
+    return pacedEdge.edge(clockNanos(), newest, protocol::kPacingDelayCapSeconds);
+}
+
+// Where another track's lane is placed to: where this track's playhead stands, in the lane's
+// capture, so the lanes' playheads move together though each track's blocks arrive at their own
+// moments; never past the lane's audio, nor back. The two captures started at different moments,
+// so the same audio has indices a constant apart, measured from the tracks' musical stamps
+// (AD-15). A measurement more than a millisecond off means one track has seen a transport jump
+// the other has not yet: it is taken only when it lasts (the offset itself changed, as when a
+// track's processing restarted). Any rates: this track's indices are scaled to the lane's. The
+// lane's newest sample while this track's blocks have stopped, or until both have played with a
+// position.
+std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
+{
+    constexpr double kOffsetToleranceSeconds = 0.001;
+    // Placements, each as audio arrives and for each frame: about 0.6 s with 512-sample blocks at
+    // 48 kHz, longer with longer blocks.
+    constexpr int kOffsetPersistence = 100;
+    const std::uint64_t newest = lane.engine->captureRing().endIndex();
+    const double rate = lane.engine->sampleRate();
+    const MusicalStamp ownLatest = own.engine->timeline().latest();
+    const MusicalStamp laneLatest = lane.engine->timeline().latest();
+    // Each lane follows its own newest audio while this track's blocks have stopped (its playhead
+    // then stands still: nothing to map from; before its clock locks, or while a short sweep is
+    // unpaced, its playhead is its newest audio, which maps as well), and until both have played
+    // with a host position: before that, each timeline runs on from where it started, so
+    // positions do not say which audio was played together. After it, also while stopped, every
+    // clock runs on from the same last position (AD-15).
+    if (pacedEdge.stalled(clockNanos()) || !ownLatest.anchored || !laneLatest.anchored) {
+        lane.indexOffset.reset();
+        return newest;
+    }
+    // At any rates (a track in an oversampled FX chain runs at a multiple of the others'): this
+    // track's indices count at its rate, so they are scaled to the lane's before the offset,
+    // which is in the lane's samples, is added.
+    const double ownRate = own.engine->sampleRate();
+    const double scale = rate / ownRate;
+    const std::int64_t measured =
+        static_cast<std::int64_t>(laneLatest.sampleIndex) -
+        std::llround(Timeline::sampleIndexAt(ownLatest, laneLatest.quarterNotes, ownRate) * scale);
+    if (!lane.indexOffset ||
+        std::llabs(measured - *lane.indexOffset) <= std::llround(kOffsetToleranceSeconds * rate) ||
+        ++lane.offsetDisagreements > kOffsetPersistence) {
+        lane.indexOffset = measured;
+        lane.offsetDisagreements = 0;
+    }
+    const auto mapped = std::llround(static_cast<double>(own.end) * scale) + *lane.indexOffset;
+    // A lane whose audio has not arrived as far as this track's playhead (its blocks come later)
+    // stops at its newest sample; the delay rises to cover it, so the lanes stay together. Not
+    // for a track whose blocks stopped (suspended or bypassed): it would hold every lane back by
+    // the largest delay.
+    const auto laneBlock = lane.engine->blockStamp().latest();
+    if (laneBlock && !pacedEdge.stopped(laneBlock->nanos, clockNanos()) &&
+        std::cmp_greater(mapped, newest)) {
+        // The shortfall in this track's samples, which the delay counts.
+        pacedEdge.coverShortfall(static_cast<double>(mapped - static_cast<std::int64_t>(newest)) /
+                                 scale);
+    }
+    const auto edge = static_cast<std::uint64_t>(std::max<std::int64_t>(mapped, 0));
+    return std::clamp(edge, std::min(lane.end, newest), newest);
+}
+
+// Positions come from the timeline's records, made where the audio thread saw them, so audio
+// placed a delay behind the newest is placed by the position it was played at, whatever this
+// sweep was doing when it arrived (frozen, in Seconds, in the other display mode): a transport
+// jump (a loop, a relocation, stop and start) moves the sweep only when the playhead reaches it,
+// and never moves audio played before it (FR-9.2). Callers start no earlier than the source's
+// oldest sample: a fresh image would otherwise replay every record kept, for audio long gone.
+MusicalStamp Analyzer::placeThroughChanges(
+    const Timeline& timeline, std::uint64_t from, std::uint64_t to, const MusicalStamp& fallback,
+    const std::function<void(const MusicalStamp&, std::uint64_t)>& placeBefore)
+{
+    const std::size_t count = timeline.positionsSince(from, positions);
+    if (count == 0) {
+        return fallback;
+    }
+    std::size_t current = 0;
+    for (std::size_t next = 1; next < count && positions[next].sampleIndex <= to; ++next) {
+        if (positions[next].sampleIndex > from) {
+            placeBefore(positions[current], positions[next].sampleIndex);
+        }
+        current = next;
+    }
+    return positions[current];
 }
 
 // Lanes are drawn on the own lane's grid, so their sweeps must hold as many samples. A tempo
@@ -1228,15 +1358,41 @@ void Analyzer::advance()
         return; // Frozen sweeps stay as they are; windows are placed when a frame is made.
     }
     const auto beatSpan = settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan);
-    if (settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
-        protocol::DisplayMode::kSingle) {
+    const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
+                       protocol::DisplayMode::kSingle;
+    if (multi) {
         selectLanes(settings);
+    }
+    // Between frames, the sweeps are placed only as audio arrives, so none leaves the capture
+    // unplaced. The paced edge moves on every step, and each frame places them up to it.
+    std::uint64_t captured = engine.captureRing().endIndex();
+    if (multi) {
+        captured = 0;
+        for (const auto& [serial, lane] : lanes) {
+            captured += lane->engine->captureRing().endIndex();
+        }
+    }
+    if (std::exchange(advancedCaptured, captured) == captured) {
+        return;
+    }
+    if (multi) {
         lanesPlaced = placeLanes(settings, beatSpan) || lanesPlaced;
         return;
     }
     const CaptureRing& ring = engine.captureRing();
-    const auto sweep = sweepWindow(engine.timeline().latest(), ring.endIndex(), engine.sampleRate(),
-                                   beatSpan, kMaxSweepSamples);
+    const std::uint64_t end = ownSweepEdge(beatSpan);
+    const auto placeBefore = [&](const MusicalStamp& previous, std::uint64_t until) {
+        if (const auto before =
+                sweepWindow(previous, until, engine.sampleRate(), beatSpan, kMaxSweepSamples)) {
+            ++workDone.sweepUpdates;
+            (void)image.update(ring, *before, false, engine.inputChannels());
+        }
+    };
+    const auto sweep = sweepWindow(
+        placeThroughChanges(engine.timeline(), std::max(image.placedTo(), ring.beginIndex()), end,
+                            engine.timeline().latest(), placeBefore),
+        end, engine.sampleRate(), beatSpan, kMaxSweepSamples);
+    ++workDone.sweepUpdates;
     if (sweep && image.update(ring, *sweep, false, engine.inputChannels())) {
         imageWindow = sweep;
         placedSpan = beatSpan;
@@ -1446,6 +1602,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     }
     if (!isFrozen) {
         lastLiveFormats = liveFormats;
+        // For benchmarks: where this track's playhead stood.
+        engine.recordEdge(
+            {.nanos = clockNanos(), .edge = own.end, .newest = engine.captureRing().endIndex()});
     }
     rememberInputs(settings, command, laneSetId);
     return true;
@@ -1455,8 +1614,22 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
 // audio, on the span it was drawn with.
 void Analyzer::catchUpImageToHold()
 {
-    const auto held = sweepWindow(frozenStamp, frozenEnd, frozenRate, placedSpan, kMaxSweepSamples);
-    if (!held || image.length() == 0 || !imageWindow) {
+    if (image.length() == 0 || !imageWindow) {
+        return;
+    }
+    // Through the positions not yet reached, as live: audio is placed where it was played.
+    const auto placeBefore = [&](const MusicalStamp& previous, std::uint64_t until) {
+        if (const auto before =
+                sweepWindow(previous, until, frozenRate, placedSpan, kMaxSweepSamples)) {
+            ++workDone.sweepUpdates;
+            (void)image.update(hold, *before, false, engine.inputChannels(), image.length());
+        }
+    };
+    const auto held = sweepWindow(placeThroughChanges(engine.timeline(),
+                                                      std::max(image.placedTo(), hold.beginIndex()),
+                                                      frozenEnd, frozenStamp, placeBefore),
+                                  frozenEnd, frozenRate, placedSpan, kMaxSweepSamples);
+    if (!held) {
         return;
     }
     if (image.update(hold, *held, false, engine.inputChannels(), image.length())) {
@@ -1470,10 +1643,25 @@ void Analyzer::catchUpImageToHold()
 // same moment: it is then cropped or rebuilt from them as drawn.
 void Analyzer::catchUpToHold(Lane& lane)
 {
-    const auto held = sweepWindow(lane.hold.clock(), lane.hold.endIndex(), lane.hold.sampleRate(),
-                                  placedSpan, kMaxSweepSamples);
     const std::uint64_t length = lane.image.length();
-    if (!held || length == 0 || !lane.window) {
+    if (length == 0 || !lane.window) {
+        return;
+    }
+    // Through the positions not yet reached, as live: audio is placed where it was played.
+    const double rate = lane.hold.sampleRate();
+    const auto placeBefore = [&](const MusicalStamp& previous, std::uint64_t until) {
+        if (const auto before = sweepWindow(previous, until, rate, placedSpan, kMaxSweepSamples)) {
+            ++workDone.sweepUpdates;
+            (void)lane.image.update(lane.hold, *before, false, lane.engine->inputChannels(),
+                                    length);
+        }
+    };
+    const auto held =
+        sweepWindow(placeThroughChanges(lane.engine->timeline(),
+                                        std::max(lane.image.placedTo(), lane.hold.beginIndex()),
+                                        lane.hold.endIndex(), lane.hold.clock(), placeBefore),
+                    lane.hold.endIndex(), rate, placedSpan, kMaxSweepSamples);
+    if (!held) {
         return;
     }
     if (lane.image.update(lane.hold, *held, false, lane.engine->inputChannels(), length)) {
