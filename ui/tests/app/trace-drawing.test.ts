@@ -784,7 +784,7 @@ describe("joins on pixel centres shade once", () => {
   });
 });
 
-describe("frames longer than one texture row draw across the seams", () => {
+describe("long frames, and lanes that start mid-frame, draw whole", () => {
   const wide = 2100;
   const ramp = (count: number) => (point: number) =>
     -0.8 + (1.6 * point) / (count - 1);

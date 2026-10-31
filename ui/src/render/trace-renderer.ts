@@ -1,6 +1,6 @@
 // Hand-written WebGL2 renderer for the traces. Grid, labels and controls are DOM.
 //
-// The trace is drawn on the GPU from the frame's values as they arrived, uploaded as a texture:
+// The trace is drawn on the GPU from the frame's values as they arrived, uploaded as a buffer:
 // one instance of a quad (two triangles, six vertices) per min/max column or raw point, covering
 // that point's piece of the trace (its vertical line from min to max and the band to the next
 // point). Each pixel measures its distance to the piece and writes how much of it the line
@@ -25,8 +25,6 @@ import {
   coverageSlot,
   coverageTargets,
   playheadEdges,
-  textureRowLength,
-  textureRows,
   tracesPerPass,
 } from "./trace-geometry.ts";
 
@@ -59,18 +57,14 @@ export interface TraceView {
 }
 
 // Shared by the trace shaders, in device pixels from the canvas's bottom left. A block (a view
-// or a lane) holds `count` points of `stride` values (min and max, or one sample) from texel
-// `blockStart`. Point i sits at frame index i + offset (columns at their centres, raw points
+// or a lane) holds `count` points of `stride` values (min and max, or one sample). Point i sits at frame index i + offset (columns at their centres, raw points
 // shifted by the frame's start fraction) of `positions`; a frame covers frameStart to
 // frameStart + frameWidth of the span, the screen viewStart to viewStart + viewWidth of it.
 const traceCommon = `#version 300 es
 precision highp float;
 precision highp int;
-precision highp usampler2D;
-uniform usampler2D frameValues;
 uniform int count;
 uniform int stride;
-uniform int blockStart;
 uniform float offset;
 uniform float positions;
 uniform float frameStart;
@@ -93,27 +87,6 @@ float pixelY(float value) {
   float limit = scale * 1e15 / halfPixels;
   return (center + 1.0) * 0.5 * canvas.y + clamp(value, -limit, limit) / scale * halfPixels;
 }
-uint texel(int k) {
-  return texelFetch(frameValues, ivec2(k % ${String(textureRowLength)}, k / ${String(textureRowLength)}), 0).r;
-}
-// Point j's vertical range, unless it is missing: outside the block, or a value not finite (read
-// from its bits, so no NaN comparison is involved).
-bool point(int j, out float lo, out float hi) {
-  lo = 0.0;
-  hi = 0.0;
-  if (j < 0 || j >= count) {
-    return false;
-  }
-  int k = blockStart + j * stride;
-  uint low = texel(k);
-  uint high = stride == 2 ? texel(k + 1) : low;
-  if ((low & 0x7f800000u) == 0x7f800000u || (high & 0x7f800000u) == 0x7f800000u) {
-    return false;
-  }
-  lo = pixelY(uintBitsToFloat(low));
-  hi = pixelY(uintBitsToFloat(high));
-  return true;
-}
 // An end beyond the band moved back along the segment to the band's edge: the edge is its height
 // exactly and only x is worked out, so the slope is kept.
 vec2 clipped(vec2 a, vec2 b, float bottom, float top) {
@@ -133,6 +106,26 @@ vec2 clipped(vec2 a, vec2 b, float bottom, float top) {
 // between them widened across each line by pad times the secant of its slope, which still holds
 // the round ends. Both are decided alike at every corner, from the same values.
 const traceVertexShader = `${traceCommon}
+// The values of points i and i + 1, as their bits.
+in uvec2 hereValues;
+in uvec2 nextValues;
+// A point's vertical range, unless it is missing: outside the block, or a value not finite (read
+// from its bits, so no NaN comparison is involved).
+bool point(bool inside, uvec2 bits, out float lo, out float hi) {
+  lo = 0.0;
+  hi = 0.0;
+  if (!inside) {
+    return false;
+  }
+  uint low = bits.x;
+  uint high = stride == 2 ? bits.y : low;
+  if ((low & 0x7f800000u) == 0x7f800000u || (high & 0x7f800000u) == 0x7f800000u) {
+    return false;
+  }
+  lo = pixelY(uintBitsToFloat(low));
+  hi = pixelY(uintBitsToFloat(high));
+  return true;
+}
 // Points i and i + 1 (lo, hi; lo > hi when i + 1 is missing).
 flat out int piece;
 flat out vec2 here;
@@ -146,10 +139,10 @@ void main() {
   float pad = lineHalf + 1.0;
   float lo;
   float hi;
-  bool present = point(i, lo, hi);
+  bool present = point(true, hereValues, lo, hi);
   float lo2;
   float hi2;
-  bool joined = point(i + 1, lo2, hi2);
+  bool joined = point(i + 1 < count, nextValues, lo2, hi2);
   piece = i;
   here = vec2(lo, hi);
   next = joined ? vec2(lo2, hi2) : vec2(1.0, -1.0);
@@ -363,9 +356,9 @@ export class TraceRenderer implements FrameRenderer {
   private readonly coverageTarget: WebGLFramebuffer;
   private coverageWidth = 0;
   private coverageHeight = 0;
-  // The frame's values as received, a row of texels at a time, and how many rows it holds.
-  private readonly frameTexture: WebGLTexture;
-  private textureRowsAllocated = 0;
+  // The frame's values as received, and how many bytes the buffer holds.
+  private readonly valuesBuffer: WebGLBuffer;
+  private valuesAllocated = 0;
   // The cancellation shading's and the playhead's triangles.
   private readonly shadingBuffer: WebGLBuffer;
   private readonly style: TraceStyle;
@@ -400,13 +393,7 @@ export class TraceRenderer implements FrameRenderer {
       gl.createTexture(),
     );
     this.shadingBuffer = gl.createBuffer();
-    this.frameTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, this.frameTexture);
-    // An integer texture is complete only with nearest filtering and no mipmaps.
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.valuesBuffer = gl.createBuffer();
     gl.enable(gl.BLEND);
     // The canvas is composited as premultiplied: alpha accumulates as coverage.
     gl.blendFuncSeparate(
@@ -516,7 +503,9 @@ export class TraceRenderer implements FrameRenderer {
     }
   }
 
-  // The values of all blocks, which lie one after another in the frame's bytes, as texels.
+  // The values of all blocks, which lie one after another in the frame's bytes, with room for
+  // one point more, which the last point's next-point attribute reads (and its block's count
+  // marks missing).
   private upload(blocks: readonly Float32Array[]): number {
     const gl = this.gl;
     const start = Math.min(...blocks.map((values) => values.byteOffset));
@@ -527,49 +516,14 @@ export class TraceRenderer implements FrameRenderer {
     if (first === undefined) {
       return start;
     }
-    const texels = new Uint32Array(first.buffer, start, (end - start) / 4);
-    const { rows, full, remainder } = textureRows(texels.length);
-    gl.bindTexture(gl.TEXTURE_2D, this.frameTexture);
-    if (rows > this.textureRowsAllocated) {
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.R32UI,
-        textureRowLength,
-        rows,
-        0,
-        gl.RED_INTEGER,
-        gl.UNSIGNED_INT,
-        null,
-      );
-      this.textureRowsAllocated = rows;
+    const values = new Uint8Array(first.buffer, start, end - start);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.valuesBuffer);
+    const size = values.byteLength + 8;
+    if (size > this.valuesAllocated) {
+      gl.bufferData(gl.ARRAY_BUFFER, size, gl.STREAM_DRAW);
+      this.valuesAllocated = size;
     }
-    if (full > 0) {
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
-        textureRowLength,
-        full,
-        gl.RED_INTEGER,
-        gl.UNSIGNED_INT,
-        texels.subarray(0, full * textureRowLength),
-      );
-    }
-    if (remainder > 0) {
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        full,
-        remainder,
-        1,
-        gl.RED_INTEGER,
-        gl.UNSIGNED_INT,
-        texels.subarray(full * textureRowLength),
-      );
-    }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, values);
     return start;
   }
 
@@ -637,9 +591,14 @@ export class TraceRenderer implements FrameRenderer {
     const program = this.trace;
     this.fitCoverage();
     gl.useProgram(program.program);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.frameTexture);
-    gl.uniform1i(program.uniform("frameValues"), 0);
+    const here = program.attribute("hereValues");
+    const next = program.attribute("nextValues");
+    const stride = minMax ? 2 : 1;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.valuesBuffer);
+    for (const attribute of [here, next]) {
+      gl.enableVertexAttribArray(attribute);
+      gl.vertexAttribDivisor(attribute, 1);
+    }
     const positions = minMax
       ? frame.pointCount
       : frame.visibleSamples > 0
@@ -650,7 +609,7 @@ export class TraceRenderer implements FrameRenderer {
     const spacing = (this.canvas.width * frameWidth) / (viewWidth * positions);
     const lineHalf = this.style.lineWidthPixels / 2;
     gl.uniform1i(program.uniform("count"), frame.pointCount);
-    gl.uniform1i(program.uniform("stride"), minMax ? 2 : 1);
+    gl.uniform1i(program.uniform("stride"), stride);
     gl.uniform1f(
       program.uniform("offset"),
       minMax ? 0.5 : -frame.startFraction,
@@ -690,13 +649,29 @@ export class TraceRenderer implements FrameRenderer {
       gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
       gl.uniform1i(program.uniform("attachment"), attachment);
       gl.uniform1i(program.uniform("channel"), channel);
-      gl.uniform1i(
-        program.uniform("blockStart"),
-        (values.byteOffset - start) / 4,
+      // One point per instance: its own values, and the next point's.
+      const offset = values.byteOffset - start;
+      gl.vertexAttribIPointer(
+        here,
+        stride,
+        gl.UNSIGNED_INT,
+        stride * 4,
+        offset,
+      );
+      gl.vertexAttribIPointer(
+        next,
+        stride,
+        gl.UNSIGNED_INT,
+        stride * 4,
+        offset + stride * 4,
       );
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, frame.pointCount);
       colors.set([color[0], color[1], color[2], alpha(color)], index * 4);
     });
+    for (const attribute of [here, next]) {
+      gl.vertexAttribDivisor(attribute, 0);
+      gl.disableVertexAttribArray(attribute);
+    }
     // Then layered over the screen, once.
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.blendEquation(gl.FUNC_ADD);

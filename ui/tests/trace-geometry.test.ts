@@ -17,8 +17,6 @@ import {
   lanes,
   playheadEdges,
   pointPosition,
-  textureRowLength,
-  textureRows,
   tracesPerPass,
 } from "../src/render/trace-geometry.ts";
 
@@ -506,23 +504,6 @@ describe("the coverage channels of a frame's traces", () => {
         Math.max(...slots.map(({ attachment }) => attachment)) + 1,
       );
       expect(coverageTargets(traces)).toBeLessThanOrEqual(coverageAttachments);
-    },
-  );
-});
-
-// A frame's values reach the GPU as rows of a texture: every value is uploaded once.
-describe("the texture rows of a frame's values", () => {
-  test.each([0, 1, 2047, 2048, 2049, 4095, 4096, 4097, 76800])(
-    "%i values",
-    (count) => {
-      const { rows, full, remainder } = textureRows(count);
-      // The full rows and the part row hold every value once.
-      expect(full * textureRowLength + remainder).toBe(count);
-      expect(remainder).toBeGreaterThanOrEqual(0);
-      expect(remainder).toBeLessThan(textureRowLength);
-      // The texture is tall enough for them, with no row left empty.
-      expect(rows * textureRowLength).toBeGreaterThanOrEqual(count);
-      expect((rows - 1) * textureRowLength).toBeLessThan(Math.max(count, 1));
     },
   );
 });
