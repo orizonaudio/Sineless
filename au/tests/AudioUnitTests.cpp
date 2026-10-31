@@ -502,7 +502,7 @@ TEST(AudioUnit, CapturesTheInput)
 
 // Each rendered block is stamped with when it arrived, which paces free-running windows; while the
 // host renders offline (kAudioUnitProperty_OfflineRender), blocks come at no steady rate and are
-// not paced. The property reads back as set.
+// not paced. The property reads back as set, and is described as the writable UInt32 it is.
 TEST(AudioUnit, StampsEachBlockPacedOnlyWhenNotOffline)
 {
     Host host;
@@ -523,6 +523,14 @@ TEST(AudioUnit, StampsEachBlockPacedOnlyWhenNotOffline)
                                        kAudioUnitScope_Global, 0, &read, &size),
                   noErr);
         EXPECT_EQ(read, offline);
+        // Hosts ask the size first, and turn offline rendering on only for a writable UInt32.
+        UInt32 infoSize = 0;
+        Boolean writable = 0;
+        ASSERT_EQ(AudioUnitGetPropertyInfo(instance.handle(), kAudioUnitProperty_OfflineRender,
+                                           kAudioUnitScope_Global, 0, &infoSize, &writable),
+                  noErr);
+        EXPECT_EQ(infoSize, sizeof(UInt32));
+        EXPECT_TRUE(writable);
         instance.render(256, true);
         written += 256;
         const auto stamp = engine->blockStamp().latest();
