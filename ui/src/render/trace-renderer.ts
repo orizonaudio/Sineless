@@ -19,6 +19,7 @@ import { fullView, type ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
 import {
   cancellationBands,
+  compositeLayering,
   fullScale,
   lanes,
   coverageAttachments,
@@ -262,11 +263,7 @@ void main() {
   coverage[3] = attachments > 3 ? texelFetch(coverage3, at, 0) : vec4(0.0);
   vec3 rgb = vec3(0.0);
   float alpha = 0.0;
-  for (int k = 0; k < traces; k++) {
-    float a = colors[k].a * coverage[k / 4][k % 4];
-    rgb = rgb * (1.0 - a) + colors[k].rgb * a;
-    alpha = alpha * (1.0 - a) + a;
-  }
+${compositeLayering()}
   if (alpha <= 0.0) {
     discard;
   }
