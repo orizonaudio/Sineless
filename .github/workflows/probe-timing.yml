@@ -3,13 +3,17 @@
 name: Probe timing
 on:
   pull_request:
-    paths: [".github/workflows/probe-timing.yml"]
+    paths: [".github/workflows/probe-timing.yml", ".github/probe-variant.py"]
 permissions:
   contents: read
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, no-composite, no-clear, no-segments, no-upload, antialias]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,13 +32,14 @@ jobs:
         run: |
           git worktree add ../main origin/main
           ln -s "$PWD/node_modules" ../main/node_modules
-      - name: Time both, twice
+      - run: python3 .github/probe-variant.py ${{ matrix.variant }}
+      - name: Time main and the variant
         run: |
-          for round in 1 2; do
+          for round in 1; do
             for dir in ../main .; do
               start=$(date +%s)
               (cd "$dir" && APP_BROWSERS=chromium npx vitest run --project app --testTimeout=180000 \
-                ui/tests/app/controls.test.ts ui/tests/app/multi-track.test.ts 2>&1 |
+                ui/tests/app/multi-track.test.ts 2>&1 |
                 sed 's/\x1b\[[0-9;]*m//g' | grep -E '^ (✓|❯)  app|Tests ') || true
               echo "== round $round $dir: $(( $(date +%s) - start )) s"
             done
