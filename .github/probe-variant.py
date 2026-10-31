@@ -48,6 +48,87 @@ elif variant in ("early-out", "early-out-no-upload"):
     s = s.replace(a, "  if (coverage[0] + coverage[1] + coverage[2] + coverage[3] == vec4(0.0)) {\n    discard;\n  }\n" + a)
     if variant == "early-out-no-upload":
         s = s.replace("gl.texSubImage2D(", never + "gl.texSubImage2D(")
+elif variant in ("split", "split-fill"):
+    def r(a, b):
+        global s
+        assert s.count(a) == 1, a[:70]
+        s = s.replace(a, b)
+    r("in uvec2 nextValues;\n", "in uvec2 nextValues;\nin uvec2 previousValues;\n")
+    a = s.index("  int corner = gl_VertexID % 6;")
+    b = s.index("  gl_Position = vec4(x / canvas.x * 2.0 - 1.0, y / canvas.y * 2.0 - 1.0, 0.0, 1.0);\n}`;")
+    s = s[:a] + """  int part = gl_VertexID / 6;
+  int corner = gl_VertexID % 6;
+  bool far = corner == 2 || corner == 3 || corner == 5;
+  bool upper = corner == 1 || corner == 4 || corner == 5;
+  int i = gl_InstanceID;
+  float pad = lineHalf + 1.0;
+  float lo;
+  float hi;
+  bool present = point(true, hereValues, lo, hi);
+  float lo2;
+  float hi2;
+  bool joined = point(i + 1 < count, nextValues, lo2, hi2);
+  float loP;
+  float hiP;
+  bool before = point(i > 0, previousValues, loP, hiP);
+  piece = i;
+  here = vec2(lo, hi);
+  next = joined ? vec2(lo2, hi2) : vec2(1.0, -1.0);
+  fillPart = part == 0 ? 1 : 0;
+  float xa = pixelX(float(i) + offset);
+  float xb = joined ? pixelX(float(i + 1) + offset) : xa;
+  vec2 c = vec2(0.0);
+  if (part == 0 && present && joined) {
+    float low = clamp(min(lo, lo2), 0.0, canvas.y);
+    float high = clamp(max(hi, hi2), 0.0, canvas.y);
+    c = vec2(far ? xb : xa, upper ? high : low);
+  } else if ((part == 1 || part == 2) && present && joined) {
+    float bottom = -4.0 * canvas.y;
+    float top = 5.0 * canvas.y;
+    vec2 a = vec2(xa, part == 1 ? hi : lo);
+    vec2 b = vec2(xb, part == 1 ? hi2 : lo2);
+    if (!((a.y > top && b.y > top) || (a.y < bottom && b.y < bottom))) {
+      vec2 a2 = clipped(a, b, bottom, top);
+      vec2 b2 = clipped(b, a, bottom, top);
+      vec2 along = b2 - a2;
+      float len = length(along);
+      vec2 dir = len > 0.0 ? along / len : vec2(1.0, 0.0);
+      vec2 across = vec2(-dir.y, dir.x);
+      c = (far ? b2 + dir * pad : a2 - dir * pad) + (upper ? across : -across) * pad;
+    }
+  } else if (part == 3 && present && !(before && joined)) {
+    float low = clamp(lo - pad, 0.0, canvas.y);
+    float high = clamp(hi + pad, 0.0, canvas.y);
+    c = vec2(far ? xa + pad : xa - pad, upper ? high : low);
+  }
+  float x = c.x;
+  float y = c.y;
+""" + s[b:]
+    r("flat out vec2 next;\nvoid main() {", "flat out vec2 next;\nflat out int fillPart;\nvoid main() {")
+    r("flat in vec2 next;\nuniform float spacing;", "flat in vec2 next;\nflat in int fillPart;\nuniform float spacing;")
+    if variant == "split-fill":
+        a2 = "void main() {\n  vec2 p = gl_FragCoord.xy;\n  float xa = pixelX(float(piece) + offset);"
+        r(a2, a2 + """
+  if (fillPart == 1) {
+    float xb0 = pixelX(float(piece + 1) + offset);
+    float f0 = (p.x - xa) / spacing;
+    if (!(f0 >= 0.0 && f0 <= 1.0 && p.y >= mix(here.x, next.x, f0) && p.y <= mix(here.y, next.y, f0))) {
+      discard;
+    }
+    vec4 full = vec4(0.0);
+    full[channel] = 1.0;
+    coverage0 = attachment == 0 ? full : vec4(0.0);
+    coverage1 = attachment == 1 ? full : vec4(0.0);
+    coverage2 = attachment == 2 ? full : vec4(0.0);
+    coverage3 = attachment == 3 ? full : vec4(0.0);
+    return;
+  }""")
+    r("gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, frame.pointCount);", "gl.drawArraysInstanced(gl.TRIANGLES, 0, 24, frame.pointCount);")
+    r("    const size = values.byteLength + 8;", "    const size = values.byteLength + 16;")
+    r("    gl.bufferSubData(gl.ARRAY_BUFFER, 0, values);", "    gl.bufferSubData(gl.ARRAY_BUFFER, 8, values);")
+    r('    const next = program.attribute("nextValues");', '    const next = program.attribute("nextValues");\n    const previous = program.attribute("previousValues");')
+    s = s.replace("for (const attribute of [here, next]) {", "for (const attribute of [here, next, previous]) {")
+    r("      const offset = values.byteOffset - start;", "      const offset = values.byteOffset - start + 8;\n      gl.vertexAttribIPointer(previous, stride, gl.UNSIGNED_INT, stride * 4, offset - stride * 4);")
 else:
     sys.exit(f"unknown variant {variant}")
 open(path, "w").write(s)
