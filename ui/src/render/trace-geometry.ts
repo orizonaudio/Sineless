@@ -97,20 +97,6 @@ export function playheadEdges(
   return { left: clip(left), right: clip(left + width) };
 }
 
-// A frame's values reach the GPU as rows of a texture this wide (WebGL2's least maximum texture
-// size): the full rows in one upload, the rest in a second.
-export const textureRowLength = 2048;
-
-export function textureRows(count: number): {
-  readonly rows: number;
-  readonly full: number;
-  readonly remainder: number;
-} {
-  const full = Math.floor(count / textureRowLength);
-  const remainder = count - full * textureRowLength;
-  return { rows: full + (remainder > 0 ? 1 : 0), full, remainder };
-}
-
 function pushQuad(
   out: number[],
   x0: number,
