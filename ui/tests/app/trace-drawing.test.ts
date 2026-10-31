@@ -1021,6 +1021,17 @@ function flatLanes(levels: readonly number[]): Frame {
   });
 }
 const rowOf = (value: number) => Math.floor(((value + 1) / 2) * height);
+// The same pixels everywhere.
+function expectSame(drawing: Drawing, reference: Drawing): void {
+  expect(drawing.width).toBe(reference.width);
+  for (let y = 0; y < drawing.height; y++) {
+    for (let x = 0; x < drawing.width; x++) {
+      expect(drawing.pixel(x, y), `${String(x)}, ${String(y)}`).toEqual(
+        reference.pixel(x, y),
+      );
+    }
+  }
+}
 
 describe("lanes layer in order, whatever their channel and target", () => {
   // Each count of targets in use, either side of each target's last channel, and the most lanes.
@@ -1158,6 +1169,25 @@ describe("lanes layer in order, whatever their channel and target", () => {
       once.pixel(playhead, height / 2),
     );
   });
+
+  // The lanes of the frame before, in every channel of every target, must not show through
+  // fewer lanes, nor through a target the new frame does not use.
+  test.each(counts)(
+    "%i lanes after a frame of the most lanes draw as a renderer made for them",
+    (count) => {
+      const before = spread(maxLanes).map((level) => level * 0.5 + 0.03);
+      const colors = before.map((_, lane) => laneColor(lane));
+      const surface = freshSurface(width, height);
+      drawOn(surface, flatLanes(before), { laneColors: colors });
+      const levels = spread(count);
+      const after = flatLanes(levels);
+      const laneColors = colors.slice(0, count);
+      expectSame(
+        drawOn(surface, after, { laneColors }),
+        draw(after, { laneColors }),
+      );
+    },
+  );
 });
 
 describe("the coverage targets follow the canvas size", () => {
@@ -1178,17 +1208,6 @@ describe("the coverage targets follow the canvas size", () => {
   const laneColors = Array.from({ length: maxLanes }, (_, lane) =>
     laneColor(lane),
   );
-  function expectSame(drawing: Drawing, reference: Drawing): void {
-    expect(drawing.width).toBe(reference.width);
-    for (let y = 0; y < drawing.height; y++) {
-      for (let x = 0; x < drawing.width; x++) {
-        expect(drawing.pixel(x, y), `${String(x)}, ${String(y)}`).toEqual(
-          reference.pixel(x, y),
-        );
-      }
-    }
-  }
-
   test("grown, then hidden to no size and shown again, it draws as a renderer made at that size", () => {
     const surface = freshSurface(300, 150);
     drawOn(surface, frame, { laneColors });
