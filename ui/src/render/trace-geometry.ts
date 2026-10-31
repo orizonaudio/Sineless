@@ -63,8 +63,8 @@ export function fullScale(verticalScaleDb: number): number {
 }
 
 // Each trace's coverage goes to one channel of an offscreen target: four channels a target, and
-// four targets (WebGL2's least number of colour attachments), so this many traces are layered over
-// the screen in one pass: every frame's, since it is at least maxLanes.
+// four targets, so this many traces are layered over the screen in one pass: every frame's, since
+// it is at least maxLanes.
 export const coverageAttachments = 4;
 export const tracesPerPass = coverageAttachments * 4;
 
