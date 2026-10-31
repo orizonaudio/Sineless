@@ -1,9 +1,9 @@
 // Starts the real page, as the plugin's web view loads it, on the mock back end. Each test file
 // runs in a page of its own. The app finds its elements by id, so an app started earlier in the
 // same file would write into the new one's page: starting an app retires the one before, as a
-// closed editor window. The retired app hears nothing from its back end and sends it nothing, and
-// the timers and listeners it set up as it started are removed; the elements it listened on are
-// gone with its page.
+// closed editor window. The retired app hears nothing from its back end and sends it nothing, the
+// timers and listeners it set up as it started are removed, and a draw it had queued runs before
+// the page is replaced; the elements it listened on are gone with its page.
 import { afterEach, expect, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -13,6 +13,7 @@ import {
   type MockOptions,
 } from "../../src/bridge/mock-transport.ts";
 import type { ControlMessage, Transport } from "../../src/bridge/transport.ts";
+import { frameMilliseconds } from "../../src/frame-times.ts";
 import { startSineless } from "../../src/start.ts";
 import "../../src/styles.css";
 import {
@@ -83,6 +84,19 @@ export async function startRecorded(
 // Cuts the app started last off from its back end and removes what it set up as it started.
 let retirePrevious: () => void = () => undefined;
 
+// Waits out the ticks a retired app's draw loop already asked for, which draw into the page by id:
+// it waits for a frame's draw time when a tick comes early, so two of those, and two ticks at least.
+async function queuedDrawsRun(): Promise<void> {
+  const from = performance.now();
+  for (
+    let ticks = 0;
+    ticks < 2 || performance.now() - from < 2 * frameMilliseconds;
+    ticks++
+  ) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+}
+
 // Runs `start`, recording the listeners and timers it sets up (the app sets up all of its
 // window and document ones as it starts), and returns what removes them.
 function recordSetUp(start: () => void): () => void {
@@ -124,6 +138,7 @@ async function startOn<Back extends Transport>(
   transport: Back,
 ): Promise<Started<Back>> {
   retirePrevious();
+  await queuedDrawsRun();
   let retired = false;
   let removeSetUp: () => void = () => undefined;
   retirePrevious = () => {

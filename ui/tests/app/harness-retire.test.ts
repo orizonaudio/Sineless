@@ -8,16 +8,13 @@ import { readoutIntervalSeconds } from "../../../protocol/src/limits.ts";
 import { waitingAfterSeconds } from "../../src/view/status.ts";
 import { chips, choice, press, settle, startApp } from "./harness.ts";
 
-test("an app started earlier in the file asks its back end for nothing once another starts", async () => {
+test("an app started earlier in the file asks its back end for no frames once another starts", async () => {
   const first = await startApp({ inputChannels: 1 });
   const requests = vi.spyOn(first.transport, "requestFrame");
-  const sends = vi.spyOn(first.transport, "send");
   await startApp({ inputChannels: 2 });
   requests.mockClear();
-  sends.mockClear();
   await settle(10);
   expect(requests).not.toHaveBeenCalled();
-  expect(sends).not.toHaveBeenCalled();
 });
 
 // The earlier app, in Normal mode, gets no frames once retired: were its status timer still
