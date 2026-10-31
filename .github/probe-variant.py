@@ -42,6 +42,12 @@ elif variant == "composite-1px":
     a = "gl.drawArrays(gl.TRIANGLES, 0, 3);"
     assert s.count(a) == 1
     s = s.replace(a, "gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.SCISSOR_TEST);")
+elif variant in ("early-out", "early-out-no-upload"):
+    a = "  vec3 rgb = vec3(0.0);"
+    assert s.count(a) == 1
+    s = s.replace(a, "  if (coverage[0] + coverage[1] + coverage[2] + coverage[3] == vec4(0.0)) {\n    discard;\n  }\n" + a)
+    if variant == "early-out-no-upload":
+        s = s.replace("gl.texSubImage2D(", never + "gl.texSubImage2D(")
 else:
     sys.exit(f"unknown variant {variant}")
 open(path, "w").write(s)
