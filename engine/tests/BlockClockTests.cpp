@@ -361,7 +361,7 @@ TEST(PacedEdge, KeepsItsDelayThroughALongPause)
 }
 
 // A host that stops and resumes with smaller blocks (its buffer changed) has its delay measured
-// again: the edge trails the audio by about a new block, not the old one.
+// again: the edge trails the audio by about a new block, neither the old one nor none.
 TEST(PacedEdge, MeasuresItsDelayAgainAfterTheClockRestarts)
 {
     PacedEdge edge;
@@ -385,6 +385,8 @@ TEST(PacedEdge, MeasuresItsDelayAgainAfterTheClockRestarts)
     }
     EXPECT_TRUE(edge.paced());
     EXPECT_LT(edge.delay(), 400.0) << "about a 128-sample block and the margin";
+    EXPECT_GT(edge.delay(), 128.0) << "measured again, not left at none: the edge would step by "
+                                      "whole blocks at the newest sample";
 }
 
 } // namespace
