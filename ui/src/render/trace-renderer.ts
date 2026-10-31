@@ -1,10 +1,10 @@
 // Hand-written WebGL2 renderer for the traces. Grid, labels and controls are DOM.
 //
 // The trace is drawn on the GPU from the frame's values as they arrived, uploaded as a buffer:
-// one instance of a quad (two triangles, six vertices) per min/max column or raw point, covering
-// that point's piece of the trace (its vertical line from min to max and the band to the next
-// point). Each pixel measures its distance to the piece and writes how much of it the line
-// covers into the trace's channel of its group's offscreen target, keeping the larger where
+// one instance per min/max column or raw point, covering that point's piece of the trace (the
+// band to the next point, the lines joining their maxes and their mins, and beside a missing
+// point its vertical line from min to max), each part a quad of its own. Each pixel measures its
+// distance to its part and writes how much of it the line covers into the trace's channel of its group's offscreen target, keeping the larger where
 // pieces overlap, which is the coverage of the whole trace; one pass then layers the traces over
 // the screen. Edges are smooth at any slope, and a translucent trace blends once, as a group with an
 // opacity is composited. The CPU builds no vertices, so the cost of a frame hardly depends on its
@@ -101,15 +101,20 @@ vec2 clipped(vec2 a, vec2 b, float bottom, float top) {
 }
 `;
 
-// One instance per point: its piece of the trace, from its own point to the next (a missing
-// point draws nothing; a missing next point leaves its own line alone), widened for the round
-// ends. The quad is a box around the piece, unless one following its lines is smaller: the band
-// between them widened across each line by pad times the secant of its slope, which still holds
-// the round ends. Both are decided alike at every corner, from the same values.
+// One instance per point: its piece of the trace, from its own point to the next, in up to four
+// parts, each a quad of its own shaded only for its own distance: 0 the band between the two
+// points, 1 and 2 the lines joining their maxes and their mins, 3 the point's own vertical line.
+// That line is drawn only beside a missing point: between two present ones it is the edge the
+// two bands share, inside the trace, so the bands and the lines already give every pixel near it
+// the same coverage. A part that does not apply collapses to a point. Quads reach pad from their
+// lines: as far as coverage does (lineHalf + 0.5) and a quarter pixel more, so a pixel centre
+// still covered stays inside where the rasterizer snaps corners to its grid (a sixty-fourth was
+// too little for Chromium drawing without a GPU, which lost faint fringe pixels).
 const traceVertexShader = `${traceCommon}
-// The values of points i and i + 1, as their bits.
+// The values of points i, i + 1 and i - 1, as their bits.
 in uvec2 hereValues;
 in uvec2 nextValues;
+in uvec2 previousValues;
 // A point's vertical range, unless it is missing: outside the block, or a value not finite (read
 // from its bits, so no NaN comparison is involved).
 bool point(bool inside, uvec2 bits, out float lo, out float hi) {
@@ -127,66 +132,78 @@ bool point(bool inside, uvec2 bits, out float lo, out float hi) {
   hi = pixelY(uintBitsToFloat(high));
   return true;
 }
-// Points i and i + 1 (lo, hi; lo > hi when i + 1 is missing).
-flat out int piece;
+// Points i and i + 1 (lo, hi), the part, and its line: the band's two x, a joining line's ends,
+// or the vertical line's x.
 flat out vec2 here;
 flat out vec2 next;
+flat out int part;
+flat out vec4 line;
 void main() {
+  part = gl_VertexID / 6;
   int corner = gl_VertexID % 6;
   // Corners of two triangles (0, 1, 2) and (2, 1, 3): at the far end, on the upper side.
   bool far = corner == 2 || corner == 3 || corner == 5;
   bool upper = corner == 1 || corner == 4 || corner == 5;
   int i = gl_InstanceID;
-  float pad = lineHalf + 1.0;
+  float pad = lineHalf + 0.75;
   float lo;
   float hi;
   bool present = point(true, hereValues, lo, hi);
   float lo2;
   float hi2;
   bool joined = point(i + 1 < count, nextValues, lo2, hi2);
-  piece = i;
+  float loBefore;
+  float hiBefore;
+  bool before = point(i > 0, previousValues, loBefore, hiBefore);
   here = vec2(lo, hi);
-  next = joined ? vec2(lo2, hi2) : vec2(1.0, -1.0);
+  next = vec2(lo2, hi2);
+  line = vec4(0.0);
   float xa = pixelX(float(i) + offset);
   float xb = joined ? pixelX(float(i + 1) + offset) : xa;
-  float x = far ? xb + pad : xa - pad;
-  float y = 0.0;
-  if (present) {
-    float low = joined ? min(lo, lo2) : lo;
-    float high = joined ? max(hi, hi2) : hi;
-    y = clamp(upper ? high + pad : low - pad, 0.0, canvas.y);
-    float run = xb - xa;
-    // Only near the canvas, where the slopes stay small enough to follow.
-    if (joined && run > 0.0 && low > -canvas.y && high < 2.0 * canvas.y) {
-      float slopeHi = (hi2 - hi) / run;
-      float slopeLo = (lo2 - lo) / run;
-      float acrossHi = pad * sqrt(1.0 + slopeHi * slopeHi);
-      float acrossLo = pad * sqrt(1.0 + slopeLo * slopeLo);
-      // The band's mean height against the box's.
-      float band = 0.5 * ((hi - lo) + (hi2 - lo2)) + acrossHi + acrossLo + abs(slopeHi - slopeLo) * pad;
-      if (band < high - low + 2.0 * pad) {
-        float slope = upper ? slopeHi : slopeLo;
-        float dx = far ? run + pad : -pad;
-        // Not clamped to the canvas, which would bend the edge; the GPU clips it there.
-        y = upper ? hi + slope * dx + acrossHi : lo + slope * dx - acrossLo;
-      }
+  vec2 c = vec2(0.0);
+  if (part == 0 && present && joined) {
+    // Half a pixel wider each side, so a pixel centre on a point lies inside the quad.
+    float low = clamp(min(lo, lo2), 0.0, canvas.y);
+    float high = clamp(max(hi, hi2), 0.0, canvas.y);
+    c = vec2(far ? xb + 0.5 : xa - 0.5, upper ? high : low);
+    line = vec4(xa, xb, 0.0, 0.0);
+  } else if ((part == 1 || part == 2) && present && joined) {
+    float bottom = -4.0 * canvas.y;
+    float top = 5.0 * canvas.y;
+    vec2 a = vec2(xa, part == 1 ? hi : lo);
+    vec2 b = vec2(xb, part == 1 ? hi2 : lo2);
+    // A line wholly beyond one side of the band is out of reach.
+    if (!((a.y > top && b.y > top) || (a.y < bottom && b.y < bottom))) {
+      vec2 a2 = clipped(a, b, bottom, top);
+      vec2 b2 = clipped(b, a, bottom, top);
+      vec2 along = b2 - a2;
+      float run = length(along);
+      vec2 direction = run > 0.0 ? along / run : vec2(1.0, 0.0);
+      vec2 across = vec2(-direction.y, direction.x);
+      // Not clamped to the canvas, which would bend the edge; the GPU clips it there.
+      c = (far ? b2 + direction * pad : a2 - direction * pad) + (upper ? across : -across) * pad;
+      line = vec4(a2, b2);
     }
-  } else {
-    x = 0.0;
+  } else if (part == 3 && present && !(before && joined)) {
+    float low = clamp(lo - pad, 0.0, canvas.y);
+    float high = clamp(hi + pad, 0.0, canvas.y);
+    c = vec2(far ? xa + pad : xa - pad, upper ? high : low);
+    line = vec4(xa, 0.0, 0.0, 0.0);
   }
-  gl_Position = vec4(x / canvas.x * 2.0 - 1.0, y / canvas.y * 2.0 - 1.0, 0.0, 1.0);
+  gl_Position = vec4(c.x / canvas.x * 2.0 - 1.0, c.y / canvas.y * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-// The distance from the pixel's centre to its piece: the point's vertical line from min to max,
-// and to a next point present, the lines joining their mins and their maxes and the band between
-// them. Coverage falls from 1 to 0 over the pixel either side of the line's edge; the colour mask
-// lets it into the trace's own channel only, and the blending keeps the larger where pieces
-// overlap.
+// The distance from the pixel's centre to its part: none inside the band, between the
+// interpolated lines over the two points' own heights rather than the clipped lines; to the
+// joining line; or to the vertical line from min to max. Coverage falls from 1 to 0 over the
+// pixel either side of the line's edge; the colour mask lets it into the trace's own channel
+// only, and the blending keeps the larger where parts and pieces overlap, which is the coverage
+// of the whole trace.
 const traceFragmentShader = `${traceCommon}
-flat in int piece;
 flat in vec2 here;
 flat in vec2 next;
-uniform float spacing;
+flat in int part;
+flat in vec4 line;
 out vec4 coverage;
 float segment(vec2 p, vec2 a, vec2 b) {
   vec2 ab = b - a;
@@ -194,29 +211,22 @@ float segment(vec2 p, vec2 a, vec2 b) {
   float t = dd > 0.0 ? clamp(dot(p - a, ab) / dd, 0.0, 1.0) : 0.0;
   return length(p - a - t * ab);
 }
-// A line between two points, within a band four canvas heights beyond the canvas (where float
-// error stays far below a pixel); a line wholly beyond one side is out of reach.
-float stroke(vec2 p, vec2 a, vec2 b) {
-  float bottom = -4.0 * canvas.y;
-  float top = 5.0 * canvas.y;
-  if ((a.y > top && b.y > top) || (a.y < bottom && b.y < bottom)) {
-    return 1e30;
-  }
-  return segment(p, clipped(a, b, bottom, top), clipped(b, a, bottom, top));
-}
 void main() {
   vec2 p = gl_FragCoord.xy;
-  float xa = pixelX(float(piece) + offset);
-  float d = length(vec2(p.x - xa, p.y - clamp(p.y, here.x, here.y)));
-  if (next.x <= next.y) {
-    float xb = pixelX(float(piece + 1) + offset);
-    // The band between the two, from their own heights rather than the clipped lines.
-    float f = (p.x - xa) / spacing;
-    if (f >= 0.0 && f <= 1.0 && p.y >= mix(here.x, next.x, f) && p.y <= mix(here.y, next.y, f)) {
-      d = 0.0;
+  float d;
+  if (part == 0) {
+    // From the two x themselves: float subtraction is monotonic, so a pixel centre between them
+    // has f within 0 and 1 exactly, and neighbouring bands meet with no gap and no overlap past
+    // their points.
+    float f = (p.x - line.x) / (line.y - line.x);
+    if (!(f >= 0.0 && f <= 1.0 && p.y >= mix(here.x, next.x, f) && p.y <= mix(here.y, next.y, f))) {
+      discard;
     }
-    d = min(d, stroke(p, vec2(xa, here.y), vec2(xb, next.y)));
-    d = min(d, stroke(p, vec2(xa, here.x), vec2(xb, next.x)));
+    d = 0.0;
+  } else if (part == 3) {
+    d = length(vec2(p.x - line.x, p.y - clamp(p.y, here.x, here.y)));
+  } else {
+    d = segment(p, line.xy, line.zw);
   }
   float covered = clamp(lineHalf + 0.5 - d, 0.0, 1.0);
   if (covered <= 0.0) {
@@ -494,9 +504,9 @@ export class TraceRenderer implements FrameRenderer {
     }
   }
 
-  // The values of all blocks, which lie one after another in the frame's bytes, with room for
-  // one point more, which the last point's next-point attribute reads (and its block's count
-  // marks missing).
+  // The values of all blocks, which lie one after another in the frame's bytes, from 8 bytes in
+  // and with 8 to spare: the first point's previous-point attribute and the last point's
+  // next-point attribute read there (and their index marks them missing).
   private upload(blocks: readonly Float32Array[]): number {
     const gl = this.gl;
     const start = Math.min(...blocks.map((values) => values.byteOffset));
@@ -509,12 +519,12 @@ export class TraceRenderer implements FrameRenderer {
     }
     const values = new Uint8Array(first.buffer, start, end - start);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.valuesBuffer);
-    const size = values.byteLength + 8;
+    const size = values.byteLength + 16;
     if (size > this.valuesAllocated) {
       gl.bufferData(gl.ARRAY_BUFFER, size, gl.STREAM_DRAW);
       this.valuesAllocated = size;
     }
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, values);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 8, values);
     return start;
   }
 
@@ -584,9 +594,10 @@ export class TraceRenderer implements FrameRenderer {
     gl.useProgram(program.program);
     const here = program.attribute("hereValues");
     const next = program.attribute("nextValues");
+    const previous = program.attribute("previousValues");
     const stride = minMax ? 2 : 1;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.valuesBuffer);
-    for (const attribute of [here, next]) {
+    for (const attribute of [here, next, previous]) {
       gl.enableVertexAttribArray(attribute);
       gl.vertexAttribDivisor(attribute, 1);
     }
@@ -597,7 +608,6 @@ export class TraceRenderer implements FrameRenderer {
         : frame.pointCount;
     const frameWidth = frame.viewEnd - frame.viewStart;
     const viewWidth = screen.end - screen.start;
-    const spacing = (this.canvas.width * frameWidth) / (viewWidth * positions);
     const lineHalf = this.style.lineWidthPixels / 2;
     gl.uniform1i(program.uniform("count"), frame.pointCount);
     gl.uniform1i(program.uniform("stride"), stride);
@@ -606,7 +616,6 @@ export class TraceRenderer implements FrameRenderer {
       minMax ? 0.5 : -frame.startFraction,
     );
     gl.uniform1f(program.uniform("positions"), positions);
-    gl.uniform1f(program.uniform("spacing"), spacing);
     gl.uniform1f(program.uniform("scale"), fullScale(view.verticalScaleDb));
     gl.uniform1f(program.uniform("frameStart"), frame.viewStart);
     gl.uniform1f(program.uniform("frameWidth"), frameWidth);
@@ -646,8 +655,8 @@ export class TraceRenderer implements FrameRenderer {
       gl.colorMask(channel === 0, channel === 1, channel === 2, channel === 3);
       gl.uniform1f(program.uniform("center"), lane.center);
       gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
-      // One point per instance: its own values, and the next point's.
-      const offset = values.byteOffset - start;
+      // One point per instance: its own values, the next point's and the previous point's.
+      const offset = values.byteOffset - start + 8;
       gl.vertexAttribIPointer(
         here,
         stride,
@@ -662,10 +671,18 @@ export class TraceRenderer implements FrameRenderer {
         stride * 4,
         offset + stride * 4,
       );
-      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, frame.pointCount);
+      gl.vertexAttribIPointer(
+        previous,
+        stride,
+        gl.UNSIGNED_INT,
+        stride * 4,
+        offset - stride * 4,
+      );
+      // Four parts of six vertices each.
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 24, frame.pointCount);
       colors.set([color[0], color[1], color[2], alpha(color)], index * 4);
     });
-    for (const attribute of [here, next]) {
+    for (const attribute of [here, next, previous]) {
       gl.vertexAttribDivisor(attribute, 0);
       gl.disableVertexAttribArray(attribute);
     }

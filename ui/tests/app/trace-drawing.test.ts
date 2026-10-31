@@ -782,6 +782,36 @@ describe("joins on pixel centres shade once", () => {
       ).toBeLessThanOrEqual(byte);
     }
   });
+
+  // Points on pixel centres, closer than a pixel, across a canvas as wide as the widest editor at
+  // scale 2, where a float's step in x is largest: the bands either side of each point meet, with
+  // no pixel between them left out.
+  test.each([0.5, 0.25])(
+    "bands %s px apart meet on pixel centres",
+    (spacing) => {
+      const wide = 5528;
+      const low = 40;
+      const count = Math.floor((wide - 4) / spacing);
+      const viewStart = 1.5 / wide;
+      const frame = traceFrame(
+        FrameMode.minMax,
+        Array.from({ length: count }, () => [-0.6, 0.6]).flat(),
+        {
+          viewStart: viewStart - (0.5 * spacing) / wide,
+          viewEnd: viewStart + ((count - 0.5) * spacing) / wide,
+        },
+      );
+      const drawing = draw(frame, {
+        width: wide,
+        height: low,
+        lineWidthPixels: 3,
+      });
+      expect(drawing.error).toBe(0);
+      for (const x of range(4, wide - 4)) {
+        expect(drawing.alpha(x, low / 2), `column ${String(x)}`).toBe(1);
+      }
+    },
+  );
 });
 
 describe("long frames, and lanes that start mid-frame, draw whole", () => {
@@ -1256,4 +1286,172 @@ describe("the coverage targets follow the canvas size", () => {
     const drawing = drawOn(surface, empty);
     expect(drawing.alpha(150, 75)).toBeGreaterThan(0.5);
   });
+});
+
+// The trace's shape (each point's vertical line from min to max, and between two present points
+// the lines joining their maxes and their mins and the band between them) worked out here from
+// the frame's own values, and every pixel's coverage held to it: a part's quad that stops short
+// of its reach, a band past its points or short of them, or a line left out beside a missing
+// point shows as pixels that differ.
+describe("every pixel's coverage follows its distance to the trace", () => {
+  interface Point {
+    readonly x: number;
+    readonly lo: number;
+    readonly hi: number;
+  }
+  function points(drawing: Drawing): (Point | undefined)[] {
+    const values = drawing.frame.views.values().next().value;
+    const minMax = drawing.frame.mode === FrameMode.minMax;
+    return Array.from({ length: drawing.frame.pointCount }, (_, i) => {
+      const lo = values?.[minMax ? 2 * i : i] ?? Number.NaN;
+      const hi = values?.[minMax ? 2 * i + 1 : i] ?? Number.NaN;
+      return Number.isFinite(lo) && Number.isFinite(hi)
+        ? {
+            x: centreX(drawing, i),
+            lo: ((lo + 1) / 2) * drawing.height,
+            hi: ((hi + 1) / 2) * drawing.height,
+          }
+        : undefined;
+    });
+  }
+  function toSegment(
+    px: number,
+    py: number,
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+  ): number {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dd = dx * dx + dy * dy;
+    const t =
+      dd > 0
+        ? Math.min(1, Math.max(0, ((px - ax) * dx + (py - ay) * dy) / dd))
+        : 0;
+    return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+  }
+  function expectedCoverage(
+    shape: readonly (Point | undefined)[],
+    px: number,
+    py: number,
+    lineHalf: number,
+  ): number {
+    // Only points whose lines come within reach of the pixel: beyond it, coverage is 0.
+    const reach = lineHalf + 1;
+    let d = Infinity;
+    shape.forEach((here, i) => {
+      if (
+        here === undefined ||
+        here.x - px > reach ||
+        (shape[i + 1]?.x ?? here.x) - px < -reach
+      ) {
+        return;
+      }
+      d = Math.min(d, toSegment(px, py, here.x, here.lo, here.x, here.hi));
+      const next = shape[i + 1];
+      if (next === undefined) {
+        return;
+      }
+      d = Math.min(
+        d,
+        toSegment(px, py, here.x, here.hi, next.x, next.hi),
+        toSegment(px, py, here.x, here.lo, next.x, next.lo),
+      );
+      const f = (px - here.x) / (next.x - here.x);
+      if (
+        f >= 0 &&
+        f <= 1 &&
+        py >= here.lo + (next.lo - here.lo) * f &&
+        py <= here.hi + (next.hi - here.hi) * f
+      ) {
+        d = 0;
+      }
+    });
+    return Math.min(1, Math.max(0, lineHalf + 0.5 - d));
+  }
+  function expectFollows(drawing: Drawing, lineWidth: number): void {
+    expect(drawing.error).toBe(0);
+    const shape = points(drawing);
+    let worst = { off: 0, at: "" };
+    for (let y = 0; y < drawing.height; y++) {
+      for (let x = 0; x < drawing.width; x++) {
+        const off = Math.abs(
+          drawing.alpha(x, y) -
+            expectedCoverage(shape, x + 0.5, y + 0.5, lineWidth / 2),
+        );
+        if (off > worst.off) {
+          worst = { off, at: `${String(x)}, ${String(y)}` };
+        }
+      }
+    }
+    expect(worst.off, worst.at).toBeLessThanOrEqual(2 * byte);
+  }
+
+  // Values within the scale, so every line is drawn whole.
+  const shapes: {
+    readonly name: string;
+    readonly value: (point: number) => readonly [number, number];
+  }[] = [
+    {
+      name: "a zigzag",
+      value: (i) => (i % 2 === 0 ? [-0.6, -0.5] : [0.5, 0.6]),
+    },
+    {
+      name: "a steep ramp",
+      value: (i) => [-0.8 + 0.37 * (i % 5), -0.75 + 0.37 * (i % 5)],
+    },
+    {
+      name: "a band whose span alternates",
+      value: (i) => (i % 2 === 0 ? [-0.1, 0.1] : [-0.5, 0.5]),
+    },
+    {
+      name: "a lone point, and points beside a missing one either side",
+      value: (i) =>
+        i % 4 === 1
+          ? [Number.NaN, Number.NaN]
+          : [0.1 * (i % 3) - 0.2, 0.1 * (i % 3)],
+    },
+  ];
+  const modes = [FrameMode.raw, FrameMode.minMax];
+  const cases = modes.flatMap((mode) =>
+    shapes.flatMap((shape) =>
+      spacings.flatMap((spacing) =>
+        lineWidths.map((lineWidth) => ({ mode, ...shape, spacing, lineWidth })),
+      ),
+    ),
+  );
+  test.each(cases)(
+    "$name, mode $mode, $spacing px apart, line $lineWidth px",
+    ({ mode, value, spacing, lineWidth }) => {
+      const count = Math.min(200, Math.floor((width - 40) / spacing));
+      const frame = spaced(mode, count, spacing, (point) => {
+        const [lo, hi] = value(point);
+        return mode === FrameMode.minMax ? [lo, hi] : (lo + hi) / 2;
+      });
+      expectFollows(draw(frame, { lineWidthPixels: lineWidth }), lineWidth);
+    },
+  );
+
+  // Raw points zoomed in far apart: a band reaches its points and no further, a run's last point
+  // ends in a round cap.
+  test.each(
+    modes.flatMap((mode) => [300, 1000].map((spacing) => ({ mode, spacing }))),
+  )(
+    "mode $mode, $spacing px apart, beside a missing point",
+    ({ mode, spacing }) => {
+      const wide = 2200;
+      const frame = spaced(
+        mode,
+        2,
+        spacing,
+        (point) => (point === 0 ? [-0.3, 0.2] : [0.1, 0.4]),
+        wide,
+      );
+      expectFollows(
+        draw(frame, { width: wide, height: 100, lineWidthPixels: 1.5 }),
+        1.5,
+      );
+    },
+  );
 });
