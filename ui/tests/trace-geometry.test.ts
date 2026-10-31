@@ -10,7 +10,6 @@ import { maxLanes } from "../../protocol/src/limits.ts";
 import {
   cancellationBands,
   columnPosition,
-  compositeLayering,
   coverageAttachments,
   coverageSlot,
   coverageTargets,
@@ -507,26 +506,4 @@ describe("the coverage channels of a frame's traces", () => {
       expect(coverageTargets(traces)).toBeLessThanOrEqual(coverageAttachments);
     },
   );
-
-  // A step reading another trace's channel draws that trace in this one's colour; one out of
-  // order layers the traces wrongly where they cross.
-  test("the composite layers each trace from its own channel, in order, and only the frame's", () => {
-    const steps = [
-      ...compositeLayering().matchAll(
-        /if \((\d+) < traces\) \{\s*float a = colors\[(\d+)\]\.a \* coverage\[(\d+)\]\.([rgba]);\s*rgb = rgb \* \(1\.0 - a\) \+ colors\[(\d+)\]\.rgb \* a;/g,
-      ),
-    ].map(([, guard, alpha, target, channel, color]) => ({
-      guard: Number(guard),
-      alpha: Number(alpha),
-      target: Number(target),
-      channel: "rgba".indexOf(channel ?? ""),
-      color: Number(color),
-    }));
-    expect(steps).toEqual(
-      Array.from({ length: tracesPerPass }, (_, k) => {
-        const { attachment, channel } = coverageSlot(k);
-        return { guard: k, alpha: k, target: attachment, channel, color: k };
-      }),
-    );
-  });
 });

@@ -19,7 +19,6 @@ import { fullView, type ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
 import {
   cancellationBands,
-  compositeLayering,
   fullScale,
   lanes,
   coverageAttachments,
@@ -241,6 +240,22 @@ void main() {
   vec2 corner = vec2(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0);
   gl_Position = vec4(corner, 0.0, 1.0);
 }`;
+
+// The composite shader's layering of the traces, later over earlier: one step per trace the pass
+// holds, each with its own fixed indices. A loop to the frame's trace count, indexing by its
+// counter, is an array indexed at run time, which Metal keeps in slow memory: the composite took
+// 3.2 ms a frame instead of 0.7 on an M1.
+function compositeLayering(): string {
+  return Array.from({ length: tracesPerPass }, (_, index) => {
+    const { attachment, channel } = coverageSlot(index);
+    const k = String(index);
+    return `  if (${k} < traces) {
+    float a = colors[${k}].a * coverage[${String(attachment)}].${"rgba"[channel] ?? ""};
+    rgb = rgb * (1.0 - a) + colors[${k}].rgb * a;
+    alpha = alpha * (1.0 - a) + a;
+  }`;
+  }).join("\n");
+}
 
 // The traces layered at each pixel in drawing order, later over earlier, then blended over
 // the screen once: the same as blending each in turn, since layering is associative.
