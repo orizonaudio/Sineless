@@ -4,9 +4,9 @@
 // one instance of a quad (two triangles, six vertices) per min/max column or raw point, covering
 // that point's piece of the trace (its vertical line from min to max and the band to the next
 // point). Each pixel measures its distance to the piece and writes how much of it the line
-// covers into the trace's channel of an offscreen target, keeping the larger where pieces
-// overlap, which is the coverage of the whole trace; one pass then layers the traces over the
-// screen. Edges are smooth at any slope, and a translucent trace blends once, as a group with an
+// covers into the trace's channel of its group's offscreen target, keeping the larger where
+// pieces overlap, which is the coverage of the whole trace; one pass then layers the traces over
+// the screen. Edges are smooth at any slope, and a translucent trace blends once, as a group with an
 // opacity is composited. The CPU builds no vertices, so the cost of a frame hardly depends on its
 // size.
 import {
@@ -179,19 +179,15 @@ void main() {
 
 // The distance from the pixel's centre to its piece: the point's vertical line from min to max,
 // and to a next point present, the lines joining their mins and their maxes and the band between
-// them. Coverage falls from 1 to 0 over the pixel either side of the line's edge, written into the
-// trace's channel of its target; the blending keeps the larger where pieces overlap.
+// them. Coverage falls from 1 to 0 over the pixel either side of the line's edge; the colour mask
+// lets it into the trace's own channel only, and the blending keeps the larger where pieces
+// overlap.
 const traceFragmentShader = `${traceCommon}
 flat in int piece;
 flat in vec2 here;
 flat in vec2 next;
 uniform float spacing;
-uniform int attachment;
-uniform int channel;
-layout(location = 0) out vec4 coverage0;
-layout(location = 1) out vec4 coverage1;
-layout(location = 2) out vec4 coverage2;
-layout(location = 3) out vec4 coverage3;
+out vec4 coverage;
 float segment(vec2 p, vec2 a, vec2 b) {
   vec2 ab = b - a;
   float dd = dot(ab, ab);
@@ -222,17 +218,11 @@ void main() {
     d = min(d, stroke(p, vec2(xa, here.y), vec2(xb, next.y)));
     d = min(d, stroke(p, vec2(xa, here.x), vec2(xb, next.x)));
   }
-  float coverage = clamp(lineHalf + 0.5 - d, 0.0, 1.0);
-  if (coverage <= 0.0) {
+  float covered = clamp(lineHalf + 0.5 - d, 0.0, 1.0);
+  if (covered <= 0.0) {
     discard;
   }
-  vec4 value = vec4(0.0);
-  value[channel] = coverage;
-  // Zero leaves the other traces' coverage as it is.
-  coverage0 = attachment == 0 ? value : vec4(0.0);
-  coverage1 = attachment == 1 ? value : vec4(0.0);
-  coverage2 = attachment == 2 ? value : vec4(0.0);
-  coverage3 = attachment == 3 ? value : vec4(0.0);
+  coverage = vec4(covered);
 }`;
 
 // One triangle over the whole screen.
@@ -348,9 +338,9 @@ export class TraceRenderer implements FrameRenderer {
   private readonly composite: Program;
   private readonly plain: Program;
   // The traces' coverage, a channel each, drawn offscreen and layered over the screen; all
-  // allocated together at the drawing buffer's size.
+  // allocated together at the drawing buffer's size, each the only target of its framebuffer.
   private readonly coverage: WebGLTexture[];
-  private readonly coverageTarget: WebGLFramebuffer;
+  private readonly coverageFramebuffers: WebGLFramebuffer[];
   private coverageWidth = 0;
   private coverageHeight = 0;
   // The frame's values as received, and how many bytes the buffer holds.
@@ -385,10 +375,10 @@ export class TraceRenderer implements FrameRenderer {
       compositeFragmentShader,
     );
     this.plain = new Program(gl, plainShader, plainFragmentShader);
-    this.coverageTarget = gl.createFramebuffer();
     this.coverage = Array.from({ length: coverageAttachments }, () =>
       gl.createTexture(),
     );
+    this.coverageFramebuffers = this.coverage.map(() => gl.createFramebuffer());
     this.shadingBuffer = gl.createBuffer();
     this.valuesBuffer = gl.createBuffer();
     gl.enable(gl.BLEND);
@@ -413,8 +403,7 @@ export class TraceRenderer implements FrameRenderer {
     }
     this.coverageWidth = width;
     this.coverageHeight = height;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.coverageTarget);
-    this.coverage.forEach((texture, attachment) => {
+    const statuses = this.coverage.map((texture, target) => {
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texImage2D(
         gl.TEXTURE_2D,
@@ -429,17 +418,22 @@ export class TraceRenderer implements FrameRenderer {
       );
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        this.coverageFramebuffers[target] ?? null,
+      );
       gl.framebufferTexture2D(
         gl.FRAMEBUFFER,
-        gl.COLOR_ATTACHMENT0 + attachment,
+        gl.COLOR_ATTACHMENT0,
         gl.TEXTURE_2D,
         texture,
         0,
       );
+      return gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     });
-    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    if (status !== gl.FRAMEBUFFER_COMPLETE) {
+    const status = statuses.find((each) => each !== gl.FRAMEBUFFER_COMPLETE);
+    if (status !== undefined) {
       throw new TraceMemoryError(
         `The traces' coverage targets are incomplete (${String(status)})`,
       );
@@ -629,23 +623,29 @@ export class TraceRenderer implements FrameRenderer {
     // A frame holds at most maxLanes traces, which one pass holds.
     const traces = blocks.slice(0, tracesPerPass);
     const targets = coverageTargets(traces.length);
-    // Each trace's coverage into its channel, the larger kept where its pieces overlap.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.coverageTarget);
-    gl.drawBuffers(
-      this.coverage.map((_, attachment) =>
-        attachment < targets ? gl.COLOR_ATTACHMENT0 + attachment : gl.NONE,
-      ),
-    );
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    // Each trace's coverage into its channel, the larger kept where its pieces overlap. Writing
+    // only that channel of that target, rather than zeros into all four targets, takes about a
+    // third of the GPU time (16 overlaid lanes on an M1); a framebuffer per target, rather than
+    // one switching its draw buffers, keeps ANGLE from converting between draws.
     gl.blendEquation(gl.MAX);
     const colors = new Float32Array(tracesPerPass * 4);
+    let bound = -1;
     traces.forEach(([values, color], index) => {
       const lane = blockLanes[index] ?? { center: 0, halfHeight: 1 };
       const { attachment, channel } = coverageSlot(index);
+      if (attachment !== bound) {
+        // A clear honours the colour mask: every channel, then this trace's own.
+        gl.bindFramebuffer(
+          gl.FRAMEBUFFER,
+          this.coverageFramebuffers[attachment] ?? null,
+        );
+        gl.colorMask(true, true, true, true);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        bound = attachment;
+      }
+      gl.colorMask(channel === 0, channel === 1, channel === 2, channel === 3);
       gl.uniform1f(program.uniform("center"), lane.center);
       gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
-      gl.uniform1i(program.uniform("attachment"), attachment);
-      gl.uniform1i(program.uniform("channel"), channel);
       // One point per instance: its own values, and the next point's.
       const offset = values.byteOffset - start;
       gl.vertexAttribIPointer(
@@ -669,6 +669,7 @@ export class TraceRenderer implements FrameRenderer {
       gl.vertexAttribDivisor(attribute, 0);
       gl.disableVertexAttribArray(attribute);
     }
+    gl.colorMask(true, true, true, true);
     // Then layered over the screen, once.
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.blendEquation(gl.FUNC_ADD);
