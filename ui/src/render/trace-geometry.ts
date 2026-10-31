@@ -81,22 +81,6 @@ export function coverageSlot(index: number): {
   return { attachment: Math.floor(index / 4), channel: index % 4 };
 }
 
-// The composite shader's layering of the traces, later over earlier: one step per trace the pass
-// holds, each with its own fixed indices. A loop to the frame's trace count, indexing by its
-// counter, is an array indexed at run time, which Metal keeps in slow memory: the composite took
-// 3.2 ms a frame instead of 0.7 on an M1.
-export function compositeLayering(): string {
-  return Array.from({ length: tracesPerPass }, (_, index) => {
-    const { attachment, channel } = coverageSlot(index);
-    const k = String(index);
-    return `  if (${k} < traces) {
-    float a = colors[${k}].a * coverage[${String(attachment)}].${"rgba"[channel] ?? ""};
-    rgb = rgb * (1.0 - a) + colors[${k}].rgb * a;
-    alpha = alpha * (1.0 - a) + a;
-  }`;
-  }).join("\n");
-}
-
 // The playhead's edges in clip space, at a position 0 to 1 across a screen widthPixels device
 // pixels wide. A line straddling pixels is antialiased dimmer and wider by an amount that changes
 // with its subpixel position, so a moving one flickers: its edges sit on whole device pixels, and
