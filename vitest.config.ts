@@ -12,10 +12,12 @@ import { unitTests } from "./vitest.unit.ts";
 const chromium = process.env["CHROMIUM_EXECUTABLE"];
 const chromiumOnly =
   chromium !== undefined || process.env["APP_BROWSERS"] === "chromium";
-// CI's runners have no GPU, so Chromium draws the page's WebGL on their 4 CPUs (SwiftShader):
-// its slowest tests there have taken most of 30 s on a slow runner, so CI gives each test twice
-// that; a machine with a GPU keeps 30 s, so a test that hangs still fails soon.
-const testTimeout = process.env["CI"] === "true" ? 60000 : 30000;
+// CI's runners have no GPU, so Chromium draws the page's WebGL on their 4 CPUs (SwiftShader), and
+// the runners' CPUs differ from run to run (the same tests took from 77 to 148 s): on a slow one
+// the slowest tests came near each limit, so CI doubles the test's, a click's and a poll's; a
+// machine with a GPU keeps the shorter ones, so a test that hangs still fails soon.
+const slowRunner = process.env["CI"] === "true" ? 2 : 1;
+const testTimeout = 30000 * slowRunner;
 
 export default defineConfig({
   test: {
@@ -39,15 +41,15 @@ export default defineConfig({
           // One page at a time: a page out of view gets no animation frames, which draw it.
           fileParallelism: false,
           // The page draws on animation frames; a busy machine draws them late.
-          expect: { poll: { timeout: 5000 } },
+          expect: { poll: { timeout: 5000 * slowRunner } },
           testTimeout,
           browser: {
             enabled: true,
             headless: true,
-            // Clicks wait up to 10 s for the page, well within a test's 30 s (60 on CI): under
+            // Clicks wait up to 10 s (20 on CI) for the page, well within a test's 30 s (60): under
             // coverage, or on a busy machine, the page draws late.
             provider: playwright({
-              actionTimeout: 10000,
+              actionTimeout: 10000 * slowRunner,
               ...(chromium === undefined
                 ? {}
                 : { launchOptions: { executablePath: chromium } }),
