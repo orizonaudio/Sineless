@@ -1,5 +1,5 @@
-// A live 1.5 s roll zoomed to the narrowest view, on the real engine's frames: the engine draws
-// at least a sample per column, so the frame carries more samples than are in view, and the axis
+// A live 1.5 s free-running window zoomed to the narrowest view, on the real engine's frames: the
+// engine reads only the view, so the frame carries a few hundred samples of the span, and the axis
 // still marks the span shown.
 import { beforeAll, describe, expect, test } from "vitest";
 
@@ -34,7 +34,7 @@ function marksSpan(view: ViewWindow): boolean {
   );
 }
 
-describe("a recorded live roll zoomed to the narrowest view", () => {
+describe("a recorded live free-running window zoomed to the narrowest view", () => {
   beforeAll(async () => {
     await startRecorded("Roll1500msDeepestZoom_48k");
   });
@@ -44,10 +44,8 @@ describe("a recorded live roll zoomed to the narrowest view", () => {
     await zoomToNarrowest();
     const frame = window.orizonDebug?.lastFrame;
     const view = { start: frame?.viewStart ?? 0, end: frame?.viewEnd ?? 1 };
-    // Fewer samples are in view than the frame draws, one per column at least.
-    expect(frame?.visibleSamples ?? 0).toBeGreaterThan(
-      span * 48000 * (view.end - view.start),
-    );
+    // The frame carries the view's samples, not the span's.
+    expect(frame?.visibleSamples ?? 0).toBeLessThan(span * 48000 * 0.01);
     await expect
       .poll(() => marksSpan(view), { message: labelSeconds().join(", ") })
       .toBe(true);
