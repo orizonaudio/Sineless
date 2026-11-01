@@ -372,6 +372,12 @@ TEST_P(PositionRecords, PlaceEverySampleWithinASampleAcrossASmallTempoChange)
         timeline.advance(playingAt(position, atTempo), kSamples, rate);
         played.push_back(position);
         position += kSamples * atTempo / (60.0 * rate);
+        // Eight blocks on, the first record's tempo still leads to within half a sample: a ramp
+        // of such changes would otherwise record every block and lap the records in under a
+        // second.
+        if (block == 108) {
+            EXPECT_EQ(positionsSince(timeline).size(), 1U) << "the small change is not recorded";
+        }
     }
     for (std::size_t block = 0; block < played.size(); ++block) {
         const auto index = static_cast<std::uint64_t>(block) * kSamples;
