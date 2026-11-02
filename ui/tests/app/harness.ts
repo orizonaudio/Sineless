@@ -13,7 +13,7 @@ import {
   type MockOptions,
 } from "../../src/bridge/mock-transport.ts";
 import type { ControlMessage, Transport } from "../../src/bridge/transport.ts";
-import { frameMilliseconds } from "../../src/frame-times.ts";
+import { ticksPerFrame } from "../../src/render/render-loop.ts";
 import { startSineless } from "../../src/start.ts";
 import "../../src/styles.css";
 import {
@@ -85,15 +85,19 @@ export async function startRecorded(
 let retirePrevious: () => void = () => undefined;
 
 // Waits out the ticks a retired app's draw loop already asked for, which draw into the page by id:
-// it waits for a frame's draw time when a tick comes early, so two of those, and two ticks at least.
+// a frame waiting is drawn within n ticks of the last, n for the browser's tick rate, so two ticks
+// more than that, measured from the shortest gap seen.
 async function queuedDrawsRun(): Promise<void> {
-  const from = performance.now();
-  for (
-    let ticks = 0;
-    ticks < 2 || performance.now() - from < 2 * frameMilliseconds;
-    ticks++
-  ) {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+  let last: number | undefined;
+  let shortest = Number.POSITIVE_INFINITY;
+  for (let ticks = 0; ticks < 2 + ticksPerFrame(1000 / shortest); ticks++) {
+    const at = await new Promise<number>((resolve) =>
+      requestAnimationFrame(resolve),
+    );
+    if (last !== undefined) {
+      shortest = Math.min(shortest, at - last);
+    }
+    last = at;
   }
 }
 

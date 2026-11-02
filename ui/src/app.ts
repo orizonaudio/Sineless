@@ -30,7 +30,6 @@ import { attachResizeGrip } from "./components/resize-grip.ts";
 import { Segmented } from "./components/segmented.ts";
 import { streamGap, wheelUnit } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
-import { frameMilliseconds } from "./frame-times.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
 import {
   TraceMemoryError,
@@ -358,7 +357,6 @@ export class OscilloscopeApp {
       () => {
         backend.requestFrame();
       },
-      frameMilliseconds,
     );
     this.buildControls();
     this.listenToScreen();

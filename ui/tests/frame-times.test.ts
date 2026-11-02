@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { FrameMode } from "../../protocol/src/enums.ts";
-import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
+  type FrameAim,
   FrameTimes,
-  frameMilliseconds,
   frameTimes,
-  lateFactor,
   summarise,
+  summariseFrames,
 } from "../src/frame-times.ts";
-import { RenderLoop } from "../src/render/render-loop.ts";
+import { ticksPerFrame } from "../src/render/render-loop.ts";
+import { drive, frame, heldTicks, pageLoop } from "./display-ticks.ts";
+
+const sixtyHz = 1000 / 60;
 
 // Times `every` ms apart from 0, `count` of them.
 const steady = (every: number, count: number): number[] =>
@@ -57,7 +58,7 @@ describe("summarise", () => {
     for (let index = 1; index <= 100; index++) {
       times.push((times.at(-1) ?? 0) + (index % 33 === 0 ? 50 : 16));
     }
-    const summary = summarise(times, frameMilliseconds);
+    const summary = summarise(times, sixtyHz);
     expect(summary.median).toBe(16);
     expect(summary.p99).toBe(50);
     expect(summary.p95).toBe(16);
@@ -67,20 +68,7 @@ describe("summarise", () => {
     for (let index = 1; index <= 100; index++) {
       more.push((more.at(-1) ?? 0) + (index % 16 === 0 ? 50 : 16));
     }
-    expect(summarise(more, frameMilliseconds).p95).toBe(50);
-  });
-
-  test("judges frames against their pace, so a display's uneven ticks are not late", () => {
-    // 60 frames a second drawn on a 144 Hz display's ticks: 2 or 3 ticks apart.
-    const tick = 1000 / 144;
-    const times = [0];
-    for (let index = 1; index < 120; index++) {
-      times.push((times.at(-1) ?? 0) + (index % 2 === 0 ? 2 : 3) * tick);
-    }
-    expect(summarise(times, frameMilliseconds).lateShare).toBe(0);
-    // A frame one whole frame late is.
-    times.push((times.at(-1) ?? 0) + lateFactor * frameMilliseconds + tick);
-    expect(summarise(times, frameMilliseconds).lateShare).toBeGreaterThan(0);
+    expect(summarise(more, sixtyHz).p95).toBe(50);
   });
 
   test("gives the most late intervals that end within any one second", () => {
@@ -94,6 +82,74 @@ describe("summarise", () => {
   test("has no intervals, and no share, without two events", () => {
     expect(summarise([]).count).toBe(0);
     expect(summarise([5]).lateShare).toBeNaN();
+  });
+});
+
+describe("summariseFrames", () => {
+  // Frames n ticks apart on a display ticking `rate` times a second, with each draw's aim.
+  const aimAt = (rate: number): FrameAim => {
+    const tick = 1000 / rate;
+    return { interval: ticksPerFrame(rate) * tick, tick };
+  };
+
+  // Where the aim's limit differs from a fixed 60-a-second one (25 ms): n = 2 at 120 and 144 Hz.
+  test.each([120, 144])(
+    "counts a frame held a tick too long as late at %i Hz, and wander of under half a tick as not",
+    (rate) => {
+      const aim = aimAt(rate);
+      const times = [0];
+      const step = (interval: number) => {
+        times.push((times.at(-1) ?? 0) + interval);
+      };
+      for (let index = 0; index < 20; index++) {
+        step(aim.interval);
+      }
+      step(aim.interval + aim.tick); // Held a tick too long.
+      step(aim.interval + 0.4 * aim.tick); // Wander.
+      const summary = summariseFrames(
+        times,
+        times.map(() => aim),
+      );
+      expect(summary.count).toBe(22);
+      expect(summary.lateShare).toBeCloseTo(1 / 22);
+    },
+  );
+
+  test("judges each interval by the aim of the draw before it", () => {
+    // 120 Hz (n = 2, limit 20.8 ms), then 60 Hz (n = 1, limit 25 ms): a 22 ms interval is late
+    // after a draw aimed at 120 Hz, and on time after one aimed at 60 Hz.
+    const times = [0, 16.7, 38.7, 55.4, 72.1, 94.1];
+    const aims = [
+      aimAt(120),
+      aimAt(120),
+      aimAt(120),
+      aimAt(60),
+      aimAt(60),
+      aimAt(60),
+    ];
+    const summary = summariseFrames(times, aims);
+    expect(summary.count).toBe(5);
+    expect(summary.lateShare).toBeCloseTo(1 / 5);
+  });
+
+  test("leaves out intervals after a draw the loop had no aim for", () => {
+    const aim = aimAt(60);
+    const times = [0, 40, 80, 96.7, 113.3];
+    const summary = summariseFrames(times, [
+      undefined,
+      undefined,
+      aim,
+      aim,
+      aim,
+    ]);
+    expect(summary.count).toBe(2);
+    expect(summary.lateShare).toBe(0);
+  });
+
+  test("at one tick a frame, counts an interval late beyond one and a half ticks, as before", () => {
+    const aim = aimAt(60);
+    expect(summariseFrames([0, 24.9], [aim, aim]).lateShare).toBe(0);
+    expect(summariseFrames([0, 25.1], [aim, aim]).lateShare).toBe(1);
   });
 });
 
@@ -120,7 +176,7 @@ describe("FrameTimes", () => {
     times.start();
     for (const at of [10, 20, 30]) {
       tick(at);
-      times.drawn(at);
+      times.drawn(at, { interval: 10, tick: 10 });
     }
     expect(times.summary().ticks.count).toBe(2);
     expect(times.summary().frames.median).toBe(10);
@@ -139,21 +195,6 @@ describe("FrameTimes", () => {
     tick(110);
     expect(pending).toHaveLength(1);
     expect(times.summary().ticks.count).toBe(1);
-  });
-
-  test("judges drawn frames against 60 a second, not their own median", () => {
-    // Mostly 10 ms apart, with every fourth 23 ms after the one before: none a whole frame late
-    // at 60 a second, though all would be against their own 10 ms median.
-    const { times, tick } = recorder();
-    times.start();
-    let at = 0;
-    for (let index = 0; index < 60; index++) {
-      at += index % 4 === 3 ? 23 : 10;
-      tick(at);
-      times.drawn(at);
-    }
-    expect(times.summary().frames.median).toBe(10);
-    expect(times.summary().frames.lateShare).toBe(0);
   });
 
   test("keeps the newest times when it runs longer than it holds", () => {
@@ -197,60 +238,60 @@ describe("the page's draw loop", () => {
   test("records the engine frames it draws, not its redraws", () => {
     vi.stubGlobal("requestAnimationFrame", () => 0); // The recorder's own ticks are not wanted.
     const pending: ((timestamp: number) => void)[] = [];
-    const loop = new RenderLoop(
+    let ready = true;
+    const loop = pageLoop(
       (callback) => pending.push(callback),
       { draw: () => undefined },
-      () => undefined,
+      () => {
+        if (ready) {
+          loop.submit(frame(1));
+        }
+      },
     );
-    const tick = (timestamp: number) => {
+    let now = 0;
+    const tick = () => {
+      now += 10;
       for (const callback of pending.splice(0)) {
-        callback(timestamp);
+        callback(now);
       }
     };
+    loop.submit(frame(0));
+    for (let index = 0; index < 50; index++) {
+      tick(); // 100 Hz: measured, two ticks a frame.
+    }
+    ready = false;
+    for (let index = 0; index < 4; index++) {
+      tick();
+    }
     frameTimes.start();
-    loop.submit(frame());
-    tick(100);
+    loop.submit(frame(1));
+    tick();
     loop.invalidate();
-    tick(110);
-    loop.submit(frame());
-    tick(120);
+    tick();
+    tick();
+    loop.submit(frame(1));
+    tick();
     const frames = frameTimes.summary().frames;
     expect(frames.count).toBe(1);
-    expect(frames.median).toBe(20);
+    expect(frames.median).toBe(30);
+  });
+
+  // The loop passes what it aimed for: at 120 Hz, two ticks. A frame that comes a tick late is
+  // the one late interval; the draws before the loop measured the display are left out.
+  test("counts the one frame drawn a tick late at 120 Hz", () => {
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    frameTimes.start();
+    const period = 1000 / 120;
+    const { draws } = drive({
+      segments: [{ rate: 120, seconds: 3 }],
+      arrival: (creditAt, credits) =>
+        credits === 150 ? creditAt + 2.5 * period : undefined,
+    });
+    const frames = frameTimes.summary().frames;
+    expect(heldTicks(draws, 1000).filter((ticks) => ticks === 3)).toHaveLength(
+      1,
+    );
+    expect(frames.count).toBeLessThan(draws.length - 1);
+    expect(frames.lateShare * frames.count).toBeCloseTo(1);
   });
 });
-
-function frame(): Frame {
-  return {
-    mode: FrameMode.raw,
-    triggered: false,
-    frozen: false,
-    freeRunning: false,
-    pointCount: 1,
-    startFraction: 0,
-    peak: 0,
-    rms: 0,
-    frequency: undefined,
-    synced: false,
-    limited: false,
-    partial: false,
-    noTempo: false,
-    cursor: undefined,
-    cycleStart: 0,
-    cycleSeconds: 0,
-    panReach: 0,
-    invalidSamples: 0,
-    invalidLanes: 0,
-    sampleRate: 48000,
-    spanSeconds: 0,
-    spanQuarterNotes: 0,
-    barQuarterNotes: 0,
-    viewStart: 0,
-    viewEnd: 1,
-    visibleSamples: 0,
-    views: new Map(),
-    lanes: [],
-    laneSet: 0,
-    comparison: undefined,
-  };
-}

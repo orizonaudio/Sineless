@@ -1,216 +1,157 @@
 import { describe, expect, test } from "vitest";
 
-import { FrameMode } from "../../protocol/src/enums.ts";
-import type { Frame } from "../../protocol/src/frame-decoder.ts";
-import { RenderLoop } from "../src/render/render-loop.ts";
+import {
+  fullRateUpToHz,
+  lineHysteresis,
+  ticksPerFrame,
+} from "../src/render/render-loop.ts";
+import {
+  commonTickRates,
+  drive,
+  frame,
+  heldTicks,
+  pageLoop,
+  wanders,
+  type Wander,
+} from "./display-ticks.ts";
 
-// A frame told apart from the others by its point count, `id`; the loop never reads it.
-function frame(id: number): Frame {
-  return {
-    mode: FrameMode.raw,
-    triggered: false,
-    frozen: false,
-    freeRunning: false,
-    pointCount: id,
-    startFraction: 0,
-    peak: 0,
-    rms: 0,
-    frequency: undefined,
-    synced: false,
-    limited: false,
-    partial: false,
-    noTempo: false,
-    cursor: undefined,
-    cycleStart: 0,
-    cycleSeconds: 0,
-    panReach: 0,
-    invalidSamples: 0,
-    invalidLanes: 0,
-    sampleRate: 48000,
-    spanSeconds: 0,
-    spanQuarterNotes: 0,
-    barQuarterNotes: 0,
-    viewStart: 0,
-    viewEnd: 1,
-    visibleSamples: 0,
-    views: new Map(),
-    lanes: [],
-    laneSet: 0,
-    comparison: undefined,
+// A frame stays on screen for the ticks until the next one is drawn. Uneven holds (2, 1, 2 on a
+// 100 Hz display, under the old 60-a-second schedule) make a playhead that moves by the time
+// between frames judder; each frame should stay for the same n ticks.
+describe("render loop cadence", () => {
+  const settled = 1000; // ms: by then the loop has measured the display.
+
+  // A tick rate at or below 120 Hz holds every frame for exactly n ticks under any wander a page
+  // sees. Above it, a gap that wanders past 1.75 ticks reads as skipped callbacks, which the loop
+  // recovers at the cost of these rare misreadings, and large wander mismeasures the rate: those
+  // rows bound the share of uneven holds measured for this loop.
+  const unevenAllowed = (rate: number, wander: Wander): number => {
+    if (rate <= 120 || wander === wanders.tickShare) {
+      return 0;
+    }
+    if (wander === wanders.recorded) {
+      return rate <= 170 ? 0.01 : rate <= 180 ? 0.03 : 0.4;
+    }
+    return rate <= 144 ? 0.02 : rate <= 170 ? 0.05 : rate <= 180 ? 0.1 : 0.6;
   };
-}
 
-function setup() {
-  const pending: ((timestamp: number) => void)[] = [];
-  const drawn: number[] = [];
-  let credits = 0;
-  const loop = new RenderLoop(
-    (callback) => pending.push(callback),
-    { draw: (drawnFrame) => drawn.push(drawnFrame.pointCount) },
-    () => {
-      credits++;
+  const rows = commonTickRates.flatMap((rate) =>
+    Object.values(wanders).map((wander) => ({
+      rate,
+      wander,
+      name: wander.name,
+    })),
+  );
+  test.each(rows)(
+    "holds each frame for the same number of ticks at $rate Hz, ticks wandering by $name",
+    ({ rate, wander }) => {
+      const n = ticksPerFrame(rate);
+      const { draws } = drive({ segments: [{ rate, seconds: 10 }], wander });
+      const held = heldTicks(draws, settled);
+      const uneven = held.filter((ticks) => ticks !== n).length / held.length;
+      expect(uneven).toBeLessThanOrEqual(unevenAllowed(rate, wander));
+      if (unevenAllowed(rate, wander) === 0) {
+        expect(held.length / 9).toBeCloseTo(rate / n, -1);
+      }
     },
   );
-  const tick = () => {
-    const callbacks = pending.splice(0);
-    for (const callback of callbacks) {
-      callback(0);
-    }
-  };
-  return { loop, drawn, tick, credits: () => credits, pending };
-}
 
-describe("render loop", () => {
-  test("draws engine frames no more often than the minimum interval", () => {
-    const pending: ((timestamp: number) => void)[] = [];
-    const drawn: number[] = [];
-    const loop = new RenderLoop(
-      (callback) => pending.push(callback),
-      { draw: (drawnFrame) => drawn.push(drawnFrame.pointCount) },
-      () => undefined,
-      15,
-    );
-    const tickAt = (timestamp: number) => {
-      for (const callback of pending.splice(0)) {
-        callback(timestamp);
+  // A callback the page misses is a refresh it cannot draw on; the frame waiting is drawn on the
+  // next one, and the next frame is again n ticks after it.
+  test.each(commonTickRates.map((rate) => ({ rate })))(
+    "holds a frame at most one tick longer for a missed callback at $rate Hz",
+    ({ rate }) => {
+      const n = ticksPerFrame(rate);
+      const { draws } = drive({
+        segments: [{ rate, seconds: 10 }],
+        wander: wanders.tickShare,
+        skipped: 0.01,
+      });
+      for (const ticks of heldTicks(draws, settled)) {
+        expect([n, n + 1]).toContain(ticks);
       }
-    };
-    loop.submit(frame(1));
-    tickAt(100);
-    loop.submit(frame(2));
-    tickAt(108); // 120 Hz: too soon.
-    expect(drawn).toEqual([1]);
-    expect(pending).toHaveLength(1);
-    tickAt(116);
-    expect(drawn).toEqual([1, 2]);
+    },
+  );
+
+  // A callback missed inside a hold (after a long draw, say) is a gap of two ticks, counted as
+  // two: the next frame is still drawn n ticks after the last, not held a tick longer.
+  test.each(
+    commonTickRates
+      .filter((rate) => ticksPerFrame(rate) > 1)
+      .map((rate) => ({ rate })),
+  )(
+    "draws n ticks after the last frame when a callback in between is missed at $rate Hz",
+    ({ rate }) => {
+      const n = ticksPerFrame(rate);
+      const period = 1000 / rate;
+      const pending: ((timestamp: number) => void)[] = [];
+      const drawnAt: number[] = [];
+      let index = 0;
+      const loop = pageLoop(
+        (callback) => pending.push(callback),
+        {
+          draw: () => {
+            drawnAt.push(index);
+          },
+        },
+        () => {
+          loop.submit(frame(drawnAt.length));
+        },
+      );
+      const refresh = (missed = false) => {
+        index++;
+        if (!missed) {
+          for (const callback of pending.splice(0)) {
+            callback(index * period);
+          }
+        }
+      };
+      loop.submit(frame(0));
+      while (index < 2 * rate || drawnAt.at(-1) !== index) {
+        refresh(); // Measured, and just drawn.
+      }
+      const last = index;
+      refresh(true); // The callback right after the draw is missed.
+      while (drawnAt.at(-1) === last) {
+        refresh();
+      }
+      expect(drawnAt.at(-1)).toBe(last + n);
+    },
+  );
+
+  // Many missed callbacks double some gaps; the rate is still measured from the others.
+  test("keeps n at 100 Hz when one callback in ten is missed", () => {
+    const { draws } = drive({
+      segments: [{ rate: 100, seconds: 10 }],
+      wander: wanders.tickShare,
+      skipped: 0.1,
+    });
+    expect(heldTicks(draws, settled)).not.toContain(1);
   });
 
-  test.each([60, 75, 100, 120, 144, 165])(
-    "draws 60 frames a second at %i Hz",
-    (refreshRate) => {
-      const pending: ((timestamp: number) => void)[] = [];
-      let drawn = 0;
-      const loop = new RenderLoop(
-        (callback) => pending.push(callback),
-        {
-          draw: () => {
-            drawn++;
-          },
-        },
-        () => {
-          loop.submit(frame(drawn)); // The engine always has the next frame ready.
-        },
-        1000 / 60,
-      );
-      loop.submit(frame(0));
-      for (let tick = 0; tick <= refreshRate * 10; tick++) {
-        for (const callback of pending.splice(0)) {
-          callback((tick * 1000) / refreshRate);
-        }
-      }
-      expect(drawn / 10).toBeCloseTo(60, 0); // Over 10 seconds.
-    },
-  );
+  test("draws every tick just below the line when callbacks are missed", () => {
+    const rate = 0.99 * ticksPerFrameLine();
+    const { draws } = drive({
+      segments: [{ rate, seconds: 10 }],
+      wander: wanders.tickShare,
+      skipped: 0.05,
+    });
+    const held = heldTicks(draws, settled);
+    expect(
+      held.filter((ticks) => ticks === 1).length / held.length,
+    ).toBeGreaterThan(0.85);
+  });
 
-  // A display's ticks reach the page a little early or late: on a 60 Hz MacBook display their
-  // timestamps wander by up to 2.5 ms either way, 15% of a tick. A tick that comes early is still
-  // the tick to draw on; skipping it leaves a frame on screen for two ticks, a visible stutter.
-  test.each([60, 75, 100, 120, 144, 165])(
-    "skips no tick it should draw on at %i Hz when ticks wander by 15% of a tick",
-    (refreshRate) => {
-      const interval = 1000 / 60;
-      const period = 1000 / refreshRate;
-      const wander = 0.15 * period;
-      const pending: ((timestamp: number) => void)[] = [];
-      const drawnAt: number[] = [];
-      let now = 0;
-      const loop = new RenderLoop(
-        (callback) => pending.push(callback),
-        {
-          draw: () => {
-            drawnAt.push(now);
-          },
-        },
-        () => {
-          loop.submit(frame(drawnAt.length)); // The engine always has the next frame ready.
-        },
-        interval,
-      );
-      loop.submit(frame(0));
-      let seed = 1;
-      for (let tick = 0; tick <= refreshRate * 10; tick++) {
-        seed = (seed * 16807) % 2147483647; // Park and Miller's: exact in a double.
-        now = tick * period + wander * (2 * (seed / 2147483647) - 1);
-        for (const callback of pending.splice(0)) {
-          callback(now);
-        }
-      }
-      // The longest the 60 frames/s schedule needs between draws: the ticks one interval
-      // spans, each of which may have wandered.
-      const longest = Math.ceil(interval / period) * period + 2 * wander;
-      const gaps = drawnAt
-        .slice(1)
-        .map((at, index) => at - (drawnAt[index] ?? 0));
-      expect(Math.max(...gaps)).toBeLessThanOrEqual(longest);
-      expect(drawnAt.length / 10).toBeCloseTo(60, 0); // Over 10 seconds.
-    },
-  );
-
-  // The engine answers a credit with the next frame only once new audio arrives: with 512-sample
-  // blocks at 48 kHz, up to 10.7 ms later, past the next tick of a fast display. The loop still
-  // measures the display's ticks, not the gaps between frames, and draws 60 evenly spaced frames
-  // a second.
-  test.each([120, 144, 165, 240])(
-    "draws 60 even frames a second at %i Hz when each frame comes a block after the credit",
-    (refreshRate) => {
-      const interval = 1000 / 60;
-      const period = 1000 / refreshRate;
-      const block = (512 / 48000) * 1000;
-      const pending: ((timestamp: number) => void)[] = [];
-      const drawnAt: number[] = [];
-      let now = 0;
-      let due: number | undefined;
-      const loop = new RenderLoop(
-        (callback) => pending.push(callback),
-        {
-          draw: () => {
-            drawnAt.push(now);
-          },
-        },
-        () => {
-          due = (Math.floor(now / block) + 1) * block;
-        },
-        interval,
-      );
-      loop.submit(frame(0));
-      for (let tick = 0; tick <= refreshRate * 10; tick++) {
-        now = tick * period;
-        if (due !== undefined && due <= now) {
-          due = undefined;
-          loop.submit(frame(drawnAt.length));
-        }
-        for (const callback of pending.splice(0)) {
-          callback(now);
-        }
-      }
-      const settled = drawnAt.filter((at) => at >= 1000);
-      expect(settled.length / 9).toBeCloseTo(60, 0);
-      const gaps = settled
-        .slice(1)
-        .map((at, index) => at - (settled[index] ?? 0));
-      expect(Math.max(...gaps)).toBeLessThanOrEqual(
-        Math.ceil(interval / period) * period + 1e-9,
-      );
-    },
-  );
-
-  // Ticks at `rates` (Hz) in turn, `seconds` of each, wandering by 15% of a tick, with the
-  // engine's next frame always ready: when each frame was drawn, and how many ticks there were.
-  function drawsAt(rates: readonly number[], seconds: number) {
+  // Gaps of 50 ms or more are stalls, not ticks: a run of them leaves the measured rate alone,
+  // while a run of slightly shorter ones is a slow display, measured as one.
+  test.each([
+    { gap: 49, n: 1 },
+    { gap: 51, n: 2 },
+  ])("measures a run of $gap ms gaps at 100 Hz as n = $n", ({ gap, n }) => {
     const pending: ((timestamp: number) => void)[] = [];
     const drawnAt: number[] = [];
     let now = 0;
-    const loop = new RenderLoop(
+    const loop = pageLoop(
       (callback) => pending.push(callback),
       {
         draw: () => {
@@ -220,157 +161,343 @@ describe("render loop", () => {
       () => {
         loop.submit(frame(drawnAt.length));
       },
-      1000 / 60,
     );
-    loop.submit(frame(0));
-    let seed = 7;
-    let start = 0;
-    let ticks = 0;
-    for (const rate of rates) {
-      const period = 1000 / rate;
-      for (let tick = 0; tick < rate * seconds; tick++) {
-        seed = (seed * 16807) % 2147483647; // Park and Miller's: exact in a double.
-        now =
-          start + tick * period + 0.15 * period * (2 * (seed / 2147483647) - 1);
-        ticks++;
-        for (const callback of pending.splice(0)) {
-          callback(now);
-        }
-      }
-      start += seconds * 1000;
-    }
-    return { drawnAt, ticks };
-  }
-
-  // A display at or near 60 Hz is not paced: its ticks drift from an exact 60 a second, and a
-  // fixed schedule would sooner or later find one early and skip it, a stutter. (The slowest
-  // displays paced, at 75 Hz, are covered above.)
-  test.each([59.94, 60, 60.5, 61])(
-    "draws on every tick of a %f Hz display",
-    (refreshRate) => {
-      const { drawnAt, ticks } = drawsAt([refreshRate], 30);
-      expect(drawnAt).toHaveLength(ticks);
-    },
-  );
-
-  // Moved to a display of another rate, the loop measures the new one's ticks and paces for
-  // it within a second: 60 frames a second at 120 Hz, and every tick again back at 60 Hz.
-  // From a display it does not pace, including one a little faster than 60 Hz, whose ticks
-  // would otherwise leave a 60 frames/s schedule behind.
-  test.each([60, 64])(
-    "follows the display when the window moves from %i Hz to 120 Hz and back",
-    (first) => {
-      const { drawnAt } = drawsAt([first, 120, first], 5);
-      const inSecond = (second: number) =>
-        drawnAt.filter((at) => at >= second * 1000 && at < (second + 1) * 1000)
-          .length;
-      expect(inSecond(4)).toBeGreaterThanOrEqual(first - 1); // Every tick.
-      expect(inSecond(9)).toBeCloseTo(60, -1); // 120 Hz, settled.
-      expect(inSecond(9)).toBeLessThanOrEqual(61);
-      expect(inSecond(14)).toBeGreaterThanOrEqual(first - 1); // Every tick again.
-    },
-  );
-
-  test("does not catch up with a quick pair of draws after a stall", () => {
-    const pending: ((timestamp: number) => void)[] = [];
-    const drawn: number[] = [];
-    const loop = new RenderLoop(
-      (callback) => pending.push(callback),
-      { draw: (drawnFrame) => drawn.push(drawnFrame.pointCount) },
-      () => undefined,
-      1000 / 60,
-    );
-    const tickAt = (timestamp: number) => {
+    const tickAt = (at: number) => {
+      now = at;
       for (const callback of pending.splice(0)) {
-        callback(timestamp);
+        callback(at);
       }
     };
-    loop.submit(frame(1));
-    tickAt(0);
-    loop.submit(frame(2));
-    tickAt(500); // A stall.
-    loop.submit(frame(3));
-    tickAt(508); // 120 Hz: the next tick.
-    expect(drawn).toEqual([1, 2]);
-    tickAt(517);
-    expect(drawn).toEqual([1, 2, 3]);
+    loop.submit(frame(0));
+    for (let tick = 0; tick < 100; tick++) {
+      tickAt(tick * 10);
+    }
+    for (let tick = 1; tick <= 10; tick++) {
+      tickAt(990 + tick * gap);
+    }
+    const from = now;
+    for (let tick = 1; tick <= 4; tick++) {
+      tickAt(from + tick * 10);
+    }
+    // Right after the run, before the 10 ms ticks move the measure back.
+    const after = drawnAt.filter((at) => at > from);
+    expect(after.length).toBe(n === 1 ? 4 : 2);
+  });
+});
+
+// The 95 Hz line, from the loop's own rule.
+function ticksPerFrameLine(): number {
+  let rate = 50;
+  while (ticksPerFrame(rate) === 1) {
+    rate += 0.01;
+  }
+  return rate;
+}
+
+describe("render loop on a display change", () => {
+  // A display drifting either side of a line, by less than the hysteresis, keeps its n: each
+  // frame stays for the same ticks rather than switching between n and n + 1.
+  test.each([1, 2, 3].map((below) => ({ below })))(
+    "keeps n while the tick rate drifts across the line above $below frames' worth",
+    ({ below }) => {
+      const line = fullRateUpToHz * below;
+      const low = line * (1 - lineHysteresis / 2);
+      const high = line * (1 + lineHysteresis / 2);
+      const n = ticksPerFrame(low);
+      const { draws } = drive({
+        segments: [low, high, low, high].map((rate) => ({ rate, seconds: 2 })),
+        wander: wanders.tickShare,
+      });
+      for (const ticks of heldTicks(draws, 1000)) {
+        expect(ticks).toBe(n);
+      }
+    },
+  );
+
+  // Gaps after `move` ms: the first spans the move and is left out.
+  const heldAfter = (
+    segments: { rate: number; seconds: number }[],
+    move: number,
+  ) => {
+    const { draws } = drive({ segments, wander: wanders.tickShare });
+    const after = draws.filter((draw) => draw.refresh >= move);
+    return heldTicks(after).slice(1);
+  };
+
+  // Moved to a display of another rate, the loop measures the new one's ticks and holds frames
+  // for its n within half a second.
+  test.each([
+    [60, 120],
+    [120, 60],
+    [100, 60],
+    [60, 100],
+    [120, 30],
+    [90, 40],
+  ])("follows the display from %i Hz to %i Hz", (from, to) => {
+    const { draws } = drive({
+      segments: [
+        { rate: from, seconds: 5 },
+        { rate: to, seconds: 5 },
+      ],
+      wander: wanders.tickShare,
+    });
+    const settledAfterMove = draws.filter((draw) => draw.refresh >= 5500);
+    for (const ticks of heldTicks(settledAfterMove)) {
+      expect(ticks).toBe(ticksPerFrame(to));
+    }
   });
 
-  test("draws on the next tick, then returns the credit", () => {
-    const { loop, drawn, tick, credits } = setup();
+  // Rates under a quarter apart on either side of the line: the measure follows more slowly, and
+  // n changes once, with no return.
+  test.each([
+    [90, 100],
+    [100, 90],
+    [75, 100],
+  ])("changes n once, within 1.5 s, from %i Hz to %i Hz", (from, to) => {
+    const held = heldAfter(
+      [
+        { rate: from, seconds: 5 },
+        { rate: to, seconds: 5 },
+      ],
+      5000,
+    );
+    const before = ticksPerFrame(from);
+    const after = ticksPerFrame(to);
+    const change = held.findIndex((ticks) => ticks !== before);
+    expect(change).toBeGreaterThanOrEqual(0);
+    expect(held.slice(change).every((ticks) => ticks === after)).toBe(true);
+    // Within 1.5 s: the draws up to the change span no more than that.
+    const span = held
+      .slice(0, change)
+      .reduce((sum, ticks) => sum + (ticks * 1000) / to, 0);
+    expect(span).toBeLessThanOrEqual(1500);
+  });
+});
+
+describe("render loop with late frames", () => {
+  // One frame arrives half an interval after its tick; the engine is otherwise always ready. It is
+  // drawn on the first tick after it arrives, and the next frame n ticks after that: one longer
+  // hold, not a long one and a short one.
+  test.each([100, 120, 144, 165, 240])(
+    "keeps n ticks after a late frame at %i Hz",
+    (rate) => {
+      const n = ticksPerFrame(rate);
+      const period = 1000 / rate;
+      const { draws } = drive({
+        segments: [{ rate, seconds: 5 }],
+        wander: wanders.tickShare,
+        arrival: (creditAt, credits) =>
+          credits === 200 ? creditAt + (n + 0.5) * period : undefined,
+      });
+      // It arrives n + 0.5 ticks after its credit, so the first tick after it is n + 1.
+      expect(heldTicks(draws, 1000).filter((ticks) => ticks !== n)).toEqual([
+        n + 1,
+      ]);
+    },
+  );
+
+  // Each frame arrives at the first block boundary after its credit, as the engine answers once
+  // new audio arrives (editor/src/FrameFlow.cpp).
+  const blockRows = [44100, 48000, 96000, 192000, 384000].flatMap(
+    (sampleRate) =>
+      [64, 256, 512, 1024, 4096].flatMap((samples) =>
+        [60, 100, 144].map((rate) => ({ sampleRate, samples, rate })),
+      ),
+  );
+  test.each(blockRows)(
+    "never draws two frames less than n ticks apart at $rate Hz with $samples-sample blocks at $sampleRate Hz",
+    ({ sampleRate, samples, rate }) => {
+      const n = ticksPerFrame(rate);
+      const period = 1000 / rate;
+      const block = (samples / sampleRate) * 1000;
+      const { draws } = drive({
+        segments: [{ rate, seconds: 10 }],
+        arrival: (creditAt) => (Math.floor(creditAt / block) + 1) * block,
+      });
+      const held = heldTicks(draws, 1000);
+      expect(Math.min(...held)).toBeGreaterThanOrEqual(n);
+      const perSecond = held.length / 9;
+      expect(perSecond).toBeLessThanOrEqual(
+        Math.min(rate / n, 1000 / block) + 1,
+      );
+      expect(perSecond).toBeGreaterThanOrEqual(
+        1000 / (Math.max(n * period, block) + period) - 1,
+      );
+    },
+  );
+});
+
+// At n = 2 on a 100 Hz display, after a second of always-ready frames has measured it: then the
+// engine sends nothing unless a test submits.
+function measuredAt100Hz(throwOn?: number) {
+  const pending: ((timestamp: number) => void)[] = [];
+  const drawn: number[] = [];
+  let credits = 0;
+  let ready = true;
+  let now = 0;
+  const loop = pageLoop(
+    (callback) => pending.push(callback),
+    {
+      draw: (drawnFrame) => {
+        if (drawnFrame.pointCount === throwOn) {
+          throw new Error("draw failed");
+        }
+        drawn.push(drawnFrame.pointCount);
+      },
+    },
+    () => {
+      credits++;
+      if (ready) {
+        loop.submit(frame(1000 + credits));
+      }
+    },
+  );
+  const tick = (step = 10) => {
+    now += step;
+    for (const callback of pending.splice(0)) {
+      callback(now);
+    }
+  };
+  loop.submit(frame(1000));
+  for (let index = 0; index < 100; index++) {
+    tick();
+  }
+  ready = false;
+  // Out of frames: tick until the loop asks for no more ticks.
+  for (let index = 0; index < 10 && pending.length > 0; index++) {
+    tick();
+  }
+  drawn.length = 0;
+  return {
+    loop,
+    drawn,
+    pending,
+    tick,
+    credits: () => credits,
+  };
+}
+
+describe("render loop at two ticks a frame", () => {
+  test("asks for no ticks once frames stop", () => {
+    const { loop, pending, tick } = measuredAt100Hz();
+    expect(pending).toHaveLength(0);
+    loop.submit(frame(1));
+    tick();
+    // Drawn; it asks for the ticks up to the next frame's turn, then stops.
+    for (let index = 0; index < 2; index++) {
+      tick();
+    }
+    expect(pending).toHaveLength(0);
+  });
+
+  test("asks for no ticks once frames stop, after a draw that throws", () => {
+    const { loop, pending, tick, credits } = measuredAt100Hz(1);
+    loop.submit(frame(1));
+    expect(() => {
+      tick();
+    }).toThrow("draw failed");
+    const after = credits();
+    for (let index = 0; index < 2; index++) {
+      tick();
+    }
+    expect(pending).toHaveLength(0);
+    expect(credits()).toBe(after);
+  });
+
+  test("draws on the next tick once ticks have stopped, then returns the credit", () => {
+    const { loop, drawn, tick, credits } = measuredAt100Hz();
+    const before = credits();
     loop.submit(frame(1));
     expect(drawn).toEqual([]);
-    expect(credits()).toBe(0);
     tick();
     expect(drawn).toEqual([1]);
-    expect(credits()).toBe(1);
+    expect(credits()).toBe(before + 1);
   });
 
   test("returns the credit and keeps drawing after a draw that throws", () => {
-    const pending: ((timestamp: number) => void)[] = [];
-    const drawn: number[] = [];
-    let credits = 0;
-    const loop = new RenderLoop(
-      (callback) => pending.push(callback),
-      {
-        draw: (drawnFrame) => {
-          if (drawnFrame.pointCount === 1) {
-            throw new Error("draw failed");
-          }
-          drawn.push(drawnFrame.pointCount);
-        },
-      },
-      () => {
-        credits++;
-      },
-    );
-    const tick = () => {
-      for (const callback of pending.splice(0)) {
-        callback(0);
-      }
-    };
+    const { loop, drawn, tick, credits } = measuredAt100Hz(1);
+    const before = credits();
     loop.submit(frame(1));
-    expect(tick).toThrow("draw failed");
-    expect(credits).toBe(1);
+    expect(() => {
+      tick();
+    }).toThrow("draw failed");
+    expect(credits()).toBe(before + 1);
     loop.submit(frame(2));
     tick();
+    tick();
     expect(drawn).toEqual([2]);
-    expect(credits).toBe(2);
+    expect(credits()).toBe(before + 2);
   });
 
-  test("draws only the newest of several frames per tick", () => {
-    const { loop, drawn, tick, credits, pending } = setup();
+  test("does not catch up with a quick pair of draws after a stall", () => {
+    const { loop, drawn, tick } = measuredAt100Hz();
+    loop.submit(frame(1));
+    tick();
+    loop.submit(frame(2));
+    tick(500); // A stall.
+    loop.submit(frame(3));
+    tick(); // The next tick: too soon for the next frame.
+    expect(drawn).toEqual([1, 2]);
+    tick();
+    expect(drawn).toEqual([1, 2, 3]);
+  });
+
+  test("draws only the newest of several frames", () => {
+    const { loop, drawn, tick, credits, pending } = measuredAt100Hz();
+    const before = credits();
     loop.submit(frame(1));
     loop.submit(frame(2));
     expect(pending).toHaveLength(1);
     tick();
     expect(drawn).toEqual([2]);
-    expect(credits()).toBe(1);
+    expect(credits()).toBe(before + 1);
   });
 
   test("does nothing and returns no credit while no frame arrives", () => {
-    const { drawn, tick, credits } = setup();
+    const { drawn, tick, credits } = measuredAt100Hz();
+    const before = credits();
     tick();
     expect(drawn).toEqual([]);
-    expect(credits()).toBe(0);
+    expect(credits()).toBe(before);
   });
 
   test("redraws the last frame on request without earning a credit", () => {
-    const { loop, drawn, tick, credits } = setup();
+    const { loop, drawn, tick, credits } = measuredAt100Hz();
     loop.submit(frame(1));
     tick();
+    tick();
+    tick();
+    const before = credits();
     loop.invalidate();
     tick();
     expect(drawn).toEqual([1, 1]);
-    expect(credits()).toBe(1);
+    expect(credits()).toBe(before);
+  });
+
+  // A redraw asked for while a frame waits for its tick is served by that frame's draw: the older
+  // frame is not drawn in between.
+  test("serves a redraw with the frame waiting for its tick", () => {
+    const { loop, drawn, tick } = measuredAt100Hz();
+    loop.submit(frame(1));
+    tick();
+    loop.submit(frame(2));
+    loop.invalidate();
+    tick(); // One tick since the draw: frame 2 waits for the second.
+    expect(drawn).toEqual([1]);
+    tick();
+    expect(drawn).toEqual([1, 2]);
+    tick();
+    tick();
+    expect(drawn).toEqual([1, 2]);
   });
 
   // While the page is hidden, requestAnimationFrame stops: no draws, no credits.
   test("waits for the clock while it is paused", () => {
-    const { loop, drawn, credits } = setup();
+    const { loop, drawn, credits } = measuredAt100Hz();
+    const before = credits();
     loop.submit(frame(1));
     loop.submit(frame(2));
     expect(drawn).toEqual([]);
-    expect(credits()).toBe(0);
+    expect(credits()).toBe(before);
   });
 });
