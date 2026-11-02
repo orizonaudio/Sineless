@@ -115,6 +115,37 @@ describe("summariseFrames", () => {
     },
   );
 
+  // The benchmark's "worst second": a run with a late frame now and then has one late frame in
+  // its worst second, however long it runs; a cluster of them shows as that many.
+  test("gives the most late frames that end within any one second", () => {
+    const aim = aimAt(100); // n = 2, frames 20 ms apart, late past 25 ms.
+    const times = [0];
+    const step = (interval: number) => {
+      times.push((times.at(-1) ?? 0) + interval);
+    };
+    step(30); // Late, first of the run.
+    for (let index = 0; index < 100; index++) {
+      step(aim.interval);
+    }
+    step(30); // Late, two seconds after the first.
+    for (let index = 0; index < 100; index++) {
+      step(aim.interval);
+    }
+    step(30); // Three late together.
+    step(30);
+    step(30);
+    const summary = summariseFrames(
+      times,
+      times.map(() => aim),
+    );
+    expect(summary.worstSecondLate).toBe(3);
+    const sparse = summariseFrames(
+      times.slice(0, 203),
+      times.map(() => aim),
+    );
+    expect(sparse.worstSecondLate).toBe(1);
+  });
+
   test("judges each interval by the aim of the draw before it", () => {
     // 120 Hz (n = 2, limit 20.8 ms), then 60 Hz (n = 1, limit 25 ms): a 22 ms interval is late
     // after a draw aimed at 120 Hz, and on time after one aimed at 60 Hz.
