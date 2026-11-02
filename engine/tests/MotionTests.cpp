@@ -156,7 +156,7 @@ std::vector<HostPattern> patterns()
                 if (arrivals == Arrivals::kJittered && static_cast<double>(block) / rate > 0.012) {
                     continue;
                 }
-                for (const double draws : {30.0, 60.0, 120.0}) {
+                for (const double draws : {30.0, 50.0, 60.0, 90.0, 120.0}) {
                     result.push_back(
                         {.block = block, .rate = rate, .arrivals = arrivals, .drawHertz = draws});
                 }

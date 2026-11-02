@@ -54,8 +54,9 @@ export const freeRunningThresholdSeconds = 1;
 // longest span, so the frozen window is the one last shown.
 export const pacingDelayCapSeconds = 0.125;
 
-// Spans shorter than this (seconds) are not paced: below about one frame at 60 Hz the whole trace
-// is new every frame, and pacing would only show it later.
+// Spans shorter than this (seconds) are not paced: below about one frame (11 to 20 ms, as the page
+// draws 50 to 90 frames a second) the whole trace is new every frame, and pacing would only show
+// it later.
 export const pacedSpanMinimumSeconds = 0.02;
 
 // The narrowest part of the span a view can zoom in to.

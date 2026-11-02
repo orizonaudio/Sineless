@@ -20,7 +20,8 @@
 // (or "custom") in Bencher Metric Format. The page records when new frames were drawn and when
 // the display ticked (ui/src/frame-times.ts): the time between new frames at percentiles and the
 // share that came late is what a user sees as smooth or not, and the CPU each process spent per
-// frame drawn is the cost, which frames/s alone hides once it reaches the page's 60.
+// frame drawn is the cost, which frames/s alone hides once it reaches the page's rate (every n-th
+// display tick, ui/src/render/render-loop.ts).
 //
 // Soak: with --soak-interval, the run is measured in intervals, one line each, and judged on the
 // rate memory grows at (a least-squares slope over the intervals after the first, so a slow leak
@@ -743,7 +744,7 @@ int run(const Options& options)
             const double median = latencies.empty() ? -1.0 : latencies[latencies.size() / 2];
             const double slowest = latencies.empty() ? -1.0 : latencies.back();
             std::printf("view changes: %zu of %d answered; first frame of the new view after "
-                        "%.1f ms median, %.1f ms at most (a frame is 16.7 ms)\n",
+                        "%.1f ms median, %.1f ms at most\n",
                         latencies.size(), options.viewChanges, median, slowest);
             judge("view change latency (ms, slowest)", slowest, options.maxViewLatency, false);
         } else if (options.soakInterval > 0.0) {

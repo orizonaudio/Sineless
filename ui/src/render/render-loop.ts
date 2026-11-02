@@ -1,5 +1,5 @@
 // The draw loop: requestAnimationFrame is the only draw clock. Arriving frames only
-// replace the latest-frame slot; each tick draws the newest frame once and then returns the
+// replace the latest-frame slot; a tick draws the newest frame once and then returns the
 // credit, so the engine sends at most one frame per drawn frame.
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { frameTimes } from "../frame-times.ts";
@@ -8,20 +8,58 @@ import { perf } from "../perf.ts";
 // The draw clock: requestAnimationFrame in the page, a manual clock in tests.
 export type Scheduler = (callback: (timestamp: number) => void) => void;
 
-// Which tick a frame is drawn on. Tick timestamps wander (on a 60 Hz MacBook display by up to 2
-// to 3 ms either way), and a tick skipped for looking early leaves a frame on screen for two
-// ticks, a visible stutter. So the loop measures the display's tick period, as video players
-// do, and draws on the tick nearest each frame's time: up to half a tick early. A display no
-// faster than this many times the frame rate (66 Hz for 60 frames/s) is not paced at all: every
-// tick with a frame waiting draws it.
-const pacedAbove = 1.1;
-// Before the period is measured, a tick up to this share of the interval early is on time: a
-// fifth (3.3 ms at 60 frames/s) takes in most of the wander, and is under half a tick at 120 Hz
-// (4.2 ms), whose in-between ticks are skipped.
-const unmeasuredTolerance = 0.2;
-// The period is the median of this many recent gaps between a draw's tick and the next, leaving
-// out stalls (gaps over two intervals), so that one late tick does not move it.
-const periodSamples = 15;
+// Engine frames are drawn on every n-th tick, n the smallest whole number keeping the tick rate
+// divided by n at or below this, so each frame stays on screen for the same n ticks (#308): a
+// frame held for 2, 1, 2 ticks while the playhead moves by the time between frames judders.
+// Every tick up to 90 Hz, 50 frames a second at 100 Hz, 72 at 144 Hz. 95 Hz lies between the
+// common rates 90 and 100 Hz, and its multiples (190, 285, 380 Hz) between theirs, so a measured
+// rate a little off never puts a common display on the wrong side.
+export const fullRateUpToHz = 95;
+// Once n is set, it changes only when the measured rate is this share past a line, so a rate
+// measured near one does not change n back and forth. The common rates lie further from the
+// lines (5%).
+export const lineHysteresis = 0.02;
+// A gap longer than this many ticks is callbacks the browser skipped (after a long draw, say):
+// it counts as the ticks it spans, so the next frame is not held a tick longer for it. Ordinary
+// wander, about 1.2 ms in Live, stays well short of it at up to 144 Hz.
+const skippedTicksAbove = 1.75;
+// Gaps this long are stalls, not ticks (a 20 Hz tick or slower), and are not measured.
+const stallMilliseconds = 50;
+// The reference period: the median of this many recent gaps. It follows a move to another
+// display within about 8 gaps, and n is not set until it holds this many.
+const referenceSamples = 15;
+// The period: the mean of this many recent gaps within outlierShare of the reference. A mean of
+// many gaps averages out the timestamps' wander (a median of 15 left n wrong on up to 12% of
+// frames at 100 Hz); the share keeps skipped ticks (twice the period) out.
+const periodSamples = 120;
+const outlierShare = 0.45;
+// When the reference moves this far from the period (a move to another display), the period
+// starts again from the new gaps.
+const restartShare = 0.25;
+
+// How many ticks each frame stays for at `rateHz` ticks a second. With `previous`, n changes only
+// once the rate is past a line by the hysteresis.
+export function ticksPerFrame(rateHz: number, previous?: number): number {
+  const plain = Math.max(1, Math.ceil(rateHz / fullRateUpToHz));
+  if (previous === undefined) {
+    return plain;
+  }
+  const up = Math.max(
+    1,
+    Math.ceil(rateHz / (fullRateUpToHz * (1 + lineHysteresis))),
+  );
+  const down = Math.max(
+    1,
+    Math.ceil(rateHz / (fullRateUpToHz * (1 - lineHysteresis))),
+  );
+  if (up > previous) {
+    return up;
+  }
+  if (down < previous) {
+    return down;
+  }
+  return previous;
+}
 
 export interface FrameRenderer {
   draw(frame: Frame): void;
@@ -34,47 +72,48 @@ export class RenderLoop {
   private latest: Frame | undefined;
   private lastDrawn: Frame | undefined;
   private tickPending = false;
+  // Whether the pending tick was asked for by a tick: only then is the gap between them one
+  // the display made, and only then is it measured.
+  private chained = false;
   private redrawRequested = false;
-  // Engine frames are drawn on a schedule of one per `interval` ms, on the display's ticks:
-  // at 144 Hz, 60 frames a second fall on ticks 0, 3, 5, 8, 10... A minimum gap since the
-  // last draw would instead wait for whole ticks each time, and draw 50 frames a second at
-  // 100 Hz, 48 at 144 Hz.
-  private readonly interval: number;
-  private nextDrawTime = -Infinity;
-  // The display's tick period, measured on the tick after each draw (undefined until then).
-  private readonly gaps: number[] = [];
+  // Ticks since the last engine frame was drawn. A frame is drawn once it reaches n: counted,
+  // not timed, so the timestamps' wander cannot hold a frame a tick too long or too short.
+  private ticksSinceDraw = Infinity;
+  private lastTickTime: number | undefined;
+  private n: number | undefined;
+  private readonly recent: number[] = [];
+  private readonly kept: number[] = [];
+  private keptSum = 0;
   private period: number | undefined;
-  private lastDrawTime: number | undefined;
 
   constructor(
     schedule: Scheduler,
     renderer: FrameRenderer,
     returnCredit: () => void,
-    interval = 0,
   ) {
     this.schedule = schedule;
     this.renderer = renderer;
     this.returnCredit = returnCredit;
-    this.interval = interval;
   }
 
   // Called for every frame from the engine.
   submit(frame: Frame): void {
     this.latest = frame;
-    this.requestTick();
+    this.requestTick(false);
   }
 
   // Draws the last frame again on the next tick, e.g. after a display-only setting changed.
   invalidate(): void {
     this.redrawRequested = true;
-    this.requestTick();
+    this.requestTick(false);
   }
 
-  private requestTick(): void {
+  private requestTick(fromTick: boolean): void {
     if (this.tickPending) {
       return;
     }
     this.tickPending = true;
+    this.chained = fromTick;
     this.schedule((timestamp) => {
       this.tick(timestamp);
     });
@@ -82,76 +121,89 @@ export class RenderLoop {
 
   private tick(timestamp: number): void {
     this.tickPending = false;
-    if (this.lastDrawTime !== undefined) {
-      this.measure(timestamp - this.lastDrawTime);
-      this.lastDrawTime = undefined;
+    let ticks = 1;
+    if (this.chained && this.lastTickTime !== undefined) {
+      const gap = timestamp - this.lastTickTime;
+      this.measure(gap);
+      if (gap >= stallMilliseconds) {
+        ticks = Number.POSITIVE_INFINITY; // A stall spans more ticks than any frame waits.
+      } else if (
+        this.period !== undefined &&
+        gap > skippedTicksAbove * this.period
+      ) {
+        ticks = Math.round(gap / this.period);
+      }
     }
-    if (this.latest !== undefined && timestamp < this.drawFrom()) {
-      this.requestTick(); // Before the next frame's tick: wait for a later one.
-      return;
-    }
-    const frame = this.latest;
-    this.latest = undefined;
-    const redraw = this.redrawRequested;
-    this.redrawRequested = false;
-    if (frame !== undefined) {
-      // On schedule; more than a whole interval late (a stall, or the first frame), restarted
-      // from now rather than drawing a quick pair to catch up. Not paced, the schedule follows
-      // the ticks: a display a little faster than the frame rate would otherwise leave it
-      // further ahead at every draw, and stop the frames once the window moves to one paced.
-      this.nextDrawTime =
-        this.paced() && timestamp - this.nextDrawTime < this.interval
-          ? this.nextDrawTime + this.interval
-          : timestamp + this.interval;
+    this.lastTickTime = timestamp;
+    this.ticksSinceDraw += ticks;
+    const n = this.n ?? 1;
+    if (this.latest !== undefined && this.ticksSinceDraw >= n) {
+      const frame = this.latest;
+      this.latest = undefined;
+      this.redrawRequested = false;
+      this.ticksSinceDraw = 0;
+      const aim =
+        this.period === undefined || this.n === undefined
+          ? undefined
+          : { interval: this.n * this.period, tick: this.period };
       const started = performance.now();
       try {
         this.renderer.draw(frame);
       } finally {
-        // A draw that throws still asks for the next frame: nothing else would.
-        this.requestTick();
+        // A draw that throws still counts its ticks and asks for the next frame: nothing else
+        // would.
+        this.requestTick(true);
         this.returnCredit(); // Only engine frames earn a credit; redraws do not.
       }
       const elapsed = performance.now() - started;
       perf.framesDrawn++;
       perf.drawMs += elapsed;
       perf.maxDrawMs = Math.max(perf.maxDrawMs, elapsed);
-      frameTimes.drawn(timestamp);
+      frameTimes.drawn(timestamp, aim);
       this.lastDrawn = frame;
-      // The next tick, whether or not a frame waits for it, measures the display's period.
-      this.lastDrawTime = timestamp;
-    } else if (redraw && this.lastDrawn !== undefined) {
-      this.renderer.draw(this.lastDrawn);
+      return;
     }
-  }
-
-  // The earliest time a tick draws the frame waiting: the frame's time, less half a tick.
-  private drawFrom(): number {
-    if (this.period === undefined) {
-      return this.nextDrawTime - unmeasuredTolerance * this.interval;
+    if (this.latest === undefined && this.redrawRequested) {
+      // A redraw asked for while a frame waits for its tick waits for that frame's draw.
+      this.redrawRequested = false;
+      if (this.lastDrawn !== undefined) {
+        this.renderer.draw(this.lastDrawn);
+      }
     }
-    if (!this.paced()) {
-      return -Infinity; // Every tick draws.
+    // Count every tick up to the next frame's turn, and wait for a frame that has not come.
+    if (this.latest !== undefined || this.ticksSinceDraw < n) {
+      this.requestTick(true);
     }
-    return this.nextDrawTime - this.period / 2;
-  }
-
-  // Whether frames are paced to the interval: not on a display measured no faster than
-  // pacedAbove times the frame rate.
-  private paced(): boolean {
-    return (
-      this.period === undefined || this.period * pacedAbove < this.interval
-    );
   }
 
   private measure(gap: number): void {
-    if (gap <= 0 || gap > 2 * this.interval) {
-      return; // A stall, or no schedule to measure against.
+    if (!(gap > 0) || gap >= stallMilliseconds) {
+      return;
     }
-    this.gaps.push(gap);
-    if (this.gaps.length > periodSamples) {
-      this.gaps.shift();
+    this.recent.push(gap);
+    if (this.recent.length > referenceSamples) {
+      this.recent.shift();
     }
-    const sorted = [...this.gaps].sort((a, b) => a - b);
-    this.period = sorted[Math.floor(sorted.length / 2)];
+    const sorted = [...this.recent].sort((a, b) => a - b);
+    const reference = sorted[Math.floor(sorted.length / 2)] ?? gap;
+    if (
+      this.period !== undefined &&
+      Math.abs(reference - this.period) > restartShare * this.period
+    ) {
+      this.kept.length = 0;
+      this.keptSum = 0;
+    }
+    if (Math.abs(gap - reference) <= outlierShare * reference) {
+      this.kept.push(gap);
+      this.keptSum += gap;
+      if (this.kept.length > periodSamples) {
+        this.keptSum -= this.kept.shift() ?? 0;
+      }
+    }
+    this.period =
+      this.kept.length > 0 ? this.keptSum / this.kept.length : reference;
+    if (this.recent.length >= referenceSamples) {
+      this.n = ticksPerFrame(1000 / this.period, this.n);
+    }
   }
 }
