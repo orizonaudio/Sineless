@@ -19,10 +19,6 @@ export const fullRateUpToHz = 95;
 // measured near one does not change n back and forth. The common rates lie further from the
 // lines (5%).
 export const lineHysteresis = 0.02;
-// A gap longer than this many ticks is callbacks the browser skipped (after a long draw, say):
-// it counts as the ticks it spans, so the next frame is not held a tick longer for it. Ordinary
-// wander, about 1.2 ms in Live, stays well short of it at up to 144 Hz.
-const skippedTicksAbove = 1.75;
 // Gaps this long are stalls, not ticks (a 20 Hz tick or slower), and are not measured.
 const stallMilliseconds = 50;
 // The reference period: the median of this many recent gaps. It follows a move to another
@@ -127,11 +123,6 @@ export class RenderLoop {
       this.measure(gap);
       if (gap >= stallMilliseconds) {
         ticks = Number.POSITIVE_INFINITY; // A stall spans more ticks than any frame waits.
-      } else if (
-        this.period !== undefined &&
-        gap > skippedTicksAbove * this.period
-      ) {
-        ticks = Math.round(gap / this.period);
       }
     }
     this.lastTickTime = timestamp;
