@@ -26,11 +26,13 @@ const stallMilliseconds = 50;
 const referenceSamples = 15;
 // The period: the mean of this many recent gaps within outlierShare of the reference. A mean of
 // many gaps averages out the timestamps' wander (a median of 15 left n wrong on up to 12% of
-// frames at 100 Hz); the share keeps skipped ticks (twice the period) out.
-const periodSamples = 120;
+// frames at 100 Hz, and a mean of 120 now and then at 180 Hz); the share keeps skipped ticks
+// (twice the period) out. It follows a move of under a quarter across a line within about 2.4 s.
+const periodSamples = 240;
 const outlierShare = 0.45;
-// When the reference moves this far from the period (a move to another display), the period
-// starts again from the new gaps.
+// When the reference and the mean of the same gaps both move this far from the period (a move to
+// another display), the period starts again from the new gaps. The median alone wanders this far
+// at high tick rates and the mean alone with skipped ticks; a move shifts both.
 const restartShare = 0.25;
 
 // How many ticks each frame stays for at `rateHz` ticks a second. With `previous`, n changes only
@@ -177,9 +179,12 @@ export class RenderLoop {
     }
     const sorted = [...this.recent].sort((a, b) => a - b);
     const reference = sorted[Math.floor(sorted.length / 2)] ?? gap;
+    const mean =
+      this.recent.reduce((sum, value) => sum + value, 0) / this.recent.length;
     if (
       this.period !== undefined &&
-      Math.abs(reference - this.period) > restartShare * this.period
+      Math.abs(reference - this.period) > restartShare * this.period &&
+      Math.abs(mean - this.period) > restartShare * this.period
     ) {
       this.kept.length = 0;
       this.keptSum = 0;

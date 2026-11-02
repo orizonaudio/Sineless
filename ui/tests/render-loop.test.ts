@@ -12,7 +12,6 @@ import {
   heldTicks,
   pageLoop,
   wanders,
-  type Wander,
 } from "./display-ticks.ts";
 
 // A frame stays on screen for the ticks until the next one is drawn. Uneven holds (2, 1, 2 on a
@@ -21,35 +20,28 @@ import {
 describe("render loop cadence", () => {
   const settled = 1000; // ms: by then the loop has measured the display.
 
-  // A tick rate at or below 120 Hz holds every frame for exactly n ticks under any wander a page
-  // sees. Above it, large wander mismeasures the rate: those
-  // rows bound the share of uneven holds measured for this loop.
-  const unevenAllowed = (rate: number, wander: Wander): number => {
-    if (rate <= 120 || wander === wanders.tickShare) {
-      return 0;
-    }
-    if (wander === wanders.recorded) {
-      return rate <= 170 ? 0.01 : rate <= 180 ? 0.03 : 0.4;
-    }
-    return rate <= 144 ? 0.02 : rate <= 170 ? 0.05 : rate <= 180 ? 0.1 : 0.6;
-  };
-
+  // Every frame is held exactly n ticks, at every rate under every wander, over several runs. At
+  // 360 Hz a tick is 2.8 ms, and wanders of 1.2 ms or more put timestamps before the one before
+  // (the harness clamps them forward, which no tick clock does), so it runs under the wander that
+  // scales with the tick.
+  const seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const rows = commonTickRates.flatMap((rate) =>
-    Object.values(wanders).map((wander) => ({
-      rate,
-      wander,
-      name: wander.name,
-    })),
+    Object.values(wanders)
+      .filter((wander) => rate < 360 || wander === wanders.tickShare)
+      .map((wander) => ({ rate, wander, name: wander.name })),
   );
   test.each(rows)(
-    "holds each frame for the same number of ticks at $rate Hz, ticks wandering by $name",
+    "holds every frame for exactly n ticks at $rate Hz, ticks wandering by $name",
     ({ rate, wander }) => {
       const n = ticksPerFrame(rate);
-      const { draws } = drive({ segments: [{ rate, seconds: 10 }], wander });
-      const held = heldTicks(draws, settled);
-      const uneven = held.filter((ticks) => ticks !== n).length / held.length;
-      expect(uneven).toBeLessThanOrEqual(unevenAllowed(rate, wander));
-      if (unevenAllowed(rate, wander) === 0) {
+      for (const seed of seeds) {
+        const { draws } = drive({
+          segments: [{ rate, seconds: 10 }],
+          wander,
+          seed,
+        });
+        const held = heldTicks(draws, settled);
+        expect(held.filter((ticks) => ticks !== n)).toEqual([]);
         expect(held.length / 9).toBeCloseTo(rate / n, -1);
       }
     },
@@ -253,13 +245,14 @@ describe("render loop on a display change", () => {
     }
   });
 
-  // Rates under a quarter apart on either side of the line: the measure follows more slowly, and
-  // n changes once, with no return.
+  // Rates under about a quarter apart on either side of the line: the period's mean of many gaps
+  // follows more slowly, and n changes once, with no return.
   test.each([
     [90, 100],
     [100, 90],
     [75, 100],
-  ])("changes n once, within 1.5 s, from %i Hz to %i Hz", (from, to) => {
+    [100, 79],
+  ])("changes n once, within 2.5 s, from %i Hz to %i Hz", (from, to) => {
     const held = heldAfter(
       [
         { rate: from, seconds: 5 },
@@ -272,11 +265,11 @@ describe("render loop on a display change", () => {
     const change = held.findIndex((ticks) => ticks !== before);
     expect(change).toBeGreaterThanOrEqual(0);
     expect(held.slice(change).every((ticks) => ticks === after)).toBe(true);
-    // Within 1.5 s: the draws up to the change span no more than that.
+    // Within 2.5 s: the draws up to the change span no more than that.
     const span = held
       .slice(0, change)
       .reduce((sum, ticks) => sum + (ticks * 1000) / to, 0);
-    expect(span).toBeLessThanOrEqual(1500);
+    expect(span).toBeLessThanOrEqual(2500);
   });
 });
 
