@@ -118,7 +118,7 @@ describe("summariseFrames", () => {
   // The benchmark's "worst second": a run with a late frame now and then has one late frame in
   // its worst second, however long it runs; a cluster of them shows as that many.
   test("gives the most late frames that end within any one second", () => {
-    const aim = aimAt(100); // n = 2, frames 20 ms apart, late past 25 ms.
+    const aim: FrameAim = { interval: 20, tick: 10 }; // Late past 25 ms.
     const times = [0];
     const step = (interval: number) => {
       times.push((times.at(-1) ?? 0) + interval);
