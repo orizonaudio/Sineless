@@ -22,8 +22,7 @@ describe("render loop cadence", () => {
   const settled = 1000; // ms: by then the loop has measured the display.
 
   // A tick rate at or below 120 Hz holds every frame for exactly n ticks under any wander a page
-  // sees. Above it, a gap that wanders past 1.75 ticks reads as skipped callbacks, which the loop
-  // recovers at the cost of these rare misreadings, and large wander mismeasures the rate: those
+  // sees. Above it, large wander mismeasures the rate: those
   // rows bound the share of uneven holds measured for this loop.
   const unevenAllowed = (rate: number, wander: Wander): number => {
     if (rate <= 120 || wander === wanders.tickShare) {
@@ -73,14 +72,16 @@ describe("render loop cadence", () => {
     },
   );
 
-  // A callback missed inside a hold (after a long draw, say) is a gap of two ticks, counted as
-  // two: the next frame is still drawn n ticks after the last, not held a tick longer.
+  // A callback missed inside a hold (after a long draw, say) counts as one tick, like any gap: a
+  // single gap cannot tell a missed callback from wander at high tick rates, and counting it as
+  // two drew frames a tick early there. The frame waiting is held one tick longer, once, and the
+  // next is again n ticks after it.
   test.each(
     commonTickRates
       .filter((rate) => ticksPerFrame(rate) > 1)
       .map((rate) => ({ rate })),
   )(
-    "draws n ticks after the last frame when a callback in between is missed at $rate Hz",
+    "holds a frame one tick longer, once, when a callback in between is missed at $rate Hz",
     ({ rate }) => {
       const n = ticksPerFrame(rate);
       const period = 1000 / rate;
@@ -115,7 +116,12 @@ describe("render loop cadence", () => {
       while (drawnAt.at(-1) === last) {
         refresh();
       }
-      expect(drawnAt.at(-1)).toBe(last + n);
+      expect(drawnAt.at(-1)).toBe(last + n + 1);
+      const late = index;
+      while (drawnAt.at(-1) === late) {
+        refresh();
+      }
+      expect(drawnAt.at(-1)).toBe(late + n);
     },
   );
 
