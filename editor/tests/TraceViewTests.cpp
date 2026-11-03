@@ -27,6 +27,7 @@ TEST(TraceViewMessage, ReadsEveryFieldOfThePagesMessage)
     EXPECT_EQ(view->verticalScaleDb, message.at("verticalScaleDb").get<double>());
     EXPECT_EQ(view->dim, message.at("dim").get<bool>());
     EXPECT_EQ(view->lineWidth, message.at("lineWidth").get<double>());
+    EXPECT_EQ(view->emptyFrameLanes, message.at("emptyFrameLanes").get<std::size_t>());
     EXPECT_EQ(view->viewColours[2][0], message.at("viewColours")[2][0].get<float>());
     ASSERT_EQ(view->laneSets.size(), 1U);
     EXPECT_EQ(view->laneSets[0].laneSet, 7U);
