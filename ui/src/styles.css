@@ -25,7 +25,10 @@ body {
 /* The toolbar, the screen inset in the case, and the status bar. */
 .app {
   display: grid;
-  grid-template-rows: 48px minmax(0, 1fr) 34px;
+  /* The toolbar's and status bar's heights (protocol/src/limits.ts, set at start-up). */
+  grid-template-rows: var(--toolbar-height) minmax(0, 1fr) var(
+      --status-bar-height
+    );
   height: 100%;
   /* The editor's minimum width (minimumEditorWidth in protocol/src/limits.ts, set at start-up):
      the widest toolbar fits. */
@@ -316,12 +319,14 @@ button[aria-pressed="true"]:focus-visible {
 
 /* ----- Screen ----- */
 
+/* Margin, border and radius from protocol/src/limits.ts (set at start-up): the macOS editor draws its
+   native traces exactly inside this box. */
 .screen {
   position: relative;
-  margin: 0 8px;
+  margin: 0 var(--screen-margin);
   background: var(--sl-screen);
-  border: 1px solid var(--sl-line);
-  border-radius: 10px;
+  border: var(--screen-border) solid var(--sl-line);
+  border-radius: var(--screen-radius);
   overflow: hidden;
   min-height: 0;
   /* Drags here select, zoom and move cursors: a touch the browser took for a pan would cancel them. */
