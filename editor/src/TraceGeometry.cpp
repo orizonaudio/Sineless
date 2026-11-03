@@ -223,8 +223,7 @@ std::vector<VerticalLine> musicalGridLines(double cycleStart, double span, doubl
     if (span <= 0.0 || barQuarterNotes <= 0.0) {
         return {};
     }
-    // The page's tolerance for musical positions that should be whole (musical-grid.ts).
-    constexpr double kEpsilon = 1e-6;
+    constexpr double kEpsilon = protocol::kMusicalTolerance;
     const double visibleStart = cycleStart + view.start * span;
     const double visibleSpan = (view.end - view.start) * span;
     const bool longView = visibleSpan >= 8.0 * barQuarterNotes;

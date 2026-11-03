@@ -4,6 +4,7 @@ import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   defaultEditorWidth,
+  leftOutAlpha,
   minimumEditorWidth,
   readoutIntervalSeconds,
   screenBorder,
@@ -323,7 +324,7 @@ export class OscilloscopeApp {
         return this.lanesOf(this.lastFrame).map((lane) => {
           const [r, g, b, a] = rgba(cssColour(lane.colour));
           const faint = comparing && !lane.compared && lane.id !== sumLaneId;
-          return [r, g, b, faint ? a * 0.2 : a] as const;
+          return [r, g, b, faint ? a * leftOutAlpha : a] as const;
         });
       },
       comparedLanes: () =>

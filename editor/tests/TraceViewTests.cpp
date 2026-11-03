@@ -142,7 +142,9 @@ TEST(TraceViewColours, DrawsTracksLeftOutOfAComparisonFaint)
     const auto colours = view->laneColours(laneFrame(7, 3, true));
     ASSERT_EQ(colours.size(), 3U);
     EXPECT_EQ(colours[0], view->laneSets[0].lanes[0].colour) << "compared";
-    EXPECT_FLOAT_EQ(colours[1][3], view->laneSets[0].lanes[1].colour[3] * 0.2f) << "left out";
+    EXPECT_FLOAT_EQ(colours[1][3], view->laneSets[0].lanes[1].colour[3] *
+                                       static_cast<float>(protocol::kLeftOutAlpha))
+        << "left out";
     EXPECT_EQ(colours[2], view->sumColour) << "the sum";
     EXPECT_EQ(view->comparedLanes(laneFrame(7, 3, true)), (std::vector<bool>{true, false, false}));
 }
