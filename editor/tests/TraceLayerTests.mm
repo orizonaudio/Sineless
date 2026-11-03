@@ -1,4 +1,5 @@
 #include "MacPageTesting.h"
+#include "engine/MonotonicClock.h"
 #include "mac/TraceLayerMac.h"
 
 #import <Cocoa/Cocoa.h>
@@ -239,6 +240,44 @@ TEST_F(TraceLayerTest, PausesWhileItsWindowIsOffScreen)
         postNotificationName:NSWindowDidChangeOcclusionStateNotification
                       object:window];
     EXPECT_TRUE(presents());
+}
+
+// Moved to another screen, the display's lead is measured again, for the new display's link calls
+// back at its own lead: meanwhile the clock is the monotonic time, as at the start. Kept at the old
+// display's lead, frames on a slower display would judder.
+TEST_F(TraceLayerTest, MeasuresTheLeadAgainOnAnotherScreen)
+{
+    show();
+    ASSERT_TRUE(pumpUntil(
+        [&] {
+            return layer->statsForTesting().callbacks >
+                   static_cast<std::uint64_t>(engine::FramePacing::kLeadCallbacks) + 5;
+        },
+        3s));
+    const std::uint64_t measured = engine::monotonicNanos();
+    ASSERT_LT(pacing->clock(measured), measured) << "the display clock, once the lead is known";
+    [NSNotificationCenter.defaultCenter postNotificationName:NSWindowDidChangeScreenNotification
+                                                      object:window];
+    pumpUntil([] { return false; }, 50ms); // A few callbacks: far fewer than measuring takes.
+    const std::uint64_t now = engine::monotonicNanos();
+    EXPECT_EQ(pacing->clock(now), now);
+}
+
+// A move between a Retina and a 1x display changes the backing scale but no size: the drawable
+// follows the new scale.
+TEST_F(TraceLayerTest, FollowsTheBackingScaleWithNoSizeChange)
+{
+    show();
+    ASSERT_TRUE(presents());
+    auto* metal = static_cast<CAMetalLayer*>(layer->view().layer);
+    const double scale = window.backingScaleFactor;
+    const CGSize drawable = metal.drawableSize;
+    // As the layer stood on a display of another scale.
+    metal.contentsScale = scale * 2.0;
+    metal.drawableSize = CGSizeMake(drawable.width * 2.0, drawable.height * 2.0);
+    [layer->view() viewDidChangeBackingProperties];
+    EXPECT_EQ(metal.contentsScale, scale);
+    EXPECT_TRUE(CGSizeEqualToSize(metal.drawableSize, drawable));
 }
 
 // Each shown refresh asks for its frame, and each frame made is drawn.
