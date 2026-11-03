@@ -33,6 +33,9 @@ public:
     // macOS 14+: the editor draws the traces (AD-30). Snapshots say so, and whether native drawing
     // has stopped for good; set before the page's hello.
     void setNativeTraces(bool native) { nativeTraces = native; }
+    // The diagnostic switch (SINELESS_FRAME_BARCODE=1): snapshots say so, and the page draws the
+    // frame barcode on its own traces. Set before the page's hello.
+    void setFrameBarcode(bool on) { frameBarcode = on; }
     // Native drawing stopped for good: snapshots say so from now on, and a started page is told.
     void nativeGraphicsLost();
 
@@ -53,6 +56,7 @@ private:
     double sentSampleRate = 0.0;
     int sentInputChannels = 0;
     bool nativeTraces = false;
+    bool frameBarcode = false;
     bool nativeLost = false;
 };
 

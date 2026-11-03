@@ -172,6 +172,9 @@ void Session::sendSnapshot()
         snapshot["nativeTraces"] = true;
         snapshot["nativeGraphicsLost"] = nativeLost;
     }
+    if (frameBarcode) {
+        snapshot["frameBarcode"] = true;
+    }
     transport.sendMessage(snapshot);
     lastSent = settings;
 }

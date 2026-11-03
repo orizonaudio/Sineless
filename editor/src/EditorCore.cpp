@@ -9,8 +9,10 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace orizon::editor {
@@ -136,11 +138,23 @@ void EditorCore::attach(void* window)
             *analyzer, *dispatcher,
             [this](std::span<const std::byte> frame) { transport->sendFrame(frame); });
         session = std::make_unique<Session>(*engineState, *analyzer, *transport);
+        session->setFrameBarcode(frameBarcodeSwitch());
         if (nativeTracesEnabled().load()) {
             startNativeTraces();
         }
         worker = std::make_unique<engine::AnalysisWorker>([this] { frameFlow->step(); });
     }
+}
+
+// The diagnostic switch, read as the editor opens: SINELESS_FRAME_BARCODE=1 in the host's
+// environment (launchctl setenv on macOS, a user variable on Windows, then the host started) makes
+// every picture of the traces carry the frame barcode, read back from screen recordings by
+// scripts/frame-barcode.
+bool EditorCore::frameBarcodeSwitch()
+{
+    // NOLINTNEXTLINE(concurrency-mt-unsafe): read on the UI thread; nothing here sets it.
+    const char* value = std::getenv("SINELESS_FRAME_BARCODE");
+    return value != nullptr && std::string_view(value) == "1";
 }
 
 // The display link asks for frames and places them by its clock; the page only takes copies. Set
@@ -163,7 +177,8 @@ void EditorCore::startNativeTraces()
                  // hover and the status bar stay live under the message.
                  frameFlow->setNative(false);
                  session->nativeGraphicsLost();
-             }});
+             },
+         .frameBarcode = frameBarcodeSwitch()});
     if (!nativeTraces) {
         pacing.reset();
         return;

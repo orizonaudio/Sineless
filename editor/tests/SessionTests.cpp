@@ -114,6 +114,18 @@ TEST_F(SessionTest, TellsThePageWhetherTheEditorDrawsTheTraces)
     EXPECT_EQ(snapshot["nativeGraphicsLost"], false);
 }
 
+// The diagnostic switch reaches the page in its snapshot, and only while it is on: a page told
+// nothing draws no frame barcode.
+TEST_F(SessionTest, TellsThePageWhenTheFrameBarcodeIsOn)
+{
+    session.receive(example("hello"));
+    EXPECT_FALSE(transport.ofType("snapshot").back().contains("frameBarcode"));
+    Session diagnosing{engine, analyzer, transport};
+    diagnosing.setFrameBarcode(true);
+    diagnosing.receive(example("hello"));
+    EXPECT_EQ(transport.ofType("snapshot").back()["frameBarcode"], true);
+}
+
 // Once native drawing stops for good, the page is told at once, and every later snapshot (a page
 // reloaded after its process ended) says so too.
 TEST_F(SessionTest, TellsThePageWhenNativeDrawingStopsForGood)
