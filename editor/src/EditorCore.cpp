@@ -152,9 +152,19 @@ void EditorCore::attach(void* window)
 // scripts/frame-barcode.
 bool EditorCore::frameBarcodeSwitch()
 {
+#ifdef _MSC_VER
+    // MSVC deprecates std::getenv (C4996, an error at /W4 /WX); _dupenv_s is its replacement.
+    char* value = nullptr;
+    std::size_t length = 0;
+    const bool set = _dupenv_s(&value, &length, "SINELESS_FRAME_BARCODE") == 0 && value != nullptr;
+    const bool on = set && std::string_view(value) == "1";
+    std::free(value); // NOLINT(cppcoreguidelines-no-malloc): _dupenv_s allocates with malloc.
+    return on;
+#else
     // NOLINTNEXTLINE(concurrency-mt-unsafe): read on the UI thread; nothing here sets it.
     const char* value = std::getenv("SINELESS_FRAME_BARCODE");
     return value != nullptr && std::string_view(value) == "1";
+#endif
 }
 
 // The display link asks for frames and places them by its clock; the page only takes copies. Set
