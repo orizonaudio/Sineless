@@ -92,6 +92,30 @@ export const minimumEditorWidth = 1020;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;
 
+// Frames are drawn on every n-th display refresh, n the smallest whole number keeping the refresh
+// rate divided by n at or below this (the page counts requestAnimationFrame ticks, the macOS editor
+// its display link's refreshes), so each frame stays on screen for the same n ticks (#308): a
+// frame held for 2, 1, 2 ticks while the playhead moves by the time between frames judders.
+// Every tick up to 90 Hz, 50 frames a second at 100 Hz, 72 at 144 Hz. 95 Hz lies between the
+// common rates 90 and 100 Hz, and its multiples (190, 285, 380 Hz) between theirs, so a measured
+// rate a little off never puts a common display on the wrong side.
+export const fullRateUpToHz = 95;
+// Once n is set, it changes only when the measured rate is this share past a line, so a rate
+// measured near one does not change n back and forth. The common rates lie further from the
+// lines (5%).
+export const lineHysteresis = 0.02;
+
+// The page's frame around the screen (CSS pixels): the toolbar's and the status bar's heights, the
+// screen's margin at each side, its border and its corner radius. The page's stylesheet takes them
+// at start-up, and the macOS editor works the screen's rectangle out from them, so the traces it
+// draws natively sit exactly in the page's screen. The design tokens hold the same sizes
+// (docs/ui/tokens/sineless-tokens.json: toolbar-height, status-height, screen-inset, screen-radius).
+export const toolbarHeight = 48;
+export const statusBarHeight = 34;
+export const screenMargin = 8;
+export const screenBorder = 1;
+export const screenRadius = 10;
+
 type Kind = "double" | "count" | "pixels";
 
 // The list the C++ header is generated from.
@@ -141,4 +165,11 @@ export const limits: readonly {
   { name: "minimumEditorWidth", value: minimumEditorWidth, kind: "pixels" },
   { name: "minimumLaneHeight", value: minimumLaneHeight, kind: "pixels" },
   { name: "chromeHeight", value: chromeHeight, kind: "pixels" },
+  { name: "fullRateUpToHz", value: fullRateUpToHz, kind: "double" },
+  { name: "lineHysteresis", value: lineHysteresis, kind: "double" },
+  { name: "toolbarHeight", value: toolbarHeight, kind: "pixels" },
+  { name: "statusBarHeight", value: statusBarHeight, kind: "pixels" },
+  { name: "screenMargin", value: screenMargin, kind: "pixels" },
+  { name: "screenBorder", value: screenBorder, kind: "pixels" },
+  { name: "screenRadius", value: screenRadius, kind: "pixels" },
 ];

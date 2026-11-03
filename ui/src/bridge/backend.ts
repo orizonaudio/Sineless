@@ -10,6 +10,7 @@ import type {
   SettingValue,
   SnapshotMessage,
   StateChangedMessage,
+  TraceViewMessage,
 } from "../../../protocol/src/messages.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
@@ -20,6 +21,7 @@ export interface BackendEvents {
   stateChanged(message: StateChangedMessage): void;
   error(message: ErrorMessage): void;
   lanes(message: LanesMessage): void;
+  nativeGraphicsLost(): void;
   frame(frame: Frame): void;
 }
 
@@ -32,6 +34,7 @@ export class Backend {
     stateChanged: [],
     error: [],
     lanes: [],
+    nativeGraphicsLost: [],
     frame: [],
   };
 
@@ -63,6 +66,11 @@ export class Backend {
       viewWidth,
       pixelRatio,
     });
+  }
+
+  // While the editor draws the traces natively: what the page alone knows about drawing them.
+  traceView(message: TraceViewMessage): void {
+    this.transport.send({ ...message });
   }
 
   setSetting(name: SettingName, value: SettingValue): void {
@@ -129,6 +137,11 @@ export class Backend {
       case "lanes":
         for (const handler of this.handlers.lanes) {
           handler(message as unknown as LanesMessage);
+        }
+        break;
+      case "nativeGraphicsLost":
+        for (const handler of this.handlers.nativeGraphicsLost) {
+          handler();
         }
         break;
       default:

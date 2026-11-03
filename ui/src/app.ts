@@ -6,11 +6,17 @@ import {
   defaultEditorWidth,
   minimumEditorWidth,
   readoutIntervalSeconds,
+  screenBorder,
+  screenMargin,
+  screenRadius,
+  statusBarHeight,
   summingMarginDb,
+  toolbarHeight,
 } from "../../protocol/src/limits.ts";
 import type {
   ErrorMessage,
   SettingValue,
+  TraceViewMessage,
 } from "../../protocol/src/messages.ts";
 import {
   settingNames,
@@ -70,6 +76,7 @@ import {
 } from "./view/hover.ts";
 import {
   cssColour,
+  fallbackPalette,
   laneStyles,
   sumLaneColour,
   type LaneStyle,
@@ -109,13 +116,16 @@ import {
   type ViewName,
 } from "./view/screen-state.ts";
 
-// What the page says when it cannot draw the traces at start (DESIGN.md §8): no WebGL2, or the
-// graphics memory for the traces refused, which also comes when the window grows.
+// What the page says when the traces cannot be drawn (DESIGN.md §8): no WebGL2, or the graphics
+// memory for the traces refused, which also comes when the window grows; and, while the macOS
+// editor draws them, its native drawing stopped for good.
 export const graphicsMessages = {
   noWebGL2:
     "This system gives the editor no WebGL 2 graphics to draw the traces with. Updating the graphics driver may help. Audio still passes through unchanged.",
   memory:
     "The system's graphics could not give the editor the memory to draw the traces. Reopening the editor may help. Audio still passes through unchanged.",
+  // macOS native drawing stopped for good this session (a removed GPU, persistent errors).
+  lost: "The system's graphics stopped drawing the traces. Close and reopen the editor to draw them again. Audio still passes through unchanged.",
 };
 
 const viewHelp: Record<ViewName, HelpTopic> = {
@@ -221,6 +231,15 @@ export class OscilloscopeApp {
   // Whether an engine error is shown. Until a snapshot clears it, it outranks the graphics message:
   // it says why the screen is empty and what to do, and the engine does not send it again.
   private engineError = false;
+  // macOS: the editor draws the traces itself (snapshot.nativeTraces), and the page sends it what
+  // only the page knows, at most once per animation frame and only when it changed.
+  private nativeTraces = false;
+  private traceViewQueued = false;
+  private lastTraceView = "";
+  // Native drawing stopped for good this session: never cleared, so a snapshot read before the
+  // editor's message, or a reloaded page, can only show it.
+  private nativeGraphicsLost = false;
+  private traceStyle: TraceStyle | undefined;
   private readonly loop: RenderLoop;
   private lastFrame: Frame | undefined;
   // The span in seconds the time labels were last placed for.
@@ -268,10 +287,18 @@ export class OscilloscopeApp {
     this.backend = backend;
     this.store = store;
     this.debug = debug;
-    document.documentElement.style.setProperty(
-      "--minimum-width",
-      `${String(minimumEditorWidth)}px`,
-    );
+    // Sizes the stylesheet shares with the engine: the minimum width, and the frame around the
+    // screen, which the macOS editor draws its native traces inside.
+    for (const [name, pixels] of [
+      ["--minimum-width", minimumEditorWidth],
+      ["--toolbar-height", toolbarHeight],
+      ["--status-bar-height", statusBarHeight],
+      ["--screen-margin", screenMargin],
+      ["--screen-border", screenBorder],
+      ["--screen-radius", screenRadius],
+    ] as const) {
+      document.documentElement.style.setProperty(name, `${String(pixels)}px`);
+    }
     // Resolved on first use: in development the stylesheet may apply after start-up.
     let colors: Map<ChannelView, Rgba> | undefined;
     const resolveColors = (): ReadonlyMap<ChannelView, Rgba> => {
@@ -312,6 +339,7 @@ export class OscilloscopeApp {
         return 1.5 * window.devicePixelRatio;
       },
     };
+    this.traceStyle = style;
     const traceView = (): TraceView => ({
       verticalScaleDb: store.number("verticalScale"),
       layout: this.layout(),
@@ -363,6 +391,7 @@ export class OscilloscopeApp {
     this.listenToBackend();
     store.subscribe((name, value) => {
       this.showSetting(name, value);
+      this.queueTraceView();
     });
     for (const name of settingNames) {
       this.showSetting(name, store.get(name));
@@ -1739,6 +1768,75 @@ export class OscilloscopeApp {
     }
     this.placeCursors();
     this.updateStatus();
+    this.queueTraceView();
+  }
+
+  // Sends the trace view at the next animation frame if it changed. Native mode only.
+  private queueTraceView(): void {
+    if (!this.nativeTraces || this.traceViewQueued) {
+      return;
+    }
+    this.traceViewQueued = true;
+    requestAnimationFrame(() => {
+      this.traceViewQueued = false;
+      const message = this.traceViewMessage();
+      const text = JSON.stringify(message);
+      if (text !== this.lastTraceView) {
+        this.lastTraceView = text;
+        this.backend.traceView(message);
+      }
+    });
+  }
+
+  // Everything the editor reads besides the frame to draw the traces as this page would.
+  private traceViewMessage(): TraceViewMessage {
+    const style = this.traceStyle;
+    const colour = (value: number) => rgba(cssColour(value));
+    const views = style?.colors() ?? new Map<ChannelView, Rgba>();
+    const sweep = style?.sweepColors();
+    const white: Rgba = [1, 1, 1, 1];
+    const layout = this.layout();
+    return {
+      type: "traceView",
+      viewStart: this.view.start,
+      viewEnd: this.view.end,
+      layout:
+        (Object.keys(ViewLayout) as (keyof typeof ViewLayout)[]).find(
+          (name) => ViewLayout[name] === layout,
+        ) ?? "overlaid",
+      verticalScaleDb: this.store.number("verticalScale"),
+      dim: this.waiting,
+      lineWidth: style?.lineWidthPixels ?? 1,
+      viewColours: viewOrder.map(
+        (name) => views.get(ChannelView[name]) ?? white,
+      ),
+      laneSets: [...this.laneSets].map(([laneSet, lanes]) => ({
+        laneSet,
+        lanes: lanes.map((lane) => ({
+          id: lane.id,
+          colour: colour(lane.colour),
+          compared: lane.compared,
+        })),
+      })),
+      fallbackColours: fallbackPalette.map(colour),
+      sumColour: colour(sumLaneColour),
+      screen: rgba(token("--sl-screen")),
+      grid: rgba(token("--sl-grid")),
+      axis: rgba(token("--sl-grid-strong")),
+      cursor: sweep?.cursor ?? white,
+      previous: sweep?.previous ?? white,
+      cancellation: style?.cancellationColor() ?? white,
+    };
+  }
+
+  // Native drawing stopped for good: what to do, unless an engine error outranks it.
+  private showNativeGraphicsLost(): void {
+    if (this.engineError) {
+      return;
+    }
+    element("message-title").textContent = "Graphics unavailable";
+    element("message-text").textContent = graphicsMessages.lost;
+    element("message").hidden = false;
   }
 
   // ----- Engine events -----
@@ -1814,6 +1912,7 @@ export class OscilloscopeApp {
       this.hiddenTracks = message.hidden;
       this.drawScreen();
       this.loop.invalidate();
+      this.queueTraceView();
       this.updateStatus();
     });
     this.backend.on("snapshot", (message) => {
@@ -1825,6 +1924,20 @@ export class OscilloscopeApp {
       this.showSetting("channelViews", this.store.get("channelViews"));
       this.drawScreen();
       this.placeTriggerMarker();
+      if (message.nativeTraces === true) {
+        this.nativeTraces = true;
+      }
+      if (message.nativeGraphicsLost === true) {
+        this.nativeGraphicsLost = true;
+      }
+      if (this.nativeGraphicsLost) {
+        this.showNativeGraphicsLost();
+      }
+      this.queueTraceView();
+    });
+    this.backend.on("nativeGraphicsLost", () => {
+      this.nativeGraphicsLost = true;
+      this.showNativeGraphicsLost();
     });
   }
 
@@ -1855,6 +1968,7 @@ export class OscilloscopeApp {
     if (waiting !== this.waiting) {
       this.waiting = waiting;
       this.loop.invalidate();
+      this.queueTraceView();
     }
     if (this.multiMode() && this.hiddenTracks > 0) {
       chips.push({

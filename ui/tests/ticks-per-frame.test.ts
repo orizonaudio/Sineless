@@ -1,10 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  fullRateUpToHz,
-  lineHysteresis,
-  ticksPerFrame,
-} from "../src/render/render-loop.ts";
+import { fullRateUpToHz, lineHysteresis } from "../../protocol/src/limits.ts";
+import { ticksPerFrame } from "../src/render/render-loop.ts";
 import { randomFrom } from "./display-ticks.ts";
 
 describe("ticks per frame", () => {

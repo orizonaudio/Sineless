@@ -10,6 +10,7 @@ import {
   type PreviewFixMessage,
   type ResizeMessage,
   type SetSettingMessage,
+  type TraceViewMessage,
   type ViewMessage,
   type ViewportMessage,
 } from "../src/messages.ts";
@@ -42,6 +43,7 @@ const typed = {
   compare: examples.compare satisfies Shape<CompareMessage>,
   previewFix: examples.previewFix satisfies Shape<PreviewFixMessage>,
   resize: examples.resize satisfies Shape<ResizeMessage>,
+  traceView: examples.traceView satisfies Shape<TraceViewMessage>,
 };
 
 test("every example names a known message type", () => {

@@ -4,21 +4,14 @@
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { frameTimes } from "../frame-times.ts";
 import { perf } from "../perf.ts";
+import {
+  fullRateUpToHz,
+  lineHysteresis,
+} from "../../../protocol/src/limits.ts";
 
 // The draw clock: requestAnimationFrame in the page, a manual clock in tests.
 export type Scheduler = (callback: (timestamp: number) => void) => void;
 
-// Engine frames are drawn on every n-th tick, n the smallest whole number keeping the tick rate
-// divided by n at or below this, so each frame stays on screen for the same n ticks (#308): a
-// frame held for 2, 1, 2 ticks while the playhead moves by the time between frames judders.
-// Every tick up to 90 Hz, 50 frames a second at 100 Hz, 72 at 144 Hz. 95 Hz lies between the
-// common rates 90 and 100 Hz, and its multiples (190, 285, 380 Hz) between theirs, so a measured
-// rate a little off never puts a common display on the wrong side.
-export const fullRateUpToHz = 95;
-// Once n is set, it changes only when the measured rate is this share past a line, so a rate
-// measured near one does not change n back and forth. The common rates lie further from the
-// lines (5%).
-export const lineHysteresis = 0.02;
 // Gaps this long are stalls, not ticks (a 20 Hz tick or slower), and are not measured.
 const stallMilliseconds = 50;
 // The reference period: the median of this many recent gaps. It follows a move to another

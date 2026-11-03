@@ -237,17 +237,22 @@ export class MockTransport implements Transport {
     this.messageHandler?.(message);
   }
 
+  // The snapshot the engine would send now; tests extend it (native traces) and deliver it.
+  lastSnapshot(): ControlMessage {
+    return {
+      type: "snapshot",
+      protocolVersion,
+      settings: { ...this.settings },
+      sampleRate: this.sampleRate,
+      inputChannels: this.inputChannels,
+    };
+  }
+
   private receive(message: ControlMessage): void {
     switch (message.type) {
       case "hello":
         this.setViewport(message);
-        this.reply({
-          type: "snapshot",
-          protocolVersion,
-          settings: { ...this.settings },
-          sampleRate: this.sampleRate,
-          inputChannels: this.inputChannels,
-        });
+        this.reply(this.lastSnapshot());
         this.lanesKey = "";
         this.sendLanes();
         break;

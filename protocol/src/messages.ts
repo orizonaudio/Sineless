@@ -18,6 +18,8 @@ export const MessageType = {
   compare: "compare",
   previewFix: "previewFix",
   resize: "resize",
+  traceView: "traceView",
+  nativeGraphicsLost: "nativeGraphicsLost",
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
@@ -38,13 +40,17 @@ export interface HelloMessage {
   readonly pixelRatio: number;
 }
 
-// Engine to UI. The full state, in reply to hello.
+// Engine to UI. The full state, in reply to hello. `nativeTraces` is true when the editor draws the
+// traces itself (macOS): the page then draws none and sends traceView. `nativeGraphicsLost` is
+// present only then: true once native drawing has stopped for good this session.
 export interface SnapshotMessage {
   readonly type: "snapshot";
   readonly protocolVersion: number;
   readonly settings: Readonly<Record<SettingName, SettingValue>>;
   readonly sampleRate: number;
   readonly inputChannels: number;
+  readonly nativeTraces?: boolean;
+  readonly nativeGraphicsLost?: boolean;
 }
 
 // UI to engine. The engine always answers with stateChanged holding the value it kept.
@@ -143,6 +149,57 @@ export interface ResizeMessage {
   readonly height: number;
 }
 
+// A colour as red, green, blue and alpha, each 0 to 1 (sRGB, not premultiplied).
+export type Rgba = readonly number[];
+
+// One track's colour for a lane set: `id` as in the lanes message (or the Sum lane's), whether it
+// is compared.
+export interface TraceLaneColour {
+  readonly id: number;
+  readonly colour: Rgba;
+  readonly compared: boolean;
+}
+
+// UI to editor, while the editor draws the traces (snapshot.nativeTraces): what only the page knows
+// about drawing them. Everything that changes with a frame (lanes, views, the comparison, the
+// window the frame covers, the playhead) the editor reads from the frame itself. Sent after the
+// snapshot and whenever a field changes.
+export interface TraceViewMessage {
+  readonly type: "traceView";
+  // The part of the span on screen, as fractions; the frame's own window is stretched into it.
+  readonly viewStart: number;
+  readonly viewEnd: number;
+  // A ViewLayout name.
+  readonly layout: string;
+  readonly verticalScaleDb: number;
+  // The traces are stale (Waiting): drawn faint.
+  readonly dim: boolean;
+  // Trace line width in device pixels.
+  readonly lineWidth: number;
+  // One per ChannelView, in ChannelView order.
+  readonly viewColours: readonly Rgba[];
+  // Track colours for each lane set the page holds; a frame whose set is missing takes
+  // `fallbackColours` by position.
+  readonly laneSets: readonly {
+    readonly laneSet: number;
+    readonly lanes: readonly TraceLaneColour[];
+  }[];
+  readonly fallbackColours: readonly Rgba[];
+  readonly sumColour: Rgba;
+  readonly screen: Rgba;
+  readonly grid: Rgba;
+  readonly axis: Rgba;
+  readonly cursor: Rgba;
+  readonly previous: Rgba;
+  readonly cancellation: Rgba;
+}
+
+// Editor to UI: native drawing stopped for good this session (a removed GPU, persistent errors,
+// refused graphics memory). The page shows what to do.
+export interface NativeGraphicsLostMessage {
+  readonly type: "nativeGraphicsLost";
+}
+
 export type UiToEngineMessage =
   | HelloMessage
   | SetSettingMessage
@@ -153,7 +210,12 @@ export type UiToEngineMessage =
   | ViewMessage
   | CompareMessage
   | PreviewFixMessage
-  | ResizeMessage;
+  | ResizeMessage
+  | TraceViewMessage;
 
 export type EngineToUiMessage =
-  SnapshotMessage | StateChangedMessage | ErrorMessage | LanesMessage;
+  | SnapshotMessage
+  | StateChangedMessage
+  | ErrorMessage
+  | LanesMessage
+  | NativeGraphicsLostMessage;
