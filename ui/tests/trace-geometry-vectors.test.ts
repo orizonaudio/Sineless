@@ -121,11 +121,19 @@ function gridCases() {
 type CancellationShape = "third" | "gaps" | "quiet";
 
 // A Compare frame of `points` columns or raw points: two related tracks and their sum, cancelling
-// as `shape` says.
+// as `shape` says. `visibleSamples`: a raw window's own sample count, which a fractional zoom
+// leaves different from its points; `missing`: a few of the first track's points not finite, as
+// samples a host sent invalid are.
+interface CompareOptions {
+  readonly visibleSamples?: number;
+  readonly missing?: boolean;
+}
+
 function compareFrame(
   points: number,
   mode: FrameMode,
   shape: CancellationShape = "third",
+  options: CompareOptions = {},
 ): Frame {
   const perPoint = mode === FrameMode.minMax ? 2 : 1;
   const reach =
@@ -164,6 +172,10 @@ function compareFrame(
     }
   };
   const first = track(1);
+  if (options.missing === true) {
+    // Outside the cancelling stretch: the shading there must not change.
+    first.fill(Number.NaN, 4 * perPoint, 7 * perPoint);
+  }
   const second = track(1);
   const sum = Float32Array.from(first, (value, index) =>
     cancelling(Math.floor(index / perPoint)) ? value * 0.2 : value * 1.6,
@@ -174,7 +186,7 @@ function compareFrame(
     startFraction: 0.25,
     viewStart: 0.1,
     viewEnd: 0.9,
-    visibleSamples: points,
+    visibleSamples: options.visibleSamples ?? points,
     lanes: [first, second, sum],
     comparison: {
       matches: [
@@ -188,13 +200,18 @@ function compareFrame(
 function cancellationCases() {
   const cases = [];
   for (const mode of [FrameMode.minMax, FrameMode.raw]) {
-    for (const [layout, shape] of [
-      ["overlaid", "third"],
-      ["stacked", "third"],
-      ["stacked", "gaps"],
-      ["overlaid", "quiet"],
+    // Short frames, a long one (its gaps hundreds of points in, as real frames' are), a raw
+    // window whose samples differ from its points, and a track with missing points.
+    for (const [layout, shape, points, options] of [
+      ["overlaid", "third", 48, {}],
+      ["stacked", "third", 48, {}],
+      ["stacked", "gaps", 48, {}],
+      ["overlaid", "quiet", 48, {}],
+      ["stacked", "gaps", 300, {}],
+      ["overlaid", "third", 48, { visibleSamples: 38.6 }],
+      ["overlaid", "third", 48, { missing: true }],
     ] as const) {
-      const frame = compareFrame(48, mode, shape);
+      const frame = compareFrame(points, mode, shape, options);
       const view = { start: 0.2, end: 0.8 };
       cases.push({
         mode: mode === FrameMode.minMax ? "minMax" : "raw",
