@@ -11,6 +11,11 @@ import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import { levelSteps, minimumLineGap } from "../src/view/axis-labels.ts";
 import { gridLines } from "../src/view/grid.ts";
 import { musicalGrid } from "../src/view/musical-grid.ts";
+import {
+  cancellationBridgedPoints,
+  cancellationQuietShare,
+  cancellationReachDivisor,
+} from "../../protocol/src/limits.ts";
 import { cancellationBands, lanes } from "../src/render/trace-geometry.ts";
 
 const file = new URL(
@@ -106,23 +111,63 @@ function gridCases() {
   return cases;
 }
 
-// A Compare frame of `points` min/max columns: two related tracks that cancel in their sum over
-// the middle third, and the sum.
-function compareFrame(points: number, mode: FrameMode): Frame {
+// Where the sum of a Compare frame's tracks cancels:
+// - "third": over the middle third;
+// - "gaps": over the middle half, broken by a gap as long as the page bridges and one a point
+//   longer, which splits it (raw points' levels are smoothed over their neighbours, which widens a
+//   gap by as much each side, so their gaps are that much shorter);
+// - "quiet": over a stretch where the tracks are quieter than cancellationQuietShare of the
+//   loudest, which is not shaded, and over the last sixth, which is.
+type CancellationShape = "third" | "gaps" | "quiet";
+
+// A Compare frame of `points` columns or raw points: two related tracks and their sum, cancelling
+// as `shape` says.
+function compareFrame(
+  points: number,
+  mode: FrameMode,
+  shape: CancellationShape = "third",
+): Frame {
   const perPoint = mode === FrameMode.minMax ? 2 : 1;
+  const reach =
+    mode === FrameMode.minMax
+      ? 0
+      : Math.max(1, Math.floor(points / cancellationReachDivisor));
+  const quiet = (point: number) =>
+    shape === "quiet" && point > points / 4 && point < points / 2;
   const track = (sign: number) =>
     Float32Array.from({ length: points * perPoint }, (_, index) => {
       const point = Math.floor(index / perPoint);
-      const level = 0.5 + 0.3 * Math.sin(point / 9);
+      const loud = 0.5 + 0.3 * Math.sin(point / 9);
+      // Well under the quiet share of the loudest (0.8).
+      const level = quiet(point) ? 0.4 * cancellationQuietShare : loud;
       return perPoint === 2 ? (index % 2 === 0 ? -level : level) : sign * level;
     });
+  const bridged = cancellationBridgedPoints - 2 * reach;
+  const gaps = [
+    { from: Math.floor(points * 0.35), length: bridged },
+    { from: Math.floor(points * 0.6), length: bridged + 1 },
+  ];
+  const cancelling = (point: number): boolean => {
+    switch (shape) {
+      case "third":
+        return point > points / 3 && point < (2 * points) / 3;
+      case "gaps":
+        return (
+          point > points / 4 &&
+          point < (3 * points) / 4 &&
+          !gaps.some(
+            (gap) => point >= gap.from && point < gap.from + gap.length,
+          )
+        );
+      case "quiet":
+        return quiet(point) || point > (5 * points) / 6;
+    }
+  };
   const first = track(1);
   const second = track(1);
-  const sum = Float32Array.from(first, (value, index) => {
-    const point = Math.floor(index / perPoint);
-    const cancelling = point > points / 3 && point < (2 * points) / 3;
-    return cancelling ? value * 0.2 : value * 1.6;
-  });
+  const sum = Float32Array.from(first, (value, index) =>
+    cancelling(Math.floor(index / perPoint)) ? value * 0.2 : value * 1.6,
+  );
   return {
     mode,
     pointCount: points,
@@ -143,8 +188,13 @@ function compareFrame(points: number, mode: FrameMode): Frame {
 function cancellationCases() {
   const cases = [];
   for (const mode of [FrameMode.minMax, FrameMode.raw]) {
-    for (const layout of ["overlaid", "stacked"] as const) {
-      const frame = compareFrame(48, mode);
+    for (const [layout, shape] of [
+      ["overlaid", "third"],
+      ["stacked", "third"],
+      ["stacked", "gaps"],
+      ["overlaid", "quiet"],
+    ] as const) {
+      const frame = compareFrame(48, mode, shape);
       const view = { start: 0.2, end: 0.8 };
       cases.push({
         mode: mode === FrameMode.minMax ? "minMax" : "raw",
