@@ -137,6 +137,7 @@ FramePacing::Decision FramePacing::callback(double target, double now, std::uint
 
 std::uint64_t FramePacing::clock(std::uint64_t engineNow)
 {
+    reads.fetch_add(1, std::memory_order_relaxed);
     std::uint64_t value = engineNow;
     if (display.load(std::memory_order_acquire)) {
         const std::uint64_t since =

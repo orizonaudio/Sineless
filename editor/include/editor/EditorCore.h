@@ -94,6 +94,9 @@ public:
     // only while the editor is open.
     [[nodiscard]] bool workerRunning() const { return worker != nullptr; }
     [[nodiscard]] bool analyzerAllocated() const { return analyzer != nullptr; }
+    // The display clock the analyzer is given while the traces are drawn natively, else null. For
+    // tests.
+    [[nodiscard]] const engine::FramePacing* displayClock() const { return pacing.get(); }
     // The live webview while attached, otherwise null. For tests.
     [[nodiscard]] WebView* webView() const { return view.get(); }
 

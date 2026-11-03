@@ -321,6 +321,20 @@ TEST_F(NativeTracesTest, HidesTheTracesBehindTheNoticeThatThePageKeepsFailing)
     EXPECT_TRUE(layer->view().hidden);
 }
 
+// Drawn natively, the analyzer places its frames and sweeps by the display clock, which steps by
+// whole refreshes (AD-30): by the host's time instead, the traces would move unevenly.
+TEST_F(NativeTracesTest, PlacesTheFramesByTheDisplayClock)
+{
+    open();
+    ASSERT_TRUE(presents());
+    const engine::FramePacing* clock = editor->displayClock();
+    ASSERT_NE(clock, nullptr);
+    const auto before = clock->clockReads();
+    const int frames = frameCount();
+    EXPECT_TRUE(
+        pumpPlaying([&] { return frameCount() > frames + 3 && clock->clockReads() > before; }, 5s));
+}
+
 // Once native drawing stops for good, the page says what to do, and its own fetch makes the frames
 // again, so its readouts stay live.
 TEST_F(NativeTracesTest, SaysWhatToDoWhenNativeDrawingStops)

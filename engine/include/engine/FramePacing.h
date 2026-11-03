@@ -73,6 +73,9 @@ public:
     [[nodiscard]] double rateHertz() const { return rate; }
     // Callbacks earlier than L allowed (D set to the monotonic time instead). For perf.
     [[nodiscard]] std::uint64_t earlyCallbacks() const { return early; }
+    // How often the clock has been read: the analyzer reads it for every frame it places. Any
+    // thread; for tests.
+    [[nodiscard]] std::uint64_t clockReads() const { return reads.load(std::memory_order_relaxed); }
 
 private:
     void restartLead();
@@ -104,6 +107,7 @@ private:
 
     // Worker only.
     std::uint64_t lastReturned = 0;
+    std::atomic<std::uint64_t> reads{0};
 };
 
 } // namespace orizon::engine
