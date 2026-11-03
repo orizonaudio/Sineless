@@ -79,8 +79,10 @@ stuttering run has been compared, treat them as a cross-check, not a replacement
 
 ## 5. Tools and their costs
 
-- **The recorder itself** misses one refresh at a time, about 4 to 5% of them (60 Hz, both of the
-  owner's displays, measured 2026-11-03). Those refreshes are counted unknown, never as stutter.
+- **The recorder itself** records every refresh with no frame-interval limit (none missed in two
+  30 s runs, 2026-11-03). Its gaps are counted unknown, never as stutter; gaps in a recording mean
+  the recorder fell behind. A limit of 1/rate brings them back, about one refresh in 20 at 60 Hz;
+  why so many is not known (the display's period is only 41 to 290 ns under 1/60 s).
 - **Instruments** only after the barcode has located the loss, to see why. The Animation Hitches
   template adds a hitch of its own about every 2 s: compare with it running and not. All-process
   templates wrote about 90 MB/s and filled the disk once: check `df`, size the trace from a short

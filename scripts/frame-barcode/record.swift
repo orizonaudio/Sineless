@@ -88,7 +88,9 @@ func makeStream(capture: Capture) async throws -> (SCStream, Int, Int, Double) {
     configuration.width = width
     configuration.height = height
     configuration.pixelFormat = kCVPixelFormatType_32BGRA
-    configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(rate))
+    // No limit: every refresh. A limit of 1/rate dropped about one refresh in 20 at 60 Hz, on both
+    // displays measured; with none, no refresh was missed.
+    configuration.minimumFrameInterval = .zero
     configuration.queueDepth = 6
     configuration.showsCursor = false
     let stream = SCStream(
