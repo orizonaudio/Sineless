@@ -55,6 +55,11 @@ public:
     void setMinimumCheck(MinimumCheck check) { minimumCheck = std::move(check); }
     // Who shows the page's cursors in the webview attach() opens (WebView::Cursors).
     void setCursors(WebView::Cursors shownBy) { cursors = shownBy; }
+    // Whether editors opened from now on draw the traces natively where the platform can (macOS
+    // 14+, AD-30); on by default. The showcase films the page alone, so it turns this off.
+    static void setNativeTraces(bool enabled);
+    // Whether this editor draws the traces natively. For tests.
+    [[nodiscard]] bool drawsTracesNatively() const { return nativeTraces; }
 
     // Takes the scale of `parent`, the host's window, before attaching to it: the host sized the
     // window before attaching, possibly at a guessed scale. True if the scale changed, so that
@@ -103,6 +108,8 @@ private:
     void updateScale();
     // Takes the window's current scale, if attached; true if it changed.
     bool refreshScale();
+    // Draws the traces natively if the webview can (attach, before the worker starts).
+    void startNativeTraces();
 
     MessageObserver observer;
     SizeRequest sizeRequest;
@@ -127,6 +134,10 @@ private:
     std::unique_ptr<FrameFlow> frameFlow;
     std::unique_ptr<Session> session;
     std::unique_ptr<engine::Analyzer> analyzer;
+    // The display clock the analyzer reads while the traces are drawn natively: before the worker,
+    // so it outlives every read.
+    std::unique_ptr<engine::FramePacing> pacing;
+    bool nativeTraces = false;
     std::unique_ptr<engine::AnalysisWorker> worker; // Declared last: stopped before the rest.
 };
 

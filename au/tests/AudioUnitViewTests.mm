@@ -8,6 +8,8 @@
 #include "engine/EngineRegistry.h"
 #include "engine/InstanceRegistry.h"
 #include "engine/Version.h"
+#include "mac/TraceLayerMac.h"
+#include "mac/WebViewMacTesting.h"
 
 #import <AudioToolbox/AUCocoaUIView.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -19,6 +21,7 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <memory>
+#include <objc/message.h>
 #include <objc/runtime.h>
 #include <string>
 #include <vector>
@@ -52,7 +55,14 @@ WKWebView* webViewOf(NSView* view)
 class AudioUnitViewTest : public ::testing::Test
 {
 protected:
-    static void SetUpTestSuite() { [NSApplication sharedApplication]; }
+    // The page draws the traces, as on Windows: these tests cover the page's own frame flow. The
+    // traces drawn natively are covered in the editor's tests and by DrawsTheTracesNatively.
+    static void SetUpTestSuite()
+    {
+        [NSApplication sharedApplication];
+        editor::EditorCore::setNativeTraces(false);
+    }
+    static void TearDownTestSuite() { editor::EditorCore::setNativeTraces(true); }
 
     // An instance as a host makes one. Not initialised: a host may open the view before it
     // initialises the Audio Unit.
@@ -336,6 +346,33 @@ TEST_F(AudioUnitViewTest, ShowsTheInstancesEngine)
         kPageTimeout))
         << "a change to the instance's settings reaches the page";
     closeWindow(window, view);
+}
+
+// The Audio Unit's view draws the traces natively, as the VST3 editor does (the editor's tests
+// cover how), in process and out of process (Logic).
+TEST_F(AudioUnitViewTest, DrawsTheTracesNatively)
+{
+    editor::EditorCore::setNativeTraces(true);
+    // On screen and the page visible, whatever the display reports (NativeTracesTest).
+    editor::TraceLayer::setOcclusionForTesting(false);
+    NSView* view = openView(unit);
+    NSWindow* window = windowFor(view);
+    [window orderFrontRegardless];
+    WKWebView* webView = webViewOf(view);
+    ASSERT_NE(webView, nil);
+    const SEL occlusion = NSSelectorFromString(@"_setWindowOcclusionDetectionEnabled:");
+    if ([webView respondsToSelector:occlusion]) {
+        reinterpret_cast<void (*)(id, SEL, BOOL)>(objc_msgSend)(webView, occlusion, NO);
+    }
+    editor::EditorCore* core = editorCoreOf(view);
+    EXPECT_TRUE(core->drawsTracesNatively());
+    editor::TraceLayer* layer = editor::traceLayerForTests(*core->webView());
+    ASSERT_NE(layer, nullptr);
+    EXPECT_TRUE(pumpUntil([&] { return layer->statsForTesting().presented > 0; }, kPageTimeout));
+    EXPECT_FALSE(layer->view().hidden);
+    closeWindow(window, view);
+    editor::TraceLayer::setOcclusionForTesting(std::nullopt);
+    editor::EditorCore::setNativeTraces(false);
 }
 
 // Logic and GarageBand host the view out of process, where WebKit's cursors do not show: the view

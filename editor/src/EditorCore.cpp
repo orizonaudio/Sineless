@@ -2,8 +2,10 @@
 
 #include "editor/DisplayScale.h"
 #include "engine/ChannelViews.h"
+#include "engine/MonotonicClock.h"
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <chrono>
 #include <cmath>
@@ -22,6 +24,16 @@ constexpr std::chrono::milliseconds kStateSyncInterval{100};
 // and small enough that the size in window units stays well within an int.
 constexpr double kMaximumGripSize = 16384.0;
 
+// Until the display link reports its screen's (before its first callback), the refresh rate the
+// display clock assumes.
+constexpr double kAssumedRefreshHertz = 60.0;
+
+std::atomic<bool>& nativeTracesEnabled()
+{
+    static std::atomic<bool> enabled{true};
+    return enabled;
+}
+
 // A size the page gave, or none. JSON numbers are finite.
 std::optional<double> dimension(const nlohmann::json& message, const char* name)
 {
@@ -32,6 +44,11 @@ std::optional<double> dimension(const nlohmann::json& message, const char* name)
 }
 
 } // namespace
+
+void EditorCore::setNativeTraces(bool enabled)
+{
+    nativeTracesEnabled().store(enabled);
+}
 
 EditorCore::EditorCore(std::shared_ptr<engine::Engine> engine, MessageObserver observer)
     : observer(std::move(observer)), scale(displayScale(nullptr)), engineState(std::move(engine))
@@ -119,18 +136,57 @@ void EditorCore::attach(void* window)
             *analyzer, *dispatcher,
             [this](std::span<const std::byte> frame) { transport->sendFrame(frame); });
         session = std::make_unique<Session>(*engineState, *analyzer, *transport);
+        if (nativeTracesEnabled().load()) {
+            startNativeTraces();
+        }
         worker = std::make_unique<engine::AnalysisWorker>([this] { frameFlow->step(); });
     }
 }
 
+// The display link asks for frames and places them by its clock; the page only takes copies. Set
+// up before the worker starts, so the analyzer's one clock is installed before its first read.
+void EditorCore::startNativeTraces()
+{
+    pacing = std::make_unique<engine::FramePacing>(kAssumedRefreshHertz);
+    nativeTraces = view->drawTracesNatively(
+        {.pacing = pacing.get(),
+         .requestFrame =
+             [this] {
+                 frameFlow->requestForDisplay();
+                 worker->wake();
+             },
+         .takeFrame =
+             [this](std::vector<std::byte>& into) { return frameFlow->takeDisplayFrame(into); },
+         .lost =
+             [this] {
+                 // The page draws nothing either: its fetch makes the frames again, so readouts,
+                 // hover and the status bar stay live under the message.
+                 frameFlow->setNative(false);
+                 session->nativeGraphicsLost();
+             }});
+    if (!nativeTraces) {
+        pacing.reset();
+        return;
+    }
+    engine::FramePacing* clock = pacing.get();
+    analyzer->setClock([clock] { return clock->clock(engine::monotonicNanos()); });
+    frameFlow->setNative(true);
+    session->setNativeTraces(true);
+}
+
 void EditorCore::detach()
 {
+    if (view) {
+        view->stopNativeTraces(); // Asks the worker and the frame flow nothing after this.
+    }
     worker.reset();     // Joins the thread before the state and view it uses go away.
     dispatcher.reset(); // Drops queued deliveries and the state-sync timer.
     session.reset();
     frameFlow.reset();
     transport.reset();
     analyzer.reset();
+    pacing.reset();
+    nativeTraces = false;
     view.reset();
     parent = nullptr;
 }
@@ -158,6 +214,11 @@ void EditorCore::receive(std::string_view message)
     const auto& type = (*parsed)["type"].get_ref<const std::string&>();
     if (type == messageName(protocol::MessageType::kResize)) {
         resize(*parsed);
+    } else if (type == messageName(protocol::MessageType::kTraceView)) {
+        // A malformed one is refused, and the last good one kept (QS-7).
+        if (const auto traceView = TraceView::parse(*parsed); traceView && nativeTraces) {
+            view->setTraceView(*traceView);
+        }
     } else if (session) {
         session->receive(*parsed);
     } else if (type == messageName(protocol::MessageType::kHello) && transport) {

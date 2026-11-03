@@ -90,11 +90,12 @@ if(BUILD_TESTING)
         PRIVATE editor engine_test_support branding orizon_warnings GTest::gtest_main)
     if(APPLE)
         target_sources(editor_tests PRIVATE tests/EditorTests.mm tests/MetalTraceRendererTests.mm
-                                            tests/TraceLayerTests.mm)
+                                            tests/NativeTracesTests.mm tests/TraceLayerTests.mm)
         target_link_libraries(editor_tests PRIVATE "-framework Cocoa" "-framework Metal"
                                                    "-framework QuartzCore" "-framework WebKit" z)
         set_source_files_properties(tests/EditorTests.mm tests/MetalTraceRendererTests.mm
-                                    tests/TraceLayerTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+                                    tests/NativeTracesTests.mm tests/TraceLayerTests.mm
+                                    PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     elseif(WIN32)
         target_sources(editor_tests PRIVATE tests/EditorTestsWin.cpp)
     else()

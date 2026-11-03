@@ -3,7 +3,11 @@
 namespace orizon::editor {
 
 class PointerControl;
+class TraceLayer;
 class WebView;
+
+// For tests: the view's natively drawn traces, or nullptr when the page draws them.
+TraceLayer* traceLayerForTests(WebView& view);
 
 // For tests: ends the view's page process, as a crash or macOS under memory pressure would. False
 // if WebKit offers no way to.
