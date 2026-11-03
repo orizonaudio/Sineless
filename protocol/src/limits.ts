@@ -116,6 +116,31 @@ export const screenMargin = 8;
 export const screenBorder = 1;
 export const screenRadius = 10;
 
+// The screen's grid, which the page and the macOS editor both draw: this many equal time divisions;
+// level lines every gridLevelStepDb down from the top of each lane, at most gridLevelsBelowTop
+// below it (the trace is linear, so step s sits at 10^(-gridLevelStepDb * s / 20) of the half-lane);
+// and no two drawn level lines closer than gridMinimumLineGap CSS pixels, so a short lane shows
+// fewer.
+export const gridColumns = 10;
+export const gridLevelStepDb = 3;
+export const gridLevelsBelowTop = 4;
+export const gridMinimumLineGap = 8;
+
+// Compare's cancellation shading, which the page and the macOS editor both draw. Where the sum's
+// peak falls more than cancellationDb below the louder compared track's, they cancel strongly.
+// This is not the summing gain readout's rule (energy against unrelated tracks, ±1 dB), and cannot
+// be: a column holds only peaks, and the peak of two unrelated signals' sum wanders well below what
+// their powers add to (on 10 to 30% of columns of noise), which would shade unrelated tracks.
+// Against the louder track alone, with 3 dB, unrelated tracks are left unshaded. Stretches quieter
+// than cancellationQuietShare of the loudest moment (about -26 dB) cancel nothing audible; gaps of
+// up to cancellationBridgedPoints inside a cancelling stretch belong to it; raw points, which
+// cross zero every cycle, are compared over a window of a cancellationReachDivisor-th of the frame
+// either side.
+export const cancellationDb = -3;
+export const cancellationQuietShare = 0.05;
+export const cancellationBridgedPoints = 3;
+export const cancellationReachDivisor = 128;
+
 type Kind = "double" | "count" | "pixels";
 
 // The list the C++ header is generated from.
@@ -172,4 +197,24 @@ export const limits: readonly {
   { name: "screenMargin", value: screenMargin, kind: "pixels" },
   { name: "screenBorder", value: screenBorder, kind: "pixels" },
   { name: "screenRadius", value: screenRadius, kind: "pixels" },
+  { name: "gridColumns", value: gridColumns, kind: "count" },
+  { name: "gridLevelStepDb", value: gridLevelStepDb, kind: "double" },
+  { name: "gridLevelsBelowTop", value: gridLevelsBelowTop, kind: "count" },
+  { name: "gridMinimumLineGap", value: gridMinimumLineGap, kind: "double" },
+  { name: "cancellationDb", value: cancellationDb, kind: "double" },
+  {
+    name: "cancellationQuietShare",
+    value: cancellationQuietShare,
+    kind: "double",
+  },
+  {
+    name: "cancellationBridgedPoints",
+    value: cancellationBridgedPoints,
+    kind: "count",
+  },
+  {
+    name: "cancellationReachDivisor",
+    value: cancellationReachDivisor,
+    kind: "count",
+  },
 ];
