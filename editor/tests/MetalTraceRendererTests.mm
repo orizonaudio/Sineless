@@ -298,33 +298,80 @@ TEST_F(MetalTraceRendererTest, FollowsEachDrawablesSizeAndEachFramesLanes)
     }
 }
 
-// Drawn natively, the playhead moves by fractions of a pixel: at every position its coverage
-// across a row adds up to its width and centres on its position, so it neither flickers nor steps.
+// Drawn natively, the playhead moves by fractions of a pixel: at every position the light it gives
+// off across a row adds up to its width and centres on its position, so it neither flashes as it
+// crosses pixels (a line split over two pixels as bright as one on a pixel) nor steps.
 TEST_F(MetalTraceRendererTest, DrawsThePlayheadAtItsExactPosition)
 {
     TraceView view = scenes().front().view;
     view.previous = {0.0f, 0.0f, 0.0f, 0.0f};
     view.cursor = {1.0f, 1.0f, 1.0f, 1.0f};
+    // The light a value gives off: sRGB decoded (IEC 61966-2-1).
+    const auto light = [](double value) {
+        return value <= 0.04045 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+    };
+    // Over nothing, as the parity scenes draw, and over the editor's own dark screen.
+    for (const Rgba& screen :
+         {Rgba{0.0f, 0.0f, 0.0f, 0.0f}, Rgba{3 / 255.0f, 3 / 255.0f, 4 / 255.0f, 1.0f}}) {
+        view.screen = screen;
+        const double background = light(screen[0]) * screen[3];
+        for (const double ratio : {1.0, 2.0}) {
+            const std::size_t width = ratio == 1.0 ? 200 : 400;
+            for (const double position : {0.25, 0.2513, 0.2537, 0.2561, 0.2589}) {
+                FrameView frame;
+                frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kSynced);
+                frame.cursor = static_cast<float>(position);
+                const auto drawn = draw(width, 20, &frame, view, ratio);
+                ASSERT_TRUE(drawn);
+                double covered = 0.0;
+                double weighted = 0.0;
+                for (std::size_t x = 0; x < width; ++x) {
+                    // The line's light: what the pixel gives off beyond the screen's.
+                    const double alpha = light(drawn->at(x, 10)[0] / 255.0) - background;
+                    covered += alpha;
+                    weighted += alpha * (static_cast<double>(x) + 0.5);
+                }
+                const double lineWidth = std::max(1.0, std::floor(ratio));
+                // Within the rounding of the few 8-bit pixels it touches.
+                EXPECT_NEAR(covered, lineWidth, 0.02)
+                    << position << " at " << ratio << " over " << screen[3];
+                EXPECT_NEAR(weighted / covered, position * static_cast<double>(width), 0.02)
+                    << position << " at " << ratio << " over " << screen[3];
+            }
+        }
+    }
+}
+
+// Drawn hard one pixel wide (a 1x display), the playhead's brightest pixel would give off twice the
+// light on a pixel as between two, flashing as it moves. At every display scale its brightest pixel
+// stays near as bright wherever it sits.
+TEST_F(MetalTraceRendererTest, KeepsThePlayheadEquallyBrightWhereverItSits)
+{
+    TraceView view = scenes().front().view;
+    view.previous = {0.0f, 0.0f, 0.0f, 0.0f};
+    view.cursor = {1.0f, 1.0f, 1.0f, 1.0f};
     for (const double ratio : {1.0, 2.0}) {
-        const std::size_t width = ratio == 1.0 ? 200 : 400;
-        for (const double position : {0.25, 0.2513, 0.2537, 0.2561, 0.2589}) {
+        const auto width = static_cast<std::size_t>(200 * ratio);
+        double brightest = 0.0;
+        double dimmest = 1.0;
+        for (int step = 0; step <= 20; ++step) {
             FrameView frame;
             frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kSynced);
-            frame.cursor = static_cast<float>(position);
+            // Across one whole device pixel, in twentieths.
+            frame.cursor = static_cast<float>((50.0 + step / 20.0) / static_cast<double>(width));
             const auto drawn = draw(width, 20, &frame, view, ratio);
             ASSERT_TRUE(drawn);
-            double covered = 0.0;
-            double weighted = 0.0;
+            double peak = 0.0;
             for (std::size_t x = 0; x < width; ++x) {
-                const double alpha = drawn->at(x, 10)[3] / 255.0;
-                covered += alpha;
-                weighted += alpha * (static_cast<double>(x) + 0.5);
+                const double value = drawn->at(x, 10)[0] / 255.0;
+                peak = std::max(peak, value <= 0.04045 ? value / 12.92
+                                                       : std::pow((value + 0.055) / 1.055, 2.4));
             }
-            const double lineWidth = std::max(1.0, std::floor(ratio));
-            EXPECT_NEAR(covered, lineWidth, 2.0 / 255.0) << position << " at " << ratio;
-            EXPECT_NEAR(weighted / covered, position * static_cast<double>(width), 0.01)
-                << position << " at " << ratio;
+            brightest = std::max(brightest, peak);
+            dimmest = std::min(dimmest, peak);
         }
+        // A hard one-pixel line's peak halves between two pixels; well under that.
+        EXPECT_LT(brightest / dimmest, 1.5) << "at " << ratio;
     }
 }
 
