@@ -48,8 +48,38 @@ async function startNative(): Promise<Started> {
 const shownText = () =>
   byId("message").hidden ? undefined : byId("message-text").textContent;
 
+// The page's watches on its pixel ratio, each told as the browser would when the window moves to
+// a display of another ratio.
+const ratioWatchers: (() => void)[] = [];
+// On the global object the ratio is the window's own property: put back as it was, not deleted.
+const ownRatio = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
+function watchRatio(): void {
+  const matchMedia = window.matchMedia.bind(window);
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+    const list = matchMedia(query);
+    if (query.includes("resolution")) {
+      vi.spyOn(list, "addEventListener").mockImplementation(
+        (type, listener) => {
+          if (type === "change" && typeof listener === "function") {
+            ratioWatchers.push(() => {
+              listener(new Event("change"));
+            });
+          }
+        },
+      );
+    }
+    return list;
+  });
+}
+
 afterEach(async () => {
   vi.restoreAllMocks();
+  ratioWatchers.length = 0;
+  if (ownRatio === undefined) {
+    Reflect.deleteProperty(window, "devicePixelRatio");
+  } else {
+    Object.defineProperty(window, "devicePixelRatio", ownRatio);
+  }
   await page.viewport(1200, 720);
 });
 
@@ -222,7 +252,26 @@ describe("native traces: what the page sends", () => {
         ]);
       },
     },
+    {
+      // No size changes, so no resize event comes: the page's watch on the ratio must send it.
+      field: "the line width, on a move to a display of another pixel ratio",
+      act: async () => {
+        const ratio = window.devicePixelRatio * 2;
+        Object.defineProperty(window, "devicePixelRatio", {
+          configurable: true,
+          get: () => ratio,
+        });
+        for (const changed of ratioWatchers.splice(0)) {
+          changed();
+        }
+        await settle();
+      },
+      check: (view: TraceViewMessage, before: TraceViewMessage) => {
+        expect(view.lineWidth).toBeCloseTo(before.lineWidth * 2);
+      },
+    },
   ])("$field sends a new traceView", async ({ act, check }) => {
+    watchRatio();
     const started = await startNative();
     const before = traceViews(started.sent);
     await act(started);
