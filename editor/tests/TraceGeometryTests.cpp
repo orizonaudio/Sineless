@@ -14,11 +14,11 @@ namespace {
 // native picture must place the same lanes, grid lines and shading.
 const nlohmann::json& vectors()
 {
-    static const nlohmann::json loaded = [] {
+    static const nlohmann::json kLoaded = [] {
         std::ifstream file(std::string(ORIZON_PROTOCOL_TEST_DATA_DIR) + "/trace-geometry.json");
         return nlohmann::json::parse(file);
     }();
-    return loaded;
+    return kLoaded;
 }
 
 protocol::ViewLayout layoutNamed(const std::string& name)
@@ -163,15 +163,19 @@ TEST(TraceGeometry, ShadesNothingWithoutARelatedComparedTrack)
 TEST(TraceGeometry, DrawsThePlayheadAtItsExactPositionWithCoverage)
 {
     for (const double ratio : {1.0, 2.0, 1.5}) {
-        for (double position = 0.30; position < 0.31; position += 0.00037) {
+        // Positions across a few pixels, at fractions of a pixel.
+        for (int step = 0; step < 28; ++step) {
+            const double position = 0.30 + step * 0.00037;
             const PixelBand band = playheadBand(position, 2000.0, ratio);
             const double width = std::max(1.0, std::floor(ratio));
             EXPECT_NEAR(band.right - band.left, width, 1e-9);
             EXPECT_NEAR((band.left + band.right) / 2.0, position * 2000.0, 1e-9);
             double covered = 0.0;
             double weighted = 0.0;
-            for (double pixel = std::floor(band.left) - 1; pixel <= std::ceil(band.right) + 1;
-                 ++pixel) {
+            const auto first = static_cast<int>(std::floor(band.left)) - 1;
+            const auto last = static_cast<int>(std::ceil(band.right)) + 1;
+            for (int column = first; column <= last; ++column) {
+                const auto pixel = static_cast<double>(column);
                 const double coverage = bandCoverage(pixel, band);
                 covered += coverage;
                 weighted += coverage * (pixel + 0.5);

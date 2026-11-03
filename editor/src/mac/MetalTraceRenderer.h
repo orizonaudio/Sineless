@@ -3,6 +3,7 @@
 #include "editor/FrameView.h"
 #include "editor/TraceView.h"
 
+#include <cstdint>
 #include <memory>
 
 #ifdef __OBJC__
@@ -26,7 +27,7 @@ public:
     MetalTraceRenderer(const MetalTraceRenderer&) = delete;
     MetalTraceRenderer& operator=(const MetalTraceRenderer&) = delete;
 
-    enum class Result
+    enum class Result : std::uint8_t
     {
         kDrawn,
         // Metal refused the memory for the coverage targets at this size.

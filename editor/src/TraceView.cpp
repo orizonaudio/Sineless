@@ -111,7 +111,7 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
             !lanes->is_array() || lanes->size() > protocol::kMaxLanes + 1) {
             return std::nullopt;
         }
-        LaneSet parsed{.laneSet = laneSet->get<std::uint32_t>()};
+        LaneSet parsed{.laneSet = laneSet->get<std::uint32_t>(), .lanes = {}};
         for (const nlohmann::json& lane : *lanes) {
             const auto id = lane.is_object() ? lane.find("id") : lane.end();
             const auto compared = lane.is_object() ? lane.find("compared") : lane.end();

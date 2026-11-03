@@ -81,17 +81,17 @@ struct Shared
 };
 
 // Native drawing stopped for good: reported once, on the main thread, unless the layer is gone.
-void setLost(const std::shared_ptr<Shared>& shared)
+// By value: the block captures it, and a block captures a C++ reference as a reference.
+// NOLINTNEXTLINE(performance-unnecessary-value-param): captured by the block, as above.
+void setLost(std::shared_ptr<Shared> state)
 {
-    if (shared->lost.exchange(true)) {
+    if (state->lost.exchange(true)) {
         return;
     }
-    // A copy: a block captures a C++ reference as a reference.
-    const std::shared_ptr<Shared> state = shared;
     dispatch_async(dispatch_get_main_queue(), ^{
       bool stopped = false;
       {
-          const std::lock_guard lock(state->callbackMutex);
+          const std::scoped_lock lock(state->callbackMutex);
           stopped = state->stopped;
       }
       if (!stopped && state->hooks.lost) {
@@ -101,11 +101,11 @@ void setLost(const std::shared_ptr<Shared>& shared)
 }
 
 // Runs `block` on the render thread, between callbacks, unless the layer has stopped.
-void perform(const std::shared_ptr<Shared>& shared, void (^block)(Shared& shared))
+// NOLINTNEXTLINE(performance-unnecessary-value-param): captured by the block, as setLost's.
+void perform(std::shared_ptr<Shared> state, void (^block)(Shared& shared))
 {
-    const std::shared_ptr<Shared> state = shared; // A copy, as above.
     CFRunLoopPerformBlock(state->runLoop, kCFRunLoopDefaultMode, ^{
-      const std::lock_guard lock(state->callbackMutex);
+      const std::scoped_lock lock(state->callbackMutex);
       if (!state->stopped) {
           block(*state);
       }
@@ -174,7 +174,7 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
 void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* update)
 {
     Shared& s = *shared;
-    const std::lock_guard lock(s.callbackMutex);
+    const std::scoped_lock lock(s.callbackMutex);
     if (s.stopped) {
         return;
     }
@@ -196,7 +196,7 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
         changed = true;
     }
     {
-        const std::lock_guard viewLock(s.viewMutex);
+        const std::scoped_lock viewLock(s.viewMutex);
         if (s.pendingView) {
             s.view = std::move(s.pendingView);
             s.pendingView.reset();
@@ -301,6 +301,7 @@ public:
 private:
     void update();
     void observe(NSWindow* window);
+    void stopObserving();
 
     NSView* container;
     NSView* layerView;
@@ -335,7 +336,7 @@ void resizeWithOldSuperviewSize(id self, SEL /*cmd*/, NSSize /*size*/)
 
 void viewDidChangeBackingProperties(id self, SEL cmd)
 {
-    const struct objc_super parent = {self, [NSView class]};
+    const struct objc_super parent = {.receiver = self, .super_class = [NSView class]};
     reinterpret_cast<void (*)(const struct objc_super*, SEL)>(objc_msgSendSuper)(&parent, cmd);
     if (auto* owner = ownerOf<LayerMac>(self)) {
         owner->layout(); // A move between a Retina and a 1x display changes no size.
@@ -344,7 +345,7 @@ void viewDidChangeBackingProperties(id self, SEL cmd)
 
 void viewDidMoveToWindow(id self, SEL cmd)
 {
-    const struct objc_super parent = {self, [NSView class]};
+    const struct objc_super parent = {.receiver = self, .super_class = [NSView class]};
     reinterpret_cast<void (*)(const struct objc_super*, SEL)>(objc_msgSendSuper)(&parent, cmd);
     if (auto* owner = ownerOf<LayerMac>(self)) {
         owner->windowChanged();
@@ -409,7 +410,7 @@ LayerMac::LayerMac(NSView* container, NSView* above, engine::FramePacing& pacing
           state->renderer = MetalTraceRenderer::create(layer.device);
       }
       {
-          const std::lock_guard lock(state->callbackMutex);
+          const std::scoped_lock lock(state->callbackMutex);
           if (state->queue == nil || state->renderer == nullptr) {
               // Neither is expected on macOS 14: the one failure path, native graphics lost.
               state->lostHandled = true;
@@ -454,10 +455,10 @@ LayerMac::LayerMac(NSView* container, NSView* above, engine::FramePacing& pacing
 LayerMac::~LayerMac()
 {
     {
-        const std::lock_guard lock(shared->callbackMutex);
+        const std::scoped_lock lock(shared->callbackMutex);
         shared->stopped = true;
     }
-    observe(nil);
+    stopObserving();
     setOwner(layerView, nullptr);
     const std::shared_ptr<Shared> state = shared;
     CFRunLoopPerformBlock(state->runLoop, kCFRunLoopDefaultMode, ^{
@@ -472,7 +473,7 @@ LayerMac::~LayerMac()
 void LayerMac::setTraceView(const TraceView& view)
 {
     {
-        const std::lock_guard lock(shared->viewMutex);
+        const std::scoped_lock lock(shared->viewMutex);
         shared->pendingView = view;
     }
     viewKnown = true;
@@ -525,12 +526,17 @@ void LayerMac::windowChanged()
     layout();
 }
 
-void LayerMac::observe(NSWindow* window)
+void LayerMac::stopObserving()
 {
     for (id observer : observers) {
         [NSNotificationCenter.defaultCenter removeObserver:observer];
     }
     observers.clear();
+}
+
+void LayerMac::observe(NSWindow* window)
+{
+    stopObserving();
     if (window == nil) {
         return;
     }

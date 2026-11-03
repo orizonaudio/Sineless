@@ -59,13 +59,13 @@ struct Source
     {
         return {.requestFrame =
                     [this] {
-                        const std::lock_guard lock(mutex);
+                        const std::scoped_lock lock(mutex);
                         ++requests;
                         ready = true;
                     },
                 .takeFrame =
                     [this](std::vector<std::byte>& into) {
-                        const std::lock_guard lock(mutex);
+                        const std::scoped_lock lock(mutex);
                         if (!always && !ready) {
                             return false;
                         }

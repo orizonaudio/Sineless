@@ -91,10 +91,11 @@ std::string shaderSource()
         const char channel = "rgba"[index % 4];
         // Each step with its own fixed indices: an array indexed at run time is kept in slow
         // memory (trace-renderer.ts, compositeLayering).
-        layering += "  if (" + k + " < u.traces) {\n    float a = u.colours[" + k +
-                    "].a * coverage" + target + "." + channel +
-                    ";\n    rgb = rgb * (1.0 - a) + u.colours[" + k +
-                    "].rgb * a;\n    alpha = alpha * (1.0 - a) + a;\n  }\n";
+        layering.append("  if (").append(k).append(" < u.traces) {\n    float a = u.colours[");
+        layering.append(k).append("].a * coverage").append(target).append(".");
+        layering.push_back(channel);
+        layering.append(";\n    rgb = rgb * (1.0 - a) + u.colours[").append(k);
+        layering.append("].rgb * a;\n    alpha = alpha * (1.0 - a) + a;\n  }\n");
     }
     return R"(#include <metal_stdlib>
 using namespace metal;
@@ -383,8 +384,8 @@ class Renderer final : public MetalTraceRenderer
 public:
     Renderer(id<MTLDevice> device, id<MTLRenderPipelineState> composite,
              id<MTLRenderPipelineState> band, std::array<id<MTLRenderPipelineState>, 4> trace)
-        : device_(device), composite_(composite), band_(band), trace_(trace),
-          slotsFree_(dispatch_semaphore_create(kSlots))
+        : device(device), compositePipeline(composite), bandPipeline(band),
+          tracePipelines(std::move(trace)), slotsFree(dispatch_semaphore_create(kSlots))
     {}
 
     ~Renderer() override
@@ -392,14 +393,14 @@ public:
         // Every slot back from the GPU before the semaphore goes: libdispatch refuses to free one
         // below its initial count.
         for (std::size_t slot = 0; slot < kSlots; ++slot) {
-            dispatch_semaphore_wait(slotsFree_, DISPATCH_TIME_FOREVER);
+            dispatch_semaphore_wait(slotsFree, DISPATCH_TIME_FOREVER);
         }
         for (std::size_t slot = 0; slot < kSlots; ++slot) {
-            dispatch_semaphore_signal(slotsFree_);
+            dispatch_semaphore_signal(slotsFree);
         }
     }
 
-    void refuseCoverageTargetsForTesting(bool refuse) override { refuseTargets_ = refuse; }
+    void refuseCoverageTargetsForTesting(bool refuse) override { refuseTargets = refuse; }
 
     Result encode(id<MTLCommandBuffer> buffer, id<MTLTexture> target, const FrameView* frame,
                   const TraceView& view, double pixelRatio, bool grid) override
@@ -476,17 +477,17 @@ public:
             }
         }
         // The next slot, once the GPU is done with it.
-        dispatch_semaphore_wait(slotsFree_, DISPATCH_TIME_FOREVER);
-        Slot& slot = slots_[next_];
-        if (!slot.reserve(device_, valueCount * sizeof(float),
+        dispatch_semaphore_wait(slotsFree, DISPATCH_TIME_FOREVER);
+        Slot& slot = slots[nextSlot];
+        if (!slot.reserve(device, valueCount * sizeof(float),
                           (under.size() + over.size()) * sizeof(BandInstance))) {
-            dispatch_semaphore_signal(slotsFree_);
+            dispatch_semaphore_signal(slotsFree);
             return Result::kOutOfMemory;
         }
-        next_ = (next_ + 1) % kSlots;
-        dispatch_semaphore_t slotsFree = slotsFree_;
+        nextSlot = (nextSlot + 1) % kSlots;
+        dispatch_semaphore_t freed = slotsFree;
         [buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
-          dispatch_semaphore_signal(slotsFree);
+          dispatch_semaphore_signal(freed);
         }];
         std::vector<std::uint32_t> firsts;
         auto* values = static_cast<std::byte*>(slot.values.contents);
@@ -499,8 +500,8 @@ public:
             }
         }
         auto* bands = static_cast<BandInstance*>(slot.bands.contents);
-        std::copy(under.begin(), under.end(), bands);
-        std::copy(over.begin(), over.end(), bands + under.size());
+        std::ranges::copy(under, bands);
+        std::ranges::copy(over, bands + under.size());
 
         CompositeUniforms composite;
         if (traces) {
@@ -521,7 +522,7 @@ public:
             if (count == 0) {
                 return;
             }
-            [encoder setRenderPipelineState:band_];
+            [encoder setRenderPipelineState:bandPipeline];
             [encoder setVertexBuffer:slot.bands offset:first * sizeof(BandInstance) atIndex:0];
             [encoder setFragmentBuffer:slot.bands offset:first * sizeof(BandInstance) atIndex:0];
             [encoder setVertexBytes:canvas.data() length:sizeof(canvas) atIndex:1];
@@ -534,10 +535,10 @@ public:
         drawBands(0, under.size());
         if (traces) {
             // Then the traces layered over the screen, once.
-            [encoder setRenderPipelineState:composite_];
+            [encoder setRenderPipelineState:compositePipeline];
             [encoder setFragmentBytes:&composite length:sizeof(composite) atIndex:0];
             for (std::size_t index = 0; index < kCoverageTargets; ++index) {
-                [encoder setFragmentTexture:coverage_[index] atIndex:index];
+                [encoder setFragmentTexture:coverage[index] atIndex:index];
             }
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
         }
@@ -581,7 +582,7 @@ private:
     // The coverage targets at the target's size, all four allocated together, as the page does.
     bool fitCoverage(NSUInteger width, NSUInteger height)
     {
-        if (coverage_[0] != nil && coverage_[0].width == width && coverage_[0].height == height) {
+        if (coverage[0] != nil && coverage[0].width == width && coverage[0].height == height) {
             return true;
         }
         MTLTextureDescriptor* descriptor =
@@ -591,10 +592,10 @@ private:
                                                            mipmapped:NO];
         descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
         descriptor.storageMode = MTLStorageModePrivate;
-        for (auto& texture : coverage_) {
-            texture = refuseTargets_ ? nil : [device_ newTextureWithDescriptor:descriptor];
+        for (auto& texture : coverage) {
+            texture = refuseTargets ? nil : [device newTextureWithDescriptor:descriptor];
             if (texture == nil) {
-                coverage_ = {};
+                coverage = {};
                 return false;
             }
         }
@@ -638,7 +639,7 @@ private:
             if (attachment != bound) {
                 [encoder endEncoding];
                 MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-                pass.colorAttachments[0].texture = coverage_[attachment];
+                pass.colorAttachments[0].texture = coverage[attachment];
                 pass.colorAttachments[0].loadAction = MTLLoadActionClear;
                 pass.colorAttachments[0].storeAction = MTLStoreActionStore;
                 pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
@@ -646,7 +647,7 @@ private:
                 [encoder setVertexBuffer:slot.values offset:0 atIndex:1];
                 bound = attachment;
             }
-            [encoder setRenderPipelineState:trace_[index % 4]];
+            [encoder setRenderPipelineState:tracePipelines[index % 4]];
             uniforms.center = static_cast<float>(laneList[index].center);
             uniforms.halfHeight = static_cast<float>(laneList[index].halfHeight);
             uniforms.first = firsts[index];
@@ -704,15 +705,15 @@ private:
         }
     }
 
-    id<MTLDevice> device_;
-    id<MTLRenderPipelineState> composite_;
-    id<MTLRenderPipelineState> band_;
-    std::array<id<MTLRenderPipelineState>, 4> trace_;
-    std::array<id<MTLTexture>, kCoverageTargets> coverage_;
-    std::array<Slot, kSlots> slots_;
-    std::size_t next_ = 0;
-    dispatch_semaphore_t slotsFree_;
-    bool refuseTargets_ = false;
+    id<MTLDevice> device;
+    id<MTLRenderPipelineState> compositePipeline;
+    id<MTLRenderPipelineState> bandPipeline;
+    std::array<id<MTLRenderPipelineState>, 4> tracePipelines;
+    std::array<id<MTLTexture>, kCoverageTargets> coverage;
+    std::array<Slot, kSlots> slots;
+    std::size_t nextSlot = 0;
+    dispatch_semaphore_t slotsFree;
+    bool refuseTargets = false;
 };
 
 } // namespace

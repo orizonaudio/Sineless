@@ -170,7 +170,7 @@ std::vector<int> levelSteps(double halfLane, double minimumGap)
         for (int step = 0; step <= below; step += stride) {
             steps.push_back(step);
         }
-        const bool fits = std::all_of(steps.begin(), steps.end(), [&](int step) {
+        const bool fits = std::ranges::all_of(steps, [&](int step) {
             const double next = step + stride <= below ? levelFraction(step + stride) : 0.0;
             return (levelFraction(step) - next) * halfLane >= minimumGap;
         });
@@ -224,7 +224,7 @@ std::vector<VerticalLine> musicalGridLines(double cycleStart, double span, doubl
         return {};
     }
     // The page's tolerance for musical positions that should be whole (musical-grid.ts).
-    constexpr double epsilon = 1e-6;
+    constexpr double kEpsilon = 1e-6;
     const double visibleStart = cycleStart + view.start * span;
     const double visibleSpan = (view.end - view.start) * span;
     const bool longView = visibleSpan >= 8.0 * barQuarterNotes;
@@ -237,13 +237,13 @@ std::vector<VerticalLine> musicalGridLines(double cycleStart, double span, doubl
                                : step < 0.25                    ? 0.25
                                                                 : 1.0;
     const auto isMultiple = [&](double value, double of) {
-        return std::abs(value / of - std::round(value / of)) < epsilon;
+        return std::abs(value / of - std::round(value / of)) < kEpsilon;
     };
     std::vector<VerticalLine> lines;
     for (auto index = static_cast<long long>(std::floor(visibleStart / step)) + 1;
-         static_cast<double>(index) * step < visibleStart + visibleSpan - epsilon; ++index) {
+         static_cast<double>(index) * step < visibleStart + visibleSpan - kEpsilon; ++index) {
         const double quarterNotes = static_cast<double>(index) * step;
-        if (quarterNotes > visibleStart + epsilon) {
+        if (quarterNotes > visibleStart + kEpsilon) {
             lines.push_back({.position = (quarterNotes - visibleStart) / visibleSpan,
                              .strong = isMultiple(quarterNotes, strongEvery)});
         }
