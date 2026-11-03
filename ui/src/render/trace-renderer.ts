@@ -15,6 +15,7 @@ import {
   type ViewLayout,
 } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+import { waitingAlpha } from "../../../protocol/src/limits.ts";
 import { fullView, type ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
 import {
@@ -552,7 +553,7 @@ export class TraceRenderer implements FrameRenderer {
     const view = this.view();
     const white: Rgba = [1, 1, 1, 1];
     const alpha = (color: Rgba) =>
-      view.dim === true ? color[3] * 0.45 : color[3];
+      view.dim === true ? color[3] * waitingAlpha : color[3];
 
     // The traces: views in ChannelView order, or lanes, each in its own lane of the screen.
     let blocks: [Float32Array, Rgba][];

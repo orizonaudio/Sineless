@@ -2,6 +2,7 @@
 // screen from the left; musical positions are in quarter notes from the project start.
 import type { AxisLabel } from "./axis-labels.ts";
 import { formatClock } from "./format.ts";
+import { musicalTolerance } from "../../../protocol/src/limits.ts";
 import { fullView, type ViewWindow } from "./zoom.ts";
 
 export interface GridLine {
@@ -24,7 +25,7 @@ export const beatSpanLabels = [
 ] as const;
 
 const maximumLabels = 5;
-const epsilon = 1e-6;
+const epsilon = musicalTolerance;
 
 function greatestCommonDivisor(a: number, b: number): number {
   return b === 0 ? a : greatestCommonDivisor(b, a % b);

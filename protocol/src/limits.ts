@@ -141,6 +141,18 @@ export const cancellationQuietShare = 0.05;
 export const cancellationBridgedPoints = 3;
 export const cancellationReachDivisor = 128;
 
+// What the page and the macOS editor draw fainter than the live picture: while Normal mode waits
+// for a trigger, the last traces, the playhead and the shading at waitingAlpha of their opacity, so
+// the picture reads as old but stays legible; in Compare, tracks left out of the comparison at
+// leftOutAlpha of theirs, so the compared tracks and their sum stand out.
+export const waitingAlpha = 0.45;
+export const leftOutAlpha = 0.2;
+
+// Musical positions worked out in floating point (a step's multiples, a view's edges) count as
+// whole, or as on an edge, within musicalTolerance quarter notes or steps: far above the rounding
+// of a sum of steps, far below the finest grid step (a 1/1024 note).
+export const musicalTolerance = 1e-6;
+
 type Kind = "double" | "count" | "pixels";
 
 // The list the C++ header is generated from.
@@ -202,6 +214,9 @@ export const limits: readonly {
   { name: "gridLevelsBelowTop", value: gridLevelsBelowTop, kind: "count" },
   { name: "gridMinimumLineGap", value: gridMinimumLineGap, kind: "double" },
   { name: "cancellationDb", value: cancellationDb, kind: "double" },
+  { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
+  { name: "leftOutAlpha", value: leftOutAlpha, kind: "double" },
+  { name: "musicalTolerance", value: musicalTolerance, kind: "double" },
   {
     name: "cancellationQuietShare",
     value: cancellationQuietShare,

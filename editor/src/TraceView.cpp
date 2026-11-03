@@ -215,7 +215,7 @@ std::vector<Rgba> TraceView::laneColours(const FrameView& frame) const
         Rgba colour = style.colour;
         // Tracks left out of a comparison are drawn faint.
         if (frame.compared() && !style.compared && !style.sum) {
-            colour[3] *= 0.2f;
+            colour[3] *= static_cast<float>(protocol::kLeftOutAlpha);
         }
         out.push_back(colour);
     }

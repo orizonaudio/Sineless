@@ -17,6 +17,7 @@ import {
   encodeFrame,
   type FrameContent,
 } from "../../../protocol/src/frame-encoder.ts";
+import { leftOutAlpha } from "../../../protocol/src/limits.ts";
 import type { Rgba, TraceViewMessage } from "../../../protocol/src/messages.ts";
 import {
   TraceRenderer,
@@ -376,7 +377,12 @@ function laneStyle(
     colours: lanes.map((lane, index) => {
       const [r = 0, g = 0, b = 0, a = 1] = lane.colour;
       const sum = comparing && index === lanes.length - 1;
-      return [r, g, b, comparing && !lane.compared && !sum ? a * 0.2 : a];
+      return [
+        r,
+        g,
+        b,
+        comparing && !lane.compared && !sum ? a * leftOutAlpha : a,
+      ];
     }),
     compared: lanes.map((lane) => lane.compared),
   };

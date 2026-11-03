@@ -28,8 +28,7 @@ constexpr std::size_t kSlots = 3;
 // moves; a soft one looks much the same wherever it sits. On Retina, where the line is two pixels
 // wide, the fade softens it by less than a point.
 constexpr float kPlayheadSoftness = 1.5f;
-// The page's alpha for a stale trace (Waiting), trace-renderer.ts.
-constexpr float kDimmedAlpha = 0.45f;
+constexpr auto kDimmedAlpha = static_cast<float>(protocol::kWaitingAlpha);
 
 // The trace pass's uniforms, laid out as the shaders' TraceUniforms: scalars only, so both sides
 // agree without alignment rules.
