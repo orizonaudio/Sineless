@@ -22,7 +22,11 @@ struct Place: Codable {
     let cell: Double
 }
 
-let cellsPerRow = 20  // barcodeDataBits + 4, protocol/src/limits.ts
+// What analyse.ts --locate writes: the strips, and the cells in each row (limits.ts).
+struct Located: Codable {
+    let rowCells: Int
+    let places: [Place]
+}
 
 func milliseconds(_ ticks: UInt64) -> Double {
     var timebase = mach_timebase_info_data_t()
@@ -142,8 +146,9 @@ case "grab":
     try await stream.stopCapture()
     print("{\"width\": \(size.0), \"height\": \(size.1)}")
 case "record":
-    let places = try JSONDecoder().decode(
-        [Place].self, from: Data(contentsOf: URL(fileURLWithPath: arguments[2])))
+    let located = try JSONDecoder().decode(
+        Located.self, from: Data(contentsOf: URL(fileURLWithPath: arguments[2])))
+    let places = located.places
     let seconds = Double(arguments[3]) ?? 60
     FileManager.default.createFile(atPath: arguments[4], contents: nil)
     guard let out = FileHandle(forWritingAtPath: arguments[4]) else { exit(1) }
@@ -155,7 +160,7 @@ case "record":
             CVPixelBufferLockBaseAddress(buffer, .readOnly)
             line["cells"] = places.map { place in
                 (0..<2).map { row in
-                    (0..<cellsPerRow).map { cell in
+                    (0..<located.rowCells).map { cell in
                         grey(buffer, Int(place.left + (Double(cell) + 0.5) * place.cell),
                              Int(place.top + (Double(row) + 0.5) * place.cell))
                     }
