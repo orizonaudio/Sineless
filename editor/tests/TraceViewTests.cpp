@@ -133,6 +133,25 @@ TEST(TraceViewColours, TakesTheFramesLaneSetThenTheNewestThenThePalette)
     EXPECT_EQ(byPosition[2], view->fallbackColours[2 % view->fallbackColours.size()]);
 }
 
+// After a track change the page holds several lane sets; a frame of a set it has not sent yet takes
+// the newest set's colours, in whatever order the sets were sent.
+TEST(TraceViewColours, TakesTheNewestOfSeveralLaneSets)
+{
+    nlohmann::json message = example();
+    nlohmann::json newer = message.at("laneSets")[0];
+    newer["laneSet"] = 9U;
+    newer["lanes"][0]["colour"] = {0.1, 0.2, 0.3, 1.0};
+    const nlohmann::json older = message.at("laneSets")[0];
+    for (const auto& sets :
+         {nlohmann::json::array({older, newer}), nlohmann::json::array({newer, older})}) {
+        message["laneSets"] = sets;
+        const auto view = TraceView::parse(message);
+        ASSERT_TRUE(view);
+        EXPECT_EQ(view->laneColours(laneFrame(8, 2, false)).at(0), (Rgba{0.1f, 0.2f, 0.3f, 1.0f}))
+            << "sets in the order " << sets[0].at("laneSet") << ", " << sets[1].at("laneSet");
+    }
+}
+
 // In Compare the sum takes its own colour, compared tracks their own, and tracks left out are
 // faint.
 TEST(TraceViewColours, DrawsTracksLeftOutOfAComparisonFaint)
