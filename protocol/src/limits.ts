@@ -153,6 +153,20 @@ export const leftOutAlpha = 0.2;
 // of a sum of steps, far below the finest grid step (a 1/1024 note).
 export const musicalTolerance = 1e-6;
 
+// The frame barcode, drawn on every picture while the diagnostic switch is on and read back from
+// screen recordings to count, per refresh, pictures shown, repeated and lost. Each row is a white
+// and a black reference cell (the decoder takes its threshold from the picture itself, under
+// scaling, colour management and compression), barcodeDataBits value cells, most significant
+// first, white for 1, an even parity cell (a misread cell fails it, so a row is rejected rather
+// than guessed) and a black end cell (a clipped row reads unreadable, not as a smaller value). 16
+// bits wrap after 65,536 pictures, 18 minutes at 60 frames/s, and the drawn-for time, counted in
+// barcodeTicksPerMillisecond, after 16.4 s: both far longer than a picture is ever late.
+// barcodeCellPixels is a cell's side in device pixels, the smallest that decodes in a recording of
+// the external 1x display (provisional until measured).
+export const barcodeDataBits = 16;
+export const barcodeTicksPerMillisecond = 4;
+export const barcodeCellPixels = 4;
+
 type Kind = "double" | "count" | "pixels";
 
 // The list the C++ header is generated from.
@@ -215,6 +229,13 @@ export const limits: readonly {
   { name: "gridMinimumLineGap", value: gridMinimumLineGap, kind: "double" },
   { name: "cancellationDb", value: cancellationDb, kind: "double" },
   { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
+  { name: "barcodeDataBits", value: barcodeDataBits, kind: "count" },
+  {
+    name: "barcodeTicksPerMillisecond",
+    value: barcodeTicksPerMillisecond,
+    kind: "count",
+  },
+  { name: "barcodeCellPixels", value: barcodeCellPixels, kind: "count" },
   { name: "leftOutAlpha", value: leftOutAlpha, kind: "double" },
   { name: "musicalTolerance", value: musicalTolerance, kind: "double" },
   {

@@ -36,6 +36,7 @@ add_custom_command(
 add_library(editor_core STATIC
     src/EditorCore.cpp
     src/EmbeddedAssets.cpp
+    src/FrameBarcode.cpp
     src/FrameFlow.cpp
     src/FrameView.cpp
     src/PointerHold.cpp
@@ -71,6 +72,7 @@ target_link_libraries(editor PUBLIC editor_core sdk PRIVATE orizon_warnings)
 if(BUILD_TESTING)
     add_executable(editor_tests
         tests/EmbeddedAssetsTests.cpp
+        tests/FrameBarcodeTests.cpp
         tests/FrameFlowTests.cpp
         tests/FrameViewTests.cpp
         tests/MinimumHeightTests.cpp
