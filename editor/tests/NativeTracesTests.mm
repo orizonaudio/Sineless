@@ -272,6 +272,26 @@ TEST_F(NativeTracesTest, HidesTheTracesWhileThePageReloads)
     EXPECT_TRUE(presents());
 }
 
+// A page that keeps dying is not reloaded again: the editor's notice says so, and the last traces
+// drawn do not stay behind it.
+TEST_F(NativeTracesTest, HidesTheTracesBehindTheNoticeThatThePageKeepsFailing)
+{
+    open();
+    for (int reload = 0; reload < 3; ++reload) {
+        ASSERT_TRUE(
+            pumpUntil([&] { return hasSnapshot(webView) && !layer->view().hidden; }, kPageTimeout))
+            << "reload " << reload;
+        ASSERT_TRUE(terminateContentProcessForTests(*editor->webView()));
+        pumpUntil([&] { return !hasSnapshot(webView); }, 2s);
+    }
+    ASSERT_TRUE(
+        pumpUntil([&] { return hasSnapshot(webView) && !layer->view().hidden; }, kPageTimeout));
+    ASSERT_TRUE(terminateContentProcessForTests(*editor->webView()));
+    ASSERT_TRUE(pumpUntil([&] { return webView.hidden; }, 5s)) << "the notice is shown";
+    pumpUntil([] { return false; }, 1s);
+    EXPECT_TRUE(layer->view().hidden);
+}
+
 // Once native drawing stops for good, the page says what to do, and its own fetch makes the frames
 // again, so its readouts stay live.
 TEST_F(NativeTracesTest, SaysWhatToDoWhenNativeDrawingStops)
