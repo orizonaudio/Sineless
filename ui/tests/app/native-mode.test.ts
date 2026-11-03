@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { ViewLayout } from "../../../protocol/src/enums.ts";
+import { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 import {
   defaultEditorWidth,
   minimumEditorWidth,
@@ -47,6 +47,18 @@ async function startNative(): Promise<Started> {
 
 const shownText = () =>
   byId("message").hidden ? undefined : byId("message-text").textContent;
+
+// A design token's colour as the page reads it (a hex value), and a sent colour's red, green and
+// blue, rounded to the byte the token was given in.
+function tokenRgb(name: string): number[] {
+  const hex = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim()
+    .replace("#", "");
+  return [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+}
+const rgbOf = (colour: readonly number[] | undefined): number[] =>
+  (colour ?? []).slice(0, 3).map((channel) => Math.round(channel * 255));
 
 // The page's watches on its pixel ratio, each told as the browser would when the window moves to
 // a display of another ratio.
@@ -191,6 +203,21 @@ describe("native traces: what the page sends", () => {
         expect(channel).toBeLessThanOrEqual(1);
       }
     }
+    // Each colour is the page's own, where the editor looks for it: the views in ChannelView's
+    // order, which the editor indexes them by.
+    for (const name of Object.keys(
+      ChannelView,
+    ) as (keyof typeof ChannelView)[]) {
+      expect(rgbOf(view?.viewColours[ChannelView[name]]), name).toEqual(
+        tokenRgb(`--sl-${name}`),
+      );
+    }
+    expect(rgbOf(view?.screen)).toEqual(tokenRgb("--sl-screen"));
+    expect(rgbOf(view?.grid)).toEqual(tokenRgb("--sl-grid"));
+    expect(rgbOf(view?.axis)).toEqual(tokenRgb("--sl-grid-strong"));
+    expect(rgbOf(view?.cursor)).toEqual(tokenRgb("--sl-ink"));
+    expect(rgbOf(view?.previous)).toEqual(tokenRgb("--sl-screen"));
+    expect(rgbOf(view?.cancellation)).toEqual(tokenRgb("--sl-warn"));
   });
 
   test("frames alone send nothing new", async () => {
@@ -250,6 +277,20 @@ describe("native traces: what the page sends", () => {
           0x99 / 255,
           1,
         ]);
+      },
+    },
+    {
+      field: "the vertical scale",
+      act: async (started: Started) => {
+        started.deliver({
+          type: "stateChanged",
+          name: "verticalScale",
+          value: -12,
+        });
+        await settle();
+      },
+      check: (view: TraceViewMessage) => {
+        expect(view.verticalScaleDb).toBe(-12);
       },
     },
     {
