@@ -13,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,8 @@ struct Source
     std::vector<std::byte> frame;
     // Each take hands over a new frame (as with a moving trace), or only after a request.
     bool always = false;
+    // Frames to hand over in all (none: no end): frozen, or Single after its capture, there is one.
+    std::optional<int> limit;
     bool ready = false;
     std::atomic<int> requests{0};
     std::atomic<int> takes{0};
@@ -67,7 +70,7 @@ struct Source
                 .takeFrame =
                     [this](std::vector<std::byte>& into) {
                         const std::scoped_lock lock(mutex);
-                        if (!always && !ready) {
+                        if ((!always && !ready) || (limit && takes.load() >= *limit)) {
                             return false;
                         }
                         ready = false;
@@ -278,6 +281,51 @@ TEST_F(TraceLayerTest, FollowsTheBackingScaleWithNoSizeChange)
     [layer->view() viewDidChangeBackingProperties];
     EXPECT_EQ(metal.contentsScale, scale);
     EXPECT_TRUE(CGSizeEqualToSize(metal.drawableSize, drawable));
+}
+
+// Frozen, or in Single after its capture, one frame comes and then none: the layer draws it again
+// by itself whenever the picture would change, and not otherwise. Without a redraw it would keep
+// a stale picture, or none, until the next frame, which may never come.
+TEST_F(TraceLayerTest, DrawsTheLastFrameAgainWhenThePictureChanges)
+{
+    source.limit = 1;
+    show();
+    ASSERT_TRUE(pumpUntil([&] { return source.takes.load() == 1; }, 3s));
+    pumpUntil([] { return false; }, 200ms);
+    ASSERT_GE(layer->statsForTesting().presented, 1U);
+    const auto idle = layer->statsForTesting().presented;
+    pumpUntil([] { return false; }, 300ms);
+    ASSERT_EQ(layer->statsForTesting().presented, idle) << "nothing to draw again";
+
+    [window setContentSize:NSMakeSize(1200, 640)];
+    EXPECT_TRUE(presents()) << "a resize";
+    [layer->view() viewDidChangeBackingProperties];
+    EXPECT_TRUE(presents()) << "a backing-scale change";
+    TraceView zoomed = scene.view;
+    zoomed.view = {.start = 0.25, .end = 0.75};
+    layer->setTraceView(zoomed);
+    EXPECT_TRUE(presents()) << "a new trace view";
+    TraceLayer::setOcclusionForTesting(true);
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:NSWindowDidChangeOcclusionStateNotification
+                      object:window];
+    pumpUntil([] { return false; }, 100ms);
+    TraceLayer::setOcclusionForTesting(false);
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:NSWindowDidChangeOcclusionStateNotification
+                      object:window];
+    EXPECT_TRUE(presents()) << "back on screen";
+
+    // A buffer that failed for a while is drawn again at each callback until one succeeds.
+    pumpUntil([] { return false; }, 100ms);
+    layer->failCommandBuffersForTesting(MTLCommandBufferErrorTimeout);
+    [window setContentSize:NSMakeSize(1080, 580)];
+    const auto failing = layer->statsForTesting().presented;
+    pumpUntil([] { return false; }, 200ms);
+    layer->failCommandBuffersForTesting(std::nullopt);
+    EXPECT_GE(layer->statsForTesting().presented, failing + 3) << "drawn again after failing";
+    EXPECT_FALSE(layer->lost());
+    EXPECT_EQ(source.takes.load(), 1);
 }
 
 // Each shown refresh asks for its frame, and each frame made is drawn.
