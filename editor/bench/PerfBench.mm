@@ -417,6 +417,7 @@ struct Snapshot
     double presented = 0.0;
     double dropped = 0.0;
     double withoutNewFrame = 0.0;
+    double ticksPerFrame = 1.0;
     double resident = 0.0;
 };
 
@@ -433,6 +434,8 @@ struct Interval
     double presentedPerSecond = 0.0;
     double withoutNewFramePerSecond = 0.0;
     double droppedPerSecond = 0.0;
+    // Refreshes each frame is shown for by design (FramePacing's n), at the interval's end.
+    double ticksPerFrame = 1.0;
     double pageFramesPerSecond = 0.0;
     bool native = false;
     double resident = 0.0; // MB at the end.
@@ -605,6 +608,7 @@ int run(const Options& options)
                 snapshot.dropped = static_cast<double>(stats.shown.dropped);
                 snapshot.withoutNewFrame =
                     static_cast<double>(stats.shown.refreshesWithoutNewFrame);
+                snapshot.ticksPerFrame = static_cast<double>(stats.ticksPerFrame);
             }
             snapshot.threads = threadTimes();
             snapshot.process = processTime();
@@ -646,6 +650,7 @@ int run(const Options& options)
                 (to.withoutNewFrame - from.withoutNewFrame) / seconds;
             interval.droppedPerSecond = (to.dropped - from.dropped) / seconds;
             interval.resident = to.resident;
+            interval.ticksPerFrame = to.ticksPerFrame;
             return interval;
         };
 
@@ -894,10 +899,14 @@ int run(const Options& options)
             const double received = interval.pageFramesPerSecond * interval.seconds;
             const double drawn = delta("framesDrawn");
             if (interval.native) {
+                // At n refreshes a frame (AD-12, above 95 Hz), n - 1 refreshes a frame show no
+                // new frame by design: the figure is read against it.
                 std::printf("native: %.1f frames/s submitted; on screen %.1f frames/s, %.1f "
-                            "refreshes/s without a new frame, %.1f dropped/s\n",
+                            "refreshes/s without a new frame (%.1f by design), %.1f dropped/s\n",
                             interval.framesPerSecond, interval.presentedPerSecond,
-                            interval.withoutNewFramePerSecond, interval.droppedPerSecond);
+                            interval.withoutNewFramePerSecond,
+                            interval.presentedPerSecond * (interval.ticksPerFrame - 1.0),
+                            interval.droppedPerSecond);
             }
             std::printf("page: %.1f frames/s received, %.1f drawn, %.0f KB/frame\n",
                         interval.pageFramesPerSecond, drawn / interval.seconds,

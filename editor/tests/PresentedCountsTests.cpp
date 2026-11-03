@@ -103,6 +103,35 @@ TEST(PresentedCounts, FollowsAChangingPeriod)
         counts.add(time, 1.0 / 120.0);
         time += 1.0 / 120.0;
     }
+    // One frame held a 120 Hz refresh: one, not none (as against the old period it would be).
+    time += 1.0 / 120.0;
+    counts.add(time, 1.0 / 120.0);
+    EXPECT_EQ(counts.totals().refreshesWithoutNewFrame, 1U);
+    // Back at 60 Hz, a frame a 60 Hz refresh on is steady (against 120 Hz it would be one held).
+    counts.add(time + 1.0 / 60.0, 1.0 / 60.0);
+    EXPECT_EQ(counts.totals().refreshesWithoutNewFrame, 1U);
+}
+
+// After the link pauses, the next frame starts an interval: the pause is no held refreshes.
+TEST(PresentedCounts, CountsNoHeldRefreshesAcrossAPause)
+{
+    PresentedCounts counts;
+    counts.add(10.0, 1.0 / 60.0);
+    counts.restart();
+    counts.add(25.0, 1.0 / 60.0);
+    counts.add(25.0 + 1.0 / 60.0, 1.0 / 60.0);
+    EXPECT_EQ(counts.totals().refreshesWithoutNewFrame, 0U);
+}
+
+// A presented time at or before the last (out of order, or the same refresh) counts the frame and
+// judges no interval.
+TEST(PresentedCounts, JudgesNoIntervalBackwards)
+{
+    PresentedCounts counts;
+    counts.add(10.0, 1.0 / 60.0);
+    counts.add(9.9, 1.0 / 60.0);
+    counts.add(9.9, 1.0 / 60.0);
+    EXPECT_EQ(counts.totals().presented, 3U);
     EXPECT_EQ(counts.totals().refreshesWithoutNewFrame, 0U);
 }
 

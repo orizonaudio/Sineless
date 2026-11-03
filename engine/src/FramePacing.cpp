@@ -60,6 +60,7 @@ void FramePacing::setScreenRate(double screenRateHertz)
     nextCallbackStep = 0;
     lastTarget.reset();
     n = ticksPerFrame(rate, n);
+    displayPeriod.store(0.0, std::memory_order_relaxed);
     restartLead();
 }
 
