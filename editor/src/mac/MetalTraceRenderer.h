@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/FrameBarcode.h"
 #include "editor/FrameView.h"
 #include "editor/TraceView.h"
 
@@ -42,9 +43,10 @@ public:
     // `frame` may be null (nothing drawn yet: the screen and grid only). `grid` false leaves the
     // grid out (the picture-parity tests compare with the page's trace canvas alone). After
     // kDrawn, `buffer` must be committed: the renderer reuses its buffers once the GPU has run it.
+    // `barcode`: the frame barcode's values while the diagnostic switch is on, else null.
     virtual Result encode(id<MTLCommandBuffer> buffer, id<MTLTexture> target,
                           const FrameView* frame, const TraceView& view, double pixelRatio,
-                          bool grid = true) = 0;
+                          bool grid = true, const BarcodeValues* barcode = nullptr) = 0;
 #endif
 
     // Tests: makes every later allocation of the coverage targets fail, as Metal refusing the

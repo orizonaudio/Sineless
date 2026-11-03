@@ -86,6 +86,8 @@ struct Scene
     TraceView view;
     // Premultiplied RGBA rows from the bottom, as WebGL reads them.
     std::vector<std::uint8_t> pixels;
+    // The frame barcode's values, where the scene has the diagnostic switch on.
+    std::optional<BarcodeValues> barcode;
 
     [[nodiscard]] FrameView frame() const { return *FrameView::read(bytes); }
 };
@@ -106,6 +108,11 @@ std::vector<Scene> scenes()
         scene.pixels =
             gunzip(unbase64(entry.at("pixels").get<std::string>()), scene.width * scene.height * 4);
         EXPECT_TRUE(FrameView::read(scene.bytes)) << scene.name;
+        if (entry.contains("barcode")) {
+            scene.barcode =
+                BarcodeValues{.picture = entry.at("barcode").at("picture").get<std::uint64_t>(),
+                              .drawnFor = entry.at("barcode").at("drawnFor").get<std::uint64_t>()};
+        }
         out.push_back(std::move(scene));
     }
     return out;
@@ -140,7 +147,8 @@ protected:
 
     // Draws into a drawable-like texture of the given size and reads it back.
     std::optional<Picture> draw(std::size_t width, std::size_t height, const FrameView* frame,
-                                const TraceView& view, double ratio, bool grid = false)
+                                const TraceView& view, double ratio, bool grid = false,
+                                const BarcodeValues* barcode = nullptr)
     {
         MTLTextureDescriptor* descriptor =
             [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
@@ -153,7 +161,7 @@ protected:
         id<MTLBuffer> readback = [device newBufferWithLength:width * height * 4
                                                      options:MTLResourceStorageModeShared];
         id<MTLCommandBuffer> buffer = [queue commandBuffer];
-        const auto result = renderer->encode(buffer, target, frame, view, ratio, grid);
+        const auto result = renderer->encode(buffer, target, frame, view, ratio, grid, barcode);
         if (result != MetalTraceRenderer::Result::kDrawn) {
             [buffer commit];
             return std::nullopt;
@@ -192,7 +200,8 @@ protected:
     std::optional<Picture> draw(const Scene& scene)
     {
         const FrameView frame = scene.frame();
-        return draw(scene.width, scene.height, &frame, scene.view, scene.ratio);
+        return draw(scene.width, scene.height, &frame, scene.view, scene.ratio, false,
+                    scene.barcode ? &*scene.barcode : nullptr);
     }
 
     id<MTLDevice> device = nil;
@@ -573,6 +582,48 @@ TEST_F(MetalTraceRendererTest, ReportsRefusedCoverageTargets)
     const auto drawn = draw(all.front());
     ASSERT_TRUE(drawn);
     expectSamePicture(all.front(), *drawn);
+}
+
+// The frame barcode is drawn on every picture the switch is on for, whatever the renderer takes
+// from the frame: before any frame, the grid alone, and each fixture scene's frame (playhead or
+// none, lanes or views, Compare, nothing to draw). Each strip reads back as the values drawn.
+TEST_F(MetalTraceRendererTest, DrawsTheFrameBarcodeOnEveryPicture)
+{
+    const auto expectStrip = [](const Picture& picture, double ratio, const BarcodeValues& values,
+                                const std::string& name) {
+        const BarcodeStrip strip = barcodeStrip(static_cast<double>(picture.width),
+                                                static_cast<double>(picture.height), ratio);
+        const std::array rows{barcodeRow(values.picture), barcodeRow(values.drawnFor)};
+        for (std::size_t row = 0; row < rows.size(); ++row) {
+            for (std::size_t cell = 0; cell < kBarcodeRowCells; ++cell) {
+                const auto x = static_cast<std::size_t>(
+                    strip.left + (static_cast<double>(cell) + 0.5) * strip.cell);
+                const auto fromTop = static_cast<std::size_t>(
+                    strip.top + (static_cast<double>(row) + 0.5) * strip.cell);
+                const std::uint8_t* pixel = picture.at(x, picture.height - 1 - fromTop);
+                EXPECT_EQ(pixel[0], rows[row][cell] ? 255 : 0)
+                    << name << ", row " << row << ", cell " << cell;
+                EXPECT_EQ(pixel[3], 255) << name;
+            }
+        }
+    };
+    const std::vector<Scene> all = scenes();
+    BarcodeValues values{.picture = 41, .drawnFor = 60123};
+    for (const double ratio : {1.0, 2.0}) {
+        const auto width = static_cast<std::size_t>(400 * ratio);
+        const auto height = static_cast<std::size_t>(200 * ratio);
+        const auto bare = draw(width, height, nullptr, all.front().view, ratio, true, &values);
+        ASSERT_TRUE(bare);
+        expectStrip(*bare, ratio, values, "no frame");
+    }
+    for (const Scene& scene : all) {
+        ++values.picture;
+        const FrameView frame = scene.frame();
+        const auto drawn =
+            draw(scene.width, scene.height, &frame, scene.view, scene.ratio, false, &values);
+        ASSERT_TRUE(drawn) << scene.name;
+        expectStrip(*drawn, scene.ratio, values, scene.name);
+    }
 }
 
 // Metal refusing the memory for a frame's buffers is reported as well, and costs the renderer
