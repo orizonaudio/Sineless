@@ -333,9 +333,10 @@ const scenes: Scene[] = [
       ],
     },
   },
-  {
+  // Waiting dims the shading with the traces, as everything drawn from the stale frame.
+  ...[false, true].map((dim): Scene => ({
     // Two compared tracks cancelling in the middle third, a third left out (faint), and the sum.
-    name: "Compare shading where the tracks cancel",
+    name: `Compare shading where the tracks cancel${dim ? ", while Waiting" : ""}`,
     width: 300,
     height: 200,
     ratio: 1,
@@ -368,6 +369,7 @@ const scenes: Scene[] = [
     view: {
       ...baseView,
       layout: "stacked",
+      dim,
       laneSets: [
         {
           laneSet: 5,
@@ -379,7 +381,7 @@ const scenes: Scene[] = [
         },
       ],
     },
-  },
+  })),
 ];
 
 // The page's lane colours for a frame whose lane set the view holds (app.ts, lanesOf and
