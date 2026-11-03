@@ -668,9 +668,7 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     setOwner(navigationDelegate, this);
     webView.navigationDelegate = navigationDelegate;
 #ifndef NDEBUG
-    if (@available(macOS 13.3, *)) {
-        webView.inspectable = YES;
-    }
+    webView.inspectable = YES;
 #endif
     [container addSubview:webView];
     [parent addSubview:container];

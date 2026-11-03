@@ -51,7 +51,7 @@ These come from the platform and the product, not from the old design.
 
 | Constraint | Why | Source |
 |---|---|---|
-| Runs in WKWebView (Safari 16.2 engine, macOS 13.1) and WebView2 | The UI is a web page inside the plugin | DESIGN §8.7 |
+| Runs in WKWebView (Safari 17 engine, macOS 14) and WebView2 | The UI is a web page inside the plugin | DESIGN §8.7 |
 | Fonts, images and scripts are bundled files; no inline styles or scripts, no network | Strict CSP inside the plugin | `editor/src/EmbeddedAssets.h` |
 | ≥ 45 frames/s with 7–15 tracks; drawing cost nearly flat in tracks and window size | Light on the host (QG-4, QS-3/QS-4). Blur and per-frame DOM changes cost frames in WebKit | DESIGN §1.3, AD-22 |
 | What is shown is what the engine measured; "—" for no value, never 0 | Truthful display (QG-3) | DESIGN §1.3 |
