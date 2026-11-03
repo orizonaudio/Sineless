@@ -64,8 +64,17 @@ func grey(_ buffer: CVPixelBuffer, _ x: Int, _ y: Int) -> Double {
 // The main display's stream, set up but not started: its size in pixels and refresh rate.
 func makeStream(capture: Capture) async throws -> (SCStream, Int, Int, Double) {
     let content = try await SCShareableContent.current
-    guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() })
-        ?? content.displays.first
+    // FRAME_BARCODE_DISPLAY: "builtin", "external" (the first that is not built in), or the main
+    // display by default.
+    let kind = ProcessInfo.processInfo.environment["FRAME_BARCODE_DISPLAY"] ?? "main"
+    let chosen = content.displays.first { display in
+        switch kind {
+        case "builtin": return CGDisplayIsBuiltin(display.displayID) != 0
+        case "external": return CGDisplayIsBuiltin(display.displayID) == 0
+        default: return display.displayID == CGMainDisplayID()
+        }
+    }
+    guard let display = chosen ?? content.displays.first
     else { throw NSError(domain: "record", code: 1) }
     let mode = CGDisplayCopyDisplayMode(display.displayID)
     let width = mode?.pixelWidth ?? display.width

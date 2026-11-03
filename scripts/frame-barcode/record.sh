@@ -5,6 +5,8 @@
 #
 #   scripts/frame-barcode/record.sh [seconds] [out.jsonl]
 #
+# FRAME_BARCODE_DISPLAY=external (or builtin) records that display rather than the main one.
+#
 # It saves two frames, finds the strips in them (they must move on between the two), records one
 # grey per cell per refresh for the given seconds (60 by default), and analyses the recording. The
 # terminal running it needs Screen Recording permission. A minute at 120 Hz is under 10 MB.
