@@ -20,6 +20,8 @@
     "scripts/mutation-run.ts",
     "scripts/release-on-main.ts",
     "scripts/release-version.ts",
+    "scripts/frame-barcode/*.ts",
     "scripts/tests/**/*.ts"
-  ]
+  ],
+  "references": [{ "path": "protocol" }, { "path": "ui" }]
 }
