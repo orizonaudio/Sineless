@@ -214,6 +214,34 @@ TEST_F(FrameFlowTest, AnswersThePagesFetchWithACopyOfTheDisplaysFrame)
     EXPECT_EQ(copied, taken);
 }
 
+// One fetch, one copy: once answered, the frames the display draws next queue nothing for the page,
+// whose next fetch gets the next one. A page that stops asking (hidden, busy) costs the host's main
+// thread nothing per refresh.
+TEST_F(FrameFlowTest, AnswersEachOfThePagesFetchesWithOneCopy)
+{
+    flow.setNative(true);
+    flow.grantCredit();
+    std::vector<std::byte> taken;
+    const auto drawFrame = [&] {
+        writeSamples(480);
+        flow.requestForDisplay();
+        flow.step();
+        ASSERT_TRUE(flow.takeDisplayFrame(taken));
+    };
+    drawFrame();
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 1);
+    for (int refresh = 0; refresh < 10; ++refresh) {
+        drawFrame();
+        ASSERT_TRUE(dispatcher.queue.empty()) << "refresh " << refresh;
+    }
+    EXPECT_EQ(delivered, 1);
+    flow.grantCredit();
+    drawFrame();
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 2);
+}
+
 // In native mode the page's open fetch is not a credit: with no request from the display link the
 // worker advances the sweeps, so a sweep longer than the capture is complete when drawn (FR-9.5).
 TEST_F(FrameFlowTest, AdvancesSweepsWhileOnlyThePagesFetchIsOpen)
