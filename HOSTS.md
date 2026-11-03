@@ -64,6 +64,10 @@ unless a step says otherwise. Note anything unexpected in the row's notes.
    hides on the press, the value keeps stepping, and the pointer shows again where it was pressed;
    a double-click on a value still opens it for typing (where an
    Audio Unit is hosted out of process, as in Logic, the pointer follows the drag instead).
+   On macOS 14+ the editor draws the traces itself: while resizing, the traces stay inside the
+   screen's border and catch up within a refresh or two; below the minimum width and at the
+   shortest height they are clipped or hidden with the page; moving the window to another display
+   (Retina and not) keeps one-pixel lines sharp.
 6. **Multi.** Insert on five or more tracks in group A and two in group B: lanes show the right
    names and colours, in order, and line up in time, and the window grows so that every stacked
    lane fits its label. Rename and recolour a track: its lane follows. In hosts with plugin

@@ -1,7 +1,8 @@
 // Performance benchmark: the real editor page in a real WKWebView, showing tracks that play in
 // real time, as in a host. Reports the CPU of this process (by thread) and of the WebKit
 // processes it starts, resident memory, the frames the page receives and draws, and the page's
-// time per frame.
+// time per frame. Where the editor draws the traces natively (macOS 14+, AD-30), frames/s counts
+// the frames its layer presents, and the page's lines count the copies it receives.
 //
 //   perf_bench [--lanes=7] [--mode=multi|compare|single] [--timebase=beats|seconds]
 //              [--beatspan=fourBars] [--span=4] [--rate=48000] [--tempo=120]
@@ -40,6 +41,8 @@
 #include "engine/InstanceRegistry.h"
 #include "engine/Motion.h"
 #include "engine/SettingJson.h"
+#include "mac/TraceLayerMac.h"
+#include "mac/WebViewMacTesting.h"
 #include "pluginterfaces/gui/iplugview.h"
 
 #import <Cocoa/Cocoa.h>
@@ -408,6 +411,8 @@ struct Snapshot
     std::map<std::string, double> threads;
     std::map<int, std::pair<std::string, double>> webKit;
     nlohmann::json page;
+    // Frames the native layer has presented; negative where the page draws the traces.
+    double presented = -1.0;
     double resident = 0.0;
 };
 
@@ -418,7 +423,9 @@ struct Interval
     double webKit = 0.0;
     double total = 0.0;
     double analysis = 0.0;
-    double framesPerSecond = 0.0;
+    double framesPerSecond = 0.0; // Shown: presented natively, or received by the page.
+    double pageFramesPerSecond = 0.0;
+    bool native = false;
     double resident = 0.0; // MB at the end.
 };
 
@@ -582,6 +589,9 @@ int run(const Options& options)
             const std::string text = evaluate(webView, @(perfScript.c_str()));
             Snapshot snapshot;
             snapshot.page = nlohmann::json::parse(text.empty() ? "{}" : text, nullptr, false);
+            if (const auto* layer = orizon::editor::traceLayerForTests(*editor->webView())) {
+                snapshot.presented = static_cast<double>(layer->statsForTesting().presented);
+            }
             snapshot.threads = threadTimes();
             snapshot.process = processTime();
             snapshot.webKit = webKitTimes();
@@ -613,7 +623,10 @@ int run(const Options& options)
                 return snapshot.page.value("framesReceived",
                                            snapshot.page.value("frameCount", 0.0));
             };
-            interval.framesPerSecond = (frames(to) - frames(from)) / seconds;
+            interval.pageFramesPerSecond = (frames(to) - frames(from)) / seconds;
+            interval.native = to.presented >= 0.0 && from.presented >= 0.0;
+            interval.framesPerSecond = interval.native ? (to.presented - from.presented) / seconds
+                                                       : interval.pageFramesPerSecond;
             interval.resident = to.resident;
             return interval;
         };
@@ -860,10 +873,13 @@ int run(const Options& options)
             const auto delta = [&](const char* key) {
                 return to.page.value(key, 0.0) - from.page.value(key, 0.0);
             };
-            const double received = interval.framesPerSecond * interval.seconds;
+            const double received = interval.pageFramesPerSecond * interval.seconds;
             const double drawn = delta("framesDrawn");
+            if (interval.native) {
+                std::printf("native: %.1f frames/s presented\n", interval.framesPerSecond);
+            }
             std::printf("page: %.1f frames/s received, %.1f drawn, %.0f KB/frame\n",
-                        interval.framesPerSecond, drawn / interval.seconds,
+                        interval.pageFramesPerSecond, drawn / interval.seconds,
                         received > 0 ? delta("bytesReceived") / received / 1024.0 : 0.0);
             std::printf("page: receive %.2f ms/frame, draw %.2f ms/frame (max %.1f ms overall)\n",
                         received > 0 ? delta("receiveMs") / received : 0.0,
