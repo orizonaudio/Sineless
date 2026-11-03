@@ -9,6 +9,7 @@ add_library(engine STATIC
     src/ChannelViews.cpp
     src/EngineRegistry.cpp
     src/FrameEncoder.cpp
+    src/FramePacing.cpp
     src/FreeRunning.cpp
     src/HoldBuffer.cpp
     src/InstanceRegistry.cpp
@@ -57,6 +58,7 @@ if(BUILD_TESTING)
         tests/ChannelViewsTests.cpp
         tests/EngineRegistryTests.cpp
         tests/FrameEncoderTests.cpp
+        tests/FramePacingTests.cpp
         tests/FreeRunningTests.cpp
         tests/HoldBufferTests.cpp
         tests/InstanceRegistryTests.cpp

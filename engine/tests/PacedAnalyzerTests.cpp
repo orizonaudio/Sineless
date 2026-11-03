@@ -2,6 +2,7 @@
 #include "SampleRates.h"
 #include "engine/Analyzer.h"
 #include "engine/Engine.h"
+#include "engine/FramePacing.h"
 #include "engine/Motion.h"
 
 #include <array>
@@ -95,6 +96,49 @@ public:
         }
     }
 
+    // Plays `seconds` as the macOS editor's native drawing drives the analyzer: a display link at
+    // `refreshHertz` calls back `lead` before each refresh, `pacing` keeps the analyzer's clock
+    // (set by useDisplayClock) and says which refreshes want a frame, and each 2 ms worker step
+    // makes the wanted frame or advances. A frame is recorded at the time it is placed for.
+    void link(double seconds, FramePacing& pacing, double refreshHertz, double lead)
+    {
+        const double end = time + seconds;
+        for (; time < end; time += 0.0005) {
+            while (static_cast<double>(written + block) / rate <= time - kStart) {
+                writeBlock();
+            }
+            if (time >= nextTarget - lead) {
+                if (pacing.callback(nextTarget, time, nanos()).requestFrame) {
+                    credit = true;
+                }
+                nextTarget += 1.0 / refreshHertz;
+            }
+            if (std::fmod(time * 1000.0, 2.0) >= 0.5) {
+                continue;
+            }
+            if (!credit) {
+                analyzer.advance();
+                continue;
+            }
+            std::vector<std::byte> bytes;
+            if (analyzer.produce(bytes)) {
+                credit = false;
+                last = decode(bytes);
+                if (const auto shown = rightEdge(*last); shown && !last->has(FrameFlag::kFrozen)) {
+                    edges.push_back({.seconds = static_cast<double>(pacing.clock(nanos())) / 1e9,
+                                     .edge = *shown,
+                                     .newest = static_cast<double>(written)});
+                }
+            }
+        }
+    }
+
+    // The analyzer's clock from now on: `pacing`'s, which this host's link() drives.
+    void useDisplayClock(FramePacing& pacing)
+    {
+        analyzer.setClock([this, &pacing] { return pacing.clock(nanos()); });
+    }
+
     // One past the last sample a frame of the ramp shows, from its last column's maximum.
     static std::optional<double> rightEdge(const DecodedFrame& frame)
     {
@@ -119,7 +163,8 @@ public:
     double nextDraw = kStart;
     std::optional<DecodedFrame> last;
     std::vector<EdgeDraw> edges;
-    bool credit = false; // flow(): the page waits for a frame.
+    bool credit = false; // flow(): the page waits for a frame; link(): the display link does.
+    double nextTarget = kStart + 0.1; // link(): the next refresh's target.
     // The audio, by sample index; the ramp when unset.
     std::function<float(std::uint64_t)> signal;
 
@@ -225,6 +270,110 @@ TEST(PacedWindowsMinimum, NeverStepBackWhenPacingStarts)
 // a freeze keeps it waiting (frozen frames do not change). Frames keep the block clock fed, so
 // once unfrozen the trace moves evenly at once: with the clock starved for the freeze it would
 // start over and step by whole blocks until it locked again (16 blocks, 0.2 s here).
+// ----- macOS native drawing: the display clock -----
+
+struct NativeCase
+{
+    double rate;
+    std::uint64_t block;
+    double refresh;
+};
+
+std::vector<NativeCase> nativeCases()
+{
+    std::vector<NativeCase> cases;
+    for (const double rate : kSampleRates) {
+        // Blocks of 32 and 4096 samples at 48 kHz, and about 10.7 ms, at every rate.
+        for (const double blockAt48 : {32.0, 512.0, 4096.0}) {
+            cases.push_back(
+                {.rate = rate,
+                 .block = static_cast<std::uint64_t>(std::llround(blockAt48 * rate / 48000.0)),
+                 .refresh = 60.0});
+        }
+    }
+    cases.push_back({.rate = 48000.0, .block = 512, .refresh = 120.0});
+    cases.push_back({.rate = 48000.0, .block = 512, .refresh = 144.0});
+    return cases;
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const NativeCase& native, std::ostream* out)
+{
+    *out << native.rate << " Hz, blocks of " << native.block << ", " << native.refresh
+         << " Hz refreshes";
+}
+
+class PacedNative : public ::testing::TestWithParam<NativeCase>
+{
+};
+
+// Drawn natively, frames are made on the worker's 2 ms steps after the display link asks, at no
+// steady time; placed at the display clock, which steps by whole refreshes, the free-running edge
+// still moves per frame as far as the frames are shown apart, within a millisecond. Placed when
+// made, as on the page, the same frames missed that (PlacedWhenMadeMissesTheMillisecond).
+TEST_P(PacedNative, MovesTheEdgeEvenlyAtTheDisplayClock)
+{
+    const auto [rate, block, refresh] = GetParam();
+    PacedHost host(rate, block);
+    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kFree));
+    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    FramePacing pacing(refresh);
+    host.useDisplayClock(pacing);
+    host.link(3.0, pacing, refresh, 0.05); // The clocks lock.
+    host.edges.clear();
+    host.link(4.0, pacing, refresh, 0.05);
+    ASSERT_GT(host.edges.size(), 150U);
+    const Motion motion = measureMotion(host.edges, host.rate);
+    const double column = 0.5 * 1000.0 / 8000.0;
+    EXPECT_LE(motion.advanceErrorP99, 1.0 + 2.0 * column);
+    EXPECT_LE(motion.advanceErrorMax, 2.0 + 2.0 * column);
+    EXPECT_FALSE(motion.ahead);
+    EXPECT_FALSE(motion.backwards);
+}
+
+INSTANTIATE_TEST_SUITE_P(RatesAndBlocks, PacedNative, ::testing::ValuesIn(nativeCases()));
+
+// The same host and frames, placed when made (the analyzer reading the host's time): the 2 ms
+// worker steps reach the edge, which misses the millisecond. So the test above tells the two
+// apart.
+TEST(PacedNativeContrast, PlacedWhenMadeMissesTheMillisecond)
+{
+    PacedHost host(48000.0, 512);
+    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kFree));
+    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    FramePacing pacing(60.0);
+    host.link(3.0, pacing, 60.0, 0.05);
+    host.edges.clear();
+    host.link(4.0, pacing, 60.0, 0.05);
+    // Recorded at the display clock (when the frames are shown); the analyzer placed them when
+    // made.
+    EXPECT_GT(measureMotion(host.edges, host.rate).advanceErrorP99, 1.0);
+}
+
+// Spans shorter than pacedSpanMinimumSeconds end at the newest sample with the display clock too;
+// just above, they are paced at it, and neither goes back.
+TEST(PacedNativeMinimum, PacesOnlyFromTheMinimumSpanAtTheDisplayClock)
+{
+    for (const double span :
+         {protocol::kPacedSpanMinimumSeconds * 0.9, protocol::kPacedSpanMinimumSeconds * 1.1}) {
+        SCOPED_TRACE(span);
+        PacedHost host(48000.0, 512);
+        host.engine.settings().set(SettingId::kTriggerMode,
+                                   static_cast<double>(TriggerMode::kFree));
+        host.engine.settings().set(SettingId::kTimeSpan, span);
+        FramePacing pacing(60.0);
+        host.useDisplayClock(pacing);
+        host.link(3.0, pacing, 60.0, 0.05);
+        const double lag = host.edges.back().newest - host.edges.back().edge;
+        if (span < protocol::kPacedSpanMinimumSeconds) {
+            EXPECT_LE(lag, 1.0) << "the newest sample";
+        } else {
+            EXPECT_GT(lag, 1.0) << "paced";
+        }
+        EXPECT_FALSE(measureMotion(host.edges, host.rate).backwards);
+    }
+}
+
 TEST(PacedFreeze, KeepsTheClockFedWhileTheEditorWaitsForAFrame)
 {
     PacedHost host(48000.0, 512);
