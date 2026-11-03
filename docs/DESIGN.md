@@ -476,7 +476,7 @@ The tables follow the diagram from the audio thread to the frame.
 | --- | --- |
 | Editor | `IPlugView`: creates the webview, the worker and the session on attach; sizing, minimum size from the lanes shown (FR-14.5), and content scale. With no engine it creates no session and answers the page's `hello` with `engineUnavailable` itself. |
 | Session | The protocol's native side: handshake, settings, freeze, pan, zoom, Compare choices. The Editor's 100 ms timer calls its `sync`, which sends what changed in the engine meanwhile (`setState`, sample rate, channel count, lanes). |
-| FrameFlow | Credit-based delivery (AD-12): on the worker, makes a frame only while the page's request is open; on the UI thread, hands it to the webview. On macOS 14+ the display link's request is the credit, and the page's request takes a copy of the next frame drawn (AD-30). |
+| FrameFlow | Credit-based delivery (AD-12): on the worker, makes a frame only while the page's request is open; on the UI thread, hands it to the webview. On macOS 14+ the display link's request is the credit, and the page's request takes a copy of the newest frame drawn that it has not had, at once or when it next asks (AD-30). |
 | Transport | One interface to the webview's message channel and frame requests, per platform. |
 | UiDispatcher, DisplayScale | Posting work to the UI thread (main queue on macOS, a message-only window on Windows); the display's scale factor. |
 | WebView (`mac/`, `win/`) | Own thin wrappers (AD-4), the `orizon://` scheme handler serving embedded assets and frames, keyboard handoff to the host, crash recovery. |
@@ -564,8 +564,9 @@ frame made since the last callback (or the last one again when the page's `trace
 presents it, and, before a refresh that shows a new frame, asks for one: the worker, woken, makes it
 at the display clock's time, and the next callback draws it. Each frame is placed the lead plus a
 refresh before it is shown, and successive frames exactly n refreshes apart. The page's fetch takes
-a copy of the next frame drawn and never makes one, so the sweeps advance whenever the display has
-not asked.
+a copy of the newest frame drawn that it has not had, at once or when it next asks (frozen, no
+newer frame may come), and never makes one, so the sweeps advance whenever the display has not
+asked.
 
 ### 6.3 Freeze and trigger states
 

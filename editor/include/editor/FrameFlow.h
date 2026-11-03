@@ -31,8 +31,9 @@ public:
 
     // macOS native drawing (AD-30). While native, the display link's request is the credit: the
     // worker makes a frame for it, which the display link's thread takes; the page's open request
-    // is no credit, and is answered with a copy of the next frame made for the display. Without a
-    // request from the display link the worker advances the sweeps. Any thread.
+    // is no credit, and is answered with a copy of the newest frame made for the display that the
+    // page has not had, at once or when it next asks. Without a request from the display link the
+    // worker advances the sweeps. Any thread.
     void setNative(bool native);
     // Display link thread: the next refresh wants a frame.
     void requestForDisplay();
@@ -52,6 +53,7 @@ private:
     bool native = false;
     bool displayRequest = false;
     bool displayReady = false;
+    bool pageBehind = false;             // Native: `pending` holds a frame the page has not had.
     std::vector<std::byte> displayFrame; // Made for the display, waiting for its thread.
     std::vector<std::byte> pending;      // Produced, waiting for the UI thread.
     std::vector<std::byte> producing;    // Worker-only.

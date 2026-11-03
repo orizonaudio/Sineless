@@ -53,28 +53,28 @@ void FrameFlow::step()
     if (display) {
         if (!credit) {
             analyzer.advance(); // No refresh waits for a frame: keep the sweeps current.
-            return;
-        }
-        if (!analyzer.produce(producing)) {
-            return; // Nothing new: keep the request for the next step.
-        }
-        bool copy = false;
-        {
+        } else if (analyzer.produce(producing)) {
             const std::scoped_lock lock(mutex);
             displayRequest = false;
             displayFrame.swap(producing);
             displayReady = true;
-            // The page's open request takes a copy of the frame on screen.
-            if (hasCredit) {
+            // The page's copy of the frame on screen, for its open fetch or the next one: frozen,
+            // no newer frame may ever come.
+            pending = displayFrame;
+            pageBehind = true;
+        }
+        bool give = false;
+        {
+            const std::scoped_lock lock(mutex);
+            if (hasCredit && pageBehind) {
                 hasCredit = false;
-                pending = displayFrame;
-                copy = true;
+                give = true;
             }
         }
-        if (copy) {
+        if (give) {
             dispatcher.post([this] { deliverPending(); });
         }
-        return;
+        return; // With nothing new, the display's request stays for the next step.
     }
     if (!credit) {
         analyzer.advance(); // No frame wanted: keep the sweeps current meanwhile.
@@ -97,6 +97,7 @@ void FrameFlow::deliverPending()
         const std::scoped_lock lock(mutex);
         delivering.swap(pending);
         pending.clear();
+        pageBehind = false;
     }
     if (!delivering.empty()) {
         deliver(delivering);
