@@ -884,7 +884,7 @@ incompatible change.
 | Message | Direction | Fields | Purpose |
 | --- | --- | --- | --- |
 | `hello` | UI → engine | protocolVersion, viewWidth, pixelRatio | Start or restart a session. |
-| `snapshot` | engine → UI | protocolVersion, settings, sampleRate, inputChannels | Full state. |
+| `snapshot` | engine → UI | protocolVersion, settings, sampleRate, inputChannels; on macOS 14+ nativeTraces, nativeGraphicsLost | Full state. |
 | `error` | engine → UI | code (`protocolMismatch`, `engineUnavailable`), message | Replace the screen with an explanation. |
 | `setSetting` | UI → engine | name, value | Change a setting. |
 | `stateChanged` | engine → UI | name, value | The setting's accepted value. |
@@ -896,11 +896,14 @@ incompatible change.
 | `lanes` | engine → UI | laneSet, lanes (id, name, colour, own, compared), hidden | Who the lanes are. |
 | `compare` | UI → engine | ids | Checked tracks. |
 | `previewFix` | UI → engine | on | Preview fix. |
+| `traceView` | UI → engine | viewStart, viewEnd, layout, verticalScaleDb, dim, lineWidth, colours, laneSets | What only the page knows about drawing the traces, while the editor draws them (AD-30). |
+| `nativeGraphicsLost` | engine → UI | — | The editor's native drawing stopped for good (AD-30). |
 
 - `snapshot` is sent in reply to `hello`, and again when the sample rate or channel count changes;
   `stateChanged` in reply to every `setSetting` and for each change found by the 100 ms sync;
   `lanes` when the set of lanes changes.
-- The native side ignores every message before a `hello` it accepts, and drops a message of an
+- The native side ignores every message before a `hello` it accepts (but `resize` and
+  `traceView`, which the editor itself handles), and drops a message of an
   unknown type or with missing or malformed fields without replying, except a `setSetting` for a
   known setting, which is always answered (6.1).
 - Each `lanes` message and each frame carry a lane set id. The page names and colours a frame's
