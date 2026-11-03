@@ -416,7 +416,8 @@ public:
     }
 
     Result encode(id<MTLCommandBuffer> buffer, id<MTLTexture> target, const FrameView* frame,
-                  const TraceView& view, double pixelRatio, bool grid) override
+                  const TraceView& view, double pixelRatio, bool grid,
+                  const BarcodeValues* barcode) override
     {
         const auto width = static_cast<double>(target.width);
         const auto height = static_cast<double>(target.height);
@@ -480,6 +481,10 @@ public:
             if (position >= 0.0 && position <= 1.0) {
                 band(line.left, line.right, view.cursor, true);
             }
+        }
+        // The frame barcode over everything, on every picture, as the page draws it.
+        if (barcode != nullptr) {
+            addBarcode(over, *barcode, width, height, pixelRatio);
         }
 
         const bool traces = !blocks.empty() && frame->pointCount > 0;
@@ -681,6 +686,27 @@ private:
         }
         [encoder endEncoding];
         return composite;
+    }
+
+    // The strip's cells as opaque boxes, white or black (frame-barcode.ts).
+    static void addBarcode(std::vector<BandInstance>& out, const BarcodeValues& values,
+                           double width, double height, double pixelRatio)
+    {
+        const BarcodeStrip strip = barcodeStrip(width, height, pixelRatio);
+        const std::array rows{barcodeRow(values.picture), barcodeRow(values.drawnFor)};
+        for (std::size_t row = 0; row < rows.size(); ++row) {
+            // From the top on the page; from the bottom here.
+            const double top = height - (strip.top + static_cast<double>(row) * strip.cell);
+            for (std::size_t cell = 0; cell < kBarcodeRowCells; ++cell) {
+                const double left = strip.left + static_cast<double>(cell) * strip.cell;
+                const float shade = rows[row][cell] ? 1.0f : 0.0f;
+                out.push_back({.left = static_cast<float>(left),
+                               .right = static_cast<float>(left + strip.cell),
+                               .bottom = static_cast<float>(top - strip.cell),
+                               .top = static_cast<float>(top),
+                               .colour = {shade, shade, shade, 1.0f}});
+            }
+        }
     }
 
     // The page's grid (grid.ts): the ten divisions, or a tempo-synced sweep's beats and bars in

@@ -17,7 +17,16 @@ import {
   encodeFrame,
   type FrameContent,
 } from "../../../protocol/src/frame-encoder.ts";
-import { leftOutAlpha } from "../../../protocol/src/limits.ts";
+import {
+  barcodeDataBits,
+  barcodeTicksPerMillisecond,
+  leftOutAlpha,
+} from "../../../protocol/src/limits.ts";
+import {
+  barcodeRowCells,
+  barcodeStrip,
+  decodeStrip,
+} from "../../src/render/frame-barcode.ts";
 import type { Rgba, TraceViewMessage } from "../../../protocol/src/messages.ts";
 import {
   TraceRenderer,
@@ -42,6 +51,8 @@ interface Scene {
   readonly ratio: number;
   readonly frame: FrameContent;
   readonly view: TraceViewMessage;
+  // The diagnostic switch on: the animation frame's time the picture is drawn for, in ms.
+  readonly barcodeTime?: number;
 }
 
 const colour = (r: number, g: number, b: number, a = 1): Rgba => [r, g, b, a];
@@ -385,6 +396,36 @@ const scenes: Scene[] = [
   })),
 ];
 
+// Some of them again with the frame barcode, by the branches the renderers take: no playhead, a
+// Beats playhead at twice the ratio, Compare, a frame with nothing to draw, and a wide screen.
+const withBarcode = (
+  name: string,
+  barcodeTime: number,
+  change: Partial<Scene> = {},
+): Scene => {
+  const scene = scenes.find((each) => each.name === name);
+  if (scene === undefined) {
+    throw new Error(`No scene ${name}`);
+  }
+  return {
+    ...scene,
+    ...change,
+    name: `${change.name ?? scene.name}, with the frame barcode`,
+    barcodeTime,
+  };
+};
+const unsynced = scenes[0]?.name ?? "";
+scenes.push(
+  withBarcode(unsynced, 1234.56),
+  withBarcode("a Beats sweep's playhead between pixels, zoomed", 98_765.43),
+  withBarcode("Compare shading where the tracks cancel", 3_600_000.25),
+  withBarcode(unsynced, 77.5, {
+    name: "a frame with nothing to draw",
+    frame: { ...baseFrame, pointCount: 0, views: new Map() },
+  }),
+  withBarcode(unsynced, 16_384.75, { name: "a wide screen", width: 1000 }),
+);
+
 // The page's lane colours for a frame whose lane set the view holds (app.ts, lanesOf and
 // laneColors): the Sum last in Compare, tracks left out of it faint.
 function laneStyle(
@@ -457,6 +498,7 @@ function drawScene(scene: Scene): Uint8Array {
       }),
       cancellationColor: () => rgba(view.cancellation),
       lineWidthPixels: view.lineWidth,
+      frameBarcode: () => scene.barcodeTime !== undefined,
     },
     () => ({
       verticalScaleDb: view.verticalScaleDb,
@@ -466,7 +508,7 @@ function drawScene(scene: Scene): Uint8Array {
       view: { start: view.viewStart, end: view.viewEnd },
     }),
   );
-  renderer.draw(decodeFrame(encodeFrame(scene.frame)));
+  renderer.draw(decodeFrame(encodeFrame(scene.frame)), scene.barcodeTime);
   const gl = canvas.getContext("webgl2");
   if (gl === null) {
     throw new Error("No WebGL2 context");
@@ -517,6 +559,30 @@ interface StoredScene {
   readonly frame: string;
   readonly traceView: TraceViewMessage;
   readonly pixels: string;
+  // The strip's values, where the scene has one: its first picture, drawn for barcodeTime.
+  readonly barcode?: { readonly picture: number; readonly drawnFor: number };
+}
+
+// The stored scene's barcode field, where it has one.
+function withBarcodeOf(scene: Scene): {
+  barcode?: { picture: number; drawnFor: number };
+} {
+  const barcode = barcodeOf(scene);
+  return barcode === undefined ? {} : { barcode };
+}
+
+// What a fresh renderer's strip carries for a scene: picture 0, drawn for its time.
+function barcodeOf(
+  scene: Scene,
+): { picture: number; drawnFor: number } | undefined {
+  return scene.barcodeTime === undefined
+    ? undefined
+    : {
+        picture: 0,
+        drawnFor:
+          Math.round(scene.barcodeTime * barcodeTicksPerMillisecond) %
+          2 ** barcodeDataBits,
+      };
 }
 
 // WebKit draws as WKWebView does, which the macOS editor replaces.
@@ -537,6 +603,7 @@ test.runIf(server.browser === "webkit")(
           frame: base64(new Uint8Array(encodeFrame(scene.frame))),
           traceView: scene.view,
           pixels: base64(await gzip(pixels, "compress")),
+          ...withBarcodeOf(scene),
         })),
       );
       await commands.writeFile(
@@ -573,6 +640,28 @@ test.runIf(server.browser === "webkit")(
         );
       }
       expect(worst, scene.name).toBeLessThanOrEqual(tolerance);
+      // The strip reads back, with the recording's reader, as the values stored for the editor.
+      const barcode = barcodeOf(scene);
+      if (barcode !== undefined) {
+        const strip = barcodeStrip(scene.width, scene.height, scene.ratio);
+        const row = (index: number) =>
+          Array.from({ length: barcodeRowCells }, (_, cell) => {
+            const x = Math.floor(strip.left + (cell + 0.5) * strip.cell);
+            const y =
+              scene.height -
+              1 -
+              Math.floor(strip.top + (index + 0.5) * strip.cell);
+            const at = (y * scene.width + x) * 4;
+            return (
+              ((pixels[at] ?? 0) +
+                (pixels[at + 1] ?? 0) +
+                (pixels[at + 2] ?? 0)) /
+              765
+            );
+          });
+        expect(decodeStrip(row(0), row(1)), scene.name).toEqual(barcode);
+        expect(stored[index]?.barcode, scene.name).toEqual(barcode);
+      }
     }
   },
 );
