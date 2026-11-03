@@ -71,6 +71,12 @@ public:
     [[nodiscard]] int ticks() const { return n.value_or(1); }
     // The refresh rate in use. Display link thread.
     [[nodiscard]] double rateHertz() const { return rate; }
+    // The display's refresh period as measured from the link's targets, in seconds: a refresh,
+    // not the step between callbacks (n refreshes at n > 1); 0 until measured. Any thread.
+    [[nodiscard]] double displayPeriodSeconds() const
+    {
+        return displayPeriod.load(std::memory_order_relaxed);
+    }
     // Callbacks earlier than L allowed (D set to the monotonic time instead). For perf.
     [[nodiscard]] std::uint64_t earlyCallbacks() const { return early; }
     // How often the clock has been read: the analyzer reads it for every frame it places. Any
@@ -102,6 +108,7 @@ private:
     std::atomic<std::uint64_t> displayNanos{0};
     std::atomic<std::uint64_t> lastCallbackNanos{0};
     std::atomic<std::uint64_t> callbackPeriodNanos{0};
+    std::atomic<double> displayPeriod{0.0};
     std::atomic<bool> display{false};
     static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
 

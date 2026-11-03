@@ -94,6 +94,7 @@ FramePacing::Decision FramePacing::callback(double target, double now, std::uint
             if (stepCount == kRateSteps) {
                 rate = 1.0 / median(steps, stepCount);
                 n = ticksPerFrame(rate, n);
+                displayPeriod.store(1.0 / rate, std::memory_order_relaxed);
             }
             callbackPeriodNanos.store(static_cast<std::uint64_t>(std::llround(
                                           median(callbackSteps, callbackStepCount) * 1e9)),

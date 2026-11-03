@@ -147,14 +147,14 @@ protected:
     // drawn.
     ::testing::AssertionResult presents(std::chrono::milliseconds within = 5s)
     {
-        const auto before = layer->statsForTesting().presented;
-        if (pumpPlaying([&] { return layer->statsForTesting().presented > before; }, within)) {
+        const auto before = layer->statsForTesting().submitted;
+        if (pumpPlaying([&] { return layer->statsForTesting().submitted > before; }, within)) {
             return ::testing::AssertionSuccess();
         }
         const auto stats = layer->statsForTesting();
         return ::testing::AssertionFailure()
-               << "nothing presented: " << stats.callbacks << " callbacks, " << stats.presented
-               << " presented, hidden " << (layer->view().hidden ? "yes" : "no") << ", in a window "
+               << "nothing presented: " << stats.callbacks << " callbacks, " << stats.submitted
+               << " submitted, hidden " << (layer->view().hidden ? "yes" : "no") << ", in a window "
                << (layer->view().window != nil ? "yes" : "no") << ", page frames " << frameCount();
     }
 
