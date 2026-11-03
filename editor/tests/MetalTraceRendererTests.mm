@@ -575,5 +575,26 @@ TEST_F(MetalTraceRendererTest, ReportsRefusedCoverageTargets)
     expectSamePicture(all.front(), *drawn);
 }
 
+// Metal refusing the memory for a frame's buffers is reported as well, and costs the renderer
+// nothing: each refused frame gives back the buffer slot it waited for, so after more refusals
+// than there are slots the next frame is still drawn rather than waiting forever for one.
+TEST_F(MetalTraceRendererTest, ReportsRefusedFrameBuffers)
+{
+    const std::vector<Scene> all = scenes();
+    ASSERT_TRUE(draw(all.front()));
+    const std::size_t free = renderer->freeSlotsForTesting();
+    renderer->refuseFrameBuffersForTesting(true);
+    // The next slot was never allocated: the refusal lands there.
+    EXPECT_FALSE(draw(all.front()));
+    ASSERT_EQ(renderer->freeSlotsForTesting(), free) << "the refused frame gave its slot back";
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        EXPECT_FALSE(draw(all.front())) << "attempt " << attempt;
+    }
+    renderer->refuseFrameBuffersForTesting(false);
+    const auto drawn = draw(all.front());
+    ASSERT_TRUE(drawn);
+    expectSamePicture(all.front(), *drawn);
+}
+
 } // namespace
 } // namespace orizon::editor

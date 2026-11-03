@@ -50,6 +50,10 @@ public:
     // Tests: makes every later allocation of the coverage targets fail, as Metal refusing the
     // memory would.
     virtual void refuseCoverageTargetsForTesting(bool refuse) = 0;
+    // Tests: the same for the buffers each frame's values and bands are written into.
+    virtual void refuseFrameBuffersForTesting(bool refuse) = 0;
+    // Tests: the frame buffer slots free now, each waited for briefly rather than forever.
+    [[nodiscard]] virtual std::size_t freeSlotsForTesting() = 0;
 
 protected:
     MetalTraceRenderer() = default;
