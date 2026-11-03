@@ -162,12 +162,26 @@ void Session::sendSnapshot()
     }
     sentSampleRate = engine.sampleRate();
     sentInputChannels = engine.inputChannels();
-    transport.sendMessage({{"type", messageName(MessageType::kSnapshot)},
-                           {"protocolVersion", protocol::kProtocolVersion},
-                           {"settings", values},
-                           {"sampleRate", sentSampleRate},
-                           {"inputChannels", sentInputChannels}});
+    nlohmann::json snapshot = {{"type", messageName(MessageType::kSnapshot)},
+                               {"protocolVersion", protocol::kProtocolVersion},
+                               {"settings", values},
+                               {"sampleRate", sentSampleRate},
+                               {"inputChannels", sentInputChannels}};
+    // Only while the editor draws the traces: a page told nothing draws them itself.
+    if (nativeTraces) {
+        snapshot["nativeTraces"] = true;
+        snapshot["nativeGraphicsLost"] = nativeLost;
+    }
+    transport.sendMessage(snapshot);
     lastSent = settings;
+}
+
+void Session::nativeGraphicsLost()
+{
+    nativeLost = true;
+    if (isStarted) {
+        transport.sendMessage({{"type", messageName(MessageType::kNativeGraphicsLost)}});
+    }
 }
 
 void Session::setSetting(const nlohmann::json& message)

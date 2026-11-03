@@ -1,5 +1,8 @@
 #pragma once
 
+#include "editor/TraceView.h"
+#include "engine/FramePacing.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -7,6 +10,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace orizon::editor {
 
@@ -55,6 +59,26 @@ public:
     // Runs `script` in the page and calls `done` on the UI thread with its result if that is a
     // string, otherwise with "". For tests.
     virtual void evaluate(std::string_view script, std::function<void(std::string)> done) = 0;
+
+    // macOS 14+: the traces drawn natively under a transparent page (AD-30), from the frames the
+    // display asks for, on a thread of its own.
+    struct NativeTraces
+    {
+        engine::FramePacing* pacing = nullptr;
+        // The display thread: the next shown refresh wants a frame.
+        std::function<void()> requestFrame;
+        // The display thread: the newest frame made for the display, swapped into `into`.
+        std::function<bool(std::vector<std::byte>& into)> takeFrame;
+        // The UI thread, at most once: native drawing stopped for good.
+        std::function<void()> lost;
+    };
+    // Starts drawing the traces natively; false where the platform does not (Windows). The
+    // pacing and the hooks' targets must outlive stopNativeTraces.
+    virtual bool drawTracesNatively(NativeTraces /*traces*/) { return false; }
+    // Stops it: no hook is called once this returns.
+    virtual void stopNativeTraces() {}
+    // The page's newest trace view, while the traces are drawn natively.
+    virtual void setTraceView(const TraceView& /*view*/) {}
 };
 
 } // namespace orizon::editor

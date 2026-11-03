@@ -1,6 +1,7 @@
 #include "FitStates.h"
 #include "MacPageTesting.h"
 #include "editor/Editor.h"
+#include "editor/EditorCore.h"
 #include "editor/PointerHold.h"
 #include "editor/Transport.h"
 #include "editor/UiDispatcher.h"
@@ -120,7 +121,14 @@ using testing::saw;
 class EditorTest : public ::testing::Test
 {
 protected:
-    static void SetUpTestSuite() { [NSApplication sharedApplication]; }
+    // The page draws the traces, as on Windows: these tests cover the page's own frame flow and
+    // drawing; NativeTracesTest covers the traces drawn natively.
+    static void SetUpTestSuite()
+    {
+        [NSApplication sharedApplication];
+        EditorCore::setNativeTraces(false);
+    }
+    static void TearDownTestSuite() { EditorCore::setNativeTraces(true); }
 
     NSWindow* makeWindow(NSView* content)
     {

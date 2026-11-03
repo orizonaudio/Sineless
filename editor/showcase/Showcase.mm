@@ -14,6 +14,7 @@
 // on a Retina display the editor is filmed at twice its size.
 
 #include "editor/Editor.h"
+#include "editor/EditorCore.h"
 #include "engine/Engine.h"
 #include "engine/InstanceRegistry.h"
 #include "engine/SettingJson.h"
@@ -768,6 +769,9 @@ int run(const Options& options)
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         [NSApp finishLaunching];
+        // Each video frame is the page's own snapshot, which holds no natively drawn traces: the
+        // page draws them, and frames follow the stepped time rather than a display.
+        orizon::editor::EditorCore::setNativeTraces(false);
 
         // The tracks, in the set's order, in their colours. Kick Off is the kick a second
         // microphone hears: the set moves its clip 0.0117 beats (281 samples) later and mutes it,

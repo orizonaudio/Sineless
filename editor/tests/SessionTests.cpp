@@ -97,6 +97,42 @@ TEST_F(SessionTest, AnswersHelloWithAFullSnapshot)
     EXPECT_EQ(snapshot["settings"]["channelViews"], nlohmann::json::array({"left", "right"}));
 }
 
+// A page whose editor draws the traces itself is told so; one told nothing (Windows, the showcase)
+// draws them, and its snapshot carries neither field.
+TEST_F(SessionTest, TellsThePageWhetherTheEditorDrawsTheTraces)
+{
+    session.receive(example("hello"));
+    auto snapshot = transport.ofType("snapshot").back();
+    EXPECT_FALSE(snapshot.contains("nativeTraces"));
+    EXPECT_FALSE(snapshot.contains("nativeGraphicsLost"));
+
+    Session native{engine, analyzer, transport};
+    native.setNativeTraces(true);
+    native.receive(example("hello"));
+    snapshot = transport.ofType("snapshot").back();
+    EXPECT_EQ(snapshot["nativeTraces"], true);
+    EXPECT_EQ(snapshot["nativeGraphicsLost"], false);
+}
+
+// Once native drawing stops for good, the page is told at once, and every later snapshot (a page
+// reloaded after its process ended) says so too.
+TEST_F(SessionTest, TellsThePageWhenNativeDrawingStopsForGood)
+{
+    session.setNativeTraces(true);
+    session.nativeGraphicsLost();
+    EXPECT_TRUE(transport.ofType("nativeGraphicsLost").empty()) << "no page yet";
+    session.receive(example("hello"));
+    EXPECT_EQ(transport.ofType("snapshot").back()["nativeGraphicsLost"], true);
+
+    Session started{engine, analyzer, transport};
+    started.setNativeTraces(true);
+    started.receive(example("hello"));
+    started.nativeGraphicsLost();
+    EXPECT_EQ(transport.ofType("nativeGraphicsLost").size(), 1U);
+    started.receive(example("hello"));
+    EXPECT_EQ(transport.ofType("snapshot").back()["nativeGraphicsLost"], true);
+}
+
 TEST_F(SessionTest, HelloSetsTheTraceWidthInDevicePixels)
 {
     engine.settings().set(SettingId::kTimeSpan, 0.1); // 4800 samples: more than the columns.

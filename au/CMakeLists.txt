@@ -72,7 +72,8 @@ if(BUILD_TESTING)
     # run from a bundle, as the component does, so that a host's lookup of the view works as in a
     # host.
     add_executable(au_view_tests MACOSX_BUNDLE tests/AudioUnitViewTests.mm)
-    target_include_directories(au_view_tests PRIVATE ${PROJECT_SOURCE_DIR}/editor/tests)
+    target_include_directories(au_view_tests
+        PRIVATE ${PROJECT_SOURCE_DIR}/editor/tests ${PROJECT_SOURCE_DIR}/editor/src)
     target_link_libraries(au_view_tests
         PRIVATE au orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework WebKit")
     set_source_files_properties(tests/AudioUnitViewTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)

@@ -2,6 +2,7 @@
 #include "editor/PointerHold.h"
 #include "editor/WebView.h"
 #include "engine/Version.h"
+#include "mac/TraceLayerMac.h"
 #include "mac/UniqueClassName.h"
 #include "mac/WebViewMacTesting.h"
 
@@ -275,6 +276,15 @@ public:
     [[nodiscard]] void* nativeView() const override { return (__bridge void*)webView; }
     void evaluate(std::string_view script, std::function<void(std::string)> done) override;
     void setScale(double /*scale*/) override {} // macOS sizes in points: always 1.
+    bool drawTracesNatively(NativeTraces traces) override;
+    void stopNativeTraces() override { traceLayer.reset(); }
+    void setTraceView(const TraceView& view) override
+    {
+        if (traceLayer) {
+            traceLayer->setTraceView(view);
+        }
+    }
+    [[nodiscard]] TraceLayer* traceLayerForTests() const { return traceLayer.get(); }
 
     void receive(WKScriptMessage* message);
     void requestFrame(id<WKURLSchemeTask> task);
@@ -319,6 +329,8 @@ private:
     std::unique_ptr<PointerHold> pointerHold;
     id dragMonitor = nil;
     NSTimer* releaseCheck = nil;
+    // The traces drawn natively below the page, when they are (AD-30).
+    std::unique_ptr<TraceLayer> traceLayer;
 };
 
 // ----- Script message handler (page to native) -----
@@ -667,7 +679,8 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
 
 WebViewMac::~WebViewMac()
 {
-    endPointerHold(); // Never leaves the pointer hidden or frozen.
+    traceLayer.reset(); // Calls nothing of the editor's after this.
+    endPointerHold();   // Never leaves the pointer hidden or frozen.
     pointerHold.reset();
     // Detach every path back into this object before the webview can outlive it.
     setOwner(schemeHandler, nullptr);
@@ -690,11 +703,30 @@ void WebViewMac::setSize(int width, int height)
     [container setFrameSize:NSMakeSize(width, height)];
 }
 
+bool WebViewMac::drawTracesNatively(NativeTraces traces)
+{
+    // The page goes transparent over its screen (its own stylesheet, in native mode); the web
+    // view stops painting its background, so the layer below shows through. WebKit's switch for
+    // this is private (drawsBackground), and long relied on for transparent web views.
+    [webView setValue:@NO forKey:@"drawsBackground"];
+    // Below the page's minimum width the page is clipped at the window's edge: so is the layer.
+    container.clipsToBounds = YES;
+    traceLayer = TraceLayer::create(container, webView, *traces.pacing,
+                                    {.requestFrame = std::move(traces.requestFrame),
+                                     .takeFrame = std::move(traces.takeFrame),
+                                     .lost = std::move(traces.lost)});
+    traceLayer->setPageShown(loaded && !webView.hidden);
+    return true;
+}
+
 void WebViewMac::showMessage(NSString* text)
 {
     notice.stringValue = text;
     notice.hidden = NO;
     webView.hidden = YES;
+    if (traceLayer) {
+        traceLayer->setPageShown(false);
+    }
 }
 
 void WebViewMac::pageLoaded()
@@ -702,6 +734,9 @@ void WebViewMac::pageLoaded()
     loaded = true;
     notice.hidden = YES;
     webView.hidden = NO;
+    if (traceLayer) {
+        traceLayer->setPageShown(true); // Shown once this page has sent its trace view.
+    }
 }
 
 void WebViewMac::pageFailed(NSError* error)
@@ -738,6 +773,9 @@ void WebViewMac::processTerminated()
     }
     reloads.push_back(now);
     webView.hidden = YES; // Until the page is back.
+    if (traceLayer) {
+        traceLayer->setPageShown(false);
+    }
     // Loaded afresh, not reloaded: a page that never finished loading has nothing to reload.
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:kStartUrl]]];
 }
@@ -950,6 +988,11 @@ std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
 {
     return std::make_unique<WebViewMac>((__bridge NSView*)parent, width, height,
                                         std::move(onMessage), std::move(onFrameRequest), cursors);
+}
+
+TraceLayer* traceLayerForTests(WebView& view)
+{
+    return static_cast<WebViewMac&>(view).traceLayerForTests();
 }
 
 bool terminateContentProcessForTests(WebView& view)

@@ -30,6 +30,12 @@ public:
 
     [[nodiscard]] bool started() const { return isStarted; }
 
+    // macOS 14+: the editor draws the traces (AD-30). Snapshots say so, and whether native drawing
+    // has stopped for good; set before the page's hello.
+    void setNativeTraces(bool native) { nativeTraces = native; }
+    // Native drawing stopped for good: snapshots say so from now on, and a started page is told.
+    void nativeGraphicsLost();
+
 private:
     void hello(const nlohmann::json& message);
     void setSetting(const nlohmann::json& message);
@@ -46,6 +52,8 @@ private:
     std::uint32_t lastLaneSet = 0;
     double sentSampleRate = 0.0;
     int sentInputChannels = 0;
+    bool nativeTraces = false;
+    bool nativeLost = false;
 };
 
 } // namespace orizon::editor
