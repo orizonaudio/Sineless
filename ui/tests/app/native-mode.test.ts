@@ -2,8 +2,17 @@
 // page tells it what only the page knows (traceView), and shows what to do once native drawing has
 // stopped for good. In WebGL mode (no nativeTraces) the page sends nothing new.
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { page, userEvent } from "vitest/browser";
 
 import { ViewLayout } from "../../../protocol/src/enums.ts";
+import {
+  defaultEditorWidth,
+  minimumEditorWidth,
+  screenBorder,
+  screenMargin,
+  statusBarHeight,
+  toolbarHeight,
+} from "../../../protocol/src/limits.ts";
 import type { TraceViewMessage } from "../../../protocol/src/messages.ts";
 import { graphicsMessages } from "../../src/app.ts";
 import type { ControlMessage } from "../../src/bridge/transport.ts";
@@ -21,9 +30,9 @@ function snapshot(started: Started, extra: Record<string, unknown>): void {
   started.deliver({ ...started.transport.lastSnapshot(), ...extra });
 }
 
+// The editor says so in the first snapshot, before the page draws anything.
 async function startNative(): Promise<Started> {
-  const started = await startApp();
-  snapshot(started, { nativeTraces: true, nativeGraphicsLost: false });
+  const started = await startApp({ nativeTraces: true });
   await settle();
   return started;
 }
@@ -31,8 +40,85 @@ async function startNative(): Promise<Started> {
 const shownText = () =>
   byId("message").hidden ? undefined : byId("message-text").textContent;
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  await page.viewport(1200, 720);
+});
+
+describe("native traces: the page under the editor's traces", () => {
+  test("creates no WebGL context in native mode, as in WebGL mode it does", async () => {
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext");
+    await startNative();
+    expect(
+      getContext.mock.calls.filter(([kind]) => kind === "webgl2"),
+    ).toHaveLength(0);
+    getContext.mockClear();
+    await startApp();
+    await settle();
+    expect(
+      getContext.mock.calls.filter(([kind]) => kind === "webgl2"),
+    ).not.toHaveLength(0);
+  });
+
+  // The editor's traces show through the page; the canvases stay laid out and take the pointer,
+  // so hover, cursors, the trigger marker and drag-to-zoom work as before.
+  test("is transparent over the screen and keeps its canvases laid out and hit-testable", async () => {
+    await startNative();
+    const transparent = "rgba(0, 0, 0, 0)";
+    for (const element of [
+      document.documentElement,
+      document.body,
+      byId("screen"),
+    ]) {
+      expect(getComputedStyle(element).backgroundColor).toBe(transparent);
+    }
+    for (const id of ["trace", "grid"]) {
+      const canvas = byId(id);
+      expect(getComputedStyle(canvas).opacity).toBe("0");
+      expect(getComputedStyle(canvas).visibility).toBe("visible");
+      expect(canvas.getBoundingClientRect().width).toBeGreaterThan(0);
+    }
+    const box = byId("trace").getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      box.left + box.width / 2,
+      box.top + box.height / 2,
+    );
+    expect(byId("screen").contains(hit)).toBe(true);
+  });
+
+  test("shows the hover readout over the editor's traces", async () => {
+    await startNative();
+    await press(byId("hover-toggle"));
+    await userEvent.hover(byId("screen"), { position: { x: 300, y: 80 } });
+    await expect.poll(() => byId("hover-readout").hidden).toBe(false);
+    expect(byId("hover-readout").textContent).not.toBe("");
+  });
+
+  // The editor works the screen's rectangle out from the window's size and the insets in
+  // limits.ts (editor/src/TraceView.cpp, ScreenRect); the page lays its screen out from the same
+  // numbers, so the traces drawn natively sit exactly in it.
+  test.each([
+    { width: minimumEditorWidth, height: 420 },
+    { width: defaultEditorWidth, height: 580 },
+    { width: 1500, height: 900 },
+    // Narrower than the minimum: the page keeps its minimum width and is clipped.
+    { width: 900, height: 500 },
+  ])(
+    "lays the screen out where the editor draws, at $width × $height",
+    async ({ width, height }) => {
+      await page.viewport(width, height);
+      await startNative();
+      await settle();
+      const inset = screenMargin + screenBorder;
+      const box = byId("trace").getBoundingClientRect();
+      expect(box.left).toBe(inset);
+      expect(box.top).toBe(toolbarHeight + screenBorder);
+      expect(box.width).toBe(Math.max(width, minimumEditorWidth) - 2 * inset);
+      expect(box.height).toBe(
+        height - toolbarHeight - statusBarHeight - 2 * screenBorder,
+      );
+    },
+  );
 });
 
 describe("native traces: what the page sends", () => {

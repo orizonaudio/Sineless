@@ -172,6 +172,9 @@ export interface MockOptions {
   // Whether the host has reported a tempo, as an instance it has not played through yet has not:
   // Beats frames then say so and hold nothing, until reportTempo(). Reported by default.
   readonly hostTempo?: boolean;
+  // Whether the editor draws the traces itself (macOS 14+), as its snapshots then say; not by
+  // default, as on Windows.
+  readonly nativeTraces?: boolean;
 }
 
 export class MockTransport implements Transport {
@@ -195,6 +198,7 @@ export class MockTransport implements Transport {
   private readonly brokenSamples: number;
   private tempoKnown: boolean;
   private readonly keptSeconds: number;
+  private readonly nativeTraces: boolean;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
   // The last live Seconds window before a freeze (none when frozen in Beats mode), from which a
@@ -211,6 +215,7 @@ export class MockTransport implements Transport {
     this.brokenSamples = options.brokenSamples ?? 0;
     this.keptSeconds = options.keptSeconds ?? Infinity;
     this.tempoKnown = options.hostTempo ?? true;
+    this.nativeTraces = options.nativeTraces ?? false;
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -245,6 +250,9 @@ export class MockTransport implements Transport {
       settings: { ...this.settings },
       sampleRate: this.sampleRate,
       inputChannels: this.inputChannels,
+      ...(this.nativeTraces
+        ? { nativeTraces: true, nativeGraphicsLost: false }
+        : {}),
     };
   }
 

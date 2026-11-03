@@ -227,6 +227,9 @@ export class OscilloscopeApp {
   // Undefined while the web view gives the page no WebGL2 or has lost its context: the traces
   // are not drawn, and the message says why.
   private renderer: TraceRenderer | undefined;
+  // Makes the renderer, once the first snapshot has said whether the editor draws the traces
+  // instead; undefined once chosen.
+  private makeRenderer: (() => void) | undefined;
   private graphicsMessage = false; // Whether the message shown is about the graphics.
   // Whether an engine error is shown. Until a snapshot clears it, it outranks the graphics message:
   // it says why the screen is empty and what to do, and the engine does not send it again.
@@ -346,7 +349,10 @@ export class OscilloscopeApp {
       dim: this.waiting,
       view: this.view,
     });
-    this.renderer = this.createRenderer(style, traceView);
+    // In native mode the page creates no WebGL context: the editor draws the traces under it.
+    this.makeRenderer = () => {
+      this.renderer = this.createRenderer(style, traceView);
+    };
     // A lost context comes back only if the page says it will rebuild what it draws with (the
     // WebGL specification, "The Context Lost Event"); until then nothing is drawn.
     this.traceCanvas.addEventListener("webglcontextlost", (event) => {
@@ -1146,12 +1152,15 @@ export class OscilloscopeApp {
   }
 
   private drawScreen(): void {
-    drawGrid(
-      this.gridCanvas,
-      this.laneCount(),
-      { grid: token("--sl-grid"), axis: token("--sl-grid-strong") },
-      this.musicalLayout()?.lines,
-    );
+    // In native mode the editor draws the grid with the traces.
+    if (!this.nativeTraces) {
+      drawGrid(
+        this.gridCanvas,
+        this.laneCount(),
+        { grid: token("--sl-grid"), axis: token("--sl-grid-strong") },
+        this.musicalLayout()?.lines,
+      );
+    }
     this.drawnLaneCount = this.laneCount();
     this.placeLabels();
     this.placeLaneLabels();
@@ -1916,6 +1925,13 @@ export class OscilloscopeApp {
       this.updateStatus();
     });
     this.backend.on("snapshot", (message) => {
+      if (message.nativeTraces === true) {
+        this.nativeTraces = true;
+      }
+      document.documentElement.classList.toggle(
+        "native-traces",
+        this.nativeTraces,
+      );
       this.engineError = false;
       element("message").hidden = !this.graphicsMessage;
       this.inputChannels = message.inputChannels;
@@ -1924,8 +1940,13 @@ export class OscilloscopeApp {
       this.showSetting("channelViews", this.store.get("channelViews"));
       this.drawScreen();
       this.placeTriggerMarker();
-      if (message.nativeTraces === true) {
-        this.nativeTraces = true;
+      // Chosen at the first snapshot, never again: the editor decides before it, for the session.
+      if (this.makeRenderer !== undefined) {
+        if (!this.nativeTraces) {
+          this.makeRenderer();
+        }
+        this.makeRenderer = undefined;
+        this.loop.invalidate();
       }
       if (message.nativeGraphicsLost === true) {
         this.nativeGraphicsLost = true;
