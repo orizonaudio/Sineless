@@ -1,6 +1,6 @@
 ---
 name: prior-art
-description: Research how a problem is officially and commonly solved before writing a change. Use when a change (a fix, a feature or any other) involves a platform, SDK, host or standard - WebView2, WKWebView, Win32 (DPI, input, windows), VST3, Audio Units, CoreAudio, DAW host behaviour, DOM events, CSS, CMake/MSVC, or audio measurement conventions (levels, metering, pitch) - and before a second attempt at any fix whose first attempt failed.
+description: Research how a problem is officially and commonly solved before writing a change. Use when a change (a fix, a feature or any other) involves a platform, SDK, host or standard - WebView2, WKWebView, Win32 (DPI, input, windows), VST3, Audio Units, CoreAudio, DAW host behaviour, DOM events, CSS, CMake/MSVC, frame pacing, presentation and compositing (CAMetalDisplayLink, Core Animation, WindowServer, DWM), or audio measurement conventions (levels, metering, pitch) - and before a second attempt at any fix whose first attempt failed.
 ---
 
 # Prior art before code
@@ -16,7 +16,9 @@ Read, in parallel where you can (background subagents work well):
 1. **The vendor's guidance:** API reference, best-practice and known-issue pages, official
    samples, and its issue tracker (e.g. MicrosoftEdge/WebView2Feedback).
 2. **2–3 widely used projects** that solved the same problem: JUCE, iPlug2, VSTGUI, CHOC,
-   DPF, wry/Tauri, Chromium, the VST3 SDK. Read their source, not forum posts, and note
+   DPF, wry/Tauri, Chromium, the VST3 SDK; for frame pacing and presentation, Apple's hitch
+   material (Tech Talks 10855 and 10856), WebKit's RemoteLayerTree code, Chromium's
+   `PresentationFeedback`, PresentMon and Perfetto's FrameTimeline. Read their source, not forum posts, and note
    the file and line.
 3. **The relevant standard**, where one exists: AES17, ITU-R BS.1770, EBU R128, the CSS
    specifications.
