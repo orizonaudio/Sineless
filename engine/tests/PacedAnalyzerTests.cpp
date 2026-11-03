@@ -266,10 +266,6 @@ TEST(PacedWindowsMinimum, NeverStepBackWhenPacingStarts)
     EXPECT_FALSE(measureMotion(host.edges, host.rate).ahead);
 }
 
-// While the page waits for a frame, the editor asks for one on every step and never advances, as
-// a freeze keeps it waiting (frozen frames do not change). Frames keep the block clock fed, so
-// once unfrozen the trace moves evenly at once: with the clock starved for the freeze it would
-// start over and step by whole blocks until it locked again (16 blocks, 0.2 s here).
 // ----- macOS native drawing: the display clock -----
 
 struct NativeCase
@@ -374,6 +370,10 @@ TEST(PacedNativeMinimum, PacesOnlyFromTheMinimumSpanAtTheDisplayClock)
     }
 }
 
+// While the page waits for a frame, the editor asks for one on every step and never advances, as
+// a freeze keeps it waiting (frozen frames do not change). Frames keep the block clock fed, so
+// once unfrozen the trace moves evenly at once: with the clock starved for the freeze it would
+// start over and step by whole blocks until it locked again (16 blocks, 0.2 s here).
 TEST(PacedFreeze, KeepsTheClockFedWhileTheEditorWaitsForAFrame)
 {
     PacedHost host(48000.0, 512);
