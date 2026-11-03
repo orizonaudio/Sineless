@@ -74,7 +74,7 @@ public:
     };
     // Starts drawing the traces natively; false where the platform does not (Windows). The
     // pacing and the hooks' targets must outlive stopNativeTraces.
-    virtual bool drawTracesNatively(NativeTraces /*traces*/) { return false; }
+    virtual bool drawTracesNatively(const NativeTraces& /*traces*/) { return false; }
     // Stops it: no hook is called once this returns.
     virtual void stopNativeTraces() {}
     // The page's newest trace view, while the traces are drawn natively.

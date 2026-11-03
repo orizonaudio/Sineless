@@ -54,17 +54,17 @@ std::optional<FrameView> FrameView::read(std::span<const std::byte> bytes)
         used += perBlock;
         return block;
     };
-    for (int view = 0; view < static_cast<int>(protocol::kChannelViewCount); ++view) {
-        if ((viewMask & (1U << static_cast<unsigned>(view))) == 0) {
+    for (std::size_t view = 0; view < protocol::kChannelViewCount; ++view) {
+        if ((viewMask & (1U << view)) == 0) {
             continue;
         }
         const auto block = next();
         if (!block) {
             return std::nullopt;
         }
-        frame.views.push_back({.channelView = view, .values = *block});
+        frame.views.push_back({.channelView = static_cast<int>(view), .values = *block});
     }
-    for (int lane = 0; lane < laneCount; ++lane) {
+    for (unsigned lane = 0; lane < laneCount; ++lane) {
         const auto block = next();
         if (!block) {
             return std::nullopt;

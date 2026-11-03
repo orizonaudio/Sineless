@@ -9,7 +9,9 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <ranges>
 #include <string>
+#include <utility>
 #include <vector>
 #include <zlib.h>
 
@@ -20,11 +22,11 @@ namespace {
 // WebKit, with their frames and trace views.
 const nlohmann::json& pictures()
 {
-    static const nlohmann::json loaded = [] {
+    static const nlohmann::json kLoaded = [] {
         std::ifstream file(std::string(ORIZON_PROTOCOL_TEST_DATA_DIR) + "/trace-pictures.json");
         return nlohmann::json::parse(file);
     }();
-    return loaded;
+    return kLoaded;
 }
 
 std::vector<std::byte> unbase64(const std::string& text)
@@ -127,13 +129,13 @@ class MetalTraceRendererTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        device_ = MTLCreateSystemDefaultDevice();
-        if (device_ == nil) {
+        device = MTLCreateSystemDefaultDevice();
+        if (device == nil) {
             GTEST_SKIP() << "No Metal device: the picture parity tests need one.";
         }
-        queue_ = [device_ newCommandQueue];
-        renderer_ = MetalTraceRenderer::create(device_);
-        ASSERT_NE(renderer_, nullptr);
+        queue = [device newCommandQueue];
+        renderer = MetalTraceRenderer::create(device);
+        ASSERT_NE(renderer, nullptr);
     }
 
     // Draws into a drawable-like texture of the given size and reads it back.
@@ -147,11 +149,11 @@ protected:
                                                            mipmapped:NO];
         descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
         descriptor.storageMode = MTLStorageModePrivate;
-        id<MTLTexture> target = [device_ newTextureWithDescriptor:descriptor];
-        id<MTLBuffer> readback = [device_ newBufferWithLength:width * height * 4
-                                                      options:MTLResourceStorageModeShared];
-        id<MTLCommandBuffer> buffer = [queue_ commandBuffer];
-        const auto result = renderer_->encode(buffer, target, frame, view, ratio, grid);
+        id<MTLTexture> target = [device newTextureWithDescriptor:descriptor];
+        id<MTLBuffer> readback = [device newBufferWithLength:width * height * 4
+                                                     options:MTLResourceStorageModeShared];
+        id<MTLCommandBuffer> buffer = [queue commandBuffer];
+        const auto result = renderer->encode(buffer, target, frame, view, ratio, grid);
         if (result != MetalTraceRenderer::Result::kDrawn) {
             [buffer commit];
             return std::nullopt;
@@ -193,9 +195,9 @@ protected:
         return draw(scene.width, scene.height, &frame, scene.view, scene.ratio);
     }
 
-    id<MTLDevice> device_ = nil;
-    id<MTLCommandQueue> queue_ = nil;
-    std::unique_ptr<MetalTraceRenderer> renderer_;
+    id<MTLDevice> device = nil;
+    id<MTLCommandQueue> queue = nil;
+    std::unique_ptr<MetalTraceRenderer> renderer;
 };
 
 // The pixel columns where the editor deliberately differs from the page: the moving edges it draws
@@ -207,7 +209,7 @@ std::vector<bool> movingEdgeColumns(const Scene& scene)
     const auto mark = [&](double from, double to) {
         for (auto column = static_cast<long>(std::floor(from));
              column < static_cast<long>(std::ceil(to)); ++column) {
-            if (column >= 0 && column < static_cast<long>(scene.width)) {
+            if (column >= 0 && std::cmp_less(column, scene.width)) {
                 out[static_cast<std::size_t>(column)] = true;
             }
         }
@@ -288,8 +290,8 @@ TEST_F(MetalTraceRendererTest, FollowsEachDrawablesSizeAndEachFramesLanes)
         order.push_back(&scene);
         order.push_back(&scene);
     }
-    for (auto it = all.rbegin(); it != all.rend(); ++it) {
-        order.push_back(&*it);
+    for (const Scene& scene : std::views::reverse(all)) {
+        order.push_back(&scene);
     }
     for (const Scene* scene : order) {
         const auto drawn = draw(*scene);
@@ -387,7 +389,7 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
     for (const double ratio : {1.0, 2.0}) {
         for (const bool beats : {false, true}) {
             FrameView frame;
-            std::vector<float> values(2 * 10, 0.0f);
+            std::vector<float> values(std::size_t{2} * 10, 0.0f);
             frame.mode = protocol::FrameMode::kMinMax;
             frame.pointCount = 10;
             frame.views = {{.channelView = 0, .values = values},
@@ -441,9 +443,9 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
 TEST_F(MetalTraceRendererTest, ReportsRefusedCoverageTargets)
 {
     const std::vector<Scene> all = scenes();
-    renderer_->refuseCoverageTargetsForTesting(true);
+    renderer->refuseCoverageTargetsForTesting(true);
     EXPECT_FALSE(draw(all.front()));
-    renderer_->refuseCoverageTargetsForTesting(false);
+    renderer->refuseCoverageTargetsForTesting(false);
     const auto drawn = draw(all.front());
     ASSERT_TRUE(drawn);
     expectSamePicture(all.front(), *drawn);

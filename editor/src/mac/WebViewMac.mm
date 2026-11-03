@@ -276,7 +276,7 @@ public:
     [[nodiscard]] void* nativeView() const override { return (__bridge void*)webView; }
     void evaluate(std::string_view script, std::function<void(std::string)> done) override;
     void setScale(double /*scale*/) override {} // macOS sizes in points: always 1.
-    bool drawTracesNatively(NativeTraces traces) override;
+    bool drawTracesNatively(const NativeTraces& traces) override;
     void stopNativeTraces() override { traceLayer.reset(); }
     void setTraceView(const TraceView& view) override
     {
@@ -703,7 +703,7 @@ void WebViewMac::setSize(int width, int height)
     [container setFrameSize:NSMakeSize(width, height)];
 }
 
-bool WebViewMac::drawTracesNatively(NativeTraces traces)
+bool WebViewMac::drawTracesNatively(const NativeTraces& traces)
 {
     // The page goes transparent over its screen (its own stylesheet, in native mode); the web
     // view stops painting its background, so the layer below shows through. WebKit's switch for
@@ -711,10 +711,9 @@ bool WebViewMac::drawTracesNatively(NativeTraces traces)
     [webView setValue:@NO forKey:@"drawsBackground"];
     // Below the page's minimum width the page is clipped at the window's edge: so is the layer.
     container.clipsToBounds = YES;
-    traceLayer = TraceLayer::create(container, webView, *traces.pacing,
-                                    {.requestFrame = std::move(traces.requestFrame),
-                                     .takeFrame = std::move(traces.takeFrame),
-                                     .lost = std::move(traces.lost)});
+    traceLayer = TraceLayer::create(
+        container, webView, *traces.pacing,
+        {.requestFrame = traces.requestFrame, .takeFrame = traces.takeFrame, .lost = traces.lost});
     traceLayer->setPageShown(loaded && !webView.hidden);
     return true;
 }

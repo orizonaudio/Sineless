@@ -105,7 +105,7 @@ TEST(TraceViewMessage, RefusesAMessageWithAnyFieldMalformed)
 
 FrameView laneFrame(std::uint32_t laneSet, std::size_t lanes, bool compared)
 {
-    static const std::vector<float> values(4, 0.0f);
+    static const std::vector<float> kValues(4, 0.0f);
     FrameView frame;
     frame.laneSet = laneSet;
     frame.pointCount = 2;
@@ -113,7 +113,7 @@ FrameView laneFrame(std::uint32_t laneSet, std::size_t lanes, bool compared)
         frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kCompared);
     }
     for (std::size_t lane = 0; lane < lanes; ++lane) {
-        frame.lanes.emplace_back(values);
+        frame.lanes.emplace_back(kValues);
     }
     return frame;
 }
