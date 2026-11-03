@@ -374,6 +374,31 @@ TEST(FrameRequests, ChangesNOnceWhenTheWindowMovesToAFasterDisplay)
     EXPECT_EQ(seen, std::vector<int>{2});
 }
 
+// The editor starts the clock at an assumed rate and the screen's own may never be given (a window
+// with no screen yet): the rate is measured from the link's targets, and n follows it, so a fast
+// display still shows at most AD-12's frames a second. Just past a line, n keeps its value while
+// within the hysteresis, as when the rate is given.
+TEST(FrameRequests, MeasuresTheRateFromTheLinksOwnRefreshes)
+{
+    const double pastLine = protocol::kFullRateUpToHz * (1.0 + 0.5 * protocol::kLineHysteresis);
+    for (const double rate : {120.0, 144.0, 240.0, pastLine}) {
+        Link link{.rate = rate};
+        FramePacing pacing(60.0);
+        int requests = 0;
+        const std::uint64_t refreshes = 600;
+        for (std::uint64_t index = 0; index < refreshes; ++index) {
+            if (link.call(pacing, index).requestFrame && index >= refreshes / 2) {
+                ++requests;
+            }
+        }
+        const int expected = ticksPerFrame(rate, 1);
+        EXPECT_EQ(pacing.ticks(), expected) << rate << " Hz";
+        // Frames shown in the second half, once measured: one every n refreshes.
+        EXPECT_NEAR(requests, static_cast<double>(refreshes) / 2.0 / expected, 1.0)
+            << rate << " Hz";
+    }
+}
+
 // ----- Threads -----
 
 // The display link writes while the worker reads: only atomics are shared (the ThreadSanitizer
