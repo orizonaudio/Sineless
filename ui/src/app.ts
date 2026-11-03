@@ -238,6 +238,11 @@ export class OscilloscopeApp {
   // macOS: the editor draws the traces itself (snapshot.nativeTraces), and the page sends it what
   // only the page knows, at most once per animation frame and only when it changed.
   private nativeTraces = false;
+  // The diagnostic switch: every picture of the traces carries the frame barcode, from the
+  // editor's snapshot (SINELESS_FRAME_BARCODE=1) or, in the browser preview, ?barcode.
+  private frameBarcode = new URLSearchParams(window.location.search).has(
+    "barcode",
+  );
   private traceViewQueued = false;
   private lastTraceView = "";
   // Native drawing stopped for good this session: never cleared, so a snapshot read before the
@@ -334,6 +339,7 @@ export class OscilloscopeApp {
         return { cursor: rgba(token("--sl-ink")), previous: [r, g, b, 0.5] };
       },
       // Cancelling is a problem in the audio: the problem colour, faint behind the sum.
+      frameBarcode: () => this.frameBarcode,
       cancellationColor: () => {
         const [r, g, b] = rgba(token("--sl-warn"));
         return [r, g, b, 0.16];
@@ -1950,6 +1956,14 @@ export class OscilloscopeApp {
       document.documentElement.classList.toggle(
         "native-traces",
         this.nativeTraces,
+      );
+      if (message.frameBarcode === true) {
+        this.frameBarcode = true;
+      }
+      // The strip takes the corner the cursor readout uses.
+      document.documentElement.classList.toggle(
+        "frame-barcode",
+        this.frameBarcode,
       );
       this.engineError = false;
       element("message").hidden = !this.graphicsMessage;

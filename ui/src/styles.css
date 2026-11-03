@@ -394,6 +394,11 @@ button[aria-pressed="true"]:focus-visible {
   pointer-events: none;
 }
 
+/* The frame barcode's strip (the diagnostic switch) takes this corner. */
+.frame-barcode .screen-corner {
+  display: none;
+}
+
 .screen-corner {
   position: absolute;
   top: 8px;
