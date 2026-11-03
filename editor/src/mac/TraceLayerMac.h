@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor/FrameBarcode.h"
+#include "editor/PresentedCounts.h"
 #include "editor/TraceView.h"
 #include "engine/FramePacing.h"
 
@@ -78,7 +79,10 @@ public:
     struct Stats
     {
         std::uint64_t callbacks = 0;
-        std::uint64_t presented = 0;
+        // Frames handed to the GPU and committed.
+        std::uint64_t submitted = 0;
+        // What reached the screen, from Metal's presented times (PresentedCounts).
+        PresentedCounts::Totals shown;
         // The size of the drawable last drawn into, in device pixels.
         std::size_t drawnWidth = 0;
         std::size_t drawnHeight = 0;

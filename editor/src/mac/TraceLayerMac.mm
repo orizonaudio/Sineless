@@ -51,7 +51,8 @@ struct Shared
     std::atomic<long> failCode{-1};
     std::atomic<bool> refuseTargets{false};
     std::atomic<std::uint64_t> callbacks{0};
-    std::atomic<std::uint64_t> presented{0};
+    std::atomic<std::uint64_t> submitted{0};
+    PresentedCounts presentedCounts;
     std::atomic<std::size_t> drawnWidth{0};
     std::atomic<std::size_t> drawnHeight{0};
     // The frame barcode on the picture last drawn (any thread reads them, for tests).
@@ -174,13 +175,21 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
     }
     [buffer presentDrawable:drawable];
     const std::weak_ptr<Shared> weak = shared;
+    // When it reaches the screen, or 0.0 if dropped: counted against the display's period as it
+    // was when drawn (the pacing may be gone by the time the handler runs).
+    const double period = s.pacing.displayPeriodSeconds();
+    [drawable addPresentedHandler:^(id<MTLDrawable> shown) {
+      if (const auto alive = weak.lock()) {
+          alive->presentedCounts.add(shown.presentedTime, period);
+      }
+    }];
     [buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
       if (const auto alive = weak.lock()) {
           completed(alive, done);
       }
     }];
     [buffer commit];
-    s.presented.fetch_add(1);
+    s.submitted.fetch_add(1);
     s.drawnWidth.store(drawable.texture.width);
     s.drawnHeight.store(drawable.texture.height);
     if (barcode) {
@@ -313,7 +322,8 @@ public:
                                     .drawnFor = shared->barcodeDrawnFor.load()};
         }
         return {.callbacks = shared->callbacks.load(),
-                .presented = shared->presented.load(),
+                .submitted = shared->submitted.load(),
+                .shown = shared->presentedCounts.totals(),
                 .drawnWidth = shared->drawnWidth.load(),
                 .drawnHeight = shared->drawnHeight.load(),
                 .barcode = barcode};

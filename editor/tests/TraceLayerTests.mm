@@ -129,8 +129,8 @@ protected:
 
     bool presents(std::chrono::milliseconds within = 2s)
     {
-        const auto before = layer->statsForTesting().presented;
-        return pumpUntil([&] { return layer->statsForTesting().presented > before; }, within);
+        const auto before = layer->statsForTesting().submitted;
+        return pumpUntil([&] { return layer->statsForTesting().submitted > before; }, within);
     }
 
     // The screen's rectangle in the container's coordinates (from the bottom), and in device
@@ -295,10 +295,10 @@ TEST_F(TraceLayerTest, DrawsTheLastFrameAgainWhenThePictureChanges)
     show();
     ASSERT_TRUE(pumpUntil([&] { return source.takes.load() == 1; }, 3s));
     pumpUntil([] { return false; }, 200ms);
-    ASSERT_GE(layer->statsForTesting().presented, 1U);
-    const auto idle = layer->statsForTesting().presented;
+    ASSERT_GE(layer->statsForTesting().submitted, 1U);
+    const auto idle = layer->statsForTesting().submitted;
     pumpUntil([] { return false; }, 300ms);
-    ASSERT_EQ(layer->statsForTesting().presented, idle) << "nothing to draw again";
+    ASSERT_EQ(layer->statsForTesting().submitted, idle) << "nothing to draw again";
 
     [window setContentSize:NSMakeSize(1200, 640)];
     EXPECT_TRUE(presents()) << "a resize";
@@ -323,10 +323,10 @@ TEST_F(TraceLayerTest, DrawsTheLastFrameAgainWhenThePictureChanges)
     pumpUntil([] { return false; }, 100ms);
     layer->failCommandBuffersForTesting(MTLCommandBufferErrorTimeout);
     [window setContentSize:NSMakeSize(1080, 580)];
-    const auto failing = layer->statsForTesting().presented;
+    const auto failing = layer->statsForTesting().submitted;
     pumpUntil([] { return false; }, 200ms);
     layer->failCommandBuffersForTesting(std::nullopt);
-    EXPECT_GE(layer->statsForTesting().presented, failing + 3) << "drawn again after failing";
+    EXPECT_GE(layer->statsForTesting().submitted, failing + 3) << "drawn again after failing";
     EXPECT_FALSE(layer->lost());
     EXPECT_EQ(source.takes.load(), 1);
 }
@@ -363,13 +363,28 @@ TEST_F(TraceLayerTest, NumbersEachPictureItDrawsWithTheSwitchOn)
     EXPECT_LT(step, 1000U * protocol::kBarcodeTicksPerMillisecond);
 }
 
+// What reached the screen is counted from Metal's presented times: some frames, never more than
+// were submitted. A display that reports no presented times (an idle one) is skipped, saying so.
+TEST_F(TraceLayerTest, CountsTheFramesThatReachedTheScreen)
+{
+    source.always = true;
+    show();
+    ASSERT_TRUE(pumpUntil([&] { return layer->statsForTesting().submitted >= 30; }, 3s));
+    if (!pumpUntil([&] { return layer->statsForTesting().shown.presented > 0; }, 2s)) {
+        GTEST_SKIP() << "this display reports no presented times";
+    }
+    const auto stats = layer->statsForTesting();
+    EXPECT_GT(stats.shown.presented, 0U);
+    EXPECT_LE(stats.shown.presented + stats.shown.dropped, stats.submitted);
+}
+
 // Each shown refresh asks for its frame, and each frame made is drawn.
 TEST_F(TraceLayerTest, AsksForFramesAndDrawsEachOneMade)
 {
     show();
     ASSERT_TRUE(pumpUntil([&] { return source.takes.load() >= 10; }, 3s));
     EXPECT_GE(source.requests.load(), 10);
-    EXPECT_GE(layer->statsForTesting().presented, 10U);
+    EXPECT_GE(layer->statsForTesting().submitted, 10U);
 }
 
 class TraceLayerLossTest : public TraceLayerTest, public ::testing::WithParamInterface<long>
@@ -387,9 +402,9 @@ TEST_P(TraceLayerLossTest, StopsForGoodWhenTheGpuIsGone)
     ASSERT_TRUE(pumpUntil([&] { return source.losses.load() == 1; }, 2s));
     EXPECT_TRUE(layer->lost());
     pumpUntil([] { return false; }, 100ms);
-    const auto presented = layer->statsForTesting().presented;
+    const auto presented = layer->statsForTesting().submitted;
     pumpUntil([] { return false; }, 300ms);
-    EXPECT_EQ(layer->statsForTesting().presented, presented);
+    EXPECT_EQ(layer->statsForTesting().submitted, presented);
     EXPECT_EQ(source.losses.load(), 1);
 }
 

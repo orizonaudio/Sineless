@@ -411,8 +411,12 @@ struct Snapshot
     std::map<std::string, double> threads;
     std::map<int, std::pair<std::string, double>> webKit;
     nlohmann::json page;
-    // Frames the native layer has presented; negative where the page draws the traces.
-    double presented = -1.0;
+    // Frames the native layer has submitted to the GPU, negative where the page draws the traces;
+    // and of those, what reached the screen (Metal's presented times).
+    double submitted = -1.0;
+    double presented = 0.0;
+    double dropped = 0.0;
+    double withoutNewFrame = 0.0;
     double resident = 0.0;
 };
 
@@ -423,7 +427,12 @@ struct Interval
     double webKit = 0.0;
     double total = 0.0;
     double analysis = 0.0;
-    double framesPerSecond = 0.0; // Shown: presented natively, or received by the page.
+    double framesPerSecond = 0.0; // Submitted natively, or received by the page (judged).
+    // Natively: frames shown, refreshes that showed no new frame, and drawables dropped, per
+    // second.
+    double presentedPerSecond = 0.0;
+    double withoutNewFramePerSecond = 0.0;
+    double droppedPerSecond = 0.0;
     double pageFramesPerSecond = 0.0;
     bool native = false;
     double resident = 0.0; // MB at the end.
@@ -590,7 +599,12 @@ int run(const Options& options)
             Snapshot snapshot;
             snapshot.page = nlohmann::json::parse(text.empty() ? "{}" : text, nullptr, false);
             if (const auto* layer = orizon::editor::traceLayerForTests(*editor->webView())) {
-                snapshot.presented = static_cast<double>(layer->statsForTesting().presented);
+                const auto stats = layer->statsForTesting();
+                snapshot.submitted = static_cast<double>(stats.submitted);
+                snapshot.presented = static_cast<double>(stats.shown.presented);
+                snapshot.dropped = static_cast<double>(stats.shown.dropped);
+                snapshot.withoutNewFrame =
+                    static_cast<double>(stats.shown.refreshesWithoutNewFrame);
             }
             snapshot.threads = threadTimes();
             snapshot.process = processTime();
@@ -624,9 +638,13 @@ int run(const Options& options)
                                            snapshot.page.value("frameCount", 0.0));
             };
             interval.pageFramesPerSecond = (frames(to) - frames(from)) / seconds;
-            interval.native = to.presented >= 0.0 && from.presented >= 0.0;
-            interval.framesPerSecond = interval.native ? (to.presented - from.presented) / seconds
+            interval.native = to.submitted >= 0.0 && from.submitted >= 0.0;
+            interval.framesPerSecond = interval.native ? (to.submitted - from.submitted) / seconds
                                                        : interval.pageFramesPerSecond;
+            interval.presentedPerSecond = (to.presented - from.presented) / seconds;
+            interval.withoutNewFramePerSecond =
+                (to.withoutNewFrame - from.withoutNewFrame) / seconds;
+            interval.droppedPerSecond = (to.dropped - from.dropped) / seconds;
             interval.resident = to.resident;
             return interval;
         };
@@ -876,7 +894,10 @@ int run(const Options& options)
             const double received = interval.pageFramesPerSecond * interval.seconds;
             const double drawn = delta("framesDrawn");
             if (interval.native) {
-                std::printf("native: %.1f frames/s presented\n", interval.framesPerSecond);
+                std::printf("native: %.1f frames/s submitted; on screen %.1f frames/s, %.1f "
+                            "refreshes/s without a new frame, %.1f dropped/s\n",
+                            interval.framesPerSecond, interval.presentedPerSecond,
+                            interval.withoutNewFramePerSecond, interval.droppedPerSecond);
             }
             std::printf("page: %.1f frames/s received, %.1f drawn, %.0f KB/frame\n",
                         interval.pageFramesPerSecond, drawn / interval.seconds,

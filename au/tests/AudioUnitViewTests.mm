@@ -368,7 +368,7 @@ TEST_F(AudioUnitViewTest, DrawsTheTracesNatively)
     EXPECT_TRUE(core->drawsTracesNatively());
     editor::TraceLayer* layer = editor::traceLayerForTests(*core->webView());
     ASSERT_NE(layer, nullptr);
-    EXPECT_TRUE(pumpUntil([&] { return layer->statsForTesting().presented > 0; }, kPageTimeout));
+    EXPECT_TRUE(pumpUntil([&] { return layer->statsForTesting().submitted > 0; }, kPageTimeout));
     EXPECT_FALSE(layer->view().hidden);
     closeWindow(window, view);
     editor::TraceLayer::setOcclusionForTesting(std::nullopt);

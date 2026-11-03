@@ -378,6 +378,17 @@ TEST(FrameRequests, ChangesNOnceWhenTheWindowMovesToAFasterDisplay)
 // with no screen yet): the rate is measured from the link's targets, and n follows it, so a fast
 // display still shows at most AD-12's frames a second. Just past a line, n keeps its value while
 // within the hysteresis, as when the rate is given.
+// The display's period, as the presented counts divide by it: a refresh, not the step between
+// callbacks, which at two refreshes a frame is two; unknown (0) until measured.
+TEST(FrameRequests, PublishesTheDisplaysPeriodNotTheCallbacks)
+{
+    FramePacing pacing(120.0);
+    EXPECT_EQ(pacing.displayPeriodSeconds(), 0.0);
+    Link everyOther{.rate = 60.0}; // Targets two 120 Hz refreshes apart.
+    callRange(pacing, everyOther, 0, 60);
+    EXPECT_NEAR(pacing.displayPeriodSeconds(), 1.0 / 120.0, 1e-9);
+}
+
 TEST(FrameRequests, MeasuresTheRateFromTheLinksOwnRefreshes)
 {
     const double pastLine = protocol::kFullRateUpToHz * (1.0 + 0.5 * protocol::kLineHysteresis);

@@ -40,6 +40,7 @@ add_library(editor_core STATIC
     src/FrameFlow.cpp
     src/FrameView.cpp
     src/PointerHold.cpp
+    src/PresentedCounts.cpp
     src/Session.cpp
     src/TraceGeometry.cpp
     src/TraceView.cpp
@@ -77,6 +78,7 @@ if(BUILD_TESTING)
         tests/FrameViewTests.cpp
         tests/MinimumHeightTests.cpp
         tests/PointerHoldTests.cpp
+        tests/PresentedCountsTests.cpp
         tests/SessionRecordingTests.cpp
         tests/SessionTests.cpp
         tests/TraceGeometryTests.cpp
