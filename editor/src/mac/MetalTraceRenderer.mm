@@ -23,6 +23,11 @@ constexpr std::size_t kTracesPerPass = kCoverageTargets * 4;
 static_assert(protocol::kMaxLanes <= kTracesPerPass);
 // Frames the GPU may still be reading while the next ones are encoded (Metal's triple buffering).
 constexpr std::size_t kSlots = 3;
+// The playhead's edges fade over this many device pixels: a hard line one pixel wide (a 1x display)
+// alternates between one bright pixel and two dim ones as it crosses pixels, which flashes as it
+// moves; a soft one looks much the same wherever it sits. On Retina, where the line is two pixels
+// wide, the fade softens it by less than a point.
+constexpr float kPlayheadSoftness = 1.5f;
 // The page's alpha for a stale trace (Waiting), trace-renderer.ts.
 constexpr float kDimmedAlpha = 0.45f;
 
@@ -66,7 +71,10 @@ struct BandInstance
     std::array<float, 4> colour{};
     std::int32_t softX = 0;
     std::int32_t softY = 0;
-    std::array<float, 2> padding{};
+    // Partly covered pixels give off the share of light they cover, not of sRGB value (below).
+    std::int32_t linearCoverage = 0;
+    // Device pixels the soft x edges fade over (0: a box, each pixel covered by its overlap).
+    float softness = 0.0f;
 };
 static_assert(sizeof(BandInstance) == 48, "laid out as the shaders' Band");
 
@@ -281,6 +289,8 @@ struct Band {
   float4 colour;
   int softX;
   int softY;
+  int linearCoverage;
+  float softness;
 };
 
 struct BandPixel {
@@ -296,7 +306,7 @@ vertex BandPixel bandVertex(uint vertexId [[vertex_id]], uint instance [[instanc
   int corner = int(vertexId % 6);
   bool far = corner == 2 || corner == 3 || corner == 5;
   bool upper = corner == 1 || corner == 4 || corner == 5;
-  float reachX = band.softX != 0 ? 1.0 : 0.0;
+  float reachX = band.softX != 0 ? 1.0 + band.softness : 0.0;
   float reachY = band.softY != 0 ? 1.0 : 0.0;
   float2 c = float2(far ? band.right + reachX : band.left - reachX,
                     upper ? band.top + reachY : band.bottom - reachY);
@@ -304,6 +314,11 @@ vertex BandPixel bandVertex(uint vertexId [[vertex_id]], uint instance [[instanc
   out.position = float4(c / canvas * 2.0 - 1.0, 0.0, 1.0);
   out.band = instance;
   return out;
+}
+
+// sRGB's encoding of a linear value (IEC 61966-2-1).
+float srgbEncoded(float linear) {
+  return linear <= 0.0031308 ? 12.92 * linear : 1.055 * pow(linear, 1.0 / 2.4) - 0.055;
 }
 
 // How much of the pixel [pixel, pixel + 1) lies between low and high (TraceGeometry's
@@ -316,13 +331,28 @@ fragment float4 bandFragment(BandPixel in [[stage_in]], device const Band* bands
                              constant float2& canvas [[buffer(1)]]) {
   Band band = bands[in.band];
   float2 pixel = floor(float2(in.position.x, canvas.y - in.position.y));
-  float coverage = band.colour.a;
+  float coverage = 1.0;
   if (band.softX != 0) {
-    coverage *= covers(pixel.x, band.left, band.right);
+    if (band.softness > 0.0) {
+      // The box blurred by a box `softness` wide: the overlap averaged over shifts across it
+      // (exact enough at 16, the overlap being linear between its corners).
+      float sum = 0.0;
+      for (int step = 0; step < 16; ++step) {
+        float shift = band.softness * ((float(step) + 0.5) / 16.0 - 0.5);
+        sum += covers(pixel.x, band.left + shift, band.right + shift);
+      }
+      coverage *= sum / 16.0;
+    } else {
+      coverage *= covers(pixel.x, band.left, band.right);
+    }
   }
   if (band.softY != 0) {
     coverage *= covers(pixel.y, band.bottom, band.top);
   }
+  // Blending mixes sRGB values: a pixel half covered would give off about a fifth of the light,
+  // so a line between two pixels would dim and one moving by fractions of a pixel would flash.
+  // Over the dark screen, coverage encoded as sRGB gives off the light it covers.
+  coverage = band.colour.a * (band.linearCoverage != 0 ? srgbEncoded(coverage) : coverage);
   if (coverage <= 0.0) {
     discard_fragment();
   }
@@ -420,19 +450,21 @@ public:
             const double position =
                 (frame->cursor - view.view.start) / (view.view.end - view.view.start);
             const PixelBand line = playheadBand(position, width, pixelRatio);
-            const auto band = [&](double left, double right, const Rgba& colour) {
+            const auto band = [&](double left, double right, const Rgba& colour, bool line) {
                 over.push_back({.left = static_cast<float>(left),
                                 .right = static_cast<float>(right),
                                 .bottom = 0.0f,
                                 .top = static_cast<float>(height),
                                 .colour = colour,
-                                .softX = 1});
+                                .softX = 1,
+                                .linearCoverage = line ? 1 : 0,
+                                .softness = line ? kPlayheadSoftness : 0.0f});
             };
             if (position < 1.0) {
-                band(line.left, std::max(line.right, width), view.previous);
+                band(line.left, std::max(line.right, width), view.previous, false);
             }
             if (position >= 0.0 && position <= 1.0) {
-                band(line.left, line.right, view.cursor);
+                band(line.left, line.right, view.cursor, true);
             }
         }
 
