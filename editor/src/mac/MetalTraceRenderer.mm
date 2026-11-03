@@ -400,6 +400,20 @@ public:
     }
 
     void refuseCoverageTargetsForTesting(bool refuse) override { refuseTargets = refuse; }
+    void refuseFrameBuffersForTesting(bool refuse) override { refuseBuffers = refuse; }
+    std::size_t freeSlotsForTesting() override
+    {
+        std::size_t free = 0;
+        while (free < kSlots &&
+               dispatch_semaphore_wait(
+                   slotsFree, dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC)) == 0) {
+            ++free;
+        }
+        for (std::size_t index = 0; index < free; ++index) {
+            dispatch_semaphore_signal(slotsFree);
+        }
+        return free;
+    }
 
     Result encode(id<MTLCommandBuffer> buffer, id<MTLTexture> target, const FrameView* frame,
                   const TraceView& view, double pixelRatio, bool grid) override
@@ -479,7 +493,7 @@ public:
         dispatch_semaphore_wait(slotsFree, DISPATCH_TIME_FOREVER);
         Slot& slot = slots[nextSlot];
         if (!slot.reserve(device, valueCount * sizeof(float),
-                          (under.size() + over.size()) * sizeof(BandInstance))) {
+                          (under.size() + over.size()) * sizeof(BandInstance), refuseBuffers)) {
             dispatch_semaphore_signal(slotsFree);
             return Result::kOutOfMemory;
         }
@@ -553,12 +567,15 @@ private:
         id<MTLBuffer> values;
         id<MTLBuffer> bands;
 
-        bool reserve(id<MTLDevice> device, std::size_t valueBytes, std::size_t bandBytes)
+        bool reserve(id<MTLDevice> device, std::size_t valueBytes, std::size_t bandBytes,
+                     bool refuse)
         {
-            return grow(device, values, valueBytes) && grow(device, bands, bandBytes);
+            return grow(device, values, valueBytes, refuse) &&
+                   grow(device, bands, bandBytes, refuse);
         }
 
-        static bool grow(id<MTLDevice> device, id<MTLBuffer> __strong& buffer, std::size_t bytes)
+        static bool grow(id<MTLDevice> device, id<MTLBuffer> __strong& buffer, std::size_t bytes,
+                         bool refuse)
         {
             // At least something to bind, and room to spare so a frame a little larger does not
             // reallocate.
@@ -566,9 +583,10 @@ private:
             if (buffer != nil && buffer.length >= wanted) {
                 return true;
             }
-            buffer = [device newBufferWithLength:wanted + wanted / 2
-                                         options:MTLResourceStorageModeShared |
-                                                 MTLResourceCPUCacheModeWriteCombined];
+            buffer = refuse ? nil
+                            : [device newBufferWithLength:wanted + wanted / 2
+                                                  options:MTLResourceStorageModeShared |
+                                                          MTLResourceCPUCacheModeWriteCombined];
             return buffer != nil;
         }
     };
@@ -715,6 +733,7 @@ private:
     std::size_t nextSlot = 0;
     dispatch_semaphore_t slotsFree;
     bool refuseTargets = false;
+    bool refuseBuffers = false;
 };
 
 } // namespace
