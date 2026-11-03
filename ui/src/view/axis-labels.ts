@@ -2,19 +2,23 @@
 // screen: `x` from the left, `y` from the top.
 import { lanes } from "../render/trace-geometry.ts";
 import { ViewLayout } from "../../../protocol/src/enums.ts";
-import { triggerPosition } from "../../../protocol/src/limits.ts";
+import {
+  gridColumns,
+  gridLevelStepDb,
+  gridLevelsBelowTop,
+  gridMinimumLineGap,
+  triggerPosition,
+} from "../../../protocol/src/limits.ts";
 import { formatDb, formatDbValue, formatSeconds } from "./format.ts";
 import { fullView, toFrame, type ViewWindow } from "./zoom.ts";
 
-export const gridColumns = 10;
-export { triggerPosition };
+export { gridColumns, triggerPosition };
 
-// Level lines sit every 3 dB down from the top of a lane, at most four below it. The trace is
-// linear, so a line `step` steps down sits at 10^(-3 * step / 20) of the half-lane height.
-const levelStepDb = 3;
-const levelsBelowTop = 4;
-// Closest spacing (CSS px) between drawn level lines, and between level labels.
-export const minimumLineGap = 8;
+// Level lines (protocol/src/limits.ts: gridLevelStepDb, gridLevelsBelowTop). Closest spacing (CSS
+// px) between drawn level lines (gridMinimumLineGap), and between level labels.
+const levelStepDb = gridLevelStepDb;
+const levelsBelowTop = gridLevelsBelowTop;
+export const minimumLineGap = gridMinimumLineGap;
 export const minimumLabelGap = 14;
 
 export function levelFraction(step: number): number {

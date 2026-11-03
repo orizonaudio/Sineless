@@ -1,0 +1,186 @@
+#include "editor/TraceGeometry.h"
+
+#include <cmath>
+#include <fstream>
+#include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <vector>
+
+namespace orizon::editor {
+namespace {
+
+// The page's geometry, computed by its helpers (ui/tests/trace-geometry-vectors.test.ts): the
+// native picture must place the same lanes, grid lines and shading.
+const nlohmann::json& vectors()
+{
+    static const nlohmann::json loaded = [] {
+        std::ifstream file(std::string(ORIZON_PROTOCOL_TEST_DATA_DIR) + "/trace-geometry.json");
+        return nlohmann::json::parse(file);
+    }();
+    return loaded;
+}
+
+protocol::ViewLayout layoutNamed(const std::string& name)
+{
+    return name == "stacked" ? protocol::ViewLayout::kStacked : protocol::ViewLayout::kOverlaid;
+}
+
+TEST(TraceGeometry, PlacesLanesAsThePageDoes)
+{
+    for (const nlohmann::json& entry : vectors().at("lanes")) {
+        const auto placed =
+            lanes(entry.at("count").get<std::size_t>(), layoutNamed(entry.at("layout")));
+        const nlohmann::json& expected = entry.at("lanes");
+        ASSERT_EQ(placed.size(), expected.size()) << entry.dump();
+        for (std::size_t index = 0; index < placed.size(); ++index) {
+            EXPECT_NEAR(placed[index].center, expected[index].at("center").get<double>(), 1e-9);
+            EXPECT_NEAR(placed[index].halfHeight, expected[index].at("halfHeight").get<double>(),
+                        1e-9);
+        }
+    }
+}
+
+TEST(TraceGeometry, FitsLevelLinesAsThePageDoes)
+{
+    for (const nlohmann::json& entry : vectors().at("levelSteps")) {
+        EXPECT_EQ(levelSteps(entry.at("halfLane").get<double>(), protocol::kGridMinimumLineGap),
+                  entry.at("steps").get<std::vector<int>>())
+            << entry.dump();
+    }
+}
+
+TEST(TraceGeometry, PlacesMusicalLinesAsThePageDoes)
+{
+    for (const nlohmann::json& entry : vectors().at("musical")) {
+        const auto lines =
+            musicalGridLines(entry.at("cycleStart").get<double>(), entry.at("span").get<double>(),
+                             entry.at("bar").get<double>(),
+                             {.start = entry.at("viewStart").get<double>(),
+                              .end = entry.at("viewEnd").get<double>()});
+        const nlohmann::json& expected = entry.at("lines");
+        ASSERT_EQ(lines.size(), expected.size()) << entry.dump();
+        for (std::size_t index = 0; index < lines.size(); ++index) {
+            EXPECT_NEAR(lines[index].position, expected[index].at("position").get<double>(), 1e-9);
+            EXPECT_EQ(lines[index].strong, expected[index].at("strong").get<bool>());
+        }
+    }
+}
+
+TEST(TraceGeometry, DrawsTheGridAsThePageDoes)
+{
+    for (const nlohmann::json& entry : vectors().at("grid")) {
+        std::vector<VerticalLine> vertical;
+        if (entry.contains("vertical")) {
+            for (const nlohmann::json& line : entry.at("vertical")) {
+                vertical.push_back(
+                    {.position = line.at("position").get<double>(), .strong = line.at("strong")});
+            }
+        }
+        const GridLines lines =
+            gridLines(entry.at("width").get<double>(), entry.at("height").get<double>(),
+                      entry.at("laneCount").get<std::size_t>(), entry.at("ratio").get<double>(),
+                      entry.contains("vertical") ? &vertical : nullptr);
+        const nlohmann::json& expected = entry.at("lines");
+        EXPECT_EQ(lines.lineWidth, expected.at("lineWidth").get<double>()) << entry.dump();
+        ASSERT_EQ(lines.vertical.size(), expected.at("vertical").size()) << entry.dump();
+        for (std::size_t index = 0; index < lines.vertical.size(); ++index) {
+            EXPECT_EQ(lines.vertical[index].x,
+                      expected.at("vertical")[index].at("x").get<double>());
+            EXPECT_EQ(lines.vertical[index].strong,
+                      expected.at("vertical")[index].at("strong").get<bool>());
+        }
+        ASSERT_EQ(lines.horizontal.size(), expected.at("horizontal").size()) << entry.dump();
+        for (std::size_t index = 0; index < lines.horizontal.size(); ++index) {
+            EXPECT_EQ(lines.horizontal[index].y,
+                      expected.at("horizontal")[index].at("y").get<double>());
+            EXPECT_EQ(lines.horizontal[index].axis,
+                      expected.at("horizontal")[index].at("axis").get<bool>());
+        }
+    }
+}
+
+TEST(TraceGeometry, ShadesCancellationAsThePageDoes)
+{
+    for (const nlohmann::json& entry : vectors().at("cancellation")) {
+        std::vector<std::vector<float>> data;
+        for (const nlohmann::json& lane : entry.at("lanes")) {
+            data.push_back(lane.get<std::vector<float>>());
+        }
+        FrameView frame;
+        frame.mode =
+            entry.at("mode") == "minMax" ? protocol::FrameMode::kMinMax : protocol::FrameMode::kRaw;
+        frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kCompared);
+        frame.pointCount = entry.at("pointCount").get<std::uint32_t>();
+        frame.startFraction = entry.at("startFraction").get<float>();
+        frame.viewStart = entry.at("frameViewStart").get<float>();
+        frame.viewEnd = entry.at("frameViewEnd").get<float>();
+        frame.visibleSamples = entry.at("visibleSamples").get<float>();
+        for (const auto& lane : data) {
+            frame.lanes.emplace_back(lane);
+        }
+        frame.related = entry.at("related").get<std::vector<bool>>();
+        const auto bands = cancellationBands(frame, layoutNamed(entry.at("layout")),
+                                             entry.at("compared").get<std::vector<bool>>(),
+                                             {.start = entry.at("viewStart").get<double>(),
+                                              .end = entry.at("viewEnd").get<double>()});
+        const auto expected = entry.at("bands").get<std::vector<double>>();
+        // The page's quads: two triangles, 12 values each, (x0, bottom, x1, bottom, x0, top, ...).
+        ASSERT_EQ(bands.size() * 12, expected.size()) << entry.dump();
+        for (std::size_t index = 0; index < bands.size(); ++index) {
+            const double* quad = &expected[index * 12];
+            // The page's values are float32: compare at that precision.
+            EXPECT_NEAR(bands[index].left, quad[0], 1e-5);
+            EXPECT_NEAR(bands[index].bottom, quad[1], 1e-5);
+            EXPECT_NEAR(bands[index].right, quad[2], 1e-5);
+            EXPECT_NEAR(bands[index].top, quad[5], 1e-5);
+        }
+    }
+}
+
+// A track that matches this one nowhere clearly has nothing to fix: no shading, as on the page.
+TEST(TraceGeometry, ShadesNothingWithoutARelatedComparedTrack)
+{
+    const nlohmann::json& entry = vectors().at("cancellation").at(0);
+    std::vector<std::vector<float>> data;
+    for (const nlohmann::json& lane : entry.at("lanes")) {
+        data.push_back(lane.get<std::vector<float>>());
+    }
+    FrameView frame;
+    frame.mode = protocol::FrameMode::kMinMax;
+    frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kCompared);
+    frame.pointCount = entry.at("pointCount").get<std::uint32_t>();
+    for (const auto& lane : data) {
+        frame.lanes.emplace_back(lane);
+    }
+    frame.related = {false, false};
+    EXPECT_TRUE(cancellationBands(frame, protocol::ViewLayout::kStacked, {true, true}, {}).empty());
+}
+
+// Drawn natively, the playhead moves by fractions of a pixel: at any position its coverage over
+// the pixels it touches adds up to its width, and it sits centred where it should, so neither its
+// brightness nor its place steps with the pixel grid.
+TEST(TraceGeometry, DrawsThePlayheadAtItsExactPositionWithCoverage)
+{
+    for (const double ratio : {1.0, 2.0, 1.5}) {
+        for (double position = 0.30; position < 0.31; position += 0.00037) {
+            const PixelBand band = playheadBand(position, 2000.0, ratio);
+            const double width = std::max(1.0, std::floor(ratio));
+            EXPECT_NEAR(band.right - band.left, width, 1e-9);
+            EXPECT_NEAR((band.left + band.right) / 2.0, position * 2000.0, 1e-9);
+            double covered = 0.0;
+            double weighted = 0.0;
+            for (double pixel = std::floor(band.left) - 1; pixel <= std::ceil(band.right) + 1;
+                 ++pixel) {
+                const double coverage = bandCoverage(pixel, band);
+                covered += coverage;
+                weighted += coverage * (pixel + 0.5);
+            }
+            EXPECT_NEAR(covered, width, 1e-9);
+            EXPECT_NEAR(weighted / covered, position * 2000.0, 1e-9);
+        }
+    }
+}
+
+} // namespace
+} // namespace orizon::editor

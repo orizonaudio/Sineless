@@ -4,6 +4,12 @@
 // built by the renderer's shaders on the same rules.
 import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
+import {
+  cancellationBridgedPoints,
+  cancellationDb,
+  cancellationQuietShare,
+  cancellationReachDivisor,
+} from "../../../protocol/src/limits.ts";
 import { fullView, type ViewWindow } from "../view/zoom.ts";
 
 export interface TraceLayout {
@@ -113,16 +119,12 @@ function pushQuad(
 }
 
 // Compare frames hold the group's tracks and then the sum of the compared ones. Where the sum's
-// peak falls more than 3 dB below the louder compared track's, they cancel strongly: these spans
-// of the sum's lane, as quads. `compared` marks the compared tracks in lane order.
-//
-// This is not the summing gain readout's rule (energy against unrelated tracks, ±1 dB), and
-// cannot be: a column holds only peaks, and the peak of two unrelated signals' sum wanders well
-// below what their powers add to (on 10 to 30% of columns of noise), which would shade unrelated
-// tracks. Against the louder track alone, with 3 dB, unrelated tracks are left unshaded.
-const cancellationRatio = 10 ** (-3 / 20);
-const quietRatio = 0.05; // About -26 dB.
-const bridgedGap = 3; // Points.
+// peak falls cancellationDb below the louder compared track's, they cancel strongly: these spans
+// of the sum's lane, as quads. `compared` marks the compared tracks in lane order. The rule and
+// its numbers are in protocol/src/limits.ts; the macOS editor draws the same shading.
+const cancellationRatio = 10 ** (cancellationDb / 20);
+const quietRatio = cancellationQuietShare;
+const bridgedGap = cancellationBridgedPoints;
 
 // Each point's peak, NaN where a value is not finite (from a broken signal upstream).
 function peaks(frame: Frame, values: Float32Array): Float32Array {
@@ -139,7 +141,9 @@ function peaks(frame: Frame, values: Float32Array): Float32Array {
   // Min/max columns already hold their peaks; raw points cross zero every cycle, so their levels
   // are compared over a short window.
   const reach =
-    frame.mode === FrameMode.minMax ? 0 : Math.max(1, frame.pointCount >> 7);
+    frame.mode === FrameMode.minMax
+      ? 0
+      : Math.max(1, Math.floor(frame.pointCount / cancellationReachDivisor));
   const smoothed = new Float32Array(out.length);
   for (let point = 0; point < out.length; point++) {
     let peak = 0;

@@ -37,8 +37,11 @@ add_library(editor_core STATIC
     src/EditorCore.cpp
     src/EmbeddedAssets.cpp
     src/FrameFlow.cpp
+    src/FrameView.cpp
     src/PointerHold.cpp
     src/Session.cpp
+    src/TraceGeometry.cpp
+    src/TraceView.cpp
     src/Transport.cpp
     ${embeddedAssetData}
 )
@@ -66,10 +69,13 @@ if(BUILD_TESTING)
     add_executable(editor_tests
         tests/EmbeddedAssetsTests.cpp
         tests/FrameFlowTests.cpp
+        tests/FrameViewTests.cpp
         tests/MinimumHeightTests.cpp
         tests/PointerHoldTests.cpp
         tests/SessionRecordingTests.cpp
         tests/SessionTests.cpp
+        tests/TraceGeometryTests.cpp
+        tests/TraceViewTests.cpp
         tests/TransportTests.cpp
     )
     target_compile_definitions(editor_tests
