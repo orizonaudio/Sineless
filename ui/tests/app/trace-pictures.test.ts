@@ -54,6 +54,7 @@ const baseView: TraceViewMessage = {
   verticalScaleDb: 0,
   dim: false,
   lineWidth: 1.5,
+  emptyFrameLanes: 1,
   viewColours: [
     colour(0.36, 0.78, 1),
     colour(1, 0.55, 0.3),

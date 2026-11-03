@@ -63,6 +63,7 @@
     "verticalScaleDb": -6,
     "dim": false,
     "lineWidth": 3,
+    "emptyFrameLanes": 2,
     "viewColours": [
       [0.4, 0.6, 1, 1],
       [1, 0.4, 0.4, 1],

@@ -25,6 +25,8 @@ struct TraceView
     double verticalScaleDb = 0.0;
     bool dim = false;
     double lineWidth = 1.0;
+    // The lanes the page lays out for a frame with no views and no lanes (No tempo).
+    std::size_t emptyFrameLanes = 1;
     std::array<Rgba, protocol::kChannelViewCount> viewColours{};
     struct LaneColour
     {

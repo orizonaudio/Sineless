@@ -912,7 +912,20 @@ export class OscilloscopeApp {
       return 1;
     }
     const lanes = this.lastFrame?.lanes.length ?? 0;
-    return Math.max(1, lanes > 0 ? lanes : this.drawnViews().length);
+    const views = this.lastFrame?.views.size ?? 0;
+    return lanes > 0
+      ? lanes
+      : views > 0
+        ? Math.max(1, this.drawnViews().length)
+        : this.emptyFrameLanes();
+  }
+
+  // The lanes for a frame that carries no views and no lanes (No tempo, before the first frame):
+  // one per view shown when stacked. The editor's native grid lays such a frame out the same way.
+  private emptyFrameLanes(): number {
+    return this.layout() === ViewLayout.stacked
+      ? Math.max(1, this.shownViews().length)
+      : 1;
   }
 
   // Multi and Compare both show lanes of the group's tracks.
@@ -1819,6 +1832,7 @@ export class OscilloscopeApp {
       verticalScaleDb: this.store.number("verticalScale"),
       dim: this.waiting,
       lineWidth: style?.lineWidthPixels ?? 1,
+      emptyFrameLanes: this.emptyFrameLanes(),
       viewColours: viewOrder.map(
         (name) => views.get(ChannelView[name]) ?? white,
       ),

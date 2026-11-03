@@ -447,6 +447,121 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
     }
 }
 
+// The grid's lanes are the page's: the frame's lanes, else its views (a mono track's one view,
+// whatever was asked for), and for a frame with neither (No tempo, which lasts until the host
+// plays) or before any frame, the lanes the page lays out from the views shown. Each case's page
+// count differs from the frame's own, so taking the wrong one draws level lines the page's labels
+// do not match.
+TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
+{
+    struct Case
+    {
+        const char* name;
+        std::size_t views;
+        std::size_t lanes;
+        bool noFrame;
+        protocol::ViewLayout layout;
+        std::size_t emptyFrameLanes;
+        std::size_t expected;
+    };
+    constexpr auto kStacked = protocol::ViewLayout::kStacked;
+    const std::vector<Case> cases = {
+        {.name = "No tempo, stacked",
+         .views = 0,
+         .lanes = 0,
+         .noFrame = false,
+         .layout = kStacked,
+         .emptyFrameLanes = 3,
+         .expected = 3},
+        {.name = "before any frame, stacked",
+         .views = 0,
+         .lanes = 0,
+         .noFrame = true,
+         .layout = kStacked,
+         .emptyFrameLanes = 2,
+         .expected = 2},
+        {.name = "No tempo, overlaid",
+         .views = 0,
+         .lanes = 0,
+         .noFrame = false,
+         .layout = protocol::ViewLayout::kOverlaid,
+         .emptyFrameLanes = 1,
+         .expected = 1},
+        {.name = "three lanes, overlaid",
+         .views = 0,
+         .lanes = 3,
+         .noFrame = false,
+         .layout = protocol::ViewLayout::kOverlaid,
+         .emptyFrameLanes = 3,
+         .expected = 1},
+        {.name = "a mono track's one view",
+         .views = 1,
+         .lanes = 0,
+         .noFrame = false,
+         .layout = kStacked,
+         .emptyFrameLanes = 2,
+         .expected = 1},
+        {.name = "two views",
+         .views = 2,
+         .lanes = 0,
+         .noFrame = false,
+         .layout = kStacked,
+         .emptyFrameLanes = 4,
+         .expected = 2},
+        {.name = "three lanes",
+         .views = 0,
+         .lanes = 3,
+         .noFrame = false,
+         .layout = kStacked,
+         .emptyFrameLanes = 1,
+         .expected = 3},
+    };
+    TraceView view = scenes().front().view;
+    view.screen = {0.0f, 0.0f, 0.0f, 1.0f};
+    view.grid = {0.0f, 1.0f, 0.0f, 1.0f};
+    view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
+    // The traces themselves invisible: the grid alone.
+    view.viewColours = {};
+    view.laneSets = {};
+    view.fallbackColours = {{0.0f, 0.0f, 0.0f, 0.0f}};
+    const std::vector<float> values(std::size_t{2} * 10, 0.0f);
+    for (const Case& each : cases) {
+        FrameView frame;
+        frame.mode = protocol::FrameMode::kMinMax;
+        frame.pointCount = 10;
+        if (each.views == 0 && each.lanes == 0) {
+            frame.flags =
+                static_cast<std::uint8_t>(static_cast<unsigned>(protocol::FrameFlag::kSynced) |
+                                          static_cast<unsigned>(protocol::FrameFlag::kNoTempo));
+        }
+        for (std::size_t index = 0; index < each.views; ++index) {
+            frame.views.push_back(
+                {.channelView = static_cast<std::uint8_t>(index), .values = values});
+        }
+        for (std::size_t index = 0; index < each.lanes; ++index) {
+            frame.lanes.emplace_back(values);
+        }
+        view.layout = each.layout;
+        view.emptyFrameLanes = each.emptyFrameLanes;
+        constexpr std::size_t kWidth = 300;
+        constexpr std::size_t kHeight = 240;
+        const auto drawn = draw(kWidth, kHeight, each.noFrame ? nullptr : &frame, view, 1.0, true);
+        ASSERT_TRUE(drawn) << each.name;
+        const GridLines lines = gridLines(static_cast<double>(kWidth), static_cast<double>(kHeight),
+                                          each.expected, 1.0, nullptr);
+        const std::size_t column = 7;
+        for (const GridLines::Horizontal& line : lines.horizontal) {
+            if (line.y >= static_cast<double>(kHeight)) {
+                continue;
+            }
+            const auto y = kHeight - 1 - static_cast<std::size_t>(std::floor(line.y));
+            const std::uint8_t* pixel = drawn->at(column, y);
+            EXPECT_EQ(pixel[1], line.axis ? 0 : 255) << each.name << ", line at " << line.y;
+            EXPECT_EQ(pixel[2], line.axis ? 255 : 0) << each.name << ", line at " << line.y;
+        }
+    }
+}
+
 // Metal refusing the memory for the coverage targets is reported, so the editor can say so
 // (nativeGraphicsLost), and nothing is drawn; once it grants it again, drawing resumes.
 TEST_F(MetalTraceRendererTest, ReportsRefusedCoverageTargets)

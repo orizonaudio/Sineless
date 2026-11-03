@@ -672,8 +672,10 @@ private:
                         const TraceView& view, std::size_t blocks, double width, double height,
                         double pixelRatio)
     {
-        const std::size_t laneCount =
-            view.layout == protocol::ViewLayout::kStacked ? std::max<std::size_t>(1, blocks) : 1;
+        // A frame with neither views nor lanes (No tempo) is laid out as the page lays it out.
+        const std::size_t laneCount = view.layout != protocol::ViewLayout::kStacked ? 1
+                                      : blocks > 0 ? blocks
+                                                   : view.emptyFrameLanes;
         std::vector<VerticalLine> musical;
         const bool synced = frame != nullptr && frame->has(protocol::FrameFlag::kSynced) &&
                             !frame->has(protocol::FrameFlag::kNoTempo);

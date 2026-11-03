@@ -86,6 +86,12 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
         return std::nullopt;
     }
     view.dim = dim->get<bool>();
+    const auto emptyFrameLanes = message.find("emptyFrameLanes");
+    if (emptyFrameLanes == message.end() || !emptyFrameLanes->is_number_unsigned() ||
+        *emptyFrameLanes < 1U || *emptyFrameLanes > protocol::kChannelViewCount) {
+        return std::nullopt;
+    }
+    view.emptyFrameLanes = emptyFrameLanes->get<std::size_t>();
 
     const auto viewColours = message.find("viewColours");
     if (viewColours == message.end() || !viewColours->is_array() ||
