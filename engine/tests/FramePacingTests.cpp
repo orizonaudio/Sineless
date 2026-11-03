@@ -190,6 +190,38 @@ TEST(DisplayClockChanges, NeverStepsBackAcrossADisplayChange)
     EXPECT_EQ(pacing.ticks(), 2);
 }
 
+// A move to a display that calls back with another lead measures L again: once measured, D is the
+// new display's target less its own lead, and no callback counts as early. Kept at the old lead,
+// a move to a slower display with a longer lead found every callback early, placed D when called
+// rather than by whole refreshes, and the frames juddered; a move the other way added the
+// difference to every frame's delay.
+TEST(DisplayClockChanges, MeasuresTheNewDisplaysLeadAfterAMove)
+{
+    struct Move
+    {
+        double fromRate, fromLead, toRate, toLead;
+    };
+    for (const Move move :
+         {Move{.fromRate = 120.0, .fromLead = 0.03, .toRate = 60.0, .toLead = 0.05},
+          Move{.fromRate = 60.0, .fromLead = 0.05, .toRate = 120.0, .toLead = 0.03}}) {
+        Link link{.rate = move.fromRate, .lead = move.fromLead};
+        FramePacing pacing(move.fromRate);
+        callRange(pacing, link, 0, 60);
+        pacing.setScreenRate(move.toRate);
+        Link moved{.rate = move.toRate, .lead = move.toLead, .start = link.target(60)};
+        callRange(pacing, moved, 0, FramePacing::kLeadCallbacks);
+        const std::uint64_t earlyBefore = pacing.earlyCallbacks();
+        for (std::uint64_t index = FramePacing::kLeadCallbacks; index < 120; ++index) {
+            moved.call(pacing, index);
+            EXPECT_EQ(pacing.clock(moved.engineNowAfter(index, 0.002)),
+                      moved.engineAt(moved.target(index) - move.toLead))
+                << move.fromRate << " to " << move.toRate << " Hz, refresh " << index;
+        }
+        EXPECT_EQ(pacing.earlyCallbacks(), earlyBefore)
+            << move.fromRate << " to " << move.toRate << " Hz";
+    }
+}
+
 // Paused (hidden, occluded) the clock follows the engine's time; the next callback continues from
 // there, never back.
 TEST(DisplayClockChanges, FollowsTheEngineWhilePausedAndContinuesForward)
