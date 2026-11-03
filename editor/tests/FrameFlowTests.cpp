@@ -167,5 +167,118 @@ TEST_F(FrameFlowTest, KeepsTheCreditWhenThereIsNothingNew)
     EXPECT_EQ(delivered, 1) << "the unused credit still allows the next frame";
 }
 
+// ----- macOS native drawing (AD-30) -----
+
+// The display link's request makes one frame, which its thread takes once; the page gets nothing
+// it did not ask for.
+TEST_F(FrameFlowTest, MakesOneFramePerDisplayRequestForTheDisplayToTake)
+{
+    flow.setNative(true);
+    std::vector<std::byte> taken;
+    EXPECT_FALSE(flow.takeDisplayFrame(taken)) << "nothing asked for yet";
+    flow.requestForDisplay();
+    flow.step();
+    ASSERT_TRUE(flow.takeDisplayFrame(taken));
+    EXPECT_GE(taken.size(), protocol::FrameHeader::kSize);
+    EXPECT_FALSE(flow.takeDisplayFrame(taken)) << "taken once";
+    writeSamples(480);
+    flow.step();
+    EXPECT_FALSE(flow.takeDisplayFrame(taken)) << "one frame per request";
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 0);
+}
+
+// The page's fetch in native mode makes no frame of its own: it is answered with a copy of the
+// next frame made for the display, so readouts and hover read the frame on screen.
+TEST_F(FrameFlowTest, AnswersThePagesFetchWithACopyOfTheDisplaysFrame)
+{
+    flow.setNative(true);
+    flow.grantCredit();
+    for (int step = 0; step < 10; ++step) {
+        writeSamples(480);
+        flow.step();
+    }
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 0) << "the page's fetch alone makes no frame";
+    std::vector<std::byte> copied;
+    FrameFlow copying{analyzer, dispatcher, [&copied](std::span<const std::byte> frame) {
+                          copied.assign(frame.begin(), frame.end());
+                      }};
+    copying.setNative(true);
+    copying.grantCredit();
+    copying.requestForDisplay();
+    copying.step();
+    std::vector<std::byte> taken;
+    ASSERT_TRUE(copying.takeDisplayFrame(taken));
+    dispatcher.runAll();
+    EXPECT_EQ(copied, taken);
+}
+
+// In native mode the page's open fetch is not a credit: with no request from the display link the
+// worker advances the sweeps, so a sweep longer than the capture is complete when drawn (FR-9.5).
+TEST_F(FrameFlowTest, AdvancesSweepsWhileOnlyThePagesFetchIsOpen)
+{
+    flow.setNative(true);
+    flow.grantCredit();
+    engine.settings().set(protocol::SettingId::kTimeBase,
+                          static_cast<double>(protocol::TimeBase::kBeats));
+    engine.settings().set(protocol::SettingId::kBeatSpan,
+                          static_cast<double>(protocol::BeatSpan::kFourBars));
+    std::uint64_t sample = 0;
+    for (int block = 0; block < 6000; ++block) {
+        writeSamples(480);
+        engine.timeline().advance({.playing = true,
+                                   .positionValid = true,
+                                   .quarterNotes = static_cast<double>(sample) / 144000.0,
+                                   .tempoValid = true,
+                                   .tempo = 20.0},
+                                  480, 48000.0);
+        sample += 480;
+        if (block % 100 == 0) {
+            flow.step();
+        }
+    }
+    flow.requestForDisplay();
+    flow.step();
+    std::vector<std::byte> taken;
+    ASSERT_TRUE(flow.takeDisplayFrame(taken));
+    EXPECT_EQ(static_cast<std::uint8_t>(taken[protocol::FrameHeader::kFlagsOffset]) &
+                  static_cast<std::uint8_t>(protocol::FrameFlag::kPartial),
+              0)
+        << "the whole sweep was placed while only the page's fetch was open";
+}
+
+// A frame that would repeat the last (nothing changed) is not made; the display's request stays
+// open for the next step that has something new.
+TEST_F(FrameFlowTest, KeepsTheDisplaysRequestWhenThereIsNothingNew)
+{
+    flow.setNative(true);
+    engine.settings().set(protocol::SettingId::kTriggerMode, 1.0); // Normal: holds on silence.
+    std::vector<float> silence(48000, 0.0f);
+    std::array<const float*, 2> channels{silence.data(), silence.data()};
+    engine.captureRing().write(channels.data(), 2, 48000);
+    flow.requestForDisplay();
+    flow.step();
+    std::vector<std::byte> taken;
+    EXPECT_FALSE(flow.takeDisplayFrame(taken));
+    engine.settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free.
+    flow.step();
+    EXPECT_TRUE(flow.takeDisplayFrame(taken)) << "the open request allows the next frame";
+}
+
+// Native drawing lost: the page's fetch makes frames again, as on Windows, so readouts stay live.
+TEST_F(FrameFlowTest, MakesFramesForThePageAgainOnceNativeDrawingStops)
+{
+    flow.setNative(true);
+    flow.grantCredit();
+    flow.step();
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 0);
+    flow.setNative(false);
+    flow.step();
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 1);
+}
+
 } // namespace
 } // namespace orizon::editor
