@@ -1,5 +1,7 @@
 #include "editor/FrameView.h"
 
+#include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -83,6 +85,21 @@ TEST(FrameView, RefusesAFrameShorterThanItsHeaderAnnounces)
             EXPECT_FALSE(FrameView::read(std::span(bytes).first(length))) << name << " " << length;
         }
         EXPECT_TRUE(FrameView::read(bytes));
+    }
+}
+
+// Each frame says which lane set its lanes belong to, and the native editor colours them from it:
+// a frozen frame from before a track joined keeps its own tracks' colours. Whatever the set's
+// number, it is the one read.
+TEST(FrameView, ReadsTheLaneSetTheFrameCarries)
+{
+    std::vector<std::byte> bytes =
+        bytesOf(golden("golden-lanes-frame.json").at("hex").get<std::string>());
+    for (const std::uint32_t laneSet : {0U, 7U, 123456U}) {
+        std::memcpy(bytes.data() + protocol::FrameHeader::kLaneSetOffset, &laneSet, sizeof laneSet);
+        const auto read = FrameView::read(bytes);
+        ASSERT_TRUE(read);
+        EXPECT_EQ(read->laneSet, laneSet);
     }
 }
 
