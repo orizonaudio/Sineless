@@ -176,6 +176,10 @@ export interface TraceViewMessage {
   readonly dim: boolean;
   // Trace line width in device pixels.
   readonly lineWidth: number;
+  // The lanes the page lays out for a frame that carries no views and no lanes (Beats before the
+  // host reports a tempo, or before the first frame): one per view shown when stacked, else one.
+  // A frame with views or lanes is laid out from them instead.
+  readonly emptyFrameLanes: number;
   // One per ChannelView, in ChannelView order.
   readonly viewColours: readonly Rgba[];
   // Track colours for each lane set the page holds; a frame whose set is missing takes

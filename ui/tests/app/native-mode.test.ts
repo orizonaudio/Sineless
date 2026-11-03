@@ -332,6 +332,27 @@ describe("native traces: what the page sends", () => {
 
 // While Normal mode waits for a trigger, no frame comes to carry it: the page alone tells the
 // editor to draw the last trace dimmed, and to draw it at full strength again once frames resume.
+// A frame with no views and no lanes (No tempo, until the host plays) is laid out in one lane per
+// view shown, stacked; the editor's grid takes that count from the page. It follows the settings,
+// not the last frame: a mono track's frames carry L alone while L and R are shown.
+test("tells the editor the lanes of a frame that carries none, from the views shown", async () => {
+  const started = await startApp({ nativeTraces: true, inputChannels: 1 });
+  await settle();
+  await expect.poll(() => window.orizonDebug?.lastFrame?.views.size).toBe(1);
+  const latest = () => traceViews(started.sent).at(-1);
+  expect(choice("layout", "Stack").getAttribute("aria-pressed")).toBe("true");
+  expect(latest()?.emptyFrameLanes).toBe(2);
+  // As the engine confirms a change of the views shown.
+  started.deliver({
+    type: "stateChanged",
+    name: "channelViews",
+    value: ["left", "right", "mid"],
+  });
+  await expect.poll(() => latest()?.emptyFrameLanes).toBe(3);
+  await press(choice("layout", "Overlay"));
+  await expect.poll(() => latest()?.emptyFrameLanes).toBe(1);
+});
+
 test("waiting for a trigger tells the editor to dim the traces, and the next frame to stop", async () => {
   const started = await startNative();
   // The trigger applies in Seconds.

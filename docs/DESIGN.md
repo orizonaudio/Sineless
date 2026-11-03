@@ -897,7 +897,7 @@ incompatible change.
 | `lanes` | engine → UI | laneSet, lanes (id, name, colour, own, compared), hidden | Who the lanes are. |
 | `compare` | UI → engine | ids | Checked tracks. |
 | `previewFix` | UI → engine | on | Preview fix. |
-| `traceView` | UI → engine | viewStart, viewEnd, layout, verticalScaleDb, dim, lineWidth, colours, laneSets | What only the page knows about drawing the traces, while the editor draws them (AD-30). |
+| `traceView` | UI → engine | viewStart, viewEnd, layout, verticalScaleDb, dim, lineWidth, emptyFrameLanes, colours, laneSets | What only the page knows about drawing the traces, while the editor draws them (AD-30). |
 | `nativeGraphicsLost` | engine → UI | — | The editor's native drawing stopped for good (AD-30). |
 
 - `snapshot` is sent in reply to `hello`, and again when the sample rate or channel count changes;
