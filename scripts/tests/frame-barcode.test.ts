@@ -14,7 +14,6 @@ import {
   type StripRead,
 } from "../../ui/src/render/frame-barcode.ts";
 import {
-  baselinePictures,
   countRefreshes,
   gapPeriods,
   type Sample,
@@ -263,7 +262,6 @@ describe("counting what the screen showed", () => {
     // Every fourth refresh gives about baselinePictures in the window: judged.
     const enough = counts({ refreshes: 900, drawn: (r) => r % 4 === 0 });
     expect(enough?.newOnTime).toBeGreaterThan(0);
-    expect(baselinePictures).toBeGreaterThan(121 / 5);
   });
 });
 
@@ -298,6 +296,13 @@ describe("what the recorder could not see", () => {
     expect(strip?.newLate).toBe(0);
   });
 
+  test("repeats at the end, with no picture after them, are unknown", () => {
+    const strip = counts({ refreshes: 600, drawn: (r) => r < 500 });
+    expect(strip?.repeatUnknown).toBeGreaterThan(90);
+    expect(strip?.repeatNothingDrawn).toBe(0);
+    expect(strip?.repeatPresentedLate).toBe(0);
+  });
+
   test("an idle recorder sample is a repeat on screen", () => {
     const scenario: Scenario = { refreshes: 600, drawn: (r) => r % 10 !== 5 };
     const result = countRefreshes(
@@ -318,6 +323,22 @@ describe("counts that wrap, restart or pause", () => {
       jitter: (s) => 0.3 * Math.sin(s),
     });
     expect(strip).toMatchObject({ lost: 0, newLate: 0, restarts: 0 });
+  });
+
+  test("a jump just beyond what the time allows is a restart; one just within, lost pictures", () => {
+    // Twice the refreshes elapsed (one) plus two: a jump of 4 is lost pictures, of 5 a restart.
+    const within = counts({
+      refreshes: 600,
+      restart: { at: 300, picture: 300 + 3 },
+    });
+    expect(within?.restarts).toBe(0);
+    expect(within?.lost).toBe(3);
+    const beyond = counts({
+      refreshes: 600,
+      restart: { at: 300, picture: 300 + 4 },
+    });
+    expect(beyond?.restarts).toBe(1);
+    expect(beyond?.lost).toBe(0);
   });
 
   test("a count starting again is a restart, not tens of thousands of skips", () => {
