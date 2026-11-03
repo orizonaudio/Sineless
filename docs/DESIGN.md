@@ -885,7 +885,7 @@ incompatible change.
 | Message | Direction | Fields | Purpose |
 | --- | --- | --- | --- |
 | `hello` | UI → engine | protocolVersion, viewWidth, pixelRatio | Start or restart a session. |
-| `snapshot` | engine → UI | protocolVersion, settings, sampleRate, inputChannels; on macOS 14+ nativeTraces, nativeGraphicsLost | Full state. |
+| `snapshot` | engine → UI | protocolVersion, settings, sampleRate, inputChannels; on macOS 14+ nativeTraces, nativeGraphicsLost; frameBarcode while the diagnostic switch is on | Full state. |
 | `error` | engine → UI | code (`protocolMismatch`, `engineUnavailable`), message | Replace the screen with an explanation. |
 | `setSetting` | UI → engine | name, value | Change a setting. |
 | `stateChanged` | engine → UI | name, value | The setting's accepted value. |

@@ -42,7 +42,9 @@ export interface HelloMessage {
 
 // Engine to UI. The full state, in reply to hello. `nativeTraces` is true when the editor draws the
 // traces itself (macOS): the page then draws none and sends traceView. `nativeGraphicsLost` is
-// present only then: true once native drawing has stopped for good this session.
+// present only then: true once native drawing has stopped for good this session. `frameBarcode` is
+// true while the diagnostic switch is on (SINELESS_FRAME_BARCODE=1 for the host): every picture of
+// the traces then carries the frame barcode, and the cursor readout gives it its corner.
 export interface SnapshotMessage {
   readonly type: "snapshot";
   readonly protocolVersion: number;
@@ -51,6 +53,7 @@ export interface SnapshotMessage {
   readonly inputChannels: number;
   readonly nativeTraces?: boolean;
   readonly nativeGraphicsLost?: boolean;
+  readonly frameBarcode?: boolean;
 }
 
 // UI to engine. The engine always answers with stateChanged holding the value it kept.

@@ -53,7 +53,8 @@ export function ticksPerFrame(rateHz: number, previous?: number): number {
 }
 
 export interface FrameRenderer {
-  draw(frame: Frame): void;
+  // `tickTime`: the animation frame's timestamp the picture is drawn for.
+  draw(frame: Frame, tickTime?: number): void;
 }
 
 export class RenderLoop {
@@ -134,7 +135,7 @@ export class RenderLoop {
           : { interval: this.n * this.period, tick: this.period };
       const started = performance.now();
       try {
-        this.renderer.draw(frame);
+        this.renderer.draw(frame, timestamp);
       } finally {
         // A draw that throws still counts its ticks and asks for the next frame: nothing else
         // would.
@@ -153,7 +154,7 @@ export class RenderLoop {
       // A redraw asked for while a frame waits for its tick waits for that frame's draw.
       this.redrawRequested = false;
       if (this.lastDrawn !== undefined) {
-        this.renderer.draw(this.lastDrawn);
+        this.renderer.draw(this.lastDrawn, timestamp);
       }
     }
     // Count every tick up to the next frame's turn, and wait for a frame that has not come.

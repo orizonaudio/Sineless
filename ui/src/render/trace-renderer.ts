@@ -15,7 +15,12 @@ import {
   type ViewLayout,
 } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
-import { waitingAlpha } from "../../../protocol/src/limits.ts";
+import {
+  barcodeDataBits,
+  barcodeTicksPerMillisecond,
+  waitingAlpha,
+} from "../../../protocol/src/limits.ts";
+import { barcodeRow, barcodeStrip } from "./frame-barcode.ts";
 import { fullView, type ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
 import {
@@ -46,6 +51,8 @@ export interface TraceStyle {
   // Behind a Compare frame's sum lane, where the compared tracks cancel.
   readonly cancellationColor: () => Rgba;
   readonly lineWidthPixels: number;
+  // The diagnostic switch: each picture carries the frame barcode.
+  readonly frameBarcode?: () => boolean;
 }
 
 export interface TraceView {
@@ -378,6 +385,9 @@ export class TraceRenderer implements FrameRenderer {
   private readonly view: () => TraceView;
   // Average CPU time of draw(), in milliseconds, for profiling.
   drawMilliseconds = 0;
+  // The frame barcode: pictures drawn since it was turned on, and the current one's drawn-for time.
+  private barcodePictures = 0;
+  private tickTime = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -544,8 +554,9 @@ export class TraceRenderer implements FrameRenderer {
     return start;
   }
 
-  draw(frame: Frame): void {
+  draw(frame: Frame, tickTime?: number): void {
     const started = performance.now();
+    this.tickTime = tickTime ?? started;
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
@@ -727,7 +738,47 @@ export class TraceRenderer implements FrameRenderer {
     this.finish(started);
   }
 
+  // The picture's number and the time it was drawn for, over everything else (frame-barcode.ts).
+  private drawBarcode(): void {
+    if (this.style.frameBarcode?.() !== true) {
+      return;
+    }
+    const picture = this.barcodePictures++;
+    const range = 2 ** barcodeDataBits;
+    const drawnFor =
+      Math.round(this.tickTime * barcodeTicksPerMillisecond) % range;
+    const { width, height } = this.canvas;
+    const strip = barcodeStrip(width, height, window.devicePixelRatio);
+    const white: number[] = [];
+    const black: number[] = [];
+    [barcodeRow(picture), barcodeRow(drawnFor)].forEach((cells, row) => {
+      const top = 1 - ((strip.top + row * strip.cell) / height) * 2;
+      const bottom = 1 - ((strip.top + (row + 1) * strip.cell) / height) * 2;
+      cells.forEach((on, cell) => {
+        const left = ((strip.left + cell * strip.cell) / width) * 2 - 1;
+        const right = ((strip.left + (cell + 1) * strip.cell) / width) * 2 - 1;
+        (on ? white : black).push(
+          left,
+          bottom,
+          left,
+          top,
+          right,
+          bottom,
+          right,
+          bottom,
+          left,
+          top,
+          right,
+          top,
+        );
+      });
+    });
+    this.drawTriangles(new Float32Array(white), [1, 1, 1, 1]);
+    this.drawTriangles(new Float32Array(black), [0, 0, 0, 1]);
+  }
+
   private finish(started: number): void {
+    this.drawBarcode();
     const elapsed = performance.now() - started;
     this.drawMilliseconds = this.drawMilliseconds * 0.95 + elapsed * 0.05;
   }

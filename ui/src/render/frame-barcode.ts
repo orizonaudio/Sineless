@@ -4,10 +4,31 @@
 // grey value per cell, sampled at each cell's centre, to the value it carries or why it cannot be
 // read. A row is never guessed: anything short of two clear references, cells clearly white or
 // black, a black end and even parity is unreadable.
-import { barcodeDataBits } from "../../../protocol/src/limits.ts";
+import {
+  barcodeCellPixels,
+  barcodeDataBits,
+  screenRadius,
+} from "../../../protocol/src/limits.ts";
 
 // A white and a black reference, the value's cells, parity and the end.
 export const barcodeRowCells = barcodeDataBits + 4;
+
+// Where the strip's two rows go on a canvas of the screen's size, in device pixels from its top
+// left: the top right corner, clear of the screen's rounded corner, where the page reserves room
+// for the cursor readout (hidden while the strip is shown).
+export function barcodeStrip(
+  width: number,
+  height: number,
+  pixelRatio: number,
+): { readonly left: number; readonly top: number; readonly cell: number } {
+  const inset = Math.round((screenRadius + 2) * pixelRatio);
+  const cell = barcodeCellPixels;
+  return {
+    left: Math.max(0, width - inset - barcodeRowCells * cell),
+    top: Math.min(inset, Math.max(0, height - 2 * cell)),
+    cell,
+  };
+}
 
 // The row for `value`, modulo the range: true is a white cell.
 export function barcodeRow(value: number): boolean[] {
