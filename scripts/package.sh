@@ -33,14 +33,14 @@ for bundle in "${built[@]}"; do
         "$bundle/Contents/Info.plist")"
     [[ "$bundleVersion" == "$version" ]] ||
         { echo "$bundle is version $bundleVersion, expected $version" >&2; exit 1; }
-    # Checks of C-2: both architectures, macOS 13.1 minimum.
+    # Checks of C-2: both architectures, macOS 14.0 minimum.
     binary="$bundle/Contents/MacOS/Sineless"
     for arch in arm64 x86_64; do
         lipo "$binary" -verify_arch "$arch" || { echo "$binary: no $arch slice" >&2; exit 1; }
     done
     minimum="$(vtool -show-build "$binary" | awk '/minos/ { print $2; exit }')"
-    [[ "$minimum" == "13.1" ]] ||
-        { echo "$binary: minimum macOS is $minimum, expected 13.1" >&2; exit 1; }
+    [[ "$minimum" == "14.0" ]] ||
+        { echo "$binary: minimum macOS is $minimum, expected 14.0" >&2; exit 1; }
     codesign --force --sign - "$bundle"
     codesign --verify --strict "$bundle"
 done

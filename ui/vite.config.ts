@@ -16,8 +16,8 @@ export default defineConfig({
     },
   },
   build: {
-    // WebKit shipped with macOS 13.1, the minimum (Safari 16.2: color-mix()).
-    target: "safari16.2",
+    // WebKit shipped with macOS 14, the minimum (Safari 17).
+    target: "safari17",
     outDir: "../build/ui",
     emptyOutDir: true,
     // Every asset its own file: the editor's Content-Security-Policy (editor/src/EmbeddedAssets.h)

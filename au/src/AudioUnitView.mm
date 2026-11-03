@@ -76,9 +76,7 @@ const NSLayoutPriority kNotHoldingPriority = 1;
         core->setCursors(orizon::editor::WebView::Cursors::kShownByView);
         // Resizable: hosts read the mask to decide whether the window may be resized.
         self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        if (@available(macOS 14.0, *)) {
-            self.clipsToBounds = YES; // No longer the default from macOS 14.
-        }
+        self.clipsToBounds = YES; // No longer the default from macOS 14.
         [self setHugging:kNotHoldingPriority];
         // The editor asks for room (stacked lanes, a display scale, the user's drag of the resize
         // grip): the view takes the size, and the host follows the view's frame. A host laying the

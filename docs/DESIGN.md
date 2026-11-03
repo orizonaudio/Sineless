@@ -308,7 +308,7 @@ colour blindness in `docs/ui/colour.html`.
 | ID | Constraint |
 | --- | --- |
 | C-1 | Plugin formats: VST3 on macOS and Windows, and Audio Unit v2 on macOS (AD-25). |
-| C-2 | Platforms shipped: macOS 13.1+ (universal binary, arm64 and x86_64) and Windows 10+ x64. Windows on Arm runs the x64 build in an x64 host or REAPER's ARM64EC build; a native ARM64 build is not shipped for now (AD-24). Linux builds the engine, plugin and editor's shared code for the checks only, with no editor window. |
+| C-2 | Platforms shipped: macOS 14+ (universal binary, arm64 and x86_64) and Windows 10+ x64. Windows on Arm runs the x64 build in an x64 host or REAPER's ARM64EC build; a native ARM64 build is not shipped for now (AD-24). Linux builds the engine, plugin and editor's shared code for the checks only, with no editor window. |
 | C-3 | Licence: GPL-3.0-only, with an additional permission under section 7 for the logo files in `ui/src/brand/`, under their own terms in `LICENSES/LicenseRef-Orizon-Brand.txt` (README, Licence); the names and the logo are not under the GPL (TRADEMARKS.md). `REUSE.toml` gives every file's licence. Every dependency must be GPL-3.0-compatible. |
 | C-4 | Engine and plugin back end: C++20; the Audio Unit module C++23 (AudioUnitSDK's headers need it); the macOS editor glue and the Audio Unit's view in Objective-C++. |
 | C-5 | User interface: TypeScript, hosted in the operating system's webview: WKWebView on macOS, the Evergreen WebView2 Runtime on Windows. The WebView2 loader and the C runtime are linked statically, so no other runtime is installed. |
