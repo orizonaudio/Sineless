@@ -173,6 +173,30 @@ TEST_F(EditorTest, LoadsThePageAndCompletesTheHandshake)
     DestroyWindow(window);
 }
 
+// The diagnostic switch is the host's environment, read as the editor opens: set, the page is told
+// and draws the frame barcode; unset, neither.
+TEST_F(EditorTest, DrawsTheFrameBarcodeOnlyWhenTheHostSetsTheSwitch)
+{
+    constexpr const char* kShown = "String(window.orizonDebug.snapshot.frameBarcode) + ' ' + "
+                                   "document.documentElement.classList.contains('frame-barcode')";
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    ASSERT_EQ(_putenv_s("SINELESS_FRAME_BARCODE", "1"), 0);
+    auto editor = makeEditor(received);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    ASSERT_EQ(_putenv_s("SINELESS_FRAME_BARCODE", ""), 0); // Empty removes it.
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(*editor->webView()); }, kPageTimeout));
+    EXPECT_EQ(evaluate(*editor->webView(), kShown), "true true");
+    EXPECT_EQ(editor->removed(), kResultOk);
+
+    auto unset = makeEditor(received);
+    ASSERT_EQ(attach(window, *unset), kResultTrue);
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(*unset->webView()); }, kPageTimeout));
+    EXPECT_EQ(evaluate(*unset->webView(), kShown), "undefined false");
+    EXPECT_EQ(unset->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
 // The page runs only the script it was built with: a script put into it some other way (a host
 // track name that ever reached markup, say) is refused.
 TEST_F(EditorTest, RunsNoScriptThePageWasNotBuiltWith)
