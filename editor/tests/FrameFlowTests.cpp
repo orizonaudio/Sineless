@@ -41,9 +41,9 @@ protected:
         analyzer.setColumns(200);
     }
 
-    void writeSamples(int count)
+    void writeSamples(int count, float level = 0.25f)
     {
-        std::vector<float> samples(static_cast<std::size_t>(count), 0.25f);
+        std::vector<float> samples(static_cast<std::size_t>(count), level);
         std::array<const float*, 2> channels{samples.data(), samples.data()};
         engine.captureRing().write(channels.data(), 2, count);
     }
@@ -53,8 +53,10 @@ protected:
     ManualDispatcher dispatcher;
     int delivered = 0;
     std::uint8_t lastFlags = 0;
+    std::vector<std::byte> lastDelivered;
     FrameFlow flow{analyzer, dispatcher, [this](std::span<const std::byte> frame) {
                        EXPECT_GE(frame.size(), protocol::FrameHeader::kSize);
+                       lastDelivered.assign(frame.begin(), frame.end());
                        lastFlags =
                            static_cast<std::uint8_t>(frame[protocol::FrameHeader::kFlagsOffset]);
                        ++delivered;
@@ -240,6 +242,69 @@ TEST_F(FrameFlowTest, AnswersEachOfThePagesFetchesWithOneCopy)
     drawFrame();
     dispatcher.runAll();
     EXPECT_EQ(delivered, 2);
+}
+
+// A frame made while the page's fetch is closed reaches the page once it asks again, though no
+// newer frame comes: frozen, or Single after its capture, the engine makes one frame and then
+// none, and the page's Freeze button and readouts follow that frame alone.
+TEST_F(FrameFlowTest, GivesThePageTheFrameItMissedWhenItAsksAgain)
+{
+    flow.setNative(true);
+    writeSamples(480);
+    flow.requestForDisplay();
+    flow.step();
+    std::vector<std::byte> taken;
+    ASSERT_TRUE(flow.takeDisplayFrame(taken));
+    flow.grantCredit();
+    for (int step = 0; step < 3; ++step) {
+        flow.requestForDisplay();
+        flow.step(); // Nothing new.
+    }
+    dispatcher.runAll();
+    ASSERT_EQ(delivered, 1);
+    EXPECT_EQ(lastDelivered, taken);
+    flow.grantCredit();
+    flow.step();
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 1) << "the missed frame is given once";
+}
+
+// Of several frames drawn while the page's fetch is closed, it gets the newest; and a frame it
+// missed never comes after a newer one it was given: frozen, the newer is the last frame there is.
+TEST_F(FrameFlowTest, GivesThePageOnlyTheNewestFrameItMissed)
+{
+    flow.setNative(true);
+    std::vector<std::byte> taken;
+    float level = 0.1f; // Each frame its own level, so the frames differ.
+    const auto drawFrame = [&] {
+        level += 0.1f;
+        writeSamples(48000, level);
+        flow.requestForDisplay();
+        flow.step();
+        EXPECT_TRUE(flow.takeDisplayFrame(taken));
+        return taken;
+    };
+    const auto oldest = drawFrame();
+    drawFrame();
+    const auto newest = drawFrame();
+    ASSERT_NE(oldest, newest);
+    flow.grantCredit();
+    flow.step();
+    dispatcher.runAll();
+    ASSERT_EQ(delivered, 1);
+    EXPECT_EQ(lastDelivered, newest) << "the newest of the frames missed";
+
+    const auto missed = drawFrame();
+    flow.grantCredit();
+    const auto given = drawFrame();
+    dispatcher.runAll();
+    ASSERT_EQ(delivered, 2);
+    EXPECT_EQ(lastDelivered, given);
+    flow.grantCredit();
+    flow.step();
+    dispatcher.runAll();
+    EXPECT_EQ(delivered, 2) << "the older frame missed comes after the newer one given";
+    EXPECT_NE(lastDelivered, missed);
 }
 
 // In native mode the page's open fetch is not a credit: with no request from the display link the
