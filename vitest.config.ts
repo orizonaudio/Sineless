@@ -45,6 +45,10 @@ export default defineConfig({
         test: {
           name: "app",
           include: ["ui/tests/app/**/*.test.ts"],
+          // ui/tests/app/trace-pictures.test.ts writes its pictures again instead of checking them.
+          provide: {
+            updateVectors: process.env["ORIZON_UPDATE_VECTORS"] === "1",
+          },
           // One page at a time: a page out of view gets no animation frames, which draw it.
           fileParallelism: false,
           // The page draws on animation frames; a busy machine draws them late.
