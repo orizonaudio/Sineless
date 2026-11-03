@@ -256,6 +256,27 @@ const scenes: Scene[] = [
     },
     view: { ...baseView, viewStart: 0.25, viewEnd: 0.75, lineWidth: 3 },
   },
+  // Zoomed into one part of the cycle with the playhead in another: left of the view, all of it
+  // is the previous cycle, dimmed, and no line; right of it, nothing is dimmed.
+  ...[0.1, 0.9].map((cursor): Scene => ({
+    name: `a Beats sweep's playhead ${cursor < 0.25 ? "left" : "right"} of the zoomed view`,
+    width: 240,
+    height: 120,
+    ratio: 1,
+    frame: {
+      ...baseFrame,
+      pointCount: 240,
+      synced: true,
+      cursor,
+      cycleStart: 0,
+      spanQuarterNotes: 16,
+      barQuarterNotes: 4,
+      viewStart: 0.25,
+      viewEnd: 0.75,
+      views: new Map([[ChannelView.left, columns(240, 1, 0.7)]]),
+    },
+    view: { ...baseView, viewStart: 0.25, viewEnd: 0.75 },
+  })),
   {
     name: "five tracks stacked in their colours",
     width: 240,
