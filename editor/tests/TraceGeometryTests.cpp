@@ -3,6 +3,7 @@
 #include <cmath>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -100,12 +101,24 @@ TEST(TraceGeometry, DrawsTheGridAsThePageDoes)
     }
 }
 
+// A lane's values as the vectors hold them: JSON has no NaN, so a missing point is null.
+std::vector<float> laneValues(const nlohmann::json& lane)
+{
+    std::vector<float> values;
+    values.reserve(lane.size());
+    for (const nlohmann::json& value : lane) {
+        values.push_back(value.is_null() ? std::numeric_limits<float>::quiet_NaN()
+                                         : value.get<float>());
+    }
+    return values;
+}
+
 TEST(TraceGeometry, ShadesCancellationAsThePageDoes)
 {
     for (const nlohmann::json& entry : vectors().at("cancellation")) {
         std::vector<std::vector<float>> data;
         for (const nlohmann::json& lane : entry.at("lanes")) {
-            data.push_back(lane.get<std::vector<float>>());
+            data.push_back(laneValues(lane));
         }
         FrameView frame;
         frame.mode =
@@ -144,7 +157,7 @@ TEST(TraceGeometry, ShadesNothingWithoutARelatedComparedTrack)
     const nlohmann::json& entry = vectors().at("cancellation").at(0);
     std::vector<std::vector<float>> data;
     for (const nlohmann::json& lane : entry.at("lanes")) {
-        data.push_back(lane.get<std::vector<float>>());
+        data.push_back(laneValues(lane));
     }
     FrameView frame;
     frame.mode = protocol::FrameMode::kMinMax;
