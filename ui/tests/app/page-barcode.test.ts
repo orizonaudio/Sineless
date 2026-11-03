@@ -115,6 +115,21 @@ describe("the page's strip", () => {
     expectSteppingStrips(reads);
   });
 
+  test("in the browser preview, ?barcode turns it on without the snapshot's switch", async () => {
+    const address = window.location.href;
+    window.history.replaceState(null, "", "?barcode");
+    try {
+      const reads = readStrips();
+      await startApp();
+      await settle();
+      reads.length = 0;
+      await settle(12);
+      expectSteppingStrips(reads);
+    } finally {
+      window.history.replaceState(null, "", address);
+    }
+  });
+
   test("without the switch there is no strip", async () => {
     const reads = readStrips();
     await startApp();
