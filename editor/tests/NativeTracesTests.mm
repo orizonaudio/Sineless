@@ -177,6 +177,27 @@ protected:
                metal.drawableSize.height == page.canvasHeight;
     }
 
+    // Waits for the layer to cover the page's screen; if it does not, says where each is.
+    ::testing::AssertionResult coversThePagesScreenWithin(std::chrono::milliseconds within)
+    {
+        if (pumpUntil([&] { return coversThePagesScreen(); }, within)) {
+            return ::testing::AssertionSuccess();
+        }
+        const PageScreen page = pageScreen(webView);
+        const NSRect frame = layer->view().frame;
+        const auto* metal = static_cast<CAMetalLayer*>(layer->view().layer);
+        return ::testing::AssertionFailure()
+               << "page screen " << page.left << ", " << page.top << ", " << page.width << " × "
+               << page.height << " (canvas " << page.canvasWidth << " × " << page.canvasHeight
+               << "); layer " << frame.origin.x << ", " << frame.origin.y << ", "
+               << frame.size.width << " × " << frame.size.height << " (drawable "
+               << metal.drawableSize.width << " × " << metal.drawableSize.height << "); container "
+               << webView.superview.bounds.size.width << " × "
+               << webView.superview.bounds.size.height << ", web view " << webView.frame.size.width
+               << " × " << webView.frame.size.height << ", scale " << window.backingScaleFactor
+               << ", page ratio " << evaluate(webView, @"String(window.devicePixelRatio)");
+    }
+
     std::shared_ptr<engine::Engine> engine;
     NSView* parent = nil;
     NSWindow* window = nil;
@@ -201,7 +222,7 @@ TEST_F(NativeTracesTest, DrawsTheTracesBelowATransparentPage)
     EXPECT_LT([stack indexOfObject:layer->view()], [stack indexOfObject:webView]);
     ASSERT_TRUE(presents());
     EXPECT_FALSE(layer->view().hidden);
-    EXPECT_TRUE(pumpUntil([&] { return coversThePagesScreen(); }, 2s));
+    EXPECT_TRUE(coversThePagesScreenWithin(2s));
 }
 
 // Around the screen, where the page is transparent too, the editor shows the page's colour.
@@ -240,8 +261,7 @@ TEST_F(NativeTracesTest, StaysOnThePagesScreenThroughEverySize)
                                          {Editor::kDefaultWidth, Editor::kDefaultHeight}}) {
         ViewRect rect(0, 0, width, height);
         ASSERT_EQ(editor->onSize(&rect), kResultTrue);
-        EXPECT_TRUE(pumpUntil([&] { return coversThePagesScreen(); }, 3s))
-            << width << " × " << height;
+        EXPECT_TRUE(coversThePagesScreenWithin(3s)) << width << " × " << height;
         const auto* metal = static_cast<CAMetalLayer*>(layer->view().layer);
         EXPECT_TRUE(pumpUntil(
             [&] {
