@@ -902,6 +902,8 @@ export class OscilloscopeApp {
     this.backend.setViewport(this.screen.clientWidth, ratio);
     this.drawScreen();
     this.loop.invalidate();
+    // The line width is in device pixels: a move to a display of another ratio changes it.
+    this.queueTraceView();
   }
 
   private laneCount(): number {
