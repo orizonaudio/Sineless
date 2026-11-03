@@ -53,6 +53,7 @@ struct Shared
     std::atomic<std::uint64_t> callbacks{0};
     std::atomic<std::uint64_t> submitted{0};
     PresentedCounts presentedCounts;
+    std::atomic<int> ticksPerFrame{1};
     std::atomic<std::size_t> drawnWidth{0};
     std::atomic<std::size_t> drawnHeight{0};
     // The frame barcode on the picture last drawn (any thread reads them, for tests).
@@ -220,6 +221,7 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
     const auto decision = s.pacing.callback(update.targetPresentationTimestamp,
                                             CACurrentMediaTime(), engine::monotonicNanos());
     s.targetTime = update.targetPresentationTimestamp;
+    s.ticksPerFrame.store(s.pacing.ticks());
     bool changed = s.redraw.exchange(false);
     if (s.hooks.takeFrame(s.incoming)) {
         std::swap(s.frame, s.incoming);
@@ -324,6 +326,7 @@ public:
         return {.callbacks = shared->callbacks.load(),
                 .submitted = shared->submitted.load(),
                 .shown = shared->presentedCounts.totals(),
+                .ticksPerFrame = shared->ticksPerFrame.load(),
                 .drawnWidth = shared->drawnWidth.load(),
                 .drawnHeight = shared->drawnHeight.load(),
                 .barcode = barcode};
@@ -617,6 +620,7 @@ void LayerMac::update()
           state.redraw.store(true); // A current frame at once.
       } else {
           state.pacing.pause();
+          state.presentedCounts.restart();
       }
     });
 }

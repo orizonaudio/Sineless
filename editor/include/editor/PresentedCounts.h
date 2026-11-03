@@ -24,6 +24,9 @@ public:
 
     // `periodSeconds`: the display's refresh period when the drawable was drawn; 0 if unknown.
     void add(double presentedTime, double periodSeconds);
+    // The link paused (hidden, occluded): the next frame starts an interval rather than counting
+    // the pause as refreshes without a new frame.
+    void restart() { last.store(0.0); }
     [[nodiscard]] Totals totals() const;
 
 private:

@@ -374,12 +374,9 @@ TEST(FrameRequests, ChangesNOnceWhenTheWindowMovesToAFasterDisplay)
     EXPECT_EQ(seen, std::vector<int>{2});
 }
 
-// The editor starts the clock at an assumed rate and the screen's own may never be given (a window
-// with no screen yet): the rate is measured from the link's targets, and n follows it, so a fast
-// display still shows at most AD-12's frames a second. Just past a line, n keeps its value while
-// within the hysteresis, as when the rate is given.
 // The display's period, as the presented counts divide by it: a refresh, not the step between
-// callbacks, which at two refreshes a frame is two; unknown (0) until measured.
+// callbacks, which at two refreshes a frame is two; unknown (0) until measured, and again after a
+// move to another display until measured there.
 TEST(FrameRequests, PublishesTheDisplaysPeriodNotTheCallbacks)
 {
     FramePacing pacing(120.0);
@@ -387,7 +384,17 @@ TEST(FrameRequests, PublishesTheDisplaysPeriodNotTheCallbacks)
     Link everyOther{.rate = 60.0}; // Targets two 120 Hz refreshes apart.
     callRange(pacing, everyOther, 0, 60);
     EXPECT_NEAR(pacing.displayPeriodSeconds(), 1.0 / 120.0, 1e-9);
+    pacing.setScreenRate(60.0);
+    EXPECT_EQ(pacing.displayPeriodSeconds(), 0.0) << "the old display's period, after a move";
+    Link slower{.rate = 60.0, .start = everyOther.target(60)};
+    callRange(pacing, slower, 0, 60);
+    EXPECT_NEAR(pacing.displayPeriodSeconds(), 1.0 / 60.0, 1e-9);
 }
+
+// The editor starts the clock at an assumed rate and the screen's own may never be given (a window
+// with no screen yet): the rate is measured from the link's targets, and n follows it, so a fast
+// display still shows at most AD-12's frames a second. Just past a line, n keeps its value while
+// within the hysteresis, as when the rate is given.
 
 TEST(FrameRequests, MeasuresTheRateFromTheLinksOwnRefreshes)
 {

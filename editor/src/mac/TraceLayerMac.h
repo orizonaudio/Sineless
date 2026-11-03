@@ -83,6 +83,8 @@ public:
         std::uint64_t submitted = 0;
         // What reached the screen, from Metal's presented times (PresentedCounts).
         PresentedCounts::Totals shown;
+        // Refreshes each frame is shown for by design (the pacing's n, AD-12).
+        int ticksPerFrame = 1;
         // The size of the drawable last drawn into, in device pixels.
         std::size_t drawnWidth = 0;
         std::size_t drawnHeight = 0;
