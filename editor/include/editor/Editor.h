@@ -44,6 +44,7 @@ public:
     [[nodiscard]] bool engineAvailable() const { return core.engineAvailable(); }
     [[nodiscard]] bool workerRunning() const { return core.workerRunning(); }
     [[nodiscard]] bool analyzerAllocated() const { return core.analyzerAllocated(); }
+    [[nodiscard]] const engine::FramePacing* displayClock() const { return core.displayClock(); }
     [[nodiscard]] WebView* webView() const { return core.webView(); }
 
 private:
