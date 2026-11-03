@@ -378,7 +378,9 @@ TEST_F(MetalTraceRendererTest, KeepsThePlayheadEquallyBrightWhereverItSits)
 }
 
 // The grid under the traces, where the page strokes it: the ten divisions, or a Beats sweep's
-// beats and bars, and each lane's level and zero lines, over the screen's colour.
+// beats and bars, and each lane's level and zero lines, over the screen's colour. A Beats sweep
+// with no tempo yet (the host not yet played: FR-9.1) has no beats to show, and shows the ten
+// divisions as the page does.
 TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
 {
     TraceView view = scenes().front().view;
@@ -387,14 +389,20 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
     view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
     view.layout = protocol::ViewLayout::kStacked;
     for (const double ratio : {1.0, 2.0}) {
-        for (const bool beats : {false, true}) {
+        for (const auto& [beats, noTempo] :
+             std::vector<std::pair<bool, bool>>{{false, false}, {true, false}, {true, true}}) {
             FrameView frame;
             std::vector<float> values(std::size_t{2} * 10, 0.0f);
             frame.mode = protocol::FrameMode::kMinMax;
             frame.pointCount = 10;
             frame.views = {{.channelView = 0, .values = values},
                            {.channelView = 1, .values = values}};
-            if (beats) {
+            if (noTempo) {
+                // As the engine sends it: no cycle fields.
+                frame.flags =
+                    static_cast<std::uint8_t>(static_cast<unsigned>(protocol::FrameFlag::kSynced) |
+                                              static_cast<unsigned>(protocol::FrameFlag::kNoTempo));
+            } else if (beats) {
                 frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kSynced);
                 frame.cycleStart = 4.0f;
                 frame.spanQuarterNotes = 8.0f;
@@ -408,7 +416,8 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
             std::vector<VerticalLine> musical = musicalGridLines(4.0, 8.0, 4.0, view.view);
             const GridLines lines =
                 gridLines(static_cast<double>(width), static_cast<double>(height), 2, ratio,
-                          beats ? &musical : nullptr);
+                          beats && !noTempo ? &musical : nullptr);
+            ASSERT_FALSE(lines.vertical.empty());
             // A line's middle column or row is wholly covered: the line's colour there.
             const std::size_t row = height / 2 + 3;
             for (const GridLines::Vertical& line : lines.vertical) {
