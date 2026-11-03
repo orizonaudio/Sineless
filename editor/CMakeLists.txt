@@ -111,6 +111,7 @@ endif()
 # See bench/PerfBench.mm.
 if(ORIZON_BENCH AND APPLE)
     add_executable(perf_bench bench/PerfBench.mm)
+    target_include_directories(perf_bench PRIVATE src)
     target_link_libraries(perf_bench
         PRIVATE editor engine_bench_support orizon_warnings "-framework Cocoa" "-framework WebKit"
                 "-framework IOKit")
