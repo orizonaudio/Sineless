@@ -402,6 +402,18 @@ describe("native traces: native graphics lost", () => {
     expect(shownText()).toBe(graphicsMessages.lost);
   });
 
+  test("native drawing lost during an engine error leaves the error shown", async () => {
+    const started = await startNative();
+    started.deliver({ type: "error", code: "protocolMismatch", message: "" });
+    await settle();
+    const error = shownText();
+    expect(error).toBeDefined();
+    expect(error).not.toBe(graphicsMessages.lost);
+    started.deliver({ type: "nativeGraphicsLost" });
+    await settle();
+    expect(shownText()).toBe(error);
+  });
+
   test("a snapshot without the field leaves the page's own messages alone", async () => {
     const started = await startApp();
     await settle();
