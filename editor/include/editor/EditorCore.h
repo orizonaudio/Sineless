@@ -113,6 +113,7 @@ private:
     bool refreshScale();
     // Draws the traces natively if the webview can (attach, before the worker starts).
     void startNativeTraces();
+    [[nodiscard]] static bool frameBarcodeSwitch();
 
     MessageObserver observer;
     SizeRequest sizeRequest;

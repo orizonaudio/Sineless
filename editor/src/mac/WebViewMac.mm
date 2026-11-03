@@ -711,9 +711,11 @@ bool WebViewMac::drawTracesNatively(const NativeTraces& traces)
     [webView setValue:@NO forKey:@"drawsBackground"];
     // Below the page's minimum width the page is clipped at the window's edge: so is the layer.
     container.clipsToBounds = YES;
-    traceLayer = TraceLayer::create(
-        container, webView, *traces.pacing,
-        {.requestFrame = traces.requestFrame, .takeFrame = traces.takeFrame, .lost = traces.lost});
+    traceLayer = TraceLayer::create(container, webView, *traces.pacing,
+                                    {.requestFrame = traces.requestFrame,
+                                     .takeFrame = traces.takeFrame,
+                                     .lost = traces.lost,
+                                     .frameBarcode = traces.frameBarcode});
     traceLayer->setPageShown(loaded && !webView.hidden);
     return true;
 }

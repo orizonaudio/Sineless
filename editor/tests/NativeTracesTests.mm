@@ -11,6 +11,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <functional>
 #include <gtest/gtest.h>
 #include <memory>
@@ -333,6 +334,26 @@ TEST_F(NativeTracesTest, PlacesTheFramesByTheDisplayClock)
     const int frames = frameCount();
     EXPECT_TRUE(
         pumpPlaying([&] { return frameCount() > frames + 3 && clock->clockReads() > before; }, 5s));
+}
+
+// The diagnostic switch is the host's environment, read as the editor opens: set, the page is told
+// and the layer numbers every picture; unset, neither.
+TEST_F(NativeTracesTest, DrawsTheFrameBarcodeOnlyWhenTheHostSetsTheSwitch)
+{
+    // NOLINTNEXTLINE(concurrency-mt-unsafe): the test's own thread, before the editor opens.
+    setenv("SINELESS_FRAME_BARCODE", "1", 1);
+    open();
+    // NOLINTNEXTLINE(concurrency-mt-unsafe): as above.
+    unsetenv("SINELESS_FRAME_BARCODE");
+    ASSERT_TRUE(presents());
+    EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.snapshot.frameBarcode)"), "true");
+    EXPECT_TRUE(layer->statsForTesting().barcode);
+    close();
+
+    open();
+    ASSERT_TRUE(presents());
+    EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.snapshot.frameBarcode)"), "undefined");
+    EXPECT_FALSE(layer->statsForTesting().barcode);
 }
 
 // Once native drawing stops for good, the page says what to do, and its own fetch makes the frames

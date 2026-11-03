@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/FrameBarcode.h"
 #include "editor/TraceView.h"
 #include "engine/FramePacing.h"
 
@@ -44,6 +45,9 @@ public:
         std::function<bool(std::vector<std::byte>& into)> takeFrame;
         // Main thread, at most once: native drawing stopped for good.
         std::function<void()> lost;
+        // The diagnostic switch: each picture carries the frame barcode (frame-barcode.ts): its
+        // number, and the link's target time it was drawn for.
+        bool frameBarcode = false;
     };
 
     virtual ~TraceLayer() = default;
@@ -78,6 +82,8 @@ public:
         // The size of the drawable last drawn into, in device pixels.
         std::size_t drawnWidth = 0;
         std::size_t drawnHeight = 0;
+        // The frame barcode's values on the picture last drawn, while the switch is on.
+        std::optional<BarcodeValues> barcode;
     };
     [[nodiscard]] virtual Stats statsForTesting() const = 0;
     // Command buffers from now on complete as failed with this MTLCommandBufferError code (none:

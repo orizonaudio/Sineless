@@ -54,6 +54,10 @@ struct Shared
     std::atomic<std::uint64_t> presented{0};
     std::atomic<std::size_t> drawnWidth{0};
     std::atomic<std::size_t> drawnHeight{0};
+    // The frame barcode on the picture last drawn (any thread reads them, for tests).
+    std::atomic<bool> barcodeDrawn{false};
+    std::atomic<std::uint64_t> barcodePicture{0};
+    std::atomic<std::uint64_t> barcodeDrawnFor{0};
 
     // Set before the render thread signals that it has started.
     CFRunLoopRef runLoop = nullptr;
@@ -67,6 +71,10 @@ struct Shared
     id delegate = nil;
     bool exit = false;
     bool lostHandled = false;
+    // The frame barcode: pictures drawn since the layer was made, and the link's target time, in
+    // host seconds, of the refresh the next picture is drawn for.
+    std::uint64_t barcodePictures = 0;
+    double targetTime = 0.0;
     std::vector<std::byte> frame;
     std::vector<std::byte> incoming;
     bool haveFrame = false;
@@ -150,8 +158,16 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
     id<MTLCommandBuffer> buffer = [s.queue commandBuffer];
     const std::optional<FrameView> frame =
         s.haveFrame ? FrameView::read(s.frame) : std::optional<FrameView>{};
-    const auto result = s.renderer->encode(buffer, drawable.texture, frame ? &*frame : nullptr,
-                                           *s.view, s.pixelRatio.load());
+    std::optional<BarcodeValues> barcode;
+    if (s.hooks.frameBarcode) {
+        constexpr std::uint64_t kRange = std::uint64_t{1} << protocol::kBarcodeDataBits;
+        const auto ticks = static_cast<std::uint64_t>(std::llround(
+            s.targetTime * 1000.0 * static_cast<double>(protocol::kBarcodeTicksPerMillisecond)));
+        barcode = BarcodeValues{.picture = s.barcodePictures++, .drawnFor = ticks % kRange};
+    }
+    const auto result =
+        s.renderer->encode(buffer, drawable.texture, frame ? &*frame : nullptr, *s.view,
+                           s.pixelRatio.load(), true, barcode ? &*barcode : nullptr);
     if (result != MetalTraceRenderer::Result::kDrawn) {
         setLost(shared);
         return;
@@ -167,6 +183,11 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
     s.presented.fetch_add(1);
     s.drawnWidth.store(drawable.texture.width);
     s.drawnHeight.store(drawable.texture.height);
+    if (barcode) {
+        s.barcodePicture.store(barcode->picture);
+        s.barcodeDrawnFor.store(barcode->drawnFor);
+        s.barcodeDrawn.store(true);
+    }
 }
 
 // One display link callback (render thread): the clock steps, the newest frame and trace view are
@@ -189,6 +210,7 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
     }
     const auto decision = s.pacing.callback(update.targetPresentationTimestamp,
                                             CACurrentMediaTime(), engine::monotonicNanos());
+    s.targetTime = update.targetPresentationTimestamp;
     bool changed = s.redraw.exchange(false);
     if (s.hooks.takeFrame(s.incoming)) {
         std::swap(s.frame, s.incoming);
@@ -285,10 +307,16 @@ public:
     [[nodiscard]] bool lost() const override { return shared->lost.load(); }
     [[nodiscard]] Stats statsForTesting() const override
     {
+        std::optional<BarcodeValues> barcode;
+        if (shared->barcodeDrawn.load()) {
+            barcode = BarcodeValues{.picture = shared->barcodePicture.load(),
+                                    .drawnFor = shared->barcodeDrawnFor.load()};
+        }
         return {.callbacks = shared->callbacks.load(),
                 .presented = shared->presented.load(),
                 .drawnWidth = shared->drawnWidth.load(),
-                .drawnHeight = shared->drawnHeight.load()};
+                .drawnHeight = shared->drawnHeight.load(),
+                .barcode = barcode};
     }
     void failCommandBuffersForTesting(std::optional<long> code) override
     {

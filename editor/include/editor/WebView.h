@@ -71,6 +71,8 @@ public:
         std::function<bool(std::vector<std::byte>& into)> takeFrame;
         // The UI thread, at most once: native drawing stopped for good.
         std::function<void()> lost;
+        // The diagnostic switch: each picture carries the frame barcode.
+        bool frameBarcode = false;
     };
     // Starts drawing the traces natively; false where the platform does not (Windows). The
     // pacing and the hooks' targets must outlive stopNativeTraces.

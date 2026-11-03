@@ -54,6 +54,8 @@ struct Source
     bool always = false;
     // Frames to hand over in all (none: no end): frozen, or Single after its capture, there is one.
     std::optional<int> limit;
+    // The diagnostic switch, as the editor reads it.
+    bool frameBarcode = false;
     bool ready = false;
     std::atomic<int> requests{0};
     std::atomic<int> takes{0};
@@ -78,7 +80,8 @@ struct Source
                         into = frame;
                         return true;
                     },
-                .lost = [this] { ++losses; }};
+                .lost = [this] { ++losses; },
+                .frameBarcode = frameBarcode};
     }
 };
 
@@ -326,6 +329,38 @@ TEST_F(TraceLayerTest, DrawsTheLastFrameAgainWhenThePictureChanges)
     EXPECT_GE(layer->statsForTesting().presented, failing + 3) << "drawn again after failing";
     EXPECT_FALSE(layer->lost());
     EXPECT_EQ(source.takes.load(), 1);
+}
+
+// With the diagnostic switch, each picture the layer draws carries the frame barcode: its number,
+// stepping by one on every draw, a redraw with no new frame included, and the link's target time
+// it was drawn for. Without it, none.
+TEST_F(TraceLayerTest, NumbersEachPictureItDrawsWithTheSwitchOn)
+{
+    show();
+    ASSERT_TRUE(presents());
+    EXPECT_FALSE(layer->statsForTesting().barcode) << "off";
+
+    layer.reset();
+    source.frameBarcode = true;
+    source.limit = 1;
+    source.takes = 0;
+    layer = TraceLayer::create(container, above, *pacing, source.hooks());
+    show();
+    ASSERT_TRUE(pumpUntil([&] { return source.takes.load() == 1; }, 3s));
+    pumpUntil([] { return false; }, 200ms);
+    const auto first = layer->statsForTesting().barcode;
+    ASSERT_TRUE(first);
+    [window setContentSize:NSMakeSize(1200, 640)];
+    ASSERT_TRUE(presents()) << "a redraw with no new frame";
+    const auto second = layer->statsForTesting().barcode;
+    ASSERT_TRUE(second);
+    EXPECT_EQ(second->picture, first->picture + 1);
+    constexpr std::uint64_t kRange = std::uint64_t{1} << protocol::kBarcodeDataBits;
+    const std::uint64_t step = (second->drawnFor + kRange - first->drawnFor) % kRange;
+    // Drawn for a later refresh, by less than a second: the link's target time, in the strip's
+    // quarter-milliseconds (seconds or another unit would step by nothing or by far more).
+    EXPECT_GT(step, 0U);
+    EXPECT_LT(step, 1000U * protocol::kBarcodeTicksPerMillisecond);
 }
 
 // Each shown refresh asks for its frame, and each frame made is drawn.
