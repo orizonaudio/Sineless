@@ -1873,6 +1873,8 @@ export class OscilloscopeApp {
       this.debug.frameCount++;
       if (this.waiting) {
         this.waiting = false;
+        // A frame ends the wait: an editor drawing the traces stops dimming them too.
+        this.queueTraceView();
       }
       // Only changes touch the page: each one costs the page work to restyle.
       if (frame.frozen !== this.shownFrozen) {

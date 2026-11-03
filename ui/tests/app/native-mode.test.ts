@@ -16,7 +16,15 @@ import {
 import type { TraceViewMessage } from "../../../protocol/src/messages.ts";
 import { graphicsMessages } from "../../src/app.ts";
 import type { ControlMessage } from "../../src/bridge/transport.ts";
-import { byId, choice, press, settle, startApp } from "./harness.ts";
+import {
+  byId,
+  chips,
+  choice,
+  inTimeBase,
+  press,
+  settle,
+  startApp,
+} from "./harness.ts";
 import { zoomToNarrowest } from "./zoom-in.ts";
 
 type Started = Awaited<ReturnType<typeof startApp>>;
@@ -229,6 +237,27 @@ describe("native traces: what the page sends", () => {
       check(last, first);
     }
   });
+});
+
+// While Normal mode waits for a trigger, no frame comes to carry it: the page alone tells the
+// editor to draw the last trace dimmed, and to draw it at full strength again once frames resume.
+test("waiting for a trigger tells the editor to dim the traces, and the next frame to stop", async () => {
+  const started = await startNative();
+  // The trigger applies in Seconds.
+  await inTimeBase("Sec");
+  await press(choice("mode", "Normal"));
+  await settle();
+  started.holdFrames(true);
+  await expect.poll(chips, { timeout: 3000 }).toContain("Waiting");
+  await expect
+    .poll(() => traceViews(started.sent).at(-1)?.dim, { timeout: 3000 })
+    .toBe(true);
+  // A triggered frame ends the wait, with nothing else changed.
+  started.holdFrames(false);
+  await expect
+    .poll(() => traceViews(started.sent).at(-1)?.dim, { timeout: 3000 })
+    .toBe(false);
+  await press(choice("mode", "Auto"));
 });
 
 describe("native traces: native graphics lost", () => {
