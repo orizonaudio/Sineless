@@ -23,6 +23,6 @@ width="$(node -e 'console.log(JSON.parse(process.argv[1]).width)' "$size")"
 height="$(node -e 'console.log(JSON.parse(process.argv[1]).height)' "$size")"
 node scripts/frame-barcode/analyse.ts --locate "$width" "$height" "$work"/frame-*.gray \
     > "$work/places.json"
-echo "Strips found: $(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).length)' "$work/places.json"); recording ${seconds} s to $out"
+echo "Strips found: $(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).places.length)' "$work/places.json"); recording ${seconds} s to $out"
 swift scripts/frame-barcode/record.swift record "$work/places.json" "$seconds" "$out"
 node scripts/frame-barcode/analyse.ts "$out"

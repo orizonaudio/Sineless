@@ -13,7 +13,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import { barcodeCellPixels } from "../../protocol/src/limits.ts";
-import { decodeStrip } from "../../ui/src/render/frame-barcode.ts";
+import {
+  barcodeRowCells,
+  decodeStrip,
+} from "../../ui/src/render/frame-barcode.ts";
 import {
   locateStrips,
   sampleStrip,
@@ -200,7 +203,8 @@ async function main(argv: readonly string[]): Promise<number> {
       );
       return 1;
     }
-    console.log(JSON.stringify(places));
+    // The row's width goes with the places, so the recorder samples what limits.ts says.
+    console.log(JSON.stringify({ rowCells: barcodeRowCells, places }));
     return 0;
   }
   const [file] = argv;
