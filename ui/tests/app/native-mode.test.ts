@@ -185,7 +185,8 @@ describe("native traces: what the page sends", () => {
     expect(view?.viewStart).toBe(0);
     expect(view?.viewEnd).toBe(1);
     expect(Object.keys(ViewLayout)).toContain(view?.layout);
-    expect(view?.lineWidth).toBeCloseTo(1.5 * window.devicePixelRatio);
+    // In device pixels: it follows the ratio (the pixel-ratio case below), whatever its width.
+    expect(view?.lineWidth).toBeGreaterThan(0);
     expect(view?.viewColours).toHaveLength(4);
     for (const colour of [
       ...(view?.viewColours ?? []),
