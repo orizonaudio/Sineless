@@ -49,12 +49,14 @@ target_include_directories(editor_core PUBLIC include PRIVATE src)
 target_link_libraries(editor_core PUBLIC engine PRIVATE orizon_warnings)
 if(APPLE)
     target_sources(editor_core PRIVATE src/mac/DisplayScaleMac.cpp src/mac/MetalTraceRenderer.mm
-                                       src/mac/UiDispatcherMac.mm src/mac/WebViewMac.mm)
+                                       src/mac/TraceLayerMac.mm src/mac/UiDispatcherMac.mm
+                                       src/mac/WebViewMac.mm)
     target_link_libraries(editor_core PRIVATE "-framework Cocoa" "-framework Metal"
-                                              "-framework WebKit")
+                                              "-framework QuartzCore" "-framework WebKit")
     # With ARC, dispatch objects are released as Objective-C objects: the timers too.
-    set_source_files_properties(src/mac/MetalTraceRenderer.mm src/mac/UiDispatcherMac.mm
-                                src/mac/WebViewMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    set_source_files_properties(src/mac/MetalTraceRenderer.mm src/mac/TraceLayerMac.mm
+                                src/mac/UiDispatcherMac.mm src/mac/WebViewMac.mm
+                                PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 elseif(WIN32)
     target_sources(editor_core PRIVATE src/win/DisplayScaleWin.cpp src/win/UiDispatcherWin.cpp
                                        src/win/WebViewWin.cpp)
@@ -87,11 +89,12 @@ if(BUILD_TESTING)
     target_link_libraries(editor_tests
         PRIVATE editor engine_test_support branding orizon_warnings GTest::gtest_main)
     if(APPLE)
-        target_sources(editor_tests PRIVATE tests/EditorTests.mm tests/MetalTraceRendererTests.mm)
+        target_sources(editor_tests PRIVATE tests/EditorTests.mm tests/MetalTraceRendererTests.mm
+                                            tests/TraceLayerTests.mm)
         target_link_libraries(editor_tests PRIVATE "-framework Cocoa" "-framework Metal"
-                                                   "-framework WebKit" z)
+                                                   "-framework QuartzCore" "-framework WebKit" z)
         set_source_files_properties(tests/EditorTests.mm tests/MetalTraceRendererTests.mm
-                                    PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+                                    tests/TraceLayerTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     elseif(WIN32)
         target_sources(editor_tests PRIVATE tests/EditorTestsWin.cpp)
     else()

@@ -1,0 +1,335 @@
+#include "MacPageTesting.h"
+#include "mac/TraceLayerMac.h"
+
+#import <Cocoa/Cocoa.h>
+#import <Metal/Metal.h>
+#import <QuartzCore/QuartzCore.h>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <fstream>
+#include <gtest/gtest.h>
+#include <memory>
+#include <mutex>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <vector>
+
+namespace orizon::editor {
+namespace {
+
+using namespace std::chrono_literals;
+using testing::pumpUntil;
+
+// A frame as the engine sends it, and the trace view the page would send with it: the first of
+// the renderer's parity scenes (protocol/tests/data/trace-pictures.json).
+struct Scene
+{
+    std::vector<std::byte> frame;
+    TraceView view;
+};
+
+Scene firstScene()
+{
+    std::ifstream file(std::string(ORIZON_PROTOCOL_TEST_DATA_DIR) + "/trace-pictures.json");
+    const nlohmann::json entry = nlohmann::json::parse(file).at("scenes").at(0);
+    Scene scene;
+    NSData* bytes =
+        [[NSData alloc] initWithBase64EncodedString:@(entry.at("frame").get<std::string>().c_str())
+                                            options:0];
+    const auto* data = static_cast<const std::byte*>(bytes.bytes);
+    scene.frame.assign(data, data + bytes.length);
+    scene.view = *TraceView::parse(entry.at("traceView"));
+    return scene;
+}
+
+// What the editor gives the layer: frames on request, counted.
+struct Source
+{
+    std::mutex mutex;
+    std::vector<std::byte> frame;
+    // Each take hands over a new frame (as with a moving trace), or only after a request.
+    bool always = false;
+    bool ready = false;
+    std::atomic<int> requests{0};
+    std::atomic<int> takes{0};
+    std::atomic<int> losses{0};
+
+    TraceLayer::Hooks hooks()
+    {
+        return {.requestFrame =
+                    [this] {
+                        const std::lock_guard lock(mutex);
+                        ++requests;
+                        ready = true;
+                    },
+                .takeFrame =
+                    [this](std::vector<std::byte>& into) {
+                        const std::lock_guard lock(mutex);
+                        if (!always && !ready) {
+                            return false;
+                        }
+                        ready = false;
+                        ++takes;
+                        into = frame;
+                        return true;
+                    },
+                .lost = [this] { ++losses; }};
+    }
+};
+
+class TraceLayerTest : public ::testing::Test
+{
+protected:
+    static void SetUpTestSuite() { [NSApplication sharedApplication]; }
+
+    void SetUp() override
+    {
+        scene = firstScene();
+        source.frame = scene.frame;
+        window = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 1080, 580)
+                                             styleMask:NSWindowStyleMaskTitled
+                                               backing:NSBackingStoreBuffered
+                                                 defer:NO];
+        window.releasedWhenClosed = NO;
+        container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 1080, 580)];
+        above = [[NSView alloc] initWithFrame:container.bounds];
+        [container addSubview:above];
+        window.contentView = container;
+        [window orderFrontRegardless];
+        // On screen, whatever the display reports: an idle one reports every window occluded,
+        // though the display link still runs.
+        TraceLayer::setOcclusionForTesting(false);
+        pacing = std::make_unique<engine::FramePacing>(
+            static_cast<double>(window.screen.maximumFramesPerSecond));
+        layer = TraceLayer::create(container, above, *pacing, source.hooks());
+    }
+
+    void TearDown() override
+    {
+        layer.reset();
+        TraceLayer::setOcclusionForTesting(std::nullopt);
+        [window orderOut:nil];
+        [window close];
+    }
+
+    // The layer shown and drawing: the page up and its trace view sent.
+    void show()
+    {
+        layer->setPageShown(true);
+        layer->setTraceView(scene.view);
+    }
+
+    bool presents(std::chrono::milliseconds within = 2s)
+    {
+        const auto before = layer->statsForTesting().presented;
+        return pumpUntil([&] { return layer->statsForTesting().presented > before; }, within);
+    }
+
+    // The screen's rectangle in the container's coordinates (from the bottom), and in device
+    // pixels.
+    NSRect expectedFrame() const
+    {
+        const NSSize size = container.bounds.size;
+        const ScreenRect rect = ScreenRect::of(size.width, size.height);
+        return NSMakeRect(rect.x, size.height - rect.y - rect.height, rect.width, rect.height);
+    }
+
+    Scene scene;
+    Source source;
+    NSWindow* window = nil;
+    NSView* container = nil;
+    NSView* above = nil;
+    std::unique_ptr<engine::FramePacing> pacing;
+    std::unique_ptr<TraceLayer> layer;
+};
+
+// Below the page, which takes every event, and inside the border's curve.
+TEST_F(TraceLayerTest, SitsBelowThePageInsideTheScreensCorners)
+{
+    NSView* view = layer->view();
+    ASSERT_EQ(container.subviews.count, 2U);
+    EXPECT_EQ(container.subviews[0], view);
+    EXPECT_EQ(container.subviews[1], above);
+    EXPECT_EQ([view hitTest:NSMakePoint(NSMidX(view.frame), NSMidY(view.frame))], nil);
+    EXPECT_EQ(view.layer.cornerRadius, protocol::kScreenRadius - protocol::kScreenBorder);
+    EXPECT_TRUE(view.layer.masksToBounds);
+}
+
+// Nothing shows before the page says how to draw (its colours, its view): the page's colour
+// behind it until then.
+TEST_F(TraceLayerTest, DrawsNothingUntilThePageHasSentItsTraceView)
+{
+    layer->setPageShown(true);
+    EXPECT_FALSE(presents(300ms));
+    EXPECT_TRUE(layer->view().hidden);
+    layer->setTraceView(scene.view);
+    EXPECT_FALSE(layer->view().hidden);
+    EXPECT_TRUE(presents());
+}
+
+// The layer covers the page's screen exactly, its drawable the screen's size in device pixels as
+// the page sizes its canvas, through every size change; the next frames are drawn at it. Below the
+// minimum width it keeps the page's layout; shorter than the chrome, it hides.
+TEST_F(TraceLayerTest, CoversThePagesScreenThroughEverySizeChange)
+{
+    show();
+    ASSERT_TRUE(presents());
+    source.always = true;
+    const double scale = window.backingScaleFactor;
+    for (const NSSize size : {NSMakeSize(1020, 400), NSMakeSize(1500, 900), NSMakeSize(1080, 580),
+                              NSMakeSize(900, 500), NSMakeSize(1500, 900), NSMakeSize(1080, 580)}) {
+        [window setContentSize:size];
+        EXPECT_TRUE(NSEqualRects(layer->view().frame, expectedFrame()))
+            << size.width << " × " << size.height;
+        const NSSize frame = expectedFrame().size;
+        const auto width = static_cast<std::size_t>(std::round(frame.width * scale));
+        const auto height = static_cast<std::size_t>(std::round(frame.height * scale));
+        const auto* metal = static_cast<CAMetalLayer*>(layer->view().layer);
+        EXPECT_EQ(metal.drawableSize.width, width);
+        EXPECT_EQ(metal.drawableSize.height, height);
+        EXPECT_TRUE(pumpUntil(
+            [&] {
+                const auto stats = layer->statsForTesting();
+                return stats.drawnWidth == width && stats.drawnHeight == height;
+            },
+            2s))
+            << size.width << " × " << size.height;
+        EXPECT_FALSE(layer->view().hidden);
+    }
+    [window setContentSize:NSMakeSize(1080, protocol::kToolbarHeight + protocol::kStatusBarHeight)];
+    EXPECT_TRUE(layer->view().hidden);
+}
+
+// Hidden with the page (a crash, a reload): hidden and paused until the next page has sent its
+// trace view, then drawing again at once.
+TEST_F(TraceLayerTest, HidesAndPausesWithThePage)
+{
+    show();
+    ASSERT_TRUE(presents());
+    layer->setPageShown(false);
+    EXPECT_TRUE(layer->view().hidden);
+    pumpUntil([] { return false; }, 100ms);
+    const auto callbacks = layer->statsForTesting().callbacks;
+    pumpUntil([] { return false; }, 300ms);
+    EXPECT_EQ(layer->statsForTesting().callbacks, callbacks) << "the link runs while hidden";
+    layer->setPageShown(true);
+    EXPECT_TRUE(layer->view().hidden) << "before the new page's trace view";
+    layer->setTraceView(scene.view);
+    EXPECT_FALSE(layer->view().hidden);
+    EXPECT_TRUE(presents());
+}
+
+// A window off screen (behind others, minimised, on another space) pauses the link, and the
+// clock follows the monotonic time; back on screen, it draws a current frame at once.
+TEST_F(TraceLayerTest, PausesWhileItsWindowIsOffScreen)
+{
+    show();
+    ASSERT_TRUE(presents());
+    TraceLayer::setOcclusionForTesting(true);
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:NSWindowDidChangeOcclusionStateNotification
+                      object:window];
+    pumpUntil([] { return false; }, 100ms);
+    const auto callbacks = layer->statsForTesting().callbacks;
+    pumpUntil([] { return false; }, 300ms);
+    EXPECT_EQ(layer->statsForTesting().callbacks, callbacks);
+    TraceLayer::setOcclusionForTesting(false);
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:NSWindowDidChangeOcclusionStateNotification
+                      object:window];
+    EXPECT_TRUE(presents());
+}
+
+// Each shown refresh asks for its frame, and each frame made is drawn.
+TEST_F(TraceLayerTest, AsksForFramesAndDrawsEachOneMade)
+{
+    show();
+    ASSERT_TRUE(pumpUntil([&] { return source.takes.load() >= 10; }, 3s));
+    EXPECT_GE(source.requests.load(), 10);
+    EXPECT_GE(layer->statsForTesting().presented, 10U);
+}
+
+class TraceLayerLossTest : public TraceLayerTest, public ::testing::WithParamInterface<long>
+{
+};
+
+// A removed GPU, revoked access or no permission: native drawing stops for good, said once, and
+// nothing is presented after.
+TEST_P(TraceLayerLossTest, StopsForGoodWhenTheGpuIsGone)
+{
+    source.always = true;
+    show();
+    ASSERT_TRUE(presents());
+    layer->failCommandBuffersForTesting(GetParam());
+    ASSERT_TRUE(pumpUntil([&] { return source.losses.load() == 1; }, 2s));
+    EXPECT_TRUE(layer->lost());
+    pumpUntil([] { return false; }, 100ms);
+    const auto presented = layer->statsForTesting().presented;
+    pumpUntil([] { return false; }, 300ms);
+    EXPECT_EQ(layer->statsForTesting().presented, presented);
+    EXPECT_EQ(source.losses.load(), 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(PersistentErrors, TraceLayerLossTest,
+                         ::testing::Values(11L,
+                                           static_cast<long>(MTLCommandBufferErrorAccessRevoked),
+                                           static_cast<long>(MTLCommandBufferErrorNotPermitted)),
+                         [](const ::testing::TestParamInfo<long>& info) {
+                             return info.param == 11L ? std::string("DeviceRemoved")
+                                    : info.param == MTLCommandBufferErrorAccessRevoked
+                                        ? std::string("AccessRevoked")
+                                        : std::string("NotPermitted");
+                         });
+
+// Other errors (a GPU timeout, a fault) stop it only once every command buffer has failed for
+// kFailureSecondsBeforeLost: a shorter run of failures recovers.
+TEST_F(TraceLayerTest, StopsAfterFailingForHalfASecondNotBefore)
+{
+    source.always = true;
+    show();
+    ASSERT_TRUE(presents());
+    const auto threshold =
+        std::chrono::milliseconds(static_cast<int>(TraceLayer::kFailureSecondsBeforeLost * 1000));
+    layer->failCommandBuffersForTesting(MTLCommandBufferErrorTimeout);
+    pumpUntil([] { return false; }, threshold * 6 / 10);
+    layer->failCommandBuffersForTesting(std::nullopt);
+    EXPECT_TRUE(presents());
+    pumpUntil([] { return false; }, threshold * 6 / 10);
+    EXPECT_FALSE(layer->lost()) << "failures broken by a clean buffer";
+
+    const auto started = std::chrono::steady_clock::now();
+    layer->failCommandBuffersForTesting(MTLCommandBufferErrorTimeout);
+    ASSERT_TRUE(pumpUntil([&] { return layer->lost(); }, threshold * 4));
+    EXPECT_GE(std::chrono::steady_clock::now() - started, threshold * 9 / 10);
+    EXPECT_TRUE(pumpUntil([&] { return source.losses.load() == 1; }, 1s));
+}
+
+// Graphics memory refused for a larger screen: native drawing stops for good, said once.
+TEST_F(TraceLayerTest, StopsWhenGraphicsMemoryIsRefused)
+{
+    show();
+    ASSERT_TRUE(presents());
+    layer->refuseCoverageTargetsForTesting();
+    [window setContentSize:NSMakeSize(1400, 800)];
+    EXPECT_TRUE(pumpUntil([&] { return source.losses.load() == 1; }, 2s));
+    EXPECT_TRUE(layer->lost());
+}
+
+// Once destroyed, nothing of the editor's is called: the worker and the frame flow it asks may go.
+TEST_F(TraceLayerTest, CallsNothingOnceDestroyed)
+{
+    source.always = true;
+    show();
+    ASSERT_TRUE(presents());
+    layer.reset();
+    const int requests = source.requests.load();
+    const int takes = source.takes.load();
+    pumpUntil([] { return false; }, 300ms);
+    EXPECT_EQ(source.requests.load(), requests);
+    EXPECT_EQ(source.takes.load(), takes);
+    EXPECT_EQ(container.subviews.count, 1U);
+}
+
+} // namespace
+} // namespace orizon::editor
