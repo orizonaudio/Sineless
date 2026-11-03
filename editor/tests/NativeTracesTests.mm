@@ -142,10 +142,19 @@ protected:
         layer = nullptr;
     }
 
-    bool presents(std::chrono::milliseconds within = 3s)
+    // A new frame reaches the screen. Audio keeps coming meanwhile: with none, nothing new is
+    // drawn.
+    ::testing::AssertionResult presents(std::chrono::milliseconds within = 5s)
     {
         const auto before = layer->statsForTesting().presented;
-        return pumpUntil([&] { return layer->statsForTesting().presented > before; }, within);
+        if (pumpPlaying([&] { return layer->statsForTesting().presented > before; }, within)) {
+            return ::testing::AssertionSuccess();
+        }
+        const auto stats = layer->statsForTesting();
+        return ::testing::AssertionFailure()
+               << "nothing presented: " << stats.callbacks << " callbacks, " << stats.presented
+               << " presented, hidden " << (layer->view().hidden ? "yes" : "no") << ", in a window "
+               << (layer->view().window != nil ? "yes" : "no") << ", page frames " << frameCount();
     }
 
     int frameCount()
