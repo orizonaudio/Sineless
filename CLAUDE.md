@@ -67,6 +67,9 @@ message with a short `Prior art:` note naming the sources.
   of the same values.
 - **Before a second attempt at a fix whose first attempt failed**, use the `prior-art`
   skill instead of a second blind attempt.
+- **Motion that stutters, judders or flickers**, frames dropped or repeated: use the
+  `frame-timing` skill before naming a cause. It measures what reaches the screen; for a
+  presentation fault its recording, before and after, is the failing reproduction.
 - **Before merging, equalising or deriving values**, use the `changing-values` skill:
   values that only look alike stay separate, and a gap between two copies may be a
   deliberate margin.

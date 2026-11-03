@@ -68,6 +68,11 @@ unless a step says otherwise. Note anything unexpected in the row's notes.
    screen's border and catch up within a refresh or two; below the minimum width and at the
    shortest height they are clipped or hidden with the page; moving the window to another display
    (Retina and not) keeps one-pixel lines sharp.
+   Motion: with `launchctl setenv SINELESS_FRAME_BARCODE 1` and the host restarted, record a
+   minute on each display with the VST3 and the AU open and playing
+   (`FRAME_BARCODE_DISPLAY=external scripts/frame-barcode/record.sh 60`, then `builtin`): every
+   refresh judged is a new picture on time, with no repeats or pictures never shown beyond the
+   recorder's own unknowns (the `frame-timing` skill). Unset the variable afterwards.
 6. **Multi.** Insert on five or more tracks in group A and two in group B: lanes show the right
    names and colours, in order, and line up in time, and the window grows so that every stacked
    lane fits its label. Rename and recolour a track: its lane follows. In hosts with plugin

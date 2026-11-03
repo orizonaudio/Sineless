@@ -134,7 +134,9 @@ The plan reviewers and the verifier read this section first.
   machinery; anything under the plan's Scope or Decided; exact `file:line` accuracy and lists of
   documents to update (the implementer re-reads; `review-rules` checks the pull request); test
   mechanics such as spies or file placement (settled by writing the test red); measurement
-  methodology; optimisations that change nothing a user sees; rates or limits with no measurement
+  methodology, except a cause that rests on a measurement taken at a different link of the chain
+  than the one where the symptom is seen (a stutter on screen explained from the page's or the
+  engine's own timestamps: the `frame-timing` skill); optimisations that change nothing a user sees; rates or limits with no measurement
   behind them; wording and style; what CI or the code review already catches.
 - **Unverified claims:** a point you cannot confirm from the code, the docs or a calculation, or
   recall from memory, is an open measurement, not a blocking finding.
