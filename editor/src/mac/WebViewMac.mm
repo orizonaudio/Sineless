@@ -2,6 +2,7 @@
 #include "editor/PointerHold.h"
 #include "editor/WebView.h"
 #include "engine/Version.h"
+#include "mac/UniqueClassName.h"
 #include "mac/WebViewMacTesting.h"
 
 #import <Cocoa/Cocoa.h>
@@ -247,17 +248,6 @@ void setOwner(id object, WebViewMac* owner)
     objc_setAssociatedObject(object, kOwnerKey,
                              owner != nullptr ? [NSValue valueWithPointer:owner] : nil,
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-std::string uniqueClassName(const char* baseName)
-{
-    static const int kImageMarker = 0;
-    std::string version = engine::kVersionString;
-    std::ranges::replace(version, '.', '_');
-    std::array<char, 32> imageId{};
-    std::snprintf(imageId.data(), imageId.size(), "%llx",
-                  static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(&kImageMarker)));
-    return std::string("OrizonOscilloscope_") + version + "_" + baseName + "_" + imageId.data();
 }
 
 const char* protocolMethodTypes(Protocol* protocol, SEL selector)
