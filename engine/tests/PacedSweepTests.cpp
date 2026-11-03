@@ -1,6 +1,7 @@
 #include "FrameDecoding.h"
 #include "SampleRates.h"
 #include "engine/Analyzer.h"
+#include "engine/FramePacing.h"
 #include "engine/InstanceRegistry.h"
 #include "engine/Motion.h"
 
@@ -107,6 +108,47 @@ public:
         }
     }
 
+    // Plays `seconds` as the macOS editor's native drawing drives the analyzer: a display link at
+    // `refreshHertz` calls back `lead` before each refresh, `pacing` keeps the analyzer's clock
+    // (set by useDisplayClock) and says which refreshes want a frame, and each 2 ms worker step
+    // makes the wanted frame or advances the sweeps (which read the same clock).
+    void link(double seconds, FramePacing& pacing, double refreshHertz, double lead)
+    {
+        const double end = time + seconds;
+        for (; time < end; time += 0.0005) {
+            for (Track& track : tracks) {
+                while (static_cast<double>(track.played + block) / track.rate + track.lateSeconds <=
+                       time - kStart) {
+                    writeBlock(track);
+                }
+            }
+            if (time >= nextTarget - lead) {
+                if (pacing.callback(nextTarget, time, nanos()).requestFrame) {
+                    wanted = true;
+                }
+                nextTarget += 1.0 / refreshHertz;
+            }
+            if (std::fmod(time * 1000.0, 2.0) >= 0.5) {
+                continue;
+            }
+            if (!wanted) {
+                analyzer->advance();
+                continue;
+            }
+            std::vector<std::byte> bytes;
+            if (analyzer->produce(bytes)) {
+                wanted = false;
+                frames.push_back({.seconds = time, .frame = decode(bytes)});
+            }
+        }
+    }
+
+    // The analyzer's clock from now on: `pacing`'s, which link() drives.
+    void useDisplayClock(FramePacing& pacing)
+    {
+        analyzer->setClock([this, &pacing] { return pacing.clock(nanos()); });
+    }
+
     // Track `index`'s processing restarts: its capture takes `samples` of silence the host did
     // not play (no position known), so from then on its capture indices are further ahead.
     void restart(std::size_t index, std::uint64_t samples)
@@ -190,6 +232,8 @@ public:
     double time = kStart;
     double nextDraw = kStart;
     std::vector<Drawn> frames;
+    double nextTarget = kStart + 0.1; // link(): the next refresh's target.
+    bool wanted = false;              // link(): the display link waits for a frame.
 
 private:
     void writeBlock(Track& track)
@@ -297,6 +341,52 @@ TEST(PacedSweep, MovesThePlayheadEvenlyWithNothingNewBeyondIt)
 // arrives and for each frame: with 42.7 ms blocks, about 23 blocks and 60 frames a second against
 // 500 steps, in Single and in Multi. A block whose musical position only continues the one before
 // is placed once. Updated on every step, seven lanes used three times the analysis time per frame.
+// Drawn natively, the sweeps advance on the worker's steps between frames and the frames are made
+// at no steady time; both read the display clock, so the playhead still moves per frame as far as
+// the frames are shown apart, within a millisecond, in Single and in Multi, never ahead or back.
+// The advances read the same clock as the frames: one at the time it runs would put a later frame
+// placed earlier than it behind it.
+TEST(PacedSweepNative, MovesThePlayheadEvenlyAtTheDisplayClock)
+{
+    for (const double rate : kSampleRates) {
+        for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
+            SCOPED_TRACE(rate);
+            SCOPED_TRACE(static_cast<int>(mode));
+            const auto block = static_cast<std::uint64_t>(std::llround(512.0 * rate / 48000.0));
+            BeatsHost host(rate, block, mode == protocol::DisplayMode::kMulti ? 3 : 1, mode);
+            FramePacing pacing(60.0);
+            host.useDisplayClock(pacing);
+            host.link(3.0, pacing, 60.0, 0.05); // The clocks lock.
+            (void)host.tracks.front().engine->takeEdges();
+            host.link(4.0, pacing, 60.0, 0.05);
+            const auto draws = playheads(*host.tracks.front().engine);
+            ASSERT_GT(draws.size(), 200U);
+            const Motion motion = measureMotion(draws, host.rate);
+            EXPECT_LE(motion.advanceErrorP99, 1.0);
+            EXPECT_FALSE(motion.ahead);
+            EXPECT_FALSE(motion.backwards);
+        }
+    }
+}
+
+// The same host with the analyzer reading the host's time: frames made on the worker's steps
+// after the link asks miss the millisecond against when they are shown (the display clock).
+TEST(PacedSweepNative, PlacedWhenMadeMissesTheMillisecond)
+{
+    BeatsHost host(48000.0, 512);
+    FramePacing pacing(60.0);
+    host.link(3.0, pacing, 60.0, 0.05);
+    (void)host.tracks.front().engine->takeEdges();
+    host.link(4.0, pacing, 60.0, 0.05);
+    auto draws = playheads(*host.tracks.front().engine);
+    ASSERT_GT(draws.size(), 200U);
+    // Each frame against the refresh it is shown on: one display period apart.
+    for (std::size_t index = 0; index < draws.size(); ++index) {
+        draws[index].seconds = static_cast<double>(index) / 60.0;
+    }
+    EXPECT_GT(measureMotion(draws, host.rate).advanceErrorP99, 1.0);
+}
+
 TEST(PacedSweep, UpdatesTheSweepsOnlyAsAudioArrivesAndForEachFrame)
 {
     for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {

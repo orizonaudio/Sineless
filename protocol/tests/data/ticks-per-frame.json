@@ -1,0 +1,399 @@
+{
+  "description": "AD-12's frames-per-refresh rule, read by the page's ticksPerFrame tests and the engine's FramePacing tests, so the two copies cannot drift. A case gives a rate in Hz (a real display), or a line (a whole multiple of fullRateUpToHz) times `factor` and (1 + hysteresisShare x lineHysteresis), both read from protocol/src/limits.ts, so a tuned value moves the boundaries with it; `previous` is the n already set, absent for a first measure.",
+  "cases": [
+    {
+      "rateHz": 50,
+      "n": 1
+    },
+    {
+      "rateHz": 59.94,
+      "n": 1
+    },
+    {
+      "rateHz": 60,
+      "n": 1
+    },
+    {
+      "rateHz": 75,
+      "n": 1
+    },
+    {
+      "rateHz": 85,
+      "n": 1
+    },
+    {
+      "rateHz": 90,
+      "n": 1
+    },
+    {
+      "rateHz": 100,
+      "n": 2
+    },
+    {
+      "rateHz": 120,
+      "n": 2
+    },
+    {
+      "rateHz": 144,
+      "n": 2
+    },
+    {
+      "rateHz": 165,
+      "n": 2
+    },
+    {
+      "rateHz": 170,
+      "n": 2
+    },
+    {
+      "rateHz": 180,
+      "n": 2
+    },
+    {
+      "rateHz": 240,
+      "n": 3
+    },
+    {
+      "rateHz": 360,
+      "n": 4
+    },
+    {
+      "line": 1,
+      "factor": 0.999,
+      "n": 1
+    },
+    {
+      "line": 1,
+      "factor": 1.001,
+      "n": 2
+    },
+    {
+      "line": 1,
+      "hysteresisShare": -0.99,
+      "previous": 1,
+      "n": 1
+    },
+    {
+      "line": 1,
+      "hysteresisShare": -0.99,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 1,
+      "hysteresisShare": -0.5,
+      "previous": 1,
+      "n": 1
+    },
+    {
+      "line": 1,
+      "hysteresisShare": -0.5,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 1,
+      "hysteresisShare": 0,
+      "previous": 1,
+      "n": 1
+    },
+    {
+      "line": 1,
+      "hysteresisShare": 0,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 1,
+      "hysteresisShare": 0.5,
+      "previous": 1,
+      "n": 1
+    },
+    {
+      "line": 1,
+      "hysteresisShare": 0.5,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 1,
+      "hysteresisShare": 0.99,
+      "previous": 1,
+      "n": 1
+    },
+    {
+      "line": 1,
+      "hysteresisShare": 0.99,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 1,
+      "hysteresisShare": 1.01,
+      "previous": 1,
+      "n": 2
+    },
+    {
+      "line": 1,
+      "hysteresisShare": -1.01,
+      "previous": 2,
+      "n": 1
+    },
+    {
+      "line": 2,
+      "factor": 0.999,
+      "n": 2
+    },
+    {
+      "line": 2,
+      "factor": 1.001,
+      "n": 3
+    },
+    {
+      "line": 2,
+      "hysteresisShare": -0.99,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 2,
+      "hysteresisShare": -0.99,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 2,
+      "hysteresisShare": -0.5,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 2,
+      "hysteresisShare": -0.5,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 2,
+      "hysteresisShare": 0,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 2,
+      "hysteresisShare": 0,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 2,
+      "hysteresisShare": 0.5,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 2,
+      "hysteresisShare": 0.5,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 2,
+      "hysteresisShare": 0.99,
+      "previous": 2,
+      "n": 2
+    },
+    {
+      "line": 2,
+      "hysteresisShare": 0.99,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 2,
+      "hysteresisShare": 1.01,
+      "previous": 2,
+      "n": 3
+    },
+    {
+      "line": 2,
+      "hysteresisShare": -1.01,
+      "previous": 3,
+      "n": 2
+    },
+    {
+      "line": 3,
+      "factor": 0.999,
+      "n": 3
+    },
+    {
+      "line": 3,
+      "factor": 1.001,
+      "n": 4
+    },
+    {
+      "line": 3,
+      "hysteresisShare": -0.99,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 3,
+      "hysteresisShare": -0.99,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 3,
+      "hysteresisShare": -0.5,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 3,
+      "hysteresisShare": -0.5,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 3,
+      "hysteresisShare": 0,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 3,
+      "hysteresisShare": 0,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 3,
+      "hysteresisShare": 0.5,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 3,
+      "hysteresisShare": 0.5,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 3,
+      "hysteresisShare": 0.99,
+      "previous": 3,
+      "n": 3
+    },
+    {
+      "line": 3,
+      "hysteresisShare": 0.99,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 3,
+      "hysteresisShare": 1.01,
+      "previous": 3,
+      "n": 4
+    },
+    {
+      "line": 3,
+      "hysteresisShare": -1.01,
+      "previous": 4,
+      "n": 3
+    },
+    {
+      "line": 4,
+      "factor": 0.999,
+      "n": 4
+    },
+    {
+      "line": 4,
+      "factor": 1.001,
+      "n": 5
+    },
+    {
+      "line": 4,
+      "hysteresisShare": -0.99,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 4,
+      "hysteresisShare": -0.99,
+      "previous": 5,
+      "n": 5
+    },
+    {
+      "line": 4,
+      "hysteresisShare": -0.5,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 4,
+      "hysteresisShare": -0.5,
+      "previous": 5,
+      "n": 5
+    },
+    {
+      "line": 4,
+      "hysteresisShare": 0,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 4,
+      "hysteresisShare": 0,
+      "previous": 5,
+      "n": 5
+    },
+    {
+      "line": 4,
+      "hysteresisShare": 0.5,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 4,
+      "hysteresisShare": 0.5,
+      "previous": 5,
+      "n": 5
+    },
+    {
+      "line": 4,
+      "hysteresisShare": 0.99,
+      "previous": 4,
+      "n": 4
+    },
+    {
+      "line": 4,
+      "hysteresisShare": 0.99,
+      "previous": 5,
+      "n": 5
+    },
+    {
+      "line": 4,
+      "hysteresisShare": 1.01,
+      "previous": 4,
+      "n": 5
+    },
+    {
+      "line": 4,
+      "hysteresisShare": -1.01,
+      "previous": 5,
+      "n": 4
+    },
+    {
+      "rateHz": 240,
+      "previous": 1,
+      "n": 3
+    },
+    {
+      "rateHz": 60,
+      "previous": 3,
+      "n": 1
+    }
+  ]
+}

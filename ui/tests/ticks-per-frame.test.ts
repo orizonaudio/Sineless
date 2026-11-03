@@ -1,60 +1,40 @@
 import { describe, expect, test } from "vitest";
 
 import { fullRateUpToHz, lineHysteresis } from "../../protocol/src/limits.ts";
+import vectors from "../../protocol/tests/data/ticks-per-frame.json" with { type: "json" };
 import { ticksPerFrame } from "../src/render/render-loop.ts";
 import { randomFrom } from "./display-ticks.ts";
 
-describe("ticks per frame", () => {
-  // Every tick up to 90 Hz, and at most 90 frames a second on the common faster displays, each
-  // frame held for the same whole number of ticks.
-  test.each([
-    [50, 1],
-    [59.94, 1],
-    [60, 1],
-    [75, 1],
-    [85, 1],
-    [90, 1],
-    [100, 2],
-    [120, 2],
-    [144, 2],
-    [165, 2],
-    [170, 2],
-    [180, 2],
-    [240, 3],
-    [360, 4],
-  ])("holds each frame for the right ticks at %f Hz", (rate, n) => {
-    expect(ticksPerFrame(rate)).toBe(n);
-  });
+interface Case {
+  readonly rateHz?: number;
+  readonly line?: number;
+  readonly factor?: number;
+  readonly hysteresisShare?: number;
+  readonly previous?: number;
+  readonly n: number;
+}
 
-  // Each line is a whole multiple of the full rate. A first measure falls on its side; a later
-  // one changes n only once it is past the line by the hysteresis, so a rate measured near a line
-  // does not flip n.
-  const lines = [1, 2, 3, 4].map((below) => ({
-    below,
-    line: fullRateUpToHz * below,
-  }));
-  test.each(lines)(
-    "places a first measure on its side of the line at $line Hz",
-    ({ below, line }) => {
-      expect(ticksPerFrame(line * 0.999)).toBe(below);
-      expect(ticksPerFrame(line * 1.001)).toBe(below + 1);
-    },
+// A case's rate: a real display's, or a line (a whole multiple of the full rate) moved by a factor
+// and a share of the hysteresis. The engine's FramePacing tests read the same cases.
+function rateOf(entry: Case): number {
+  return (
+    entry.rateHz ??
+    fullRateUpToHz *
+      (entry.line ?? 1) *
+      (entry.factor ?? 1) *
+      (1 + (entry.hysteresisShare ?? 0) * lineHysteresis)
   );
+}
 
-  test.each(lines)(
-    "keeps n within the hysteresis either side of the line at $line Hz",
-    ({ below, line }) => {
-      for (const share of [-0.99, -0.5, 0, 0.5, 0.99]) {
-        const rate = line * (1 + share * lineHysteresis);
-        expect(ticksPerFrame(rate, below)).toBe(below);
-        expect(ticksPerFrame(rate, below + 1)).toBe(below + 1);
-      }
-      expect(ticksPerFrame(line * (1 + 1.01 * lineHysteresis), below)).toBe(
-        below + 1,
-      );
-      expect(ticksPerFrame(line * (1 - 1.01 * lineHysteresis), below + 1)).toBe(
-        below,
-      );
+describe("ticks per frame", () => {
+  // Every tick up to 90 Hz and at most 90 frames a second on the common faster displays, each frame
+  // held for the same whole number of ticks; a first measure falls on its side of a line, and a
+  // later one changes n only once it is past the line by the hysteresis, so a rate measured near
+  // a line does not flip n.
+  test.each(vectors.cases as Case[])(
+    "%o holds each frame for the right ticks",
+    (entry) => {
+      expect(ticksPerFrame(rateOf(entry), entry.previous)).toBe(entry.n);
     },
   );
 
@@ -67,10 +47,5 @@ describe("ticks per frame", () => {
       n = ticksPerFrame(fullRateUpToHz * (1 + share), n);
       expect(n).toBe(first);
     }
-  });
-
-  test("moves by several frames' worth at once", () => {
-    expect(ticksPerFrame(240, 1)).toBe(3);
-    expect(ticksPerFrame(60, 3)).toBe(1);
   });
 });
