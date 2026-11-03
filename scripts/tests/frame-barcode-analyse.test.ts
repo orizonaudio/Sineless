@@ -10,10 +10,7 @@ import {
   barcodeCellPixels,
   barcodeTicksPerMillisecond,
 } from "../../protocol/src/limits.ts";
-import {
-  barcodeRow,
-  barcodeRowCells,
-} from "../../ui/src/render/frame-barcode.ts";
+import { barcodeRow } from "../../ui/src/render/frame-barcode.ts";
 import {
   formatCounts,
   movieSamples,
@@ -115,6 +112,5 @@ test.runIf(ffmpeg)(
       unknownAcrossGaps: 0,
     });
     expect(counts.strips[0]?.newOnTime).toBe(frames - 1);
-    expect(barcodeRowCells * cell).toBeLessThan(width - 200);
   },
 );

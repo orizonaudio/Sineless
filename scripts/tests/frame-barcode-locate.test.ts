@@ -5,11 +5,7 @@
 import { describe, expect, test } from "vitest";
 
 import { barcodeCellPixels } from "../../protocol/src/limits.ts";
-import {
-  barcodeRow,
-  barcodeRowCells,
-  decodeStrip,
-} from "../../ui/src/render/frame-barcode.ts";
+import { barcodeRow, decodeStrip } from "../../ui/src/render/frame-barcode.ts";
 import {
   locateStrips,
   sampleStrip,
@@ -137,6 +133,5 @@ describe("finding strips", () => {
       ...sampleStrip(after, place ?? { left: 0, top: 0, cell }),
     );
     expect("unreadable" in read).toBe(true);
-    expect(barcodeRowCells).toBeGreaterThan(2);
   });
 });

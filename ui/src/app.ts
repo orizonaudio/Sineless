@@ -338,8 +338,8 @@ export class OscilloscopeApp {
         const [r, g, b] = rgba(token("--sl-screen"));
         return { cursor: rgba(token("--sl-ink")), previous: [r, g, b, 0.5] };
       },
-      // Cancelling is a problem in the audio: the problem colour, faint behind the sum.
       frameBarcode: () => this.frameBarcode,
+      // Cancelling is a problem in the audio: the problem colour, faint behind the sum.
       cancellationColor: () => {
         const [r, g, b] = rgba(token("--sl-warn"));
         return [r, g, b, 0.16];
