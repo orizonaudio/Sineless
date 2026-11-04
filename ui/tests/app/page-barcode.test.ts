@@ -21,8 +21,9 @@ import { byId, inTimeBase, settle, startApp } from "./harness.ts";
 
 const range = 2 ** barcodeDataBits;
 
-// Each strip read from the trace canvas right after a draw, at its cells' centres.
-function readStrips(): StripRead[] {
+// Each strip read from the trace canvas right after a draw, at its cells' centres; `onRead` runs
+// with each read.
+function readStrips(onRead?: () => void): StripRead[] {
   const reads: StripRead[] = [];
   const draw = Object.getOwnPropertyDescriptor(TraceRenderer.prototype, "draw")
     ?.value as (this: TraceRenderer, ...args: unknown[]) => void;
@@ -62,6 +63,7 @@ function readStrips(): StripRead[] {
         return ((pixel[0] ?? 0) + (pixel[1] ?? 0) + (pixel[2] ?? 0)) / 3 / 255;
       });
     reads.push(decodeStrip(row(0), row(1)));
+    onRead?.();
   });
   return reads;
 }
@@ -128,6 +130,33 @@ describe("the page's strip", () => {
     } finally {
       window.history.replaceState(null, "", address);
     }
+  });
+
+  // Lateness is the screen's time less the drawn-for time, so the row must carry the animation
+  // frame's timestamp, not the time the draw ran. Timestamps shifted 5 s ahead tell them apart.
+  test("each picture is drawn for its animation frame's time", async () => {
+    const shift = 5000;
+    let tickTime = Number.NaN;
+    const request = window.requestAnimationFrame.bind(window);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) =>
+      request((timestamp) => {
+        tickTime = timestamp + shift;
+        callback(tickTime);
+      }),
+    );
+    const drawnFor: number[] = [];
+    const reads = readStrips(() => {
+      drawnFor.push(Math.round(tickTime * barcodeTicksPerMillisecond) % range);
+    });
+    await startApp({ frameBarcode: true });
+    await settle();
+    reads.length = 0;
+    drawnFor.length = 0;
+    await settle(12);
+    expectSteppingStrips(reads);
+    expect(
+      reads.map((read) => ("drawnFor" in read ? read.drawnFor : Number.NaN)),
+    ).toEqual(drawnFor);
   });
 
   test("without the switch there is no strip", async () => {
