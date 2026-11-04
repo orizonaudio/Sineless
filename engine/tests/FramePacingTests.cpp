@@ -395,7 +395,6 @@ TEST(FrameRequests, PublishesTheDisplaysPeriodNotTheCallbacks)
 // with no screen yet): the rate is measured from the link's targets, and n follows it, so a fast
 // display still shows at most AD-12's frames a second. Just past a line, n keeps its value while
 // within the hysteresis, as when the rate is given.
-
 TEST(FrameRequests, MeasuresTheRateFromTheLinksOwnRefreshes)
 {
     const double pastLine = protocol::kFullRateUpToHz * (1.0 + 0.5 * protocol::kLineHysteresis);
