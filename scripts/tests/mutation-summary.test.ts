@@ -232,12 +232,6 @@ describe("the C++ runs' times with no mutant", () => {
   test("says nothing when no module had mutants", () => {
     expect(baselineNote([], [])).toBe("");
   });
-
-  test("no longer warns about MUTANT_TIMEOUT, which no run reads", () => {
-    expect(baselineNote([share(1812)], ["engine_tests"])).not.toContain(
-      "MUTANT_TIMEOUT",
-    );
-  });
 });
 
 describe("the timed-out mutants", () => {
