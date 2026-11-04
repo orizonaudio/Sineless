@@ -2,8 +2,8 @@
 // runs in a page of its own. The app finds its elements by id, so an app started earlier in the
 // same file would write into the new one's page: starting an app retires the one before, as a
 // closed editor window. The retired app hears nothing from its back end and sends it nothing, the
-// timers and listeners it set up as it started are removed, and a draw it had queued runs before
-// the page is replaced; the elements it listened on are gone with its page.
+// timers, listeners and size observers it set up as it started are removed, and a draw it had
+// queued runs before the page is replaced; the elements it listened on are gone with its page.
 import { afterEach, expect, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -101,17 +101,20 @@ async function queuedDrawsRun(): Promise<void> {
   }
 }
 
-// Runs `start`, recording the listeners and timers it sets up (the app sets up all of its
-// window and document ones as it starts), and returns what removes them.
+// Runs `start`, recording the listeners, timers and size observers it sets up (the app sets up
+// all of its window and document ones as it starts), and returns what removes them. An observer
+// left on would see its screen detached when the page is replaced, as a change to no size.
 function recordSetUp(start: () => void): () => void {
   const listening = vi.spyOn(EventTarget.prototype, "addEventListener");
   const intervals = vi.spyOn(window, "setInterval");
   const timeouts = vi.spyOn(window, "setTimeout");
+  const observing = vi.spyOn(ResizeObserver.prototype, "observe");
   let listeners: (readonly [
     EventTarget,
     Parameters<EventTarget["addEventListener"]>,
   ])[] = [];
   let timers: number[] = [];
+  let observers: ResizeObserver[] = [];
   try {
     start();
   } finally {
@@ -123,9 +126,11 @@ function recordSetUp(start: () => void): () => void {
     timers = [...intervals.mock.results, ...timeouts.mock.results].map(
       (result) => result.value as number,
     );
+    observers = observing.mock.contexts as ResizeObserver[];
     listening.mockRestore();
     intervals.mockRestore();
     timeouts.mockRestore();
+    observing.mockRestore();
   }
   return () => {
     for (const [target, [type, listener, options]] of listeners) {
@@ -134,6 +139,9 @@ function recordSetUp(start: () => void): () => void {
     for (const id of timers) {
       // One id space for both: clearTimeout clears an interval too.
       window.clearTimeout(id);
+    }
+    for (const observer of observers) {
+      observer.disconnect();
     }
   };
 }

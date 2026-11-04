@@ -24,9 +24,10 @@ function refuseTraceMemory(): void {
   ).mockReturnValue(WebGL2RenderingContext.FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
 }
 
+// The screen's own size changed, as a window drag or the page's layout changes it: the page
+// sizes the canvases from what it observes, with no window resize event.
 function resizeScreen(style: Partial<CSSStyleDeclaration>): void {
   Object.assign(byId("screen").style, style);
-  window.dispatchEvent(new Event("resize"));
 }
 
 afterEach(() => {
@@ -55,7 +56,7 @@ describe("graphics memory for the traces", () => {
     await startApp();
     await settle();
     resizeScreen({ display: "none" });
-    expect((byId("trace") as HTMLCanvasElement).width).toBe(0);
+    await expect.poll(() => (byId("trace") as HTMLCanvasElement).width).toBe(0);
     await settle();
     resizeScreen({ display: "" });
     await settle();
