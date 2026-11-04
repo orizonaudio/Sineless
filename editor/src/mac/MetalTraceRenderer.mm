@@ -51,12 +51,17 @@ struct TraceUniforms
     std::uint32_t first = 0;
 };
 
-struct CompositeUniforms
+// The composite pass's uniforms, laid out as the shaders' CompositeUniforms. Their float4 colours
+// align the shaders' struct to 16 bytes (Metal Shading Language Specification, Table 2.3), which
+// rounds its size up from 264 to 272: bound with fewer bytes, every composite draw is a binding
+// shorter than the shader's argument, which Metal's API validation stops on.
+struct alignas(16) CompositeUniforms
 {
     std::array<std::array<float, 4>, kTracesPerPass> colours{};
     std::int32_t traces = 0;
     std::int32_t attachments = 0;
 };
+static_assert(sizeof(CompositeUniforms) == 272, "laid out as the shaders' CompositeUniforms");
 
 // A rectangle in device pixels from the bottom left, in one colour (not premultiplied). A soft
 // axis has its edges at their exact positions with coverage; a hard one is left to the
