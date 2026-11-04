@@ -203,10 +203,12 @@ export class MockTransport implements Transport {
   private readonly frameBarcode: boolean;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
-  // The last live Seconds window before a freeze (none when frozen in Beats mode), from which a
-  // frozen view is placed as the engine places it (see frozenWindow).
+  // The last live Trigger or Free window before a freeze (none when frozen in Beats mode), and
+  // whether it ran free, from which a frozen view is placed as the engine places it (see
+  // frozenWindow).
   private lastLive:
-    { readonly start: number; readonly span: number } | undefined;
+    | { readonly start: number; readonly span: number; readonly free: boolean }
+    | undefined;
 
   constructor(options: MockOptions = {}) {
     const start = performance.now();
@@ -284,7 +286,11 @@ export class MockTransport implements Transport {
           this.lastLive =
             this.setting("timeBase") === "beats"
               ? undefined
-              : { start: this.liveStart(this.frozenAt, span), span };
+              : {
+                  start: this.liveStart(this.frozenAt, span),
+                  span,
+                  free: this.freeRunning(),
+                };
         }
         this.panSeconds = 0;
         break;
@@ -439,19 +445,20 @@ export class MockTransport implements Transport {
       : this.triggerTime(time, span) - triggerPosition * span;
   }
 
-  // A frozen Seconds view, placed as the engine places it (Analyzer.cpp): the last live window's
-  // trigger point stays put, or its right edge when the span now runs free (the newest audio held
-  // when there was no live window), and the view reaches back to the oldest of the
+  // A frozen Trigger or Free view, placed as the engine places it (Analyzer.cpp): the last live
+  // window's trigger point stays put, or its right edge when either window runs free (the newest
+  // audio held when there was no live window), and the view reaches back to the oldest of the
   // frozenHoldSeconds of audio held.
   private frozenWindow(span: number): { start: number; reach: number } {
     const frozenAt = this.frozenAt ?? 0;
     const free = this.freeRunning();
     const live = this.lastLive;
+    const fromEdge = live === undefined || free || live.free;
     const anchor =
       live === undefined
         ? frozenAt
-        : live.start + (free ? live.span : triggerPosition * live.span);
-    const offset = free || live === undefined ? span : triggerPosition * span;
+        : live.start + (fromEdge ? live.span : triggerPosition * live.span);
+    const offset = fromEdge ? span : triggerPosition * span;
     const unpanned = anchor - offset;
     const earliest = frozenAt - frozenHoldSeconds;
     return {

@@ -688,6 +688,57 @@ TEST_F(AnalyzerTest, FreeRunningFramesShowTheSameColumnsShifted)
     }
 }
 
+// Frozen in Free at 4 s and switched to Trigger at 1 s, the view is the second that ends where the
+// free window ended, the newest audio shown, as a live switch shows the newest span; and it pans
+// back from there by just the time asked, as far as the audio held. It showed audio 3.7 s to 2.7 s
+// back, and the first 0.9 s of pan moved nothing. At the lowest and highest rates.
+TEST(FrozenFreeToTrigger, ShowsTheSecondEndingWhereTheFreeWindowEnded)
+{
+    for (const double rate : {44100.0, 384000.0}) {
+        SCOPED_TRACE(rate);
+        Engine engine;
+        engine.prepare(rate);
+        engine.settings().set(SettingId::kChannelViews, 0b0001);
+        engine.settings().set(SettingId::kTriggerMode,
+                              static_cast<double>(protocol::TriggerMode::kNormal));
+        runFree(engine, 4.0);
+        // Samples that hold their own index, so the frame's raw points say which it shows.
+        const auto count = static_cast<std::size_t>(6.0 * rate);
+        std::vector<float> ramp(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            ramp[i] = static_cast<float>(i);
+        }
+        std::array<const float*, 2> channels{ramp.data(), ramp.data()};
+        engine.captureRing().write(channels.data(), 2, static_cast<int>(count));
+        Analyzer view(engine);
+        const auto span = static_cast<std::size_t>(rate); // 1 s.
+        view.setColumns(span + 2);                        // Raw samples at 1 s.
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(view.produce(bytes));
+        ASSERT_TRUE(decode(bytes).has(FrameFlag::kFreeRunning));
+        view.setFrozen(true);
+        ASSERT_TRUE(view.produce(bytes));
+
+        showSpan(engine, 1.0);
+        ASSERT_TRUE(view.produce(bytes));
+        const DecodedFrame frozen = decode(bytes);
+        ASSERT_TRUE(frozen.has(FrameFlag::kFrozen));
+        ASSERT_FALSE(frozen.has(FrameFlag::kFreeRunning));
+        ASSERT_EQ(frozen.mode, FrameMode::kRaw);
+        const auto newest = static_cast<float>(count - 1);
+        EXPECT_NEAR(frozen.data.back(), newest, 1.0F) << "ends at the newest audio shown";
+        const float reach = get<float>(bytes, FrameHeader::kPanReachOffset);
+        EXPECT_NEAR(reach, protocol::kFrozenHoldSeconds - 1.0, 2.0 / rate)
+            << "back to the oldest audio held";
+
+        view.setPan(0.2);
+        ASSERT_TRUE(view.produce(bytes));
+        const DecodedFrame panned = decode(bytes);
+        EXPECT_NEAR(frozen.data.front() - panned.data.front(), 0.2 * rate, 1.0)
+            << "moved back by the time asked";
+    }
+}
+
 // Switched from the Free time base to Trigger in a mode that holds the last trace until a trigger,
 // the newest span is shown, untriggered, rather than the free-running frame staying on screen with
 // its labels and chip, or a span from where the free-running window started, 2 s before. Every

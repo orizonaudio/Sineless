@@ -6,6 +6,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { frozenHoldSeconds } from "../../../protocol/src/limits.ts";
 import { valueNames } from "../../../protocol/src/setting-values.ts";
 import {
   byId,
@@ -125,6 +126,25 @@ describe("a free-running window", () => {
     await expect.poll(countsBack).toBe(true);
     await press(byId("freeze"));
     await expect.poll(chips).not.toContain("Frozen");
+  });
+
+  // Trig chosen while frozen in Free shows its span ending where the free window ended, so it
+  // reaches back as far as the audio held allows: the hold, less the span.
+  test("frozen in Free at 4 s, then Trig at 1 s, ends where Free ended", async () => {
+    await typeInto("free-span-field", "4 s");
+    await press(byId("freeze"));
+    await expect.poll(chips).toContain("Frozen");
+    await inTimeBase("Trig");
+    await typeInto("span-field", "1 s");
+    await expect
+      .poll(() => window.orizonDebug?.lastFrame?.freeRunning)
+      .toBe(false);
+    await expect
+      .poll(() => window.orizonDebug?.lastFrame?.panReach ?? 0)
+      .toBeCloseTo(frozenHoldSeconds - 1, 2);
+    await press(byId("freeze"));
+    await expect.poll(chips).not.toContain("Frozen");
+    await inTimeBase("Free");
   });
 
   test("in Trig again, counts from the trigger point and shows its line", async () => {
