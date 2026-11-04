@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mutation testing of the C++ engine, plugin and editor: Mull builds their tests with every mutant
+# Mutation testing of the C++ engine, plugin and editor: Mull builds their tests with the mutants
 # compiled in (tools/mutation/mull.yml) and runs each mutant against its own module's tests, each
 # run stopping at the first test that fails. A mutant no test fails on marks code that no test
 # checks. With a base revision, only the lines changed since it are mutated, as on a pull request
@@ -184,8 +184,12 @@ if [[ -n "$base" ]]; then
         exit 0
     fi
     selected=("${changed[@]}")
-    # The tests run only the mutants on the lines changed since the base; the build compiles them
-    # all, so a cached build serves any base.
+    # Only the mutants on the lines changed since the base are built and run: Mull's compiler pass
+    # applies the same filter as its runner (Mull's lib/Driver.cpp, filter_mutants), so the
+    # functions on no changed line carry no mutant switch and run at their normal speed. Each switch
+    # is checked on every call of its function, and the engine's tests took 443 s in Docker with
+    # every mutant compiled in against 312 s with the changed lines' only (315 s with none), in
+    # every run with no mutant and every mutant's run.
     config="$out/mull.yml"
     # Mull is given the base with the files added since it held empty, as its diff leaves out
     # files the base lacks (scripts/mutation-base.ts).
@@ -197,16 +201,18 @@ if [[ -n "$base" ]]; then
         > "$config"
 fi
 
-# The mutants compiled in follow mull.yml and the Mull installed, which neither Ninja nor ccache
-# sees: the build starts afresh when either changes, and ccache hashes both.
-settings=(tools/mutation/mull.yml tools/mutation/install-mull.sh)
+# The mutants compiled in follow the run's Mull settings (with a base, the lines changed since it)
+# and the Mull installed, which neither Ninja nor ccache sees: the build starts afresh when either
+# changes, and ccache hashes both. With the same settings and base, an object's mutants follow its
+# own sources, which both already see.
+settings=(tools/mutation/mull.yml tools/mutation/install-mull.sh "$config")
 stamp="$(cat "${settings[@]}" | sha256sum | cut -d' ' -f1)"
 if [[ "$(cat build/mutation-cpp/settings.sha256 2> /dev/null)" != "$stamp" ]]; then
     rm -rf build/mutation-cpp/engine build/mutation-cpp/plugin build/mutation-cpp/editor
 fi
-export CCACHE_EXTRAFILES="$root/tools/mutation/mull.yml:$root/tools/mutation/install-mull.sh"
-MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --preset mutation > "$out/configure.log"
-MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --build --preset mutation
+export CCACHE_EXTRAFILES="$root/tools/mutation/mull.yml:$root/tools/mutation/install-mull.sh:$config"
+MULL_CONFIG="$config" cmake --preset mutation > "$out/configure.log"
+MULL_CONFIG="$config" cmake --build --preset mutation
 echo "$stamp" > build/mutation-cpp/settings.sha256
 start=$SECONDS
 # Each module's mutants, listed with no test run from its own tests, as the run's own settings name
