@@ -687,7 +687,9 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             return false;
         }
         // Keep the trigger point (triggered) or the right edge (free-running) of the last live
-        // window where it was, so changing the scale while frozen zooms around it. A Beats sweep's
+        // window where it was, so changing the scale while frozen zooms around it. A free-running
+        // live window has no trigger point: Trigger chosen while frozen shows its span ending at
+        // that window's right edge, as a live switch shows the newest span. A Beats sweep's
         // window is a place in the sweep, not in the capture: frozen from Beats, the view ends at
         // the newest audio held, as when frozen before any live frame.
         const auto held = static_cast<double>(hold.endIndex());
@@ -696,9 +698,9 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         const double rightEdge = live && live->freeRunning ? live->edge
                                  : live                    ? live->start + live->span
                                                            : held;
-        const double anchor =
-            !live || freeRunning ? rightEdge : live->start + kTriggerPosition * live->span;
-        const double anchorOffset = freeRunning || !live ? span : kTriggerPosition * span;
+        const bool fromEdge = !live || freeRunning || live->freeRunning;
+        const double anchor = fromEdge ? rightEdge : live->start + kTriggerPosition * live->span;
+        const double anchorOffset = fromEdge ? span : kTriggerPosition * span;
         const double latestStart = held - span;
         // A view pans back through the newest frozenHoldSeconds held. The hold reaches a little
         // further (kSecondsFreezeSeconds), so the unpanned window, which may end a paced delay

@@ -334,14 +334,14 @@ describe("mock back end", () => {
     const { transport, frames } = connect(); // now = 1 s.
     runFree(transport, 2);
     transport.send({ type: "freeze", frozen: true });
-    // The live 2 s window ended at 1 s. In Trigger at 100 ms the trigger point sits one trigger
-    // offset into that window, and the view starts one trigger offset of its own span before it.
+    // The live 2 s window ended at 1 s. In Trigger at 100 ms the view is the 100 ms ending there,
+    // as the engine shows it, and reaches back to the oldest audio held.
     useTrigger(transport);
     transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
     transport.requestFrame();
-    const anchor = 1 - 2 + triggerPosition * 2;
+    expect(frames.at(-1)?.freeRunning).toBe(false);
     expect(frames.at(-1)?.panReach).toBeCloseTo(
-      anchor - triggerPosition * 0.1 - (1 - frozenHoldSeconds),
+      1 - 0.1 - (1 - frozenHoldSeconds),
       3,
     );
   });
