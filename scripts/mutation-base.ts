@@ -52,12 +52,16 @@ export function mullBase(
       );
     }
     const tree = git(["write-tree"], index);
-    // Named here: a CI runner's git knows no author.
+    // Named here: a CI runner's git knows no author. Dated the same each time, so that the same
+    // base and files give the same commit: the build's Mull settings name it (gitDiffRef), and a
+    // commit that changed with the clock would rebuild every object (scripts/mutation-cpp.sh).
     const author: [string, string][] = [
       ["GIT_AUTHOR_NAME", "Mutation testing"],
       ["GIT_AUTHOR_EMAIL", "mutation@localhost"],
+      ["GIT_AUTHOR_DATE", "@0 +0000"],
       ["GIT_COMMITTER_NAME", "Mutation testing"],
       ["GIT_COMMITTER_EMAIL", "mutation@localhost"],
+      ["GIT_COMMITTER_DATE", "@0 +0000"],
     ];
     return git(
       ["commit-tree", tree, "-p", base],
