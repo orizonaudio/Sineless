@@ -65,6 +65,10 @@ describe("a row read back from its cells' greys", () => {
     expect(decodeStrip(greys(7), greys(900, 0.5, 0.5))).toEqual({
       unreadable: "drawn for: references",
     });
+    // A crossed picture row is never guessed, whatever the other row reads.
+    expect(decodeStrip(greys(7, 0.5, 0.5), greys(900))).toEqual({
+      unreadable: "picture: references",
+    });
   });
 });
 
