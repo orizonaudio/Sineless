@@ -72,6 +72,16 @@ describe("the base Mull compares the changed lines with", () => {
     ).toBe("");
   });
 
+  // The build's Mull settings name this commit: one that changed with each run would rebuild every
+  // object, and miss every cached one, although nothing it compiles changed.
+  test("gives the same commit for the same base and added files on every run", async () => {
+    const base = pullRequest();
+    const first = mullBase(base, ["au/src"], repository);
+    // Past git's one-second date resolution.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect(mullBase(base, ["au/src"], repository)).toBe(first);
+  });
+
   test("holds the files the real base had as it had them, so their changed lines stay the same", () => {
     const base = pullRequest();
     const given = mullBase(base, ["au/src"], repository);
