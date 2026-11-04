@@ -14,10 +14,10 @@ duration="${2:-8}"
 scenarios=(
     "multi-7-4bars    --mode=multi --lanes=7 --timebase=beats --beatspan=fourBars"
     "multi-7-1bar     --mode=multi --lanes=7 --timebase=beats --beatspan=oneBar"
-    "multi-7-roll-4s  --mode=multi --lanes=7 --timebase=seconds --span=4"
+    "multi-7-roll-4s  --mode=multi --lanes=7 --timebase=free --span=4"
     "compare-7-4bars  --mode=compare --lanes=7 --timebase=beats --beatspan=fourBars"
     "single-1bar      --mode=single --timebase=beats --beatspan=oneBar"
-    "single-trig-20ms --mode=single --timebase=seconds --span=0.02"
+    "single-trig-20ms --mode=single --timebase=trigger --span=0.02"
     "multi-7-4bars-60bpm-96k --mode=multi --lanes=7 --timebase=beats --beatspan=fourBars --rate=96000 --tempo=60"
     # The worst case: fifteen tracks over sixteen bars at 60 BPM and 96 kHz, a 64 s sweep, which
     # takes over a minute to fill.
@@ -27,7 +27,7 @@ scenarios=(
     # fix previewed: the sum is redone as matches move.
     "compare-15-all-jitter-96k --mode=compare --lanes=15 --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70 --compare-all --jitter --preview-fix"
     "single-16bars-60bpm-96k --mode=single --timebase=beats --beatspan=sixteenBars --rate=96000 --tempo=60 --warmup=70"
-    "compare-15-roll-4s-96k --mode=compare --lanes=15 --timebase=seconds --span=4 --rate=96000"
+    "compare-15-roll-4s-96k --mode=compare --lanes=15 --timebase=free --span=4 --rate=96000"
 )
 
 printf "%-25s %9s %6s %7s %7s %8s %8s %8s\n" scenario analysis main webkit total "frames/s" "MB" \

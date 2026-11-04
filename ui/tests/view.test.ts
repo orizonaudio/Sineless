@@ -6,6 +6,7 @@ import {
   ViewLayout,
 } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
+import { valueNames } from "../../protocol/src/setting-values.ts";
 import {
   amplitudeLabels,
   levelFraction,
@@ -443,14 +444,15 @@ describe("status chips", () => {
     ).toEqual(["Frozen", "No tempo"]);
   });
 
-  // Free-running is one behaviour, whatever the trigger mode set: a span above the threshold
-  // runs free in Auto, Normal and Single too.
-  test.each(["auto", "normal", "free", "single"])(
-    "names a free-running frame Free in %s mode",
+  // The Free time base names itself on its button: a free-running frame says nothing of the
+  // trigger mode left set, and only a limited span.
+  test.each(valueNames("TriggerMode"))(
+    "says nothing of a free-running frame with %s left on",
     (mode) => {
-      expect(statusChips(frame({ freeRunning: true }), mode, 5, 0)).toEqual([
-        { text: "Free", tone: "neutral" },
-      ]);
+      expect(statusChips(frame({ freeRunning: true }), mode, 5, 0)).toEqual([]);
+      expect(
+        statusChips(frame({ freeRunning: true, limited: true }), mode, 5, 0),
+      ).toEqual([{ text: "Span limited", tone: "warn" }]);
     },
   );
 

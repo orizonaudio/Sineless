@@ -21,7 +21,7 @@
     "displayMode": "single",
     "frozen": true,
     "sampleRate": 48000,
-    "timeBase": "seconds"
+    "timeBase": "trigger"
   },
   "views": {
     "left": {

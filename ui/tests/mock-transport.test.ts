@@ -45,9 +45,15 @@ function connect(options: MockOptions = {}): {
   return { transport, messages, frames };
 }
 
-// Beats is the default time base; these tests use seconds.
-function useSeconds(transport: MockTransport): void {
-  transport.send({ type: "setSetting", name: "timeBase", value: "seconds" });
+// Beats is the default time base; these tests use Trigger, or Free.
+function useTrigger(transport: MockTransport): void {
+  transport.send({ type: "setSetting", name: "timeBase", value: "trigger" });
+}
+
+// The Free time base at `span` seconds.
+function runFree(transport: MockTransport, span: number): void {
+  transport.send({ type: "setSetting", name: "timeBase", value: "free" });
+  transport.send({ type: "setSetting", name: "freeSpan", value: span });
 }
 
 describe("mock back end", () => {
@@ -70,13 +76,13 @@ describe("mock back end", () => {
 
   test("synthesises frames in the real format for the selected views", () => {
     const { transport, frames } = connect();
-    useSeconds(transport);
+    useTrigger(transport);
     transport.send({
       type: "setSetting",
       name: "channelViews",
       value: ["mid", "side"],
     });
-    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
     transport.requestFrame();
     const frame = frames.at(-1);
     expect(frame?.mode).toBe(FrameMode.minMax);
@@ -96,12 +102,12 @@ describe("mock back end", () => {
       name: "triggerMode",
       value: "normal",
     });
-    transport.send({ type: "setSetting", name: "timeSpan", value: 99 });
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 99 });
     expect(
       messages.filter((message) => message.type === "stateChanged"),
     ).toEqual([
       { type: "stateChanged", name: "triggerMode", value: "normal" },
-      { type: "stateChanged", name: "timeSpan", value: 1 },
+      { type: "stateChanged", name: "triggerSpan", value: 1 },
     ]);
   });
 
@@ -191,8 +197,8 @@ describe("mock back end", () => {
 
   test("synthesises only the visible part at full resolution", () => {
     const { transport, frames } = connect();
-    useSeconds(transport);
-    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    useTrigger(transport);
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
     transport.send({ type: "view", start: 0.5, end: 0.6 });
     transport.requestFrame();
     const frame = frames.at(-1);
@@ -201,10 +207,9 @@ describe("mock back end", () => {
     expect(frame?.mode).toBe(FrameMode.raw); // 480 samples fit in 800 columns.
   });
 
-  test("runs long spans free and reports freeze", () => {
+  test("runs the Free time base free and reports freeze", () => {
     const { transport, frames } = connect();
-    useSeconds(transport);
-    transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
+    runFree(transport, 2);
     transport.send({ type: "freeze", frozen: true });
     transport.requestFrame();
     expect(frames.at(-1)?.freeRunning).toBe(true);
@@ -224,7 +229,7 @@ describe("mock back end", () => {
         name: "triggerSource",
         value: source,
       });
-      useSeconds(transport);
+      useTrigger(transport);
       transport.send({ type: "setSetting", name: "timeBase", value: timeBase });
       transport.requestFrame();
       // L is 0.6 sin; the Mid is half of L plus R: 0.45 sin + 0.125 sin(2x + 0.7).
@@ -242,8 +247,8 @@ describe("mock back end", () => {
 
   test("keeps a frozen view's trigger point and pans back to the held audio", () => {
     const { transport, frames } = connect(); // now = 1 s.
-    useSeconds(transport);
-    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    useTrigger(transport);
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
     transport.requestFrame();
     expect(frames.at(-1)?.panReach).toBe(0); // Live: nothing to pan through.
 
@@ -257,13 +262,13 @@ describe("mock back end", () => {
     expect(frames.at(-1)?.panReach).toBeCloseTo(reach(0.1), 3);
 
     // A longer span grows around the trigger point, so the reach shrinks.
-    transport.send({ type: "setSetting", name: "timeSpan", value: 0.5 });
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.5 });
     transport.requestFrame();
     expect(frames.at(-1)?.panReach).toBeCloseTo(reach(0.5), 3);
 
-    // A free-running span ends at the right edge of the last live window instead: the trigger point
-    // and the rest of that window after it.
-    transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
+    // Free ends at the right edge of the last live window instead: the trigger point and the rest
+    // of that window after it.
+    runFree(transport, 2);
     transport.requestFrame();
     expect(frames.at(-1)?.freeRunning).toBe(true);
     const liveEnd = trigger + (1 - triggerPosition) * 0.1;
@@ -280,7 +285,7 @@ describe("mock back end", () => {
 
   test("measures L on a mono track, whatever the trigger source", () => {
     const { transport, frames } = connect({ inputChannels: 1 });
-    useSeconds(transport);
+    useTrigger(transport);
     transport.send({
       type: "setSetting",
       name: "triggerSource",
@@ -293,7 +298,7 @@ describe("mock back end", () => {
   test("shows a mono track's L alone, whatever views are asked for", () => {
     const { transport, messages, frames } = connect({ inputChannels: 1 });
     expect(messages[0]).toMatchObject({ type: "snapshot", inputChannels: 1 });
-    useSeconds(transport);
+    useTrigger(transport);
     transport.send({
       type: "setSetting",
       name: "channelViews",
@@ -308,8 +313,8 @@ describe("mock back end", () => {
   test("runs at the sample rate it is given", () => {
     const { transport, messages, frames } = connect({ sampleRate: 96000 });
     expect(messages[0]).toMatchObject({ type: "snapshot", sampleRate: 96000 });
-    useSeconds(transport);
-    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    useTrigger(transport);
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
     transport.send({ type: "view", start: 0.5, end: 0.6 });
     transport.send({
       type: "setSetting",
@@ -327,12 +332,12 @@ describe("mock back end", () => {
 
   test("places a view frozen while running free around that window", () => {
     const { transport, frames } = connect(); // now = 1 s.
-    useSeconds(transport);
-    transport.send({ type: "setSetting", name: "timeSpan", value: 2 });
+    runFree(transport, 2);
     transport.send({ type: "freeze", frozen: true });
-    // The live 2 s window ended at 1 s. At 100 ms the trigger point sits one trigger offset into
-    // that window, and the view starts one trigger offset of its own span before it.
-    transport.send({ type: "setSetting", name: "timeSpan", value: 0.1 });
+    // The live 2 s window ended at 1 s. In Trigger at 100 ms the trigger point sits one trigger
+    // offset into that window, and the view starts one trigger offset of its own span before it.
+    useTrigger(transport);
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
     transport.requestFrame();
     const anchor = 1 - 2 + triggerPosition * 2;
     expect(frames.at(-1)?.panReach).toBeCloseTo(

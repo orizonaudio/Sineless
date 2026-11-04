@@ -43,7 +43,7 @@ describe("a recorded span against a capture prepared at half the rate", () => {
   });
 
   test("shows what the capture keeps of a longer span, and says so", async () => {
-    await typeInto("span-field", "4 s");
+    await typeInto("free-span-field", "4 s");
     await expect.poll(chips).toContain("Span limited");
     await settle();
     // The engine decides what is kept; the frame says it.

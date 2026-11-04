@@ -56,11 +56,11 @@ describe("a span longer than the capture keeps", () => {
 
   // Both spans run free: only the span the frame shows tells the axis to change.
   test("labels the time axis with the span shown", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
-    await typeInto("span-field", "2 s");
+    await userEvent.click(choice("time-base", "Free"));
+    await typeInto("free-span-field", "2 s");
     await settle();
     await expect.poll(() => marksSpan(fullView, 2)).toBe(true);
-    await typeInto("span-field", "4 s");
+    await typeInto("free-span-field", "4 s");
     await expect.poll(chips).toContain("Span limited");
     await expect.poll(() => marksSpan(fullView, kept)).toBe(true);
   });

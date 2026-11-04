@@ -72,8 +72,9 @@ protected:
         TraceLayer::setOcclusionForTesting(false);
         engine = std::make_shared<engine::Engine>();
         engine->prepare(48000.0);
-        engine->settings().set(protocol::SettingId::kTimeBase, 0.0);    // Seconds.
-        engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: always moving.
+        engine->settings().set(protocol::SettingId::kTimeBase,
+                               static_cast<double>(protocol::TimeBase::kFree));
+        engine->settings().set(protocol::SettingId::kFreeSpan, 1.0); // Free: always moving.
         feed();
     }
 

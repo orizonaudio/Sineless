@@ -119,12 +119,12 @@ end
 
 -- Gives a Sineless its own settings: edits of the same length in the JSON of its state, so that
 -- the sizes in REAPER's and the plugin's headers stay right.
-local function setSinelessState(track, fx, group, timeSpan)
+local function setSinelessState(track, fx, group, freeSpan)
   local ok, chunk = reaper.TrackFX_GetNamedConfigParm(track, fx, "vst_chunk")
   if not ok then return false end
   local data = fromBase64(chunk)
   local edited = data:gsub('"group": "%a"', '"group": "' .. group .. '"', 1)
-    :gsub('"timeSpan": %d%.%d', '"timeSpan": ' .. string.format("%.1f", timeSpan), 1)
+    :gsub('"freeSpan": %d%.%d', '"freeSpan": ' .. string.format("%.1f", freeSpan), 1)
   if #edited ~= #data then return false end
   return reaper.TrackFX_SetNamedConfigParm(track, fx, "vst_chunk", toBase64(edited))
 end
@@ -133,7 +133,7 @@ local function sinelessSettings(track)
   local ok, chunk = reaper.TrackFX_GetNamedConfigParm(track, sinelessOn(track), "vst_chunk")
   if not ok then return "(no chunk)" end
   local data = fromBase64(chunk)
-  return (data:match('"group": "%a"') or "?") .. ", " .. (data:match('"timeSpan": [%d%.]+') or "?")
+  return (data:match('"group": "%a"') or "?") .. ", " .. (data:match('"freeSpan": [%d%.]+') or "?")
 end
 
 local function floatTitle(trackNumber)
@@ -165,7 +165,7 @@ local function buildProject()
     local scopeFx = reaper.TrackFX_AddByName(track, sineless, false, -1)
     say("track", i, "fx", toneFx, scopeFx, "params", reaper.TrackFX_GetNumParams(track, scopeFx))
   end
-  -- Distinct Sineless states: groups A to D, and seconds spans (used in SEC mode).
+  -- Distinct Sineless states: groups A to D, and Free spans (used in the Free time base).
   local groups, spans = {"a", "b", "c", "d"}, {1, 2, 4, 0.5}
   for i = 1, 4 do
     local track = reaper.GetTrack(0, i - 1)

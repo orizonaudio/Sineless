@@ -2,7 +2,7 @@
   "description": "One example of every UI-to-engine message, checked against the TypeScript types and parsed by the C++ session tests, so field names cannot drift.",
   "hello": {
     "type": "hello",
-    "protocolVersion": 8,
+    "protocolVersion": 9,
     "viewWidth": 640,
     "pixelRatio": 2
   },
@@ -18,7 +18,7 @@
   },
   "setSettingNumber": {
     "type": "setSetting",
-    "name": "timeSpan",
+    "name": "triggerSpan",
     "value": 0.5
   },
   "viewport": {

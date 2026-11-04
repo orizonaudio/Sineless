@@ -25,11 +25,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 8,
+  "protocolVersion": 9,
   "scenario": "Roll1500msDeepestZoom_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 8,
+    "protocolVersion": 9,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "off",
@@ -40,16 +40,17 @@
       ],
       "concertPitch": 440.0,
       "displayMode": "single",
+      "freeSpan": 1.5,
       "group": "a",
       "hoverReadout": "off",
-      "timeBase": "seconds",
-      "timeSpan": 1.5,
+      "timeBase": "free",
       "triggerHoldOff": 0.0,
       "triggerHysteresis": 0.01,
       "triggerLevel": 0.0,
       "triggerMode": "auto",
       "triggerSlope": "rising",
       "triggerSource": "mid",
+      "triggerSpan": 1.0,
       "verticalScale": 0.0,
       "viewLayout": "stacked"
     },

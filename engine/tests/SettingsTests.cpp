@@ -24,24 +24,26 @@ TEST(Settings, StartWithTheSchemaDefaults)
 TEST(Settings, AcceptValidValues)
 {
     Settings settings;
-    EXPECT_TRUE(settings.set(SettingId::kTimeSpan, 4.0));
-    EXPECT_TRUE(settings.set(SettingId::kTriggerMode, 3.0));
+    EXPECT_TRUE(settings.set(SettingId::kFreeSpan, 4.0));
+    EXPECT_TRUE(settings.set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kSingle)));
     EXPECT_TRUE(settings.set(SettingId::kChannelViews, 0b1000));
-    EXPECT_EQ(settings.value(SettingId::kTimeSpan), 4.0);
+    EXPECT_EQ(settings.value(SettingId::kFreeSpan), 4.0);
     EXPECT_EQ(settings.enumValue<TriggerMode>(SettingId::kTriggerMode), TriggerMode::kSingle);
 }
 
 TEST(Settings, RejectInvalidValuesAndKeepThePreviousOne)
 {
     Settings settings;
-    const double before = settings.value(SettingId::kTimeSpan);
-    EXPECT_FALSE(settings.set(SettingId::kTimeSpan, 4.5)) << "above maximum";
-    EXPECT_FALSE(settings.set(SettingId::kTimeSpan, 0.0001)) << "below minimum";
-    EXPECT_FALSE(settings.set(SettingId::kTimeSpan, std::numeric_limits<double>::quiet_NaN()));
-    EXPECT_FALSE(settings.set(SettingId::kTimeSpan, std::numeric_limits<double>::infinity()));
-    EXPECT_EQ(settings.value(SettingId::kTimeSpan), before);
+    const double before = settings.value(SettingId::kTriggerSpan);
+    EXPECT_FALSE(settings.set(SettingId::kTriggerSpan, 1.5)) << "above maximum";
+    EXPECT_FALSE(settings.set(SettingId::kTriggerSpan, 0.0001)) << "below minimum";
+    EXPECT_FALSE(settings.set(SettingId::kTriggerSpan, std::numeric_limits<double>::quiet_NaN()));
+    EXPECT_FALSE(settings.set(SettingId::kTriggerSpan, std::numeric_limits<double>::infinity()));
+    EXPECT_EQ(settings.value(SettingId::kTriggerSpan), before);
 
-    EXPECT_FALSE(settings.set(SettingId::kTriggerMode, 4.0)) << "no such mode";
+    EXPECT_FALSE(
+        settings.set(SettingId::kTriggerMode, static_cast<double>(protocol::kTriggerModeCount)))
+        << "no such mode";
     EXPECT_FALSE(settings.set(SettingId::kTriggerMode, 1.5)) << "not a whole number";
     EXPECT_FALSE(settings.set(SettingId::kChannelViews, 0.0)) << "empty set";
     EXPECT_FALSE(settings.set(SettingId::kChannelViews, 16.0)) << "unknown view";
@@ -70,7 +72,7 @@ TEST(SettingJson, RejectsWrongShapesAndUnknownNames)
     EXPECT_FALSE(settingFromJson(SettingId::kTriggerMode, 1));
     EXPECT_FALSE(settingFromJson(SettingId::kChannelViews, "left"));
     EXPECT_FALSE(settingFromJson(SettingId::kChannelViews, nlohmann::json::array({"left", 2})));
-    EXPECT_FALSE(settingFromJson(SettingId::kTimeSpan, "0.02"));
+    EXPECT_FALSE(settingFromJson(SettingId::kTriggerSpan, "0.02"));
 }
 
 TEST(SettingsStore, AppliesValidChangesOnly)

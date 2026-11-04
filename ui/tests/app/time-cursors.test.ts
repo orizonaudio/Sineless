@@ -63,7 +63,7 @@ describe("time cursors over stacked lanes", () => {
       await userEvent.click(choice("layout", "Stack"));
       // Single shows L and R by default: two lanes, of different traces. A short span keeps
       // each trace's crossings pixels apart.
-      await userEvent.click(choice("time-base", "Sec"));
+      await userEvent.click(choice("time-base", "Trig"));
       await typeInto("span-field", "10 ms");
       await setPressed("time-cursors", true);
       await settle();

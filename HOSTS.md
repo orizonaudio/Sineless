@@ -35,7 +35,7 @@ About five minutes, with the release's own installer, at the host's usual rate a
 1. **Install and scan.** Install from the release's installer as downloaded (the draft's, before a
    release); the host finds Sineless under Orizon Audio, at the new version.
 2. **Play.** Insert on two tracks with audio and play: the trace follows and the readouts move, in
-   Beats (the sweep on the bar lines) and in Sec (a steady tone held still).
+   Beats (the sweep on the bar lines) and in Trig (a steady tone held still).
 3. **Editor.** Open, resize and close the editor a few times while playing: it draws at once and
    nothing is cropped.
 4. **Multi and Compare.** Multi shows both tracks as lanes with their names, in order; Compare
@@ -53,7 +53,7 @@ unless a step says otherwise. Note anything unexpected in the row's notes.
 1. **Install and scan.** The host finds Sineless under Orizon Audio without warnings, and a rescan
    is quick.
 2. **Single.** Insert on a stereo track and on a mono track. Play: the trace follows, readouts
-   update, Beats and Sec both work, the trigger holds a steady tone still in Sec mode.
+   update, Beats and Trig both work, the trigger holds a steady tone still in Trig.
 3. **Transport.** Stop, play, loop a region and jump around: Beats mode stays on the bar lines;
    Auto-freeze freezes on stop and resumes on play.
 4. **Tempo and time signature.** Change the tempo while playing and use a 3/4 bar: the grid and

@@ -6,12 +6,12 @@ Sineless™ is an open-source oscilloscope by Orizon Audio, as a VST3 plugin and
 
 ![Sineless's multi-track view, frozen in Beats mode: four tracks stacked in their colours, with the time cursors A and B and their readout](assets/sineless.png)
 
-- Triggered display from 0.5 ms to 1 s, with Auto, Normal, Free and Single trigger modes; spans up to 4 s scroll continuously.
+- Three time bases: Beats sweeps in time with the host; Trig holds a repeating signal still from 0.5 ms to 1 s, with Auto, Normal and Single trigger modes; Free scrolls continuously from 100 ms to 4 s.
 - Tempo-synced sweep: a span in beats or bars, up to 16 bars, aligned to the host's bar lines, with a beat grid and playhead.
 - Left, right, mid and side views, overlaid or stacked, on a vertical scale in dB.
 - Multi-track view: every track with Sineless inserted, up to 16 lanes, each in its track colour and lined up in time, or overlaid. Groups A–D keep separate comparisons apart.
 - Compare (beta): measure another track's offset, polarity and likeness against this one, see their sum and how loud it is, and preview the fix.
-- Freeze, then pan back through the last 4 seconds in Seconds mode; optionally freeze automatically when the transport stops.
+- Freeze, then pan back through the last 4 seconds in Trig and Free; optionally freeze automatically when the transport stops.
 - Zoom in down to individual samples with ⌘ + scroll (Ctrl on Windows), pinch or drag.
 - Time and level cursors that snap to zero crossings and peaks: read the time between them, its frequency and nearest note, beats, and levels in dB.
 - Indicative peak, RMS and frequency readouts.

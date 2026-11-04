@@ -156,7 +156,9 @@ void configure(engine::Engine& engine, const bench::Scenario& scenario)
     settings.set(SettingId::kDisplayMode, static_cast<double>(scenario.mode));
     settings.set(SettingId::kTimeBase, static_cast<double>(scenario.timeBase));
     settings.set(SettingId::kBeatSpan, static_cast<double>(scenario.beatSpan));
-    settings.set(SettingId::kTimeSpan, scenario.span);
+    settings.set(scenario.timeBase == protocol::TimeBase::kFree ? SettingId::kFreeSpan
+                                                                : SettingId::kTriggerSpan,
+                 scenario.span);
     settings.set(SettingId::kViewLayout, static_cast<double>(protocol::ViewLayout::kStacked));
     settings.set(SettingId::kChannelViews, 0b1111); // L, R, Mid and Side, in Single.
 }
@@ -164,7 +166,7 @@ void configure(engine::Engine& engine, const bench::Scenario& scenario)
 // The seconds the scenario's sweep or window covers.
 double spanSeconds(const bench::Scenario& scenario)
 {
-    if (scenario.timeBase == protocol::TimeBase::kSeconds) {
+    if (scenario.timeBase != protocol::TimeBase::kBeats) {
         return scenario.span;
     }
     return engine::beatSpanQuarterNotes(scenario.beatSpan, 4.0) * 60.0 / scenario.tempo;

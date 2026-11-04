@@ -30,10 +30,26 @@ public:
     {
         engine.prepare(rate);
         engine.settings().set(SettingId::kTimeBase,
-                              static_cast<double>(protocol::TimeBase::kSeconds));
+                              static_cast<double>(protocol::TimeBase::kTrigger));
         engine.settings().set(SettingId::kChannelViews, 0b0001);
         analyzer.setClock([this] { return nanos(); });
         analyzer.setColumns(8000);
+    }
+
+    // The Free time base at `span` seconds.
+    void runFree(double span)
+    {
+        engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kFree));
+        engine.settings().set(SettingId::kFreeSpan, span);
+    }
+
+    // The Trigger time base in `mode` at `span` seconds.
+    void trigger(TriggerMode mode, double span)
+    {
+        engine.settings().set(SettingId::kTimeBase,
+                              static_cast<double>(protocol::TimeBase::kTrigger));
+        engine.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
+        engine.settings().set(SettingId::kTriggerSpan, span);
     }
 
     // Plays `seconds` of host time: blocks as they fall due, the analysis worker's 2 ms steps and
@@ -186,7 +202,8 @@ private:
 struct PacedCase
 {
     std::string name;
-    TriggerMode mode;
+    protocol::TimeBase timeBase;
+    TriggerMode mode; // Set in Free too, where it does not apply.
     double span;
 };
 
@@ -201,8 +218,12 @@ class PacedWindows : public ::testing::TestWithParam<PacedCase>
 TEST_P(PacedWindows, EndAtThePacedEdge)
 {
     PacedHost host(48000.0, 512);
-    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(GetParam().mode));
-    host.engine.settings().set(SettingId::kTimeSpan, GetParam().span);
+    if (GetParam().timeBase == protocol::TimeBase::kFree) {
+        host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(GetParam().mode));
+        host.runFree(GetParam().span);
+    } else {
+        host.trigger(GetParam().mode, GetParam().span);
+    }
     host.play(3.0, false); // The clock locks; Auto times out (a ramp below the trigger level).
     host.play(4.0);
     ASSERT_GT(host.edges.size(), 200U);
@@ -216,25 +237,34 @@ TEST_P(PacedWindows, EndAtThePacedEdge)
     EXPECT_LE(motion.lagMax, protocol::kPacingDelayCapSeconds * 1000.0 + 1.0);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    FreeAndAuto, PacedWindows,
-    ::testing::Values(
-        PacedCase{.name = "FreeAtHalfASecond", .mode = TriggerMode::kFree, .span = 0.5},
-        PacedCase{.name = "NormalAtTwoSeconds", .mode = TriggerMode::kNormal, .span = 2.0},
-        PacedCase{.name = "AutoUntriggered", .mode = TriggerMode::kAuto, .span = 0.2}),
-    [](const ::testing::TestParamInfo<PacedCase>& info) { return info.param.name; });
+INSTANTIATE_TEST_SUITE_P(FreeAndAuto, PacedWindows,
+                         ::testing::Values(PacedCase{.name = "FreeAtHalfASecond",
+                                                     .timeBase = protocol::TimeBase::kFree,
+                                                     .mode = TriggerMode::kAuto,
+                                                     .span = 0.5},
+                                           PacedCase{.name = "FreeAtTwoSecondsWithNormalLeftOn",
+                                                     .timeBase = protocol::TimeBase::kFree,
+                                                     .mode = TriggerMode::kNormal,
+                                                     .span = 2.0},
+                                           PacedCase{.name = "AutoUntriggered",
+                                                     .timeBase = protocol::TimeBase::kTrigger,
+                                                     .mode = TriggerMode::kAuto,
+                                                     .span = 0.2}),
+                         [](const ::testing::TestParamInfo<PacedCase>& info) {
+                             return info.param.name;
+                         });
 
 // Spans shorter than pacedSpanMinimumSeconds end at the newest sample: their whole trace is new
-// every frame, and pacing would only show it later. Just above, they are paced.
+// every frame, and pacing would only show it later. Just above, they are paced. Auto drawing
+// untriggered reaches both (Free starts above the minimum).
 TEST(PacedWindowsMinimum, PaceOnlyFromTheMinimumSpan)
 {
+    ASSERT_GT(protocol::kShortestFreeSpanSeconds, protocol::kPacedSpanMinimumSeconds);
     for (const double span :
          {protocol::kPacedSpanMinimumSeconds * 0.9, protocol::kPacedSpanMinimumSeconds * 1.1}) {
         SCOPED_TRACE(span);
         PacedHost host(48000.0, 512);
-        host.engine.settings().set(SettingId::kTriggerMode,
-                                   static_cast<double>(TriggerMode::kFree));
-        host.engine.settings().set(SettingId::kTimeSpan, span);
+        host.trigger(TriggerMode::kAuto, span); // The ramp stays below the level: untriggered.
         host.play(3.0);
         const double lag = host.edges.back().newest - host.edges.back().edge;
         if (span < protocol::kPacedSpanMinimumSeconds) {
@@ -252,10 +282,9 @@ TEST(PacedWindowsMinimum, PaceOnlyFromTheMinimumSpan)
 TEST(PacedWindowsMinimum, NeverStepBackWhenPacingStarts)
 {
     PacedHost host(44100.0, 4096);
-    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kFree));
-    host.engine.settings().set(SettingId::kTimeSpan, protocol::kPacedSpanMinimumSeconds * 0.9);
+    host.trigger(TriggerMode::kAuto, protocol::kPacedSpanMinimumSeconds * 0.9); // Untriggered.
     host.play(3.0);
-    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    host.runFree(0.5);
     host.play(1.0);
     // Columns end on the last complete one: up to a column short of the edge.
     const double column = 0.5 * host.rate / 8000.0;
@@ -311,8 +340,7 @@ TEST_P(PacedNative, MovesTheEdgeEvenlyAtTheDisplayClock)
 {
     const auto [rate, block, refresh] = GetParam();
     PacedHost host(rate, block);
-    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kFree));
-    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    host.runFree(0.5);
     FramePacing pacing(refresh);
     host.useDisplayClock(pacing);
     host.link(3.0, pacing, refresh, 0.05); // The clocks lock.
@@ -335,8 +363,7 @@ INSTANTIATE_TEST_SUITE_P(RatesAndBlocks, PacedNative, ::testing::ValuesIn(native
 TEST(PacedNativeContrast, PlacedWhenMadeMissesTheMillisecond)
 {
     PacedHost host(48000.0, 512);
-    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kFree));
-    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    host.runFree(0.5);
     FramePacing pacing(60.0);
     host.link(3.0, pacing, 60.0, 0.05);
     host.edges.clear();
@@ -354,9 +381,7 @@ TEST(PacedNativeMinimum, PacesOnlyFromTheMinimumSpanAtTheDisplayClock)
          {protocol::kPacedSpanMinimumSeconds * 0.9, protocol::kPacedSpanMinimumSeconds * 1.1}) {
         SCOPED_TRACE(span);
         PacedHost host(48000.0, 512);
-        host.engine.settings().set(SettingId::kTriggerMode,
-                                   static_cast<double>(TriggerMode::kFree));
-        host.engine.settings().set(SettingId::kTimeSpan, span);
+        host.trigger(TriggerMode::kAuto, span); // The ramp stays below the level: untriggered.
         FramePacing pacing(60.0);
         host.useDisplayClock(pacing);
         host.link(3.0, pacing, 60.0, 0.05);
@@ -377,8 +402,7 @@ TEST(PacedNativeMinimum, PacesOnlyFromTheMinimumSpanAtTheDisplayClock)
 TEST(PacedFreeze, KeepsTheClockFedWhileTheEditorWaitsForAFrame)
 {
     PacedHost host(48000.0, 512);
-    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kFree));
-    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    host.runFree(0.5);
     host.flow(3.0); // The clock locks.
     host.analyzer.setFrozen(true);
     host.flow(1.0);
@@ -403,8 +427,7 @@ TEST(PacedWindowsTriggered, DrawNoFrameBetweenBlocks)
         host.signal = [](std::uint64_t sample) {
             return static_cast<float>(std::sin(static_cast<double>(sample) * 0.0071)); // 50 Hz.
         };
-        host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
-        host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+        host.trigger(mode, 0.5);
         host.engine.settings().set(SettingId::kTriggerLevel, 0.0);
         ASSERT_GE(0.5, protocol::kPacedSpanMinimumSeconds);
         host.play(2.0, false);
@@ -438,8 +461,7 @@ TEST(PacedWindowsTriggered, DrawAutoUntriggeredAtEveryDraw)
 {
     PacedHost host(44100.0, 4096);
     host.signal = [](std::uint64_t) { return -0.5F; }; // Nothing crosses the level.
-    host.engine.settings().set(SettingId::kTriggerMode, static_cast<double>(TriggerMode::kAuto));
-    host.engine.settings().set(SettingId::kTimeSpan, 0.5);
+    host.trigger(TriggerMode::kAuto, 0.5);
     host.play(3.0); // The clock locks; Auto times out.
     std::size_t frames = 0;
     for (int draw = 0; draw < 120; ++draw) {
@@ -464,7 +486,7 @@ TEST(PacedFreeze, KeepsTheWindowLastShown)
             const auto block = static_cast<std::uint64_t>(std::llround(0.0929 * rate));
             PacedHost host(rate, block);
             host.analyzer.setColumns(1000);
-            host.engine.settings().set(SettingId::kTimeSpan, 4.0);
+            host.runFree(4.0);
             if (zoomed) {
                 host.analyzer.setView(0.5, 1.0);
             }

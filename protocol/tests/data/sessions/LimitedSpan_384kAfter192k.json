@@ -14,13 +14,13 @@
     },
     {
       "after": {
-        "name": "timeSpan",
+        "name": "freeSpan",
         "type": "setSetting",
         "value": 4.0
       },
       "answers": [
         {
-          "name": "timeSpan",
+          "name": "freeSpan",
           "type": "stateChanged",
           "value": 4.0
         }
@@ -31,11 +31,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 8,
+  "protocolVersion": 9,
   "scenario": "LimitedSpan_384kAfter192k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 8,
+    "protocolVersion": 9,
     "sampleRate": 384000.0,
     "settings": {
       "autoFreeze": "off",
@@ -46,16 +46,17 @@
       ],
       "concertPitch": 440.0,
       "displayMode": "single",
+      "freeSpan": 2.0,
       "group": "a",
       "hoverReadout": "off",
-      "timeBase": "seconds",
-      "timeSpan": 2.0,
+      "timeBase": "free",
       "triggerHoldOff": 0.0,
       "triggerHysteresis": 0.01,
       "triggerLevel": 0.0,
       "triggerMode": "auto",
       "triggerSlope": "rising",
       "triggerSource": "mid",
+      "triggerSpan": 1.0,
       "verticalScale": 0.0,
       "viewLayout": "stacked"
     },

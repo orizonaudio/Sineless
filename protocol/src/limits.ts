@@ -1,6 +1,5 @@
 // Numbers the engine and the UI must agree on. Each is defined here once; the C++ header is
 // generated from this list (see cpp-generator.ts), so neither side keeps a copy of its own.
-import { settings } from "./settings.ts";
 
 // Three different "too quiet" limits, for three different quantities. For scale: 16-bit dither is
 // about -96 dBFS RMS, converter and analog noise floors -110 to -120, 24-bit dither about -144,
@@ -29,21 +28,27 @@ export const crossingHysteresis = 0.1;
 // cycle; otherwise it has no frequency to show (noise, or several pitches at once).
 export const periodTolerance = 0.15;
 
-// Seconds a frozen Seconds view can be panned back through: the longest span. The freeze holds
+// Seconds a frozen Trigger or Free view can be panned back through: the longest span, Free's
+// longest (settings.freeSpan takes its maximum from here). The freeze holds
 // twice pacingDelayCapSeconds more, as the paced edge may stand that far behind the newest audio
 // (kSecondsFreezeSeconds). The engine's capture is sized to keep that at 384 kHz, the highest
 // rate hosts run at (CaptureRing::capacityFor; the build checks it), so a longer hold needs a
 // larger one.
-export const frozenHoldSeconds = settings.timeSpan.maximum;
+export const frozenHoldSeconds = 4;
 
 // Where a triggered trace's trigger point sits, as a fraction of the span from the left.
 export const triggerPosition = 0.1;
 
-// Spans longer than this (seconds) run free, ending at the newest audio and moving with it,
-// whatever the trigger mode; at or below it they are triggered, unless the trigger mode is Free.
-// Above 1 s a trigger would hold one trace for a long time and show little of the signal's
-// change, so the display keeps moving instead.
-export const freeRunningThresholdSeconds = 1;
+// The longest span of the Trigger time base (seconds). Longer, a trigger would hold one trace for
+// a long time and show little of the signal's change (Auto's wait for an edge grows with the
+// span too); the Free time base shows longer spans moving instead.
+export const longestTriggerSpanSeconds = 1;
+
+// The shortest span of the Free time base (seconds). A free-running window moves one refresh's
+// worth of audio each frame: 16.7 ms at 60 Hz, a sixth of the screen at 100 ms. Shorter, each
+// refresh shows a different slice of the waveform, which cannot be read; the trigger is what
+// makes a picture there.
+export const shortestFreeSpanSeconds = 0.1;
 
 // The most a free-running window's edge trails the newest audio (seconds). Hosts deliver audio in
 // blocks, and frames come at display rate; an edge at the newest sample moves by one block on some
@@ -82,13 +87,13 @@ export const summingMarginDb = 1;
 export const frequencyWindowSeconds = 1;
 
 // The editor's layout (CSS pixels): its default width, from which the widest toolbar fits with the
-// wordmark (measured at 1071); its minimum width, the widest toolbar's (Multi or Compare, Seconds,
-// the Single trigger mode and frozen, measured at 1012 without the wordmark, docs/ui/README.md);
+// wordmark (measured at 1101); its minimum width, the widest toolbar's (Multi or Compare, Trig,
+// the Single trigger mode and frozen, measured at 1042 without the wordmark, docs/ui/README.md);
 // the minimum height of a stacked lane; and the height of everything around the screen (toolbar and status
 // bar), at most: measured at 82, with room for rounding at other display scales. The editor tests
 // check the page against them.
-export const defaultEditorWidth = 1080;
-export const minimumEditorWidth = 1020;
+export const defaultEditorWidth = 1110;
+export const minimumEditorWidth = 1050;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;
 
@@ -190,8 +195,13 @@ export const limits: readonly {
   { name: "frozenHoldSeconds", value: frozenHoldSeconds, kind: "double" },
   { name: "triggerPosition", value: triggerPosition, kind: "double" },
   {
-    name: "freeRunningThresholdSeconds",
-    value: freeRunningThresholdSeconds,
+    name: "longestTriggerSpanSeconds",
+    value: longestTriggerSpanSeconds,
+    kind: "double",
+  },
+  {
+    name: "shortestFreeSpanSeconds",
+    value: shortestFreeSpanSeconds,
     kind: "double",
   },
   {

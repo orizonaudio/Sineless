@@ -105,7 +105,7 @@ struct Case
 {
     std::string_view name; // Test name and file name.
     DisplayMode mode = DisplayMode::kSingle;
-    TimeBase timeBase = TimeBase::kSeconds;
+    TimeBase timeBase = TimeBase::kTrigger;
     std::uint32_t rate = 48000;
     bool frozen = false;
     Track own;
@@ -179,7 +179,7 @@ Case compare(std::string_view name, const Track& own, const Track& other)
     return c;
 }
 
-constexpr TimeBase kSeconds = TimeBase::kSeconds;
+constexpr TimeBase kTrigger = TimeBase::kTrigger;
 constexpr TimeBase kBeats = TimeBase::kBeats;
 constexpr double kNone = kNaN;              // No frequency found, nothing measured.
 constexpr double kSilent = kMinusInfinity;  // The dBFS of exactly 0.
@@ -240,7 +240,7 @@ std::vector<Case> corpus()
         compare("Compare_NoiseCopyHalf_48k", stereo(hiss), stereo(scaled(hiss, 0.5))).match(1, 0, 1).gains(kHalfCopy, kHalfCopy),
         compare("Compare_NoiseInverted_48k", stereo(hiss), stereo(inverted(hiss))).match(-1, 0, -1).gains(kCancels, kIdentical),
         compare("Compare_NoiseInverted_192k", stereo(hiss), stereo(inverted(hiss))).at(192000).match(-1, 0, -1).gains(kCancels, kIdentical),
-        compare("Compare_NoiseInverted_48k_Seconds", stereo(hiss), stereo(inverted(hiss))).in(kSeconds).match(-1, 0, -1).gains(kCancels, kIdentical),
+        compare("Compare_NoiseInverted_48k_Seconds", stereo(hiss), stereo(inverted(hiss))).in(kTrigger).match(-1, 0, -1).gains(kCancels, kIdentical),
         compare("Compare_NoiseInverted_48k_Mono", mono(hiss), mono(inverted(hiss))).match(-1, 0, -1).gains(kCancels, kIdentical),
         compare("Compare_NoiseInverted_48k_Frozen", stereo(hiss), stereo(inverted(hiss))).freeze().match(-1, 0, -1).gains(kCancels, kIdentical),
         // A delayed copy, fixed, sums as a copy does: +3.01 dB (kIdentical), in Beats as in
@@ -248,9 +248,9 @@ std::vector<Case> corpus()
         compare("Compare_NoiseDelayed100_48k", stereo(hiss), stereo(delayed(hiss, 100))).match(0, 100, 1).gains(0, kIdentical),
         compare("Compare_NoiseDelayed100_192k", stereo(hiss), stereo(delayed(hiss, 100))).at(192000).match(0, 100, 1).gains(0, kIdentical),
         compare("Compare_NoiseDelayed1500_192k", stereo(hiss), stereo(delayed(hiss, 1500))).at(192000).match(0, 1500, 1).gains(0, kIdentical),
-        compare("Compare_NoiseDelayed100_48k_Seconds", stereo(hiss), stereo(delayed(hiss, 100))).in(kSeconds).match(0, 100, 1).gains(0, kIdentical),
+        compare("Compare_NoiseDelayed100_48k_Seconds", stereo(hiss), stereo(delayed(hiss, 100))).in(kTrigger).match(0, 100, 1).gains(0, kIdentical),
         compare("Compare_NoiseDelayedInverted37_48k", stereo(hiss), stereo(inverted(delayed(hiss, 37)))).match(0, 37, -1).gains(0, kIdentical),
-        compare("Compare_NoiseDelayedInverted37_48k_Seconds", stereo(hiss), stereo(inverted(delayed(hiss, 37)))).in(kSeconds).match(0, 37, -1).gains(0, kIdentical),
+        compare("Compare_NoiseDelayedInverted37_48k_Seconds", stereo(hiss), stereo(inverted(delayed(hiss, 37)))).in(kTrigger).match(0, 37, -1).gains(0, kIdentical),
         // This track is the late one: the other leads, by a negative offset.
         compare("Compare_NoiseLeading64_48k", stereo(delayed(hiss, 64)), stereo(hiss)).match(0, -64, 1).gains(0, kIdentical),
         // Beyond the 480-sample reach: no match is found, and no fix suggested.
@@ -267,9 +267,9 @@ std::vector<Case> corpus()
         // NaN or infinite samples on this track, as in Single: measured around, so the copy still matches
         // and sums as one; the sum lane carries the NaN points.
         compare("Compare_NoiseWithNaN_48k", stereo(spiked(hiss, kNaNSample, 4800)), stereo(hiss)).match(1, 0, 1).gains(kIdentical, kIdentical),
-        compare("Compare_NoiseWithNaN_48k_Seconds", stereo(spiked(hiss, kNaNSample, 4800)), stereo(hiss)).in(kSeconds).match(1, 0, 1).gains(kIdentical, kIdentical),
+        compare("Compare_NoiseWithNaN_48k_Seconds", stereo(spiked(hiss, kNaNSample, 4800)), stereo(hiss)).in(kTrigger).match(1, 0, 1).gains(kIdentical, kIdentical),
         compare("Compare_NoiseWithInfinity_48k", stereo(spiked(hiss, kInfSample, 4800)), stereo(hiss)).match(1, 0, 1).gains(kIdentical, kIdentical),
-        compare("Compare_NoiseWithInfinity_48k_Seconds", stereo(spiked(hiss, kInfSample, 4800)), stereo(hiss)).in(kSeconds).match(1, 0, 1).gains(kIdentical, kIdentical),
+        compare("Compare_NoiseWithInfinity_48k_Seconds", stereo(spiked(hiss, kInfSample, 4800)), stereo(hiss)).in(kTrigger).match(1, 0, 1).gains(kIdentical, kIdentical),
     };
 }
 // clang-format on
@@ -291,7 +291,7 @@ void configure(Engine& engine, const Case& c)
 {
     engine.settings().set(SettingId::kDisplayMode, static_cast<double>(c.mode));
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(c.timeBase));
-    engine.settings().set(SettingId::kTimeSpan, 0.1);
+    engine.settings().set(SettingId::kTriggerSpan, 0.1);
     engine.settings().set(SettingId::kBeatSpan,
                           static_cast<double>(protocol::BeatSpan::kQuarterBeat));
 }

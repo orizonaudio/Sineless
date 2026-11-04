@@ -15,9 +15,20 @@ const pills: readonly {
   readonly name: string;
   readonly host: string;
   readonly setting: SettingName;
-  readonly timeBase: "Sec" | "Beats";
+  readonly timeBase: "Trig" | "Free" | "Beats";
 }[] = [
-  { name: "Span", host: "span-field", setting: "timeSpan", timeBase: "Sec" },
+  {
+    name: "Span",
+    host: "span-field",
+    setting: "triggerSpan",
+    timeBase: "Trig",
+  },
+  {
+    name: "Free span",
+    host: "free-span-field",
+    setting: "freeSpan",
+    timeBase: "Free",
+  },
   {
     name: "Beat span",
     host: "beat-span-field",
@@ -28,13 +39,13 @@ const pills: readonly {
     name: "Scale",
     host: "scale-field",
     setting: "verticalScale",
-    timeBase: "Sec",
+    timeBase: "Trig",
   },
   {
     name: "A4",
     host: "concert-pitch-field",
     setting: "concertPitch",
-    timeBase: "Sec",
+    timeBase: "Trig",
   },
 ];
 
@@ -148,7 +159,7 @@ describe("a value's pill", () => {
   // The pill adds nothing on the value itself: a trackpad's stream of wheel events steps it as
   // far there as on the icon, not twice as far.
   test("a wheel stream steps the value as far on it as on the icon", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     const stream = (target: Element) => {
       for (let event = 0; event < 6; event++) {
         target.dispatchEvent(
@@ -173,7 +184,7 @@ describe("a value's pill", () => {
   // While a value is being typed, a press on its pill ends the typing as one on the value does,
   // and drags nothing: what was typed is what is asked for.
   test("a press on the pill while typing keeps what was typed", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await userEvent.dblClick(fieldOf("scale-field"));
     const input = fieldOf("scale-field").querySelector("input");
     expect(input).not.toBeNull();
@@ -191,22 +202,32 @@ describe("a value's pill", () => {
     ).toEqual([-12]);
   });
 
-  // The time pill holds the span and the beat span, one shown at a time: only the one shown
-  // answers.
-  test("in Seconds, the time pill steps the span and not the beat span", async () => {
-    await showTimeBase("Sec", "span-field");
-    const from = app.sent.length;
-    iconOf("span-field").dispatchEvent(
-      new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        deltaY: -1,
-        deltaMode: WheelEvent.DOM_DELTA_LINE,
-      }),
-    );
-    expect(asked("timeSpan", from)).toHaveLength(1);
-    expect(asked("beatSpan", from)).toHaveLength(0);
-  });
+  // The time pill holds Trig's span, Free's span and the beat span, one shown at a time, by the
+  // time base: only the one shown answers.
+  test.each([
+    ["Trig", "span-field", "triggerSpan"],
+    ["Free", "free-span-field", "freeSpan"],
+  ] as const)(
+    "in %s, the time pill steps its own span only",
+    async (timeBase, host, setting) => {
+      await showTimeBase(timeBase, host);
+      const from = app.sent.length;
+      iconOf(host).dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          deltaY: -1,
+          deltaMode: WheelEvent.DOM_DELTA_LINE,
+        }),
+      );
+      expect(asked(setting, from)).toHaveLength(1);
+      for (const other of ["triggerSpan", "freeSpan", "beatSpan"] as const) {
+        if (other !== setting) {
+          expect(asked(other, from)).toHaveLength(0);
+        }
+      }
+    },
+  );
 
   // A number field added to a pill is tested above too.
   test("covers every number field in a pill", () => {

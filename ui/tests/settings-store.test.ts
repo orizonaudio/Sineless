@@ -19,7 +19,7 @@ describe("settings store", () => {
     const store = new SettingsStore();
     expect(store.connected).toBe(false);
     expect(store.get("triggerMode")).toBe("auto");
-    expect(store.number("timeSpan")).toBe(1);
+    expect(store.number("triggerSpan")).toBe(1);
   });
 
   test("takes every value from the snapshot", () => {
@@ -35,10 +35,10 @@ describe("settings store", () => {
     const unsubscribe = store.subscribe((name, value) =>
       changes.push(`${name}=${String(value)}`),
     );
-    store.applyState("timeSpan", 0.5);
+    store.applyState("triggerSpan", 0.5);
     unsubscribe();
-    store.applyState("timeSpan", 1);
-    expect(changes).toEqual(["timeSpan=0.5"]);
-    expect(store.number("timeSpan")).toBe(1);
+    store.applyState("triggerSpan", 1);
+    expect(changes).toEqual(["triggerSpan=0.5"]);
+    expect(store.number("triggerSpan")).toBe(1);
   });
 });

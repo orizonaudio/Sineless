@@ -74,7 +74,7 @@ describe("a track sending samples that are not finite", () => {
   // lists them, and nothing runs outside the area, so the readouts beside it never move.
   test("folds the states that don't fit into one chip that lists them", async () => {
     await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await typeInto("span-field", "100 ms");
     if (byId("freeze").getAttribute("aria-pressed") !== "true") {
       await userEvent.click(byId("freeze"));

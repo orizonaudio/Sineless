@@ -8,7 +8,7 @@
 namespace orizon::engine {
 
 // Saved plugin state: {"version": n, "settings": {...}}.
-inline constexpr int kStateVersion = 2;
+inline constexpr int kStateVersion = 3;
 
 [[nodiscard]] std::string serializeState(const Settings& settings);
 

@@ -1,4 +1,5 @@
-// Enumerations shared by the engine and the UI. Values are stable: they are saved in projects.
+// Enumerations shared by the engine and the UI. Names are stable: projects save them; the numbers
+// may change.
 
 export const ChannelView = { left: 0, right: 1, mid: 2, side: 3 } as const;
 export type ChannelView = (typeof ChannelView)[keyof typeof ChannelView];
@@ -6,13 +7,15 @@ export type ChannelView = (typeof ChannelView)[keyof typeof ChannelView];
 export const ViewLayout = { overlaid: 0, stacked: 1 } as const;
 export type ViewLayout = (typeof ViewLayout)[keyof typeof ViewLayout];
 
-export const TriggerMode = { auto: 0, normal: 1, free: 2, single: 3 } as const;
+export const TriggerMode = { auto: 0, normal: 1, single: 2 } as const;
 export type TriggerMode = (typeof TriggerMode)[keyof typeof TriggerMode];
 
 export const TriggerSlope = { rising: 0, falling: 1 } as const;
 export type TriggerSlope = (typeof TriggerSlope)[keyof typeof TriggerSlope];
 
-export const TimeBase = { seconds: 0, beats: 1 } as const;
+// Trigger: a fixed span placed by the trigger. Beats: a sweep in time with the host. Free: a fixed
+// span ending at the newest audio, moving with it.
+export const TimeBase = { trigger: 0, beats: 1, free: 2 } as const;
 export type TimeBase = (typeof TimeBase)[keyof typeof TimeBase];
 
 // Tempo-synced spans: fractions of a beat (a quarter note), then bars.

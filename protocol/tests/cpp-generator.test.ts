@@ -8,7 +8,7 @@ describe("C++ generator", () => {
 
   test("emits enums with kPascalCase enumerators and stable values", () => {
     expect(header).toContain("enum class TriggerMode : std::uint8_t");
-    expect(header).toContain("    kSingle = 3,");
+    expect(header).toContain("    kSingle = 2,");
     expect(header).toContain(
       "inline constexpr std::size_t kChannelViewCount = 4;",
     );
@@ -16,19 +16,19 @@ describe("C++ generator", () => {
 
   test("emits one descriptor per setting with its range and default", () => {
     expect(header).toContain(
-      '{SettingId::kTimeSpan, "timeSpan", SettingKind::kNumber, 0.0005, 4, 1, true, {}},',
+      '{SettingId::kTriggerSpan, "triggerSpan", SettingKind::kNumber, 0.0005, 1, 1, true, {}},',
     );
     expect(header).toContain(
       '{SettingId::kChannelViews, "channelViews", SettingKind::kFlags, 1, 15, 3, false, kChannelViewNames},',
     );
     expect(header).toContain(
-      '{SettingId::kTriggerMode, "triggerMode", SettingKind::kEnum, 0, 3, 0, false, kTriggerModeNames},',
+      '{SettingId::kTriggerMode, "triggerMode", SettingKind::kEnum, 0, 2, 0, false, kTriggerModeNames},',
     );
   });
 
   test("emits enum value names in value order", () => {
     expect(header).toContain(
-      'kTriggerModeNames = {\n    "auto",\n    "normal",\n    "free",\n    "single",\n};',
+      'kTriggerModeNames = {\n    "auto",\n    "normal",\n    "single",\n};',
     );
   });
 

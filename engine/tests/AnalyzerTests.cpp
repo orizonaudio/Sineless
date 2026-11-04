@@ -21,16 +21,47 @@ using protocol::SettingId;
 
 constexpr double kSampleRate = 48000.0;
 
+// The time base that shows a span of `seconds` as the Seconds time base did before Free was one:
+// Trigger up to its longest span, Free above.
+protocol::TimeBase timeBaseFor(double seconds)
+{
+    return seconds > protocol::kLongestTriggerSpanSeconds ? protocol::TimeBase::kFree
+                                                          : protocol::TimeBase::kTrigger;
+}
+
+// Sets the span of the time base that shows `seconds` (timeBaseFor), leaving the time base as is.
+void setSpan(Engine& engine, double seconds)
+{
+    engine.settings().set(timeBaseFor(seconds) == protocol::TimeBase::kFree
+                              ? SettingId::kFreeSpan
+                              : SettingId::kTriggerSpan,
+                          seconds);
+}
+
+// Shows `seconds` in the time base that holds it, at that span.
+void showSpan(Engine& engine, double seconds)
+{
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(timeBaseFor(seconds)));
+    setSpan(engine, seconds);
+}
+
+// The Free time base at `seconds`.
+void runFree(Engine& engine, double seconds)
+{
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kFree));
+    engine.settings().set(SettingId::kFreeSpan, seconds);
+}
+
 class AnalyzerTest : public ::testing::Test
 {
 protected:
     void SetUp() override
     {
         engine.prepare(kSampleRate);
-        // These tests use the seconds time base at a 20 ms span unless they set another.
+        // These tests use the Trigger time base at a 20 ms span unless they set another.
         engine.settings().set(SettingId::kTimeBase,
-                              static_cast<double>(protocol::TimeBase::kSeconds));
-        engine.settings().set(SettingId::kTimeSpan, 0.02);
+                              static_cast<double>(protocol::TimeBase::kTrigger));
+        engine.settings().set(SettingId::kTriggerSpan, 0.02);
     }
 
     // Appends a tone on L and the same tone at half amplitude on R.
@@ -96,7 +127,7 @@ protected:
 // Views keep their columns from frame to frame; what they show must equal a fresh reduction.
 TEST_F(AnalyzerTest, KeepsRollColumnsInStepWithAFreshReduction)
 {
-    engine.settings().set(SettingId::kTimeSpan, 2.0);        // Rolls.
+    showSpan(engine, 2.0);                                   // Rolls.
     engine.settings().set(SettingId::kChannelViews, 0b0101); // L and M.
     analyzer.setColumns(400);
     writeTone(220.0, 2.5, 0.5);
@@ -321,7 +352,7 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingToSecondsBeforeATempo)
             fresh.prepare(kSampleRate);
             fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
             fresh.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
-            fresh.settings().set(SettingId::kTimeSpan, 0.02);
+            setSpan(fresh, 0.02);
             Analyzer view(fresh);
             view.setColumns(300);
             std::vector<std::byte> bytes;
@@ -331,7 +362,7 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingToSecondsBeforeATempo)
             std::array<const float*, 2> channels{silence.data(), silence.data()};
             fresh.captureRing().write(channels.data(), 2, static_cast<int>(silence.size()));
             fresh.settings().set(SettingId::kTimeBase,
-                                 static_cast<double>(protocol::TimeBase::kSeconds));
+                                 static_cast<double>(protocol::TimeBase::kTrigger));
             ASSERT_TRUE(view.produce(bytes)) << "the switch shows at once";
             const DecodedFrame frame = decode(bytes);
             EXPECT_FALSE(frame.has(FrameFlag::kSynced));
@@ -354,11 +385,11 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingFromBeatsToSeconds)
             fresh.prepare(kSampleRate);
             fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
             fresh.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
-            fresh.settings().set(SettingId::kTimeSpan, 0.02);
+            setSpan(fresh, 0.02);
             Analyzer view(fresh);
             playBeatsThenSilence(fresh, view);
             fresh.settings().set(SettingId::kTimeBase,
-                                 static_cast<double>(protocol::TimeBase::kSeconds));
+                                 static_cast<double>(protocol::TimeBase::kTrigger));
             std::vector<std::byte> bytes;
             ASSERT_TRUE(view.produce(bytes)) << "the switch shows at once";
             const DecodedFrame frame = decode(bytes);
@@ -397,14 +428,13 @@ TEST_F(AnalyzerTest, OpensOnTheNewestHeldAudioWhenFrozenInBeatsThenSeconds)
         fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
         fresh.settings().set(SettingId::kTriggerMode,
                              static_cast<double>(protocol::TriggerMode::kNormal));
-        fresh.settings().set(SettingId::kTimeSpan, span);
+        setSpan(fresh, span);
         Analyzer view(fresh);
         playBeatsThenSilence(fresh, view, 3.0); // Longer than the rolling span.
         view.setFrozen(true);
         std::vector<std::byte> bytes;
         ASSERT_TRUE(view.produce(bytes));
-        fresh.settings().set(SettingId::kTimeBase,
-                             static_cast<double>(protocol::TimeBase::kSeconds));
+        fresh.settings().set(SettingId::kTimeBase, static_cast<double>(timeBaseFor(span)));
         ASSERT_TRUE(view.produce(bytes));
         const DecodedFrame frame = decode(bytes);
         EXPECT_TRUE(frame.has(FrameFlag::kFrozen));
@@ -418,7 +448,7 @@ TEST_F(AnalyzerTest, OpensOnTheNewestHeldAudioWhenFrozenInBeatsThenSeconds)
 // Plays a 330 Hz tone of `amplitude` for `seconds` in Seconds mode, with a frame at the end.
 void playSecondsTone(Engine& engine, Analyzer& analyzer, double seconds, double amplitude)
 {
-    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kTrigger));
     std::vector<float> tone(static_cast<std::size_t>(seconds * kSampleRate));
     const std::uint64_t start = engine.captureRing().writeIndex();
     for (std::size_t i = 0; i < tone.size(); ++i) {
@@ -468,7 +498,7 @@ TEST_F(AnalyzerTest, KeepsTheFrozenSecondsViewAcrossATripToBeats)
         fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
         fresh.settings().set(SettingId::kTriggerMode,
                              static_cast<double>(protocol::TriggerMode::kNormal));
-        fresh.settings().set(SettingId::kTimeSpan, 0.02);
+        setSpan(fresh, 0.02);
         Analyzer view(fresh);
         view.setColumns(300);
         playSecondsTone(fresh, view, 1.5, 0.25);
@@ -481,7 +511,7 @@ TEST_F(AnalyzerTest, KeepsTheFrozenSecondsViewAcrossATripToBeats)
         fresh.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
         ASSERT_TRUE(view.produce(bytes));
         fresh.settings().set(SettingId::kTimeBase,
-                             static_cast<double>(protocol::TimeBase::kSeconds));
+                             static_cast<double>(protocol::TimeBase::kTrigger));
         ASSERT_TRUE(view.produce(bytes));
         const DecodedFrame back = decode(bytes);
         EXPECT_TRUE(back.has(FrameFlag::kTriggered)) << "still on its trigger point";
@@ -501,7 +531,7 @@ TEST_F(AnalyzerTest, ForgetsTheSecondsWindowShownBeforeASpellInBeats)
         fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
         fresh.settings().set(SettingId::kTriggerMode,
                              static_cast<double>(protocol::TriggerMode::kNormal));
-        fresh.settings().set(SettingId::kTimeSpan, 0.02);
+        setSpan(fresh, 0.02);
         Analyzer view(fresh);
         view.setColumns(300);
         playSecondsTone(fresh, view, 0.5, 0.25); // A Seconds window of a tone.
@@ -510,7 +540,7 @@ TEST_F(AnalyzerTest, ForgetsTheSecondsWindowShownBeforeASpellInBeats)
         std::vector<std::byte> bytes;
         ASSERT_TRUE(view.produce(bytes));
         fresh.settings().set(SettingId::kTimeBase,
-                             static_cast<double>(protocol::TimeBase::kSeconds));
+                             static_cast<double>(protocol::TimeBase::kTrigger));
         ASSERT_TRUE(view.produce(bytes));
         EXPECT_EQ(decode(bytes).peak, 0.0f) << "the silence before the freeze";
     }
@@ -548,7 +578,7 @@ TEST_F(AnalyzerTest, AlignsTheTriggerAtTenPercentWithSubSampleAccuracy)
 {
     writeTone(440.0, 0.5, 0.5);
     engine.settings().set(SettingId::kChannelViews, 0b0001);
-    engine.settings().set(SettingId::kTimeSpan, 0.0005); // 24 samples: raw points.
+    showSpan(engine, 0.0005); // 24 samples: raw points.
     analyzer.setColumns(400);
     const auto frame = produce();
     ASSERT_TRUE(frame);
@@ -568,7 +598,7 @@ TEST_F(AnalyzerTest, AlignsTheTriggerAtTenPercentWithSubSampleAccuracy)
 TEST_F(AnalyzerTest, HoldsUntilDataOrSettingsChange)
 {
     writeTone(440.0, 0.5, 0.5);
-    engine.settings().set(SettingId::kTriggerMode, 1.0); // Normal.
+    setTriggerMode(protocol::TriggerMode::kNormal);
     analyzer.setColumns(400);
     ASSERT_TRUE(produce());
     EXPECT_FALSE(produce()) << "no new trigger and nothing changed";
@@ -582,7 +612,7 @@ TEST_F(AnalyzerTest, HoldsUntilDataOrSettingsChange)
 TEST_F(AnalyzerTest, RollsSpansAboveOneSecond)
 {
     writeTone(5.0, 3.0, 0.5);
-    engine.settings().set(SettingId::kTimeSpan, 2.0);
+    showSpan(engine, 2.0);
     analyzer.setColumns(500);
     const auto frame = produce();
     ASSERT_TRUE(frame);
@@ -594,7 +624,7 @@ TEST_F(AnalyzerTest, RollsSpansAboveOneSecond)
 // nothing to draw yet, which must not be taken for a window to crop.
 TEST_F(AnalyzerTest, RollsFromNothingBeforeAColumnOfAudioArrives)
 {
-    engine.settings().set(SettingId::kTimeSpan, 2.0);
+    showSpan(engine, 2.0);
     analyzer.setColumns(500); // 192 samples a column at 48 kHz.
     writeSilence(100.0 / kSampleRate);
     if (const auto frame = produce()) {
@@ -607,17 +637,17 @@ TEST_F(AnalyzerTest, RollsFromNothingBeforeAColumnOfAudioArrives)
     EXPECT_GT(rolling->pointCount, 0U);
 }
 
-// Free and spans above the threshold are one free-running window. Its columns sit on a grid fixed
-// to sample indices: a frame later, the same columns are shown shifted, whatever the span and the
-// column count (here neither divides the other), so peaks do not regroup and flicker. At 1 s in
-// Free, and at 1.3 s in Normal.
+// A free-running window's columns sit on a grid fixed to sample indices: a frame later, the same
+// columns are shown shifted, whatever the span and the column count (here neither divides the
+// other), so peaks do not regroup and flicker. At 1 s with Auto left on, and at 1.3 s with Normal:
+// the trigger mode does not apply in Free.
 TEST_F(AnalyzerTest, FreeRunningFramesShowTheSameColumnsShifted)
 {
-    for (const auto [span, mode] : {std::pair{1.0, protocol::TriggerMode::kFree},
+    for (const auto [span, mode] : {std::pair{1.0, protocol::TriggerMode::kAuto},
                                     std::pair{1.3, protocol::TriggerMode::kNormal}}) {
         SCOPED_TRACE(span);
         setTriggerMode(mode);
-        engine.settings().set(SettingId::kTimeSpan, span);
+        runFree(engine, span);
         engine.settings().set(SettingId::kChannelViews, 0b0001);
         analyzer.setColumns(1234);
         std::uint64_t state = 12345;
@@ -658,10 +688,10 @@ TEST_F(AnalyzerTest, FreeRunningFramesShowTheSameColumnsShifted)
     }
 }
 
-// Switched from a free-running window to a triggered mode that holds the last trace until a
-// trigger, the newest span is shown, untriggered, rather than the free-running frame staying on
-// screen with its labels and chip, or a span from where the free-running window started, 2 s
-// before. Every trigger mode; only Free still runs free.
+// Switched from the Free time base to Trigger in a mode that holds the last trace until a trigger,
+// the newest span is shown, untriggered, rather than the free-running frame staying on screen with
+// its labels and chip, or a span from where the free-running window started, 2 s before. Every
+// trigger mode.
 TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
 {
     for (std::size_t index = 0; index < protocol::kTriggerModeCount; ++index) {
@@ -670,7 +700,7 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
         Analyzer fresh(engine);
         fresh.setColumns(500);
         setTriggerMode(mode);
-        engine.settings().set(SettingId::kTimeSpan, 2.0);
+        runFree(engine, 2.0);
         // A falling ramp, so no rising edge to trigger on, and each sample says which it is.
         const auto count = static_cast<std::size_t>(2.5 * kSampleRate);
         std::vector<float> ramp(count);
@@ -684,10 +714,10 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
         std::vector<std::byte> bytes;
         ASSERT_TRUE(fresh.produce(bytes));
         ASSERT_TRUE(decode(bytes).has(FrameFlag::kFreeRunning));
-        engine.settings().set(SettingId::kTimeSpan, 0.02);
-        ASSERT_TRUE(fresh.produce(bytes)) << "the span changed: a frame of the new span";
+        showSpan(engine, 0.02);
+        ASSERT_TRUE(fresh.produce(bytes)) << "Trigger: a frame of its span";
         const DecodedFrame frame = decode(bytes);
-        EXPECT_EQ(frame.has(FrameFlag::kFreeRunning), mode == protocol::TriggerMode::kFree);
+        EXPECT_FALSE(frame.has(FrameFlag::kFreeRunning));
         EXPECT_FALSE(frame.has(FrameFlag::kTriggered));
         EXPECT_NEAR(frame.spanSeconds, 0.02, 1e-6);
         ASSERT_FALSE(frame.data.empty());
@@ -701,7 +731,7 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
 // in view.
 TEST_F(AnalyzerTest, ReadsOnlyTheViewOfAZoomedFreeRunningWindow)
 {
-    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    showSpan(engine, 4.0);
     engine.settings().set(SettingId::kChannelViews, 0b0001);
     analyzer.setColumns(2500);
     const double viewStart = 0.5;
@@ -735,7 +765,7 @@ TEST_F(AnalyzerTest, ReadsOnlyTheViewOfAZoomedFreeRunningWindow)
 // its column grid, so the two agree to within a column (48 samples).
 TEST_F(AnalyzerTest, FreezesAZoomedFreeRunningWindowWhereItWas)
 {
-    engine.settings().set(SettingId::kTimeSpan, 2.0);
+    showSpan(engine, 2.0);
     engine.settings().set(SettingId::kChannelViews, 0b0001);
     analyzer.setColumns(500);
     writeRamp(200'000);
@@ -762,7 +792,7 @@ TEST_F(AnalyzerTest, ShowsWhatTheCaptureKeepsOfASpanLongerThanIt)
 {
     engine.prepare(192000.0);
     engine.setSampleRate(384000.0);
-    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    showSpan(engine, 4.0);
     analyzer.setColumns(500);
     writeTone(5.0, 30.0, 0.5); // More than the capture holds.
     const auto live = produce();
@@ -782,7 +812,7 @@ TEST_F(AnalyzerTest, ShowsWhatTheCaptureKeepsOfASpanLongerThanIt)
 // held, limited, rather than no frame.
 TEST_F(AnalyzerTest, ShowsWhatAFreezeHoldsOfALongerSpan)
 {
-    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    showSpan(engine, 4.0);
     analyzer.setColumns(500);
     writeTone(5.0, 1.0, 0.5);
     ASSERT_TRUE(produce());
@@ -798,7 +828,7 @@ TEST_F(AnalyzerTest, ShowsWhatAFreezeHoldsOfALongerSpan)
 TEST_F(AnalyzerTest, KeepsAFreezeWholeWhenTheHostLowersTheRate)
 {
     engine.prepare(384000.0);
-    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    showSpan(engine, 4.0);
     analyzer.setColumns(500);
     writeTone(5.0, 40.0, 0.5); // 1.92 M samples: more than the span.
     ASSERT_TRUE(produce());
@@ -825,9 +855,7 @@ TEST_F(AnalyzerTest, DoesNotLimitAWholeFreezeAtARateThatIsNotAWholeNumber)
         SCOPED_TRACE(rate);
         Engine pulled;
         pulled.prepare(rate);
-        pulled.settings().set(SettingId::kTimeBase,
-                              static_cast<double>(protocol::TimeBase::kSeconds));
-        pulled.settings().set(SettingId::kTimeSpan, 4.0);
+        runFree(pulled, 4.0);
         std::vector<float> tone(static_cast<std::size_t>(5.0 * rate), 0.25f);
         std::array<const float*, 2> channels{tone.data(), tone.data()};
         pulled.captureRing().write(channels.data(), 2, static_cast<int>(tone.size()));
@@ -846,7 +874,7 @@ TEST_F(AnalyzerTest, DoesNotLimitAWholeFreezeAtARateThatIsNotAWholeNumber)
 // A span the capture keeps is not limited.
 TEST_F(AnalyzerTest, DoesNotLimitASpanTheCaptureKeeps)
 {
-    engine.settings().set(SettingId::kTimeSpan, 4.0);
+    showSpan(engine, 4.0);
     analyzer.setColumns(500);
     writeTone(5.0, 5.0, 0.5);
     const auto frame = produce();
@@ -866,7 +894,7 @@ TEST_F(AnalyzerTest, FreezeKeepsShowingHeldDataWhileViewsStillChange)
 
     writeSilence(0.5); // Live signal goes silent; the frozen view must not.
     EXPECT_FALSE(produce()) << "nothing changed while frozen";
-    engine.settings().set(SettingId::kTimeSpan, 0.05);
+    showSpan(engine, 0.05);
     const auto rescaled = produce();
     ASSERT_TRUE(rescaled);
     EXPECT_TRUE(rescaled->has(FrameFlag::kFrozen));
@@ -885,7 +913,7 @@ TEST_F(AnalyzerTest, PanMovesTheFrozenViewBackInTime)
 {
     writeTone(440.0, 0.25, 0.5);
     writeSilence(0.25);
-    engine.settings().set(SettingId::kTriggerMode, 2.0); // Free: the newest span (silence).
+    // Frozen before any live frame: the newest span (silence).
     analyzer.setColumns(400);
     analyzer.setFrozen(true);
     const auto frozen = produce();
@@ -905,7 +933,6 @@ constexpr double kSpanSamples = 960.0;
 // A pan of 0.1 s moves the frozen view back by 0.1 s of audio, not by some other amount.
 TEST_F(AnalyzerTest, PanMovesTheFrozenViewBackByTheTimeAsked)
 {
-    setTriggerMode(protocol::TriggerMode::kFree);
     analyzer.setColumns(kRawColumns);
     writeRamp(48000);
     analyzer.setFrozen(true);
@@ -921,7 +948,6 @@ TEST_F(AnalyzerTest, PanMovesTheFrozenViewBackByTheTimeAsked)
 // drop the pan itself: the next freeze opens on the newest audio, not 0.1 s before it.
 TEST_F(AnalyzerTest, RefreezingAfterAPanShowsTheNewestAudio)
 {
-    setTriggerMode(protocol::TriggerMode::kFree);
     analyzer.setColumns(kRawColumns);
     writeRamp(48000);
     analyzer.setFrozen(true);
@@ -942,7 +968,6 @@ TEST_F(AnalyzerTest, RefreezingAfterAPanShowsTheNewestAudio)
 // oldest: the reach is the held audio before the view, so the UI can pan to its first sample.
 TEST_F(AnalyzerTest, PansBackToTheOldestAudioHeld)
 {
-    setTriggerMode(protocol::TriggerMode::kFree);
     analyzer.setColumns(kRawColumns);
     writeRamp(240000); // 5 s: more than the 4 s a freeze holds.
     analyzer.setFrozen(true);
@@ -1062,7 +1087,7 @@ TEST_F(AnalyzerTest, SingleCaptureHoldsEnoughToPanBack)
 TEST_F(AnalyzerTest, SingleFreezesOnItsTriggerUntilRearmed)
 {
     writeTone(440.0, 0.5, 0.5);
-    engine.settings().set(SettingId::kTriggerMode, 3.0); // Single.
+    setTriggerMode(protocol::TriggerMode::kSingle);
     analyzer.setColumns(400);
     const auto captured = produce();
     ASSERT_TRUE(captured);
@@ -1100,7 +1125,7 @@ protected:
     void SetUp() override
     {
         AnalyzerTest::SetUp();
-        engine.settings().set(SettingId::kTriggerMode, 2.0); // Free: the newest span.
+        // Auto on a ramp, which never crosses the level: the newest span.
         engine.settings().set(SettingId::kChannelViews, 0b0001);
     }
 };
@@ -1125,7 +1150,7 @@ TEST_F(ZoomTest, RendersOnlyTheVisiblePartAsRawSamples)
 TEST_F(ZoomTest, ReducesTheVisiblePartAtFullResolution)
 {
     writeRamp(48000);
-    engine.settings().set(SettingId::kTimeSpan, 0.1); // 4800 samples over 400 columns: 12 each.
+    runFree(engine, 0.1); // 4800 samples over 400 columns: 12 each.
     analyzer.setColumns(400);
     analyzer.setView(0.0, 0.1); // 480 visible samples: 1.2 per column.
     const auto frame = produce();
@@ -1155,10 +1180,10 @@ TEST_F(ZoomTest, KeepsReadoutsOverTheWholeSpan)
 TEST_F(ZoomTest, RedrawsWhenOnlyTheViewChanges)
 {
     writeRamp(48000);
-    engine.settings().set(SettingId::kTriggerMode, 1.0); // Normal: holds without new edges.
+    setTriggerMode(protocol::TriggerMode::kNormal); // Holds without new edges.
     analyzer.setColumns(8000);
     EXPECT_FALSE(produce()) << "a ramp never crosses the trigger level";
-    engine.settings().set(SettingId::kTriggerMode, 2.0);
+    setTriggerMode(protocol::TriggerMode::kAuto);
     ASSERT_TRUE(produce());
     analyzer.setView(0.5, 1.0);
     const auto frame = produce();
@@ -1169,7 +1194,7 @@ TEST_F(ZoomTest, RedrawsWhenOnlyTheViewChanges)
 TEST_F(ZoomTest, KeepsRollColumnsOnFixedBoundaries)
 {
     writeRamp(200000);
-    engine.settings().set(SettingId::kTimeSpan, 2.0); // 96000 samples.
+    showSpan(engine, 2.0); // 96000 samples.
     analyzer.setColumns(500);
     analyzer.setView(0.5, 1.0); // The newest 48000 samples: 96 per column.
     const auto frame = produce();
@@ -1677,11 +1702,9 @@ TEST_F(MultiTrackTest, KeepsFreeRunningLanesInStepWithAFreshReduction)
     for (const auto mode : {protocol::DisplayMode::kMulti, protocol::DisplayMode::kCompare}) {
         SCOPED_TRACE(protocol::kDisplayModeNames.at(static_cast<std::size_t>(mode)));
         own->settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
-        own->settings().set(SettingId::kTimeBase,
-                            static_cast<double>(protocol::TimeBase::kSeconds));
-        own->settings().set(SettingId::kTimeSpan, 2.0);
+        runFree(*own, 2.0);
         own->settings().set(SettingId::kTriggerMode,
-                            static_cast<double>(protocol::TriggerMode::kNormal));
+                            static_cast<double>(protocol::TriggerMode::kNormal)); // Not applied.
         tracks.front().second = [](std::uint64_t sample) {
             return std::sin(static_cast<float>(sample) * 0.013f);
         };
@@ -1951,11 +1974,7 @@ protected:
     void SetUp() override
     {
         MultiTrackTest::SetUp();
-        own->settings().set(SettingId::kTimeBase,
-                            static_cast<double>(protocol::TimeBase::kSeconds));
-        own->settings().set(SettingId::kTimeSpan, 0.1); // 4800 samples.
-        own->settings().set(SettingId::kTriggerMode,
-                            static_cast<double>(protocol::TriggerMode::kFree));
+        runFree(*own, 0.1);               // 4800 samples.
         tracks.front().second = hostTime; // Every track records the host time.
     }
 };
@@ -2343,9 +2362,7 @@ TEST_F(CompareTest, PreviewsTheFixForALateTrack)
 // in: each failed search is tried again later, not on every step, so a still view goes idle.
 TEST_F(CompareTest, GoesIdleWhenFrozenTracksHoldTooLittleToMatch)
 {
-    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
-    own->settings().set(SettingId::kTimeSpan, 0.1);
-    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    runFree(*own, 0.1);
     play(9600);
     joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
@@ -2448,9 +2465,7 @@ TEST_F(CompareTest, LeavesALaneForTheSum)
 // fix.
 TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
 {
-    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
-    own->settings().set(SettingId::kTimeSpan, 2.0); // 96000 samples: 320 per column.
-    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    runFree(*own, 2.0); // 96000 samples: 320 per column.
     joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
     const auto other = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     analyzer->setColumns(300);
@@ -2494,11 +2509,10 @@ TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
 TEST_F(CompareTest, MeasuresALateTrackAlikeInBothTimeBases)
 {
     joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
-    own->settings().set(SettingId::kTimeSpan, 0.1);
-    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
-    for (const auto timeBase : {protocol::TimeBase::kBeats, protocol::TimeBase::kSeconds}) {
+    own->settings().set(SettingId::kFreeSpan, 0.1);
+    for (const auto timeBase : {protocol::TimeBase::kBeats, protocol::TimeBase::kFree}) {
         for (const bool frozen : {false, true}) {
-            SCOPED_TRACE(std::string(timeBase == protocol::TimeBase::kBeats ? "Beats" : "Seconds") +
+            SCOPED_TRACE(std::string(timeBase == protocol::TimeBase::kBeats ? "Beats" : "Free") +
                          (frozen ? ", frozen" : ", live"));
             analyzer->setFrozen(false);
             own->settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
@@ -2525,11 +2539,10 @@ TEST_F(CompareTest, SendsNoMatchForThisTrackAndTracksNotCompared)
 {
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); }); // Compared.
     joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });  // Not compared.
-    own->settings().set(SettingId::kTimeSpan, 0.1);
-    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
-    for (const auto timeBase : {protocol::TimeBase::kBeats, protocol::TimeBase::kSeconds}) {
+    own->settings().set(SettingId::kFreeSpan, 0.1);
+    for (const auto timeBase : {protocol::TimeBase::kBeats, protocol::TimeBase::kFree}) {
         for (const bool frozen : {false, true}) {
-            SCOPED_TRACE(std::string(timeBase == protocol::TimeBase::kBeats ? "Beats" : "Seconds") +
+            SCOPED_TRACE(std::string(timeBase == protocol::TimeBase::kBeats ? "Beats" : "Free") +
                          (frozen ? ", frozen" : ", live"));
             analyzer->setFrozen(false);
             own->settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
@@ -2553,9 +2566,7 @@ TEST_F(CompareTest, SendsNoMatchForThisTrackAndTracksNotCompared)
 
 TEST_F(CompareTest, ComparesInSecondsModeToo)
 {
-    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
-    own->settings().set(SettingId::kTimeSpan, 0.1);
-    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    runFree(*own, 0.1);
     play(3360);
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); }); // Starts later.
     play(9600);
@@ -2571,9 +2582,7 @@ TEST_F(CompareTest, ComparesInSecondsModeToo)
 // soon after its capture holds the view rather than at the next refresh, half a second later.
 TEST_F(CompareTest, MeasuresATrackThatJoinsSoonAfterItsAudioArrives)
 {
-    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
-    own->settings().set(SettingId::kTimeSpan, 0.1);
-    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    runFree(*own, 0.1);
     play(9600);
     produce();
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
@@ -2593,11 +2602,9 @@ TEST_F(CompareTest, MeasuresATrackThatJoinsSoonAfterItsAudioArrives)
 
 TEST_F(CompareTest, MeasuresTheFixOnRealSamplesInSecondsMode)
 {
-    // A copy 5 ms late in a 20 ms view: fixed, it sums as identical signals do (+3 dB). At the
+    // A copy 5 ms late in a 100 ms view: fixed, it sums as identical signals do (+3 dB). At the
     // right edge its shift reaches past the newest audio; summed with that silence it read 2.7 dB.
-    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
-    own->settings().set(SettingId::kTimeSpan, 0.02);
-    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    runFree(*own, 0.1);
     joinWith([](std::uint64_t sample) { return sample < 240 ? 0.0f : noiseAt(sample - 240, 1); });
     analyzer->setPreviewFix(true);
     play(9600);
@@ -2711,9 +2718,7 @@ TEST_F(CompareTest, MeasuresAShiftedTrackAgainWhenItsShiftChanges)
 
 TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
 {
-    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
-    own->settings().set(SettingId::kTimeSpan, 0.1);
-    own->settings().set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kFree));
+    runFree(*own, 0.1);
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     play(9600);
     analyzer->setFrozen(true);

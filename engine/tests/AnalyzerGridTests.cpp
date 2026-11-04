@@ -162,9 +162,8 @@ void configure(Engine& engine, DisplayMode mode, TimeBase timeBase)
     engine.settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
-    engine.settings().set(SettingId::kTimeSpan, 0.05);
-    engine.settings().set(SettingId::kTriggerMode,
-                          static_cast<double>(protocol::TriggerMode::kFree));
+    engine.settings().set(SettingId::kTriggerSpan, 0.05);
+    engine.settings().set(SettingId::kFreeSpan, protocol::kShortestFreeSpanSeconds);
     engine.settings().set(SettingId::kChannelViews, 0b0011); // L and R asked for.
 }
 
@@ -366,7 +365,7 @@ TEST(AnalyzerLimits, DrawsShortSweepsWholeThroughATempoRamp)
 TEST(AnalyzerLimits, AcceptsAViewAtTheZoomLimit)
 {
     Tracks tracks(2);
-    configure(tracks.own(), DisplayMode::kSingle, TimeBase::kSeconds);
+    configure(tracks.own(), DisplayMode::kSingle, TimeBase::kFree);
     Analyzer analyzer(tracks.own(), tracks.registry);
     analyzer.setColumns(400);
     tracks.play(9600);
@@ -383,8 +382,8 @@ TEST(AnalyzerLimits, AcceptsAViewAtTheZoomLimit)
 TEST(AnalyzerLimits, PansFrozenLanesToTheReportedReach)
 {
     Tracks tracks(2);
-    configure(tracks.own(), DisplayMode::kMulti, TimeBase::kSeconds);
-    tracks.own().settings().set(SettingId::kTimeSpan, 2.0); // Two seconds to pan back through.
+    configure(tracks.own(), DisplayMode::kMulti, TimeBase::kFree);
+    tracks.own().settings().set(SettingId::kFreeSpan, 2.0); // Two seconds to pan back through.
     Analyzer analyzer(tracks.own(), tracks.registry);
     analyzer.setColumns(400);
     for (int step = 0; step < 700; ++step) { // Seven seconds.

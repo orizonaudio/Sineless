@@ -234,13 +234,20 @@ export function choice(groupId: string, label: string): HTMLButtonElement {
 
 // Clicks a control, first opening the toolbar popover it sits in (Group, Views, Trigger) if that
 // is closed, as a user would.
+// The span pill each time base's button shows.
+export const spanFieldOf: Readonly<Record<string, string>> = {
+  Beats: "beat-span-field",
+  Free: "free-span-field",
+  Trig: "span-field",
+};
+
 // Switches the time base and waits until the page shows it: until then the controls of that time
-// base (its span pill, Seconds' trigger source) may still be hidden, and a hidden control takes
+// base (its span pill, Trig's trigger source) may still be hidden, and a hidden control takes
 // no press.
 export async function inTimeBase(timeBase: string): Promise<void> {
   await userEvent.click(choice("time-base", timeBase));
   await expect
-    .element(byId(timeBase === "Beats" ? "beat-span-field" : "span-field"))
+    .element(byId(spanFieldOf[timeBase] ?? "span-field"))
     .toBeVisible();
 }
 

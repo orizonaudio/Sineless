@@ -25,49 +25,55 @@ struct State
 inline std::vector<State> states()
 {
     using protocol::SettingId;
+    constexpr auto kTrigger = static_cast<double>(protocol::TimeBase::kTrigger);
+    constexpr auto kFree = static_cast<double>(protocol::TimeBase::kFree);
+    constexpr auto kSingleMode = static_cast<double>(protocol::TriggerMode::kSingle);
     return {
         {.name = "defaults", .settings = {}, .script = ""},
         {.name = "Multi, group D",
          .settings = {{SettingId::kDisplayMode, 1.0}, {SettingId::kGroup, 3.0}},
          .script = ""},
         {.name = "Compare", .settings = {{SettingId::kDisplayMode, 2.0}}, .script = ""},
-        {.name = "Sec, 250 ms",
-         .settings = {{SettingId::kTimeBase, 0.0}, {SettingId::kTimeSpan, 0.25}},
+        {.name = "Trig, 250 ms",
+         .settings = {{SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.25}},
          .script = ""},
-        {.name = "Sec, 12.5 ms",
-         .settings = {{SettingId::kTimeBase, 0.0}, {SettingId::kTimeSpan, 0.0125}},
+        {.name = "Trig, 12.5 ms",
+         .settings = {{SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.0125}},
+         .script = ""},
+        {.name = "Free, 2 s",
+         .settings = {{SettingId::kTimeBase, kFree}, {SettingId::kFreeSpan, 2.0}},
          .script = ""},
         {.name = "16 bars", .settings = {{SettingId::kBeatSpan, 10.0}}, .script = ""},
         {.name = "1/16 beat", .settings = {{SettingId::kBeatSpan, 0.0}}, .script = ""},
         {.name = "-60 dB", .settings = {{SettingId::kVerticalScale, -60.0}}, .script = ""},
-        // The widest toolbar: Seconds shows the Trigger field, its Single mode adds Re-arm, and
+        // The widest toolbar: Trig shows the Trigger field, its Single mode adds Re-arm, and
         // Freeze reads Frozen; with every view shown.
-        {.name = "Sec, trigger Single, frozen, L R M S",
-         .settings = {{SettingId::kTimeBase, 0.0},
-                      {SettingId::kTriggerMode, 3.0},
+        {.name = "Trig, trigger Single, frozen, L R M S",
+         .settings = {{SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerMode, kSingleMode},
                       {SettingId::kChannelViews, 15.0}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
         // Multi and Compare's widest: Group in place of Views, with the same trigger and Frozen.
-        {.name = "Multi, group D, Sec, trigger Single, frozen",
+        {.name = "Multi, group D, Trig, trigger Single, frozen",
          .settings = {{SettingId::kDisplayMode, 1.0},
                       {SettingId::kGroup, 3.0},
-                      {SettingId::kTimeBase, 0.0},
-                      {SettingId::kTriggerMode, 3.0}},
+                      {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerMode, kSingleMode}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
-        {.name = "Compare, group D, Sec, trigger Single, frozen",
+        {.name = "Compare, group D, Trig, trigger Single, frozen",
          .settings = {{SettingId::kDisplayMode, 2.0},
                       {SettingId::kGroup, 3.0},
-                      {SettingId::kTimeBase, 0.0},
-                      {SettingId::kTriggerMode, 3.0}},
+                      {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerMode, kSingleMode}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
         {.name = "trigger Side, falling, -1, Single",
          .settings = {{SettingId::kTriggerSource, 3.0},
                       {SettingId::kTriggerSlope, 1.0},
                       {SettingId::kTriggerLevel, -1.0},
-                      {SettingId::kTriggerMode, 3.0}},
+                      {SettingId::kTriggerMode, kSingleMode}},
          .script = ""},
         {.name = "trigger Normal, -0.555",
          .settings = {{SettingId::kTriggerMode, 1.0}, {SettingId::kTriggerLevel, -0.555}},

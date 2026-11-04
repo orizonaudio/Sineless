@@ -21,7 +21,7 @@ struct Scenario
     int channels = 2;
     protocol::TimeBase timeBase = protocol::TimeBase::kBeats;
     protocol::BeatSpan beatSpan = protocol::BeatSpan::kOneBar; // In Beats.
-    double span = 1.0;                                         // Seconds, in Seconds.
+    double span = 1.0;                                         // Seconds, in Trigger and Free.
     double rate = 48000.0;
     double tempo = 120.0;
     bool compareAll = false; // Compare: every other track checked, not only the first.
@@ -79,7 +79,7 @@ inline constexpr std::array kScenarios{
              .description = "Compare, 15 tracks all checked, rolling 4 s at 96 kHz",
              .mode = protocol::DisplayMode::kCompare,
              .tracks = 15,
-             .timeBase = protocol::TimeBase::kSeconds,
+             .timeBase = protocol::TimeBase::kFree,
              .span = 4.0,
              .rate = 96000.0,
              .compareAll = true},
@@ -89,7 +89,7 @@ inline constexpr std::array kScenarios{
     Scenario{.name = "single-triggered",
              .description = "Single, all four views, triggered over 20 ms at 48 kHz",
              .mode = protocol::DisplayMode::kSingle,
-             .timeBase = protocol::TimeBase::kSeconds,
+             .timeBase = protocol::TimeBase::kTrigger,
              .span = 0.02},
     Scenario{
         .name = "multi-15-zoomed",
@@ -106,7 +106,7 @@ inline constexpr std::array kScenarios{
         .description = "Compare, 15 tracks all checked, frozen over 1 s at 96 kHz, panning",
         .mode = protocol::DisplayMode::kCompare,
         .tracks = 15,
-        .timeBase = protocol::TimeBase::kSeconds,
+        .timeBase = protocol::TimeBase::kTrigger,
         .span = 1.0,
         .rate = 96000.0,
         .compareAll = true,

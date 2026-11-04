@@ -35,11 +35,11 @@
       ]
     }
   ],
-  "protocolVersion": 8,
+  "protocolVersion": 9,
   "scenario": "CompareOtherSilent_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 8,
+    "protocolVersion": 9,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "off",
@@ -50,16 +50,17 @@
       ],
       "concertPitch": 440.0,
       "displayMode": "compare",
+      "freeSpan": 4.0,
       "group": "a",
       "hoverReadout": "off",
-      "timeBase": "seconds",
-      "timeSpan": 0.1,
+      "timeBase": "trigger",
       "triggerHoldOff": 0.0,
       "triggerHysteresis": 0.01,
       "triggerLevel": 0.0,
       "triggerMode": "auto",
       "triggerSlope": "rising",
       "triggerSource": "mid",
+      "triggerSpan": 0.1,
       "verticalScale": 0.0,
       "viewLayout": "stacked"
     },

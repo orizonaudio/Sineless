@@ -320,7 +320,6 @@ TEST_F(AudioUnitViewTest, ShowsTheInstancesEngine)
 {
     const auto engine = engineOf(unit);
     ASSERT_NE(engine, nullptr);
-    engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per request.
     std::vector<float> tone(4800, 0.5F);
     std::array<const float*, 2> channels{tone.data(), tone.data()};
     engine->captureRing().write(channels.data(), 2, static_cast<int>(tone.size()));
@@ -888,7 +887,6 @@ TEST_F(AudioUnitViewTest, ClosesCleanlyAfterTheAudioUnitIsDisposed)
 {
     // Only a weak reference here: after the dispose, the engine is alive only if the view holds it.
     const std::weak_ptr<engine::Engine> held = engineOf(unit);
-    held.lock()->settings().set(protocol::SettingId::kTriggerMode, 2.0); // A frame per request.
     // The host plays, reporting its tempo: the Beats view draws a frame per request.
     held.lock()->timeline().advance(
         {.playing = true, .positionValid = true, .tempoValid = true, .tempo = 120.0}, 480, 48000.0);

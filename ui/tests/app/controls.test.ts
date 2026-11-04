@@ -40,7 +40,7 @@ describe("controls", () => {
   // One popover at a time: opening one closes the other, and a popover whose field the host hides
   // (a state change) closes with it and doesn't come back with the field.
   test("shows one popover at a time, and none for a hidden field", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await userEvent.click(choice("display-mode", "Multi"));
     await userEvent.click(byId("group-details"));
     await expect.element(byId("group-popover")).toBeVisible();
@@ -91,8 +91,8 @@ describe("controls", () => {
     app.deliver({ type: "stateChanged", name: "group", value: "c" });
     await expect.poll(field).toEqual(["C", "Group C"]);
     // Another setting leaves it be.
-    app.deliver({ type: "stateChanged", name: "triggerMode", value: "free" });
-    await expect.poll(() => byId("trigger-summary").textContent).toBe("Free");
+    app.deliver({ type: "stateChanged", name: "triggerMode", value: "single" });
+    await expect.poll(() => byId("trigger-summary").textContent).toBe("Single");
     expect(field()).toEqual(["C", "Group C"]);
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "auto" });
     await press(choice("group", "A"));
@@ -103,8 +103,8 @@ describe("controls", () => {
   // The mode chip and the Trigger field name each trigger mode alike.
   test("names the trigger mode alike in its field and its chip", async () => {
     await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
-    for (const label of ["Normal", "Free", "Single", "Auto"]) {
+    await userEvent.click(choice("time-base", "Trig"));
+    for (const label of ["Normal", "Single", "Auto"]) {
       await press(choice("mode", label));
       await expect.poll(() => byId("trigger-summary").textContent).toBe(label);
       // The field's name for screen readers says the mode.
@@ -118,7 +118,7 @@ describe("controls", () => {
   // Only the controls that apply are shown: a tempo-synced sweep has no trigger.
   test("Beats mode shows the beat span and hides the trigger", async () => {
     // In the Single trigger mode, so Re-arm would show in Seconds.
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await press(choice("mode", "Single"));
     await expect.element(byId("arm")).toBeVisible();
     await userEvent.click(choice("time-base", "Beats"));
@@ -127,7 +127,7 @@ describe("controls", () => {
     await expect.element(byId("trigger-group")).not.toBeVisible();
     await expect.element(byId("arm")).not.toBeVisible();
 
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await expect.element(byId("span-field")).toBeVisible();
     await expect.element(byId("beat-span-field")).not.toBeVisible();
     await expect.element(byId("trigger-details")).toBeVisible();
@@ -140,7 +140,7 @@ describe("controls", () => {
   test("labels the readouts with the channel they measure", async () => {
     const tag = () => byId("readout-tag").textContent;
     await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     // Away from the default source: the tag stays.
     await press(choice("source", "S"));
     await expect.poll(tag).toBe("Mid");
@@ -149,7 +149,7 @@ describe("controls", () => {
     await userEvent.click(choice("display-mode", "Multi"));
     await expect.poll(tag).toBe("This track");
     await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await press(choice("source", "M"));
     await expect.poll(tag).toBe("Mid");
   });
@@ -170,7 +170,7 @@ describe("controls", () => {
     async (from, to, before, after) => {
       const tag = () => byId("readout-tag").textContent;
       await userEvent.click(choice("display-mode", "Single"));
-      await userEvent.click(choice("time-base", "Sec"));
+      await userEvent.click(choice("time-base", "Trig"));
       await userEvent.click(choice("display-mode", from));
       await expect.poll(tag).toBe(before);
       app.holdFrames(true);
@@ -188,7 +188,7 @@ describe("controls", () => {
   );
 
   test("Re-arm shows in the Single trigger mode only", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await press(choice("mode", "Auto"));
     await expect.element(byId("arm")).not.toBeVisible();
     await press(choice("mode", "Single"));
@@ -198,7 +198,7 @@ describe("controls", () => {
   });
 
   test("Re-arm asks the engine to arm the trigger again", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await press(choice("mode", "Single"));
     const before = app.sent.length;
     await userEvent.click(byId("arm"));
@@ -268,7 +268,7 @@ describe("controls", () => {
   });
 
   test("Normal mode says it is waiting while no trace triggers", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await press(choice("mode", "Normal"));
     await settle();
     app.holdFrames(true);
@@ -349,7 +349,7 @@ describe("controls", () => {
 
   // The Trigger field names the mode; its popover holds the rest.
   test("names the trigger mode in its field", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await press(choice("mode", "Normal"));
     await expect.poll(() => byId("trigger-summary").textContent).toBe("Normal");
     await press(choice("mode", "Auto"));

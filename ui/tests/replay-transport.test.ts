@@ -164,7 +164,11 @@ describe("a replay of a recorded session", () => {
   test("collects a message the recording does not hold, with what it expected", () => {
     const { replay } = started();
     replay.send(hello);
-    const setting = { type: "setSetting", name: "timeSpan", value: 2 } as const;
+    const setting = {
+      type: "setSetting",
+      name: "triggerSpan",
+      value: 2,
+    } as const;
     replay.send(setting);
     expect(replay.unexpected).toEqual([{ message: setting, expected: view }]);
     expect(describeUnexpected("Test", replay.unexpected)).toMatch(

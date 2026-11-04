@@ -21,7 +21,7 @@ test("an app started earlier in the file asks its back end for no frames once an
 // running, it would soon say "Waiting" in the new app's status bar, which shows Auto.
 test("a new app's status bar shows no Waiting from an app started earlier in the file", async () => {
   await startApp();
-  await userEvent.click(choice("time-base", "Sec"));
+  await userEvent.click(choice("time-base", "Trig"));
   await press(choice("mode", "Normal"));
   await settle();
   await startApp();

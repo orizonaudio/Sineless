@@ -7,14 +7,11 @@
 
 namespace orizon::engine {
 
-// Spans above this run free whatever the trigger mode; the Free trigger mode runs free at any span.
-inline constexpr double kFreeRunningThresholdSeconds = protocol::kFreeRunningThresholdSeconds;
-
 // Whether the window runs free (ends at the newest audio and moves with it) rather than being
-// placed by the trigger.
-[[nodiscard]] constexpr bool isFreeRunning(double spanSeconds, protocol::TriggerMode mode)
+// placed by the trigger: the Free time base, whatever the trigger mode.
+[[nodiscard]] constexpr bool isFreeRunning(protocol::TimeBase timeBase)
 {
-    return spanSeconds > kFreeRunningThresholdSeconds || mode == protocol::TriggerMode::kFree;
+    return timeBase == protocol::TimeBase::kFree;
 }
 
 // The columns of a span of `spanSamples` samples shown in `columns` columns, on a grid fixed to
