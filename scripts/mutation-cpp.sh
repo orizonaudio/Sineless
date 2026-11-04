@@ -7,9 +7,9 @@
 # each of the engine, plugin or editor, repeatable); with neither, all of them, about nine hours
 # for the engine:
 #   scripts/mutation-cpp.sh [--file engine/src/Analyzer.cpp ...] [base revision, e.g. origin/main]
-# Mull lists each module's mutants from its own tests (its dry run, which also times them with
-# none), and scripts/mutation-run.ts runs them: each stopped at a limit from its tests' time with no
-# mutant (measured first, in each share), and
+# Mull lists each module's mutants from its own tests (its dry run), and scripts/mutation-run.ts
+# runs them: each stopped at a limit from its tests' time with no mutant (measured first, in each
+# share), and
 # every result written within MUTATION_DEADLINE seconds of the share's start (default: none), the
 # tests' run with no mutant included; a mutant still running then, and those left, are reported as
 # not run rather than lost. CI shares the mutants out:
@@ -216,8 +216,11 @@ MULL_CONFIG="$config" cmake --build --preset mutation
 echo "$stamp" > build/mutation-cpp/settings.sha256
 start=$SECONDS
 # Each module's mutants, listed with no test run from its own tests, as the run's own settings name
-# its sources (or the files named in it). Mull's warm-up still runs those tests once with no
-# mutant, which nothing uses: each share times them itself (scripts/mutation-run.ts).
+# its sources (or the files named in it). Mull's dry run always starts with a warm-up run of the
+# tests (its mull-runner.rs), which nothing here uses, as each share times them itself
+# (scripts/mutation-run.ts): it is given no test (--gtest_filter=-*), which leaves the list the
+# same, as Mull reads the mutants from the binary and this build has no coverage for it to
+# filter them by, and takes the engine's tests' whole run off the list job.
 lists=()
 for module in "${selected[@]}"; do
     moduleConfig="$out/mull-$module.yml"
@@ -238,7 +241,7 @@ for module in "${selected[@]}"; do
         fi
     } > "$moduleConfig"
     MULL_CONFIG="$moduleConfig" mull-runner-18 --dry-run --timeout 3600000 --reporters Elements \
-        --report-dir "$out" --report-name "dry-$module" "$(testsOf "$module")" --gtest_fail_fast \
+        --report-dir "$out" --report-name "dry-$module" "$(testsOf "$module")" '--gtest_filter=-*' \
         > "$out/mull-$module.log" 2>&1 || true
     # No list: nothing to judge in the module when no mutant is on its lines changed, as when only
     # comments changed, and a failed run otherwise (scripts/mutation-summary.ts, noMutantFound).
