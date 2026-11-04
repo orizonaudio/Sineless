@@ -124,8 +124,9 @@ IPtr<Processor> makeProcessor()
 engine::Settings changedSettings()
 {
     engine::Settings settings;
-    EXPECT_TRUE(settings.set(SettingId::kTimeSpan, 2.0));
-    EXPECT_TRUE(settings.set(SettingId::kTriggerMode, 1.0));
+    EXPECT_TRUE(settings.set(SettingId::kFreeSpan, 2.0));
+    EXPECT_TRUE(
+        settings.set(SettingId::kTriggerMode, static_cast<double>(protocol::TriggerMode::kNormal)));
     EXPECT_TRUE(settings.set(SettingId::kChannelViews, 0b1100));
     EXPECT_TRUE(settings.set(SettingId::kConcertPitch, 432.0));
     return settings;

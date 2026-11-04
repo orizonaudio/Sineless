@@ -75,7 +75,7 @@ describe("backend", () => {
     backend.on("frame", (frame) => events.push(`frame:${String(frame.peak)}`));
     transport.messageHandler?.({
       type: "stateChanged",
-      name: "timeSpan",
+      name: "triggerSpan",
       value: 0.5,
     });
     transport.messageHandler?.({
@@ -97,7 +97,7 @@ describe("backend", () => {
     }
     transport.frameHandler?.(bytes.buffer);
     expect(events).toEqual([
-      "state:timeSpan",
+      "state:triggerSpan",
       "error:protocolMismatch",
       "lanes:3",
       `frame:${String(golden.header.peak)}`,

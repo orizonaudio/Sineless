@@ -30,7 +30,7 @@ describe("a mono track", () => {
   });
 
   test("labels the readouts Left, whatever the trigger source", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await expect.poll(() => byId("readout-tag").textContent).toBe("Left");
     // The Views field lights L alone, as the frame draws it.
     await expect
@@ -44,7 +44,7 @@ describe("a mono track", () => {
   });
 
   test("draws one lane when stacked, with the trigger marker in it", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await userEvent.click(choice("layout", "Stack"));
     await settle();
     expect([...(window.orizonDebug?.lastFrame?.views.keys() ?? [])]).toEqual([
@@ -84,7 +84,7 @@ describe("a track that changes channels", () => {
 
   test("names the views the frames draw before any snapshot says", async () => {
     await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await expect.poll(lit).toEqual(["L", "R"]);
     app.transport.changeChannels(1);
     await expect.poll(lit).toEqual(["L"]);
@@ -98,7 +98,7 @@ describe("a track that changes channels", () => {
     const tag = () => byId("readout-tag").textContent;
     const toggles = [...byId("views").querySelectorAll("button")];
     await userEvent.click(choice("display-mode", "Single"));
-    await inTimeBase("Sec");
+    await inTimeBase("Trig");
     await press(choice("source", "M"));
     await expect.poll(tag).toBe("Mid");
     app.transport.changeChannels(1, true);

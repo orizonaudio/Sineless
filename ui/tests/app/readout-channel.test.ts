@@ -85,7 +85,7 @@ describe("overlaid views", () => {
   beforeAll(async () => {
     await startApp();
     await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await userEvent.click(choice("layout", "Overlay"));
     // A short span keeps the crossings pixels apart, and the screen quick to draw.
     await typeInto("span-field", "10 ms");

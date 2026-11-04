@@ -37,13 +37,18 @@ const fields = (
 ).map(([setting, { host }]) => ({ host, setting, name: host, onIcon: false }));
 // Each pill's value, dragged on its icon, in the time base that shows it.
 const pills = [
-  { host: "span-field", setting: "timeSpan", timeBase: "Sec" },
+  { host: "span-field", setting: "triggerSpan", timeBase: "Trig" },
+  { host: "free-span-field", setting: "freeSpan", timeBase: "Free" },
   { host: "beat-span-field", setting: "beatSpan", timeBase: "Beats" },
-  { host: "scale-field", setting: "verticalScale", timeBase: "Sec" },
-  { host: "concert-pitch-field", setting: "concertPitch", timeBase: "Sec" },
+  { host: "scale-field", setting: "verticalScale", timeBase: "Trig" },
+  { host: "concert-pitch-field", setting: "concertPitch", timeBase: "Trig" },
 ] as const;
 const drags = [
-  ...fields.map((field) => ({ ...field, timeBase: "Sec" })),
+  // Free's span shows in Free; every other field in Trig.
+  ...fields.map((field) => ({
+    ...field,
+    timeBase: field.setting === "freeSpan" ? "Free" : "Trig",
+  })),
   ...pills.map((pill) => ({
     ...pill,
     name: `${pill.host} (icon)`,

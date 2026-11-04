@@ -112,7 +112,7 @@ describe("every lane is drawn", () => {
   test.each(["Multi", "Compare"] as const)(
     "in the %s view, stacked",
     async (mode) => {
-      await userEvent.click(choice("time-base", "Sec"));
+      await userEvent.click(choice("time-base", "Trig"));
       await userEvent.click(choice("display-mode", mode));
       await press(choice("group", "A"));
       await userEvent.click(choice("layout", "Stack"));

@@ -27,9 +27,6 @@ TriggerDecision TriggerState::decide(std::span<const float> samples, std::uint64
 {
     const auto end = static_cast<double>(firstIndex + samples.size());
     const double untriggeredStart = end - spanSamples;
-    if (mode == TriggerMode::kFree) {
-        return {.action = TriggerDecision::Action::kDraw, .windowStart = untriggeredStart};
-    }
 
     // An edge can be shown once the span before and after it is in the region.
     const double preTrigger = kTriggerPosition * spanSamples;

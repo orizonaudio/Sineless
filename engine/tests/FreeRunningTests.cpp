@@ -11,32 +11,23 @@
 namespace orizon::engine {
 namespace {
 
-using protocol::TriggerMode;
+using protocol::TimeBase;
 
-class FreeRunningModes : public testing::TestWithParam<std::size_t>
+class FreeRunningTimeBases : public testing::TestWithParam<std::size_t>
 {
 };
 
-// Above the threshold the window runs free in every trigger mode; at or below it, only in Free.
-TEST_P(FreeRunningModes, RunFreeAboveTheThresholdAndInFree)
+// The Free time base runs free; Trigger and Beats never do.
+TEST_P(FreeRunningTimeBases, RunFreeInTheFreeTimeBaseOnly)
 {
-    const auto mode = static_cast<TriggerMode>(GetParam());
-    const bool free = mode == TriggerMode::kFree;
-    for (const double rate : {44100.0, 48000.0, 96000.0, 384000.0}) {
-        // The threshold as a whole number of samples at the rate, and one sample more.
-        const double atThreshold = std::round(kFreeRunningThresholdSeconds * rate) / rate;
-        EXPECT_EQ(isFreeRunning(atThreshold, mode), free) << rate;
-        EXPECT_TRUE(isFreeRunning(atThreshold + 1.0 / rate, mode)) << rate;
-    }
-    EXPECT_EQ(isFreeRunning(0.0005, mode), free);
-    EXPECT_EQ(isFreeRunning(0.05, mode), free);
-    EXPECT_TRUE(isFreeRunning(4.0, mode));
+    const auto timeBase = static_cast<TimeBase>(GetParam());
+    EXPECT_EQ(isFreeRunning(timeBase), timeBase == TimeBase::kFree);
 }
 
-INSTANTIATE_TEST_SUITE_P(TriggerModes, FreeRunningModes,
-                         testing::Range<std::size_t>(0, protocol::kTriggerModeCount),
+INSTANTIATE_TEST_SUITE_P(TimeBases, FreeRunningTimeBases,
+                         testing::Range<std::size_t>(0, protocol::kTimeBaseCount),
                          [](const testing::TestParamInfo<std::size_t>& info) {
-                             return std::string(protocol::kTriggerModeNames.at(info.param));
+                             return std::string(protocol::kTimeBaseNames.at(info.param));
                          });
 
 struct GridCase

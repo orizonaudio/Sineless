@@ -48,7 +48,7 @@
     "displayMode": "compare",
     "frozen": false,
     "sampleRate": 48000,
-    "timeBase": "seconds"
+    "timeBase": "trigger"
   },
   "sumGain": 3.0103,
   "visibleSamples": 4800

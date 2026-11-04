@@ -21,7 +21,7 @@ const reach = () => window.orizonDebug?.lastFrame?.panReach ?? NaN;
 
 // A fresh freeze of a 100 ms Seconds view.
 async function freezeAt100Ms(): Promise<void> {
-  await userEvent.click(choice("time-base", "Sec"));
+  await userEvent.click(choice("time-base", "Trig"));
   await typeInto("span-field", "100 ms");
   await expect
     .element(byId("span-field").querySelector(".field") as HTMLElement)

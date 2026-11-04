@@ -25,9 +25,9 @@ function midPeak(): number {
 // The Mid's RMS: of its two sines, 0.45 and 0.125.
 const midRms = Math.sqrt((0.45 ** 2 + 0.125 ** 2) / 2);
 
-// The time-base control's label for each time base of the protocol ("seconds" → "Sec").
+// The time-base control's label for each time base of the protocol ("trigger" → "Trig").
 const timeBaseLabels = Object.keys(TimeBase).map((name) =>
-  name === "seconds" ? "Sec" : name.charAt(0).toUpperCase() + name.slice(1),
+  name === "trigger" ? "Trig" : name.charAt(0).toUpperCase() + name.slice(1),
 );
 
 async function useSource(label: string): Promise<void> {
@@ -57,7 +57,7 @@ describe("readouts", () => {
   )(
     "measure the Mid in %s with the trigger on %s",
     async (timeBase, source) => {
-      await userEvent.click(choice("time-base", "Sec"));
+      await userEvent.click(choice("time-base", "Trig"));
       await useSource(source);
       await userEvent.click(choice("time-base", timeBase));
       await settle();
@@ -70,7 +70,7 @@ describe("readouts", () => {
   );
 
   test("show the frequency with the shared formatter", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await useSource("L");
     await settle();
     await expect

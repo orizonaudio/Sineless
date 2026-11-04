@@ -30,13 +30,27 @@ public:
 class FrameFlowTest : public ::testing::Test
 {
 protected:
+    void runFree()
+    {
+        engine.settings().set(protocol::SettingId::kTimeBase,
+                              static_cast<double>(protocol::TimeBase::kFree));
+        engine.settings().set(protocol::SettingId::kFreeSpan, 1.0);
+    }
+
+    // Trigger in Normal, which holds on silence.
+    void holdOnSilence()
+    {
+        engine.settings().set(protocol::SettingId::kTimeBase,
+                              static_cast<double>(protocol::TimeBase::kTrigger));
+        engine.settings().set(protocol::SettingId::kTriggerMode,
+                              static_cast<double>(protocol::TriggerMode::kNormal));
+    }
+
     void SetUp() override
     {
         engine.prepare(48000.0);
-        // These tests use the seconds time base; Beats is the default.
-        engine.settings().set(protocol::SettingId::kTimeBase,
-                              static_cast<double>(protocol::TimeBase::kSeconds));
-        engine.settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: always a frame.
+        // These tests run free at 1 s (always a frame); Beats is the default.
+        runFree();
         writeSamples(48000);
         analyzer.setColumns(200);
     }
@@ -153,7 +167,7 @@ TEST_F(FrameFlowTest, BuildsNoBacklogWhileTheUiIsBusy)
 
 TEST_F(FrameFlowTest, KeepsTheCreditWhenThereIsNothingNew)
 {
-    engine.settings().set(protocol::SettingId::kTriggerMode, 1.0); // Normal: holds on silence.
+    holdOnSilence();
     std::vector<float> silence(48000, 0.0f);
     std::array<const float*, 2> channels{silence.data(), silence.data()};
     engine.captureRing().write(channels.data(), 2, 48000);
@@ -163,7 +177,7 @@ TEST_F(FrameFlowTest, KeepsTheCreditWhenThereIsNothingNew)
     dispatcher.runAll();
     EXPECT_EQ(delivered, 0);
 
-    engine.settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free.
+    runFree();
     flow.step();
     dispatcher.runAll();
     EXPECT_EQ(delivered, 1) << "the unused credit still allows the next frame";
@@ -346,7 +360,7 @@ TEST_F(FrameFlowTest, AdvancesSweepsWhileOnlyThePagesFetchIsOpen)
 TEST_F(FrameFlowTest, KeepsTheDisplaysRequestWhenThereIsNothingNew)
 {
     flow.setNative(true);
-    engine.settings().set(protocol::SettingId::kTriggerMode, 1.0); // Normal: holds on silence.
+    holdOnSilence();
     std::vector<float> silence(48000, 0.0f);
     std::array<const float*, 2> channels{silence.data(), silence.data()};
     engine.captureRing().write(channels.data(), 2, 48000);
@@ -354,7 +368,7 @@ TEST_F(FrameFlowTest, KeepsTheDisplaysRequestWhenThereIsNothingNew)
     flow.step();
     std::vector<std::byte> taken;
     EXPECT_FALSE(flow.takeDisplayFrame(taken));
-    engine.settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free.
+    runFree();
     flow.step();
     EXPECT_TRUE(flow.takeDisplayFrame(taken)) << "the open request allows the next frame";
 }

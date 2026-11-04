@@ -24,7 +24,6 @@ import {
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import {
   frozenHoldSeconds,
-  freeRunningThresholdSeconds,
   triggerPosition,
 } from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
@@ -420,18 +419,22 @@ export class MockTransport implements Transport {
     return Math.floor((time - span) / period) * period;
   }
 
-  // Whether a Seconds window of `span` runs free, as the engine decides (FreeRunning.h).
-  private freeRunning(span: number): boolean {
-    return (
-      span > freeRunningThresholdSeconds ||
-      this.setting("triggerMode") === "free"
-    );
+  // Whether the window runs free, as the engine decides (FreeRunning.h): the Free time base.
+  private freeRunning(): boolean {
+    return this.setting("timeBase") === "free";
+  }
+
+  // The span setting of the time base: Free's or Trigger's.
+  private spanSetting(): number {
+    return this.setting(
+      this.freeRunning() ? "freeSpan" : "triggerSpan",
+    ) as number;
   }
 
   // Where a live Seconds window of `span` at `time` starts: triggered spans one trigger offset
   // before a period boundary, free-running spans ending now.
   private liveStart(time: number, span: number): number {
-    return this.freeRunning(span)
+    return this.freeRunning()
       ? time - span
       : this.triggerTime(time, span) - triggerPosition * span;
   }
@@ -442,7 +445,7 @@ export class MockTransport implements Transport {
   // frozenHoldSeconds of audio held.
   private frozenWindow(span: number): { start: number; reach: number } {
     const frozenAt = this.frozenAt ?? 0;
-    const free = this.freeRunning(span);
+    const free = this.freeRunning();
     const live = this.lastLive;
     const anchor =
       live === undefined
@@ -462,7 +465,7 @@ export class MockTransport implements Transport {
 
   // The Seconds span shown: the setting, or what the capture keeps of it.
   private secondsSpan(): number {
-    return Math.min(this.setting("timeSpan") as number, this.keptSeconds);
+    return Math.min(this.spanSetting(), this.keptSeconds);
   }
 
   private panReach(): number {
@@ -521,12 +524,12 @@ export class MockTransport implements Transport {
     this.panSeconds = clampPan(this.panSeconds, this.panReach());
     const time = this.frozenAt ?? this.now();
     const synced = this.setting("timeBase") === "beats";
-    let span = this.setting("timeSpan") as number;
+    let span = this.spanSetting();
     let timeOf: (fraction: number) => number;
     let cursor: number | undefined;
     let cycleStart = 0;
     let spanQuarterNotes = 0;
-    const freeRunning = !synced && this.freeRunning(span);
+    const freeRunning = !synced && this.freeRunning();
     const limited = !synced && span > this.keptSeconds;
     if (limited) {
       span = this.keptSeconds;

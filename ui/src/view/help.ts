@@ -8,7 +8,6 @@ import {
   matchReachSeconds,
   matchWindowSeconds,
   maxLanes,
-  freeRunningThresholdSeconds,
   summingMarginDb,
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
@@ -26,9 +25,10 @@ const frequencyWindow = formatSeconds(frequencyWindowSeconds);
 const margin = String(summingMarginDb);
 const levelFloor = String(levelFloorDbfs).replace("-", "−");
 const gate = String(analysisGateDbfs).replace("-", "−");
-const shortestSpan = formatSeconds(settings.timeSpan.minimum);
-const longestSpan = formatSeconds(settings.timeSpan.maximum);
-const freeSpan = formatSeconds(freeRunningThresholdSeconds);
+const shortestTriggerSpan = formatSeconds(settings.triggerSpan.minimum);
+const longestTriggerSpan = formatSeconds(settings.triggerSpan.maximum);
+const shortestFreeSpan = formatSeconds(settings.freeSpan.minimum);
+const longestFreeSpan = formatSeconds(settings.freeSpan.maximum);
 const option = isMac ? "⌥" : "Alt";
 
 export interface HelpText {
@@ -71,7 +71,7 @@ export const helpTexts = {
   },
   status: {
     title: "Status",
-    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode (Free whenever the trace runs free), Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in yellow.",
+    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode, Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in yellow.",
   },
   peak: {
     title: "Peak",
@@ -105,9 +105,13 @@ export const helpTexts = {
     title: "Resize",
     text: "Drag to resize the window. It stays wide enough for every control and, with stacked lanes, tall enough for every lane.",
   },
-  timeSpan: {
+  triggerSpan: {
     title: "Time span",
-    text: `How much time the screen shows, from ${shortestSpan} to ${longestSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one, such as 20 ms. Spans above ${freeSpan} run free, whatever the trigger mode: the trace moves with the newest audio.`,
+    text: `How much time the screen shows in Trig, from ${shortestTriggerSpan} to ${longestTriggerSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one, such as 20 ms (a number alone is in milliseconds). Longer spans are shown in Free.`,
+  },
+  freeSpan: {
+    title: "Time span",
+    text: `How much time the screen shows in Free, from ${shortestFreeSpan} to ${longestFreeSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one with its unit, such as 2 s (a number alone is in milliseconds). Shorter spans are shown in Trig, where the trigger holds the trace still.`,
   },
   beatSpan: {
     title: "Beat span",
@@ -115,7 +119,7 @@ export const helpTexts = {
   },
   timeBase: {
     title: "Time base",
-    text: "Beats sweeps across the screen in time with the host, from bar line to bar line, with a playhead. Sec shows a fixed amount of time, triggered by the signal.",
+    text: "Beats sweeps across the screen in time with the host, from bar line to bar line, with a playhead. Free shows a fixed amount of time ending at the newest audio, moving with it, its times counted back from the right edge. Trig shows a fixed amount of time placed by the trigger, so a repeating signal stands still.",
   },
   verticalScale: {
     title: "Vertical scale",
@@ -143,7 +147,7 @@ export const helpTexts = {
   },
   trigger: {
     title: "Trigger",
-    text: "Decides when the display draws, so a repeating signal stands still. Click it for the mode, source, slope, level, hysteresis and hold-off. Not used in Beats mode, where the display follows the host tempo instead.",
+    text: "Decides when the display draws, so a repeating signal stands still. Click it for the mode, source, slope, level, hysteresis and hold-off. Shown in Trig only: Beats follows the host tempo, and Free the newest audio.",
   },
   modeAuto: {
     title: "Auto",
@@ -152,10 +156,6 @@ export const helpTexts = {
   modeNormal: {
     title: "Normal",
     text: "Draws only when the signal triggers; otherwise the last trace stays.",
-  },
-  modeFree: {
-    title: "Free",
-    text: `Draws continuously without waiting for a trigger: the trace moves with the newest audio, its times counted back from the right edge, as every span above ${freeSpan} does.`,
   },
   modeSingle: {
     title: "Single",

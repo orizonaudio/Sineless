@@ -356,7 +356,7 @@ test("tells the editor the lanes of a frame that carries none, from the views sh
 test("waiting for a trigger tells the editor to dim the traces, and the next frame to stop", async () => {
   const started = await startNative();
   // The trigger applies in Seconds.
-  await inTimeBase("Sec");
+  await inTimeBase("Trig");
   await press(choice("mode", "Normal"));
   await settle();
   started.holdFrames(true);

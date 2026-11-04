@@ -522,9 +522,11 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         comparing = false;
     }
 
-    const double spanSeconds = settings.value(SettingId::kTimeSpan);
-    const bool freeRunning = isFreeRunning(
-        spanSeconds, settings.enumValue<protocol::TriggerMode>(SettingId::kTriggerMode));
+    const bool freeRunning =
+        isFreeRunning(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase));
+    // Each of Trigger and Free has a span of its own (Beats places its sweep from the beat span).
+    const double spanSeconds =
+        settings.value(freeRunning ? SettingId::kFreeSpan : SettingId::kTriggerSpan);
     // The capture is sized for the longest span at its rate, but a host that changes the rate
     // while processing leaves it as it was, and above the highest rate it grows no more: a longer
     // span shows what is kept, and says so. Live, that is all the capture can be read of. Frozen,

@@ -21,8 +21,9 @@ IPtr<Processor> makeProcessor()
 TEST(ProcessorState, RoundTripsThroughAHostStream)
 {
     auto source = makeProcessor();
-    source->engine()->settings().set(SettingId::kTimeSpan, 2.0);
-    source->engine()->settings().set(SettingId::kTriggerMode, 1.0);
+    source->engine()->settings().set(SettingId::kFreeSpan, 2.0);
+    source->engine()->settings().set(SettingId::kTriggerMode,
+                                     static_cast<double>(protocol::TriggerMode::kNormal));
     auto stream = owned(new MemoryStream());
     ASSERT_EQ(source->getState(stream), kResultOk);
 
@@ -37,7 +38,7 @@ TEST(ProcessorState, RoundTripsThroughAHostStream)
 TEST(ProcessorState, LoadsDefaultsFromGarbageWithoutFailing)
 {
     auto processor = makeProcessor();
-    processor->engine()->settings().set(SettingId::kTimeSpan, 2.0);
+    processor->engine()->settings().set(SettingId::kFreeSpan, 2.0);
     const std::string garbage = "\x01\x02 not a state";
     auto stream = owned(
         new MemoryStream(const_cast<char*>(garbage.data()), static_cast<TSize>(garbage.size())));

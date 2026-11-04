@@ -575,7 +575,8 @@ export class OscilloscopeApp {
     ]);
     segment("timeBase", "time-base", [
       ["beats", "Beats"],
-      ["seconds", "Sec"],
+      ["free", "Free"],
+      ["trigger", "Trig"],
     ]);
     segment("viewLayout", "layout", [
       ["overlaid", "Overlay"],
@@ -584,7 +585,6 @@ export class OscilloscopeApp {
     segment("triggerMode", "mode", [
       ["auto", "Auto", "modeAuto"],
       ["normal", "Normal", "modeNormal"],
-      ["free", "Free", "modeFree"],
       ["single", "Single", "modeSingle"],
     ]);
     segment(
@@ -756,15 +756,16 @@ export class OscilloscopeApp {
     }
   }
 
-  // A tempo-synced sweep is not triggered: in Beats mode the trigger controls are hidden, and the
-  // popover closes. Re-arm shows in the Single trigger mode only.
+  // Only the Trigger time base is triggered: in Beats and Free the trigger controls are hidden,
+  // and the popover closes. Re-arm shows in the Single trigger mode only.
   private updateTriggerControls(): void {
-    const beats = this.beatsMode();
+    const triggered = this.store.get("timeBase") === "trigger";
     for (const id of ["trigger-group", "trigger-divider"]) {
-      element(id).hidden = beats;
+      element(id).hidden = !triggered;
     }
-    element("arm").hidden = beats || this.store.get("triggerMode") !== "single";
-    if (beats) {
+    element("arm").hidden =
+      !triggered || this.store.get("triggerMode") !== "single";
+    if (!triggered) {
       this.closePopover("trigger-details", "trigger-popover");
     }
     this.updateReadoutTag();
@@ -826,10 +827,17 @@ export class OscilloscopeApp {
     if (name === "beatSpan" && typeof value === "string") {
       this.beatSpanField?.show(this.beatSpanNames.indexOf(value));
     }
+    // One span pill, of the time base's own span; its help names that span.
     if (name === "timeBase") {
-      const beats = value === "beats";
-      element("span-field").hidden = beats;
-      element("beat-span-field").hidden = !beats;
+      element("span-field").hidden = value !== "trigger";
+      element("free-span-field").hidden = value !== "free";
+      element("beat-span-field").hidden = value !== "beats";
+      element("time-group").dataset.help =
+        value === "free"
+          ? "freeSpan"
+          : value === "beats"
+            ? "beatSpan"
+            : "triggerSpan";
     }
     this.updateTriggerSummary();
     if (name === "concertPitch") {
@@ -844,7 +852,10 @@ export class OscilloscopeApp {
     }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
     if (
-      (name === "timeSpan" || name === "timeBase" || name === "beatSpan") &&
+      (name === "triggerSpan" ||
+        name === "freeSpan" ||
+        name === "timeBase" ||
+        name === "beatSpan") &&
       isZoomed(this.view)
     ) {
       this.setView(fullView);
@@ -854,7 +865,8 @@ export class OscilloscopeApp {
       "verticalScale",
       "viewLayout",
       "channelViews",
-      "timeSpan",
+      "triggerSpan",
+      "freeSpan",
       "triggerMode",
       "timeBase",
     ];
@@ -1203,13 +1215,15 @@ export class OscilloscopeApp {
     }
   }
 
-  // The time the whole screen width shows in Seconds mode, as the engine says: the span, or what is
-  // kept of it when limited. The Span setting until a Seconds frame comes.
+  // The time the whole screen width shows in Trigger or Free, as the engine says: the span, or
+  // what is kept of it when limited. The time base's span setting until such a frame comes.
   private secondsSpan(): number {
     const frame = this.lastFrame;
     return frame !== undefined && !frame.synced && frame.spanSeconds > 0
       ? frame.spanSeconds
-      : this.store.number("timeSpan");
+      : this.store.number(
+          this.store.get("timeBase") === "free" ? "freeSpan" : "triggerSpan",
+        );
   }
 
   private placeLabels(): void {

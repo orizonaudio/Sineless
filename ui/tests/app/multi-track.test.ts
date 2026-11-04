@@ -30,7 +30,7 @@ function compareCheck(name: string): HTMLButtonElement {
 // Multi or Compare, Seconds, stacked, with R as the Single view's trigger source: R's lane is not
 // the first, so a marker placed by the views rather than the tracks would show.
 async function show(mode: "Multi" | "Compare"): Promise<void> {
-  await userEvent.click(choice("time-base", "Sec"));
+  await userEvent.click(choice("time-base", "Trig"));
   await userEvent.click(choice("display-mode", "Single"));
   await press(choice("source", "R"));
   await userEvent.click(choice("display-mode", mode));

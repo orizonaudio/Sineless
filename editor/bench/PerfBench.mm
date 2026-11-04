@@ -4,7 +4,7 @@
 // time per frame. Where the editor draws the traces natively (macOS 14+, AD-30), frames/s counts
 // the frames its layer presents, and the page's lines count the copies it receives.
 //
-//   perf_bench [--lanes=7] [--mode=multi|compare|single] [--timebase=beats|seconds]
+//   perf_bench [--lanes=7] [--mode=multi|compare|single] [--timebase=beats|free|trigger]
 //              [--beatspan=fourBars] [--span=4] [--rate=48000] [--tempo=120]
 //              [--layout=stacked|overlaid] [--width=1400] [--height=800]
 //              [--warmup=3] [--duration=10] [--idle] [--compare-all] [--jitter]
@@ -110,15 +110,13 @@ struct Options
 };
 
 // The options a named scenario sets. False if perf_bench cannot play it: it has no zoom or
-// panning of its own, and plays a triggered span (Seconds, no longer than the roll threshold)
-// free-running, which is not the scenario its name means.
+// panning of its own, and plays a Trigger scenario free-running, which is not the scenario its
+// name means.
 bool applyScenario(const std::string& name, Options& options)
 {
     const auto scenario = bench::scenarioNamed(name);
     if (!scenario || scenario->viewStart != 0.0 || scenario->viewEnd != 1.0 ||
-        scenario->frozenPan ||
-        (scenario->timeBase == protocol::TimeBase::kSeconds &&
-         !orizon::engine::isFreeRunning(scenario->span, protocol::TriggerMode::kAuto))) {
+        scenario->frozenPan || scenario->timeBase == protocol::TimeBase::kTrigger) {
         return false;
     }
     const auto nameOf = [](const auto& names, auto value) {
@@ -532,8 +530,9 @@ int run(const Options& options)
         set(own, SettingId::kTimeBase, options.timeBase.c_str());
         set(own, SettingId::kBeatSpan, options.beatSpan.c_str());
         set(own, SettingId::kViewLayout, options.layout.c_str());
-        set(own, SettingId::kTriggerMode, "free");
-        own.settings().set(SettingId::kTimeSpan, options.span);
+        own.settings().set(options.timeBase == "free" ? SettingId::kFreeSpan
+                                                      : SettingId::kTriggerSpan,
+                           options.span);
         if (options.mode == "single") {
             own.settings().set(SettingId::kChannelViews, 15.0); // L, R, M and S.
         }

@@ -140,7 +140,21 @@ TEST_P(DamagedState, ADamagedByteNeverInventsAValue)
             const Settings loaded = deserializeState(damaged);
             for (const protocol::SettingDescriptor& setting : protocol::kSettings) {
                 const double value = loaded.value(setting.id);
-                EXPECT_TRUE(value == full.value(setting.id) || value == defaults.value(setting.id))
+                // A Seconds project opens in Trigger or Free by its trigger mode and span (state
+                // version 3): damage to those turns one into the other, as it would have changed
+                // what the version that saved it showed.
+                const bool migratedTimeBase =
+                    setting.id == protocol::SettingId::kTimeBase &&
+                    text.find(R"("seconds")") != std::string::npos &&
+                    (value == static_cast<double>(protocol::TimeBase::kTrigger) ||
+                     value == static_cast<double>(protocol::TimeBase::kFree));
+                // And a damaged time span counts as the 1 s the old version fell back to.
+                const bool migratedSpan = (setting.id == protocol::SettingId::kTriggerSpan ||
+                                           setting.id == protocol::SettingId::kFreeSpan) &&
+                                          text.find(R"("timeSpan")") != std::string::npos &&
+                                          value == 1.0;
+                EXPECT_TRUE(value == full.value(setting.id) ||
+                            value == defaults.value(setting.id) || migratedTimeBase || migratedSpan)
                     << setting.name << " = " << value << " with byte " << offset << " set to "
                     << static_cast<int>(damage);
             }

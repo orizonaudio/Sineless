@@ -93,14 +93,14 @@ afterEach(() => {
 });
 
 describe("the page's strip", () => {
-  test.each(["Beats", "Sec"])(
+  test.each(["Beats", "Free", "Trig"])(
     "with the snapshot's switch, every picture carries its number and time, in %s",
     async (timeBase) => {
       const reads = readStrips();
       await startApp({ frameBarcode: true });
       await settle();
-      if (timeBase === "Sec") {
-        await inTimeBase("Sec");
+      if (timeBase !== "Beats") {
+        await inTimeBase(timeBase);
       }
       reads.length = 0;
       await settle(12);

@@ -1,6 +1,6 @@
 // The number fields: how each shows its setting, steps it, and reads what is typed into it. The
 // controls are built from this table, and the tests walk it, so every field is tested.
-import type { SettingName } from "../../../protocol/src/settings.ts";
+import { settings, type SettingName } from "../../../protocol/src/settings.ts";
 import {
   formatDb,
   formatPitch,
@@ -30,18 +30,32 @@ export function formatTriggerLevel(value: number): string {
   return signed(value, 3);
 }
 
-export const numberFields: Partial<Record<SettingName, NumberField>> = {
-  timeSpan: {
-    host: "span-field",
+// The 1-2-5 span steps within a span setting's range.
+function stepsOf(name: "triggerSpan" | "freeSpan"): readonly number[] {
+  const { minimum, maximum } = settings[name];
+  return spanSteps.filter((step) => step >= minimum && step <= maximum);
+}
+
+// A span field: Trigger's or Free's, each over the steps of its own range.
+function spanField(
+  name: "triggerSpan" | "freeSpan",
+  host: string,
+): NumberField {
+  const steps = stepsOf(name);
+  return {
+    host,
     label: "Time span",
     format: formatSeconds,
     step: (value, delta, fine) =>
-      fine
-        ? stepFine(spanSteps, value, delta)
-        : stepThrough(spanSteps, value, delta),
+      fine ? stepFine(steps, value, delta) : stepThrough(steps, value, delta),
     quantity: "time",
     bareScale: 0.001,
-  },
+  };
+}
+
+export const numberFields: Partial<Record<SettingName, NumberField>> = {
+  triggerSpan: spanField("triggerSpan", "span-field"),
+  freeSpan: spanField("freeSpan", "free-span-field"),
   verticalScale: {
     host: "scale-field",
     label: "Vertical scale",

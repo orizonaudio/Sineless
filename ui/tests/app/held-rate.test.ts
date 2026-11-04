@@ -30,7 +30,7 @@ describe("frames of audio held at another rate than the host's", () => {
   });
 
   test("time the span between time cursors, and count its samples, at the frame's rate", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await userEvent.click(choice("display-mode", "Single"));
     if (byId("time-cursors").getAttribute("aria-pressed") !== "true") {
       await userEvent.click(byId("time-cursors"));
@@ -45,13 +45,13 @@ describe("frames of audio held at another rate than the host's", () => {
     const samples = Number(/([\d.]+) samples/u.exec(text())?.[1]);
     // The cursors start a third of the span apart, which reads as that much time, held at the
     // frame's rate: its samples over its seconds.
-    const spanSeconds = defaultSettingValues().timeSpan as number;
+    const spanSeconds = defaultSettingValues().triggerSpan as number;
     expect(seconds).toBeCloseTo(spanSeconds / 3, 3);
     expect(samples / (seconds ?? NaN)).toBeCloseTo(heldRate, -3);
   });
 
   test("read Kick 2's offset in milliseconds at the frame's rate", async () => {
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await userEvent.click(choice("display-mode", "Compare"));
     await settle();
     const check = (name: string) =>

@@ -110,7 +110,7 @@ TEST(State, WritesTheVersionEnvelope)
 TEST(State, LoadsTheVersion1GoldenFile)
 {
     const Settings settings = deserializeState(readTestFile("state-v1.json"));
-    EXPECT_EQ(settings.value(SettingId::kTimeSpan), 0.5);
+    EXPECT_EQ(settings.value(SettingId::kTriggerSpan), 0.5);
     EXPECT_EQ(settings.value(SettingId::kVerticalScale), -12.0);
     EXPECT_EQ(settings.value(SettingId::kChannelViews), 0b1100);
     EXPECT_EQ(settings.enumValue<ViewLayout>(SettingId::kViewLayout), ViewLayout::kStacked);
@@ -120,10 +120,10 @@ TEST(State, LoadsTheVersion1GoldenFile)
     EXPECT_EQ(settings.value(SettingId::kTriggerLevel), -0.25);
     EXPECT_EQ(settings.value(SettingId::kTriggerHysteresis), 0.05);
     EXPECT_EQ(settings.value(SettingId::kTriggerHoldOff), 0.1);
-    // A version 1 state without a time base predates tempo sync and keeps seconds; other
-    // settings added later take their defaults.
+    // A version 1 state without a time base predates tempo sync and keeps its triggered seconds;
+    // other settings added later take their defaults.
     EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
-              protocol::TimeBase::kSeconds);
+              protocol::TimeBase::kTrigger);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kOneBar);
     EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOff);
@@ -147,10 +147,14 @@ TEST(State, LoadsAVersion1GoldenFileSavedInBeats)
 TEST(State, LoadsTheVersion2GoldenFile)
 {
     const Settings settings = deserializeState(readTestFile("state-v2.json"));
-    EXPECT_EQ(settings.value(SettingId::kTimeSpan), 0.05);
-    EXPECT_EQ(settings.value(SettingId::kVerticalScale), 3.0);
+    // Saved in the Free trigger mode at 50 ms: it opens in Free at Free's shortest span, with the
+    // span kept for Trigger and the trigger mode at its default.
     EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
-              protocol::TimeBase::kSeconds);
+              protocol::TimeBase::kFree);
+    EXPECT_EQ(settings.value(SettingId::kFreeSpan), protocol::kShortestFreeSpanSeconds);
+    EXPECT_EQ(settings.value(SettingId::kTriggerSpan), 0.05);
+    EXPECT_EQ(settings.enumValue<TriggerMode>(SettingId::kTriggerMode), TriggerMode::kAuto);
+    EXPECT_EQ(settings.value(SettingId::kVerticalScale), 3.0);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kTwoBars);
     EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOn);
@@ -179,8 +183,9 @@ constexpr double asValue(auto enumValue)
     return static_cast<double>(enumValue);
 }
 
+// Its time span, 0.25 s in Seconds, is `triggerSpan` since version 3: MigratesEachKindOfProject
+// checks it.
 constexpr std::array kVersion2Release05Values{
-    GoldenValue{.id = SettingId::kTimeSpan, .value = 0.25},
     GoldenValue{.id = SettingId::kVerticalScale, .value = -9.0},
     GoldenValue{.id = SettingId::kChannelViews,
                 .value = flag(ChannelView::kRight) + flag(ChannelView::kSide)},
@@ -192,7 +197,7 @@ constexpr std::array kVersion2Release05Values{
     GoldenValue{.id = SettingId::kTriggerLevel, .value = -0.25},
     GoldenValue{.id = SettingId::kTriggerHysteresis, .value = 0.05},
     GoldenValue{.id = SettingId::kTriggerHoldOff, .value = 0.125},
-    GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kSeconds)},
+    GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kTrigger)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
     GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kCompare)},
@@ -209,6 +214,30 @@ constexpr std::array kVersion2Release05NewInstanceValues{
     GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kOverlaid)},
 };
 
+// What state version 3 saves, in state-v3.json: every setting away from its default, the two spans
+// and the Free time base included.
+constexpr std::array kVersion3Values{
+    GoldenValue{.id = SettingId::kTriggerSpan, .value = 0.25},
+    GoldenValue{.id = SettingId::kFreeSpan, .value = 2.0},
+    GoldenValue{.id = SettingId::kVerticalScale, .value = -9.0},
+    GoldenValue{.id = SettingId::kChannelViews,
+                .value = flag(ChannelView::kRight) + flag(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kOverlaid)},
+    GoldenValue{.id = SettingId::kTriggerMode, .value = asValue(TriggerMode::kSingle)},
+    GoldenValue{.id = SettingId::kTriggerSource, .value = asValue(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kTriggerSlope, .value = asValue(TriggerSlope::kFalling)},
+    GoldenValue{.id = SettingId::kTriggerLevel, .value = -0.25},
+    GoldenValue{.id = SettingId::kTriggerHysteresis, .value = 0.05},
+    GoldenValue{.id = SettingId::kTriggerHoldOff, .value = 0.125},
+    GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
+    GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
+    GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kCompare)},
+    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
+    GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
+};
+
 // Golden states saved by released builds that added settings without a state version raise,
 // each with the values it holds. A release that adds a setting adds its own file here; the
 // files already here stay as their release saved them.
@@ -222,6 +251,7 @@ constexpr std::array kGoldenStates{
     GoldenState{.file = "state-v2-0.5.json", .values = kVersion2Release05Values},
     GoldenState{.file = "state-v2-0.5-new-instance.json",
                 .values = kVersion2Release05NewInstanceValues},
+    GoldenState{.file = "state-v3.json", .values = kVersion3Values},
 };
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
@@ -237,6 +267,21 @@ struct GoldenValueNames
 
 constexpr std::array kGoldenValueNames{
     GoldenValueNames{.file = "value-names-0.5.json", .version = 2},
+    GoldenValueNames{.file = "value-names-0.8.json", .version = 3},
+};
+
+// Released names a migration maps to another value, rather than names the protocol still reads:
+// "seconds" became Trigger or Free, the Free trigger mode Auto (version 3).
+// MigratesEachKindOfProject checks what each becomes.
+struct MigratedName
+{
+    std::string_view setting;
+    std::string_view name;
+};
+
+constexpr std::array kMigratedNames{
+    MigratedName{.setting = "timeBase", .name = "seconds"},
+    MigratedName{.setting = "triggerMode", .name = "free"},
 };
 
 struct SavedSetting
@@ -363,7 +408,11 @@ TEST(State, KeepsEveryReleasedValueName)
             ASSERT_NE(setting, protocol::kSettings.end()) << golden.file << ": " << key;
             for (const auto& name : names) {
                 const std::string_view text = name.get_ref<const std::string&>();
-                EXPECT_NE(std::ranges::find(setting->valueNames, text), setting->valueNames.end())
+                const bool migrated = std::ranges::any_of(kMigratedNames, [&](const auto& m) {
+                    return m.setting == key && m.name == text;
+                });
+                EXPECT_TRUE(migrated || std::ranges::find(setting->valueNames, text) !=
+                                            setting->valueNames.end())
                     << golden.file << ": " << key << "." << name;
             }
         }
@@ -397,10 +446,162 @@ TEST(State, KeepsDefaultsForMissingAndInvalidFieldsOnly)
             "triggerLevel": 0.5
         }
     })");
-    EXPECT_EQ(settings.value(SettingId::kTimeSpan), defaultOf(SettingId::kTimeSpan));
+    EXPECT_EQ(settings.value(SettingId::kTriggerSpan), defaultOf(SettingId::kTriggerSpan));
+    EXPECT_EQ(settings.value(SettingId::kFreeSpan), defaultOf(SettingId::kFreeSpan));
     EXPECT_EQ(settings.value(SettingId::kTriggerMode), defaultOf(SettingId::kTriggerMode));
     EXPECT_EQ(settings.value(SettingId::kChannelViews), defaultOf(SettingId::kChannelViews));
     EXPECT_EQ(settings.value(SettingId::kTriggerLevel), 0.5);
+}
+
+// A project saved before Free was a time base (state version 2), and what it opens as: in Free
+// where its window ran free (the Free trigger mode, or a span above 1 s), else in Trigger, each
+// span where its range holds the saved one.
+struct Migration
+{
+    const char* name = nullptr;
+    const char* saved = nullptr; // The settings object of a version 2 state.
+    protocol::TimeBase timeBase{};
+    double triggerSpan = 0.0;
+    double freeSpan = 0.0;
+    TriggerMode triggerMode{};
+};
+
+using protocol::TimeBase;
+
+const std::array kMigrations{
+    Migration{.name = "SecondsAutoAtOneSecond",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "auto", "timeSpan": 1.0})",
+              .timeBase = TimeBase::kTrigger,
+              .triggerSpan = 1.0,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsAutoAtAQuarterSecond",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "auto", "timeSpan": 0.25})",
+              .timeBase = TimeBase::kTrigger,
+              .triggerSpan = 0.25,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsAutoJustAboveOneSecond",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "auto", "timeSpan": 1.0001})",
+              .timeBase = TimeBase::kFree,
+              .triggerSpan = 1.0,
+              .freeSpan = 1.0001,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsNormalAtFourSeconds",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "normal", "timeSpan": 4.0})",
+              .timeBase = TimeBase::kFree,
+              .triggerSpan = 1.0,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kNormal},
+    Migration{.name = "SecondsFreeAtOneSecond",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "free", "timeSpan": 1.0})",
+              .timeBase = TimeBase::kFree,
+              .triggerSpan = 1.0,
+              .freeSpan = 1.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsFreeBelowFreesShortest",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "free", "timeSpan": 0.05})",
+              .timeBase = TimeBase::kFree,
+              .triggerSpan = 0.05,
+              .freeSpan = 0.1,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsSingleAtAQuarterSecond",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "single", "timeSpan": 0.25})",
+              .timeBase = TimeBase::kTrigger,
+              .triggerSpan = 0.25,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kSingle},
+    Migration{.name = "BeatsFreeAtTwoSeconds",
+              .saved = R"({"timeBase": "beats", "triggerMode": "free", "timeSpan": 2.0})",
+              .timeBase = TimeBase::kBeats,
+              .triggerSpan = 1.0,
+              .freeSpan = 2.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "BeatsAutoAtHalfASecond",
+              .saved = R"({"timeBase": "beats", "triggerMode": "auto", "timeSpan": 0.5})",
+              .timeBase = TimeBase::kBeats,
+              .triggerSpan = 0.5,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "BeatsAutoAtThreeSeconds",
+              .saved = R"({"timeBase": "beats", "triggerMode": "auto", "timeSpan": 3.0})",
+              .timeBase = TimeBase::kBeats,
+              .triggerSpan = 1.0,
+              .freeSpan = 3.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsAutoAtTheOldShortest",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "auto", "timeSpan": 0.0005})",
+              .timeBase = TimeBase::kTrigger,
+              .triggerSpan = 0.0005,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsAutoAtTheOldLongest",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "auto", "timeSpan": 4.0})",
+              .timeBase = TimeBase::kFree,
+              .triggerSpan = 1.0,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsAutoWithAnInvalidSpan",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "auto", "timeSpan": 99})",
+              .timeBase = TimeBase::kTrigger,
+              .triggerSpan = 1.0,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsAutoWithASpanThatIsNotANumber",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "auto", "timeSpan": "x"})",
+              .timeBase = TimeBase::kTrigger,
+              .triggerSpan = 1.0,
+              .freeSpan = 4.0,
+              .triggerMode = TriggerMode::kAuto},
+    Migration{.name = "SecondsFreeWithAnInvalidSpan",
+              .saved = R"({"timeBase": "seconds", "triggerMode": "free", "timeSpan": 99})",
+              .timeBase = TimeBase::kFree,
+              .triggerSpan = 1.0,
+              .freeSpan = 1.0,
+              .triggerMode = TriggerMode::kAuto},
+};
+
+class MigratesEachKindOfProject : public ::testing::TestWithParam<Migration>
+{
+};
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const Migration& c, std::ostream* out)
+{
+    *out << c.name;
+}
+
+TEST_P(MigratesEachKindOfProject, OpensShowingWhatItShowed)
+{
+    const Migration& c = GetParam();
+    const nlohmann::json state = {{"version", 2}, {"settings", nlohmann::json::parse(c.saved)}};
+    const Settings settings = deserializeState(state.dump());
+    EXPECT_EQ(settings.enumValue<TimeBase>(SettingId::kTimeBase), c.timeBase);
+    EXPECT_EQ(settings.value(SettingId::kTriggerSpan), c.triggerSpan);
+    EXPECT_EQ(settings.value(SettingId::kFreeSpan), c.freeSpan);
+    EXPECT_EQ(settings.enumValue<TriggerMode>(SettingId::kTriggerMode), c.triggerMode);
+}
+
+INSTANTIATE_TEST_SUITE_P(State, MigratesEachKindOfProject, ::testing::ValuesIn(kMigrations),
+                         [](const ::testing::TestParamInfo<Migration>& info) {
+                             return std::string(info.param.name);
+                         });
+
+// The 0.5 release's saved project, in Seconds at 0.25 s in Single, opens in Trigger at 0.25 s.
+TEST(State, OpensTheReleasedSecondsProjectInTrigger)
+{
+    const Settings settings = deserializeState(readTestFile("state-v2-0.5.json"));
+    EXPECT_EQ(settings.enumValue<TimeBase>(SettingId::kTimeBase), TimeBase::kTrigger);
+    EXPECT_EQ(settings.value(SettingId::kTriggerSpan), 0.25);
+    EXPECT_EQ(settings.value(SettingId::kFreeSpan), defaultOf(SettingId::kFreeSpan));
+}
+
+// A version 3 state holds no time span; one that does ignores it, as any unknown field.
+TEST(State, IgnoresATimeSpanInAVersion3State)
+{
+    const Settings settings = deserializeState(
+        R"({"version": 3, "settings": {"timeBase": "trigger", "timeSpan": 0.25}})");
+    EXPECT_EQ(settings.value(SettingId::kTriggerSpan), defaultOf(SettingId::kTriggerSpan));
 }
 
 TEST(State, IgnoresUnknownFieldsAndLoadsNewerVersions)

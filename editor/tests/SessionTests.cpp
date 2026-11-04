@@ -54,9 +54,9 @@ protected:
     void SetUp() override
     {
         engine.prepare(48000.0);
-        // These tests use the seconds time base; Beats is the default.
+        // These tests use the Trigger time base; Beats is the default.
         engine.settings().set(protocol::SettingId::kTimeBase,
-                              static_cast<double>(protocol::TimeBase::kSeconds));
+                              static_cast<double>(protocol::TimeBase::kTrigger));
         std::vector<float> tone(48000);
         for (std::size_t i = 0; i < tone.size(); ++i) {
             tone[i] = (i / 50) % 2 == 0 ? 0.5f : -0.5f;
@@ -147,8 +147,8 @@ TEST_F(SessionTest, TellsThePageWhenNativeDrawingStopsForGood)
 
 TEST_F(SessionTest, HelloSetsTheTraceWidthInDevicePixels)
 {
-    engine.settings().set(SettingId::kTimeSpan, 0.1); // 4800 samples: more than the columns.
-    session.receive(example("hello"));                // 640 CSS px at 2x.
+    engine.settings().set(SettingId::kTriggerSpan, 0.1); // 4800 samples: more than the columns.
+    session.receive(example("hello"));                   // 640 CSS px at 2x.
     EXPECT_EQ(producedPointCount(), 1280u);
 }
 
@@ -156,8 +156,8 @@ TEST_F(SessionTest, HelloSetsTheTraceWidthInDevicePixels)
 // frame, though no audio arrived since the last one and nothing else changed.
 TEST_F(SessionTest, DrawsAFrameForAPageThatSaysHelloAgain)
 {
-    engine.settings().set(SettingId::kTimeSpan, 0.1);
-    engine.settings().set(SettingId::kTriggerMode, 2.0); // Free.
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kFree));
+    engine.settings().set(SettingId::kFreeSpan, 0.1);
     session.receive(example("hello"));
     ASSERT_GT(producedPointCount(), 0u);
     EXPECT_EQ(producedPointCount(), 0u) << "nothing new";
@@ -216,7 +216,7 @@ TEST_F(SessionTest, AppliesValidSettingsAndEchoesThem)
     session.receive(example("setSettingNumber"));
     EXPECT_EQ(engine.settings().get().value(SettingId::kTriggerMode), 1.0);
     EXPECT_EQ(engine.settings().get().value(SettingId::kChannelViews), 0b1100);
-    EXPECT_EQ(engine.settings().get().value(SettingId::kTimeSpan), 0.5);
+    EXPECT_EQ(engine.settings().get().value(SettingId::kTriggerSpan), 0.5);
     const auto echoes = transport.ofType("stateChanged");
     ASSERT_EQ(echoes.size(), 3u);
     EXPECT_EQ(echoes[0]["name"], "triggerMode");
@@ -227,7 +227,7 @@ TEST_F(SessionTest, AppliesValidSettingsAndEchoesThem)
 TEST_F(SessionTest, AnswersAnInvalidValueWithTheValueKept)
 {
     session.receive(example("hello"));
-    session.receive({{"type", "setSetting"}, {"name", "timeSpan"}, {"value", 99.0}});
+    session.receive({{"type", "setSetting"}, {"name", "triggerSpan"}, {"value", 99.0}});
     const auto echoes = transport.ofType("stateChanged");
     ASSERT_EQ(echoes.size(), 1u);
     EXPECT_EQ(echoes[0]["value"], 1.0) << "the control snaps back to the stored value";
@@ -291,8 +291,8 @@ TEST_P(SessionFormat, DrawsAFrameForANewFormatWithoutNewAudio)
 {
     const FormatCase c = GetParam();
     constexpr double kSpan = 0.1;
-    engine.settings().set(SettingId::kTimeSpan, kSpan);
-    engine.settings().set(SettingId::kTriggerMode, 2.0); // Free.
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kFree));
+    engine.settings().set(SettingId::kFreeSpan, kSpan);
     session.receive(example("hello"));
     std::vector<std::byte> frame;
     ASSERT_TRUE(analyzer.produce(frame));
@@ -396,7 +396,7 @@ TEST_F(SessionTest, ForwardsViewCommandsToTheAnalyzer)
 
 TEST_F(SessionTest, ForwardsTheViewToTheAnalyzer)
 {
-    engine.settings().set(SettingId::kTimeSpan, 0.1);
+    engine.settings().set(SettingId::kTriggerSpan, 0.1);
     session.receive(example("hello"));
     session.receive(example("view")); // A quarter of the span.
     std::vector<std::byte> frame;
@@ -549,7 +549,7 @@ class MessageBeforeHello : public SessionTest, public ::testing::WithParamInterf
 // the settings, and what the analyzer draws, stay as an untouched session would have them.
 TEST_P(MessageBeforeHello, ChangesNothing)
 {
-    engine.settings().set(SettingId::kTimeSpan, 0.1);
+    engine.settings().set(SettingId::kTriggerSpan, 0.1);
     engine::Analyzer untouched{engine};
     analyzer.setColumns(640);
     untouched.setColumns(640);

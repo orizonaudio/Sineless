@@ -317,7 +317,7 @@ CFDataRef dataOf(const std::string& bytes)
 engine::Settings notDefaults()
 {
     engine::Settings settings;
-    settings.set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kSeconds));
+    settings.set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kTrigger));
     settings.set(SettingId::kDisplayMode, static_cast<double>(protocol::DisplayMode::kMulti));
     settings.set(SettingId::kGroup, static_cast<double>(protocol::Group::kC));
     return settings;

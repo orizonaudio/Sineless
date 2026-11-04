@@ -12,6 +12,11 @@ import {
   ViewLayout,
   type EnumName,
 } from "./enums.ts";
+import {
+  frozenHoldSeconds,
+  longestTriggerSpanSeconds,
+  shortestFreeSpanSeconds,
+} from "./limits.ts";
 
 export interface NumberSetting {
   readonly kind: "number";
@@ -40,11 +45,19 @@ export type Setting = NumberSetting | EnumSetting | FlagsSetting;
 const bit = (value: number): number => 1 << value;
 
 export const settings = {
-  timeSpan: {
+  // The span of the Trigger time base, and of the Free time base.
+  triggerSpan: {
     kind: "number",
     minimum: 0.0005,
-    maximum: 4,
+    maximum: longestTriggerSpanSeconds,
     defaultValue: 1,
+    logarithmic: true,
+  },
+  freeSpan: {
+    kind: "number",
+    minimum: shortestFreeSpanSeconds,
+    maximum: frozenHoldSeconds,
+    defaultValue: 4,
     logarithmic: true,
   },
   verticalScale: {

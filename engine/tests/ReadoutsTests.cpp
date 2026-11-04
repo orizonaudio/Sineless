@@ -144,10 +144,11 @@ TEST(Readouts, HandleASpanWithNothingFinite)
     EXPECT_EQ(readouts.invalid, 960U);
 }
 
-// The shortest span the time span setting allows.
+// The shortest span the Trigger span setting allows.
 double shortestSpan()
 {
-    return protocol::kSettings.at(static_cast<std::size_t>(protocol::SettingId::kTimeSpan)).minimum;
+    return protocol::kSettings.at(static_cast<std::size_t>(protocol::SettingId::kTriggerSpan))
+        .minimum;
 }
 
 // Tones as instruments and mixes give them, at every sample rate: not perfectly periodic, offset

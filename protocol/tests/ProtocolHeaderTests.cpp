@@ -17,10 +17,10 @@ TEST(ProtocolHeader, DescribesEverySettingInIdOrder)
 
 TEST(ProtocolHeader, MatchesTheApprovedSettingsTable)
 {
-    const auto& timeSpan = kSettings[static_cast<std::size_t>(SettingId::kTimeSpan)];
-    EXPECT_EQ(timeSpan.name, "timeSpan");
-    EXPECT_EQ(timeSpan.defaultValue, 1.0);
-    EXPECT_TRUE(timeSpan.logarithmic);
+    const auto& triggerSpan = kSettings[static_cast<std::size_t>(SettingId::kTriggerSpan)];
+    EXPECT_EQ(triggerSpan.name, "triggerSpan");
+    EXPECT_EQ(triggerSpan.defaultValue, 1.0);
+    EXPECT_TRUE(triggerSpan.logarithmic);
 
     const auto& source = kSettings[static_cast<std::size_t>(SettingId::kTriggerSource)];
     EXPECT_EQ(source.kind, SettingKind::kEnum);

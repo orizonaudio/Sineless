@@ -69,7 +69,7 @@ function expectLinesDrawn(laneCount: number): void {
 test("the page draws its grid where the lines belong, in their colours, and clears the old one", async () => {
   await startApp();
   await settle();
-  await inTimeBase("Sec");
+  await inTimeBase("Trig");
   await press(choice("layout", "Stack"));
   await settle();
   expectLinesDrawn(2);

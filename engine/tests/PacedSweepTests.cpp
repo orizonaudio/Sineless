@@ -828,13 +828,13 @@ TEST(PacedSweep, PlacesAudioPlayedWhileAwayWhereItWasPlayed)
         std::optional<TimeBase> timeBase;
         std::optional<DisplayMode> otherMode;
     };
-    for (const Away& away : {Away{.name = "Single in Seconds",
+    for (const Away& away : {Away{.name = "Single in Trigger",
                                   .mode = DisplayMode::kSingle,
-                                  .timeBase = TimeBase::kSeconds,
+                                  .timeBase = TimeBase::kTrigger,
                                   .otherMode = std::nullopt},
-                             Away{.name = "Multi in Seconds",
+                             Away{.name = "Multi in Trigger",
                                   .mode = DisplayMode::kMulti,
-                                  .timeBase = TimeBase::kSeconds,
+                                  .timeBase = TimeBase::kTrigger,
                                   .otherMode = std::nullopt},
                              Away{.name = "Multi in Single",
                                   .mode = DisplayMode::kMulti,

@@ -112,11 +112,9 @@ function modeChips(
     }
     return chips;
   }
+  // The Free time base names itself: only a limited span is said.
   if (frame?.freeRunning === true) {
-    return [
-      { text: "Free", tone: "neutral" },
-      ...(frame.limited ? [spanLimited] : []),
-    ];
+    return frame.limited ? [spanLimited] : [];
   }
   const waiting =
     (mode === "normal" || mode === "single") &&

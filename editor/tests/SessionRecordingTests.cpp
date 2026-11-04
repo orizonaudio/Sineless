@@ -203,7 +203,8 @@ struct Scenario
 constexpr int kPageWidth = 1182;
 constexpr double kPagePixelRatio = 1.0;
 
-constexpr double kSeconds = static_cast<double>(protocol::TimeBase::kSeconds);
+constexpr double kTrigger = static_cast<double>(protocol::TimeBase::kTrigger);
+constexpr double kFree = static_cast<double>(protocol::TimeBase::kFree);
 constexpr double kBeats = static_cast<double>(protocol::TimeBase::kBeats);
 constexpr double kSingle = static_cast<double>(protocol::DisplayMode::kSingle);
 constexpr double kMulti = static_cast<double>(protocol::DisplayMode::kMulti);
@@ -247,29 +248,29 @@ std::vector<Scenario> scenarios()
         // A 1 kHz sine at 44.1 kHz over 10 ms: 441 samples, fewer than the page's columns, so the
         // frame carries raw samples and the hover reads its cycle exactly. Hover on.
         {.name = "SineHalf1k_44k1", .rate = 44100, .tracks = {stereo(sine(1000, 0.5))},
-         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 0.01}, {SettingId::kHoverReadout, kOn}},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerSpan, 0.01}, {SettingId::kHoverReadout, kOn}},
          .steps = {play(1.0)}},
         // A mono track: the views asked for are L and R (the default), the engine draws L alone.
         // 400 Hz fits four whole cycles into the 10 ms span, so the RMS is exactly a sine's.
         {.name = "MonoSine400_48k", .tracks = {mono(sine(400, 1.0))},
-         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 0.01}},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerSpan, 0.01}},
          .steps = {play(1.0)}},
         // Prepared at 192 kHz, then run at 384 kHz without being prepared again: the capture keeps
         // its 192 kHz size. A 2 s span fits what it keeps; then the page asks for 4 s, which does
         // not.
         {.name = "LimitedSpan_384kAfter192k", .rate = 384000, .preparedRate = 192000,
          .tracks = {stereo(sine(100, 0.5))},
-         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 2.0}},
-         .steps = {play(3.0), page(setSetting("timeSpan", 4.0)), play(0.5)}},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kFree},
+                      {SettingId::kFreeSpan, 2.0}},
+         .steps = {play(3.0), page(setSetting("freeSpan", 4.0)), play(0.5)}},
         // Compare at 384 kHz, a copy 499 samples late; the page freezes, then the host changes
         // to 44.1 kHz: the frozen frame still shows audio held at 384 kHz.
         {.name = "FrozenHeldRate_384kThen44k1", .rate = 384000,
          .tracks = {stereo(hiss), stereo(delayed(hiss, 499))}, .names = {"Noise", "Late copy"},
-         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 0.01}},
+         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerSpan, 0.01}},
          .steps = {play(2.0), page(freeze()), play(0.1), hostRate(44100), play(0.1)}},
         // Beats, one bar at 120 BPM (2 s), at 384 kHz; frozen after two bars, then 44.1 kHz.
         {.name = "FrozenHeldRateBeats_384kThen44k1", .rate = 384000,
@@ -281,26 +282,26 @@ std::vector<Scenario> scenarios()
         {.name = "MultiThreeTracks_48k",
          .tracks = {stereo(sine(100, 0.5)), stereo(sine(200, 0.5)), stereo(sine(300, 0.5))},
          .names = {"Kick", "Bass", "Keys"},
-         .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 0.1}},
+         .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
         // Two unrelated noises (the corpus's seeds): no clear match.
         {.name = "CompareUnrelated_48k", .tracks = {stereo(hiss), stereo(noise(2, 0.5))},
          .names = {"Noise", "Other noise"},
-         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 0.1}},
+         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
         // The other track silent: the two never sound together, so nothing is measured (NaN).
         {.name = "CompareOtherSilent_48k", .tracks = {stereo(hiss), stereo(silence())},
          .names = {"Noise", "Silent"},
-         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 0.1}},
+         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
         // A live 1.5 s roll, zoomed to the narrowest view: the engine draws at least a sample per
         // column, so the frame's visible samples are not the samples in view.
         {.name = "Roll1500msDeepestZoom_48k", .tracks = {stereo(sine(100, 0.5))},
-         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 1.5}},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kFree},
+                      {SettingId::kFreeSpan, 1.5}},
          .steps = {play(2.0), page(deepestZoom()), play(0.2)}},
         // A live Beats sweep of one bar, then zoomed to the narrowest view.
         {.name = "BeatsLive_48k", .tracks = {stereo(sine(100, 0.5))},
@@ -310,8 +311,8 @@ std::vector<Scenario> scenarios()
         // A 1 s span frozen after 6 s: the page pans back a quarter of the screen, then to as far
         // as the frame says the freeze reaches (the page sends the pan reach it read, a float32).
         {.name = "FrozenPan_48k", .tracks = {stereo(sine(100, 0.5))},
-         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kSeconds},
-                      {SettingId::kTimeSpan, 1.0}},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerSpan, 1.0}},
          .steps = {play(6.0), page(freeze()), page(panBack(0.25)),
                    pageFrom([](std::span<const std::byte> frame) {
                        return panBack(read<float>(frame, FrameHeader::kPanReachOffset));
@@ -365,7 +366,7 @@ Recorded record(const Scenario& s)
         host.track(i).setTrackInfo(info);
     }
     for (const auto& [id, value] : s.settings) {
-        host.own().settings().set(id, value);
+        EXPECT_TRUE(host.own().settings().set(id, value)) << s.name; // Not refused.
     }
     Analyzer analyzer(host.own(), host.registry);
     RecordingTransport transport;

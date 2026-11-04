@@ -152,14 +152,6 @@ protected:
     TriggerState state;
 };
 
-TEST_F(TriggerModes, FreeDrawsTheNewestSpanUntriggered)
-{
-    const auto decision = decide(sine(1000), TriggerMode::kFree);
-    EXPECT_EQ(decision.action, Action::kDraw);
-    EXPECT_FALSE(decision.triggered);
-    EXPECT_EQ(decision.windowStart, 1000.0 - kSpan);
-}
-
 TEST_F(TriggerModes, AutoPlacesTheNewestUsableEdgeAtTenPercent)
 {
     const auto decision = decide(sine(1000, 0.3), TriggerMode::kAuto);

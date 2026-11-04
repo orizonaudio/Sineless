@@ -93,7 +93,7 @@ describe("dragging on the screen", () => {
   beforeAll(async () => {
     await startApp();
     await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Sec"));
+    await userEvent.click(choice("time-base", "Trig"));
     await setPressed("level-cursors", true);
     await setPressed("time-cursors", true);
     await settle();

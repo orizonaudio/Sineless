@@ -448,8 +448,9 @@ TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
 {
     auto engine = std::make_shared<engine::Engine>();
     engine->prepare(48000.0);
-    engine->settings().set(protocol::SettingId::kTimeBase, 0.0);    // Seconds.
-    engine->settings().set(protocol::SettingId::kTriggerMode, 2.0); // Free: a frame per request.
+    engine->settings().set(protocol::SettingId::kTimeBase,
+                           static_cast<double>(protocol::TimeBase::kFree));
+    engine->settings().set(protocol::SettingId::kFreeSpan, 1.0); // Free: a frame per request.
     std::vector<float> tone(96000);
     for (std::size_t i = 0; i < tone.size(); ++i) {
         tone[i] = (i / 50) % 2 == 0 ? 0.5f : -0.5f;
@@ -481,7 +482,8 @@ TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
     EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.lastFrame.views.size)"), "2");
 
     engine::Settings restored;
-    restored.set(protocol::SettingId::kTimeBase, 0.0); // As before: only the level changes.
+    restored.set(protocol::SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kFree));
+    restored.set(protocol::SettingId::kFreeSpan, 1.0); // As before: only the level changes.
     restored.set(protocol::SettingId::kTriggerLevel, 0.5);
     engine->settings().replace(restored);
     EXPECT_TRUE(pumpUntil(
@@ -530,7 +532,7 @@ TEST_F(EditorTest, FitsTheMinimumAndDefaultSizesInEveryState)
         for (const fit::State& state : fit::states()) {
             engine::Settings settings;
             for (const auto& [id, value] : state.settings) {
-                settings.set(id, value);
+                ASSERT_TRUE(settings.set(id, value)) << state.name; // Not refused.
             }
             engine->settings().replace(settings);
             // A state sync or more.

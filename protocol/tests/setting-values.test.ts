@@ -12,7 +12,7 @@ import {
 describe("setting values", () => {
   test("defaults follow the settings table", () => {
     const defaults = defaultSettingValues();
-    expect(defaults.timeSpan).toBe(1);
+    expect(defaults.triggerSpan).toBe(1);
     expect(defaults.channelViews).toEqual(["left", "right"]);
     expect(defaults.triggerMode).toBe("auto");
     expect(defaults.triggerSource).toBe("mid");
@@ -24,10 +24,10 @@ describe("setting values", () => {
   });
 
   test("validates like the engine", () => {
-    expect(isValidSettingValue("timeSpan", 4)).toBe(true);
-    expect(isValidSettingValue("timeSpan", 4.5)).toBe(false);
-    expect(isValidSettingValue("timeSpan", Number.NaN)).toBe(false);
-    expect(isValidSettingValue("timeSpan", "0.5")).toBe(false);
+    expect(isValidSettingValue("freeSpan", 4)).toBe(true);
+    expect(isValidSettingValue("freeSpan", 4.5)).toBe(false);
+    expect(isValidSettingValue("freeSpan", Number.NaN)).toBe(false);
+    expect(isValidSettingValue("freeSpan", "0.5")).toBe(false);
     expect(isValidSettingValue("triggerMode", "single")).toBe(true);
     expect(isValidSettingValue("triggerMode", "sometimes")).toBe(false);
     expect(isValidSettingValue("channelViews", [])).toBe(false);
