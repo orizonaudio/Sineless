@@ -9,7 +9,6 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 let dir = "";
 const report = () => join(dir, "mull.json");
-const log = () => join(dir, "mull.log");
 const run = (...args: string[]) =>
   execFileSync(process.execPath, ["scripts/mutation-report.ts", ...args], {
     encoding: "utf8",
@@ -34,10 +33,6 @@ beforeAll(() => {
       },
     }),
   );
-  writeFileSync(
-    log(),
-    "[info] Warm up run (threads: 1)\n       [###] 1/1. Finished in 3151ms\n",
-  );
 });
 
 describe("the mutation report's command line", () => {
@@ -48,78 +43,70 @@ describe("the mutation report's command line", () => {
     expect(summary).not.toContain("with no mutant");
   });
 
-  test("adds the tests' time against the limit from Mull's log (scripts/mutation-cpp.sh)", () => {
+  test("adds each module's time with no mutant from the shares' runs, and shows a module none timed as untimed (scripts/mutation-cpp.sh)", () => {
+    const shareTimes = (seconds: number) => ({
+      factor: 1.5,
+      constantSeconds: 5,
+      binaries: [
+        {
+          name: "engine_tests",
+          tests: 3344,
+          seconds,
+          limitSeconds: 1.5 * seconds + 5,
+        },
+      ],
+    });
+    writeFileSync(
+      join(dir, "baseline-1-engine.json"),
+      JSON.stringify(shareTimes(600)),
+    );
+    writeFileSync(
+      join(dir, "baseline-2-engine.json"),
+      JSON.stringify(shareTimes(660)),
+    );
     const summary = run(
       report(),
       "Mutation testing (C++)",
       "525",
-      "--mull-log",
-      log(),
-      "--limit",
-      "300",
+      "--baseline",
+      join(dir, "baseline-1-engine.json"),
+      "--baseline",
+      join(dir, "baseline-2-engine.json"),
+      "--tests",
+      "engine_tests",
+      "--tests",
+      "plugin_tests",
     );
-    expect(summary).toContain(
-      "The tests take 3 s with no mutant; each mutant is stopped at 300 s.",
-    );
+    expect(summary).toContain("| engine_tests | 660 s | 995 s |");
+    expect(summary).toContain("| plugin_tests | — | — |");
     expect(summary).not.toContain("[!WARNING]");
   });
 
-  test("adds each module's tests' time against their own limit (scripts/mutation-cpp.sh)", () => {
-    const engineLog = join(dir, "mull-engine.log");
+  test("adds each of the Audio Unit's test binaries' times from its one run (scripts/mutation-au.sh)", () => {
     writeFileSync(
-      engineLog,
-      "[info] Warm up run (threads: 1)\n       [###] 1/1. Finished in 11m0s\n",
+      join(dir, "baseline-au.json"),
+      JSON.stringify({
+        factor: 1.5,
+        constantSeconds: 5,
+        binaries: [
+          { name: "au_tests", tests: 207, seconds: 2, limitSeconds: 8 },
+          { name: "au_view_tests", tests: 30, seconds: 4, limitSeconds: 11 },
+        ],
+      }),
     );
-    const summary = run(
-      report(),
-      "Mutation testing (C++)",
-      "525",
-      "--tests-log",
-      `engine_tests=${engineLog}`,
-      "--tests-limit",
-      "engine_tests=1500",
-      "--tests-log",
-      `plugin_tests=${log()}`,
-      "--tests-limit",
-      "plugin_tests=60",
-    );
-    const notes = summary
-      .split("\n")
-      .filter((line) => line.includes(" s with no mutant"));
-    expect(notes).toHaveLength(2);
-    expect(notes[0]).toMatch(/^engine_tests take 660 s .* 1500 s\.$/u);
-    expect(notes[1]).toMatch(/^plugin_tests take 3 s .* 60 s\.$/u);
-  });
-
-  test("refuses a module's tests given a log but no limit, rather than leave their time out", () => {
-    const result = spawnSync(
-      process.execPath,
-      [
-        "scripts/mutation-report.ts",
-        report(),
-        "Mutation testing (C++)",
-        "--tests-log",
-        `editor_tests=${log()}`,
-      ],
-      { encoding: "utf8" },
-    );
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("editor_tests");
-  });
-
-  test("adds the slowest test binary's time against each binary's limit (scripts/mutation-au.sh)", () => {
     const summary = run(
       report(),
       "Mutation testing (Audio Unit)",
       "60",
-      "--binary-seconds",
-      "2",
-      "--limit",
-      "300",
+      "--baseline",
+      join(dir, "baseline-au.json"),
+      "--tests",
+      "au_tests",
+      "--tests",
+      "au_view_tests",
     );
-    expect(summary).toContain(
-      "The slowest test binary takes 2 s with no mutant; each test binary is stopped at 300 s.",
-    );
+    expect(summary).toContain("| au_tests | 2 s | 8 s |");
+    expect(summary).toContain("| au_view_tests | 4 s | 11 s |");
   });
 
   test("lists the mutants no test notices as JSON, for the mutation triage", () => {

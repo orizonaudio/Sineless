@@ -3,6 +3,8 @@
 // as Markdown and as GitHub Actions warnings.
 import { isAbsolute, relative, sep } from "node:path";
 
+import type { BaselineReport } from "./mutation-run.ts";
+
 // The parts of the mutation testing report schema read here.
 export interface Mutant {
   id?: string; // Mull's; Stryker's are numbers in its report, and unused here.
@@ -131,6 +133,17 @@ export function summarise(
     );
   }
   const missed = missedMutants(report);
+  const timedOut = Object.entries(report.files)
+    .flatMap(([file, { mutants }]) =>
+      mutants
+        .filter((mutant) => mutant.status === "Timeout")
+        .map((mutant) => ({ file, mutant })),
+    )
+    .sort(
+      (a, b) =>
+        a.file.localeCompare(b.file) ||
+        a.mutant.location.start.line - b.mutant.location.start.line,
+    );
   if (missed.length > 0) {
     lines.push(
       "",
@@ -141,6 +154,21 @@ export function summarise(
       ...missed.map(
         ({ file, mutant }) =>
           `| ${file}:${String(mutant.location.start.line)} | ${mutant.status} | ${mutant.mutatorName}: ${cell(mutant.replacement ?? "")} |`,
+      ),
+    );
+  }
+  // A timeout counts as noticed; listed so that one a limit set too tight stopped, a survivor in
+  // truth, shows.
+  if (timedOut.length > 0) {
+    lines.push(
+      "",
+      "Timed out: each hung its tests past its limit, which counts as noticed.",
+      "",
+      "| Where | Change |",
+      "| --- | --- |",
+      ...timedOut.map(
+        ({ file, mutant }) =>
+          `| ${file}:${String(mutant.location.start.line)} | ${mutant.mutatorName}: ${cell(mutant.replacement ?? "")} |`,
       ),
     );
   }
@@ -177,56 +205,46 @@ export function annotations(report: Report): string[] {
     });
 }
 
-// A duration as Mull's progress lines print it ("216ms", "58.2s", "4m40.4s", "1h2m3s"), in
-// seconds; undefined if it is not one.
-export function mullSeconds(text: string): number | undefined {
-  const units: Record<string, number> = { h: 3600, m: 60, s: 1, ms: 0.001 };
-  const parts = [...text.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/gu)];
-  if (parts.length === 0 || parts.map((part) => part[0]).join("") !== text) {
-    return undefined;
-  }
-  return parts.reduce(
-    (total, [, amount, unit]) =>
-      total + Number(amount) * (units[unit ?? ""] ?? 0),
-    0,
-  );
-}
-
-// How long Mull's warm-up run, the tests with no mutant, took: the duration on the progress line
-// after "Warm up run" in its log, blank lines between. Undefined when the log has none.
-export function warmUpSeconds(log: string): number | undefined {
-  const match = /Warm up run.*\n(?:[ \t]*\n)*.*Finished in (\S+)/u.exec(log);
-  return match?.[1] === undefined ? undefined : mullSeconds(match[1]);
-}
-
-// How long the tests take against each mutant's time limit. A mutant no test notices runs every
-// test: past half the limit, the margin is too small, as one would be stopped and reported as
-// timed out, which counts as noticed and hides a line no test checks.
-// With perBinary, the limit stops each of several test binaries (scripts/mutation-au.sh), and
-// `warmUp` is the slowest one's time. With `name`, they are one module's tests, with a limit of
-// their own (scripts/mutation-cpp.sh).
-export function timeLimitNote(
-  warmUp: number,
-  limit: number,
-  perBinary = false,
-  name?: string,
+// What the runs with no mutant measured, per test binary (scripts/mutation-run.ts, --baseline-out):
+// its tests' time and each mutant's limit there, the largest any share measured (each runs all the
+// binary's tests on its own runner), with the rule the limits follow. A binary in `expected`
+// (one with mutants) that no share timed shows "—": its run failed, or no share held its mutants.
+export function baselineNote(
+  reports: BaselineReport[],
+  expected: string[],
 ): string {
-  const [tests, stopped] =
-    name !== undefined
-      ? [`${name} take`, "each of their mutants is stopped"]
-      : perBinary
-        ? ["The slowest test binary takes", "each test binary is stopped"]
-        : ["The tests take", "each mutant is stopped"];
-  const lines = [
-    `${tests} ${warmUp.toFixed(0)} s with no mutant; ${stopped} at ${limit.toFixed(0)} s.`,
-  ];
-  if (warmUp * 2 > limit) {
-    lines.push(
-      "",
-      "> [!WARNING]",
-      `> ${tests} more than half the time limit: raise ${name === undefined || name === "engine_tests" ? "MUTANT_TIMEOUT" : "it (scripts/mutation-cpp.sh)"}, or mutants no test notices may be reported as timed out.`,
-    );
+  const largest = new Map<string, { seconds: number; limitSeconds: number }>();
+  for (const { binaries } of reports) {
+    for (const { name, seconds, limitSeconds } of binaries) {
+      const seen = largest.get(name);
+      largest.set(name, {
+        seconds: Math.max(seconds, seen?.seconds ?? 0),
+        limitSeconds: Math.max(limitSeconds, seen?.limitSeconds ?? 0),
+      });
+    }
   }
+  const names = [...new Set([...expected, ...largest.keys()])];
+  if (names.length === 0) {
+    return "";
+  }
+  const [first] = reports;
+  const lines =
+    first === undefined
+      ? []
+      : [
+          `Each mutant is stopped at ${String(first.factor)} × its tests' time with no mutant + ${String(first.constantSeconds)} s, the time measured with every worker busy.`,
+          "",
+        ];
+  lines.push(
+    "| Tests | With no mutant | Each mutant stopped at |",
+    "| --- | ---: | ---: |",
+    ...names.map((name) => {
+      const times = largest.get(name);
+      return times === undefined
+        ? `| ${name} | — | — |`
+        : `| ${name} | ${times.seconds.toFixed(0)} s | ${times.limitSeconds.toFixed(0)} s |`;
+    }),
+  );
   return lines.join("\n");
 }
 

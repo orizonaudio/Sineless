@@ -1,18 +1,17 @@
 // Prints a mutation testing report (Stryker's or Mull's) as Markdown under a title, or with
 // --annotate as GitHub Actions warnings on the lines of the mutants no test noticed, with paths
-// relative to the working directory (scripts/mutation-summary.ts). With Mull's log and each
-// mutant's time limit, the summary also says how long the tests take against that limit.
+// relative to the working directory (scripts/mutation-summary.ts). With the C++ runs' times with
+// no mutant (scripts/mutation-run.ts, --baseline-out), the summary also says how long each test
+// binary's tests take and where each mutant is stopped.
 //   node scripts/mutation-report.ts <report.json> <title> [seconds the run took]
-//       [--mull-log <mull.log> --limit <seconds> | --binary-seconds <seconds> --limit <seconds>]
-//       [--tests-log <tests>=<mull.log> --tests-limit <tests>=<seconds>]...
-// (--binary-seconds: the slowest of several test binaries with no mutant, each stopped at the
-// limit, as scripts/mutation-au.sh runs them; --tests-log and --tests-limit: each module's tests,
-// with a limit of their own, as scripts/mutation-cpp.sh runs them)
+//       [--baseline <baseline.json>]... [--tests <test binary>]...
+// (--tests: each binary with mutants, shown as "—" if no --baseline file times it)
 //   node scripts/mutation-report.ts <report.json> --annotate
 //   node scripts/mutation-report.ts <report.json> --survivors   (the mutants no test noticed, JSON)
 import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
+import type { BaselineReport } from "./mutation-run.ts";
 import {
   annotations,
   noMutantFound,
@@ -22,8 +21,7 @@ import {
   relativeTo,
   summarise,
   survivors,
-  timeLimitNote,
-  warmUpSeconds,
+  baselineNote,
   type Report,
 } from "./mutation-summary.ts";
 
@@ -34,11 +32,8 @@ const { positionals, values } = parseArgs({
   options: {
     annotate: { type: "boolean" },
     survivors: { type: "boolean" },
-    "mull-log": { type: "string" },
-    "binary-seconds": { type: "string" },
-    "tests-log": { type: "string", multiple: true },
-    "tests-limit": { type: "string", multiple: true },
-    limit: { type: "string" },
+    baseline: { type: "string", multiple: true },
+    tests: { type: "string", multiple: true },
     "stryker-log": { type: "string" },
     "mull-dry-log": { type: "string" },
     base: { type: "string" },
@@ -95,36 +90,12 @@ if (values.survivors === true) {
     option,
     seconds === undefined ? undefined : Number(seconds),
   );
-  const log = values["mull-log"];
-  const limit = values.limit;
-  const binarySeconds = values["binary-seconds"];
-  if (binarySeconds !== undefined && limit !== undefined) {
-    summary += `\n\n${timeLimitNote(Number(binarySeconds), Number(limit), true)}`;
-  } else if (log !== undefined && limit !== undefined) {
-    const warmUp = warmUpSeconds(readFileSync(log, "utf8"));
-    if (warmUp !== undefined) {
-      summary += `\n\n${timeLimitNote(warmUp, Number(limit))}`;
-    }
-  }
-  // Each as <tests>=<value>.
-  const byTests = (pairs: string[] | undefined) =>
-    new Map(
-      (pairs ?? []).map((pair) => {
-        const at = pair.indexOf("=");
-        return [pair.slice(0, at), pair.slice(at + 1)] as const;
-      }),
-    );
-  const limits = byTests(values["tests-limit"]);
-  for (const [tests, testsLog] of byTests(values["tests-log"])) {
-    const testsLimit = limits.get(tests);
-    if (testsLimit === undefined) {
-      console.error(`No --tests-limit for ${tests}, whose Mull log is given.`);
-      process.exit(2);
-    }
-    const warmUp = warmUpSeconds(readFileSync(testsLog, "utf8"));
-    if (warmUp !== undefined) {
-      summary += `\n\n${timeLimitNote(warmUp, Number(testsLimit), false, tests)}`;
-    }
+  const baselines = (values.baseline ?? []).map(
+    (file) => JSON.parse(readFileSync(file, "utf8")) as BaselineReport,
+  );
+  const note = baselineNote(baselines, values.tests ?? []);
+  if (note !== "") {
+    summary += `\n\n${note}`;
   }
   console.log(summary);
 }

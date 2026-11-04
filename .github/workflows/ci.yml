@@ -26,13 +26,6 @@ env:
   # caches no later run can read (caches are scoped to the branch that saved them); pull requests
   # keep theirs for their next push, and cache-cleanup.yml deletes them when they close.
   SAVE_CACHES: ${{ github.event_name != 'merge_group' }}
-  # Each engine mutant's time limit, in seconds (scripts/mutation-cpp.sh, which gives the plugin's
-  # and editor's, whose tests take a tenth of a second, a minute): the shares stop a mutant at it,
-  # and the merged summary weighs the tests' own time against it, so both read this one value.
-  # The engine's tests take about 540 s here with every mutant compiled in, longer with four mutants
-  # running at once; a mutant no test notices runs them all, and one stopped at the limit would
-  # read as noticed. 1500 s is near three times their time, the margin the summary asks for.
-  MUTANT_TIMEOUT: 1500
 
 jobs:
   # Whether anything but documentation changed (scripts/changed-code.ts). Each event is compared
@@ -514,10 +507,10 @@ jobs:
   # mutants; eight share them out, each an eighth of every file; the mutation-cpp job reports their
   # results together, those of mutants not reached in time as not run (a partial report, which
   # the triage never passes). Each mutant runs its own module's tests (engine_tests, plugin_tests
-  # or editor_tests) up to their first failure and is stopped at that module's limit if it hangs
-  # one (MUTANT_TIMEOUT, set for the whole workflow, for the engine's). The summary says how long
-  # each module's tests take unmutated, and warns when that is more than half its limit, as a
-  # mutant no test notices would then be reported as timed out. Each share writes every result
+  # or editor_tests) up to their first failure. Each share first runs them with no mutant, spread
+  # over the runner's cores, and stops each mutant at a limit from that time (scripts/mutation-run.ts,
+  # limitOf), so that only a mutant that hangs them reaches it; the summary gives each module's
+  # time and limit and lists the mutants that timed out. Each share writes every result
   # within 85 minutes of starting its tests (MUTATION_DEADLINE, the unmutated run included): a
   # mutant still running then is stopped and reported as not run, as are those left, so that the
   # job's 90 never cancel it with results unwritten (its setup takes under a minute).
@@ -610,7 +603,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cpp-mutants-results-${{ matrix.share }}
-          path: build/mutation-cpp-report/results-*.jsonl
+          # With its times with no mutant, from which the summary gives each module's.
+          path: |
+            build/mutation-cpp-report/results-*.jsonl
+            build/mutation-cpp-report/baseline-*.json
           retention-days: 1
           if-no-files-found: ignore
 
@@ -664,9 +660,9 @@ jobs:
   # a failure, and not required; pull requests that change au/src only, so that no other takes a
   # macOS runner for it. On macos-26: Mull's macOS builds need macOS 26.5 or later, and the image's
   # Xcode has the macOS 26 SDK that Clang 20 builds against. The whole of au/src runs in minutes,
-  # so the mutants are not shared out. Each test binary is stopped at 300 s rather than the
-  # engine's MUTANT_TIMEOUT: the Audio Unit's tests take seconds unmutated, so 300 s still lets a
-  # slow runner finish them, and a mutant that hangs one costs five minutes, not twenty-five. Every
+  # so the mutants are not shared out. Each test binary is stopped at a limit from its own tests'
+  # time with no mutant, measured on the runner first, so that a slow runner still finishes them
+  # and a mutant that hangs one costs seconds, as the Audio Unit's tests take seconds. Every
   # result is written within 30 minutes of starting the tests (MUTATION_DEADLINE, the unmutated
   # run included), so that with the build the job ends within its 60 with the results it wrote; a
   # mutant still running then, and those left, are reported as not run.
@@ -679,7 +675,6 @@ jobs:
     env:
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_OBJCXX_COMPILER_LAUNCHER: ccache
-      MUTANT_TIMEOUT: 300
       MUTATION_DEADLINE: 1800
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

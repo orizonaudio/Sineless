@@ -2,19 +2,21 @@
 // mull-runner has no way to split its mutants between jobs, writes nothing until every mutant has
 // run, and limits each mutant only to ten times the tests' own time. Here each mutant runs as Mull
 // runs it (the test binary with an environment variable named after the mutant set to 1), its
-// result is written as soon as it is known, a mutant that takes longer than the limit is stopped
+// result is written as soon as it is known, a mutant that takes longer than its limit is stopped
 // and counted as timed out, and every result is written within the budget: the seconds from the
 // run's start, the tests' run with no mutant included, by which it must end (CI's share job is
 // cancelled soon after, losing whatever is still running). No mutant starts once the budget is
 // spent, and one still running when it ends is stopped and reported as not run, as what it would
 // show is unknown; the mutants left are reported as not run too. Before the mutants, each test
 // binary (GoogleTest) runs once with no mutant, spread over the workers as GoogleTest shards: it
-// must pass, and each test's time is kept.
+// must pass, and each test's time is kept. A mutant's limit in each binary follows the time of
+// the tests it runs there (limitOf), so that only a mutant that hangs them reaches it: a fixed
+// limit near the tests' own time read every mutant no test noticed as timed out.
 // After the first binary, each further one (after another --) runs a mutant the ones before it
 // did not notice: the Audio Unit's view tests notice some of its mutants that its other tests
 // miss (scripts/mutation-au.sh). --workers sets how many mutants run at once (default: one a core).
 //   node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl>
-//       --limit <seconds a binary> --budget <seconds in all> [--workers <n>]
+//       --budget <seconds in all> [--workers <n>] [--baseline-out <baseline.json>]
 //       -- <test binary> [arguments] [-- <test binary> [arguments]]...
 //   node scripts/mutation-run.ts merge <dry-run.json> <results.jsonl>...   (prints the report)
 //   node scripts/mutation-run.ts combine <dry-run.json>...   (prints the lists as one)
@@ -30,7 +32,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import type { Report } from "./mutation-summary.ts";
 
@@ -143,23 +145,31 @@ export interface TestCommand {
 interface RunOptions {
   ids: string[];
   results: string;
-  limitSeconds: number;
+  // Each test binary's limit for a mutant, in the order of `tests`.
+  limitsSeconds: number[];
   // When the budget ends, in milliseconds since the epoch (Date.now()).
   endsAt: number;
   tests: TestCommand[];
   workers?: number | undefined;
 }
 
-type TestOptions = Pick<RunOptions, "limitSeconds" | "endsAt" | "tests">;
+type TestOptions = Pick<RunOptions, "limitsSeconds" | "endsAt" | "tests">;
 
-// The tests run with the mutant `id` switched on, or with none: each binary in turn, until one
-// fails or is stopped at the limit, which notices the mutant.
+// The tests run with the mutant `id` switched on: each binary in turn, until one fails or is
+// stopped at its limit, which notices the mutant.
 async function runTests(
   options: TestOptions,
-  id?: string,
+  id: string,
 ): Promise<Result["status"]> {
-  for (const test of options.tests) {
-    const status = await runBinary(test, options, id);
+  for (const [index, test] of options.tests.entries()) {
+    const status = await runBinary(
+      test,
+      {
+        limitSeconds: options.limitsSeconds[index] ?? Infinity,
+        endsAt: options.endsAt,
+      },
+      id,
+    );
     if (status !== "Survived") {
       return status;
     }
@@ -171,8 +181,8 @@ async function runTests(
 // the budget stops before its own limit is not run: its hang, if it is one, is not shown.
 function runBinary(
   test: TestCommand,
-  options: Pick<TestOptions, "limitSeconds" | "endsAt">,
-  id?: string,
+  options: { limitSeconds: number; endsAt: number },
+  id: string,
 ): Promise<Result["status"]> {
   const limit = options.limitSeconds * 1000;
   const left = options.endsAt - Date.now();
@@ -182,7 +192,7 @@ function runBinary(
   const capped = left < limit;
   return new Promise((resolve) => {
     const child = spawn(test.command, test.args, {
-      env: id === undefined ? process.env : { ...process.env, [id]: "1" },
+      env: { ...process.env, [id]: "1" },
       stdio: "ignore",
     });
     let timedOut = false;
@@ -261,6 +271,23 @@ export function wholeSeconds(baseline: Baseline): number {
   return total;
 }
 
+// A mutant's limit is this many times its tests' time with no mutant, plus limitConstantSeconds:
+// Stryker's defaults (timeoutFactor 1.5, timeoutMS 5000), with PIT's (1.25, 4 s) the same in kind.
+// The factor leaves a mutant that slows its tests (a loop run a few more times) to finish, as a
+// survivor or killed; the constant covers a binary's start-up varying between runs. The times
+// are measured with every worker busy, as the mutants run, so contention is in both.
+export const limitFactor = 1.5;
+export const limitConstantSeconds = 5;
+
+// A mutant's limit in a binary whose tests it runs all of.
+export function limitOf(
+  baseline: Baseline,
+  factor = limitFactor,
+  constantSeconds = limitConstantSeconds,
+): number {
+  return factor * wholeSeconds(baseline) + constantSeconds;
+}
+
 interface Captured {
   code: number | null;
   timedOut: boolean;
@@ -313,17 +340,16 @@ function capture(
 // (GTEST_TOTAL_SHARDS and GTEST_SHARD_INDEX, each test in one shard), as the mutants will load the
 // runner: each test's time, and the binary's start-up (a shard's time less its tests', the largest
 // of the shards). Fails, naming why, when a test fails with no mutant (every mutant would then
-// read as noticed), when a run outlasts the limit or the budget, or when a test the binary lists
-// has no time in its report (every limit taken from those times would be wrong).
+// read as noticed), when a run outlasts the budget, or when a test the binary lists has no time
+// in its report (every limit taken from those times would be wrong).
 export async function baseline(
-  options: TestOptions & { workers?: number | undefined },
+  options: Pick<RunOptions, "endsAt" | "tests" | "workers">,
 ): Promise<Baseline[] | string> {
   const shards = options.workers ?? availableParallelism();
   const baselines: Baseline[] = [];
   for (const test of options.tests) {
     const name = test.command;
-    const cap = () =>
-      Math.min(options.limitSeconds * 1000, options.endsAt - Date.now());
+    const cap = () => options.endsAt - Date.now();
     const list = await capture(
       test,
       ["--gtest_list_tests"],
@@ -352,7 +378,7 @@ export async function baseline(
       ),
     );
     if (runs.some((run) => run.timedOut)) {
-      return `${name} takes more than ${String(options.limitSeconds)} s or the budget with no mutant.`;
+      return `${name} outlasts the budget with no mutant.`;
     }
     if (runs.some((run) => run.code !== 0)) {
       return `${name} fails with no mutant.`;
@@ -376,11 +402,7 @@ export async function baseline(
     if (untimed.length > 0) {
       return `${name} lists ${String(untimed.length)} tests its reports give no time for, as ${untimed[0] ?? ""}.`;
     }
-    const result = { startupSeconds, testSeconds };
-    if (wholeSeconds(result) > options.limitSeconds) {
-      return `${name} would take ${wholeSeconds(result).toFixed(0)} s with no mutant, more than the limit of ${String(options.limitSeconds)} s.`;
-    }
-    baselines.push(result);
+    baselines.push({ startupSeconds, testSeconds });
   }
   return baselines;
 }
@@ -413,6 +435,36 @@ export async function run(options: RunOptions): Promise<Result[]> {
     ),
   );
   return done;
+}
+
+// What a share's run with no mutant measured, for the summary (scripts/mutation-summary.ts,
+// baselineNote): each binary by its file's name, its tests' time with no mutant and each mutant's
+// limit there, with the factor and constant the limits follow.
+export interface BaselineReport {
+  factor: number;
+  constantSeconds: number;
+  binaries: {
+    name: string;
+    tests: number;
+    seconds: number;
+    limitSeconds: number;
+  }[];
+}
+
+export function baselineReport(
+  tests: TestCommand[],
+  baselines: Baseline[],
+): BaselineReport {
+  return {
+    factor: limitFactor,
+    constantSeconds: limitConstantSeconds,
+    binaries: baselines.map((times, index) => ({
+      name: basename(tests[index]?.command ?? ""),
+      tests: times.testSeconds.size,
+      seconds: wholeSeconds(times),
+      limitSeconds: limitOf(times),
+    })),
+  };
 }
 
 // The test binaries after the first --, each with its arguments, split at each further --.
@@ -459,7 +511,6 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
     const [share, shares] = (args[2] ?? "").split("/").map(Number);
     const results = args[3];
     const tests = testCommands(args);
-    const limit = Number(option("--limit"));
     const budget = Number(option("--budget"));
     const workers =
       option("--workers") === undefined
@@ -469,12 +520,11 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       results === undefined ||
       !args.includes("--") ||
       tests.some((test) => test.command === "") ||
-      !(limit > 0) ||
       !(budget > 0) ||
       (workers !== undefined && !(Number.isInteger(workers) && workers > 0))
     ) {
       console.error(
-        "run needs <share>/<shares> <results.jsonl> --limit --budget [--workers] -- <binary> [-- <binary>]...",
+        "run needs <share>/<shares> <results.jsonl> --budget [--workers] [--baseline-out] -- <binary> [-- <binary>]...",
       );
       process.exit(2);
     }
@@ -495,28 +545,30 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       process.exit(1);
     }
     const endsAt = started + budget * 1000;
-    const baselines = await baseline({
-      limitSeconds: limit,
-      endsAt,
-      tests,
-      workers,
-    });
+    const baselines = await baseline({ endsAt, tests, workers });
     if (typeof baselines === "string") {
       console.error(
-        `${baselines} The tests must pass with no mutant, within ${String(limit)} s and the budget's ${String(budget)} s, or every mutant would read as noticed.`,
+        `${baselines} The tests must pass with no mutant, within the budget's ${String(budget)} s, or every mutant would read as noticed.`,
       );
       process.exit(1);
     }
-    for (const [index, times] of baselines.entries()) {
+    const timed = baselineReport(tests, baselines);
+    for (const binaryTimes of timed.binaries) {
       console.log(
-        `${tests[index]?.command ?? ""}: ${String(times.testSeconds.size)} tests, ${wholeSeconds(times).toFixed(1)} s with no mutant (start-up ${times.startupSeconds.toFixed(1)} s).`,
+        `${binaryTimes.name}: ${String(binaryTimes.tests)} tests, ${binaryTimes.seconds.toFixed(1)} s with no mutant; each mutant stopped at ${binaryTimes.limitSeconds.toFixed(1)} s.`,
       );
+    }
+    const baselineOut = option("--baseline-out");
+    if (baselineOut !== undefined) {
+      writeFileSync(baselineOut, JSON.stringify(timed));
     }
     writeFileSync(results, "");
     const done = await run({
       ids,
       results,
-      limitSeconds: limit,
+      limitsSeconds: timed.binaries.map(
+        (binaryTimes) => binaryTimes.limitSeconds,
+      ),
       endsAt,
       tests,
       workers,
@@ -535,7 +587,7 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
     console.log(JSON.stringify(merge(report, results)));
   } else {
     console.error(
-      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --limit <s> --budget <s> [--workers <n>] -- <binary> [args] [-- <binary> [args]]... | merge <dry-run.json> <results.jsonl>... | combine <dry-run.json>...",
+      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --budget <s> [--workers <n>] [--baseline-out <file>] -- <binary> [args] [-- <binary> [args]]... | merge <dry-run.json> <results.jsonl>... | combine <dry-run.json>...",
     );
     process.exit(2);
   }
