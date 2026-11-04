@@ -727,7 +727,7 @@ TEST(FrozenFreeToTrigger, ShowsTheSecondEndingWhereTheFreeWindowEnded)
         ASSERT_EQ(frozen.mode, FrameMode::kRaw);
         const auto newest = static_cast<float>(count - 1);
         EXPECT_NEAR(frozen.data.back(), newest, 1.0F) << "ends at the newest audio shown";
-        const float reach = get<float>(bytes, FrameHeader::kPanReachOffset);
+        const auto reach = get<float>(bytes, FrameHeader::kPanReachOffset);
         EXPECT_NEAR(reach, protocol::kFrozenHoldSeconds - 1.0, 2.0 / rate)
             << "back to the oldest audio held";
 
