@@ -22,7 +22,8 @@ std::array<bool, kBarcodeRowCells> barcodeRow(std::uint64_t value)
 BarcodeStrip barcodeStrip(double width, double height, double pixelRatio)
 {
     const auto inset = static_cast<double>(
-        std::lround((static_cast<double>(protocol::kScreenRadius) + 2.0) * pixelRatio));
+        std::lround(static_cast<double>(protocol::kScreenRadius + protocol::kBarcodeCornerMargin) *
+                    pixelRatio));
     const auto cell = static_cast<double>(protocol::kBarcodeCellPixels);
     return {.left = std::max(0.0, width - inset - static_cast<double>(kBarcodeRowCells) * cell),
             .top = std::min(inset, std::max(0.0, height - 2.0 * cell)),
