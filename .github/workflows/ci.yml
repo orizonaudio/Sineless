@@ -503,9 +503,10 @@ jobs:
   # (scripts/mutation-cpp.sh), with Mull for the runner's Clang 18: a report in the job summary,
   # with warnings on the lines whose changes no test notices. Never a failure, and not required;
   # nothing is built when none of their sources changed. In three steps, so that a large change
-  # still gets a report: one job builds the tests with every mutant compiled in and lists the
-  # mutants; eight share them out, each an eighth of every file; the mutation-cpp job reports their
-  # results together, those of mutants not reached in time as not run (a partial report, which
+  # still gets a report: one job builds the tests with the mutants of the lines changed compiled
+  # in (only those, so that the rest of the code runs at its normal speed) and lists them; eight
+  # share them out, each an eighth of every file; the mutation-cpp job reports their results
+  # together, those of mutants not reached in time as not run (a partial report, which
   # the triage never passes). Each mutant runs its own module's tests (engine_tests, plugin_tests
   # or editor_tests) up to their first failure. Each share first runs them with no mutant, spread
   # over the runner's cores, and stops each mutant at a limit from that time (scripts/mutation-run.ts,
@@ -547,9 +548,9 @@ jobs:
           report=build/mutation-cpp-report/dry.json
           echo "mutants=$([[ -f $report ]] && jq '[.files[].mutants[]] | length' $report || echo 0)" \
             >> "$GITHUB_OUTPUT"
-      # The list (with each module's Mull log, for its tests' time) or the summary saying no C++
-      # source line changed, and the tests to run the mutants with. Not named mutation-*: the
-      # triage takes only the reports.
+      # The list (with each module's Mull log) or the summary saying no C++ source line changed,
+      # and the tests to run the mutants with. Not named mutation-*: the triage takes only the
+      # reports.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cpp-mutants-list

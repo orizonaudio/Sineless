@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mutation testing of the C++ engine, plugin and editor: Mull builds their tests with every mutant
+# Mutation testing of the C++ engine, plugin and editor: Mull builds their tests with the mutants
 # compiled in (tools/mutation/mull.yml) and runs each mutant against its own module's tests, each
 # run stopping at the first test that fails. A mutant no test fails on marks code that no test
 # checks. With a base revision, only the lines changed since it are mutated, as on a pull request
@@ -7,9 +7,9 @@
 # each of the engine, plugin or editor, repeatable); with neither, all of them, about nine hours
 # for the engine:
 #   scripts/mutation-cpp.sh [--file engine/src/Analyzer.cpp ...] [base revision, e.g. origin/main]
-# Mull lists each module's mutants from its own tests (its dry run, which also times them with
-# none), and scripts/mutation-run.ts runs them: each stopped at a limit from its tests' time with no
-# mutant (measured first, in each share), and
+# Mull lists each module's mutants from its own tests (its dry run), and scripts/mutation-run.ts
+# runs them: each stopped at a limit from its tests' time with no mutant (measured first, in each
+# share), and
 # every result written within MUTATION_DEADLINE seconds of the share's start (default: none), the
 # tests' run with no mutant included; a mutant still running then, and those left, are reported as
 # not run rather than lost. CI shares the mutants out:
@@ -184,8 +184,12 @@ if [[ -n "$base" ]]; then
         exit 0
     fi
     selected=("${changed[@]}")
-    # The tests run only the mutants on the lines changed since the base; the build compiles them
-    # all, so a cached build serves any base.
+    # Only the mutants on the lines changed since the base are built and run: Mull's compiler pass
+    # applies the same filter as its runner (Mull's lib/Driver.cpp, filter_mutants), so the
+    # functions on no changed line carry no mutant switch and run at their normal speed. Each switch
+    # is checked on every call of its function, and the engine's tests took 443 s in Docker with
+    # every mutant compiled in against 312 s with the changed lines' only (315 s with none), in
+    # every run with no mutant and every mutant's run.
     config="$out/mull.yml"
     # Mull is given the base with the files added since it held empty, as its diff leaves out
     # files the base lacks (scripts/mutation-base.ts).
@@ -197,21 +201,29 @@ if [[ -n "$base" ]]; then
         > "$config"
 fi
 
-# The mutants compiled in follow mull.yml and the Mull installed, which neither Ninja nor ccache
-# sees: the build starts afresh when either changes, and ccache hashes both.
-settings=(tools/mutation/mull.yml tools/mutation/install-mull.sh)
+# The mutants compiled in follow the run's Mull settings (with a base, the lines changed since it)
+# and the Mull installed, which neither Ninja nor ccache sees: the build starts afresh when either
+# changes, and ccache hashes both, so each base builds once in full (the pushes of one pull
+# request share their objects; pull requests on different bases do not). With the same settings,
+# an object's mutants follow its own sources, which both already see. The settings must key every
+# object: an object built for another base can lack the switches of a line this one changed, and
+# the list, read from the binary, would then leave those mutants out unseen.
+settings=(tools/mutation/mull.yml tools/mutation/install-mull.sh "$config")
 stamp="$(cat "${settings[@]}" | sha256sum | cut -d' ' -f1)"
 if [[ "$(cat build/mutation-cpp/settings.sha256 2> /dev/null)" != "$stamp" ]]; then
     rm -rf build/mutation-cpp/engine build/mutation-cpp/plugin build/mutation-cpp/editor
 fi
-export CCACHE_EXTRAFILES="$root/tools/mutation/mull.yml:$root/tools/mutation/install-mull.sh"
-MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --preset mutation > "$out/configure.log"
-MULL_CONFIG="$root/tools/mutation/mull.yml" cmake --build --preset mutation
+export CCACHE_EXTRAFILES="$root/tools/mutation/mull.yml:$root/tools/mutation/install-mull.sh:$config"
+MULL_CONFIG="$config" cmake --preset mutation > "$out/configure.log"
+MULL_CONFIG="$config" cmake --build --preset mutation
 echo "$stamp" > build/mutation-cpp/settings.sha256
 start=$SECONDS
 # Each module's mutants, listed with no test run from its own tests, as the run's own settings name
-# its sources (or the files named in it). Mull's warm-up still runs those tests once with no
-# mutant, which the summary reports against each mutant's limit.
+# its sources (or the files named in it). Mull's dry run always starts with a warm-up run of the
+# tests (its mull-runner.rs), which nothing here uses, as each share times them itself
+# (scripts/mutation-run.ts): it is given no test (--gtest_filter=-*), which leaves the list the
+# same, as Mull reads the mutants from the binary and this build has no coverage for it to
+# filter them by, and takes the engine's tests' whole run off the list job.
 lists=()
 for module in "${selected[@]}"; do
     moduleConfig="$out/mull-$module.yml"
@@ -232,7 +244,7 @@ for module in "${selected[@]}"; do
         fi
     } > "$moduleConfig"
     MULL_CONFIG="$moduleConfig" mull-runner-18 --dry-run --timeout 3600000 --reporters Elements \
-        --report-dir "$out" --report-name "dry-$module" "$(testsOf "$module")" --gtest_fail_fast \
+        --report-dir "$out" --report-name "dry-$module" "$(testsOf "$module")" '--gtest_filter=-*' \
         > "$out/mull-$module.log" 2>&1 || true
     # No list: nothing to judge in the module when no mutant is on its lines changed, as when only
     # comments changed, and a failed run otherwise (scripts/mutation-summary.ts, noMutantFound).

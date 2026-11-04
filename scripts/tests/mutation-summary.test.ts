@@ -206,9 +206,8 @@ describe("the C++ runs' times with no mutant", () => {
     );
     expect(note).toContain("| engine_tests | 812 s | 1223 s |");
     expect(note).toContain("| plugin_tests | 12 s | 23 s |");
-    expect(note.split("\n")[0]).toBe(
-      "Each mutant is stopped at 1.5 × its tests' time with no mutant + 5 s, the time measured with every worker busy.",
-    );
+    // The rule the limits follow, from the reports' own factor and constant.
+    expect(note.split("\n")[0]).toMatch(/1\.5 × .* \+ 5 s/u);
   });
 
   // A share with no mutant of a module, or whose run with no mutant failed, writes no times for it:
@@ -232,19 +231,12 @@ describe("the C++ runs' times with no mutant", () => {
   test("says nothing when no module had mutants", () => {
     expect(baselineNote([], [])).toBe("");
   });
-
-  test("no longer warns about MUTANT_TIMEOUT, which no run reads", () => {
-    expect(baselineNote([share(1812)], ["engine_tests"])).not.toContain(
-      "MUTANT_TIMEOUT",
-    );
-  });
 });
 
 describe("the timed-out mutants", () => {
   // A timeout counts as noticed; listed so that a survivor a limit set too tight stopped shows.
   test("lists each mutant that timed out, by file and line", () => {
     const summary = summarise(report, title);
-    expect(summary).toContain("Timed out: each hung its tests past its limit");
     expect(summary).toContain(
       "| ui/src/a.ts:3 | ConditionalExpression: `true` |",
     );

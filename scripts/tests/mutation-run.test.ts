@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, test } from "vitest";
 
@@ -83,13 +84,21 @@ const parameterised = {
 };
 
 // A GoogleTest-like binary (fixtures/fake-gtest.mjs) from `spec`, holding every mutant's switch.
+// Node runs it directly, not through a shell: Linux's sh (dash) drops environment variables whose
+// names are not a shell's, as every mutant's switch is ("kill:a1").
 function gtestBinary(dir: string, name: string, spec: object): string {
   const specPath = join(dir, `${name}.json`);
   writeFileSync(specPath, JSON.stringify(spec));
   const binary = join(dir, name);
   writeFileSync(
     binary,
-    `#!/bin/sh\nexec "${process.execPath}" "${fakeGtest}" "${specPath}" "$@"\n# ${mutantIds(dryRun).join("\0")}\0\n`,
+    [
+      `#!${process.execPath}`,
+      `process.argv.splice(2, 0, ${JSON.stringify(specPath)});`,
+      `void import(${JSON.stringify(pathToFileURL(fakeGtest).href)});`,
+      `// ${mutantIds(dryRun).join("\0")}\0`,
+      "",
+    ].join("\n"),
   );
   chmodSync(binary, 0o755);
   return binary;
@@ -812,7 +821,8 @@ describe("each mutant's limit", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const dry = join(dir, "dry.json");
     writeFileSync(dry, JSON.stringify(dryRun));
-    const binary = timed(dir, "engine_tests", 2000);
+    // Longer than the limit's constant, so a limit that ignored the tests' time would stop them.
+    const binary = timed(dir, "engine_tests", 7000);
     const results = join(dir, "results.jsonl");
     execFileSync(
       process.execPath,
@@ -844,8 +854,10 @@ describe("each mutant's limit", () => {
 
   test("lets a mutant that slows its tests within the limit finish, and stops one just past it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
-    const run14 = timed(dir, "slower", 2000, 1.4);
-    const run16 = timed(dir, "slowest", 2000, 1.6);
+    // Well inside and well past 1.5 times, so the processes' own start-up, which the fixture does
+    // not slow, cannot move either across.
+    const slower = timed(dir, "slower", 2000, 1.2);
+    const slowest = timed(dir, "slowest", 2000, 2);
     const statusWith = async (binary: string) => {
       const times = await baseline({
         endsAt: inSeconds(60),
@@ -872,8 +884,8 @@ describe("each mutant's limit", () => {
       });
       return done[0]?.status;
     };
-    expect(await statusWith(run14)).toBe("Survived");
-    expect(await statusWith(run16)).toBe("Timeout");
+    expect(await statusWith(slower)).toBe("Survived");
+    expect(await statusWith(slowest)).toBe("Timeout");
   }, 30_000);
 
   test("grows with the time of the tests the mutant runs", () => {
