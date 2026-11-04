@@ -1,5 +1,6 @@
 #include "TraceLayerMac.h"
 
+#include "MetalHandoff.h"
 #include "MetalTraceRenderer.h"
 #include "UniqueClassName.h"
 #include "engine/MonotonicClock.h"
@@ -180,15 +181,19 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
     // was when drawn (the pacing may be gone by the time the handler runs).
     const double period = s.pacing.displayPeriodSeconds();
     [drawable addPresentedHandler:^(id<MTLDrawable> shown) {
+      handlerRuns(shown);
       if (const auto alive = weak.lock()) {
           alive->presentedCounts.add(shown.presentedTime, period);
       }
     }];
+    handlerAdded(drawable);
     [buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+      handlerRuns(done);
       if (const auto alive = weak.lock()) {
           completed(alive, done);
       }
     }];
+    handlerAdded(buffer);
     [buffer commit];
     s.drawnWidth.store(drawable.texture.width);
     s.drawnHeight.store(drawable.texture.height);

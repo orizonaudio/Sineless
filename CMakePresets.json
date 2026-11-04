@@ -534,7 +534,7 @@
       },
       "filter": {
         "include": {
-          "name": "^(EditorTest\\.|AudioUnitView)"
+          "name": "^(EditorTest\\.|NativeTracesTest\\.|TraceLayerTest\\.|PersistentErrors/TraceLayerLossTest\\.|MetalTraceRendererTest\\.|AudioUnitView)"
         }
       },
       "execution": {
