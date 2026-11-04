@@ -1,5 +1,6 @@
 #include "MetalTraceRenderer.h"
 
+#include "MetalHandoff.h"
 #include "editor/TraceGeometry.h"
 
 #include <algorithm>
@@ -504,9 +505,11 @@ public:
         }
         nextSlot = (nextSlot + 1) % kSlots;
         dispatch_semaphore_t freed = slotsFree;
-        [buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
+        [buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+          handlerRuns(done);
           dispatch_semaphore_signal(freed);
         }];
+        handlerAdded(buffer);
         std::vector<std::uint32_t> firsts;
         auto* values = static_cast<std::byte*>(slot.values.contents);
         std::size_t written = 0;
