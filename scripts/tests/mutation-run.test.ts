@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, test } from "vitest";
 
@@ -83,13 +84,21 @@ const parameterised = {
 };
 
 // A GoogleTest-like binary (fixtures/fake-gtest.mjs) from `spec`, holding every mutant's switch.
+// Node runs it directly, not through a shell: Linux's sh (dash) drops environment variables whose
+// names are not a shell's, as every mutant's switch is ("kill:a1").
 function gtestBinary(dir: string, name: string, spec: object): string {
   const specPath = join(dir, `${name}.json`);
   writeFileSync(specPath, JSON.stringify(spec));
   const binary = join(dir, name);
   writeFileSync(
     binary,
-    `#!/bin/sh\nexec "${process.execPath}" "${fakeGtest}" "${specPath}" "$@"\n# ${mutantIds(dryRun).join("\0")}\0\n`,
+    [
+      `#!${process.execPath}`,
+      `process.argv.splice(2, 0, ${JSON.stringify(specPath)});`,
+      `void import(${JSON.stringify(pathToFileURL(fakeGtest).href)});`,
+      `// ${mutantIds(dryRun).join("\0")}\0`,
+      "",
+    ].join("\n"),
   );
   chmodSync(binary, 0o755);
   return binary;
