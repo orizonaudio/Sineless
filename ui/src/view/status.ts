@@ -14,7 +14,6 @@ export interface Chip {
 export const triggerModeNames: Readonly<Record<string, string>> = {
   auto: "Auto",
   normal: "Normal",
-  free: "Free",
   single: "Single",
 };
 
@@ -70,7 +69,7 @@ export function statusChips(
   return chips;
 }
 
-// The span was shortened to what can be kept: a beat span stepped down, or a Seconds span longer
+// The span was shortened to what can be kept: a beat span stepped down, or a Free span longer
 // than the capture.
 const spanLimited: Chip = { text: "Span limited", tone: "warn" };
 // Beats mode before the host has reported a tempo: nothing is placed until it does.
