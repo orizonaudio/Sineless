@@ -844,8 +844,10 @@ describe("each mutant's limit", () => {
 
   test("lets a mutant that slows its tests within the limit finish, and stops one just past it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
-    const run14 = timed(dir, "slower", 2000, 1.4);
-    const run16 = timed(dir, "slowest", 2000, 1.6);
+    // Well inside and well past 1.5 times, so the processes' own start-up, which the fixture does
+    // not slow, cannot move either across.
+    const slower = timed(dir, "slower", 2000, 1.2);
+    const slowest = timed(dir, "slowest", 2000, 2);
     const statusWith = async (binary: string) => {
       const times = await baseline({
         endsAt: inSeconds(60),
@@ -872,8 +874,8 @@ describe("each mutant's limit", () => {
       });
       return done[0]?.status;
     };
-    expect(await statusWith(run14)).toBe("Survived");
-    expect(await statusWith(run16)).toBe("Timeout");
+    expect(await statusWith(slower)).toBe("Survived");
+    expect(await statusWith(slowest)).toBe("Timeout");
   }, 30_000);
 
   test("grows with the time of the tests the mutant runs", () => {

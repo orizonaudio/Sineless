@@ -211,7 +211,7 @@ echo "$stamp" > build/mutation-cpp/settings.sha256
 start=$SECONDS
 # Each module's mutants, listed with no test run from its own tests, as the run's own settings name
 # its sources (or the files named in it). Mull's warm-up still runs those tests once with no
-# mutant, which the summary reports against each mutant's limit.
+# mutant, which nothing uses: each share times them itself (scripts/mutation-run.ts).
 lists=()
 for module in "${selected[@]}"; do
     moduleConfig="$out/mull-$module.yml"
