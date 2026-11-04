@@ -381,9 +381,9 @@ export class OscilloscopeApp {
     this.loop = new RenderLoop(
       (callback) => requestAnimationFrame(callback),
       {
-        draw: (frame) => {
+        draw: (frame, tickTime) => {
           try {
-            this.renderer?.draw(frame);
+            this.renderer?.draw(frame, tickTime);
           } catch (error) {
             if (!(error instanceof TraceMemoryError)) {
               throw error;

@@ -328,17 +328,19 @@ describe("render loop with late frames", () => {
 function measuredAt100Hz(throwOn?: number) {
   const pending: ((timestamp: number) => void)[] = [];
   const drawn: number[] = [];
+  const drawnFor: (number | undefined)[] = [];
   let credits = 0;
   let ready = true;
   let now = 0;
   const loop = pageLoop(
     (callback) => pending.push(callback),
     {
-      draw: (drawnFrame) => {
+      draw: (drawnFrame, tickTime) => {
         if (drawnFrame.pointCount === throwOn) {
           throw new Error("draw failed");
         }
         drawn.push(drawnFrame.pointCount);
+        drawnFor.push(tickTime);
       },
     },
     () => {
@@ -364,9 +366,12 @@ function measuredAt100Hz(throwOn?: number) {
     tick();
   }
   drawn.length = 0;
+  drawnFor.length = 0;
   return {
     loop,
     drawn,
+    drawnFor,
+    now: () => now,
     pending,
     tick,
     credits: () => credits,
@@ -468,6 +473,20 @@ describe("render loop at two ticks a frame", () => {
     tick();
     expect(drawn).toEqual([1, 1]);
     expect(credits()).toBe(before);
+  });
+
+  // The frame barcode's drawn-for time is the tick's: a frame's draw and a redraw both get the
+  // timestamp of the callback that drew them, not the time the draw ran.
+  test("draws and redraws each picture for its own tick's time", () => {
+    const { loop, drawnFor, tick, now } = measuredAt100Hz();
+    loop.submit(frame(1));
+    tick(10.25);
+    const drawnAt = now();
+    tick();
+    tick();
+    loop.invalidate();
+    tick(10.5);
+    expect(drawnFor).toEqual([drawnAt, now()]);
   });
 
   // A redraw asked for while a frame waits for its tick is served by that frame's draw: the older
