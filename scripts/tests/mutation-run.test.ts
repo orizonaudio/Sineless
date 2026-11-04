@@ -821,7 +821,8 @@ describe("each mutant's limit", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const dry = join(dir, "dry.json");
     writeFileSync(dry, JSON.stringify(dryRun));
-    const binary = timed(dir, "engine_tests", 2000);
+    // Longer than the limit's constant, so a limit that ignored the tests' time would stop them.
+    const binary = timed(dir, "engine_tests", 7000);
     const results = join(dir, "results.jsonl");
     execFileSync(
       process.execPath,
