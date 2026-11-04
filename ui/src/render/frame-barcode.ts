@@ -6,6 +6,7 @@
 // black, a black end and even parity is unreadable.
 import {
   barcodeCellPixels,
+  barcodeCornerMargin,
   barcodeDataBits,
   screenRadius,
 } from "../../../protocol/src/limits.ts";
@@ -21,7 +22,7 @@ export function barcodeStrip(
   height: number,
   pixelRatio: number,
 ): { readonly left: number; readonly top: number; readonly cell: number } {
-  const inset = Math.round((screenRadius + 2) * pixelRatio);
+  const inset = Math.round((screenRadius + barcodeCornerMargin) * pixelRatio);
   const cell = barcodeCellPixels;
   return {
     left: Math.max(0, width - inset - barcodeRowCells * cell),

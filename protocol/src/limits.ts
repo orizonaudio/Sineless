@@ -168,6 +168,11 @@ export const musicalTolerance = 1e-6;
 export const barcodeDataBits = 16;
 export const barcodeTicksPerMillisecond = 4;
 export const barcodeCellPixels = 4;
+// The strip's margin beyond the screen's rounded corner (CSS pixels): it sits screenRadius plus
+// this from the screen's top and right edges, so the corner's clip and its anti-aliased edge never
+// reach a cell. The page and the macOS editor draw it in the same place, which the recordings'
+// locator and the native and page picture comparison rely on.
+export const barcodeCornerMargin = 2;
 
 type Kind = "double" | "count" | "pixels";
 
@@ -238,6 +243,7 @@ export const limits: readonly {
     kind: "count",
   },
   { name: "barcodeCellPixels", value: barcodeCellPixels, kind: "count" },
+  { name: "barcodeCornerMargin", value: barcodeCornerMargin, kind: "pixels" },
   { name: "leftOutAlpha", value: leftOutAlpha, kind: "double" },
   { name: "musicalTolerance", value: musicalTolerance, kind: "double" },
   {
