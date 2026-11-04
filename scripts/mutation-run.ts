@@ -7,7 +7,9 @@
 // run's start, the tests' run with no mutant included, by which it must end (CI's share job is
 // cancelled soon after, losing whatever is still running). No mutant starts once the budget is
 // spent, and one still running when it ends is stopped and reported as not run, as what it would
-// show is unknown; the mutants left are reported as not run too.
+// show is unknown; the mutants left are reported as not run too. Before the mutants, each test
+// binary (GoogleTest) runs once with no mutant, spread over the workers as GoogleTest shards: it
+// must pass, and each test's time is kept.
 // After the first binary, each further one (after another --) runs a mutant the ones before it
 // did not notice: the Audio Unit's view tests notice some of its mutants that its other tests
 // miss (scripts/mutation-au.sh). --workers sets how many mutants run at once (default: one a core).
@@ -23,10 +25,12 @@ import { spawn } from "node:child_process";
 import {
   appendFileSync,
   existsSync,
+  mkdtempSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { Report } from "./mutation-summary.ts";
 
@@ -200,10 +204,185 @@ function runBinary(
   });
 }
 
-// Whether the tests pass with no mutant, within the limit. Where they do not (the binary cannot
-// find its data on this machine, say), every mutant would read as noticed.
-export async function testsPass(options: TestOptions): Promise<boolean> {
-  return (await runTests(options)) === "Survived";
+// The tests a GoogleTest binary's --gtest_list_tests prints, each as Suite.Name: a suite on a line
+// of its own ending in a dot, its tests indented under it, a parameterised one followed by its
+// "# GetParam() = ..." comment, which is not part of its name. Other lines (gtest_main's "Running
+// main() from ...") are not tests.
+export function listedTests(output: string): string[] {
+  const names: string[] = [];
+  let suite: string | undefined;
+  for (const line of output.split("\n")) {
+    const suiteLine = /^(\S+)\.(?:\s+#.*)?$/u.exec(line);
+    const testLine = /^ {2}(\S+)/u.exec(line);
+    if (suiteLine !== null) {
+      suite = suiteLine[1];
+    } else if (testLine !== null && suite !== undefined) {
+      names.push(`${suite}.${testLine[1] ?? ""}`);
+    }
+  }
+  return names;
+}
+
+// Each test's time from a GoogleTest JSON report (--gtest_output=json), in seconds, by the name
+// --gtest_list_tests prints: each suite is an object with its name and a "testsuite" array of its
+// tests, each with its own name and its time as "0.016s" (GoogleTest's gtest.cc,
+// OutputJsonTestInfo and PrintJsonTestSuite).
+export function reportedTimes(json: string): Map<string, number> {
+  const report = JSON.parse(json) as {
+    testsuites?: {
+      name: string;
+      testsuite?: { name: string; time?: string }[];
+    }[];
+  };
+  const times = new Map<string, number>();
+  for (const suite of report.testsuites ?? []) {
+    for (const test of suite.testsuite ?? []) {
+      times.set(
+        `${suite.name}.${test.name}`,
+        Number.parseFloat(test.time ?? "0"),
+      );
+    }
+  }
+  return times;
+}
+
+// A test binary's run with no mutant: how long it takes to start and each test's time, by name.
+export interface Baseline {
+  startupSeconds: number;
+  testSeconds: Map<string, number>;
+}
+
+// The time a run of every test in the binary takes, start-up included.
+export function wholeSeconds(baseline: Baseline): number {
+  let total = baseline.startupSeconds;
+  for (const seconds of baseline.testSeconds.values()) {
+    total += seconds;
+  }
+  return total;
+}
+
+interface Captured {
+  code: number | null;
+  timedOut: boolean;
+  stdout: string;
+  seconds: number;
+}
+
+// A run of a binary with its output kept, stopped after `limitMs`.
+function capture(
+  test: TestCommand,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  limitMs: number,
+): Promise<Captured> {
+  const started = Date.now();
+  return new Promise((resolve) => {
+    const child = spawn(test.command, [...test.args, ...args], {
+      env,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let stdout = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    let timedOut = false;
+    const timer = setTimeout(
+      () => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      },
+      Math.max(0, limitMs),
+    );
+    const end = (code: number | null) => {
+      clearTimeout(timer);
+      resolve({
+        code,
+        timedOut,
+        stdout,
+        seconds: (Date.now() - started) / 1000,
+      });
+    };
+    child.on("error", () => {
+      end(null);
+    });
+    child.on("close", end);
+  });
+}
+
+// The tests' run with no mutant, each binary spread over `workers` GoogleTest shards at once
+// (GTEST_TOTAL_SHARDS and GTEST_SHARD_INDEX, each test in one shard), as the mutants will load the
+// runner: each test's time, and the binary's start-up (a shard's time less its tests', the largest
+// of the shards). Fails, naming why, when a test fails with no mutant (every mutant would then
+// read as noticed), when a run outlasts the limit or the budget, or when a test the binary lists
+// has no time in its report (every limit taken from those times would be wrong).
+export async function baseline(
+  options: TestOptions & { workers?: number | undefined },
+): Promise<Baseline[] | string> {
+  const shards = options.workers ?? availableParallelism();
+  const baselines: Baseline[] = [];
+  for (const test of options.tests) {
+    const name = test.command;
+    const cap = () =>
+      Math.min(options.limitSeconds * 1000, options.endsAt - Date.now());
+    const list = await capture(
+      test,
+      ["--gtest_list_tests"],
+      process.env,
+      cap(),
+    );
+    if (list.code !== 0) {
+      return `${name} cannot list its tests.`;
+    }
+    const listed = listedTests(list.stdout);
+    const dir = mkdtempSync(join(tmpdir(), "mutation-baseline-"));
+    const runs = await Promise.all(
+      Array.from({ length: shards }, (_, shard) =>
+        capture(
+          test,
+          [`--gtest_output=json:${join(dir, `${String(shard)}.json`)}`],
+          {
+            ...process.env,
+            // eslint-disable-next-line @typescript-eslint/naming-convention -- GoogleTest names it.
+            GTEST_TOTAL_SHARDS: String(shards),
+            // eslint-disable-next-line @typescript-eslint/naming-convention -- GoogleTest names it.
+            GTEST_SHARD_INDEX: String(shard),
+          },
+          cap(),
+        ),
+      ),
+    );
+    if (runs.some((run) => run.timedOut)) {
+      return `${name} takes more than ${String(options.limitSeconds)} s or the budget with no mutant.`;
+    }
+    if (runs.some((run) => run.code !== 0)) {
+      return `${name} fails with no mutant.`;
+    }
+    const testSeconds = new Map<string, number>();
+    let startupSeconds = 0;
+    for (const [shard, run] of runs.entries()) {
+      const report = join(dir, `${String(shard)}.json`);
+      // A shard holding no test still writes a report; one that wrote none ran no test.
+      const times = existsSync(report)
+        ? reportedTimes(readFileSync(report, "utf8"))
+        : new Map<string, number>();
+      let tests = 0;
+      for (const [testName, seconds] of times) {
+        testSeconds.set(testName, seconds);
+        tests += seconds;
+      }
+      startupSeconds = Math.max(startupSeconds, run.seconds - tests);
+    }
+    const untimed = listed.filter((testName) => !testSeconds.has(testName));
+    if (untimed.length > 0) {
+      return `${name} lists ${String(untimed.length)} tests its reports give no time for, as ${untimed[0] ?? ""}.`;
+    }
+    const result = { startupSeconds, testSeconds };
+    if (wholeSeconds(result) > options.limitSeconds) {
+      return `${name} would take ${wholeSeconds(result).toFixed(0)} s with no mutant, more than the limit of ${String(options.limitSeconds)} s.`;
+    }
+    baselines.push(result);
+  }
+  return baselines;
 }
 
 async function runOne(options: RunOptions, id: string): Promise<Result> {
@@ -316,11 +495,22 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       process.exit(1);
     }
     const endsAt = started + budget * 1000;
-    if (!(await testsPass({ limitSeconds: limit, endsAt, tests }))) {
+    const baselines = await baseline({
+      limitSeconds: limit,
+      endsAt,
+      tests,
+      workers,
+    });
+    if (typeof baselines === "string") {
       console.error(
-        `The tests fail, or take more than ${String(limit)} s or the budget's ${String(budget)} s, with no mutant: every mutant would read as noticed.`,
+        `${baselines} The tests must pass with no mutant, within ${String(limit)} s and the budget's ${String(budget)} s, or every mutant would read as noticed.`,
       );
       process.exit(1);
+    }
+    for (const [index, times] of baselines.entries()) {
+      console.log(
+        `${tests[index]?.command ?? ""}: ${String(times.testSeconds.size)} tests, ${wholeSeconds(times).toFixed(1)} s with no mutant (start-up ${times.startupSeconds.toFixed(1)} s).`,
+      );
     }
     writeFileSync(results, "");
     const done = await run({

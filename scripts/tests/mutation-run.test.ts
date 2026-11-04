@@ -22,8 +22,11 @@ import {
   mutantIds,
   run,
   shareOf,
+  baseline,
+  listedTests,
+  reportedTimes,
   statusOf,
-  testsPass,
+  wholeSeconds,
 } from "../mutation-run.ts";
 import type { Report } from "../mutation-summary.ts";
 
@@ -45,6 +48,50 @@ const dryRun: Report = {
 };
 
 const fake = join(import.meta.dirname, "fixtures", "fake-tests.mjs");
+
+const fakeGtest = join(import.meta.dirname, "fixtures", "fake-gtest.mjs");
+
+// Two plain tests, as a module whose tests pass with no mutant.
+const passing = {
+  startupMs: 20,
+  suites: [
+    {
+      name: "Suite",
+      tests: [
+        { name: "A", ms: 10 },
+        { name: "B", ms: 10 },
+      ],
+    },
+  ],
+};
+
+// Parameterised tests, one taking under GoogleTest's millisecond, beside a plain one.
+const parameterised = {
+  startupMs: 20,
+  suites: [
+    { name: "Matrix", tests: [{ name: "HoldsItsSize", ms: 50 }] },
+    {
+      name: "EveryRate/MovingMatchWork",
+      tests: [
+        { name: "RedoesTheSums/0", param: "384k", ms: 200 },
+        { name: "RedoesTheSums/1", param: "44k1", ms: 0 },
+      ],
+    },
+  ],
+};
+
+// A GoogleTest-like binary (fixtures/fake-gtest.mjs) from `spec`, holding every mutant's switch.
+function gtestBinary(dir: string, name: string, spec: object): string {
+  const specPath = join(dir, `${name}.json`);
+  writeFileSync(specPath, JSON.stringify(spec));
+  const binary = join(dir, name);
+  writeFileSync(
+    binary,
+    `#!/bin/sh\nexec "${process.execPath}" "${fakeGtest}" "${specPath}" "$@"\n# ${mutantIds(dryRun).join("\0")}\0\n`,
+  );
+  chmodSync(binary, 0o755);
+  return binary;
+}
 
 // When a budget of `seconds` from now ends.
 const inSeconds = (seconds: number) => Date.now() + seconds * 1000;
@@ -245,7 +292,7 @@ describe("running a share", () => {
         ],
         { stdio: "pipe" },
       ),
-    ).toThrow(/or the budget's 1 s, with no mutant/u);
+    ).toThrow(/the budget's 1 s/u);
     expect(Date.now() - started).toBeLessThan(10000);
     expect(existsSync(results)).toBe(false);
   });
@@ -324,13 +371,12 @@ describe("running a share", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const dry = join(dir, "dry.json");
     writeFileSync(dry, JSON.stringify(dryRun));
-    // Holds every mutant's switch; with no mutant it passes, as it does when run alone.
-    const binary = join(dir, "au_view_tests");
-    writeFileSync(
-      binary,
-      `#!/bin/sh\nexec "${process.execPath}" "${join(import.meta.dirname, "fixtures", "one-at-a-time-tests.mjs")}" "${join(dir, "lock")}"\n# ${mutantIds(dryRun).join("\0")}\0\n`,
-    );
-    chmodSync(binary, 0o755);
+    // Fails a run while another holds its lock, as the Audio Unit's view tests share the window
+    // server: a survivor would then read as killed.
+    const binary = gtestBinary(dir, "au_view_tests", {
+      ...passing,
+      lock: join(dir, "lock"),
+    });
     const results = join(dir, "results.jsonl");
     execFileSync(
       process.execPath,
@@ -354,8 +400,14 @@ describe("running a share", () => {
     const statuses = readFileSync(results, "utf8")
       .trim()
       .split("\n")
-      .map((line) => (JSON.parse(line) as { status: string }).status);
-    expect(statuses).toEqual(["Survived", "Survived", "Survived", "Survived"]);
+      .map((line) => JSON.parse(line) as { id: string; status: string })
+      .map(({ id, status }) => [id, status]);
+    expect(Object.fromEntries(statuses)).toEqual({
+      "kill:a1": "Killed",
+      "kill:a3": "Killed",
+      "survive:a2": "Survived",
+      "survive:b1": "Survived",
+    });
   });
 });
 
@@ -526,18 +578,15 @@ describe("checking the test binary can switch each mutant on", () => {
   });
 });
 
-describe("checking the tests pass with no mutant", () => {
+describe("the tests' run with no mutant", () => {
   test("refuses to run a share whose tests fail with no mutant, as every mutant would read as noticed", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const dry = join(dir, "dry.json");
     writeFileSync(dry, JSON.stringify(dryRun));
-    // Holds every mutant's switch, past the line that fails.
-    const binary = join(dir, "engine_tests");
-    writeFileSync(
-      binary,
-      `#!/bin/sh\nexit 1\n# ${mutantIds(dryRun).join("\0")}\0\n`,
-    );
-    chmodSync(binary, 0o755);
+    const binary = gtestBinary(dir, "engine_tests", {
+      ...passing,
+      failWithNoMutant: true,
+    });
     const results = join(dir, "results.jsonl");
     const script = join(import.meta.dirname, "..", "mutation-run.ts");
     expect(() =>
@@ -558,9 +607,7 @@ describe("checking the tests pass with no mutant", () => {
         ],
         { stdio: "pipe" },
       ),
-    ).toThrow(
-      /The tests fail, or take more than 5 s or the budget's 5 s, with no mutant/u,
-    );
+    ).toThrow(/fails with no mutant/u);
     expect(existsSync(results)).toBe(false);
   });
 
@@ -600,67 +647,161 @@ describe("checking the tests pass with no mutant", () => {
     expect(readFileSync(results, "utf8")).toBe("");
   });
 
-  test("passes tests that pass", async () => {
+  test("times each test under the name the binary lists, parameterised ones and those under a millisecond included, so each mutant's limit follows its tests", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const binary = gtestBinary(dir, "engine_tests", parameterised);
+    const result = await baseline({
+      limitSeconds: 30,
+      endsAt: inSeconds(60),
+      tests: [{ command: binary, args: [] }],
+      workers: 3,
+    });
+    if (typeof result === "string") {
+      throw new Error(result);
+    }
+    const [times] = result;
+    expect(Object.fromEntries(times?.testSeconds ?? [])).toEqual({
+      "EveryRate/MovingMatchWork.RedoesTheSums/0": 0.2,
+      "EveryRate/MovingMatchWork.RedoesTheSums/1": 0,
+      "Matrix.HoldsItsSize": 0.05,
+    });
+    expect(times?.startupSeconds).toBeGreaterThan(0);
     expect(
-      await testsPass({
-        limitSeconds: 5,
+      wholeSeconds(times ?? { startupSeconds: 0, testSeconds: new Map() }),
+    ).toBeCloseTo((times?.startupSeconds ?? 0) + 0.25, 6);
+  });
+
+  test("fails when a test the binary lists has no time in its reports, rather than guess every limit from a broken join", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const binary = gtestBinary(dir, "engine_tests", {
+      ...parameterised,
+      omitFromJson: ["EveryRate/MovingMatchWork.RedoesTheSums/1"],
+    });
+    expect(
+      await baseline({
+        limitSeconds: 30,
         endsAt: inSeconds(60),
-        tests: [{ command: process.execPath, args: [fake] }],
+        tests: [{ command: binary, args: [] }],
+        workers: 2,
       }),
-    ).toBe(true);
+    ).toMatch(/EveryRate\/MovingMatchWork\.RedoesTheSums\/1/u);
+  });
+
+  test("spreads the tests over the workers as GoogleTest shards, so the run with no mutant takes a fraction of the suite's time", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const slow = {
+      startupMs: 0,
+      suites: [
+        {
+          name: "Work",
+          tests: ["A", "B", "C", "D"].map((name) => ({ name, ms: 600 })),
+        },
+      ],
+    };
+    const binary = gtestBinary(dir, "engine_tests", slow);
+    const started = Date.now();
+    const result = await baseline({
+      limitSeconds: 30,
+      endsAt: inSeconds(60),
+      tests: [{ command: binary, args: [] }],
+      workers: 4,
+    });
+    expect(Date.now() - started).toBeLessThan(1800);
+    expect(
+      typeof result === "string" ? result : result[0]?.testSeconds.size,
+    ).toBe(4);
+  });
+
+  test("counts a shard that holds no test, as a module with fewer tests than workers leaves", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const binary = gtestBinary(dir, "plugin_tests", passing);
+    const result = await baseline({
+      limitSeconds: 30,
+      endsAt: inSeconds(60),
+      tests: [{ command: binary, args: [] }],
+      workers: 5,
+    });
+    expect(
+      typeof result === "string" ? result : result[0]?.testSeconds.size,
+    ).toBe(2);
+  });
+
+  test("runs one shard with --workers 1, for tests that cannot run beside each other", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const binary = gtestBinary(dir, "au_view_tests", {
+      ...passing,
+      lock: join(dir, "lock"),
+    });
+    const result = await baseline({
+      limitSeconds: 30,
+      endsAt: inSeconds(60),
+      tests: [{ command: binary, args: [] }],
+      workers: 1,
+    });
+    expect(typeof result).not.toBe("string");
   });
 
   test("fails tests that fail with no mutant, as every mutant would read as noticed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const binary = gtestBinary(dir, "engine_tests", {
+      ...passing,
+      failWithNoMutant: true,
+    });
     expect(
-      await testsPass({
-        limitSeconds: 5,
+      await baseline({
+        limitSeconds: 30,
         endsAt: inSeconds(60),
-        tests: [{ command: process.execPath, args: ["-e", "process.exit(1)"] }],
+        tests: [{ command: binary, args: [] }],
+        workers: 2,
       }),
-    ).toBe(false);
+    ).toMatch(/fails with no mutant/u);
   });
 
   test("fails tests that outlast the limit with no mutant, as every mutant would time out and read as noticed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const binary = gtestBinary(dir, "engine_tests", {
+      startupMs: 0,
+      suites: [{ name: "Slow", tests: [{ name: "A", ms: 5000 }] }],
+    });
     expect(
-      await testsPass({
+      await baseline({
         limitSeconds: 1,
         endsAt: inSeconds(60),
-        tests: [
-          {
-            command: process.execPath,
-            args: ["-e", "setInterval(() => undefined, 1000)"],
-          },
-        ],
+        tests: [{ command: binary, args: [] }],
+        workers: 1,
       }),
-    ).toBe(false);
+    ).toMatch(/takes more than 1 s/u);
   });
 
   test("fails when any of several test binaries fails with no mutant, as every mutant would read as noticed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const good = gtestBinary(dir, "au_tests", passing);
+    const bad = gtestBinary(dir, "au_view_tests", {
+      ...passing,
+      failWithNoMutant: true,
+    });
     expect(
-      await testsPass({
-        limitSeconds: 5,
+      await baseline({
+        limitSeconds: 30,
         endsAt: inSeconds(60),
         tests: [
-          { command: process.execPath, args: [fake] },
-          { command: process.execPath, args: ["-e", "process.exit(1)"] },
+          { command: good, args: [] },
+          { command: bad, args: [] },
         ],
+        workers: 1,
       }),
-    ).toBe(false);
+    ).toMatch(/au_view_tests fails with no mutant/u);
   });
 
   test("refuses to run a share whose later test binary fails with no mutant, so each binary after -- is run", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const dry = join(dir, "dry.json");
     writeFileSync(dry, JSON.stringify(dryRun));
-    const binary = join(dir, "au_tests");
-    writeFileSync(
-      binary,
-      `#!/bin/sh\nexit 0\n# ${mutantIds(dryRun).join("\0")}\0\n`,
-    );
-    chmodSync(binary, 0o755);
-    const failing = join(dir, "au_view_tests");
-    writeFileSync(failing, "#!/bin/sh\nexit 1\n");
-    chmodSync(failing, 0o755);
+    const binary = gtestBinary(dir, "au_tests", passing);
+    const failing = gtestBinary(dir, "au_view_tests", {
+      ...passing,
+      failWithNoMutant: true,
+    });
     expect(() =>
       execFileSync(
         process.execPath,
@@ -682,18 +823,55 @@ describe("checking the tests pass with no mutant", () => {
         ],
         { stdio: "pipe" },
       ),
-    ).toThrow(
-      /The tests fail, or take more than 5 s or the budget's 5 s, with no mutant/u,
-    );
+    ).toThrow(/au_view_tests fails with no mutant/u);
   });
 
   test("fails tests that cannot start", async () => {
     expect(
-      await testsPass({
+      await baseline({
         limitSeconds: 5,
         endsAt: inSeconds(60),
         tests: [{ command: "/no/such/tests", args: [] }],
+        workers: 1,
       }),
-    ).toBe(false);
+    ).toMatch(/cannot list its tests/u);
+  });
+});
+
+describe("reading GoogleTest's list and reports", () => {
+  test("lists each test as Suite.Name, without gtest_main's first line or a parameter's comment", () => {
+    expect(
+      listedTests(
+        [
+          "Running main() from /src/googletest/src/gtest_main.cc",
+          "Matrix.",
+          "  HoldsItsSize",
+          "EveryRate/MovingMatchWork.",
+          "  RedoesTheSums/0  # GetParam() = 384k",
+          "",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "Matrix.HoldsItsSize",
+      "EveryRate/MovingMatchWork.RedoesTheSums/0",
+    ]);
+  });
+
+  test("reads each test's time under its suite's name, as GoogleTest's JSON nests them", () => {
+    const json = JSON.stringify({
+      testsuites: [
+        {
+          name: "EveryRate/MovingMatchWork",
+          testsuite: [
+            { name: "RedoesTheSums/0", time: "0.016s", classname: "x" },
+            { name: "RedoesTheSums/1", time: "0s", classname: "x" },
+          ],
+        },
+      ],
+    });
+    expect(Object.fromEntries(reportedTimes(json))).toEqual({
+      "EveryRate/MovingMatchWork.RedoesTheSums/0": 0.016,
+      "EveryRate/MovingMatchWork.RedoesTheSums/1": 0,
+    });
   });
 });
