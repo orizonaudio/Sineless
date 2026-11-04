@@ -162,8 +162,8 @@ export const musicalTolerance = 1e-6;
 // bits wrap after 65,536 pictures, 18 minutes at 60 frames/s, and the drawn-for time, counted in
 // barcodeTicksPerMillisecond, after 16.4 s: both far longer than a picture is ever late. A quarter
 // millisecond resolves lateness well inside the half refresh it is judged by (2 ms at 240 Hz), and
-// is the finest step that still wraps after more than 8 s, the longest a lateness is unwrapped
-// across. barcodeCellPixels is a cell's side in device pixels: 4 decoded on every refresh of
+// is the finest step that still wraps after more than 16 s, so a lateness is unwrapped across 8 s
+// either way (to the nearest value within half the range). barcodeCellPixels is a cell's side in device pixels: 4 decoded on every refresh of
 // recordings of the owner's external 1x and built-in Retina displays (2026-11-03).
 export const barcodeDataBits = 16;
 export const barcodeTicksPerMillisecond = 4;
