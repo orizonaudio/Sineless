@@ -547,9 +547,9 @@ jobs:
           report=build/mutation-cpp-report/dry.json
           echo "mutants=$([[ -f $report ]] && jq '[.files[].mutants[]] | length' $report || echo 0)" \
             >> "$GITHUB_OUTPUT"
-      # The list (with each module's Mull log, for its tests' time) or the summary saying no C++
-      # source line changed, and the tests to run the mutants with. Not named mutation-*: the
-      # triage takes only the reports.
+      # The list (with each module's Mull log) or the summary saying no C++ source line changed,
+      # and the tests to run the mutants with. Not named mutation-*: the triage takes only the
+      # reports.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cpp-mutants-list
