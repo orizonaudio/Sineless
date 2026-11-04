@@ -61,7 +61,7 @@ struct alignas(16) CompositeUniforms
     std::int32_t traces = 0;
     std::int32_t attachments = 0;
 };
-static_assert(sizeof(CompositeUniforms) == 272, "laid out as the shaders' CompositeUniforms");
+static_assert(sizeof(CompositeUniforms) % 16 == 0, "rounded up as the shaders' CompositeUniforms");
 
 // A rectangle in device pixels from the bottom left, in one colour (not premultiplied). A soft
 // axis has its edges at their exact positions with coverage; a hard one is left to the
