@@ -78,7 +78,7 @@ Grouped by how often someone reaches for it.
 **Often, one step away**
 
 - Channel views L, R, Mid, Side; overlaid or stacked.
-- Trigger mode: Auto, Normal, Free, Single; Re-arm (Seconds ≤ 1 s only).
+- Trigger mode: Auto, Normal, Single; Re-arm (Trig only).
 - Cursors: time (A/B) and level (1/2), with their readouts.
 - Hover readout.
 - Group A–D (Multi and Compare).
