@@ -100,6 +100,21 @@ export class RenderLoop {
     this.requestTick(false);
   }
 
+  // Draws the last frame drawn again at once, outside the ticks: for a canvas resized after the
+  // frame's draw in the same rendering update (the screen's size observed), which the resize
+  // cleared, so the frame shown is not blank. It earns no credit, counts no tick and is not
+  // recorded as a frame drawn; it does the redraw asked for, and a frame waiting for its tick
+  // still waits for it.
+  redrawNow(): void {
+    if (this.lastDrawn === undefined) {
+      return;
+    }
+    if (this.latest === undefined) {
+      this.redrawRequested = false;
+    }
+    this.renderer.draw(this.lastDrawn, this.lastTickTime);
+  }
+
   private requestTick(fromTick: boolean): void {
     if (this.tickPending) {
       return;

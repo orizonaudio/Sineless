@@ -245,6 +245,8 @@ export class OscilloscopeApp {
   );
   private traceViewQueued = false;
   private lastTraceView = "";
+  // The screen's size and the pixel ratio the canvases were last sized for.
+  private sized: { width: number; height: number; ratio: number } | undefined;
   // Native drawing stopped for good this session: never cleared, so a snapshot read before the
   // editor's message, or a reloaded page, can only show it.
   private nativeGraphicsLost = false;
@@ -412,6 +414,22 @@ export class OscilloscopeApp {
     window.addEventListener("resize", () => {
       this.resize();
     });
+    // The screen can change size with no window resize: at start-up its layout settles after the
+    // first measurement, with the window already at its size. Seen after the frame's draw, so the
+    // traces are drawn again at once: resizing the canvases cleared them. A window resize sizes
+    // them earlier in the same rendering update, and this then finds nothing to do.
+    new ResizeObserver(() => {
+      const sized = this.sized;
+      if (
+        sized?.width === this.screen.clientWidth &&
+        sized.height === this.screen.clientHeight &&
+        sized.ratio === window.devicePixelRatio
+      ) {
+        return;
+      }
+      this.sizeScreen();
+      this.loop.redrawNow();
+    }).observe(this.screen);
     this.watchPixelRatio();
     window.setInterval(() => {
       this.statusDue(); // Without frames too: the chips say when none arrive.
@@ -912,13 +930,23 @@ export class OscilloscopeApp {
     for (const [group, , id] of popovers) {
       this.placePopover(id, group);
     }
-    this.placeCursors();
+    this.sizeScreen();
+  }
+
+  // What follows the screen's size: the canvases in device pixels, the engine's width, the level
+  // cursors (placed in pixels from its height) and the picture. The size is read once, so both
+  // canvases and the record take the same one.
+  private sizeScreen(): void {
+    const width = this.screen.clientWidth;
+    const height = this.screen.clientHeight;
     const ratio = window.devicePixelRatio;
+    this.sized = { width, height, ratio };
+    this.placeCursors();
     for (const canvas of [this.gridCanvas, this.traceCanvas]) {
-      canvas.width = Math.round(this.screen.clientWidth * ratio);
-      canvas.height = Math.round(this.screen.clientHeight * ratio);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
     }
-    this.backend.setViewport(this.screen.clientWidth, ratio);
+    this.backend.setViewport(width, ratio);
     this.drawScreen();
     this.loop.invalidate();
     // The line width is in device pixels: a move to a display of another ratio changes it.
