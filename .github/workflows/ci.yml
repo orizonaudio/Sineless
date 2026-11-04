@@ -517,10 +517,10 @@ jobs:
   # or editor_tests) up to their first failure and is stopped at that module's limit if it hangs
   # one (MUTANT_TIMEOUT, set for the whole workflow, for the engine's). The summary says how long
   # each module's tests take unmutated, and warns when that is more than half its limit, as a
-  # mutant no test notices would then be reported as timed out. No share starts a mutant after 50
-  # minutes of running them (MUTATION_DEADLINE): with the engine's limit of 25 and the setup and
-  # one unmutated run of the tests before them, the job's 90 rarely end it; when they do, the
-  # results it wrote are kept and the rest reported as not run.
+  # mutant no test notices would then be reported as timed out. Each share writes every result
+  # within 85 minutes of starting its tests (MUTATION_DEADLINE, the unmutated run included): a
+  # mutant still running then is stopped and reported as not run, as are those left, so that the
+  # job's 90 never cancel it with results unwritten (its setup takes under a minute).
   mutation-cpp-list:
     name: mutation-cpp-list
     needs: changes
@@ -577,7 +577,7 @@ jobs:
     needs: mutation-cpp-list
     if: ${{ !cancelled() && needs.mutation-cpp-list.outputs.mutants != '0' && needs.mutation-cpp-list.outputs.mutants != '' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 90 # MUTATION_DEADLINE, below, is five minutes less.
     strategy:
       fail-fast: false
       matrix:
@@ -600,7 +600,8 @@ jobs:
       - name: Run the share's mutants
         continue-on-error: true # Its mutants are then reported as not run.
         env:
-          MUTATION_DEADLINE: 3000
+          # The job's timeout-minutes (90) less five: setup, upload and margin.
+          MUTATION_DEADLINE: 5100
         run: |
           chmod +x build/mutation-cpp/bin/RelWithDebInfo/*_tests # Artifacts keep no permissions.
           scripts/mutation-cpp.sh --share "${{ matrix.share }}/8"
@@ -665,9 +666,10 @@ jobs:
   # Xcode has the macOS 26 SDK that Clang 20 builds against. The whole of au/src runs in minutes,
   # so the mutants are not shared out. Each test binary is stopped at 300 s rather than the
   # engine's MUTANT_TIMEOUT: the Audio Unit's tests take seconds unmutated, so 300 s still lets a
-  # slow runner finish them, and a mutant that hangs one costs five minutes, not twenty-five. No
-  # mutant starts after 30 minutes of running them (MUTATION_DEADLINE), so that with the build the
-  # job ends within its 60 with the results it wrote, the rest reported as not run.
+  # slow runner finish them, and a mutant that hangs one costs five minutes, not twenty-five. Every
+  # result is written within 30 minutes of starting the tests (MUTATION_DEADLINE, the unmutated
+  # run included), so that with the build the job ends within its 60 with the results it wrote; a
+  # mutant still running then, and those left, are reported as not run.
   mutation-au:
     name: mutation-au
     needs: changes

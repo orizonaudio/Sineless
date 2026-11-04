@@ -3,12 +3,16 @@
 // run, and limits each mutant only to ten times the tests' own time. Here each mutant runs as Mull
 // runs it (the test binary with an environment variable named after the mutant set to 1), its
 // result is written as soon as it is known, a mutant that takes longer than the limit is stopped
-// and counted as timed out, and the mutants not reached by the deadline are reported as not run.
+// and counted as timed out, and every result is written within the budget: the seconds from the
+// run's start, the tests' run with no mutant included, by which it must end (CI's share job is
+// cancelled soon after, losing whatever is still running). No mutant starts once the budget is
+// spent, and one still running when it ends is stopped and reported as not run, as what it would
+// show is unknown; the mutants left are reported as not run too.
 // After the first binary, each further one (after another --) runs a mutant the ones before it
 // did not notice: the Audio Unit's view tests notice some of its mutants that its other tests
 // miss (scripts/mutation-au.sh). --workers sets how many mutants run at once (default: one a core).
 //   node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl>
-//       --limit <seconds a binary> --deadline <seconds in all> [--workers <n>]
+//       --limit <seconds a binary> --budget <seconds in all> [--workers <n>]
 //       -- <test binary> [arguments] [-- <test binary> [arguments]]...
 //   node scripts/mutation-run.ts merge <dry-run.json> <results.jsonl>...   (prints the report)
 //   node scripts/mutation-run.ts combine <dry-run.json>...   (prints the lists as one)
@@ -136,12 +140,13 @@ interface RunOptions {
   ids: string[];
   results: string;
   limitSeconds: number;
-  deadlineSeconds: number;
+  // When the budget ends, in milliseconds since the epoch (Date.now()).
+  endsAt: number;
   tests: TestCommand[];
   workers?: number | undefined;
 }
 
-type TestOptions = Pick<RunOptions, "limitSeconds" | "tests">;
+type TestOptions = Pick<RunOptions, "limitSeconds" | "endsAt" | "tests">;
 
 // The tests run with the mutant `id` switched on, or with none: each binary in turn, until one
 // fails or is stopped at the limit, which notices the mutant.
@@ -150,7 +155,7 @@ async function runTests(
   id?: string,
 ): Promise<Result["status"]> {
   for (const test of options.tests) {
-    const status = await runBinary(test, options.limitSeconds, id);
+    const status = await runBinary(test, options, id);
     if (status !== "Survived") {
       return status;
     }
@@ -158,28 +163,39 @@ async function runTests(
   return "Survived";
 }
 
+// One binary's run, stopped at its limit or at the end of the budget, whichever comes first. One
+// the budget stops before its own limit is not run: its hang, if it is one, is not shown.
 function runBinary(
   test: TestCommand,
-  limitSeconds: number,
+  options: Pick<TestOptions, "limitSeconds" | "endsAt">,
   id?: string,
 ): Promise<Result["status"]> {
+  const limit = options.limitSeconds * 1000;
+  const left = options.endsAt - Date.now();
+  if (left <= 0) {
+    return Promise.resolve("NotRun");
+  }
+  const capped = left < limit;
   return new Promise((resolve) => {
     const child = spawn(test.command, test.args, {
       env: id === undefined ? process.env : { ...process.env, [id]: "1" },
       stdio: "ignore",
     });
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, limitSeconds * 1000);
+    const timer = setTimeout(
+      () => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      },
+      Math.min(limit, left),
+    );
     child.on("error", () => {
       clearTimeout(timer);
       resolve("Killed");
     });
     child.on("exit", (code) => {
       clearTimeout(timer);
-      resolve(statusOf(code, timedOut));
+      resolve(timedOut && capped ? "NotRun" : statusOf(code, timedOut));
     });
   });
 }
@@ -194,10 +210,9 @@ async function runOne(options: RunOptions, id: string): Promise<Result> {
   return { id, status: await runTests(options, id) };
 }
 
-// Runs the mutants on every core, appending each result as it is known. Once the deadline has
-// passed no new mutant starts, and those left are written as not run.
+// Runs the mutants on every core, appending each result as it is known. Once the budget is spent
+// no new mutant starts, and those left are written as not run.
 export async function run(options: RunOptions): Promise<Result[]> {
-  const deadline = Date.now() + options.deadlineSeconds * 1000;
   const queue = [...options.ids];
   const done: Result[] = [];
   const record = (result: Result) => {
@@ -207,7 +222,7 @@ export async function run(options: RunOptions): Promise<Result[]> {
   const worker = async () => {
     for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
       record(
-        Date.now() < deadline
+        Date.now() < options.endsAt
           ? await runOne(options, id)
           : { id, status: "NotRun" },
       );
@@ -260,11 +275,13 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       ? undefined
       : (JSON.parse(readFileSync(dryRun, "utf8")) as Report);
   if (command === "run" && report !== undefined) {
+    // The budget counts from here: the tests' run with no mutant is within it.
+    const started = Date.now();
     const [share, shares] = (args[2] ?? "").split("/").map(Number);
     const results = args[3];
     const tests = testCommands(args);
     const limit = Number(option("--limit"));
-    const deadline = Number(option("--deadline"));
+    const budget = Number(option("--budget"));
     const workers =
       option("--workers") === undefined
         ? undefined
@@ -274,11 +291,11 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       !args.includes("--") ||
       tests.some((test) => test.command === "") ||
       !(limit > 0) ||
-      !(deadline > 0) ||
+      !(budget > 0) ||
       (workers !== undefined && !(Number.isInteger(workers) && workers > 0))
     ) {
       console.error(
-        "run needs <share>/<shares> <results.jsonl> --limit --deadline [--workers] -- <binary> [-- <binary>]...",
+        "run needs <share>/<shares> <results.jsonl> --limit --budget [--workers] -- <binary> [-- <binary>]...",
       );
       process.exit(2);
     }
@@ -298,9 +315,10 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       );
       process.exit(1);
     }
-    if (!(await testsPass({ limitSeconds: limit, tests }))) {
+    const endsAt = started + budget * 1000;
+    if (!(await testsPass({ limitSeconds: limit, endsAt, tests }))) {
       console.error(
-        `The tests fail, or take more than ${String(limit)} s, with no mutant: every mutant would read as noticed.`,
+        `The tests fail, or take more than ${String(limit)} s or the budget's ${String(budget)} s, with no mutant: every mutant would read as noticed.`,
       );
       process.exit(1);
     }
@@ -309,7 +327,7 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
       ids,
       results,
       limitSeconds: limit,
-      deadlineSeconds: deadline,
+      endsAt,
       tests,
       workers,
     });
@@ -327,7 +345,7 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
     console.log(JSON.stringify(merge(report, results)));
   } else {
     console.error(
-      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --limit <s> --deadline <s> [--workers <n>] -- <binary> [args] [-- <binary> [args]]... | merge <dry-run.json> <results.jsonl>... | combine <dry-run.json>...",
+      "Usage: node scripts/mutation-run.ts run <dry-run.json> <share>/<shares> <results.jsonl> --limit <s> --budget <s> [--workers <n>] -- <binary> [args] [-- <binary> [args]]... | merge <dry-run.json> <results.jsonl>... | combine <dry-run.json>...",
     );
     process.exit(2);
   }

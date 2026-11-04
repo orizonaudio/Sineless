@@ -10,8 +10,9 @@
 # Mull lists the mutants au_tests holds, all of au/src's but those of the component's one-call
 # entry point, src/ComponentEntry.cpp, which only the component holds (its dry run), and
 # scripts/mutation-run.ts runs them one at a time (the view's tests share the window server), each
-# test binary stopped after MUTANT_TIMEOUT seconds (default 300), and none started after
-# MUTATION_DEADLINE seconds of running them (default: none), those left being reported as not run.
+# test binary stopped after MUTANT_TIMEOUT seconds (default 300), and every result written within
+# MUTATION_DEADLINE seconds of the run's start (default: none), the tests' run with no mutant
+# included; a mutant still running then, and those left, are reported as not run.
 # Mull for LLVM 20 (tools/mutation/install-mull-macos.sh, into build/mull-macos) needs Homebrew's
 # llvm@20 and builds against a macOS 26 SDK: Clang 20 cannot build the tests against the macOS 27
 # SDK, and Mull has no macOS build for a newer LLVM. Mull mutates C++ only: the view's Objective-C
@@ -126,7 +127,7 @@ for binary in "${binaries[@]}"; do
     fi
 done
 node scripts/mutation-run.ts run "$out/dry.json" 1/1 "$out/results-1.jsonl" \
-    --limit "$mutantTimeout" --deadline "${MUTATION_DEADLINE:-1000000000}" --workers 1 -- "${tests[@]}"
+    --limit "$mutantTimeout" --budget "${MUTATION_DEADLINE:-1000000000}" --workers 1 -- "${tests[@]}"
 node scripts/mutation-run.ts merge "$out/dry.json" "$out/results-1.jsonl" > "$out/mull.json"
 node scripts/mutation-report.ts "$out/mull.json" "Mutation testing (Audio Unit)" \
     "$((SECONDS - start))" --binary-seconds "$slowest" --limit "$mutantTimeout" > "$out/summary.md"
