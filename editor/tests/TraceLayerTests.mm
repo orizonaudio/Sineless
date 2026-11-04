@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <memory>
@@ -127,10 +128,18 @@ protected:
         layer->setTraceView(scene.view);
     }
 
+    std::uint64_t submitted() const { return layer->statsForTesting().submitted; }
+
+    // A picture submitted after `before`, counted before the change that should draw one: the
+    // link may submit it as soon as the change is made, before the test starts waiting.
+    bool presentsSince(std::uint64_t before, std::chrono::milliseconds within = 2s)
+    {
+        return pumpUntil([&] { return submitted() > before; }, within);
+    }
+
     bool presents(std::chrono::milliseconds within = 2s)
     {
-        const auto before = layer->statsForTesting().submitted;
-        return pumpUntil([&] { return layer->statsForTesting().submitted > before; }, within);
+        return presentsSince(submitted(), within);
     }
 
     // The screen's rectangle in the container's coordinates (from the bottom), and in device
@@ -170,9 +179,10 @@ TEST_F(TraceLayerTest, DrawsNothingUntilThePageHasSentItsTraceView)
     layer->setPageShown(true);
     EXPECT_FALSE(presents(300ms));
     EXPECT_TRUE(layer->view().hidden);
+    const auto before = submitted();
     layer->setTraceView(scene.view);
     EXPECT_FALSE(layer->view().hidden);
-    EXPECT_TRUE(presents());
+    EXPECT_TRUE(presentsSince(before));
 }
 
 // The layer covers the page's screen exactly, its drawable the screen's size in device pixels as
@@ -222,9 +232,10 @@ TEST_F(TraceLayerTest, HidesAndPausesWithThePage)
     EXPECT_EQ(layer->statsForTesting().callbacks, callbacks) << "the link runs while hidden";
     layer->setPageShown(true);
     EXPECT_TRUE(layer->view().hidden) << "before the new page's trace view";
+    const auto before = submitted();
     layer->setTraceView(scene.view);
     EXPECT_FALSE(layer->view().hidden);
-    EXPECT_TRUE(presents());
+    EXPECT_TRUE(presentsSince(before));
 }
 
 // A window off screen (behind others, minimised, on another space) pauses the link, and the
@@ -241,11 +252,12 @@ TEST_F(TraceLayerTest, PausesWhileItsWindowIsOffScreen)
     const auto callbacks = layer->statsForTesting().callbacks;
     pumpUntil([] { return false; }, 300ms);
     EXPECT_EQ(layer->statsForTesting().callbacks, callbacks);
+    const auto before = submitted();
     TraceLayer::setOcclusionForTesting(false);
     [NSNotificationCenter.defaultCenter
         postNotificationName:NSWindowDidChangeOcclusionStateNotification
                       object:window];
-    EXPECT_TRUE(presents());
+    EXPECT_TRUE(presentsSince(before));
 }
 
 // Moved to another screen, the display's lead is measured again, for the new display's link calls
@@ -300,24 +312,28 @@ TEST_F(TraceLayerTest, DrawsTheLastFrameAgainWhenThePictureChanges)
     pumpUntil([] { return false; }, 300ms);
     ASSERT_EQ(layer->statsForTesting().submitted, idle) << "nothing to draw again";
 
+    auto before = submitted();
     [window setContentSize:NSMakeSize(1200, 640)];
-    EXPECT_TRUE(presents()) << "a resize";
+    EXPECT_TRUE(presentsSince(before)) << "a resize";
+    before = submitted();
     [layer->view() viewDidChangeBackingProperties];
-    EXPECT_TRUE(presents()) << "a backing-scale change";
+    EXPECT_TRUE(presentsSince(before)) << "a backing-scale change";
     TraceView zoomed = scene.view;
     zoomed.view = {.start = 0.25, .end = 0.75};
+    before = submitted();
     layer->setTraceView(zoomed);
-    EXPECT_TRUE(presents()) << "a new trace view";
+    EXPECT_TRUE(presentsSince(before)) << "a new trace view";
     TraceLayer::setOcclusionForTesting(true);
     [NSNotificationCenter.defaultCenter
         postNotificationName:NSWindowDidChangeOcclusionStateNotification
                       object:window];
     pumpUntil([] { return false; }, 100ms);
+    before = submitted();
     TraceLayer::setOcclusionForTesting(false);
     [NSNotificationCenter.defaultCenter
         postNotificationName:NSWindowDidChangeOcclusionStateNotification
                       object:window];
-    EXPECT_TRUE(presents()) << "back on screen";
+    EXPECT_TRUE(presentsSince(before)) << "back on screen";
 
     // A buffer that failed for a while is drawn again at each callback until one succeeds.
     pumpUntil([] { return false; }, 100ms);
@@ -350,8 +366,9 @@ TEST_F(TraceLayerTest, NumbersEachPictureItDrawsWithTheSwitchOn)
     pumpUntil([] { return false; }, 200ms);
     const auto first = layer->statsForTesting().barcode;
     ASSERT_TRUE(first);
+    const auto before = submitted();
     [window setContentSize:NSMakeSize(1200, 640)];
-    ASSERT_TRUE(presents()) << "a redraw with no new frame";
+    ASSERT_TRUE(presentsSince(before)) << "a redraw with no new frame";
     const auto second = layer->statsForTesting().barcode;
     ASSERT_TRUE(second);
     EXPECT_EQ(second->picture, first->picture + 1);
