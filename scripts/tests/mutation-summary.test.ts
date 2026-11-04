@@ -3,16 +3,15 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
+import type { BaselineReport } from "../mutation-run.ts";
 import {
   annotations,
-  mullSeconds,
+  baselineNote,
   noMutantFound,
   noTestReached,
   notRunCount,
   relativeTo,
   summarise,
-  timeLimitNote,
-  warmUpSeconds,
   type Mutant,
   type Report,
 } from "../mutation-summary.ts";
@@ -79,9 +78,12 @@ describe("the mutation testing summary", () => {
   });
 
   test("lists the mutants not noticed, by file and line", () => {
+    // The not-noticed table's rows, three cells each; the timed-out table's have two.
     const rows = summarise(report, title)
       .split("\n")
-      .filter((line) => line.startsWith("| ui/"));
+      .filter(
+        (line) => line.startsWith("| ui/") && line.split(" | ").length === 3,
+      );
     expect(rows).toEqual([
       "| ui/src/a.ts:7 | NoCoverage | ConditionalExpression: `true` |",
       "| ui/src/b.ts:9 | Survived | ConditionalExpression: `true` |",
@@ -172,136 +174,90 @@ describe("the mutation testing warnings", () => {
   });
 });
 
-// Mull's log, as it reads around its warm-up run: the instrumented build's mutants, the warm-up
-// (the tests with no mutant), and the mutants' runs.
-const mullLog = (warmUp: string) =>
-  [
-    "[info] Filter mutants (threads: 1)",
-    "       [################################] 2307/2307. Finished in 216ms",
-    "[info] Warm up run (threads: 1)",
-    `       [################################] 1/1. Finished in ${warmUp}`,
-    "[info] Running mutants (threads: 8)",
-    "       [################################] 5/5. Finished in 1.21s",
-  ].join("\n");
+// What two shares' runs with no mutant measured (scripts/mutation-run.ts, --baseline-out).
+const share = (engine: number, plugin?: number): BaselineReport => ({
+  factor: 1.5,
+  constantSeconds: 5,
+  binaries: [
+    {
+      name: "engine_tests",
+      tests: 3344,
+      seconds: engine,
+      limitSeconds: 1.5 * engine + 5,
+    },
+    ...(plugin === undefined
+      ? []
+      : [
+          {
+            name: "plugin_tests",
+            tests: 40,
+            seconds: plugin,
+            limitSeconds: 1.5 * plugin + 5,
+          },
+        ]),
+  ],
+});
 
-describe("the time limit note on a C++ mutation run", () => {
-  test.each([
-    ["216ms", 0.216],
-    ["3151ms", 3.151],
-    ["58.2s", 58.2],
-    ["4m40.4s", 280.4],
-    ["1h2m3s", 3723],
-  ])("reads Mull's duration %s as %f s", (text, seconds) => {
-    expect(mullSeconds(text)).toBeCloseTo(seconds, 6);
+describe("the C++ runs' times with no mutant", () => {
+  test("gives each module the largest time any share measured, and where its mutants are stopped", () => {
+    const note = baselineNote(
+      [share(700, 12), share(812)],
+      ["engine_tests", "plugin_tests"],
+    );
+    expect(note).toContain("| engine_tests | 812 s | 1223 s |");
+    expect(note).toContain("| plugin_tests | 12 s | 23 s |");
+    expect(note.split("\n")[0]).toBe(
+      "Each mutant is stopped at 1.5 × its tests' time with no mutant + 5 s, the time measured with every worker busy.",
+    );
   });
 
-  test.each(["", "4 minutes", "4m40.4", "ms"])(
-    "reads %j as no duration",
-    (text) => {
-      expect(mullSeconds(text)).toBeUndefined();
-    },
-  );
-
-  test.each([
-    ["4m40.4s", 280.4],
-    ["3151ms", 3.151],
-  ])(
-    "takes the warm-up's own duration (%s), not another step's",
-    (warmUp, seconds) => {
-      expect(warmUpSeconds(mullLog(warmUp))).toBeCloseTo(seconds, 6);
-    },
-  );
-
-  test("reads the warm-up's duration with the blank line Mull's log puts before it", () => {
-    const log = [
-      "[warning] Could not find dynamic library: libc.so.6",
-      "[info] Warm up run (threads: 1)",
-      "",
-      "       [################################] 1/1. Finished in 3m20.1s",
-      "[info] Applying file path filter (threads: 8)",
-    ].join("\n");
-    expect(warmUpSeconds(log)).toBeCloseTo(200.1, 6);
+  // A share with no mutant of a module, or whose run with no mutant failed, writes no times for it:
+  // the module then shows no time rather than 0 s, which would read as tests that take none.
+  test("shows no time for a module no share timed, rather than 0 s", () => {
+    const note = baselineNote([share(812)], ["engine_tests", "editor_tests"]);
+    expect(note).toContain("| editor_tests | — | — |");
+    expect(note).not.toMatch(/\| 0 s \|/u);
   });
 
-  test("has no warm-up time for a log without one", () => {
+  test("shows each module with mutants as untimed when no share wrote its times", () => {
+    expect(baselineNote([], ["engine_tests"])).toBe(
+      [
+        "| Tests | With no mutant | Each mutant stopped at |",
+        "| --- | ---: | ---: |",
+        "| engine_tests | — | — |",
+      ].join("\n"),
+    );
+  });
+
+  test("says nothing when no module had mutants", () => {
+    expect(baselineNote([], [])).toBe("");
+  });
+
+  test("no longer warns about MUTANT_TIMEOUT, which no run reads", () => {
+    expect(baselineNote([share(1812)], ["engine_tests"])).not.toContain(
+      "MUTANT_TIMEOUT",
+    );
+  });
+});
+
+describe("the timed-out mutants", () => {
+  // A timeout counts as noticed; listed so that a survivor a limit set too tight stopped shows.
+  test("lists each mutant that timed out, by file and line", () => {
+    const summary = summarise(report, title);
+    expect(summary).toContain("Timed out: each hung its tests past its limit");
+    expect(summary).toContain(
+      "| ui/src/a.ts:3 | ConditionalExpression: `true` |",
+    );
+  });
+
+  test("lists none when no mutant timed out", () => {
     expect(
-      warmUpSeconds("[info] Running mutants (threads: 8)"),
-    ).toBeUndefined();
+      summarise(
+        { files: { "a.cpp": { mutants: [mutant("Killed", 1)] } } },
+        title,
+      ),
+    ).not.toContain("Timed out");
   });
-
-  // A mutant no test notices runs every test, so the tests must take well under the limit.
-  test.each([
-    [149, 300, false],
-    [151, 300, true],
-    [280, 900, false],
-  ])(
-    "for tests taking %d s against a %d s limit, warns: %s",
-    (warmUp, limit, warns) => {
-      const note = timeLimitNote(warmUp, limit);
-      expect(note.split("\n")[0]).toBe(
-        `The tests take ${String(warmUp)} s with no mutant; each mutant is stopped at ${String(limit)} s.`,
-      );
-      expect(note.includes("[!WARNING]")).toBe(warns);
-    },
-  );
-
-  // Each module's tests have a limit of their own (scripts/mutation-cpp.sh): the note names them.
-  test.each([
-    [0.1, 60, false],
-    [40, 60, true],
-  ])(
-    "for plugin_tests taking %d s against their own %d s limit, names them and warns: %s",
-    (warmUp, limit, warns) => {
-      const [first = "", ...rest] = timeLimitNote(
-        warmUp,
-        limit,
-        false,
-        "plugin_tests",
-      ).split("\n");
-      expect(first).toMatch(/^plugin_tests /u);
-      const warning = rest.join("\n");
-      expect(warning.includes("[!WARNING]")).toBe(warns);
-      if (warns) {
-        expect(warning).toContain("plugin_tests");
-      }
-    },
-  );
-
-  // The warning says which limit to raise: the engine's is MUTANT_TIMEOUT, set in CI; the others'
-  // are in scripts/mutation-cpp.sh, where raising MUTANT_TIMEOUT would change nothing.
-  test.each([
-    ["engine_tests", 900, 1500, "MUTANT_TIMEOUT"],
-    ["plugin_tests", 40, 60, "scripts/mutation-cpp.sh"],
-    ["editor_tests", 40, 60, "scripts/mutation-cpp.sh"],
-  ])(
-    "tells whoever reads a warning on %s to raise the limit they run at",
-    (name, warmUp, limit, where) => {
-      const warning = timeLimitNote(warmUp, limit, false, name)
-        .split("\n")
-        .slice(1)
-        .join("\n");
-      expect(warning).toContain(where);
-      if (where !== "MUTANT_TIMEOUT") {
-        expect(warning).not.toContain("MUTANT_TIMEOUT");
-      }
-    },
-  );
-
-  // Each of several test binaries is stopped at the limit (scripts/mutation-au.sh): the slowest
-  // one must take well under it.
-  test.each([
-    [149, 300, false],
-    [151, 300, true],
-  ])(
-    "for a slowest test binary taking %d s against each binary's %d s limit, says so and warns: %s",
-    (slowest, limit, warns) => {
-      const note = timeLimitNote(slowest, limit, true);
-      expect(note.split("\n")[0]).toBe(
-        `The slowest test binary takes ${String(slowest)} s with no mutant; each test binary is stopped at ${String(limit)} s.`,
-      );
-      expect(note.includes("[!WARNING]")).toBe(warns);
-    },
-  );
 });
 
 describe("a Stryker run no unit test reaches", () => {

@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
@@ -23,11 +23,13 @@ import {
   run,
   shareOf,
   baseline,
+  limitOf,
   listedTests,
   reportedTimes,
   statusOf,
   wholeSeconds,
 } from "../mutation-run.ts";
+import type { BaselineReport } from "../mutation-run.ts";
 import type { Report } from "../mutation-summary.ts";
 
 const mutant = (id: string) => ({
@@ -147,7 +149,7 @@ describe("running a share", () => {
     const running = run({
       ids: ["kill:a", "hang:b"],
       results,
-      limitSeconds: 3,
+      limitsSeconds: [3],
       endsAt: inSeconds(60),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 2,
@@ -171,7 +173,7 @@ describe("running a share", () => {
     const done = await run({
       ids: ["kill:a", "survive:b", "hang:c"],
       results,
-      limitSeconds: 1,
+      limitsSeconds: [1],
       endsAt: inSeconds(60),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 3,
@@ -194,7 +196,7 @@ describe("running a share", () => {
     const done = await run({
       ids: ["hang:a", "kill:b", "kill:c"],
       results,
-      limitSeconds: 1,
+      limitsSeconds: [1],
       endsAt: inSeconds(0.8),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 1,
@@ -214,7 +216,7 @@ describe("running a share", () => {
     const done = await run({
       ids: ["hang:a"],
       results,
-      limitSeconds: 30,
+      limitsSeconds: [30],
       endsAt: inSeconds(1),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 1,
@@ -234,7 +236,7 @@ describe("running a share", () => {
     const done = await run({
       ids: ["kill:a", "survive:b"],
       results,
-      limitSeconds: 600,
+      limitsSeconds: [600],
       endsAt: inSeconds(20),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 2,
@@ -253,7 +255,7 @@ describe("running a share", () => {
     const done = await run({
       ids: ["hang:a"],
       results,
-      limitSeconds: 1,
+      limitsSeconds: [1],
       endsAt: inSeconds(30),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 1,
@@ -283,8 +285,6 @@ describe("running a share", () => {
           dry,
           "1/1",
           results,
-          "--limit",
-          "30",
           "--budget",
           "1",
           "--",
@@ -305,7 +305,7 @@ describe("running a share", () => {
     const done = await run({
       ids: ["later:a", "survive:b", "kill:c", "hang:d"],
       results,
-      limitSeconds: 1,
+      limitsSeconds: [1, 1],
       endsAt: inSeconds(60),
       tests: [
         { command: process.execPath, args: [fake] },
@@ -329,7 +329,7 @@ describe("running a share", () => {
     const done = await run({
       ids: ["first:a", "survive:b"],
       results,
-      limitSeconds: 5,
+      limitsSeconds: [5, 5],
       endsAt: inSeconds(60),
       tests: [
         { command: process.execPath, args: [fake, "first"] },
@@ -352,7 +352,7 @@ describe("running a share", () => {
     const done = await run({
       ids: ["kill:a"],
       results,
-      limitSeconds: 10,
+      limitsSeconds: [10, 10],
       endsAt: inSeconds(60),
       tests: [
         { command: process.execPath, args: [fake] },
@@ -386,8 +386,6 @@ describe("running a share", () => {
         dry,
         "1/1",
         results,
-        "--limit",
-        "10",
         "--budget",
         "60",
         "--workers",
@@ -516,8 +514,6 @@ describe("the run's command line", () => {
             dry,
             "1/1",
             results,
-            "--limit",
-            "5",
             "--budget",
             "5",
             ...options,
@@ -565,8 +561,6 @@ describe("checking the test binary can switch each mutant on", () => {
           dry,
           "1/1",
           join(dir, "results.jsonl"),
-          "--limit",
-          "1",
           "--budget",
           "1",
           "--",
@@ -592,19 +586,7 @@ describe("the tests' run with no mutant", () => {
     expect(() =>
       execFileSync(
         process.execPath,
-        [
-          script,
-          "run",
-          dry,
-          "1/1",
-          results,
-          "--limit",
-          "5",
-          "--budget",
-          "5",
-          "--",
-          binary,
-        ],
+        [script, "run", dry, "1/1", results, "--budget", "5", "--", binary],
         { stdio: "pipe" },
       ),
     ).toThrow(/fails with no mutant/u);
@@ -628,19 +610,7 @@ describe("the tests' run with no mutant", () => {
     const script = join(import.meta.dirname, "..", "mutation-run.ts");
     const printed = execFileSync(
       process.execPath,
-      [
-        script,
-        "run",
-        dry,
-        "2/2",
-        results,
-        "--limit",
-        "5",
-        "--budget",
-        "5",
-        "--",
-        binary,
-      ],
+      [script, "run", dry, "2/2", results, "--budget", "5", "--", binary],
       { encoding: "utf8" },
     );
     expect(printed).toContain("0 mutants run");
@@ -651,7 +621,6 @@ describe("the tests' run with no mutant", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const binary = gtestBinary(dir, "engine_tests", parameterised);
     const result = await baseline({
-      limitSeconds: 30,
       endsAt: inSeconds(60),
       tests: [{ command: binary, args: [] }],
       workers: 3,
@@ -679,7 +648,6 @@ describe("the tests' run with no mutant", () => {
     });
     expect(
       await baseline({
-        limitSeconds: 30,
         endsAt: inSeconds(60),
         tests: [{ command: binary, args: [] }],
         workers: 2,
@@ -701,7 +669,6 @@ describe("the tests' run with no mutant", () => {
     const binary = gtestBinary(dir, "engine_tests", slow);
     const started = Date.now();
     const result = await baseline({
-      limitSeconds: 30,
       endsAt: inSeconds(60),
       tests: [{ command: binary, args: [] }],
       workers: 4,
@@ -716,7 +683,6 @@ describe("the tests' run with no mutant", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const binary = gtestBinary(dir, "plugin_tests", passing);
     const result = await baseline({
-      limitSeconds: 30,
       endsAt: inSeconds(60),
       tests: [{ command: binary, args: [] }],
       workers: 5,
@@ -733,7 +699,6 @@ describe("the tests' run with no mutant", () => {
       lock: join(dir, "lock"),
     });
     const result = await baseline({
-      limitSeconds: 30,
       endsAt: inSeconds(60),
       tests: [{ command: binary, args: [] }],
       workers: 1,
@@ -749,7 +714,6 @@ describe("the tests' run with no mutant", () => {
     });
     expect(
       await baseline({
-        limitSeconds: 30,
         endsAt: inSeconds(60),
         tests: [{ command: binary, args: [] }],
         workers: 2,
@@ -757,7 +721,7 @@ describe("the tests' run with no mutant", () => {
     ).toMatch(/fails with no mutant/u);
   });
 
-  test("fails tests that outlast the limit with no mutant, as every mutant would time out and read as noticed", async () => {
+  test("fails tests that outlast the budget with no mutant, as no mutant could then run", async () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
     const binary = gtestBinary(dir, "engine_tests", {
       startupMs: 0,
@@ -765,12 +729,11 @@ describe("the tests' run with no mutant", () => {
     });
     expect(
       await baseline({
-        limitSeconds: 1,
-        endsAt: inSeconds(60),
+        endsAt: inSeconds(1),
         tests: [{ command: binary, args: [] }],
         workers: 1,
       }),
-    ).toMatch(/takes more than 1 s/u);
+    ).toMatch(/outlasts the budget/u);
   });
 
   test("fails when any of several test binaries fails with no mutant, as every mutant would read as noticed", async () => {
@@ -782,7 +745,6 @@ describe("the tests' run with no mutant", () => {
     });
     expect(
       await baseline({
-        limitSeconds: 30,
         endsAt: inSeconds(60),
         tests: [
           { command: good, args: [] },
@@ -811,8 +773,6 @@ describe("the tests' run with no mutant", () => {
           dry,
           "1/1",
           join(dir, "results.jsonl"),
-          "--limit",
-          "5",
           "--budget",
           "5",
           "--",
@@ -829,12 +789,183 @@ describe("the tests' run with no mutant", () => {
   test("fails tests that cannot start", async () => {
     expect(
       await baseline({
-        limitSeconds: 5,
         endsAt: inSeconds(60),
         tests: [{ command: "/no/such/tests", args: [] }],
         workers: 1,
       }),
     ).toMatch(/cannot list its tests/u);
+  });
+});
+
+describe("each mutant's limit", () => {
+  // A binary whose tests take `ms` with no mutant, and `slowdown` times as long with one.
+  const timed = (dir: string, name: string, ms: number, slowdown = 1) =>
+    gtestBinary(dir, name, {
+      startupMs: 0,
+      suites: [{ name: "Work", tests: [{ name: "A", ms }] }],
+      mutantSlowdown: slowdown,
+    });
+
+  // Before, every engine mutant was stopped at 1,500 s while its tests took 1,490 to 1,812 s with
+  // no mutant: one no test noticed read as timed out, which counts as noticed (#287).
+  test("reports a mutant no test notices as surviving, however long the tests take, rather than as timed out", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const dry = join(dir, "dry.json");
+    writeFileSync(dry, JSON.stringify(dryRun));
+    const binary = timed(dir, "engine_tests", 2000);
+    const results = join(dir, "results.jsonl");
+    execFileSync(
+      process.execPath,
+      [
+        join(import.meta.dirname, "..", "mutation-run.ts"),
+        "run",
+        dry,
+        "1/1",
+        results,
+        "--budget",
+        "120",
+        "--workers",
+        "4",
+        "--",
+        binary,
+      ],
+      { stdio: "pipe" },
+    );
+    const statuses = readFileSync(results, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { id: string; status: string });
+    expect(
+      statuses
+        .filter(({ id }) => id.startsWith("survive:"))
+        .map((r) => r.status),
+    ).toEqual(["Survived", "Survived"]);
+  }, 30_000);
+
+  test("lets a mutant that slows its tests within the limit finish, and stops one just past it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const run14 = timed(dir, "slower", 2000, 1.4);
+    const run16 = timed(dir, "slowest", 2000, 1.6);
+    const statusWith = async (binary: string) => {
+      const times = await baseline({
+        endsAt: inSeconds(60),
+        tests: [{ command: binary, args: [] }],
+        workers: 1,
+      });
+      if (typeof times === "string") {
+        throw new Error(times);
+      }
+      const [only] = times;
+      const done = await run({
+        ids: ["survive:a"],
+        results: join(dir, `${basename(binary)}.jsonl`),
+        limitsSeconds: [
+          limitOf(
+            only ?? { startupSeconds: 0, testSeconds: new Map() },
+            1.5,
+            0,
+          ),
+        ],
+        endsAt: inSeconds(60),
+        tests: [{ command: binary, args: [] }],
+        workers: 1,
+      });
+      return done[0]?.status;
+    };
+    expect(await statusWith(run14)).toBe("Survived");
+    expect(await statusWith(run16)).toBe("Timeout");
+  }, 30_000);
+
+  test("grows with the time of the tests the mutant runs", () => {
+    const short = { startupSeconds: 1, testSeconds: new Map([["A.a", 2]]) };
+    const long = {
+      startupSeconds: 1,
+      testSeconds: new Map([
+        ["A.a", 2],
+        ["A.b", 10],
+      ]),
+    };
+    expect(limitOf(short, 2, 3)).toBe(2 * 3 + 3);
+    expect(limitOf(long, 2, 3)).toBe(2 * 13 + 3);
+  });
+
+  test("gives each of several test binaries its own limit, from its own tests' time", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const dry = join(dir, "dry.json");
+    writeFileSync(dry, JSON.stringify(dryRun));
+    const quick = timed(dir, "au_tests", 100);
+    const slow = timed(dir, "au_view_tests", 1500);
+    const out = join(dir, "baseline.json");
+    execFileSync(
+      process.execPath,
+      [
+        join(import.meta.dirname, "..", "mutation-run.ts"),
+        "run",
+        dry,
+        "1/1",
+        join(dir, "results.jsonl"),
+        "--budget",
+        "120",
+        "--workers",
+        "1",
+        "--baseline-out",
+        out,
+        "--",
+        quick,
+        "--",
+        slow,
+      ],
+      { stdio: "pipe" },
+    );
+    const report = JSON.parse(readFileSync(out, "utf8")) as BaselineReport;
+    const [first, second] = report.binaries;
+    expect([first?.name, second?.name]).toEqual(["au_tests", "au_view_tests"]);
+    for (const binary of report.binaries) {
+      expect(binary.limitSeconds).toBeCloseTo(
+        report.factor * binary.seconds + report.constantSeconds,
+        6,
+      );
+    }
+    expect((second?.seconds ?? 0) - (first?.seconds ?? 0)).toBeGreaterThan(1);
+  }, 30_000);
+
+  test("reports a mutant as not run when the budget ends in its second test binary", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const done = await run({
+      ids: ["survive:a"],
+      results: join(dir, "results.jsonl"),
+      limitsSeconds: [10, 10],
+      endsAt: inSeconds(1.5),
+      tests: [
+        { command: process.execPath, args: [fake] },
+        {
+          command: process.execPath,
+          args: ["-e", "setInterval(() => undefined, 1000)"],
+        },
+      ],
+      workers: 1,
+    });
+    expect(done.map((r) => r.status)).toEqual(["NotRun"]);
+  });
+
+  test("caps a mutant's binaries together, not each on its own, so their limits' sum cannot outlast the budget", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const second = timed(dir, "au_view_tests", 60000);
+    const started = Date.now();
+    const done = await run({
+      ids: ["survive:a"],
+      results: join(dir, "results.jsonl"),
+      // Each fits in the budget; together they do not.
+      limitsSeconds: [2, 2.5],
+      endsAt: inSeconds(3),
+      tests: [
+        { command: timed(dir, "au_tests", 1000), args: [] },
+        { command: second, args: [] },
+      ],
+      workers: 1,
+    });
+    expect(done.map((r) => r.status)).toEqual(["NotRun"]);
+    expect(Date.now() - started).toBeLessThan(4500);
   });
 });
 

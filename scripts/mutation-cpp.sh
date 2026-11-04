@@ -8,7 +8,8 @@
 # for the engine:
 #   scripts/mutation-cpp.sh [--file engine/src/Analyzer.cpp ...] [base revision, e.g. origin/main]
 # Mull lists each module's mutants from its own tests (its dry run, which also times them with
-# none), and scripts/mutation-run.ts runs them: each stopped after its module's limit (below), and
+# none), and scripts/mutation-run.ts runs them: each stopped at a limit from its tests' time with no
+# mutant (measured first, in each share), and
 # every result written within MUTATION_DEADLINE seconds of the share's start (default: none), the
 # tests' run with no mutant included; a mutant still running then, and those left, are reported as
 # not run rather than lost. CI shares the mutants out:
@@ -77,28 +78,24 @@ sourcesOf() {
 testsOf() {
     echo "build/mutation-cpp/bin/RelWithDebInfo/$1_tests"
 }
-# Each mutant's time limit in its module, in seconds. The engine's tests take minutes with every
-# mutant compiled in, from which CI sets MUTANT_TIMEOUT; the plugin's and editor's take a tenth of
-# a second, so that a mutant hanging one (a read loop that never ends, say) is stopped within a
-# minute rather than holding a worker for the engine's limit.
-mutantTimeout="${MUTANT_TIMEOUT:-900}"
-limitOf() {
-    if [[ "$1" == engine ]]; then echo "$mutantTimeout"; else echo 60; fi
-}
 # Reports the results of the shares run so far against Mull's list: those of mutants no share ran
 # are reported as not run. Takes no Mull, so CI's merge job needs only Node.
 report() {
     node scripts/mutation-run.ts merge "$out/dry.json" "$out"/results-*.jsonl > "$out/mull.json"
-    # With the Mull log and limit of each module with mutants, the summary also says how long its
-    # tests take with no mutant against that limit, and warns when the margin is too small
+    # With the shares' runs with no mutant, the summary also says how long each module's tests take
+    # and where each of its mutants is stopped, "—" for a module with mutants no share timed
     # (scripts/mutation-summary.ts).
-    local times=() module
+    local times=() module file
     for module in "${modules[@]}"; do
         if [[ -f "$out/dry-$module.json" ]]; then
-            times+=(--tests-log "${module}_tests=$out/mull-$module.log"
-                --tests-limit "${module}_tests=$(limitOf "$module")")
+            times+=(--tests "${module}_tests")
         fi
     done
+    shopt -s nullglob
+    for file in "$out"/baseline-*.json; do
+        times+=(--baseline "$file")
+    done
+    shopt -u nullglob
     node scripts/mutation-report.ts "$out/mull.json" "Mutation testing (C++)" ${1:+"$1"} \
         ${times[@]+"${times[@]}"} > "$out/summary.md"
     cat "$out/summary.md"
@@ -118,9 +115,9 @@ if [[ "$mode" != share || "$(uname)" != Linux ]] && ! command -v mull-runner-18 
         { echo "Needs mull-runner-18 (Mull for Clang 18) or Docker." >&2; exit 1; }
     docker build -q -t sineless-mutation-cpp tools/mutation > /dev/null
     # The build and the page's packages each stay in a volume of their own: Linux objects and
-    # packages have no place in the host's build/ and node_modules/. MUTANT_TIMEOUT and
-    # MUTATION_DEADLINE go in with the run, when set.
-    exec docker run --rm -e MUTANT_TIMEOUT -e MUTATION_DEADLINE -v "$root":/src \
+    # packages have no place in the host's build/ and node_modules/. MUTATION_DEADLINE goes in
+    # with the run, when set.
+    exec docker run --rm -e MUTATION_DEADLINE -v "$root":/src \
         -v sineless-mutation-cpp:/src/build/mutation-cpp \
         -v sineless-mutation-cpp-node:/src/node_modules -w /src sineless-mutation-cpp \
         bash -c 'npm ci --no-audit --no-fund --no-update-notifier --loglevel=error > /dev/null &&
@@ -128,7 +125,7 @@ if [[ "$mode" != share || "$(uname)" != Linux ]] && ! command -v mull-runner-18 
 fi
 
 # Runs share $1 of the mutants Mull listed, from the build, recording each result as it is known:
-# share $1 of each module's mutants against its own tests, stopped at its own limit. The plugin's
+# share $1 of each module's mutants against its own tests, each stopped at its own limit. The plugin's
 # and editor's take seconds, so they run first, and the engine's get what is left of the deadline,
 # the time by which its results must be written; a module none is left for has its mutants
 # reported as not run.
@@ -138,8 +135,9 @@ runShare() {
         left=$((deadline - (SECONDS - start)))
         if [[ -f "$out/dry-$module.json" ]] && ((left > 0)); then
             node scripts/mutation-run.ts run "$out/dry-$module.json" "$1" \
-                "$out/results-${1%%/*}-$module.jsonl" --limit "$(limitOf "$module")" \
-                --budget "$left" -- "$(testsOf "$module")" --gtest_fail_fast
+                "$out/results-${1%%/*}-$module.jsonl" --budget "$left" \
+                --baseline-out "$out/baseline-${1%%/*}-$module.json" \
+                -- "$(testsOf "$module")" --gtest_fail_fast
         fi
     done
 }

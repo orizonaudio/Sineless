@@ -3,13 +3,13 @@
 // first argument:
 //   { "startupMs": 20, "suites": [{ "name": "Rates/Sweep", "tests": [{ "name": "Draws/0",
 //     "param": "44k1", "ms": 30 }] }], "omitFromJson": ["Rates/Sweep.Draws/0"],
-//     "failWithNoMutant": false, "lock": "/tmp/lock" }
+//     "failWithNoMutant": false, "lock": "/tmp/lock", "mutantSlowdown": 1.4 }
 // --gtest_list_tests prints the tests as GoogleTest does, gtest_main's first line included. A run
 // takes its start-up and each test's time, honours GTEST_TOTAL_SHARDS and GTEST_SHARD_INDEX (each
 // test in one shard, by its index) and writes --gtest_output=json:<file> in GoogleTest's shape. The
 // mutant whose variable is set decides how the run ends, as fake-tests.mjs: "kill:" fails,
 // "survive:" passes, "hang:" never ends; each further argument names a prefix this binary also
-// fails on. With "lock", a run holds that file while it runs and fails if another run holds it, as
+// fails on; with "mutantSlowdown", a run with a mutant takes that many times as long. With "lock", a run holds that file while it runs and fails if another run holds it, as
 // the Audio Unit's view tests share the window server.
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 
@@ -62,7 +62,8 @@ if (id?.startsWith("hang:")) {
   }));
   const ran = suites.flatMap((suite) => suite.tests);
   const total =
-    (spec.startupMs ?? 0) + ran.reduce((sum, test) => sum + test.ms, 0);
+    ((spec.startupMs ?? 0) + ran.reduce((sum, test) => sum + test.ms, 0)) *
+    (id === undefined ? 1 : (spec.mutantSlowdown ?? 1));
   setTimeout(() => {
     const output = option("--gtest_output");
     if (output?.startsWith("json:") === true) {

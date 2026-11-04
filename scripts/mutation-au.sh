@@ -10,7 +10,7 @@
 # Mull lists the mutants au_tests holds, all of au/src's but those of the component's one-call
 # entry point, src/ComponentEntry.cpp, which only the component holds (its dry run), and
 # scripts/mutation-run.ts runs them one at a time (the view's tests share the window server), each
-# test binary stopped after MUTANT_TIMEOUT seconds (default 300), and every result written within
+# test binary stopped at a limit from its tests' time with no mutant, and every result written within
 # MUTATION_DEADLINE seconds of the run's start (default: none), the tests' run with no mutant
 # included; a mutant still running then, and those left, are reported as not run.
 # Mull for LLVM 20 (tools/mutation/install-mull-macos.sh, into build/mull-macos) needs Homebrew's
@@ -25,7 +25,6 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/build/mutation-au-report"
 cd "$root"
 base="${1:-}"
-mutantTimeout="${MUTANT_TIMEOUT:-300}"
 
 rm -rf "$out"
 mkdir -p "$out"
@@ -100,7 +99,7 @@ tests=("${binaries[0]}" --gtest_fail_fast -- "${binaries[1]}" --gtest_fail_fast
     -- "${binaries[2]}" --gtest_fail_fast)
 start=$SECONDS
 # The mutants, listed with no test run: Mull's warm-up still runs au_tests once with none, which
-# the summary does not use: it weighs each binary's own time instead.
+# the summary does not use: the runner times each binary itself.
 MULL_CONFIG="$config" "$root/build/mull-macos/bin/mull-runner-20" --dry-run --timeout 3600000 \
     --reporters Elements --report-dir "$out" --report-name dry "${tests[0]}" > "$out/mull.log" 2>&1 ||
     true
@@ -116,19 +115,11 @@ if [[ ! -f "$out/dry.json" ]]; then
     tail -n 20 "$out/mull.log" >&2
     exit 1
 fi
-# Each test binary's time with no mutant, the slowest of which the summary weighs against the
-# limit: a mutant none notices runs each in turn, and one stopped at the limit counts as noticed.
-slowest=0
-for binary in "${binaries[@]}"; do
-    begin=$SECONDS
-    "$binary" --gtest_brief=1 > /dev/null 2>&1 || true
-    if ((SECONDS - begin > slowest)); then
-        slowest=$((SECONDS - begin))
-    fi
-done
 node scripts/mutation-run.ts run "$out/dry.json" 1/1 "$out/results-1.jsonl" \
-    --limit "$mutantTimeout" --budget "${MUTATION_DEADLINE:-1000000000}" --workers 1 -- "${tests[@]}"
+    --budget "${MUTATION_DEADLINE:-1000000000}" --workers 1 --baseline-out "$out/baseline-1.json" \
+    -- "${tests[@]}"
 node scripts/mutation-run.ts merge "$out/dry.json" "$out/results-1.jsonl" > "$out/mull.json"
 node scripts/mutation-report.ts "$out/mull.json" "Mutation testing (Audio Unit)" \
-    "$((SECONDS - start))" --binary-seconds "$slowest" --limit "$mutantTimeout" > "$out/summary.md"
+    "$((SECONDS - start))" --baseline "$out/baseline-1.json" --tests au_tests \
+    --tests au_view_tests --tests au_component_tests > "$out/summary.md"
 cat "$out/summary.md"
