@@ -503,9 +503,10 @@ jobs:
   # (scripts/mutation-cpp.sh), with Mull for the runner's Clang 18: a report in the job summary,
   # with warnings on the lines whose changes no test notices. Never a failure, and not required;
   # nothing is built when none of their sources changed. In three steps, so that a large change
-  # still gets a report: one job builds the tests with every mutant compiled in and lists the
-  # mutants; eight share them out, each an eighth of every file; the mutation-cpp job reports their
-  # results together, those of mutants not reached in time as not run (a partial report, which
+  # still gets a report: one job builds the tests with the mutants of the lines changed compiled
+  # in (only those, so that the rest of the code runs at its normal speed) and lists them; eight
+  # share them out, each an eighth of every file; the mutation-cpp job reports their results
+  # together, those of mutants not reached in time as not run (a partial report, which
   # the triage never passes). Each mutant runs its own module's tests (engine_tests, plugin_tests
   # or editor_tests) up to their first failure. Each share first runs them with no mutant, spread
   # over the runner's cores, and stops each mutant at a limit from that time (scripts/mutation-run.ts,
