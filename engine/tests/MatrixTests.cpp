@@ -3547,7 +3547,7 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     if (c.timeBase == TimeBase::kTrigger && c.mode == DisplayMode::kSingle && otherRate > c.rate) {
         // A triggered window held across a higher rate keeps its start, and its span in samples
         // then reaches past the newest audio: no frame is drawn. Older than the Free time base
-        // (Seconds had it), and not fixed here.
+        // (Seconds had it), #325.
         GTEST_SKIP() << "a held triggered window at a higher rate draws no frame";
     }
     session.own().setSampleRate(otherRate);
