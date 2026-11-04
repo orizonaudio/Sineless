@@ -1,6 +1,6 @@
 // Running the C++ mutants a share at a time: each share gets some of every file, each mutant's
-// result is kept as soon as it is known, a mutant that hangs is stopped at the limit, and the
-// mutants left at the deadline are reported as not run rather than lost.
+// result is kept as soon as it is known, a mutant that hangs is stopped at the limit, and every
+// result is written within the budget, the mutants it leaves reported as not run rather than lost.
 import {
   chmodSync,
   existsSync,
@@ -45,6 +45,9 @@ const dryRun: Report = {
 };
 
 const fake = join(import.meta.dirname, "fixtures", "fake-tests.mjs");
+
+// When a budget of `seconds` from now ends.
+const inSeconds = (seconds: number) => Date.now() + seconds * 1000;
 
 describe("sharing out the mutants", () => {
   test("gives every mutant to exactly one share, whatever the number of shares", () => {
@@ -98,7 +101,7 @@ describe("running a share", () => {
       ids: ["kill:a", "hang:b"],
       results,
       limitSeconds: 3,
-      deadlineSeconds: 60,
+      endsAt: inSeconds(60),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 2,
     }).then((done) => {
@@ -122,7 +125,7 @@ describe("running a share", () => {
       ids: ["kill:a", "survive:b", "hang:c"],
       results,
       limitSeconds: 1,
-      deadlineSeconds: 60,
+      endsAt: inSeconds(60),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 3,
     });
@@ -136,7 +139,7 @@ describe("running a share", () => {
     expect(written).toHaveLength(3);
   });
 
-  test("reports the mutants left at the deadline as not run, not as lost", async () => {
+  test("reports the mutants left when the budget ends as not run, not as lost", async () => {
     const results = join(
       mkdtempSync(join(tmpdir(), "mutation-run-")),
       "results.jsonl",
@@ -145,12 +148,106 @@ describe("running a share", () => {
       ids: ["hang:a", "kill:b", "kill:c"],
       results,
       limitSeconds: 1,
-      deadlineSeconds: 0.5,
+      endsAt: inSeconds(0.8),
       tests: [{ command: process.execPath, args: [fake] }],
       workers: 1,
     });
-    expect(done.map((r) => r.status)).toEqual(["Timeout", "NotRun", "NotRun"]);
+    expect(done.map((r) => r.status)).toEqual(["NotRun", "NotRun", "NotRun"]);
     expect(readFileSync(results, "utf8").trim().split("\n")).toHaveLength(3);
+  });
+
+  // CI cancels a share's job soon after its budget: a mutant still running then would be lost, and
+  // its hang, if it is one, never shown.
+  test("stops a mutant still running when the budget ends and reports it as not run, not as timed out", async () => {
+    const results = join(
+      mkdtempSync(join(tmpdir(), "mutation-run-")),
+      "results.jsonl",
+    );
+    const started = Date.now();
+    const done = await run({
+      ids: ["hang:a"],
+      results,
+      limitSeconds: 30,
+      endsAt: inSeconds(1),
+      tests: [{ command: process.execPath, args: [fake] }],
+      workers: 1,
+    });
+    expect(done.map((r) => r.status)).toEqual(["NotRun"]);
+    // Started, and stopped at the budget's end rather than at its limit.
+    expect(Date.now() - started).toBeGreaterThan(900);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(readFileSync(results, "utf8")).toContain('"NotRun"');
+  });
+
+  test("still counts a mutant started with less time left than its limit, when its tests end within it", async () => {
+    const results = join(
+      mkdtempSync(join(tmpdir(), "mutation-run-")),
+      "results.jsonl",
+    );
+    const done = await run({
+      ids: ["kill:a", "survive:b"],
+      results,
+      limitSeconds: 600,
+      endsAt: inSeconds(20),
+      tests: [{ command: process.execPath, args: [fake] }],
+      workers: 2,
+    });
+    expect(Object.fromEntries(done.map((r) => [r.id, r.status]))).toEqual({
+      "kill:a": "Killed",
+      "survive:b": "Survived",
+    });
+  });
+
+  test("reports a mutant whose limit fits in the time left as timed out at its own limit", async () => {
+    const results = join(
+      mkdtempSync(join(tmpdir(), "mutation-run-")),
+      "results.jsonl",
+    );
+    const done = await run({
+      ids: ["hang:a"],
+      results,
+      limitSeconds: 1,
+      endsAt: inSeconds(30),
+      tests: [{ command: process.execPath, args: [fake] }],
+      workers: 1,
+    });
+    expect(done.map((r) => r.status)).toEqual(["Timeout"]);
+  });
+
+  test("ends the run with no mutant within the budget, and runs no mutant after it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    const dry = join(dir, "dry.json");
+    writeFileSync(dry, JSON.stringify(dryRun));
+    // Hangs with no mutant, as a slow runner's tests outlast the budget; holds every switch.
+    const binary = join(dir, "engine_tests");
+    writeFileSync(
+      binary,
+      `#!/bin/sh\nexec sleep 60\n# ${mutantIds(dryRun).join("\0")}\0\n`,
+    );
+    chmodSync(binary, 0o755);
+    const results = join(dir, "results.jsonl");
+    const started = Date.now();
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          join(import.meta.dirname, "..", "mutation-run.ts"),
+          "run",
+          dry,
+          "1/1",
+          results,
+          "--limit",
+          "30",
+          "--budget",
+          "1",
+          "--",
+          binary,
+        ],
+        { stdio: "pipe" },
+      ),
+    ).toThrow(/or the budget's 1 s, with no mutant/u);
+    expect(Date.now() - started).toBeLessThan(10000);
+    expect(existsSync(results)).toBe(false);
   });
 
   test("counts a mutant as noticed when any of several test binaries fails on it, as the Audio Unit's view tests notice some its other tests miss", async () => {
@@ -162,7 +259,7 @@ describe("running a share", () => {
       ids: ["later:a", "survive:b", "kill:c", "hang:d"],
       results,
       limitSeconds: 1,
-      deadlineSeconds: 60,
+      endsAt: inSeconds(60),
       tests: [
         { command: process.execPath, args: [fake] },
         { command: process.execPath, args: [fake, "later"] },
@@ -186,7 +283,7 @@ describe("running a share", () => {
       ids: ["first:a", "survive:b"],
       results,
       limitSeconds: 5,
-      deadlineSeconds: 60,
+      endsAt: inSeconds(60),
       tests: [
         { command: process.execPath, args: [fake, "first"] },
         { command: process.execPath, args: [fake] },
@@ -209,7 +306,7 @@ describe("running a share", () => {
       ids: ["kill:a"],
       results,
       limitSeconds: 10,
-      deadlineSeconds: 60,
+      endsAt: inSeconds(60),
       tests: [
         { command: process.execPath, args: [fake] },
         {
@@ -245,7 +342,7 @@ describe("running a share", () => {
         results,
         "--limit",
         "10",
-        "--deadline",
+        "--budget",
         "60",
         "--workers",
         "1",
@@ -369,7 +466,7 @@ describe("the run's command line", () => {
             results,
             "--limit",
             "5",
-            "--deadline",
+            "--budget",
             "5",
             ...options,
             "--",
@@ -418,7 +515,7 @@ describe("checking the test binary can switch each mutant on", () => {
           join(dir, "results.jsonl"),
           "--limit",
           "1",
-          "--deadline",
+          "--budget",
           "1",
           "--",
           binary,
@@ -454,14 +551,16 @@ describe("checking the tests pass with no mutant", () => {
           results,
           "--limit",
           "5",
-          "--deadline",
+          "--budget",
           "5",
           "--",
           binary,
         ],
         { stdio: "pipe" },
       ),
-    ).toThrow(/The tests fail, or take more than 5 s, with no mutant/u);
+    ).toThrow(
+      /The tests fail, or take more than 5 s or the budget's 5 s, with no mutant/u,
+    );
     expect(existsSync(results)).toBe(false);
   });
 
@@ -490,7 +589,7 @@ describe("checking the tests pass with no mutant", () => {
         results,
         "--limit",
         "5",
-        "--deadline",
+        "--budget",
         "5",
         "--",
         binary,
@@ -505,6 +604,7 @@ describe("checking the tests pass with no mutant", () => {
     expect(
       await testsPass({
         limitSeconds: 5,
+        endsAt: inSeconds(60),
         tests: [{ command: process.execPath, args: [fake] }],
       }),
     ).toBe(true);
@@ -514,6 +614,7 @@ describe("checking the tests pass with no mutant", () => {
     expect(
       await testsPass({
         limitSeconds: 5,
+        endsAt: inSeconds(60),
         tests: [{ command: process.execPath, args: ["-e", "process.exit(1)"] }],
       }),
     ).toBe(false);
@@ -523,6 +624,7 @@ describe("checking the tests pass with no mutant", () => {
     expect(
       await testsPass({
         limitSeconds: 1,
+        endsAt: inSeconds(60),
         tests: [
           {
             command: process.execPath,
@@ -537,6 +639,7 @@ describe("checking the tests pass with no mutant", () => {
     expect(
       await testsPass({
         limitSeconds: 5,
+        endsAt: inSeconds(60),
         tests: [
           { command: process.execPath, args: [fake] },
           { command: process.execPath, args: ["-e", "process.exit(1)"] },
@@ -569,7 +672,7 @@ describe("checking the tests pass with no mutant", () => {
           join(dir, "results.jsonl"),
           "--limit",
           "5",
-          "--deadline",
+          "--budget",
           "5",
           "--",
           binary,
@@ -579,13 +682,16 @@ describe("checking the tests pass with no mutant", () => {
         ],
         { stdio: "pipe" },
       ),
-    ).toThrow(/The tests fail, or take more than 5 s, with no mutant/u);
+    ).toThrow(
+      /The tests fail, or take more than 5 s or the budget's 5 s, with no mutant/u,
+    );
   });
 
   test("fails tests that cannot start", async () => {
     expect(
       await testsPass({
         limitSeconds: 5,
+        endsAt: inSeconds(60),
         tests: [{ command: "/no/such/tests", args: [] }],
       }),
     ).toBe(false);

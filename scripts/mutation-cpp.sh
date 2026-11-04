@@ -9,8 +9,9 @@
 #   scripts/mutation-cpp.sh [--file engine/src/Analyzer.cpp ...] [base revision, e.g. origin/main]
 # Mull lists each module's mutants from its own tests (its dry run, which also times them with
 # none), and scripts/mutation-run.ts runs them: each stopped after its module's limit (below), and
-# none started after MUTATION_DEADLINE seconds of running (default: none), those left being
-# reported as not run rather than lost. CI shares the mutants out:
+# every result written within MUTATION_DEADLINE seconds of the share's start (default: none), the
+# tests' run with no mutant included; a mutant still running then, and those left, are reported as
+# not run rather than lost. CI shares the mutants out:
 #   scripts/mutation-cpp.sh --list [--file ...] [base]   builds and lists them only
 #   scripts/mutation-cpp.sh --share <i>/<n>              runs share i of n, from that build and list
 #   scripts/mutation-cpp.sh --merge                      reports the shares' results together
@@ -128,8 +129,9 @@ fi
 
 # Runs share $1 of the mutants Mull listed, from the build, recording each result as it is known:
 # share $1 of each module's mutants against its own tests, stopped at its own limit. The plugin's
-# and editor's take seconds, so they run first, and the engine's get what is left of the deadline;
-# a module none is left for has its mutants reported as not run.
+# and editor's take seconds, so they run first, and the engine's get what is left of the deadline,
+# the time by which its results must be written; a module none is left for has its mutants
+# reported as not run.
 runShare() {
     local deadline="${MUTATION_DEADLINE:-1000000000}" start=$SECONDS module left
     for module in plugin editor engine; do
@@ -137,7 +139,7 @@ runShare() {
         if [[ -f "$out/dry-$module.json" ]] && ((left > 0)); then
             node scripts/mutation-run.ts run "$out/dry-$module.json" "$1" \
                 "$out/results-${1%%/*}-$module.jsonl" --limit "$(limitOf "$module")" \
-                --deadline "$left" -- "$(testsOf "$module")" --gtest_fail_fast
+                --budget "$left" -- "$(testsOf "$module")" --gtest_fail_fast
         fi
     done
 }
