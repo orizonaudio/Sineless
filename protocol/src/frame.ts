@@ -37,9 +37,9 @@
 // (`visibleSamples`, match offsets) into time: frozen, the rate the audio was held at, which the
 // host may have changed since.
 //
-// `spanSeconds` is the time the whole screen width shows in Seconds mode, zoomed or not: the span
-// set, or, when the frame is `limited`, what is kept of it. 0 in a tempo-synced sweep, whose span
-// is `spanQuarterNotes`.
+// `spanSeconds` is the time the whole screen width shows in Trigger or Free, zoomed or not: the
+// span set, or, when the frame is `limited`, what is kept of it. 0 in a tempo-synced sweep, whose
+// span is `spanQuarterNotes`.
 //
 // View zoom: the frame covers the part `viewStart` to `viewEnd` of the span (fractions;
 // 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
@@ -84,8 +84,8 @@ export const frameHeaderFields = [
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];
 
 // Bits of the `flags` field.
-// `freeRunning`: the window ends at the newest audio and moves with it (Free, or a span above
-// `freeRunningThresholdSeconds`), its time read back from the right edge. `synced`: a tempo-synced
+// `freeRunning`: the window ends at the newest audio and moves with it (the Free time base), its
+// time read back from the right edge. `synced`: a tempo-synced
 // sweep. `limited`: the span was shortened to what can be kept.
 // `partial`: a sweep longer than what the capture held is still filling in its first pass.
 // `noTempo`: a Beats frame before the host has reported a tempo (an instance it has not played

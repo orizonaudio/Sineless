@@ -43,7 +43,7 @@ inline constexpr double kMatchSpacingSeconds = 0.1;
 // takes some 36 million) does not stall one frame: a few milliseconds' work on a fast machine, so
 // a slower one still keeps its frames.
 inline constexpr std::size_t kMatchSearchWork = std::size_t{1} << 23U;
-// Seconds mode's Compare gains are measured over frames too, reading or passing over at most
+// Trigger or Free's Compare gains are measured over frames too, reading or passing over at most
 // about this many samples of the compared tracks in each: fifteen tracks over a 4 s view at
 // 96 kHz, as recorded and as fixed, are some 11 million read and twice as many passed over.
 inline constexpr std::size_t kGainReadWork = std::size_t{1} << 22U;
@@ -186,7 +186,7 @@ private:
         double start = 0.0;
         double span = 0.0;
         bool triggered = false;
-        // Free-running: the window ends at the newest audio (Free, or a span above the threshold).
+        // Free-running: the window ends at the newest audio (the Free time base).
         bool freeRunning = false;
         // Free-running and live: the right edge of the whole span, which a freeze anchors on.
         double edge = 0.0;
@@ -216,7 +216,7 @@ private:
         double cropEnd = 1.0;
         double viewStart = 0.0;
         double viewEnd = 1.0;
-        // Frozen in Seconds mode: how far back the view can be panned (seconds), to the start of
+        // Frozen in Trigger or Free: how far back the view can be panned (seconds), to the start of
         // the held audio.
         double panReach = 0.0;
         // Readouts always cover the whole span; 0 means the window itself.
@@ -248,7 +248,7 @@ private:
         // The lane's screen columns, and the part of the sweep they reduce.
         ColumnReduction reduction;
         std::size_t reducedFirst = 0;
-        // Seconds mode, rolling: the lane's columns, kept as they scroll.
+        // Trigger or Free, rolling: the lane's columns, kept as they scroll.
         RollColumns roll;
         // The lane's levels per block of its sweep, for readouts and summing gains.
         BlockStats stats;
@@ -299,7 +299,7 @@ private:
     // `sampleRate` is the rate of the audio shown: frozen, the one it was held at.
     bool renderLanes(const SampleSource& ownSource, const Window& window, std::uint64_t sampleCount,
                      double sampleRate, const Commands& command, std::vector<std::byte>& frame);
-    // Seconds mode: the Compare frame of `window` (`sampleCount` samples from `start` of this
+    // Trigger or Free: the Compare frame of `window` (`sampleCount` samples from `start` of this
     // track, visible over [first, end), `rolling` on fixed column boundaries), from the lanes'
     // sources in `laneSources`, whose audio is at `sampleRate`.
     void renderCompare(FrameHeaderValues header, const Window& window, std::uint64_t start,
@@ -381,7 +381,7 @@ private:
     std::optional<bool> sentNoTempo;
     std::optional<Window> lastLive;
     std::optional<Window> lastShown;
-    // Seconds mode, live: the capture end of this track and of each lane shown, now and when the
+    // Trigger or Free, live: the capture end of this track and of each lane shown, now and when the
     // last frame was drawn. A frame with the same ends and the same inputs would be the same.
     std::vector<std::uint64_t> liveEnds;
     std::vector<std::uint64_t> lastLiveEnds;
@@ -430,7 +430,7 @@ private:
     bool lanesPlaced = false;
     // The captured audio, summed over the tracks placed, when advance last placed the sweeps.
     std::uint64_t advancedCaptured = 0;
-    // Compare view: whether this frame compares tracks; in Seconds mode, each lane's source and
+    // Compare view: whether this frame compares tracks; in Trigger or Free, each lane's source and
     // where this frame's window starts in it, the sum lane's columns as the window rolls, and
     // the compared lanes' visible samples, as recorded and as fixed, for the gains.
     bool comparing = false;
@@ -458,7 +458,7 @@ private:
     PairSearch matchSearch;
     std::optional<std::uint64_t> searchingSerial;
     std::uint64_t searchStartedAt = 0;
-    // Seconds mode, Compare: the summing gains being measured over frames (kGainReadWork), of
+    // Trigger or Free, Compare: the summing gains being measured over frames (kGainReadWork), of
     // the window where it was when they began (each lane's start then), with the parts then; the
     // parts read so far, and then the gains measured so far (the sum as recorded, then fixed).
     struct GainJob
@@ -580,8 +580,9 @@ private:
     std::size_t matchFirst = 0;
     std::size_t matchEnd = 0;
     std::size_t matchCount = 0;
-    std::uint64_t matchShownFrom = 0; // Frozen in Seconds: where the window starts, as panned.
-    double matchViewStart = 0.0;      // The view zoomed or panned, as the page asked.
+    std::uint64_t matchShownFrom =
+        0;                       // Frozen in Trigger or Free: where the window starts, as panned.
+    double matchViewStart = 0.0; // The view zoomed or panned, as the page asked.
     double matchViewEnd = 1.0;
     bool panning = false;      // Frozen and panned this frame: its searches and gains wait a frame.
     bool matchFrozen = false;  // Frozen or live: the audio the matches were searched over.

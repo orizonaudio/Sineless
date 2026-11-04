@@ -69,7 +69,7 @@ Grouped by how often someone reaches for it.
 
 - The screen: traces, grid, level and time labels, playhead in Beats, lane labels in Multi and Compare.
 - Display mode: Single, Multi, Compare.
-- Time base and span: Beats (1/16 beat to 16 bars) or Seconds (0.5 ms to 4 s).
+- Time base and span: Beats (1/16 beat to 16 bars), Free (100 ms to 4 s) or Trig (0.5 ms to 1 s).
 - Vertical scale: −60 to +6 dBFS at the top of the screen.
 - Freeze and Auto-freeze, and whether the display is frozen.
 - Readouts: peak and RMS (dBFS), frequency (Hz, ≈).
@@ -136,7 +136,7 @@ From 2026-10-24 and 2026-10-25.
 
 ![Default size with the trigger popover open](images/layout-trigger.png)
 
-- **Toolbar, left to right:** mark and wordmark; Single | Multi | Compare; Group (Multi and Compare, a dropdown); Beats | Sec; Span; Scale; Views (Single); Overlay | Stack; Trigger (Seconds up to 1 s), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
+- **Toolbar, left to right:** mark and wordmark; Single | Multi | Compare; Group (Multi and Compare, a dropdown); Beats | Free | Trig; Span; Scale; Views (Single); Overlay | Stack; Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
 - **Sizes**, measured on the widest toolbar (Multi or Compare · Trig with trigger mode Single, so Re-arm shows, and Frozen; Single is 1 px narrower): default **1110 × 580** (the toolbar needs 1101 px with the wordmark, since Free joined the time bases); minimum **1050 × 400** (1042 px with the mark alone). Between the two, only the wordmark hides.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.

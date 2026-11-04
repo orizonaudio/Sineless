@@ -16,10 +16,10 @@
 
 namespace orizon::engine {
 
-// Seconds of audio a freeze in Seconds mode holds: the longest span a frozen view pans back through
-// (protocol::kFrozenHoldSeconds), and a margin of twice the largest delay a paced edge trails the
-// newest audio by (protocol::kPacingDelayCapSeconds). The last frame shown ended at most one
-// delay before the newest audio when it was drawn, and at most a block more arrived before the
+// Seconds of audio a freeze in Trigger or Free holds: the longest span a frozen view pans back
+// through (protocol::kFrozenHoldSeconds), and a margin of twice the largest delay a paced edge
+// trails the newest audio by (protocol::kPacingDelayCapSeconds). The last frame shown ended at most
+// one delay before the newest audio when it was drawn, and at most a block more arrived before the
 // freeze, a block being no longer than the delay where pacing applies: so the frozen window of
 // the longest span is the one last shown, never moved forward to what is held.
 inline constexpr double kSecondsFreezeSeconds =
@@ -43,7 +43,7 @@ public:
     static constexpr double kHighestSampleRate = 384000.0;
 
     // The smallest capacity, at every rate up to 229 kHz: 2^20 samples per channel, 8 MB for two
-    // channels, 21.8 s at 48 kHz. It holds a freeze in Seconds mode up to 229 kHz with room to
+    // channels, 21.8 s at 48 kHz. It holds a freeze in Trigger or Free up to 229 kHz with room to
     // spare, and a freeze in Beats mode holds readableLength of it, so that a longer beat span
     // chosen while frozen has its audio: shrinking it at low rates would cut that short.
     static constexpr std::size_t kMinimumCapacity = std::size_t{1} << 20U;
@@ -58,7 +58,7 @@ public:
     }
 
     // The capacity for `sampleRate`: the smallest power of two (for the index mask), from
-    // kMinimumCapacity, whose readableLength holds a freeze in Seconds mode
+    // kMinimumCapacity, whose readableLength holds a freeze in Trigger or Free
     // (kSecondsFreezeSeconds: the longest span and its margin), so a frame of the longest span can
     // be read live and frozen, and a frozen view panned through all of its hold. 2^20 up to
     // 215.9 kHz, 2^21 (16 MB) from there to the highest rate, at which it keeps 4.78 s: the
