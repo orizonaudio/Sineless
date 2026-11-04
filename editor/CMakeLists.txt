@@ -107,8 +107,11 @@ if(BUILD_TESTING)
     endif()
     # The editor tests run alone, though the other tests run in parallel: on Windows every
     # process's views share one WebView2 browser process, which some tests end on purpose, and a
-    # page loaded beside a full machine misses the tests' timeouts.
-    gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE)
+    # page loaded beside a full machine misses the tests' timeouts. Metal's API validation (read by
+    # Metal only, so macOS only) checks every draw of the native traces against its shaders: a
+    # binding shorter than the shader's argument stops the test, as nothing checks a release build.
+    gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE
+                         ENVIRONMENT MTL_DEBUG_LAYER=1)
 endif()
 
 # The performance benchmark: the real page under a simulated host, in WKWebView (macOS only).
