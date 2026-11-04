@@ -59,6 +59,10 @@ describe("the time base", () => {
       for (const [other, host] of Object.entries(spanFieldOf)) {
         expect(byId(host).hidden, host).toBe(other !== label);
       }
+      // The time pill's help names the span shown.
+      expect(byId("time-group").dataset.help).toBe(
+        { beats: "beatSpan", free: "freeSpan", trigger: "triggerSpan" }[name],
+      );
       const triggered = name === "trigger";
       expect(byId("trigger-group").hidden).toBe(!triggered);
       expect(byId("trigger-divider").hidden).toBe(!triggered);
