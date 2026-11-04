@@ -37,7 +37,7 @@ double pointPosition(const FrameView& frame, double index)
 
 double screenX(double position, ViewWindow view)
 {
-    return -1.0 + 2.0 * (position - view.start) / (view.end - view.start);
+    return -1.0 + 2.0 * (position - view.start) / (view.end - view.start); // probe
 }
 
 namespace {

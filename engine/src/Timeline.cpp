@@ -33,7 +33,7 @@ void Timeline::advance(const HostTimeline& host, int numSamples,
         stamp.seconds = host.secondsValid ? host.seconds : stamp.seconds;
     } else if (started) {
         // Free-run: continue from the previous block at the previous tempo.
-        const auto elapsed = static_cast<double>(nextSampleIndex - current.sampleIndex);
+        const auto elapsed = static_cast<double>(nextSampleIndex - current.sampleIndex); // probe
         stamp.quarterNotes =
             current.quarterNotes + elapsed * current.tempo / (kSecondsPerMinute * sampleRate);
         stamp.seconds = current.seconds + elapsed / sampleRate;
@@ -91,7 +91,7 @@ void Timeline::record(const MusicalStamp& stamp) noexcept ORIZON_NONBLOCKING
     slot.playing.store(stamp.playing, std::memory_order_relaxed);
     slot.anchored.store(stamp.anchored, std::memory_order_relaxed);
     slot.version.store(start + 2, std::memory_order_release);
-    recorded.store(sequence + 1, std::memory_order_release);
+    recorded.store(sequence + 1, std::memory_order_release); // probe
     lastRecorded = stamp;
 }
 
@@ -199,7 +199,7 @@ double Timeline::sampleIndexAt(const MusicalStamp& stamp, double quarterNotes, d
 
 double Timeline::secondsAt(const MusicalStamp& stamp, double quarterNotes)
 {
-    return stamp.seconds + (quarterNotes - stamp.quarterNotes) * kSecondsPerMinute / stamp.tempo;
+    return stamp.seconds + (quarterNotes - stamp.quarterNotes) * kSecondsPerMinute / stamp.tempo; // probe
 }
 
 double Timeline::barQuarterNotes(const MusicalStamp& stamp)

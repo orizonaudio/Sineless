@@ -50,7 +50,7 @@ engine::HostTimeline hostTimeline(const ProcessContext* context) noexcept ORIZON
     host.quarterNotes = context->projectTimeMusic;
     host.tempoValid = (context->state & ProcessContext::kTempoValid) != 0;
     host.tempo = context->tempo;
-    host.timeSignatureValid = (context->state & ProcessContext::kTimeSigValid) != 0;
+    host.timeSignatureValid = (context->state & ProcessContext::kTimeSigValid) != 0; // probe
     host.numerator = context->timeSigNumerator;
     host.denominator = context->timeSigDenominator;
     host.secondsValid = context->sampleRate > 0.0;

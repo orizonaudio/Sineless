@@ -33,7 +33,7 @@ std::optional<std::string> toString(CFStringRef text)
         return std::nullopt;
     }
     const CFIndex length = CFStringGetLength(text);
-    const CFIndex size = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
+    const CFIndex size = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1; // probe
     std::string result(static_cast<std::size_t>(size), '\0');
     if (!CFStringGetCString(text, result.data(), size, kCFStringEncodingUTF8)) {
         return std::nullopt;
@@ -266,7 +266,7 @@ OSStatus AudioUnit::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFlags
         engineState->stampBlock(!offlineRender.load(std::memory_order_relaxed));
     }
     const double sampleRate = GetSampleRate();
-    engineState->timeline().advance(hostTimeline(sampleRate), static_cast<int>(frames), sampleRate);
+    engineState->timeline().advance(hostTimeline(sampleRate), static_cast<int>(frames), sampleRate); // probe
     return noErr;
 }
 

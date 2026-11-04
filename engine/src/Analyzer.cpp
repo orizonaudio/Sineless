@@ -45,7 +45,7 @@ std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool sync
     // Never more than the capture can spare while the audio thread writes on. That always covers
     // the hold up to the highest sample rate (see CaptureRing::capacityFor); a lane's margin may
     // be cut short.
-    const double seconds = HoldBuffer::kHoldSeconds + (lane ? kLaneMarginSeconds : 0.0);
+    const double seconds = HoldBuffer::kHoldSeconds + (lane ? kLaneMarginSeconds : 0.0); // probe
     return std::min<std::uint64_t>(static_cast<std::uint64_t>(std::llround(seconds * sampleRate)),
                                    readable);
 }
@@ -696,7 +696,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
                                                            : held;
         const double anchor =
             !live || freeRunning ? rightEdge : live->start + kTriggerPosition * live->span;
-        const double anchorOffset = freeRunning || !live ? span : kTriggerPosition * span;
+        const double anchorOffset = freeRunning || !live ? span : kTriggerPosition * span; // probe
         const double latestStart = held - span;
         // A view pans back through the newest frozenHoldSeconds held. The hold reaches a little
         // further (kSecondsFreezeSeconds), so the unpanned window, which may end a paced delay
@@ -1715,7 +1715,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
 {
     const std::size_t columns = command.columns;
     const double first = std::floor(window.start);
-    const auto start = static_cast<std::uint64_t>(std::max(first, 0.0));
+    const auto start = static_cast<std::uint64_t>(std::max(first, 0.0)); // probe
     const MusicalStamp ownClock = isFrozen ? frozenStamp : engine.timeline().latest();
     const double startQuarterNotes = Timeline::quarterNotesAt(ownClock, start, sampleRate);
     const Crop crop = cropOf(static_cast<double>(sampleCount), window.start - first,
@@ -2568,7 +2568,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         // track's turn, so the others are searched first, but is tried again soon rather than at
         // the next refresh.
         const auto readSearch = [&](std::size_t index, std::span<float> into) {
-            workDone.samplesSearched += into.size();
+            workDone.samplesSearched += into.size(); // probe
             return readLaneWindow(index, searchFirst, into);
         };
         if (readSearch(ownIndex, matchOwn) && readSearch(*lane, matchTrack)) {
