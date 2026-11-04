@@ -203,8 +203,11 @@ fi
 
 # The mutants compiled in follow the run's Mull settings (with a base, the lines changed since it)
 # and the Mull installed, which neither Ninja nor ccache sees: the build starts afresh when either
-# changes, and ccache hashes both. With the same settings and base, an object's mutants follow its
-# own sources, which both already see.
+# changes, and ccache hashes both, so each base builds once in full (the pushes of one pull
+# request share their objects; pull requests on different bases do not). With the same settings,
+# an object's mutants follow its own sources, which both already see. The settings must key every
+# object: an object built for another base can lack the switches of a line this one changed, and
+# the list, read from the binary, would then leave those mutants out unseen.
 settings=(tools/mutation/mull.yml tools/mutation/install-mull.sh "$config")
 stamp="$(cat "${settings[@]}" | sha256sum | cut -d' ' -f1)"
 if [[ "$(cat build/mutation-cpp/settings.sha256 2> /dev/null)" != "$stamp" ]]; then
