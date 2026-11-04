@@ -87,7 +87,7 @@ export const helpTexts = {
   },
   screen: {
     title: "Screen",
-    text: `The signal over time. ${command} + scroll or pinch to zoom around the pointer, drag across to zoom to a region, swipe sideways to pan, double-click to reset. In Sec mode, while frozen and not zoomed, swipe to look further back.`,
+    text: `The signal over time. ${command} + scroll or pinch to zoom around the pointer, drag across to zoom to a region, swipe sideways to pan, double-click to reset. In Trig and Free, while frozen and not zoomed, swipe to look further back.`,
   },
   triggerMarker: {
     title: "Trigger level",
@@ -199,7 +199,7 @@ export const helpTexts = {
   },
   freeze: {
     title: "Freeze",
-    text: "Holds the display so you can study it. Scale, views, zoom and cursors keep working, and in Sec mode you can swipe to look back. Click again to go live.",
+    text: "Holds the display so you can study it. Scale, views, zoom and cursors keep working, and in Trig and Free you can swipe to look back. Click again to go live.",
   },
   autoFreeze: {
     title: "Auto-freeze",

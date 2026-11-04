@@ -38,14 +38,14 @@ struct FrameHeaderValues
     // Compare frames (flag kCompared): the summing gain of the compared tracks, and with the fix.
     float sumGain = 0.0f;
     float fixedGain = 0.0f;
-    // Frozen in Seconds mode: how far back the view can be panned, in seconds; 0 otherwise.
+    // Frozen in Trigger or Free: how far back the view can be panned, in seconds; 0 otherwise.
     float panReach = 0.0f;
     // Samples not finite: how many in what the readouts measure, and a bit per lane holding any.
     std::uint32_t invalidSamples = 0;
     std::uint32_t invalidLanes = 0;
     // The rate of the audio shown (frozen, the one it was held at), for the frame's times.
     float sampleRate = 0.0f;
-    // The time the whole screen width shows in Seconds mode (what is kept of the span when
+    // The time the whole screen width shows in Trigger or Free (what is kept of the span when
     // limited); 0 in a tempo-synced sweep.
     float spanSeconds = 0.0f;
 };

@@ -24,8 +24,8 @@ using protocol::SettingId;
 
 namespace {
 
-// In Seconds mode a freeze holds the longest span, which the view can be panned back through. The
-// lanes of other tracks hold up to this much more: their captures can run a little ahead of or
+// In Trigger or Free a freeze holds the longest span, which the view can be panned back through.
+// The lanes of other tracks hold up to this much more: their captures can run a little ahead of or
 // behind this one's, and each must still cover the whole span with the view panned as far back as
 // this track's hold allows. What the capture keeps cuts it short above 174.8 kHz with the smallest
 // capture, and above 349.5 kHz with the largest: to 0.53 s at 192 and 384 kHz (see
@@ -34,7 +34,7 @@ constexpr double kLaneMarginSeconds = 1.0;
 
 // Samples a freeze holds. In Beats mode, the newest audio the capture can spare (a margin for the
 // audio thread, which writes on), so that a longer beat span chosen while frozen has its audio;
-// in Seconds mode, the longest span, and for another track's lane the margin above.
+// in Trigger or Free, the longest span, and for another track's lane the margin above.
 std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool synced,
                            bool lane = false)
 {
@@ -552,7 +552,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     const bool spanLimited =
         !synced && static_cast<double>(std::llround(spanSeconds * sampleRate)) > kept;
     const double span = spanLimited ? kept : spanSeconds * sampleRate;
-    // Live in Seconds mode, a frame shows the newest audio: with no new audio on any track shown
+    // Live in Trigger or Free, a frame shows the newest audio: with no new audio on any track shown
     // and nothing else changed, it would be the last frame again, so none is drawn. The page asks
     // at display rate, also when the transport is stopped or the host has stopped processing.
     const bool liveSeconds = !synced && !isFrozen;
@@ -1310,10 +1310,11 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
 
 // Positions come from the timeline's records, made where the audio thread saw them, so audio
 // placed a delay behind the newest is placed by the position it was played at, whatever this
-// sweep was doing when it arrived (frozen, in Seconds, in the other display mode): a transport
-// jump (a loop, a relocation, stop and start) moves the sweep only when the playhead reaches it,
-// and never moves audio played before it (FR-9.2). Callers start no earlier than the source's
-// oldest sample: a fresh image would otherwise replay every record kept, for audio long gone.
+// sweep was doing when it arrived (frozen, in Trigger or Free, in the other display mode): a
+// transport jump (a loop, a relocation, stop and start) moves the sweep only when the playhead
+// reaches it, and never moves audio played before it (FR-9.2). Callers start no earlier than the
+// source's oldest sample: a fresh image would otherwise replay every record kept, for audio long
+// gone.
 MusicalStamp Analyzer::placeThroughChanges(
     const Timeline& timeline, std::uint64_t from, std::uint64_t to, const MusicalStamp& fallback,
     const std::function<void(const MusicalStamp&, std::uint64_t)>& placeBefore)
@@ -1601,7 +1602,8 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
 
     encodeFrame(header, frameData, frame);
     // A Beats sweep was shown: a later Seconds frame has no window of its own to go on, and a
-    // later freeze no live one. A freeze made in Seconds keeps its window, as in Single mode.
+    // later freeze no live one. A freeze made in Trigger or Free keeps its window, as in Single
+    // mode.
     lastShown = Window{.synced = true};
     if (!isFrozen) {
         lastLive = lastShown;
@@ -1710,7 +1712,7 @@ std::uint32_t Analyzer::sumLaneBit(std::uint32_t laneBits) const
     return 0U;
 }
 
-// The multi-track view with the seconds time base: every lane shows this track's window (its
+// The multi-track view in Trigger or Free: every lane shows this track's window (its
 // trigger, free-running or frozen window), placed in each other track's capture through the musical
 // clock that all instances share with the host.
 bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
@@ -2106,7 +2108,7 @@ void Analyzer::collectEnergies(std::span<const Positions> ranges, std::size_t le
     const bool summed = sumStats.fits(length, block);
     // Positions [from, to) measured from their samples. A position where the sum is not finite,
     // as it is wherever a compared track's sample is not (a broken signal upstream), is left out
-    // of the sum and of every part alike, as in Seconds mode.
+    // of the sum and of every part alike, as in Trigger or Free.
     const auto measureExactly = [&](Positions positions) {
         const std::size_t size = positions.end - positions.first;
         pieceSumScratch.resize(size);
@@ -2517,7 +2519,7 @@ bool Analyzer::stepSpreadWork(double liveRate)
     return ended;
 }
 
-// A Compare frame with the seconds time base: every track's lane over the window, then the sum of
+// A Compare frame in Trigger or Free: every track's lane over the window, then the sum of
 // the compared tracks, then each track's match against this track. Rolling, each lane and the
 // sum keep their columns and reduce only those that scrolled in, the sum through a reader that
 // adds the compared lanes (shifted and flipped as previewed); otherwise the visible part

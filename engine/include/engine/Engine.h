@@ -39,7 +39,7 @@ public:
     [[nodiscard]] Timeline& timeline() { return timelineState; }
     [[nodiscard]] const Timeline& timeline() const { return timelineState; }
 
-    // The right edge of each live frame produced in Seconds or Beats: when it was produced
+    // The right edge of each live frame produced in Trigger, Free or Beats: when it was produced
     // (monotonicNanos), the capture index it ended at, and the newest sample captured then. For
     // benchmarks, which report how evenly it moved (Motion.h). The analysis worker records; a
     // benchmark takes them. Keeps the newest kEdgeRecords.

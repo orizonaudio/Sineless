@@ -16,8 +16,8 @@ namespace orizon::engine {
 class HoldBuffer final : public SampleSource
 {
 public:
-    // The audio held on freeze in Seconds mode: the 4 s maximum visible span and its margin for the
-    // paced edge (kSecondsFreezeSeconds).
+    // The audio held on freeze in Trigger or Free: the 4 s maximum visible span and its margin for
+    // the paced edge (kSecondsFreezeSeconds).
     static constexpr double kHoldSeconds = kSecondsFreezeSeconds;
 
     // Holds up to `capacity` samples per channel: the capture's, which follows the sample rate.

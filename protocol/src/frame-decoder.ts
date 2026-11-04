@@ -27,7 +27,7 @@ export interface Frame {
   // Musical context of a synced sweep, in quarter notes.
   readonly cycleStart: number;
   readonly cycleSeconds: number; // The left edge's project time.
-  // Frozen in Seconds mode: how far back the view can be panned (seconds); 0 otherwise.
+  // Frozen in Trigger or Free: how far back the view can be panned (seconds); 0 otherwise.
   readonly panReach: number;
   // Samples not finite (measured around): this track's count in what its readouts measure, and a
   // bit per lane holding any in what the frame shows.
@@ -35,7 +35,7 @@ export interface Frame {
   readonly invalidLanes: number;
   // The rate of the audio shown (frozen, the one it was held at), for the frame's times.
   readonly sampleRate: number;
-  // The time the whole screen width shows in Seconds mode: the span, or what is kept of it when
+  // The time the whole screen width shows in Trigger or Free: the span, or what is kept of it when
   // `limited`. 0 in a tempo-synced sweep.
   readonly spanSeconds: number;
   readonly spanQuarterNotes: number;
