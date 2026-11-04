@@ -168,8 +168,8 @@ for module in "${modules[@]}"; do
 done
 if [[ -n "$base" ]]; then
     from="$(git merge-base "$base" HEAD)"
-    # Only the modules whose sources changed: Mull's dry run times a module's tests before it
-    # filters the mutants, minutes for the engine's even with none on the lines changed.
+    # Only the modules whose sources changed: a module with no line changed has no mutant to run,
+    # and leaving it out saves building its tests with Mull and listing them.
     changed=()
     for module in "${selected[@]}"; do
         # Unquoted: each of the module's source folders is a path of its own.
