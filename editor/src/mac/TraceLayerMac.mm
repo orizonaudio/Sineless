@@ -190,7 +190,6 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
       }
     }];
     [buffer commit];
-    s.submitted.fetch_add(1);
     s.drawnWidth.store(drawable.texture.width);
     s.drawnHeight.store(drawable.texture.height);
     if (barcode) {
@@ -198,6 +197,8 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
         s.barcodeDrawnFor.store(barcode->drawnFor);
         s.barcodeDrawn.store(true);
     }
+    // Last: whoever sees the count go up reads this picture's size and barcode, not the last's.
+    s.submitted.fetch_add(1);
 }
 
 // One display link callback (render thread): the clock steps, the newest frame and trace view are
