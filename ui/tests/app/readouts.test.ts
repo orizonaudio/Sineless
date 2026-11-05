@@ -10,7 +10,7 @@ import {
   mockFundamental,
   viewSample,
 } from "../../src/bridge/mock-transport.ts";
-import { viewNames, viewOrder } from "../../src/view/screen-state.ts";
+import { viewOrder } from "../../src/view/screen-state.ts";
 import {
   byId,
   choice,
@@ -42,6 +42,14 @@ const timeBaseLabels = Object.keys(TimeBase).map((name) =>
 // A view's label in the controls: its initial ("mid" → "M").
 const labelOf = (name: string) => name.charAt(0).toUpperCase();
 
+// What the readout tag calls each channel, as a user reads it.
+const tagOf: Record<ChannelView, string> = {
+  [ChannelView.left]: "Left",
+  [ChannelView.right]: "Right",
+  [ChannelView.mid]: "Mid",
+  [ChannelView.side]: "Side",
+};
+
 async function useSource(label: string): Promise<void> {
   await press(choice("source", label));
   await expect
@@ -50,9 +58,7 @@ async function useSource(label: string): Promise<void> {
 }
 
 async function expectReadoutsOf(view: ChannelView): Promise<void> {
-  await expect
-    .poll(() => byId("readout-tag").textContent)
-    .toBe(viewNames[view]);
+  await expect.poll(() => byId("readout-tag").textContent).toBe(tagOf[view]);
   const { peak, rms } = levelsOf(view);
   await expect.element(byId("peak")).toHaveTextContent(formatDbfs(peak));
   await expect.element(byId("rms")).toHaveTextContent(formatDbfs(rms));
