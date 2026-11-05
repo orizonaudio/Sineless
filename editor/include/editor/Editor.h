@@ -6,6 +6,7 @@
 #include "public.sdk/source/common/pluginview.h"
 
 #include <memory>
+#include <utility>
 
 namespace orizon::editor {
 
@@ -46,6 +47,8 @@ public:
     [[nodiscard]] bool analyzerAllocated() const { return core.analyzerAllocated(); }
     [[nodiscard]] const engine::FramePacing* displayClock() const { return core.displayClock(); }
     [[nodiscard]] WebView* webView() const { return core.webView(); }
+    // For tests: what opens the contact page, instead of the default browser.
+    void setLinkOpener(EditorCore::LinkOpener opener) { core.setLinkOpener(std::move(opener)); }
 
 private:
     // Asks the host for `wanted` (host units). By the VST3 contract the host answers with onSize

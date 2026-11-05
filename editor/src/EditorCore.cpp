@@ -1,8 +1,11 @@
 #include "editor/EditorCore.h"
 
+#include "Branding.h"
 #include "editor/DisplayScale.h"
+#include "editor/OpenLink.h"
 #include "engine/ChannelViews.h"
 #include "engine/MonotonicClock.h"
+#include "engine/Version.h"
 
 #include <algorithm>
 #include <atomic>
@@ -53,7 +56,8 @@ void EditorCore::setNativeTraces(bool enabled)
 }
 
 EditorCore::EditorCore(std::shared_ptr<engine::Engine> engine, MessageObserver observer)
-    : observer(std::move(observer)), scale(displayScale(nullptr)), engineState(std::move(engine))
+    : observer(std::move(observer)), linkOpener(&openInBrowser), scale(displayScale(nullptr)),
+      engineState(std::move(engine))
 {
     // The size the editor was left at, while the plugin stays loaded.
     if (const auto size = engineState ? engineState->editorSize() : std::nullopt) {
@@ -237,8 +241,16 @@ void EditorCore::receive(std::string_view message)
         return;
     }
     const auto& type = (*parsed)["type"].get_ref<const std::string&>();
+    if (type == messageName(protocol::MessageType::kHello) && transport) {
+        // First, and with or without an engine: the version a user reports.
+        transport->sendMessage({{"type", messageName(protocol::MessageType::kAbout)},
+                                {"version", engine::kVersionString},
+                                {"contact", !std::string_view(branding::kContactUrl).empty()}});
+    }
     if (type == messageName(protocol::MessageType::kResize)) {
         resize(*parsed);
+    } else if (type == messageName(protocol::MessageType::kContact)) {
+        openContactPage();
     } else if (type == messageName(protocol::MessageType::kTraceView)) {
         // A malformed one is refused, and the last good one kept (QS-7).
         if (const auto traceView = TraceView::parse(*parsed); traceView && nativeTraces) {
@@ -283,6 +295,18 @@ void EditorCore::resize(const nlohmann::json& message)
     const double newHeight =
         std::clamp(*askedHeight, static_cast<double>(minimumHeight()), kMaximumGripSize);
     sizeRequest(toHostUnits(newWidth), toHostUnits(newHeight));
+}
+
+// After this message is handled, not from within it: WebView2 does not support re-entering it from
+// its own event handlers, and the system may wait for the browser to start or show a dialog. Work
+// posted never runs once the editor has closed.
+void EditorCore::openContactPage()
+{
+    const std::string_view url = branding::kContactUrl;
+    if (url.empty()) {
+        return;
+    }
+    dispatcher->post([this, url] { linkOpener(url); });
 }
 
 int EditorCore::minimumHeight() const

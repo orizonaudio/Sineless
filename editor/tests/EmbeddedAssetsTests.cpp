@@ -47,6 +47,7 @@ TEST(EmbeddedAssets, CarryTheBrandOnlyInABrandedBuild)
     EXPECT_EQ(page.find("Sineless") != std::string::npos, branded) << "the product's name";
     if (!branded) {
         EXPECT_EQ(page.find("Orizon"), std::string::npos) << "the vendor's name";
+        EXPECT_EQ(page.find("orizonaudio"), std::string::npos) << "the vendor's domain";
     }
 }
 

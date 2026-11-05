@@ -20,6 +20,8 @@ export const MessageType = {
   resize: "resize",
   traceView: "traceView",
   nativeGraphicsLost: "nativeGraphicsLost",
+  about: "about",
+  contact: "contact",
 } as const;
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
@@ -207,6 +209,21 @@ export interface NativeGraphicsLostMessage {
   readonly type: "nativeGraphicsLost";
 }
 
+// Editor to UI, in reply to every hello, before anything else and whether or not the editor can
+// reach the engine: the plugin's version as the host lists it, and whether this build has a contact
+// page to open (a build without the brand has none).
+export interface AboutMessage {
+  readonly type: "about";
+  readonly version: string;
+  readonly contact: boolean;
+}
+
+// UI to editor: open the vendor's contact page in the default browser. The page names no address;
+// the editor opens only the one it was built with, and nothing in a build without the brand.
+export interface ContactMessage {
+  readonly type: "contact";
+}
+
 export type UiToEngineMessage =
   | HelloMessage
   | SetSettingMessage
@@ -218,11 +235,13 @@ export type UiToEngineMessage =
   | CompareMessage
   | PreviewFixMessage
   | ResizeMessage
-  | TraceViewMessage;
+  | TraceViewMessage
+  | ContactMessage;
 
 export type EngineToUiMessage =
   | SnapshotMessage
   | StateChangedMessage
   | ErrorMessage
   | LanesMessage
-  | NativeGraphicsLostMessage;
+  | NativeGraphicsLostMessage
+  | AboutMessage;

@@ -42,6 +42,7 @@ describe("backend", () => {
     backend.setViewport(500, 1);
     backend.compare([3, 5]);
     backend.previewFix(true);
+    backend.contact();
     expect(transport.sent.map((message) => message.type)).toEqual([
       "hello",
       "setSetting",
@@ -51,9 +52,11 @@ describe("backend", () => {
       "viewport",
       "compare",
       "previewFix",
+      "contact",
     ]);
-    expect(transport.sent.at(-2)).toMatchObject({ ids: [3, 5] });
-    expect(transport.sent.at(-1)).toMatchObject({ on: true });
+    expect(transport.sent.at(-3)).toMatchObject({ ids: [3, 5] });
+    expect(transport.sent.at(-2)).toMatchObject({ on: true });
+    expect(transport.sent.at(-1)).toEqual({ type: "contact" });
     expect(transport.sent[0]).toMatchObject({
       protocolVersion,
       viewWidth: 640,
@@ -71,6 +74,9 @@ describe("backend", () => {
     backend.on("error", (message) => events.push(`error:${message.code}`));
     backend.on("lanes", (message) =>
       events.push(`lanes:${String(message.laneSet)}`),
+    );
+    backend.on("about", (message) =>
+      events.push(`about:${message.version}:${String(message.contact)}`),
     );
     backend.on("frame", (frame) => events.push(`frame:${String(frame.peak)}`));
     transport.messageHandler?.({
@@ -91,6 +97,11 @@ describe("backend", () => {
       ],
       hidden: 0,
     });
+    transport.messageHandler?.({
+      type: "about",
+      version: "1.2.3",
+      contact: true,
+    });
     const bytes = new Uint8Array(golden.hex.length / 2);
     for (let i = 0; i < bytes.length; i++) {
       bytes[i] = parseInt(golden.hex.slice(i * 2, i * 2 + 2), 16);
@@ -100,6 +111,7 @@ describe("backend", () => {
       "state:triggerSpan",
       "error:protocolMismatch",
       "lanes:3",
+      "about:1.2.3:true",
       `frame:${String(golden.header.peak)}`,
     ]);
   });
