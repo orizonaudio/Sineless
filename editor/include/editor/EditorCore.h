@@ -44,6 +44,8 @@ public:
     // Called at each check of the minimum height (every state sync), whether or not more room
     // is asked for: for a format's view that gives the minimum to the host itself.
     using MinimumCheck = std::function<void()>;
+    // Opens a URL in the default browser: openInBrowser, unless a test gives its own.
+    using LinkOpener = std::function<void(std::string_view url)>;
 
     // `engine` is null when the format's glue could not reach the processor's engine.
     explicit EditorCore(std::shared_ptr<engine::Engine> engine, MessageObserver observer = {});
@@ -53,6 +55,7 @@ public:
 
     void setSizeRequest(SizeRequest request) { sizeRequest = std::move(request); }
     void setMinimumCheck(MinimumCheck check) { minimumCheck = std::move(check); }
+    void setLinkOpener(LinkOpener opener) { linkOpener = std::move(opener); }
     // Who shows the page's cursors in the webview attach() opens (WebView::Cursors).
     void setCursors(WebView::Cursors shownBy) { cursors = shownBy; }
     // Whether editors opened from now on draw the traces natively where the platform can (macOS
@@ -104,6 +107,9 @@ private:
     void receive(std::string_view message);
     // The user dragged the resize grip: asks the host for that size, no smaller than the minimum.
     void resize(const nlohmann::json& message);
+    // The page asked for the vendor's contact page: opened after this message, if the build has
+    // one.
+    void openContactPage();
     // Asks the host for more height when the lanes on show no longer fit, once per change.
     void requestMinimumHeight();
     // Follows a change of display scaling (the window moved to another display): the same size
@@ -118,6 +124,7 @@ private:
     MessageObserver observer;
     SizeRequest sizeRequest;
     MinimumCheck minimumCheck;
+    LinkOpener linkOpener;
     WebView::Cursors cursors = WebView::Cursors::kShownByWebKit;
     void* parent = nullptr;
     double scale = 1.0;

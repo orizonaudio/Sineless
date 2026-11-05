@@ -1,4 +1,5 @@
 #include "EmbeddedAssets.h"
+#include "editor/OpenLink.h"
 #include "editor/WebView.h"
 
 // windows.h first: the other Windows headers depend on it. Not the lean variant: WebView2.h needs
@@ -18,6 +19,7 @@
 #include <iterator>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <string>
@@ -908,6 +910,13 @@ std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
 {
     return std::make_unique<WebViewWin>(static_cast<HWND>(parent), width, height,
                                         std::move(onMessage), std::move(onFrameRequest));
+}
+
+// As JUCE and iPlug2 do. ShellExecuteW wants COM initialised; the host's UI thread, which WebView2
+// needs in a single-threaded apartment, already is. It may wait until the browser has started.
+void openInBrowser(std::string_view url)
+{
+    ShellExecuteW(nullptr, L"open", widen(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 } // namespace orizon::editor

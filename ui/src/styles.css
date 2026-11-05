@@ -892,6 +892,20 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-ink);
 }
 
+/* About, after Help: its popover opens upward from the status bar, its right edge on the button's. */
+.about-group {
+  position: relative;
+  display: flex;
+}
+
+.about-popover {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 180px;
+}
+
+.help-toggle[aria-expanded="true"],
 .help-toggle[aria-pressed="true"] {
   color: var(--sl-on-selected);
   background: var(--sl-selected);

@@ -240,6 +240,29 @@
           >
             ?
           </button>
+          <!-- About holds its popover, which shares its help, as the toolbar's fields do. The
+               product's name comes from the brand; the version and whether there is a contact
+               page, from the editor. -->
+          <div class="about-group" id="about-group" data-help="about">
+            <button
+              class="help-toggle"
+              id="about-details"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              i
+            </button>
+            <div class="popover about-popover" id="about-popover" hidden>
+              <div class="popover-title" id="about-name"></div>
+              <div class="popover-row">
+                <span>Version</span>
+                <span id="about-version">—</span>
+              </div>
+              <button class="action" id="contact" data-help="contact" hidden>
+                About us
+              </button>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

@@ -50,6 +50,9 @@
     "type": "previewFix",
     "on": true
   },
+  "contact": {
+    "type": "contact"
+  },
   "resize": {
     "type": "resize",
     "width": 1200,

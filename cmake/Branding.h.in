@@ -11,5 +11,8 @@ namespace orizon::branding {
 
 inline constexpr const char* kProductName = "@SINELESS_PRODUCT_NAME@";
 inline constexpr const char* kVendorName = "@SINELESS_VENDOR_NAME@";
+// The vendor's contact page, which the editor's About popover opens in the default browser; empty
+// in a build without the brand, which offers none.
+inline constexpr const char* kContactUrl = "@SINELESS_CONTACT_URL@";
 
 } // namespace orizon::branding

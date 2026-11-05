@@ -4,6 +4,7 @@ import {
   MessageType,
   type ArmMessage,
   type CompareMessage,
+  type ContactMessage,
   type FreezeMessage,
   type HelloMessage,
   type PanMessage,
@@ -42,6 +43,7 @@ const typed = {
   view: examples.view satisfies Shape<ViewMessage>,
   compare: examples.compare satisfies Shape<CompareMessage>,
   previewFix: examples.previewFix satisfies Shape<PreviewFixMessage>,
+  contact: examples.contact satisfies Shape<ContactMessage>,
   resize: examples.resize satisfies Shape<ResizeMessage>,
   traceView: examples.traceView satisfies Shape<TraceViewMessage>,
 };

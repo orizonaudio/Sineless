@@ -57,9 +57,11 @@ function runFree(transport: MockTransport, span: number): void {
 }
 
 describe("mock back end", () => {
-  test("answers hello with a snapshot, and the first request with a frame", () => {
+  // As the editor does: what it says of itself first, then the engine's snapshot.
+  test("answers hello with about and a snapshot, and the first request with a frame", () => {
     const { messages, frames } = connect();
-    expect(messages[0]).toMatchObject({
+    expect(messages[0]).toMatchObject({ type: "about", contact: true });
+    expect(messages[1]).toMatchObject({
       type: "snapshot",
       sampleRate: 48000,
       inputChannels: 2,
@@ -297,7 +299,7 @@ describe("mock back end", () => {
 
   test("shows a mono track's L alone, whatever views are asked for", () => {
     const { transport, messages, frames } = connect({ inputChannels: 1 });
-    expect(messages[0]).toMatchObject({ type: "snapshot", inputChannels: 1 });
+    expect(messages[1]).toMatchObject({ type: "snapshot", inputChannels: 1 });
     useTrigger(transport);
     transport.send({
       type: "setSetting",
@@ -312,7 +314,7 @@ describe("mock back end", () => {
 
   test("runs at the sample rate it is given", () => {
     const { transport, messages, frames } = connect({ sampleRate: 96000 });
-    expect(messages[0]).toMatchObject({ type: "snapshot", sampleRate: 96000 });
+    expect(messages[1]).toMatchObject({ type: "snapshot", sampleRate: 96000 });
     useTrigger(transport);
     transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
     transport.send({ type: "view", start: 0.5, end: 0.6 });

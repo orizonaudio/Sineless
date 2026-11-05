@@ -3,6 +3,7 @@
 // supports no Linux window type, so no host opens it; these are what it would call there.
 
 #include "editor/DisplayScale.h"
+#include "editor/OpenLink.h"
 #include "editor/UiDispatcher.h"
 #include "editor/WebView.h"
 
@@ -29,5 +30,7 @@ std::unique_ptr<WebView> WebView::create(void* /*parent*/, int /*width*/, int /*
     return nullptr;
 }
 // NOLINTEND(performance-unnecessary-value-param)
+
+void openInBrowser(std::string_view /*url*/) {}
 
 } // namespace orizon::editor

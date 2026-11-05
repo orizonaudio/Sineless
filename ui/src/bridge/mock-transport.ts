@@ -13,6 +13,7 @@ import {
   type FrameContent,
 } from "../../../protocol/src/frame-encoder.ts";
 import type {
+  AboutMessage,
   LaneLabel,
   SettingValue,
 } from "../../../protocol/src/messages.ts";
@@ -176,6 +177,10 @@ export interface MockOptions {
   readonly nativeTraces?: boolean;
   // Whether the diagnostic switch is on, as its snapshots then say.
   readonly frameBarcode?: boolean;
+  // What the editor says of itself in reply to hello: the version and whether there is a contact
+  // page. A preview version with a contact page by default; false sends nothing, as a page that
+  // has not heard yet.
+  readonly about?: Omit<AboutMessage, "type"> | false;
 }
 
 export class MockTransport implements Transport {
@@ -201,6 +206,7 @@ export class MockTransport implements Transport {
   private readonly keptSeconds: number;
   private readonly nativeTraces: boolean;
   private readonly frameBarcode: boolean;
+  private readonly about: Omit<AboutMessage, "type"> | false;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
   // The last live Trigger or Free window before a freeze (none when frozen in Beats mode), and
@@ -221,6 +227,7 @@ export class MockTransport implements Transport {
     this.tempoKnown = options.hostTempo ?? true;
     this.nativeTraces = options.nativeTraces ?? false;
     this.frameBarcode = options.frameBarcode ?? false;
+    this.about = options.about ?? { version: "preview", contact: true };
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -265,6 +272,10 @@ export class MockTransport implements Transport {
   private receive(message: ControlMessage): void {
     switch (message.type) {
       case "hello":
+        // The editor's own reply comes first, as in the plugin. The mock opens nothing on contact.
+        if (this.about !== false) {
+          this.reply({ type: "about", ...this.about });
+        }
         this.setViewport(message);
         this.reply(this.lastSnapshot());
         this.lanesKey = "";
