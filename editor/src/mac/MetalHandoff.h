@@ -1,5 +1,7 @@
 #pragma once
 
+// Objective-C++ only: the objects are Metal's (MetalTraceRenderer.h holds its Metal parts so too).
+#ifdef __OBJC__
 #import <Foundation/Foundation.h>
 
 #if defined(__has_feature)
@@ -36,3 +38,4 @@ inline void handlerRuns([[maybe_unused]] id object)
 }
 
 } // namespace orizon::editor
+#endif
