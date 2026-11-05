@@ -180,14 +180,20 @@ TEST_F(EditorTest, RunsTheWorkerOnlyWhileAttachedWithAnEngine)
 // left behind per editor would stay for as long as the host runs.
 TEST_F(EditorTest, FreesItsTimersWhenClosed)
 {
+    // libdispatch frees a closed editor's timer when its finalizer runs on the main queue, a little
+    // after the close: each wait gives it that time. At most, not equal: a timer an earlier test
+    // left may be freed meanwhile.
     const int before = liveTimersForTests();
     for (int opened = 0; opened < 3; ++opened) {
         auto dispatcher = UiDispatcher::create();
-        dispatcher->every(std::chrono::milliseconds(10), [] {});
-        pumpUntil([] { return false; }, std::chrono::milliseconds(30)); // It runs.
-        EXPECT_EQ(liveTimersForTests(), before + 1);
+        bool ran = false;
+        dispatcher->every(std::chrono::milliseconds(10), [&ran] { ran = true; });
+        EXPECT_TRUE(pumpUntil([&] { return ran && liveTimersForTests() <= before + 1; },
+                              std::chrono::seconds(2)))
+            << "opened " << opened << ": ran " << ran << ", " << liveTimersForTests() - before
+            << " timers live";
     }
-    EXPECT_TRUE(pumpUntil([&] { return liveTimersForTests() == before; }, std::chrono::seconds(2)))
+    EXPECT_TRUE(pumpUntil([&] { return liveTimersForTests() <= before; }, std::chrono::seconds(2)))
         << liveTimersForTests() - before << " timers left";
 }
 
