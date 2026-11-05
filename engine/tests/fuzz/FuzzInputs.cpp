@@ -148,6 +148,21 @@ bool writeSessionSeeds(const nlohmann::json& examples, const std::filesystem::pa
                   seed);
         }
     }
+    // Multi in the Free time base, which draws lanes whatever the host's tempo.
+    const auto settingMessage = [](protocol::SettingId id, double value) {
+        const auto& setting = protocol::kSettings[static_cast<std::size_t>(id)];
+        return nlohmann::json{{"type", "setSetting"},
+                              {"name", setting.name},
+                              {"value", engine::settingToJson(id, value)}}
+                   .dump() +
+               "\n";
+    };
+    write("multi-free", hello +
+                            settingMessage(protocol::SettingId::kDisplayMode,
+                                           static_cast<double>(protocol::DisplayMode::kMulti)) +
+                            settingMessage(protocol::SettingId::kTimeBase,
+                                           static_cast<double>(protocol::TimeBase::kFree)) +
+                            "\n");
     write("all", hello + "\n" + others);
     write("all-44100-mono", "44100 1\n" + hello + "\n" + others);
     write("all-384000-stereo", "384000 2\n" + hello + "\n" + others);
@@ -282,6 +297,47 @@ bool writeHostSeeds(const std::filesystem::path& directory)
         .play(SignalKind::kSine, 1000)
         .frame();
     write("tracks", tracks);
+
+    // One seed per oracle, each reaching it (engine/tests/fuzz/CMakeLists.txt requires it): a
+    // frozen frame drawn again after a rate change, in Single in both time bases and in Multi; two
+    // lanes that mirror each other; and readouts of audio with no finite sample.
+    const auto frozenAfterRateChange = [&](const std::string& name, std::uint8_t mode,
+                                           std::uint8_t base) {
+        HostSeed seed;
+        seed.setting(protocol::SettingId::kDisplayMode, mode)
+            .setting(protocol::SettingId::kTimeBase, base)
+            .setting(protocol::SettingId::kFreeSpan, 0)
+            .setting(protocol::SettingId::kBeatSpan, 0);
+        for (int i = 0; i < 3; ++i) {
+            seed.play(SignalKind::kSine, 441);
+        }
+        seed.frame().freeze(true).frame().rate(Tracks::kBoth, 96000.0).frame();
+        write(name, seed);
+    };
+    const auto single = static_cast<std::uint8_t>(protocol::DisplayMode::kSingle);
+    const auto multi = static_cast<std::uint8_t>(protocol::DisplayMode::kMulti);
+    const auto free = static_cast<std::uint8_t>(protocol::TimeBase::kFree);
+    const auto beats = static_cast<std::uint8_t>(protocol::TimeBase::kBeats);
+    frozenAfterRateChange("frozen-rate-change-single-free", single, free);
+    frozenAfterRateChange("frozen-rate-change-single-beats", single, beats);
+    frozenAfterRateChange("frozen-rate-change-multi-free", multi, free);
+    HostSeed mirrored;
+    mirrored.setting(protocol::SettingId::kDisplayMode, multi)
+        .setting(protocol::SettingId::kTimeBase, free)
+        .setting(protocol::SettingId::kFreeSpan, 0)
+        .play(SignalKind::kSine, 441)
+        .play(SignalKind::kSine, 441)
+        .frame()
+        .play(SignalKind::kSquare, 100)
+        .frame();
+    write("multi-inverted", mirrored);
+    HostSeed nonFinite;
+    nonFinite.setting(protocol::SettingId::kTimeBase, free)
+        .setting(protocol::SettingId::kFreeSpan, 0)
+        .play(SignalKind::kNonFinite, 1)
+        .play(SignalKind::kNonFinite, 1)
+        .frame();
+    write("nonfinite-free", nonFinite);
     return ok;
 }
 

@@ -31,7 +31,8 @@ orizon_add_fuzzer(session_fuzzer SEEDS session SOURCES
     ${PROJECT_SOURCE_DIR}/editor/src/Session.cpp
     ${PROJECT_SOURCE_DIR}/editor/src/Transport.cpp
 )
-target_include_directories(session_fuzzer PRIVATE ${PROJECT_SOURCE_DIR}/editor/include)
+target_include_directories(session_fuzzer PRIVATE ${PROJECT_SOURCE_DIR}/editor/include
+                                                  ${PROJECT_SOURCE_DIR}/engine/tests/support)
 orizon_add_fuzzer(host_fuzzer SEEDS host SOURCES
     HostFuzzer.cpp
     ${PROJECT_SOURCE_DIR}/editor/src/Session.cpp
@@ -43,6 +44,18 @@ if(NOT ORIZON_FUZZ)
     # Each host seed draws its frames in two worlds, which must agree: the seeds must reach that.
     add_test(NAME fuzz.host_fuzzer.determinism
              COMMAND host_fuzzer --require-oracle=determinism ${seedDir}/host)
+    # Each oracle's seeds must reach it, so that a change that stops its conditions from ever
+    # holding fails here rather than leaving the oracle checking nothing.
+    foreach(seed IN ITEMS single-free single-beats multi-free)
+        add_test(NAME fuzz.host_fuzzer.frozen.${seed}
+                 COMMAND host_fuzzer --require-oracle=frozen
+                         ${seedDir}/host/frozen-rate-change-${seed})
+    endforeach()
+    add_test(NAME fuzz.host_fuzzer.polarity
+             COMMAND host_fuzzer --require-oracle=polarity ${seedDir}/host/multi-inverted)
+    add_test(NAME fuzz.host_fuzzer.readouts
+             COMMAND host_fuzzer --require-oracle=readouts-unmeasured
+                     ${seedDir}/host/nonfinite-free)
 endif()
 
 if(NOT ORIZON_FUZZ)
