@@ -498,11 +498,16 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             selectLanes(settings);
             laneSetId = laneSet().id;
         }
-        if (sentNoTempo == isFrozen && !inputsChanged(settings, command, laneSetId)) {
+        // A track turned mono changes the channel the frame names, though no setting changed.
+        const bool newFormat = !isFrozen && formatsChanged(multi);
+        if (sentNoTempo == isFrozen && !newFormat && !inputsChanged(settings, command, laneSetId)) {
             return false;
         }
         sentNoTempo = isFrozen;
         rememberInputs(settings, command, laneSetId);
+        if (!isFrozen) {
+            lastLiveFormats = liveFormats;
+        }
         // Shown in Beats: switched to Seconds, the newest span is shown at once, as after a sweep.
         lastShown = Window{.synced = true};
         const FrameHeaderValues header{

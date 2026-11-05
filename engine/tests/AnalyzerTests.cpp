@@ -336,6 +336,30 @@ TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
     }
 }
 
+// Without a host tempo, a track turned mono gets a new frame saying so, which names L, the one
+// channel it now has, not the channel measured on the stereo track. In Single, where the readout
+// source applies.
+TEST_F(AnalyzerTest, RenamesTheReadoutChannelWithNoTempoWhenTheTrackTurnsMono)
+{
+    Engine fresh;
+    fresh.prepare(kSampleRate);
+    fresh.setInputChannels(2);
+    fresh.settings().set(SettingId::kReadoutSource,
+                         static_cast<double>(protocol::ChannelView::kRight));
+    Analyzer view(fresh);
+    view.setColumns(300);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(view.produce(bytes));
+    ASSERT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+    ASSERT_EQ(decode(bytes).readoutView, protocol::ChannelView::kRight);
+    EXPECT_FALSE(view.produce(bytes)) << "nothing changed";
+
+    fresh.setInputChannels(1);
+    ASSERT_TRUE(view.produce(bytes)) << "the track changed";
+    EXPECT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+    EXPECT_EQ(decode(bytes).readoutView, protocol::ChannelView::kLeft);
+}
+
 // Without a host tempo, the frame saying so follows what the user does: frozen and unfrozen, so the
 // page's Freeze button and chips follow it. A freeze made before the tempo holds none, so it
 // places nothing even once the host reports one; live again, the sweep follows the host. In every
