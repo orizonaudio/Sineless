@@ -135,7 +135,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             // Both tracks play the same tone, the other negated, in the same format throughout.
             // With no host timeline their lanes are mostly silent; the host fuzzer checks sounding
             // ones.
+            // As in the host fuzzer, only where the lanes must line up: Trigger and Free, live.
+            const auto timeBase = static_cast<protocol::TimeBase>(
+                own->settings().get().value(protocol::SettingId::kTimeBase));
             if (decoded.laneCount == 2 && !decoded.has(protocol::FrameFlag::kCompared) &&
+                timeBase != protocol::TimeBase::kBeats &&
                 !decoded.has(protocol::FrameFlag::kFrozen) && decoded.invalidLanes == 0) {
                 orizon::fuzz::checkMirroredLanes(decoded);
             }
