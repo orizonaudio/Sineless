@@ -117,3 +117,12 @@ if(ORIZON_FUZZ)
 endif()
 
 option(ORIZON_BENCH "Build the performance benchmarks (analysis_bench, perf_bench, process_bench)" OFF)
+
+# The test property that turns Metal's API validation on for the tests that draw at a display's
+# pace (editor/CMakeLists.txt says why), set off CI only: GitHub Actions sets CI in the environment
+# CMake configures in.
+if(DEFINED ENV{CI})
+    set(ORIZON_LOCAL_METAL_VALIDATION "")
+else()
+    set(ORIZON_LOCAL_METAL_VALIDATION ENVIRONMENT MTL_DEBUG_LAYER=1)
+endif()

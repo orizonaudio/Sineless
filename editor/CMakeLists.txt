@@ -107,11 +107,17 @@ if(BUILD_TESTING)
     endif()
     # The editor tests run alone, though the other tests run in parallel: on Windows every
     # process's views share one WebView2 browser process, which some tests end on purpose, and a
-    # page loaded beside a full machine misses the tests' timeouts. Metal's API validation (read by
-    # Metal only, so macOS only) checks every draw of the native traces against its shaders: a
-    # binding shorter than the shader's argument stops the test, as nothing checks a release build.
-    gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE
-                         ENVIRONMENT MTL_DEBUG_LAYER=1)
+    # page loaded beside a full machine misses the tests' timeouts.
+    # Metal's API validation (read by Metal only, so macOS only) checks how the native traces call
+    # Metal: a binding shorter than the shader's argument stops the test, as nothing checks a
+    # release build. The renderer's tests, which draw every pipeline and binding offscreen with no
+    # display link, always run with it. The others draw at a display's pace and wait a second or
+    # two for it, which validation's extra work can overrun on CI's virtual Macs: they run with it
+    # off CI only (GitHub Actions sets CI), where the real drawable and its presenting are checked.
+    gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30 TEST_FILTER "MetalTraceRendererTest.*"
+                         PROPERTIES RUN_SERIAL TRUE ENVIRONMENT MTL_DEBUG_LAYER=1)
+    gtest_discover_tests(editor_tests DISCOVERY_TIMEOUT 30 TEST_FILTER "-MetalTraceRendererTest.*"
+                         PROPERTIES RUN_SERIAL TRUE ${ORIZON_LOCAL_METAL_VALIDATION})
 endif()
 
 # The performance benchmark: the real page under a simulated host, in WKWebView (macOS only).
