@@ -51,8 +51,9 @@ struct Source
 {
     std::mutex mutex;
     std::vector<std::byte> frame;
-    // Each take hands over a new frame (as with a moving trace), or only after a request.
-    bool always = false;
+    // Each take hands over a new frame (as with a moving trace), or only after a request. Set by
+    // a test while the display thread takes frames.
+    std::atomic<bool> always{false};
     // Frames to hand over in all (none: no end): frozen, or Single after its capture, there is one.
     std::optional<int> limit;
     // The diagnostic switch, as the editor reads it.
