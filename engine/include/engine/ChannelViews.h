@@ -24,6 +24,12 @@ namespace orizon::engine {
 [[nodiscard]] protocol::ChannelView effectiveReadoutView(protocol::ChannelView requested,
                                                          std::uint8_t drawn);
 
+// The views among `drawn` whose samples say whether any drawn view holds one that is not finite:
+// Mid or Side alone when drawn, as each is not finite wherever L or R is; else the L and R drawn.
+// (Mid and Side are each not finite also where adding or subtracting two finite samples beyond
+// half of the float range overflows; no audio comes near.)
+[[nodiscard]] std::uint8_t invalidCheckViews(std::uint8_t drawn);
+
 // Reads `view` over [start, start + destination.size()). `scratch` must be at least as large as
 // `destination`; it holds the second channel for Mid and Side.
 [[nodiscard]] bool readView(const SampleSource& source, int inputChannels,

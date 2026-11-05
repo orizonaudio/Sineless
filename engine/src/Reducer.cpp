@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -48,6 +49,29 @@ std::pair<float, float> minMax(std::span<const float> samples)
     return {minimum, maximum};
 }
 
+// Whether `samples` hold one that is not finite (NaN or infinity): its bits without the sign at
+// or above an infinity's. Found per lane, as minMax does, so that the compiler can run the lanes
+// as vector registers: an integer maximum, with no branch.
+bool holdsNonFinite(std::span<const float> samples)
+{
+    constexpr std::size_t kLanes = 8;
+    constexpr std::uint32_t kMagnitude = 0x7fffffffU;
+    constexpr std::uint32_t kInfinity = 0x7f800000U;
+    std::array<std::uint32_t, kLanes> largest{};
+    std::size_t index = 0;
+    for (; index + kLanes <= samples.size(); index += kLanes) {
+        for (std::size_t lane = 0; lane < kLanes; ++lane) {
+            largest[lane] = std::max(
+                largest[lane], std::bit_cast<std::uint32_t>(samples[index + lane]) & kMagnitude);
+        }
+    }
+    std::uint32_t magnitude = *std::ranges::max_element(largest);
+    for (; index < samples.size(); ++index) {
+        magnitude = std::max(magnitude, std::bit_cast<std::uint32_t>(samples[index]) & kMagnitude);
+    }
+    return magnitude >= kInfinity;
+}
+
 } // namespace
 
 FrameMode reduceToColumns(std::span<const float> samples, std::size_t columns,
@@ -71,12 +95,27 @@ FrameMode reduceToColumns(std::span<const float> samples, std::size_t columns,
     return FrameMode::kMinMax;
 }
 
-void ColumnReduction::reset(std::size_t count, std::size_t columns)
+void ColumnReduction::reset(std::size_t count, std::size_t columns, bool trackInvalid)
 {
     spanCount = count;
     columnCount = columns;
     output.assign(mode() == FrameMode::kRaw ? count : columns * 2, 0.0f);
+    tracking = trackInvalid;
+    // Raw samples keep what is not finite in `output`; only min/max columns need flags.
+    invalid.assign(tracking && mode() == FrameMode::kMinMax ? columns : 0, 0);
+    invalidColumns = 0;
     valid = true;
+}
+
+bool ColumnReduction::holdsInvalid() const
+{
+    if (!valid || !tracking) {
+        return false;
+    }
+    if (mode() == FrameMode::kRaw) {
+        return holdsNonFinite(output);
+    }
+    return invalidColumns > 0;
 }
 
 std::size_t ColumnReduction::columnBegin(std::size_t column) const
@@ -116,10 +155,16 @@ bool ColumnReduction::update(std::size_t first, std::size_t end, const Reader& r
             return false;
         }
         for (; column < stop; ++column) {
-            const auto [minimum, maximum] = minMax(std::span<const float>(scratch).subspan(
-                columnBegin(column) - from, columnBegin(column + 1) - columnBegin(column)));
+            const auto samples = std::span<const float>(scratch).subspan(
+                columnBegin(column) - from, columnBegin(column + 1) - columnBegin(column));
+            const auto [minimum, maximum] = minMax(samples);
             output[column * 2] = minimum;
             output[column * 2 + 1] = maximum;
+            if (tracking) {
+                const std::uint8_t holds = holdsNonFinite(samples) ? 1 : 0;
+                invalidColumns = invalidColumns - invalid[column] + holds;
+                invalid[column] = holds;
+            }
         }
     }
     return true;

@@ -30,8 +30,9 @@ public:
     // Reads samples [first, first + destination.size()) of the span into `destination`.
     using Reader = std::function<bool(std::size_t first, std::span<float> destination)>;
 
-    // Starts over for a span of `count` samples shown in `columns`; everything is stale.
-    void reset(std::size_t count, std::size_t columns);
+    // Starts over for a span of `count` samples shown in `columns`; everything is stale. With
+    // `trackInvalid`, it also notes which columns hold a sample that is not finite.
+    void reset(std::size_t count, std::size_t columns, bool trackInvalid = false);
     [[nodiscard]] bool fits(std::size_t count, std::size_t columns) const
     {
         return valid && count == spanCount && columns == columnCount;
@@ -50,6 +51,9 @@ public:
     }
     // Raw samples, or a (min, max) pair per column.
     [[nodiscard]] std::span<const float> values() const { return output; }
+    // Tracking them (reset), whether a column holds a sample that is not finite (NaN or infinite),
+    // which min/max columns leave out.
+    [[nodiscard]] bool holdsInvalid() const;
 
 private:
     [[nodiscard]] std::size_t columnBegin(std::size_t column) const;
@@ -57,8 +61,11 @@ private:
     std::size_t spanCount = 0;
     std::size_t columnCount = 0;
     bool valid = false;
+    bool tracking = false;
     std::vector<float> output;
     std::vector<float> scratch;
+    std::vector<std::uint8_t> invalid; // Per min/max column, while tracking: holds one.
+    std::size_t invalidColumns = 0;    // How many of them do.
 };
 
 // The columns of a free-running window, kept from frame to frame. Its columns sit on a grid fixed
