@@ -59,7 +59,7 @@ inline bool displayRan(std::uint64_t given, double expected)
 
 // What the page's one requestAnimationFrame, asked after a wait timed out, says of its rendering
 // updates. A read that failed measured nothing: it fails the test, never skips it.
-enum class PageProbe
+enum class PageProbe : std::uint8_t
 {
     kFired,
     kNotFired,
@@ -86,7 +86,7 @@ struct DisplayWait
     std::string message;
 };
 
-enum class DisplayVerdict
+enum class DisplayVerdict : std::uint8_t
 {
     kMet,
     kFailed,

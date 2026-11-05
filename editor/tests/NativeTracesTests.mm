@@ -149,7 +149,7 @@ protected:
     // What drives a wait: the layer's display link (drawing, failed buffers, frames made on its
     // request), the page's rendering update (its canvas size, what it shows), or both (frames made
     // on the link's request and read by the page).
-    enum class Drives
+    enum class Drives : std::uint8_t
     {
         kLink,
         kPage,
@@ -189,7 +189,7 @@ protected:
         const std::uint64_t callbacks = layer->statsForTesting().callbacks;
         const auto started = std::chrono::steady_clock::now();
         if (playing ? pumpPlaying(condition, within) : pumpUntil(condition, within)) {
-            return {.met = true};
+            return {.met = true, .displayRan = true, .message = {}};
         }
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started);
@@ -197,7 +197,7 @@ protected:
         const testing::PageProbe probe =
             drives == Drives::kLink ? testing::PageProbe::kFired : probePage();
         if (condition()) {
-            return {.met = true};
+            return {.met = true, .displayRan = true, .message = {}};
         }
         const double hertz = static_cast<double>(window.screen.maximumFramesPerSecond);
         const double expected = testing::expectedRefreshes(elapsed, hertz);
