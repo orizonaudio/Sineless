@@ -182,6 +182,8 @@ describe("controls", () => {
     const button = byId("readout-details").getBoundingClientRect();
     const box = popover.getBoundingClientRect();
     expect(box.bottom).toBeLessThanOrEqual(button.top);
+    // Aligned with the tag's left edge (DESIGN.md 1.5), not placed by script.
+    expect(Math.abs(box.left - button.left)).toBeLessThan(1);
     expect(box.left).toBeGreaterThanOrEqual(8);
     expect(box.right).toBeLessThanOrEqual(window.innerWidth - 8);
     await userEvent.click(byId("screen"));
