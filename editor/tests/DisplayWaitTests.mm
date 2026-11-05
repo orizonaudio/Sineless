@@ -5,13 +5,14 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <string>
+#include <string_view>
 
 namespace orizon::testing {
 namespace {
 
 using namespace std::chrono_literals;
 
-std::string name(DisplayVerdict verdict)
+std::string_view name(DisplayVerdict verdict)
 {
     switch (verdict) {
     case DisplayVerdict::kMet:
@@ -36,17 +37,22 @@ TEST(DisplayWait, SkipsOnlyAStalledDisplayOnCi)
         bool ci;
         DisplayVerdict verdict;
     };
-    for (const Case& c : {Case{true, true, true, DisplayVerdict::kMet},
-                          Case{true, false, true, DisplayVerdict::kMet},
-                          Case{true, false, false, DisplayVerdict::kMet},
-                          Case{false, true, true, DisplayVerdict::kFailed},
-                          Case{false, true, false, DisplayVerdict::kFailed},
-                          Case{false, false, true, DisplayVerdict::kSkipped},
-                          Case{false, false, false, DisplayVerdict::kFailed}}) {
+    for (const Case& c :
+         {Case{.met = true, .displayRan = true, .ci = true, .verdict = DisplayVerdict::kMet},
+          Case{.met = true, .displayRan = false, .ci = true, .verdict = DisplayVerdict::kMet},
+          Case{.met = true, .displayRan = false, .ci = false, .verdict = DisplayVerdict::kMet},
+          Case{.met = false, .displayRan = true, .ci = true, .verdict = DisplayVerdict::kFailed},
+          Case{.met = false, .displayRan = true, .ci = false, .verdict = DisplayVerdict::kFailed},
+          Case{.met = false, .displayRan = false, .ci = true, .verdict = DisplayVerdict::kSkipped},
+          Case{.met = false,
+               .displayRan = false,
+               .ci = false,
+               .verdict = DisplayVerdict::kFailed}}) {
         SCOPED_TRACE(std::string("met ") + (c.met ? "yes" : "no") + ", display ran " +
                      (c.displayRan ? "yes" : "no") + ", CI " + (c.ci ? "yes" : "no"));
-        EXPECT_EQ(name(displayVerdict({.met = c.met, .displayRan = c.displayRan}, c.ci)),
-                  name(c.verdict));
+        EXPECT_EQ(
+            name(displayVerdict({.met = c.met, .displayRan = c.displayRan, .message = {}}, c.ci)),
+            name(c.verdict));
     }
 }
 

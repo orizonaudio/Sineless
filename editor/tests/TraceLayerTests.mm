@@ -143,7 +143,7 @@ protected:
                                const std::string& what) const
     {
         if (met) {
-            return {.met = true};
+            return {.met = true, .displayRan = true, .message = {}};
         }
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started);
