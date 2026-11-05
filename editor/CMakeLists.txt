@@ -48,7 +48,7 @@ add_library(editor_core STATIC
     ${embeddedAssetData}
 )
 target_include_directories(editor_core PUBLIC include PRIVATE src)
-target_link_libraries(editor_core PUBLIC engine PRIVATE orizon_warnings)
+target_link_libraries(editor_core PUBLIC engine PRIVATE branding orizon_warnings)
 if(APPLE)
     target_sources(editor_core PRIVATE src/mac/DisplayScaleMac.cpp src/mac/MetalTraceRenderer.mm
                                        src/mac/TraceLayerMac.mm src/mac/UiDispatcherMac.mm

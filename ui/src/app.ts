@@ -179,7 +179,10 @@ const popovers = [
   ["group-group", "group-details", "group-popover"],
   ["views-group", "views-details", "views-popover"],
   ["trigger-group", "trigger-details", "trigger-popover"],
+  ["about-group", "about-details", "about-popover"],
 ] as const;
+// The status bar's popover, which CSS places above its button; the others open under their field.
+const placedByStyle = new Set<string>(["about-popover"]);
 // The hover readout keeps this far (CSS px) from the pointer.
 const hoverOffset = 14;
 
@@ -618,6 +621,8 @@ export class OscilloscopeApp {
     element("brand-mark").innerHTML = brand.mark;
     element("wordmark").textContent = brand.name;
     document.title = brand.name;
+    element("about-name").textContent = brand.name;
+    element("about-details").setAttribute("aria-label", `About ${brand.name}`);
 
     // A field's button opens its popover, and closes any other; a press elsewhere closes it.
     for (const [group, button, id] of popovers) {
@@ -646,6 +651,11 @@ export class OscilloscopeApp {
         }
       });
     }
+
+    element("contact").addEventListener("click", () => {
+      this.backend.contact();
+      this.closePopover("about-details", "about-popover");
+    });
 
     element("freeze").addEventListener("click", () => {
       const frozen = this.lastFrame?.frozen !== true;
@@ -792,7 +802,7 @@ export class OscilloscopeApp {
   // Under its field, left-aligned with it as far as the window allows.
   private placePopover(id: string, groupId: string): void {
     const popover = element(id);
-    if (popover.hidden) {
+    if (popover.hidden || placedByStyle.has(id)) {
       return;
     }
     const group = element(groupId);
@@ -2030,6 +2040,11 @@ export class OscilloscopeApp {
         this.showNativeGraphicsLost();
       }
       this.queueTraceView();
+    });
+    // What the editor says of itself: shown as it says it, never worked out by the page.
+    this.backend.on("about", (message) => {
+      element("about-version").textContent = message.version;
+      element("contact").hidden = !message.contact;
     });
     this.backend.on("nativeGraphicsLost", () => {
       this.nativeGraphicsLost = true;

@@ -5,6 +5,7 @@ import {
   type Frame,
 } from "../../../protocol/src/frame-decoder.ts";
 import type {
+  AboutMessage,
   ErrorMessage,
   LanesMessage,
   SettingValue,
@@ -22,6 +23,7 @@ export interface BackendEvents {
   error(message: ErrorMessage): void;
   lanes(message: LanesMessage): void;
   nativeGraphicsLost(): void;
+  about(message: AboutMessage): void;
   frame(frame: Frame): void;
 }
 
@@ -35,6 +37,7 @@ export class Backend {
     error: [],
     lanes: [],
     nativeGraphicsLost: [],
+    about: [],
     frame: [],
   };
 
@@ -112,6 +115,11 @@ export class Backend {
     this.transport.send({ type: "resize", width, height });
   }
 
+  // Asks the editor to open the vendor's contact page in the default browser.
+  contact(): void {
+    this.transport.send({ type: "contact" });
+  }
+
   // Asks for the next display frame: once at the start, then after each frame drawn.
   requestFrame(): void {
     this.transport.requestFrame();
@@ -142,6 +150,11 @@ export class Backend {
       case "nativeGraphicsLost":
         for (const handler of this.handlers.nativeGraphicsLost) {
           handler();
+        }
+        break;
+      case "about":
+        for (const handler of this.handlers.about) {
+          handler(message as unknown as AboutMessage);
         }
         break;
       default:

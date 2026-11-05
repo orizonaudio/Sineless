@@ -1,4 +1,5 @@
 #include "EmbeddedAssets.h"
+#include "editor/OpenLink.h"
 #include "editor/PointerHold.h"
 #include "editor/WebView.h"
 #include "engine/Version.h"
@@ -1118,6 +1119,18 @@ bool holdsPointerInBundleOfTypeForTests(const char* type)
 void pollPointerHoldForTests(WebView& view)
 {
     static_cast<WebViewMac&>(view).pollPointerHold();
+}
+
+// As JUCE and iPlug2 do: NSWorkspace hands the URL to Launch Services, which opens the default
+// browser.
+void openInBrowser(std::string_view url)
+{
+    NSString* text = [[NSString alloc] initWithBytes:url.data()
+                                              length:url.size()
+                                            encoding:NSUTF8StringEncoding];
+    if (NSURL* link = text != nil ? [NSURL URLWithString:text] : nil) {
+        [[NSWorkspace sharedWorkspace] openURL:link];
+    }
 }
 
 } // namespace orizon::editor

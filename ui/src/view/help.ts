@@ -41,6 +41,14 @@ export const helpTexts = {
     title: "Help",
     text: "Turns help on or off. While it is on, resting the pointer on any control explains what it is, what it does and how to use it.",
   },
+  about: {
+    title: "About",
+    text: "Shows which version of the plugin this is, as your host lists it: give it when you report a problem.",
+  },
+  contact: {
+    title: "About us",
+    text: "Opens our About page, with how to contact us, in your default browser.",
+  },
   displayMode: {
     title: "Single, Multi or Compare",
     text: `Single shows this track's channels. Multi shows every track of this instance's group that has this plugin inserted, one lane each as the track's Mid, at most ${lanesMulti}. Compare (in beta) shows the same tracks, at most ${lanesCompare}, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.`,

@@ -1,9 +1,12 @@
+#include "Branding.h"
 #include "FitStates.h"
 #include "editor/DisplayScale.h"
 #include "editor/Editor.h"
 #include "editor/Transport.h"
+#include "editor/UiDispatcher.h"
 #include "editor/WebView.h"
 #include "engine/Engine.h"
+#include "engine/Version.h"
 #include "win/WebViewWinTesting.h"
 
 // windows.h first: the other Windows headers depend on it.
@@ -20,6 +23,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -553,6 +557,69 @@ TEST_F(EditorTest, StaysOnTheEmbeddedUi)
     pumpUntil([] { return false; }, std::chrono::milliseconds(1500));
     EXPECT_EQ(evaluate(view, "location.href"), "orizon://ui/index.html");
     EXPECT_TRUE(hasSnapshot(view));
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+}
+
+// The About popover shows the version the host lists for the plugin, also when the editor cannot
+// reach the engine, when a user is most likely to report it.
+TEST_F(EditorTest, ShowsTheVersionTheHostIsGiven)
+{
+    for (const bool withEngine : {true, false}) {
+        HWND window = makeWindow();
+        std::vector<std::string> received;
+        auto editor = withEngine ? makeEditor(received) : makeEditor(received, nullptr);
+        ASSERT_EQ(attach(window, *editor), kResultTrue);
+        WebView& view = *editor->webView();
+        EXPECT_TRUE(pumpUntil(
+            [&] {
+                return evaluate(view,
+                                "document.getElementById('about-version')?.textContent ?? ''") ==
+                       engine::kVersionString;
+            },
+            kPageTimeout))
+            << (withEngine ? "with" : "without") << " an engine";
+        EXPECT_EQ(editor->removed(), kResultOk);
+        DestroyWindow(window);
+    }
+}
+
+// About us opens the vendor's contact page in the default browser, never in the editor. A build
+// without the brand has no contact page: it offers none, and a request for one opens nothing.
+TEST_F(EditorTest, AboutUsOpensTheVendorsPageOnlyInABrandedBuild)
+{
+    HWND window = makeWindow();
+    std::vector<std::string> received;
+    auto editor = makeEditor(received);
+    std::vector<std::string> opened;
+    editor->setLinkOpener([&opened](std::string_view url) { opened.emplace_back(url); });
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    WebView& view = *editor->webView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
+    const bool branded = SINELESS_BRANDED == 1;
+    EXPECT_EQ(evaluate(view, "String(!(document.getElementById('contact')?.hidden ?? true))"),
+              branded ? "true" : "false")
+        << "About us offered";
+    if (branded) {
+        evaluate(view, "document.getElementById('about-details').click();"
+                       "document.getElementById('contact').click(); ''");
+    } else {
+        evaluate(view, "window.chrome.webview.postMessage(JSON.stringify({type: 'contact'})); ''");
+    }
+    // Every message the page sent before this one has been handled, and the work the editor
+    // posted for them has run: the dispatcher's queue is first in, first out.
+    evaluate(view, "window.chrome.webview.postMessage(JSON.stringify({type: 'arm'})); ''");
+    ASSERT_TRUE(pumpUntil([&] { return saw(received, "arm"); }, kPageTimeout));
+    bool drained = false;
+    auto dispatcher = UiDispatcher::create();
+    dispatcher->post([&drained] { drained = true; });
+    ASSERT_TRUE(pumpUntil([&] { return drained; }, std::chrono::seconds(5)));
+    if (branded) {
+        EXPECT_EQ(opened, std::vector<std::string>{branding::kContactUrl});
+    } else {
+        EXPECT_TRUE(opened.empty()) << opened.front();
+    }
+    EXPECT_EQ(evaluate(view, "location.href"), "orizon://ui/index.html");
     EXPECT_EQ(editor->removed(), kResultOk);
     DestroyWindow(window);
 }
