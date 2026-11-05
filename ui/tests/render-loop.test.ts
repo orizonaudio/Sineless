@@ -516,3 +516,81 @@ describe("render loop at two ticks a frame", () => {
     expect(credits()).toBe(before);
   });
 });
+
+// The screen changing size clears the canvas after the frame's draw: the loop draws the last
+// picture again at once, so the frame shown is not blank. That redraw is not a tick: it earns no
+// credit, so the engine sends no extra frame, and leaves a frame waiting for its tick waiting.
+describe("drawing the last frame again at once", () => {
+  function loopOn() {
+    const ticks: ((timestamp: number) => void)[] = [];
+    const draws: { id: number; at: number | undefined }[] = [];
+    let credits = 0;
+    const loop = pageLoop(
+      (callback) => {
+        ticks.push(callback);
+      },
+      {
+        draw(drawn, tickTime) {
+          draws.push({ id: drawn.pointCount, at: tickTime });
+        },
+      },
+      () => {
+        credits++;
+      },
+    );
+    let now = 0;
+    const tick = () => {
+      now += 16;
+      const due = ticks.splice(0);
+      for (const callback of due) {
+        callback(now);
+      }
+    };
+    return {
+      loop,
+      draws,
+      credits: () => credits,
+      tick,
+      pending: () => ticks.length,
+    };
+  }
+
+  test("draws nothing before any frame was drawn", () => {
+    const { loop, draws } = loopOn();
+    loop.redrawNow();
+    expect(draws).toEqual([]);
+  });
+
+  // Frozen: nothing new comes, and the redraw is of the frame on screen.
+  test("draws the frame on screen once, with no credit, when nothing is waiting", () => {
+    const { loop, draws, credits, tick } = loopOn();
+    loop.submit(frame(1));
+    tick();
+    expect(draws).toEqual([{ id: 1, at: 16 }]);
+    const earned = credits();
+    // The resize asked for a redraw on the next tick too: the one drawn now is enough.
+    loop.invalidate();
+    loop.redrawNow();
+    expect(draws.slice(1)).toEqual([{ id: 1, at: 16 }]);
+    for (let i = 0; i < 4; i++) {
+      tick();
+    }
+    expect(draws).toHaveLength(2);
+    expect(credits()).toBe(earned);
+  });
+
+  test("leaves a frame waiting for its tick to draw then, returning its credit once", () => {
+    const { loop, draws, credits, tick } = loopOn();
+    loop.submit(frame(1));
+    tick();
+    const earned = credits();
+    loop.submit(frame(2));
+    loop.redrawNow();
+    expect(draws.at(-1)).toEqual({ id: 1, at: 16 });
+    for (let i = 0; i < 4; i++) {
+      tick();
+    }
+    expect(draws.filter((drawn) => drawn.id === 2)).toHaveLength(1);
+    expect(credits()).toBe(earned + 1);
+  });
+});

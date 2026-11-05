@@ -1,7 +1,8 @@
 // A test file that starts the app again (another track, or the editor reopened) leaves one app in
 // the page: the one started before hears nothing more from its back end and asks it for nothing,
-// and its timers stop, so it cannot write its own state into the new one's elements.
-import { expect, test, vi } from "vitest";
+// its timers stop and it watches its screen no more, so it cannot write its own state into the new
+// one's elements.
+import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { readoutIntervalSeconds } from "../../../protocol/src/limits.ts";
@@ -30,4 +31,36 @@ test("a new app's status bar shows no Waiting from an app started earlier in the
     setTimeout(resolve, 4000 * (waitingAfterSeconds + readoutIntervalSeconds));
   });
   expect(chips()).not.toContain("Waiting");
+});
+
+// Replacing the page detaches the screen the earlier app observed, which browsers report as a
+// change to no size: were it still observed, its sizing would draw its labels by id into the new
+// app's page.
+test("an app started earlier in the file watches its screen no more once another starts", async () => {
+  const deliveries = new Map<ResizeObserver, number>();
+  const native = window.ResizeObserver;
+  vi.stubGlobal(
+    "ResizeObserver",
+    class extends native {
+      constructor(callback: ResizeObserverCallback) {
+        super((entries, observer) => {
+          deliveries.set(observer, (deliveries.get(observer) ?? 0) + 1);
+          callback(entries, observer);
+        });
+        deliveries.set(this, 0);
+      }
+    },
+  );
+  await startApp();
+  await settle();
+  const first = [...deliveries.keys()];
+  expect(first.length).toBeGreaterThan(0);
+  const before = first.map((observer) => deliveries.get(observer));
+  await startApp();
+  await settle();
+  expect(first.map((observer) => deliveries.get(observer))).toEqual(before);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });

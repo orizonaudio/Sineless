@@ -77,7 +77,10 @@ if(BUILD_TESTING)
     target_link_libraries(au_view_tests
         PRIVATE au orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework WebKit")
     set_source_files_properties(tests/AudioUnitViewTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
-    gtest_discover_tests(au_view_tests DISCOVERY_TIMEOUT 30 PROPERTIES RUN_SERIAL TRUE)
+    # With Metal's API validation off CI, as the editor's display-paced tests
+    # (editor/CMakeLists.txt): the view draws the traces natively.
+    gtest_discover_tests(au_view_tests DISCOVERY_TIMEOUT 30
+                         PROPERTIES RUN_SERIAL TRUE ${ORIZON_LOCAL_METAL_VALIDATION})
 
     # The component as a host meets it: an app of its own that loads the component and links
     # none of the Audio Unit's code, so that the component's bundle and the host's differ.
