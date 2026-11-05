@@ -2,7 +2,10 @@
 // does: each target builds with this main in every build that has tests, and ctest replays its
 // seeds and the inputs of fixed crashes (regressions/<target>/) on every platform, so that a
 // crash, a failed invariant or a sanitizer report on any of them fails the tests.
-// Usage: <target> <file or directory>...   (directories are read whole, recursively)
+// Usage: <target> [--require-oracle=<name>]... <file or directory>...   (directories are read
+// whole, recursively). Each --require-oracle fails the replay if that oracle checked no frame.
+
+#include "FuzzCheck.h"
 
 #include <algorithm>
 #ifdef _MSC_VER
@@ -15,6 +18,8 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <string>
+#include <string_view>
 #include <vector>
 
 // The target's entry point, as libFuzzer calls it.
@@ -35,7 +40,14 @@ int main(int argc, char** argv)
     _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
 #endif
     std::vector<fs::path> inputs;
+    std::vector<std::string> requiredOracles;
+    constexpr std::string_view kRequireOracle = "--require-oracle=";
     for (int i = 1; i < argc; ++i) {
+        const std::string_view argument(argv[i]);
+        if (argument.starts_with(kRequireOracle)) {
+            requiredOracles.emplace_back(argument.substr(kRequireOracle.size()));
+            continue;
+        }
         const fs::path path(argv[i]);
         if (fs::is_directory(path)) {
             for (const auto& entry : fs::recursive_directory_iterator(path)) {
@@ -66,5 +78,14 @@ int main(int argc, char** argv)
         LLVMFuzzerTestOneInput(reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size());
     }
     std::cerr << "Replayed " << inputs.size() << " inputs\n";
+    for (const auto& oracle : requiredOracles) {
+        const auto& checks = orizon::fuzz::oracleChecks();
+        const auto found = checks.find(oracle);
+        if (found == checks.end()) {
+            std::cerr << "The " << oracle << " oracle checked no frame\n";
+            return 1;
+        }
+        std::cerr << "The " << oracle << " oracle checked " << found->second << " frames\n";
+    }
     return 0;
 }

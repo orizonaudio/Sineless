@@ -812,7 +812,7 @@ and benchmark builds. Test levels, where each runs and the definition of done ar
 | Integration and app | The editor with its page in a real WKWebView or WebView2; the real page against the mock, and on sessions the real engine recorded, in WebKit and Chromium (Playwright) | macOS, Windows; Linux |
 | Conformance | Steinberg VST3 validator (part of the build); pluginval at strictness 10; for the Audio Unit, Apple's auval (strict, in and out of process) and pluginval on a copy installed for the user (`scripts/validate-au.sh`) | macOS, Windows |
 | Sanitizers | RealtimeSanitizer, ThreadSanitizer, AddressSanitizer + LeakSanitizer + UBSan on the shared code (Linux); ASan + UBSan and TSan on the macOS glue; MSVC ASan on the Windows glue | Linux, macOS, Windows |
-| Fuzzing | libFuzzer on state loading, setting values, the session's messages; fast-check on frame decoding and transport. Five minutes per pull request, 30 nightly, from a corpus kept on main | Linux |
+| Fuzzing | libFuzzer on state loading, setting values, the session's messages, and host events (rates, channels, generated audio, transport, tracks joining and leaving, freezing), checking that the same events draw the same frames; fast-check on frame decoding and transport. Five minutes per pull request, 30 nightly, from a corpus kept on main | Linux |
 | Coverage, mutation | Changed-line coverage (llvm-cov, V8); mutation testing of changed lines (Stryker, Mull; each C++ mutant stopped at a limit from its tests' time with no mutant), the mutants no test noticed triaged in CI (below) | Linux |
 | Performance | Audio-thread deadline, frame rate, analysis CPU, reopen leaks (section 10); reported in CI, judged locally | macOS, Windows |
 | Release | Soak test (`scripts/soak.sh`), the HOSTS.md smoke test by hand; occasionally the full HOSTS.md protocol and the scripted REAPER test on Windows (CONTRIBUTING.md, Releasing) | Before a release |
@@ -1038,7 +1038,7 @@ inputs it does not control are the threats it guards against (SECURITY.md):
 | Plugin state from a project someone else made | Crash or memory corruption while loading | At most 1 MB read; parsed by nlohmann/json; each field validated against the settings table, an invalid one refused (FR-8); never throws to the host | State fuzzer, `StateFaultTests`, ASan + UBSan |
 | Messages from the page | A page that misbehaves drives the engine into bad state | Only from `orizon://ui/`'s main frame; unknown or malformed messages dropped; settings validated; the viewport width capped at 16384 columns | Session fuzzer, `SessionTests`; the width cap has no test of its own (R-8) |
 | Navigation from the page | The page loads or opens content from elsewhere | Navigation outside `orizon://ui/` and new windows are refused on both platforms; the page can ask only for the vendor's contact page, which the editor opens from its own build-time address, in the default browser | No test yet (R-8) |
-| Audio | Samples that are not finite corrupt readouts | Left out of every measurement, counted and reported (FR-7) | Signal corpus, `invalid-samples.test.ts` |
+| Audio | Samples that are not finite corrupt readouts | Left out of every measurement, counted and reported (FR-7) | Signal corpus, `invalid-samples.test.ts`, host fuzzer |
 | Downloads | A release altered after it was built | Checksums and a build provenance attestation (7) | Release workflow |
 
 Vulnerabilities are reported privately through GitHub's security advisories (SECURITY.md).

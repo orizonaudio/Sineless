@@ -26,7 +26,7 @@ else
 fi
 fuzzers=("$@")
 if [ ${#fuzzers[@]} -eq 0 ]; then
-    fuzzers=(state_fuzzer setting_json_fuzzer session_fuzzer)
+    fuzzers=(state_fuzzer setting_json_fuzzer session_fuzzer host_fuzzer)
 fi
 
 if $prune; then
@@ -52,16 +52,21 @@ fi
 
 # How long and on how many cores each fuzzer runs. The state and setting fuzzers run thousands of
 # inputs a second and stopped finding new code within their first minute on CI, so they get at
-# most a minute and one core each. The session fuzzer runs a few dozen a second (each input builds
-# two engines and an analyzer) and still finds new code, so it gets the whole run and the other
-# cores (libFuzzer's fork mode). Fork mode skips inputs that time out or run out of memory unless
-# told not to; here they fail the run as they do in a single process, as bugs.
+# most a minute and one core each. The session and host fuzzers run a few dozen a second (each
+# input builds engines and an analyzer) and still find new code, so they get the whole run and
+# share the other cores (libFuzzer's fork mode), the host fuzzer the larger half: the session
+# fuzzer's coverage had levelled off. Fork mode skips inputs that time out or run out of memory
+# unless told not to; here they fail the run as they do in a single process, as bugs.
 cores="$(nproc 2> /dev/null || sysctl -n hw.ncpu)"
+spare=$((cores > 2 ? cores - 1 : 1))
+sessionForks=$((spare / 2 > 0 ? spare / 2 : 1))
+hostForks=$((spare - spare / 2 > 0 ? spare - spare / 2 : 1))
 budget() {
     case "$1" in
-    session_fuzzer)
-        echo "-max_total_time=$seconds -fork=$((cores > 2 ? cores - 1 : 1))" \
-            "-ignore_timeouts=0 -ignore_ooms=0"
+    session_fuzzer | host_fuzzer)
+        local forks=$sessionForks
+        [ "$1" = host_fuzzer ] && forks=$hostForks
+        echo "-max_total_time=$seconds -fork=$forks -ignore_timeouts=0 -ignore_ooms=0"
         ;;
     *)
         echo "-max_total_time=$((seconds < 60 ? seconds : 60))"
