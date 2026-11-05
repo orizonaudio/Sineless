@@ -7,7 +7,10 @@
 #import <WebKit/WebKit.h>
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <gtest/gtest.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,6 +29,99 @@ inline bool pumpUntil(const std::function<bool()>& condition, std::chrono::milli
     }
     return condition();
 }
+
+// ----- Waits on the display -----
+//
+// Some waits are for what only the display makes happen: the trace layer's display link calling
+// back, or the page's rendering update (requestAnimationFrame, ResizeObserver). The virtual
+// display of a CI machine stops driving both for seconds now and then (no callbacks, no presented
+// times), which no host's display does. A wait that times out asks whether the display ran
+// meanwhile: if not, it skips on CI, saying so, and fails elsewhere, so a stall on a developer's
+// Mac still shows. If the display ran, the test fails as any other.
+
+// The share of the refreshes a wait spanned that shows the display ran: far above a stalled CI
+// display's (under 6%: 11 callbacks where 180 were due), and below a link running on time, so
+// neither a busy machine nor a screen reporting more than the link delivers reads as a stall.
+inline constexpr double kRanFraction = 0.5;
+
+// The refreshes `wait` spans at the screen's reported rate (60 Hz when it reports none).
+inline double expectedRefreshes(std::chrono::milliseconds wait, double screenHertz)
+{
+    const double hertz = screenHertz > 0.0 ? screenHertz : 60.0;
+    return static_cast<double>(wait.count()) / 1000.0 * hertz;
+}
+
+// Whether `given` callbacks of `expected` show the display ran.
+inline bool displayRan(std::uint64_t given, double expected)
+{
+    return static_cast<double>(given) >= kRanFraction * expected;
+}
+
+// What the page's one requestAnimationFrame, asked after a wait timed out, says of its rendering
+// updates. A read that failed measured nothing: it fails the test, never skips it.
+enum class PageProbe
+{
+    kFired,
+    kNotFired,
+    kNotMeasured,
+};
+
+inline bool pageRan(PageProbe probe)
+{
+    return probe != PageProbe::kNotFired;
+}
+
+// For what needs both the link and the page (frames made on the link's request, reaching the page
+// in its rendering update): the display ran only if both did.
+inline bool linkAndPageRan(std::uint64_t given, double expected, PageProbe probe)
+{
+    return displayRan(given, expected) && pageRan(probe);
+}
+
+// A wait's outcome: whether its condition held, and if not, whether the display drove it.
+struct DisplayWait
+{
+    bool met = false;
+    bool displayRan = true;
+    std::string message;
+};
+
+enum class DisplayVerdict
+{
+    kMet,
+    kFailed,
+    kSkipped,
+};
+
+// Met; else skipped where the display stalled on CI; else failed.
+inline DisplayVerdict displayVerdict(const DisplayWait& wait, bool ci)
+{
+    if (wait.met) {
+        return DisplayVerdict::kMet;
+    }
+    return !wait.displayRan && ci ? DisplayVerdict::kSkipped : DisplayVerdict::kFailed;
+}
+
+// Whether the tests run on CI (GitHub sets CI on every job).
+inline bool onCi()
+{
+    const char* value = std::getenv("CI");
+    return value != nullptr && *value != '\0' && std::string(value) != "false";
+}
+
+// Asserts a wait on the display in a test body: skips the test where the display stalled on CI.
+#define ASSERT_DISPLAY_WAIT(wait)                                                                  \
+    do {                                                                                           \
+        const ::orizon::testing::DisplayWait displayWait_ = (wait);                                \
+        switch (::orizon::testing::displayVerdict(displayWait_, ::orizon::testing::onCi())) {      \
+        case ::orizon::testing::DisplayVerdict::kMet:                                              \
+            break;                                                                                 \
+        case ::orizon::testing::DisplayVerdict::kSkipped:                                          \
+            GTEST_SKIP() << displayWait_.message;                                                  \
+        case ::orizon::testing::DisplayVerdict::kFailed:                                           \
+            FAIL() << displayWait_.message;                                                        \
+        }                                                                                          \
+    } while (false)
 
 // Evaluates `script` in the page and returns its result as a string ("" if none yet).
 inline std::string evaluate(WKWebView* webView, NSString* script)
