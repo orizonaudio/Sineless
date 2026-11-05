@@ -32,6 +32,18 @@ orizon_add_fuzzer(session_fuzzer SEEDS session SOURCES
     ${PROJECT_SOURCE_DIR}/editor/src/Transport.cpp
 )
 target_include_directories(session_fuzzer PRIVATE ${PROJECT_SOURCE_DIR}/editor/include)
+orizon_add_fuzzer(host_fuzzer SEEDS host SOURCES
+    HostFuzzer.cpp
+    ${PROJECT_SOURCE_DIR}/editor/src/Session.cpp
+    ${PROJECT_SOURCE_DIR}/editor/src/Transport.cpp
+)
+target_include_directories(host_fuzzer PRIVATE ${PROJECT_SOURCE_DIR}/editor/include
+                                               ${PROJECT_SOURCE_DIR}/engine/tests/support)
+if(NOT ORIZON_FUZZ)
+    # Each host seed draws its frames in two worlds, which must agree: the seeds must reach that.
+    add_test(NAME fuzz.host_fuzzer.determinism
+             COMMAND host_fuzzer --require-oracle=determinism ${seedDir}/host)
+endif()
 
 if(NOT ORIZON_FUZZ)
     # The replay refuses a path that names nothing, and a run with no input at all, rather than
@@ -43,14 +55,19 @@ if(NOT ORIZON_FUZZ)
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/no-inputs)
     add_test(NAME fuzz.replay.RefusesNoInputs
              COMMAND state_fuzzer ${CMAKE_CURRENT_BINARY_DIR}/no-inputs)
+    # And it refuses a run whose required oracle checked nothing, beside real inputs that reach
+    # another one, so that the oracles' own tests cannot pass by checking nothing.
+    add_test(NAME fuzz.replay.RefusesAnOracleThatCheckedNothing
+             COMMAND host_fuzzer --require-oracle=no-such-oracle ${seedDir}/host/tracks)
     set_tests_properties(fuzz.replay.RefusesAMissingInput fuzz.replay.RefusesNoInputs
-                         PROPERTIES WILL_FAIL TRUE)
+                         fuzz.replay.RefusesAnOracleThatCheckedNothing PROPERTIES WILL_FAIL TRUE)
 endif()
 
 # The dictionary and the session's seeds, written from the protocol's tables and the message
 # examples the contract tests share.
 add_executable(fuzz_inputs FuzzInputs.cpp)
 target_link_libraries(fuzz_inputs PRIVATE engine orizon_warnings)
+target_include_directories(fuzz_inputs PRIVATE ${PROJECT_SOURCE_DIR}/engine/tests/support)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/fuzz.dict
     COMMAND fuzz_inputs ${protocolTestData}/messages.json ${CMAKE_CURRENT_BINARY_DIR}

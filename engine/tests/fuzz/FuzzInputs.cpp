@@ -2,12 +2,15 @@
 // shared message examples, so that a new setting, value or message type reaches the fuzzers
 // without anyone updating a list.
 // Usage: fuzz_inputs <protocol/tests/data/messages.json> <output directory>
-// Writes <output>/fuzz.dict and <output>/seeds/session/*.
+// Writes <output>/fuzz.dict, <output>/seeds/session/* and <output>/seeds/host/*.
 
+#include "HostSteps.h"
 #include "engine/SettingJson.h"
 #include "protocol/Protocol.h"
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -151,6 +154,137 @@ bool writeSessionSeeds(const nlohmann::json& examples, const std::filesystem::pa
     return ok;
 }
 
+// The host fuzzer's input, step by step, as HostFuzzer.cpp's readSteps reads it.
+class HostSeed
+{
+public:
+    using StepKind = fuzz::host::StepKind;
+    using Tracks = fuzz::host::Tracks;
+    using SignalKind = fuzz::host::SignalKind;
+
+    HostSeed& prepare(Tracks tracks, double rate)
+    {
+        return rated(StepKind::kPrepare, tracks, rate);
+    }
+    HostSeed& rate(Tracks tracks, double rate) { return rated(StepKind::kRate, tracks, rate); }
+    HostSeed& channels(Tracks tracks, int count)
+    {
+        return step(StepKind::kChannels).add(tracks).add(count == 1 ? 1 : 0);
+    }
+    // `blocks` blocks of 4,096 samples of a signal at `hertz`, half scale, none broken or silent.
+    HostSeed& play(SignalKind signal, std::uint16_t hertz, int blocks = 8)
+    {
+        step(StepKind::kPlay).add(signal);
+        add(static_cast<std::uint8_t>((hertz - 1) & 0xFFU));
+        add(static_cast<std::uint8_t>((hertz - 1) >> 8U));
+        return add(64).add(1).add(blocks - 1).add(7).add(1).add(1);
+    }
+    HostSeed& leave() { return step(StepKind::kLeave); }
+    HostSeed& join() { return step(StepKind::kJoin); }
+    HostSeed& freeze(bool on) { return step(StepKind::kFreeze).add(on ? 1 : 0); }
+    // A setting's value: its enum value, or a number's position in its range (0 to 255).
+    HostSeed& setting(protocol::SettingId id, std::uint8_t value)
+    {
+        return step(StepKind::kMessage).add(0).add(id).add(value);
+    }
+    HostSeed& pan(std::uint8_t at) { return step(StepKind::kMessage).add(1).add(at); }
+    HostSeed& advance() { return step(StepKind::kAdvance); }
+    HostSeed& frame() { return step(StepKind::kFrame); }
+
+    [[nodiscard]] const std::vector<std::uint8_t>& bytes() const { return written; }
+
+private:
+    HostSeed& step(StepKind kind) { return add(kind); }
+    HostSeed& rated(StepKind kind, Tracks tracks, double rate)
+    {
+        const auto& rates = fuzz::host::kRates;
+        const auto found = std::ranges::find(rates, rate);
+        return step(kind).add(tracks).add(found - rates.begin());
+    }
+    template <typename T> HostSeed& add(T value)
+    {
+        written.push_back(static_cast<std::uint8_t>(value));
+        return *this;
+    }
+
+    std::vector<std::uint8_t> written;
+};
+
+// The host fuzzer's seeds: each display mode in each time base, played long enough to fill the
+// shortest spans, drawn live, frozen, after a rate change while frozen and after a pan; and a track
+// leaving and joining again.
+bool writeHostSeeds(const std::filesystem::path& directory)
+{
+    using fuzz::host::SignalKind;
+    using fuzz::host::Tracks;
+    std::filesystem::remove_all(directory);
+    std::filesystem::create_directories(directory);
+    bool ok = true;
+    const auto write = [&](const std::string& name, const HostSeed& seed) {
+        std::ofstream out(directory / name, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(seed.bytes().data()),
+                  static_cast<std::streamsize>(seed.bytes().size()));
+        ok = ok && static_cast<bool>(out);
+    };
+    const auto& modes =
+        protocol::kSettings[static_cast<std::size_t>(protocol::SettingId::kDisplayMode)];
+    const auto& bases =
+        protocol::kSettings[static_cast<std::size_t>(protocol::SettingId::kTimeBase)];
+    for (std::size_t mode = 0; mode < modes.valueNames.size(); ++mode) {
+        for (std::size_t base = 0; base < bases.valueNames.size(); ++base) {
+            HostSeed seed;
+            seed.setting(protocol::SettingId::kDisplayMode, static_cast<std::uint8_t>(mode))
+                .setting(protocol::SettingId::kTimeBase, static_cast<std::uint8_t>(base))
+                .setting(protocol::SettingId::kFreeSpan, 0)
+                .setting(protocol::SettingId::kBeatSpan, 0);
+            for (int i = 0; i < 3; ++i) {
+                seed.play(SignalKind::kSine, 441).advance();
+            }
+            seed.frame().freeze(true).frame().rate(Tracks::kBoth, 96000.0).pan(40).frame();
+            seed.freeze(false).play(SignalKind::kSquare, 100).frame();
+            write(std::string(modes.valueNames[mode]) + "-" + std::string(bases.valueNames[base]),
+                  seed);
+        }
+    }
+    // Every rate the input can choose, prepared on both tracks; a mono track, frozen; and a rate
+    // change on one track only.
+    for (const double rate : fuzz::host::kRates) {
+        HostSeed seed;
+        seed.prepare(Tracks::kBoth, rate).play(SignalKind::kSine, 441).play(SignalKind::kSine, 441);
+        seed.frame();
+        write("prepare-" + std::to_string(static_cast<long>(rate)), seed);
+    }
+    HostSeed mono;
+    mono.channels(Tracks::kBoth, 1)
+        .play(SignalKind::kSine, 441)
+        .frame()
+        .freeze(true)
+        .frame()
+        .channels(Tracks::kBoth, 2)
+        .pan(40)
+        .frame();
+    write("mono", mono);
+    HostSeed oneTrack;
+    oneTrack.setting(protocol::SettingId::kDisplayMode, 1)
+        .play(SignalKind::kSine, 441)
+        .rate(Tracks::kOther, 96000.0)
+        .play(SignalKind::kSine, 441)
+        .frame();
+    write("rate-one-track", oneTrack);
+    HostSeed tracks;
+    tracks.setting(protocol::SettingId::kDisplayMode, 1)
+        .play(SignalKind::kSine, 1000)
+        .frame()
+        .leave()
+        .play(SignalKind::kSine, 1000)
+        .frame()
+        .join()
+        .play(SignalKind::kSine, 1000)
+        .frame();
+    write("tracks", tracks);
+    return ok;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -168,7 +302,8 @@ try {
     const std::filesystem::path output(argv[2]);
     std::filesystem::create_directories(output);
     if (!writeDictionary(output / "fuzz.dict") ||
-        !writeSessionSeeds(examples, output / "seeds" / "session")) {
+        !writeSessionSeeds(examples, output / "seeds" / "session") ||
+        !writeHostSeeds(output / "seeds" / "host")) {
         std::cerr << "fuzz_inputs: cannot write to " << output << "\n";
         return 1;
     }
