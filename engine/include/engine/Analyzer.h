@@ -316,9 +316,11 @@ private:
                                              std::uint64_t shownFrom, double viewStart,
                                              double viewEnd);
     void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
-    [[nodiscard]] bool readoutsDue(std::uint64_t end) const;
-    void storeReadouts(const Readouts& values, std::uint64_t end);
-    // Puts the latest readouts in `header`, and notes what they were measured under.
+    [[nodiscard]] bool readoutsDue(std::uint64_t end, protocol::ChannelView view) const;
+    // Keeps `values`, measured on `view` up to the capture end `end`, for this and later frames.
+    void storeReadouts(const Readouts& values, std::uint64_t end, protocol::ChannelView view);
+    // Puts the latest readouts, and the view they measured, in `header`, and notes what they were
+    // measured under.
     void applyReadouts(FrameHeaderValues& header);
     // Keeps `stats`, the levels of `view` of `image` per block, in step with the samples placed
     // since the last frame; all of them, in blocks of `block` samples, when `fresh`. False if the
@@ -595,6 +597,7 @@ private:
     {
         Readouts values;
         std::uint64_t end = 0;
+        protocol::ChannelView view = protocol::ChannelView::kMid;
         bool valid = false;
         // What they were measured under: frames with other settings or freezing measure again.
         std::optional<Settings> settings;
@@ -611,10 +614,13 @@ private:
         std::uint8_t views = 0;
     };
     ViewReduction viewReduction;
-    // Single mode: the Mid's levels per block of the tempo-synced sweep, for readouts, and the
-    // channel count they were measured for.
-    BlockStats sweepStats;
-    int sweepStatsChannels = 0;
+    // Single mode: each drawn view's levels per block of the tempo-synced sweep, for readouts and
+    // the frame's invalid bit; whether each was kept in step on every frame since it was last
+    // measured afresh (a view not drawn on a frame is not); and the channel count they were
+    // measured for.
+    std::array<BlockStats, protocol::kChannelViewCount> viewStats;
+    std::array<bool, protocol::kChannelViewCount> viewStatsCurrent{};
+    int viewStatsChannels = 0;
     Settings frameSettings; // The settings of the frame being produced.
     std::vector<float> readScratch;
     std::vector<float> triggerSamples;

@@ -492,11 +492,11 @@ bool near(double approved, double actual)
 }
 
 // The header's integer fields, compared exactly; every other header word is a float32.
-constexpr std::array kIntegerWords{FrameHeader::kPointCountOffset, FrameHeader::kLaneSetOffset,
-                                   FrameHeader::kInvalidSamplesOffset,
-                                   FrameHeader::kInvalidLanesOffset};
+constexpr std::array kIntegerWords{
+    FrameHeader::kPointCountOffset, FrameHeader::kLaneSetOffset, FrameHeader::kInvalidSamplesOffset,
+    FrameHeader::kInvalidLanesOffset, FrameHeader::kReadoutViewOffset};
 constexpr std::size_t kByteFields = 4; // mode, flags, views, laneCount.
-static_assert(FrameHeader::kSize == 88,
+static_assert(FrameHeader::kSize == 92,
               "the frame header changed: say here which of its fields are integers, which the "
               "comparison must not take for float32");
 

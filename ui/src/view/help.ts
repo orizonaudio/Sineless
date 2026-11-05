@@ -83,7 +83,7 @@ export const helpTexts = {
   },
   peak: {
     title: "Peak",
-    text: `The highest sample level over the whole span, in dBFS, of this track's Mid (Left on a mono track). Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
+    text: `The highest sample level over the whole span, in dBFS, of the channel named beside the readouts. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
   },
   rms: {
     title: "RMS",
@@ -91,7 +91,7 @@ export const helpTexts = {
   },
   frequency: {
     title: "Frequency",
-    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average, of this track's Mid (Left on a mono track). A dash means no steady repetition was found, or the signal is below ${gate} dBFS.`,
+    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average, of the channel named beside the readouts. A dash means no steady repetition was found, or the signal is below ${gate} dBFS.`,
   },
   screen: {
     title: "Screen",
@@ -175,7 +175,7 @@ export const helpTexts = {
   },
   triggerSource: {
     title: "Trigger source",
-    text: "Which signal the trigger watches. It changes only what the trigger reads: the readouts measure the Mid whatever it is. Not used in Multi and Compare modes, which show each track's Mid.",
+    text: "Which signal the trigger watches. It changes only what the trigger reads: the readouts keep their own channel, chosen beside them in the status bar. Not used in Multi and Compare modes, which show each track's Mid.",
   },
   triggerSlope: {
     title: "Slope",
@@ -199,7 +199,7 @@ export const helpTexts = {
   },
   readoutSource: {
     title: "What the readouts measure",
-    text: "The channel Peak, RMS and Freq read: this track's Mid in every mode, and Left on a mono track.",
+    text: "The channel Peak, RMS and Freq read. In Single, click to choose L, R, M or S among the views drawn; while the one chosen is hidden, they read the first view drawn. Multi and Compare read this track's Mid, and a mono track its one channel, Left.",
   },
   concertPitch: {
     title: "Concert pitch",

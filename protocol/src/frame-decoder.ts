@@ -38,6 +38,8 @@ export interface Frame {
   // The time the whole screen width shows in Trigger or Free: the span, or what is kept of it when
   // `limited`. 0 in a tempo-synced sweep.
   readonly spanSeconds: number;
+  // The channel view the readouts and `invalidSamples` measure.
+  readonly readoutView: ChannelView;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
   // The part of the span this frame covers, and its length in samples.
@@ -153,6 +155,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     invalidLanes: u32("invalidLanes"),
     sampleRate: f32("sampleRate"),
     spanSeconds: f32("spanSeconds"),
+    readoutView: u32("readoutView") as ChannelView,
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
     viewStart: f32("viewStart"),

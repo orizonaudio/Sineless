@@ -2,9 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { ChannelView, DisplayMode } from "../../protocol/src/enums.ts";
+import { DisplayMode } from "../../protocol/src/enums.ts";
 import { helpTexts, isHelpTopic } from "../src/view/help.ts";
-import { readoutView } from "../src/view/screen-state.ts";
 
 const ui = join(import.meta.dirname, "..");
 
@@ -60,27 +59,25 @@ describe("help texts", () => {
     expect(partial).toEqual([]);
   });
 
-  // The help for what the readouts measure names the channel they read, on a stereo and on a mono
-  // track, and no other: the trigger source picks only what the trigger reads.
-  const channelName = (view: ChannelView) => {
-    const key =
-      Object.entries(ChannelView).find(([, value]) => value === view)?.[0] ??
-      "";
-    return key.charAt(0).toUpperCase() + key.slice(1);
-  };
-  test.each(["peak", "frequency", "readoutSource"] as const)(
-    "%s names the channel the readouts measure",
+  // The readouts' channel is chosen (and named beside them), so no help says they measure one
+  // fixed channel; the trigger source picks only what the trigger reads.
+  test.each(["peak", "rms", "frequency", "triggerSource"] as const)(
+    "%s does not tie the readouts to one channel",
     (topic) => {
-      const named = Object.values(ChannelView)
-        .map(channelName)
-        .filter((name) =>
-          new RegExp(`\\b${name}\\b`, "u").test(helpTexts[topic].text),
-        );
-      expect(named.sort()).toEqual(
-        [...new Set([readoutView(2), readoutView(1)].map(channelName))].sort(),
+      expect(helpTexts[topic].text).not.toMatch(
+        /(?:readouts measure|of) (?:this track's )?(?:the )?(?:Mid|Left|Right|Side)\b/u,
       );
     },
   );
+
+  // The help of the readouts' channel names every rule: the channel chosen, the first drawn,
+  // this track's Mid in Multi and Compare, and Left on a mono track.
+  test("readoutSource names how the channel is decided", () => {
+    const { text } = helpTexts.readoutSource;
+    for (const words of ["first", "Multi", "Compare", "Mid", "mono", "Left"]) {
+      expect(text).toContain(words);
+    }
+  });
 
   test("have a title and full sentences", () => {
     for (const { title, text } of Object.values(helpTexts)) {

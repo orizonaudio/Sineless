@@ -12,9 +12,9 @@
   "mode": "minMax",
   "pointCount": 500,
   "readouts": {
-    "frequency": "NaN",
-    "peak": 0,
-    "rms": 0
+    "frequency": 1000,
+    "peak": 0.5,
+    "rms": 0.3535534
   },
   "signal": {
     "channels": 2,

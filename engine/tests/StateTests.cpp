@@ -225,6 +225,7 @@ constexpr std::array kVersion3Values{
     GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kOverlaid)},
     GoldenValue{.id = SettingId::kTriggerMode, .value = asValue(TriggerMode::kSingle)},
     GoldenValue{.id = SettingId::kTriggerSource, .value = asValue(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kReadoutSource, .value = asValue(ChannelView::kRight)},
     GoldenValue{.id = SettingId::kTriggerSlope, .value = asValue(TriggerSlope::kFalling)},
     GoldenValue{.id = SettingId::kTriggerLevel, .value = -0.25},
     GoldenValue{.id = SettingId::kTriggerHysteresis, .value = 0.05},

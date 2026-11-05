@@ -67,6 +67,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .invalidLanes = header["invalidLanes"].get<std::uint32_t>(),
         .sampleRate = header["sampleRate"].get<float>(),
         .spanSeconds = header["spanSeconds"].get<float>(),
+        .readoutView = static_cast<protocol::ChannelView>(header["readoutView"].get<int>()),
     };
 }
 

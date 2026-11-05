@@ -836,17 +836,42 @@ button[aria-pressed="true"]:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-/* A fixed width, for "This track", so the tag's text never moves the readouts. */
-.readout-tag {
-  min-width: 72px;
-  box-sizing: border-box;
-  text-align: center;
+/* What the readouts measure: in Single a button that opens the readouts' popover above it; a
+   plain label otherwise, with no chevron. A fixed width, so the name changing moves nothing. */
+.readout-group {
+  position: relative;
+  display: flex;
   align-self: center;
+}
+
+.readout-tag {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  min-width: 88px;
+  box-sizing: border-box;
   padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 600;
+  font: 600 11px var(--sl-font-ui);
+  color: var(--sl-ink);
+  background: transparent;
   border: 1px solid var(--sl-line);
   border-radius: 4px;
+  cursor: pointer;
+}
+
+.readout-tag[aria-disabled="true"] {
+  cursor: default;
+}
+
+.readout-tag[aria-disabled="true"] .chevron {
+  display: none;
+}
+
+.readout-popover {
+  top: auto;
+  left: 0;
+  bottom: calc(100% + 8px);
 }
 
 /* Each readout keeps a fixed width, so a longer value never moves the next one. */

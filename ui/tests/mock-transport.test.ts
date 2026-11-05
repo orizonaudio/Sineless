@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { ChannelView, FrameMode, TimeBase } from "../../protocol/src/enums.ts";
+import {
+  ChannelView,
+  DisplayMode,
+  FrameMode,
+  TimeBase,
+} from "../../protocol/src/enums.ts";
 import { decodeFrame, type Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   frozenHoldSeconds,
@@ -10,6 +15,7 @@ import {
   mockFundamental,
   mockSummingGain,
   MockTransport,
+  viewSample,
   type MockOptions,
 } from "../src/bridge/mock-transport.ts";
 import type { ControlMessage } from "../src/bridge/transport.ts";
@@ -218,32 +224,74 @@ describe("mock back end", () => {
     expect(frames.at(-1)?.frozen).toBe(true);
   });
 
+  // As the engine does: the readout source when drawn, else the first view drawn, whatever the
+  // trigger reads, and the frame names it. Every time base, every source, with every set of views.
   test.each(
     Object.keys(TimeBase).flatMap((timeBase) =>
       viewOrder.map((source) => [timeBase, source] as const),
     ),
-  )(
-    "measures the Mid in %s with the trigger on %s, as the engine does",
-    (timeBase, source) => {
+  )("measures the readout source in %s when drawn: %s", (timeBase, source) => {
+    for (let drawn = 1; drawn < 1 << viewOrder.length; drawn++) {
       const { transport, frames } = connect();
+      const views = viewOrder.filter(
+        (_, index) => (drawn & (1 << index)) !== 0,
+      );
       transport.send({
         type: "setSetting",
         name: "triggerSource",
+        value: "mid",
+      });
+      transport.send({
+        type: "setSetting",
+        name: "readoutSource",
         value: source,
+      });
+      transport.send({
+        type: "setSetting",
+        name: "channelViews",
+        value: views,
       });
       useTrigger(transport);
       transport.send({ type: "setSetting", name: "timeBase", value: timeBase });
       transport.requestFrame();
-      // L is 0.6 sin; the Mid is half of L plus R: 0.45 sin + 0.125 sin(2x + 0.7).
-      let mid = 0;
+      const measured =
+        ChannelView[views.includes(source) ? source : (views[0] ?? "left")];
+      let peak = 0;
       for (let step = 0; step < 10000; step++) {
-        const phase = (2 * Math.PI * step) / 10000;
-        mid = Math.max(
-          mid,
-          Math.abs(0.45 * Math.sin(phase) + 0.125 * Math.sin(2 * phase + 0.7)),
+        peak = Math.max(
+          peak,
+          Math.abs(viewSample(measured, step / 10000 / mockFundamental)),
         );
       }
-      expect(frames.at(-1)?.peak).toBeCloseTo(mid, 2);
+      expect(frames.at(-1)?.readoutView, views.join(" ")).toBe(measured);
+      expect(frames.at(-1)?.peak, views.join(" ")).toBeCloseTo(peak, 2);
+    }
+  });
+
+  // A frame with no tempo yet names the channel too, and Multi and Compare by their lane set.
+  test.each(Object.keys(DisplayMode))(
+    "names the readout channel with no tempo in %s",
+    (mode) => {
+      const { transport, frames } = connect({ hostTempo: false });
+      transport.send({
+        type: "setSetting",
+        name: "readoutSource",
+        value: "side",
+      });
+      transport.send({
+        type: "setSetting",
+        name: "channelViews",
+        value: ["mid", "side"],
+      });
+      transport.send({ type: "setSetting", name: "displayMode", value: mode });
+      transport.send({ type: "setSetting", name: "timeBase", value: "beats" });
+      transport.requestFrame();
+      const frame = frames.at(-1);
+      expect(frame?.noTempo).toBe(true);
+      expect(frame?.readoutView).toBe(
+        mode === "single" ? ChannelView.side : ChannelView.mid,
+      );
+      expect(frame?.laneSet !== 0).toBe(mode !== "single");
     },
   );
 
@@ -285,7 +333,7 @@ describe("mock back end", () => {
     expect(frames.at(-1)?.panReach).toBe(0);
   });
 
-  test("measures L on a mono track, whatever the trigger source", () => {
+  test("measures L on a mono track, whatever the trigger and readout sources", () => {
     const { transport, frames } = connect({ inputChannels: 1 });
     useTrigger(transport);
     transport.send({
@@ -293,7 +341,13 @@ describe("mock back end", () => {
       name: "triggerSource",
       value: "side",
     });
+    transport.send({
+      type: "setSetting",
+      name: "readoutSource",
+      value: "side",
+    });
     transport.requestFrame();
+    expect(frames.at(-1)?.readoutView).toBe(ChannelView.left);
     expect(frames.at(-1)?.peak).toBeCloseTo(0.6, 2);
   });
 

@@ -19,6 +19,11 @@ namespace orizon::engine {
 [[nodiscard]] protocol::ChannelView effectiveTriggerSource(protocol::ChannelView requested,
                                                            int inputChannels);
 
+// The view the readouts measure in the Single display mode: `requested` when it is in `drawn`
+// (a non-empty mask, as effectiveViews returns), else the first view drawn in L, R, M, S order.
+[[nodiscard]] protocol::ChannelView effectiveReadoutView(protocol::ChannelView requested,
+                                                         std::uint8_t drawn);
+
 // Reads `view` over [start, start + destination.size()). `scratch` must be at least as large as
 // `destination`; it holds the second channel for Mid and Side.
 [[nodiscard]] bool readView(const SampleSource& source, int inputChannels,

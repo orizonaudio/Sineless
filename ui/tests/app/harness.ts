@@ -267,6 +267,55 @@ export async function press(button: HTMLElement): Promise<void> {
   await userEvent.click(button);
 }
 
+// Presses a toggle button, or releases it, unless it is already so.
+export async function setPressed(
+  button: HTMLElement,
+  pressed: boolean,
+): Promise<void> {
+  if ((button.getAttribute("aria-pressed") === "true") !== pressed) {
+    await userEvent.click(button);
+  }
+  await expect.element(button).toHaveAttribute("aria-pressed", String(pressed));
+}
+
+// Shows the views whose toggles are labelled `shown` ("L", "M") and hides the others, then waits
+// for a frame drawing them.
+export async function showViews(shown: readonly string[]): Promise<void> {
+  if (byId("views-popover").hidden) {
+    await userEvent.click(byId("views-details"));
+  }
+  const toggles = [...byId("views").querySelectorAll("button")];
+  // Shown ones first, so that one view stays shown throughout.
+  for (const button of toggles) {
+    if (shown.includes(button.textContent)) {
+      await setPressed(button, true);
+    }
+  }
+  for (const button of toggles) {
+    if (!shown.includes(button.textContent)) {
+      await setPressed(button, false);
+    }
+  }
+  // The toggle is named after the views a frame has drawn, so its name changes a frame after the
+  // last toggle: close it once that frame has come, not while the click's locator can go stale.
+  const drawn = toggles
+    .map((button) => button.textContent)
+    .filter((label) => shown.includes(label));
+  await expect
+    .element(byId("views-details"))
+    .toHaveAttribute("aria-label", `Views: ${drawn.join(" ")}`);
+  await userEvent.click(byId("views-details"));
+}
+
+// Chooses the channel the readouts measure in the status bar's popover ("S"), and closes it.
+export async function useReadout(label: string): Promise<void> {
+  await press(choice("readout-source", label));
+  await expect
+    .element(choice("readout-source", label))
+    .toHaveAttribute("aria-pressed", "true");
+  await userEvent.click(byId("readout-details"));
+}
+
 // Waits until the page has drawn frames that reflect everything asked so far.
 export async function settle(frames = 3): Promise<void> {
   checkReplay();

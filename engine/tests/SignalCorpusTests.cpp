@@ -209,7 +209,7 @@ std::vector<Case> corpus()
     const Signal tone = sine(1000, 0.5);
     const Signal hiss = noise(1, 0.5);
     return {
-        // Single: one track's readouts (of the Mid, the trigger view) and its views.
+        // Single: one track's readouts (of L, the first of the default views, L and R) and its views.
         single("Single_Sine1kHalf_48k_Stereo", stereo(tone)).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
         single("Single_Sine1kHalf_44k1_Stereo", stereo(tone)).at(44100).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
         single("Single_Sine1kHalf_384k_Stereo", stereo(tone)).at(384000).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
@@ -220,10 +220,11 @@ std::vector<Case> corpus()
         // A quiet sine, at twice the trigger's default hysteresis (0.01) so that it triggers
         // clearly, not by a rounding either way.
         single("Single_Sine100At34dB_48k_Stereo", stereo(sine(100, 0.02))).triggers().levels(dbfs(0.02), dbfs(0.02) + kSine).pitch(100),
-        // A sine on the left alone: the Mid holds it at half its level.
-        single("Single_SineLeftOnly_48k_Stereo", stereo(tone, silence())).triggers().levels(2 * kHalf, 2 * kHalf + kSine).pitch(1000),
-        // Channels in opposite polarity: the Mid is silent, the Side holds the sine.
-        single("Single_SineOutOfPhase_48k_Stereo", stereo(tone, inverted(tone))).levels(kSilent, kSilent).pitch(kNone),
+        // A sine on the left alone: L, measured, holds it at its level; the trigger, on the Mid, at
+        // half of it.
+        single("Single_SineLeftOnly_48k_Stereo", stereo(tone, silence())).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
+        // Channels in opposite polarity: L, measured, holds the sine; the trigger's Mid is silent.
+        single("Single_SineOutOfPhase_48k_Stereo", stereo(tone, inverted(tone))).levels(kHalf, kHalf + kSine).pitch(1000),
         single("Single_DcQuarter_48k_Stereo", stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf).pitch(kNone),
         single("Single_DcMinusHalf_192k_Mono", mono(dc(-0.5))).at(192000).levels(kHalf, kHalf).pitch(kNone),
         single("Single_Silence_48k_Stereo", stereo(silence())).levels(kSilent, kSilent).pitch(kNone),

@@ -353,21 +353,23 @@ void Analyzer::arm()
 }
 
 // Readouts are shown at most every 100 ms, so live they are measured no more often than every
-// 100 ms of audio, unless the settings changed. Frozen frames come only when something changed
-// (such as a pan), so they always measure. `end` is this track's capture end.
-bool Analyzer::readoutsDue(std::uint64_t end) const
+// 100 ms of audio, unless the settings or the view to measure (`view`, which a track turned mono
+// changes) changed. Frozen frames come only when something changed (such as a pan), so they always
+// measure. `end` is this track's capture end.
+bool Analyzer::readoutsDue(std::uint64_t end, ChannelView view) const
 {
     const auto interval =
         static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * engine.sampleRate());
-    return isFrozen || !readoutCache.valid || readoutCache.settings != frameSettings ||
-           readoutCache.frozen != isFrozen || end < readoutCache.end ||
-           end - readoutCache.end >= interval;
+    return isFrozen || !readoutCache.valid || readoutCache.view != view ||
+           readoutCache.settings != frameSettings || readoutCache.frozen != isFrozen ||
+           end < readoutCache.end || end - readoutCache.end >= interval;
 }
 
-void Analyzer::storeReadouts(const Readouts& values, std::uint64_t end)
+void Analyzer::storeReadouts(const Readouts& values, std::uint64_t end, ChannelView view)
 {
     readoutCache.values = values;
     readoutCache.end = end;
+    readoutCache.view = view;
     readoutCache.valid = true;
 }
 
@@ -378,6 +380,7 @@ void Analyzer::applyReadouts(FrameHeaderValues& header)
     }
     readoutCache.settings = frameSettings;
     readoutCache.frozen = isFrozen;
+    header.readoutView = readoutCache.view;
     header.invalidSamples = readoutCache.values.invalid;
     header.peak = readoutCache.values.peak;
     header.rms = readoutCache.values.rms;
@@ -507,7 +510,14 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
                                                flag(FrameFlag::kNoTempo) |
                                                (isFrozen ? flag(FrameFlag::kFrozen) : 0U)),
             .laneSet = laneSetId,
-            .sampleRate = static_cast<float>(sampleRate)};
+            .sampleRate = static_cast<float>(sampleRate),
+            // No readouts yet, but the channel they will measure, which the page names.
+            .readoutView = multi ? ChannelView::kMid
+                                 : effectiveReadoutView(
+                                       settings.enumValue<ChannelView>(SettingId::kReadoutSource),
+                                       effectiveViews(static_cast<std::uint8_t>(
+                                                          settings.value(SettingId::kChannelViews)),
+                                                      engine.inputChannels()))};
         encodeFrame(header, {}, frame);
         return true;
     }
@@ -874,9 +884,11 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     // again only the columns its newest samples landed in, a free-running window only the columns
     // that scrolled in. A triggered window is new every time.
     const bool synced = window.synced;
-    // Readouts measure the Mid in either time base, as the multi-track lanes do, whatever the
-    // trigger reads; a mono track's Mid reads its one channel.
-    const ChannelView readoutView = ChannelView::kMid;
+    // Readouts measure the readout source when it is drawn, else the first view drawn, whatever the
+    // trigger reads; a mono track draws only L.
+    const ChannelView readoutView =
+        effectiveReadoutView(settings.enumValue<ChannelView>(SettingId::kReadoutSource), views);
+    header.readoutView = readoutView;
     const bool rolling = window.freeRunning && window.onGrid && !window.synced &&
                          window.cropStart == 0.0 && window.cropEnd == 1.0;
     const std::size_t visibleCount = crop.end - crop.first;
@@ -952,18 +964,28 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
     if (synced) {
-        // The Mid's levels per block, for readouts, kept in step with the sweep.
-        const bool fresh =
-            !sweepStats.fits(static_cast<std::size_t>(sampleCount), statsBlock(sampleRate)) ||
-            sweepStatsChannels != inputChannels;
-        sweepStatsChannels = inputChannels;
-        if (!updateStats(sweepStats, image, readoutView, inputChannels, fresh,
-                         statsBlock(sampleRate))) {
-            return false;
+        // Each drawn view's levels per block, for readouts, kept in step with the sweep: measured
+        // afresh when the view was not drawn on the last frame, as it missed what was placed
+        // since. Single has no lanes: bit 0 says what is shown of a drawn trace holds samples that
+        // are not finite.
+        const std::size_t block = statsBlock(sampleRate);
+        const bool channelsChanged = viewStatsChannels != inputChannels;
+        viewStatsChannels = inputChannels;
+        for (std::size_t index = 0; index < protocol::kChannelViewCount; ++index) {
+            if ((views & (1U << index)) == 0) {
+                viewStatsCurrent.at(index) = false;
+                continue;
+            }
+            BlockStats& stats = viewStats.at(index);
+            const bool fresh = !viewStatsCurrent.at(index) || channelsChanged ||
+                               !stats.fits(static_cast<std::size_t>(sampleCount), block);
+            viewStatsCurrent.at(index) = updateStats(stats, image, static_cast<ChannelView>(index),
+                                                     inputChannels, fresh, block);
+            if (!viewStatsCurrent.at(index)) {
+                return false;
+            }
+            header.invalidLanes |= holdsInvalid(stats, crop.first, crop.end) ? 1U : 0U;
         }
-        // Single has no lanes: bit 0 says what is shown holds samples that are not finite. The
-        // Mid is not finite wherever a channel is, so its levels say so for every trace.
-        header.invalidLanes |= holdsInvalid(sweepStats, crop.first, crop.end) ? 1U : 0U;
         image.clearChanges();
         viewReduction = {.first = crop.first, .channels = inputChannels, .views = views};
     } else {
@@ -977,17 +999,18 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     // Readouts cover the whole span, whatever part is on screen, at most every 100 ms of audio:
     // a sweep's from its levels per block, a window's from its samples.
     const std::uint64_t end = engine.captureRing().endIndex();
-    if (readoutsDue(end)) {
+    if (readoutsDue(end, readoutView)) {
         if (synced) {
             const auto shown = static_cast<double>(sampleCount);
             Readouts readouts;
             if (measureSweepReadouts(
-                    sweepStats, static_cast<std::size_t>(std::llround(window.subStart * shown)),
+                    viewStats.at(static_cast<std::size_t>(readoutView)),
+                    static_cast<std::size_t>(std::llround(window.subStart * shown)),
                     static_cast<std::size_t>(std::llround(window.subEnd * shown)),
                     isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing(),
                     isFrozen ? hold.endIndex() : end, sampleRate, readoutView, inputChannels,
                     readouts)) {
-                storeReadouts(readouts, end);
+                storeReadouts(readouts, end, readoutView);
             }
         } else {
             const std::uint64_t readoutStart =
@@ -1000,7 +1023,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                              scratch)) {
                 return false;
             }
-            storeReadouts(computeReadouts(viewSamples, sampleRate), end);
+            storeReadouts(computeReadouts(viewSamples, sampleRate), end, readoutView);
         }
     }
     applyReadouts(header);
@@ -1586,7 +1609,8 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     // Readouts measure the own track's Mid: peak and RMS over the whole span from its levels per
     // block, the frequency over the newest second, at most every 100 ms of audio.
     const std::uint64_t ownEnd = own.engine->captureRing().endIndex();
-    if (readoutsDue(ownEnd) && own.stats.fits(static_cast<std::size_t>(count), block)) {
+    if (readoutsDue(ownEnd, ChannelView::kMid) &&
+        own.stats.fits(static_cast<std::size_t>(count), block)) {
         Readouts readouts;
         if (measureSweepReadouts(
                 own.stats,
@@ -1595,7 +1619,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                 isFrozen ? static_cast<const SampleSource&>(own.hold) : own.engine->captureRing(),
                 isFrozen ? own.hold.endIndex() : ownEnd, sampleRate, ChannelView::kMid,
                 engine.inputChannels(), readouts)) {
-            storeReadouts(readouts, ownEnd);
+            storeReadouts(readouts, ownEnd, ChannelView::kMid);
         }
     }
     applyReadouts(header);
@@ -1822,7 +1846,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
 
     // Readouts measure this track's Mid over the whole span, at most every 100 ms of audio.
     const std::uint64_t ownEnd = engine.captureRing().endIndex();
-    if (readoutsDue(ownEnd)) {
+    if (readoutsDue(ownEnd, ChannelView::kMid)) {
         const std::uint64_t readoutStart = window.readoutCount > 0 ? window.readoutStart : start;
         const std::uint64_t readoutCount =
             window.readoutCount > 0 ? window.readoutCount : sampleCount;
@@ -1830,7 +1854,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         scratch.resize(std::max(scratch.size(), viewSamples.size()));
         if (readSamples(ownSource, engine.inputChannels(), ChannelView::kMid, readoutStart,
                         viewSamples, scratch)) {
-            storeReadouts(computeReadouts(viewSamples, sampleRate), ownEnd);
+            storeReadouts(computeReadouts(viewSamples, sampleRate), ownEnd, ChannelView::kMid);
         }
     }
     applyReadouts(header);
@@ -2742,7 +2766,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
 
     // Readouts measure this track's Mid over the whole span, at most every 100 ms of audio.
     const std::uint64_t ownEnd = engine.captureRing().endIndex();
-    if (readoutsDue(ownEnd)) {
+    if (readoutsDue(ownEnd, ChannelView::kMid)) {
         const std::uint64_t readoutStart = window.readoutCount > 0 ? window.readoutStart : start;
         const std::uint64_t readoutCount =
             window.readoutCount > 0 ? window.readoutCount : sampleCount;
@@ -2750,7 +2774,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         scratch.resize(std::max(scratch.size(), viewSamples.size()));
         if (readSamples(*laneSources[ownIndex].first, engine.inputChannels(), ChannelView::kMid,
                         readoutStart, viewSamples, scratch)) {
-            storeReadouts(computeReadouts(viewSamples, sampleRate), ownEnd);
+            storeReadouts(computeReadouts(viewSamples, sampleRate), ownEnd, ChannelView::kMid);
         }
     }
     applyReadouts(header);

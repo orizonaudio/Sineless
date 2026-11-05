@@ -6,11 +6,21 @@ import { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 export const viewOrder = ["left", "right", "mid", "side"] as const;
 export type ViewName = (typeof viewOrder)[number];
 
-// The channel the readouts, the hover and snapping measure when views are overlaid: the Mid in
-// either time base, whatever the trigger source, which picks only what the trigger reads; on a
-// mono track, whose R repeats L, L, as the engine's readView reads it.
-export function readoutView(inputChannels: number): ChannelView {
-  return inputChannels === 1 ? ChannelView.left : ChannelView.mid;
+// Each channel view's name, as the readout tag and the hover show it.
+export const viewNames: Record<ChannelView, string> = {
+  [ChannelView.left]: "Left",
+  [ChannelView.right]: "Right",
+  [ChannelView.mid]: "Mid",
+  [ChannelView.side]: "Side",
+};
+
+// The channel the readouts, the hover and snapping measure when views are overlaid: the one the
+// frame says its readouts measured. The engine decides it (the readout source when drawn, else
+// the first view drawn; L on a mono track), so it is always a view the frame draws.
+export function readoutView(frame: {
+  readonly readoutView: ChannelView;
+}): ChannelView {
+  return frame.readoutView;
 }
 
 // How far back a frozen Seconds view is panned: from the freeze (0) to as far as the engine holds

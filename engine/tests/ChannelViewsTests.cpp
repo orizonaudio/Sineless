@@ -2,7 +2,9 @@
 #include "engine/ChannelViews.h"
 
 #include <array>
+#include <bit>
 #include <gtest/gtest.h>
+#include <string>
 #include <vector>
 
 namespace orizon::engine {
@@ -59,6 +61,32 @@ TEST(ChannelViewSelection, TriggersOnTheSingleChannelForMono)
     EXPECT_EQ(effectiveTriggerSource(ChannelView::kSide, 2), ChannelView::kSide);
     EXPECT_EQ(effectiveTriggerSource(ChannelView::kSide, 1), ChannelView::kLeft);
 }
+
+// The readouts measure only a trace on screen: the readout source when it is drawn, else the
+// first view drawn in L, R, M, S order. Every source against every set of views drawn.
+class ReadoutViewSelection : public ::testing::TestWithParam<ChannelView>
+{
+};
+
+TEST_P(ReadoutViewSelection, MeasuresTheSourceOnlyWhenDrawn)
+{
+    const ChannelView requested = GetParam();
+    const auto bit = static_cast<unsigned>(1U << static_cast<unsigned>(requested));
+    for (unsigned drawn = 1; drawn < (1U << protocol::kChannelViewCount); ++drawn) {
+        SCOPED_TRACE(drawn);
+        const auto first = static_cast<ChannelView>(std::countr_zero(drawn));
+        EXPECT_EQ(effectiveReadoutView(requested, static_cast<std::uint8_t>(drawn)),
+                  (drawn & bit) != 0 ? requested : first);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EverySource, ReadoutViewSelection,
+                         ::testing::Values(ChannelView::kLeft, ChannelView::kRight,
+                                           ChannelView::kMid, ChannelView::kSide),
+                         [](const ::testing::TestParamInfo<ChannelView>& info) {
+                             return std::string(protocol::kChannelViewNames.at(
+                                 static_cast<std::size_t>(info.param)));
+                         });
 
 TEST_F(ChannelViews, FailsWhenTheRangeIsUnavailable)
 {

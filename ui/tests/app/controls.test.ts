@@ -12,7 +12,9 @@ import {
   choice,
   chips,
   settle,
+  showViews,
   startApp,
+  useReadout,
   type Started,
 } from "./harness.ts";
 
@@ -135,23 +137,68 @@ describe("controls", () => {
     await press(choice("mode", "Auto"));
   });
 
-  // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): Mid in Single, whatever
-  // the trigger source, this track's Mid in Multi and Compare.
+  // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): in Single the readout
+  // source when drawn, else the first view drawn (Left with the default views, L and R), whatever
+  // the trigger source; this track's Mid in Multi and Compare.
   test("labels the readouts with the channel they measure", async () => {
     const tag = () => byId("readout-tag").textContent;
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Trig"));
     // Away from the default source: the tag stays.
     await press(choice("source", "S"));
-    await expect.poll(tag).toBe("Mid");
+    await expect.poll(tag).toBe("Left");
     await userEvent.click(choice("time-base", "Beats"));
-    await expect.poll(tag).toBe("Mid");
+    await expect.poll(tag).toBe("Left");
     await userEvent.click(choice("display-mode", "Multi"));
     await expect.poll(tag).toBe("This track");
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Trig"));
     await press(choice("source", "M"));
-    await expect.poll(tag).toBe("Mid");
+    await useReadout("R");
+    await expect.poll(tag).toBe("Right");
+    // Back to the default, Mid, which the default views do not draw: Left again.
+    await showViews(["L", "R", "M"]);
+    await useReadout("M");
+    await showViews(["L", "R"]);
+    await expect.poll(tag).toBe("Left");
+  });
+
+  // In Single the tag is a button that opens the readouts' popover above it, in the status bar,
+  // kept inside the window; a press elsewhere closes it. In Multi and Compare, which measure this
+  // track's Mid, it is a label: it opens nothing, and switching to them closes the popover.
+  test.each(
+    Object.keys(DisplayMode)
+      .filter((key) => key !== "single")
+      .map((key) => key.charAt(0).toUpperCase() + key.slice(1)),
+  )("chooses the readout channel in Single, not in %s", async (mode) => {
+    const popover = byId("readout-popover");
+    await userEvent.click(choice("display-mode", "Single"));
+    await settle();
+    await expect
+      .element(byId("readout-details"))
+      .toHaveAttribute("aria-disabled", "false");
+    await userEvent.click(byId("readout-details"));
+    await expect.element(popover).toBeVisible();
+    const button = byId("readout-details").getBoundingClientRect();
+    const box = popover.getBoundingClientRect();
+    expect(box.bottom).toBeLessThanOrEqual(button.top);
+    expect(box.left).toBeGreaterThanOrEqual(8);
+    expect(box.right).toBeLessThanOrEqual(window.innerWidth - 8);
+    await userEvent.click(byId("screen"));
+    await expect.element(popover).not.toBeVisible();
+
+    await userEvent.click(byId("readout-details"));
+    await expect.element(popover).toBeVisible();
+    await userEvent.click(choice("display-mode", mode));
+    await expect.element(popover).not.toBeVisible();
+    await settle();
+    await expect
+      .element(byId("readout-details"))
+      .toHaveAttribute("aria-disabled", "true");
+    // A user's click, which the test runner itself refuses on a disabled control.
+    byId("readout-details").click();
+    expect(popover.hidden).toBe(true);
+    await userEvent.click(choice("display-mode", "Single"));
   });
 
   // Peak, RMS and Freq on screen come from the last frame: until a frame measures the new display
@@ -162,8 +209,8 @@ describe("controls", () => {
       .filter((key) => key !== "single")
       .map((key) => key.charAt(0).toUpperCase() + key.slice(1))
       .flatMap((mode) => [
-        ["Single", mode, "Mid", "This track"],
-        [mode, "Single", "This track", "Mid"],
+        ["Single", mode, "Left", "This track"],
+        [mode, "Single", "This track", "Left"],
       ]),
   )(
     "labels the readouts measured in %s until a frame measures them in %s",

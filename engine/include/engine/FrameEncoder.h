@@ -48,6 +48,8 @@ struct FrameHeaderValues
     // The time the whole screen width shows in Trigger or Free (what is kept of the span when
     // limited); 0 in a tempo-synced sweep.
     float spanSeconds = 0.0f;
+    // The channel view `peak`, `rms`, `frequency` and `invalidSamples` measure.
+    protocol::ChannelView readoutView = protocol::ChannelView::kMid;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,

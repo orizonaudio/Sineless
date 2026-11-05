@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { FrameMode, ViewLayout } from "../../protocol/src/enums.ts";
+import {
+  ChannelView,
+  FrameMode,
+  ViewLayout,
+} from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   analysisGateDbfs,
@@ -46,6 +50,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     invalidLanes: 0,
     sampleRate,
     spanSeconds: 0,
+    readoutView: ChannelView.mid,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,

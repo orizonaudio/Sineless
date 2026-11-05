@@ -20,8 +20,10 @@
 // or of tracks that never sound together, is NaN too.
 //
 // The visible span starts `startFraction` samples after the first point (sub-sample trigger
-// alignment). Readouts cover the trigger channel; `peak`, `rms` and `frequency` are NaN when not
-// measured (no frequency found, or nothing to measure). In a tempo-synced sweep, `cursor` is the
+// alignment). `peak`, `rms`, `frequency` and `invalidSamples` measure `readoutView` (a
+// ChannelView): in Single the readout source when it is drawn, else the first view drawn; in Multi
+// and Compare this track's Mid. `peak`, `rms` and `frequency` are NaN when not measured (no
+// frequency found, or nothing to measure). In a tempo-synced sweep, `cursor` is the
 // playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
 // project position of the left edge, `spanQuarterNotes` the span shown and `barQuarterNotes` the
 // bar length, all in quarter notes (0 when not synced); `cycleSeconds` is the left edge's project
@@ -79,6 +81,7 @@ export const frameHeaderFields = [
   { name: "invalidLanes", type: "u32" },
   { name: "sampleRate", type: "f32" },
   { name: "spanSeconds", type: "f32" },
+  { name: "readoutView", type: "u32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

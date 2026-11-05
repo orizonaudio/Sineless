@@ -81,6 +81,7 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       invalidLanes: u32,
       sampleRate: f32,
       spanSeconds: f32,
+      readoutView: fc.constantFrom(...channelViews),
       spanQuarterNotes: f32,
       barQuarterNotes: f32,
       viewStart: f32,
@@ -161,6 +162,7 @@ function expectedHeader(
     invalidLanes: content.invalidLanes ?? 0,
     sampleRate: content.sampleRate,
     spanSeconds: content.spanSeconds ?? 0,
+    readoutView: content.readoutView ?? ChannelView.mid,
   };
 }
 
@@ -212,6 +214,7 @@ function expectedFrame(content: FrameContent): Frame {
     invalidLanes: header.invalidLanes,
     sampleRate: f(header.sampleRate),
     spanSeconds: f(header.spanSeconds),
+    readoutView: header.readoutView as ChannelView,
     spanQuarterNotes: f(header.spanQuarterNotes),
     barQuarterNotes: f(header.barQuarterNotes),
     viewStart: f(header.viewStart),

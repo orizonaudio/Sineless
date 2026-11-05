@@ -214,11 +214,28 @@
           </div>
         </div>
         <div class="readouts">
-          <span
-            class="readout-tag"
-            id="readout-tag"
-            data-help="readoutSource"
-          ></span>
+          <div class="readout-group" id="readout-group">
+            <button
+              class="readout-tag"
+              id="readout-details"
+              data-help="readoutSource"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-disabled="true"
+            >
+              <span id="readout-tag"></span
+              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                <path d="M1.5 3 4 5.5 6.5 3" />
+              </svg>
+            </button>
+            <div class="popover readout-popover" id="readout-popover" hidden>
+              <div class="popover-title">Readouts</div>
+              <div class="popover-row" data-help="readoutSource">
+                <span>Channel</span>
+                <div class="segmented" id="readout-source"></div>
+              </div>
+            </div>
+          </div>
           <div class="readout" data-help="peak">
             <b>Peak</b><span id="peak">—</span><small>dBFS</small>
           </div>
