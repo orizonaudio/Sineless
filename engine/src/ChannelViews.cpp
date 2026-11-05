@@ -35,6 +35,16 @@ ChannelView effectiveReadoutView(ChannelView requested, std::uint8_t drawn)
                                            : static_cast<ChannelView>(std::countr_zero(drawn));
 }
 
+std::uint8_t invalidCheckViews(std::uint8_t drawn)
+{
+    for (const ChannelView view : {ChannelView::kMid, ChannelView::kSide}) {
+        if ((drawn & bitOf(view)) != 0) {
+            return bitOf(view);
+        }
+    }
+    return drawn;
+}
+
 bool readView(const SampleSource& source, int inputChannels, ChannelView view, std::uint64_t start,
               std::span<float> destination, std::span<float> scratch)
 {

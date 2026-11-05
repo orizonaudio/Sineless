@@ -614,13 +614,11 @@ private:
         std::uint8_t views = 0;
     };
     ViewReduction viewReduction;
-    // Single mode: each drawn view's levels per block of the tempo-synced sweep, for readouts and
-    // the frame's invalid bit; whether each was kept in step on every frame since it was last
-    // measured afresh (a view not drawn on a frame is not); and the channel count they were
-    // measured for.
-    std::array<BlockStats, protocol::kChannelViewCount> viewStats;
-    std::array<bool, protocol::kChannelViewCount> viewStatsCurrent{};
-    int viewStatsChannels = 0;
+    // Single mode: the readout view's levels per block of the tempo-synced sweep, for readouts,
+    // and the channel count and view they were measured for.
+    BlockStats sweepStats;
+    int sweepStatsChannels = 0;
+    protocol::ChannelView sweepStatsView = protocol::ChannelView::kMid;
     Settings frameSettings; // The settings of the frame being produced.
     std::vector<float> readScratch;
     std::vector<float> triggerSamples;

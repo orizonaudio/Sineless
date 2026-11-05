@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <limits>
+#include <ostream>
 #include <random>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -181,6 +183,91 @@ TEST(ColumnReduction, StartsOverWhenTheSpanOrWidthChanges)
     EXPECT_FALSE(reduction.fits(48000, 1000));
     EXPECT_FALSE(reduction.update(0, 10, [](std::size_t, std::span<float>) { return true; }));
 }
+
+// A span and a width: min/max columns, one column, or raw samples (fewer than the columns).
+struct InvalidCase
+{
+    std::size_t count = 0;
+    std::size_t columns = 0;
+};
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const InvalidCase& c, std::ostream* out)
+{
+    *out << c.count << "_in_" << c.columns;
+}
+
+class ColumnReductionInvalid : public ::testing::TestWithParam<InvalidCase>
+{
+};
+
+// The Beats chip's bit for a drawn trace: a reduction told to track samples that are not finite
+// says whether any column it shows holds one, and stops saying so once that column is rewritten
+// whole with finite samples, however little of it changed. Off unless asked for, and cleared by
+// a reset or invalidate. NaN and infinity, in min/max columns, a single column and raw samples.
+TEST_P(ColumnReductionInvalid, SaysWhetherAColumnHoldsASampleThatIsNotFinite)
+{
+    const InvalidCase c = GetParam();
+    for (const float broken :
+         {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity()}) {
+        SCOPED_TRACE(broken);
+        auto samples = randomSamples(c.count, 11);
+        const auto read = [&](std::size_t first, std::span<float> destination) {
+            std::copy_n(samples.begin() + static_cast<std::ptrdiff_t>(first), destination.size(),
+                        destination.begin());
+            return true;
+        };
+        ColumnReduction reduction;
+        reduction.reset(c.count, c.columns, true);
+        ASSERT_TRUE(reduction.update(0, c.count, read));
+        EXPECT_FALSE(reduction.holdsInvalid()) << "all finite";
+
+        const std::size_t at = c.count / 2;
+        samples[at] = broken;
+        ASSERT_TRUE(reduction.update(at, at + 1, read));
+        EXPECT_TRUE(reduction.holdsInvalid()) << "one broken";
+
+        // A change elsewhere keeps it: in another column, and in the same column (min/max), which
+        // is read again whole.
+        ASSERT_TRUE(reduction.update(0, 1, read));
+        EXPECT_TRUE(reduction.holdsInvalid()) << "changed elsewhere";
+        const bool raw = c.count <= c.columns;
+        if (!raw) {
+            ASSERT_TRUE(reduction.update(at + 1, at + 2, read));
+            EXPECT_TRUE(reduction.holdsInvalid()) << "its neighbour changed";
+        }
+
+        // Rewritten finite: min/max columns are read whole, so a change in the same column clears
+        // it; raw samples clear when the sample itself is rewritten.
+        samples[at] = 0.25f;
+        const std::size_t changed = raw ? at : at + 1;
+        ASSERT_TRUE(reduction.update(changed, changed + 1, read));
+        EXPECT_FALSE(reduction.holdsInvalid()) << "rewritten finite";
+
+        samples[at] = broken;
+        ASSERT_TRUE(reduction.update(at, at + 1, read));
+        reduction.reset(c.count, c.columns, true);
+        EXPECT_FALSE(reduction.holdsInvalid()) << "reset";
+        ASSERT_TRUE(reduction.update(0, c.count, read));
+        ASSERT_TRUE(reduction.holdsInvalid());
+        reduction.invalidate();
+        EXPECT_FALSE(reduction.holdsInvalid()) << "invalidated";
+
+        ColumnReduction untracked;
+        untracked.reset(c.count, c.columns);
+        ASSERT_TRUE(untracked.update(0, c.count, read));
+        EXPECT_FALSE(untracked.holdsInvalid()) << "not asked for";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Widths, ColumnReductionInvalid,
+                         ::testing::Values(InvalidCase{.count = 48000, .columns = 1366},
+                                           InvalidCase{.count = 48000, .columns = 1},
+                                           InvalidCase{.count = 500, .columns = 1366}),
+                         [](const ::testing::TestParamInfo<InvalidCase>& info) {
+                             return std::to_string(info.param.count) + "In" +
+                                    std::to_string(info.param.columns);
+                         });
 
 TEST(RollColumns, MatchesAFullReductionAsTheWindowRolls)
 {

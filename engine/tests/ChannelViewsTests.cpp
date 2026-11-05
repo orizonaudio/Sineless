@@ -5,6 +5,7 @@
 #include <bit>
 #include <gtest/gtest.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace orizon::engine {
@@ -60,6 +61,44 @@ TEST(ChannelViewSelection, TriggersOnTheSingleChannelForMono)
 {
     EXPECT_EQ(effectiveTriggerSource(ChannelView::kSide, 2), ChannelView::kSide);
     EXPECT_EQ(effectiveTriggerSource(ChannelView::kSide, 1), ChannelView::kLeft);
+}
+
+// The views checked for samples that are not finite say whether any drawn view holds one: with L
+// broken, R broken or both, for every set of views drawn, a view checked holds one exactly when a
+// view drawn does, and only views drawn are checked.
+TEST(ChannelViewSelection, ChecksViewsThatShowEveryBrokenChannel)
+{
+    // Whether each view holds a sample that is not finite, by the channels that do: L and R their
+    // own, Mid and Side either.
+    const auto broken = [](unsigned view, bool left, bool right) {
+        switch (static_cast<ChannelView>(view)) {
+        case ChannelView::kLeft:
+            return left;
+        case ChannelView::kRight:
+            return right;
+        case ChannelView::kMid:
+        case ChannelView::kSide:
+            return left || right;
+        }
+        return false;
+    };
+    for (unsigned drawn = 1; drawn < (1U << protocol::kChannelViewCount); ++drawn) {
+        const unsigned checked = invalidCheckViews(static_cast<std::uint8_t>(drawn));
+        SCOPED_TRACE(::testing::Message() << "drawn " << drawn << ", checked " << checked);
+        EXPECT_NE(checked, 0U);
+        EXPECT_EQ(checked & ~drawn, 0U) << "only views drawn";
+        for (const auto [left, right] : {std::pair{true, false}, {false, true}, {true, true}}) {
+            bool anyDrawn = false;
+            bool anyChecked = false;
+            for (unsigned view = 0; view < protocol::kChannelViewCount; ++view) {
+                if (broken(view, left, right)) {
+                    anyDrawn = anyDrawn || ((drawn >> view) & 1U) != 0;
+                    anyChecked = anyChecked || ((checked >> view) & 1U) != 0;
+                }
+            }
+            EXPECT_EQ(anyChecked, anyDrawn) << "left " << left << ", right " << right;
+        }
+    }
 }
 
 // The readouts measure only a trace on screen: the readout source when it is drawn, else the

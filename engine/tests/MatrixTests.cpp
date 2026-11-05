@@ -2851,11 +2851,12 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenOtherTrack, ::testing::ValuesIn(laneCa
 
 // The lanes named for holding samples that are not finite are those whose part on screen holds
 // one. A single NaN 1.4 s into a 2 s beat span is named in the whole view, zoomed onto the second
-// half, and zoomed so that it lies 10 ms from either edge, but not zoomed onto the first half or
-// onto the last quarter. In Free, one 0.3 s back in a rolling 2 s span is named, also on a frame
-// where the roll did not move; frozen, one three quarters into a 200 ms span is named in the views
-// that show it, not in those on either side. In Compare, a compared track holding one names the
-// sum it is part of, though this track holds none. In every mode, at the lowest and highest rates.
+// half, and zoomed so that it lies 10 ms from either edge, also with a column for every sample,
+// shown raw, but not zoomed onto the first half, onto the last quarter, or raw just before it. In
+// Free, one 0.3 s back in a rolling 2 s span is named, also on a frame where the roll did not move;
+// frozen, one three quarters into a 200 ms span is named in the views that show it, not in those on
+// either side. In Compare, a compared track holding one names the sum it is part of, though this
+// track holds none. In every mode, at the lowest and highest rates.
 class InvalidOnScreen : public ::testing::TestWithParam<DisplayMode>
 {
 };
@@ -2883,6 +2884,18 @@ TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
                 session.play(0.01);
                 const auto frame = session.produce();
                 ASSERT_TRUE(frame) << "no frame";
+                EXPECT_EQ((frame->invalidLanes & 1U) != 0, named) << "this track";
+            }
+            // With a column for every sample shown, raw: 20 ms around it, and 20 ms before.
+            session.analyzer().setColumns(8192);
+            for (const auto& [start, end, named] :
+                 {std::tuple{0.695, 0.705, true}, std::tuple{0.68, 0.69, false}}) {
+                SCOPED_TRACE(testing::Message() << "raw, view " << start << " to " << end);
+                session.analyzer().setView(start, end);
+                session.play(0.01);
+                const auto frame = session.produce();
+                ASSERT_TRUE(frame) << "no frame";
+                ASSERT_EQ(frame->mode, protocol::FrameMode::kRaw);
                 EXPECT_EQ((frame->invalidLanes & 1U) != 0, named) << "this track";
             }
         }

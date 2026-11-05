@@ -923,7 +923,11 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             };
             bool updated = true;
             if (!sameReduction || !reduction.fits(visibleCount, columns)) {
-                reduction.reset(visibleCount, columns);
+                // Tracking what is not finite in the views that show every broken channel:
+                // Single has no lanes, and bit 0 says whether the part of a drawn trace on screen
+                // holds such samples.
+                reduction.reset(visibleCount, columns,
+                                (invalidCheckViews(views) & (1U << index)) != 0);
                 updated = reduction.update(0, visibleCount, readVisible);
             } else {
                 for (const SweepImage::Range& range : image.changes()) {
@@ -940,6 +944,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             if (!updated) {
                 return false;
             }
+            header.invalidLanes |= reduction.holdsInvalid() ? 1U : 0U;
             header.mode = reduction.mode();
             pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visibleCount;
             frameData.insert(frameData.end(), reduction.values().begin(), reduction.values().end());
@@ -969,27 +974,15 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
     if (synced) {
-        // Each drawn view's levels per block, for readouts, kept in step with the sweep: measured
-        // afresh when the view was not drawn on the last frame, as it missed what was placed
-        // since. Single has no lanes: bit 0 says what is shown of a drawn trace holds samples that
-        // are not finite.
+        // The readout view's levels per block, kept in step with the sweep on every frame, and
+        // measured afresh from the whole sweep when the readout view changes.
         const std::size_t block = statsBlock(sampleRate);
-        const bool channelsChanged = viewStatsChannels != inputChannels;
-        viewStatsChannels = inputChannels;
-        for (std::size_t index = 0; index < protocol::kChannelViewCount; ++index) {
-            if ((views & (1U << index)) == 0) {
-                viewStatsCurrent.at(index) = false;
-                continue;
-            }
-            BlockStats& stats = viewStats.at(index);
-            const bool fresh = !viewStatsCurrent.at(index) || channelsChanged ||
-                               !stats.fits(static_cast<std::size_t>(sampleCount), block);
-            viewStatsCurrent.at(index) = updateStats(stats, image, static_cast<ChannelView>(index),
-                                                     inputChannels, fresh, block);
-            if (!viewStatsCurrent.at(index)) {
-                return false;
-            }
-            header.invalidLanes |= holdsInvalid(stats, crop.first, crop.end) ? 1U : 0U;
+        const bool fresh = !sweepStats.fits(static_cast<std::size_t>(sampleCount), block) ||
+                           sweepStatsChannels != inputChannels || sweepStatsView != readoutView;
+        sweepStatsChannels = inputChannels;
+        sweepStatsView = readoutView;
+        if (!updateStats(sweepStats, image, readoutView, inputChannels, fresh, block)) {
+            return false;
         }
         image.clearChanges();
         viewReduction = {.first = crop.first, .channels = inputChannels, .views = views};
@@ -1009,8 +1002,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             const auto shown = static_cast<double>(sampleCount);
             Readouts readouts;
             if (measureSweepReadouts(
-                    viewStats.at(static_cast<std::size_t>(readoutView)),
-                    static_cast<std::size_t>(std::llround(window.subStart * shown)),
+                    sweepStats, static_cast<std::size_t>(std::llround(window.subStart * shown)),
                     static_cast<std::size_t>(std::llround(window.subEnd * shown)),
                     isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing(),
                     isFrozen ? hold.endIndex() : end, sampleRate, readoutView, inputChannels,
