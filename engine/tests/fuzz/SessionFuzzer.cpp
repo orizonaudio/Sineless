@@ -136,7 +136,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             // With no host timeline their lanes are mostly silent; the host fuzzer checks sounding
             // ones.
             if (decoded.laneCount == 2 && !decoded.has(protocol::FrameFlag::kCompared) &&
-                decoded.invalidLanes == 0) {
+                !decoded.has(protocol::FrameFlag::kFrozen) && decoded.invalidLanes == 0) {
                 orizon::fuzz::checkMirroredLanes(decoded);
             }
         }

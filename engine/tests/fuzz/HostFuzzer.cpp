@@ -517,8 +517,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         checkFrame(firstFrame);
         const engine::DecodedFrame frame = engine::decode(firstFrame);
         orizon::fuzz::checkReadouts(frame);
+        // Live only: frozen, a track's lane is held when a Multi frame first needs it, which may be
+        // after the rate changed, and a lane held at another rate is drawn silent (FR-14.4).
         if (frame.laneCount == 2 && !frame.has(protocol::FrameFlag::kCompared) &&
-            frame.invalidLanes == 0 && frame.invalidSamples == 0 && !first.tracksDiverged()) {
+            !frame.has(protocol::FrameFlag::kFrozen) && frame.invalidLanes == 0 &&
+            frame.invalidSamples == 0 && !first.tracksDiverged()) {
             orizon::fuzz::checkMirroredLanes(frame);
         }
         previous = firstFrame;

@@ -54,8 +54,8 @@ inline void checkReadouts(const engine::DecodedFrame& frame)
 
 // A Multi frame's two lanes, of tracks that played the same audio with one negated, mirror each
 // other: point by point, one lane's (min, max) is the other's (-max, -min), or each raw value
-// negated. Negation rounds nothing, so the comparison is exact. The caller checks only frames whose
-// lanes hold no non-finite sample, and only while the tracks were treated alike.
+// negated. Negation rounds nothing, so the comparison is exact. The caller checks only live frames
+// whose lanes hold no non-finite sample, and only while the tracks were treated alike.
 inline void checkMirroredLanes(const engine::DecodedFrame& frame)
 {
     const bool minMax = frame.mode == protocol::FrameMode::kMinMax;
