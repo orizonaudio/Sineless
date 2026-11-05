@@ -42,6 +42,14 @@ export async function startApp(
   return startOn(transport);
 }
 
+// Starts the page on a new mock back end with its requests for frames held, so that it shows
+// what it shows before the engine's first frame, until holdFrames(false).
+export async function startBeforeFrames(
+  options: MockOptions = {},
+): Promise<Started> {
+  return startOn(new MockTransport(options), true);
+}
+
 // The replay the page was started on by startRecorded, which fails the test on a message its
 // recording does not hold.
 let replay: { scenario: string; transport: ReplayTransport } | undefined;
@@ -148,6 +156,7 @@ function recordSetUp(start: () => void): () => void {
 
 async function startOn<Back extends Transport>(
   transport: Back,
+  framesHeld = false,
 ): Promise<Started<Back>> {
   retirePrevious();
   await queuedDrawsRun();
@@ -162,7 +171,7 @@ async function startOn<Back extends Transport>(
     "text/html",
   ).body.innerHTML;
   const sent: ControlMessage[] = [];
-  let held = false;
+  let held = framesHeld;
   let waiting = false; // A request held back.
   let deliver: (message: ControlMessage) => void = () => undefined;
   const watched: Transport = {
@@ -204,7 +213,11 @@ async function startOn<Back extends Transport>(
   });
   await vi.waitFor(
     () => {
-      expect(window.orizonDebug?.frameCount ?? 0).toBeGreaterThan(0);
+      if (framesHeld) {
+        expect(waiting).toBe(true);
+      } else {
+        expect(window.orizonDebug?.frameCount ?? 0).toBeGreaterThan(0);
+      }
     },
     { timeout: 5000 },
   );

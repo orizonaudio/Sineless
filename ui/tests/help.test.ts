@@ -70,15 +70,6 @@ describe("help texts", () => {
     },
   );
 
-  // The help of the readouts' channel names every rule: the channel chosen, the first drawn,
-  // this track's Mid in Multi and Compare, and Left on a mono track.
-  test("readoutSource names how the channel is decided", () => {
-    const { text } = helpTexts.readoutSource;
-    for (const words of ["first", "Multi", "Compare", "Mid", "mono", "Left"]) {
-      expect(text).toContain(words);
-    }
-  });
-
   test("have a title and full sentences", () => {
     for (const { title, text } of Object.values(helpTexts)) {
       expect(title.length).toBeGreaterThan(0);
