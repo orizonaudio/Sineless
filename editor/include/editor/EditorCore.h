@@ -55,6 +55,8 @@ public:
     void setMinimumCheck(MinimumCheck check) { minimumCheck = std::move(check); }
     // Who shows the page's cursors in the webview attach() opens (WebView::Cursors).
     void setCursors(WebView::Cursors shownBy) { cursors = shownBy; }
+    // How the pointer hold in that webview hides the pointer (WebView::PointerHiding).
+    void setPointerHiding(WebView::PointerHiding hiding) { pointerHiding = hiding; }
     // Whether editors opened from now on draw the traces natively where the platform can (macOS
     // 14+, AD-30); on by default. The showcase films the page alone, so it turns this off.
     static void setNativeTraces(bool enabled);
@@ -119,6 +121,7 @@ private:
     SizeRequest sizeRequest;
     MinimumCheck minimumCheck;
     WebView::Cursors cursors = WebView::Cursors::kShownByWebKit;
+    WebView::PointerHiding pointerHiding = WebView::PointerHiding::kPublic;
     void* parent = nullptr;
     double scale = 1.0;
     // The editor's size in CSS pixels, the truth that the size in window units follows: a scale

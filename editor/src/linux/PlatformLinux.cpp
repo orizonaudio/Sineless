@@ -24,7 +24,7 @@ std::unique_ptr<UiDispatcher> UiDispatcher::create()
 std::unique_ptr<WebView> WebView::create(void* /*parent*/, int /*width*/, int /*height*/,
                                          MessageHandler /*onMessage*/,
                                          FrameRequestHandler /*onFrameRequest*/,
-                                         Cursors /*cursors*/)
+                                         Cursors /*cursors*/, PointerHiding /*pointerHiding*/)
 {
     return nullptr;
 }

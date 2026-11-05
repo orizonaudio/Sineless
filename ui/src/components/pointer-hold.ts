@@ -1,5 +1,5 @@
-// The editor's native pointer hold, where the platform has one (the macOS editor, except where an
-// Audio Unit is hosted out of process): while a value is dragged it hides the pointer and keeps
+// The editor's native pointer hold, where the platform has one (the macOS editor, except where a
+// host loads the Audio Unit in an XPC service): while a value is dragged it hides the pointer and keeps
 // it in place, so the drag goes on past the screen's edge, and on release shows it again where it
 // was pressed. The editor defines window.orizonPointerHold; without it a drag follows the pointer.
 

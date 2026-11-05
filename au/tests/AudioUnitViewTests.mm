@@ -4,6 +4,7 @@
 #include "Branding.h"
 #include "MacPageTesting.h"
 #include "editor/EditorCore.h"
+#include "editor/PointerHold.h"
 #include "editor/WebView.h"
 #include "engine/EngineRegistry.h"
 #include "engine/InstanceRegistry.h"
@@ -391,6 +392,87 @@ TEST_F(AudioUnitViewTest, ShowsThePagesCursorsItself)
     EXPECT_NE(class_getMethodImplementation([webView class], @selector(cursorUpdate:)),
               class_getMethodImplementation([WKWebView class], @selector(cursorUpdate:)));
     closeWindow(window, view);
+}
+
+// Logic Pro Creator Studio ignores the public calls that hide the pointer unless the process's
+// window-server connection has the cursor-in-background setting on: the view asks for it in Apple's
+// hosts only, by their exact bundle identifiers.
+TEST(AudioUnitViewPointerHiding, AsksForTheBackgroundCursorOnlyInApplesHosts)
+{
+    for (NSString* apple :
+         {@"com.apple.mobilelogic", @"com.apple.logic10", @"com.apple.garageband10"}) {
+        EXPECT_TRUE(hidesPointerWithBackgroundCursorForTests(apple)) << apple.UTF8String;
+    }
+    for (NSString* other :
+         {@"com.ableton.live", @"com.cockos.reaper", @"com.apple.mainstage3", @"com.apple.logic",
+          @"com.apple.mobilelogic.x", @"com.apple.GarageBand10"}) {
+        EXPECT_FALSE(hidesPointerWithBackgroundCursorForTests(other)) << other.UTF8String;
+    }
+    EXPECT_FALSE(hidesPointerWithBackgroundCursorForTests(nil)); // A bare executable, as the tests.
+}
+
+// The pointer as the view's hold sees it, with the setting's changes among the hold's calls.
+class RecordingPointer final : public editor::PointerControl
+{
+public:
+    editor::ScreenPoint position() override { return {}; }
+    bool primaryButtonDown() override { return true; }
+    double now() override { return 0; }
+    void hide() override { calls.emplace_back("hide"); }
+    void show() override { calls.emplace_back("show"); }
+    void freeze() override { calls.emplace_back("freeze"); }
+    void unfreeze() override { calls.emplace_back("unfreeze"); }
+    void warp(editor::ScreenPoint /*point*/) override { calls.emplace_back("warp"); }
+
+    std::vector<std::string> calls;
+};
+
+TEST_F(AudioUnitViewTest, HidesThePointerWithTheBackgroundCursorInAnAppleHostOnly)
+{
+    struct Host
+    {
+        NSString* bundleId;
+        std::vector<std::string> held;
+    };
+    for (const Host& host :
+         {Host{.bundleId = @"com.apple.mobilelogic", .held = {"background on", "hide", "freeze"}},
+          Host{.bundleId = @"com.ableton.live", .held = {"hide", "freeze"}}}) {
+        SCOPED_TRACE(host.bundleId.UTF8String);
+        RecordingPointer pointer;
+        setHostBundleIdForTests(host.bundleId);
+        NSView* view = openView(unit);
+        setHostBundleIdForTests(nil);
+        editor::setPointerControlForTests(&pointer);
+        editor::setCursorInBackgroundForTests([&](bool on) {
+            pointer.calls.emplace_back(on ? "background on" : "background off");
+            return true;
+        });
+        NSWindow* window = windowFor(view);
+        editor::setPointerControlForTests(nullptr);
+        editor::setCursorInBackgroundForTests({});
+        WKWebView* webView = webViewOf(view);
+        ASSERT_NE(webView, nil);
+        ASSERT_TRUE(pumpUntil(
+            [&] {
+                return evaluate(webView, @"String(window.orizonPointerHold !== undefined)") ==
+                       "true";
+            },
+            kPageTimeout));
+        [webView mouseDown:[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+                                              location:NSMakePoint(40, 40)
+                                         modifierFlags:0
+                                             timestamp:0
+                                          windowNumber:window.windowNumber
+                                               context:nil
+                                           eventNumber:0
+                                            clickCount:1
+                                              pressure:1]];
+        evaluate(webView, @"window.orizonPointerHold.start(); ''");
+        EXPECT_TRUE(pumpUntil([&] { return pointer.calls.size() == host.held.size(); },
+                              std::chrono::seconds(2)));
+        EXPECT_EQ(pointer.calls, host.held);
+        closeWindow(window, view);
+    }
 }
 
 // Given an Audio Unit that is not Sineless (so no engine to find), the view explains that it has

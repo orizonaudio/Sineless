@@ -14,9 +14,12 @@
 #include <csignal>
 #include <cstdio>
 #include <deque>
+#include <dlfcn.h>
+#include <functional>
 #include <memory>
 #include <objc/message.h>
 #include <objc/runtime.h>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -93,9 +96,9 @@ constexpr const char* kPointerHoldScript = R"JS(
 })();
 )JS";
 
-// Whether a process whose main bundle has this CFBundlePackageType holds the pointer. Logic and
-// GarageBand host Audio Units out of process, in AUHostingServiceXPC services (package type
-// "XPC!"), which are never the foreground application: the pointer can be frozen only while the
+// Whether a process whose main bundle has this CFBundlePackageType holds the pointer. A host that
+// loads an Audio Unit in an XPC service (package type "XPC!", as AUHostingServiceXPC) runs it in a
+// process that is never the foreground application: the pointer can be frozen only while the
 // application is in the foreground (CGRemoteOperation.h), so there drags follow the pointer.
 bool holdsPointerInBundleOfType(NSString* type)
 {
@@ -126,6 +129,65 @@ public:
         CGWarpMouseCursorPosition(CGPointMake(point.x, point.y));
     }
 };
+
+// Turns the window server's cursor-in-background setting of this process's connection on or off:
+// with it on, the connection may hide the pointer while another application is frontmost, and
+// Logic Pro Creator Studio, which hosts the Audio Unit in its own process, otherwise ignores the
+// public calls though they report success (AD-28). Undocumented, so looked up at run time: false,
+// with nothing called, where the system has no such call.
+bool setCursorInBackground(bool on)
+{
+    using Connection = int (*)();
+    using SetProperty = CGError (*)(int, int, CFStringRef, CFTypeRef);
+    static const auto kConnection =
+        reinterpret_cast<Connection>(dlsym(RTLD_DEFAULT, "_CGSDefaultConnection"));
+    static const auto kSetProperty =
+        reinterpret_cast<SetProperty>(dlsym(RTLD_DEFAULT, "CGSSetConnectionProperty"));
+    if (kConnection == nullptr || kSetProperty == nullptr) {
+        return false;
+    }
+    const int own = kConnection();
+    return kSetProperty(own, own, CFSTR("SetsCursorInBackground"),
+                        on ? kCFBooleanTrue : kCFBooleanFalse) == kCGErrorSuccess;
+}
+
+// A pointer whose hiding has the cursor-in-background setting on: on just before it hides, off
+// just after it shows again. A hold pairs each hide with a show however it ends, so the setting
+// is on only while a hold hides the pointer. Without the setting, it hides as the public calls do.
+class BackgroundCursorPointer final : public PointerControl
+{
+public:
+    BackgroundCursorPointer(PointerControl& pointer, std::function<bool(bool on)> setting)
+        : pointer(pointer), setting(std::move(setting))
+    {}
+
+    ScreenPoint position() override { return pointer.position(); }
+    bool primaryButtonDown() override { return pointer.primaryButtonDown(); }
+    double now() override { return pointer.now(); }
+    void hide() override
+    {
+        setting(true);
+        pointer.hide();
+    }
+    void show() override
+    {
+        pointer.show();
+        setting(false);
+    }
+    void freeze() override { pointer.freeze(); }
+    void unfreeze() override { pointer.unfreeze(); }
+    void warp(ScreenPoint point) override { pointer.warp(point); }
+
+private:
+    PointerControl& pointer;
+    std::function<bool(bool on)> setting;
+};
+
+std::function<bool(bool on)>& cursorInBackgroundForTests()
+{
+    static std::function<bool(bool on)> set;
+    return set;
+}
 
 PointerControl*& pointerControlForTests()
 {
@@ -265,7 +327,7 @@ class WebViewMac final : public WebView
 {
 public:
     WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage,
-               FrameRequestHandler onFrameRequest, Cursors cursors);
+               FrameRequestHandler onFrameRequest, Cursors cursors, PointerHiding pointerHiding);
     ~WebViewMac() override;
     WebViewMac(const WebViewMac&) = delete;
     WebViewMac& operator=(const WebViewMac&) = delete;
@@ -326,6 +388,9 @@ private:
     NSData* heldFrame = nil;
     // The pointer hold, where the process can have one, and what follows the mouse during it.
     PointerControlMac realPointer;
+    // The pointer that hides with the cursor-in-background setting, where asked for; declared
+    // before the hold, whose end on destruction shows the pointer through it.
+    std::optional<BackgroundCursorPointer> backgroundCursorPointer;
     std::unique_ptr<PointerHold> pointerHold;
     id dragMonitor = nil;
     NSTimer* releaseCheck = nil;
@@ -601,7 +666,8 @@ Class webViewClass(WebView::Cursors cursors)
 // ----- WebViewMac -----
 
 WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage,
-                       FrameRequestHandler onFrameRequest, Cursors cursors)
+                       FrameRequestHandler onFrameRequest, Cursors cursors,
+                       PointerHiding pointerHiding)
     : onMessage(std::move(onMessage)), onFrameRequest(std::move(onFrameRequest))
 {
     WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
@@ -619,10 +685,16 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     [contentController addScriptMessageHandler:messageHandler name:kFocusHandlerName];
     std::vector<const char*> scripts = {kFocusTrackingScript};
     if (holdsPointerInBundleOfType(bundleType())) {
-        PointerControl* control = pointerControlForTests();
+        PointerControl* const forTests = pointerControlForTests();
+        PointerControl* pointer = forTests != nullptr ? forTests : &realPointer;
+        if (pointerHiding == PointerHiding::kWithBackgroundCursor) {
+            auto setting = cursorInBackgroundForTests();
+            backgroundCursorPointer.emplace(*pointer,
+                                            setting ? std::move(setting) : setCursorInBackground);
+            pointer = &*backgroundCursorPointer;
+        }
         pointerHold = std::make_unique<PointerHold>(
-            control != nullptr ? *control : realPointer,
-            [this](double travel, bool fine, std::function<void()> done) {
+            *pointer, [this](double travel, bool fine, std::function<void()> done) {
                 reportTravel(travel, fine, std::move(done));
             });
         [contentController addScriptMessageHandler:messageHandler name:kPointerHoldHandlerName];
@@ -985,10 +1057,12 @@ void WebViewMac::reportTravel(double travel, bool fine, std::function<void()> do
 
 std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
                                          MessageHandler onMessage,
-                                         FrameRequestHandler onFrameRequest, Cursors cursors)
+                                         FrameRequestHandler onFrameRequest, Cursors cursors,
+                                         PointerHiding pointerHiding)
 {
     return std::make_unique<WebViewMac>((__bridge NSView*)parent, width, height,
-                                        std::move(onMessage), std::move(onFrameRequest), cursors);
+                                        std::move(onMessage), std::move(onFrameRequest), cursors,
+                                        pointerHiding);
 }
 
 TraceLayer* traceLayerForTests(WebView& view)
@@ -1019,6 +1093,16 @@ const void* drawnDiagonalResizeCursorForTests()
 void setPointerControlForTests(PointerControl* control)
 {
     pointerControlForTests() = control;
+}
+
+void setCursorInBackgroundForTests(std::function<bool(bool on)> set)
+{
+    cursorInBackgroundForTests() = std::move(set);
+}
+
+bool setRealCursorInBackgroundForTests(bool on)
+{
+    return setCursorInBackground(on);
 }
 
 void setBundleTypeForTests(const char* type)

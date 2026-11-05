@@ -17,11 +17,14 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <dlfcn.h>
 #include <functional>
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <mach/mach_time.h>
 #include <memory>
 #include <objc/runtime.h>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -985,25 +988,62 @@ public:
     ScreenPoint position() override { return at; }
     bool primaryButtonDown() override { return buttonDown; }
     double now() override { return 0; } // Before every event: none is from before a hold.
-    void hide() override { calls.emplace_back("hide"); }
-    void show() override { calls.emplace_back("show"); }
-    void freeze() override { calls.emplace_back("freeze"); }
-    void unfreeze() override { calls.emplace_back("unfreeze"); }
+    void hide() override { record("hide"); }
+    void show() override { record("show"); }
+    void freeze() override { record("freeze"); }
+    void unfreeze() override { record("unfreeze"); }
     void warp(ScreenPoint point) override
     {
         warpedTo = point;
-        calls.emplace_back("warp");
+        record("warp");
+    }
+    // The window server's cursor-in-background setting, as the view turns it on or off.
+    bool setCursorInBackground(bool on)
+    {
+        withSetting.emplace_back(on ? "background on" : "background off");
+        return settingWorks;
     }
 
     ScreenPoint at{};
     bool buttonDown = true;
+    bool settingWorks = true;
+    // What the hold did to the pointer, and the same with the setting's changes among it.
     std::vector<std::string> calls;
+    std::vector<std::string> withSetting;
     ScreenPoint warpedTo{};
+
+private:
+    void record(const char* call)
+    {
+        calls.emplace_back(call);
+        withSetting.emplace_back(call);
+    }
 };
 
-// The pointer hold in both kinds of view: the VST3 editor's, whose cursors WebKit shows, and the
-// Audio Unit's, which shows them itself.
-class PointerHoldTest : public EditorTest, public ::testing::WithParamInterface<WebView::Cursors>
+// A kind of view the hold runs in: who shows its cursors, and how it hides the pointer.
+struct HoldView
+{
+    WebView::Cursors cursors;
+    WebView::PointerHiding hiding;
+};
+
+std::string nameOf(const HoldView& view)
+{
+    return std::string(view.cursors == WebView::Cursors::kShownByView ? "ShownByView"
+                                                                      : "ShownByWebKit") +
+           (view.hiding == WebView::PointerHiding::kWithBackgroundCursor ? "WithBackgroundCursor"
+                                                                         : "Public");
+}
+
+std::ostream& operator<<(std::ostream& out, const HoldView& view)
+{
+    return out << nameOf(view);
+}
+
+// The pointer hold in every kind of view: the VST3 editor's, whose cursors WebKit shows, and the
+// Audio Unit's, which shows them itself, each hiding the pointer with the public calls alone or
+// with the cursor-in-background setting, as the Audio Unit does in Apple's hosts.
+class PointerHoldTest : public EditorTest, public ::testing::WithParamInterface<HoldView>
 {
 protected:
     void SetUp() override
@@ -1027,10 +1067,14 @@ protected:
         parent = [[NSView alloc] init];
         window = makeWindow(parent);
         setPointerControlForTests(&pointer);
+        setCursorInBackgroundForTests(
+            [this](bool on) { return pointer.setCursorInBackground(on); });
         setBundleTypeForTests(bundleType);
-        core.setCursors(GetParam());
+        core.setCursors(GetParam().cursors);
+        core.setPointerHiding(GetParam().hiding);
         core.attach((__bridge void*)parent);
         setPointerControlForTests(nullptr);
+        setCursorInBackgroundForTests({});
         setBundleTypeForTests(nullptr);
         webView = (__bridge WKWebView*)core.webView()->nativeView();
         ASSERT_TRUE(pumpUntil(
@@ -1180,18 +1224,133 @@ TEST_P(PointerHoldTest, HoldsNothingWithoutAPressOnTheView)
     EXPECT_EQ(travels(), "");
 }
 
-// The two kinds of view, named.
-const auto kCursorsName = [](const ::testing::TestParamInfo<WebView::Cursors>& info) {
-    return info.param == WebView::Cursors::kShownByView ? std::string("ShownByView")
-                                                        : std::string("ShownByWebKit");
+// The kinds of view, named.
+const auto kHoldViewName = [](const ::testing::TestParamInfo<HoldView>& info) {
+    return nameOf(info.param);
 };
 
-INSTANTIATE_TEST_SUITE_P(Cursors, PointerHoldTest,
-                         ::testing::Values(WebView::Cursors::kShownByWebKit,
-                                           WebView::Cursors::kShownByView),
-                         kCursorsName);
+// Each kind of view with each way of hiding the pointer, or with one.
+std::vector<HoldView> holdViews(std::initializer_list<WebView::PointerHiding> hidings)
+{
+    std::vector<HoldView> views;
+    for (const auto cursors : {WebView::Cursors::kShownByWebKit, WebView::Cursors::kShownByView}) {
+        for (const auto hiding : hidings) {
+            views.push_back({.cursors = cursors, .hiding = hiding});
+        }
+    }
+    return views;
+}
 
-// Logic and GarageBand host Audio Units in an XPC service, where the pointer cannot be frozen:
+INSTANTIATE_TEST_SUITE_P(
+    Views, PointerHoldTest,
+    ::testing::ValuesIn(holdViews({WebView::PointerHiding::kPublic,
+                                   WebView::PointerHiding::kWithBackgroundCursor})),
+    kHoldViewName);
+
+// The VST3 editor's view and other hosts' Audio Unit views: the setting is never touched.
+class PublicPointerHidingTest : public PointerHoldTest
+{
+};
+
+TEST_P(PublicPointerHidingTest, LeavesTheBackgroundCursorAloneByDefault)
+{
+    pointer.at = pressOnView();
+    startHold();
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 2; }, std::chrono::seconds(2)));
+    sendThroughApplication(kCGEventLeftMouseUp, 0);
+    ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 4; }, std::chrono::seconds(2)));
+    EXPECT_EQ(pointer.withSetting, pointer.calls);
+}
+
+INSTANTIATE_TEST_SUITE_P(Views, PublicPointerHidingTest,
+                         ::testing::ValuesIn(holdViews({WebView::PointerHiding::kPublic})),
+                         kHoldViewName);
+
+// The Audio Unit's view in Logic, where the public calls report success but leave the pointer
+// visible unless the process's window-server connection has the cursor-in-background setting on:
+// it is on exactly while a hold hides the pointer.
+class BackgroundCursorHoldTest : public PointerHoldTest
+{
+protected:
+    // A press, the page's start and a release after the pointer moved; the hold's calls since.
+    std::vector<std::string> holdAndRelease()
+    {
+        const std::size_t before = pointer.withSetting.size();
+        const std::size_t held = pointer.calls.size() + 2; // Hidden and frozen.
+        const ScreenPoint press = pressOnView();
+        pointer.at = {.x = press.x, .y = press.y - 9};
+        startHold();
+        EXPECT_TRUE(
+            pumpUntil([&] { return pointer.calls.size() == held; }, std::chrono::seconds(2)));
+        sendThroughApplication(kCGEventLeftMouseUp, 0);
+        EXPECT_TRUE(pumpUntil([&] { return pointer.withSetting.size() == before + 7; },
+                              std::chrono::seconds(2)));
+        return {pointer.withSetting.begin() + static_cast<std::ptrdiff_t>(before),
+                pointer.withSetting.end()};
+    }
+
+    // A press and the page's start: the hold is on.
+    void hold()
+    {
+        pressOnView();
+        startHold();
+        ASSERT_TRUE(pumpUntil([&] { return pointer.calls.size() == 2; }, std::chrono::seconds(2)));
+        ASSERT_EQ(pointer.withSetting,
+                  (std::vector<std::string>{"background on", "hide", "freeze"}));
+    }
+};
+
+// A hold from the press to its end, with the setting on around it.
+std::vector<std::string> holdWithBackgroundCursor()
+{
+    return {"background on", "hide", "freeze", "warp", "unfreeze", "show", "background off"};
+}
+
+TEST_P(BackgroundCursorHoldTest, HidesThePointerWithTheBackgroundCursorForAnAppleHost)
+{
+    EXPECT_EQ(holdAndRelease(), holdWithBackgroundCursor());
+    EXPECT_EQ(holdAndRelease(), holdWithBackgroundCursor()); // Each hold turns it on and off again.
+}
+
+TEST_P(BackgroundCursorHoldTest, HidesWithThePublicCallsWhenTheSettingIsUnavailable)
+{
+    pointer.settingWorks = false;
+    EXPECT_EQ(holdAndRelease(), holdWithBackgroundCursor());
+    EXPECT_EQ(pointer.calls,
+              (std::vector<std::string>{"hide", "freeze", "warp", "unfreeze", "show"}));
+}
+
+TEST_P(BackgroundCursorHoldTest, TurnsTheBackgroundCursorOffWhenTheButtonIsFoundUp)
+{
+    hold();
+    pointer.buttonDown = false;
+    pollPointerHoldForTests(*core.webView());
+    EXPECT_TRUE(
+        pumpUntil([&] { return pointer.withSetting.size() == 7; }, std::chrono::seconds(2)));
+    EXPECT_EQ(pointer.withSetting, holdWithBackgroundCursor());
+}
+
+TEST_P(BackgroundCursorHoldTest, TurnsTheBackgroundCursorOffWhenClosedDuringAHold)
+{
+    hold();
+    core.detach();
+    EXPECT_EQ(pointer.withSetting, holdWithBackgroundCursor());
+}
+
+TEST_P(BackgroundCursorHoldTest, TurnsTheBackgroundCursorOffWhenThePageProcessEndsDuringAHold)
+{
+    hold();
+    ASSERT_TRUE(terminateContentProcessForTests(*core.webView()));
+    EXPECT_TRUE(
+        pumpUntil([&] { return pointer.withSetting.size() == 7; }, std::chrono::seconds(5)));
+    EXPECT_EQ(pointer.withSetting, holdWithBackgroundCursor());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Views, BackgroundCursorHoldTest,
+    ::testing::ValuesIn(holdViews({WebView::PointerHiding::kWithBackgroundCursor})), kHoldViewName);
+
+// A host that loads an Audio Unit in an XPC service runs it where the pointer cannot be frozen:
 // there the page gets no hold, and a drag follows the pointer as before.
 class OutOfProcessPointerHoldTest : public PointerHoldTest
 {
@@ -1208,18 +1367,48 @@ TEST_P(OutOfProcessPointerHoldTest, LeavesThePointerAloneInAnXpcService)
     EXPECT_TRUE(pointer.calls.empty());
 }
 
-INSTANTIATE_TEST_SUITE_P(Cursors, OutOfProcessPointerHoldTest,
-                         ::testing::Values(WebView::Cursors::kShownByWebKit,
-                                           WebView::Cursors::kShownByView),
-                         kCursorsName);
+INSTANTIATE_TEST_SUITE_P(
+    Views, OutOfProcessPointerHoldTest,
+    ::testing::ValuesIn(holdViews({WebView::PointerHiding::kPublic,
+                                   WebView::PointerHiding::kWithBackgroundCursor})),
+    kHoldViewName);
 
-// Logic and GarageBand host Audio Units in XPC services, which cannot freeze the pointer: there
-// the page gets no hold and drags follow the pointer. Plugin hosts are applications.
+// XPC services, where a host may load Audio Units, cannot freeze the pointer: there the page gets
+// no hold and drags follow the pointer. Plugin hosts are applications.
 TEST(PointerHoldGate, HoldsThePointerOutsideXpcServicesOnly)
 {
     EXPECT_FALSE(holdsPointerInBundleOfTypeForTests("XPC!"));
     EXPECT_TRUE(holdsPointerInBundleOfTypeForTests("APPL"));
     EXPECT_TRUE(holdsPointerInBundleOfTypeForTests(nullptr)); // A bare executable, as the tests.
+}
+
+// The setting a hold turns on in Apple's hosts, as the window server keeps it for this process's
+// connection: on after it is turned on, off after it is turned off.
+TEST(CursorInBackground, SetsTheWindowServersCursorInBackgroundProperty)
+{
+    [NSApplication sharedApplication]; // Connects this process to the window server.
+    using Connection = int (*)();
+    using CopyProperty = CGError (*)(int, int, CFStringRef, CFTypeRef*);
+    const auto connection =
+        reinterpret_cast<Connection>(dlsym(RTLD_DEFAULT, "_CGSDefaultConnection"));
+    const auto copyProperty =
+        reinterpret_cast<CopyProperty>(dlsym(RTLD_DEFAULT, "CGSCopyConnectionProperty"));
+    ASSERT_NE(connection, nullptr);
+    ASSERT_NE(copyProperty, nullptr);
+    const auto read = [&] {
+        CFTypeRef value = nullptr;
+        EXPECT_EQ(copyProperty(connection(), connection(), CFSTR("SetsCursorInBackground"), &value),
+                  kCGErrorSuccess);
+        const bool on = value != nullptr && CFEqual(value, kCFBooleanTrue);
+        if (value != nullptr) {
+            CFRelease(value);
+        }
+        return on;
+    };
+    ASSERT_TRUE(setRealCursorInBackgroundForTests(true));
+    EXPECT_TRUE(read());
+    ASSERT_TRUE(setRealCursorInBackgroundForTests(false));
+    EXPECT_FALSE(read());
 }
 
 } // namespace
