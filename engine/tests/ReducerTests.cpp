@@ -260,6 +260,46 @@ TEST_P(ColumnReductionInvalid, SaysWhetherAColumnHoldsASampleThatIsNotFinite)
     }
 }
 
+// A broken sample is found wherever it lies: at every position of two neighbouring columns,
+// first and last samples included, and among the last of the span; and only in its own column, so
+// rewriting it finite clears the flag, though the column before was read while it was broken. In
+// min/max columns, a single column and raw samples.
+TEST_P(ColumnReductionInvalid, FindsABrokenSampleAtEveryPosition)
+{
+    const InvalidCase c = GetParam();
+    auto samples = randomSamples(c.count, 12);
+    const auto read = [&](std::size_t first, std::span<float> destination) {
+        std::copy_n(samples.begin() + static_cast<std::ptrdiff_t>(first), destination.size(),
+                    destination.begin());
+        return true;
+    };
+    ColumnReduction reduction;
+    reduction.reset(c.count, c.columns, true);
+    ASSERT_TRUE(reduction.update(0, c.count, read));
+    // Two columns from the middle, or as many samples where a column holds one or fewer.
+    const std::size_t width = std::max<std::size_t>(c.count / c.columns, 1);
+    const std::size_t from = (c.count / 2 / width) * width;
+    std::vector<std::size_t> positions;
+    for (std::size_t at = from; at < std::min(c.count, from + 2 * width + 2); ++at) {
+        positions.push_back(at);
+    }
+    for (std::size_t at = c.count - std::min<std::size_t>(c.count, 9); at < c.count; ++at) {
+        positions.push_back(at);
+    }
+    for (const std::size_t at : positions) {
+        SCOPED_TRACE(at);
+        const float kept = samples[at];
+        samples[at] = std::numeric_limits<float>::quiet_NaN();
+        // With the sample before it, so that its neighbouring column is read again too, and
+        // must not take it for its own.
+        ASSERT_TRUE(reduction.update(at > 0 ? at - 1 : at, at + 1, read));
+        EXPECT_TRUE(reduction.holdsInvalid()) << "broken";
+        samples[at] = kept;
+        ASSERT_TRUE(reduction.update(at, at + 1, read));
+        EXPECT_FALSE(reduction.holdsInvalid()) << "rewritten finite";
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(Widths, ColumnReductionInvalid,
                          ::testing::Values(InvalidCase{.count = 48000, .columns = 1366},
                                            InvalidCase{.count = 48000, .columns = 1},
