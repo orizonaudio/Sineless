@@ -57,6 +57,14 @@ inline bool displayRan(std::uint64_t given, double expected)
     return static_cast<double>(given) >= kRanFraction * expected;
 }
 
+// Whether the trace layer's display link ran over a wait: it gave at least kRanFraction of the
+// refreshes, or the layer did not mean it to run (hidden, occluded, lost). A link the layer itself
+// paused is not a stalled display, so a wait on it fails on CI too.
+inline bool linkRan(std::uint64_t given, double expected, bool linkRunning)
+{
+    return !linkRunning || displayRan(given, expected);
+}
+
 // What the page's one requestAnimationFrame, asked after a wait timed out, says of its rendering
 // updates. A read that failed measured nothing: it fails the test, never skips it.
 enum class PageProbe : std::uint8_t
@@ -73,9 +81,9 @@ inline bool pageRan(PageProbe probe)
 
 // For what needs both the link and the page (frames made on the link's request, reaching the page
 // in its rendering update): the display ran only if both did.
-inline bool linkAndPageRan(std::uint64_t given, double expected, PageProbe probe)
+inline bool linkAndPageRan(std::uint64_t given, double expected, bool linkRunning, PageProbe probe)
 {
-    return displayRan(given, expected) && pageRan(probe);
+    return linkRan(given, expected, linkRunning) && pageRan(probe);
 }
 
 // A wait's outcome: whether its condition held, and if not, whether the display drove it.

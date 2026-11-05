@@ -26,8 +26,7 @@ std::string_view name(DisplayVerdict verdict)
 }
 
 // A wait on the display is skipped only where the display stalled on CI: a failed condition with
-// the display running fails everywhere. A link the product leaves paused looks like a stall (no
-// callbacks), so on CI it skips too; it fails on a developer's Mac, where the stall is not skipped.
+// the display running fails everywhere, and a stall on a developer's Mac fails too.
 TEST(DisplayWait, SkipsOnlyAStalledDisplayOnCi)
 {
     struct Case
@@ -79,6 +78,22 @@ TEST(DisplayWait, JudgesAScreenThatReportsNoRateAsSixtyHertz)
     EXPECT_TRUE(displayRan(60, expectedRefreshes(1s, 0.0)));
 }
 
+// A link that gave no callbacks stalled only if the layer meant it to run: one the layer paused
+// itself (hidden, occluded, lost) is the layer's doing, and a wait on it fails, on CI too, so a
+// layer that never resumes is caught there.
+TEST(DisplayWait, ReadsALinkTheLayerPausedAsRunning)
+{
+    const double expected = expectedRefreshes(1s, 60.0);
+    const auto atFraction = static_cast<std::uint64_t>(std::ceil(kRanFraction * expected));
+    EXPECT_FALSE(linkRan(0, expected, true));
+    EXPECT_FALSE(linkRan(atFraction - 1, expected, true));
+    EXPECT_TRUE(linkRan(atFraction, expected, true));
+    EXPECT_TRUE(linkRan(0, expected, false));
+    EXPECT_EQ(name(displayVerdict(
+                  {.met = false, .displayRan = linkRan(0, expected, false), .message = {}}, true)),
+              name(DisplayVerdict::kFailed));
+}
+
 // The page's probe: a frame that never came is a stall; a read that failed measured nothing and
 // fails the test rather than skip it. A wait on both the link and the page stalled when either did.
 TEST(DisplayWait, JudgesThePageByItsProbeAndAJointWaitByBoth)
@@ -89,11 +104,12 @@ TEST(DisplayWait, JudgesThePageByItsProbeAndAJointWaitByBoth)
 
     const double expected = expectedRefreshes(1s, 60.0);
     const auto running = static_cast<std::uint64_t>(expected);
-    EXPECT_TRUE(linkAndPageRan(running, expected, PageProbe::kFired));
-    EXPECT_FALSE(linkAndPageRan(running, expected, PageProbe::kNotFired));
-    EXPECT_FALSE(linkAndPageRan(0, expected, PageProbe::kFired));
-    EXPECT_FALSE(linkAndPageRan(0, expected, PageProbe::kNotFired));
-    EXPECT_TRUE(linkAndPageRan(running, expected, PageProbe::kNotMeasured));
+    EXPECT_TRUE(linkAndPageRan(running, expected, true, PageProbe::kFired));
+    EXPECT_FALSE(linkAndPageRan(running, expected, true, PageProbe::kNotFired));
+    EXPECT_FALSE(linkAndPageRan(0, expected, true, PageProbe::kFired));
+    EXPECT_FALSE(linkAndPageRan(0, expected, true, PageProbe::kNotFired));
+    EXPECT_TRUE(linkAndPageRan(running, expected, true, PageProbe::kNotMeasured));
+    EXPECT_TRUE(linkAndPageRan(0, expected, false, PageProbe::kFired));
 }
 
 } // namespace
