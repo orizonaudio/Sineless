@@ -8,6 +8,7 @@
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 #import <WebKit/WebKit.h>
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -17,6 +18,7 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <objc/message.h>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -144,19 +146,100 @@ protected:
         layer = nullptr;
     }
 
+    // What drives a wait: the layer's display link (drawing, failed buffers, frames made on its
+    // request), the page's rendering update (its canvas size, what it shows), or both (frames made
+    // on the link's request and read by the page).
+    enum class Drives
+    {
+        kLink,
+        kPage,
+        kLinkAndPage,
+    };
+
+    // Asks the page for one rendering update, after a wait timed out: requestAnimationFrame runs
+    // only in it, as ResizeObserver does (HTML Standard, "update the rendering"), and one asked now
+    // schedules nothing during the wait it judges.
+    testing::PageProbe probePage()
+    {
+        const std::string asked =
+            evaluate(webView, @"(() => { window.orizonTestProbe = false; "
+                              @"requestAnimationFrame(() => { window.orizonTestProbe = true; }); "
+                              @"return 'asked'; })()");
+        if (asked != "asked") {
+            return testing::PageProbe::kNotMeasured;
+        }
+        const auto read = [&] { return evaluate(webView, @"String(window.orizonTestProbe)"); };
+        pumpUntil([&] { return read() == "true"; }, 500ms);
+        const std::string fired = read();
+        if (fired == "true") {
+            return testing::PageProbe::kFired;
+        }
+        return fired == "false" ? testing::PageProbe::kNotFired : testing::PageProbe::kNotMeasured;
+    }
+
+    // Waits for `condition`, which only the display brings about (`drives`), with audio coming
+    // meanwhile when `playing`. Timed out, it asks whether the display ran (MacPageTesting.h,
+    // "Waits on the display"), and reads the condition again: a page that caught up during its
+    // probe met it.
+    testing::DisplayWait waitOnDisplay(const std::function<bool()>& condition,
+                                       std::chrono::milliseconds within, Drives drives,
+                                       const std::function<std::string()>& what,
+                                       bool playing = false)
+    {
+        const std::uint64_t callbacks = layer->statsForTesting().callbacks;
+        const auto started = std::chrono::steady_clock::now();
+        if (playing ? pumpPlaying(condition, within) : pumpUntil(condition, within)) {
+            return {.met = true};
+        }
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started);
+        const std::uint64_t given = layer->statsForTesting().callbacks - callbacks;
+        const testing::PageProbe probe =
+            drives == Drives::kLink ? testing::PageProbe::kFired : probePage();
+        if (condition()) {
+            return {.met = true};
+        }
+        const double hertz = static_cast<double>(window.screen.maximumFramesPerSecond);
+        const double expected = testing::expectedRefreshes(elapsed, hertz);
+        const bool ran = drives == Drives::kLink ? testing::displayRan(given, expected)
+                         : drives == Drives::kPage
+                             ? testing::pageRan(probe)
+                             : testing::linkAndPageRan(given, expected, probe);
+        std::ostringstream message;
+        message << what() << ": not in " << elapsed.count()
+                << " ms, in which the display link called "
+                << "back " << given << " times of " << std::lround(expected) << " refreshes ("
+                << std::lround(static_cast<double>(given) * 1000.0 /
+                               static_cast<double>(std::max<std::int64_t>(elapsed.count(), 1)))
+                << " a second; the screen reports " << hertz << " Hz)";
+        if (drives != Drives::kLink) {
+            message << "; the page's rendering update "
+                    << (probe == testing::PageProbe::kFired      ? "ran"
+                        : probe == testing::PageProbe::kNotFired ? "did not run"
+                                                                 : "could not be read");
+        }
+        message << (ran ? "" : ": the display stalled");
+        return {.met = false, .displayRan = ran, .message = message.str()};
+    }
+
     // A new frame reaches the screen. Audio keeps coming meanwhile: with none, nothing new is
-    // drawn.
-    ::testing::AssertionResult presents(std::chrono::milliseconds within = 5s)
+    // drawn. The layer's link runs only once the page has sent its trace view, so a page stalled
+    // before it reads as no callbacks.
+    testing::DisplayWait presents(std::chrono::milliseconds within = 5s)
     {
         const auto before = layer->statsForTesting().submitted;
-        if (pumpPlaying([&] { return layer->statsForTesting().submitted > before; }, within)) {
-            return ::testing::AssertionSuccess();
-        }
-        const auto stats = layer->statsForTesting();
-        return ::testing::AssertionFailure()
-               << "nothing presented: " << stats.callbacks << " callbacks, " << stats.submitted
-               << " submitted, hidden " << (layer->view().hidden ? "yes" : "no") << ", in a window "
-               << (layer->view().window != nil ? "yes" : "no") << ", page frames " << frameCount();
+        return waitOnDisplay(
+            [&] { return layer->statsForTesting().submitted > before; }, within, Drives::kLink,
+            [&] {
+                const auto stats = layer->statsForTesting();
+                std::ostringstream what;
+                what << "a picture presented (" << stats.submitted << " submitted, hidden "
+                     << (layer->view().hidden ? "yes: waiting for the page's trace view" : "no")
+                     << ", in a window " << (layer->view().window != nil ? "yes" : "no")
+                     << ", page frames " << frameCount() << ")";
+                return what.str();
+            },
+            true);
     }
 
     int frameCount()
@@ -179,25 +262,30 @@ protected:
                metal.drawableSize.height == page.canvasHeight;
     }
 
-    // Waits for the layer to cover the page's screen; if it does not, says where each is.
-    ::testing::AssertionResult coversThePagesScreenWithin(std::chrono::milliseconds within)
+    // Waits for the layer to cover the page's screen; if it does not, says where each is. The page
+    // sizes its canvas in its rendering update (a ResizeObserver).
+    testing::DisplayWait coversThePagesScreenWithin(std::chrono::milliseconds within)
     {
-        if (pumpUntil([&] { return coversThePagesScreen(); }, within)) {
-            return ::testing::AssertionSuccess();
-        }
+        return waitOnDisplay([&] { return coversThePagesScreen(); }, within, Drives::kPage,
+                             [&] { return whereEachIs(); });
+    }
+
+    std::string whereEachIs()
+    {
         const PageScreen page = pageScreen(webView);
         const NSRect frame = layer->view().frame;
         const auto* metal = static_cast<CAMetalLayer*>(layer->view().layer);
-        return ::testing::AssertionFailure()
-               << "page screen " << page.left << ", " << page.top << ", " << page.width << " × "
-               << page.height << " (canvas " << page.canvasWidth << " × " << page.canvasHeight
-               << "); layer " << frame.origin.x << ", " << frame.origin.y << ", "
-               << frame.size.width << " × " << frame.size.height << " (drawable "
-               << metal.drawableSize.width << " × " << metal.drawableSize.height << "); container "
-               << webView.superview.bounds.size.width << " × "
-               << webView.superview.bounds.size.height << ", web view " << webView.frame.size.width
-               << " × " << webView.frame.size.height << ", scale " << window.backingScaleFactor
-               << ", page ratio " << evaluate(webView, @"String(window.devicePixelRatio)");
+        std::ostringstream where;
+        where << "the layer on the page's screen: page screen " << page.left << ", " << page.top
+              << ", " << page.width << " × " << page.height << " (canvas " << page.canvasWidth
+              << " × " << page.canvasHeight << "); layer " << frame.origin.x << ", "
+              << frame.origin.y << ", " << frame.size.width << " × " << frame.size.height
+              << " (drawable " << metal.drawableSize.width << " × " << metal.drawableSize.height
+              << "); container " << webView.superview.bounds.size.width << " × "
+              << webView.superview.bounds.size.height << ", web view " << webView.frame.size.width
+              << " × " << webView.frame.size.height << ", scale " << window.backingScaleFactor
+              << ", page ratio " << evaluate(webView, @"String(window.devicePixelRatio)");
+        return where.str();
     }
 
     std::shared_ptr<engine::Engine> engine;
@@ -222,9 +310,20 @@ TEST_F(NativeTracesTest, DrawsTheTracesBelowATransparentPage)
     EXPECT_FALSE([[webView valueForKey:@"drawsBackground"] boolValue]);
     NSArray<NSView*>* stack = webView.superview.subviews;
     EXPECT_LT([stack indexOfObject:layer->view()], [stack indexOfObject:webView]);
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     EXPECT_FALSE(layer->view().hidden);
-    EXPECT_TRUE(coversThePagesScreenWithin(2s));
+    ASSERT_DISPLAY_WAIT(coversThePagesScreenWithin(2s));
+}
+
+// A page that had no rendering update is read as the display stalling, as a CI machine's display
+// does, and not as the page failing: the tests then skip on CI.
+TEST_F(NativeTracesTest, ReadsAPageWithNoRenderingUpdateAsTheDisplayStalling)
+{
+    open();
+    ASSERT_DISPLAY_WAIT(presents());
+    [window orderOut:nil]; // WebKit stops the page's rendering updates, as a stalled display does.
+    pumpUntil([] { return false; }, 200ms);
+    EXPECT_EQ(probePage(), testing::PageProbe::kNotFired);
 }
 
 // Around the screen, where the page is transparent too, the editor shows the page's colour.
@@ -255,7 +354,7 @@ TEST_F(NativeTracesTest, ShowsThePageColourAroundTheTraces)
 TEST_F(NativeTracesTest, StaysOnThePagesScreenThroughEverySize)
 {
     open();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     for (const auto& [width, height] :
          std::vector<std::array<int, 2>>{{Editor::kMinimumWidth, Editor::kMinimumHeight},
                                          {1500, 900},
@@ -263,16 +362,16 @@ TEST_F(NativeTracesTest, StaysOnThePagesScreenThroughEverySize)
                                          {Editor::kDefaultWidth, Editor::kDefaultHeight}}) {
         ViewRect rect(0, 0, width, height);
         ASSERT_EQ(editor->onSize(&rect), kResultTrue);
-        EXPECT_TRUE(coversThePagesScreenWithin(3s)) << width << " × " << height;
+        ASSERT_DISPLAY_WAIT(coversThePagesScreenWithin(3s));
         const auto* metal = static_cast<CAMetalLayer*>(layer->view().layer);
-        EXPECT_TRUE(pumpUntil(
+        ASSERT_DISPLAY_WAIT(waitOnDisplay(
             [&] {
                 const auto stats = layer->statsForTesting();
                 return stats.drawnWidth == metal.drawableSize.width &&
                        stats.drawnHeight == metal.drawableSize.height;
             },
-            3s))
-            << width << " × " << height;
+            3s, Drives::kLink,
+            [&] { return "drawn at " + std::to_string(width) + " × " + std::to_string(height); }));
         EXPECT_FALSE(layer->view().hidden);
     }
     ViewRect low(0, 0, Editor::kDefaultWidth, protocol::kToolbarHeight);
@@ -284,9 +383,11 @@ TEST_F(NativeTracesTest, StaysOnThePagesScreenThroughEverySize)
 TEST_F(NativeTracesTest, GivesThePageCopiesOfTheFramesDrawn)
 {
     open();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     const int before = frameCount();
-    EXPECT_TRUE(pumpPlaying([&] { return frameCount() > before + 3; }, 3s));
+    ASSERT_DISPLAY_WAIT(
+        waitOnDisplay([&] { return frameCount() > before + 3; }, 3s, Drives::kLinkAndPage,
+                      [] { return std::string("copies of the frames drawn"); }, true));
     EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.lastFrame.views.size)"), "2");
 }
 
@@ -295,12 +396,12 @@ TEST_F(NativeTracesTest, GivesThePageCopiesOfTheFramesDrawn)
 TEST_F(NativeTracesTest, HidesTheTracesWhileThePageReloads)
 {
     open();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     ASSERT_TRUE(terminateContentProcessForTests(*editor->webView()));
     EXPECT_TRUE(pumpUntil([&] { return layer->view().hidden; }, 5s));
     EXPECT_TRUE(
         pumpUntil([&] { return hasSnapshot(webView) && !layer->view().hidden; }, kPageTimeout));
-    EXPECT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
 }
 
 // A page that keeps dying is not reloaded again: the editor's notice says so, and the last traces
@@ -328,13 +429,15 @@ TEST_F(NativeTracesTest, HidesTheTracesBehindTheNoticeThatThePageKeepsFailing)
 TEST_F(NativeTracesTest, PlacesTheFramesByTheDisplayClock)
 {
     open();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     const engine::FramePacing* clock = editor->displayClock();
     ASSERT_NE(clock, nullptr);
     const auto before = clock->clockReads();
     const int frames = frameCount();
-    EXPECT_TRUE(
-        pumpPlaying([&] { return frameCount() > frames + 3 && clock->clockReads() > before; }, 5s));
+    ASSERT_DISPLAY_WAIT(
+        waitOnDisplay([&] { return frameCount() > frames + 3 && clock->clockReads() > before; }, 5s,
+                      Drives::kLinkAndPage,
+                      [] { return std::string("frames placed by the display clock"); }, true));
 }
 
 // The diagnostic switch is the host's environment, read as the editor opens: set, the page is told
@@ -346,13 +449,13 @@ TEST_F(NativeTracesTest, DrawsTheFrameBarcodeOnlyWhenTheHostSetsTheSwitch)
     open();
     // NOLINTNEXTLINE(concurrency-mt-unsafe): as above.
     unsetenv("SINELESS_FRAME_BARCODE");
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.snapshot.frameBarcode)"), "true");
     EXPECT_TRUE(layer->statsForTesting().barcode);
     close();
 
     open();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     EXPECT_EQ(evaluate(webView, @"String(window.orizonDebug.snapshot.frameBarcode)"), "undefined");
     EXPECT_FALSE(layer->statsForTesting().barcode);
 }
@@ -362,18 +465,20 @@ TEST_F(NativeTracesTest, DrawsTheFrameBarcodeOnlyWhenTheHostSetsTheSwitch)
 TEST_F(NativeTracesTest, SaysWhatToDoWhenNativeDrawingStops)
 {
     open();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     layer->failCommandBuffersForTesting(11); // MTLCommandBufferErrorDeviceRemoved.
-    EXPECT_TRUE(pumpUntil(
+    // The failure registers when a buffer completes, which a callback submits.
+    ASSERT_DISPLAY_WAIT(waitOnDisplay(
         [&] {
             return evaluate(webView,
                             @"String(!document.getElementById('message').hidden && "
                             @"document.getElementById('message-text').textContent.includes("
                             @"'reopen'))") == "true";
         },
-        5s));
+        5s, Drives::kLink, [] { return std::string("the message to reopen"); }));
     const int before = frameCount();
-    EXPECT_TRUE(pumpPlaying([&] { return frameCount() > before + 3; }, 3s));
+    ASSERT_DISPLAY_WAIT(waitOnDisplay([&] { return frameCount() > before + 3; }, 3s, Drives::kPage,
+                                      [] { return std::string("the page's own frames"); }, true));
 }
 
 // Opened and closed again and again: each time the traces are drawn natively and nothing is left
@@ -384,7 +489,7 @@ TEST_F(NativeTracesTest, OpensAndClosesCleanly)
         @autoreleasepool {
             open();
             ASSERT_NE(layer, nullptr);
-            EXPECT_TRUE(presents()) << cycle;
+            ASSERT_DISPLAY_WAIT(presents());
             close();
             EXPECT_FALSE(editor);
         }
