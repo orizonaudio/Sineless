@@ -190,8 +190,9 @@ public:
     HostSeed& play(SignalKind signal, std::uint16_t hertz, int blocks = 8)
     {
         step(StepKind::kPlay).add(signal);
-        add(static_cast<std::uint8_t>((hertz - 1) & 0xFFU));
-        add(static_cast<std::uint8_t>((hertz - 1) >> 8U));
+        const unsigned code = hertz - 1U;
+        add(static_cast<std::uint8_t>(code & 0xFFU));
+        add(static_cast<std::uint8_t>(code >> 8U));
         return add(64).add(1).add(blocks - 1).add(7).add(1).add(1);
     }
     HostSeed& leave() { return step(StepKind::kLeave); }

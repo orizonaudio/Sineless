@@ -62,8 +62,9 @@ public:
     std::uint8_t byte() { return next < bytes.size() ? bytes[next++] : 0; }
     std::uint16_t word()
     {
-        const auto low = byte();
-        return static_cast<std::uint16_t>(low | (byte() << 8U));
+        const unsigned low = byte();
+        const unsigned high = byte();
+        return static_cast<std::uint16_t>(low | (high << 8U));
     }
     // A value below `count` (at least 1).
     std::size_t below(std::size_t count) { return count <= 256 ? byte() % count : word() % count; }
@@ -230,12 +231,12 @@ std::vector<Step> readSteps(InputReader& input)
         case StepKind::kPlay:
             step.signal.kind = static_cast<SignalKind>(input.below(kSignalKinds));
             step.signal.hertz = 1 + input.word() % 20000;
-            step.signal.level = input.byte() / 128.0f;
+            step.signal.level = static_cast<float>(input.byte()) / 128.0f;
             if (input.below(8) == 0) {
                 step.signal.brokenEvery = 1 + input.word();
             }
             step.blocks = 1 + static_cast<int>(input.below(8));
-            step.blockSize = 32 << input.below(8); // 32 to 4,096 samples.
+            step.blockSize = static_cast<int>(32U << input.below(8)); // 32 to 4,096 samples.
             step.silent = input.below(4) == 0 ? input.below(4) : 0;
             step.paced = input.below(8) != 0;
             break;
