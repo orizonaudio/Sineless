@@ -130,6 +130,15 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
                               own->settings().get().value(protocol::SettingId::kGroup));
         if (analyzer.produce(frame)) {
             checkFrame(frame);
+            const engine::DecodedFrame decoded = engine::decode(frame);
+            orizon::fuzz::checkReadouts(decoded);
+            // Both tracks play the same tone, the other negated, in the same format throughout.
+            // With no host timeline their lanes are mostly silent; the host fuzzer checks sounding
+            // ones.
+            if (decoded.laneCount == 2 && !decoded.has(protocol::FrameFlag::kCompared) &&
+                decoded.invalidLanes == 0) {
+                orizon::fuzz::checkMirroredLanes(decoded);
+            }
         }
     };
 

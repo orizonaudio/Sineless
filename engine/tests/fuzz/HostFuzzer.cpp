@@ -342,6 +342,7 @@ public:
             if (joined) {
                 registry.remove(*other);
                 joined = false;
+                diverged = true;
             }
             break;
         case StepKind::kJoin:
@@ -351,6 +352,7 @@ public:
                 other->setInputChannels(own->inputChannels());
                 registry.add(other);
                 joined = true;
+                diverged = true; // It holds none of the audio played before.
             }
             break;
         case StepKind::kFreeze:
@@ -378,9 +380,22 @@ public:
         return false;
     }
 
+    // Draws the next frame whatever has changed, as for a page that has just loaded.
+    void redraw() { analyzer.redraw(); }
+
+    [[nodiscard]] protocol::DisplayMode displayMode() const
+    {
+        return static_cast<protocol::DisplayMode>(
+            own->settings().get().value(protocol::SettingId::kDisplayMode));
+    }
+
+    // Whether a step has treated the two tracks differently, so that their audio may differ.
+    [[nodiscard]] bool tracksDiverged() const { return diverged; }
+
 private:
     template <typename Apply> void forTracks(Tracks tracks, const Apply& apply)
     {
+        diverged = diverged || tracks != Tracks::kBoth;
         if (tracks != Tracks::kOther) {
             apply(*own);
         }
@@ -438,6 +453,7 @@ private:
     std::shared_ptr<engine::Engine> own;
     std::shared_ptr<engine::Engine> other;
     bool joined = true;
+    bool diverged = false;
     // The simulated clock, from 1 s as the paced tests start it.
     std::uint64_t clock = kNanosPerSecond;
     std::uint64_t played = 0;
@@ -464,19 +480,49 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     World second;
     std::vector<std::byte> firstFrame;
     std::vector<std::byte> secondFrame;
+    // The newest frame drawn, and whether only format changes have happened since: a frozen frame
+    // drawn again must then be the same (#123).
+    std::vector<std::byte> previous;
+    bool onlyFormatChanges = false;
     for (const Step& step : steps) {
+        const bool formatChange = step.kind == StepKind::kPrepare || step.kind == StepKind::kRate;
+        bool redrawn = false;
+        if (step.kind == StepKind::kFrame && onlyFormatChanges &&
+            engine::decode(previous).has(protocol::FrameFlag::kFrozen) &&
+            first.displayMode() != protocol::DisplayMode::kCompare) {
+            // In Compare, freezing restarts the match search, which ends over frames: a frozen
+            // Compare frame changes when it does.
+            first.redraw();
+            second.redraw();
+            redrawn = true;
+        }
         const bool drew = first.apply(step, firstFrame);
         const bool drewAgain = second.apply(step, secondFrame);
         if (step.kind != StepKind::kFrame) {
+            onlyFormatChanges = onlyFormatChanges && formatChange;
             continue;
         }
         require(drew == drewAgain && (!drew || firstFrame == secondFrame),
                 "the same host events draw the same frames");
         orizon::fuzz::counted("determinism");
-        if (drew) {
-            orizon::fuzz::counted("drawn");
-            checkFrame(firstFrame);
+        if (redrawn) {
+            require(drew && firstFrame == previous,
+                    "a frozen frame drawn again after a format change is the same");
+            orizon::fuzz::counted("frozen");
         }
+        if (!drew) {
+            continue;
+        }
+        orizon::fuzz::counted("drawn");
+        checkFrame(firstFrame);
+        const engine::DecodedFrame frame = engine::decode(firstFrame);
+        orizon::fuzz::checkReadouts(frame);
+        if (frame.laneCount == 2 && !frame.has(protocol::FrameFlag::kCompared) &&
+            frame.invalidLanes == 0 && frame.invalidSamples == 0 && !first.tracksDiverged()) {
+            orizon::fuzz::checkMirroredLanes(frame);
+        }
+        previous = firstFrame;
+        onlyFormatChanges = true;
     }
     return 0;
 }
