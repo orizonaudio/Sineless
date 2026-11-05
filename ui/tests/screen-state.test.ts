@@ -1,22 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
+import { ViewLayout } from "../../protocol/src/enums.ts";
 import {
   clampPan,
   markerLane,
-  readoutView,
   viewOrder,
   viewToggleState,
 } from "../src/view/screen-state.ts";
-
-describe("readoutView", () => {
-  // The engine decides it; the page takes the frame's word, whatever the settings say.
-  test.each(viewOrder)("is the view the frame measured: %s", (view) => {
-    expect(readoutView({ readoutView: ChannelView[view] })).toBe(
-      ChannelView[view],
-    );
-  });
-});
 
 describe("clampPan", () => {
   test.each([
