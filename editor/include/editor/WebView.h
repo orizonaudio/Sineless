@@ -32,11 +32,21 @@ public:
         kShownByView,
     };
 
+    // How the pointer hold hides the pointer: with the public calls alone, or with the window
+    // server's cursor-in-background setting turned on for each hold, as Logic needs (AD-28). Only
+    // the Audio Unit asks for it, in Apple's hosts; macOS only.
+    enum class PointerHiding : std::uint8_t
+    {
+        kPublic,
+        kWithBackgroundCursor,
+    };
+
     // `parent` is the host's NSView or HWND. The page is loaded from the embedded UI.
     static std::unique_ptr<WebView> create(void* parent, int width, int height,
                                            MessageHandler onMessage,
                                            FrameRequestHandler onFrameRequest = {},
-                                           Cursors cursors = Cursors::kShownByWebKit);
+                                           Cursors cursors = Cursors::kShownByWebKit,
+                                           PointerHiding pointerHiding = PointerHiding::kPublic);
 
     WebView() = default;
     virtual ~WebView() = default;

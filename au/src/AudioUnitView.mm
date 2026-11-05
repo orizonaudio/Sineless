@@ -37,6 +37,31 @@ constexpr double kOwnSizeHoldSeconds = 1.0;
 const NSLayoutPriority kHoldingPriority = NSLayoutPriorityDefaultHigh;
 const NSLayoutPriority kNotHoldingPriority = 1;
 
+// Whether the pointer hold hides the pointer with the window server's cursor-in-background
+// setting: in Apple's hosts (Logic Pro Creator Studio, Logic Pro, GarageBand), named exactly.
+// Logic Pro Creator Studio ignores the public calls without it, though they report success, so
+// the view cannot find out by trying (AD-28).
+bool hidesPointerWithBackgroundCursor(NSString* hostBundleId)
+{
+    static NSSet<NSString*>* const kAppleHosts = [NSSet setWithArray:@[
+        @"com.apple.mobilelogic", @"com.apple.logic10", @"com.apple.garageband10"
+    ]];
+    return hostBundleId != nil && [kAppleHosts containsObject:hostBundleId];
+}
+
+NSString* __strong& hostBundleIdForTests()
+{
+    static NSString* bundleId = nil;
+    return bundleId;
+}
+
+// The host's bundle identifier, or the one a test set.
+NSString* hostBundleId()
+{
+    NSString* const forTests = hostBundleIdForTests();
+    return forTests != nil ? forTests : NSBundle.mainBundle.bundleIdentifier;
+}
+
 } // namespace
 
 // The view a host shows in the plugin's window: the editor filling it. The editor opens when the
@@ -74,6 +99,9 @@ const NSLayoutPriority kNotHoldingPriority = 1;
         core = std::move(editor);
         // Logic and GarageBand host the view out of process, where WebKit's cursors do not show.
         core->setCursors(orizon::editor::WebView::Cursors::kShownByView);
+        if (hidesPointerWithBackgroundCursor(hostBundleId())) {
+            core->setPointerHiding(orizon::editor::WebView::PointerHiding::kWithBackgroundCursor);
+        }
         // Resizable: hosts read the mask to decide whether the window may be resized.
         self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         self.clipsToBounds = YES; // No longer the default from macOS 14.
@@ -332,6 +360,16 @@ OSStatus copyCocoaViewInfo(std::string_view imagePath, AudioUnitCocoaViewInfo& i
 double ownSizeHoldSeconds()
 {
     return kOwnSizeHoldSeconds;
+}
+
+void setHostBundleIdForTests(NSString* bundleId)
+{
+    hostBundleIdForTests() = bundleId;
+}
+
+bool hidesPointerWithBackgroundCursorForTests(NSString* hostBundleId)
+{
+    return hidesPointerWithBackgroundCursor(hostBundleId);
 }
 
 editor::EditorCore* editorCoreOf(NSView* view)

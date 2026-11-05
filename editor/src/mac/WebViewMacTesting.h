@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 namespace orizon::editor {
 
 class PointerControl;
@@ -23,6 +25,15 @@ const void* drawnDiagonalResizeCursorForTests();
 
 // For tests: the pointer that views created from now on hold, instead of the real one (nullptr).
 void setPointerControlForTests(PointerControl* control);
+
+// For tests: what views created from now on call to turn the window server's cursor-in-background
+// setting on or off around a hold, instead of the real setting (an empty function); it returns
+// whether the setting was made.
+void setCursorInBackgroundForTests(std::function<bool(bool on)> set);
+
+// For tests: turns the real cursor-in-background setting of this process's window-server
+// connection on or off, as a hold does; false if the system offers no way to.
+bool setRealCursorInBackgroundForTests(bool on);
 
 // For tests: the CFBundlePackageType that views created from now on take their process's main
 // bundle to have, as Logic's out-of-process Audio Unit service has "XPC!" (nullptr: the real one).

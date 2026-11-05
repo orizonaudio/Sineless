@@ -904,7 +904,8 @@ bool terminateProcessForTests(WebView& view, bool browser)
 
 std::unique_ptr<WebView> WebView::create(void* parent, int width, int height,
                                          MessageHandler onMessage,
-                                         FrameRequestHandler onFrameRequest, Cursors /*cursors*/)
+                                         FrameRequestHandler onFrameRequest, Cursors /*cursors*/,
+                                         PointerHiding /*pointerHiding*/)
 {
     return std::make_unique<WebViewWin>(static_cast<HWND>(parent), width, height,
                                         std::move(onMessage), std::move(onFrameRequest));
