@@ -5,16 +5,19 @@
 #import <Cocoa/Cocoa.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <gtest/gtest.h>
 #include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -131,16 +134,55 @@ protected:
 
     std::uint64_t submitted() const { return layer->statsForTesting().submitted; }
 
-    // A picture submitted after `before`, counted before the change that should draw one: the
-    // link may submit it as soon as the change is made, before the test starts waiting.
-    bool presentsSince(std::uint64_t before, std::chrono::milliseconds within = 2s)
+    // Whether `met` held, and if not, whether the display link called back on at least
+    // kRanFraction of the refreshes since `started` (`callbacks` then): only its callbacks draw,
+    // take frames and find failed buffers. On a stalled CI display the test then skips
+    // (MacPageTesting.h, "Waits on the display").
+    testing::DisplayWait judge(bool met, std::uint64_t callbacks,
+                               std::chrono::steady_clock::time_point started,
+                               const std::string& what) const
     {
-        return pumpUntil([&] { return submitted() > before; }, within);
+        if (met) {
+            return {.met = true};
+        }
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started);
+        const std::uint64_t given = layer->statsForTesting().callbacks - callbacks;
+        const double hertz = static_cast<double>(window.screen.maximumFramesPerSecond);
+        const double expected = testing::expectedRefreshes(elapsed, hertz);
+        const bool ran = testing::displayRan(given, expected);
+        std::ostringstream message;
+        message << what << ": not in " << elapsed.count()
+                << " ms, in which the display link called "
+                << "back " << given << " times of " << std::lround(expected) << " refreshes ("
+                << std::lround(static_cast<double>(given) * 1000.0 /
+                               static_cast<double>(std::max<std::int64_t>(elapsed.count(), 1)))
+                << " a second; the screen reports " << hertz << " Hz); layer hidden "
+                << (layer->view().hidden ? "yes" : "no") << (ran ? "" : ": the display stalled");
+        return {.met = false, .displayRan = ran, .message = message.str()};
     }
 
-    bool presents(std::chrono::milliseconds within = 2s)
+    // Waits for `condition`, which only the display link's callbacks bring about.
+    testing::DisplayWait drawsWithin(const std::function<bool()>& condition,
+                                     std::chrono::milliseconds within, const std::string& what)
     {
-        return presentsSince(submitted(), within);
+        const std::uint64_t callbacks = layer->statsForTesting().callbacks;
+        const auto started = std::chrono::steady_clock::now();
+        return judge(pumpUntil(condition, within), callbacks, started, what);
+    }
+
+    // A picture submitted after `before`, counted before the change that should draw one: the
+    // link may submit it as soon as the change is made, before the test starts waiting.
+    testing::DisplayWait presentsSince(std::uint64_t before,
+                                       const std::string& what = "a picture presented",
+                                       std::chrono::milliseconds within = 2s)
+    {
+        return drawsWithin([&] { return submitted() > before; }, within, what);
+    }
+
+    testing::DisplayWait presents(std::chrono::milliseconds within = 2s)
+    {
+        return presentsSince(submitted(), "a picture presented", within);
     }
 
     // The screen's rectangle in the container's coordinates (from the bottom), and in device
@@ -178,12 +220,12 @@ TEST_F(TraceLayerTest, SitsBelowThePageInsideTheScreensCorners)
 TEST_F(TraceLayerTest, DrawsNothingUntilThePageHasSentItsTraceView)
 {
     layer->setPageShown(true);
-    EXPECT_FALSE(presents(300ms));
+    EXPECT_FALSE(presents(300ms).met);
     EXPECT_TRUE(layer->view().hidden);
     const auto before = submitted();
     layer->setTraceView(scene.view);
     EXPECT_FALSE(layer->view().hidden);
-    EXPECT_TRUE(presentsSince(before));
+    ASSERT_DISPLAY_WAIT(presentsSince(before));
 }
 
 // The layer covers the page's screen exactly, its drawable the screen's size in device pixels as
@@ -192,7 +234,7 @@ TEST_F(TraceLayerTest, DrawsNothingUntilThePageHasSentItsTraceView)
 TEST_F(TraceLayerTest, CoversThePagesScreenThroughEverySizeChange)
 {
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     source.always = true;
     const double scale = window.backingScaleFactor;
     for (const NSSize size : {NSMakeSize(1020, 400), NSMakeSize(1500, 900), NSMakeSize(1080, 580),
@@ -206,13 +248,12 @@ TEST_F(TraceLayerTest, CoversThePagesScreenThroughEverySizeChange)
         const auto* metal = static_cast<CAMetalLayer*>(layer->view().layer);
         EXPECT_EQ(metal.drawableSize.width, width);
         EXPECT_EQ(metal.drawableSize.height, height);
-        EXPECT_TRUE(pumpUntil(
+        ASSERT_DISPLAY_WAIT(drawsWithin(
             [&] {
                 const auto stats = layer->statsForTesting();
                 return stats.drawnWidth == width && stats.drawnHeight == height;
             },
-            2s))
-            << size.width << " × " << size.height;
+            2s, "drawn at " + std::to_string(size.width) + " × " + std::to_string(size.height)));
         EXPECT_FALSE(layer->view().hidden);
     }
     [window setContentSize:NSMakeSize(1080, protocol::kToolbarHeight + protocol::kStatusBarHeight)];
@@ -224,7 +265,7 @@ TEST_F(TraceLayerTest, CoversThePagesScreenThroughEverySizeChange)
 TEST_F(TraceLayerTest, HidesAndPausesWithThePage)
 {
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     layer->setPageShown(false);
     EXPECT_TRUE(layer->view().hidden);
     pumpUntil([] { return false; }, 100ms);
@@ -236,7 +277,7 @@ TEST_F(TraceLayerTest, HidesAndPausesWithThePage)
     const auto before = submitted();
     layer->setTraceView(scene.view);
     EXPECT_FALSE(layer->view().hidden);
-    EXPECT_TRUE(presentsSince(before));
+    ASSERT_DISPLAY_WAIT(presentsSince(before, "a picture once shown again"));
 }
 
 // A window off screen (behind others, minimised, on another space) pauses the link, and the
@@ -244,7 +285,7 @@ TEST_F(TraceLayerTest, HidesAndPausesWithThePage)
 TEST_F(TraceLayerTest, PausesWhileItsWindowIsOffScreen)
 {
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     TraceLayer::setOcclusionForTesting(true);
     [NSNotificationCenter.defaultCenter
         postNotificationName:NSWindowDidChangeOcclusionStateNotification
@@ -258,7 +299,7 @@ TEST_F(TraceLayerTest, PausesWhileItsWindowIsOffScreen)
     [NSNotificationCenter.defaultCenter
         postNotificationName:NSWindowDidChangeOcclusionStateNotification
                       object:window];
-    EXPECT_TRUE(presentsSince(before));
+    ASSERT_DISPLAY_WAIT(presentsSince(before, "a picture once back on screen"));
 }
 
 // Moved to another screen, the display's lead is measured again, for the new display's link calls
@@ -267,12 +308,12 @@ TEST_F(TraceLayerTest, PausesWhileItsWindowIsOffScreen)
 TEST_F(TraceLayerTest, MeasuresTheLeadAgainOnAnotherScreen)
 {
     show();
-    ASSERT_TRUE(pumpUntil(
+    ASSERT_DISPLAY_WAIT(drawsWithin(
         [&] {
             return layer->statsForTesting().callbacks >
                    static_cast<std::uint64_t>(engine::FramePacing::kLeadCallbacks) + 5;
         },
-        3s));
+        3s, "the callbacks that measure the lead"));
     const std::uint64_t measured = engine::monotonicNanos();
     ASSERT_LT(pacing->clock(measured), measured) << "the display clock, once the lead is known";
     [NSNotificationCenter.defaultCenter postNotificationName:NSWindowDidChangeScreenNotification
@@ -287,7 +328,7 @@ TEST_F(TraceLayerTest, MeasuresTheLeadAgainOnAnotherScreen)
 TEST_F(TraceLayerTest, FollowsTheBackingScaleWithNoSizeChange)
 {
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     auto* metal = static_cast<CAMetalLayer*>(layer->view().layer);
     const double scale = window.backingScaleFactor;
     const CGSize drawable = metal.drawableSize;
@@ -306,24 +347,24 @@ TEST_F(TraceLayerTest, DrawsTheLastFrameAgainWhenThePictureChanges)
 {
     source.limit = 1;
     show();
-    ASSERT_TRUE(pumpUntil([&] { return source.takes.load() == 1; }, 3s));
-    pumpUntil([] { return false; }, 200ms);
-    ASSERT_GE(layer->statsForTesting().submitted, 1U);
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return source.takes.load() == 1; }, 3s, "the one frame"));
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return submitted() >= 1; }, 2s, "the one frame drawn"));
+    pumpUntil([] { return false; }, 200ms); // Any redraw the start asked for lands.
     const auto idle = layer->statsForTesting().submitted;
     pumpUntil([] { return false; }, 300ms);
     ASSERT_EQ(layer->statsForTesting().submitted, idle) << "nothing to draw again";
 
     auto before = submitted();
     [window setContentSize:NSMakeSize(1200, 640)];
-    EXPECT_TRUE(presentsSince(before)) << "a resize";
+    ASSERT_DISPLAY_WAIT(presentsSince(before, "a resize"));
     before = submitted();
     [layer->view() viewDidChangeBackingProperties];
-    EXPECT_TRUE(presentsSince(before)) << "a backing-scale change";
+    ASSERT_DISPLAY_WAIT(presentsSince(before, "a backing-scale change"));
     TraceView zoomed = scene.view;
     zoomed.view = {.start = 0.25, .end = 0.75};
     before = submitted();
     layer->setTraceView(zoomed);
-    EXPECT_TRUE(presentsSince(before)) << "a new trace view";
+    ASSERT_DISPLAY_WAIT(presentsSince(before, "a new trace view"));
     TraceLayer::setOcclusionForTesting(true);
     [NSNotificationCenter.defaultCenter
         postNotificationName:NSWindowDidChangeOcclusionStateNotification
@@ -334,16 +375,20 @@ TEST_F(TraceLayerTest, DrawsTheLastFrameAgainWhenThePictureChanges)
     [NSNotificationCenter.defaultCenter
         postNotificationName:NSWindowDidChangeOcclusionStateNotification
                       object:window];
-    EXPECT_TRUE(presentsSince(before)) << "back on screen";
+    ASSERT_DISPLAY_WAIT(presentsSince(before, "back on screen"));
 
     // A buffer that failed for a while is drawn again at each callback until one succeeds.
     pumpUntil([] { return false; }, 100ms);
     layer->failCommandBuffersForTesting(MTLCommandBufferErrorTimeout);
     [window setContentSize:NSMakeSize(1080, 580)];
     const auto failing = layer->statsForTesting().submitted;
+    const std::uint64_t callbacks = layer->statsForTesting().callbacks;
+    const auto started = std::chrono::steady_clock::now();
+    // Shorter than kFailureSecondsBeforeLost, so the failures alone cannot lose the layer.
     pumpUntil([] { return false; }, 200ms);
     layer->failCommandBuffersForTesting(std::nullopt);
-    EXPECT_GE(layer->statsForTesting().submitted, failing + 3) << "drawn again after failing";
+    ASSERT_DISPLAY_WAIT(judge(layer->statsForTesting().submitted >= failing + 3, callbacks, started,
+                              "drawn again after failing"));
     EXPECT_FALSE(layer->lost());
     EXPECT_EQ(source.takes.load(), 1);
 }
@@ -354,7 +399,7 @@ TEST_F(TraceLayerTest, DrawsTheLastFrameAgainWhenThePictureChanges)
 TEST_F(TraceLayerTest, NumbersEachPictureItDrawsWithTheSwitchOn)
 {
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     EXPECT_FALSE(layer->statsForTesting().barcode) << "off";
 
     layer.reset();
@@ -363,13 +408,15 @@ TEST_F(TraceLayerTest, NumbersEachPictureItDrawsWithTheSwitchOn)
     source.takes = 0;
     layer = TraceLayer::create(container, above, *pacing, source.hooks());
     show();
-    ASSERT_TRUE(pumpUntil([&] { return source.takes.load() == 1; }, 3s));
-    pumpUntil([] { return false; }, 200ms);
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return source.takes.load() == 1; }, 3s, "the one frame"));
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return layer->statsForTesting().barcode.has_value(); },
+                                    2s, "the one frame drawn"));
+    pumpUntil([] { return false; }, 200ms); // Any redraw the start asked for lands.
     const auto first = layer->statsForTesting().barcode;
     ASSERT_TRUE(first);
     const auto before = submitted();
     [window setContentSize:NSMakeSize(1200, 640)];
-    ASSERT_TRUE(presentsSince(before)) << "a redraw with no new frame";
+    ASSERT_DISPLAY_WAIT(presentsSince(before, "a redraw with no new frame"));
     const auto second = layer->statsForTesting().barcode;
     ASSERT_TRUE(second);
     EXPECT_EQ(second->picture, first->picture + 1);
@@ -387,7 +434,7 @@ TEST_F(TraceLayerTest, CountsTheFramesThatReachedTheScreen)
 {
     source.always = true;
     show();
-    ASSERT_TRUE(pumpUntil([&] { return layer->statsForTesting().submitted >= 30; }, 3s));
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return submitted() >= 30; }, 3s, "30 pictures"));
     if (!pumpUntil([&] { return layer->statsForTesting().shown.presented > 0; }, 2s)) {
         GTEST_SKIP() << "this display reports no presented times";
     }
@@ -400,9 +447,27 @@ TEST_F(TraceLayerTest, CountsTheFramesThatReachedTheScreen)
 TEST_F(TraceLayerTest, AsksForFramesAndDrawsEachOneMade)
 {
     show();
-    ASSERT_TRUE(pumpUntil([&] { return source.takes.load() >= 10; }, 3s));
+    ASSERT_DISPLAY_WAIT(
+        drawsWithin([&] { return source.takes.load() >= 10; }, 3s, "10 frames taken"));
     EXPECT_GE(source.requests.load(), 10);
     EXPECT_GE(layer->statsForTesting().submitted, 10U);
+}
+
+// A wait through which the display link did not call back is read as the display stalling, as a
+// CI machine's display does, and not as the layer failing: the tests then skip on CI.
+TEST_F(TraceLayerTest, ReadsAWaitWithNoCallbacksAsTheDisplayStalling)
+{
+    show();
+    ASSERT_DISPLAY_WAIT(presents());
+    TraceLayer::setOcclusionForTesting(true); // The link pauses, as a stalled display's does.
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:NSWindowDidChangeOcclusionStateNotification
+                      object:window];
+    pumpUntil([] { return false; }, 100ms);
+    const testing::DisplayWait wait = drawsWithin([] { return false; }, 300ms, "nothing");
+    EXPECT_FALSE(wait.met);
+    EXPECT_FALSE(wait.displayRan) << wait.message;
+    EXPECT_NE(wait.message.find("the display stalled"), std::string::npos) << wait.message;
 }
 
 class TraceLayerLossTest : public TraceLayerTest, public ::testing::WithParamInterface<long>
@@ -415,9 +480,9 @@ TEST_P(TraceLayerLossTest, StopsForGoodWhenTheGpuIsGone)
 {
     source.always = true;
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     layer->failCommandBuffersForTesting(GetParam());
-    ASSERT_TRUE(pumpUntil([&] { return source.losses.load() == 1; }, 2s));
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return source.losses.load() == 1; }, 2s, "the loss"));
     EXPECT_TRUE(layer->lost());
     pumpUntil([] { return false; }, 100ms);
     const auto presented = layer->statsForTesting().submitted;
@@ -443,19 +508,19 @@ TEST_F(TraceLayerTest, StopsAfterFailingForHalfASecondNotBefore)
 {
     source.always = true;
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     const auto threshold =
         std::chrono::milliseconds(static_cast<int>(TraceLayer::kFailureSecondsBeforeLost * 1000));
     layer->failCommandBuffersForTesting(MTLCommandBufferErrorTimeout);
     pumpUntil([] { return false; }, threshold * 6 / 10);
     layer->failCommandBuffersForTesting(std::nullopt);
-    EXPECT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     pumpUntil([] { return false; }, threshold * 6 / 10);
     EXPECT_FALSE(layer->lost()) << "failures broken by a clean buffer";
 
     const auto started = std::chrono::steady_clock::now();
     layer->failCommandBuffersForTesting(MTLCommandBufferErrorTimeout);
-    ASSERT_TRUE(pumpUntil([&] { return layer->lost(); }, threshold * 4));
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return layer->lost(); }, threshold * 4, "lost"));
     EXPECT_GE(std::chrono::steady_clock::now() - started, threshold * 9 / 10);
     EXPECT_TRUE(pumpUntil([&] { return source.losses.load() == 1; }, 1s));
 }
@@ -464,10 +529,10 @@ TEST_F(TraceLayerTest, StopsAfterFailingForHalfASecondNotBefore)
 TEST_F(TraceLayerTest, StopsWhenGraphicsMemoryIsRefused)
 {
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     layer->refuseCoverageTargetsForTesting();
     [window setContentSize:NSMakeSize(1400, 800)];
-    EXPECT_TRUE(pumpUntil([&] { return source.losses.load() == 1; }, 2s));
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return source.losses.load() == 1; }, 2s, "the loss"));
     EXPECT_TRUE(layer->lost());
 }
 
@@ -476,7 +541,7 @@ TEST_F(TraceLayerTest, CallsNothingOnceDestroyed)
 {
     source.always = true;
     show();
-    ASSERT_TRUE(presents());
+    ASSERT_DISPLAY_WAIT(presents());
     layer.reset();
     const int requests = source.requests.load();
     const int takes = source.takes.load();
