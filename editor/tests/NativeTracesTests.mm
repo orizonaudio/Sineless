@@ -199,19 +199,23 @@ protected:
         if (condition()) {
             return {.met = true, .displayRan = true, .message = {}};
         }
+        // Whether the layer means its link to run, read after the probe: a link it paused itself
+        // (hidden, waiting for the page's trace view, lost) is not a stalled display.
+        const bool linkRunning = layer->statsForTesting().linkRunning;
         const double hertz = static_cast<double>(window.screen.maximumFramesPerSecond);
         const double expected = testing::expectedRefreshes(elapsed, hertz);
-        const bool ran = drives == Drives::kLink ? testing::displayRan(given, expected)
+        const bool ran = drives == Drives::kLink ? testing::linkRan(given, expected, linkRunning)
                          : drives == Drives::kPage
                              ? testing::pageRan(probe)
-                             : testing::linkAndPageRan(given, expected, probe);
+                             : testing::linkAndPageRan(given, expected, linkRunning, probe);
         std::ostringstream message;
         message << what() << ": not in " << elapsed.count()
                 << " ms, in which the display link called "
                 << "back " << given << " times of " << std::lround(expected) << " refreshes ("
                 << std::lround(static_cast<double>(given) * 1000.0 /
                                static_cast<double>(std::max<std::int64_t>(elapsed.count(), 1)))
-                << " a second; the screen reports " << hertz << " Hz)";
+                << " a second; the screen reports " << hertz << " Hz; link "
+                << (linkRunning ? "running" : "paused by the layer") << ")";
         if (drives != Drives::kLink) {
             message << "; the page's rendering update "
                     << (probe == testing::PageProbe::kFired      ? "ran"
@@ -223,13 +227,14 @@ protected:
     }
 
     // A new frame reaches the screen. Audio keeps coming meanwhile: with none, nothing new is
-    // drawn. The layer's link runs only once the page has sent its trace view, so a page stalled
-    // before it reads as no callbacks.
+    // drawn. The layer runs its link only once the page has sent its trace view, so this needs the
+    // page's rendering update too.
     testing::DisplayWait presents(std::chrono::milliseconds within = 5s)
     {
         const auto before = layer->statsForTesting().submitted;
         return waitOnDisplay(
-            [&] { return layer->statsForTesting().submitted > before; }, within, Drives::kLink,
+            [&] { return layer->statsForTesting().submitted > before; }, within,
+            Drives::kLinkAndPage,
             [&] {
                 const auto stats = layer->statsForTesting();
                 std::ostringstream what;

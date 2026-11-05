@@ -90,6 +90,9 @@ public:
         std::size_t drawnHeight = 0;
         // The frame barcode's values on the picture last drawn, while the switch is on.
         std::optional<BarcodeValues> barcode;
+        // Whether the layer means its display link to run (shown, on screen, not lost): a wait
+        // with no callbacks while it does is the display's stall, not the layer's pause.
+        bool linkRunning = false;
     };
     [[nodiscard]] virtual Stats statsForTesting() const = 0;
     // Command buffers from now on complete as failed with this MTLCommandBufferError code (none:
@@ -97,6 +100,9 @@ public:
     virtual void failCommandBuffersForTesting(std::optional<long> code) = 0;
     // The coverage targets' next allocations are refused, as Metal refusing the memory would.
     virtual void refuseCoverageTargetsForTesting() = 0;
+    // While set, the display link's callbacks do nothing and are not counted, as when the display
+    // stops calling back (a test machine's idle display), with the link left running.
+    virtual void stallForTesting(bool stalled) = 0;
     // Layers take their windows as occluded or not, as the window server's notifications then say
     // (none: as it reports them). A test machine's idle display reports every window occluded.
     static void setOcclusionForTesting(std::optional<bool> occluded);

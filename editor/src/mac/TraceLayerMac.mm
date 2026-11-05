@@ -51,6 +51,9 @@ struct Shared
     std::atomic<std::uint64_t> failingSince{0};
     std::atomic<long> failCode{-1};
     std::atomic<bool> refuseTargets{false};
+    std::atomic<bool> stalled{false};
+    // Whether the layer means the link to run, for tests (Stats::linkRunning).
+    std::atomic<bool> linkRunning{false};
     std::atomic<std::uint64_t> callbacks{0};
     std::atomic<std::uint64_t> submitted{0};
     PresentedCounts presentedCounts;
@@ -212,7 +215,7 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
 {
     Shared& s = *shared;
     const std::scoped_lock lock(s.callbackMutex);
-    if (s.stopped) {
+    if (s.stopped || s.stalled.load()) {
         return;
     }
     s.callbacks.fetch_add(1);
@@ -221,6 +224,7 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
             s.lostHandled = true;
             s.pacing.lose();
             s.link.paused = YES;
+            s.linkRunning.store(false);
         }
         return;
     }
@@ -335,13 +339,15 @@ public:
                 .ticksPerFrame = shared->ticksPerFrame.load(),
                 .drawnWidth = shared->drawnWidth.load(),
                 .drawnHeight = shared->drawnHeight.load(),
-                .barcode = barcode};
+                .barcode = barcode,
+                .linkRunning = shared->linkRunning.load()};
     }
     void failCommandBuffersForTesting(std::optional<long> code) override
     {
         shared->failCode.store(code.value_or(-1));
     }
     void refuseCoverageTargetsForTesting() override { shared->refuseTargets.store(true); }
+    void stallForTesting(bool stalled) override { shared->stalled.store(stalled); }
 
     void windowChanged();
 
@@ -617,6 +623,7 @@ void LayerMac::update()
         return;
     }
     running = run;
+    shared->linkRunning.store(run && !shared->lost.load());
     perform(shared, ^(Shared& state) {
       if (state.link == nil || state.lostHandled) {
           return;

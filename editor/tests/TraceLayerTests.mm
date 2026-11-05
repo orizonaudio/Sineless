@@ -147,17 +147,19 @@ protected:
         }
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started);
-        const std::uint64_t given = layer->statsForTesting().callbacks - callbacks;
+        const auto stats = layer->statsForTesting();
+        const std::uint64_t given = stats.callbacks - callbacks;
         const double hertz = static_cast<double>(window.screen.maximumFramesPerSecond);
         const double expected = testing::expectedRefreshes(elapsed, hertz);
-        const bool ran = testing::displayRan(given, expected);
+        const bool ran = testing::linkRan(given, expected, stats.linkRunning);
         std::ostringstream message;
         message << what << ": not in " << elapsed.count()
                 << " ms, in which the display link called "
                 << "back " << given << " times of " << std::lround(expected) << " refreshes ("
                 << std::lround(static_cast<double>(given) * 1000.0 /
                                static_cast<double>(std::max<std::int64_t>(elapsed.count(), 1)))
-                << " a second; the screen reports " << hertz << " Hz); layer hidden "
+                << " a second; the screen reports " << hertz << " Hz); link "
+                << (stats.linkRunning ? "running" : "paused by the layer") << ", layer hidden "
                 << (layer->view().hidden ? "yes" : "no") << (ran ? "" : ": the display stalled");
         return {.met = false, .displayRan = ran, .message = message.str()};
     }
@@ -453,21 +455,33 @@ TEST_F(TraceLayerTest, AsksForFramesAndDrawsEachOneMade)
     EXPECT_GE(layer->statsForTesting().submitted, 10U);
 }
 
-// A wait through which the display link did not call back is read as the display stalling, as a
-// CI machine's display does, and not as the layer failing: the tests then skip on CI.
+// A wait through which the running display link did not call back is read as the display
+// stalling, as a CI machine's display does, and not as the layer failing: the tests then skip on
+// CI.
 TEST_F(TraceLayerTest, ReadsAWaitWithNoCallbacksAsTheDisplayStalling)
 {
     show();
     ASSERT_DISPLAY_WAIT(presents());
-    TraceLayer::setOcclusionForTesting(true); // The link pauses, as a stalled display's does.
-    [NSNotificationCenter.defaultCenter
-        postNotificationName:NSWindowDidChangeOcclusionStateNotification
-                      object:window];
-    pumpUntil([] { return false; }, 100ms);
+    layer->stallForTesting(true);
     const testing::DisplayWait wait = drawsWithin([] { return false; }, 300ms, "nothing");
     EXPECT_FALSE(wait.met);
     EXPECT_FALSE(wait.displayRan) << wait.message;
     EXPECT_NE(wait.message.find("the display stalled"), std::string::npos) << wait.message;
+}
+
+// A link the layer paused itself (here off screen) is not a stalled display: a wait on it fails,
+// on CI too, so a layer that never resumes its link is caught there.
+TEST_F(TraceLayerTest, ReadsALinkTheLayerPausedAsNoStall)
+{
+    show();
+    TraceLayer::setOcclusionForTesting(true);
+    [NSNotificationCenter.defaultCenter
+        postNotificationName:NSWindowDidChangeOcclusionStateNotification
+                      object:window];
+    ASSERT_TRUE(pumpUntil([&] { return !layer->statsForTesting().linkRunning; }, 1s));
+    const testing::DisplayWait wait = drawsWithin([] { return false; }, 300ms, "nothing");
+    EXPECT_FALSE(wait.met);
+    EXPECT_TRUE(wait.displayRan) << wait.message;
 }
 
 class TraceLayerLossTest : public TraceLayerTest, public ::testing::WithParamInterface<long>
