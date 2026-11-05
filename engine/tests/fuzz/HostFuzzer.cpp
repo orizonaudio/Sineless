@@ -390,6 +390,12 @@ public:
             own->settings().get().value(protocol::SettingId::kDisplayMode));
     }
 
+    [[nodiscard]] protocol::TimeBase timeBase() const
+    {
+        return static_cast<protocol::TimeBase>(
+            own->settings().get().value(protocol::SettingId::kTimeBase));
+    }
+
     // Whether a step has treated the two tracks differently, so that their audio may differ.
     [[nodiscard]] bool tracksDiverged() const { return diverged; }
 
@@ -518,9 +524,14 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         checkFrame(firstFrame);
         const engine::DecodedFrame frame = engine::decode(firstFrame);
         orizon::fuzz::checkReadouts(frame);
-        // Live only: frozen, a track's lane is held when a Multi frame first needs it, which may be
-        // after the rate changed, and a lane held at another rate is drawn silent (FR-14.4).
+        // In Trigger and Free, live: there every lane shows the time window this track places
+        // (FR-14.4). In Beats, lanes may legitimately stand apart (before the tracks share a host
+        // position, AD-15; while blocks have stopped, AD-29; on another sweep length), which
+        // PacedSweepTests covers state by state. Frozen, a track's lane is held when a Multi frame
+        // first needs it, which may be after the rate changed, and a lane held at another rate is
+        // drawn silent (FR-14.4).
         if (frame.laneCount == 2 && !frame.has(protocol::FrameFlag::kCompared) &&
+            first.timeBase() != protocol::TimeBase::kBeats &&
             !frame.has(protocol::FrameFlag::kFrozen) && frame.invalidLanes == 0 &&
             frame.invalidSamples == 0 && !first.tracksDiverged()) {
             orizon::fuzz::checkMirroredLanes(frame);
