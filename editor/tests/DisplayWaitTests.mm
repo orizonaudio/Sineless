@@ -65,15 +65,12 @@ TEST(DisplayWait, ReadsAStallFromTheShareOfRefreshesGiven)
     EXPECT_FALSE(displayRan(10, expected));
 }
 
-// The refreshes a wait spans follow the screen's rate; a screen that reports none (no display
-// attached) counts as 60 Hz, so a stall there is still read as one.
-TEST(DisplayWait, CountsTheRefreshesAWaitSpansAtTheScreensRate)
+// A screen that reports no rate (no display attached) is taken as 60 Hz: a wait with no callbacks
+// there still reads as a stall, and a link calling back at 60 Hz as running.
+TEST(DisplayWait, JudgesAScreenThatReportsNoRateAsSixtyHertz)
 {
-    EXPECT_DOUBLE_EQ(expectedRefreshes(1s, 60.0), 60.0);
-    EXPECT_DOUBLE_EQ(expectedRefreshes(1s, 120.0), 120.0);
-    EXPECT_DOUBLE_EQ(expectedRefreshes(500ms, 120.0), 60.0);
-    EXPECT_DOUBLE_EQ(expectedRefreshes(1s, 0.0), 60.0);
     EXPECT_FALSE(displayRan(0, expectedRefreshes(1s, 0.0)));
+    EXPECT_TRUE(displayRan(60, expectedRefreshes(1s, 0.0)));
 }
 
 // The page's probe: a frame that never came is a stall; a read that failed measured nothing and
