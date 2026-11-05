@@ -17,6 +17,7 @@
   "displayMode": ["single", "multi", "compare"],
   "group": ["a", "b", "c", "d"],
   "hoverReadout": ["off", "on"],
+  "readoutSource": ["left", "right", "mid", "side"],
   "timeBase": ["trigger", "beats", "free"],
   "triggerMode": ["auto", "normal", "single"],
   "triggerSlope": ["rising", "falling"],

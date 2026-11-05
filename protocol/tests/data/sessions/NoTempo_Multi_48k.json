@@ -8,7 +8,7 @@
       "after": null,
       "answers": [],
       "frames": [
-        "AYgAAAAAAAAAAAAAAADAfwAAwH8AAMB/AACAvwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgDtHAAAAAA=="
+        "AYgAAAAAAAAAAAAAAADAfwAAwH8AAMB/AACAvwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgDtHAAAAAAIAAAA="
       ],
       "replies": [
         {
@@ -35,11 +35,11 @@
       ]
     }
   ],
-  "protocolVersion": 9,
+  "protocolVersion": 10,
   "scenario": "NoTempo_Multi_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 9,
+    "protocolVersion": 10,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "off",
@@ -53,6 +53,7 @@
       "freeSpan": 4.0,
       "group": "a",
       "hoverReadout": "off",
+      "readoutSource": "mid",
       "timeBase": "beats",
       "triggerHoldOff": 0.0,
       "triggerHysteresis": 0.01,

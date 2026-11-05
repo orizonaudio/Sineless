@@ -1,6 +1,7 @@
 #include "engine/ChannelViews.h"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 
@@ -25,6 +26,13 @@ std::uint8_t effectiveViews(std::uint8_t requested, int inputChannels)
 ChannelView effectiveTriggerSource(ChannelView requested, int inputChannels)
 {
     return inputChannels < 2 ? ChannelView::kLeft : requested;
+}
+
+ChannelView effectiveReadoutView(ChannelView requested, std::uint8_t drawn)
+{
+    assert(drawn != 0);
+    return (drawn & bitOf(requested)) != 0 ? requested
+                                           : static_cast<ChannelView>(std::countr_zero(drawn));
 }
 
 bool readView(const SampleSource& source, int inputChannels, ChannelView view, std::uint64_t start,

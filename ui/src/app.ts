@@ -112,6 +112,7 @@ import {
   clampPan,
   markerLane,
   readoutView,
+  viewNames,
   viewOrder,
   viewToggleState,
   type ViewName,
@@ -140,12 +141,6 @@ const viewLabels: Record<ViewName, string> = {
   right: "R",
   mid: "M",
   side: "S",
-};
-const viewNames: Record<ChannelView, string> = {
-  [ChannelView.left]: "Left",
-  [ChannelView.right]: "Right",
-  [ChannelView.mid]: "Mid",
-  [ChannelView.side]: "Side",
 };
 const viewColorTokens: Record<ViewName, string> = {
   left: "--sl-left",
@@ -180,9 +175,11 @@ const popovers = [
   ["views-group", "views-details", "views-popover"],
   ["trigger-group", "trigger-details", "trigger-popover"],
   ["about-group", "about-details", "about-popover"],
+  ["readout-group", "readout-details", "readout-popover"],
 ] as const;
-// The status bar's popover, which CSS places above its button; the others open under their field.
-const placedByStyle = new Set<string>(["about-popover"]);
+// The status bar's popovers, which CSS places above their buttons; the others open under their
+// field.
+const placedByStyle = new Set<string>(["about-popover", "readout-popover"]);
 // The hover readout keeps this far (CSS px) from the pointer.
 const hoverOffset = 14;
 
@@ -269,6 +266,8 @@ export class OscilloscopeApp {
   private waiting = false;
   private readonly fields = new Map<SettingName, DragField>();
   private readonly segmented = new Map<SettingName, Segmented>();
+  // The readouts' channel: lit as the frame measured it, not as the setting asks.
+  private readoutChoices: Segmented | undefined;
   private readonly viewToggles = new Map<ViewName, HTMLButtonElement>();
   private beatSpanField: DragField | undefined;
   private beatSpanNames: string[] = [];
@@ -617,6 +616,13 @@ export class OscilloscopeApp {
       ["rising", "Rising"],
       ["falling", "Falling"],
     ]);
+    this.readoutChoices = new Segmented(
+      element("readout-source"),
+      viewOrder.map((name) => ({ value: name, label: viewLabels[name] })),
+      (value) => {
+        this.request("readoutSource", value);
+      },
+    );
 
     element("brand-mark").innerHTML = brand.mark;
     element("wordmark").textContent = brand.name;
@@ -629,6 +635,9 @@ export class OscilloscopeApp {
       const details = element(button);
       const popover = element(id);
       details.addEventListener("click", () => {
+        if (details.getAttribute("aria-disabled") === "true") {
+          return;
+        }
         const open = popover.hidden;
         for (const [, otherButton, otherId] of popovers) {
           if (otherId !== id) {
@@ -733,21 +742,37 @@ export class OscilloscopeApp {
     element(button).setAttribute("aria-expanded", "false");
   }
 
-  // What Peak, RMS and Freq measure (DESIGN.md 1.2.1): the readout channel in Single, this track's
-  // Mid in Multi and Compare. Read from the frame on screen, whose lanes say which it measured,
-  // whatever the setting now says until the next frame comes; a frame with no tempo has no lanes
-  // and no readouts, so the setting names it.
+  // What Peak, RMS and Freq measure (DESIGN.md 1.2.1): in Single the channel the frame names,
+  // this track's Mid in Multi and Compare, whose frames carry a lane set, a frame with no tempo
+  // included. Read from the frame on screen, whatever the settings now say until the next frame
+  // comes; before any frame, the display mode decides. In Single on a stereo track the tag opens
+  // the readouts' popover, which lights the channel measured and offers only the views drawn.
   private updateReadoutTag(): void {
     const frame = this.lastFrame;
     const thisTrack =
-      frame === undefined || frame.noTempo
-        ? this.multiMode()
-        : frame.lanes.length > 0;
-    const text = thisTrack ? "This track" : viewNames[this.readoutView()];
+      frame === undefined ? this.multiMode() : frame.laneSet !== 0;
+    const text = thisTrack
+      ? "This track"
+      : frame === undefined
+        ? "—"
+        : viewNames[readoutView(frame)];
     const tag = element("readout-tag");
     if (tag.textContent !== text) {
       tag.textContent = text;
     }
+    const choosable =
+      !thisTrack && frame !== undefined && this.inputChannels > 1;
+    element("readout-details").setAttribute(
+      "aria-disabled",
+      String(!choosable),
+    );
+    if (!choosable) {
+      this.closePopover("readout-details", "readout-popover");
+      return;
+    }
+    const drawn = this.drawnViews();
+    this.readoutChoices?.show(viewOrder[readoutView(frame)]);
+    this.readoutChoices?.enable((value) => drawn.includes(value as ViewName));
   }
 
   // The Views field names the views the frame draws (a mono track's L alone, whatever was asked
@@ -1196,10 +1221,6 @@ export class OscilloscopeApp {
     return this.store.get("timeBase") === "beats";
   }
 
-  private readoutView(): ChannelView {
-    return readoutView(this.inputChannels);
-  }
-
   // The musical grid of the last synced frame, when in Beats mode.
   private musicalLayout(): ReturnType<typeof musicalGrid> | undefined {
     const frame = this.lastFrame;
@@ -1443,8 +1464,8 @@ export class OscilloscopeApp {
     if (lane !== undefined && this.layout() === ViewLayout.stacked) {
       return views[lane];
     }
-    // Overlaid, the channel the readouts measure; the first view if that one is not drawn.
-    return frame.views.get(this.readoutView()) ?? views[0];
+    // Overlaid, the channel the readouts measure, which the engine draws.
+    return frame.views.get(readoutView(frame));
   }
 
   // The traces as the hover readout sees them, in lane order, named.
@@ -1462,7 +1483,7 @@ export class OscilloscopeApp {
         styles.findIndex((style) => style.own),
       );
     } else {
-      const source = this.readoutView();
+      const source = readoutView(frame);
       traces = [];
       for (const [view, values] of frame.views) {
         if (view === source) {

@@ -44,4 +44,11 @@ export class Segmented {
       button.setAttribute("aria-pressed", String(choice === value));
     }
   }
+
+  // Enables the choices `enabled` accepts and disables the others, which stay in place.
+  enable(enabled: (value: string) => boolean): void {
+    for (const [choice, button] of this.buttons) {
+      button.disabled = !enabled(choice);
+    }
+  }
 }

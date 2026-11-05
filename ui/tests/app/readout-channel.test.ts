@@ -1,62 +1,23 @@
-// With the views overlaid, the hover and the time cursors measure the readout channel, the Mid, in
-// Single display mode with Sec, whatever the trigger source; the first trace drawn when the Mid is
-// not. The trigger source picks only what the trigger reads.
+// With the views overlaid, the hover and the time cursors measure the readout channel, which the
+// readouts' popover in the status bar chooses among the views drawn; the first view drawn when the
+// one chosen is not. The trigger source picks only what the trigger reads.
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { zeroCrossings } from "../../src/view/snap.ts";
-import { byId, choice, settle, startApp, typeInto } from "./harness.ts";
-
-async function setPressed(
-  button: HTMLElement,
-  pressed: boolean,
-): Promise<void> {
-  if ((button.getAttribute("aria-pressed") === "true") !== pressed) {
-    await userEvent.click(button);
-  }
-  await expect.element(button).toHaveAttribute("aria-pressed", String(pressed));
-}
-
-// Shows the views whose toggles are labelled `shown` ("L", "M") and hides the others.
-async function showViews(shown: readonly string[]): Promise<void> {
-  if (byId("views-popover").hidden) {
-    await userEvent.click(byId("views-details"));
-  }
-  const toggles = [...byId("views").querySelectorAll("button")];
-  // Shown ones first, so that one view stays shown throughout.
-  for (const button of toggles) {
-    if (shown.includes(button.textContent)) {
-      await setPressed(button, true);
-    }
-  }
-  for (const button of toggles) {
-    if (!shown.includes(button.textContent)) {
-      await setPressed(button, false);
-    }
-  }
-  // The toggle is named after the views a frame has drawn, so its name changes a frame after the
-  // last toggle: close it once that frame has come, not while the click's locator can go stale.
-  const drawn = toggles
-    .map((button) => button.textContent)
-    .filter((label) => shown.includes(label));
-  await expect
-    .element(byId("views-details"))
-    .toHaveAttribute("aria-label", `Views: ${drawn.join(" ")}`);
-  await userEvent.click(byId("views-details"));
-}
-
-async function useSource(label: string): Promise<void> {
-  if (byId("trigger-popover").hidden) {
-    await userEvent.click(byId("trigger-details"));
-  }
-  await userEvent.click(choice("source", label));
-  await expect
-    .element(choice("source", label))
-    .toHaveAttribute("aria-pressed", "true");
-  await userEvent.click(byId("trigger-details"));
-}
+import {
+  byId,
+  choice,
+  press,
+  setPressed,
+  settle,
+  showViews,
+  startApp,
+  typeInto,
+  useReadout,
+} from "./harness.ts";
 
 // The hover's title: the name of the trace it reads.
 async function hoverTitle(): Promise<string | null | undefined> {
@@ -100,34 +61,37 @@ describe("overlaid views", () => {
   });
 
   test.each([
-    { views: ["L", "R", "M", "S"], source: "S", reads: "Mid" },
-    { views: ["L", "R"], source: "R", reads: "Left" },
+    { views: ["L", "R", "M", "S"], readout: "S", reads: "Side" },
+    { views: ["L", "R", "M", "S"], readout: "R", reads: "Right" },
   ])(
-    "the hover reads the $reads with $views drawn and the trigger on $source",
-    async ({ views, source, reads }) => {
+    "the hover reads the $reads with $views drawn and the readouts on $readout",
+    async ({ views, readout, reads }) => {
       await setPressed(byId("hover-toggle"), true);
       await showViews(views);
-      await useSource(source);
+      await press(choice("source", "M"));
+      await useReadout(readout);
       await settle();
       await expect.poll(hoverTitle).toBe(reads);
     },
   );
 
-  // Left is drawn too, before the Mid: snapping to the first drawn trace would pick it, so only
-  // snapping to the readout channel finds the Mid's crossing.
-  test("time cursors snap to the Mid's zero crossings with the trigger on Side", async () => {
+  // Left and the Mid are drawn too, before the Side: snapping to the first drawn trace, or to the
+  // trigger's Mid, would pick another, so only snapping to the readout channel finds the Side's
+  // crossing.
+  test("time cursors snap to the readout channel's zero crossings", async () => {
     await showViews(["L", "M", "S"]);
-    await useSource("S");
+    await press(choice("source", "M"));
+    await useReadout("S");
     await settle();
     await setPressed(byId("time-cursors"), true);
     await setPressed(byId("freeze"), true);
     await settle();
     const frame = window.orizonDebug?.lastFrame as Frame;
-    const mid = frame.views.get(ChannelView.mid);
-    const others = [ChannelView.left, ChannelView.side].map((view) =>
+    const side = frame.views.get(ChannelView.side);
+    const others = [ChannelView.left, ChannelView.mid].map((view) =>
       frame.views.get(view),
     );
-    expect(mid).toBeDefined();
+    expect(side).toBeDefined();
     expect(others).not.toContain(undefined);
     const { width } = byId("screen").getBoundingClientRect();
     const offset = 1 / width;
@@ -135,15 +99,15 @@ describe("overlaid views", () => {
     const crossings = others.flatMap((samples) =>
       zeroCrossings(frame, samples as Float32Array),
     );
-    // A crossing of the Mid with no crossing of Left or Side within three pixels, away from the
-    // edges.
-    const target = zeroCrossings(frame, mid as Float32Array).find(
+    // A crossing of the Side with no crossing of Left or the Mid within three pixels, away from
+    // the edges.
+    const target = zeroCrossings(frame, side as Float32Array).find(
       (crossing) =>
         crossing > 0.1 &&
         crossing < 0.9 &&
         crossings.every((other) => Math.abs(other - crossing) > 3 * offset),
     );
-    expect(target, "a crossing of the Mid alone").toBeDefined();
+    expect(target, "a crossing of the Side alone").toBeDefined();
     const at = target as number;
     expect(near(dragCursorA(at + offset), at)).toBe(true);
   });

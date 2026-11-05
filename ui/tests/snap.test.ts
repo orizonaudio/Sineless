@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { FrameMode } from "../../protocol/src/enums.ts";
+import { ChannelView, FrameMode } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   extremePositions,
@@ -33,6 +33,7 @@ function frameOf(mode: FrameMode, pointCount: number): Frame {
     invalidLanes: 0,
     sampleRate: 48000,
     spanSeconds: 0,
+    readoutView: ChannelView.mid,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,

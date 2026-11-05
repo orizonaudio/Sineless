@@ -1,7 +1,7 @@
 // Simulated display ticks for the draw loop's tests: the rates displays tick at, how their
 // timestamps wander, ticks the page misses, moves between displays, and engines that answer a
 // credit at once, late or a block later.
-import { FrameMode } from "../../protocol/src/enums.ts";
+import { ChannelView, FrameMode } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import { RenderLoop } from "../src/render/render-loop.ts";
 
@@ -80,6 +80,7 @@ export function frame(id: number): Frame {
     invalidLanes: 0,
     sampleRate: 48000,
     spanSeconds: 0,
+    readoutView: ChannelView.mid,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

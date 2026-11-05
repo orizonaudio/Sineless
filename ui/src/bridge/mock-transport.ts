@@ -28,7 +28,7 @@ import {
   triggerPosition,
 } from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
-import { clampPan, readoutView } from "../view/screen-state.ts";
+import { clampPan, viewOrder, type ViewName } from "../view/screen-state.ts";
 import type { ControlMessage, Transport } from "./transport.ts";
 
 export const mockSampleRate = 48000;
@@ -47,7 +47,11 @@ function signal(channel: "left" | "right", time: number): number {
 }
 
 // On a mono track R repeats L, as a host feeds a mono track to a stereo insert.
-function viewSample(view: ChannelView, time: number, mono = false): number {
+export function viewSample(
+  view: ChannelView,
+  time: number,
+  mono = false,
+): number {
   const left = signal("left", time);
   const right = mono ? left : signal("right", time);
   switch (view) {
@@ -514,10 +518,31 @@ export class MockTransport implements Transport {
     }
   }
 
+  // The views drawn in Single: those asked for, or L alone on a mono track.
+  private drawnViews(): ViewName[] {
+    const names =
+      this.inputChannels === 1
+        ? ["left"]
+        : (this.setting("channelViews") as readonly string[]);
+    return viewOrder.filter((name) => names.includes(name));
+  }
+
+  // What the engine's readouts measure: in Single the readout source when it is drawn, else the
+  // first view drawn; in Multi and Compare this track's Mid.
+  private readoutChannel(multi: boolean): ChannelView {
+    if (multi) {
+      return ChannelView.mid;
+    }
+    const drawn = this.drawnViews();
+    const source = this.setting("readoutSource") as ViewName;
+    return ChannelView[drawn.includes(source) ? source : (drawn[0] ?? "left")];
+  }
+
   private sendFrame(): void {
     if (this.columns === 0) {
       return;
     }
+    const multi = this.setting("displayMode") !== "single";
     if (this.setting("timeBase") === "beats" && !this.tempoKnown) {
       this.frameHandler?.(
         encodeFrame({
@@ -534,6 +559,8 @@ export class MockTransport implements Transport {
           frequency: undefined,
           sampleRate: this.sampleRate,
           views: new Map(),
+          laneSet: multi ? this.laneSet : 0,
+          readoutView: this.readoutChannel(multi),
         }),
       );
       return;
@@ -612,16 +639,15 @@ export class MockTransport implements Transport {
 
     // The multi-track view draws the group's tracks; readouts measure this one. The Compare view
     // adds the sum of the compared tracks.
-    const multi = this.setting("displayMode") !== "single";
     const comparedIds = this.comparedIds();
     const compared = mockTracks.filter((track) =>
       comparedIds.includes(track.id),
     );
     const views = new Map<ChannelView, Float32Array>();
     const lanes: Float32Array[] = [];
-    // The readouts measure what the engine's do: the Mid, whatever the trigger source.
+    // The readouts measure what the engine's do, whatever the trigger source.
     const mono = this.inputChannels === 1;
-    const source = readoutView(this.inputChannels);
+    const source = this.readoutChannel(multi);
     let readoutSignal = (time: number) => viewSample(source, time, mono);
     let comparison: FrameContent["comparison"];
     if (multi) {
@@ -668,10 +694,7 @@ export class MockTransport implements Transport {
         ),
       };
     } else if (!multi) {
-      // A mono track shows L alone, whatever was asked for.
-      const names = mono
-        ? ["left"]
-        : (this.setting("channelViews") as readonly string[]);
+      const names: readonly string[] = this.drawnViews();
       for (const [name, view] of Object.entries(ChannelView)) {
         if (names.includes(name)) {
           views.set(
@@ -725,6 +748,7 @@ export class MockTransport implements Transport {
         views,
         lanes,
         laneSet: multi ? this.laneSet : 0,
+        readoutView: source,
         ...this.invalidFields(multi, comparison !== undefined),
         ...(comparison === undefined ? {} : { comparison }),
       }),

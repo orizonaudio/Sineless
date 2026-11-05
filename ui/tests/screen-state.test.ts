@@ -10,11 +10,11 @@ import {
 } from "../src/view/screen-state.ts";
 
 describe("readoutView", () => {
-  test("a stereo track measures the Mid", () => {
-    expect(readoutView(2)).toBe(ChannelView.mid);
-  });
-  test("a mono track measures L, its one channel", () => {
-    expect(readoutView(1)).toBe(ChannelView.left);
+  // The engine decides it; the page takes the frame's word, whatever the settings say.
+  test.each(viewOrder)("is the view the frame measured: %s", (view) => {
+    expect(readoutView({ readoutView: ChannelView[view] })).toBe(
+      ChannelView[view],
+    );
   });
 });
 

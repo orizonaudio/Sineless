@@ -48,6 +48,7 @@ function frame(
     invalidLanes: 0,
     sampleRate: 48000,
     spanSeconds: 0,
+    readoutView: ChannelView.mid,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

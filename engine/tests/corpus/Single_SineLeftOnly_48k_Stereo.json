@@ -13,8 +13,8 @@
   "pointCount": 500,
   "readouts": {
     "frequency": 1000,
-    "peak": 0.25,
-    "rms": 0.1767767
+    "peak": 0.5,
+    "rms": 0.3535534
   },
   "signal": {
     "channels": 2,

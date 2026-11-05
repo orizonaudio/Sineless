@@ -9,7 +9,9 @@ import {
   inTimeBase,
   press,
   settle,
+  showViews,
   startApp,
+  useReadout,
   type Started,
 } from "./harness.ts";
 
@@ -92,23 +94,36 @@ describe("a track that changes channels", () => {
     await expect.poll(lit).toEqual(["L", "R"]);
   });
 
-  // The snapshot reporting the new count relabels the readouts and the view toggles by itself,
-  // with no control touched.
+  // The new count relabels the readouts and the view toggles by itself, with no control touched:
+  // a mono track draws and measures L alone, so its tag is a label, and the readouts' popover
+  // closes; stereo again, the readout channel chosen comes back.
   test("relabels the readouts and the toggles when the snapshot says", async () => {
     const tag = () => byId("readout-tag").textContent;
     const toggles = [...byId("views").querySelectorAll("button")];
     await userEvent.click(choice("display-mode", "Single"));
     await inTimeBase("Trig");
     await press(choice("source", "M"));
-    await expect.poll(tag).toBe("Mid");
+    await showViews(["L", "S"]);
+    await useReadout("S");
+    await expect.poll(tag).toBe("Side");
+    await userEvent.click(byId("readout-details"));
+    await expect.element(byId("readout-popover")).toBeVisible();
     app.transport.changeChannels(1, true);
     await expect.poll(tag).toBe("Left");
+    await expect.element(byId("readout-popover")).not.toBeVisible();
+    await expect
+      .element(byId("readout-details"))
+      .toHaveAttribute("aria-disabled", "true");
     await expectOnlyLeftEnabled(toggles);
     app.transport.changeChannels(2, true);
-    await expect.poll(tag).toBe("Mid");
+    await expect.poll(tag).toBe("Side");
+    await expect
+      .element(byId("readout-details"))
+      .toHaveAttribute("aria-disabled", "false");
     for (const button of toggles) {
       await expect.element(button).toBeEnabled();
     }
+    await showViews(["L", "R"]);
     await press(choice("source", "L"));
   });
 });

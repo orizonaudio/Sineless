@@ -25,6 +25,7 @@ export interface FrameContent {
   readonly invalidLanes?: number;
   readonly sampleRate: number;
   readonly spanSeconds?: number;
+  readonly readoutView?: ChannelView;
   readonly spanQuarterNotes?: number;
   readonly barQuarterNotes?: number;
   readonly viewStart?: number;
@@ -99,6 +100,11 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setUint32(offsets.invalidLanes, content.invalidLanes ?? 0, true);
   header.setFloat32(offsets.sampleRate, content.sampleRate, true);
   header.setFloat32(offsets.spanSeconds, content.spanSeconds ?? 0, true);
+  header.setUint32(
+    offsets.readoutView,
+    content.readoutView ?? ChannelView.mid,
+    true,
+  );
   header.setFloat32(
     offsets.spanQuarterNotes,
     content.spanQuarterNotes ?? 0,

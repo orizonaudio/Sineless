@@ -178,33 +178,6 @@ TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
     EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
 }
 
-// In Beats mode readouts measure the Mid, as in Seconds mode and the multi-track lanes, whatever
-// views are on show.
-TEST_F(AnalyzerTest, MeasuresTheMidInBeatsMode)
-{
-    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
-    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
-    engine.settings().set(SettingId::kChannelViews, 0b0010); // R only on show.
-    analyzer.setColumns(300);
-    std::uint64_t written = 0;
-    std::optional<DecodedFrame> frame;
-    for (int step = 0; step < 80; ++step) {
-        writeTone(330.0, 0.01, 0.5);
-        engine.timeline().advance({.playing = true,
-                                   .positionValid = true,
-                                   .quarterNotes = static_cast<double>(written) / 24000.0,
-                                   .tempoValid = true,
-                                   .tempo = 120.0},
-                                  480, kSampleRate);
-        written += 480;
-        if (auto produced = produce()) {
-            frame = std::move(produced);
-        }
-    }
-    ASSERT_TRUE(frame);
-    EXPECT_NEAR(frame->peak, 0.375f, 0.01f) << "Mid, (L + R) / 2, not R alone (0.25)";
-}
-
 // Every display mode the protocol has.
 std::vector<protocol::DisplayMode> everyDisplayMode()
 {
@@ -289,6 +262,77 @@ TEST_F(AnalyzerTest, DrawsNoBeatsSweepUntilTheHostReportsATempo)
         EXPECT_GT(frame.pointCount, 0U);
         EXPECT_GT(get<float>(bytes, FrameHeader::kSpanQuarterNotesOffset), 0.0f)
             << "bars placed by the host";
+    }
+}
+
+// Every frame names the channel its readouts measure, so the page never works it out: in Single
+// the readout source when drawn (Side, with L hidden, never the header's zero value, L), else the
+// first view drawn (L, with the default views, which leave out the default source, the Mid), and
+// L on a mono track whatever the source; from the frame that says there is no tempo yet, and the
+// first frame placed, which marks itself Single with no lane set. In Multi and Compare this
+// track's Mid, with the lane set that marks them multi-track.
+TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
+{
+    struct Track
+    {
+        const char* name;
+        int channels;
+        unsigned views;
+        protocol::ChannelView source;
+        protocol::ChannelView measured; // In Single.
+    };
+    constexpr std::array kTracks{
+        Track{.name = "source drawn",
+              .channels = 2,
+              .views = 0b1100,
+              .source = protocol::ChannelView::kSide,
+              .measured = protocol::ChannelView::kSide},
+        Track{.name = "source hidden",
+              .channels = 2,
+              .views = 0b0011,
+              .source = protocol::ChannelView::kMid,
+              .measured = protocol::ChannelView::kLeft},
+        Track{.name = "mono",
+              .channels = 1,
+              .views = 0b1100,
+              .source = protocol::ChannelView::kSide,
+              .measured = protocol::ChannelView::kLeft},
+    };
+    for (const auto display : everyDisplayMode()) {
+        for (const Track& track : kTracks) {
+            SCOPED_TRACE(::testing::Message()
+                         << "display " << static_cast<int>(display) << ", " << track.name);
+            const bool single = display == protocol::DisplayMode::kSingle;
+            Engine fresh;
+            fresh.prepare(kSampleRate);
+            fresh.setInputChannels(track.channels);
+            fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+            fresh.settings().set(SettingId::kChannelViews, static_cast<double>(track.views));
+            fresh.settings().set(SettingId::kReadoutSource, static_cast<double>(track.source));
+            Analyzer view(fresh);
+            view.setColumns(300);
+            std::vector<float> block(480, 0.25f);
+            std::array<const float*, 2> channels{block.data(), block.data()};
+            const auto expected = single ? track.measured : protocol::ChannelView::kMid;
+            std::vector<std::byte> bytes;
+            ASSERT_TRUE(view.produce(bytes));
+            DecodedFrame frame = decode(bytes);
+            ASSERT_TRUE(frame.has(FrameFlag::kNoTempo));
+            EXPECT_EQ(frame.readoutView, expected) << "no tempo";
+            EXPECT_EQ(frame.laneSet != 0, !single) << "no tempo";
+
+            for (int step = 0; step < 20; ++step) {
+                fresh.captureRing().write(channels.data(), 2, 480);
+                fresh.timeline().advance(
+                    {.playing = true, .positionValid = true, .tempoValid = true, .tempo = 90.0},
+                    480, kSampleRate);
+            }
+            ASSERT_TRUE(view.produce(bytes));
+            frame = decode(bytes);
+            ASSERT_FALSE(frame.has(FrameFlag::kNoTempo));
+            EXPECT_EQ(frame.readoutView, expected) << "placed";
+            EXPECT_EQ(frame.laneSet != 0, !single) << "placed";
+        }
     }
 }
 
@@ -567,10 +611,12 @@ TEST_F(AnalyzerTest, ProducesATriggeredMinMaxFrameWithReadouts)
     EXPECT_EQ(frame->pointCount, 400u);
     EXPECT_EQ(frame->data.size(), 2u * 400u * 2u) << "two views of min/max pairs";
 
-    // Default trigger source is Mid = (L + R) / 2 = 0.75 L, so readouts see amplitude 0.375.
-    EXPECT_NEAR(frame->peak, 0.375f, 1e-3f);
+    // The default readout source, Mid, is not among the default views: readouts measure the first
+    // view drawn, L, of amplitude 0.5.
+    EXPECT_EQ(frame->readoutView, protocol::ChannelView::kLeft);
+    EXPECT_NEAR(frame->peak, 0.5f, 1e-3f);
     // 20 ms holds 8.8 cycles of 440 Hz; RMS over a partial cycle deviates by about 1%.
-    EXPECT_NEAR(frame->rms, 0.375f / std::numbers::sqrt2_v<float>, 0.02f * 0.265f);
+    EXPECT_NEAR(frame->rms, 0.5f / std::numbers::sqrt2_v<float>, 0.02f * 0.354f);
     EXPECT_NEAR(frame->frequency, 440.0f, 1.0f);
 }
 
@@ -949,7 +995,7 @@ TEST_F(AnalyzerTest, FreezeKeepsShowingHeldDataWhileViewsStillChange)
     const auto rescaled = produce();
     ASSERT_TRUE(rescaled);
     EXPECT_TRUE(rescaled->has(FrameFlag::kFrozen));
-    EXPECT_NEAR(rescaled->peak, 0.375f, 1e-3f) << "readouts work on held data";
+    EXPECT_NEAR(rescaled->peak, 0.5f, 1e-3f) << "readouts work on held data";
     EXPECT_NEAR(rescaled->frequency, 440.0f, 1.0f);
 
     analyzer.setFrozen(false);
@@ -974,7 +1020,7 @@ TEST_F(AnalyzerTest, PanMovesTheFrozenViewBackInTime)
     analyzer.setPan(0.3); // Back into the tone.
     const auto panned = produce();
     ASSERT_TRUE(panned);
-    EXPECT_NEAR(panned->peak, 0.375f, 1e-3f);
+    EXPECT_NEAR(panned->peak, 0.5f, 1e-3f);
 }
 
 // 20 ms is 960 samples at 48 kHz: with more columns than that, a frame carries raw points.
@@ -1101,7 +1147,7 @@ TEST_F(AnalyzerTest, SingleCapturesAgainOnlyWhenArmed)
     writeTone(440.0, 0.2, 0.25);
     const auto rearmed = produce();
     ASSERT_TRUE(rearmed);
-    EXPECT_NEAR(rearmed->peak, 0.1875f, 1e-3f) << "armed: captured again (Mid of 0.25 and 0.125)";
+    EXPECT_NEAR(rearmed->peak, 0.25f, 1e-3f) << "armed: captured again (L, the first view drawn)";
 
     analyzer.setFrozen(false);
     int frames = 0;
@@ -1109,7 +1155,7 @@ TEST_F(AnalyzerTest, SingleCapturesAgainOnlyWhenArmed)
         writeTone(440.0, 0.1, 0.125);
         if (const auto frame = produce()) {
             ++frames;
-            EXPECT_NEAR(frame->peak, 0.1875f, 1e-3f) << "not armed: still the last capture";
+            EXPECT_NEAR(frame->peak, 0.25f, 1e-3f) << "not armed: still the last capture";
         }
     }
     EXPECT_GT(frames, 0) << "live again, it shows the last capture";

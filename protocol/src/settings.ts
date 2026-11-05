@@ -87,6 +87,13 @@ export const settings = {
     values: "ChannelView",
     defaultValue: ChannelView.mid,
   },
+  // The channel Peak, RMS and Freq measure in the Single display mode, when it is drawn; the
+  // first drawn view otherwise. Multi and Compare measure this track's Mid.
+  readoutSource: {
+    kind: "enum",
+    values: "ChannelView",
+    defaultValue: ChannelView.mid,
+  },
   triggerSlope: {
     kind: "enum",
     values: "TriggerSlope",
