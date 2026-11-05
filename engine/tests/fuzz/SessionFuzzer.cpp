@@ -9,6 +9,7 @@
 // track in the same group plays the same tone inverted, so the Multi and Compare views have
 // lanes to show.
 
+#include "FrameOracles.h"
 #include "FuzzCheck.h"
 #include "editor/Session.h"
 #include "editor/Transport.h"
@@ -17,11 +18,9 @@
 #include "engine/InstanceRegistry.h"
 
 #include <array>
-#include <bit>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <span>
@@ -29,6 +28,7 @@
 #include <system_error>
 #include <vector>
 
+using orizon::fuzz::checkFrame;
 using orizon::fuzz::require;
 using namespace orizon;
 
@@ -91,26 +91,6 @@ void play(engine::Engine& engine, const Format& format, float sign)
     }
     std::array<const float*, 2> channels{tone.data(), tone.data()};
     engine.captureRing().write(channels.data(), format.channels, kToneSamples);
-}
-
-// The frame holds exactly the data its header announces (frame.ts).
-void checkFrame(const std::vector<std::byte>& frame)
-{
-    using protocol::FrameHeader;
-    require(frame.size() >= FrameHeader::kSize, "a frame holds its header");
-    const auto byte = [&](std::size_t offset) { return std::to_integer<unsigned>(frame[offset]); };
-    std::uint32_t points = 0;
-    std::memcpy(&points, frame.data() + FrameHeader::kPointCountOffset, sizeof(points));
-    const auto mode = static_cast<protocol::FrameMode>(byte(FrameHeader::kModeOffset));
-    const std::size_t perBlock =
-        std::size_t{points} * (mode == protocol::FrameMode::kMinMax ? 2 : 1);
-    const auto views = static_cast<std::size_t>(std::popcount(byte(FrameHeader::kViewsOffset)));
-    const std::size_t lanes = byte(FrameHeader::kLaneCountOffset);
-    const bool compared = (byte(FrameHeader::kFlagsOffset) &
-                           static_cast<unsigned>(protocol::FrameFlag::kCompared)) != 0;
-    const std::size_t matches = compared && lanes > 0 ? (lanes - 1) * protocol::kMatchValues : 0;
-    require(frame.size() == FrameHeader::kSize + ((views + lanes) * perBlock + matches) * 4,
-            "a frame's size matches its header");
 }
 
 } // namespace
