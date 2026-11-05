@@ -68,12 +68,19 @@ if(NOT ORIZON_FUZZ)
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/no-inputs)
     add_test(NAME fuzz.replay.RefusesNoInputs
              COMMAND state_fuzzer ${CMAKE_CURRENT_BINARY_DIR}/no-inputs)
-    # And it refuses a run whose required oracle checked nothing, beside real inputs that reach
-    # another one, so that the oracles' own tests cannot pass by checking nothing.
-    add_test(NAME fuzz.replay.RefusesAnOracleThatCheckedNothing
-             COMMAND host_fuzzer --require-oracle=no-such-oracle ${seedDir}/host/tracks)
     set_tests_properties(fuzz.replay.RefusesAMissingInput fuzz.replay.RefusesNoInputs
-                         fuzz.replay.RefusesAnOracleThatCheckedNothing PROPERTIES WILL_FAIL TRUE)
+                         PROPERTIES WILL_FAIL TRUE)
+    # And it refuses a run whose required oracle checked nothing, after replaying every host seed
+    # and finding the oracle they do reach, so that the oracles' own tests cannot pass by checking
+    # nothing. Judged by the refusal's message: a missing seed or a crash fails it too, but for
+    # another reason, and must not pass it.
+    add_test(NAME fuzz.replay.RefusesAnOracleThatCheckedNothing
+             COMMAND host_fuzzer --require-oracle=determinism --require-oracle=no-such-oracle
+                     ${seedDir}/host)
+    set_tests_properties(
+        fuzz.replay.RefusesAnOracleThatCheckedNothing
+        PROPERTIES PASS_REGULAR_EXPRESSION
+                   "determinism oracle checked [1-9][0-9]* frames.*no-such-oracle oracle checked no frame")
 endif()
 
 # The dictionary and the session's seeds, written from the protocol's tables and the message
