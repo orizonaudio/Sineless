@@ -8,7 +8,8 @@
 # where earlier ones got to; CI keeps that corpus between runs (the fuzz job and fuzz-nightly.yml).
 # --prune shrinks it to the fewest inputs that reach the same code (libFuzzer's -merge=1), as the
 # nightly run does before keeping it. A crash, a sanitizer report or a failed invariant stops that
-# fuzzer and saves the input as build/fuzz/artifacts/<fuzzer>-crash-<hash>; reproduce it with
+# fuzzer and saves the input as build/fuzz/artifacts/<fuzzer>-crash-<hash> (in the nightly run,
+# scripts/fuzz-failure-issue.sh then reports it as an issue); reproduce it with
 #   build/fuzz/engine/tests/fuzz/<fuzzer> build/fuzz/artifacts/<fuzzer>-crash-<hash>
 set -uo pipefail
 

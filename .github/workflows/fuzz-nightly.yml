@@ -3,8 +3,9 @@ name: Fuzz nightly
 # Half an hour of fuzzing a night from the corpus kept on main, which it then prunes to the
 # fewest inputs that reach the same code and keeps for the next runs: pull requests' fuzz jobs
 # start from it (ci.yml), and running nightly keeps the cache from expiring (GitHub drops one
-# unused for seven days). A crash or a failed invariant fails the run, which GitHub reports to
-# the repository's owner, and keeps the input as an artifact.
+# unused for seven days). A crash or a failed invariant fails the run, keeps the input as an
+# artifact and opens an issue (or comments on the one still open), since GitHub tells only the user
+# who last edited the cron line, and only if their notifications are on.
 on:
   schedule:
     - cron: "17 3 * * *"
@@ -20,7 +21,10 @@ jobs:
   fuzz:
     name: fuzz-nightly
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      issues: write # Reporting a failure.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -36,8 +40,13 @@ jobs:
           path: build/fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
           restore-keys: fuzz-corpus-
+      # A hang fails its step, not the job, so that the failure is still reported: fuzzing takes 31
+      # minutes, and its limit leaves 35 of the job's for setting up (a warm build takes seconds, a
+      # cold one minutes) and for reporting.
       - run: scripts/fuzz.sh 1800
+        timeout-minutes: 40
       - run: scripts/fuzz.sh --prune
+        timeout-minutes: 10
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/fuzz/corpus
@@ -48,3 +57,9 @@ jobs:
           name: fuzz-crashes
           path: build/fuzz/artifacts/
           if-no-files-found: ignore
+      - if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: scripts/fuzz-failure-issue.sh
