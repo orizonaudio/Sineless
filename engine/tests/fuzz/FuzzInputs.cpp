@@ -300,7 +300,7 @@ bool writeHostSeeds(const std::filesystem::path& directory)
     write("tracks", tracks);
 
     // One seed per oracle, each reaching it (engine/tests/fuzz/CMakeLists.txt requires it): a
-    // frozen frame drawn again after a rate change, in Single in both time bases and in Multi; two
+    // frozen frame drawn again after a rate change, in Single and Multi in both time bases; two
     // lanes that mirror each other; and readouts of audio with no finite sample.
     const auto frozenAfterRateChange = [&](const std::string& name, std::uint8_t mode,
                                            std::uint8_t base) {
@@ -322,6 +322,7 @@ bool writeHostSeeds(const std::filesystem::path& directory)
     frozenAfterRateChange("frozen-rate-change-single-free", single, free);
     frozenAfterRateChange("frozen-rate-change-single-beats", single, beats);
     frozenAfterRateChange("frozen-rate-change-multi-free", multi, free);
+    frozenAfterRateChange("frozen-rate-change-multi-beats", multi, beats);
     HostSeed mirrored;
     mirrored.setting(protocol::SettingId::kDisplayMode, multi)
         .setting(protocol::SettingId::kTimeBase, free)

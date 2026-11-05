@@ -46,7 +46,7 @@ if(NOT ORIZON_FUZZ)
              COMMAND host_fuzzer --require-oracle=determinism ${seedDir}/host)
     # Each oracle's seeds must reach it, so that a change that stops its conditions from ever
     # holding fails here rather than leaving the oracle checking nothing.
-    foreach(seed IN ITEMS single-free single-beats multi-free)
+    foreach(seed IN ITEMS single-free single-beats multi-free multi-beats)
         add_test(NAME fuzz.host_fuzzer.frozen.${seed}
                  COMMAND host_fuzzer --require-oracle=frozen
                          ${seedDir}/host/frozen-rate-change-${seed})
