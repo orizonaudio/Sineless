@@ -109,8 +109,9 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: macos-15
-    # About 2.5 times the slowest run of the last 150 (11.8 min), so a slow runner still finishes,
-    # and a run whose browser page stops answering ends after 30 min, not GitHub's 6 h.
+    # About 2.5 times the slowest run of the last 150 (11.8 min), so a slow runner still finishes.
+    # A browser page that stops answering is failed within minutes by the stall watchdog
+    # (ui/tests/app/stall-watchdog.ts); this bounds what it might miss to 30 min, not GitHub's 6 h.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

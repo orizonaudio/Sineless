@@ -25,6 +25,14 @@ const chromiumInstance = {
 
 export default defineConfig({
   test: {
+    // vitest's defaults, and a reporter that fails an app test project whose page stops making
+    // progress, saying where: in browser mode the tests' timeouts run in the page, so a page that
+    // stops never fails them (ui/tests/app/stall-watchdog.ts).
+    reporters: [
+      "default",
+      ...(process.env["GITHUB_ACTIONS"] === "true" ? ["github-actions"] : []),
+      "./ui/tests/app/stall-watchdog.ts",
+    ],
     projects: [
       { test: unitTests },
       {
