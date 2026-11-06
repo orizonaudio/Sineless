@@ -106,9 +106,15 @@ describe("a setup whose start stalls, off CI", () => {
     await startApp();
   });
 
-  afterAll(() => {
+  // eslint-disable-next-line no-empty-pattern -- vitest reads a hook's fixtures from this pattern.
+  afterAll(({}, suite) => {
     restore();
     expect(setUps).toBe(1);
+    // A failed test.fails reports a pass; one skipped instead reports a skip.
+    expect(outcomes(suite.tasks).map((outcome) => outcome.state)).toEqual([
+      "pass",
+      "pass",
+    ]);
   });
 
   test.fails("fails the first test", () => undefined);
@@ -122,8 +128,13 @@ describe("a setup that throws", () => {
     throw new Error("the setup failed");
   });
 
-  afterAll(() => {
+  // eslint-disable-next-line no-empty-pattern -- vitest reads a hook's fixtures from this pattern.
+  afterAll(({}, suite) => {
     expect(setUps).toBe(1);
+    expect(outcomes(suite.tasks).map((outcome) => outcome.state)).toEqual([
+      "pass",
+      "pass",
+    ]);
   });
 
   test.fails("fails the first test", () => undefined);

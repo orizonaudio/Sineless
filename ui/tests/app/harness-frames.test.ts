@@ -1,7 +1,7 @@
 // A page whose rendering stops gets no animation frames, as the CI machine's display stalling
 // leaves it: the start then stops within its budget, saying so, instead of waiting for frames
-// that never come until the test's 30 s timeout. On CI the test is skipped; a page that renders
-// but whose app never draws fails there too.
+// that never come until the test's 30 s timeout. On CI the test is skipped; off CI, and outside a
+// test, it fails.
 import {
   afterAll,
   afterEach,
@@ -12,7 +12,12 @@ import {
   vi,
 } from "vitest";
 
-import { setCiForTests, setFrameBudgetForTests, startApp } from "./harness.ts";
+import {
+  frame,
+  setCiForTests,
+  setFrameBudgetForTests,
+  startApp,
+} from "./harness.ts";
 
 const realFrame = window.requestAnimationFrame.bind(window);
 
@@ -68,6 +73,14 @@ describe("a start whose page stops rendering, off CI", () => {
     framesStopAfter(2);
     await expect(startApp()).rejects.toThrow(/\(2 before it stopped;/);
   });
+
+  test("a frame waited for in a test stops when none comes", async () => {
+    setCiForTests(false);
+    framesStopAfter(0);
+    await expect(frame("the grip's frame", 300)).rejects.toThrow(
+      /no animation frame in the grip's frame \(0 before it stopped;/,
+    );
+  });
 });
 
 describe("a start whose page stops rendering, on CI", () => {
@@ -84,6 +97,7 @@ describe("a start whose page stops rendering, on CI", () => {
       ["skip", "no animation frame in the ticks the previous app asked for"],
       ["skip", "no animation frame in the ticks the previous app asked for"],
       ["pass", undefined],
+      ["skip", "no animation frame in the grip's frame"],
     ]);
   });
 
@@ -106,6 +120,12 @@ describe("a start whose page stops rendering, on CI", () => {
     setFrameBudgetForTests(600);
     framesStallFor(300);
     await startApp();
+  });
+
+  test("is skipped when a frame waited for in a test does not come", async () => {
+    setCiForTests(true);
+    framesStopAfter(0);
+    await frame("the grip's frame", 300);
   });
 });
 
