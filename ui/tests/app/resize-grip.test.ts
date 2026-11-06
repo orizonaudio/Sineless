@@ -1,7 +1,7 @@
 // The resize grip asks the plugin for the window size the user drags it to.
 import { beforeAll, describe, expect, test, vi } from "vitest";
 
-import { byId, startApp, type Started } from "./harness.ts";
+import { byId, frame, startApp, type Started } from "./harness.ts";
 
 function drag(
   grip: HTMLElement,
@@ -57,16 +57,16 @@ describe("resize grip", () => {
     for (const x of [510, 520, 530, 540]) {
       grip.dispatchEvent(new PointerEvent("pointermove", at(x)));
     }
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await frame();
+    await frame();
     expect(resizes(app).length).toBe(before + 1);
     expect(resizes(app).at(-1)).toMatchObject({
       width: window.innerWidth + 40,
     });
     // And keeps following it in later frames, before the button is released.
     grip.dispatchEvent(new PointerEvent("pointermove", at(560)));
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await frame();
+    await frame();
     expect(resizes(app).length).toBe(before + 2);
     expect(resizes(app).at(-1)).toMatchObject({
       width: window.innerWidth + 60,
@@ -114,11 +114,11 @@ describe("resize grip", () => {
       grip.dispatchEvent(new PointerEvent("pointerdown", at(500)));
       grip.dispatchEvent(new PointerEvent("pointermove", at(520)));
       grip.dispatchEvent(new PointerEvent(ending, at(520)));
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await frame();
       const before = resizes(app).length;
       grip.dispatchEvent(new PointerEvent("pointermove", at(600)));
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await frame();
+      await frame();
       expect(resizes(app).length).toBe(before);
     },
   );
@@ -141,8 +141,8 @@ describe("resize grip", () => {
     grip.dispatchEvent(new PointerEvent("pointerdown", at(300, 2)));
     grip.dispatchEvent(new PointerEvent("pointermove", at(250, 2)));
     grip.dispatchEvent(new PointerEvent("pointermove", at(530, 1)));
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await frame();
+    await frame();
     grip.dispatchEvent(new PointerEvent("pointerup", at(250, 2)));
     grip.dispatchEvent(new PointerEvent("pointerup", at(530, 1)));
     capture.mockRestore();
@@ -154,7 +154,7 @@ describe("resize grip", () => {
   test("ignores buttons other than the main one", async () => {
     const before = resizes(app).length;
     drag(byId("resize-grip"), { x: 500, y: 400 }, [{ x: 700, y: 600 }], 2);
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await frame();
     expect(resizes(app).length).toBe(before);
   });
 
