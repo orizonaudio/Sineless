@@ -123,6 +123,30 @@ describe("the stall watchdog", () => {
     expect(stalled).toEqual([]);
   });
 
+  test("takes its limit from ORIZON_APP_STALL_SECONDS when given none", () => {
+    vi.stubEnv("ORIZON_APP_STALL_SECONDS", "20");
+    try {
+      const dog = new StallWatchdog({
+        now: () => now,
+        respond: (stalledProject, report) => {
+          stalled.push({ project: stalledProject.name, report });
+          return Promise.resolve();
+        },
+      });
+      const webkit = project("app (webkit)", true);
+      dog.onTestRunStart([spec(webkit)]);
+      dog.onTestModuleQueued(module(webkit, "a.test.ts"));
+      now = 19_999;
+      dog.check();
+      expect(stalled).toEqual([]);
+      now = 20_000;
+      dog.check();
+      expect(stalled).toHaveLength(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test("watches a later run of the same process (watch mode) as well", () => {
     const webkit = project("app (webkit)", true);
     const dog = watchdog("20");
