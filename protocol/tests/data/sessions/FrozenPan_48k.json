@@ -46,11 +46,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 11,
+  "protocolVersion": 12,
   "scenario": "FrozenPan_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 11,
+    "protocolVersion": 12,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "off",
@@ -59,6 +59,7 @@
         "left",
         "right"
       ],
+      "compare": "off",
       "concertPitch": 440.0,
       "displayMode": "single",
       "freeSpan": 4.0,

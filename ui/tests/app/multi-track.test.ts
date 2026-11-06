@@ -1,5 +1,6 @@
-// The multi-track and Compare views, through the real page: lane labels from the engine's lanes
-// messages, the trigger marker in this track's lane, and the Compare readouts.
+// The multi-track view with Compare off and on, through the real page: lane labels from the
+// engine's lanes messages, the trigger marker in this track's lane, the Compare switch and its
+// readouts.
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -8,6 +9,7 @@ import {
   byId,
   choice,
   press,
+  setCompare,
   settle,
   startApp,
   type Started,
@@ -28,16 +30,29 @@ function compareCheck(name: string): HTMLButtonElement {
   return check as HTMLButtonElement;
 }
 
-// Multi or Compare, Seconds, stacked, with R as the Single view's trigger source: R's lane is not
-// the first, so a marker placed by the views rather than the tracks would show.
+// Multi with Compare off or on, Seconds, stacked, with R as the Single view's trigger source: R's
+// lane is not the first, so a marker placed by the views rather than the tracks would show.
 async function show(mode: "Multi" | "Compare"): Promise<void> {
   await userEvent.click(choice("time-base", "Trig"));
   await userEvent.click(choice("display-mode", "Single"));
   await press(choice("source", "R"));
-  await userEvent.click(choice("display-mode", mode));
+  await userEvent.click(choice("display-mode", "Multi"));
   await press(choice("group", "A"));
+  await setCompare(mode === "Compare");
   await userEvent.click(choice("layout", "Stack"));
   await settle();
+}
+
+function compareChecks(): number {
+  return byId("lane-labels").querySelectorAll(".compare-check").length;
+}
+
+function hasSumLane(): boolean {
+  return laneNames().some((name) => name.startsWith("Sum"));
+}
+
+function previewFix(): HTMLElement | null {
+  return byId("lane-labels").querySelector<HTMLElement>(".preview-fix");
 }
 
 // Checks or unchecks a track for comparison. Each click asks the engine, whose new lanes rebuild
@@ -143,4 +158,67 @@ describe("the Compare view", () => {
         "No other track in group B to compare with. Insert Sineless on another track.", // The branded name (vitest.config.ts).
       );
   });
+});
+
+describe("the Compare switch", () => {
+  // Off, Multi shows the tracks alone: no check boxes, no sum, no note, and nothing compared.
+  test("adds nothing to Multi while it is off", async () => {
+    await show("Multi");
+    expect(compareChecks()).toBe(0);
+    expect(hasSumLane()).toBe(false);
+    await press(choice("group", "B"));
+    await settle();
+    expect(byId("lane-labels").querySelector(".compare-note")).toBeNull();
+    expect(window.orizonDebug?.lastFrame?.comparison).toBeUndefined();
+    await press(choice("group", "A"));
+  });
+
+  // Left on in Single, it shows nothing there; back in Multi, Compare shows again, as the Group
+  // field says.
+  test("keeps its state in Single and shows Compare back in Multi", async () => {
+    await show("Compare");
+    await expect.poll(compareChecks).toBe(4);
+    await userEvent.click(choice("display-mode", "Single"));
+    await settle();
+    expect(compareChecks()).toBe(0);
+    expect(window.orizonDebug?.lastFrame?.comparison).toBeUndefined();
+    await userEvent.click(choice("display-mode", "Multi"));
+    await expect.poll(compareChecks).toBe(4);
+    await expect.poll(hasSumLane).toBe(true);
+    expect(byId("group-summary").textContent).toBe("A·Σ");
+  });
+
+  // Preview fix is Compare's: turning Compare off, or leaving Multi, resets it, and Compare comes
+  // back without it.
+  test.each(["switch", "display mode"])(
+    "resets Preview fix when Compare leaves the screen by the %s",
+    async (how) => {
+      await show("Compare");
+      await expect.poll(previewFix).not.toBeNull();
+      await userEvent.click(previewFix() as HTMLElement);
+      await expect
+        .element(previewFix() as HTMLElement)
+        .toHaveAttribute("aria-pressed", "true");
+      const sent = started.sent.length;
+      if (how === "switch") {
+        await setCompare(false);
+      } else {
+        await userEvent.click(choice("display-mode", "Single"));
+      }
+      await expect
+        .poll(() =>
+          started.sent
+            .slice(sent)
+            .some((message) => message.type === "previewFix" && !message.on),
+        )
+        .toBe(true);
+      if (how === "switch") {
+        await setCompare(true);
+      } else {
+        await userEvent.click(choice("display-mode", "Multi"));
+      }
+      await expect.poll(previewFix).not.toBeNull();
+      expect(previewFix()?.getAttribute("aria-pressed")).toBe("false");
+    },
+  );
 });

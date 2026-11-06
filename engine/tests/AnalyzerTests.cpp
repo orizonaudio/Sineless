@@ -1,3 +1,4 @@
+#include "Display.h"
 #include "FrameDecoding.h"
 #include "engine/Analyzer.h"
 
@@ -178,17 +179,6 @@ TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
     EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
 }
 
-// Every display mode the protocol has.
-std::vector<protocol::DisplayMode> everyDisplayMode()
-{
-    std::vector<protocol::DisplayMode> modes;
-    modes.reserve(protocol::kDisplayModeCount);
-    for (std::size_t mode = 0; mode < protocol::kDisplayModeCount; ++mode) {
-        modes.push_back(static_cast<protocol::DisplayMode>(mode));
-    }
-    return modes;
-}
-
 // Plays half a second of a tone, then `silence` seconds of silence, in Beats mode at 120 BPM with
 // frames on the way: the last sweep shown is of the tone, the newest audio silent.
 void playBeatsThenSilence(Engine& engine, Analyzer& analyzer, double silence = 1.0)
@@ -223,11 +213,11 @@ void playBeatsThenSilence(Engine& engine, Analyzer& analyzer, double silence = 1
 // mode.
 TEST_F(AnalyzerTest, DrawsNoBeatsSweepUntilTheHostReportsATempo)
 {
-    for (const auto display : everyDisplayMode()) {
-        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+    for (const auto display : everyDisplay()) {
+        SCOPED_TRACE(displayName(display));
         Engine fresh;
         fresh.prepare(kSampleRate);
-        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        show(fresh.settings(), display);
         Analyzer view(fresh);
         view.setColumns(300);
         std::vector<float> block(480, 0.25f);
@@ -269,7 +259,7 @@ TEST_F(AnalyzerTest, DrawsNoBeatsSweepUntilTheHostReportsATempo)
 // the readout source when drawn (Side, with L hidden, never the header's zero value, L), else the
 // first view drawn (L, with the default views, which leave out the default source, the Mid), and
 // L on a mono track whatever the source; from the frame that says there is no tempo yet, and the
-// first frame placed, which marks itself Single with no lane set. In Multi and Compare this
+// first frame placed, which marks itself Single with no lane set. In Multi this
 // track's Mid, with the lane set that marks them multi-track.
 TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
 {
@@ -298,15 +288,14 @@ TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
               .source = protocol::ChannelView::kSide,
               .measured = protocol::ChannelView::kLeft},
     };
-    for (const auto display : everyDisplayMode()) {
+    for (const auto display : everyDisplay()) {
         for (const Track& track : kTracks) {
-            SCOPED_TRACE(::testing::Message()
-                         << "display " << static_cast<int>(display) << ", " << track.name);
-            const bool single = display == protocol::DisplayMode::kSingle;
+            SCOPED_TRACE(::testing::Message() << displayName(display) << ", " << track.name);
+            const bool single = !isMulti(display);
             Engine fresh;
             fresh.prepare(kSampleRate);
             fresh.setInputChannels(track.channels);
-            fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+            show(fresh.settings(), display);
             fresh.settings().set(SettingId::kChannelViews, static_cast<double>(track.views));
             fresh.settings().set(SettingId::kReadoutSource, static_cast<double>(track.source));
             // The trigger chooses by the same rule: its source, drawn or not, names the same view.
@@ -374,11 +363,11 @@ TEST_F(AnalyzerTest, RenamesTheReadoutChannelWithNoTempoWhenTheTrackTurnsMono)
 // display mode.
 TEST_F(AnalyzerTest, SaysThereIsNoTempoFrozenAndUnfrozen)
 {
-    for (const auto display : everyDisplayMode()) {
-        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+    for (const auto display : everyDisplay()) {
+        SCOPED_TRACE(displayName(display));
         Engine fresh;
         fresh.prepare(kSampleRate);
-        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        show(fresh.settings(), display);
         Analyzer view(fresh);
         view.setColumns(300);
         std::vector<float> block(480, 0.25f);
@@ -420,13 +409,13 @@ TEST_F(AnalyzerTest, SaysThereIsNoTempoFrozenAndUnfrozen)
 // Normal and Single show the newest span at once, as after a Beats sweep. In every display mode.
 TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingToSecondsBeforeATempo)
 {
-    for (const auto display : everyDisplayMode()) {
+    for (const auto display : everyDisplay()) {
         for (const auto mode : {protocol::TriggerMode::kNormal, protocol::TriggerMode::kSingle}) {
-            SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display)
-                                              << ", trigger " << static_cast<int>(mode));
+            SCOPED_TRACE(::testing::Message()
+                         << displayName(display) << ", trigger " << static_cast<int>(mode));
             Engine fresh;
             fresh.prepare(kSampleRate);
-            fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+            show(fresh.settings(), display);
             fresh.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
             setSpan(fresh, 0.02);
             Analyzer view(fresh);
@@ -453,13 +442,13 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingToSecondsBeforeATempo)
 // audio as if it were now; then they wait for a trigger as usual. In every display mode.
 TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingFromBeatsToSeconds)
 {
-    for (const auto display : everyDisplayMode()) {
+    for (const auto display : everyDisplay()) {
         for (const auto mode : {protocol::TriggerMode::kNormal, protocol::TriggerMode::kSingle}) {
-            SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display)
-                                              << ", trigger " << static_cast<int>(mode));
+            SCOPED_TRACE(::testing::Message()
+                         << displayName(display) << ", trigger " << static_cast<int>(mode));
             Engine fresh;
             fresh.prepare(kSampleRate);
-            fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+            show(fresh.settings(), display);
             fresh.settings().set(SettingId::kTriggerMode, static_cast<double>(mode));
             setSpan(fresh, 0.02);
             Analyzer view(fresh);
@@ -477,13 +466,13 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingFromBeatsToSeconds)
     }
 }
 
-// Every display mode, at a triggered span and at a rolling one.
-std::vector<std::pair<protocol::DisplayMode, double>> displaysAndSpans()
+// Every display, at a triggered span and at a rolling one.
+std::vector<std::pair<Display, double>> displaysAndSpans()
 {
     constexpr std::array kSpans{0.02, 2.0};
-    std::vector<std::pair<protocol::DisplayMode, double>> cases;
-    cases.reserve(protocol::kDisplayModeCount * kSpans.size());
-    for (const auto display : everyDisplayMode()) {
+    std::vector<std::pair<Display, double>> cases;
+    cases.reserve(everyDisplay().size() * kSpans.size());
+    for (const auto display : everyDisplay()) {
         for (const double span : kSpans) {
             cases.emplace_back(display, span);
         }
@@ -497,11 +486,10 @@ TEST_F(AnalyzerTest, OpensOnTheNewestHeldAudioWhenFrozenInBeatsThenSeconds)
 {
     // A triggered span, and a rolling one, whose view ends at an anchor of its own.
     for (const auto& [display, span] : displaysAndSpans()) {
-        SCOPED_TRACE(::testing::Message()
-                     << "display " << static_cast<int>(display) << ", span " << span);
+        SCOPED_TRACE(::testing::Message() << displayName(display) << ", span " << span);
         Engine fresh;
         fresh.prepare(kSampleRate);
-        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        show(fresh.settings(), display);
         fresh.settings().set(SettingId::kTriggerMode,
                              static_cast<double>(protocol::TriggerMode::kNormal));
         setSpan(fresh, span);
@@ -541,11 +529,11 @@ void playSecondsTone(Engine& engine, Analyzer& analyzer, double seconds, double 
 // shows the Seconds frame until then.
 TEST_F(AnalyzerTest, SaysThereIsNoTempoAgainBackFromSeconds)
 {
-    for (const auto display : everyDisplayMode()) {
-        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+    for (const auto display : everyDisplay()) {
+        SCOPED_TRACE(displayName(display));
         Engine fresh;
         fresh.prepare(kSampleRate);
-        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        show(fresh.settings(), display);
         Analyzer view(fresh);
         view.setColumns(300);
         std::vector<std::byte> bytes;
@@ -567,11 +555,11 @@ TEST_F(AnalyzerTest, SaysThereIsNoTempoAgainBackFromSeconds)
 // point, in every display mode.
 TEST_F(AnalyzerTest, KeepsTheFrozenSecondsViewAcrossATripToBeats)
 {
-    for (const auto display : everyDisplayMode()) {
-        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+    for (const auto display : everyDisplay()) {
+        SCOPED_TRACE(displayName(display));
         Engine fresh;
         fresh.prepare(kSampleRate);
-        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        show(fresh.settings(), display);
         fresh.settings().set(SettingId::kTriggerMode,
                              static_cast<double>(protocol::TriggerMode::kNormal));
         setSpan(fresh, 0.02);
@@ -600,11 +588,11 @@ TEST_F(AnalyzerTest, KeepsTheFrozenSecondsViewAcrossATripToBeats)
 // mode.
 TEST_F(AnalyzerTest, ForgetsTheSecondsWindowShownBeforeASpellInBeats)
 {
-    for (const auto display : everyDisplayMode()) {
-        SCOPED_TRACE(::testing::Message() << "display " << static_cast<int>(display));
+    for (const auto display : everyDisplay()) {
+        SCOPED_TRACE(displayName(display));
         Engine fresh;
         fresh.prepare(kSampleRate);
-        fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
+        show(fresh.settings(), display);
         fresh.settings().set(SettingId::kTriggerMode,
                              static_cast<double>(protocol::TriggerMode::kNormal));
         setSpan(fresh, 0.02);
@@ -1828,9 +1816,9 @@ TEST_F(MultiTrackTest, KeepsReducedLanesInStepWithAFreshReduction)
 // lanes (and Compare's sum) equal a fresh reduction.
 TEST_F(MultiTrackTest, KeepsFreeRunningLanesInStepWithAFreshReduction)
 {
-    for (const auto mode : {protocol::DisplayMode::kMulti, protocol::DisplayMode::kCompare}) {
-        SCOPED_TRACE(protocol::kDisplayModeNames.at(static_cast<std::size_t>(mode)));
-        own->settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
+    for (const Display display : {Display::kMulti, Display::kCompare}) {
+        SCOPED_TRACE(displayName(display));
+        show(own->settings(), display);
         runFree(*own, 2.0);
         own->settings().set(SettingId::kTriggerMode,
                             static_cast<double>(protocol::TriggerMode::kNormal)); // Not applied.
@@ -2187,8 +2175,7 @@ protected:
     void SetUp() override
     {
         MultiTrackTest::SetUp();
-        own->settings().set(SettingId::kDisplayMode,
-                            static_cast<double>(protocol::DisplayMode::kCompare));
+        show(own->settings(), Display::kCompare);
         tracks.front().second = [](std::uint64_t sample) { return noiseAt(sample, 1); };
     }
 
@@ -2587,6 +2574,63 @@ TEST_F(CompareTest, LeavesALaneForTheSum)
     const LaneSet lanes = analyzer->laneSet();
     EXPECT_EQ(lanes.lanes.size(), kMaxLanes - 1);
     EXPECT_EQ(lanes.hidden, 2u);
+}
+
+// Sixteen tracks fill Multi's lanes; turning Compare on gives the sum a lane, hiding one track but
+// never this one, and turning it off shows every track again.
+TEST_F(CompareTest, HidesOneTrackForTheSumOnlyWhileCompareIsOn)
+{
+    for (std::size_t i = 0; i + 1 < kMaxLanes; ++i) {
+        join(static_cast<float>(i));
+    }
+    for (const Display display : {Display::kCompare, Display::kMulti, Display::kCompare}) {
+        SCOPED_TRACE(displayName(display));
+        show(own->settings(), display);
+        play(9600);
+        const auto frame = produce();
+        ASSERT_TRUE(frame);
+        EXPECT_EQ(frame->laneCount, kMaxLanes);
+        const LaneSet lanes = analyzer->laneSet();
+        const bool comparing = display == Display::kCompare;
+        EXPECT_EQ(frame->has(FrameFlag::kCompared), comparing);
+        EXPECT_EQ(lanes.lanes.size(), comparing ? kMaxLanes - 1 : kMaxLanes);
+        EXPECT_EQ(lanes.hidden, comparing ? 1u : 0u);
+        EXPECT_TRUE(std::ranges::any_of(lanes.lanes, &LaneLabel::own))
+            << "this track is never the one hidden";
+    }
+}
+
+// Turning Compare off leaves no checks on show and measures nothing; turning it on again shows the
+// tracks checked before (FR-15.2).
+TEST_F(CompareTest, KeepsTheCheckedTracksWhileCompareIsOff)
+{
+    const auto first = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
+    const auto second = joinWith([](std::uint64_t sample) { return noiseAt(sample, 3); });
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer->setCompared({idOf(second)});
+    ASSERT_TRUE(produce());
+
+    show(own->settings(), Display::kMulti);
+    play(480);
+    const auto off = produce();
+    ASSERT_TRUE(off);
+    EXPECT_FALSE(off->has(FrameFlag::kCompared));
+    EXPECT_EQ(off->laneCount, 3) << "the tracks, and no sum";
+    for (const LaneLabel& lane : analyzer->laneSet().lanes) {
+        EXPECT_FALSE(lane.compared) << lane.name;
+    }
+
+    show(own->settings(), Display::kCompare);
+    play(480);
+    const auto on = produce();
+    ASSERT_TRUE(on);
+    EXPECT_TRUE(on->has(FrameFlag::kCompared));
+    const LaneSet lanes = analyzer->laneSet();
+    ASSERT_EQ(lanes.lanes.size(), 3u);
+    EXPECT_EQ(lanes.lanes[1].id, idOf(first));
+    EXPECT_FALSE(lanes.lanes[1].compared);
+    EXPECT_TRUE(lanes.lanes[2].compared) << "checked before Compare went off";
 }
 
 // Rolling in Seconds mode, the Compare frame keeps each lane's and the sum's columns and reduces

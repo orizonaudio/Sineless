@@ -246,20 +246,27 @@ bool writeHostSeeds(const std::filesystem::path& directory)
         protocol::kSettings[static_cast<std::size_t>(protocol::SettingId::kDisplayMode)];
     const auto& bases =
         protocol::kSettings[static_cast<std::size_t>(protocol::SettingId::kTimeBase)];
+    const auto& compares =
+        protocol::kSettings[static_cast<std::size_t>(protocol::SettingId::kCompare)];
     for (std::size_t mode = 0; mode < modes.valueNames.size(); ++mode) {
-        for (std::size_t base = 0; base < bases.valueNames.size(); ++base) {
-            HostSeed seed;
-            seed.setting(protocol::SettingId::kDisplayMode, static_cast<std::uint8_t>(mode))
-                .setting(protocol::SettingId::kTimeBase, static_cast<std::uint8_t>(base))
-                .setting(protocol::SettingId::kFreeSpan, 0)
-                .setting(protocol::SettingId::kBeatSpan, 0);
-            for (int i = 0; i < 3; ++i) {
-                seed.play(SignalKind::kSine, 441).advance();
+        for (std::size_t compare = 0; compare < compares.valueNames.size(); ++compare) {
+            for (std::size_t base = 0; base < bases.valueNames.size(); ++base) {
+                HostSeed seed;
+                seed.setting(protocol::SettingId::kDisplayMode, static_cast<std::uint8_t>(mode))
+                    .setting(protocol::SettingId::kCompare, static_cast<std::uint8_t>(compare))
+                    .setting(protocol::SettingId::kTimeBase, static_cast<std::uint8_t>(base))
+                    .setting(protocol::SettingId::kFreeSpan, 0)
+                    .setting(protocol::SettingId::kBeatSpan, 0);
+                for (int i = 0; i < 3; ++i) {
+                    seed.play(SignalKind::kSine, 441).advance();
+                }
+                seed.frame().freeze(true).frame().rate(Tracks::kBoth, 96000.0).pan(40).frame();
+                seed.freeze(false).play(SignalKind::kSquare, 100).frame();
+                write(std::string(modes.valueNames[mode]) + "-compare-" +
+                          std::string(compares.valueNames[compare]) + "-" +
+                          std::string(bases.valueNames[base]),
+                      seed);
             }
-            seed.frame().freeze(true).frame().rate(Tracks::kBoth, 96000.0).pan(40).frame();
-            seed.freeze(false).play(SignalKind::kSquare, 100).frame();
-            write(std::string(modes.valueNames[mode]) + "-" + std::string(bases.valueNames[base]),
-                  seed);
         }
     }
     // Every rate the input can choose, prepared on both tracks; a mono track, frozen; and a rate

@@ -4,6 +4,7 @@
 // while its track plays, its readouts measure something, and frames keep coming while live. A fix
 // that reaches only one of these cases fails the others.
 
+#include "Display.h"
 #include "FrameDecoding.h"
 #include "engine/Analyzer.h"
 #include "engine/InstanceRegistry.h"
@@ -23,7 +24,6 @@
 namespace orizon::engine {
 namespace {
 
-using protocol::DisplayMode;
 using protocol::FrameMode;
 using protocol::SettingId;
 using protocol::TimeBase;
@@ -33,7 +33,7 @@ constexpr int kBlock = 480;
 
 struct Case
 {
-    DisplayMode mode = DisplayMode::kSingle;
+    Display mode = Display::kSingle;
     TimeBase timeBase = TimeBase::kBeats;
     bool frozen = false;
     int channels = 2;
@@ -42,11 +42,11 @@ struct Case
 std::vector<Case> everyCase()
 {
     std::vector<Case> cases;
-    for (std::size_t mode = 0; mode < protocol::kDisplayModeCount; ++mode) {
+    for (const Display mode : everyDisplay()) {
         for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
             for (const bool frozen : {false, true}) {
                 for (const int channels : {1, 2}) {
-                    cases.push_back({.mode = static_cast<DisplayMode>(mode),
+                    cases.push_back({.mode = mode,
                                      .timeBase = static_cast<TimeBase>(timeBase),
                                      .frozen = frozen,
                                      .channels = channels});
@@ -69,7 +69,7 @@ std::string capitalised(std::string_view name)
 // "Compare_Seconds_Frozen_Mono".
 std::string nameOf(const Case& c)
 {
-    return capitalised(protocol::kDisplayModeNames.at(static_cast<std::size_t>(c.mode))) + "_" +
+    return displayName(c.mode) + "_" +
            capitalised(protocol::kTimeBaseNames.at(static_cast<std::size_t>(c.timeBase))) + "_" +
            (c.frozen ? "Frozen" : "Live") + "_" + (c.channels == 1 ? "Mono" : "Stereo");
 }
@@ -157,9 +157,9 @@ public:
     double otherTempoOffset = 0.0;
 };
 
-void configure(Engine& engine, DisplayMode mode, TimeBase timeBase)
+void configure(Engine& engine, Display mode, TimeBase timeBase)
 {
-    engine.settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
+    show(engine.settings(), mode);
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
     engine.settings().set(SettingId::kTriggerSpan, 0.05);
@@ -167,18 +167,20 @@ void configure(Engine& engine, DisplayMode mode, TimeBase timeBase)
     engine.settings().set(SettingId::kChannelViews, 0b0011); // L and R asked for.
 }
 
-// The traces the frame should hold: views in Single (one for a mono track), else one lane per
-// track and, in Compare, the sum.
-std::size_t expectedTraces(DisplayMode mode, int channels, std::size_t tracks = 2)
+// The traces the frame should hold: views in Single (one for a mono track, and with the Compare
+// switch on too), else one lane per track and, with Compare on, the sum.
+std::size_t expectedTraces(Display mode, int channels, std::size_t tracks = 2)
 {
     switch (mode) {
-    case DisplayMode::kSingle:
+    case Display::kSingle:
+    case Display::kSingleCompareOn:
         return channels == 1 ? 1 : 2;
-    case DisplayMode::kMulti:
+    case Display::kMulti:
         return tracks;
-    default:
+    case Display::kCompare:
         return tracks + 1;
     }
+    return 0;
 }
 
 std::size_t tracesIn(const DecodedFrame& frame)
@@ -317,11 +319,9 @@ TEST_P(TempoRamp, DrawsEveryLaneThroughATempoRamp)
 std::vector<Case> rampCases()
 {
     std::vector<Case> cases;
-    for (std::size_t mode = 0; mode < protocol::kDisplayModeCount; ++mode) {
+    for (const Display mode : everyDisplay()) {
         for (const int channels : {1, 2}) {
-            cases.push_back({.mode = static_cast<DisplayMode>(mode),
-                             .timeBase = TimeBase::kBeats,
-                             .channels = channels});
+            cases.push_back({.mode = mode, .timeBase = TimeBase::kBeats, .channels = channels});
         }
     }
     return cases;
@@ -333,7 +333,7 @@ INSTANTIATE_TEST_SUITE_P(EveryView, TempoRamp, ::testing::ValuesIn(rampCases()),
 // takes this track's length; through a tempo ramp every lane must still be drawn whole.
 TEST(AnalyzerLimits, DrawsShortSweepsWholeThroughATempoRamp)
 {
-    for (const DisplayMode mode : {DisplayMode::kMulti, DisplayMode::kCompare}) {
+    for (const Display mode : {Display::kMulti, Display::kCompare}) {
         Tracks tracks(2);
         tracks.tempo = 200.0;            // A sixteenth of a beat: 900 samples.
         tracks.otherTempoOffset = -0.15; // The other tracks' sweeps: a sample longer.
@@ -365,7 +365,7 @@ TEST(AnalyzerLimits, DrawsShortSweepsWholeThroughATempoRamp)
 TEST(AnalyzerLimits, AcceptsAViewAtTheZoomLimit)
 {
     Tracks tracks(2);
-    configure(tracks.own(), DisplayMode::kSingle, TimeBase::kFree);
+    configure(tracks.own(), Display::kSingle, TimeBase::kFree);
     Analyzer analyzer(tracks.own(), tracks.registry);
     analyzer.setColumns(400);
     tracks.play(9600);
@@ -382,7 +382,7 @@ TEST(AnalyzerLimits, AcceptsAViewAtTheZoomLimit)
 TEST(AnalyzerLimits, PansFrozenLanesToTheReportedReach)
 {
     Tracks tracks(2);
-    configure(tracks.own(), DisplayMode::kMulti, TimeBase::kFree);
+    configure(tracks.own(), Display::kMulti, TimeBase::kFree);
     tracks.own().settings().set(SettingId::kFreeSpan, 2.0); // Two seconds to pan back through.
     Analyzer analyzer(tracks.own(), tracks.registry);
     analyzer.setColumns(400);

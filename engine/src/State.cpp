@@ -64,11 +64,22 @@ void migrateToVersion3(nlohmann::json& settings)
     settings.erase("timeSpan");
 }
 
+// Version 4 made Compare a switch in Multi rather than a display mode: a project saved in Compare
+// opens in Multi with Compare on. Others leave it off, its default.
+void migrateToVersion4(nlohmann::json& settings)
+{
+    const auto found = settings.find("displayMode");
+    if (found != settings.end() && found->is_string() && found->get<std::string>() == "compare") {
+        settings["displayMode"] = "multi";
+        settings["compare"] = "on";
+    }
+}
+
 // kMigrations[n - 1] upgrades the settings object of state version n to version n + 1.
 // Add an entry, and a golden state file, whenever kStateVersion is raised. A release that adds
 // settings or values without raising it gets a golden state file too (state-v2-0.5.json).
-constexpr std::array<Migration, kStateVersion - 1> kMigrations{&migrateToVersion2,
-                                                               &migrateToVersion3};
+constexpr std::array<Migration, kStateVersion - 1> kMigrations{
+    &migrateToVersion2, &migrateToVersion3, &migrateToVersion4};
 
 } // namespace
 

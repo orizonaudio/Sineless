@@ -143,11 +143,8 @@ describe("mock back end", () => {
 
   test("compares this track with the checked tracks and previews the fix", () => {
     const { transport, messages, frames } = connect();
-    transport.send({
-      type: "setSetting",
-      name: "displayMode",
-      value: "compare",
-    });
+    transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
+    transport.send({ type: "setSetting", name: "compare", value: "on" });
     transport.requestFrame();
     const lanes = messages.filter((message) => message.type === "lanes").at(-1);
     expect(lanes).toMatchObject({
@@ -189,6 +186,28 @@ describe("mock back end", () => {
     expect(frames.at(-1)?.lanes).toHaveLength(5); // The sum of this track alone.
     expect(frames.at(-1)?.comparison?.sumGain).toBeCloseTo(0);
   });
+
+  // As the engine decides: Compare is on show only with the switch on in Multi. The app tests run
+  // against this mock, so a wrong predicate here would let them pass on a wrong page.
+  test.each([
+    ["single", "off", false],
+    ["single", "on", false],
+    ["multi", "off", false],
+    ["multi", "on", true],
+  ] as const)(
+    "sends Compare frames in %s with Compare %s: %s",
+    (displayMode, compare, comparing) => {
+      const { transport, frames } = connect();
+      transport.send({
+        type: "setSetting",
+        name: "displayMode",
+        value: displayMode,
+      });
+      transport.send({ type: "setSetting", name: "compare", value: compare });
+      transport.requestFrame();
+      expect(frames.at(-1)?.comparison !== undefined).toBe(comparing);
+    },
+  );
 
   test("sweeps in sync with a simulated transport in Beats mode", () => {
     const { transport, frames } = connect(); // now = 1 s: 2 beats into bar 1 at 120 BPM.
@@ -419,11 +438,8 @@ describe("mock back end", () => {
     useTrigger(transport);
     transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
     transport.send({ type: "view", start: 0.5, end: 0.6 });
-    transport.send({
-      type: "setSetting",
-      name: "displayMode",
-      value: "compare",
-    });
+    transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
+    transport.send({ type: "setSetting", name: "compare", value: "on" });
     transport.send({ type: "compare", ids: [4] });
     transport.requestFrame();
     const frame = frames.at(-1);

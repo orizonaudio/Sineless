@@ -154,6 +154,9 @@ void configure(engine::Engine& engine, const bench::Scenario& scenario)
 {
     engine::SettingsStore& settings = engine.settings();
     settings.set(SettingId::kDisplayMode, static_cast<double>(scenario.mode));
+    settings.set(
+        SettingId::kCompare,
+        static_cast<double>(scenario.compare ? protocol::Toggle::kOn : protocol::Toggle::kOff));
     settings.set(SettingId::kTimeBase, static_cast<double>(scenario.timeBase));
     settings.set(SettingId::kBeatSpan, static_cast<double>(scenario.beatSpan));
     settings.set(scenario.timeBase == protocol::TimeBase::kFree ? SettingId::kFreeSpan
@@ -199,7 +202,7 @@ int run(const bench::Scenario& scenario, const Options& options)
     engine::Analyzer analyzer(host.own(), host.registry);
     analyzer.setColumns(options.columns);
     analyzer.setView(scenario.viewStart, scenario.viewEnd);
-    if (scenario.mode == protocol::DisplayMode::kCompare) {
+    if (scenario.compare) {
         std::vector<std::uint64_t> others;
         for (const engine::GroupMember& member : host.registry.members(protocol::Group::kA)) {
             if (member.engine.get() != &host.own()) {

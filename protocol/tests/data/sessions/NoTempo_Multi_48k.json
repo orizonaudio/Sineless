@@ -35,11 +35,11 @@
       ]
     }
   ],
-  "protocolVersion": 11,
+  "protocolVersion": 12,
   "scenario": "NoTempo_Multi_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 11,
+    "protocolVersion": 12,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "off",
@@ -48,6 +48,7 @@
         "left",
         "right"
       ],
+      "compare": "off",
       "concertPitch": 440.0,
       "displayMode": "multi",
       "freeSpan": 4.0,

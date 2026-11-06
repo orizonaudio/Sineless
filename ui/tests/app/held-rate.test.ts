@@ -11,7 +11,14 @@ import {
   mockTempo,
 } from "../../src/bridge/mock-transport.ts";
 import { parseQuantity } from "../../src/view/format.ts";
-import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
+import {
+  beforeApp,
+  byId,
+  choice,
+  settle,
+  showDisplay,
+  startApp,
+} from "./harness.ts";
 
 // The frames' rate, and the host's after it changed.
 const heldRate = 384000;
@@ -52,7 +59,7 @@ describe("frames of audio held at another rate than the host's", () => {
 
   test("read Kick 2's offset in milliseconds at the frame's rate", async () => {
     await userEvent.click(choice("time-base", "Trig"));
-    await userEvent.click(choice("display-mode", "Compare"));
+    await showDisplay("Compare");
     await settle();
     const check = (name: string) =>
       [...byId("lane-labels").querySelectorAll(".compare-check")].find(

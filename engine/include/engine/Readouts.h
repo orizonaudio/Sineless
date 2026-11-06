@@ -10,7 +10,7 @@
 namespace orizon::engine {
 
 // Indicative readouts of the channel the display measures (in Single the readout source when drawn,
-// else the first view drawn; this track's Mid in Multi and Compare): sample peak and RMS over the
+// else the first view drawn; this track's Mid in Multi): sample peak and RMS over the
 // whole span, whatever part of it is on screen, and the frequency over its newest second. Not
 // standards-compliant metering.
 struct Readouts

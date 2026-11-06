@@ -17,6 +17,7 @@ struct Scenario
     std::string_view name;
     std::string_view description;
     protocol::DisplayMode mode = protocol::DisplayMode::kMulti;
+    bool compare = false; // In Multi: the sum of the checked tracks, their matches and gains.
     int tracks = 1;
     int channels = 2;
     protocol::TimeBase timeBase = protocol::TimeBase::kBeats;
@@ -40,7 +41,8 @@ inline constexpr std::array kScenarios{
     Scenario{.name = "compare-15-worst",
              .description = "The worst case: Compare, 15 tracks all checked, Preview fix, moving "
                             "matches, 16 bars at 60 BPM and 96 kHz",
-             .mode = protocol::DisplayMode::kCompare,
+             .mode = protocol::DisplayMode::kMulti,
+             .compare = true,
              .tracks = 15,
              .beatSpan = protocol::BeatSpan::kSixteenBars,
              .rate = 96000.0,
@@ -51,7 +53,8 @@ inline constexpr std::array kScenarios{
     Scenario{.name = "compare-15-worst-384k",
              .description = "The worst case at the highest supported rate: Compare, 15 tracks all "
                             "checked, Preview fix, moving matches, 16 bars at 60 BPM and 384 kHz",
-             .mode = protocol::DisplayMode::kCompare,
+             .mode = protocol::DisplayMode::kMulti,
+             .compare = true,
              .tracks = 15,
              .beatSpan = protocol::BeatSpan::kSixteenBars,
              .rate = 384000.0,
@@ -72,12 +75,14 @@ inline constexpr std::array kScenarios{
     Scenario{.name = "compare-7-four-bars",
              .description = "Compare, 7 tracks, the first other checked, 4 bars at 120 BPM and "
                             "48 kHz",
-             .mode = protocol::DisplayMode::kCompare,
+             .mode = protocol::DisplayMode::kMulti,
+             .compare = true,
              .tracks = 7,
              .beatSpan = protocol::BeatSpan::kFourBars},
     Scenario{.name = "compare-15-roll",
              .description = "Compare, 15 tracks all checked, rolling 4 s at 96 kHz",
-             .mode = protocol::DisplayMode::kCompare,
+             .mode = protocol::DisplayMode::kMulti,
+             .compare = true,
              .tracks = 15,
              .timeBase = protocol::TimeBase::kFree,
              .span = 4.0,
@@ -104,7 +109,8 @@ inline constexpr std::array kScenarios{
     Scenario{
         .name = "compare-15-frozen-pan",
         .description = "Compare, 15 tracks all checked, frozen over 1 s at 96 kHz, panning",
-        .mode = protocol::DisplayMode::kCompare,
+        .mode = protocol::DisplayMode::kMulti,
+        .compare = true,
         .tracks = 15,
         .timeBase = protocol::TimeBase::kTrigger,
         .span = 1.0,

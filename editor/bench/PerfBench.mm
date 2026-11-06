@@ -4,7 +4,7 @@
 // time per frame. Where the editor draws the traces natively (macOS 14+, AD-30), frames/s counts
 // the frames its layer presents, and the page's lines count the copies it receives.
 //
-//   perf_bench [--lanes=7] [--mode=multi|compare|single] [--timebase=beats|free|trigger]
+//   perf_bench [--lanes=7] [--mode=multi|single] [--compare] [--timebase=beats|free|trigger]
 //              [--beatspan=fourBars] [--span=4] [--rate=48000] [--tempo=120]
 //              [--layout=stacked|overlaid] [--width=1400] [--height=800]
 //              [--warmup=3] [--duration=10] [--idle] [--compare-all] [--jitter]
@@ -28,11 +28,10 @@
 // rate memory grows at (a least-squares slope over the intervals after the first, so a slow leak
 // shows within minutes) and on the slowest and busiest intervals. Reopen: with --reopen, the editor
 // is closed and opened COUNT times while the tracks play, then judged on memory growth and on
-// threads left behind. Compare: --compare-all checks every track, as a user may; --jitter delays
-// the other tracks by 0 to 3 ms, changing every 0.7 s, so their matches keep moving, as
-// with real material; --preview-fix
-// draws the sum as fixed. Any limit given makes the exit code 1 when it is broken, for automated
-// checks.
+// threads left behind. Compare: --compare turns it on in Multi; --compare-all checks every track,
+// as a user may; --jitter delays the other tracks by 0 to 3 ms, changing every 0.7 s, so their
+// matches keep moving, as with real material; --preview-fix draws the sum as fixed. Any limit given
+// makes the exit code 1 when it is broken, for automated checks.
 #include "bench/Scenarios.h"
 #include "bench/Signals.h"
 #include "editor/Editor.h"
@@ -52,6 +51,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <libproc.h>
 #include <mach/mach.h>
@@ -75,6 +75,7 @@ struct Options
 {
     int lanes = 7;
     std::string mode = "multi";
+    bool compare = false; // In Multi: the sum of the checked tracks, their matches and gains.
     std::string timeBase = "beats";
     std::string beatSpan = "fourBars";
     double span = 4.0;
@@ -124,6 +125,7 @@ bool applyScenario(const std::string& name, Options& options)
     };
     options.scenario = name;
     options.mode = nameOf(protocol::kDisplayModeNames, scenario->mode);
+    options.compare = scenario->compare;
     options.lanes = scenario->tracks;
     options.channels = scenario->channels;
     options.timeBase = nameOf(protocol::kTimeBaseNames, scenario->timeBase);
@@ -171,6 +173,8 @@ Options parse(std::span<const char* const> arguments)
             options.duration = std::stod(value);
         } else if (key == "--idle") {
             options.idle = true;
+        } else if (key == "--compare") {
+            options.compare = true;
         } else if (key == "--compare-all") {
             options.compareAll = true;
         } else if (key == "--jitter") {
@@ -394,10 +398,16 @@ double residentMegabytes()
     return static_cast<double>(info.resident_size) / (1024.0 * 1024.0);
 }
 
+// A value the engine refuses ends the run: measuring another view under the name asked for would
+// compare numbers that are not alike.
 void set(engine::Engine& engine, protocol::SettingId id, const char* value)
 {
-    if (const auto parsed = engine::settingFromJson(id, nlohmann::json(value))) {
-        engine.settings().set(id, *parsed);
+    const auto parsed = engine::settingFromJson(id, nlohmann::json(value));
+    if (!parsed || !engine.settings().set(id, *parsed)) {
+        std::fprintf(stderr, "perf_bench: %s cannot be %s\n",
+                     std::string(protocol::kSettings.at(static_cast<std::size_t>(id)).name).c_str(),
+                     value);
+        std::exit(2);
     }
 }
 
@@ -527,6 +537,7 @@ int run(const Options& options)
         engine::Engine& own = *engines.front();
         using protocol::SettingId;
         set(own, SettingId::kDisplayMode, options.mode.c_str());
+        set(own, SettingId::kCompare, options.compare ? "on" : "off");
         set(own, SettingId::kTimeBase, options.timeBase.c_str());
         set(own, SettingId::kBeatSpan, options.beatSpan.c_str());
         set(own, SettingId::kViewLayout, options.layout.c_str());
@@ -653,8 +664,9 @@ int run(const Options& options)
             return interval;
         };
 
-        std::printf("config: %s, %d track(s), %s, %s, %s, %dx%d, %.0f Hz, %.0f BPM, Debug=%d\n",
-                    options.mode.c_str(), tracks, options.timeBase.c_str(),
+        std::printf("config: %s%s, %d track(s), %s, %s, %s, %dx%d, %.0f Hz, %.0f BPM, Debug=%d\n",
+                    options.mode.c_str(), options.compare ? " with Compare" : "", tracks,
+                    options.timeBase.c_str(),
                     options.timeBase == "beats" ? options.beatSpan.c_str()
                                                 : (std::to_string(options.span) + " s").c_str(),
                     options.layout.c_str(), options.width, options.height, options.rate,

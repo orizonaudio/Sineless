@@ -382,7 +382,11 @@ export class MockTransport implements Transport {
   // The ids of the tracks compared in the Compare view: this one and the others asked for (until
   // asked, the group's first other track), or none when the group has no other track.
   private comparedIds(): number[] {
-    if (this.setting("displayMode") !== "compare") {
+    // Compare is on show only in Multi, as the engine decides it.
+    if (
+      this.setting("displayMode") !== "multi" ||
+      this.setting("compare") !== "on"
+    ) {
       return [];
     }
     const others = this.groupTracks().filter((track) => !track.own);
@@ -528,8 +532,7 @@ export class MockTransport implements Transport {
   }
 
   // What the engine's readouts measure, or its trigger reads (`setting` names the source): in
-  // Single the source when it is drawn, else the first view drawn; in Multi and Compare this
-  // track's Mid.
+  // Single the source when it is drawn, else the first view drawn; in Multi this track's Mid.
   private drawnChoice(
     setting: "readoutSource" | "triggerSource",
     multi: boolean,

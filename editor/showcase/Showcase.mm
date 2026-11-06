@@ -1067,8 +1067,12 @@ int run(const Options& options)
                      group("Kick Off", "a");
                      look(1.0, middle, 1.0);
                  }},
-            {.at = 52.8, .run = [&] { moveTo(centre("#display-mode button", "compare"), 1.0); }},
-            {.at = 54.0, .run = [&] { click("#display-mode button", "compare"); }},
+            // Compare: the switch in Multi's Views popover, then the popover closes.
+            {.at = 52.8, .run = [&] { moveTo(centre("#group-details"), 0.5); }},
+            {.at = 53.3, .run = [&] { click("#group-details"); }},
+            {.at = 53.4, .run = [&] { moveTo(centre("#compare button", "on"), 0.4); }},
+            {.at = 53.9, .run = [&] { click("#compare button", "on"); }},
+            {.at = 54.3, .run = [&] { click("#group-details"); }},
             {.at = 55.0,
              .run =
                  [&] {

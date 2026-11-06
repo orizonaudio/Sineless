@@ -4,7 +4,14 @@ import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { parseQuantity } from "../../src/view/format.ts";
-import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
+import {
+  beforeApp,
+  byId,
+  choice,
+  settle,
+  showDisplay,
+  startApp,
+} from "./harness.ts";
 
 describe("at 384 kHz", () => {
   beforeApp(async () => {
@@ -13,7 +20,7 @@ describe("at 384 kHz", () => {
 
   test("reads Kick 2's offset in milliseconds, as at any rate", async () => {
     await userEvent.click(choice("time-base", "Trig"));
-    await userEvent.click(choice("display-mode", "Compare"));
+    await showDisplay("Compare");
     await settle();
     const check = (name: string) =>
       [...byId("lane-labels").querySelectorAll(".compare-check")].find(

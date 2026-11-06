@@ -34,6 +34,16 @@ private:
     std::array<double, protocol::kSettingCount> values{};
 };
 
+// Whether Compare is on show: the switch is on and the display mode is Multi. It keeps its state
+// in Single, which shows this track's channels alone.
+[[nodiscard]] inline bool compareShown(const Settings& settings)
+{
+    return settings.enumValue<protocol::DisplayMode>(protocol::SettingId::kDisplayMode) ==
+               protocol::DisplayMode::kMulti &&
+           settings.enumValue<protocol::Toggle>(protocol::SettingId::kCompare) ==
+               protocol::Toggle::kOn;
+}
+
 // The store of record for the settings. Safe to use from any thread except the
 // audio thread, which never reads settings.
 class SettingsStore

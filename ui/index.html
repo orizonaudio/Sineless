@@ -25,14 +25,25 @@
             aria-expanded="false"
             aria-controls="group-popover"
           >
-            <i>Group</i><b id="group-summary">A</b
+            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"
+              /></svg
+            ><b id="group-summary">A</b
             ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
               <path d="M1.5 3 4 5.5 6.5 3" />
             </svg>
           </button>
           <div class="popover" id="group-popover" hidden>
-            <div class="popover-title">Group</div>
-            <div class="segmented" id="group"></div>
+            <div class="popover-title">Views</div>
+            <div class="popover-row">
+              <span>Group</span>
+              <div class="segmented" id="group"></div>
+            </div>
+            <div class="popover-row" data-help="compare">
+              <span>Compare</span>
+              <div class="segmented" id="compare"></div>
+            </div>
           </div>
         </div>
         <span class="divider"></span>

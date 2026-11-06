@@ -9,6 +9,7 @@ import {
   chips,
   choice,
   settle,
+  showDisplay,
   startApp,
   swipe,
   typeInto,
@@ -45,23 +46,23 @@ describe("a track sending samples that are not finite", () => {
     await startApp({ brokenSamples: 3 });
   });
 
-  test.each(["Single", "Multi", "Compare"])(
+  test.each(["Single", "Multi", "Compare"] as const)(
     "warns of them in %s",
     async (mode) => {
-      await userEvent.click(choice("display-mode", mode));
+      await showDisplay(mode);
       await settle();
       expect(chipTexts()).toContain("Invalid samples");
     },
   );
 
   test("names this track's lane in the warning colour, and in Compare the sum's", async () => {
-    await userEvent.click(choice("display-mode", "Multi"));
+    await showDisplay("Multi");
     await userEvent.click(choice("layout", "Stack"));
     await settle();
     expect(markedLanes()).toEqual(["Kick"]);
     expect(markedColours()).toEqual([warnColour()]);
 
-    await userEvent.click(choice("display-mode", "Compare"));
+    await showDisplay("Compare");
     await settle();
     const marked = markedLanes();
     expect(marked).toHaveLength(2);

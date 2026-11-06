@@ -64,9 +64,9 @@ export function beatSpanQuarterNotes(
 export const Toggle = { off: 0, on: 1 } as const;
 export type Toggle = (typeof Toggle)[keyof typeof Toggle];
 
-// Single shows this track's channels; Multi shows every track of the instance's group; Compare
-// shows this track, the tracks of the group checked against it, and their sum.
-export const DisplayMode = { single: 0, multi: 1, compare: 2 } as const;
+// Single shows this track's channels; Multi shows every track of the instance's group, and with
+// the compare setting on, the sum of those checked against this track.
+export const DisplayMode = { single: 0, multi: 1 } as const;
 export type DisplayMode = (typeof DisplayMode)[keyof typeof DisplayMode];
 
 // Instances in the same group appear together in the multi-track view.

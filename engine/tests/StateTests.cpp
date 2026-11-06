@@ -184,7 +184,8 @@ constexpr double asValue(auto enumValue)
 }
 
 // Its time span, 0.25 s in Seconds, is `triggerSpan` since version 3: MigratesEachKindOfProject
-// checks it.
+// checks it. Saved in Compare, it opens in Multi, with Compare on since version 4:
+// OpensAProjectSavedInCompareInMultiWithCompareOn checks the switch.
 constexpr std::array kVersion2Release05Values{
     GoldenValue{.id = SettingId::kVerticalScale, .value = -9.0},
     GoldenValue{.id = SettingId::kChannelViews,
@@ -200,7 +201,7 @@ constexpr std::array kVersion2Release05Values{
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kTrigger)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
     GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOn)},
-    GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kCompare)},
+    GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
     GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
@@ -215,7 +216,7 @@ constexpr std::array kVersion2Release05NewInstanceValues{
 };
 
 // What state version 3 saves, in state-v3.json: every setting away from its default, the two spans
-// and the Free time base included.
+// and the Free time base included. Saved in Compare, it opens in Multi (and with Compare on).
 constexpr std::array kVersion3Values{
     GoldenValue{.id = SettingId::kTriggerSpan, .value = 0.25},
     GoldenValue{.id = SettingId::kFreeSpan, .value = 2.0},
@@ -233,8 +234,34 @@ constexpr std::array kVersion3Values{
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
     GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOn)},
-    GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kCompare)},
+    GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
     GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
+    GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
+};
+
+// What state version 4 saves, in state-v4.json: every setting away from its default, Compare on
+// in Multi included.
+constexpr std::array kVersion4Values{
+    GoldenValue{.id = SettingId::kTriggerSpan, .value = 0.25},
+    GoldenValue{.id = SettingId::kFreeSpan, .value = 2.0},
+    GoldenValue{.id = SettingId::kVerticalScale, .value = -9.0},
+    GoldenValue{.id = SettingId::kChannelViews,
+                .value = flag(ChannelView::kRight) + flag(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kOverlaid)},
+    GoldenValue{.id = SettingId::kTriggerMode, .value = asValue(TriggerMode::kSingle)},
+    GoldenValue{.id = SettingId::kTriggerSource, .value = asValue(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kReadoutSource, .value = asValue(ChannelView::kRight)},
+    GoldenValue{.id = SettingId::kTriggerSlope, .value = asValue(TriggerSlope::kFalling)},
+    GoldenValue{.id = SettingId::kTriggerLevel, .value = -0.25},
+    GoldenValue{.id = SettingId::kTriggerHysteresis, .value = 0.05},
+    GoldenValue{.id = SettingId::kTriggerHoldOff, .value = 0.125},
+    GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
+    GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
+    GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
+    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
+    GoldenValue{.id = SettingId::kCompare, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
 };
@@ -253,6 +280,7 @@ constexpr std::array kGoldenStates{
     GoldenState{.file = "state-v2-0.5-new-instance.json",
                 .values = kVersion2Release05NewInstanceValues},
     GoldenState{.file = "state-v3.json", .values = kVersion3Values},
+    GoldenState{.file = "state-v4.json", .values = kVersion4Values},
 };
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
@@ -269,11 +297,13 @@ struct GoldenValueNames
 constexpr std::array kGoldenValueNames{
     GoldenValueNames{.file = "value-names-0.5.json", .version = 2},
     GoldenValueNames{.file = "value-names-0.8.json", .version = 3},
+    GoldenValueNames{.file = "value-names-0.9.json", .version = 4},
 };
 
 // Released names a migration maps to another value, rather than names the protocol still reads:
-// "seconds" became Trigger or Free, the Free trigger mode Auto (version 3).
-// MigratesEachKindOfProject checks what each becomes.
+// "seconds" became Trigger or Free, the Free trigger mode Auto (version 3):
+// MigratesEachKindOfProject checks what each becomes. The Compare display mode became Multi with
+// Compare on (version 4): OpensEachReleasedDisplayModeAsSaved checks it.
 struct MigratedName
 {
     std::string_view setting;
@@ -283,6 +313,7 @@ struct MigratedName
 constexpr std::array kMigratedNames{
     MigratedName{.setting = "timeBase", .name = "seconds"},
     MigratedName{.setting = "triggerMode", .name = "free"},
+    MigratedName{.setting = "displayMode", .name = "compare"},
 };
 
 struct SavedSetting
@@ -600,6 +631,82 @@ TEST(State, OpensTheReleasedSecondsProjectInTrigger)
     EXPECT_EQ(settings.enumValue<TimeBase>(SettingId::kTimeBase), TimeBase::kTrigger);
     EXPECT_EQ(settings.value(SettingId::kTriggerSpan), 0.25);
     EXPECT_EQ(settings.value(SettingId::kFreeSpan), defaultOf(SettingId::kFreeSpan));
+}
+
+// A project saved in the Compare display mode (0.5 and 0.8 both saved one) opens in Multi with
+// Compare on, showing what it showed.
+TEST(State, OpensAProjectSavedInCompareInMultiWithCompareOn)
+{
+    for (const char* file : {"state-v2-0.5.json", "state-v3.json"}) {
+        const Settings settings = deserializeState(readTestFile(file));
+        EXPECT_EQ(settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
+                  protocol::DisplayMode::kMulti)
+            << file;
+        EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kCompare), protocol::Toggle::kOn)
+            << file;
+    }
+}
+
+// Each display mode a release saved opens as the view it showed: Single and Multi as they were,
+// with Compare off, and Compare as Multi with Compare on.
+TEST(State, OpensEachReleasedDisplayModeAsSaved)
+{
+    struct Shown
+    {
+        protocol::DisplayMode mode{};
+        protocol::Toggle compare{};
+    };
+    const auto shown = [](std::string_view name) {
+        if (name == "compare") {
+            return Shown{.mode = protocol::DisplayMode::kMulti, .compare = protocol::Toggle::kOn};
+        }
+        const auto index = std::ranges::find(protocol::kDisplayModeNames, name) -
+                           protocol::kDisplayModeNames.begin();
+        return Shown{.mode = static_cast<protocol::DisplayMode>(index),
+                     .compare = protocol::Toggle::kOff};
+    };
+    for (const GoldenValueNames& golden : kGoldenValueNames) {
+        const auto released = nlohmann::json::parse(readTestFile(golden.file));
+        for (const auto& name : released.at("displayMode")) {
+            const nlohmann::json state = {{"version", golden.version},
+                                          {"settings", {{"displayMode", name}}}};
+            const Settings settings = deserializeState(state.dump());
+            const Shown expected = shown(name.get_ref<const std::string&>());
+            EXPECT_EQ(settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
+                      expected.mode)
+                << golden.file << ": " << name;
+            EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kCompare), expected.compare)
+                << golden.file << ": " << name;
+        }
+    }
+}
+
+// Compare keeps its state while the display mode is Single, so a project saved so shows Compare
+// again when it goes back to Multi.
+TEST(State, KeepsCompareOnInSingle)
+{
+    Settings saved;
+    saved.set(SettingId::kCompare, asValue(protocol::Toggle::kOn));
+    const Settings settings = deserializeState(serializeState(saved));
+    EXPECT_EQ(settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
+              protocol::DisplayMode::kSingle);
+    EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kCompare), protocol::Toggle::kOn);
+}
+
+// A display mode of the wrong type, or a version 4 state without Compare, loads the defaults for
+// both: nothing throws, and Compare is off.
+TEST(State, LoadsCompareOffWhenTheStateDoesNotSayOtherwise)
+{
+    for (const char* text : {R"({"version": 3, "settings": {"displayMode": 2}})",
+                             R"({"version": 3, "settings": {"displayMode": ["compare"]}})",
+                             R"({"version": 4, "settings": {"displayMode": "multi"}})"}) {
+        const Settings settings = deserializeState(text);
+        EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kCompare), protocol::Toggle::kOff)
+            << text;
+    }
+    EXPECT_EQ(deserializeState(R"({"version": 4, "settings": {"displayMode": "multi"}})")
+                  .enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
+              protocol::DisplayMode::kMulti);
 }
 
 // A version 3 state holds no time span; one that does ignores it, as any unknown field.

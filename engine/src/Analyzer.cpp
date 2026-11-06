@@ -483,14 +483,14 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     if (command.columns == 0) {
         return false;
     }
-    // Multi and Compare both draw lanes of the group's tracks.
+    // Multi draws lanes of the group's tracks, with Compare on or off.
     const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
                        protocol::DisplayMode::kSingle;
     // A Beats sweep is placed by the host's tempo. Until the host has reported one (an instance
     // it has not played through), the clock's tempo is only a default: no sweep is drawn, and the
     // frame says why, again whenever the inputs change or the page asks for a redraw.
     if (synced && !(isFrozen ? frozenStamp : engine.timeline().latest()).tempoKnown) {
-        // Multi and Compare still select the group's tracks and send their set, so the page has
+        // Multi still selects the group's tracks and sends their set, so the page has
         // their names (and how many are hidden) ready; it names lanes only once a frame carries
         // them, after the host reports a tempo (FR-9.1: nothing is placed until then).
         std::uint32_t laneSetId = 0;
@@ -1088,8 +1088,7 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
         own = members.begin();
     }
     const std::uint64_t ownSerial = own->serial;
-    const bool compare = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) ==
-                         protocol::DisplayMode::kCompare;
+    const bool compare = compareShown(settings);
     const std::size_t maxTracks = compare ? kMaxLanes - 1 : kMaxLanes;
     std::size_t hidden = 0;
     if (members.size() > maxTracks) {

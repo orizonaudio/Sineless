@@ -1,2 +1,2 @@
 // Version of the engine/UI protocol. Incremented on any incompatible change.
-export const protocolVersion = 11;
+export const protocolVersion = 12;

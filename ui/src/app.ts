@@ -591,13 +591,16 @@ export class OscilloscopeApp {
     segment("displayMode", "display-mode", [
       ["single", "Single"],
       ["multi", "Multi"],
-      ["compare", "Compare"],
     ]);
     segment("group", "group", [
       ["a", "A"],
       ["b", "B"],
       ["c", "C"],
       ["d", "D"],
+    ]);
+    segment("compare", "compare", [
+      ["on", "On"],
+      ["off", "Off"],
     ]);
     segment("timeBase", "time-base", [
       ["beats", "Beats"],
@@ -727,8 +730,8 @@ export class OscilloscopeApp {
     });
   }
 
-  // Only the controls that apply are shown. Multi and Compare show each track's Mid: the channel
-  // views and the trigger source do not apply, and the group does only there.
+  // Only the controls that apply are shown. Multi shows each track's Mid: the channel views and the
+  // trigger source do not apply, and the group (with Compare) does only there.
   private updateMultiControls(): void {
     const multi = this.multiMode();
     for (const id of ["views-group", "source-row"]) {
@@ -752,7 +755,7 @@ export class OscilloscopeApp {
   }
 
   // What Peak, RMS and Freq measure (DESIGN.md 1.2.1): in Single the channel the frame names,
-  // this track's Mid in Multi and Compare, whose frames carry a lane set, a frame with no tempo
+  // this track's Mid in Multi, whose frames carry a lane set, a frame with no tempo
   // included. Read from the frame on screen, whatever the settings now say until the next frame
   // comes; before any frame, the display mode decides. In Single on a stereo track the tag opens
   // the readouts' popover, which lights the channel measured and offers only the views drawn.
@@ -804,9 +807,9 @@ export class OscilloscopeApp {
     element("views-details").setAttribute("aria-label", `Views: ${text}`);
   }
 
-  // The view toggles: pressed as asked for; disabled in Multi and Compare, which show each
-  // track's Mid, and for R, M and S on a mono track, which would only repeat L. The one place
-  // that decides, for every case.
+  // The view toggles: pressed as asked for; disabled in Multi, which shows each track's Mid, and
+  // for R, M and S on a mono track, which would only repeat L. The one place that decides, for
+  // every case.
   private updateViewToggles(): void {
     const shown = this.shownViews();
     const multi = this.multiMode();
@@ -862,9 +865,10 @@ export class OscilloscopeApp {
     if (name === "triggerMode" || name === "timeBase") {
       this.updateTriggerControls();
     }
-    if (name === "displayMode") {
+    if (name === "displayMode" || name === "compare") {
       this.updateMultiControls();
-      if (value !== "compare" && this.previewFix) {
+      // Preview fix is Compare's; it resets when Compare leaves the screen.
+      if (!this.compareMode() && this.previewFix) {
         this.previewFix = false;
         this.backend.previewFix(false);
       }
@@ -909,12 +913,8 @@ export class OscilloscopeApp {
     if (name === "concertPitch") {
       this.updateCursorReadout();
     }
-    if (name === "group" && typeof value === "string") {
-      element("group-summary").textContent = value.toUpperCase();
-      element("group-details").setAttribute(
-        "aria-label",
-        `Group ${value.toUpperCase()}`,
-      );
+    if (name === "group" || name === "compare") {
+      this.updateGroupSummary();
     }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
     if (
@@ -1022,13 +1022,30 @@ export class OscilloscopeApp {
       : 1;
   }
 
-  // Multi and Compare both show lanes of the group's tracks.
+  // Multi shows lanes of the group's tracks, with or without Compare.
   private multiMode(): boolean {
     return this.store.get("displayMode") !== "single";
   }
 
+  // Compare is on show: switched on, in Multi. It keeps its state in Single.
   private compareMode(): boolean {
-    return this.store.get("displayMode") === "compare";
+    return this.multiMode() && this.store.get("compare") === "on";
+  }
+
+  // Multi's Views field (Single's shows the channel views) names the group and Σ, the sum Compare
+  // adds, dimmed while Compare is off, as Single's dims the views not drawn; its name for screen
+  // readers says Compare.
+  private updateGroupSummary(): void {
+    const group = String(this.store.get("group")).toUpperCase();
+    const compare = this.store.get("compare") === "on";
+    const sum = document.createElement("span");
+    sum.textContent = "Σ";
+    sum.className = compare ? "on" : "";
+    element("group-summary").replaceChildren(`${group}·`, sum);
+    element("group-details").setAttribute(
+      "aria-label",
+      compare ? `Views: group ${group}, Compare on` : `Views: group ${group}`,
+    );
   }
 
   // The names and colours of a multi-track frame's lanes: its own lane set, or the latest.

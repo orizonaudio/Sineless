@@ -191,7 +191,7 @@ struct Scenario
     // preparing them again (the capture keeps the size it was prepared at).
     std::optional<std::uint32_t> preparedRate{};
     std::vector<Track> tracks{};
-    std::vector<std::string> names{}; // Track names the host reports, as Multi and Compare show.
+    std::vector<std::string> names{}; // Track names the host reports, as Multi shows.
     bool tempoKnown = true;
     std::vector<std::pair<SettingId, double>> settings{}; // Before the page connects.
     std::vector<Step> steps{};
@@ -208,7 +208,6 @@ constexpr double kFree = static_cast<double>(protocol::TimeBase::kFree);
 constexpr double kBeats = static_cast<double>(protocol::TimeBase::kBeats);
 constexpr double kSingle = static_cast<double>(protocol::DisplayMode::kSingle);
 constexpr double kMulti = static_cast<double>(protocol::DisplayMode::kMulti);
-constexpr double kCompare = static_cast<double>(protocol::DisplayMode::kCompare);
 constexpr double kOn = 1.0;
 
 json freeze()
@@ -269,7 +268,7 @@ std::vector<Scenario> scenarios()
         // to 44.1 kHz: the frozen frame still shows audio held at 384 kHz.
         {.name = "FrozenHeldRate_384kThen44k1", .rate = 384000,
          .tracks = {stereo(hiss), stereo(delayed(hiss, 499))}, .names = {"Noise", "Late copy"},
-         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kTrigger},
+         .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn}, {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerSpan, 0.01}},
          .steps = {play(2.0), page(freeze()), play(0.1), hostRate(44100), play(0.1)}},
         // Beats, one bar at 120 BPM (2 s), at 384 kHz; frozen after two bars, then 44.1 kHz.
@@ -288,13 +287,13 @@ std::vector<Scenario> scenarios()
         // Two unrelated noises (the corpus's seeds): no clear match.
         {.name = "CompareUnrelated_48k", .tracks = {stereo(hiss), stereo(noise(2, 0.5))},
          .names = {"Noise", "Other noise"},
-         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kTrigger},
+         .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn}, {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
         // The other track silent: the two never sound together, so nothing is measured (NaN).
         {.name = "CompareOtherSilent_48k", .tracks = {stereo(hiss), stereo(silence())},
          .names = {"Noise", "Silent"},
-         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kTrigger},
+         .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn}, {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
         // A live 1.5 s roll, zoomed to the narrowest view: the engine draws at least a sample per
@@ -324,7 +323,7 @@ std::vector<Scenario> scenarios()
          .steps = {play(1.0)}},
         {.name = "NoTempo_Compare_48k", .tracks = {stereo(sine(100, 0.5)), stereo(sine(200, 0.5))},
          .names = {"Kick", "Bass"}, .tempoKnown = false,
-         .settings = {{SettingId::kDisplayMode, kCompare}, {SettingId::kTimeBase, kBeats}},
+         .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn}, {SettingId::kTimeBase, kBeats}},
          .steps = {play(1.0)}},
     };
 }

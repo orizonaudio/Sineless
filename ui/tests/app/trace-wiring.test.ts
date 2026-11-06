@@ -15,6 +15,7 @@ import {
   choice,
   press,
   settle,
+  showDisplay,
   startApp,
   type Started,
 } from "./harness.ts";
@@ -114,7 +115,7 @@ describe("every lane is drawn", () => {
     "in the %s view, stacked",
     async (mode) => {
       await userEvent.click(choice("time-base", "Trig"));
-      await userEvent.click(choice("display-mode", mode));
+      await showDisplay(mode);
       await press(choice("group", "A"));
       await userEvent.click(choice("layout", "Stack"));
       await settle();
@@ -129,7 +130,7 @@ describe("every lane is drawn", () => {
 });
 
 test("a track left out of the comparison is fainter than a compared one", async () => {
-  await userEvent.click(choice("display-mode", "Compare"));
+  await showDisplay("Compare");
   await press(choice("group", "A"));
   await userEvent.click(choice("layout", "Stack"));
   if (compareCheck("Kick 2").getAttribute("aria-checked") === "true") {
