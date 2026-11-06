@@ -15,6 +15,7 @@ import {
 } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { DisplayMode, Toggle } from "../../../protocol/src/enums.ts";
 import html from "../../index.html?raw";
 import {
   MockTransport,
@@ -425,13 +426,28 @@ export async function setCompare(on: boolean): Promise<void> {
   await expect.element(button).toHaveAttribute("aria-pressed", "true");
 }
 
+// What the page shows: a display mode by its button's label, or Multi with Compare on.
+export type Display = "Single" | "Multi" | "Compare";
+
+// Every display, from the protocol's enums: each display mode ("single" → "Single"), and Multi
+// once with each Compare value, since Compare applies only there. A test over them covers Compare.
+export const displays: readonly Display[] = Object.keys(DisplayMode).flatMap(
+  (mode): Display[] =>
+    mode === "multi"
+      ? Object.keys(Toggle).map((compare) =>
+          compare === "on" ? "Compare" : "Multi",
+        )
+      : [(mode.charAt(0).toUpperCase() + mode.slice(1)) as Display],
+);
+
+// The display mode button a display is shown with.
+export function displayModeOf(display: Display): "Single" | "Multi" {
+  return display === "Single" ? "Single" : "Multi";
+}
+
 // Shows Single, Multi, or Multi with Compare on ("Compare"); Multi alone turns Compare off.
-export async function showDisplay(
-  display: "Single" | "Multi" | "Compare",
-): Promise<void> {
-  await userEvent.click(
-    choice("display-mode", display === "Single" ? "Single" : "Multi"),
-  );
+export async function showDisplay(display: Display): Promise<void> {
+  await userEvent.click(choice("display-mode", displayModeOf(display)));
   if (display !== "Single") {
     await setCompare(display === "Compare");
   }

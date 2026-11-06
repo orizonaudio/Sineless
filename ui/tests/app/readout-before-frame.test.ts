@@ -1,25 +1,33 @@
 // Before the engine's first frame there are no readouts: the tag says nothing is measured yet in
-// Single ("—", a label that opens nothing) and "This track" in Multi and Compare; the first frame
-// names the channel, and in Single the tag becomes the button that chooses it.
+// Single ("—", a label that opens nothing) and "This track" in Multi, Compare on or off; the
+// first frame names the channel, and in Single the tag becomes the button that chooses it.
 import { describe, expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
 
-import { DisplayMode } from "../../../protocol/src/enums.ts";
-import { byId, choice, startBeforeFrames } from "./harness.ts";
+import {
+  byId,
+  choice,
+  displayModeOf,
+  displays,
+  showDisplay,
+  startBeforeFrames,
+} from "./harness.ts";
 
 describe("the readout tag before the first frame", () => {
   test.each(
-    Object.keys(DisplayMode).map((key) => [
-      key.charAt(0).toUpperCase() + key.slice(1),
-      key === "single" ? "—" : "This track",
-      key === "single" ? "Left" : "This track",
-    ]),
+    displays.map(
+      (display) =>
+        [
+          display,
+          display === "Single" ? "—" : "This track",
+          display === "Single" ? "Left" : "This track",
+        ] as const,
+    ),
   )("in %s, says %s, then %s", async (mode, before, after) => {
     const app = await startBeforeFrames();
     const tag = () => byId("readout-tag").textContent;
-    await userEvent.click(choice("display-mode", mode));
+    await showDisplay(mode);
     await expect
-      .element(choice("display-mode", mode))
+      .element(choice("display-mode", displayModeOf(mode)))
       .toHaveAttribute("aria-pressed", "true");
     expect(window.orizonDebug?.frameCount ?? 0).toBe(0);
     await expect.poll(tag).toBe(before);

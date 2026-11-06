@@ -1,17 +1,18 @@
 // The trigger reads only views drawn, as the readouts measure them (DESIGN.md 1.2.1): the Source
 // row lights the view the trigger reads and disables the views not drawn, the choice is kept while
 // its view is hidden, and the level marker sits in that view's lane in its colour. On a mono track
-// only L. Multi and Compare trigger on this track's Mid and hide the row.
+// only L. Multi, Compare off or on, triggers on this track's Mid and hides the row.
 import { beforeAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { DisplayMode } from "../../../protocol/src/enums.ts";
 import {
   byId,
   choice,
+  displays,
   press,
   setPressed,
   settle,
+  showDisplay,
   showViews,
   startApp,
   startBeforeFrames,
@@ -108,25 +109,24 @@ describe("the trigger source on a stereo track", () => {
     },
   );
 
-  // Multi and Compare trigger on this track's Mid: the row is hidden, and the marker takes the own
-  // lane's colour, whatever the source.
-  test.each(
-    Object.keys(DisplayMode)
-      .filter((key) => key !== "single")
-      .map((key) => key.charAt(0).toUpperCase() + key.slice(1)),
-  )("is not used in %s", async (mode) => {
-    await showViews(["L", "R"]);
-    await useSource("R");
-    await userEvent.click(choice("display-mode", mode));
-    await settle();
-    expect(byId("source-row").hidden).toBe(true);
-    expect(markerColour()).not.toBe(colourOf["R"]);
-    expect(markerColour()).toMatch(/^(rgb|#)/u);
-    // Back to Single, the row lights the source chosen again, from the Single frame.
-    await userEvent.click(choice("display-mode", "Single"));
-    await settle();
-    expect((await sourceRow()).lit).toBe("R");
-  });
+  // Multi, Compare off or on, triggers on this track's Mid: the row is hidden, and the marker takes
+  // the own lane's colour, whatever the source.
+  test.each(displays.filter((display) => display !== "Single"))(
+    "is not used in %s",
+    async (mode) => {
+      await showViews(["L", "R"]);
+      await useSource("R");
+      await showDisplay(mode);
+      await settle();
+      expect(byId("source-row").hidden).toBe(true);
+      expect(markerColour()).not.toBe(colourOf["R"]);
+      expect(markerColour()).toMatch(/^(rgb|#)/u);
+      // Back to Single, the row lights the source chosen again, from the Single frame.
+      await userEvent.click(choice("display-mode", "Single"));
+      await settle();
+      expect((await sourceRow()).lit).toBe("R");
+    },
+  );
 });
 
 describe("the trigger source on a mono track", () => {

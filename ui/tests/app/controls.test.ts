@@ -4,13 +4,12 @@ import { userEvent } from "vitest/browser";
 
 import { brand } from "@brand/brand.ts";
 
-import { DisplayMode } from "../../../protocol/src/enums.ts";
-
 import {
   beforeApp,
   byId,
   chips,
   choice,
+  displays,
   press,
   settle,
   showDisplay,
@@ -182,7 +181,7 @@ describe("controls", () => {
 
   // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): in Single the readout
   // source when drawn, else the first view drawn (Left with the default views, L and R), whatever
-  // the trigger source; this track's Mid in Multi and Compare.
+  // the trigger source; this track's Mid in Multi.
   test("labels the readouts with the channel they measure", async () => {
     const tag = () => byId("readout-tag").textContent;
     await userEvent.click(choice("display-mode", "Single"));
@@ -207,55 +206,53 @@ describe("controls", () => {
   });
 
   // In Single the tag is a button that opens the readouts' popover above it, in the status bar,
-  // kept inside the window; a press elsewhere closes it. In Multi and Compare, which measure this
-  // track's Mid, it is a label: it opens nothing, and switching to them closes the popover.
-  test.each(
-    Object.keys(DisplayMode)
-      .filter((key) => key !== "single")
-      .map((key) => key.charAt(0).toUpperCase() + key.slice(1)),
-  )("chooses the readout channel in Single, not in %s", async (mode) => {
-    const popover = byId("readout-popover");
-    await userEvent.click(choice("display-mode", "Single"));
-    await settle();
-    await expect
-      .element(byId("readout-details"))
-      .toHaveAttribute("aria-disabled", "false");
-    await userEvent.click(byId("readout-details"));
-    await expect.element(popover).toBeVisible();
-    const button = byId("readout-details").getBoundingClientRect();
-    const box = popover.getBoundingClientRect();
-    expect(box.bottom).toBeLessThanOrEqual(button.top);
-    // Aligned with the tag's left edge (DESIGN.md 1.5), not placed by script.
-    expect(Math.abs(box.left - button.left)).toBeLessThan(1);
-    expect(box.left).toBeGreaterThanOrEqual(8);
-    expect(box.right).toBeLessThanOrEqual(window.innerWidth - 8);
-    await userEvent.click(byId("screen"));
-    await expect.element(popover).not.toBeVisible();
+  // kept inside the window; a press elsewhere closes it. In Multi, Compare off or on, which measures
+  // this track's Mid, it is a label: it opens nothing, and switching there closes the popover.
+  test.each(displays.filter((display) => display !== "Single"))(
+    "chooses the readout channel in Single, not in %s",
+    async (mode) => {
+      const popover = byId("readout-popover");
+      await userEvent.click(choice("display-mode", "Single"));
+      await settle();
+      await expect
+        .element(byId("readout-details"))
+        .toHaveAttribute("aria-disabled", "false");
+      await userEvent.click(byId("readout-details"));
+      await expect.element(popover).toBeVisible();
+      const button = byId("readout-details").getBoundingClientRect();
+      const box = popover.getBoundingClientRect();
+      expect(box.bottom).toBeLessThanOrEqual(button.top);
+      // Aligned with the tag's left edge (DESIGN.md 1.5), not placed by script.
+      expect(Math.abs(box.left - button.left)).toBeLessThan(1);
+      expect(box.left).toBeGreaterThanOrEqual(8);
+      expect(box.right).toBeLessThanOrEqual(window.innerWidth - 8);
+      await userEvent.click(byId("screen"));
+      await expect.element(popover).not.toBeVisible();
 
-    await userEvent.click(byId("readout-details"));
-    await expect.element(popover).toBeVisible();
-    await userEvent.click(choice("display-mode", mode));
-    await expect.element(popover).not.toBeVisible();
-    await settle();
-    await expect
-      .element(byId("readout-details"))
-      .toHaveAttribute("aria-disabled", "true");
-    // A user's click, which the test runner itself refuses on a disabled control.
-    byId("readout-details").click();
-    expect(popover.hidden).toBe(true);
-    await userEvent.click(choice("display-mode", "Single"));
-  });
+      await userEvent.click(byId("readout-details"));
+      await expect.element(popover).toBeVisible();
+      await showDisplay(mode);
+      await expect.element(popover).not.toBeVisible();
+      await settle();
+      await expect
+        .element(byId("readout-details"))
+        .toHaveAttribute("aria-disabled", "true");
+      // A user's click, which the test runner itself refuses on a disabled control.
+      byId("readout-details").click();
+      expect(popover.hidden).toBe(true);
+      await userEvent.click(choice("display-mode", "Single"));
+    },
+  );
 
   // Peak, RMS and Freq on screen come from the last frame: until a frame measures the new display
   // mode, between Single, which measures the readout channel, and each mode that measures this
   // track's Mid, either way, the tag keeps naming what the one on screen measured.
   test.each(
-    Object.keys(DisplayMode)
-      .filter((key) => key !== "single")
-      .map((key) => key.charAt(0).toUpperCase() + key.slice(1))
+    displays
+      .filter((display) => display !== "Single")
       .flatMap((mode) => [
-        ["Single", mode, "Left", "This track"],
-        [mode, "Single", "This track", "Left"],
+        ["Single", mode, "Left", "This track"] as const,
+        [mode, "Single", "This track", "Left"] as const,
       ]),
   )(
     "labels the readouts measured in %s until a frame measures them in %s",
@@ -263,12 +260,12 @@ describe("controls", () => {
       const tag = () => byId("readout-tag").textContent;
       await userEvent.click(choice("display-mode", "Single"));
       await userEvent.click(choice("time-base", "Trig"));
-      await userEvent.click(choice("display-mode", from));
+      await showDisplay(from);
       await expect.poll(tag).toBe(before);
       app.holdFrames(true);
       try {
         await new Promise((resolve) => setTimeout(resolve, 300));
-        await userEvent.click(choice("display-mode", to));
+        await showDisplay(to);
         await new Promise((resolve) => setTimeout(resolve, 300));
         expect(tag()).toBe(before);
       } finally {
@@ -405,16 +402,14 @@ describe("controls", () => {
     parts.filter((part) => part.isConnected && !part.hidden).length;
 
   test.each(
-    // Every display mode, from the protocol's enum, by its button's label ("single" → "Single").
-    Object.keys(DisplayMode)
-      .map((key) => key.charAt(0).toUpperCase() + key.slice(1))
-      .flatMap((mode) =>
-        overlays.map((overlay) => [mode, overlay.name, overlay] as const),
-      ),
+    // Every display, from the protocol's enums (Multi with Compare off and on).
+    displays.flatMap((mode) =>
+      overlays.map((overlay) => [mode, overlay.name, overlay] as const),
+    ),
   )(
     "in %s, turning the %s off leaves nothing of them on the screen",
     async (mode, _, overlay) => {
-      await userEvent.click(choice("display-mode", mode));
+      await showDisplay(mode);
       await settle();
       const toggle = byId(overlay.toggle);
       if (toggle.getAttribute("aria-pressed") === "true") {
