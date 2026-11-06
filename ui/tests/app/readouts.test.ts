@@ -1,7 +1,7 @@
 // The status bar's readouts, through the real page: they measure the channel chosen in their
 // popover when it is drawn, the first view drawn when it is not, whatever the trigger source, and
 // show levels with the shared formatters.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { ChannelView, TimeBase } from "../../../protocol/src/enums.ts";
@@ -12,6 +12,7 @@ import {
 } from "../../src/bridge/mock-transport.ts";
 import { viewOrder } from "../../src/view/screen-state.ts";
 import {
+  beforeApp,
   byId,
   choice,
   press,
@@ -65,7 +66,7 @@ async function expectReadoutsOf(view: ChannelView): Promise<void> {
 }
 
 describe("readouts", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
   });
 

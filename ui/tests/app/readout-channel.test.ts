@@ -1,13 +1,14 @@
 // With the views overlaid, the hover and the time cursors measure the readout channel, which the
 // readouts' popover in the status bar chooses among the views drawn; the first view drawn when the
 // one chosen is not. The trigger source picks only what the trigger reads.
-import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { zeroCrossings } from "../../src/view/snap.ts";
 import {
+  beforeApp,
   byId,
   choice,
   press,
@@ -43,7 +44,7 @@ function dragCursorA(x: number): number {
 }
 
 describe("overlaid views", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Trig"));

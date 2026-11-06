@@ -1,9 +1,9 @@
 // The graphics context lost during a session, as when the GPU is reset or its driver updated:
 // the page says the traces stopped instead of freezing them silently, and draws them again once
 // the context comes back.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-import { byId, settle, startApp, type Started } from "./harness.ts";
+import { beforeApp, byId, settle, startApp, type Started } from "./harness.ts";
 
 const context = () =>
   (byId("trace") as HTMLCanvasElement).getContext(
@@ -15,7 +15,7 @@ describe("a lost graphics context", () => {
   // Taken before the loss: while the context is lost, it gives out no extensions.
   let extension: WEBGL_lose_context;
 
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp();
     const found = context().getExtension("WEBGL_lose_context");
     expect(found, "WEBGL_lose_context").not.toBeNull();

@@ -1,7 +1,7 @@
 // The traces through the real page: every lane of each view is drawn, a track left out of the
 // comparison is fainter than a compared one, and a trace waiting for a trigger is fainter than
 // the same trace drawn live. The pixels are read straight after each draw.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { ViewLayout } from "../../../protocol/src/enums.ts";
@@ -9,6 +9,7 @@ import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { lanes } from "../../src/render/trace-geometry.ts";
 import { TraceRenderer } from "../../src/render/trace-renderer.ts";
 import {
+  beforeApp,
   byId,
   chips,
   choice,
@@ -61,7 +62,7 @@ function compareCheck(name: string): HTMLButtonElement {
 
 let app: Started;
 
-beforeAll(async () => {
+beforeApp(async () => {
   // The renderer's own draw, called from the spy that replaces it.
   const draw = Object.getOwnPropertyDescriptor(TraceRenderer.prototype, "draw")
     ?.value as (this: TraceRenderer, frame: Frame) => void;

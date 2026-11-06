@@ -3,15 +3,16 @@
 // with its own span. A free-running frame counts back from its right edge, live and frozen, hides
 // the trigger marker and line, and names no trigger mode; the page follows the frame's flag, as
 // the engine decides, not the settings.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { frozenHoldSeconds } from "../../../protocol/src/limits.ts";
 import { valueNames } from "../../../protocol/src/setting-values.ts";
 import {
+  beforeApp,
   byId,
-  choice,
   chips,
+  choice,
   inTimeBase,
   press,
   settle,
@@ -46,7 +47,7 @@ function spanShown(host: string): string {
 }
 
 describe("the time base", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
     await userEvent.click(choice("display-mode", "Single"));
   });
@@ -106,7 +107,7 @@ describe("the time base", () => {
 });
 
 describe("a free-running window", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Trig"));

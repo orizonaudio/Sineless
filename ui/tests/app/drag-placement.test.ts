@@ -2,10 +2,10 @@
 // under the pointer, near either edge of
 // the screen as at its middle, and on a screen a fractional number of pixels tall, as Windows gives
 // at 125% and 150%: the screen's border is not part of where the pointer is.
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { byId, choice, settle, startApp } from "./harness.ts";
+import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
 
 // How far a dragged line may sit from the pointer (CSS px).
 const tolerance = 0.25;
@@ -90,7 +90,7 @@ async function dragMarker(y: number): Promise<void> {
 }
 
 describe("dragging on the screen", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Trig"));
@@ -99,10 +99,11 @@ describe("dragging on the screen", () => {
     await settle();
   });
 
+  // None when the start was skipped before the app's page went in (its rendering stalled).
   afterAll(() => {
-    const app = document.querySelector(".app") as HTMLElement;
-    app.style.height = "";
-    app.style.width = "";
+    const app = document.querySelector<HTMLElement>(".app");
+    app?.style.removeProperty("height");
+    app?.style.removeProperty("width");
   });
 
   test.each([0.1, 0.9])(

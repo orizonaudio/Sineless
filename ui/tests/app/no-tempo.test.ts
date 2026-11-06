@@ -1,12 +1,13 @@
 // An instance the host has not played through has no tempo yet. In Beats, the page draws no bars
 // or times from a made-up tempo: it says it has none, and places them once the host reports one.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { DisplayMode } from "../../../protocol/src/enums.ts";
 import {
+  beforeApp,
   byId,
-  choice,
   chips,
+  choice,
   press,
   settle,
   startApp,
@@ -23,7 +24,7 @@ function timeAxisLabels(): string[] {
 
 describe("before the host reports a tempo", () => {
   let app: Started;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp({ hostTempo: false });
   });
 

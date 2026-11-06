@@ -1,11 +1,11 @@
 // A recorded session fails a test that ends on a view the page sent short of the recorded one:
 // the page would otherwise be tested on the frame before it.
-import { beforeAll, describe, test } from "vitest";
+import { describe, test } from "vitest";
 
-import { byId, settle, startRecorded } from "./harness.ts";
+import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
 
 describe("a page that stops zooming short of the recorded view", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startRecorded("Roll1500msDeepestZoom_48k");
   });
 

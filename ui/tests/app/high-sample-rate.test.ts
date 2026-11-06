@@ -1,13 +1,13 @@
 // The page at the highest sample rate a host runs, 384 kHz: offsets and cursor readouts follow
 // the rate the engine reports, not 48 kHz.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { parseQuantity } from "../../src/view/format.ts";
-import { byId, choice, settle, startApp } from "./harness.ts";
+import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
 
 describe("at 384 kHz", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp({ sampleRate: 384000 });
   });
 

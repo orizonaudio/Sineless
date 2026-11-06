@@ -1,15 +1,16 @@
 // A Seconds span longer than the capture keeps (a host changed the sample rate while processing)
 // shows what is kept: the time axis and a frozen pan measure that, not the Span setting.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { timeLabels as axisTimeLabels } from "../../src/view/axis-labels.ts";
 import { formatSeconds, parseQuantity } from "../../src/view/format.ts";
 import { fullView, type ViewWindow } from "../../src/view/zoom.ts";
 import {
+  beforeApp,
   byId,
-  choice,
   chips,
+  choice,
   settle,
   startApp,
   swipe,
@@ -50,7 +51,7 @@ function marksSpan(view: ViewWindow, span: number): boolean {
 }
 
 describe("a span longer than the capture keeps", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp({ keptSeconds: kept });
   });
 

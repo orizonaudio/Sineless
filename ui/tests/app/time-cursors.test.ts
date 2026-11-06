@@ -1,13 +1,21 @@
 // Time cursors dragged over stacked lanes snap to the trace under the pointer, in every display
 // mode: a crossing or peak of another lane is not on the trace being measured.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { DisplayMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { lanes } from "../../src/render/trace-geometry.ts";
 import { extremePositions, zeroCrossings } from "../../src/view/snap.ts";
-import { byId, choice, chips, settle, startApp, typeInto } from "./harness.ts";
+import {
+  beforeApp,
+  byId,
+  chips,
+  choice,
+  settle,
+  startApp,
+  typeInto,
+} from "./harness.ts";
 
 // The display modes, as the display-mode control labels them.
 const modes = Object.keys(DisplayMode).map(
@@ -51,7 +59,7 @@ function dragCursorA(x: number, y: number): number {
 }
 
 describe("time cursors over stacked lanes", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
   });
 

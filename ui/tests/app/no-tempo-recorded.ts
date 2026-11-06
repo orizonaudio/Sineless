@@ -2,12 +2,12 @@
 // tempo: no bar placed, a chip says why, and the readouts name this track. (The frame carries the
 // group's lane set, which the mock's does not, but no lanes; the recording itself is kept to what
 // the engine sends by editor/tests/SessionRecordingTests.cpp.)
-import { beforeAll, expect, test } from "vitest";
+import { expect, test } from "vitest";
 
-import { byId, chips, settle, startRecorded } from "./harness.ts";
+import { beforeApp, byId, chips, settle, startRecorded } from "./harness.ts";
 
 export function noTempoTests(scenario: string): void {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startRecorded(scenario);
   });
 

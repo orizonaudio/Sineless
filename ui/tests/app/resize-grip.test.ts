@@ -1,7 +1,7 @@
 // The resize grip asks the plugin for the window size the user drags it to.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-import { byId, frame, startApp, type Started } from "./harness.ts";
+import { beforeApp, byId, frame, startApp, type Started } from "./harness.ts";
 
 function drag(
   grip: HTMLElement,
@@ -33,7 +33,7 @@ function resizes(app: Started) {
 
 describe("resize grip", () => {
   let app: Started;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp();
   });
 

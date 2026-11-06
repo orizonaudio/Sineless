@@ -1,12 +1,18 @@
 // A recorded session fails the test as soon as the page sends what its recording does not hold:
 // a page change that makes a recording unreachable is never tested on stale frames.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { byId, checkReplay, settle, startRecorded } from "./harness.ts";
+import {
+  beforeApp,
+  byId,
+  checkReplay,
+  settle,
+  startRecorded,
+} from "./harness.ts";
 
 describe("a page on a recorded session", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startRecorded("SineHalf1k_44k1");
   });
 

@@ -1,10 +1,16 @@
 // A frozen Beats sweep held at 384 kHz, after the host changed to 44.1 kHz: on the real engine's
 // frames, the grid's clock keeps the tempo the audio was played at.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import type { ReplayTransport } from "./replay-transport.ts";
-import { byId, settle, startRecorded, type Started } from "./harness.ts";
+import {
+  beforeApp,
+  byId,
+  settle,
+  type Started,
+  startRecorded,
+} from "./harness.ts";
 
 // The recording's host: 120 BPM in 4/4, from the project start.
 const secondsPerBeat = 60 / 120;
@@ -27,7 +33,7 @@ function labels(): { beats: number; seconds: number }[] {
 
 describe("a recorded frozen Beats sweep after the host changed rate", () => {
   let app: Started<ReplayTransport>;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startRecorded("FrozenHeldRateBeats_384kThen44k1");
     await settle();
     await userEvent.click(byId("freeze"));

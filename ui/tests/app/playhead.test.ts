@@ -4,7 +4,6 @@
 // pixels unless they are snapped, and a line drawn for another ratio has another width.
 import {
   afterAll,
-  beforeAll,
   describe,
   expect,
   test,
@@ -12,7 +11,7 @@ import {
   type MockInstance,
 } from "vitest";
 
-import { byId, choice, settle, startApp } from "./harness.ts";
+import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
 
 interface Quad {
   readonly left: number; // Canvas pixels.
@@ -25,7 +24,7 @@ describe("the Beats playhead at 2.5x", () => {
   let buffers: MockInstance<WebGL2RenderingContext["bufferData"]>;
   let colours: MockInstance<WebGL2RenderingContext["uniform4f"]>;
 
-  beforeAll(async () => {
+  beforeApp(async () => {
     Object.defineProperty(window, "devicePixelRatio", {
       configurable: true,
       get: () => ratio,

@@ -1,13 +1,13 @@
 // Every error the engine can report says on screen what went wrong, in words of its own: a code
 // without them would fall back to the bare "Display error".
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { ErrorCode } from "../../../protocol/src/messages.ts";
-import { byId, startApp, type Started } from "./harness.ts";
+import { beforeApp, byId, startApp, type Started } from "./harness.ts";
 
 describe("engine errors", () => {
   let app: Started;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp();
   });
 

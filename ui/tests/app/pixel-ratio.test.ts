@@ -1,11 +1,11 @@
 // Moving the window to a display of another pixel ratio (a Retina screen and a 1x monitor)
 // changes no size, so no resize event arrives: the page watches the ratio itself.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { FrameMode } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { TraceRenderer } from "../../src/render/trace-renderer.ts";
-import { byId, settle, startApp, type Started } from "./harness.ts";
+import { beforeApp, byId, settle, startApp, type Started } from "./harness.ts";
 import { traceFrame } from "./trace-pixels.ts";
 
 describe("on a display of another pixel ratio", () => {
@@ -45,7 +45,7 @@ describe("on a display of another pixel ratio", () => {
   );
   const thicknesses: number[] = [];
   let widths: number[] = [];
-  beforeAll(async () => {
+  beforeApp(async () => {
     const matchMedia = window.matchMedia.bind(window);
     vi.spyOn(window, "matchMedia").mockImplementation((query) => {
       const list = matchMedia(query);

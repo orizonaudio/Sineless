@@ -1,10 +1,10 @@
 // A drag the browser cancels (a touch it takes for a pan, or the pointer captured elsewhere) ends
 // there: moving the pointer or clicking later changes nothing it was dragging.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { DragField } from "../../src/components/drag-field.ts";
-import { byId, settle, startApp, type Started } from "./harness.ts";
+import { beforeApp, byId, settle, startApp, type Started } from "./harness.ts";
 
 const endings = ["pointercancel", "lostpointercapture"] as const;
 
@@ -37,7 +37,7 @@ async function press(id: string): Promise<void> {
 
 describe("a cancelled drag", () => {
   let app: Started;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp();
     await press("time-cursors");
     await press("level-cursors");
