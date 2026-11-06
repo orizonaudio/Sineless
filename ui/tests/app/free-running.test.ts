@@ -49,7 +49,7 @@ function spanShown(host: string): string {
 describe("the time base", () => {
   beforeApp(async () => {
     await startApp();
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("display-mode", "Single"));
   });
 
   test.each(valueNames("TimeBase"))(
@@ -109,8 +109,8 @@ describe("the time base", () => {
 describe("a free-running window", () => {
   beforeApp(async () => {
     await startApp();
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
     await press(choice("mode", "Normal"));
   });
 

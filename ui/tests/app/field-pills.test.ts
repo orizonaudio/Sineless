@@ -7,7 +7,14 @@ import { userEvent } from "vitest/browser";
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import { streamGap } from "../../src/components/wheel-steps.ts";
 import { numberFields } from "../../src/view/fields.ts";
-import { beforeApp, byId, choice, startApp, type Started } from "./harness.ts";
+import {
+  beforeApp,
+  byId,
+  choice,
+  press,
+  startApp,
+  type Started,
+} from "./harness.ts";
 
 // Each pill's value: its host, the setting it asks for and the time base it shows in. The last
 // test checks the list holds every number field (ui/src/view/fields.ts) that sits in a pill.
@@ -70,7 +77,7 @@ function fieldOf(host: string): HTMLElement {
 // Shows the time base the pill's value is in, and waits for it: the page shows the value once the
 // back end answers with the new time base, not when the button is clicked.
 async function showTimeBase(timeBase: string, host: string): Promise<void> {
-  await userEvent.click(choice("time-base", timeBase));
+  await press(choice("time-base", timeBase));
   await expect.element(fieldOf(host)).toBeVisible();
 }
 
@@ -159,7 +166,7 @@ describe("a value's pill", () => {
   // The pill adds nothing on the value itself: a trackpad's stream of wheel events steps it as
   // far there as on the icon, not twice as far.
   test("a wheel stream steps the value as far on it as on the icon", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     const stream = (target: Element) => {
       for (let event = 0; event < 6; event++) {
         target.dispatchEvent(
@@ -184,7 +191,7 @@ describe("a value's pill", () => {
   // While a value is being typed, a press on its pill ends the typing as one on the value does,
   // and drags nothing: what was typed is what is asked for.
   test("a press on the pill while typing keeps what was typed", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await userEvent.dblClick(fieldOf("scale-field"));
     const input = fieldOf("scale-field").querySelector("input");
     expect(input).not.toBeNull();

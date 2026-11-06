@@ -405,7 +405,7 @@ export const spanFieldOf: Readonly<Record<string, string>> = {
 // base (its span pill, Trig's trigger source) may still be hidden, and a hidden control takes
 // no press.
 export async function inTimeBase(timeBase: string): Promise<void> {
-  await userEvent.click(choice("time-base", timeBase));
+  await press(choice("time-base", timeBase));
   await expect
     .element(byId(spanFieldOf[timeBase] ?? "span-field"))
     .toBeVisible();
@@ -447,7 +447,7 @@ export function displayModeOf(display: Display): "Single" | "Multi" {
 
 // Shows Single, Multi, or Multi with Compare on ("Compare"); Multi alone turns Compare off.
 export async function showDisplay(display: Display): Promise<void> {
-  await userEvent.click(choice("display-mode", displayModeOf(display)));
+  await press(choice("display-mode", displayModeOf(display)));
   if (display !== "Single") {
     await setCompare(display === "Compare");
   }

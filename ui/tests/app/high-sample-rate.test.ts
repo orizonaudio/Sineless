@@ -8,6 +8,7 @@ import {
   beforeApp,
   byId,
   choice,
+  press,
   settle,
   showDisplay,
   startApp,
@@ -19,7 +20,7 @@ describe("at 384 kHz", () => {
   });
 
   test("reads Kick 2's offset in milliseconds, as at any rate", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await showDisplay("Compare");
     await settle();
     const check = (name: string) =>
@@ -44,8 +45,8 @@ describe("at 384 kHz", () => {
   });
 
   test("counts the samples between time cursors at the reported rate", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
     if (byId("time-cursors").getAttribute("aria-pressed") !== "true") {
       await userEvent.click(byId("time-cursors"));
     }

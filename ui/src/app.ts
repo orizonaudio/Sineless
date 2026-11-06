@@ -35,6 +35,7 @@ import { numberFields, type NumberField } from "./view/fields.ts";
 import { HelpTips } from "./components/help-tips.ts";
 import { attachResizeGrip } from "./components/resize-grip.ts";
 import { Segmented } from "./components/segmented.ts";
+import { StackedSummary } from "./components/stacked-summary.ts";
 import { streamGap, wheelUnit } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
 import { fullScale, lanes } from "./render/trace-geometry.ts";
@@ -68,6 +69,7 @@ import {
   type CursorPair,
   type LevelPair,
 } from "./view/cursors.ts";
+import { choiceLabels } from "./view/choice-labels.ts";
 import { drawGrid } from "./view/grid.ts";
 import {
   hoverReadout,
@@ -171,12 +173,23 @@ const amplitudeLabelWidth = 56;
 const readoutInterval = readoutIntervalSeconds * 1000; // ms, as the engine measures them.
 // Toolbar fields that open a popover: the field's container, its button and the popover.
 const popovers = [
+  ["mode-group", "mode-details", "mode-popover"],
+  ["time-base-group", "time-base-details", "time-base-popover"],
+  ["layout-group", "layout-details", "layout-popover"],
   ["group-group", "group-details", "group-popover"],
   ["views-group", "views-details", "views-popover"],
   ["trigger-group", "trigger-details", "trigger-popover"],
   ["about-group", "about-details", "about-popover"],
   ["readout-group", "readout-details", "readout-popover"],
 ] as const;
+// The settings chosen in a toolbar field's popover, whose button names the value.
+type ChoiceSetting = "displayMode" | "timeBase" | "viewLayout";
+interface ChoiceSummary {
+  readonly summary: StackedSummary;
+  readonly details: HTMLElement;
+  readonly word: string;
+  readonly labels: Readonly<Record<string, string>>;
+}
 // The status bar's popovers, which CSS places above their buttons; the others open under their
 // field.
 const placedByStyle = new Set<string>(["about-popover", "readout-popover"]);
@@ -266,6 +279,8 @@ export class OscilloscopeApp {
   private waiting = false;
   private readonly fields = new Map<SettingName, DragField>();
   private readonly segmented = new Map<SettingName, Segmented>();
+  // The fields whose button names the value chosen in their popover.
+  private readonly choiceSummaries = new Map<ChoiceSetting, ChoiceSummary>();
   // The readouts' channel: lit as the frame measured it, not as the setting asks.
   private readoutChoices: Segmented | undefined;
   // The trigger's source: lit as the frame's trigger reads, not as the setting asks.
@@ -588,10 +603,23 @@ export class OscilloscopeApp {
         ),
       );
     };
-    segment("displayMode", "display-mode", [
-      ["single", "Single"],
-      ["multi", "Multi"],
-    ]);
+    // Display mode, time base and layout: a field naming the value, its popover the choices.
+    const choiceField = (
+      name: ChoiceSetting,
+      id: string,
+      host: string,
+      word: string,
+    ) => {
+      const labels = choiceLabels[name];
+      segment(name, host, Object.entries(labels));
+      this.choiceSummaries.set(name, {
+        summary: new StackedSummary(element(`${id}-summary`), labels),
+        details: element(`${id}-details`),
+        word,
+        labels,
+      });
+    };
+    choiceField("displayMode", "mode", "display-mode", "Mode");
     segment("group", "group", [
       ["a", "A"],
       ["b", "B"],
@@ -602,15 +630,8 @@ export class OscilloscopeApp {
       ["on", "On"],
       ["off", "Off"],
     ]);
-    segment("timeBase", "time-base", [
-      ["beats", "Beats"],
-      ["free", "Free"],
-      ["trigger", "Trig"],
-    ]);
-    segment("viewLayout", "layout", [
-      ["overlaid", "Overlay"],
-      ["stacked", "Stack"],
-    ]);
+    choiceField("timeBase", "time-base", "time-base", "Time");
+    choiceField("viewLayout", "layout", "layout", "Layout");
     segment("triggerMode", "mode", [
       ["auto", "Auto", "modeAuto"],
       ["normal", "Normal", "modeNormal"],
@@ -855,6 +876,14 @@ export class OscilloscopeApp {
       this.fields.get(name)?.show(value);
     } else if (typeof value === "string") {
       this.segmented.get(name)?.show(value);
+      const field = this.choiceSummaries.get(name as ChoiceSetting);
+      if (field !== undefined) {
+        field.summary.show(value);
+        field.details.setAttribute(
+          "aria-label",
+          `${field.word}: ${field.labels[value] ?? value}`,
+        );
+      }
     }
     if (name === "channelViews") {
       this.updateViewToggles();

@@ -106,7 +106,7 @@ beforeApp(async () => {
 
 describe("every lane is drawn", () => {
   test("in the Single view", async () => {
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("display-mode", "Single"));
     await settle();
     expect((await nextDraw()).laneAlpha[0]).toBeGreaterThan(0.5);
   });
@@ -114,10 +114,10 @@ describe("every lane is drawn", () => {
   test.each(["Multi", "Compare"] as const)(
     "in the %s view, stacked",
     async (mode) => {
-      await userEvent.click(choice("time-base", "Trig"));
+      await press(choice("time-base", "Trig"));
       await showDisplay(mode);
       await press(choice("group", "A"));
-      await userEvent.click(choice("layout", "Stack"));
+      await press(choice("layout", "Stack"));
       await settle();
       const { frame, laneAlpha } = await nextDraw();
       expect(frame.lanes.length).toBeGreaterThan(1);
@@ -132,7 +132,7 @@ describe("every lane is drawn", () => {
 test("a track left out of the comparison is fainter than a compared one", async () => {
   await showDisplay("Compare");
   await press(choice("group", "A"));
-  await userEvent.click(choice("layout", "Stack"));
+  await press(choice("layout", "Stack"));
   if (compareCheck("Kick 2").getAttribute("aria-checked") === "true") {
     await userEvent.click(compareCheck("Kick 2"));
   }
@@ -150,7 +150,7 @@ test("a track left out of the comparison is fainter than a compared one", async 
 });
 
 test("a trace waiting for a trigger is fainter than the same trace live", async () => {
-  await userEvent.click(choice("display-mode", "Single"));
+  await press(choice("display-mode", "Single"));
   await press(choice("mode", "Normal"));
   await settle();
   const live = (await nextDraw()).laneAlpha[0] ?? Number.NaN;

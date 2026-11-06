@@ -4,6 +4,10 @@ import { userEvent } from "vitest/browser";
 
 import { brand } from "@brand/brand.ts";
 
+import { valueNames } from "../../../protocol/src/setting-values.ts";
+import { settings } from "../../../protocol/src/settings.ts";
+import { choiceLabels } from "../../src/view/choice-labels.ts";
+
 import {
   beforeApp,
   byId,
@@ -43,8 +47,8 @@ describe("controls", () => {
   // One popover at a time: opening one closes the other, and a popover whose field the host hides
   // (a state change) closes with it and doesn't come back with the field.
   test("shows one popover at a time, and none for a hidden field", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
-    await userEvent.click(choice("display-mode", "Multi"));
+    await press(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Multi"));
     await userEvent.click(byId("group-details"));
     await expect.element(byId("group-popover")).toBeVisible();
     await userEvent.click(byId("trigger-details"));
@@ -79,7 +83,7 @@ describe("controls", () => {
     await expect.element(byId("views-details")).toBeVisible();
     await expect.element(byId("views-popover")).not.toBeVisible();
     expect(byId("views-details").getAttribute("aria-expanded")).toBe("false");
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("display-mode", "Single"));
   });
 
   // Multi's Views field names the group shown, whether the user picks it or the host restores it.
@@ -88,7 +92,7 @@ describe("controls", () => {
       byId("group-summary").textContent,
       byId("group-details").getAttribute("aria-label"),
     ];
-    await userEvent.click(choice("display-mode", "Multi"));
+    await press(choice("display-mode", "Multi"));
     await press(choice("group", "B"));
     await expect.poll(field).toEqual(["B·Σ", "Views: group B"]);
     app.deliver({ type: "stateChanged", name: "group", value: "c" });
@@ -100,7 +104,7 @@ describe("controls", () => {
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "auto" });
     await press(choice("group", "A"));
     await expect.poll(field).toEqual(["A·Σ", "Views: group A"]);
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("display-mode", "Single"));
   });
 
   // Compare is an On | Off choice in Multi's Views popover, not a display mode; the field shows Σ,
@@ -117,7 +121,7 @@ describe("controls", () => {
       sumLit(),
       byId("group-details").getAttribute("aria-label"),
     ];
-    await userEvent.click(choice("display-mode", "Multi"));
+    await press(choice("display-mode", "Multi"));
     await press(choice("group", "A"));
     await expect
       .element(choice("compare", "Off"))
@@ -141,13 +145,13 @@ describe("controls", () => {
       .toHaveAttribute("aria-pressed", "true");
     await expect.poll(field).toEqual(["B·Σ", false, "Views: group B"]);
     await press(choice("group", "A"));
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("display-mode", "Single"));
   });
 
   // The mode chip and the Trigger field name each trigger mode alike.
   test("names the trigger mode alike in its field and its chip", async () => {
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
     for (const label of ["Normal", "Single", "Auto"]) {
       await press(choice("mode", label));
       await expect.poll(() => byId("trigger-summary").textContent).toBe(label);
@@ -162,16 +166,16 @@ describe("controls", () => {
   // Only the controls that apply are shown: a tempo-synced sweep has no trigger.
   test("Beats mode shows the beat span and hides the trigger", async () => {
     // In the Single trigger mode, so Re-arm would show in Seconds.
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await press(choice("mode", "Single"));
     await expect.element(byId("arm")).toBeVisible();
-    await userEvent.click(choice("time-base", "Beats"));
+    await press(choice("time-base", "Beats"));
     await expect.element(byId("beat-span-field")).toBeVisible();
     await expect.element(byId("span-field")).not.toBeVisible();
     await expect.element(byId("trigger-group")).not.toBeVisible();
     await expect.element(byId("arm")).not.toBeVisible();
 
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await expect.element(byId("span-field")).toBeVisible();
     await expect.element(byId("beat-span-field")).not.toBeVisible();
     await expect.element(byId("trigger-details")).toBeVisible();
@@ -184,17 +188,17 @@ describe("controls", () => {
   // the trigger source; this track's Mid in Multi.
   test("labels the readouts with the channel they measure", async () => {
     const tag = () => byId("readout-tag").textContent;
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
     // Away from the default source: the tag stays.
     await press(choice("source", "R"));
     await expect.poll(tag).toBe("Left");
-    await userEvent.click(choice("time-base", "Beats"));
+    await press(choice("time-base", "Beats"));
     await expect.poll(tag).toBe("Left");
-    await userEvent.click(choice("display-mode", "Multi"));
+    await press(choice("display-mode", "Multi"));
     await expect.poll(tag).toBe("This track");
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
     await press(choice("source", "L"));
     await useReadout("R");
     await expect.poll(tag).toBe("Right");
@@ -212,7 +216,7 @@ describe("controls", () => {
     "chooses the readout channel in Single, not in %s",
     async (mode) => {
       const popover = byId("readout-popover");
-      await userEvent.click(choice("display-mode", "Single"));
+      await press(choice("display-mode", "Single"));
       await settle();
       await expect
         .element(byId("readout-details"))
@@ -240,7 +244,7 @@ describe("controls", () => {
       // A user's click, which the test runner itself refuses on a disabled control.
       byId("readout-details").click();
       expect(popover.hidden).toBe(true);
-      await userEvent.click(choice("display-mode", "Single"));
+      await press(choice("display-mode", "Single"));
     },
   );
 
@@ -258,8 +262,8 @@ describe("controls", () => {
     "labels the readouts measured in %s until a frame measures them in %s",
     async (from, to, before, after) => {
       const tag = () => byId("readout-tag").textContent;
-      await userEvent.click(choice("display-mode", "Single"));
-      await userEvent.click(choice("time-base", "Trig"));
+      await press(choice("display-mode", "Single"));
+      await press(choice("time-base", "Trig"));
       await showDisplay(from);
       await expect.poll(tag).toBe(before);
       app.holdFrames(true);
@@ -272,12 +276,12 @@ describe("controls", () => {
         app.holdFrames(false);
       }
       await expect.poll(tag).toBe(after);
-      await userEvent.click(choice("display-mode", "Single"));
+      await press(choice("display-mode", "Single"));
     },
   );
 
   test("Re-arm shows in the Single trigger mode only", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await press(choice("mode", "Auto"));
     await expect.element(byId("arm")).not.toBeVisible();
     await press(choice("mode", "Single"));
@@ -287,7 +291,7 @@ describe("controls", () => {
   });
 
   test("Re-arm asks the engine to arm the trigger again", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await press(choice("mode", "Single"));
     const before = app.sent.length;
     await userEvent.click(byId("arm"));
@@ -296,7 +300,7 @@ describe("controls", () => {
   });
 
   test("the view toggles keep at least one view shown", async () => {
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("display-mode", "Single"));
     const pressed = (label: string) =>
       viewToggle(label).getAttribute("aria-pressed") === "true";
     // L alone.
@@ -337,7 +341,7 @@ describe("controls", () => {
       expect(byId("source-row").hidden).toBe(true);
       await expect.element(byId("group-group")).toBeVisible();
     }
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("display-mode", "Single"));
     await expect.element(byId("views-group")).toBeVisible();
     expect(byId("source-row").hidden).toBe(false);
     await expect.element(byId("group-group")).not.toBeVisible();
@@ -357,7 +361,7 @@ describe("controls", () => {
   });
 
   test("Normal mode says it is waiting while no trace triggers", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await press(choice("mode", "Normal"));
     await settle();
     app.holdFrames(true);
@@ -422,7 +426,7 @@ describe("controls", () => {
       await overlay.show?.();
       await settle();
       expect(showing(overlay.parts())).toBe(0);
-      await userEvent.click(choice("display-mode", "Single"));
+      await press(choice("display-mode", "Single"));
     },
   );
 
@@ -436,10 +440,90 @@ describe("controls", () => {
 
   // The Trigger field names the mode; its popover holds the rest.
   test("names the trigger mode in its field", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await press(choice("mode", "Normal"));
     await expect.poll(() => byId("trigger-summary").textContent).toBe("Normal");
     await press(choice("mode", "Auto"));
     await expect.poll(() => byId("trigger-summary").textContent).toBe("Auto");
   });
 });
+
+// Display mode, time base and layout are fields like Group, Views and Trigger: a button naming
+// the value, opening a popover with the choices (#359).
+const choiceFields = [
+  { setting: "displayMode", word: "Mode", id: "mode", host: "display-mode" },
+  { setting: "timeBase", word: "Time", id: "time-base", host: "time-base" },
+  { setting: "viewLayout", word: "Layout", id: "layout", host: "layout" },
+] as const;
+
+function labelOf(setting: keyof typeof choiceLabels, value: string): string {
+  const labels: Readonly<Record<string, string>> = choiceLabels[setting];
+  return labels[value] ?? value;
+}
+
+// The value a choice field's button shows: the one of its stacked values left visible.
+function shownValue(id: string): string[] {
+  return [...byId(`${id}-summary`).children]
+    .filter((value) => getComputedStyle(value).visibility !== "hidden")
+    .map((value) => value.textContent);
+}
+
+describe("choice fields", () => {
+  beforeApp(async () => {
+    await startApp();
+  });
+
+  test.each(
+    choiceFields.flatMap((field) =>
+      valueNames(settings[field.setting].values).map((value) => ({
+        ...field,
+        value,
+        label: labelOf(field.setting, value),
+      })),
+    ),
+  )(
+    "$word: the button names $label, and its popover chooses it and stays open",
+    async ({ setting, word, id, host, label }) => {
+      const button = byId(`${id}-details`);
+      const popover = byId(`${id}-popover`);
+      // Another popover open: opening this one closes it.
+      await userEvent.click(byId("about-details"));
+      await expect.element(byId("about-popover")).toBeVisible();
+      await userEvent.click(button);
+      await expect.element(popover).toBeVisible();
+      expect(button.getAttribute("aria-expanded")).toBe("true");
+      await expect.element(byId("about-popover")).not.toBeVisible();
+
+      await userEvent.click(choice(host, label));
+      await expect
+        .element(choice(host, label))
+        .toHaveAttribute("aria-pressed", "true");
+      await expect.poll(() => shownValue(id)).toEqual([label]);
+      expect(button.querySelector("i")?.textContent).toBe(word);
+      expect(button.getAttribute("aria-label")).toBe(`${word}: ${label}`);
+      // Choosing keeps it open, as Group's does; a press elsewhere closes it.
+      await expect.element(popover).toBeVisible();
+      await userEvent.click(byId("wordmark"));
+      await expect.element(popover).not.toBeVisible();
+      expect(button.getAttribute("aria-expanded")).toBe("false");
+
+      // Button and popover share the setting's help.
+      const group = byId(`${id}-group`);
+      expect(group.dataset["help"]).toBe(helpTopicOf[setting]);
+      expect(group.contains(popover)).toBe(true);
+
+      // Back to the default, for the next case.
+      const { values, defaultValue } = settings[setting];
+      const restore = labelOf(setting, valueNames(values)[defaultValue] ?? "");
+      await press(choice(host, restore));
+      await userEvent.click(byId("wordmark"));
+    },
+  );
+});
+
+// The help topic of each choice field.
+const helpTopicOf = {
+  displayMode: "displayMode",
+  timeBase: "timeBase",
+  viewLayout: "layout",
+} as const;

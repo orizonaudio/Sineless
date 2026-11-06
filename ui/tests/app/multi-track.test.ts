@@ -33,13 +33,13 @@ function compareCheck(name: string): HTMLButtonElement {
 // Multi with Compare off or on, Seconds, stacked, with R as the Single view's trigger source: R's
 // lane is not the first, so a marker placed by the views rather than the tracks would show.
 async function show(mode: "Multi" | "Compare"): Promise<void> {
-  await userEvent.click(choice("time-base", "Trig"));
-  await userEvent.click(choice("display-mode", "Single"));
+  await press(choice("time-base", "Trig"));
+  await press(choice("display-mode", "Single"));
   await press(choice("source", "R"));
-  await userEvent.click(choice("display-mode", "Multi"));
+  await press(choice("display-mode", "Multi"));
   await press(choice("group", "A"));
   await setCompare(mode === "Compare");
-  await userEvent.click(choice("layout", "Stack"));
+  await press(choice("layout", "Stack"));
   await settle();
 }
 
@@ -178,11 +178,11 @@ describe("the Compare switch", () => {
   test("keeps its state in Single and shows Compare back in Multi", async () => {
     await show("Compare");
     await expect.poll(compareChecks).toBe(4);
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("display-mode", "Single"));
     await settle();
     expect(compareChecks()).toBe(0);
     expect(window.orizonDebug?.lastFrame?.comparison).toBeUndefined();
-    await userEvent.click(choice("display-mode", "Multi"));
+    await press(choice("display-mode", "Multi"));
     await expect.poll(compareChecks).toBe(4);
     await expect.poll(hasSumLane).toBe(true);
     expect(byId("group-summary").textContent).toBe("A·Σ");
@@ -233,7 +233,7 @@ describe("the Compare switch", () => {
       if (how === "switch") {
         await setCompare(false);
       } else {
-        await userEvent.click(choice("display-mode", "Single"));
+        await press(choice("display-mode", "Single"));
       }
       await expect
         .poll(() =>
@@ -245,7 +245,7 @@ describe("the Compare switch", () => {
       if (how === "switch") {
         await setCompare(true);
       } else {
-        await userEvent.click(choice("display-mode", "Multi"));
+        await press(choice("display-mode", "Multi"));
       }
       await expect.poll(previewFix).not.toBeNull();
       expect(previewFix()?.getAttribute("aria-pressed")).toBe("false");

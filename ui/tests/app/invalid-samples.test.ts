@@ -8,6 +8,7 @@ import {
   byId,
   chips,
   choice,
+  press,
   settle,
   showDisplay,
   startApp,
@@ -57,7 +58,7 @@ describe("a track sending samples that are not finite", () => {
 
   test("names this track's lane in the warning colour, and in Compare the sum's", async () => {
     await showDisplay("Multi");
-    await userEvent.click(choice("layout", "Stack"));
+    await press(choice("layout", "Stack"));
     await settle();
     expect(markedLanes()).toEqual(["Kick"]);
     expect(markedColours()).toEqual([warnColour()]);
@@ -75,8 +76,8 @@ describe("a track sending samples that are not finite", () => {
   // The first, the problem, stays shown in yellow; the rest fold into one "+n" chip that still
   // lists them, and nothing runs outside the area, so the readouts beside it never move.
   test("folds the states that don't fit into one chip that lists them", async () => {
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
     await typeInto("span-field", "100 ms");
     if (byId("freeze").getAttribute("aria-pressed") !== "true") {
       await userEvent.click(byId("freeze"));

@@ -202,6 +202,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* A choice field's value among all its values in one cell, the others invisible, so the field is
+   as wide as its longest value (StackedSummary). */
+.choices {
+  display: inline-grid;
+}
+
+.choices > span {
+  grid-area: 1 / 1;
+}
+
+.choices > span:not(.on) {
+  visibility: hidden;
+}
+
 /* The Views field: every view's letter, those not drawn dimmed; in Multi, Σ dimmed while Compare
    is off. */
 #views-summary span:not(.on),

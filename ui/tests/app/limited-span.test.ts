@@ -11,6 +11,7 @@ import {
   byId,
   chips,
   choice,
+  press,
   settle,
   startApp,
   swipe,
@@ -57,7 +58,7 @@ describe("a span longer than the capture keeps", () => {
 
   // Both spans run free: only the span the frame shows tells the axis to change.
   test("labels the time axis with the span shown", async () => {
-    await userEvent.click(choice("time-base", "Free"));
+    await press(choice("time-base", "Free"));
     await typeInto("free-span-field", "2 s");
     await settle();
     await expect.poll(() => marksSpan(fullView, 2)).toBe(true);

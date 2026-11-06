@@ -947,8 +947,12 @@ int run(const Options& options)
             // Multi.
             {.at = 12.0, .run = [&] { look(1.0, middle, 1.0); }},
             {.at = 12.2, .run = [&] { cursorShown = now; }},
-            {.at = 12.4, .run = [&] { moveTo(centre("#display-mode button", "multi"), 1.0); }},
+            // The Mode field's popover holds Single | Multi; it closes after the choice.
+            {.at = 12.4, .run = [&] { moveTo(centre("#mode-details"), 0.6); }},
+            {.at = 13.0, .run = [&] { click("#mode-details"); }},
+            {.at = 13.1, .run = [&] { moveTo(centre("#display-mode button", "multi"), 0.4); }},
             {.at = 13.6, .run = [&] { click("#display-mode button", "multi"); }},
+            {.at = 14.0, .run = [&] { click("#mode-details"); }},
             {.at = 15.0, .run = [&] { look(1.06, {.x = middle.x, .y = middle.y + 20}, 5.0); }},
             // Freeze at the end of a bar, then zoom into the kick's attack.
             {.at = 20.6, .run = [&] { moveTo(centre("#freeze"), 1.0); }},
