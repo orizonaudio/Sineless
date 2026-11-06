@@ -14,6 +14,7 @@ import {
   settle,
   showViews,
   startApp,
+  startBeforeFrames,
   type Started,
 } from "./harness.ts";
 
@@ -158,5 +159,30 @@ describe("the trigger source on a mono track", () => {
     await settle();
     expect(await sourceRow()).toEqual({ lit: "L", enabled: ["L"] });
     expect(markerColour()).toBe(colourOf["L"]);
+  });
+});
+
+// Before the engine's first frame, the row follows the settings: the source chosen is lit, the
+// views shown are offered, and on a mono track L alone, which is all it draws.
+describe("the trigger source before the first frame", () => {
+  test("lights the source chosen and offers the views shown", async () => {
+    await startBeforeFrames();
+    await userEvent.click(choice("time-base", "Trig"));
+    expect(window.orizonDebug?.frameCount ?? 0).toBe(0);
+    await press(choice("source", "R"));
+    await expect
+      .element(choice("source", "R"))
+      .toHaveAttribute("aria-pressed", "true");
+    expect((await sourceRow()).enabled).toEqual(["L", "R"]);
+    await showViews(["L", "S"]);
+    expect(window.orizonDebug?.frameCount ?? 0).toBe(0);
+    expect((await sourceRow()).enabled).toEqual(["L", "S"]);
+  });
+
+  test("offers L alone on a mono track", async () => {
+    await startBeforeFrames({ inputChannels: 1 });
+    await userEvent.click(choice("time-base", "Trig"));
+    expect(window.orizonDebug?.frameCount ?? 0).toBe(0);
+    expect((await sourceRow()).enabled).toEqual(["L"]);
   });
 });
