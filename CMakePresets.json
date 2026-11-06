@@ -254,24 +254,6 @@
       }
     },
     {
-      "name": "coverage",
-      "displayName": "Linux: engine and protocol tests with source-based coverage (Clang)",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/coverage",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "clang",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "ORIZON_ENGINE_ONLY": "ON",
-        "ORIZON_COVERAGE": "ON"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
       "name": "fuzz",
       "displayName": "Linux: libFuzzer targets under AddressSanitizer and UBSan (Clang)",
       "generator": "Ninja",
@@ -478,15 +460,6 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
-      }
-    },
-    {
-      "name": "coverage",
-      "configurePreset": "coverage",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
       }
     },
     {
@@ -724,24 +697,6 @@
       "execution": {
         "jobs": 4,
         "noTestsAction": "error"
-      }
-    },
-    {
-      "name": "coverage",
-      "configurePreset": "coverage",
-      "output": {
-        "outputOnFailure": true
-      },
-      "environment": {
-        "LLVM_PROFILE_FILE": "${sourceDir}/build/coverage/profiles/%m-%p.profraw"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      },
-      "execution": {
-        "jobs": 4
       }
     }
   ]

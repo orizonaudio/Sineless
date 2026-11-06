@@ -102,7 +102,7 @@ cmake --build --preset windows-x64
 
 The plugin is built at `build\windows-x64\VST3\Release\Sineless.vst3`; use `windows-x64-debug` for a Debug build to step through. `scripts\check.ps1` runs the Windows checks.
 
-`scripts/check.sh` runs CI's build, test, lint and performance checks for macOS and the shared code, the Linux ones in Docker; fuzzing, coverage and mutation testing run in CI. It also needs Homebrew LLVM (`brew install llvm`) and Docker. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
+`scripts/check.sh` runs CI's build, test, lint and performance checks for macOS and the shared code, the Linux ones in Docker; fuzzing and mutation testing run in CI. It also needs Homebrew LLVM (`brew install llvm`) and Docker. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
 
 [docs/DESIGN.md](docs/DESIGN.md) describes how Sineless is built and why: its requirements, modules, threads, protocol and design decisions.
 

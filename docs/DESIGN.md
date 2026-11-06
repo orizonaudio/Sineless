@@ -725,10 +725,9 @@ flowchart LR
 | TypeScript, Vite, Vitest, ESLint, typescript-eslint, Prettier, @types/node | Apache-2.0 / MIT | dev | UI build, dev server, tests, lint. | `package-lock.json` |
 | Playwright, @vitest/browser-playwright | Apache-2.0 / MIT | dev | App tests in WebKit and Chromium. | `package-lock.json` |
 | fast-check | MIT | dev | Property tests. | `package-lock.json` |
-| @vitest/coverage-v8 | MIT | dev | TypeScript coverage. | `package-lock.json` |
 | Stryker | Apache-2.0 | dev | TypeScript mutation testing (`tools/mutation`). | its own lock file |
 | pluginval | GPL-3.0 | checks | Host-like stress testing of the built VST3 plugin and Audio Unit. | download, version + SHA-256 |
-| LLVM 23 (clang, clang-tidy, clang-format, sanitizers, libFuzzer, llvm-cov) | Apache-2.0 with LLVM exception | checks | Lint, sanitizers, fuzzing, coverage on Linux. | apt.llvm.org; clang-format via pipx version |
+| LLVM 23 (clang, clang-tidy, clang-format, sanitizers, libFuzzer) | Apache-2.0 with LLVM exception | checks | Lint, sanitizers, fuzzing on Linux. | apt.llvm.org; clang-format via pipx version |
 | Mull | Apache-2.0 | checks | C++ mutation testing. | `.deb` + SHA-256 |
 | reuse (with charset-normalizer) | GPL-3.0-or-later; MIT | checks | Every file's copyright and licence (`REUSE.toml`). | pipx version |
 | GitHub Actions, Docker base images | various | CI | CI and release. | commit SHA; image digest |
@@ -806,19 +805,19 @@ No lock is ever taken by the audio thread, and no thread waits for it.
 
 ### 8.3 Build, checks and testing
 
-CMake builds the C++; presets cover macOS, Windows x64, Linux and the sanitizer, coverage, fuzz
-and benchmark builds. Test levels, where each runs and the definition of done are in
+CMake builds the C++; presets cover macOS, Windows x64, Linux and the sanitizer, fuzz and
+benchmark builds. Test levels, where each runs and the definition of done are in
 [CONTRIBUTING.md](../CONTRIBUTING.md); review questions in [REVIEW.md](../REVIEW.md). In summary:
 
 | Kind | What | Where |
 | --- | --- | --- |
 | Static | `tsc -b` (strict, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), ESLint (strict type-checked), Prettier, clang-format, clang-tidy | Linux; clang-tidy for the macOS glue on macOS |
 | Unit, component, contract | GoogleTest and Vitest; golden frames and messages shared by C++ and TypeScript, golden saved states for C++; a signal corpus of approved frames; a matrix of sample rates, spans, mono/stereo, live/frozen | All platforms |
-| Integration and app | The editor with its page in a real WKWebView or WebView2; the real page against the mock, and on sessions the real engine recorded, in WebKit and Chromium (Playwright) | macOS, Windows; Linux |
+| Integration and app | The editor with its page in a real WKWebView or WebView2; the real page against the mock, and on sessions the real engine recorded, in WebKit and Chromium (Playwright) | macOS, Windows |
 | Conformance | Steinberg VST3 validator (part of the build); pluginval at strictness 10; for the Audio Unit, Apple's auval (strict, in and out of process) and pluginval on a copy installed for the user (`scripts/validate-au.sh`) | macOS, Windows |
 | Sanitizers | RealtimeSanitizer, ThreadSanitizer, AddressSanitizer + LeakSanitizer + UBSan on the shared code (Linux); ASan + UBSan and TSan on the macOS glue; MSVC ASan on the Windows glue | Linux, macOS, Windows |
 | Fuzzing | libFuzzer on state loading, setting values, the session's messages, and host events (rates, channels, generated audio, transport, tracks joining and leaving, freezing), checking that the same events draw the same frames; fast-check on frame decoding and transport. Five minutes per pull request, 30 nightly, from a corpus kept on main | Linux |
-| Coverage, mutation | Changed-line coverage (llvm-cov, V8); mutation testing of changed lines (Stryker, Mull; each C++ mutant stopped at a limit from its tests' time with no mutant), the mutants no test noticed triaged in CI (below) | Linux |
+| Mutation | Mutation testing of changed lines (Stryker, Mull; each C++ mutant stopped at a limit from its tests' time with no mutant), the mutants no test noticed triaged in CI (below) | Linux |
 | Performance | Audio-thread deadline, frame rate, analysis CPU, reopen leaks (section 10); reported in CI, judged locally | macOS, Windows |
 | Release | Soak test (`scripts/soak.sh`), the HOSTS.md smoke test by hand; occasionally the full HOSTS.md protocol and the scripted REAPER test on Windows (CONTRIBUTING.md, Releasing) | Before a release |
 
@@ -827,7 +826,7 @@ the builds. `main` is changed only through the merge queue.
 
 ```mermaid
 flowchart TB
-  PR["Pull request push"] --> CI["CI: build, tests, lint, sanitizers, fuzzing,<br/>coverage, mutation, performance"]
+  PR["Pull request push"] --> CI["CI: build, tests, lint, sanitizers, fuzzing,<br/>mutation, performance"]
   PR --> AIR["ai-review: specialist reviewers,<br/>then a verifier per Important finding"]
   CI -- "when it completes" --> MT["mutation-triage: judges the mutants<br/>no test noticed"]
   AIR -- "required status" --> Q["Merge queue"]
