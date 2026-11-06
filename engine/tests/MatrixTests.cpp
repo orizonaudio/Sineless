@@ -159,6 +159,9 @@ struct Signal
     float broken = std::numeric_limits<float>::quiet_NaN();
     std::int64_t brokenUntil = std::numeric_limits<std::int64_t>::max(); // Then whole again.
     bool brokenRightOnly = false;                                        // Else both channels.
+    // A tone's right channel: the same tone this far ahead in phase (radians), at the same
+    // amplitude, instead of half the left; none if NaN.
+    double rightPhase = std::numeric_limits<double>::quiet_NaN();
 };
 
 // Tracks of group A on one host, each with its own signal and tempo, viewed from the first.
@@ -304,7 +307,13 @@ private:
                 value = signal.broken;
             }
             left.at(static_cast<std::size_t>(i)) = static_cast<float>(value);
-            right.at(static_cast<std::size_t>(i)) = static_cast<float>(0.5 * value);
+            right.at(static_cast<std::size_t>(i)) =
+                std::isnan(signal.rightPhase)
+                    ? static_cast<float>(0.5 * value)
+                    : static_cast<float>(
+                          signal.offset +
+                          signal.amplitude *
+                              std::sin(step * static_cast<double>(index) + signal.rightPhase));
             if (signal.brokenEvery > 0 && index % signal.brokenEvery == 0 &&
                 index < signal.brokenUntil) {
                 if (!signal.brokenRightOnly) {
@@ -2341,17 +2350,24 @@ TEST_P(ReadoutChannel, IsTheSourceWhenDrawn)
     constexpr double kAmplitude = 0.5;
     Session session(c.rate, c.channels);
     session.join({.frequency = 1000.0, .amplitude = kAmplitude, .offset = 0.0});
+    const auto first = static_cast<protocol::ChannelView>(std::countr_zero(drawnViews(c)));
+    const protocol::ChannelView expectedView =
+        c.channels == 1 ? protocol::ChannelView::kLeft : (c.sourceDrawn ? c.source : first);
+    // The trigger on a drawn view other than the one measured, where there is one: the trigger
+    // reads only views drawn, and the readouts follow their own source whatever it reads.
+    const unsigned others = drawnViews(c) & ~(1U << static_cast<unsigned>(expectedView));
+    const auto triggerSource =
+        others != 0 ? static_cast<protocol::ChannelView>(std::countr_zero(others)) : expectedView;
     session.own().settings().set(SettingId::kReadoutSource, static_cast<double>(c.source));
-    session.own().settings().set(SettingId::kTriggerSource,
-                                 static_cast<double>(protocol::ChannelView::kRight));
+    session.own().settings().set(SettingId::kTriggerSource, static_cast<double>(triggerSource));
     configure(session.own(), DisplayMode::kSingle, c.timeBase);
     session.own().settings().set(SettingId::kChannelViews, static_cast<double>(drawnViews(c)));
     std::optional<DecodedFrame> frame = playForReadouts(session, c.timeBase, drawnViews(c));
     ASSERT_TRUE(frame) << "no frame";
     ASSERT_EQ(frame->has(protocol::FrameFlag::kFreeRunning), c.timeBase == TimeBase::kFree);
-    const auto first = static_cast<protocol::ChannelView>(std::countr_zero(drawnViews(c)));
-    const protocol::ChannelView expectedView =
-        c.channels == 1 ? protocol::ChannelView::kLeft : (c.sourceDrawn ? c.source : first);
+    if (c.channels == 2) {
+        ASSERT_EQ(frame->triggerView, triggerSource) << "the trigger reads another view";
+    }
     const double expected = (c.channels == 1 ? 1.0 : levelOf(expectedView)) * kAmplitude;
     for (const bool frozen : {false, true}) {
         SCOPED_TRACE(frozen ? "frozen" : "live");
@@ -2439,6 +2455,118 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, ReadoutChannelCount, ::testing::ValuesIn(cha
                                     timeBaseName(info.param.timeBase);
                          });
 
+// Where the trigger reads: a trigger source drawn or not, a rate and a track.
+struct TriggerChannelCase
+{
+    double rate = 0.0;
+    int channels = 2;
+    protocol::ChannelView source = protocol::ChannelView::kLeft;
+    unsigned drawn = 0b1111;
+};
+
+std::string nameOf(const TriggerChannelCase& c)
+{
+    return rateName(c.rate) + "_" + channelsName(c.channels) + "_" +
+           capitalised(protocol::kChannelViewNames.at(static_cast<std::size_t>(c.source))) + "_" +
+           std::to_string(c.drawn);
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const TriggerChannelCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+// The value of trace `view` (drawn in `frame`, raw) at the trigger point, a tenth into the span,
+// between the samples either side of it.
+double atTriggerPoint(const DecodedFrame& frame, protocol::ChannelView view)
+{
+    const auto below = (1U << static_cast<unsigned>(view)) - 1U;
+    const auto values = trace(frame, static_cast<std::size_t>(std::popcount(frame.views & below)));
+    const double at = protocol::kTriggerPosition * frame.visibleSamples + frame.startFraction;
+    const auto index = static_cast<std::size_t>(std::floor(at));
+    const double part = at - static_cast<double>(index);
+    return values[index] + part * (values[index + 1] - values[index]);
+}
+
+// In Single display mode the trigger reads the trigger source when it is drawn, and the first view
+// drawn when it is not, whatever the readouts measure: with R a quarter cycle ahead of L, the four
+// views rise through the level at four places, and the window places the one read at the trigger
+// point, rising through 0, which the frame names. A mono track triggers on its one channel. Live,
+// and frozen, where the window stays as placed. At the lowest and highest rates.
+class TriggerChannel : public ::testing::TestWithParam<TriggerChannelCase>
+{
+};
+
+TEST_P(TriggerChannel, IsTheSourceWhenDrawn)
+{
+    const TriggerChannelCase c = GetParam();
+    constexpr double kAmplitude = 0.5;
+    Session session(c.rate, c.channels);
+    session.join({.frequency = 1000.0,
+                  .amplitude = kAmplitude,
+                  .offset = 0.0,
+                  .rightPhase = std::numbers::pi / 2.0});
+    configure(session.own(), DisplayMode::kSingle, TimeBase::kTrigger);
+    session.own().settings().set(SettingId::kChannelViews, static_cast<double>(c.drawn));
+    session.own().settings().set(SettingId::kTriggerSource, static_cast<double>(c.source));
+    session.own().settings().set(SettingId::kReadoutSource,
+                                 static_cast<double>(protocol::ChannelView::kLeft));
+    session.own().settings().set(SettingId::kTriggerSpan, 0.005);
+    session.analyzer().setColumns(4096); // Raw samples at every rate.
+    session.play(0.2, 0.01);
+    // The source if drawn, else the first view drawn; L alone is drawn on a mono track.
+    const unsigned drawn = c.channels == 1 ? 1U : c.drawn;
+    const protocol::ChannelView expected =
+        (drawn & (1U << static_cast<unsigned>(c.source))) != 0
+            ? c.source
+            : static_cast<protocol::ChannelView>(std::countr_zero(drawn));
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        if (frozen) {
+            session.analyzer().setFrozen(true);
+        }
+        session.play(static_cast<double>(kBlock) / c.rate);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        ASSERT_EQ(frame->mode, protocol::FrameMode::kRaw);
+        ASSERT_TRUE(frame->has(protocol::FrameFlag::kTriggered));
+        EXPECT_EQ(frame->triggerView, expected);
+        // A sample's step is at most 2 pi f A / rate, a seventh of the amplitude at 44.1 kHz; the
+        // views' crossings lie an eighth of a cycle apart or more, half the amplitude away.
+        EXPECT_NEAR(atTriggerPoint(*frame, expected), 0.0, 0.2 * kAmplitude)
+            << "placed by the view the trigger reads";
+    }
+}
+
+// Every source, drawn and hidden (the first view drawn other than the source), stereo at the
+// edge rates; the default (the Mid, with L and R drawn); a mono track with each source.
+std::vector<TriggerChannelCase> triggerChannelCases()
+{
+    std::vector<TriggerChannelCase> cases;
+    for (std::size_t source = 0; source < protocol::kChannelViewCount; ++source) {
+        const auto view = static_cast<protocol::ChannelView>(source);
+        const unsigned bit = 1U << source;
+        for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+            // Drawn with a view before it where there is one, so the source is not merely the
+            // first.
+            cases.push_back(
+                {.rate = rate, .source = view, .drawn = bit | (bit == 1U ? 0b1000U : 1U)});
+            cases.push_back({.rate = rate, .source = view, .drawn = 0b1111U & ~bit});
+        }
+        cases.push_back(
+            {.rate = kSampleRates.front(), .channels = 1, .source = view, .drawn = 0b1111});
+    }
+    cases.push_back(
+        {.rate = kSampleRates.front(), .source = protocol::ChannelView::kMid, .drawn = 0b0011});
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, TriggerChannel, ::testing::ValuesIn(triggerChannelCases()),
+                         [](const ::testing::TestParamInfo<TriggerChannelCase>& info) {
+                             return nameOf(info.param);
+                         });
+
 // A time base, a rate, and whether the readouts are switched back while frozen.
 struct SwitchBackCase
 {
@@ -2524,6 +2652,62 @@ std::vector<SwitchBackCase> switchBackCases()
 }
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, ReadoutSwitch, ::testing::ValuesIn(switchBackCases()),
+                         [](const ::testing::TestParamInfo<SwitchBackCase>& info) {
+                             return nameOf(info.param);
+                         });
+
+// The trigger's view follows what is drawn and the track, on the next frame: the source R, drawn,
+// read; R hidden, L, the first drawn; R shown again, R; live, the track turned mono, L. In Trigger
+// the window is then placed by the view named; in Free and Beats, which do not trigger, the frame
+// still names it. Live and frozen (the window stays as placed), at the lowest and highest rates.
+class TriggerChannelChange : public ::testing::TestWithParam<SwitchBackCase>
+{
+};
+
+TEST_P(TriggerChannelChange, FollowsTheViewsAndTheTrack)
+{
+    const SwitchBackCase c = GetParam();
+    constexpr double kAmplitude = 0.5;
+    Session session(c.rate, 2);
+    session.join({.frequency = 1000.0,
+                  .amplitude = kAmplitude,
+                  .offset = 0.0,
+                  .rightPhase = std::numbers::pi / 2.0});
+    configure(session.own(), DisplayMode::kSingle, c.timeBase);
+    session.own().settings().set(SettingId::kTriggerSource,
+                                 static_cast<double>(protocol::ChannelView::kRight));
+    session.own().settings().set(SettingId::kTriggerSpan, 0.005);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.analyzer().setColumns(4096);
+    session.play(0.6, 0.01);
+    if (c.frozen) {
+        session.analyzer().setFrozen(true);
+    }
+    const auto check = [&](protocol::ChannelView expected, const char* step) {
+        SCOPED_TRACE(step);
+        session.play(static_cast<double>(kBlock) / c.rate);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        EXPECT_EQ(frame->triggerView, expected);
+        if (c.timeBase == TimeBase::kTrigger && !c.frozen) {
+            ASSERT_EQ(frame->mode, protocol::FrameMode::kRaw);
+            EXPECT_NEAR(atTriggerPoint(*frame, expected), 0.0, 0.2 * kAmplitude)
+                << "placed by the view named";
+        }
+    };
+    check(protocol::ChannelView::kRight, "R drawn");
+    session.own().settings().set(SettingId::kChannelViews, 0b0001);
+    check(protocol::ChannelView::kLeft, "R hidden");
+    session.own().settings().set(SettingId::kChannelViews, 0b0011);
+    check(protocol::ChannelView::kRight, "R shown again");
+    // Frozen, the held audio keeps its channels, and the view held is not drawn again.
+    if (!c.frozen) {
+        session.own().setInputChannels(1);
+        check(protocol::ChannelView::kLeft, "mono");
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, TriggerChannelChange, ::testing::ValuesIn(switchBackCases()),
                          [](const ::testing::TestParamInfo<SwitchBackCase>& info) {
                              return nameOf(info.param);
                          });

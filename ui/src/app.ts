@@ -268,6 +268,12 @@ export class OscilloscopeApp {
   private readonly segmented = new Map<SettingName, Segmented>();
   // The readouts' channel: lit as the frame measured it, not as the setting asks.
   private readoutChoices: Segmented | undefined;
+  // The trigger's source: lit as the frame's trigger reads, not as the setting asks.
+  private sourceChoices: Segmented | undefined;
+  // The view the trigger level marker was last placed for, in lane and colour.
+  private markerView: ViewName | undefined;
+  // What the Source row last showed: the view lit and the views enabled.
+  private sourceShown = "";
   private readonly viewToggles = new Map<ViewName, HTMLButtonElement>();
   private beatSpanField: DragField | undefined;
   private beatSpanNames: string[] = [];
@@ -607,10 +613,12 @@ export class OscilloscopeApp {
       ["normal", "Normal", "modeNormal"],
       ["single", "Single", "modeSingle"],
     ]);
-    segment(
-      "triggerSource",
-      "source",
-      viewOrder.map((name) => [name, viewLabels[name]]),
+    this.sourceChoices = new Segmented(
+      element("source"),
+      viewOrder.map((name) => ({ value: name, label: viewLabels[name] })),
+      (value) => {
+        this.request("triggerSource", value);
+      },
     );
     segment("triggerSlope", "slope", [
       ["rising", "Rising"],
@@ -734,6 +742,7 @@ export class OscilloscopeApp {
     }
     this.updateViewToggles();
     this.updateReadoutTag();
+    this.updateSourceChoices();
     this.updateStatus();
   }
 
@@ -822,6 +831,7 @@ export class OscilloscopeApp {
       this.closePopover("trigger-details", "trigger-popover");
     }
     this.updateReadoutTag();
+    this.updateSourceChoices();
   }
 
   // Under its field, left-aligned with it as far as the window allows.
@@ -845,6 +855,9 @@ export class OscilloscopeApp {
     }
     if (name === "channelViews") {
       this.updateViewToggles();
+    }
+    if (name === "channelViews" || name === "triggerSource") {
+      this.updateSourceChoices();
     }
     if (name === "triggerMode" || name === "timeBase") {
       this.updateTriggerControls();
@@ -1336,9 +1349,9 @@ export class OscilloscopeApp {
   // The level marker sits in the lane of the trigger source when stacked, else on the full height.
   // In the multi-track view the own track triggers, so the marker sits in its lane.
   private markerGeometry(): { center: number; halfHeight: number } {
-    // The source's lane if it is drawn; the first lane otherwise (a mono track triggers on L).
+    // The lane of the view the trigger reads, which a Single frame always draws.
     const shown = this.drawnViews();
-    const source = this.store.get("triggerSource") as ViewName;
+    const source = this.triggerView();
     const ownLane = Math.max(
       0,
       this.lanesOf(this.lastFrame).findIndex((style) => style.own),
@@ -1368,6 +1381,7 @@ export class OscilloscopeApp {
 
   private placeTriggerMarker(): void {
     const marker = element("trigger-marker");
+    this.markerView = this.triggerView();
     const hidden = this.freeRunning() || this.beatsMode();
     marker.hidden = hidden;
     if (hidden) {
@@ -1383,8 +1397,36 @@ export class OscilloscopeApp {
       "--marker",
       ownStyle !== undefined
         ? cssColour(ownStyle.colour)
-        : `var(${viewColorTokens[this.store.get("triggerSource") as ViewName]})`,
+        : `var(${viewColorTokens[this.triggerView()]})`,
     );
+  }
+
+  // The view the trigger reads (DESIGN.md 1.2.1): the one a Single frame names, the trigger source
+  // when drawn, else the first view drawn; before any Single frame (none yet, or a Multi or
+  // Compare one not replaced yet), the setting.
+  private triggerView(): ViewName {
+    const frame = this.lastFrame;
+    return frame !== undefined && frame.laneSet === 0
+      ? viewOrder[frame.triggerView]
+      : (this.store.get("triggerSource") as ViewName);
+  }
+
+  // The Source row lights the view the trigger reads and offers only views drawn: on a mono
+  // track L alone, also while the latest frame draws none (no tempo yet), as the view toggles do.
+  private updateSourceChoices(): void {
+    const drawn: readonly ViewName[] =
+      this.inputChannels < 2 ? ["left"] : this.drawnViews();
+    // Touched only when what it shows changes: it is asked on every frame.
+    const shown = `${this.triggerView()} ${drawn.join(" ")}`;
+    if (shown !== this.sourceShown) {
+      this.sourceShown = shown;
+      this.sourceChoices?.show(this.triggerView());
+      this.sourceChoices?.enable((value) => drawn.includes(value as ViewName));
+    }
+    // A frame naming another view moves the marker to its lane and colour.
+    if (this.triggerView() !== this.markerView) {
+      this.placeTriggerMarker();
+    }
   }
 
   // Positions the cursors where their frame positions and levels are on screen, and their
@@ -1992,6 +2034,7 @@ export class OscilloscopeApp {
       this.loop.submit(frame);
       this.updateViewSummary();
       this.updateReadoutTag();
+      this.updateSourceChoices();
       // A track joined or left, or the views drawn changed (a track turned mono): lanes, grid
       // and labels change with it. A new lane set (a track checked, a renamed track) changes the
       // labels.
@@ -2042,6 +2085,7 @@ export class OscilloscopeApp {
       element("message").hidden = !this.graphicsMessage;
       this.inputChannels = message.inputChannels;
       this.updateReadoutTag();
+      this.updateSourceChoices();
       this.updateViewToggles();
       this.showSetting("channelViews", this.store.get("channelViews"));
       this.drawScreen();

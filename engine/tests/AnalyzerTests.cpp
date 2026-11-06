@@ -309,6 +309,8 @@ TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
             fresh.settings().set(SettingId::kDisplayMode, static_cast<double>(display));
             fresh.settings().set(SettingId::kChannelViews, static_cast<double>(track.views));
             fresh.settings().set(SettingId::kReadoutSource, static_cast<double>(track.source));
+            // The trigger chooses by the same rule: its source, drawn or not, names the same view.
+            fresh.settings().set(SettingId::kTriggerSource, static_cast<double>(track.source));
             Analyzer view(fresh);
             view.setColumns(300);
             std::vector<float> block(480, 0.25f);
@@ -319,6 +321,7 @@ TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
             DecodedFrame frame = decode(bytes);
             ASSERT_TRUE(frame.has(FrameFlag::kNoTempo));
             EXPECT_EQ(frame.readoutView, expected) << "no tempo";
+            EXPECT_EQ(frame.triggerView, expected) << "no tempo";
             EXPECT_EQ(frame.laneSet != 0, !single) << "no tempo";
 
             for (int step = 0; step < 20; ++step) {
@@ -331,6 +334,7 @@ TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
             frame = decode(bytes);
             ASSERT_FALSE(frame.has(FrameFlag::kNoTempo));
             EXPECT_EQ(frame.readoutView, expected) << "placed";
+            EXPECT_EQ(frame.triggerView, expected) << "placed";
             EXPECT_EQ(frame.laneSet != 0, !single) << "placed";
         }
     }
@@ -346,18 +350,22 @@ TEST_F(AnalyzerTest, RenamesTheReadoutChannelWithNoTempoWhenTheTrackTurnsMono)
     fresh.setInputChannels(2);
     fresh.settings().set(SettingId::kReadoutSource,
                          static_cast<double>(protocol::ChannelView::kRight));
+    fresh.settings().set(SettingId::kTriggerSource,
+                         static_cast<double>(protocol::ChannelView::kRight));
     Analyzer view(fresh);
     view.setColumns(300);
     std::vector<std::byte> bytes;
     ASSERT_TRUE(view.produce(bytes));
     ASSERT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
     ASSERT_EQ(decode(bytes).readoutView, protocol::ChannelView::kRight);
+    ASSERT_EQ(decode(bytes).triggerView, protocol::ChannelView::kRight);
     EXPECT_FALSE(view.produce(bytes)) << "nothing changed";
 
     fresh.setInputChannels(1);
     ASSERT_TRUE(view.produce(bytes)) << "the track changed";
     EXPECT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
     EXPECT_EQ(decode(bytes).readoutView, protocol::ChannelView::kLeft);
+    EXPECT_EQ(decode(bytes).triggerView, protocol::ChannelView::kLeft);
 }
 
 // Without a host tempo, the frame saying so follows what the user does: frozen and unfrozen, so the

@@ -77,9 +77,9 @@ describe("readouts", () => {
     ),
   )("measure the channel chosen in %s: %s", async (timeBase, view) => {
     await userEvent.click(choice("time-base", "Trig"));
+    await showViews(["L", "R", "M", "S"]);
     await useSource(view === "side" ? "L" : "S");
     await userEvent.click(choice("time-base", timeBase));
-    await showViews(["L", "R", "M", "S"]);
     await useReadout(labelOf(view));
     await settle();
     await expectReadoutsOf(ChannelView[view]);

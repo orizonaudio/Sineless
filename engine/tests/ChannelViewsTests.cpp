@@ -57,11 +57,34 @@ TEST(ChannelViewSelection, KeepsTheRequestedSetForStereoOnly)
     EXPECT_EQ(effectiveViews(0b1100, 1), 0b0001);
 }
 
-TEST(ChannelViewSelection, TriggersOnTheSingleChannelForMono)
+// The trigger reads only a trace on screen, as the readouts do: the trigger source when it is
+// drawn, else the first view drawn. Every source against every set of views drawn; a mono track
+// draws L alone (effectiveViews), so it triggers on L.
+class TriggerViewSelection : public ::testing::TestWithParam<ChannelView>
 {
-    EXPECT_EQ(effectiveTriggerSource(ChannelView::kSide, 2), ChannelView::kSide);
-    EXPECT_EQ(effectiveTriggerSource(ChannelView::kSide, 1), ChannelView::kLeft);
+};
+
+TEST_P(TriggerViewSelection, ReadsTheSourceOnlyWhenDrawn)
+{
+    const ChannelView requested = GetParam();
+    const auto bit = static_cast<unsigned>(1U << static_cast<unsigned>(requested));
+    for (unsigned drawn = 1; drawn < (1U << protocol::kChannelViewCount); ++drawn) {
+        SCOPED_TRACE(drawn);
+        const auto first = static_cast<ChannelView>(std::countr_zero(drawn));
+        EXPECT_EQ(effectiveTriggerSource(requested, static_cast<std::uint8_t>(drawn)),
+                  (drawn & bit) != 0 ? requested : first);
+    }
+    EXPECT_EQ(effectiveTriggerSource(requested, effectiveViews(0b1111, 1)), ChannelView::kLeft)
+        << "mono";
 }
+
+INSTANTIATE_TEST_SUITE_P(EverySource, TriggerViewSelection,
+                         ::testing::Values(ChannelView::kLeft, ChannelView::kRight,
+                                           ChannelView::kMid, ChannelView::kSide),
+                         [](const ::testing::TestParamInfo<ChannelView>& info) {
+                             return std::string(protocol::kChannelViewNames.at(
+                                 static_cast<std::size_t>(info.param)));
+                         });
 
 // The views checked for samples that are not finite say whether any drawn view holds one: with L
 // broken, R broken or both, for every set of views drawn, a view checked holds one exactly when a

@@ -68,6 +68,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .sampleRate = header["sampleRate"].get<float>(),
         .spanSeconds = header["spanSeconds"].get<float>(),
         .readoutView = static_cast<protocol::ChannelView>(header["readoutView"].get<int>()),
+        .triggerView = static_cast<protocol::ChannelView>(header["triggerView"].get<int>()),
     };
 }
 

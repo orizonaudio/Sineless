@@ -527,14 +527,18 @@ export class MockTransport implements Transport {
     return viewOrder.filter((name) => names.includes(name));
   }
 
-  // What the engine's readouts measure: in Single the readout source when it is drawn, else the
-  // first view drawn; in Multi and Compare this track's Mid.
-  private readoutChannel(multi: boolean): ChannelView {
+  // What the engine's readouts measure, or its trigger reads (`setting` names the source): in
+  // Single the source when it is drawn, else the first view drawn; in Multi and Compare this
+  // track's Mid.
+  private drawnChoice(
+    setting: "readoutSource" | "triggerSource",
+    multi: boolean,
+  ): ChannelView {
     if (multi) {
       return ChannelView.mid;
     }
     const drawn = this.drawnViews();
-    const source = this.setting("readoutSource") as ViewName;
+    const source = this.setting(setting) as ViewName;
     return ChannelView[drawn.includes(source) ? source : (drawn[0] ?? "left")];
   }
 
@@ -560,7 +564,8 @@ export class MockTransport implements Transport {
           sampleRate: this.sampleRate,
           views: new Map(),
           laneSet: multi ? this.laneSet : 0,
-          readoutView: this.readoutChannel(multi),
+          readoutView: this.drawnChoice("readoutSource", multi),
+          triggerView: this.drawnChoice("triggerSource", multi),
         }),
       );
       return;
@@ -647,7 +652,7 @@ export class MockTransport implements Transport {
     const lanes: Float32Array[] = [];
     // The readouts measure what the engine's do, whatever the trigger source.
     const mono = this.inputChannels === 1;
-    const source = this.readoutChannel(multi);
+    const source = this.drawnChoice("readoutSource", multi);
     let readoutSignal = (time: number) => viewSample(source, time, mono);
     let comparison: FrameContent["comparison"];
     if (multi) {
@@ -749,6 +754,7 @@ export class MockTransport implements Transport {
         lanes,
         laneSet: multi ? this.laneSet : 0,
         readoutView: source,
+        triggerView: this.drawnChoice("triggerSource", multi),
         ...this.invalidFields(multi, comparison !== undefined),
         ...(comparison === undefined ? {} : { comparison }),
       }),

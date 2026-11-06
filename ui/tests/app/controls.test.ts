@@ -145,7 +145,7 @@ describe("controls", () => {
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Trig"));
     // Away from the default source: the tag stays.
-    await press(choice("source", "S"));
+    await press(choice("source", "R"));
     await expect.poll(tag).toBe("Left");
     await userEvent.click(choice("time-base", "Beats"));
     await expect.poll(tag).toBe("Left");
@@ -153,7 +153,7 @@ describe("controls", () => {
     await expect.poll(tag).toBe("This track");
     await userEvent.click(choice("display-mode", "Single"));
     await userEvent.click(choice("time-base", "Trig"));
-    await press(choice("source", "M"));
+    await press(choice("source", "L"));
     await useReadout("R");
     await expect.poll(tag).toBe("Right");
     // Back to the default, Mid, which the default views do not draw: Left again.

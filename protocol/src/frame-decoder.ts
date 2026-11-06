@@ -40,6 +40,8 @@ export interface Frame {
   readonly spanSeconds: number;
   // The channel view the readouts and `invalidSamples` measure.
   readonly readoutView: ChannelView;
+  // The channel view the trigger reads under the current settings.
+  readonly triggerView: ChannelView;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
   // The part of the span this frame covers, and its length in samples.
@@ -156,6 +158,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     sampleRate: f32("sampleRate"),
     spanSeconds: f32("spanSeconds"),
     readoutView: u32("readoutView") as ChannelView,
+    triggerView: u32("triggerView") as ChannelView,
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
     viewStart: f32("viewStart"),
