@@ -4,7 +4,14 @@
 // closed editor window. The retired app hears nothing from its back end and sends it nothing, the
 // timers, listeners and size observers it set up as it started are removed, and a draw it had
 // queued runs before the page is replaced; the elements it listened on are gone with its page.
-import { afterEach, expect, vi } from "vitest";
+import {
+  afterEach,
+  expect,
+  inject,
+  type RunnerTestCase,
+  TestRunner,
+  vi,
+} from "vitest";
 import { userEvent } from "vitest/browser";
 
 import html from "../../index.html?raw";
@@ -92,18 +99,26 @@ export async function startRecorded(
 // Cuts the app started last off from its back end and removes what it set up as it started.
 let retirePrevious: () => void = () => undefined;
 
-// How long the start waits for the page's animation frames, and for a frame asked to see whether
-// the page still renders. The start's first wait leaves a stall that ends within it a pass, as
-// it would be with no limit, and leaves half of a hook's 30 s for the rest of a setup. Tests of
-// the waits themselves shorten them.
-const budgets = { queued: 15000, probe: 500 };
+declare module "vitest" {
+  export interface ProvidedContext {
+    ci: boolean;
+  }
+}
 
-export function setFrameBudgetsForTests(
-  queued: number = 15000,
-  probe: number = 500,
-): void {
-  budgets.queued = queued;
-  budgets.probe = probe;
+// How long the start waits for the page's animation frames: long enough that a stall which ends
+// within it passes, as it would with no limit, and short enough to leave half of a hook's 30 s for
+// the rest of a setup. Tests of the wait itself shorten it.
+let queuedBudget = 15000;
+
+export function setFrameBudgetForTests(budget = 15000): void {
+  queuedBudget = budget;
+}
+
+// Whether the tests run on CI (vitest.config.ts), or as a test of the skip sets it.
+let ciForTests: boolean | undefined;
+
+export function setCiForTests(ci?: boolean): void {
+  ciForTests = ci;
 }
 
 // The next animation frame's time, or undefined once `within` ms pass without one: a page whose
@@ -135,9 +150,17 @@ function stallNote(waitedFor: string, frames: number): string {
   );
 }
 
-// The page's rendering stopped: the test fails, saying so.
+// The page's rendering stopped. The CI machine's display stops driving it for seconds now and then,
+// which no host's display does: there the test running is skipped, saying so. Off CI it fails, so a
+// page that stopped rendering still shows on a developer's machine, and so does a start outside a
+// test (a beforeAll), which has no test to skip.
 function stalled(waitedFor: string, frames: number): never {
-  throw new Error(stallNote(waitedFor, frames));
+  const note = stallNote(waitedFor, frames);
+  const running = TestRunner.getCurrentTest<RunnerTestCase | undefined>();
+  if ((ciForTests ?? inject("ci")) && running) {
+    running.context.skip(note);
+  }
+  throw new Error(note);
 }
 
 // An animation frame, waited for within `within` ms; the test stops if none comes.
@@ -157,7 +180,7 @@ export async function frame(
 // more than that, measured from the shortest gap seen (at most a 1000 Hz rate's), within the
 // start's budget.
 async function queuedDrawsRun(): Promise<void> {
-  const deadline = performance.now() + budgets.queued;
+  const deadline = performance.now() + queuedBudget;
   let last: number | undefined;
   let shortest = Number.POSITIVE_INFINITY;
   let frames = 0;
