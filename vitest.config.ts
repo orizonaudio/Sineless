@@ -38,8 +38,10 @@ export default defineConfig({
           name: "app",
           include: ["ui/tests/app/**/*.test.ts"],
           // ui/tests/app/trace-pictures.test.ts writes its pictures again instead of checking them.
+          // On CI, a test whose page stops rendering is skipped (ui/tests/app/harness.ts).
           provide: {
             updateVectors: process.env["ORIZON_UPDATE_VECTORS"] === "1",
+            ci: process.env["CI"] === "true",
           },
           // One page at a time: a page out of view gets no animation frames, which draw it.
           fileParallelism: false,
