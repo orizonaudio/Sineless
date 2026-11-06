@@ -188,6 +188,36 @@ describe("the Compare switch", () => {
     expect(byId("group-summary").textContent).toBe("A·Σ");
   });
 
+  // While Compare stays on screen, Preview fix stays on: pressing the Multi or On already pressed,
+  // or the engine sending those settings again unchanged (it answers every request, and resends
+  // all of them when the audio format changes), leaves it as the user set it.
+  test("keeps Preview fix on while Compare stays on screen", async () => {
+    await show("Compare");
+    await expect.poll(previewFix).not.toBeNull();
+    await userEvent.click(previewFix() as HTMLElement);
+    await expect
+      .element(previewFix() as HTMLElement)
+      .toHaveAttribute("aria-pressed", "true");
+    const sent = started.sent.length;
+    await userEvent.click(choice("display-mode", "Multi"));
+    await setCompare(true);
+    await press(choice("compare", "On"));
+    started.deliver({
+      type: "stateChanged",
+      name: "displayMode",
+      value: "multi",
+    });
+    started.deliver({ type: "stateChanged", name: "compare", value: "on" });
+    await settle();
+    expect(
+      started.sent
+        .slice(sent)
+        .filter((message) => message.type === "previewFix"),
+    ).toEqual([]);
+    expect(previewFix()?.getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(previewFix() as HTMLElement);
+  });
+
   // Preview fix is Compare's: turning Compare off, or leaving Multi, resets it, and Compare comes
   // back without it.
   test.each(["switch", "display mode"])(
