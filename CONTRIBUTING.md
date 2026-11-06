@@ -48,7 +48,7 @@ CI marks where each will run.
 | Unit | One module at a time | `engine/tests`, `protocol/tests`, `ui/tests` | Every PR |
 | Component | The plugin through the VST3 API; the editor's session, frame flow and sizing | `plugin/tests`, `editor/tests` | Every PR |
 | Integration | The editor with its page in a real WKWebView or WebView2 | `editor/tests/EditorTests.mm`, `editor/tests/EditorTestsWin.cpp` | Every PR |
-| App | The real page against the mock back end, in WebKit and Chromium: controls, readouts, lanes, pan limits | `ui/tests/app`, `npm run test:app` | Every PR |
+| App | The real page against the mock back end, in WebKit and Chromium: controls, readouts, lanes, pan limits. A browser whose page makes no progress for four times the test timeout fails the run, saying where it stopped (`ui/tests/app/stall-watchdog.ts`; `ORIZON_APP_STALL_SECONDS` sets another limit, for a slow machine) | `ui/tests/app`, `npm run test:app` | Every PR |
 | Recorded sessions | The real page on what the real engine and session sent, in the states only the engine decides: a zoomed roll, a limited span, rates held while frozen, mono, lanes, Compare matches, no tempo | `editor/tests/SessionRecordingTests.cpp` records them in `protocol/tests/data/sessions`; `ui/tests/app/recorded-*.test.ts` replay them | Every PR |
 | Contract | C++ and TypeScript agree on frames, messages and saved state | `protocol/tests/data`, `engine/tests/data` | Every PR |
 | Conformance | The VST3 and Audio Unit rules hosts rely on | VST3 validator, pluginval at strictness 10; for the Audio Unit, Apple's auval (strict, in and out of process) and pluginval on a copy installed for the user | Every PR |
