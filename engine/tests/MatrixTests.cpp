@@ -3746,9 +3746,9 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     if (c.timeBase == TimeBase::kTrigger && c.mode == DisplayMode::kSingle && otherRate > c.rate) {
         // A triggered window held across a higher rate keeps its start, and its span in samples
         // then reaches past the newest audio: no frame is drawn, and the page keeps the last one
-        // until audio resumes. Not fixed: only a host breaking the VST3 rules (a new rate while
-        // active) gets here, and a compliant host prepares the capture again.
-        GTEST_SKIP() << "a held triggered window at a higher rate draws no frame, by choice";
+        // until audio arrives. An accepted limit of QS-12 (docs/DESIGN.md, 6.5): only a host
+        // sending a new rate while active gets here, and a compliant one prepares again.
+        GTEST_SKIP() << "a held triggered window at a higher rate keeps its last frame (6.5)";
     }
     session.own().setSampleRate(otherRate);
     const auto newRate = session.produce();

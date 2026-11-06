@@ -648,6 +648,8 @@ sequenceDiagram
   refused.
 - A `setupProcessing` while active, which the VST3 rules do not allow but some hosts send, keeps
   the capture's size and lets holds shrink to fit, rather than move memory under the audio thread.
+  A triggered Single view whose rate rises this way with no new audio keeps its last frame until
+  audio arrives: an accepted limit of QS-12, too rare and brief to justify more state.
 - The editor's state (holds, zoom, cursors) goes with it; Compare's checks stay on the Engine
   (8.4).
 
