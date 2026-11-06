@@ -3,7 +3,7 @@
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { DisplayMode, ViewLayout } from "../../../protocol/src/enums.ts";
+import { ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import { lanes } from "../../src/render/trace-geometry.ts";
 import { extremePositions, zeroCrossings } from "../../src/view/snap.ts";
@@ -12,15 +12,12 @@ import {
   byId,
   chips,
   choice,
+  displays,
   settle,
+  showDisplay,
   startApp,
   typeInto,
 } from "./harness.ts";
-
-// The display modes, as the display-mode control labels them.
-const modes = Object.keys(DisplayMode).map(
-  (name) => name.charAt(0).toUpperCase() + name.slice(1),
-);
 
 // The traces in lane order: the tracks' lanes, or Single's views.
 const traces = (frame: Frame): Float32Array[] =>
@@ -63,11 +60,11 @@ describe("time cursors over stacked lanes", () => {
     await startApp();
   });
 
-  test.each(modes)(
+  test.each(displays)(
     "snap to the trace in the lane under the pointer in %s",
     async (mode) => {
       await setPressed("freeze", false);
-      await userEvent.click(choice("display-mode", mode));
+      await showDisplay(mode);
       await userEvent.click(choice("layout", "Stack"));
       // Single shows L and R by default: two lanes, of different traces. A short span keeps
       // each trace's crossings pixels apart.

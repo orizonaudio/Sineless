@@ -2,14 +2,13 @@
 // or times from a made-up tempo: it says it has none, and places them once the host reports one.
 import { describe, expect, test } from "vitest";
 
-import { DisplayMode } from "../../../protocol/src/enums.ts";
 import {
   beforeApp,
   byId,
   chips,
-  choice,
-  press,
+  displays,
   settle,
+  showDisplay,
   startApp,
   type Started,
 } from "./harness.ts";
@@ -34,19 +33,19 @@ describe("before the host reports a tempo", () => {
     expect(timeAxisLabels()).toEqual([]);
   });
 
-  // A frame with no tempo carries no lanes, even in Multi and Compare: the readout tag still
-  // names what those modes measure, this track, by the frame's lane set, and in Single the channel
+  // A frame with no tempo carries no lanes, even in Multi, Compare off or on: the readout tag
+  // still names what those modes measure, this track, by the frame's lane set, and in Single the channel
   // the frame names (Left, the first of the default views). Single comes last, so the tests after
   // these start where the page starts.
   test.each(
-    Object.keys(DisplayMode)
-      .sort((a, b) => Number(a === "single") - Number(b === "single"))
-      .map((key) => [
-        key.charAt(0).toUpperCase() + key.slice(1),
-        key === "single" ? "Left" : "This track",
-      ]),
+    [...displays]
+      .sort((a, b) => Number(a === "Single") - Number(b === "Single"))
+      .map(
+        (display) =>
+          [display, display === "Single" ? "Left" : "This track"] as const,
+      ),
   )("in %s, the readout tag says %s", async (mode, tag) => {
-    await press(choice("display-mode", mode));
+    await showDisplay(mode);
     await expect.poll(chips).toEqual(["No tempo"]);
     await settle();
     expect(byId("readout-tag").textContent).toBe(tag);
