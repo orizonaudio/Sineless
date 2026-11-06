@@ -282,6 +282,10 @@ private:
                                      std::uint32_t laneSetId) const;
     void rememberInputs(const Settings& settings, const Commands& command, std::uint32_t laneSetId);
     [[nodiscard]] bool formatsChanged(bool multi);
+    // The view the trigger reads: in Single the trigger source when drawn, else the first view
+    // drawn; this track's Mid in Multi and Compare. The one place the trigger search and the
+    // frames that name it decide it.
+    [[nodiscard]] protocol::ChannelView triggerViewFor(const Settings& settings, bool multi) const;
     bool placeLanes(const Settings& settings, protocol::BeatSpan span);
     [[nodiscard]] std::uint64_t sharedLength(std::uint64_t serial, const SweepWindow& sweep) const;
     void catchUpToHold(Lane& lane);

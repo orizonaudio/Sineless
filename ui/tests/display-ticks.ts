@@ -81,6 +81,7 @@ export function frame(id: number): Frame {
     sampleRate: 48000,
     spanSeconds: 0,
     readoutView: ChannelView.mid,
+    triggerView: ChannelView.mid,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

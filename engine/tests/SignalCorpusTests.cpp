@@ -220,11 +220,11 @@ std::vector<Case> corpus()
         // A quiet sine, at twice the trigger's default hysteresis (0.01) so that it triggers
         // clearly, not by a rounding either way.
         single("Single_Sine100At34dB_48k_Stereo", stereo(sine(100, 0.02))).triggers().levels(dbfs(0.02), dbfs(0.02) + kSine).pitch(100),
-        // A sine on the left alone: L, measured, holds it at its level; the trigger, on the Mid, at
-        // half of it.
+        // A sine on the left alone: L, measured and triggered on, holds it at its level.
         single("Single_SineLeftOnly_48k_Stereo", stereo(tone, silence())).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
-        // Channels in opposite polarity: L, measured, holds the sine; the trigger's Mid is silent.
-        single("Single_SineOutOfPhase_48k_Stereo", stereo(tone, inverted(tone))).levels(kHalf, kHalf + kSine).pitch(1000),
+        // Channels in opposite polarity: L, measured and triggered on (the Mid, silent, is not drawn),
+        // holds the sine.
+        single("Single_SineOutOfPhase_48k_Stereo", stereo(tone, inverted(tone))).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
         single("Single_DcQuarter_48k_Stereo", stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf).pitch(kNone),
         single("Single_DcMinusHalf_192k_Mono", mono(dc(-0.5))).at(192000).levels(kHalf, kHalf).pitch(kNone),
         single("Single_Silence_48k_Stereo", stereo(silence())).levels(kSilent, kSilent).pitch(kNone),

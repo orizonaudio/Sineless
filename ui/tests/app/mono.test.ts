@@ -102,7 +102,7 @@ describe("a track that changes channels", () => {
     const toggles = [...byId("views").querySelectorAll("button")];
     await userEvent.click(choice("display-mode", "Single"));
     await inTimeBase("Trig");
-    await press(choice("source", "M"));
+    await press(choice("source", "R"));
     await showViews(["L", "S"]);
     await useReadout("S");
     await expect.poll(tag).toBe("Side");

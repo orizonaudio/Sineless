@@ -15,9 +15,11 @@ namespace orizon::engine {
 // Bit mask of the views to draw: the requested set for stereo, the single channel for mono.
 [[nodiscard]] std::uint8_t effectiveViews(std::uint8_t requested, int inputChannels);
 
-// The view the trigger reads: the requested source for stereo, the single channel for mono.
+// The view the trigger reads in the Single display mode: `requested` when it is in `drawn` (a
+// non-empty mask, as effectiveViews returns; L alone on a mono track), else the first view drawn,
+// as the readouts choose theirs.
 [[nodiscard]] protocol::ChannelView effectiveTriggerSource(protocol::ChannelView requested,
-                                                           int inputChannels);
+                                                           std::uint8_t drawn);
 
 // The view the readouts measure in the Single display mode: `requested` when it is in `drawn`
 // (a non-empty mask, as effectiveViews returns), else the first view drawn in L, R, M, S order.

@@ -175,7 +175,7 @@ export const helpTexts = {
   },
   triggerSource: {
     title: "Trigger source",
-    text: "Which signal the trigger watches. It changes only what the trigger reads: the readouts keep their own channel, chosen beside them in the status bar. Not used in Multi and Compare modes, which show each track's Mid.",
+    text: "Which signal the trigger watches, among the views drawn; while the one chosen is hidden, it watches the first view drawn. It changes only what the trigger reads: the readouts keep their own channel, chosen beside them in the status bar. Not used in Multi and Compare modes, which show each track's Mid.",
   },
   triggerSlope: {
     title: "Slope",

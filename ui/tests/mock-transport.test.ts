@@ -268,6 +268,53 @@ describe("mock back end", () => {
     }
   });
 
+  // As the engine does: the trigger source when drawn, else the first view drawn, a mono track's L
+  // alone, and this track's Mid in Multi and Compare; the frame names it. Every source, every set
+  // of views, every display mode.
+  test.each(
+    Object.keys(DisplayMode).flatMap((mode) =>
+      viewOrder.map((source) => [mode, source] as const),
+    ),
+  )("names the view the trigger reads in %s: %s", (mode, source) => {
+    for (const inputChannels of [2, 1] as const) {
+      for (let drawn = 1; drawn < 1 << viewOrder.length; drawn++) {
+        const { transport, frames } = connect({ inputChannels });
+        const views = viewOrder.filter(
+          (_, index) => (drawn & (1 << index)) !== 0,
+        );
+        transport.send({
+          type: "setSetting",
+          name: "triggerSource",
+          value: source,
+        });
+        transport.send({
+          type: "setSetting",
+          name: "channelViews",
+          value: views,
+        });
+        transport.send({
+          type: "setSetting",
+          name: "displayMode",
+          value: mode,
+        });
+        useTrigger(transport);
+        transport.requestFrame();
+        const shown: readonly (typeof viewOrder)[number][] =
+          inputChannels === 1 ? ["left"] : views;
+        const expected =
+          mode === "single"
+            ? ChannelView[
+                shown.includes(source) ? source : (shown[0] ?? "left")
+              ]
+            : ChannelView.mid;
+        expect(
+          frames.at(-1)?.triggerView,
+          `${views.join(" ")}, ${String(inputChannels)}`,
+        ).toBe(expected);
+      }
+    }
+  });
+
   // A frame with no tempo yet names the channel too, and Multi and Compare by their lane set.
   test.each(Object.keys(DisplayMode))(
     "names the readout channel with no tempo in %s",

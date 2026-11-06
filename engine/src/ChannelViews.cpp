@@ -23,9 +23,9 @@ std::uint8_t effectiveViews(std::uint8_t requested, int inputChannels)
     return inputChannels < 2 ? bitOf(ChannelView::kLeft) : requested;
 }
 
-ChannelView effectiveTriggerSource(ChannelView requested, int inputChannels)
+ChannelView effectiveTriggerSource(ChannelView requested, std::uint8_t drawn)
 {
-    return inputChannels < 2 ? ChannelView::kLeft : requested;
+    return effectiveReadoutView(requested, drawn);
 }
 
 ChannelView effectiveReadoutView(ChannelView requested, std::uint8_t drawn)

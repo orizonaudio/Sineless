@@ -50,6 +50,8 @@ struct FrameHeaderValues
     float spanSeconds = 0.0f;
     // The channel view `peak`, `rms`, `frequency` and `invalidSamples` measure.
     protocol::ChannelView readoutView = protocol::ChannelView::kMid;
+    // The channel view the trigger reads under the current settings.
+    protocol::ChannelView triggerView = protocol::ChannelView::kMid;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,

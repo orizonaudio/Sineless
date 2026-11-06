@@ -522,7 +522,8 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
                                        settings.enumValue<ChannelView>(SettingId::kReadoutSource),
                                        effectiveViews(static_cast<std::uint8_t>(
                                                           settings.value(SettingId::kChannelViews)),
-                                                      engine.inputChannels()))};
+                                                      engine.inputChannels())),
+            .triggerView = triggerViewFor(settings, multi)};
         encodeFrame(header, {}, frame);
         return true;
     }
@@ -781,12 +782,7 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             TriggerState::searchRegion(ring.beginIndex(), ring.endIndex(), span, timeout);
         triggerSamples.resize(static_cast<std::size_t>(end - first));
         scratch.resize(std::max(scratch.size(), triggerSamples.size()));
-        // The multi-track view shows each track's Mid, and triggers on this track's.
-        const ChannelView triggerView =
-            multi
-                ? ChannelView::kMid
-                : effectiveTriggerSource(settings.enumValue<ChannelView>(SettingId::kTriggerSource),
-                                         engine.inputChannels());
+        const ChannelView triggerView = triggerViewFor(settings, multi);
         if (!readSamples(ring, engine.inputChannels(), triggerView, first, triggerSamples,
                          scratch)) {
             return false;
@@ -894,6 +890,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const ChannelView readoutView =
         effectiveReadoutView(settings.enumValue<ChannelView>(SettingId::kReadoutSource), views);
     header.readoutView = readoutView;
+    header.triggerView = triggerViewFor(settings, false);
     const bool rolling = window.freeRunning && window.onGrid && !window.synced &&
                          window.cropStart == 0.0 && window.cropEnd == 1.0;
     const std::size_t visibleCount = crop.end - crop.first;
@@ -1159,6 +1156,18 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
     lanes = std::move(next);
     ownLane = ownSerial;
     return ownSerial;
+}
+
+ChannelView Analyzer::triggerViewFor(const Settings& settings, bool multi) const
+{
+    // The multi-track view shows each track's Mid, and triggers on this track's.
+    if (multi) {
+        return ChannelView::kMid;
+    }
+    return effectiveTriggerSource(
+        settings.enumValue<ChannelView>(SettingId::kTriggerSource),
+        effectiveViews(static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)),
+                       engine.inputChannels()));
 }
 
 // Live, the channel count and sample rate of this track and of each lane shown, against those

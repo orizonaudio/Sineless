@@ -51,6 +51,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     sampleRate,
     spanSeconds: 0,
     readoutView: ChannelView.mid,
+    triggerView: ChannelView.mid,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,

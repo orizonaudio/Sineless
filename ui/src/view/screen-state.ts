@@ -31,8 +31,8 @@ export function clampPan(seconds: number, reach: number): number {
 
 // The lane the trigger level marker sits in. Overlaid, the one lane. Stacked: in the multi-track
 // view the own track's lane (`ownLane`, −1 when not found: the first), as the own track
-// triggers; otherwise the trigger source's lane among those drawn, or the first lane when it is
-// not drawn (a mono track triggers on L).
+// triggers; otherwise the lane of the view the trigger reads, which the frame names and draws (the
+// first lane before a frame says, when the setting is not among those drawn).
 export function markerLane(
   layout: ViewLayout,
   multiTrack: boolean,
