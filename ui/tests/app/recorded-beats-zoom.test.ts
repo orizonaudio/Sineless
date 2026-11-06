@@ -1,8 +1,8 @@
 // A live Beats sweep of one bar at 120 BPM, on the real engine's frames, then zoomed to the
 // narrowest view: the grid's clock keeps the tempo, whatever part of the bar is shown.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
-import { byId, settle, startRecorded } from "./harness.ts";
+import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
 import { zoomToNarrowest } from "./zoom-in.ts";
 
 // The recording's host: 120 BPM in 4/4, from the project start.
@@ -41,7 +41,7 @@ function atTheTempo(screenSeconds: number): boolean {
 }
 
 describe("a recorded live Beats sweep of one bar", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startRecorded("BeatsLive_48k");
   });
 

@@ -1,5 +1,5 @@
 // Which controls the page enables and shows, decided from the settings the engine reports.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { brand } from "@brand/brand.ts";
@@ -7,15 +7,16 @@ import { brand } from "@brand/brand.ts";
 import { DisplayMode } from "../../../protocol/src/enums.ts";
 
 import {
-  press,
+  beforeApp,
   byId,
-  choice,
   chips,
+  choice,
+  press,
   settle,
   showViews,
   startApp,
-  useReadout,
   type Started,
+  useReadout,
 } from "./harness.ts";
 
 function viewToggle(label: string): HTMLButtonElement {
@@ -28,7 +29,7 @@ function viewToggle(label: string): HTMLButtonElement {
 
 describe("controls", () => {
   let app: Started;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp();
   });
 

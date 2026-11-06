@@ -1,8 +1,8 @@
 // A help tooltip waits for the pointer to rest. A drag is no rest: a tooltip shown mid-drag would
 // cover the value being dragged, or float under nothing while a value drag hides the pointer.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-import { byId, startApp } from "./harness.ts";
+import { beforeApp, byId, startApp } from "./harness.ts";
 
 // The help switch explains itself even while help is off.
 function moveOverHelpSwitch(buttons: number): void {
@@ -20,7 +20,7 @@ function moveOverHelpSwitch(buttons: number): void {
 }
 
 describe("help tooltips", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
   });
 

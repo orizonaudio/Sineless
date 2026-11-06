@@ -1,9 +1,10 @@
 // A track whose audio holds samples that are not finite (NaN or infinite), as from a broken plugin
 // upstream: the page warns of them in every display mode, and names the lanes that hold them.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import {
+  beforeApp,
   byId,
   chips,
   choice,
@@ -40,7 +41,7 @@ const warnColour = () => {
 };
 
 describe("a track sending samples that are not finite", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp({ brokenSamples: 3 });
   });
 

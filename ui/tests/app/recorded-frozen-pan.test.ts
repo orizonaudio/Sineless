@@ -1,22 +1,23 @@
 // A frozen 1 s span panned back, on the real engine's frames: the page pans by the span shown and
 // no further back than the frame says the freeze reaches.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { formatSeconds } from "../../src/view/format.ts";
 import type { ReplayTransport } from "./replay-transport.ts";
 import {
+  beforeApp,
   byId,
   chips,
   settle,
+  type Started,
   startRecorded,
   swipe,
-  type Started,
 } from "./harness.ts";
 
 describe("a recorded frozen span panned back", () => {
   let app: Started<ReplayTransport>;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startRecorded("FrozenPan_48k");
   });
 

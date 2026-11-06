@@ -1,13 +1,14 @@
 // A frozen Seconds view pans back through the held audio, no further than the engine says it
 // reaches, and its chip says how far; when the span grows the reach shrinks, and the pan with it.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { formatSeconds } from "../../src/view/format.ts";
 import {
+  beforeApp,
   byId,
-  choice,
   chips,
+  choice,
   settle,
   shownChips,
   startApp,
@@ -44,7 +45,7 @@ function expectFrozenShown(): void {
 }
 
 describe("a frozen view", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
   });
 

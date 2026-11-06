@@ -1,14 +1,14 @@
 // The hover on the real engine's frame: a 1 kHz sine at 44.1 kHz over 10 ms, 441 samples, fewer
 // than the page's columns, so the frame carries raw samples and the hover reads the cycle exactly,
 // timed at the rate the frame carries.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   formatFrequency,
   formatSamples,
   formatSeconds,
 } from "../../src/view/format.ts";
-import { byId, settle, startRecorded } from "./harness.ts";
+import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
 
 const hertz = 1000;
 const rate = 44100;
@@ -27,7 +27,7 @@ function hoverAt(x: number, y: number): void {
 }
 
 describe("the hover on a recorded 1 kHz sine at 44.1 kHz", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startRecorded("SineHalf1k_44k1");
   });
 

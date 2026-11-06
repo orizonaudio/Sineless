@@ -1,13 +1,13 @@
 // A value in a bar sits in a pill with its icon or label (Span, Scale, A4), which reads as one
 // control: a drag, the wheel or a double-click anywhere on the pill, its icon included, does
 // what it does on the value.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import { streamGap } from "../../src/components/wheel-steps.ts";
 import { numberFields } from "../../src/view/fields.ts";
-import { byId, choice, startApp, type Started } from "./harness.ts";
+import { beforeApp, byId, choice, startApp, type Started } from "./harness.ts";
 
 // Each pill's value: its host, the setting it asks for and the time base it shows in. The last
 // test checks the list holds every number field (ui/src/view/fields.ts) that sits in a pill.
@@ -90,7 +90,7 @@ function pointer(type: string, target: Element, y: number): void {
 
 describe("a value's pill", () => {
   let app: Started;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp();
   });
 

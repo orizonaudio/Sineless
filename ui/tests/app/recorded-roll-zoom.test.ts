@@ -1,12 +1,12 @@
 // A live 1.5 s free-running window zoomed to the narrowest view, on the real engine's frames: the
 // engine reads only the view, so the frame carries a few hundred samples of the span, and the axis
 // still marks the span shown.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { timeLabels as axisTimeLabels } from "../../src/view/axis-labels.ts";
 import { parseQuantity } from "../../src/view/format.ts";
 import { type ViewWindow } from "../../src/view/zoom.ts";
-import { byId, settle, startRecorded } from "./harness.ts";
+import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
 import { zoomToNarrowest } from "./zoom-in.ts";
 
 const span = 1.5;
@@ -35,7 +35,7 @@ function marksSpan(view: ViewWindow): boolean {
 }
 
 describe("a recorded live free-running window zoomed to the narrowest view", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startRecorded("Roll1500msDeepestZoom_48k");
   });
 

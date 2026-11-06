@@ -1,9 +1,10 @@
 // A mono track: the engine draws L alone, and the page offers only L.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
 import {
+  beforeApp,
   byId,
   choice,
   inTimeBase,
@@ -11,12 +12,12 @@ import {
   settle,
   showViews,
   startApp,
-  useReadout,
   type Started,
+  useReadout,
 } from "./harness.ts";
 
 describe("a mono track", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp({ inputChannels: 1 });
   });
 
@@ -75,7 +76,7 @@ async function expectOnlyLeftEnabled(
 // snapshot that reports it follows later. The Views field follows the frames.
 describe("a track that changes channels", () => {
   let app: Started;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp({ inputChannels: 2 });
   });
 

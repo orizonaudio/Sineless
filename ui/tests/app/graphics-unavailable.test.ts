@@ -1,13 +1,13 @@
 // A web view that gives the page no WebGL2, as on a machine whose graphics driver is blocklisted:
 // the page says why the traces are missing instead of staying blank, and the rest still works.
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { graphicsMessages } from "../../src/app.ts";
-import { byId, choice, settle, startApp } from "./harness.ts";
+import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
 
 describe("a web view without WebGL2", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     type GetContext = HTMLCanvasElement["getContext"];
     // The browser's own, for the grid's 2D context.
     const { value: getContext } = Object.getOwnPropertyDescriptor(

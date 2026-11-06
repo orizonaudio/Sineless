@@ -1,13 +1,13 @@
 // A mono track on the real engine's frame: the snapshot says one input channel and the frame
 // draws L alone, so the page offers and measures L, whatever views were asked for (L and R).
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
 import { formatDbfs, formatFrequency } from "../../src/view/format.ts";
-import { byId, settle, startRecorded } from "./harness.ts";
+import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
 
 describe("a recorded mono track, a full-scale 400 Hz sine", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startRecorded("MonoSine400_48k");
   });
 

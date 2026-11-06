@@ -3,13 +3,19 @@
 // past the screen's edge; the pointer comes back where it was pressed. The page must neither lose nor repeat
 // a step when it switches from the pointer's travel to the editor's, and must drag as before
 // wherever the editor does not answer.
-import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import type { PointerHold } from "../../src/components/pointer-hold.ts";
 import { pixelsPerStep as step } from "../../src/components/drag-field.ts";
 import { numberFields } from "../../src/view/fields.ts";
-import { byId, inTimeBase, startApp, type Started } from "./harness.ts";
+import {
+  beforeApp,
+  byId,
+  inTimeBase,
+  startApp,
+  type Started,
+} from "./harness.ts";
 
 // The editor's hold as the page sees it, answering start() only when told to.
 class FakeHold implements PointerHold {
@@ -97,7 +103,7 @@ function pointer(
 describe("a value dragged where the editor holds the pointer", () => {
   let app: Started;
   let hold: FakeHold;
-  beforeAll(async () => {
+  beforeApp(async () => {
     app = await startApp();
   });
   afterEach(() => {

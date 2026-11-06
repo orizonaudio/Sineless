@@ -1,10 +1,10 @@
 // A new instance, opened with the settings the engine starts with (the protocol's defaults).
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
-import { byId, choice, settle, startApp } from "./harness.ts";
+import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
 
 describe("a new instance", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startApp();
     await settle();
   });

@@ -1,7 +1,7 @@
 // Frozen, a frame shows audio held at the rate of its moment, which the host may have changed
 // since: the page times what a frame shows (cursor readouts, offsets) at the rate the frame
 // carries, not at the host's rate now.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { defaultSettingValues } from "../../../protocol/src/setting-values.ts";
@@ -11,14 +11,14 @@ import {
   mockTempo,
 } from "../../src/bridge/mock-transport.ts";
 import { parseQuantity } from "../../src/view/format.ts";
-import { byId, choice, settle, startApp } from "./harness.ts";
+import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
 
 // The frames' rate, and the host's after it changed.
 const heldRate = 384000;
 const hostRate = 44100;
 
 describe("frames of audio held at another rate than the host's", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     const app = await startApp({ sampleRate: heldRate });
     app.deliver({
       type: "snapshot",

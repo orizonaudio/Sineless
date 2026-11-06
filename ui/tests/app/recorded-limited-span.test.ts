@@ -1,12 +1,19 @@
 // A span longer than the capture keeps, on the real engine's frames: the host prepared the
 // instance at 192 kHz and then ran it at 384 kHz, so the capture keeps its 192 kHz size. A 2 s span
 // fits what it keeps; 4 s does not, and the axis shows the span the frame says it shows.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { timeLabels as axisTimeLabels } from "../../src/view/axis-labels.ts";
 import { parseQuantity } from "../../src/view/format.ts";
 import { fullView } from "../../src/view/zoom.ts";
-import { byId, chips, settle, startRecorded, typeInto } from "./harness.ts";
+import {
+  beforeApp,
+  byId,
+  chips,
+  settle,
+  startRecorded,
+  typeInto,
+} from "./harness.ts";
 
 // The time labels in seconds, in screen order.
 function labelSeconds(): number[] {
@@ -32,7 +39,7 @@ function marksSpan(span: number): boolean {
 }
 
 describe("a recorded span against a capture prepared at half the rate", () => {
-  beforeAll(async () => {
+  beforeApp(async () => {
     await startRecorded("LimitedSpan_384kAfter192k");
   });
 

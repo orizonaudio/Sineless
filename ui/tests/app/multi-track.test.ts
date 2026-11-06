@@ -1,9 +1,10 @@
 // The multi-track and Compare views, through the real page: lane labels from the engine's lanes
 // messages, the trigger marker in this track's lane, and the Compare readouts.
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import {
+  beforeApp,
   byId,
   choice,
   press,
@@ -51,7 +52,7 @@ async function setCompared(name: string, compared: boolean): Promise<void> {
 
 let started: Started;
 
-beforeAll(async () => {
+beforeApp(async () => {
   started = await startApp();
 });
 

@@ -6,6 +6,7 @@
 // queued runs before the page is replaced; the elements it listened on are gone with its page.
 import {
   afterEach,
+  beforeEach,
   expect,
   inject,
   type RunnerTestCase,
@@ -114,6 +115,14 @@ export function setFrameBudgetForTests(budget = 15000): void {
   queuedBudget = budget;
 }
 
+// The note of the stall that skipped a test last, which beforeApp reads to tell a skip from a
+// failure: vitest does not export the error a skip throws.
+let lastStallNote: string | undefined;
+
+function stallNoteSinceReset(): string | undefined {
+  return lastStallNote;
+}
+
 // Whether the tests run on CI (vitest.config.ts), or as a test of the skip sets it.
 let ciForTests: boolean | undefined;
 
@@ -158,6 +167,7 @@ function stalled(waitedFor: string, frames: number): never {
   const note = stallNote(waitedFor, frames);
   const running = TestRunner.getCurrentTest<RunnerTestCase | undefined>();
   if ((ciForTests ?? inject("ci")) && running) {
+    lastStallNote = note;
     running.context.skip(note);
   }
   throw new Error(note);
@@ -173,6 +183,41 @@ export async function frame(
     stalled(waitedFor, 0);
   }
   return at;
+}
+
+// Runs `setUp` (one that starts the app) once for the tests of the block it is in, as beforeAll
+// does, but at its first test, where a stalled start can skip: vitest skips nothing from a
+// beforeAll. Every test of the block then has the setup's outcome: run, skipped with its note, or
+// failed with its error.
+export function beforeApp(setUp: () => unknown): void {
+  let outcome:
+    | Promise<
+        | { readonly kind: "done" }
+        | { readonly kind: "skipped"; readonly note: string }
+        | { readonly kind: "failed"; readonly error: unknown }
+      >
+    | undefined;
+  beforeEach(async (context) => {
+    outcome ??= (async () => {
+      lastStallNote = undefined;
+      try {
+        await setUp();
+        return { kind: "done" } as const;
+      } catch (error) {
+        const note = stallNoteSinceReset();
+        return note === undefined
+          ? ({ kind: "failed", error } as const)
+          : ({ kind: "skipped", note } as const);
+      }
+    })();
+    const result = await outcome;
+    if (result.kind === "skipped") {
+      context.skip(result.note);
+    }
+    if (result.kind === "failed") {
+      throw result.error;
+    }
+  });
 }
 
 // Waits out the ticks a retired app's draw loop already asked for, which draw into the page by id:
