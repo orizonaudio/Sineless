@@ -33,7 +33,9 @@ inline std::vector<State> states()
         {.name = "Multi, group D",
          .settings = {{SettingId::kDisplayMode, 1.0}, {SettingId::kGroup, 3.0}},
          .script = ""},
-        {.name = "Compare", .settings = {{SettingId::kDisplayMode, 2.0}}, .script = ""},
+        {.name = "Multi, Compare",
+         .settings = {{SettingId::kDisplayMode, 1.0}, {SettingId::kCompare, 1.0}},
+         .script = ""},
         {.name = "Trig, 250 ms",
          .settings = {{SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.25}},
          .script = ""},
@@ -54,7 +56,8 @@ inline std::vector<State> states()
                       {SettingId::kChannelViews, 15.0}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
-        // Multi and Compare's widest: Group in place of Views, with the same trigger and Frozen.
+        // Multi's widest, with and without Compare: Group in place of Views ("D · Σ" with
+        // it on), with the same trigger and Frozen.
         {.name = "Multi, group D, Trig, trigger Single, frozen",
          .settings = {{SettingId::kDisplayMode, 1.0},
                       {SettingId::kGroup, 3.0},
@@ -62,8 +65,9 @@ inline std::vector<State> states()
                       {SettingId::kTriggerMode, kSingleMode}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
-        {.name = "Compare, group D, Trig, trigger Single, frozen",
-         .settings = {{SettingId::kDisplayMode, 2.0},
+        {.name = "Multi, Compare, group D, Trig, trigger Single, frozen",
+         .settings = {{SettingId::kDisplayMode, 1.0},
+                      {SettingId::kCompare, 1.0},
                       {SettingId::kGroup, 3.0},
                       {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerMode, kSingleMode}},

@@ -202,8 +202,10 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* The Views field: every view's letter, those not drawn dimmed. */
-#views-summary span:not(.on) {
+/* The Views field: every view's letter, those not drawn dimmed; in Multi, Σ dimmed while Compare
+   is off. */
+#views-summary span:not(.on),
+#group-summary span:not(.on) {
   opacity: 0.35;
 }
 

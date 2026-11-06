@@ -88,7 +88,7 @@ export const settings = {
     defaultValue: ChannelView.mid,
   },
   // The channel Peak, RMS and Freq measure in the Single display mode, when it is drawn; the
-  // first drawn view otherwise. Multi and Compare measure this track's Mid.
+  // first drawn view otherwise. Multi, with or without Compare, measures this track's Mid.
   readoutSource: {
     kind: "enum",
     values: "ChannelView",
@@ -134,6 +134,9 @@ export const settings = {
     defaultValue: DisplayMode.single,
   },
   group: { kind: "enum", values: "Group", defaultValue: Group.a },
+  // In Multi, adds the sum of the tracks checked against this one, with their matches and summing
+  // gains (Compare, FR-15). Kept while the display mode is Single.
+  compare: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
   // The readout beside the pointer over the traces.
   hoverReadout: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
   // The pitch of A4 that note names refer to, in Hz.

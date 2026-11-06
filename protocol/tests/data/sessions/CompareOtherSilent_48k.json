@@ -35,11 +35,11 @@
       ]
     }
   ],
-  "protocolVersion": 11,
+  "protocolVersion": 12,
   "scenario": "CompareOtherSilent_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 11,
+    "protocolVersion": 12,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "off",
@@ -48,8 +48,9 @@
         "left",
         "right"
       ],
+      "compare": "on",
       "concertPitch": 440.0,
-      "displayMode": "compare",
+      "displayMode": "multi",
       "freeSpan": 4.0,
       "group": "a",
       "hoverReadout": "off",

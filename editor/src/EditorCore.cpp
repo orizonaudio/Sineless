@@ -5,6 +5,7 @@
 #include "editor/OpenLink.h"
 #include "engine/ChannelViews.h"
 #include "engine/MonotonicClock.h"
+#include "engine/Settings.h"
 #include "engine/Version.h"
 
 #include <algorithm>
@@ -334,10 +335,9 @@ int EditorCore::minimumHeightFor(const engine::Settings& settings, int inputChan
         lanes = std::popcount(engine::effectiveViews(
             static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)), inputChannels));
     } else {
-        // The tracks on show, and in the Compare view the sum lane, which is drawn whether or
-        // not another track is checked (alone, it is this track).
-        lanes = static_cast<int>(laneSet.lanes.size()) +
-                (mode == protocol::DisplayMode::kCompare ? 1 : 0);
+        // The tracks on show, and with Compare on the sum lane, which is drawn whether or not
+        // another track is checked (alone, it is this track).
+        lanes = static_cast<int>(laneSet.lanes.size()) + (engine::compareShown(settings) ? 1 : 0);
     }
     return std::max(kMinimumHeight, kChromeHeight + lanes * kMinimumLaneHeight);
 }

@@ -50,8 +50,12 @@ export const helpTexts = {
     text: "Opens our About page, with how to contact us, in your default browser.",
   },
   displayMode: {
-    title: "Single, Multi or Compare",
-    text: `Single shows this track's channels. Multi shows every track of this instance's group that has this plugin inserted, one lane each as the track's Mid, at most ${lanesMulti}. Compare (in beta) shows the same tracks, at most ${lanesCompare}, and the sum of those you check, to find where they cancel. Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.`,
+    title: "Single or Multi",
+    text: `Single shows this track's channels. Multi shows every track of this instance's group that has this plugin inserted, one lane each as the track's Mid, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds their sum). Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.`,
+  },
+  compare: {
+    title: "Compare",
+    text: `In beta. In Multi, adds the sum of the tracks you check against this one, to find where they cancel: each checked track's offset, polarity and likeness to this track, and how loud they are together. The sum takes a lane, so Multi then shows at most ${lanesCompare} tracks. It stays on or off as you leave Multi and come back, and is saved with the project.`,
   },
   compareTrack: {
     title: "Compare",
@@ -70,12 +74,12 @@ export const helpTexts = {
     text: `How late this track is against yours, within ${reach} (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the ${matchWindow} before the playhead (zoomed away from it, the newest ${matchWindow} shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is. Only audio above ${gate} dBFS is compared; a dash means they never sound together there, or the track is not measured yet.`,
   },
   group: {
-    title: "Group",
-    text: "Instances in the same group appear together in Multi and Compare modes. Use different groups to keep separate comparisons apart, such as drums in A and bass in B. Every instance belongs to a group, whatever its own mode.",
+    title: "Views",
+    text: "What Multi shows: the tracks of a group, and with Compare their sum (Σ in the field, dimmed while Compare is off). Instances in the same group appear together in Multi. Use different groups to keep separate comparisons apart, such as drums in A and bass in B. Every instance belongs to a group, whatever its own mode.",
   },
   channelViews: {
     title: "Views",
-    text: "Which channels this track shows. In Multi and Compare modes every track shows its Mid, so these apply in Single mode.",
+    text: "Which channels this track shows. In Multi every track shows its Mid, so these apply in Single mode.",
   },
   status: {
     title: "Status",
@@ -175,7 +179,7 @@ export const helpTexts = {
   },
   triggerSource: {
     title: "Trigger source",
-    text: "Which signal the trigger watches, among the views drawn; while the one chosen is hidden, it watches the first view drawn. It changes only what the trigger reads: the readouts keep their own channel, chosen beside them in the status bar. Not used in Multi and Compare modes, which show each track's Mid.",
+    text: "Which signal the trigger watches, among the views drawn; while the one chosen is hidden, it watches the first view drawn. It changes only what the trigger reads: the readouts keep their own channel, chosen beside them in the status bar. Not used in Multi, which shows each track's Mid.",
   },
   triggerSlope: {
     title: "Slope",
@@ -199,7 +203,7 @@ export const helpTexts = {
   },
   readoutSource: {
     title: "What the readouts measure",
-    text: "The channel Peak, RMS and Freq read. In Single, click to choose L, R, M or S among the views drawn; while the one chosen is hidden, they read the first view drawn. Multi and Compare read this track's Mid, and a mono track its one channel, Left.",
+    text: "The channel Peak, RMS and Freq read. In Single, click to choose L, R, M or S among the views drawn; while the one chosen is hidden, they read the first view drawn. Multi reads this track's Mid, and a mono track its one channel, Left.",
   },
   concertPitch: {
     title: "Concert pitch",

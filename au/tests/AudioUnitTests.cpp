@@ -779,8 +779,8 @@ TEST(AudioUnit, ReopensWithTheSettingsSaved)
 // the same golden states, the same migrations.
 TEST(AudioUnit, LoadsEveryGoldenState)
 {
-    for (const char* file :
-         {"state-v1.json", "state-v1-beats.json", "state-v2.json", "state-v2-0.5.json"}) {
+    for (const char* file : {"state-v1.json", "state-v1-beats.json", "state-v2.json",
+                             "state-v2-0.5.json", "state-v3.json", "state-v4.json"}) {
         Host host;
         Instance instance(host);
         ASSERT_EQ(instance.open(48000.0, 2, 2), noErr);

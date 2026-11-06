@@ -31,11 +31,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 11,
+  "protocolVersion": 12,
   "scenario": "LimitedSpan_384kAfter192k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 11,
+    "protocolVersion": 12,
     "sampleRate": 384000.0,
     "settings": {
       "autoFreeze": "off",
@@ -44,6 +44,7 @@
         "left",
         "right"
       ],
+      "compare": "off",
       "concertPitch": 440.0,
       "displayMode": "single",
       "freeSpan": 2.0,

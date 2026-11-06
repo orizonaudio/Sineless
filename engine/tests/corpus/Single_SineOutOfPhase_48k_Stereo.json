@@ -18,6 +18,7 @@
   },
   "signal": {
     "channels": 2,
+    "compare": "off",
     "displayMode": "single",
     "frozen": false,
     "sampleRate": 48000,

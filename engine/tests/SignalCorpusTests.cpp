@@ -11,6 +11,7 @@
 // Set ORIZON_UPDATE_CORPUS=1 to write the approved files from what the engine reports now, then
 // review the diff; see "Test levels" in CONTRIBUTING.md.
 
+#include "Display.h"
 #include "FrameDecoding.h"
 #include "GoldenFiles.h"
 #include "Signals.h"
@@ -42,7 +43,6 @@ namespace orizon::engine {
 namespace {
 
 using nlohmann::json;
-using protocol::DisplayMode;
 using protocol::FrameFlag;
 using protocol::FrameHeader;
 using protocol::FrameMode;
@@ -104,7 +104,7 @@ struct Expect
 struct Case
 {
     std::string_view name; // Test name and file name.
-    DisplayMode mode = DisplayMode::kSingle;
+    Display mode = Display::kSingle;
     TimeBase timeBase = TimeBase::kTrigger;
     std::uint32_t rate = 48000;
     bool frozen = false;
@@ -172,7 +172,7 @@ Case compare(std::string_view name, const Track& own, const Track& other)
 {
     Case c;
     c.name = name;
-    c.mode = DisplayMode::kCompare;
+    c.mode = Display::kCompare;
     c.timeBase = TimeBase::kBeats;
     c.own = own;
     c.other = other;
@@ -290,7 +290,7 @@ void PrintTo(const Case& c, std::ostream* out)
 // sweep (125 ms at 120 BPM); the multi-track view shows each track's Mid.
 void configure(Engine& engine, const Case& c)
 {
-    engine.settings().set(SettingId::kDisplayMode, static_cast<double>(c.mode));
+    show(engine.settings(), c.mode);
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(c.timeBase));
     engine.settings().set(SettingId::kTriggerSpan, 0.1);
     engine.settings().set(SettingId::kBeatSpan,
@@ -359,7 +359,10 @@ static_assert(std::ranges::all_of(kFlags, [](const auto& flag) { return !flag.se
 json snapshot(const Case& c, const DecodedFrame& frame, const std::vector<std::byte>& bytes)
 {
     json out;
-    out["signal"]["displayMode"] = protocol::kDisplayModeNames.at(static_cast<std::size_t>(c.mode));
+    out["signal"]["displayMode"] =
+        protocol::kDisplayModeNames.at(static_cast<std::size_t>(modeOf(c.mode)));
+    out["signal"]["compare"] =
+        protocol::kToggleNames.at(static_cast<std::size_t>(compareOf(c.mode)));
     out["signal"]["timeBase"] = protocol::kTimeBaseNames.at(static_cast<std::size_t>(c.timeBase));
     out["signal"]["sampleRate"] = c.rate;
     out["signal"]["channels"] = c.own.channels;
@@ -537,7 +540,7 @@ TEST_P(SignalCorpus, MatchesTheApprovedFrame)
     }
     ASSERT_TRUE(frame) << "no frame";
     ASSERT_EQ(frame->has(FrameFlag::kFrozen), c.frozen);
-    ASSERT_EQ(frame->has(FrameFlag::kCompared), c.mode == DisplayMode::kCompare);
+    ASSERT_EQ(frame->has(FrameFlag::kCompared), c.mode == Display::kCompare);
     const json actual = snapshot(c, *frame, bytes);
 
     // What physics says the signal reads.
@@ -564,7 +567,7 @@ TEST_P(SignalCorpus, MatchesTheApprovedFrame)
                         kFrequencyTolerance * *expect.frequency);
         }
     }
-    if (c.mode == DisplayMode::kCompare) {
+    if (c.mode == Display::kCompare) {
         const json& match = actual.at("matches").at("track1");
         expectNear("correlation", valueOf(match.at("correlation")), expect.correlation,
                    expect.correlation == 0.0 ? kChanceCorrelation : kCorrelationTolerance);

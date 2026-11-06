@@ -55,7 +55,7 @@
       "replies": [
         {
           "inputChannels": 2,
-          "protocolVersion": 11,
+          "protocolVersion": 12,
           "sampleRate": 44100.0,
           "settings": {
             "autoFreeze": "off",
@@ -64,8 +64,9 @@
               "left",
               "right"
             ],
+            "compare": "on",
             "concertPitch": 440.0,
-            "displayMode": "compare",
+            "displayMode": "multi",
             "freeSpan": 4.0,
             "group": "a",
             "hoverReadout": "off",
@@ -86,11 +87,11 @@
       ]
     }
   ],
-  "protocolVersion": 11,
+  "protocolVersion": 12,
   "scenario": "FrozenHeldRate_384kThen44k1",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 11,
+    "protocolVersion": 12,
     "sampleRate": 384000.0,
     "settings": {
       "autoFreeze": "off",
@@ -99,8 +100,9 @@
         "left",
         "right"
       ],
+      "compare": "on",
       "concertPitch": 440.0,
-      "displayMode": "compare",
+      "displayMode": "multi",
       "freeSpan": 4.0,
       "group": "a",
       "hoverReadout": "off",

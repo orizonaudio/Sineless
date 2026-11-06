@@ -384,11 +384,7 @@ public:
     // Draws the next frame whatever has changed, as for a page that has just loaded.
     void redraw() { analyzer.redraw(); }
 
-    [[nodiscard]] protocol::DisplayMode displayMode() const
-    {
-        return static_cast<protocol::DisplayMode>(
-            own->settings().get().value(protocol::SettingId::kDisplayMode));
-    }
+    [[nodiscard]] bool comparing() const { return engine::compareShown(own->settings().get()); }
 
     [[nodiscard]] protocol::TimeBase timeBase() const
     {
@@ -495,8 +491,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const bool formatChange = step.kind == StepKind::kPrepare || step.kind == StepKind::kRate;
         bool redrawn = false;
         if (step.kind == StepKind::kFrame && onlyFormatChanges &&
-            engine::decode(previous).has(protocol::FrameFlag::kFrozen) &&
-            first.displayMode() != protocol::DisplayMode::kCompare) {
+            engine::decode(previous).has(protocol::FrameFlag::kFrozen) && !first.comparing()) {
             // In Compare, freezing restarts the match search, which ends over frames: a frozen
             // Compare frame changes when it does.
             first.redraw();

@@ -8,6 +8,7 @@
 // Signals ride on a DC offset, so a trace value near zero is a hole in the data, never a zero
 // crossing.
 
+#include "Display.h"
 #include "FrameDecoding.h"
 #include "SampleRates.h"
 #include "engine/Analyzer.h"
@@ -42,7 +43,6 @@ namespace orizon::engine {
 namespace {
 
 using protocol::BeatSpan;
-using protocol::DisplayMode;
 using protocol::FrameFlag;
 using protocol::FrameHeader;
 using protocol::FrameMode;
@@ -74,9 +74,9 @@ std::string capitalised(std::string_view name)
     return text;
 }
 
-std::string modeName(DisplayMode mode)
+std::string modeName(Display mode)
 {
-    return capitalised(protocol::kDisplayModeNames.at(static_cast<std::size_t>(mode)));
+    return displayName(mode);
 }
 
 std::string timeBaseName(TimeBase timeBase)
@@ -89,14 +89,9 @@ const char* channelsName(int channels)
     return channels == 1 ? "Mono" : "Stereo";
 }
 
-std::vector<DisplayMode> everyMode()
+std::vector<Display> everyMode()
 {
-    std::vector<DisplayMode> modes;
-    modes.reserve(protocol::kDisplayModeCount);
-    for (std::size_t mode = 0; mode < protocol::kDisplayModeCount; ++mode) {
-        modes.push_back(static_cast<DisplayMode>(mode));
-    }
-    return modes;
+    return everyDisplay();
 }
 
 const protocol::SettingDescriptor& setting(SettingId id)
@@ -333,9 +328,9 @@ private:
     std::vector<std::byte> bytes;
 };
 
-void configure(Engine& engine, DisplayMode mode, TimeBase timeBase)
+void configure(Engine& engine, Display mode, TimeBase timeBase)
 {
-    engine.settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
+    show(engine.settings(), mode);
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
     engine.settings().set(SettingId::kChannelViews, 0b0011); // L and R asked for.
 }
@@ -357,16 +352,17 @@ void setSpan(Engine& engine, TimeBase timeBase, double seconds)
     }
 }
 
-// The traces a frame should hold: views in Single (one for a mono track), else one lane per
-// track and, in Compare, the sum.
-std::size_t expectedTraces(DisplayMode mode, int channels, std::size_t tracks)
+// The traces a frame should hold: views in Single (one for a mono track, and with the Compare
+// switch on too), else one lane per track and, with Compare on, the sum.
+std::size_t expectedTraces(Display mode, int channels, std::size_t tracks)
 {
     switch (mode) {
-    case DisplayMode::kSingle:
+    case Display::kSingle:
+    case Display::kSingleCompareOn: // Shows Single.
         return channels == 1 ? 1 : 2;
-    case DisplayMode::kMulti:
+    case Display::kMulti:
         return tracks;
-    case DisplayMode::kCompare:
+    case Display::kCompare:
         return tracks + 1;
     }
     ADD_FAILURE() << "no expectation for display mode " << static_cast<int>(mode);
@@ -548,7 +544,7 @@ struct SpanCase
 {
     double rate = 48000.0;
     SecondsSpan span;
-    DisplayMode mode = DisplayMode::kSingle;
+    Display mode = Display::kSingle;
     int channels = 2;
 };
 
@@ -573,7 +569,7 @@ std::vector<SpanCase> spanCases()
     const std::vector<SecondsSpan> spans = secondsSpans();
     for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
         for (std::size_t span = 0; span < spans.size(); ++span) {
-            for (const DisplayMode mode : everyMode()) {
+            for (const Display mode : everyMode()) {
                 cases.push_back({.rate = kSampleRates.at(rate),
                                  .span = spans[span],
                                  .mode = mode,
@@ -630,7 +626,7 @@ TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
     ASSERT_TRUE(frame) << "no live frame";
     EXPECT_FALSE(frame->has(FrameFlag::kFrozen));
     EXPECT_TRUE(frame->has(FrameFlag::kFreeRunning)) << "Free runs free at every span";
-    EXPECT_EQ(frame->has(FrameFlag::kCompared), c.mode == DisplayMode::kCompare);
+    EXPECT_EQ(frame->has(FrameFlag::kCompared), c.mode == Display::kCompare);
     EXPECT_NEAR(frame->visibleSamples, spanSamples, 0.5) << "exactly the span, in whole samples";
     EXPECT_FALSE(frame->has(FrameFlag::kLimited));
     EXPECT_NEAR(frame->spanSeconds, c.span.seconds, 1e-6);
@@ -661,7 +657,7 @@ TEST(FrozenTrigger, StaysAtTheMarkerWhenTheSpanShortens)
         SCOPED_TRACE(rateName(rate));
         Session session(rate, 1);
         session.join({.frequency = 1100.0, .amplitude = 0.5, .offset = 0.0});
-        configure(session.own(), DisplayMode::kSingle, TimeBase::kTrigger);
+        configure(session.own(), Display::kSingle, TimeBase::kTrigger);
         session.own().settings().set(SettingId::kTriggerMode,
                                      static_cast<double>(protocol::TriggerMode::kNormal));
         session.own().settings().set(SettingId::kTriggerSpan, 0.02);
@@ -695,10 +691,10 @@ TEST(FrozenTrigger, StaysAtTheMarkerWhenTheSpanShortens)
 }
 
 // A mono track triggers at the level set, in every mode: Single triggers on its one channel and
-// Multi and Compare on its Mid, which for a mono track is that channel, not half of it. A 0.5 tone
+// Multi on its Mid, which for a mono track is that channel, not half of it. A 0.5 tone
 // triggered at 0.3 (above half its peak) in Normal mode is triggered, and crosses 0.3 rising at
 // the trigger marker. At the lowest and highest rates.
-class MonoTrigger : public ::testing::TestWithParam<DisplayMode>
+class MonoTrigger : public ::testing::TestWithParam<Display>
 {
 };
 
@@ -737,7 +733,7 @@ TEST_P(MonoTrigger, TriggersAtTheLevelSet)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, MonoTrigger, ::testing::ValuesIn(everyMode()),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                         [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
 
@@ -746,13 +742,13 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, MonoTrigger, ::testing::ValuesIn(everyMode()
 // the 10 ms span chosen after freezing at 20 ms no longer shows, reads at its quiet level. In Free,
 // the shorter span keeps the right edge instead, and reads the loud newest part (200 ms to 100 ms
 // there, as Free starts at 100 ms). In every mode, at the lowest and highest rates.
-class FrozenSecondsShorterSpan : public ::testing::TestWithParam<DisplayMode>
+class FrozenSecondsShorterSpan : public ::testing::TestWithParam<Display>
 {
 };
 
 TEST_P(FrozenSecondsShorterSpan, ReadsThePartShown)
 {
-    const DisplayMode mode = GetParam();
+    const Display mode = GetParam();
     constexpr double kAmplitude = 0.1;
     constexpr double kPlayed = 2.0;
     for (const auto [rate, free] :
@@ -790,7 +786,7 @@ TEST_P(FrozenSecondsShorterSpan, ReadsThePartShown)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSecondsShorterSpan, ::testing::ValuesIn(everyMode()),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                         [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
 
@@ -798,7 +794,7 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSecondsShorterSpan, ::testing::ValuesI
 // inactive) leaves every track's capture sized for the old rate: at 384 kHz after 192 kHz it keeps
 // 2.4 s. A 4 s span shows all that is kept, live and frozen, and says it is limited, in every
 // display mode.
-class RateChangedWhileProcessing : public ::testing::TestWithParam<DisplayMode>
+class RateChangedWhileProcessing : public ::testing::TestWithParam<Display>
 {
 };
 
@@ -834,7 +830,7 @@ TEST_P(RateChangedWhileProcessing, ShowsWhatTheCaptureKeepsOfALongerSpan)
     frame = session.produce();
     ASSERT_TRUE(frame) << "no frozen frame";
     EXPECT_TRUE(frame->has(FrameFlag::kLimited));
-    // Most of what is held, every lane drawn whole: Multi and Compare keep some of it back for
+    // Most of what is held, every lane drawn whole: Multi keeps some of it back for
     // the offset between tracks.
     EXPECT_LE(frame->visibleSamples, kept + kColumns);
     EXPECT_GT(frame->visibleSamples, kept / 2.0);
@@ -845,14 +841,14 @@ TEST_P(RateChangedWhileProcessing, ShowsWhatTheCaptureKeepsOfALongerSpan)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, RateChangedWhileProcessing, ::testing::ValuesIn(everyMode()),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                         [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
 
 // A freeze holds less than a longer span when it comes before a whole span of audio has
 // arrived, and holds all of it when the host prepares again at a lower rate afterwards: in every
 // display mode, the frozen frame shows what is held, every lane whole, limited only in the first.
-class FrozenSpans : public ::testing::TestWithParam<DisplayMode>
+class FrozenSpans : public ::testing::TestWithParam<Display>
 {
 };
 
@@ -898,7 +894,7 @@ TEST_P(FrozenSpans, StaysWholeWhenTheHostLowersTheRate)
 }
 
 // At a rate that is not a whole number, the longest span's length has a fraction that holds round
-// away; with the margin Multi and Compare keep for other tracks' lanes, a whole freeze is still
+// away; with the margin Multi keeps for other tracks' lanes, a whole freeze is still
 // whole, and not limited. At rates just under 192 and 384 kHz, where that margin is all the
 // capture spares beyond the span.
 TEST_P(FrozenSpans, DoesNotLimitAWholeFreezeAtARateThatIsNotAWholeNumber)
@@ -921,7 +917,7 @@ TEST_P(FrozenSpans, DoesNotLimitAWholeFreezeAtARateThatIsNotAWholeNumber)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSpans, ::testing::ValuesIn(everyMode()),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                         [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
 
@@ -985,13 +981,13 @@ INSTANTIATE_TEST_SUITE_P(EveryRate, FrozenPan, ::testing::ValuesIn(spanCases()),
 // into a roll, from one second to the longest. The frame is whole,
 // and nothing reads past what it allocated (the Debug build's assert and the AddressSanitizer build
 // stop it if it does). In every mode, at the lowest and highest rates.
-class LongerSpan : public ::testing::TestWithParam<DisplayMode>
+class LongerSpan : public ::testing::TestWithParam<Display>
 {
 };
 
 TEST_P(LongerSpan, ReadsMoreOfEveryTrackSafely)
 {
-    const DisplayMode mode = GetParam();
+    const Display mode = GetParam();
     const auto longest = static_cast<double>(setting(SettingId::kFreeSpan).maximum);
     const std::uint32_t midAndSide = (1U << static_cast<unsigned>(protocol::ChannelView::kMid)) |
                                      (1U << static_cast<unsigned>(protocol::ChannelView::kSide));
@@ -1035,7 +1031,7 @@ TEST_P(LongerSpan, ReadsMoreOfEveryTrackSafely)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, LongerSpan, ::testing::ValuesIn(everyMode()),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                         [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
 
@@ -1045,7 +1041,7 @@ struct RateChange
 {
     double from = 48000.0;
     double to = 384000.0;
-    DisplayMode mode = DisplayMode::kSingle;
+    Display mode = Display::kSingle;
 };
 
 std::string nameOf(const RateChange& c)
@@ -1066,7 +1062,7 @@ std::vector<RateChange> rateChanges()
     for (const auto [from, to] :
          {std::pair{kSampleRates.front(), kSampleRates.back()},
           std::pair{kSampleRates.back(), kSampleRates.front()}, std::pair{48000.0, 192000.0}}) {
-        for (const DisplayMode mode : everyMode()) {
+        for (const Display mode : everyMode()) {
             changes.push_back({.from = from, .to = to, .mode = mode});
         }
     }
@@ -1129,7 +1125,7 @@ INSTANTIATE_TEST_SUITE_P(Changes, RateChanges, ::testing::ValuesIn(rateChanges()
 struct ModeCase
 {
     double rate = 48000.0;
-    DisplayMode mode = DisplayMode::kSingle;
+    Display mode = Display::kSingle;
     int channels = 2;
     TimeBase timeBase = TimeBase::kBeats;
 };
@@ -1156,7 +1152,7 @@ std::vector<ModeCase> beatCases()
 {
     std::vector<ModeCase> cases;
     for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
-        for (const DisplayMode mode : everyMode()) {
+        for (const Display mode : everyMode()) {
             cases.push_back({.rate = kSampleRates.at(rate),
                              .mode = mode,
                              .channels = rate % 2 == 0 ? 2 : 1,
@@ -1198,9 +1194,8 @@ TEST_P(FrozenShorterSpan, ReadsThePartShown)
     const auto frame = session.produce();
     ASSERT_TRUE(frame) << "no frame at the shorter span";
     ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
-    // Single measures L, the first view drawn; Multi and Compare this track's Mid, of L and half L.
-    const double quiet =
-        0.25 * kAmplitude * (c.channels == 2 && c.mode != DisplayMode::kSingle ? 0.75 : 1.0);
+    // Single measures L, the first view drawn; Multi this track's Mid, of L and half L.
+    const double quiet = 0.25 * kAmplitude * (c.channels == 2 && isMulti(c.mode) ? 0.75 : 1.0);
     EXPECT_NEAR(frame->peak, quiet, 0.02 * quiet) << "the quiet half's peak, not the bar's";
     EXPECT_NEAR(frame->rms, quiet / std::numbers::sqrt2, 0.02 * quiet);
     EXPECT_NEAR(frame->frequency, 700.0, 7.0) << "the quiet half's note, not the bar's";
@@ -1395,7 +1390,7 @@ std::vector<ModeCase> zoomCases()
     std::vector<ModeCase> cases;
     for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
         for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
-            for (const DisplayMode mode : everyMode()) {
+            for (const Display mode : everyMode()) {
                 cases.push_back({.rate = rate,
                                  .mode = mode,
                                  .channels = rate == kSampleRates.front() ? 2 : 1,
@@ -1410,7 +1405,7 @@ std::vector<ModeCase> zoomCases()
 std::vector<ModeCase> zoomedCompareCases()
 {
     std::vector<ModeCase> cases = zoomCases();
-    std::erase_if(cases, [](const ModeCase& c) { return c.mode != DisplayMode::kCompare; });
+    std::erase_if(cases, [](const ModeCase& c) { return c.mode != Display::kCompare; });
     return cases;
 }
 
@@ -1487,13 +1482,13 @@ INSTANTIATE_TEST_SUITE_P(EveryRate, BeatGrid, ::testing::ValuesIn(beatCases()), 
 // says so, which the page shows as "Span limited", live and frozen; the same span at 48 kHz fits
 // and does not. Either way the frame claims nothing else: Compare only in Compare, never frozen
 // while live.
-class LimitedSweep : public ::testing::TestWithParam<DisplayMode>
+class LimitedSweep : public ::testing::TestWithParam<Display>
 {
 };
 
 TEST_P(LimitedSweep, SaysWhenTheSpanIsLimited)
 {
-    const DisplayMode mode = GetParam();
+    const Display mode = GetParam();
     const auto sixteenBars = static_cast<std::size_t>(BeatSpan::kSixteenBars);
     ASSERT_GT(beatSpanSamples(kSampleRates.back(), 120.0, sixteenBars), kMaxSweepSamples)
         << "no rate goes over the sweep limit: choose a longer span or a slower tempo";
@@ -1511,7 +1506,7 @@ TEST_P(LimitedSweep, SaysWhenTheSpanIsLimited)
         const auto frame = session.produce();
         ASSERT_TRUE(frame) << "no frame";
         EXPECT_EQ(frame->has(FrameFlag::kLimited), limited);
-        EXPECT_EQ(frame->has(FrameFlag::kCompared), mode == DisplayMode::kCompare);
+        EXPECT_EQ(frame->has(FrameFlag::kCompared), mode == Display::kCompare);
         EXPECT_FALSE(frame->has(FrameFlag::kFrozen));
         EXPECT_TRUE(frame->has(FrameFlag::kSynced));
         EXPECT_LE(frame->visibleSamples, static_cast<float>(kMaxSweepSamples));
@@ -1530,7 +1525,7 @@ TEST_P(LimitedSweep, SaysWhenTheSpanIsLimited)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, LimitedSweep, ::testing::ValuesIn(everyMode()),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                         [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
 
@@ -1555,7 +1550,7 @@ std::vector<ModeCase> heldBeatCases()
 {
     std::vector<ModeCase> cases;
     for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
-        for (const DisplayMode mode : everyMode()) {
+        for (const Display mode : everyMode()) {
             cases.push_back({.rate = rate,
                              .mode = mode,
                              .channels = rate == kSampleRates.front() ? 2 : 1,
@@ -1787,14 +1782,14 @@ INSTANTIATE_TEST_SUITE_P(Changes, BeatRateChanges, ::testing::ValuesIn(rateChang
 // filling in, and the sweep is as it was drawn back at its span, with all the audio it had beyond
 // what the freeze holds. At 120 BPM, 16 bars is 32 s, of which 25 s was drawn, more than the
 // 19.1 s held at 48 kHz.
-class FrozenSweepFillingIn : public ::testing::TestWithParam<DisplayMode>
+class FrozenSweepFillingIn : public ::testing::TestWithParam<Display>
 {
 };
 
 TEST_P(FrozenSweepFillingIn, IsAsItWasBackFromAShorterSpan)
 {
     constexpr double kRate = 48000.0;
-    const DisplayMode mode = GetParam();
+    const Display mode = GetParam();
     Session session(kRate, 2);
     session.join({.frequency = 1000.0}, kHeldTempo);
     session.join({.frequency = 1500.0}, kHeldTempo);
@@ -1819,10 +1814,8 @@ TEST_P(FrozenSweepFillingIn, IsAsItWasBackFromAShorterSpan)
     EXPECT_TRUE(sameValues(back->data, drawn->data)) << "the sweep as it was drawn";
 }
 
-INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSweepFillingIn,
-                         ::testing::Values(DisplayMode::kSingle, DisplayMode::kMulti,
-                                           DisplayMode::kCompare),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+INSTANTIATE_TEST_SUITE_P(EveryMode, FrozenSweepFillingIn, ::testing::ValuesIn(everyDisplay()),
+                         [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
 
@@ -1928,7 +1921,7 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenPlayhead, ::testing::ValuesIn(heldBeat
 // cropped from the whole lanes, which keep all they drew, and rebuilt from the held audio only for
 // the lane that is filling in. At 90 BPM, 16 bars is 42.7 s and 8 bars 21.3 s, longer than the
 // 19.1 s held at 48 kHz.
-class MixedFrozenLanes : public ::testing::TestWithParam<DisplayMode>
+class MixedFrozenLanes : public ::testing::TestWithParam<Display>
 {
 };
 
@@ -1936,7 +1929,7 @@ TEST_P(MixedFrozenLanes, KeepsWholeLanesWholeBesideALaneFillingIn)
 {
     constexpr double kRate = 48000.0;
     constexpr double kTempo = 90.0;
-    const DisplayMode mode = GetParam();
+    const Display mode = GetParam();
     Session session(kRate, 2);
     session.join({.frequency = 1000.0}, kTempo);
     session.join({.frequency = 1500.0}, kTempo);
@@ -1963,7 +1956,7 @@ TEST_P(MixedFrozenLanes, KeepsWholeLanesWholeBesideALaneFillingIn)
     ASSERT_EQ(tracesIn(*frame), expectedTraces(mode, 2, 3));
     // The whole lanes, and in Compare the sum of this track and the first other one.
     std::vector<std::size_t> whole{0, 1};
-    if (mode == DisplayMode::kCompare) {
+    if (mode == Display::kCompare) {
         whole.push_back(3);
     }
     for (const std::size_t index : whole) {
@@ -1986,10 +1979,10 @@ TEST_P(MixedFrozenLanes, KeepsWholeLanesWholeBesideALaneFillingIn)
 }
 
 INSTANTIATE_TEST_SUITE_P(MultiTrack, MixedFrozenLanes,
-                         ::testing::Values(DisplayMode::kMulti, DisplayMode::kCompare),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
-                             return info.param == DisplayMode::kMulti ? std::string("Multi")
-                                                                      : std::string("Compare");
+                         ::testing::Values(Display::kMulti, Display::kCompare),
+                         [](const ::testing::TestParamInfo<Display>& info) {
+                             return info.param == Display::kMulti ? std::string("Multi")
+                                                                  : std::string("Compare");
                          });
 
 // --- Lane lengths around the sweep tolerance ------------------------------------------------
@@ -2031,7 +2024,7 @@ struct LengthCase
     double rate = 48000.0;
     std::uint64_t length = 0; // The own track's sweep, in samples; 0 for a sixteenth at 120 BPM.
     bool within = true;       // The other track's sweep: at the tolerance, or one sample beyond.
-    DisplayMode mode = DisplayMode::kMulti;
+    Display mode = Display::kMulti;
 };
 
 std::uint64_t ownLength(const LengthCase& c)
@@ -2066,7 +2059,7 @@ std::vector<LengthCase> lengthCases()
     std::vector<LengthCase> cases;
     for (const double rate : kSampleRates) {
         for (const bool within : {true, false}) {
-            for (const DisplayMode mode : {DisplayMode::kMulti, DisplayMode::kCompare}) {
+            for (const Display mode : {Display::kMulti, Display::kCompare}) {
                 cases.push_back({.rate = rate, .within = within, .mode = mode});
             }
         }
@@ -2187,7 +2180,7 @@ TEST_P(MatchReach, FindsAnOffsetUpToTheReachOnly)
     Session session(rate, 2);
     session.join({.kind = Signal::Kind::kNoise, .seed = 7});
     session.join({.kind = Signal::Kind::kNoise, .seed = 7, .delay = delay});
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     // A span of ten times the reach: the match is searched over the visible span, so even a track
     // offset by the whole reach overlaps nine tenths of it.
     ASSERT_TRUE(
@@ -2219,7 +2212,7 @@ INSTANTIATE_TEST_SUITE_P(EveryRate, MatchReach, ::testing::ValuesIn(reachCases()
 
 // --- Readouts at the analysis gate, and no value as NaN -------------------------------------
 
-std::vector<ModeCase> timeBaseCases(DisplayMode mode)
+std::vector<ModeCase> timeBaseCases(Display mode)
 {
     std::vector<ModeCase> cases;
     for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
@@ -2238,9 +2231,7 @@ std::vector<ModeCase> timeBaseCases(DisplayMode mode)
 std::optional<DecodedFrame> playForReadouts(Session& session, TimeBase timeBase,
                                             unsigned views = 0b0011)
 {
-    configure(session.own(),
-              session.own().settings().get().enumValue<DisplayMode>(SettingId::kDisplayMode),
-              timeBase);
+    configure(session.own(), displayOf(session.own().settings().get()), timeBase);
     session.own().settings().set(SettingId::kChannelViews, static_cast<double>(views));
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
     session.own().settings().set(SettingId::kTriggerSpan, 0.05);
@@ -2259,7 +2250,7 @@ TEST(ChannelViewsInBeats, ShowAHiddenViewAsItIsNow)
         SCOPED_TRACE(rateName(rate));
         Session session(rate, 2);
         session.join({.kind = Signal::Kind::kNoise, .seed = 7});
-        configure(session.own(), DisplayMode::kSingle, TimeBase::kBeats);
+        configure(session.own(), Display::kSingle, TimeBase::kBeats);
         session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
         const auto side = 1U << static_cast<unsigned>(protocol::ChannelView::kSide);
         session.own().settings().set(SettingId::kChannelViews, static_cast<double>(0b0011U | side));
@@ -2360,7 +2351,7 @@ TEST_P(ReadoutChannel, IsTheSourceWhenDrawn)
         others != 0 ? static_cast<protocol::ChannelView>(std::countr_zero(others)) : expectedView;
     session.own().settings().set(SettingId::kReadoutSource, static_cast<double>(c.source));
     session.own().settings().set(SettingId::kTriggerSource, static_cast<double>(triggerSource));
-    configure(session.own(), DisplayMode::kSingle, c.timeBase);
+    configure(session.own(), Display::kSingle, c.timeBase);
     session.own().settings().set(SettingId::kChannelViews, static_cast<double>(drawnViews(c)));
     std::optional<DecodedFrame> frame = playForReadouts(session, c.timeBase, drawnViews(c));
     ASSERT_TRUE(frame) << "no frame";
@@ -2427,7 +2418,7 @@ TEST_P(ReadoutChannelCount, FollowsATrackTurnedMono)
     session.join({.frequency = 1000.0, .amplitude = kAmplitude, .offset = 0.0});
     session.own().settings().set(SettingId::kReadoutSource,
                                  static_cast<double>(protocol::ChannelView::kRight));
-    configure(session.own(), DisplayMode::kSingle, c.timeBase);
+    configure(session.own(), Display::kSingle, c.timeBase);
     auto frame = playForReadouts(session, c.timeBase);
     ASSERT_TRUE(frame) << "no frame";
     ASSERT_EQ(frame->readoutView, protocol::ChannelView::kRight);
@@ -2507,7 +2498,7 @@ TEST_P(TriggerChannel, IsTheSourceWhenDrawn)
                   .amplitude = kAmplitude,
                   .offset = 0.0,
                   .rightPhase = std::numbers::pi / 2.0});
-    configure(session.own(), DisplayMode::kSingle, TimeBase::kTrigger);
+    configure(session.own(), Display::kSingle, TimeBase::kTrigger);
     session.own().settings().set(SettingId::kChannelViews, static_cast<double>(c.drawn));
     session.own().settings().set(SettingId::kTriggerSource, static_cast<double>(c.source));
     session.own().settings().set(SettingId::kReadoutSource,
@@ -2607,7 +2598,7 @@ TEST_P(ReadoutSwitch, MeasuresTheAudioNowInTheSpan)
         session.join({.frequency = 1000.0, .amplitude = kLoud, .offset = 0.0});
         session.own().settings().set(SettingId::kReadoutSource,
                                      static_cast<double>(protocol::ChannelView::kLeft));
-        configure(session.own(), DisplayMode::kSingle, c.timeBase);
+        configure(session.own(), Display::kSingle, c.timeBase);
         auto frame = playForReadouts(session, c.timeBase, kLeftAndMid);
         ASSERT_TRUE(frame) << "no frame";
         ASSERT_NEAR(frame->peak, kLoud, 0.01 * kLoud) << "L measured";
@@ -2673,7 +2664,7 @@ TEST_P(TriggerChannelChange, FollowsTheViewsAndTheTrack)
                   .amplitude = kAmplitude,
                   .offset = 0.0,
                   .rightPhase = std::numbers::pi / 2.0});
-    configure(session.own(), DisplayMode::kSingle, c.timeBase);
+    configure(session.own(), Display::kSingle, c.timeBase);
     session.own().settings().set(SettingId::kTriggerSource,
                                  static_cast<double>(protocol::ChannelView::kRight));
     session.own().settings().set(SettingId::kTriggerSpan, 0.005);
@@ -2745,7 +2736,7 @@ TEST_P(MonoLanes, ShowTheTrackAtItsLevel)
             frame = session.produce();
         }
         ASSERT_TRUE(frame) << "no frame";
-        ASSERT_EQ(frame->laneCount > 0, c.mode != DisplayMode::kSingle);
+        ASSERT_EQ(frame->laneCount > 0, isMulti(c.mode));
         const std::span<const float> own = trace(*frame, 0);
         const float loudest = std::ranges::max(own, {}, [](float v) { return std::abs(v); });
         EXPECT_NEAR(std::abs(loudest), kAmplitude, 0.02 * kAmplitude) << "this track's trace";
@@ -2758,7 +2749,7 @@ TEST_P(MonoLanes, ShowTheTrackAtItsLevel)
 std::vector<ModeCase> monoLaneCases()
 {
     std::vector<ModeCase> cases;
-    for (const DisplayMode mode : everyMode()) {
+    for (const Display mode : everyMode()) {
         for (const ModeCase& c : timeBaseCases(mode)) {
             cases.push_back({.rate = c.rate, .mode = mode, .channels = 1, .timeBase = c.timeBase});
         }
@@ -2781,11 +2772,11 @@ TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
         // An RMS level aboveGate dB from the gate, as the readout view measures it: in Single L,
         // the first view drawn; in Multi and Compare the Mid of L and half of L; on a mono track
         // its one channel.
-        const double viewGain = c.channels == 2 && c.mode != DisplayMode::kSingle ? 0.75 : 1.0;
+        const double viewGain = c.channels == 2 && isMulti(c.mode) ? 0.75 : 1.0;
         const double rms = std::pow(10.0, (protocol::kAnalysisGateDbfs + aboveGate) / 20.0);
         const double amplitude = rms * std::numbers::sqrt2 / viewGain;
         session.join({.frequency = 1000.0, .amplitude = amplitude, .offset = 0.0});
-        session.own().settings().set(SettingId::kDisplayMode, static_cast<double>(c.mode));
+        show(session.own().settings(), c.mode);
         session.own().settings().set(SettingId::kTriggerSource,
                                      static_cast<double>(protocol::ChannelView::kMid));
         const auto frame = playForReadouts(session, c.timeBase);
@@ -2805,7 +2796,7 @@ TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
 std::vector<ModeCase> gateCases()
 {
     std::vector<ModeCase> cases;
-    for (const DisplayMode mode : everyMode()) {
+    for (const Display mode : everyMode()) {
         const std::vector<ModeCase> modeCases = timeBaseCases(mode);
         cases.insert(cases.end(), modeCases.begin(), modeCases.end());
     }
@@ -2849,7 +2840,7 @@ std::vector<BrokenCase> brokenCases()
     std::vector<BrokenCase> cases;
     std::size_t index = 0;
     for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
-        for (const DisplayMode mode : everyMode()) {
+        for (const Display mode : everyMode()) {
             for (const bool infinite : {false, true}) {
                 for (std::size_t base = 0; base < protocol::kTimeBaseCount; ++base) {
                     const auto timeBase = static_cast<TimeBase>(base);
@@ -2899,13 +2890,14 @@ TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
     EXPECT_EQ(frame->invalidSamples, static_cast<std::uint32_t>(std::lround(span * 10.0)))
         << "one every 100 ms";
     switch (c.mode.mode) {
-    case DisplayMode::kSingle:
+    case Display::kSingle:
+    case Display::kSingleCompareOn: // Shows Single.
         EXPECT_EQ(frame->invalidLanes, 1U) << "no lanes: bit 0 for the traces";
         break;
-    case DisplayMode::kMulti:
+    case Display::kMulti:
         EXPECT_EQ(frame->invalidLanes, 0b01U) << "this track's lane only";
         break;
-    case DisplayMode::kCompare:
+    case Display::kCompare:
         EXPECT_EQ(frame->invalidLanes, 0b101U) << "this track's lane and the sum's";
         break;
     }
@@ -2978,7 +2970,7 @@ std::vector<BrokenCase> singleStereoCases()
 {
     std::vector<BrokenCase> cases;
     for (BrokenCase c : brokenCases()) {
-        if (c.mode.mode == DisplayMode::kSingle) {
+        if (!isMulti(c.mode.mode)) {
             c.mode.channels = 2;
             cases.push_back(c);
         }
@@ -3024,7 +3016,7 @@ std::vector<BrokenCase> laneCases()
 {
     std::vector<BrokenCase> cases;
     std::ranges::copy_if(brokenCases(), std::back_inserter(cases),
-                         [](const BrokenCase& c) { return c.mode.mode != DisplayMode::kSingle; });
+                         [](const BrokenCase& c) { return isMulti(c.mode.mode); });
     return cases;
 }
 
@@ -3041,13 +3033,13 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenOtherTrack, ::testing::ValuesIn(laneCa
 // frozen, one three quarters into a 200 ms span is named in the views that show it, not in those on
 // either side. In Compare, a compared track holding one names the sum it is part of, though this
 // track holds none. In every mode, at the lowest and highest rates.
-class InvalidOnScreen : public ::testing::TestWithParam<DisplayMode>
+class InvalidOnScreen : public ::testing::TestWithParam<Display>
 {
 };
 
 TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
 {
-    const DisplayMode mode = GetParam();
+    const Display mode = GetParam();
     for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
         SCOPED_TRACE(rateName(rate));
         {
@@ -3136,7 +3128,7 @@ TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
                 EXPECT_EQ((frame->invalidLanes & 1U) != 0, named) << "this track";
             }
         }
-        if (mode == DisplayMode::kCompare) {
+        if (mode == Display::kCompare) {
             for (std::size_t base = 0; base < protocol::kTimeBaseCount; ++base) {
                 const auto timeBase = static_cast<TimeBase>(base);
                 SCOPED_TRACE("sum, " + timeBaseName(timeBase));
@@ -3161,7 +3153,7 @@ TEST_P(InvalidOnScreen, NamesTheLanesWhosePartShownHoldsOne)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryMode, InvalidOnScreen, ::testing::ValuesIn(everyMode()),
-                         [](const ::testing::TestParamInfo<DisplayMode>& info) {
+                         [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
 
@@ -3197,7 +3189,7 @@ TEST_P(AllBroken, HasNoReadouts)
     const auto block = static_cast<std::uint32_t>(std::lround(kStatsBlockSeconds * rate));
     EXPECT_GE(frame->invalidSamples, spanSamples);
     EXPECT_LE(frame->invalidSamples, spanSamples + 2 * block);
-    if (c.mode.mode == DisplayMode::kCompare) {
+    if (c.mode.mode == Display::kCompare) {
         // The sum is never finite, so it is not measured, and neither is the other track there.
         EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
             << "sum gain " << session.field(FrameHeader::kSumGainOffset);
@@ -3225,8 +3217,7 @@ TEST_P(BrokenCopy, SumsAsACopyAroundThem)
     Session session(c.rate, c.channels);
     session.join({.kind = Signal::Kind::kNoise, .brokenEvery = 2});
     session.join({.kind = Signal::Kind::kNoise});
-    session.own().settings().set(SettingId::kDisplayMode,
-                                 static_cast<double>(DisplayMode::kCompare));
+    show(session.own().settings(), Display::kCompare);
     auto frame = playForReadouts(session, c.timeBase);
     for (const bool frozen : {false, true}) {
         SCOPED_TRACE(frozen ? "frozen" : "live");
@@ -3242,7 +3233,7 @@ TEST_P(BrokenCopy, SumsAsACopyAroundThem)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, BrokenCopy,
-                         ::testing::ValuesIn(timeBaseCases(DisplayMode::kCompare)), modeTestName);
+                         ::testing::ValuesIn(timeBaseCases(Display::kCompare)), modeTestName);
 
 // Each compared track's match describes the audio on screen, frozen or live: it is searched again
 // when the display freezes, even with no audio after it (a stopped transport), and when the
@@ -3260,7 +3251,7 @@ protected:
         session->join({.kind = Signal::Kind::kNoise, .startsAt = start});
         session->join({.kind = Signal::Kind::kNoise});
         session->join({.kind = Signal::Kind::kNoise, .amplitude = -0.25});
-        configure(session->own(), DisplayMode::kCompare, c.timeBase);
+        configure(session->own(), Display::kCompare, c.timeBase);
         setSpan(session->own(), c.timeBase, 0.2);
         session->own().settings().set(SettingId::kBeatSpan,
                                       static_cast<double>(BeatSpan::kOneBeat));
@@ -3391,7 +3382,7 @@ TEST_P(FrozenMatch, FollowsTheViewWithTheTransportStopped)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, FrozenMatch,
-                         ::testing::ValuesIn(timeBaseCases(DisplayMode::kCompare)), modeTestName);
+                         ::testing::ValuesIn(timeBaseCases(Display::kCompare)), modeTestName);
 
 class NoDataIsNaN : public ::testing::TestWithParam<ModeCase>
 {
@@ -3405,8 +3396,7 @@ TEST_P(NoDataIsNaN, ReportsNoMatchWithASilentTrack)
     Session session(c.rate, c.channels);
     session.join({.kind = Signal::Kind::kNoise});
     session.join({.kind = Signal::Kind::kSilence});
-    session.own().settings().set(SettingId::kDisplayMode,
-                                 static_cast<double>(DisplayMode::kCompare));
+    show(session.own().settings(), Display::kCompare);
     auto frame = playForReadouts(session, c.timeBase);
     for (const bool frozen : {false, true}) {
         SCOPED_TRACE(frozen ? "frozen" : "live");
@@ -3430,7 +3420,7 @@ TEST_P(NoDataIsNaN, ReportsNoMatchWithASilentTrack)
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, NoDataIsNaN,
-                         ::testing::ValuesIn(timeBaseCases(DisplayMode::kCompare)), modeTestName);
+                         ::testing::ValuesIn(timeBaseCases(Display::kCompare)), modeTestName);
 
 // --- A delayed copy, fixed --------------------------------------------------------------------
 
@@ -3469,7 +3459,7 @@ void PrintTo(const DelayCase& c, std::ostream* out)
 std::vector<DelayCase> delayCases()
 {
     std::vector<DelayCase> cases;
-    for (const ModeCase& mode : timeBaseCases(DisplayMode::kCompare)) {
+    for (const ModeCase& mode : timeBaseCases(Display::kCompare)) {
         const std::int64_t reach = std::lround(protocol::kMatchReachSeconds * mode.rate);
         cases.push_back({.mode = mode, .name = "OneSample", .delay = 1});
         cases.push_back({.mode = mode, .name = "UnderTheReach", .delay = reach - 1});
@@ -3502,7 +3492,7 @@ std::vector<ModeCase> edgeCompareCases()
     for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
         for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
             cases.push_back({.rate = rate,
-                             .mode = DisplayMode::kCompare,
+                             .mode = Display::kCompare,
                              .channels = rate == kSampleRates.front() ? 2 : 1,
                              .timeBase = static_cast<TimeBase>(timeBase)});
         }
@@ -3526,8 +3516,7 @@ TEST_P(FrozenComparison, MeasuresTheTracksNowChecked)
     session.join({.kind = Signal::Kind::kNoise});
     session.join({.kind = Signal::Kind::kNoise});
     session.join({.kind = Signal::Kind::kNoise, .amplitude = -0.25});
-    session.own().settings().set(SettingId::kDisplayMode,
-                                 static_cast<double>(DisplayMode::kCompare));
+    show(session.own().settings(), Display::kCompare);
     std::vector<std::uint64_t> others;
     for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
         if (member.engine.get() != &session.own()) {
@@ -3581,7 +3570,7 @@ TEST_P(PartlyPresentCopy, SumsWhereBothSound)
         Session session(c.rate, c.channels);
         session.join({.kind = Signal::Kind::kNoise});
         session.join({.kind = Signal::Kind::kNoise, .delay = delay, .endsAt = until});
-        configure(session.own(), DisplayMode::kCompare, c.timeBase);
+        configure(session.own(), Display::kCompare, c.timeBase);
         session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
         setSpan(session.own(), c.timeBase, shown);
         session.play(kPlayed, protocol::kReadoutIntervalSeconds / 2.0);
@@ -3614,8 +3603,7 @@ TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
     Session session(c.mode.rate, c.mode.channels);
     session.join({.kind = Signal::Kind::kNoise});
     session.join({.kind = Signal::Kind::kNoise, .delay = c.delay});
-    session.own().settings().set(SettingId::kDisplayMode,
-                                 static_cast<double>(DisplayMode::kCompare));
+    show(session.own().settings(), Display::kCompare);
     auto frame = playForReadouts(session, c.mode.timeBase);
     // A block at a time, until the playhead is within the delay of the sweep's edge.
     const auto distance = static_cast<float>(std::abs(c.delay));
@@ -3718,7 +3706,7 @@ TEST_P(ZoomedMatch, FindsTheCopyInTheView)
         Session session(c.rate, c.channels);
         session.join({.kind = Signal::Kind::kNoise});
         session.join({.kind = Signal::Kind::kNoise, .delay = kDelay});
-        configure(session.own(), DisplayMode::kCompare, c.timeBase);
+        configure(session.own(), Display::kCompare, c.timeBase);
         setSpan(session.own(), c.timeBase, 0.2);
         session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
         // Zoomed from the start, so that the match shown comes from searches of the zoomed view.
@@ -3746,7 +3734,7 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, ZoomedMatch, ::testing::ValuesIn(zoomedCompa
 // (Single holds the one trace it caught), and in Free at a short and a long span.
 struct IdleCase
 {
-    DisplayMode mode;
+    Display mode;
     TimeBase timeBase;
     protocol::TriggerMode trigger = protocol::TriggerMode::kAuto;
     double span;
@@ -3755,7 +3743,7 @@ struct IdleCase
 std::vector<IdleCase> idleCases()
 {
     std::vector<IdleCase> cases;
-    for (const DisplayMode mode : everyMode()) {
+    for (const Display mode : everyMode()) {
         for (std::size_t trigger = 0; trigger < protocol::kTriggerModeCount; ++trigger) {
             if (static_cast<protocol::TriggerMode>(trigger) == protocol::TriggerMode::kSingle) {
                 continue;
@@ -3813,7 +3801,7 @@ TEST_P(SecondsIdle, DrawsNothingNewWithoutNewAudio)
         EXPECT_FALSE(session.analyzer().produce(bytes)) << "after the zoom, request " << request;
     }
     // A window that ends at the newest audio shows a track processed after this one fill in.
-    if (c.mode != DisplayMode::kSingle && c.timeBase == TimeBase::kFree) {
+    if (isMulti(c.mode) && c.timeBase == TimeBase::kFree) {
         session.lead(1, 480);
         EXPECT_TRUE(session.produce()) << "another track's newest audio, arriving after this one's";
     }
@@ -3827,7 +3815,7 @@ TEST_P(SecondsIdle, DrawsNothingNewWithoutNewAudio)
     session.own().setInputChannels(1);
     EXPECT_TRUE(session.produce()) << "this track turned mono";
     EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
-    if (c.mode != DisplayMode::kSingle) {
+    if (isMulti(c.mode)) {
         other->setInputChannels(1);
         EXPECT_TRUE(session.produce()) << "another track turned mono";
     }
@@ -3879,7 +3867,7 @@ TEST_P(Redraw, DrawsTheFrameAgainForANewPage)
 std::vector<ModeCase> redrawCases()
 {
     std::vector<ModeCase> cases;
-    for (const DisplayMode mode : everyMode()) {
+    for (const Display mode : everyMode()) {
         for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
             cases.push_back({.rate = 48000.0,
                              .mode = mode,
@@ -3916,7 +3904,7 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     session.own().setInputChannels(1);
     EXPECT_TRUE(session.produce()) << "this track turned mono";
     EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
-    if (c.mode != DisplayMode::kSingle) {
+    if (isMulti(c.mode)) {
         for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
             if (member.engine.get() != &session.own()) {
                 member.engine->setInputChannels(1);
@@ -3927,7 +3915,7 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     }
     // Another rate, whose capture keeps its size: the host changed it without preparing again.
     const double otherRate = c.rate == 44100.0 ? 48000.0 : 44100.0;
-    if (c.timeBase == TimeBase::kTrigger && c.mode == DisplayMode::kSingle && otherRate > c.rate) {
+    if (c.timeBase == TimeBase::kTrigger && !isMulti(c.mode) && otherRate > c.rate) {
         // A triggered window held across a higher rate keeps its start, and its span in samples
         // then reaches past the newest audio: no frame is drawn, and the page keeps the last one
         // until audio arrives. An accepted limit of QS-12 (docs/DESIGN.md, 6.5): only a host
@@ -3940,7 +3928,7 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     EXPECT_EQ(newRate->sampleRate, static_cast<float>(otherRate))
         << "the page times it at the new rate";
     EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
-    if (c.mode != DisplayMode::kSingle) {
+    if (isMulti(c.mode)) {
         for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
             if (member.engine.get() != &session.own()) {
                 member.engine->setSampleRate(otherRate);
@@ -3969,7 +3957,7 @@ std::vector<ModeCase> formatChangeCases()
 {
     std::vector<ModeCase> cases;
     for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
-        for (const DisplayMode mode : everyMode()) {
+        for (const Display mode : everyMode()) {
             for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
                 cases.push_back({.rate = rate,
                                  .mode = mode,
@@ -4157,7 +4145,7 @@ std::vector<ModeCase> laneRateCases()
 {
     std::vector<ModeCase> cases;
     for (const ModeCase& c : formatChangeCases()) {
-        if (c.mode != DisplayMode::kSingle) {
+        if (isMulti(c.mode)) {
             cases.push_back(c);
         }
     }
@@ -4192,12 +4180,12 @@ std::vector<std::uint64_t> othersOf(Session& session)
 std::unique_ptr<Session> workSession(const ModeCase& c)
 {
     auto session = std::make_unique<Session>(c.rate, c.channels);
-    const std::size_t tracks = c.mode == DisplayMode::kSingle ? 1 : 3;
+    const std::size_t tracks = !isMulti(c.mode) ? 1 : 3;
     for (std::size_t track = 0; track < tracks; ++track) {
         session->join({.kind = Signal::Kind::kNoise, .seed = track + 1});
     }
     configure(session->own(), c.mode, c.timeBase);
-    if (c.mode == DisplayMode::kCompare) {
+    if (c.mode == Display::kCompare) {
         session->analyzer().setCompared(othersOf(*session));
     }
     return session;
@@ -4245,7 +4233,7 @@ std::vector<ModeCase> workCases(TimeBase timeBase)
 {
     std::vector<ModeCase> cases;
     for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
-        for (const DisplayMode mode : everyMode()) {
+        for (const Display mode : everyMode()) {
             for (const int channels : {1, 2}) {
                 cases.push_back(
                     {.rate = rate, .mode = mode, .channels = channels, .timeBase = timeBase});
@@ -4330,7 +4318,7 @@ std::vector<ModeCase> everyModeAndTimeBase()
 {
     std::vector<ModeCase> cases;
     for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
-        for (const DisplayMode mode : everyMode()) {
+        for (const Display mode : everyMode()) {
             cases.push_back({.mode = mode, .timeBase = static_cast<TimeBase>(timeBase)});
         }
     }
@@ -4377,7 +4365,7 @@ TEST(CompareSumWork, IsRedoneOverSeveralFramesWhenATrackIsChecked)
     for (std::uint64_t seed = 1; seed <= 3; ++seed) {
         session.join({.kind = Signal::Kind::kNoise, .seed = seed}, kTempo);
     }
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kBeats);
+    configure(session.own(), Display::kCompare, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kSixteenBars));
     const std::vector<std::uint64_t> others = othersOf(session);
     session.analyzer().setCompared({others.front()});
@@ -4443,7 +4431,7 @@ std::vector<ModeCase> compareWorkCases()
     std::vector<ModeCase> cases;
     for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
         for (const ModeCase& c : workCases(static_cast<TimeBase>(timeBase))) {
-            if (c.mode == DisplayMode::kCompare) {
+            if (c.mode == Display::kCompare) {
                 cases.push_back(c);
             }
         }
@@ -4466,7 +4454,7 @@ TEST_P(CompareTrackWork, SumsEachTracksNewAudioOnce)
         for (std::size_t track = 0; track <= tracks; ++track) {
             session.join({.kind = Signal::Kind::kNoise, .seed = track + 1});
         }
-        configure(session.own(), DisplayMode::kCompare, c.timeBase);
+        configure(session.own(), Display::kCompare, c.timeBase);
         session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
         setSpan(session.own(), c.timeBase, 0.5);
         session.analyzer().setCompared(othersOf(session));
@@ -4513,7 +4501,7 @@ TEST_P(MovingMatchWork, RedoesTheSumsWithinOneFramesShare)
     for (std::int64_t track = 0; track < kTracks; ++track) {
         session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = track * 8});
     }
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kBeats);
+    configure(session.own(), Display::kCompare, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
     session.analyzer().setCompared(othersOf(session));
     session.analyzer().setPreviewFix(true);
@@ -4572,7 +4560,7 @@ TEST_P(FirstShiftWork, MeasuresTheShiftedTrackOverFrames)
     Session session(rate, 2);
     session.join({.kind = Signal::Kind::kNoise, .seed = 1}, kFirstShiftTempo);
     session.join({.kind = Signal::Kind::kNoise, .seed = 1}, kFirstShiftTempo);
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kBeats);
+    configure(session.own(), Display::kCompare, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
     session.analyzer().setCompared(othersOf(session));
     session.analyzer().setPreviewFix(true);
@@ -4609,7 +4597,7 @@ TEST_P(MatchWork, SearchesOneComparedTrackPerFrame)
     for (std::uint64_t seed = 1; seed <= 5; ++seed) {
         session.join({.kind = Signal::Kind::kNoise, .seed = seed});
     }
-    configure(session.own(), DisplayMode::kCompare, c.timeBase);
+    configure(session.own(), Display::kCompare, c.timeBase);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
     session.own().settings().set(SettingId::kFreeSpan, 0.5);
     const std::vector<std::uint64_t> others = othersOf(session);
@@ -4638,8 +4626,7 @@ std::vector<ModeCase> compareCases()
     std::vector<ModeCase> cases;
     cases.reserve(protocol::kTimeBaseCount);
     for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
-        cases.push_back(
-            {.mode = DisplayMode::kCompare, .timeBase = static_cast<TimeBase>(timeBase)});
+        cases.push_back({.mode = Display::kCompare, .timeBase = static_cast<TimeBase>(timeBase)});
     }
     return cases;
 }
@@ -4657,7 +4644,7 @@ TEST_P(MatchWork, SpreadsALongSearchOverFrames)
     Session session(kRate, 2);
     session.join({.kind = Signal::Kind::kNoise, .seed = 1});
     session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = 40});
-    configure(session.own(), DisplayMode::kCompare, c.timeBase);
+    configure(session.own(), Display::kCompare, c.timeBase);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kEightBars));
     setSpan(session.own(), c.timeBase, setting(spanSetting(c.timeBase)).maximum);
     session.analyzer().setCompared(othersOf(session));
@@ -4694,7 +4681,7 @@ TEST_P(MatchWork, LeavesAFrozenViewAloneOnceItsMatchesAreFound)
     for (std::int64_t copy = 1; copy <= 8; ++copy) {
         session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = 10 * copy});
     }
-    configure(session.own(), DisplayMode::kCompare, c.timeBase);
+    configure(session.own(), Display::kCompare, c.timeBase);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
     setSpan(session.own(), c.timeBase, setting(spanSetting(c.timeBase)).maximum);
     session.analyzer().setCompared(othersOf(session));
@@ -4739,7 +4726,7 @@ TEST(MatchWork, EndsTheSearchAndGainsOfAViewPannedAway)
         session.join(
             {.kind = Signal::Kind::kNoise, .seed = 3, .delay = 10 * copy, .startsAt = copiesStart});
     }
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, 1.0);
     session.analyzer().setCompared(othersOf(session));
     session.play(2.5);
@@ -4787,7 +4774,7 @@ TEST(MatchWork, FollowsAZoomedRollPannedWithTheTransportStopped)
     session.join({.kind = Signal::Kind::kNoise, .seed = 5, .startsAt = sounds});
     session.join({.kind = Signal::Kind::kNoise, .seed = 5, .startsAt = sounds});
     session.join({.kind = Signal::Kind::kNoise, .seed = 5, .startsAt = sounds});
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, 4.0);
     session.analyzer().setCompared(othersOf(session));
     session.playing = false;
@@ -4832,7 +4819,7 @@ TEST(MatchWork, RefreshesTheOthersWhileATrackCannotBeRead)
     Session session(kRate, 2);
     session.join({.kind = Signal::Kind::kNoise, .seed = 6});
     session.join({.kind = Signal::Kind::kNoise, .seed = 6, .delay = 10});
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, setting(SettingId::kFreeSpan).maximum);
     session.play(5.0, 1.0 / 60.0);
     session.join({.kind = Signal::Kind::kNoise, .seed = 7}); // Holds nothing of the view yet.
@@ -4867,7 +4854,7 @@ TEST_P(MatchWork, BuildsAFrozenFrameOnlyWhenItsWorkEnds)
     for (std::int64_t copy = 1; copy <= 7; ++copy) {
         session.join({.kind = Signal::Kind::kNoise, .seed = 11, .delay = 10 * copy});
     }
-    configure(session.own(), DisplayMode::kCompare, c.timeBase);
+    configure(session.own(), Display::kCompare, c.timeBase);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
     setSpan(session.own(), c.timeBase, setting(spanSetting(c.timeBase)).maximum);
     session.analyzer().setCompared(othersOf(session));
@@ -4920,7 +4907,7 @@ TEST(MatchWork, TriesAFailedReadAgainWhileFrozen)
         for (int copy = 0; copy < copies; ++copy) {
             session.join({.kind = Signal::Kind::kNoise, .seed = 8, .delay = 10});
         }
-        configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+        configure(session.own(), Display::kCompare, TimeBase::kFree);
         session.own().settings().set(SettingId::kFreeSpan, kSpan);
         session.play(5.0, 1.0);
         for (int track = 0; track < late; ++track) { // Holding nothing of the view yet.
@@ -4963,7 +4950,7 @@ TEST(MatchWork, WaitsForAFrozenViewToStopBeingDragged)
     for (std::int64_t copy = 1; copy <= 8; ++copy) {
         session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = 10 * copy});
     }
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, 1.0);
     session.analyzer().setCompared(othersOf(session));
     session.play(5.0, 1.0);
@@ -4998,7 +4985,7 @@ TEST(CompareGainWork, MeasuresALongRollsGainsOverFramesAsAtOnce)
     session.join({.kind = Signal::Kind::kNoise, .seed = 7});
     session.join({.kind = Signal::Kind::kNoise, .seed = 7});
     session.join({.kind = Signal::Kind::kNoise, .seed = 7, .delay = 40});
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
     session.play(span + 0.5); // No frames yet.
@@ -5037,7 +5024,7 @@ TEST(CompareGainWork, ReadsALongerViewThanAnyBefore)
     Session session(kRate, 2);
     session.join({.kind = Signal::Kind::kNoise, .seed = 21});
     session.join({.kind = Signal::Kind::kNoise, .seed = 22});
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, 2.0);
     session.analyzer().setCompared({});
     session.play(5.0, 1.0 / 60.0);
@@ -5057,7 +5044,7 @@ TEST(CompareGainWork, MeasuresAFrozenRollsGainsOnce)
     for (std::uint64_t seed = 1; seed <= 4; ++seed) {
         session.join({.kind = Signal::Kind::kNoise, .seed = seed});
     }
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
     session.analyzer().setCompared(othersOf(session));
@@ -5094,7 +5081,7 @@ TEST(CompareGainWork, KeepsALongRollsGainsWhilePlaying)
     session.join({.kind = Signal::Kind::kNoise, .seed = 7});
     session.join({.kind = Signal::Kind::kNoise, .seed = 7});
     session.join({.kind = Signal::Kind::kNoise, .seed = 7, .delay = 40});
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
     session.play(span + 0.5); // No frames yet.
@@ -5135,7 +5122,7 @@ TEST(CompareGainWork, MeasuresAfreshAfterThePageWasHidden)
     session.join({.kind = Signal::Kind::kNoise, .seed = 7});
     session.join({.kind = Signal::Kind::kNoise, .seed = 7});
     session.join({.kind = Signal::Kind::kNoise, .seed = 7, .delay = 40});
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
     session.play(span + 0.5);
@@ -5192,7 +5179,7 @@ TEST(CompareGainWork, FixesTheGainWithEveryMatchFoundWhileMeasuring)
     for (std::int64_t copy = 1; copy <= 2; ++copy) {
         session.join({.kind = Signal::Kind::kNoise, .seed = 9, .delay = 10 * copy});
     }
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, kSpan);
     // No frame until frozen, so every match is first found while frozen.
     session.play(kSpan + 1.0);
@@ -5222,7 +5209,7 @@ TEST(CompareGainWork, MeasuresAZoomedTriggeredViewsGains)
         for (std::uint64_t seed = 1; seed < 15; ++seed) {
             session.join({.kind = Signal::Kind::kNoise, .seed = seed});
         }
-        configure(session.own(), DisplayMode::kCompare, TimeBase::kTrigger);
+        configure(session.own(), Display::kCompare, TimeBase::kTrigger);
         session.own().settings().set(SettingId::kTriggerMode,
                                      static_cast<double>(protocol::TriggerMode::kNormal));
         session.own().settings().set(SettingId::kTriggerSpan, span);
@@ -5250,7 +5237,7 @@ TEST(CompareGainWork, ShowsNoGainsForOtherTracksUntilMeasured)
     for (std::uint64_t seed = 1; seed <= 8; ++seed) {
         session.join({.kind = Signal::Kind::kNoise, .seed = seed});
     }
-    configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+    configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, setting(SettingId::kFreeSpan).maximum);
     std::vector<std::uint64_t> others = othersOf(session);
     session.analyzer().setCompared(others);
@@ -5283,7 +5270,7 @@ TEST(CompareGainWork, KeepsTheLastGainsOnShowWhileAViewIsMeasured)
         for (std::uint64_t seed = 1; seed <= 8; ++seed) {
             session.join({.kind = Signal::Kind::kNoise, .seed = seed});
         }
-        configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+        configure(session.own(), Display::kCompare, TimeBase::kFree);
         const double span = setting(SettingId::kFreeSpan).maximum;
         session.own().settings().set(SettingId::kFreeSpan, span);
         session.analyzer().setCompared(othersOf(session));
@@ -5314,7 +5301,7 @@ TEST(CompareGainWork, LeavesNothingToRedrawInSingle)
         for (std::uint64_t seed = 1; seed <= 8; ++seed) {
             session.join({.kind = Signal::Kind::kNoise, .seed = seed});
         }
-        configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+        configure(session.own(), Display::kCompare, TimeBase::kFree);
         const double span = setting(SettingId::kFreeSpan).maximum;
         session.own().settings().set(SettingId::kFreeSpan, span);
         session.analyzer().setCompared(othersOf(session));
@@ -5322,8 +5309,7 @@ TEST(CompareGainWork, LeavesNothingToRedrawInSingle)
         session.analyzer().setFrozen(frozen);
         ASSERT_TRUE(session.produce());
         ASSERT_TRUE(session.produce()) << "the gains took a single frame: nothing in progress";
-        session.own().settings().set(SettingId::kDisplayMode,
-                                     static_cast<double>(DisplayMode::kSingle));
+        show(session.own().settings(), Display::kSingle);
         ASSERT_TRUE(session.produce()) << "no frame for the change";
         EXPECT_FALSE(session.produce()) << "Single drew the same frame again";
     }
@@ -5342,7 +5328,7 @@ TEST(CompareGainWork, ReadsARollsTracksOverSeveralFrames)
         for (std::uint64_t seed = 1; seed <= kTracks; ++seed) {
             session.join({.kind = Signal::Kind::kNoise, .seed = seed});
         }
-        configure(session.own(), DisplayMode::kCompare, TimeBase::kFree);
+        configure(session.own(), Display::kCompare, TimeBase::kFree);
         const double span = setting(SettingId::kFreeSpan).maximum;
         session.own().settings().set(SettingId::kFreeSpan, span);
         session.analyzer().setCompared(othersOf(session));

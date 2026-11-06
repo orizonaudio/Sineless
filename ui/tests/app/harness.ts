@@ -418,6 +418,25 @@ export async function press(button: HTMLElement): Promise<void> {
   await userEvent.click(button);
 }
 
+// Turns Compare on or off in Multi's Views popover, opening the popover if it is closed.
+export async function setCompare(on: boolean): Promise<void> {
+  const button = choice("compare", on ? "On" : "Off");
+  await press(button);
+  await expect.element(button).toHaveAttribute("aria-pressed", "true");
+}
+
+// Shows Single, Multi, or Multi with Compare on ("Compare"); Multi alone turns Compare off.
+export async function showDisplay(
+  display: "Single" | "Multi" | "Compare",
+): Promise<void> {
+  await userEvent.click(
+    choice("display-mode", display === "Single" ? "Single" : "Multi"),
+  );
+  if (display !== "Single") {
+    await setCompare(display === "Compare");
+  }
+}
+
 // Presses a toggle button, or releases it, unless it is already so.
 export async function setPressed(
   button: HTMLElement,

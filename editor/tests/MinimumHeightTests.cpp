@@ -1,8 +1,10 @@
-// The editor's minimum height, across every display mode and layout (from the protocol), every
+// The editor's minimum height, across every display mode with Compare off and on, and every layout
+// (from the protocol), every
 // set of views on a mono or stereo track, and one to the most tracks, compared or not: each
 // stacked trace drawn gets at least kMinimumLaneHeight above the chrome, and no more height is
 // asked for than that.
 
+#include "Display.h"
 #include "editor/Editor.h"
 
 #include <algorithm>
@@ -16,13 +18,13 @@
 namespace orizon::editor {
 namespace {
 
-using protocol::DisplayMode;
+using engine::Display;
 using protocol::SettingId;
 using protocol::ViewLayout;
 
 struct Case
 {
-    DisplayMode mode = DisplayMode::kSingle;
+    Display mode = Display::kSingle;
     ViewLayout layout = ViewLayout::kStacked;
     int views = 0b0011; // Asked for.
     int channels = 2;
@@ -33,11 +35,10 @@ struct Case
 std::vector<Case> everyCase()
 {
     std::vector<Case> cases;
-    for (std::size_t mode = 0; mode < protocol::kDisplayModeCount; ++mode) {
+    for (const Display mode : engine::everyDisplay()) {
         for (std::size_t layout = 0; layout < protocol::kViewLayoutCount; ++layout) {
-            const auto base = Case{.mode = static_cast<DisplayMode>(mode),
-                                   .layout = static_cast<ViewLayout>(layout)};
-            if (base.mode == DisplayMode::kSingle) {
+            const auto base = Case{.mode = mode, .layout = static_cast<ViewLayout>(layout)};
+            if (!engine::isMulti(base.mode)) {
                 for (unsigned views = 1; views < (1U << protocol::kChannelViewCount); ++views) {
                     for (const int channels : {1, 2}) {
                         Case c = base;
@@ -67,25 +68,28 @@ std::vector<Case> everyCase()
 // NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
 void PrintTo(const Case& c, std::ostream* out)
 {
-    *out << protocol::kDisplayModeNames.at(static_cast<std::size_t>(c.mode)) << " "
+    *out << engine::displayName(c.mode) << " "
          << protocol::kViewLayoutNames.at(static_cast<std::size_t>(c.layout)) << " views "
          << c.views << " channels " << c.channels << " tracks " << c.tracks
          << (c.compared ? " compared" : "");
 }
 
 // The traces the page draws for a case, as the analyzer draws them: one per view on show (a mono
-// track shows one), one per track, and in Compare the sum lane, which stays even with nothing else
-// checked (see the analyzer test SumsThisTrackAloneWhenNothingElseIsChecked).
+// track shows one, also with the Compare switch on), one per track, and with Compare on the sum
+// lane, which stays even with nothing else checked (see the analyzer test
+// SumsThisTrackAloneWhenNothingElseIsChecked).
 int tracesDrawn(const Case& c)
 {
     switch (c.mode) {
-    case DisplayMode::kSingle:
+    case Display::kSingle:
+    case Display::kSingleCompareOn:
         return c.channels == 1 ? 1 : std::popcount(static_cast<unsigned>(c.views));
-    case DisplayMode::kMulti:
+    case Display::kMulti:
         return c.tracks;
-    default:
+    case Display::kCompare:
         return c.tracks + 1;
     }
+    return 0;
 }
 
 class MinimumHeight : public ::testing::TestWithParam<Case>
@@ -96,7 +100,7 @@ TEST_P(MinimumHeight, GivesEveryStackedTraceItsRoomAndNoMore)
 {
     const Case c = GetParam();
     engine::Settings settings;
-    settings.set(SettingId::kDisplayMode, static_cast<double>(c.mode));
+    engine::show(settings, c.mode);
     settings.set(SettingId::kViewLayout, static_cast<double>(c.layout));
     settings.set(SettingId::kChannelViews, static_cast<double>(c.views));
     engine::LaneSet lanes{.id = 1, .lanes = {}};
