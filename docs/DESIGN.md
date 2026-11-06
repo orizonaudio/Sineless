@@ -102,7 +102,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-9.5 | Sweeps keep receiving audio while the editor's page is hidden, so it is complete when shown again. | |
 | FR-9.6 | Freezing a sweep keeps the image on screen and holds as much audio as the capture can (7/8 of it). Choosing a shorter span while frozen crops it from the image once the image is complete; a longer span is rebuilt from the held audio and, where the held audio does not reach, is drawn in part and flagged ("Partial"). A frozen sweep does not pan. | |
 | FR-10 | View zoom: the displayed frame can be magnified horizontally, to 1/256 of the span (`minimumViewWidth`), and panned, in every mode. Zoom is temporary: it never changes a setting, and it resets when the span, beat span or time base changes. The engine renders the zoomed region at full resolution: the trigger, free-running or sweep window is placed from the whole span, and only the visible part is reduced to screen columns. Peak and RMS still cover the whole span. | `zoom.test.ts`, `AnalyzerTests` |
-| FR-11 | Auto-freeze: when on, the display freezes when the host transport goes from playing to stopped while the editor is open, and resumes when it plays again. A freeze made by the user or by Single mode is never ended by playback; unfreezing by hand while stopped cancels the resume. Turning Auto-freeze off leaves a current freeze in place. When off, the transport does not affect freezing. | `AnalyzerTests` |
+| FR-11 | Auto-freeze: when on, the display freezes when the host transport goes from playing to stopped while the editor is open, and resumes when it plays again. A freeze made by the user or by Single mode is never ended by playback; unfreezing by hand while stopped cancels the resume. Turning Auto-freeze off leaves a current freeze in place. When off, the transport does not affect freezing. On in a new instance; a project saved before Auto-freeze existed (state version 1) opens with it on, as a missing setting takes its default (8.4). | `AnalyzerTests` |
 | FR-12 | Cursors. | `cursors.test.ts`, `snap.test.ts` |
 | FR-12.1 | Time cursors: two vertical lines, A and B, starting at 1/3 and 2/3 of the screen. The readout gives Δt in time and samples, its frequency 1/Δt, with the nearest note and cent offset when 1/Δt is between 20 Hz and 20 kHz, and, in Beats, the distance in beats. They sit at positions in the signal, so they follow zoom and pan. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
 | FR-12.2 | Level cursors: two horizontal lines, 1 and 2, drawn in every lane at a sample value, starting 6 and 12 dB below the top of the screen (−6 and −12 dBFS at the default scale); the readout gives each level in dBFS and the difference in dB. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
@@ -150,7 +150,7 @@ against it and the UI builds its controls from it.
 | Trigger hold-off | 0 … 1 s (stored in seconds, shown in ms) | 0 |
 | Time base | Beats, Free, Trigger | Beats |
 | Beat span | 1/16, 1/8, 1/4, 1/2, 1 and 2 beats; 1, 2, 4, 8 and 16 bars | 1 bar |
-| Auto-freeze | Off, on | Off |
+| Auto-freeze | Off, on | On |
 | Display mode | Single, Multi | Single |
 | Group | A, B, C, D | A |
 | Compare (applies in Multi; kept in Single) | Off, on | Off |

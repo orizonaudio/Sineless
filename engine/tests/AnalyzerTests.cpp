@@ -1577,17 +1577,12 @@ TEST_F(SweepTest, ZoomsIntoTheSweep)
     EXPECT_NEAR(frame->cursor, 0.6f, 1e-6f) << "the cursor stays a fraction of the whole cycle";
 }
 
-// Auto-freeze follows the transport. A frozen sweep sends no new frames by itself, so each check
-// changes the width to force one.
+// Auto-freeze follows the transport, and is on in a new instance: these tests keep the default
+// settings. A frozen sweep sends no new frames by itself, so each check changes the width to force
+// one.
 class AutoFreezeTest : public SweepTest
 {
 protected:
-    void SetUp() override
-    {
-        SweepTest::SetUp();
-        engine.settings().set(SettingId::kAutoFreeze, static_cast<double>(protocol::Toggle::kOn));
-    }
-
     bool frozen()
     {
         columns = columns == 8000 ? 7999 : 8000;
@@ -1612,6 +1607,16 @@ TEST_F(AutoFreezeTest, FreezesOnStopAndResumesOnPlay)
     EXPECT_FALSE(frozen()) << "playing again resumed it";
     play(480);
     EXPECT_FALSE(frozen()) << "and it stays live";
+}
+
+// It acts on the transport stopping, not on its being stopped: an editor opened in a stopped
+// project shows live audio.
+TEST_F(AutoFreezeTest, StaysLiveWhenOpenedWhileStopped)
+{
+    play(9600, false);
+    EXPECT_FALSE(frozen());
+    play(480, false);
+    EXPECT_FALSE(frozen()) << "no stop yet, so no freeze";
 }
 
 TEST_F(AutoFreezeTest, KeepsAFreezeByTheUser)

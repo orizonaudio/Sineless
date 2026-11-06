@@ -25,4 +25,11 @@ describe("a new instance", () => {
       .element(choice("layout", "Stack"))
       .toHaveAttribute("aria-pressed", "true");
   });
+
+  // What was on screen when playback stopped stays to study, without finding the button first.
+  test("freezes when the host stops: Auto-freeze is on", async () => {
+    await expect
+      .element(byId("auto-freeze"))
+      .toHaveAttribute("aria-pressed", "true");
+  });
 });

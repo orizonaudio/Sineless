@@ -126,8 +126,9 @@ export const settings = {
     defaultValue: TimeBase.beats,
   },
   beatSpan: { kind: "enum", values: "BeatSpan", defaultValue: BeatSpan.oneBar },
-  // Freeze when the host transport stops, and resume when it plays again.
-  autoFreeze: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
+  // Freeze when the host transport stops, and resume when it plays again. On in a new instance:
+  // what was on screen when playback stopped is what a user stops to study.
+  autoFreeze: { kind: "enum", values: "Toggle", defaultValue: Toggle.on },
   displayMode: {
     kind: "enum",
     values: "DisplayMode",

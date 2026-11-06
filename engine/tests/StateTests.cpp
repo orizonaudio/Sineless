@@ -126,7 +126,35 @@ TEST(State, LoadsTheVersion1GoldenFile)
               protocol::TimeBase::kTrigger);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kOneBar);
-    EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOff);
+}
+
+// Every golden state, whatever its version.
+constexpr std::array kEveryGoldenStateFile{
+    "state-v1.json",
+    "state-v1-beats.json",
+    "state-v2.json",
+    "state-v2-0.5.json",
+    "state-v2-0.5-new-instance.json",
+    "state-v3.json",
+    "state-v4.json",
+};
+
+// A project saved before Auto-freeze existed opens with it on, as a new instance does (FR-11):
+// a missing setting takes its default, with no migration to keep the old behaviour.
+TEST(State, AStateWithoutAutoFreezeOpensWithItOn)
+{
+    int without = 0;
+    for (const char* file : kEveryGoldenStateFile) {
+        const std::string text = readTestFile(file);
+        if (nlohmann::json::parse(text).at("settings").contains("autoFreeze")) {
+            continue;
+        }
+        ++without;
+        EXPECT_EQ(deserializeState(text).enumValue<protocol::Toggle>(SettingId::kAutoFreeze),
+                  protocol::Toggle::kOn)
+            << file;
+    }
+    EXPECT_GT(without, 0) << "no golden state predates Auto-freeze";
 }
 
 // Version 1 states from 0.1.0 already carry a time base: one saved in Beats reopens in Beats.
@@ -200,7 +228,6 @@ constexpr std::array kVersion2Release05Values{
     GoldenValue{.id = SettingId::kTriggerHoldOff, .value = 0.125},
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kTrigger)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
-    GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
     GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
@@ -213,6 +240,8 @@ constexpr std::array kVersion2Release05Values{
 // stacked since.
 constexpr std::array kVersion2Release05NewInstanceValues{
     GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kOverlaid)},
+    // Off by default then, on since: the one golden that holds it away from today's default.
+    GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOff)},
 };
 
 // What state version 3 saves, in state-v3.json: every setting away from its default, the two spans
@@ -233,7 +262,6 @@ constexpr std::array kVersion3Values{
     GoldenValue{.id = SettingId::kTriggerHoldOff, .value = 0.125},
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
-    GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
     GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
@@ -258,7 +286,6 @@ constexpr std::array kVersion4Values{
     GoldenValue{.id = SettingId::kTriggerHoldOff, .value = 0.125},
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
-    GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
     GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kCompare, .value = asValue(protocol::Toggle::kOn)},
@@ -464,7 +491,7 @@ TEST(State, DefaultsToABeatsSweepOfOneBar)
               protocol::TimeBase::kBeats);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
               protocol::BeatSpan::kOneBar);
-    EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOff);
+    EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze), protocol::Toggle::kOn);
 }
 
 TEST(State, KeepsDefaultsForMissingAndInvalidFieldsOnly)

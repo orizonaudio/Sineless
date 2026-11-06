@@ -49,7 +49,7 @@
     "protocolVersion": 12,
     "sampleRate": 48000.0,
     "settings": {
-      "autoFreeze": "off",
+      "autoFreeze": "on",
       "beatSpan": "oneBar",
       "channelViews": [
         "left",
