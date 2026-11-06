@@ -67,8 +67,8 @@ Grouped by how often someone reaches for it.
 
 **Always visible**
 
-- The screen: traces, grid, level and time labels, playhead in Beats, lane labels in Multi and Compare.
-- Display mode: Single, Multi, Compare.
+- The screen: traces, grid, level and time labels, playhead in Beats, lane labels in Multi.
+- Display mode: Single, Multi.
 - Time base and span: Beats (1/16 beat to 16 bars), Free (100 ms to 4 s) or Trig (0.5 ms to 1 s).
 - Vertical scale: −60 to +6 dBFS at the top of the screen.
 - Freeze and Auto-freeze, and whether the display is frozen.
@@ -81,7 +81,7 @@ Grouped by how often someone reaches for it.
 - Trigger mode: Auto, Normal, Single; Re-arm (Trig only).
 - Cursors: time (A/B) and level (1/2), with their readouts.
 - Hover readout.
-- Group A–D (Multi and Compare).
+- Group A–D and the Compare switch (Multi's Views).
 - Compare: which tracks are checked, match per track (offset, polarity, correlation), summing gain, Preview fix.
 
 **Rarely**
@@ -136,11 +136,11 @@ From 2026-10-24 and 2026-10-25.
 
 ![Default size with the trigger popover open](images/layout-trigger.png)
 
-- **Toolbar, left to right:** mark and wordmark; Single | Multi | Compare; Group (Multi and Compare, a dropdown); Beats | Free | Trig; Span; Scale; Views (Single); Overlay | Stack; Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
+- **Toolbar, left to right:** mark and wordmark; Single | Multi; Views in Multi (a dropdown holding the group and Compare, On | Off, reading "A·Σ" with Σ dimmed while Compare is off); Beats | Free | Trig; Span; Scale; Views (Single); Overlay | Stack; Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
 - **Sizes**, measured on the widest toolbar (Multi with Compare on, group D · Trig with trigger mode Single, so Re-arm shows, and Frozen; Single is 7 px narrower): default **1060 × 580** (the toolbar needs 1046 px with the wordmark since Compare became a switch in Multi's Views); minimum **1030 × 400** (987 px with the mark alone; the status bar needs 1018 px). Between the two, only the wordmark hides.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.
-- **Status bar:** Time, Level, Hover and A4 on the left; what the readouts measure (in Single the channel measured, a button that chooses it on a stereo track, Left on a mono track; "This track" in Multi and Compare, where the readouts measure this track's Mid, DESIGN §1.2.1), then Peak, RMS and Freq in the centre; the state, Help and About on the right. The left group never changes width and the state area has a fixed width, so the readouts never move.
+- **Status bar:** Time, Level, Hover and A4 on the left; what the readouts measure (in Single the channel measured, a button that chooses it on a stereo track, Left on a mono track; "This track" in Multi, where the readouts measure this track's Mid, DESIGN §1.2.1), then Peak, RMS and Freq in the centre; the state, Help and About on the right. The left group never changes width and the state area has a fixed width, so the readouts never move.
 - **More states than fit** fold into a "+n" chip that lists them on hover, keeping the order of the state table in DESIGN §1.5.
 
 ![Minimum size, five states at once with +3 open](images/layout-states.png)
@@ -149,7 +149,7 @@ From 2026-10-24 and 2026-10-25.
 
 - **Graphite chrome** around an inset black screen with rounded corners; the selected option is white.
 - **Type:** Geist for controls in sentence case; Geist Mono for every number.
-- **Colour only in the traces:** Left blue, Right pink, Mid white, Side lime in Single; host track colours in Multi and Compare; a white sum.
+- **Colour only in the traces:** Left blue, Right pink, Mid white, Side lime in Single; host track colours in Multi; a white sum.
 - **Orange marks Frozen**, on the Frozen button and the Frozen chip: the one state where the screen isn't live.
 
 ![The accent on Frozen, the playhead and the cursors, compared](images/direction-accent.png)

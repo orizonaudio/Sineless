@@ -53,7 +53,8 @@ Each requirement is numbered for reference from tests, issues and commits; long 
 numbered parts. "Verified by" names the main tests; it is a pointer, not the full list.
 
 **Display modes and time bases.** Most requirements depend on two settings: the display mode
-(Single, Multi, Compare) and the time base (Beats, Free, or Trigger, labelled "Trig" in the UI).
+(Single, Multi; Multi with the Compare switch on adds Compare) and the time base (Beats, Free, or
+Trigger, labelled "Trig" in the UI).
 In Trigger the window is *triggered*; in Free it *runs free*; in Beats the display *sweeps*.
 "Single" is both a display mode and a trigger mode; this document always says which. Section 1.2.1
 gives, for each combination, what the trigger reads, what readouts measure, what cursors snap to
@@ -65,8 +66,8 @@ and what a freeze holds.
 | --- | --- | --- | --- |
 | **Single display mode**: trigger reads | Trigger source, when drawn | — | — |
 | **Single display mode**: readouts, cursor snap, hover | Readout source, when drawn | Same | Same |
-| **Multi, Compare**: trigger reads | This track's Mid | — | — |
-| **Multi, Compare**: readouts, cursor snap | This track's Mid | This track's Mid | This track's Mid |
+| **Multi** (Compare on or off): trigger reads | This track's Mid | — | — |
+| **Multi** (Compare on or off): readouts, cursor snap | This track's Mid | This track's Mid | This track's Mid |
 | Freeze holds | Newest 4.25 s (4 s to pan through); lanes 1 s more | Same | Readable capture (7/8); sweep image kept |
 | Pan while frozen | Yes, not zoomed | Yes, not zoomed | No |
 | Time labels | From the trigger point | Back from the right edge | bar.beat over project time |
@@ -89,7 +90,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-2 | Draws the input as a time-domain trace with an adjustable vertical scale (top of screen −60 to +6 dBFS) and span. The visible span (full screen width) is the time base's own: in Trigger from 0.5 ms to 1 s (`longestTriggerSpanSeconds`), in Free from 100 ms (`shortestFreeSpanSeconds`) to 4 s, and in Beats a beat span (FR-9). Each time base keeps its span, so returning to one brings its span back. | `AnalyzerTests`, `ui/tests/app/controls.test.ts` |
 | FR-3 | In the Trigger time base the window is placed by an edge trigger with level, slope, hysteresis and hold-off, in one of three modes. **Auto** triggers on edges, and draws untriggered if no edge arrives within the larger of the span and 100 ms. **Normal** draws only on a trigger and otherwise holds the last trace; switched to from Free or Beats, it first shows the newest span, untriggered. **Single** (the trigger mode) arms, captures one triggered frame and then freezes; Re-arm arms it again. The trigger point sits 10% of the span from the left edge (`triggerPosition`). A sample that is not finite neither arms nor crosses. The trigger is off in Beats and Free, and its controls and Re-arm show in Trigger only. | `TriggerTests`, `AnalyzerTests` |
 | FR-4 | In the Free time base the window *runs free*, whatever the trigger mode: it ends at the newest audio and moves with it. It shows exactly the span, on columns on a grid fixed to absolute sample positions (column *k* covers ⌊*k*·span/columns⌋ onwards), so the trace does not shimmer; time labels and hover read back from the right edge; a freeze keeps the right edge, also when Trigger is then chosen (its span then ends there); no chip names it, as the time base's button does. Live, the right edge is *paced* (AD-29): it moves evenly between the host's blocks, a measured delay (about a block, at most `pacingDelayCapSeconds`) behind the newest audio, never past it; the newest sample offline, before the block clock locks, and for spans under `pacedSpanMinimumSeconds`. Auto drawing untriggered ends at the paced edge too. On macOS 14+ each frame reads the edge at the display clock's time, so successive frames move by exactly their refreshes' worth of audio (AD-30). | `FreeRunningTests`, `AnalyzerTests`, `PacedAnalyzerTests`, `MotionTests`, `FramePacingTests` |
-| FR-5 | Channel views L, R, Mid = (L+R)/2 and Side = (L−R)/2, overlaid or stacked, with the trigger source selectable among the views drawn. On a mono track only L exists: it is drawn, triggered on and measured, and the other views are disabled. Views apply in Single display mode; Multi and Compare show each track's Mid. | `ChannelViewsTests`, `ui/tests/app/mono.test.ts` |
+| FR-5 | Channel views L, R, Mid = (L+R)/2 and Side = (L−R)/2, overlaid or stacked, with the trigger source selectable among the views drawn. On a mono track only L exists: it is drawn, triggered on and measured, and the other views are disabled. Views apply in Single display mode; Multi shows each track's Mid. | `ChannelViewsTests`, `ui/tests/app/mono.test.ts` |
 | FR-6 | Freeze holds recent audio, and scale, views, zoom, cursors and readouts keep working on it. In Trigger and Free a freeze holds the newest 4 s (`frozenHoldSeconds`), which can be panned back through while not zoomed, as far as the frame's pan reach, and twice `pacingDelayCapSeconds` more, so that freezing a paced window keeps the window last shown. In Beats it holds what the capture holds (FR-9.6). A frozen view keeps the sample rate its audio was recorded at. Freeze is never saved. | `HoldBufferTests`, `ui/tests/app/frozen-pan.test.ts`, `held-rate.test.ts` |
 | FR-7 | Readouts of sample peak, RMS and estimated frequency, for the readout channel (1.2.1), which the readout source chooses in Single display mode. They are indicative, not standards-compliant metering; help says so. Peak and RMS cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen. Frequency is measured over the newest 1 s (`frequencyWindowSeconds`) from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`); it is shown only when at least 60% of cycles fall within 15% of the median (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`), as the mean of those cycles, marked ≈. Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/app/readouts.test.ts` |
 | FR-8 | All settings (table below) are saved with the host project as plugin state; none is a host-automatable parameter. A value is accepted only if finite and in range (enum and flag values integral, flags non-empty); an invalid value is refused, not clamped. | `StateTests`, `SettingsTests`, `setting-values.test.ts` |
@@ -111,18 +112,18 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-13.1 | About: an info button after Help, at the right end of the status bar, opens a popover with the product's name and its version as the host lists it, shown also when the editor cannot reach the engine. In a build with the brand (AD-27) it also holds About us, which opens the vendor's contact page in the default browser, never in the editor. The page names no address: the editor opens only the one it was built with. | `ui/tests/app/about.test.ts`, `EditorTest.ShowsTheVersionTheHostIsGiven`, `EditorTest.AboutUsOpensTheVendorsPageOnlyInABrandedBuild` |
 | FR-14 | Multi-track view. | `InstanceRegistryTests`, `AnalyzerTests`, `ui/tests/app/multi-track.test.ts` |
 | FR-14.1 | Every Sineless instance in a host process belongs to one of four groups, A to D, and contributes its track to its group whatever its own display mode. | |
-| FR-14.2 | An instance in Multi mode shows each track of its group, at most 16 (`maxLanes`), as the track's Mid, stacked in lanes or overlaid. Further tracks are counted ("+n hidden"), not drawn; the instance's own track is always drawn, in the last lane if it would otherwise be hidden. | |
+| FR-14.2 | An instance in Multi mode shows each track of its group, at most 16 (`maxLanes`; 15 with Compare on, FR-15.1), as the track's Mid, stacked in lanes or overlaid. Further tracks are counted ("+n hidden"), not drawn; the instance's own track is always drawn, in the last lane if it would otherwise be hidden. | |
 | FR-14.3 | Lanes are labelled and coloured with the host's track name and colour where the host provides them (otherwise "Track n" and a fallback palette), ordered by the host's track order, then by creation; the instance's own lane is marked. | |
 | FR-14.4 | Lanes share the vertical scale, time window, freeze, zoom and cursors. In Beats lanes align on the shared musical clock; in Trigger and Free the instance's own track places the window (by its trigger, or at its newest audio) and the other lanes show the same time window. Frozen lanes recorded at another sample rate are drawn silent. Lanes line up only when Sineless is the last plugin on each track: the host compensates for the latency of plugins after it by delaying the other tracks, so their instances see their audio later (R-2). | |
 | FR-14.5 | With stacked lanes, the editor's minimum height grows so that each lane is at least 40 px tall (1.5, Layout). | `MinimumHeightTests` |
-| FR-15 | Compare view (beta). | `PairAnalysisTests`, `AnalyzerTests`, `SignalCorpusTests` |
-| FR-15.1 | A third display mode shows the same tracks as Multi mode (at most 15) plus a lane with the sample-by-sample sum of the checked tracks, stacked or overlaid. Unchecked tracks are drawn faint. With no other track in the group the screen says so. | |
+| FR-15 | Compare (beta): a switch in Multi. | `PairAnalysisTests`, `AnalyzerTests`, `SignalCorpusTests` |
+| FR-15.1 | A switch (Compare, On \| Off) in Multi's Views popover, saved with the project, adds to Multi a lane with the sample-by-sample sum of the checked tracks, after the tracks, stacked or overlaid; the sum takes a lane, so Multi then shows at most 15 tracks. Unchecked tracks are drawn faint. With no other track in the group the screen says so. The switch keeps its state while the display mode is Single, which it does not change; the Views field shows Σ, dimmed while it is off (its accessible name says Compare). Matches and summing gains are measured only while Compare is on show, so Multi without it costs what Multi costs (QS-3). Turning it off, or leaving Multi, removes all that it adds and resets Preview fix. | |
 | FR-15.2 | Each track's swatch is its check box. This track is the reference and is always compared; until the user chooses, the first other track is checked; with no other track checked the sum is this track alone. The choice is kept while the plugin is loaded (closing and opening the editor keeps it, as does a track being hidden or moving group) but is not saved. | |
 | FR-15.3 | Summing gain: over the visible part of the span, refreshed every 0.1 s, counting only 10 ms blocks where at least two checked tracks sound together (within 20 dB of each other, not more than 60 dB below the loudest block, and above −90 dBFS), the engine reports the level of the checked tracks' sum against the level they would give if unrelated. Within ±1 dB (`summingMarginDb`) summing is harmless; below it the tracks cancel, above it they reinforce. | |
 | FR-15.4 | Match: for each checked track, over the 8 s before the playhead (`matchWindowSeconds`; the newest 8 s of the view when zoomed away from it), the engine reports its correlation with this track at zero offset (−1 to +1) and the offset, within ±10 ms (`matchReachSeconds`), and polarity that would align them best. A track whose best match is weaker than 0.3 is reported as unrelated, with nothing to fix. Each track's match is refreshed at most every 0.5 s, one track at a time. | |
 | FR-15.5 | Each checked lane label shows its offset, polarity (Ø) and correlation; the sum label shows the summing gain and Preview fix, which redraws the sum as if every checked track were shifted and flipped as suggested, with the new summing gain measured only where every shifted track has audio. Preview fix is temporary. | |
 | FR-15.6 | The sum lane is shaded where its peak is more than 3 dB below the louder compared track's, when at least one checked track is related to this one; very quiet stretches (about 26 dB below the loudest) are not shaded, and gaps of three columns or less are bridged. | `trace-geometry.test.ts` |
-| FR-15.7 | Freeze, zoom, cursors and both time bases work as in Multi mode. | |
+| FR-15.7 | Freeze, zoom, cursors and every time base work as in Multi without Compare. | |
 | FR-16 | Hover readout and measuring extras. | `hover.test.ts`, `musical-grid.test.ts` |
 | FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace shows beside it the trace's name, the position (bar.beat.sixteenth and project time in Beats; time from the trigger point when triggered; time back from the right edge when free-running), the peak level there, and the cycle around the pointer: its length in ms and samples and its frequency and note. Cycles are found as in FR-7 (rising crossings of the mean, with neighbouring cycles within 15%, above −90 dBFS); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and without cents. A dotted line marks the point read and a band the cycle. | |
 | FR-16.2 | Beats-mode grid labels carry the project time under bar.beat. | |
@@ -150,8 +151,9 @@ against it and the UI builds its controls from it.
 | Time base | Beats, Free, Trigger | Beats |
 | Beat span | 1/16, 1/8, 1/4, 1/2, 1 and 2 beats; 1, 2, 4, 8 and 16 bars | 1 bar |
 | Auto-freeze | Off, on | Off |
-| Display mode | Single, Multi, Compare | Single |
+| Display mode | Single, Multi | Single |
 | Group | A, B, C, D | A |
+| Compare (applies in Multi; kept in Single) | Off, on | Off |
 | Hover readout | Off, on | Off |
 | Concert pitch (A4) | 400 – 500 Hz, linear | 440 Hz |
 
@@ -193,17 +195,17 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   current mode is in the toolbar, always; one that does not apply is hidden, not dimmed. Nothing
   folds away as the window narrows: only the wordmark hides below the default width, and the mark
   stays (AD-26).
-- The editor's minimum width, 1030 px, is the narrowest that fits the widest toolbar (Multi or
-  Compare, Trigger, the Single trigger mode and frozen) and the status bar in every state, with the mark alone (the
+- The editor's minimum width, 1030 px, is the narrowest that fits the widest toolbar (Multi with or
+  without Compare, Trigger, the Single trigger mode and frozen) and the status bar in every state, with the mark alone (the
   editor tests check each state). Its minimum height is 400 px, or 84 px plus 40 px per stacked
-  lane when that is more (Compare counts its sum lane); the editor asks the host to grow when lanes
+  lane when that is more (with Compare on, its sum lane counts); the editor asks the host to grow when lanes
   are added. The default size is 1060 × 580, which also fits the wordmark. The size is kept in CSS
   pixels across display-scale changes.
 
 | Area | Left to right |
 | --- | --- |
-| Toolbar | Mark and wordmark · Single \| Multi \| Compare · Group (Multi and Compare) · Beats \| Free \| Trig · Span (the time base's own) · Vertical scale · Views (Single) · Overlay \| Stack · Trigger (Trigger), and Re-arm in the Single trigger mode · Freeze, Auto-freeze |
-| Group popover | A \| B \| C \| D |
+| Toolbar | Mark and wordmark · Single \| Multi · Views in Multi (the group and Σ, as "A·Σ", Σ dimmed with Compare off) · Beats \| Free \| Trig · Span (the time base's own) · Vertical scale · Views (Single) · Overlay \| Stack · Trigger (Trigger), and Re-arm in the Single trigger mode · Freeze, Auto-freeze |
+| Views popover in Multi | Group (A \| B \| C \| D) · Compare (On \| Off) |
 | Views popover | L, R, M, S toggles, each with its trace's colour |
 | Trigger popover | Mode (Auto \| Normal \| Single), Source (Single; the views not drawn disabled, the view the trigger reads lit), Slope, Level, Hysteresis, Hold-off |
 | Screen, top right | The cursor readout; the frame barcode instead while the diagnostic switch is on (§8.3) |
@@ -220,7 +222,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 - The status bar never moves: the cursor buttons and A4 keep their width, each readout has a fixed
   width, and the chips have a fixed area. The readouts are labelled with the channel they measure
   (1.2.1): in Single the channel the frame measured (Left on a mono track), a button that opens
-  the readout popover on a stereo track; "This track" in Multi and Compare, a label. Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
+  the readout popover on a stereo track; "This track" in Multi, a label. Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
   do not fit fold, from the last, into one "+n" chip that lists them on hover or focus; the first
   stays shown.
 
@@ -241,7 +243,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   a vertical line; the previous cycle is dimmed. Trigger controls do not apply: they are hidden,
   the trigger popover closes, and the trigger line and marker are hidden.
 - Lane labels at the top of each stacked lane, or as a legend when overlaid: a dot in the lane's
-  colour, the name, and "this track" on the own track. Compare adds check-box swatches, match
+  colour, the name, and "this track" on the own track. Compare, when on, adds check-box swatches, match
   readouts, the sum's gain (yellow where tracks cancel), and Preview fix.
 - A trace waiting for a trigger is dimmed.
 
@@ -285,7 +287,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | No tempo | Beats before the host has reported a tempo (FR-9.1): nothing is placed until it does. Also after **Frozen**. |
 | Frozen | Frozen (in the accent colour); followed by the pan offset (for example "−1.2 s") when panned, **Span limited** when the span was shortened to what is held, and **Partial** when the held audio does not cover the span. |
 | Zoom ×n | Zoomed in. |
-| +n hidden | Multi or Compare with more tracks than lanes. |
+| +n hidden | Multi with more tracks than lanes (one fewer lane for tracks with Compare on). |
 | Invalid samples | A drawn trace, or the channel the readouts measure, holds samples that are not finite (in yellow, the problem colour). |
 
 - Messages over the screen replace the traces and explain what to do: **Version mismatch**,
@@ -614,7 +616,7 @@ stateDiagram-v2
 
 ### 6.4 Reading another instance
 
-When the page shows Multi or Compare, the worker asks the registry for the members of its group,
+When the page shows Multi, the worker asks the registry for the members of its group,
 takes shared ownership of each engine for the read, maps this track's window to each track's own
 capture through the musical clocks (AD-15), and reads their rings directly. Nothing runs on any
 audio thread for this; an instance removed meanwhile stays readable until the read ends.
@@ -889,7 +891,8 @@ Saved state:
   project opens in Free where its window ran free (the Free trigger mode, or a span above 1 s),
   else in Trigger; its span goes to the span whose range holds it, and to Free's, clamped to Free's
   range, where it ran free; a missing or invalid span counts as 1 s, the old default; the Free
-  trigger mode becomes Auto.
+  trigger mode becomes Auto. Version 4 made Compare a switch in Multi rather than a display mode: a
+  project saved in Compare opens in Multi with Compare on.
 - Each field is validated on its own. A missing or invalid field takes its default, and unknown
   fields are ignored, so a project saved by a newer version still opens in an older one; a
   setting added without a version change is simply absent from older states.
@@ -1114,7 +1117,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | AD-22 | Accepted | The page builds trace geometry on the GPU: instanced quads read from the frame's bytes as received (uploaded as a vertex buffer), one instance per column or raw point drawing its piece of the trace as quads for the band to the next point, the two lines joining their maxes and their mins and, beside a missing point, its own vertical line, each writing the coverage worked out from the pixel's distance to that part into the trace's channel of its group's offscreen target (four traces a target, each writing only its own channel), keeping the larger where pieces overlap; one pass then layers the traces over the screen. Edges are anti-aliased without relying on multisampling, and a translucent trace blends once, as a group with an opacity is composited; no per-frame JavaScript geometry. The sweep playhead is drawn in WebGL, not as page elements, on whole device pixels. While the diagnostic switch is on (§8.3), every picture ends with the frame barcode, drawn the same way. On macOS 14+ the same passes run natively in Metal (AD-30), where the playhead and Compare's shading edges are drawn at their exact positions with coverage. | Per-frame JavaScript geometry and DOM changes added fixed WebKit cost on every frame. The remaining cost is WebKit's per-frame display pipeline (QS-3). Boxes per column and quads per segment, smoothed by multisampling, drew steep flanks as stairs and blended a translucent trace twice where quads overlapped (#269). Shading each pixel from a loop over its neighbouring points drew the same picture but made drawing without a GPU 3 to 5 times slower than before, too slow for the app tests on GPU-less CI runners. One quad per piece, shading its whole box with all its distances, every trace writing all four targets and a composite indexed at run time cost about twice the GPU time for the same picture. |
 | AD-23 | Superseded by AD-26 | The editor's layout is stable: nothing is cropped, hidden or moved as the window is resized. The minimum width (`minimumEditorWidth`) fits the widest content in every state, and content of unbounded width (the status chips) wraps in a place with room for it, the screen's top-right corner. No responsive breakpoints, compact labels or hidden elements. | A control that disappears, shortens or moves at some sizes is hard to find again and makes the window feel unreliable; and a plugin window is resized often. Rejected: a shrinking chip area, hiding the wordmark below a width, single-letter compact controls. Cost: a wider minimum window (900 px), checked in every state by the editor tests. |
 | AD-24 | Accepted | Windows ships x64 only; no native ARM64 build is built, tested or released for now. Windows on Arm runs the x64 build in an x64 host or in REAPER's ARM64EC build. The ARM64 presets stay, and `scripts/package.ps1` says how to bring the build back. | No native ARM64 Windows host is expected among users soon, and its CI job was among the slowest, waiting for an ARM runner. Shipping only what CI tests means dropping the binary with the job. Revisit when a user needs a native ARM64 host (R-5). |
-| AD-25 | Accepted | On macOS, also an Audio Unit v2, native on Apple's AudioUnitSDK, in its own module (`au`) beside the VST3 glue, sharing the engine and `editor_core`. Codes `aufx`/`Snls`/`Oriz` (placeholders in a build without the brand, AD-27). Its view is a Cocoa view factory named per build; it exports only its factory and leaves out `sandboxSafe`, so sandboxed hosts load it out of process. | Logic Pro and GarageBand load Audio Units only. AUv2 with the host's context name keeps track names, and a spike showed Logic and GarageBand keep a project's instances in one process (out of process, in AUHostingService) and Live in its own, so Multi and Compare work. Rejected: Steinberg's VST3-to-AU wrapper (no track names, Xcode generator only), clap-wrapper (needs a CLAP port first, no track names), AUv3 (an app extension in a sandboxed process where instances do not reliably share a process, which Multi and Compare need, and a Developer ID for distribution). |
+| AD-25 | Accepted | On macOS, also an Audio Unit v2, native on Apple's AudioUnitSDK, in its own module (`au`) beside the VST3 glue, sharing the engine and `editor_core`. Codes `aufx`/`Snls`/`Oriz` (placeholders in a build without the brand, AD-27). Its view is a Cocoa view factory named per build; it exports only its factory and leaves out `sandboxSafe`, so sandboxed hosts load it out of process. | Logic Pro and GarageBand load Audio Units only. AUv2 with the host's context name keeps track names, and a spike showed Logic and GarageBand keep a project's instances in one process (out of process, in AUHostingService) and Live in its own, so Multi works, Compare included. Rejected: Steinberg's VST3-to-AU wrapper (no track names, Xcode generator only), clap-wrapper (needs a CLAP port first, no track names), AUv3 (an app extension in a sandboxed process where instances do not reliably share a process, which Multi needs, and a Developer ID for distribution). |
 | AD-26 | Accepted | The editor's layout (1.5, `docs/ui/`): a toolbar holding every control that applies in the current mode, always; controls that don't apply are hidden; popovers carry the details (Group, Views, Trigger); a status bar with the cursor buttons and A4, the readouts labelled with what they measure (in Single, a button choosing it), the state chips in a fixed width, folding into "+n", Help and About. Nothing folds away as the window narrows: the minimum width (`minimumEditorWidth`, 1030 px) fits the widest toolbar with the mark alone and the status bar, and the wordmark is the only thing that hides, below the default 1060 px. Replaces AD-23. | The redesign gives the signal most of the window (the screen gets about 85% at the default size, against about 70% with the old strip) and shows what applies instead of dimming what doesn't, which the audit found cluttered and ambiguous. AD-23's stability is kept where it matters: no control moves, shortens or folds as the window is resized, and the status bar never moves when values or states change. Hiding the wordmark costs nothing a user operates. Rejected: folding controls into a ⋯ menu (controls move between places), a side panel of settings (a third less screen, and a tall window). Cost: a wider minimum window (1030 px), checked in every state by the editor tests. |
 | AD-27 | Accepted | The product's name, logo and plugin IDs come from one switch, `SINELESS_BRANDING` (cmake/Branding.cmake, on by default). The logo lives in `ui/src/brand/` under terms of its own (LICENSES/LicenseRef-Orizon-Brand.txt), shipped beside it; with the switch off, the page takes `ui/src/unbranded/`, and the plugin a neutral name, placeholder VST3 IDs and Audio Unit codes, no logo or its terms, and no contact page (FR-13.1). | The code is GPL, and forks are welcome, but the names and the logo identify official releases (TRADEMARKS.md, GPLv3 section 7(c) and (e)); a fork must be able to build without them in one step, and must not collide with Sineless in a host's plugin list or saved projects. Keeping the logo in files of its own, never inlined in GPL source, keeps the split clear in REUSE.toml and the build. The switch also names the VST3 and Audio Unit bundles and the Audio Unit's view class. Not covered: internal identifiers (CMake target names, Windows window classes, the WebView2 data folder, thread names), which a fork renames with the project. |
 | AD-28 | Accepted | While a value is dragged with the mouse (1.5), the macOS editor holds the pointer natively: on the press the page asks for the hold, and the editor hides the pointer and dissociates it from the mouse (`CGDisplayHideCursor`, `CGAssociateMouseAndMouseCursorPosition`), reads the motion from the drag events' deltas, reports the travel since the press to the page, and on release moves the pointer back to the press point before reassociating it. The shared state machine is `editor/src/PointerHold.cpp`. In Apple's hosts (Logic Pro Creator Studio, tested; Logic Pro and GarageBand, by the same bundle-identifier gate, not yet tested) the Audio Unit's view also turns the window server's undocumented `SetsCursorInBackground` connection property on for each hold and off once the pointer shows again (`CGSSetConnectionProperty`, looked up at run time and skipped where missing). Not where a host loads the Audio Unit in an XPC service, which cannot dissociate the pointer (AD-25's statement that Logic does was measured on an earlier Logic and is re-checked in its own issue); Windows keeps a moving pointer for now. | It is WebKit's own pointer lock, which the page cannot use: WKWebView grants Pointer Lock only through a private delegate, and WebView2 shows a banner that cannot be hidden. Travel is measured from the press on both sides, so the page switches from its own travel to the editor's without losing or repeating a step, and drags as before wherever the editor does not answer. Holding from the press, as Live's own devices do, hides the pointer before it can move; a click or the double-click to type hides it briefly, and a pointer still within a point of the press is shown there without a warp, so nothing delays the double-click's second press. Logic Pro Creator Studio 12.4 runs the Audio Unit in its own process, where the public calls report success without hiding the pointer, and nothing public hid it (a blank cursor, `[NSCursor hide]`, CSS `cursor: none`); since the failure cannot be detected, the property is chosen by host, and it is on only while a hold hides the pointer. |
@@ -1141,7 +1144,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | --- | --- | --- | --- |
 | QS-1 | Eight instances process audio together. | All eight together use at most 5% of each block's duration at the 99.9th percentile; zero allocations on the audio path. | `process_bench`; allocation-counting tests; RealtimeSanitizer |
 | QS-2 | Audio passes through any instance, in any state. | Bit-exact output; reported latency 0. | `ProcessorTests` |
-| QS-3 | The editor shows seven tracks over four bars, in Multi and in Compare. | At least 45 frames/s (on macOS 14+ the frames the native layer presents, AD-30); analysis thread within 10% (Multi) and 30% (Compare) of a core. | `perf_bench` (judged locally, reported in CI) |
+| QS-3 | The editor shows seven tracks over four bars, in Multi with Compare off and on. | At least 45 frames/s (on macOS 14+ the frames the native layer presents, AD-30); analysis thread within 10% (Compare off) and 30% (Compare on) of a core. | `perf_bench` (judged locally, reported in CI) |
 | QS-4 | The worst case: fifteen tracks over sixteen bars at 60 BPM and 96 kHz. | At least 45 frames/s once filled (on macOS 14+ presented natively); analysis within 20% of a core; host memory grows well under 1 GB. | `perf_bench`; HOSTS.md step 10, in the full protocol when due |
 | QS-5 | The editor is opened and closed 50 times while playing (200 before a release). | No threads or web views left behind; memory grows at most 20 MB (40 MB over 200). | `perf_bench --reopen=50`; `soak.sh` |
 | QS-6 | A project saved by any earlier release is opened. | Every setting it saved is restored; missing or invalid ones take their defaults; loading never throws. | `StateTests` golden files; state fuzzer |
@@ -1161,17 +1164,17 @@ not reused.
 
 | ID | Risk or debt | Effect | Mitigation | See |
 | --- | --- | --- | --- | --- |
-| R-1 | Hosts that run plugins in separate processes (REAPER's "Dedicated process", Bitwig's "Individually") | Instances cannot find each other: Multi and Compare show each track alone. | Shared processes are every major host's default; HOSTS.md records each host's modes. A cross-process registry would need shared memory and is not planned. | AD-14, HOSTS.md |
+| R-1 | Hosts that run plugins in separate processes (REAPER's "Dedicated process", Bitwig's "Individually") | Instances cannot find each other: Multi shows each track alone. | Shared processes are every major host's default; HOSTS.md records each host's modes. A cross-process registry would need shared memory and is not planned. | AD-14, HOSTS.md |
 | R-2 | Lane alignment depends on the host | Lanes line up only when Sineless is last on each track (the host delays other tracks to compensate for later plugins' latency) and when the host reports a musical position (AD-15). | The README tells users to put Sineless last. | FR-14.4, AD-15 |
 | R-3 | Memory of long sweeps | The worst case (15 lanes, 16 bars at 60 BPM, 96 kHz) uses about 580 MB. | The sweep cap bounds it; the performance check keeps it so, and HOSTS.md step 10 checks it in a host whenever memory or capture changes (CONTRIBUTING.md, Releasing). | AD-19, QS-4 |
 | R-4 | Releases are not signed with a Developer ID or code-signing certificate | macOS quarantines the download and users clear it by hand; Windows may warn. | Checksums and build provenance let a download be verified (7). | SECURITY.md |
 | R-5 | No native Windows ARM64 build | Windows on Arm needs an x64 host or REAPER's ARM64EC build. | Its presets remain; `scripts/package.ps1` names what to add. | C-2, AD-24 |
 | R-6 | Few hosts tested | Live (macOS, Windows) and REAPER (Windows) are tested; Cubase, Studio One, Bitwig and FL Studio are not. | pluginval and the VST3 validator on every change; the HOSTS.md smoke test before each release, and the full protocol occasionally; HOSTS.md lists the hosts tested, and reports add others. | HOSTS.md |
-| R-7 | Compare is in beta | Its matching and summing gain may change with use. | Called beta in its help and in the docs; the signal corpus pins its results. The tag on its button was dropped with the redesign, to keep the toolbar's width (AD-26). | FR-15 |
+| R-7 | Compare is in beta | Its matching and summing gain may change with use. | Called beta in its help and in the docs; the signal corpus pins its results. Its switch, in Multi's Views popover, carries no tag, as its button did not since the redesign kept the toolbar's width (AD-26). | FR-15 |
 | R-8 | Two security guards have no test: navigation refusal, and the viewport width cap | A regression would go unnoticed. | Both are small and reviewed; tests to be added. | 8.8 |
 | R-9 | Mutation testing holds Vitest for Stryker at 4 | Its Vitest lags the project's until Stryker supports Vitest 5. | Pinned in `.github/dependabot.yml`, with the upstream issues named. | 8.3 |
 | R-10 | The C++ dependencies are updated by hand | Fixes upstream arrive only when someone updates them. | Each is pinned by version and hash (8.1). | 8.1 |
-| R-11 | Audio Unit hosts tell the plugin less, and run it apart from the VST3 plugin | Audio Units get no track colour or position: lanes take palette colours and creation order. A VST3 and an Audio Unit instance of Sineless in one host keep separate registries, so they never see each other in Multi or Compare. Logic and GarageBand run Audio Units out of process; Multi relies on them keeping a project's instances in one process, and closing a project leaves its instances for about ten seconds. | The track name comes from the host's context name; HOSTS.md records each host's process model; the README names the formats. | AD-14, AD-25, HOSTS.md |
+| R-11 | Audio Unit hosts tell the plugin less, and run it apart from the VST3 plugin | Audio Units get no track colour or position: lanes take palette colours and creation order. A VST3 and an Audio Unit instance of Sineless in one host keep separate registries, so they never see each other in Multi. Logic and GarageBand run Audio Units out of process; Multi relies on them keeping a project's instances in one process, and closing a project leaves its instances for about ten seconds. | The track name comes from the host's context name; HOSTS.md records each host's process model; the README names the formats. | AD-14, AD-25, HOSTS.md |
 | R-12 | The transparent page relies on a private WebKit key (macOS, AD-30) | The native traces need the web view not to paint its background; WebKit offers this only as the private `drawsBackground` key, which a release could change. | Long relied on for transparent web views; the native-mode editor tests check the page over the layer in every build, so a change shows at once; the page path stays, a switch away. | AD-30 |
 
 ## 12. Glossary
@@ -1190,8 +1193,8 @@ not reused.
 | Filling | A sweep longer than the captured audio, filling in as the playhead passes. |
 | Frame | One binary message from engine to page with everything one screen needs. |
 | Freeze, hold | Stopping the display on held audio; the held audio itself. |
-| Group | A–D: the set of instances that appear together in Multi and Compare. |
-| Lane | One track's trace in Multi or Compare, or one channel view when stacked. |
+| Group | A–D: the set of instances that appear together in Multi. |
+| Lane | One track's trace in Multi, or one channel view when stacked. |
 | Match | Compare's correlation, offset and polarity of a track against this track. |
 | No value | NaN in a frame, shown "—": not measured, silent or never sounding together. |
 | This track (own track) | The track this instance is inserted on; the UI says "this track". |
@@ -1203,7 +1206,7 @@ not reused.
 | Single | A display mode (one track, its channel views) and, separately, a trigger mode (capture one triggered frame, then freeze). Always qualified. |
 | Span | The time the full screen width shows: seconds, or a beat span. |
 | Span limited | A span shortened to what can be kept: a beat span stepped down because its sweep would exceed the cap, or a Free span longer than the capture or the freeze holds. |
-| Sum lane | Compare's lane with the sample-by-sample sum of the checked tracks. |
+| Sum lane | The lane Compare adds to Multi, with the sample-by-sample sum of the checked tracks. |
 | Trigger | The time base whose window is placed by the trigger; labelled "Trig" in the UI. Also the toolbar's field for the trigger's settings. |
 | Summing gain | The level of the checked tracks' sum against the level they would give if unrelated, in dB. |
 | Sweep | The Beats display: written left to right by a playhead, cycle after cycle. |
