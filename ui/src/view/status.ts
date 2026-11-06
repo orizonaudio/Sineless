@@ -1,4 +1,5 @@
 // Status chips of the status bar, derived from the latest frame and the trigger mode.
+import { choiceLabels } from "./choice-labels.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 
 import { formatSeconds } from "./format.ts";
@@ -11,11 +12,8 @@ export interface Chip {
 }
 
 // The trigger modes as the Trigger field and the mode chip name them.
-export const triggerModeNames: Readonly<Record<string, string>> = {
-  auto: "Auto",
-  normal: "Normal",
-  single: "Single",
-};
+export const triggerModeNames: Readonly<Record<string, string>> =
+  choiceLabels.triggerMode;
 
 // How many of the chips, of these widths and with this gap between them, the status bar shows in
 // `room`: all of them when they fit; otherwise as many from the first as fit beside the "+n" chip

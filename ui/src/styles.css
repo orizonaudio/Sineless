@@ -238,6 +238,31 @@ body {
   stroke-dasharray: 1 1.6;
 }
 
+/* Single's Views and Multi's in one place, as wide as the wider; the one that does not apply keeps
+   its room unseen. Not positioned, so its fields' popovers are placed from the toolbar. */
+.slot {
+  display: grid;
+}
+
+.slot > .tool {
+  grid-area: 1 / 1;
+}
+
+.slot .field-button {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.tool.off {
+  visibility: hidden;
+}
+
+/* A drop-down's arrow at its right edge, however wide its field. */
+.field-button .chevron,
+.readout-tag .chevron {
+  margin-left: auto;
+}
+
 .chevron {
   width: 8px;
   height: 8px;
@@ -261,8 +286,9 @@ body {
   border-radius: 3px;
 }
 
-/* The longest beat span, "1/16 beat". */
-#beat-span-field .field {
+/* Every time base's span as wide as the longest beat span, "1/16 beat", so switching time base
+   moves nothing after it. */
+#time-group .field {
   min-width: 9ch;
 }
 

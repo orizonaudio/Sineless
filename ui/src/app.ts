@@ -281,6 +281,7 @@ export class OscilloscopeApp {
   private readonly segmented = new Map<SettingName, Segmented>();
   // The fields whose button names the value chosen in their popover.
   private readonly choiceSummaries = new Map<ChoiceSetting, ChoiceSummary>();
+  private triggerSummary: StackedSummary | undefined;
   // The readouts' channel: lit as the frame measured it, not as the setting asks.
   private readoutChoices: Segmented | undefined;
   // The trigger's source: lit as the frame's trigger reads, not as the setting asks.
@@ -755,10 +756,17 @@ export class OscilloscopeApp {
   // trigger source do not apply, and the group (with Compare) does only there.
   private updateMultiControls(): void {
     const multi = this.multiMode();
-    for (const id of ["views-group", "source-row"]) {
-      element(id).hidden = multi;
+    element("source-row").hidden = multi;
+    // Single's Views and Multi's share one place, which keeps the wider one's width: the one that
+    // does not apply keeps its room, out of sight and out of reach.
+    for (const [id, off] of [
+      ["views-group", multi],
+      ["group-group", !multi],
+    ] as const) {
+      const field = element(id);
+      field.classList.toggle("off", off);
+      field.inert = off;
     }
-    element("group-group").hidden = !multi;
     if (multi) {
       this.closePopover("views-details", "views-popover");
     } else {
@@ -972,11 +980,15 @@ export class OscilloscopeApp {
     this.placeTriggerMarker();
   }
 
-  // The Trigger field names the mode; the popover holds the rest.
+  // The Trigger field names the mode, as wide as the longest; the popover holds the rest.
   private updateTriggerSummary(): void {
     const mode = this.store.get("triggerMode") as string;
     const name = triggerModeNames[mode] ?? mode;
-    element("trigger-summary").textContent = name;
+    this.triggerSummary ??= new StackedSummary(
+      element("trigger-summary"),
+      triggerModeNames,
+    );
+    this.triggerSummary.show(mode);
     element("trigger-details").setAttribute("aria-label", `Trigger: ${name}`);
   }
 

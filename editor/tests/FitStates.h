@@ -48,6 +48,11 @@ inline std::vector<State> states()
         {.name = "16 bars", .settings = {{SettingId::kBeatSpan, 10.0}}, .script = ""},
         {.name = "1/16 beat", .settings = {{SettingId::kBeatSpan, 0.0}}, .script = ""},
         {.name = "-60 dB", .settings = {{SettingId::kVerticalScale, -60.0}}, .script = ""},
+        // Layout's other value; the field is as wide as its longest either way.
+        {.name = "Overlay",
+         .settings = {{SettingId::kViewLayout,
+                       static_cast<double>(protocol::ViewLayout::kOverlaid)}},
+         .script = ""},
         // The widest toolbar: Trig shows the Trigger field, its Single mode adds Re-arm, and
         // Freeze reads Frozen; with every view shown.
         {.name = "Trig, trigger Single, frozen, L R M S",
@@ -56,8 +61,8 @@ inline std::vector<State> states()
                       {SettingId::kChannelViews, 15.0}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
-        // Multi's widest, with and without Compare: Group in place of Views ("D · Σ" with
-        // it on), with the same trigger and Frozen.
+        // Multi's widest, with and without Compare: its Views (group) in the place of Single's,
+        // with the same trigger and Frozen.
         {.name = "Multi, group D, Trig, trigger Single, frozen",
          .settings = {{SettingId::kDisplayMode, 1.0},
                       {SettingId::kGroup, 3.0},
