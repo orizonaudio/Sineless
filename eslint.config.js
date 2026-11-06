@@ -23,8 +23,9 @@ const local = {
 };
 
 export default tseslint.config(
-  // docs/ is documentation, which CI does not check (scripts/changed-code.ts).
-  { ignores: ["build/", "node_modules/", "docs/"] },
+  // docs/ is documentation, which CI does not check (scripts/changed-code.ts). Local git worktrees
+  // are other checkouts, each linted in its own: ESLint reads no .gitignore.
+  { ignores: ["build/", "node_modules/", "docs/", ".claude/worktrees/"] },
   js.configs.recommended,
   {
     files: ["**/*.ts"],
