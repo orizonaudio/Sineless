@@ -58,6 +58,13 @@ a rule the product relies on:
 - a change that contradicts a requirement, decision or quality scenario in `docs/DESIGN.md`
   without updating it.
 
+A correctness bug is Important when a supported host and setup reach its scenario in ordinary
+use, or when its consequence is serious whatever reaches it (a crash, an audio-thread stall,
+wrong data, a lost setting). One that needs unlikely preconditions and whose consequence is brief
+and minor (a stale frame until audio arrives) is a nit, unless `docs/DESIGN.md` requires
+otherwise. A finding states both; a combination the tests can construct is not by that alone one
+a user meets.
+
 Everything else is a **nit**. Report at most three nits, and none once the pull request has
 had a review: after the first round, report Important findings only, so that reviews
 converge.
