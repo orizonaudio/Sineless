@@ -35,6 +35,16 @@ export interface WatchdogOptions {
 
 // Playwright's browser processes, on macOS and Linux (a page stuck in JavaScript shows a busy
 // WebContent or renderer process); Windows has no ps, so the list is unavailable.
+// The header of `ps` output and its lines for Playwright's own browsers, not the user's: they
+// all run from its ms-playwright folder.
+export function playwrightProcesses(ps: string): string {
+  const [header = "", ...lines] = ps.split("\n");
+  return [
+    header,
+    ...lines.filter((line) => line.includes("ms-playwright")),
+  ].join("\n");
+}
+
 function listBrowsers(): Promise<string> {
   if (process.platform === "win32") {
     return Promise.reject(new Error("no ps"));
@@ -49,10 +59,7 @@ function listBrowsers(): Promise<string> {
           reject(new Error(`ps failed: ${error.message}`));
           return;
         }
-        const [header = "", ...lines] = stdout.split("\n");
-        // Playwright's own browsers, not the user's: all run from its ms-playwright folder.
-        const browsers = lines.filter((line) => line.includes("ms-playwright"));
-        resolve([header, ...browsers].join("\n"));
+        resolve(playwrightProcesses(stdout));
       },
     );
   });
