@@ -99,7 +99,7 @@ describe("controls", () => {
     await expect.poll(field).toEqual(["C·Σ", "Views: group C"]);
     // Another setting leaves it be.
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "single" });
-    await expect.poll(() => byId("trigger-summary").textContent).toBe("Single");
+    await expect.poll(() => shownValue("trigger").join("")).toBe("Single");
     expect(field()).toEqual(["C·Σ", "Views: group C"]);
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "auto" });
     await press(choice("group", "A"));
@@ -154,7 +154,7 @@ describe("controls", () => {
     await press(choice("time-base", "Trig"));
     for (const label of ["Normal", "Single", "Auto"]) {
       await press(choice("mode", label));
-      await expect.poll(() => byId("trigger-summary").textContent).toBe(label);
+      await expect.poll(() => shownValue("trigger").join("")).toBe(label);
       // The field's name for screen readers says the mode.
       expect(byId("trigger-details").getAttribute("aria-label")).toContain(
         label,
@@ -442,9 +442,9 @@ describe("controls", () => {
   test("names the trigger mode in its field", async () => {
     await press(choice("time-base", "Trig"));
     await press(choice("mode", "Normal"));
-    await expect.poll(() => byId("trigger-summary").textContent).toBe("Normal");
+    await expect.poll(() => shownValue("trigger").join("")).toBe("Normal");
     await press(choice("mode", "Auto"));
-    await expect.poll(() => byId("trigger-summary").textContent).toBe("Auto");
+    await expect.poll(() => shownValue("trigger").join("")).toBe("Auto");
   });
 });
 

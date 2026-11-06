@@ -34,32 +34,77 @@
         </div>
         <!-- Each field that opens a popover holds it, so the popover follows its button in the
              focus order and shares its help. -->
-        <div class="tool" id="group-group" data-help="group">
+        <!-- One place for Single's Views and Multi's: as wide as the wider, so switching modes moves
+             nothing after it. -->
+        <div class="slot" id="views-slot">
+          <div class="tool" id="views-group" data-help="channelViews">
+            <button
+              class="field-button"
+              id="views-details"
+              aria-expanded="false"
+              aria-controls="views-popover"
+            >
+              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                <path
+                  d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"
+                /></svg
+              ><b id="views-summary"></b
+              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                <path d="M1.5 3 4 5.5 6.5 3" />
+              </svg>
+            </button>
+            <div class="popover" id="views-popover" hidden>
+              <div class="popover-title">Views</div>
+              <div class="popover-row">
+                <span>Channels</span>
+                <div class="segmented toggles" id="views"></div>
+              </div>
+            </div>
+          </div>
+          <div class="tool" id="group-group" data-help="group">
+            <button
+              class="field-button"
+              id="group-details"
+              aria-expanded="false"
+              aria-controls="group-popover"
+            >
+              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                <path
+                  d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"
+                /></svg
+              ><b id="group-summary">A</b
+              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                <path d="M1.5 3 4 5.5 6.5 3" />
+              </svg>
+            </button>
+            <div class="popover" id="group-popover" hidden>
+              <div class="popover-title">Views</div>
+              <div class="popover-row">
+                <span>Group</span>
+                <div class="segmented" id="group"></div>
+              </div>
+              <div class="popover-row" data-help="compare">
+                <span>Compare</span>
+                <div class="segmented" id="compare"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tool" id="layout-group" data-help="layout">
           <button
             class="field-button"
-            id="group-details"
+            id="layout-details"
             aria-expanded="false"
-            aria-controls="group-popover"
+            aria-controls="layout-popover"
           >
-            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-              <path
-                d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"
-              /></svg
-            ><b id="group-summary">A</b
+            <i>Layout</i><b id="layout-summary"></b
             ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
               <path d="M1.5 3 4 5.5 6.5 3" />
             </svg>
           </button>
-          <div class="popover" id="group-popover" hidden>
-            <div class="popover-title">Views</div>
-            <div class="popover-row">
-              <span>Group</span>
-              <div class="segmented" id="group"></div>
-            </div>
-            <div class="popover-row" data-help="compare">
-              <span>Compare</span>
-              <div class="segmented" id="compare"></div>
-            </div>
+          <div class="popover" id="layout-popover" hidden>
+            <div class="popover-title">Layout</div>
+            <div class="segmented" id="layout"></div>
           </div>
         </div>
         <span class="divider"></span>
@@ -101,48 +146,6 @@
             />
           </svg>
           <div id="scale-field" data-help="verticalScale"></div>
-        </div>
-        <span class="divider"></span>
-        <div class="tool" id="views-group" data-help="channelViews">
-          <button
-            class="field-button"
-            id="views-details"
-            aria-expanded="false"
-            aria-controls="views-popover"
-          >
-            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-              <path
-                d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"
-              /></svg
-            ><b id="views-summary"></b
-            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-              <path d="M1.5 3 4 5.5 6.5 3" />
-            </svg>
-          </button>
-          <div class="popover" id="views-popover" hidden>
-            <div class="popover-title">Views</div>
-            <div class="popover-row">
-              <span>Channels</span>
-              <div class="segmented toggles" id="views"></div>
-            </div>
-          </div>
-        </div>
-        <div class="tool" id="layout-group" data-help="layout">
-          <button
-            class="field-button"
-            id="layout-details"
-            aria-expanded="false"
-            aria-controls="layout-popover"
-          >
-            <i>Layout</i><b id="layout-summary"></b
-            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-              <path d="M1.5 3 4 5.5 6.5 3" />
-            </svg>
-          </button>
-          <div class="popover" id="layout-popover" hidden>
-            <div class="popover-title">Layout</div>
-            <div class="segmented" id="layout"></div>
-          </div>
         </div>
         <span class="divider" id="trigger-divider"></span>
         <div class="tool" id="trigger-group" data-help="trigger">
