@@ -61,7 +61,7 @@ message with a short `Prior art:` note naming the sources.
 ## Fixing a bug
 
 - **Fix the cause everywhere it occurs, not where it was noticed.** Look for the same
-  cause in the other display modes (Single, Multi, Compare), time bases (Beats, Seconds),
+  cause in the other display modes (Single, Multi, Multi with Compare on), time bases (Beats, Seconds),
   live and frozen, mono and stereo, other readouts and the other platform. Fix the shared
   helper; when you add a tolerance or guard to one comparison, check every other comparison
   of the same values.

@@ -11,7 +11,7 @@ You review one implementation plan for Sineless against a rubric, before any cod
 **Your rubric (rules):**
 
 - CLAUDE.md's rules hold, and the `.claude/rules` file of each folder the design touches.
-- The places sharing the cause are listed, including code the change does not edit (REVIEW.md question 1): the other display modes (Single, Multi, Compare), time bases (Beats, Seconds), live and frozen, mono and stereo, other readouts, the other platform and the Audio Unit. For a feature, the places that must change with it. Search for the ones the plan does not list.
+- The places sharing the cause are listed, including code the change does not edit (REVIEW.md question 1): the other display modes (Single, Multi, Multi with Compare on), time bases (Beats, Seconds), live and frozen, mono and stereo, other readouts, the other platform and the Audio Unit. For a feature, the places that must change with it. Search for the ones the plan does not list.
 - Values follow the `changing-values` skill (question 2).
 - Delivery is one issue per commit, each with its test.
 

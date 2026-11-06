@@ -25,7 +25,7 @@ CONTRIBUTING.md says when).
 | FL Studio | — | — | VST3 | Shared unless bridged | — | — | Not tested | |
 | Logic Pro | — | — | AU | Out of process (AUHostingService); a project's instances share one process | — | — | Not tested | |
 | GarageBand | — | — | AU | Out of process (AUHostingService); a project's instances share one process | — | — | Not tested | |
-| Ableton Live | — | — | AU | Shared, in Live's own process | — | — | Not tested | A VST3 and an AU instance of Sineless never see each other in Multi or Compare. |
+| Ableton Live | — | — | AU | Shared, in Live's own process | — | — | Not tested | A VST3 and an AU instance of Sineless never see each other in Multi. |
 | Pro Tools | — | — | — | — | — | — | Not applicable | Loads AAX only. |
 
 ## Smoke test
@@ -38,8 +38,8 @@ About five minutes, with the release's own installer, at the host's usual rate a
    Beats (the sweep on the bar lines) and in Trig (a steady tone held still).
 3. **Editor.** Open, resize and close the editor a few times while playing: it draws at once and
    nothing is cropped.
-4. **Multi and Compare.** Multi shows both tracks as lanes with their names, in order; Compare
-   opens with the other track checked, showing its match and the sum; unchecking it leaves the sum
+4. **Multi and Compare.** Multi shows both tracks as lanes with their names, in order; with
+   Compare on, in Multi's Views popover, the other track shows checked, showing its match and the sum; unchecking it leaves the sum
    this track alone.
 5. **Transport.** With Auto-freeze on, stop: the display freezes; play: it is live again.
 6. **State.** Save, close and reopen the project: every setting is restored.
@@ -78,7 +78,7 @@ unless a step says otherwise. Note anything unexpected in the row's notes.
    names and colours, in order, and line up in time, and the window grows so that every stacked
    lane fits its label. Rename and recolour a track: its lane follows. In hosts with plugin
    isolation, check both modes and note what Multi shows.
-7. **Compare.** Check and uncheck tracks, an inverted copy reads Ø and cancels, Preview fix. Close and reopen the editor: the checks remain. Save and reopen the project: the first other track is checked again.
+7. **Compare.** Turn Compare on in Multi's Views popover; check and uncheck tracks, an inverted copy reads Ø and cancels, Preview fix. Close and reopen the editor: the checks remain. Save and reopen the project: Compare is still on, and the first other track is checked again.
 8. **State.** Save the project, close and reopen it: every setting is restored; an older
    project opens.
 9. **Rates and buffers.** Repeat steps 2 and 6 briefly at 44.1 and 96 kHz, and at 64 and 1024
