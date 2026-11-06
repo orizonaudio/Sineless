@@ -151,9 +151,12 @@ export function nextFrame(within: number): Promise<number | undefined> {
 
 // What the page looked like when its frames stopped coming, for the failure: whether it is
 // hidden, out of focus or sized to nothing.
-function stallNote(waitedFor: string, frames: number): string {
+// `frames`: those the wait got before they stopped, when it waited for several.
+function stallNote(waitedFor: string, frames?: number): string {
+  const before =
+    frames === undefined ? "" : `${String(frames)} before it stopped; `;
   return (
-    `the page got no animation frame in ${waitedFor} (${String(frames)} before it stopped; ` +
+    `the page got no animation frame in ${waitedFor} (${before}` +
     `page ${document.visibilityState}, ${document.hasFocus() ? "focused" : "not focused"}, ` +
     `${String(window.innerWidth)} × ${String(window.innerHeight)}): its rendering stalled`
   );
@@ -163,7 +166,7 @@ function stallNote(waitedFor: string, frames: number): string {
 // which no host's display does: there the test running is skipped, saying so. Off CI it fails, so a
 // page that stopped rendering still shows on a developer's machine, and so does a start outside a
 // test (a beforeAll), which has no test to skip.
-function stalled(waitedFor: string, frames: number): never {
+function stalled(waitedFor: string, frames?: number): never {
   const note = stallNote(waitedFor, frames);
   const running = TestRunner.getCurrentTest<RunnerTestCase | undefined>();
   if ((ciForTests ?? inject("ci")) && running) {
@@ -180,7 +183,7 @@ export async function frame(
 ): Promise<number> {
   const at = await nextFrame(within);
   if (at === undefined) {
-    stalled(waitedFor, 0);
+    stalled(waitedFor);
   }
   return at;
 }
