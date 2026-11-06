@@ -5,7 +5,7 @@
 import { afterAll, describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { beforeApp, byId, choice, settle, startApp } from "./harness.ts";
+import { beforeApp, byId, choice, press, settle, startApp } from "./harness.ts";
 
 // How far a dragged line may sit from the pointer (CSS px).
 const tolerance = 0.25;
@@ -92,8 +92,8 @@ async function dragMarker(y: number): Promise<void> {
 describe("dragging on the screen", () => {
   beforeApp(async () => {
     await startApp();
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
     await setPressed("level-cursors", true);
     await setPressed("time-cursors", true);
     await settle();
@@ -109,7 +109,7 @@ describe("dragging on the screen", () => {
   test.each([0.1, 0.9])(
     "an overlaid level cursor sits under the pointer at %s of the height",
     async (y) => {
-      await userEvent.click(choice("layout", "Overlay"));
+      await press(choice("layout", "Overlay"));
       await settle();
       const line = levelLine(0);
       dragTo(line, 0.5, y);
@@ -124,7 +124,7 @@ describe("dragging on the screen", () => {
   ])(
     "a stacked level cursor in lane %s sits under the pointer at %s of the height",
     async (lane, y) => {
-      await userEvent.click(choice("layout", "Stack"));
+      await press(choice("layout", "Stack"));
       await settle();
       const line = levelLine(lane);
       dragTo(line, 0.5, y);
@@ -135,14 +135,14 @@ describe("dragging on the screen", () => {
   test.each([0.1, 0.9])(
     "the overlaid trigger marker sits under the pointer at %s of the height",
     async (y) => {
-      await userEvent.click(choice("layout", "Overlay"));
+      await press(choice("layout", "Overlay"));
       await settle();
       await dragMarker(y);
     },
   );
 
   test("the stacked trigger marker sits under the pointer near its lane's edges", async () => {
-    await userEvent.click(choice("layout", "Stack"));
+    await press(choice("layout", "Stack"));
     await settle();
     // Two lanes, each a quarter of the height either side of its centre; the marker's lane is
     // the one it sits in.
@@ -218,7 +218,7 @@ describe("dragging on the screen", () => {
   });
 
   test("on a screen a fractional number of pixels tall, the level cursor and marker sit under the pointer", async () => {
-    await userEvent.click(choice("layout", "Overlay"));
+    await press(choice("layout", "Overlay"));
     const app = document.querySelector(".app") as HTMLElement;
     app.style.height = `${String(Math.floor(app.getBoundingClientRect().height) - 0.6)}px`;
     await settle();
@@ -230,7 +230,7 @@ describe("dragging on the screen", () => {
   });
 
   test("on a screen a fractional number of pixels wide and tall, the hover line sits under the pointer and spans the lane", async () => {
-    await userEvent.click(choice("layout", "Overlay"));
+    await press(choice("layout", "Overlay"));
     const app = document.querySelector(".app") as HTMLElement;
     const box = app.getBoundingClientRect();
     app.style.width = `${String(Math.floor(box.width) - 0.6)}px`;

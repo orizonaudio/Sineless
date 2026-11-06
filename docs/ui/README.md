@@ -136,7 +136,7 @@ From 2026-10-24 and 2026-10-25.
 
 ![Default size with the trigger popover open](images/layout-trigger.png)
 
-- **Toolbar, left to right:** mark and wordmark; Single | Multi; Views in Multi (a dropdown holding the group and Compare, On | Off, reading "A·Σ" with Σ dimmed while Compare is off); Beats | Free | Trig; Span; Scale; Views (Single); Overlay | Stack; Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
+- **Toolbar, left to right:** mark and wordmark; Mode (Single | Multi in its popover); Views in Multi (a dropdown holding the group and Compare, On | Off, reading "A·Σ" with Σ dimmed while Compare is off); Time (Beats | Free | Trig in its popover); Span; Scale; Views (Single); Layout (Overlay | Stack in its popover); Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
 - **Sizes**, measured on the widest toolbar (Multi with Compare on, group D · Trig with trigger mode Single, so Re-arm shows, and Frozen; Single is 7 px narrower): default **1060 × 580** (the toolbar needs 1046 px with the wordmark since Compare became a switch in Multi's Views); minimum **1030 × 400** (987 px with the mark alone; the status bar needs 1018 px). Between the two, only the wordmark hides.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.

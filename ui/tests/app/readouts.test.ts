@@ -77,10 +77,10 @@ describe("readouts", () => {
       viewOrder.map((view) => [timeBase, view] as const),
     ),
   )("measure the channel chosen in %s: %s", async (timeBase, view) => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await showViews(["L", "R", "M", "S"]);
     await useSource(view === "side" ? "L" : "S");
-    await userEvent.click(choice("time-base", timeBase));
+    await press(choice("time-base", timeBase));
     await useReadout(labelOf(view));
     await settle();
     await expectReadoutsOf(ChannelView[view]);
@@ -89,7 +89,7 @@ describe("readouts", () => {
   // Hidden, the channel chosen gives way to the first view drawn, which the popover lights, the
   // hidden one disabled; shown again, it is measured again.
   test("measure the first view drawn while the one chosen is hidden", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await showViews(["L", "R", "M", "S"]);
     await useReadout("S");
     await showViews(["R", "M"]);
@@ -113,7 +113,7 @@ describe("readouts", () => {
   });
 
   test("show the frequency with the shared formatter", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await useSource("L");
     await settle();
     await expect

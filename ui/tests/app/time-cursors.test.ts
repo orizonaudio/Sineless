@@ -13,6 +13,7 @@ import {
   chips,
   choice,
   displays,
+  press,
   settle,
   showDisplay,
   startApp,
@@ -65,10 +66,10 @@ describe("time cursors over stacked lanes", () => {
     async (mode) => {
       await setPressed("freeze", false);
       await showDisplay(mode);
-      await userEvent.click(choice("layout", "Stack"));
+      await press(choice("layout", "Stack"));
       // Single shows L and R by default: two lanes, of different traces. A short span keeps
       // each trace's crossings pixels apart.
-      await userEvent.click(choice("time-base", "Trig"));
+      await press(choice("time-base", "Trig"));
       await typeInto("span-field", "10 ms");
       await setPressed("time-cursors", true);
       await settle();

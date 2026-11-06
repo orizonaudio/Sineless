@@ -58,9 +58,9 @@ describe("the trigger source on a stereo track", () => {
   let app: Started;
   beforeAll(async () => {
     app = await startApp();
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Trig"));
-    await userEvent.click(choice("layout", "Stack"));
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
+    await press(choice("layout", "Stack"));
   });
 
   test.each([false, true])(
@@ -122,7 +122,7 @@ describe("the trigger source on a stereo track", () => {
       expect(markerColour()).not.toBe(colourOf["R"]);
       expect(markerColour()).toMatch(/^(rgb|#)/u);
       // Back to Single, the row lights the source chosen again, from the Single frame.
-      await userEvent.click(choice("display-mode", "Single"));
+      await press(choice("display-mode", "Single"));
       await settle();
       expect((await sourceRow()).lit).toBe("R");
     },
@@ -133,8 +133,8 @@ describe("the trigger source on a mono track", () => {
   let app: Started;
   beforeAll(async () => {
     app = await startApp({ inputChannels: 1 });
-    await userEvent.click(choice("display-mode", "Single"));
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
   });
 
   // #247: the source set to S, the trigger reads L, the one channel; the row and the marker say so.
@@ -167,7 +167,7 @@ describe("the trigger source on a mono track", () => {
 describe("the trigger source before the first frame", () => {
   test("lights the source chosen and offers the views shown", async () => {
     await startBeforeFrames();
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     expect(window.orizonDebug?.frameCount ?? 0).toBe(0);
     await press(choice("source", "R"));
     await expect
@@ -181,7 +181,7 @@ describe("the trigger source before the first frame", () => {
 
   test("offers L alone on a mono track", async () => {
     await startBeforeFrames({ inputChannels: 1 });
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     expect(window.orizonDebug?.frameCount ?? 0).toBe(0);
     expect((await sourceRow()).enabled).toEqual(["L"]);
   });

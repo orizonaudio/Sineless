@@ -15,6 +15,7 @@ import {
   beforeApp,
   byId,
   choice,
+  press,
   settle,
   showDisplay,
   startApp,
@@ -37,8 +38,8 @@ describe("frames of audio held at another rate than the host's", () => {
   });
 
   test("time the span between time cursors, and count its samples, at the frame's rate", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
+    await press(choice("display-mode", "Single"));
     if (byId("time-cursors").getAttribute("aria-pressed") !== "true") {
       await userEvent.click(byId("time-cursors"));
     }
@@ -58,7 +59,7 @@ describe("frames of audio held at another rate than the host's", () => {
   });
 
   test("read Kick 2's offset in milliseconds at the frame's rate", async () => {
-    await userEvent.click(choice("time-base", "Trig"));
+    await press(choice("time-base", "Trig"));
     await showDisplay("Compare");
     await settle();
     const check = (name: string) =>
@@ -83,8 +84,8 @@ describe("frames of audio held at another rate than the host's", () => {
   });
 
   test("place the Beats grid's clock at the frame's rate", async () => {
-    await userEvent.click(choice("time-base", "Beats"));
-    await userEvent.click(choice("display-mode", "Single"));
+    await press(choice("time-base", "Beats"));
+    await press(choice("display-mode", "Single"));
     await settle();
     // Each label's position, "bar.beat", as quarter notes from the project start, and its
     // project time, "m:ss.sss".
