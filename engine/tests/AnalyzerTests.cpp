@@ -2576,27 +2576,37 @@ TEST_F(CompareTest, LeavesALaneForTheSum)
     EXPECT_EQ(lanes.hidden, 2u);
 }
 
-// Sixteen tracks fill Multi's lanes; turning Compare on gives the sum a lane, hiding one track but
-// never this one, and turning it off shows every track again.
-TEST_F(CompareTest, HidesOneTrackForTheSumOnlyWhileCompareIsOn)
+// Sixteen tracks fill Multi's lanes; turning Compare on gives the sum a lane, hiding one track, and
+// turning it off shows every track again. This track, created last, is the one Compare would push
+// out: it takes the last track lane instead.
+TEST_F(MultiTrackTest, HidesOneTrackForTheSumOnlyWhileCompareIsOn)
 {
-    for (std::size_t i = 0; i + 1 < kMaxLanes; ++i) {
-        join(static_cast<float>(i));
+    InstanceRegistry crowded;
+    for (std::size_t track = 0; track + 1 < kMaxLanes; ++track) {
+        auto engine = std::make_shared<Engine>();
+        crowded.add(engine);
+        tracks.emplace_back(
+            engine, [level = static_cast<float>(track + 10)](std::uint64_t) { return level; });
     }
+    crowded.add(own);
+    Analyzer lanes(*own, crowded);
+    lanes.setColumns(8000);
+    std::vector<std::byte> bytes;
     for (const Display display : {Display::kCompare, Display::kMulti, Display::kCompare}) {
         SCOPED_TRACE(displayName(display));
         show(own->settings(), display);
         play(9600);
-        const auto frame = produce();
-        ASSERT_TRUE(frame);
-        EXPECT_EQ(frame->laneCount, kMaxLanes);
-        const LaneSet lanes = analyzer->laneSet();
+        ASSERT_TRUE(lanes.produce(bytes));
+        const DecodedFrame frame = decode(bytes);
         const bool comparing = display == Display::kCompare;
-        EXPECT_EQ(frame->has(FrameFlag::kCompared), comparing);
-        EXPECT_EQ(lanes.lanes.size(), comparing ? kMaxLanes - 1 : kMaxLanes);
-        EXPECT_EQ(lanes.hidden, comparing ? 1u : 0u);
-        EXPECT_TRUE(std::ranges::any_of(lanes.lanes, &LaneLabel::own))
-            << "this track is never the one hidden";
+        const std::size_t shown = comparing ? kMaxLanes - 1 : kMaxLanes;
+        EXPECT_EQ(frame.laneCount, kMaxLanes) << "the tracks, and with Compare the sum";
+        EXPECT_EQ(frame.has(FrameFlag::kCompared), comparing);
+        const LaneSet set = lanes.laneSet();
+        ASSERT_EQ(set.lanes.size(), shown);
+        EXPECT_EQ(set.hidden, comparing ? 1u : 0u);
+        EXPECT_TRUE(set.lanes.back().own) << "this track is never the one hidden";
+        EXPECT_EQ(lane(frame, shown - 1).front(), 1.0f) << "its lane draws this track";
     }
 }
 
