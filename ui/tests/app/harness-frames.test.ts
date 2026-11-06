@@ -74,11 +74,22 @@ describe("a start whose page stops rendering, off CI", () => {
     await expect(startApp()).rejects.toThrow(/\(2 before it stopped;/);
   });
 
+  test("starts when frames come at one time, as held frames run in a burst", async () => {
+    setCiForTests(false);
+    setFrameBudgetForTests(5000);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      realFrame(() => {
+        callback(1000);
+      }),
+    );
+    await startApp();
+  });
+
   test("a frame waited for in a test stops when none comes", async () => {
     setCiForTests(false);
     framesStopAfter(0);
     await expect(frame("the grip's frame", 300)).rejects.toThrow(
-      /no animation frame in the grip's frame \(0 before it stopped;/,
+      /no animation frame in the grip's frame \(page /,
     );
   });
 });
