@@ -88,12 +88,14 @@ export const frequencyWindowSeconds = 1;
 
 // The editor's layout (CSS pixels): its default width, from which the widest toolbar fits with the
 // wordmark (Multi with Compare on, Trig, the Single trigger mode and frozen, measured at 1046); its
-// minimum width, at least the widest toolbar's (measured at 987 without the wordmark,
-// docs/ui/README.md); the minimum height of a stacked lane; and the height of everything around
-// the screen (toolbar and status bar), at most: measured at 82, with room for rounding at other
-// display scales. The editor tests check the page against them.
-export const defaultEditorWidth = 1110;
-export const minimumEditorWidth = 1050;
+// minimum width, the widest of that toolbar without the wordmark (measured at 987) and the status
+// bar, whose parts keep fixed widths in every state (measured at 1018, docs/ui/README.md); each
+// with at least 8 px to spare for text that renders wider on another platform, rounded up to 10;
+// the minimum height of a stacked lane; and the height of everything around the screen (toolbar
+// and status bar), at most: measured at 82, with room for rounding at other display scales. The
+// editor tests check the page against them.
+export const defaultEditorWidth = 1060;
+export const minimumEditorWidth = 1030;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;
 

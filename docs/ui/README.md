@@ -130,7 +130,7 @@ From 2026-10-24 and 2026-10-25.
 6. **Layout:** concept A (Toolbar), as in [layout.html](layout.html).
 7. **Treatment:** Graphite, with the accent on Frozen ([direction.html](direction.html)).
 8. **Colour:** the tokens in [tokens/](tokens/) ([colour.html](colour.html)).
-9. **Sizes:** the design sets them, and `protocol/src/limits.ts` holds the ones the engine shares: `minimumEditorWidth` 1050 (the widest toolbar, measured at 1042 px in Geist) and `chromeHeight` 84 (toolbar and status bar, measured at 82). The native default is 1110 × 580 and the minimum height 400 (`editor/include/editor/EditorCore.h`). The size tokens in `tokens/` record the design; `ui/src/tokens.css` holds the colours the page uses.
+9. **Sizes:** the design sets them, and `protocol/src/limits.ts` holds the ones the engine shares: `minimumEditorWidth` 1030 (the widest of the toolbar, measured at 987 px in Geist, and the status bar, 1018 px) and `chromeHeight` 84 (toolbar and status bar, measured at 82). The native default is 1060 × 580 and the minimum height 400 (`editor/include/editor/EditorCore.h`). The size tokens in `tokens/` record the design; `ui/src/tokens.css` holds the colours the page uses.
 
 ## 9. The layout: concept A, Toolbar
 
@@ -138,7 +138,7 @@ From 2026-10-24 and 2026-10-25.
 
 - **Toolbar, left to right:** mark and wordmark; Single | Multi | Compare; Group (Multi and Compare, a dropdown); Beats | Free | Trig; Span; Scale; Views (Single); Overlay | Stack; Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
-- **Sizes**, measured on the widest toolbar (Multi or Compare · Trig with trigger mode Single, so Re-arm shows, and Frozen; Single is 1 px narrower): default **1110 × 580** (the toolbar needs 1101 px with the wordmark, since Free joined the time bases); minimum **1050 × 400** (1042 px with the mark alone). Between the two, only the wordmark hides.
+- **Sizes**, measured on the widest toolbar (Multi with Compare on, group D · Trig with trigger mode Single, so Re-arm shows, and Frozen; Single is 7 px narrower): default **1060 × 580** (the toolbar needs 1046 px with the wordmark since Compare became a switch in Multi's Views); minimum **1030 × 400** (987 px with the mark alone; the status bar needs 1018 px). Between the two, only the wordmark hides.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.
 - **Status bar:** Time, Level, Hover and A4 on the left; what the readouts measure (in Single the channel measured, a button that chooses it on a stereo track, Left on a mono track; "This track" in Multi and Compare, where the readouts measure this track's Mid, DESIGN §1.2.1), then Peak, RMS and Freq in the centre; the state, Help and About on the right. The left group never changes width and the state area has a fixed width, so the readouts never move.
 - **More states than fit** fold into a "+n" chip that lists them on hover, keeping the order of the state table in DESIGN §1.5.
