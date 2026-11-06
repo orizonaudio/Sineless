@@ -60,8 +60,9 @@ or changes) and the existing code it builds on, with `file:line`.
 
 ## 2. Decisions (owner)
 ## 3. Scope
-What the plan does not cover; pre-existing bugs found on the way, each in scope or for its own
-issue; product behaviour beyond the issue, listed as owner decisions before review; what waits for
+What the plan does not cover; pre-existing bugs found on the way, each in scope, for its own
+issue, or left unfiled with its scenario and consequence (CLAUDE.md, "Before filing or fixing a
+defect you found"); product behaviour beyond the issue, listed as owner decisions before review; what waits for
 a measurement.
 ## 4. Decided
 Points settled in review, each with the round that settled it.

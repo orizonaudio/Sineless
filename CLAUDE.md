@@ -76,6 +76,14 @@ message with a short `Prior art:` note naming the sources.
 - **Start with a test that fails without the fix**, and confirm it fails before fixing.
   Every new failure branch (failed read, missing data) that a supported host and setup can
   reach gets a test that triggers it; one none can reach is removed, not tested.
+- **Before filing or fixing a defect you found** (a failing or skipped generated case, a fuzz
+  or review finding), state its scenario and its consequence: the supported host, setup and use
+  that reach it, how ordinary that is, and what a user hears or reads go wrong, for how long.
+  Weigh the two together; a combination the tests can construct is not by that alone one a user
+  meets. An ordinary scenario, or a serious consequence (a crash, a dropout, wrong data, a lost
+  setting), is worth an issue. Unlikely preconditions with a brief, minor consequence are not:
+  the test skips the case with that reason, and `docs/DESIGN.md` records the limit next to a
+  requirement or quality scenario it limits. When unsure, ask the owner rather than file.
 
 ## Tests
 
