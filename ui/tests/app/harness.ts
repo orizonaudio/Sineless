@@ -92,16 +92,83 @@ export async function startRecorded(
 // Cuts the app started last off from its back end and removes what it set up as it started.
 let retirePrevious: () => void = () => undefined;
 
+// How long the start waits for the page's animation frames, and for a frame asked to see whether
+// the page still renders. The start's first wait leaves a stall that ends within it a pass, as
+// it would be with no limit, and leaves half of a hook's 30 s for the rest of a setup. Tests of
+// the waits themselves shorten them.
+const budgets = { queued: 15000, probe: 500 };
+
+export function setFrameBudgetsForTests(
+  queued: number = 15000,
+  probe: number = 500,
+): void {
+  budgets.queued = queued;
+  budgets.probe = probe;
+}
+
+// The next animation frame's time, or undefined once `within` ms pass without one: a page whose
+// rendering has stopped (the CI machine's display stalling) gets none, while its timers run.
+export function nextFrame(within: number): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      done = true;
+      resolve(undefined);
+    }, within);
+    requestAnimationFrame((at) => {
+      if (!done) {
+        done = true;
+        clearTimeout(timer);
+        resolve(at);
+      }
+    });
+  });
+}
+
+// What the page looked like when its frames stopped coming, for the failure: whether it is
+// hidden, out of focus or sized to nothing.
+function stallNote(waitedFor: string, frames: number): string {
+  return (
+    `the page got no animation frame in ${waitedFor} (${String(frames)} before it stopped; ` +
+    `page ${document.visibilityState}, ${document.hasFocus() ? "focused" : "not focused"}, ` +
+    `${String(window.innerWidth)} × ${String(window.innerHeight)}): its rendering stalled`
+  );
+}
+
+// The page's rendering stopped: the test fails, saying so.
+function stalled(waitedFor: string, frames: number): never {
+  throw new Error(stallNote(waitedFor, frames));
+}
+
+// An animation frame, waited for within `within` ms; the test stops if none comes.
+export async function frame(
+  waitedFor = "a frame",
+  within = 5000,
+): Promise<number> {
+  const at = await nextFrame(within);
+  if (at === undefined) {
+    stalled(waitedFor, 0);
+  }
+  return at;
+}
+
 // Waits out the ticks a retired app's draw loop already asked for, which draw into the page by id:
 // a frame waiting is drawn within n ticks of the last, n for the browser's tick rate, so two ticks
-// more than that, measured from the shortest gap seen.
+// more than that, measured from the shortest gap seen (at most a 1000 Hz rate's), within the
+// start's budget.
 async function queuedDrawsRun(): Promise<void> {
+  const deadline = performance.now() + budgets.queued;
   let last: number | undefined;
   let shortest = Number.POSITIVE_INFINITY;
-  for (let ticks = 0; ticks < 2 + ticksPerFrame(1000 / shortest); ticks++) {
-    const at = await new Promise<number>((resolve) =>
-      requestAnimationFrame(resolve),
-    );
+  let frames = 0;
+  const ticks = () =>
+    2 + Math.min(ticksPerFrame(1000 / shortest), ticksPerFrame(1000));
+  for (let tick = 0; tick < ticks(); tick++) {
+    const at = await nextFrame(Math.max(0, deadline - performance.now()));
+    if (at === undefined) {
+      stalled("the ticks the previous app asked for", frames);
+    }
+    frames++;
     if (last !== undefined) {
       shortest = Math.min(shortest, at - last);
     }
