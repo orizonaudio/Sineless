@@ -220,7 +220,7 @@ export const helpTexts = {
   },
   autoFreeze: {
     title: "Auto-freeze",
-    text: "When on, the display freezes when the host stops and goes live again when it plays. A freeze you make yourself is kept.",
+    text: "On by default. The display freezes when the host stops and goes live again when it plays; while stopped it stays frozen even if you play an instrument through the track. Click Freeze to go live. Turning Auto-freeze off stops later freezes and keeps the current one. A freeze you make yourself is kept.",
   },
   timeCursors: {
     title: "Time cursors",

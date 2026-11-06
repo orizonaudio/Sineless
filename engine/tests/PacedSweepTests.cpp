@@ -55,6 +55,10 @@ public:
                                    static_cast<double>(protocol::BeatSpan::kOneBeat));
             engine->settings().set(SettingId::kChannelViews, 0b0001);
             engine->settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
+            // These tests draw what plays and what comes while stopped; Auto-freeze, on in a new
+            // instance, would hold the picture at the stop.
+            engine->settings().set(SettingId::kAutoFreeze,
+                                   static_cast<double>(protocol::Toggle::kOff));
             registry.add(engine);
             Track track{.engine = engine,
                         .offset = index == 0 ? 0 : offset,

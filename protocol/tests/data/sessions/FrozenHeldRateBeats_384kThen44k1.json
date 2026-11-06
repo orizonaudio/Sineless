@@ -36,7 +36,7 @@
           "protocolVersion": 12,
           "sampleRate": 44100.0,
           "settings": {
-            "autoFreeze": "off",
+            "autoFreeze": "on",
             "beatSpan": "oneBar",
             "channelViews": [
               "left",
@@ -72,7 +72,7 @@
     "protocolVersion": 12,
     "sampleRate": 384000.0,
     "settings": {
-      "autoFreeze": "off",
+      "autoFreeze": "on",
       "beatSpan": "oneBar",
       "channelViews": [
         "left",
