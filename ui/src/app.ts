@@ -689,7 +689,7 @@ export class OscilloscopeApp {
     element("help").addEventListener("click", () => {
       const on = element("help").getAttribute("aria-pressed") !== "true";
       element("help").setAttribute("aria-pressed", String(on));
-      help.setEnabled(on);
+      help.setEnabled(on, element("help"));
     });
     element("time-cursors").addEventListener("click", () => {
       this.timeCursors =

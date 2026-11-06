@@ -41,6 +41,11 @@ export const helpTexts = {
     title: "Help",
     text: "Turns help on or off. While it is on, resting the pointer on any control explains what it is, what it does and how to use it.",
   },
+  // Shown at once beside the switch when it turns help on.
+  helpOn: {
+    title: "Help is on",
+    text: "Rest the pointer on any control to see what it does. Click ? again to turn it off.",
+  },
   about: {
     title: "About",
     text: "Shows which version of the plugin this is, as your host lists it: give it when you report a problem.",
