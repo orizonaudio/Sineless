@@ -3,6 +3,8 @@
 
 import {
   analysisGateDbfs,
+  highestAudibleHz,
+  lowestAudibleHz,
   frequencyWindowSeconds,
   levelFloorDbfs,
   matchReachSeconds,
@@ -26,6 +28,9 @@ const frequencyWindow = formatSeconds(frequencyWindowSeconds);
 const margin = String(summingMarginDb);
 const levelFloor = String(levelFloorDbfs).replace("-", "−");
 const gate = String(analysisGateDbfs).replace("-", "−");
+// The audible range, as the readouts name frequencies only within it.
+const lowestAudible = `${String(lowestAudibleHz)} Hz`;
+const highestAudible = `${String(highestAudibleHz / 1000)} kHz`;
 const shortestTriggerSpan = formatSeconds(settings.triggerSpan.minimum);
 const longestTriggerSpan = formatSeconds(settings.triggerSpan.maximum);
 const shortestFreeSpan = formatSeconds(settings.freeSpan.minimum);
@@ -106,7 +111,7 @@ export const helpTexts = {
   },
   frequency: {
     title: "Frequency",
-    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average, of the channel named beside the readouts. A dash means no steady repetition was found, or the signal is below ${gate} dBFS.`,
+    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average, of the channel named beside the readouts. A dash means no steady repetition was found, the signal is below ${gate} dBFS, or the pitch is outside the audible range, ${lowestAudible} to ${highestAudible}.`,
   },
   screen: {
     title: "Screen",
