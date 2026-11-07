@@ -114,7 +114,10 @@ No open questions: ask the owner before review, not in the plan.
 4. **Judge** what passed. Check its premise in the code yourself: an applied finding cites the
    scenario you traced, as a rejected one cites what refutes it. Every finding gets a verdict in
    the log, suggestions and rejected ones included; nothing is dropped silently. An open
-   measurement a reviewer reports goes into the plan, with its spike.
+   measurement a reviewer reports goes into the plan, with its spike. Apply a suggestion only
+   when it is nearly free: a sentence, or a line of the design, that adds no state, mechanism,
+   test case or round. Otherwise log it "recorded, not applied", with one line why; it changes
+   neither the plan nor the code.
 5. If a blocking finding was applied, run a later round (step 2). A clarification alone does not
    start one. If the same mechanism drew blocking findings in two rounds running, review the
    design that removes it, not another guard on it.

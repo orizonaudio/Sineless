@@ -41,5 +41,7 @@ are not verified; keep at most three.
 ## 4. Act on what is left
 
 Fix each verified Important finding (one issue per commit, with its test), or answer it in
-the pull request saying why it does not hold. Show the findings the verifiers rejected or
+the pull request saying why it does not hold. Fix a nit only when it is nearly free (a line, or
+one test case through what the tests already set up); otherwise list it in the pull request as
+recorded, not fixed. Show the findings the verifiers rejected or
 downgraded too, in one line each, so a wrong rejection can be noticed.
