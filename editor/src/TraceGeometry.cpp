@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <limits>
 #include <optional>
+#include <ranges>
 
 namespace orizon::editor {
 
@@ -358,9 +359,10 @@ BeatSteps beatSteps(double visibleSpan, double barQuarterNotes, const BeatGrid& 
     const std::vector<double> ladder = beatLadder(barQuarterNotes, grid.division);
     const bool triplets = grid.division == protocol::BeatDivision::kTriplets;
     const auto coarser = [&](double length) {
-        for (auto level = ladder.rbegin(); level != ladder.rend(); ++level) {
-            if (*level - length > kEpsilon * length) {
-                return *level;
+        // The shortest level longer than `length`: the ladder runs longest first.
+        for (const double level : std::views::reverse(ladder)) {
+            if (level - length > kEpsilon * length) {
+                return level;
             }
         }
         return 4.0 * length;
