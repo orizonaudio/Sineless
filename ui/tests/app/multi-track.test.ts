@@ -199,7 +199,7 @@ describe("the Compare switch", () => {
       .element(previewFix() as HTMLElement)
       .toHaveAttribute("aria-pressed", "true");
     const sent = started.sent.length;
-    await userEvent.click(choice("display-mode", "Multi"));
+    await press(choice("display-mode", "Multi"));
     await setCompare(true);
     await press(choice("compare", "On"));
     started.deliver({
