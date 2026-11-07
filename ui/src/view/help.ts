@@ -235,7 +235,7 @@ export const helpTexts = {
   },
   timeCursors: {
     title: "Time cursors",
-    text: "Two vertical lines, A and B, for measuring time. Drag them; the readout shows the time between them, its frequency and nearest note, and the beats in Beats mode.",
+    text: "Two vertical lines, A and B, for measuring time. Drag them; the readout shows where each is (in Beats on the project's clock, in Trig from the trigger, in Free back from the newest audio), the time between them, its frequency and nearest note, the bars and beats between them in Beats mode, and the samples between them.",
   },
   levelCursors: {
     title: "Level cursors",
