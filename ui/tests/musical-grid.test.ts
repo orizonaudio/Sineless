@@ -72,6 +72,13 @@ describe("musical grid", () => {
     }
   });
 
+  // The hover keeps one shape as the pointer moves: the sixteenth on whole beats too.
+  test("keeps the sixteenth on whole beats when asked", () => {
+    expect(musicalPosition(5, 4, true)).toBe("2.2.1");
+    expect(musicalPosition(5.25, 4, true)).toBe("2.2.2");
+    expect(musicalPosition(5, 4)).toBe("2.2");
+  });
+
   test("counts bar.beat.sixteenth like a DAW", () => {
     expect(musicalPosition(0, 4)).toBe("1.1");
     expect(musicalPosition(5, 4)).toBe("2.2");

@@ -231,7 +231,6 @@ describe("hover readout", () => {
       "Time +2.13 ms",
       `Level ${minus}6.0 dBFS`,
       "Cycle 2.5 ms",
-      "Δs 120.0 samples",
       "f ≈ 400.0 Hz",
       "Note G4 +35 ct",
     ]);
@@ -274,9 +273,8 @@ describe("hover readout", () => {
       150 / 480,
       0.5,
     );
-    expect(lines(readout).slice(2, 5)).toEqual([
+    expect(lines(readout).slice(2, 4)).toEqual([
       "Cycle 1.25 ms",
-      "Δs 120.0 samples",
       "f ≈ 800.0 Hz",
     ]);
   });
@@ -328,7 +326,6 @@ describe("hover readout", () => {
     // Approximate from min/max columns, and marked so; the note with its cents (owner, FR-16.1).
     expect(lines(readout).slice(2)).toEqual([
       "Cycle ≈ 3.33 ms",
-      "Δs ≈ 160 samples",
       "f ≈ 300.0 Hz",
       `Note ≈ ${noteName(1 / 0.003_333_333) ?? ""}`,
     ]);
@@ -532,7 +529,7 @@ describe("hover readout", () => {
     // The cycle's rows stay, dashes, so the readout keeps its shape as the pointer moves.
     expect(
       lines(hoverReadout(context(frame, values), 0.5, 0.5)).slice(2),
-    ).toEqual(["Cycle —", "Δs —", "f —", "Note —"]);
+    ).toEqual(["Cycle —", "f —", "Note —"]);
   });
 
   test("shows no minus sign at the trigger point itself", () => {

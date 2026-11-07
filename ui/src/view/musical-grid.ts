@@ -50,13 +50,18 @@ function greatestCommonDivisor(a: number, b: number): number {
 export function musicalPosition(
   quarterNotes: number,
   barQuarterNotes: number,
+  // Keep the sixteenth on whole beats too ("25.2.1"), as the hover readout does, so its position
+  // keeps one shape as the pointer moves.
+  sixteenthAlways = false,
 ): string {
   const bar = Math.floor(quarterNotes / barQuarterNotes + epsilon);
   const inBar = Math.max(0, quarterNotes - bar * barQuarterNotes);
   const beat = Math.floor(inBar + epsilon);
   const sixteenth = Math.floor((inBar - beat) * 4 + epsilon);
   const base = `${String(bar + 1)}.${String(beat + 1)}`;
-  return sixteenth === 0 ? base : `${base}.${String(sixteenth + 1)}`;
+  return sixteenth === 0 && !sixteenthAlways
+    ? base
+    : `${base}.${String(sixteenth + 1)}`;
 }
 
 // An offset within a beat as a fraction of a beat, e.g. "+1/64".
