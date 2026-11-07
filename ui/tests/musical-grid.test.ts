@@ -46,6 +46,7 @@ describe("a typed beat span", () => {
         amount,
         ` ${amount.replace("/", " / ")} `,
         label.toUpperCase(),
+        `${label} `,
       ]) {
         expect(parseBeatSpan(text), text).toBe(index);
       }
