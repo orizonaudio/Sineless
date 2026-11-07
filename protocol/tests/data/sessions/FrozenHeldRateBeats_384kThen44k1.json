@@ -33,7 +33,7 @@
       "replies": [
         {
           "inputChannels": 2,
-          "protocolVersion": 12,
+          "protocolVersion": 13,
           "sampleRate": 44100.0,
           "settings": {
             "autoFreeze": "on",
@@ -65,11 +65,11 @@
       ]
     }
   ],
-  "protocolVersion": 12,
+  "protocolVersion": 13,
   "scenario": "FrozenHeldRateBeats_384kThen44k1",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 12,
+    "protocolVersion": 13,
     "sampleRate": 384000.0,
     "settings": {
       "autoFreeze": "on",

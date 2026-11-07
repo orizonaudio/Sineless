@@ -131,8 +131,8 @@ export const helpTexts = {
     text: `How much time the screen shows in Free, from ${shortestFreeSpan} to ${longestFreeSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one with its unit, such as 2 s (a number alone is in milliseconds). Shorter spans are shown in Trig, where the trigger holds the trace still.`,
   },
   beatSpan: {
-    title: "Beat span",
-    text: "How many beats or bars the screen shows at the host tempo. Drag up or down or scroll to change it; double-click to type.",
+    title: "Span",
+    text: "How many bars the screen shows at the host tempo, from 1/8 bar to 16 bars. Drag up or down or scroll to change it; double-click to type, a number alone included: 16 for 16 bars, 1/4 for 1/4 bar.",
   },
   timeBase: {
     title: "Time base",

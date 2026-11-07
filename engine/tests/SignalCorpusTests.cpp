@@ -286,15 +286,15 @@ void PrintTo(const Case& c, std::ostream* out)
     *out << c.name;
 }
 
-// Single mode shows the default views (L and R) over a triggered 100 ms span, or a quarter-beat
-// sweep (125 ms at 120 BPM); the multi-track view shows each track's Mid.
+// Single mode shows the default views (L and R) over a triggered 100 ms span, or a 1/8-bar sweep
+// (250 ms at 120 BPM in 4/4); the multi-track view shows each track's Mid.
 void configure(Engine& engine, const Case& c)
 {
     show(engine.settings(), c.mode);
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(c.timeBase));
     engine.settings().set(SettingId::kTriggerSpan, 0.1);
     engine.settings().set(SettingId::kBeatSpan,
-                          static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+                          static_cast<double>(protocol::BeatSpan::kEighthBar));
 }
 
 constexpr std::size_t kColumns = 500;

@@ -1,0 +1,25 @@
+{
+  "settings": {
+    "autoFreeze": "on",
+    "beatSpan": "thirdBar",
+    "channelViews": ["right", "side"],
+    "compare": "on",
+    "concertPitch": 432.0,
+    "displayMode": "multi",
+    "freeSpan": 2.0,
+    "group": "c",
+    "hoverReadout": "on",
+    "readoutSource": "right",
+    "timeBase": "free",
+    "triggerHoldOff": 0.125,
+    "triggerHysteresis": 0.05,
+    "triggerLevel": -0.25,
+    "triggerMode": "single",
+    "triggerSlope": "falling",
+    "triggerSource": "side",
+    "triggerSpan": 0.25,
+    "verticalScale": -9.0,
+    "viewLayout": "overlaid"
+  },
+  "version": 5
+}

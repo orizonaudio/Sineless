@@ -52,7 +52,7 @@ public:
             engine->settings().set(SettingId::kTimeBase,
                                    static_cast<double>(protocol::TimeBase::kBeats));
             engine->settings().set(SettingId::kBeatSpan,
-                                   static_cast<double>(protocol::BeatSpan::kOneBeat));
+                                   static_cast<double>(protocol::BeatSpan::kQuarterBar));
             engine->settings().set(SettingId::kChannelViews, 0b0001);
             engine->settings().set(SettingId::kDisplayMode, static_cast<double>(mode));
             // These tests draw what plays and what comes while stopped; Auto-freeze, on in a new
@@ -230,6 +230,9 @@ public:
     // Whether the host reports its position while stopped, as most do: an instance takes it on
     // its first block.
     bool positionWhileStopped = false;
+    // The host's time signature, until a change (changeAt) sets another numerator.
+    int numerator = 4;
+    int denominator = 4;
     InstanceRegistry registry;
     std::vector<Track> tracks;
     std::unique_ptr<Analyzer> analyzer;
@@ -255,7 +258,8 @@ private:
                                    .tempoValid = true,
                                    .tempo = changed(track.played) ? laterTempo : tempo,
                                    .timeSignatureValid = true,
-                                   .numerator = changed(track.played) ? laterNumerator : 4},
+                                   .numerator = changed(track.played) ? laterNumerator : numerator,
+                                   .denominator = denominator},
                                   static_cast<int>(block), track.rate);
         track.played += block;
         engine.blockStamp().publish(
@@ -448,8 +452,8 @@ TEST(PacedSweep, PlacesAudioWhileTheFramesStop)
 
 // A sweep shorter than pacedSpanMinimumSeconds is new across its width every frame: it is drawn
 // at the newest audio, as a short Seconds span is, in Single and in Multi, where the other lanes
-// follow. Just above the minimum it is paced, behind the newest audio. A sixteenth of a beat is
-// 18.75 ms at 200 BPM and 22.06 ms at 170 BPM.
+// follow. Just above the minimum it is paced, behind the newest audio. The shortest span, 1/8 bar,
+// of a 2/16 bar is a sixteenth of a beat: 18.75 ms at 200 BPM and 22.06 ms at 170 BPM.
 TEST(PacedSweep, ShowsASweepShorterThanTheMinimumAtTheNewestAudio)
 {
     for (const double tempo : {200.0, 170.0}) {
@@ -459,9 +463,11 @@ TEST(PacedSweep, ShowsASweepShorterThanTheMinimumAtTheNewestAudio)
                          std::to_string(static_cast<int>(mode)));
             const std::size_t tracks = mode == protocol::DisplayMode::kSingle ? 1 : 2;
             BeatsHost host(48000.0, 512, tracks, mode, 0, tempo);
+            host.numerator = 2;
+            host.denominator = 16;
             for (const BeatsHost::Track& track : host.tracks) {
-                track.engine->settings().set(
-                    SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kSixteenthBeat));
+                track.engine->settings().set(SettingId::kBeatSpan,
+                                             static_cast<double>(protocol::BeatSpan::kEighthBar));
             }
             host.play(3.0);
             std::size_t checked = 0;
@@ -735,15 +741,18 @@ TEST(PacedSweep, FreezesAJumpThePlayheadHadNotReachedWhereItWasPlayed)
 
 // Lengthened from a sweep drawn at the newest audio to one that is paced, the playhead goes on
 // from the newest audio it showed: it may wait for the paced edge to catch up, but never steps
-// back. With 93 ms blocks the delay is longer than a frame.
+// back. With 93 ms blocks the delay is longer than a frame. In 2/16 at 200 BPM, from 1/8 bar (a
+// sixteenth of a beat, 18.75 ms) to two bars (a beat).
 TEST(PacedSweep, NeverStepsBackWhenPacingStarts)
 {
     BeatsHost host(44100.0, 4096, 1, protocol::DisplayMode::kSingle, 0, 200.0);
+    host.numerator = 2;
+    host.denominator = 16;
     Engine& engine = *host.tracks.front().engine;
     engine.settings().set(SettingId::kBeatSpan,
-                          static_cast<double>(protocol::BeatSpan::kSixteenthBeat));
+                          static_cast<double>(protocol::BeatSpan::kEighthBar));
     host.play(3.0);
-    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kTwoBars));
     host.play(1.0);
     EXPECT_FALSE(measureMotion(playheads(engine), host.rate).backwards);
 }
@@ -764,7 +773,7 @@ TEST(PacedSweep, ChangesTheCycleWhenThePlayheadReachesTheChange)
         double after;
     };
     for (const Change& change : {Change{.name = "tempo",
-                                        .span = protocol::BeatSpan::kOneBeat,
+                                        .span = protocol::BeatSpan::kQuarterBar,
                                         .tempo = 100.0,
                                         .numerator = 4,
                                         .before = 0.5,

@@ -1,15 +1,16 @@
 {
   "autoFreeze": ["off", "on"],
   "beatSpan": [
-    "sixteenthBeat",
-    "eighthBeat",
-    "quarterBeat",
-    "halfBeat",
-    "oneBeat",
-    "twoBeats",
+    "eighthBar",
+    "sixthBar",
+    "quarterBar",
+    "thirdBar",
+    "halfBar",
     "oneBar",
     "twoBars",
+    "threeBars",
     "fourBars",
+    "sixBars",
     "eightBars",
     "sixteenBars"
   ],

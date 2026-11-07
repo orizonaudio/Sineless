@@ -1,6 +1,64 @@
 import { describe, expect, test } from "vitest";
 
-import { musicalGrid, musicalPosition } from "../src/view/musical-grid.ts";
+import { beatSpanLengths } from "../../protocol/src/enums.ts";
+import {
+  beatSpanLabels,
+  musicalGrid,
+  musicalPosition,
+  parseBeatSpan,
+} from "../src/view/musical-grid.ts";
+
+// The amount a span label names, in bars: "1/4 bar" is 0.25, "16 bars" 16.
+function barsOf(label: string): number {
+  const [amount = ""] = label.split(" ");
+  const [numerator = "", denominator = "1"] = amount.split("/");
+  return Number(numerator) / Number(denominator);
+}
+
+// The beat span field shows a label per span the engine sweeps, in the order the protocol numbers
+// them: a label naming another length would show one span and sweep another.
+describe("beat span labels", () => {
+  test("name each span's length in bars, one label per span", () => {
+    expect(beatSpanLabels).toHaveLength(beatSpanLengths.length);
+    beatSpanLengths.forEach((length, index) => {
+      expect(barsOf(beatSpanLabels[index] ?? "")).toBeCloseTo(
+        length.amount,
+        12,
+      );
+    });
+  });
+
+  test("say bar for one bar or less, bars above", () => {
+    for (const label of beatSpanLabels) {
+      expect(label.endsWith(barsOf(label) > 1 ? " bars" : " bar")).toBe(true);
+    }
+  });
+});
+
+// Typing in the span field: a label, or its number alone ("16" for 16 bars, "1/4" for 1/4 bar).
+describe("a typed beat span", () => {
+  test.each(beatSpanLabels.map((label, index) => [label, index] as const))(
+    "%s is read from its label, its number alone, and in other case or spacing",
+    (label, index) => {
+      const amount = label.split(" ")[0] ?? "";
+      for (const text of [
+        label,
+        amount,
+        ` ${amount.replace("/", " / ")} `,
+        label.toUpperCase(),
+      ]) {
+        expect(parseBeatSpan(text), text).toBe(index);
+      }
+    },
+  );
+
+  test.each(["5", "1/16", "", "bar", "1/2 beat", "two bars"])(
+    "%j names no span",
+    (text) => {
+      expect(parseBeatSpan(text)).toBeUndefined();
+    },
+  );
+});
 
 describe("musical grid", () => {
   test("draws nothing without a span or a bar to measure it by", () => {

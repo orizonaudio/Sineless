@@ -25,11 +25,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 12,
+  "protocolVersion": 13,
   "scenario": "Roll1500msDeepestZoom_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 12,
+    "protocolVersion": 13,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "on",

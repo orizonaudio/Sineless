@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { generateCppHeader } from "../src/cpp-generator.ts";
+import { beatSpanLengths } from "../src/enums.ts";
 import { frameHeader, layoutFields } from "../src/frame.ts";
 
 describe("C++ generator", () => {
@@ -32,9 +33,12 @@ describe("C++ generator", () => {
     );
   });
 
+  // Each span's length as the table gives it, in table order, so the engine sweeps what the UI names.
   test("emits the beat span lengths", () => {
-    expect(header).toContain("kBeatSpanLengths = {{\n    {0.0625, false},");
-    expect(header).toContain("    {16, true},\n}};");
+    const entries = beatSpanLengths
+      .map((length) => `    {${String(length.amount)}},`)
+      .join("\n");
+    expect(header).toContain(`kBeatSpanLengths = {{\n${entries}\n}};`);
   });
 
   test("emits message type names", () => {

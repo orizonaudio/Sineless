@@ -175,16 +175,13 @@ function limitsDeclaration(): string {
 
 function beatSpanDeclaration(): string {
   const entries = beatSpanLengths
-    .map(
-      (length) => `    {${String(length.amount)}, ${String(length.inBars)}},`,
-    )
+    .map((length) => `    {${String(length.amount)}},`)
     .join("\n");
   return [
-    "// Length of each BeatSpan: an amount of quarter notes, or of bars.",
+    "// Length of each BeatSpan, in bars of the host time signature.",
     "struct BeatSpanLength",
     "{",
     "    double amount;",
-    "    bool inBars;",
     "};",
     "",
     "inline constexpr std::array<BeatSpanLength, kBeatSpanCount> kBeatSpanLengths = {{",

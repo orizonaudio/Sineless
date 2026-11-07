@@ -18,18 +18,18 @@
     },
     "track0": {
       "max": 0.4999999,
-      "min": -0.4999352,
+      "min": -0.499995,
       "nanPoints": 0
     },
     "track1": {
-      "max": 0.4999352,
+      "max": 0.499995,
       "min": -0.4999999,
       "nanPoints": 0
     }
   },
   "matches": {
     "track1": {
-      "correlation": -0.9999998,
+      "correlation": -1,
       "offset": 0,
       "polarity": -1
     }
@@ -39,7 +39,7 @@
   "readouts": {
     "frequency": "NaN",
     "peak": 0.499995,
-    "rms": 0.2902821
+    "rms": 0.2894304
   },
   "signal": {
     "channels": 2,
@@ -50,5 +50,5 @@
     "timeBase": "beats"
   },
   "sumGain": "-Infinity",
-  "visibleSamples": 24000
+  "visibleSamples": 48000
 }

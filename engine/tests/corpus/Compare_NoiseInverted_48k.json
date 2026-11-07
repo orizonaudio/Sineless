@@ -18,11 +18,11 @@
     },
     "track0": {
       "max": 0.4999783,
-      "min": -0.4999298,
+      "min": -0.4999602,
       "nanPoints": 0
     },
     "track1": {
-      "max": 0.4999298,
+      "max": 0.4999602,
       "min": -0.4999783,
       "nanPoints": 0
     }
@@ -39,7 +39,7 @@
   "readouts": {
     "frequency": "NaN",
     "peak": 0.4999602,
-    "rms": 0.2863674
+    "rms": 0.2874096
   },
   "signal": {
     "channels": 2,
@@ -50,5 +50,5 @@
     "timeBase": "beats"
   },
   "sumGain": "-Infinity",
-  "visibleSamples": 6000
+  "visibleSamples": 12000
 }

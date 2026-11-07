@@ -92,7 +92,11 @@ import {
   snap,
   zeroCrossings,
 } from "./view/snap.ts";
-import { beatSpanLabels, musicalGrid } from "./view/musical-grid.ts";
+import {
+  beatSpanLabels,
+  musicalGrid,
+  parseBeatSpan,
+} from "./view/musical-grid.ts";
 import {
   laneHoldsInvalid,
   shownChipCount,
@@ -525,12 +529,7 @@ export class OscilloscopeApp {
     const beatSpanField = new DragField({
       label: "Beat span",
       format: (index) => beatSpanLabels[index] ?? "",
-      parse: (text) => {
-        const index = beatSpanLabels.findIndex(
-          (label) => label === text.trim().toLowerCase(),
-        );
-        return index < 0 ? undefined : index;
-      },
+      parse: parseBeatSpan,
       step: (index, delta) =>
         Math.min(
           beatSpanNames.length - 1,

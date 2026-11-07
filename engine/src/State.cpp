@@ -75,11 +75,35 @@ void migrateToVersion4(nlohmann::json& settings)
     }
 }
 
+// Version 5 counts every beat span in bars, from 1/8 bar to 16 bars; the spans in beats went. Each
+// opens as the bar span it equals in 4/4, those shorter than 1/8 bar as 1/8 bar.
+void migrateToVersion5(nlohmann::json& settings)
+{
+    const auto found = settings.find("beatSpan");
+    if (found == settings.end() || !found->is_string()) {
+        return;
+    }
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 6> kBeatSpans{{
+        {"sixteenthBeat", "eighthBar"},
+        {"eighthBeat", "eighthBar"},
+        {"quarterBeat", "eighthBar"},
+        {"halfBeat", "eighthBar"},
+        {"oneBeat", "quarterBar"},
+        {"twoBeats", "halfBar"},
+    }};
+    const std::string saved = found->get<std::string>();
+    for (const auto& [from, to] : kBeatSpans) {
+        if (saved == from) {
+            settings["beatSpan"] = std::string(to);
+        }
+    }
+}
+
 // kMigrations[n - 1] upgrades the settings object of state version n to version n + 1.
 // Add an entry, and a golden state file, whenever kStateVersion is raised. A release that adds
 // settings or values without raising it gets a golden state file too (state-v2-0.5.json).
 constexpr std::array<Migration, kStateVersion - 1> kMigrations{
-    &migrateToVersion2, &migrateToVersion3, &migrateToVersion4};
+    &migrateToVersion2, &migrateToVersion3, &migrateToVersion4, &migrateToVersion5};
 
 } // namespace
 

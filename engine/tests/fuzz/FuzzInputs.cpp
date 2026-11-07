@@ -256,7 +256,8 @@ bool writeHostSeeds(const std::filesystem::path& directory)
                     .setting(protocol::SettingId::kCompare, static_cast<std::uint8_t>(compare))
                     .setting(protocol::SettingId::kTimeBase, static_cast<std::uint8_t>(base))
                     .setting(protocol::SettingId::kFreeSpan, 0)
-                    .setting(protocol::SettingId::kBeatSpan, 0);
+                    .setting(protocol::SettingId::kBeatSpan,
+                             static_cast<std::uint8_t>(protocol::BeatSpan::kEighthBar));
                 for (int i = 0; i < 3; ++i) {
                     seed.play(SignalKind::kSine, 441).advance();
                 }
@@ -315,7 +316,8 @@ bool writeHostSeeds(const std::filesystem::path& directory)
         seed.setting(protocol::SettingId::kDisplayMode, mode)
             .setting(protocol::SettingId::kTimeBase, base)
             .setting(protocol::SettingId::kFreeSpan, 0)
-            .setting(protocol::SettingId::kBeatSpan, 0);
+            .setting(protocol::SettingId::kBeatSpan,
+                     static_cast<std::uint8_t>(protocol::BeatSpan::kEighthBar));
         for (int i = 0; i < 3; ++i) {
             seed.play(SignalKind::kSine, 441);
         }
