@@ -38,9 +38,9 @@ folders), benchmarks, `scripts/`, `tools/` and `.github/workflows/`: no product 
 `engine/`, `plugin/`, `editor/` or `au/` outside their `tests/` and `bench/` folders, or in
 `ui/src/`), nothing in `protocol/`, nothing that builds or ships a release (`scripts/package.*`,
 `scripts/installer.iss`, `scripts/release-*.ts`, `.github/workflows/release.yml`), no file that
-steers agents and no FR, AD or QS. Its Status line
-says `light`, and its review is lighter (section 4): the design and tests reviewers only, blocking
-findings only, at most two rounds.
+steers agents and no FR, AD or QS. Its Status line says `light`, and its review is lighter
+(section 4): the design and tests reviewers, and the real-time one when the `prior-art` skill
+applied; blocking findings only; at most two rounds.
 
 ## 2. Where
 
