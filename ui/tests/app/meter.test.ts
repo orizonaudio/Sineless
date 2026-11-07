@@ -122,13 +122,23 @@ describe("the Meter", () => {
     expect(sections()).not.toContain("Meter");
   });
 
-  test("comes after the time and level cursors' readouts", async () => {
+  // Its button comes first in the status bar, and its panel on top in the corner, whichever was
+  // turned on first.
+  test("comes before the time and level cursors, button and readouts", async () => {
+    const buttons = [
+      ...(document.querySelector(".status-left")?.children ?? []),
+    ].map((child) => child.id);
+    expect(buttons.slice(0, 3)).toEqual([
+      "meter-toggle",
+      "time-cursors",
+      "level-cursors",
+    ]);
     await setPressed(byId("time-cursors"), true);
     await setPressed(byId("level-cursors"), true);
     await setPressed(byId("meter-toggle"), true);
     await expect
       .poll(sections)
-      .toEqual(["Time cursors", "Level cursors", "Meter"]);
+      .toEqual(["Meter", "Time cursors", "Level cursors"]);
     await setPressed(byId("time-cursors"), false);
     await setPressed(byId("level-cursors"), false);
     expect(sections()).toEqual(["Meter"]);
@@ -261,7 +271,7 @@ describe("the corner panel at the minimum size", () => {
     await settle();
     await expect
       .poll(sections)
-      .toEqual(["Time cursors", "Level cursors", "Meter"]);
+      .toEqual(["Meter", "Time cursors", "Level cursors"]);
     const screen = byId("screen").getBoundingClientRect();
     const panel = byId("cursor-readout").getBoundingClientRect();
     expect(panel.bottom).toBeLessThanOrEqual(screen.bottom);

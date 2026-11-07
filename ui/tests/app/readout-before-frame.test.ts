@@ -1,5 +1,5 @@
 // Before the engine's first frame there are no readouts: the tag says nothing is measured yet in
-// Single ("—", a label that opens nothing) and TT, this track, in Multi, Compare on or off; the
+// Single ("—", a label that opens nothing) and "TT" in Multi, Compare on or off; the
 // first frame names the channel, and in Single the tag becomes the button that chooses it.
 import { describe, expect, test } from "vitest";
 
