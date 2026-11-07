@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <initializer_list>
 #include <limits>
+#include <optional>
 
 namespace orizon::editor {
 
@@ -289,8 +291,91 @@ GridLines gridLines(double width, double height, std::size_t laneCount, double p
     return lines;
 }
 
+namespace {
+
+constexpr double kFinestBeatStep = 1.0 / 1024.0;
+
+// Beats' grid levels, in quarter notes, longest first, a level as long as another merged with it
+// (the page's beatLadder).
+std::vector<double> beatLadder(double barQuarterNotes, protocol::BeatDivision division)
+{
+    constexpr double kEpsilon = protocol::kMusicalTolerance;
+    std::vector<double> levels{16.0 * barQuarterNotes, 4.0 * barQuarterNotes, barQuarterNotes, 1.0};
+    for (double level = division == protocol::BeatDivision::kTriplets ? 1.0 / 3.0 : 0.25;;
+         level /= 2.0) {
+        levels.push_back(level);
+        if (level <= kFinestBeatStep) {
+            break;
+        }
+    }
+    std::ranges::sort(levels, std::greater<>());
+    std::vector<double> merged;
+    for (const double level : levels) {
+        if (merged.empty() || merged.back() - level > kEpsilon * level) {
+            merged.push_back(level);
+        }
+    }
+    return merged;
+}
+
+struct BeatSteps
+{
+    double step = 1.0;
+    double strongEvery = 4.0;
+};
+
+// The step and the strong lines' step (the page's beatSteps).
+BeatSteps beatSteps(double visibleSpan, double barQuarterNotes, const BeatGrid& grid)
+{
+    constexpr double kEpsilon = protocol::kMusicalTolerance;
+    const std::vector<double> ladder = beatLadder(barQuarterNotes, grid.division);
+    const bool triplets = grid.division == protocol::BeatDivision::kTriplets;
+    const auto coarser = [&](double length) {
+        for (auto level = ladder.rbegin(); level != ladder.rend(); ++level) {
+            if (*level - length > kEpsilon * length) {
+                return *level;
+            }
+        }
+        return 4.0 * length;
+    };
+    const auto finer = [&](double length) -> std::optional<double> {
+        for (const double level : ladder) {
+            if (length - level > kEpsilon * length) {
+                return level;
+            }
+        }
+        return std::nullopt;
+    };
+    const bool longView = visibleSpan >= 8.0 * barQuarterNotes;
+    double step = longView                         ? barQuarterNotes
+                  : visibleSpan >= barQuarterNotes ? 1.0
+                  : triplets                       ? 1.0 / 3.0
+                                                   : 0.25;
+    while (visibleSpan < 4.0 * step && step > kFinestBeatStep) {
+        step = triplets && std::abs(step - 1.0) < kEpsilon ? 1.0 / 3.0 : step / 2.0;
+    }
+    const double strongEvery = triplets && step < 1.0 - kEpsilon ? coarser(step)
+                               : longView                        ? 4.0 * barQuarterNotes
+                               : visibleSpan >= barQuarterNotes  ? barQuarterNotes
+                               : step < 0.25                     ? 0.25
+                                                                 : 1.0;
+    if (grid.time == protocol::GridDensity::kCoarse) {
+        const double coarse = coarser(step);
+        return {.step = coarse, .strongEvery = coarser(coarse)};
+    }
+    if (grid.time == protocol::GridDensity::kFine) {
+        const auto fine = finer(step);
+        if (fine && *fine / visibleSpan * grid.widthCss >= protocol::kGridFineBeatLineGap) {
+            return {.step = *fine, .strongEvery = coarser(*fine)};
+        }
+    }
+    return {.step = step, .strongEvery = strongEvery};
+}
+
+} // namespace
+
 std::vector<VerticalLine> musicalGridLines(double cycleStart, double span, double barQuarterNotes,
-                                           ViewWindow view)
+                                           ViewWindow view, const BeatGrid& grid)
 {
     if (span <= 0.0 || barQuarterNotes <= 0.0) {
         return {};
@@ -298,15 +383,7 @@ std::vector<VerticalLine> musicalGridLines(double cycleStart, double span, doubl
     constexpr double kEpsilon = protocol::kMusicalTolerance;
     const double visibleStart = cycleStart + view.start * span;
     const double visibleSpan = (view.end - view.start) * span;
-    const bool longView = visibleSpan >= 8.0 * barQuarterNotes;
-    double step = longView ? barQuarterNotes : visibleSpan >= barQuarterNotes ? 1.0 : 0.25;
-    while (visibleSpan < 4.0 * step && step > 1.0 / 1024.0) {
-        step /= 2.0;
-    }
-    const double strongEvery = longView                         ? 4.0 * barQuarterNotes
-                               : visibleSpan >= barQuarterNotes ? barQuarterNotes
-                               : step < 0.25                    ? 0.25
-                                                                : 1.0;
+    const auto [step, strongEvery] = beatSteps(visibleSpan, barQuarterNotes, grid);
     const auto isMultiple = [&](double value, double of) {
         return std::abs(value / of - std::round(value / of)) < kEpsilon;
     };
