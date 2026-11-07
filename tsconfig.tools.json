@@ -15,6 +15,7 @@
     "scripts/engine-work.ts",
     "scripts/mutation-report.ts",
     "scripts/performance-limits.ts",
+    "scripts/queue-tested.ts",
     "scripts/mutation-summary.ts",
     "scripts/mutation-triage.ts",
     "scripts/mutation-run.ts",
