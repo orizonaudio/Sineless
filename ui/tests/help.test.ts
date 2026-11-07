@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import { DisplayMode } from "../../protocol/src/enums.ts";
 import { maxLanes } from "../../protocol/src/limits.ts";
 import { helpTexts, isHelpTopic } from "../src/view/help.ts";
+import { beatSpanLabels, parseBeatSpan } from "../src/view/musical-grid.ts";
 
 const ui = join(import.meta.dirname, "..");
 
@@ -80,6 +81,23 @@ describe("help texts", () => {
     for (const { title, text } of Object.values(helpTexts)) {
       expect(title.length).toBeGreaterThan(0);
       expect(text).toMatch(/^[A-Z⌘].*\.$/u);
+    }
+  });
+
+  // The span's help names its range, the shortest and the longest span, and offers numbers to type
+  // that set the span it says they do.
+  test("of the beat span name its range and numbers that type the spans they name", () => {
+    const { text } = helpTexts.beatSpan;
+    expect(text).toContain(
+      `from ${beatSpanLabels[0]} to ${beatSpanLabels.at(-1) ?? ""}`,
+    );
+    const offered = [...text.matchAll(/(\S+) for ([^,.]+)/gu)];
+    expect(offered.length).toBeGreaterThan(0);
+    for (const [, typed = "", named = ""] of offered) {
+      expect(typed).not.toBe(named);
+      expect(parseBeatSpan(typed), typed).toBe(
+        beatSpanLabels.indexOf(named as (typeof beatSpanLabels)[number]),
+      );
     }
   });
 });
