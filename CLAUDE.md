@@ -115,7 +115,7 @@ message with a short `Prior art:` note naming the sources.
 | Mutation testing (Audio Unit lines changed since a base, or all of `au/src` in a few minutes without one; macOS, with `brew install llvm@20` and a macOS 26 SDK) | `scripts/mutation-au.sh origin/main` |
 | The engine's instructions per frame in each benchmark scenario (Linux, or Docker on macOS) | `scripts/engine-work.sh`; compare two runs' output folders with `node scripts/engine-work.ts compare BASE HEAD` |
 | Everything on macOS | `scripts/check.sh` (format, build, tests, pluginval, the Audio Unit's auval and pluginval on a copy installed in `~/Library/Audio/Plug-Ins/Components`, performance; the macOS glue's sanitizers and lint; the Linux checks in Docker). `CHECKS="main glue"` skips the Linux part |
-| The shared code's sanitizers and clang-tidy (Linux, or Docker on macOS) | `scripts/check-linux.sh [asan\|tsan\|rtsan\|lint]` |
+| The shared code's sanitizers and clang-tidy (Linux, or Docker on macOS) | `scripts/check-linux.sh [lint\|asan\|tsan\|rtsan]`, every check whatever another finds, the failures listed at the end |
 | Windows | `scripts\check.ps1` (main: build, tests, pluginval; glue: the WebView2 editor tests under AddressSanitizer, preset `windows-x64-glue`), preset `windows-x64` (ARM64 is not built for now) |
 
 While iterating, build and run the tests a change touches; run `scripts/check.sh` (about half
