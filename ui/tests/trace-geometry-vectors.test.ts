@@ -10,6 +10,7 @@ import {
   BeatDivision,
   FrameMode,
   GridDensity,
+  GridType,
   ViewLayout,
 } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
@@ -23,6 +24,7 @@ import { gridColumns, gridLines } from "../src/view/grid.ts";
 import type {
   BeatDivisionName,
   GridDensityName,
+  GridTypeName,
 } from "../src/view/grid-settings.ts";
 import { beatSteps, musicalGrid } from "../src/view/musical-grid.ts";
 import {
@@ -34,6 +36,7 @@ import {
   gridLevelStepDb,
   gridLevelsBelowTop,
   gridMediumLineGap,
+  defaultTriggerPosition,
   cancellationBridgedPoints,
   cancellationQuietShare,
   cancellationReachDivisor,
@@ -73,6 +76,7 @@ function levelStepCases() {
 
 const densities = Object.keys(GridDensity) as GridDensityName[];
 const divisions = Object.keys(BeatDivision) as BeatDivisionName[];
+const types = Object.keys(GridType) as GridTypeName[];
 
 // The half-lanes at which a Level step's lines change, from the gaps: where its narrowest gap
 // (the last line's to the one below) reaches the step's minimum; for Fine, where each 3 dB
@@ -175,6 +179,26 @@ function musicalCases() {
   return cases;
 }
 
+// The Time and Level steps each type is written at: Grid at each step and each against the
+// other's extremes; None, whose zero lines no step changes, at one; Cross hair at Medium and at
+// steps whose ticks include strong ones (Fine's 3 dB lines).
+const steps: Readonly<
+  Record<GridTypeName, readonly (readonly [GridDensityName, GridDensityName])[]>
+> = {
+  grid: [
+    ...densities.map((density) => [density, density] as const),
+    ["coarse", "fine"],
+    ["fine", "coarse"],
+  ],
+  none: [["medium", "medium"]],
+  crossHair: [
+    ["medium", "medium"],
+    ["coarse", "fine"],
+  ],
+};
+
+// The grid of every type; Cross hair with the trigger point on screen (where Trig puts it) and
+// zoomed off it.
 function gridCases() {
   const cases = [];
   for (const [width, height] of [
@@ -184,27 +208,27 @@ function gridCases() {
   ] as const) {
     for (const ratio of [1, 2, 1.5]) {
       for (const laneCount of [1, 2, 3, 15]) {
-        for (const density of densities) {
-          // Time and Level at the same step, and once each against the other's extremes.
-          for (const [time, level] of [
-            [density, density],
-            ...(density === "medium"
-              ? ([
-                  ["coarse", "fine"],
-                  ["fine", "coarse"],
-                ] as const)
-              : []),
-          ] as const) {
-            const options = { columns: gridColumns[time], level };
-            cases.push({
-              width,
-              height,
-              ratio,
-              laneCount,
-              time,
-              level,
-              lines: gridLines(width, height, laneCount, ratio, options),
-            });
+        for (const type of types) {
+          for (const [time, level] of steps[type]) {
+            for (const trigger of type === "crossHair"
+              ? [defaultTriggerPosition, -0.4]
+              : [undefined]) {
+              const options = {
+                type,
+                columns: gridColumns[time],
+                level,
+                ...(trigger === undefined ? {} : { trigger }),
+              };
+              cases.push({
+                width,
+                height,
+                ratio,
+                laneCount,
+                ...options,
+                time,
+                lines: gridLines(width, height, laneCount, ratio, options),
+              });
+            }
           }
         }
       }
@@ -216,8 +240,10 @@ function gridCases() {
     height: 451,
     ratio: 2,
     laneCount: 1,
-    time: "medium",
+    type: "grid",
+    columns: gridColumns.medium,
     level: "medium",
+    time: "medium",
     vertical: musical,
     lines: gridLines(1002, 451, 1, 2, { verticalLines: musical }),
   });

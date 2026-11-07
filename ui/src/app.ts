@@ -1369,9 +1369,11 @@ export class OscilloscopeApp {
         this.laneCount(),
         { grid: token("--sl-grid"), axis: token("--sl-grid-strong") },
         {
+          type: grid.type,
           level: grid.level,
           columns: gridColumns[grid.time],
           verticalLines: this.musicalLayout()?.lines,
+          trigger: toScreen(this.view, this.triggerPoint()),
         },
       );
     }
@@ -2176,10 +2178,14 @@ export class OscilloscopeApp {
       }
       // A limited span labels the axis anew; a change below what the labels show does not.
       const span = this.secondsSpan();
-      if (
+      const moved = this.triggerPointMoved();
+      if (moved && this.gridChoice().type === "crossHair") {
+        // Cross hair's line marks the trigger point: the grid moves with it, labels included.
+        this.drawScreen();
+      } else if (
         frame.freeRunning !== wasFree ||
         Math.abs(span - this.labelledSpan) > 1e-3 * this.labelledSpan ||
-        this.triggerPointMoved()
+        moved
       ) {
         this.placeLabels();
         this.placeTriggerMarker();

@@ -1,5 +1,6 @@
 #include "editor/FrameView.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -45,6 +46,8 @@ TEST(FrameView, ReadsTheGoldenFramesAsThePageDoes)
         EXPECT_EQ(read->viewEnd, header.at("viewEnd").get<float>());
         EXPECT_EQ(read->visibleSamples, header.at("visibleSamples").get<float>());
         EXPECT_EQ(read->cursor, header.at("cursor").get<float>());
+        // Where Cross hair's line goes, as the engine placed the trigger point.
+        EXPECT_EQ(read->triggerPosition, header.at("triggerPosition").get<float>());
         ASSERT_EQ(read->views.size(), 2U);
         EXPECT_EQ(read->views[0].channelView, static_cast<int>(protocol::ChannelView::kLeft));
         EXPECT_EQ(read->views[1].channelView, static_cast<int>(protocol::ChannelView::kMid));
@@ -64,6 +67,8 @@ TEST(FrameView, ReadsTheGoldenFramesAsThePageDoes)
         EXPECT_EQ(read->cycleStart, header.at("cycleStart").get<float>());
         EXPECT_EQ(read->spanQuarterNotes, header.at("spanQuarterNotes").get<float>());
         EXPECT_EQ(read->barQuarterNotes, header.at("barQuarterNotes").get<float>());
+        // A sweep has no trigger point.
+        EXPECT_TRUE(std::isnan(read->triggerPosition));
         ASSERT_EQ(read->lanes.size(), 3U);
         EXPECT_EQ(std::vector<float>(read->lanes[2].begin(), read->lanes[2].end()),
                   frame.at("lanes").at(2).get<std::vector<float>>());

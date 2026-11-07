@@ -58,6 +58,13 @@ protocol::GridDensity densityNamed(const std::string& name)
     return static_cast<protocol::GridDensity>(found - protocol::kGridDensityNames.begin());
 }
 
+protocol::GridType typeNamed(const std::string& name)
+{
+    const auto found = std::ranges::find(protocol::kGridTypeNames, name);
+    EXPECT_NE(found, protocol::kGridTypeNames.end()) << name;
+    return static_cast<protocol::GridType>(found - protocol::kGridTypeNames.begin());
+}
+
 TEST(TraceGeometry, DrawsLevelLinesAtEachLevelStepAsThePageDoes)
 {
     for (const nlohmann::json& entry : vectors().at("levelLines")) {
@@ -109,9 +116,11 @@ TEST(TraceGeometry, DrawsTheGridAsThePageDoes)
         const GridLines lines =
             gridLines(entry.at("width").get<double>(), entry.at("height").get<double>(),
                       entry.at("laneCount").get<std::size_t>(), entry.at("ratio").get<double>(),
-                      {.level = densityNamed(entry.at("level")),
+                      {.type = typeNamed(entry.at("type")),
+                       .level = densityNamed(entry.at("level")),
                        .columns = gridColumns(densityNamed(entry.at("time"))),
-                       .vertical = entry.contains("vertical") ? &vertical : nullptr});
+                       .vertical = entry.contains("vertical") ? &vertical : nullptr,
+                       .trigger = entry.value("trigger", -1.0)});
         const nlohmann::json& expected = entry.at("lines");
         EXPECT_EQ(lines.lineWidth, expected.at("lineWidth").get<double>()) << entry.dump();
         ASSERT_EQ(lines.vertical.size(), expected.at("vertical").size()) << entry.dump();
@@ -120,6 +129,15 @@ TEST(TraceGeometry, DrawsTheGridAsThePageDoes)
                       expected.at("vertical")[index].at("x").get<double>());
             EXPECT_EQ(lines.vertical[index].strong,
                       expected.at("vertical")[index].at("strong").get<bool>());
+        }
+        ASSERT_EQ(lines.ticks.size(), expected.at("ticks").size()) << entry.dump();
+        for (std::size_t index = 0; index < lines.ticks.size(); ++index) {
+            const nlohmann::json& tick = expected.at("ticks")[index];
+            EXPECT_EQ(lines.ticks[index].x0, tick.at("x0").get<double>());
+            EXPECT_EQ(lines.ticks[index].y0, tick.at("y0").get<double>());
+            EXPECT_EQ(lines.ticks[index].x1, tick.at("x1").get<double>());
+            EXPECT_EQ(lines.ticks[index].y1, tick.at("y1").get<double>());
+            EXPECT_EQ(lines.ticks[index].strong, tick.at("strong").get<bool>());
         }
         ASSERT_EQ(lines.horizontal.size(), expected.at("horizontal").size()) << entry.dump();
         for (std::size_t index = 0; index < lines.horizontal.size(); ++index) {
