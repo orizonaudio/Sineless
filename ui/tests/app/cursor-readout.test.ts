@@ -69,6 +69,7 @@ describe("the cursor readout", () => {
         (title) => title.textContent,
       );
     await expect.poll(titles).toEqual(["Time cursors"]);
+    expect(readout.hidden).toBe(false);
     expect(readout.querySelectorAll(".cursor-rule")).toHaveLength(0);
     await setPressed("level-cursors", true);
     await expect.poll(titles).toEqual(["Time cursors", "Level cursors"]);
@@ -83,6 +84,8 @@ describe("the cursor readout", () => {
     await expect.poll(titles).toEqual(["Level cursors"]);
     expect(readout.querySelectorAll(".cursor-rule")).toHaveLength(0);
     expect([...rowsOf("cursor-readout").keys()]).toEqual(["1", "2", "Δ"]);
+    await setPressed("level-cursors", false);
+    await expect.poll(() => readout.hidden).toBe(true);
   });
 
   // Where A and B are must read as the same point does under the pointer, in every time base,
