@@ -20,6 +20,7 @@
     "scripts/mutation-run.ts",
     "scripts/release-on-main.ts",
     "scripts/release-version.ts",
+    "scripts/ci-retry.ts",
     "scripts/frame-barcode/*.ts",
     "scripts/tests/**/*.ts"
   ],

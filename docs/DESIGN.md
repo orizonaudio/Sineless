@@ -860,6 +860,9 @@ flowchart TB
 - **mutation-triage** runs after CI, from `main`'s version of the workflow, and passes or fails
   on whether each surviving mutant needs a test (REVIEW.md); `/mutation-triage waive <reason>`
   passes it.
+- **ci-retry** runs after a failed CI run, from `main`'s version of the workflow: when every job
+  that failed never got a runner, it reruns a pull request's or main's failed jobs once, and
+  comments on the pull request of a merge-queue run, to be queued again.
 - Fuzzing also runs nightly for 30 minutes. Dependency review fails a pull request that adds a
   dependency with a known vulnerability; OpenSSF Scorecard runs weekly; a closed pull request's
   caches are deleted.
