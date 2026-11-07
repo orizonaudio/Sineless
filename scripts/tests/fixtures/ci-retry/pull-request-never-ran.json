@@ -4,7 +4,8 @@
     "event": "pull_request",
     "run_attempt": 1,
     "head_branch": "app-stall-watchdog",
-    "conclusion": "failure"
+    "conclusion": "failure",
+    "head_sha": "16f35fdc55ec621f68db3e8d8cedb3f1aa326e59"
   },
   "jobs": {
     "total_count": 25,

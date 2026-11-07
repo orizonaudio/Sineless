@@ -6,6 +6,7 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -55,6 +56,12 @@ describe("a failed run whose only failures never got a runner", () => {
       pullRequest: 324,
       jobs: ["app", "macos", "macos-glue", "macos-unbranded"],
     });
+  });
+
+  test("on a pull request a newer push replaced is left alone", () => {
+    const { run, jobs } = recorded("pull-request-never-ran");
+    expect(decide(run, jobs.jobs, "a newer commit").action).toBe("none");
+    expect(decide(run, jobs.jobs, run.head_sha).action).toBe("rerun");
   });
 
   test("is not retried twice", () => {
@@ -124,11 +131,16 @@ describe("the command", () => {
     }
   });
 
-  const command = (run: Run, pages: { jobs: Job[] }[]) => {
+  const command = (
+    run: Run,
+    pages: { jobs: Job[] }[],
+    options: { head?: string; gh?: string; id?: string } = {},
+  ) => {
     folder = mkdtempSync(join(tmpdir(), "ci-retry-"));
     mkdirSync(join(folder, "bin"));
     writeFileSync(join(folder, "run.json"), JSON.stringify(run));
     writeFileSync(join(folder, "pages.json"), JSON.stringify(pages));
+    writeFileSync(join(folder, "head"), options.head ?? run.head_sha);
     writeFileSync(
       join(folder, "bin/gh"),
       `#!/bin/bash
@@ -137,14 +149,21 @@ echo "$*" >> "$folder/asked"
 case "$*" in
   *"-X POST"*) ;;
   *"/jobs"*) cat "$folder/pages.json" ;;
+  *"/branches/"*) printf '{"commit": {"sha": "%s"}}' "$(cat "$folder/head")" ;;
   *) cat "$folder/run.json" ;;
 esac
 `,
     );
+    if (options.gh !== undefined) {
+      writeFileSync(join(folder, "bin/gh"), `#!/bin/bash\n${options.gh}\n`);
+    }
     chmodSync(join(folder, "bin/gh"), 0o755);
     const result = spawnSync(
       process.execPath,
-      [resolve(import.meta.dirname, "../ci-retry.ts"), String(run.id)],
+      [
+        resolve(import.meta.dirname, "../ci-retry.ts"),
+        options.id ?? String(run.id),
+      ],
       {
         encoding: "utf8",
         env: {
@@ -157,9 +176,10 @@ esac
         },
       },
     );
-    const asked = readFileSync(join(folder, "asked"), "utf8")
-      .trim()
-      .split("\n");
+    const askedPath = join(folder, "asked");
+    const asked = existsSync(askedPath)
+      ? readFileSync(askedPath, "utf8").trim().split("\n")
+      : [];
     return { status: result.status, asked };
   };
 
@@ -194,7 +214,37 @@ esac
       (job) => job.conclusion === "cancelled" && job.steps.length === 0,
     );
     const rest = jobs.jobs.filter((job) => !neverRan.includes(job));
-    const { asked } = command(run, [{ jobs: neverRan }, { jobs: rest }]);
+    const { asked, status } = command(run, [
+      { jobs: neverRan },
+      { jobs: rest },
+    ]);
     expect(asked.join("\n")).not.toContain("-X POST");
+    expect(status).toBe(0);
+  });
+
+  test("leaves a pull request's run alone when its branch has moved on", () => {
+    const { run, jobs } = recorded("pull-request-never-ran");
+    const { asked, status } = command(run, [jobs], { head: "a newer commit" });
+    expect(asked).toContainEqual(
+      expect.stringMatching(/branches\/app-stall-watchdog$/),
+    );
+    expect(asked.join("\n")).not.toContain("-X POST");
+    expect(status).toBe(0);
+  });
+
+  test("fails, and asks nothing, given a run id that is not one", () => {
+    const { run, jobs } = recorded("pull-request-never-ran");
+    const { asked, status } = command(run, [jobs], { id: "latest" });
+    expect(asked).toEqual([]);
+    expect(status).toBe(2);
+  });
+
+  test("fails, rerunning nothing, when GitHub cannot be asked", () => {
+    const { run, jobs } = recorded("pull-request-never-ran");
+    const { asked, status } = command(run, [jobs], {
+      gh: 'echo "$*" >> "$(dirname "$0")/../asked"; exit 1',
+    });
+    expect(asked.join("\n")).not.toContain("-X POST");
+    expect(status).not.toBe(0);
   });
 });

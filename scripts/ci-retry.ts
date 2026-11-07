@@ -24,6 +24,8 @@ export type Run = {
   run_attempt: number;
   // eslint-disable-next-line @typescript-eslint/naming-convention -- GitHub's REST API names it.
   head_branch: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- GitHub's REST API names it.
+  head_sha: string;
   conclusion: string | null;
 };
 
@@ -46,7 +48,9 @@ export const neverRan = (job: Job) =>
     (step) => step.name !== "Set up job" && step.conclusion !== null,
   );
 
-export function decide(run: Run, jobs: Job[]): Decision {
+// `head`, for a pull request's run, is its branch's commit now: a run a newer push replaced is not
+// rerun, since the rerun would join the pull request's CI group and cancel the newer run.
+export function decide(run: Run, jobs: Job[], head?: string): Decision {
   const bad = jobs.filter(failed);
   const names = bad.map((job) => job.name);
   const none = (reason: string): Decision => ({
@@ -68,6 +72,13 @@ export function decide(run: Run, jobs: Job[]): Decision {
     return none(`${ran.map((job) => job.name).join(", ")} ran and failed`);
   }
   const reason = `${names.join(", ")} never got a runner`;
+  if (
+    run.event === "pull_request" &&
+    head !== undefined &&
+    head !== run.head_sha
+  ) {
+    return none(`${reason}, but a newer commit was pushed since`);
+  }
   if (run.event === "pull_request" || run.event === "push") {
     return { action: "rerun", reason, jobs: names };
   }
@@ -113,9 +124,18 @@ if (process.argv[1]?.endsWith("ci-retry.ts") === true) {
       `${runs}/jobs?filter=latest&per_page=100`,
     ]),
   ) as { jobs: Job[] }[];
+  const head =
+    run.event === "pull_request"
+      ? (
+          JSON.parse(
+            gh(["api", `repos/${repository}/branches/${run.head_branch}`]),
+          ) as { commit: { sha: string } }
+        ).commit.sha
+      : undefined;
   const decision = decide(
     run,
     pages.flatMap((page) => page.jobs),
+    head,
   );
   let said = `Not retried: ${decision.reason}.`;
   if (decision.action === "rerun") {

@@ -4,7 +4,8 @@
     "event": "merge_group",
     "run_attempt": 1,
     "head_branch": "gh-readonly-queue/main/pr-324-aaf7f6b757f447151026338d15a97890df173373",
-    "conclusion": "failure"
+    "conclusion": "failure",
+    "head_sha": "3ea492ca914cfbc26f342629f8986ced33272aff"
   },
   "jobs": {
     "total_count": 23,
