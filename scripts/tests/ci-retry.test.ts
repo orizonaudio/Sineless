@@ -72,12 +72,33 @@ describe("a run is left alone", () => {
     expect(decision("pull-request-mixed").action).toBe("none");
   });
 
-  test("when every failed job ran", () => {
-    const { run, jobs } = recorded("pull-request-mixed");
-    const ran = jobs.jobs.filter(
-      (job) => job.conclusion !== "cancelled" || job.steps.length > 0,
+  // A job that got a runner but failed setting itself up did start, on that runner.
+  test("when a failed job got a runner, even with no step past its set-up", () => {
+    const { run, jobs } = recorded("pull-request-never-ran");
+    const setUp = jobs.jobs.map((job) =>
+      job.conclusion === "cancelled"
+        ? Object.assign(
+            {},
+            job,
+            Object.fromEntries([["runner_name", "GitHub Actions 1"]]),
+            {
+              conclusion: "failure",
+              steps: [{ name: "Set up job", conclusion: "failure" }],
+            },
+          )
+        : job,
     );
-    expect(decide(run, ran).action).toBe("none");
+    expect(decide(run, setUp).action).toBe("none");
+  });
+
+  test("but not for a job with no runner whose set-up alone is recorded", () => {
+    const { run, jobs } = recorded("pull-request-never-ran");
+    const setUp = jobs.jobs.map((job) =>
+      job.conclusion === "cancelled"
+        ? { ...job, steps: [{ name: "Set up job", conclusion: "failure" }] }
+        : job,
+    );
+    expect(decide(run, setUp).action).toBe("rerun");
   });
 
   test("when it did not fail", () => {
