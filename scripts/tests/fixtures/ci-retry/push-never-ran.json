@@ -4,7 +4,8 @@
     "event": "push",
     "run_attempt": 1,
     "head_branch": "main",
-    "conclusion": "failure"
+    "conclusion": "failure",
+    "head_sha": "ce3f3b04adeba6e74c518678a4496f61c5c0f466"
   },
   "jobs": {
     "total_count": 24,
