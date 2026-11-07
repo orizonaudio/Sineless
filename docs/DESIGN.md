@@ -899,7 +899,9 @@ Saved state:
   else in Trigger; its span goes to the span whose range holds it, and to Free's, clamped to Free's
   range, where it ran free; a missing or invalid span counts as 1 s, the old default; the Free
   trigger mode becomes Auto. Version 4 made Compare a switch in Multi rather than a display mode: a
-  project saved in Compare opens in Multi with Compare on.
+  project saved in Compare opens in Multi with Compare on. Version 5 counts beat spans in bars: a
+  span saved in beats opens as the bar span it equals in 4/4 (2 beats as 1/2 bar, 1 beat as 1/4
+  bar, shorter ones as 1/8 bar).
 - Each field is validated on its own. A missing or invalid field takes its default, and unknown
   fields are ignored, so a project saved by a newer version still opens in an older one; a
   setting added without a version change is simply absent from older states.

@@ -12,6 +12,7 @@ import {
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
 import { formatSeconds } from "./format.ts";
+import { beatSpanLabels } from "./musical-grid.ts";
 
 // Modifier keys as the platform names them: the page also runs in WebView2 on Windows.
 export const isMac =
@@ -35,6 +36,11 @@ export interface HelpText {
   readonly title: string;
   readonly text: string;
 }
+
+// The beat spans' range, from their labels, and a label's amount alone as it may be typed.
+const [shortestBeatSpan] = beatSpanLabels;
+const longestBeatSpan: string = beatSpanLabels.at(-1) ?? shortestBeatSpan;
+const bareAmount = (label: string) => label.split(" ")[0] ?? label;
 
 export const helpTexts = {
   help: {
@@ -132,7 +138,7 @@ export const helpTexts = {
   },
   beatSpan: {
     title: "Span",
-    text: "How many bars the screen shows at the host tempo, from 1/8 bar to 16 bars. Drag up or down or scroll to change it; double-click to type, a number alone included: 16 for 16 bars, 1/4 for 1/4 bar.",
+    text: `How many bars the screen shows at the host tempo, from ${shortestBeatSpan} to ${longestBeatSpan}. Drag up or down or scroll to change it; double-click to type, a number alone included: ${bareAmount(longestBeatSpan)} for ${longestBeatSpan}, ${bareAmount(shortestBeatSpan)} for ${shortestBeatSpan}.`,
   },
   timeBase: {
     title: "Time base",
