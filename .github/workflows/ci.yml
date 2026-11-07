@@ -4,7 +4,8 @@ name: CI
 # ruleset on main requires the jobs below except "fuzz" and "performance", and the engine-work
 # jobs until their counts have matched exactly for a week. A push to main whose commit the merge
 # queue already tested (the changes job's "tested") only fuzzes and builds what fills main's
-# compiler caches, which no other run saves for main: the queue ran every other check on it. A change to documentation only skips
+# compiler caches, which no other run saves for main: the queue ran every other check on it. The
+# "linux" check is a gate over the four shards of the AddressSanitizer tests (linux-asan). A change to documentation only skips
 # them: a skipped job satisfies the ruleset and the queue, where a job that never started would
 # block them. Actions are pinned to commits, so a moved tag cannot change what runs.
 on:
@@ -152,38 +153,70 @@ jobs:
   # The C++ format, checked once with a pinned clang-format (the macOS and Windows machines carry
   # different versions), and the shared code's memory checks: the engine, protocol, plugin and
   # editor C++ tests under AddressSanitizer and LeakSanitizer (scripts/check-linux.sh asan). The
-  # plugin builds on Linux for the checks alone, without an editor window. On a push the queue
-  # tested, it builds alone, to fill main's cache.
-  linux:
-    name: linux
+  # plugin builds on Linux for the checks alone, without an editor window. The tests are shared
+  # among four shards, each building and running every fourth test (CTEST_SHARD), as one job they
+  # took 13 to 28 minutes; the linux job below reports them as the one check main requires. On a
+  # push the queue tested, the first shard builds alone, to fill main's cache, and the others skip.
+  linux-asan:
+    name: linux-asan-${{ matrix.shard }}
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
+      RUN: ${{ needs.changes.outputs.tested != 'true' || matrix.shard == 1 }}
+      CTEST_SHARD: ${{ matrix.shard }}/4
       BUILD_ONLY: ${{ needs.changes.outputs.tested == 'true' && '1' || '' }}
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - if: env.BUILD_ONLY != '1'
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.RUN == 'true' && matrix.shard == 1 && env.BUILD_ONLY != '1'
         name: C++ format (clang-format 23.1.3)
         run: |
           git ls-files -co --exclude-standard -- '*.cpp' '*.h' '*.mm' ':!docs/' |
             xargs pipx run --spec clang-format==23.1.3 clang-format --dry-run --Werror
-      - name: Install LLVM 23
+      - if: env.RUN == 'true'
+        name: Install LLVM 23
         run: tools/linux-checks/install-llvm.sh
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - if: env.RUN == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci # The editor embeds the page, built with Vite.
+      - if: env.RUN == 'true'
+        run: npm ci # The editor embeds the page, built with Vite.
       # No compiler cache key may begin another's: the action restores the newest cache whose key
-      # starts with this one, so "linux" would also restore linux-tsan's.
-      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+      # starts with this one, so "linux" would also restore linux-tsan's. The shards build the
+      # same, so one saves it.
+      - if: env.RUN == 'true'
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
         with:
-          save: ${{ env.SAVE_CACHES }}
+          save: ${{ env.SAVE_CACHES == 'true' && matrix.shard == 1 }}
           key: linux-asan # Shared with the lint, which uses the same configuration.
-      - run: scripts/check-linux.sh asan
+      - if: env.RUN == 'true'
+        run: scripts/check-linux.sh asan
+
+  # The check main's ruleset requires, over the shards (scripts/ci-gate.ts): it passes when they
+  # passed or were skipped as a whole, and fails when any failed or was cancelled.
+  linux:
+    name: linux
+    needs: [changes, linux-asan]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - env:
+          RESULT: ${{ needs.linux-asan.result }}
+        run: node scripts/ci-gate.ts
 
   # The shared code's other checks, each a job of its own, in parallel: the concurrency tests
   # under ThreadSanitizer, the audio thread's tests under RealtimeSanitizer, and clang-tidy

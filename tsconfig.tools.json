@@ -11,6 +11,7 @@
     "vitest.unit.ts",
     "scripts/ai-review-answers.ts",
     "scripts/changed-code.ts",
+    "scripts/ci-gate.ts",
     "scripts/mutation-base.ts",
     "scripts/engine-work.ts",
     "scripts/mutation-report.ts",

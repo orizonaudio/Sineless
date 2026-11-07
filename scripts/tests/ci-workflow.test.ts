@@ -1,7 +1,8 @@
 // What CI runs on a push to main that the merge queue already tested (.github/workflows/ci.yml):
 // fuzzing, and the builds that fill main's compiler caches, which only main's runs save; every
-// other job skips, since the queue ran it on the same commit. Read from the workflow's text, job
-// by job, so that a job added later is held to the same rules.
+// other job skips, since the queue ran it on the same commit. And the linux check, a gate over
+// four shards of the AddressSanitizer tests. Read from the workflow's text, job by job, so that
+// a job added later is held to the same rules.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -49,9 +50,9 @@ const pullRequestOnly = (name: string): boolean => {
 const onPush = [...jobs.keys()].filter((name) => !pullRequestOnly(name));
 
 // The jobs that save a compiler cache and run a check script: on a tested push they build alone.
-const cacheBuilders = ["linux", "linux-checks", "macos", "macos-glue"];
+const cacheBuilders = ["linux-asan", "linux-checks", "macos", "macos-glue"];
 // Run on every push: what decides, fuzzing (it adds to main's corpus), and the gate.
-const always = ["changes", "fuzz", "engine-work"];
+const always = ["changes", "fuzz", "linux", "engine-work"];
 
 describe("a push to main the merge queue tested", () => {
   test("is told apart by the changes job, from the queue's runs", () => {
@@ -93,5 +94,31 @@ describe("a push to main the merge queue tested", () => {
     expect(job("linux-checks")).toMatch(
       new RegExp(`${tested} != 'true' \\|\\| matrix\\.check != 'lint'`),
     );
+  });
+});
+
+describe("the AddressSanitizer tests", () => {
+  const shards =
+    /shard: \[([\d, ]+)\]/.exec(job("linux-asan"))?.[1]?.split(",") ?? [];
+
+  test("are shared among the shards, every shard a share", () => {
+    expect(shards.length).toBeGreaterThan(1);
+    expect(job("linux-asan")).toContain(
+      `CTEST_SHARD: \${{ matrix.shard }}/${String(shards.length)}`,
+    );
+  });
+
+  test("save their compiler cache from one shard, the one that builds on a tested push", () => {
+    expect(job("linux-asan")).toMatch(/save: .*matrix\.shard == 1/);
+    expect(job("linux-asan")).toMatch(
+      new RegExp(`${tested} != 'true' \\|\\| matrix\\.shard == 1`),
+    );
+  });
+
+  test("report through the linux check main requires", () => {
+    expect(job("linux")).toMatch(/^ {4}name: linux$/m);
+    expect(job("linux")).toMatch(/^ {4}needs: \[changes, linux-asan\]$/m);
+    expect(job("linux")).toContain("RESULT: ${{ needs.linux-asan.result }}");
+    expect(job("linux")).toContain("node scripts/ci-gate.ts");
   });
 });
