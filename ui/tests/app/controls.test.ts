@@ -528,15 +528,25 @@ describe("choice field popovers", () => {
     await startApp();
   });
 
-  test.each([
-    ["mode", "Tracks"],
-    ["time-base", "Sweep"],
-    ["layout", "Traces"],
-  ])("%s labels its row %s", (id, label) => {
-    const row = byId(`${id}-popover`).querySelector(".popover-row");
-    expect(row?.querySelector("span")?.textContent).toBe(label);
-    expect(row?.querySelector(".segmented")).not.toBeNull();
-  });
+  // A row with a label, and in it the setting's choices, one per value, as the other popovers.
+  test.each(choiceFields)(
+    "$word's popover labels the row that offers every value",
+    ({ setting, id, host }) => {
+      const row = byId(`${id}-popover`).querySelector(".popover-row");
+      expect(row?.querySelector("span")?.textContent.trim()).not.toBe("");
+      expect(row?.contains(byId(host))).toBe(true);
+      // Every value is offered, in whatever order the field lists them.
+      expect(
+        [...byId(host).querySelectorAll("button")]
+          .map((button) => button.textContent)
+          .sort(),
+      ).toEqual(
+        valueNames(settings[setting].values)
+          .map((value) => labelOf(setting, value))
+          .sort(),
+      );
+    },
+  );
 
   test("Compare offers Off, then On", () => {
     expect(
