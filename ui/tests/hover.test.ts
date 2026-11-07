@@ -10,7 +10,7 @@ import {
   analysisGateDbfs,
   crossingHysteresis,
   periodTolerance,
-  triggerPosition,
+  defaultTriggerPosition,
 } from "../../protocol/src/limits.ts";
 import {
   cycleAt,
@@ -59,6 +59,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     spanSeconds: 0,
     readoutView: ChannelView.mid,
     triggerView: ChannelView.mid,
+    triggerPosition: defaultTriggerPosition,
     spanQuarterNotes: 0,
     barQuarterNotes: 4,
     viewStart: 0,
@@ -421,7 +422,7 @@ describe("hover readout", () => {
     const readout = hoverReadout(context(frame, values), 0.5, 0.5);
     expect(lines(readout)[2]).toBe("Cycle 2.5 ms");
     // Its time too: 10 ms over half the span, so the span is 20 ms, from the trigger.
-    const seconds = (0.5 - triggerPosition) * (480 / 48000 / 0.5);
+    const seconds = (0.5 - defaultTriggerPosition) * (480 / 48000 / 0.5);
     expect(lines(readout)[0]).toBe(
       `Time ${seconds < 0 ? minus : "+"}${formatSeconds(Math.abs(seconds))}`,
     );
@@ -592,11 +593,29 @@ describe("hover readout", () => {
     const values = sine(480, 4);
     const readout = hoverReadout(
       context(rawFrame(values), values),
-      triggerPosition,
+      defaultTriggerPosition,
       0.5,
     );
     expect(lines(readout)[0]).not.toContain(minus);
   });
+
+  // The time counts from where the frame says the trigger point is, wherever the Position put it.
+  test.each([
+    [0, 0.25, "+2.5 ms"],
+    [0.5, 0.25, `${minus}2.5 ms`],
+    [0.5, 0.75, "+2.5 ms"],
+    [1, 0.75, `${minus}2.5 ms`],
+  ])(
+    "counts from a trigger point at %s: at %s it shows %s",
+    (zero, x, time) => {
+      // 480 samples at 48 kHz: a 10 ms span.
+      const values = sine(480, 4);
+      const frame = rawFrame(values, { triggerPosition: zero });
+      expect(lines(hoverReadout(context(frame, values), x, 0.5))[0]).toBe(
+        `Time ${time}`,
+      );
+    },
+  );
 
   test("counts time back from the right edge in a free-running window", () => {
     // 480 samples at 48 kHz: the span is 10 ms, its end now.

@@ -250,6 +250,12 @@ std::vector<Scenario> scenarios()
          .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerSpan, 0.01}, {SettingId::kHoverReadout, kOn}},
          .steps = {play(1.0)}},
+        // The trigger Position at 50%: the frames say the trigger point sits halfway across, and
+        // the page draws its line and counts its labels from there.
+        {.name = "TriggerPosition50_48k", .tracks = {stereo(sine(400, 0.5))},
+         .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kTrigger},
+                      {SettingId::kTriggerSpan, 0.01}, {SettingId::kTriggerPosition, 0.5}},
+         .steps = {play(1.0)}},
         // A mono track: the views asked for are L and R (the default), the engine draws L alone.
         // 400 Hz fits four whole cycles into the 10 ms span, so the RMS is exactly a sine's.
         {.name = "MonoSine400_48k", .tracks = {mono(sine(400, 1.0))},
@@ -496,7 +502,7 @@ constexpr std::array kIntegerWords{
     FrameHeader::kInvalidSamplesOffset, FrameHeader::kInvalidLanesOffset,
     FrameHeader::kReadoutViewOffset,    FrameHeader::kTriggerViewOffset};
 constexpr std::size_t kByteFields = 4; // mode, flags, views, laneCount.
-static_assert(FrameHeader::kSize == 96,
+static_assert(FrameHeader::kSize == 100,
               "the frame header changed: say here which of its fields are integers, which the "
               "comparison must not take for float32");
 

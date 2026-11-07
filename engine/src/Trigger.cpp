@@ -29,7 +29,7 @@ TriggerDecision TriggerState::decide(std::span<const float> samples, std::uint64
     const double untriggeredStart = end - spanSamples;
 
     // An edge can be shown once the span before and after it is in the region.
-    const double preTrigger = kTriggerPosition * spanSamples;
+    const double preTrigger = parameters.position * spanSamples;
     const double latestUsable = end - (spanSamples - preTrigger);
     const double earliestUsable = static_cast<double>(firstIndex) + preTrigger;
 
@@ -57,11 +57,13 @@ TriggerDecision TriggerState::decide(std::span<const float> samples, std::uint64
             singleArmed = false;
             return {.action = TriggerDecision::Action::kDraw,
                     .windowStart = *accepted - preTrigger,
+                    .trigger = *accepted,
                     .triggered = true,
                     .freeze = true};
         }
         return {.action = TriggerDecision::Action::kDraw,
                 .windowStart = *accepted - preTrigger,
+                .trigger = *accepted,
                 .triggered = true};
     }
 

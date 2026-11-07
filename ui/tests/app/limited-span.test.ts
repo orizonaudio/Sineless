@@ -38,7 +38,7 @@ function labelSeconds(): number[] {
 // Whether the labels mark a span of `span` seconds: within the rounding of the part a
 // free-running window shows to whole samples and of the labels to three digits.
 function marksSpan(view: ViewWindow, span: number): boolean {
-  const expected = axisTimeLabels(span, true, view).map((label) =>
+  const expected = axisTimeLabels(span, true, view, Number.NaN).map((label) =>
     parseQuantity(label.text, "time"),
   );
   const shown = labelSeconds();

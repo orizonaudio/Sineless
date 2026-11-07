@@ -207,14 +207,23 @@ export function formatPitch(hertz: number): string {
   return trim(hertz.toFixed(1));
 }
 
+// A fraction as whole percent: "10%".
+export function formatPercent(fraction: number): string {
+  if (!Number.isFinite(fraction)) {
+    return none;
+  }
+  return `${String(Math.round(fraction * 100))}%`;
+}
+
 // What an editable field holds, and so which units typed into it are accepted.
-export type Quantity = "time" | "level" | "pitch" | "number";
+export type Quantity = "time" | "level" | "pitch" | "number" | "percent";
 
 const unitScales: Record<Quantity, Record<string, number>> = {
   time: { s: 1, ms: 0.001, us: 0.000001, µs: 0.000001 },
   level: { db: 1 },
   pitch: { hz: 1, khz: 1000 },
   number: {},
+  percent: { "%": 0.01 },
 };
 
 // Parses typed input such as "20 ms", "0.5s", "500 us", "-12 dB", "440 Hz", "−0.25", accepting
@@ -225,7 +234,7 @@ export function parseQuantity(
   quantity: Quantity,
   bareScale = 1,
 ): number | undefined {
-  const match = /^\s*([+\-−]?\d*\.?\d+(?:e[+-]?\d+)?)\s*([a-zµ]*)\s*$/iu.exec(
+  const match = /^\s*([+\-−]?\d*\.?\d+(?:e[+-]?\d+)?)\s*([a-zµ]*|%)\s*$/iu.exec(
     text.replace(",", "."),
   );
   if (match === null) {

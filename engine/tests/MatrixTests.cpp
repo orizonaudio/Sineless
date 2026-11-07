@@ -678,8 +678,8 @@ TEST(FrozenTrigger, StaysAtTheMarkerWhenTheSpanShortens)
         ASSERT_TRUE(frame) << "no frame at the shorter span";
         ASSERT_EQ(frame->mode, FrameMode::kRaw);
         const std::span<const float> values = trace(*frame, 0);
-        const auto marker = static_cast<std::ptrdiff_t>(
-            std::llround(kTriggerPosition * frame->visibleSamples + frame->startFraction));
+        const auto marker = static_cast<std::ptrdiff_t>(std::llround(
+            protocol::kDefaultTriggerPosition * frame->visibleSamples + frame->startFraction));
         bool rising = false;
         for (std::ptrdiff_t i = std::max<std::ptrdiff_t>(marker - 1, 1);
              i <= marker + 1 && i < std::ssize(values); ++i) {
@@ -721,8 +721,8 @@ TEST_P(MonoTrigger, TriggersAtTheLevelSet)
         ASSERT_TRUE(frame->has(FrameFlag::kTriggered));
         ASSERT_EQ(frame->mode, FrameMode::kRaw);
         const std::span<const float> values = trace(*frame, 0);
-        const auto marker = static_cast<std::ptrdiff_t>(
-            std::llround(kTriggerPosition * frame->visibleSamples + frame->startFraction));
+        const auto marker = static_cast<std::ptrdiff_t>(std::llround(
+            protocol::kDefaultTriggerPosition * frame->visibleSamples + frame->startFraction));
         bool rising = false;
         for (std::ptrdiff_t i = std::max<std::ptrdiff_t>(marker - 1, 1);
              i <= marker + 1 && i < std::ssize(values); ++i) {
@@ -2502,7 +2502,8 @@ double atTriggerPoint(const DecodedFrame& frame, protocol::ChannelView view)
 {
     const auto below = (1U << static_cast<unsigned>(view)) - 1U;
     const auto values = trace(frame, static_cast<std::size_t>(std::popcount(frame.views & below)));
-    const double at = protocol::kTriggerPosition * frame.visibleSamples + frame.startFraction;
+    const double at =
+        protocol::kDefaultTriggerPosition * frame.visibleSamples + frame.startFraction;
     const auto index = static_cast<std::size_t>(std::floor(at));
     const double part = at - static_cast<double>(index);
     return values[index] + part * (values[index + 1] - values[index]);

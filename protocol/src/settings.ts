@@ -13,6 +13,7 @@ import {
   type EnumName,
 } from "./enums.ts";
 import {
+  defaultTriggerPosition,
   frozenHoldSeconds,
   longestTriggerSpanSeconds,
   shortestFreeSpanSeconds,
@@ -118,6 +119,15 @@ export const settings = {
     minimum: 0,
     maximum: 1,
     defaultValue: 0,
+    logarithmic: false,
+  },
+  // Where the trigger point sits, as a fraction of the span from the left (the Trigger time base):
+  // 0 shows only what follows the trigger, 1 only what led up to it.
+  triggerPosition: {
+    kind: "number",
+    minimum: 0,
+    maximum: 1,
+    defaultValue: defaultTriggerPosition,
     logarithmic: false,
   },
   timeBase: {

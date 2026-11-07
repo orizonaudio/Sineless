@@ -42,6 +42,9 @@ export interface Frame {
   readonly readoutView: ChannelView;
   // The channel view the trigger reads under the current settings.
   readonly triggerView: ChannelView;
+  // Where time zero sits across the unpanned span (0 to 1 from the left): the trigger point in
+  // Trigger; undefined in Free and Beats.
+  readonly triggerPosition: number | undefined;
   readonly spanQuarterNotes: number;
   readonly barQuarterNotes: number;
   // The part of the span this frame covers, and its length in samples.
@@ -135,6 +138,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
 
   const frequency = f32("frequency");
   const cursor = f32("cursor");
+  const triggerPosition = f32("triggerPosition");
   return {
     mode,
     triggered: (flags & FrameFlag.triggered) !== 0,
@@ -159,6 +163,9 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     spanSeconds: f32("spanSeconds"),
     readoutView: u32("readoutView") as ChannelView,
     triggerView: u32("triggerView") as ChannelView,
+    triggerPosition: Number.isNaN(triggerPosition)
+      ? undefined
+      : triggerPosition,
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
     viewStart: f32("viewStart"),

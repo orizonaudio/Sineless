@@ -23,10 +23,7 @@ import {
   isValidSettingValue,
 } from "../../../protocol/src/setting-values.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
-import {
-  frozenHoldSeconds,
-  triggerPosition,
-} from "../../../protocol/src/limits.ts";
+import { frozenHoldSeconds } from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
 import { clampPan, viewOrder, type ViewName } from "../view/screen-state.ts";
 import type { ControlMessage, Transport } from "./transport.ts";
@@ -213,11 +210,16 @@ export class MockTransport implements Transport {
   private readonly about: Omit<AboutMessage, "type"> | false;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
-  // The last live Trigger or Free window before a freeze (none when frozen in Beats mode), and
-  // whether it ran free, from which a frozen view is placed as the engine places it (see
-  // frozenWindow).
+  // The last live Trigger or Free window before a freeze (none when frozen in Beats mode), whether
+  // it ran free, and its trigger point, from which a frozen view is placed as the engine places it
+  // (see frozenWindow).
   private lastLive:
-    | { readonly start: number; readonly span: number; readonly free: boolean }
+    | {
+        readonly start: number;
+        readonly span: number;
+        readonly free: boolean;
+        readonly zero: number;
+      }
     | undefined;
 
   constructor(options: MockOptions = {}) {
@@ -305,6 +307,7 @@ export class MockTransport implements Transport {
                   start: this.liveStart(this.frozenAt, span),
                   span,
                   free: this.freeRunning(),
+                  zero: this.triggerTime(this.frozenAt, span),
                 };
         }
         this.panSeconds = 0;
@@ -456,19 +459,30 @@ export class MockTransport implements Transport {
     ) as number;
   }
 
-  // Where a live Seconds window of `span` at `time` starts: triggered spans one trigger offset
-  // before a period boundary, free-running spans ending now.
+  // Where the trigger point sits across the span: the Position setting.
+  private position(): number {
+    return this.setting("triggerPosition") as number;
+  }
+
+  // Where a live Seconds window of `span` at `time` starts: triggered spans the Position's part
+  // of the span before a period boundary, free-running spans ending now.
   private liveStart(time: number, span: number): number {
     return this.freeRunning()
       ? time - span
-      : this.triggerTime(time, span) - triggerPosition * span;
+      : this.triggerTime(time, span) - this.position() * span;
   }
 
   // A frozen Trigger or Free view, placed as the engine places it (Analyzer.cpp): the last live
-  // window's trigger point stays put, or its right edge when either window runs free (the newest
-  // audio held when there was no live window), and the view reaches back to the oldest of the
-  // frozenHoldSeconds of audio held.
-  private frozenWindow(span: number): { start: number; reach: number } {
+  // window's trigger point stays put, where the Position puts it unless too little is held after
+  // it, or its right edge when either window runs free (the newest audio held when there was no
+  // live window); the view pans back from there to the oldest of the frozenHoldSeconds of audio
+  // held. `zero` is where its time counts from: the trigger point, NaN running free.
+  private frozenWindow(span: number): {
+    start: number;
+    reach: number;
+    placed: number;
+    zero: number;
+  } {
     const frozenAt = this.frozenAt ?? 0;
     const free = this.freeRunning();
     const live = this.lastLive;
@@ -476,17 +490,36 @@ export class MockTransport implements Transport {
     const anchor =
       live === undefined
         ? frozenAt
-        : live.start + (fromEdge ? live.span : triggerPosition * live.span);
-    const offset = fromEdge ? span : triggerPosition * span;
-    const unpanned = anchor - offset;
+        : fromEdge
+          ? live.start + live.span
+          : live.zero;
+    const offset = fromEdge ? span : this.position() * span;
     const earliest = frozenAt - frozenHoldSeconds;
+    const latest = Math.max(earliest, frozenAt - span);
+    const placed = Math.min(latest, Math.max(earliest, anchor - offset));
     return {
-      start: Math.min(
-        Math.max(earliest, frozenAt - span),
-        Math.max(earliest, unpanned - this.panSeconds),
-      ),
-      reach: Math.max(0, unpanned - earliest),
+      start: Math.min(latest, Math.max(earliest, placed - this.panSeconds)),
+      reach: Math.max(0, placed - earliest),
+      placed,
+      zero: free
+        ? Number.NaN
+        : fromEdge
+          ? placed + this.position() * span
+          : anchor,
     };
+  }
+
+  // Where time zero sits across a Trigger frame's unpanned span, as the engine sends it; undefined
+  // running free or in Beats.
+  private triggerPositionOf(span: number, synced: boolean): number | undefined {
+    if (synced || this.freeRunning()) {
+      return undefined;
+    }
+    if (this.frozenAt === undefined) {
+      return this.position();
+    }
+    const { placed, zero } = this.frozenWindow(span);
+    return (zero - placed) / span;
   }
 
   // The Seconds span shown: the setting, or what the capture keeps of it.
@@ -735,6 +768,7 @@ export class MockTransport implements Transport {
         synced,
         limited,
         spanSeconds: synced ? 0 : span,
+        triggerPosition: this.triggerPositionOf(span, synced),
         cursor,
         cycleStart,
         cycleSeconds: (cycleStart * 60) / mockTempo,

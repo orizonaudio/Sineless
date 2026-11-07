@@ -36,8 +36,11 @@ export const periodTolerance = 0.15;
 // larger one.
 export const frozenHoldSeconds = 4;
 
-// Where a triggered trace's trigger point sits, as a fraction of the span from the left.
-export const triggerPosition = 0.1;
+// Where the trigger point sits unless the Trigger Position setting says otherwise, as a fraction
+// of the span from the left: the setting's default, and where every trigger sat before it was a
+// setting, so old projects open as they were. A tenth leaves room to see what led up to the edge
+// while most of the screen shows what follows it.
+export const defaultTriggerPosition = 0.1;
 
 // The longest span of the Trigger time base (seconds). Longer, a trigger would hold one trace for
 // a long time and show little of the signal's change (Auto's wait for an edge grows with the
@@ -201,7 +204,11 @@ export const limits: readonly {
   { name: "crossingHysteresis", value: crossingHysteresis, kind: "double" },
   { name: "periodTolerance", value: periodTolerance, kind: "double" },
   { name: "frozenHoldSeconds", value: frozenHoldSeconds, kind: "double" },
-  { name: "triggerPosition", value: triggerPosition, kind: "double" },
+  {
+    name: "defaultTriggerPosition",
+    value: defaultTriggerPosition,
+    kind: "double",
+  },
   {
     name: "longestTriggerSpanSeconds",
     value: longestTriggerSpanSeconds,

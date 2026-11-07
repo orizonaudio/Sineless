@@ -24,6 +24,7 @@ const timeBaseOf: Readonly<Record<string, string>> = {
   "level-field": "Trig",
   "hysteresis-field": "Trig",
   "hold-off-field": "Trig",
+  "position-field": "Trig",
 };
 
 // Every typed field: the number fields and the beat span.
@@ -99,5 +100,18 @@ describe("a typed value", () => {
     await typeInto("scale-field", "-12");
     expect(asked("verticalScale", from)).toEqual([-12]);
     await expect.poll(() => field.textContent).toBe("−12 dB");
+  });
+
+  // Whole percent, sent as that fraction exactly (57% as 0.57, not 0.5700000000000001), so what is
+  // saved is what is shown.
+  test("the trigger position takes whole percent only, as its steps", async () => {
+    const field = await show("position-field");
+    const from = app.sent.length;
+    await typeInto("position-field", "12.5%");
+    expect(asked("triggerPosition", from)).toEqual([]);
+    await typeInto("position-field", "57");
+    await typeInto("position-field", "7%");
+    expect(asked("triggerPosition", from)).toEqual([0.57, 0.07]);
+    await expect.poll(() => field.textContent).toBe("7%");
   });
 });

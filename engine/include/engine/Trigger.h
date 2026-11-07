@@ -12,8 +12,6 @@ namespace orizon::engine {
 
 // Edge trigger and trigger modes. Positions are absolute, fractional sample indices.
 
-// The trigger point sits this fraction of the span from the left edge.
-inline constexpr double kTriggerPosition = protocol::kTriggerPosition;
 // Auto mode draws untriggered once no trigger arrived for max(span, this).
 inline constexpr double kAutoTimeoutSeconds = 0.1;
 
@@ -23,6 +21,8 @@ struct TriggerParameters
     double hysteresis = 0.0;
     protocol::TriggerSlope slope = protocol::TriggerSlope::kRising;
     double holdOffSamples = 0.0;
+    // Where the trigger point sits, as a fraction of the span from the left edge.
+    double position = protocol::kDefaultTriggerPosition;
 };
 
 // Positions of the edges in `samples` (samples[0] has index `firstIndex`), oldest first.
@@ -65,6 +65,7 @@ struct TriggerDecision
     };
     Action action = Action::kHold;
     double windowStart = 0.0; // First sample of the visible span, when drawing.
+    double trigger = 0.0;     // The edge it sits on, when triggered.
     bool triggered = false;
     bool freeze = false; // Single mode captured its frame: freeze now.
 };

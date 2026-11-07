@@ -15,7 +15,6 @@ import {
   lanes,
   pointPosition,
 } from "../render/trace-geometry.ts";
-import { triggerPosition } from "./axis-labels.ts";
 import { noteName, type ReadoutRow } from "./cursors.ts";
 import {
   formatClock,
@@ -281,7 +280,7 @@ export function timeAt(
   }
   const seconds = freeRunning
     ? -(1 - position) * spanSeconds
-    : (position - triggerPosition) * spanSeconds;
+    : (position - (frame.triggerPosition ?? Number.NaN)) * spanSeconds;
   const text = formatSeconds(Math.abs(seconds));
   return seconds < 0 ? `−${text}` : `+${text}`;
 }

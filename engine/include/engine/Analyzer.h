@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -185,6 +186,11 @@ private:
     {
         double start = 0.0;
         double span = 0.0;
+        // Trigger: the sample time zero counts from (the trigger point, or where an untriggered
+        // window puts it), and the start before any pan, which the frame's trigger position is
+        // measured from. NaN in Free and Beats.
+        double zero = std::numeric_limits<double>::quiet_NaN();
+        double placedStart = 0.0;
         bool triggered = false;
         // Free-running: the window ends at the newest audio (the Free time base).
         bool freeRunning = false;

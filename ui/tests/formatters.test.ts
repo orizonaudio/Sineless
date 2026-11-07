@@ -197,8 +197,18 @@ test.each([
   ["20 ms ", "time", 0.02],
   ["2e1 ms", "time", 0.02],
   ["1.5e-3 s", "time", 0.0015],
+  ["25%", "percent", 0.25],
+  ["25 %", "percent", 0.25],
+  ["100%", "percent", 1],
 ] as const)("reads %s", (text, quantity, value) => {
   expect(parseQuantity(text, quantity)).toBeCloseTo(value, 9);
+});
+test.each([
+  ["5 ms", "percent"],
+  ["25%", "time"],
+  ["25%%", "percent"],
+] as const)("rejects %s as a %s", (text, quantity) => {
+  expect(parseQuantity(text, quantity)).toBeUndefined();
 });
 test.each(["20 ms junk", "junk 20 ms", "2 0 ms", "20 ms ms"])(
   "rejects %s",
@@ -268,4 +278,40 @@ describe.each(laneCounts)("%i lanes without host colours", (count) => {
     expect(new Set(colours).size).toBe(count);
     expect(colours).not.toContain(sumLaneColour);
   });
+});
+
+// The trigger Position field: whole percent, read as typed, stepped without drift, so what is
+// stored and saved is the whole percent shown.
+describe("the trigger position field", () => {
+  const field = numberFields.triggerPosition;
+  test("shows and reads whole percent; a bare number is percent", () => {
+    expect(field?.format(0.1)).toBe("10%");
+    expect(field?.format(0)).toBe("0%");
+    expect(field?.format(1)).toBe("100%");
+    expect(parseQuantity("25", "percent", field?.bareScale)).toBeCloseTo(
+      0.25,
+      12,
+    );
+  });
+  test.each([false, true])(
+    "steps to exactly 0 and 1 and whole percent between (fine %s)",
+    (fine) => {
+      const step = field?.step ?? ((value: number) => value);
+      let value = 0;
+      const seen: number[] = [];
+      for (let i = 0; i < 120; i += 1) {
+        value = step(value, 1, fine);
+        seen.push(value);
+      }
+      expect(value).toBe(1);
+      for (let i = 0; i < 120; i += 1) {
+        value = step(value, -1, fine);
+        seen.push(value);
+      }
+      expect(value).toBe(0);
+      for (const stored of seen) {
+        expect(Math.round(stored * 100) / 100).toBe(stored);
+      }
+    },
+  );
 });

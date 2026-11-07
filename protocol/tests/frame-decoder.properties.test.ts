@@ -83,6 +83,7 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       spanSeconds: f32,
       readoutView: fc.constantFrom(...channelViews),
       triggerView: fc.constantFrom(...channelViews),
+      triggerPosition: fc.option(f32, { nil: undefined }),
       spanQuarterNotes: f32,
       barQuarterNotes: f32,
       viewStart: f32,
@@ -165,6 +166,7 @@ function expectedHeader(
     spanSeconds: content.spanSeconds ?? 0,
     readoutView: content.readoutView ?? ChannelView.mid,
     triggerView: content.triggerView ?? ChannelView.mid,
+    triggerPosition: content.triggerPosition ?? Number.NaN,
   };
 }
 
@@ -194,6 +196,7 @@ function expectedFrame(content: FrameContent): Frame {
   const f = Math.fround;
   const frequency = f(header.frequency);
   const cursor = f(header.cursor);
+  const triggerPosition = f(header.triggerPosition);
   return {
     mode: content.mode,
     triggered: content.triggered,
@@ -218,6 +221,9 @@ function expectedFrame(content: FrameContent): Frame {
     spanSeconds: f(header.spanSeconds),
     readoutView: header.readoutView as ChannelView,
     triggerView: header.triggerView as ChannelView,
+    triggerPosition: Number.isNaN(triggerPosition)
+      ? undefined
+      : triggerPosition,
     spanQuarterNotes: f(header.spanQuarterNotes),
     barQuarterNotes: f(header.barQuarterNotes),
     viewStart: f(header.viewStart),

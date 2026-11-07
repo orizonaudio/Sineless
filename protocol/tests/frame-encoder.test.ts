@@ -34,6 +34,7 @@ test("encodes the golden frame byte for byte", () => {
     spanSeconds: golden.header.spanSeconds,
     readoutView: golden.header.readoutView as ChannelView,
     triggerView: golden.header.triggerView as ChannelView,
+    triggerPosition: golden.header.triggerPosition,
     views: new Map([
       [ChannelView.mid, golden.views.mid],
       [ChannelView.left, golden.views.left],

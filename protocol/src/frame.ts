@@ -41,6 +41,12 @@
 // (`visibleSamples`, match offsets) into time: frozen, the rate the audio was held at, which the
 // host may have changed since.
 //
+// `triggerPosition` is where time zero sits across the unpanned span, as a fraction from the
+// left: in Trigger, the trigger point of a triggered frame, and, untriggered, where a trigger would
+// sit (the Position setting). NaN in Free and Beats, whose time counts back from the right edge or
+// follows the host's clock. It lies off 0 to 1 when a held or frozen window could not keep its
+// trigger point on screen, and off the setting when a frozen one could not keep it there.
+//
 // `spanSeconds` is the time the whole screen width shows in Trigger or Free, zoomed or not: the
 // span set, or, when the frame is `limited`, what is kept of it. 0 in a tempo-synced sweep, whose
 // span is `spanQuarterNotes`.
@@ -85,6 +91,7 @@ export const frameHeaderFields = [
   { name: "spanSeconds", type: "f32" },
   { name: "readoutView", type: "u32" },
   { name: "triggerView", type: "u32" },
+  { name: "triggerPosition", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

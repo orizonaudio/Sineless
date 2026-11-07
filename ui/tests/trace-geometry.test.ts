@@ -50,6 +50,7 @@ function frame(
     spanSeconds: 0,
     readoutView: ChannelView.mid,
     triggerView: ChannelView.mid,
+    triggerPosition: undefined,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,
