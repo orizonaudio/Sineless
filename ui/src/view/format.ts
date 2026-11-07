@@ -127,16 +127,14 @@ export function formatDbfs(linear: number): string {
 
 // The crest factor of a peak and an RMS (linear, measured over the same samples): how far the
 // peak stands over the RMS, in dB, from the levels as measured, so a sine is 3 dB at every level.
-// NaN when either has no level: not measured, or −∞ at the level floor, as silence is.
+// NaN when either has no level: not measured (NaN, which the difference carries), or −∞ at the
+// level floor, as silence is.
 export function crestFactorDb(peak: number, rms: number): number {
   const peakDb = toDb(peak);
   const rmsDb = toDb(rms);
-  return Number.isFinite(peakDb) &&
-    Number.isFinite(rmsDb) &&
-    !isBelowFloor(peakDb) &&
-    !isBelowFloor(rmsDb)
-    ? peakDb - rmsDb
-    : Number.NaN;
+  return isBelowFloor(peakDb) || isBelowFloor(rmsDb)
+    ? Number.NaN
+    : peakDb - rmsDb;
 }
 
 // A level in dB without the unit: "0", "+3", "−7.5".
