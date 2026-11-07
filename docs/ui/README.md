@@ -69,7 +69,7 @@ Grouped by how often someone reaches for it.
 
 - The screen: traces, grid, level and time labels, playhead in Beats, lane labels in Multi.
 - Display mode: Single, Multi.
-- Time base and span: Beats (1/16 beat to 16 bars), Free (100 ms to 4 s) or Trig (0.5 ms to 1 s).
+- Time base and span: Beats (1/8 bar to 16 bars), Free (100 ms to 4 s) or Trig (0.5 ms to 1 s).
 - Vertical scale: −60 to +6 dBFS at the top of the screen.
 - Freeze and Auto-freeze, and whether the display is frozen.
 - Readouts: peak and RMS (dBFS), frequency (Hz, ≈).
