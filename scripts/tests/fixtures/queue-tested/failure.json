@@ -1,0 +1,13 @@
+{
+  "total_count": 17,
+  "workflow_runs": [
+    {
+      "conclusion": "failure",
+      "event": "merge_group",
+      "head_commit": { "tree_id": "393620bff82954560cc613a62c95b15b160f6ecf" },
+      "head_sha": "dabaf0014d9ed2dc31a0d316e8d454962b5d7350",
+      "id": 42155742653,
+      "status": "completed"
+    }
+  ]
+}

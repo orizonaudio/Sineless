@@ -1,0 +1,29 @@
+{
+  "total_count": 205,
+  "workflow_runs": [
+    {
+      "conclusion": "success",
+      "event": "merge_group",
+      "head_commit": { "tree_id": "8419cca6ece0da1e53fa0e9c4be3d009a7431105" },
+      "head_sha": "d0dfa4713938da9a55edc8e7e71dfaca2c2bffb2",
+      "id": 42343592637,
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "event": "merge_group",
+      "head_commit": { "tree_id": "94b55b5d900fa32042ade4b2e48e3a46f31ae731" },
+      "head_sha": "54dd5f7d2d77e26b8e508e6679503cd391dd5ec3",
+      "id": 42332948967,
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "event": "merge_group",
+      "head_commit": { "tree_id": "ddf0650a3366df371e1b74a646c56fd439aeb8fc" },
+      "head_sha": "0f0caac41a3ac1f032a955bf8e8cc970e7889aa8",
+      "id": 42313747919,
+      "status": "completed"
+    }
+  ]
+}

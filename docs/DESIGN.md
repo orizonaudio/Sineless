@@ -835,7 +835,9 @@ benchmark builds. Test levels, where each runs and the definition of done are in
 | Release | Soak test (`scripts/soak.sh`), the HOSTS.md smoke test by hand; occasionally the full HOSTS.md protocol and the scripted REAPER test on Windows (CONTRIBUTING.md, Releasing) | Before a release |
 
 CI runs on pull requests, the merge queue and pushes to main; changes to documentation only skip
-the builds. `main` is changed only through the merge queue.
+the builds. `main` is changed only through the merge queue. A push to main whose commit the queue
+already tested only fuzzes and builds what fills main's compiler caches, which no other run saves
+for main; when that cannot be told, everything runs.
 
 ```mermaid
 flowchart TB
@@ -847,6 +849,7 @@ flowchart TB
   MT -. "answered before queueing" .-> Q
   Q --> CIQ["CI again, without fuzzing"]
   CIQ --> Main["main"]
+  Main --> CIM["CI on the push: fuzzing and the cache builds"]
 ```
 
 - **ai-review** reviews each push against REVIEW.md and fails while a verified finding is
