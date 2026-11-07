@@ -160,6 +160,10 @@ export const gridFineLevelSubdivisions = 3;
 export const gridCoarseLineGap = 8;
 export const gridMediumLineGap = 8;
 export const gridFineLineGap = 6;
+// Beats at the Fine Time step draws one ladder level finer than Medium only where those lines stay
+// this far apart (CSS pixels); closer, it draws Medium's. A time spacing, kept apart from the
+// level gaps.
+export const gridFineBeatLineGap = 8;
 
 // Compare's cancellation shading, which the page and the macOS editor both draw. Where the sum's
 // peak falls more than cancellationDb below the louder compared track's, they cancel strongly.
@@ -289,6 +293,7 @@ export const limits: readonly {
   { name: "gridCoarseLineGap", value: gridCoarseLineGap, kind: "double" },
   { name: "gridMediumLineGap", value: gridMediumLineGap, kind: "double" },
   { name: "gridFineLineGap", value: gridFineLineGap, kind: "double" },
+  { name: "gridFineBeatLineGap", value: gridFineBeatLineGap, kind: "double" },
   { name: "cancellationDb", value: cancellationDb, kind: "double" },
   { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
   { name: "barcodeDataBits", value: barcodeDataBits, kind: "count" },

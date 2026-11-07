@@ -102,10 +102,20 @@ struct GridOptions
 [[nodiscard]] GridLines gridLines(double width, double height, std::size_t laneCount,
                                   double pixelRatio, const GridOptions& options);
 
+// Which Beats grid to draw: the Time step and Beat division, and the screen's width in CSS pixels,
+// which Fine's finer step must keep kGridFineBeatLineGap apart on.
+struct BeatGrid
+{
+    protocol::GridDensity time = protocol::GridDensity::kMedium;
+    protocol::BeatDivision division = protocol::BeatDivision::kRegular;
+    double widthCss = 0.0;
+};
 // A tempo-synced sweep's grid lines over the part of it on screen: bars, beats or fractions of a
-// beat, as the view narrows.
+// beat, as the view narrows, one level coarser or finer by the Time step, in thirds of the beat in
+// Triplets (the page's beatSteps).
 [[nodiscard]] std::vector<VerticalLine> musicalGridLines(double cycleStart, double span,
-                                                         double barQuarterNotes, ViewWindow view);
+                                                         double barQuarterNotes, ViewWindow view,
+                                                         const BeatGrid& grid);
 
 // The playhead in device pixels, at its exact position (AD-30: drawn natively it moves by
 // fractions of a pixel, with coverage): one CSS pixel wide as CSS snaps a border (at least one

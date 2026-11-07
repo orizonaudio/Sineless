@@ -1337,6 +1337,7 @@ export class OscilloscopeApp {
     if (!this.beatsMode() || frame?.synced !== true || frame.noTempo) {
       return undefined;
     }
+    const grid = this.gridChoice();
     const covered = frame.viewEnd - frame.viewStart;
     const spanSeconds =
       covered > 0 ? frame.visibleSamples / frame.sampleRate / covered : 0;
@@ -1351,6 +1352,11 @@ export class OscilloscopeApp {
             secondsPerQuarter: spanSeconds / frame.spanQuarterNotes,
           }
         : undefined,
+      {
+        time: grid.time,
+        division: grid.division,
+        widthCss: this.screen.clientWidth,
+      },
     );
   }
 

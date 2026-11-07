@@ -429,7 +429,9 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
                 const auto height = static_cast<std::size_t>(200 * ratio);
                 const auto drawn = draw(width, height, &frame, view, ratio, true);
                 ASSERT_TRUE(drawn);
-                std::vector<VerticalLine> musical = musicalGridLines(4.0, 8.0, 4.0, view.view);
+                std::vector<VerticalLine> musical = musicalGridLines(
+                    4.0, 8.0, 4.0, view.view,
+                    {.time = time, .widthCss = static_cast<double>(width) / ratio});
                 const GridLines lines =
                     gridLines(static_cast<double>(width), static_cast<double>(height), 2, ratio,
                               {.level = level,
@@ -465,6 +467,56 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
             }
         }
     }
+}
+
+// Beats' Fine step guards its finer lines in CSS pixels, as the page measures its screen: at
+// ratio 2, two bars on a screen 200 CSS pixels wide put sixteenths 6.25 CSS pixels apart (12.5
+// device pixels), closer than the guard, so the editor draws Medium's beats with strong bars, as
+// the page does there; guarding on device pixels would draw the sixteenths.
+TEST_F(MetalTraceRendererTest, GuardsBeatsFineStepInCssPixels)
+{
+    TraceView view = scenes().front().view;
+    view.screen = {0.0f, 0.0f, 0.0f, 1.0f};
+    view.grid = {0.0f, 1.0f, 0.0f, 1.0f};
+    view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
+    view.layout = protocol::ViewLayout::kStacked;
+    view.gridTime = protocol::GridDensity::kFine;
+    view.viewColours = {};
+    constexpr double kRatio = 2.0;
+    constexpr double kWidthCss = 200.0;
+    const auto width = static_cast<std::size_t>(kWidthCss * kRatio);
+    const auto height = static_cast<std::size_t>(150 * kRatio);
+    const double sixteenthCss = 0.25 / 8.0 * kWidthCss;
+    ASSERT_LT(sixteenthCss, protocol::kGridFineBeatLineGap);
+    ASSERT_GE(sixteenthCss * kRatio, protocol::kGridFineBeatLineGap);
+
+    FrameView frame;
+    std::vector<float> values(std::size_t{2} * 10, 0.0f);
+    frame.mode = protocol::FrameMode::kMinMax;
+    frame.pointCount = 10;
+    frame.views = {{.channelView = 0, .values = values}, {.channelView = 1, .values = values}};
+    frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kSynced);
+    frame.cycleStart = 4.0f;
+    frame.spanQuarterNotes = 8.0f;
+    frame.barQuarterNotes = 4.0f;
+    const auto drawn = draw(width, height, &frame, view, kRatio, true);
+    ASSERT_TRUE(drawn);
+    const std::vector<VerticalLine> musical =
+        musicalGridLines(4.0, 8.0, 4.0, view.view, {.time = view.gridTime, .widthCss = kWidthCss});
+    // Medium's beats: seven inside two bars, the bar line between them strong.
+    ASSERT_EQ(musical.size(), 7U);
+    const GridLines lines = gridLines(static_cast<double>(width), static_cast<double>(height), 2,
+                                      kRatio, {.vertical = &musical});
+    const std::size_t row = height / 2 + 3;
+    for (const GridLines::Vertical& line : lines.vertical) {
+        const std::uint8_t* pixel = drawn->at(static_cast<std::size_t>(std::floor(line.x)), row);
+        EXPECT_EQ(pixel[1], line.strong ? 0 : 255) << line.x;
+        EXPECT_EQ(pixel[2], line.strong ? 255 : 0) << line.x;
+    }
+    // Where a sixteenth would be, between two beats, the screen.
+    const auto sixteenth = static_cast<std::size_t>(std::floor(static_cast<double>(width) / 32.0));
+    EXPECT_EQ(drawn->at(sixteenth, row)[1], 0);
+    EXPECT_EQ(drawn->at(sixteenth, row)[2], 0);
 }
 
 // The grid's lanes are the page's: the frame's lanes, else its views (a mono track's one view,

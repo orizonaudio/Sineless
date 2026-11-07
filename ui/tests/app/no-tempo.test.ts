@@ -48,6 +48,37 @@ describe("before the host reports a tempo", () => {
     expect(byId("readout-tag").textContent).toBe(tag);
   });
 
+  // With no beats to draw, the page draws the equal divisions of Beats' own Time step, as it drew
+  // ten before the grid could be chosen. This keeps that drawing; FR-9.1's "no grid" here is not
+  // settled by it.
+  test.each([
+    ["coarse", 5],
+    ["medium", 10],
+    ["fine", 20],
+  ] as const)(
+    "draws Beats' %s Time step as %i equal divisions",
+    async (time, divisions) => {
+      app.transport.send({
+        type: "setSetting",
+        name: "gridTimeBeats",
+        value: time,
+      });
+      await settle();
+      const canvas = byId("grid") as HTMLCanvasElement;
+      const y = Math.round(3 * window.devicePixelRatio);
+      const row =
+        canvas.getContext("2d")?.getImageData(0, y, canvas.width, 1).data ??
+        new Uint8ClampedArray();
+      let lines = 0;
+      for (let x = 0; x < canvas.width; x++) {
+        const drawn = (row[x * 4 + 3] ?? 0) > 127;
+        const before = x > 0 && (row[(x - 1) * 4 + 3] ?? 0) > 127;
+        lines += drawn && !before ? 1 : 0;
+      }
+      expect(lines).toBe(divisions - 1);
+    },
+  );
+
   test("places the bars once the host reports its tempo", async () => {
     app.transport.reportTempo();
     await expect.poll(chips).toContain("Sync");

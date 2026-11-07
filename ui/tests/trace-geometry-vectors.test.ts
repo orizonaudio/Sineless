@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { expect, test } from "vitest";
 
 import {
+  BeatDivision,
   FrameMode,
   GridDensity,
   ViewLayout,
@@ -19,11 +20,15 @@ import {
   minimumLineGap,
 } from "../src/view/axis-labels.ts";
 import { gridColumns, gridLines } from "../src/view/grid.ts";
-import type { GridDensityName } from "../src/view/grid-settings.ts";
-import { musicalGrid } from "../src/view/musical-grid.ts";
+import type {
+  BeatDivisionName,
+  GridDensityName,
+} from "../src/view/grid-settings.ts";
+import { beatSteps, musicalGrid } from "../src/view/musical-grid.ts";
 import {
   gridCoarseLevelStride,
   gridCoarseLineGap,
+  gridFineBeatLineGap,
   gridFineLevelSubdivisions,
   gridFineLineGap,
   gridLevelStepDb,
@@ -67,6 +72,7 @@ function levelStepCases() {
 }
 
 const densities = Object.keys(GridDensity) as GridDensityName[];
+const divisions = Object.keys(BeatDivision) as BeatDivisionName[];
 
 // The half-lanes at which a Level step's lines change, from the gaps: where its narrowest gap
 // (the last line's to the one below) reaches the step's minimum; for Fine, where each 3 dB
@@ -107,6 +113,8 @@ function levelLineCases() {
   );
 }
 
+// Beats' lines at every Time step and Beat division. Fine is written at widths either side of its
+// guard: where its finer step's lines stand gridFineBeatLineGap CSS pixels apart.
 function musicalCases() {
   const cases = [];
   for (const [cycleStart, span, bar] of [
@@ -117,22 +125,51 @@ function musicalCases() {
     [3, 3, 3],
     [64, 64, 4],
     [0, 0.25, 4],
+    // Two bars of 7/8 from bar 3: beats on whole quarter notes, so the odd bar line between them
+    // is not drawn, as before this grid's choices (pinned, not endorsed).
+    [7, 7, 3.5],
   ] as const) {
     for (const [start, end] of [
       [0, 1],
       [0.25, 0.75],
       [0.4, 0.41],
     ] as const) {
-      cases.push({
-        cycleStart,
-        span,
-        bar,
-        viewStart: start,
-        viewEnd: end,
-        lines: musicalGrid(cycleStart, span, bar, { start, end }).lines.map(
-          (line) => ({ position: round(line.position), strong: line.strong }),
-        ),
-      });
+      const visibleSpan = (end - start) * span;
+      for (const division of divisions) {
+        for (const time of densities) {
+          const finer = beatSteps(visibleSpan, bar, {
+            time: "fine",
+            division,
+            widthCss: Number.POSITIVE_INFINITY,
+          }).step;
+          const edge = (gridFineBeatLineGap * visibleSpan) / finer;
+          const widths =
+            time === "fine" ? [round(edge * 0.99), round(edge * 1.01)] : [1000];
+          for (const widthCss of widths) {
+            cases.push({
+              cycleStart,
+              span,
+              bar,
+              viewStart: start,
+              viewEnd: end,
+              time,
+              division,
+              widthCss,
+              lines: musicalGrid(
+                cycleStart,
+                span,
+                bar,
+                { start, end },
+                undefined,
+                { time, division, widthCss },
+              ).lines.map((line) => ({
+                position: round(line.position),
+                strong: line.strong,
+              })),
+            });
+          }
+        }
+      }
     }
   }
   return cases;

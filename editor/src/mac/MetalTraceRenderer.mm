@@ -732,8 +732,12 @@ private:
         const bool synced = frame != nullptr && frame->has(protocol::FrameFlag::kSynced) &&
                             !frame->has(protocol::FrameFlag::kNoTempo);
         if (synced) {
+            // Fine's guard is in CSS pixels, as the page measures its screen.
             musical = musicalGridLines(frame->cycleStart, frame->spanQuarterNotes,
-                                       frame->barQuarterNotes, view.view);
+                                       frame->barQuarterNotes, view.view,
+                                       {.time = view.gridTime,
+                                        .division = view.beatDivision,
+                                        .widthCss = width / std::max(1.0, pixelRatio)});
         }
         const GridLines lines = gridLines(width, height, laneCount, pixelRatio,
                                           {.level = view.gridLevel,

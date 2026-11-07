@@ -75,11 +75,18 @@ TEST(TraceGeometry, DrawsLevelLinesAtEachLevelStepAsThePageDoes)
 TEST(TraceGeometry, PlacesMusicalLinesAsThePageDoes)
 {
     for (const nlohmann::json& entry : vectors().at("musical")) {
+        const auto division = std::ranges::find(protocol::kBeatDivisionNames,
+                                                entry.at("division").get<std::string>());
+        ASSERT_NE(division, protocol::kBeatDivisionNames.end()) << entry.dump();
         const auto lines =
             musicalGridLines(entry.at("cycleStart").get<double>(), entry.at("span").get<double>(),
                              entry.at("bar").get<double>(),
                              {.start = entry.at("viewStart").get<double>(),
-                              .end = entry.at("viewEnd").get<double>()});
+                              .end = entry.at("viewEnd").get<double>()},
+                             {.time = densityNamed(entry.at("time")),
+                              .division = static_cast<protocol::BeatDivision>(
+                                  division - protocol::kBeatDivisionNames.begin()),
+                              .widthCss = entry.at("widthCss").get<double>()});
         const nlohmann::json& expected = entry.at("lines");
         ASSERT_EQ(lines.size(), expected.size()) << entry.dump();
         for (std::size_t index = 0; index < lines.size(); ++index) {
