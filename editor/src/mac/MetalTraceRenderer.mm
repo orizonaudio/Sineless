@@ -735,8 +735,10 @@ private:
             musical = musicalGridLines(frame->cycleStart, frame->spanQuarterNotes,
                                        frame->barQuarterNotes, view.view);
         }
-        const GridLines lines =
-            gridLines(width, height, laneCount, pixelRatio, synced ? &musical : nullptr);
+        const GridLines lines = gridLines(width, height, laneCount, pixelRatio,
+                                          {.level = view.gridLevel,
+                                           .columns = gridColumns(view.gridTime),
+                                           .vertical = synced ? &musical : nullptr});
         const double half = lines.lineWidth / 2.0;
         for (const GridLines::Vertical& line : lines.vertical) {
             out.push_back({.left = static_cast<float>(line.x - half),

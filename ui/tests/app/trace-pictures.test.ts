@@ -82,6 +82,12 @@ const baseView: TraceViewMessage = {
   cursor: colour(1, 1, 1),
   previous: colour(0.05, 0.06, 0.08, 0.5),
   cancellation: colour(1, 0.45, 0.2, 0.16),
+  gridChoice: {
+    type: "grid",
+    time: "medium",
+    level: "medium",
+    division: "regular",
+  },
 };
 
 const baseFrame: FrameContent = {

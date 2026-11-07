@@ -53,8 +53,20 @@ struct Band
 // tall with neighbours `minimumGap` apart.
 [[nodiscard]] std::vector<int> levelSteps(double halfLane, double minimumGap);
 
+// A level line `step` dB below a lane's top; strong lines take the axis colour.
+struct LevelLine
+{
+    double step = 0.0;
+    bool strong = false;
+};
+// The level lines of a half-lane `halfLane` CSS pixels tall at a Level step, top first: Medium's
+// 3 dB lines as levelSteps fits them; Coarse's 6 dB lines, else the top only, else none; Fine's,
+// Medium's lines, strong, with the 1 dB lines between neighbouring 3 dB lines that keep
+// kGridFineLineGap.
+[[nodiscard]] std::vector<LevelLine> levelLines(double halfLane, protocol::GridDensity density);
+
 // The grid in device pixels: lines `lineWidth` wide centred at `x` or `y` from the top left;
-// `strong` and `axis` lines take the axis colour.
+// `strong` and `axis` lines take the axis colour (the zero lines, and Fine's 3 dB lines).
 struct GridLines
 {
     double lineWidth = 1.0;
@@ -77,9 +89,18 @@ struct VerticalLine
     double position = 0.0;
     bool strong = false;
 };
-// The ten divisions when `vertical` is null.
+// The equal divisions of the width at a Time step.
+[[nodiscard]] std::size_t gridColumns(protocol::GridDensity time);
+// What to draw: the Level step, the number of equal time divisions, and Beats' lines in their
+// place when `vertical` is not null.
+struct GridOptions
+{
+    protocol::GridDensity level = protocol::GridDensity::kMedium;
+    std::size_t columns = protocol::kGridColumnsMedium;
+    const std::vector<VerticalLine>* vertical = nullptr;
+};
 [[nodiscard]] GridLines gridLines(double width, double height, std::size_t laneCount,
-                                  double pixelRatio, const std::vector<VerticalLine>* vertical);
+                                  double pixelRatio, const GridOptions& options);
 
 // A tempo-synced sweep's grid lines over the part of it on screen: bars, beats or fractions of a
 // beat, as the view narrows.

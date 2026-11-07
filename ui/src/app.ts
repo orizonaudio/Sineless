@@ -65,7 +65,13 @@ import {
   type LevelPair,
 } from "./view/cursors.ts";
 import { choiceLabels } from "./view/choice-labels.ts";
-import { drawGrid } from "./view/grid.ts";
+import { drawGrid, gridColumns } from "./view/grid.ts";
+import {
+  gridChoice,
+  isGridSetting,
+  type GridChoice,
+  type TimeBaseName,
+} from "./view/grid-settings.ts";
 import {
   hoverReadout,
   timeAt,
@@ -1003,7 +1009,7 @@ export class OscilloscopeApp {
       "triggerMode",
       "timeBase",
     ];
-    if (screenSettings.includes(name)) {
+    if (screenSettings.includes(name) || isGridSetting(name)) {
       this.drawScreen();
       this.loop.invalidate();
     }
@@ -1317,6 +1323,14 @@ export class OscilloscopeApp {
     return this.store.get("timeBase") === "beats";
   }
 
+  // The grid the screen draws: the settings of the time base the toolbar shows.
+  private gridChoice(): GridChoice {
+    return gridChoice(
+      (name) => this.store.get(name),
+      this.store.get("timeBase") as TimeBaseName,
+    );
+  }
+
   // The musical grid of the last synced frame, when in Beats mode.
   private musicalLayout(): ReturnType<typeof musicalGrid> | undefined {
     const frame = this.lastFrame;
@@ -1343,11 +1357,16 @@ export class OscilloscopeApp {
   private drawScreen(): void {
     // In native mode the editor draws the grid with the traces.
     if (!this.nativeTraces) {
+      const grid = this.gridChoice();
       drawGrid(
         this.gridCanvas,
         this.laneCount(),
         { grid: token("--sl-grid"), axis: token("--sl-grid-strong") },
-        this.musicalLayout()?.lines,
+        {
+          level: grid.level,
+          columns: gridColumns[grid.time],
+          verticalLines: this.musicalLayout()?.lines,
+        },
       );
     }
     this.drawnLaneCount = this.laneCount();
@@ -1415,6 +1434,7 @@ export class OscilloscopeApp {
       this.laneCount(),
       this.layout(),
       height,
+      this.gridChoice().level,
     )) {
       const node = document.createElement("div");
       node.className = "axis-label";
@@ -2123,6 +2143,7 @@ export class OscilloscopeApp {
       cursor: sweep?.cursor ?? white,
       previous: sweep?.previous ?? white,
       cancellation: style?.cancellationColor() ?? white,
+      gridChoice: this.gridChoice(),
     };
   }
 

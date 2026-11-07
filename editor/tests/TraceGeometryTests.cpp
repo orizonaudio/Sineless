@@ -51,6 +51,27 @@ TEST(TraceGeometry, FitsLevelLinesAsThePageDoes)
     }
 }
 
+protocol::GridDensity densityNamed(const std::string& name)
+{
+    const auto found = std::ranges::find(protocol::kGridDensityNames, name);
+    EXPECT_NE(found, protocol::kGridDensityNames.end()) << name;
+    return static_cast<protocol::GridDensity>(found - protocol::kGridDensityNames.begin());
+}
+
+TEST(TraceGeometry, DrawsLevelLinesAtEachLevelStepAsThePageDoes)
+{
+    for (const nlohmann::json& entry : vectors().at("levelLines")) {
+        const auto lines =
+            levelLines(entry.at("halfLane").get<double>(), densityNamed(entry.at("density")));
+        const nlohmann::json& expected = entry.at("lines");
+        ASSERT_EQ(lines.size(), expected.size()) << entry.dump();
+        for (std::size_t index = 0; index < lines.size(); ++index) {
+            EXPECT_NEAR(lines[index].step, expected[index].at("step").get<double>(), 1e-9);
+            EXPECT_EQ(lines[index].strong, expected[index].at("strong").get<bool>());
+        }
+    }
+}
+
 TEST(TraceGeometry, PlacesMusicalLinesAsThePageDoes)
 {
     for (const nlohmann::json& entry : vectors().at("musical")) {
@@ -81,7 +102,9 @@ TEST(TraceGeometry, DrawsTheGridAsThePageDoes)
         const GridLines lines =
             gridLines(entry.at("width").get<double>(), entry.at("height").get<double>(),
                       entry.at("laneCount").get<std::size_t>(), entry.at("ratio").get<double>(),
-                      entry.contains("vertical") ? &vertical : nullptr);
+                      {.level = densityNamed(entry.at("level")),
+                       .columns = gridColumns(densityNamed(entry.at("time"))),
+                       .vertical = entry.contains("vertical") ? &vertical : nullptr});
         const nlohmann::json& expected = entry.at("lines");
         EXPECT_EQ(lines.lineWidth, expected.at("lineWidth").get<double>()) << entry.dump();
         ASSERT_EQ(lines.vertical.size(), expected.at("vertical").size()) << entry.dump();

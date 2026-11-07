@@ -100,6 +100,12 @@
     "axis": [0.11, 0.11, 0.13, 1],
     "cursor": [0.96, 0.96, 0.97, 1],
     "previous": [0.012, 0.012, 0.016, 0.5],
-    "cancellation": [1, 0.8, 0.2, 0.16]
+    "cancellation": [1, 0.8, 0.2, 0.16],
+    "gridChoice": {
+      "type": "crossHair",
+      "time": "fine",
+      "level": "coarse",
+      "division": "triplets"
+    }
   }
 }

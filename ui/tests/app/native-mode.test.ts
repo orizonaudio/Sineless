@@ -294,6 +294,40 @@ describe("native traces: what the page sends", () => {
         expect(view.verticalScaleDb).toBe(-12);
       },
     },
+    // The grid the page would draw, from the time base shown (Beats in a new instance).
+    ...(
+      [
+        ["gridTimeBeats", "time", "fine"],
+        ["gridLevelBeats", "level", "coarse"],
+        ["gridTypeBeats", "type", "none"],
+        ["beatDivision", "division", "triplets"],
+      ] as const
+    ).map(([name, part, value]) => ({
+      field: `the grid's ${part}`,
+      act: async (started: Started) => {
+        started.deliver({ type: "stateChanged", name, value });
+        await settle();
+      },
+      check: (view: TraceViewMessage) => {
+        expect(view.gridChoice[part]).toBe(value);
+      },
+    })),
+    {
+      field: "the grid of the time base switched to",
+      act: async (started: Started) => {
+        started.deliver({
+          type: "stateChanged",
+          name: "gridTimeTrigger",
+          value: "coarse",
+        });
+        await settle();
+        await inTimeBase("Trig");
+      },
+      check: (view: TraceViewMessage, before: TraceViewMessage) => {
+        expect(before.gridChoice.time).toBe("medium");
+        expect(view.gridChoice.time).toBe("coarse");
+      },
+    },
     {
       // No size changes, so no resize event comes: the page's watch on the ratio must send it.
       field: "the line width, on a move to a display of another pixel ratio",

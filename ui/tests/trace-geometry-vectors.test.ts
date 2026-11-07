@@ -6,12 +6,29 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { expect, test } from "vitest";
 
-import { FrameMode, ViewLayout } from "../../protocol/src/enums.ts";
+import {
+  FrameMode,
+  GridDensity,
+  ViewLayout,
+} from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
-import { levelSteps, minimumLineGap } from "../src/view/axis-labels.ts";
-import { gridLines } from "../src/view/grid.ts";
+import {
+  dbFraction,
+  levelLines,
+  levelSteps,
+  minimumLineGap,
+} from "../src/view/axis-labels.ts";
+import { gridColumns, gridLines } from "../src/view/grid.ts";
+import type { GridDensityName } from "../src/view/grid-settings.ts";
 import { musicalGrid } from "../src/view/musical-grid.ts";
 import {
+  gridCoarseLevelStride,
+  gridCoarseLineGap,
+  gridFineLevelSubdivisions,
+  gridFineLineGap,
+  gridLevelStepDb,
+  gridLevelsBelowTop,
+  gridMediumLineGap,
   cancellationBridgedPoints,
   cancellationQuietShare,
   cancellationReachDivisor,
@@ -47,6 +64,47 @@ function levelStepCases() {
     halfLane,
     steps: levelSteps(halfLane, minimumLineGap),
   }));
+}
+
+const densities = Object.keys(GridDensity) as GridDensityName[];
+
+// The half-lanes at which a Level step's lines change, from the gaps: where its narrowest gap
+// (the last line's to the one below) reaches the step's minimum; for Fine, where each 3 dB
+// interval's narrowest 1 dB gap does.
+function levelThresholds(): number[] {
+  const gap = (upper: number, lower: number) =>
+    dbFraction(upper) - dbFraction(lower);
+  const bottom = gridLevelsBelowTop * gridLevelStepDb;
+  const coarse = gridCoarseLevelStride * gridLevelStepDb;
+  const minor = gridLevelStepDb / gridFineLevelSubdivisions;
+  const thresholds = [
+    gridMediumLineGap / gap(bottom - gridLevelStepDb, bottom),
+    gridCoarseLineGap / gap(bottom - coarse, bottom),
+    // The lowest line to the zero line.
+    gridCoarseLineGap / dbFraction(bottom),
+  ];
+  for (let top = 0; top < bottom; top += gridLevelStepDb) {
+    const lowest = top + gridLevelStepDb - minor;
+    thresholds.push(gridFineLineGap / gap(lowest, lowest + minor));
+  }
+  return thresholds;
+}
+
+function levelLineCases() {
+  const halfLanes = [
+    ...[0, 4, 7.9, 8, 10, 20, 40, 80, 200, 1000],
+    ...levelThresholds().flatMap((threshold) => [
+      round(threshold - 0.5),
+      round(threshold + 0.5),
+    ]),
+  ];
+  return densities.flatMap((density) =>
+    halfLanes.map((halfLane) => ({
+      halfLane,
+      density,
+      lines: levelLines(halfLane, density),
+    })),
+  );
 }
 
 function musicalCases() {
@@ -89,13 +147,29 @@ function gridCases() {
   ] as const) {
     for (const ratio of [1, 2, 1.5]) {
       for (const laneCount of [1, 2, 3, 15]) {
-        cases.push({
-          width,
-          height,
-          ratio,
-          laneCount,
-          lines: gridLines(width, height, laneCount, ratio),
-        });
+        for (const density of densities) {
+          // Time and Level at the same step, and once each against the other's extremes.
+          for (const [time, level] of [
+            [density, density],
+            ...(density === "medium"
+              ? ([
+                  ["coarse", "fine"],
+                  ["fine", "coarse"],
+                ] as const)
+              : []),
+          ] as const) {
+            const options = { columns: gridColumns[time], level };
+            cases.push({
+              width,
+              height,
+              ratio,
+              laneCount,
+              time,
+              level,
+              lines: gridLines(width, height, laneCount, ratio, options),
+            });
+          }
+        }
       }
     }
   }
@@ -105,8 +179,10 @@ function gridCases() {
     height: 451,
     ratio: 2,
     laneCount: 1,
+    time: "medium",
+    level: "medium",
     vertical: musical,
-    lines: gridLines(1002, 451, 1, 2, musical),
+    lines: gridLines(1002, 451, 1, 2, { verticalLines: musical }),
   });
   return cases;
 }
@@ -252,6 +328,7 @@ const vectors = {
     "Geometry the macOS editor draws natively, computed from the page's helpers (ui/tests/trace-geometry-vectors.test.ts) and read by the editor's C++ tests. Write again with ORIZON_UPDATE_VECTORS=1.",
   lanes: laneCases(),
   levelSteps: levelStepCases(),
+  levelLines: levelLineCases(),
   musical: musicalCases(),
   grid: gridCases(),
   cancellation: cancellationCases(),

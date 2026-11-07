@@ -53,6 +53,22 @@ std::optional<Rgba> colourField(const nlohmann::json& message, const char* name)
     return found == message.end() ? std::nullopt : colour(*found);
 }
 
+// The enum value a field names, from the protocol's names; nullopt when missing or unknown.
+template <typename Enum, std::size_t Count>
+std::optional<Enum> named(const nlohmann::json& object, const char* name,
+                          const std::array<std::string_view, Count>& names)
+{
+    const auto found = object.find(name);
+    if (found == object.end() || !found->is_string()) {
+        return std::nullopt;
+    }
+    const auto value = std::ranges::find(names, found->get<std::string>());
+    if (value == names.end()) {
+        return std::nullopt;
+    }
+    return static_cast<Enum>(value - names.begin());
+}
+
 } // namespace
 
 std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
@@ -162,6 +178,23 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
         }
         *into = *parsed;
     }
+
+    const auto grid = message.find("gridChoice");
+    if (grid == message.end() || !grid->is_object()) {
+        return std::nullopt;
+    }
+    const auto type = named<protocol::GridType>(*grid, "type", protocol::kGridTypeNames);
+    const auto time = named<protocol::GridDensity>(*grid, "time", protocol::kGridDensityNames);
+    const auto level = named<protocol::GridDensity>(*grid, "level", protocol::kGridDensityNames);
+    const auto division =
+        named<protocol::BeatDivision>(*grid, "division", protocol::kBeatDivisionNames);
+    if (!type || !time || !level || !division) {
+        return std::nullopt;
+    }
+    view.gridType = *type;
+    view.gridTime = *time;
+    view.gridLevel = *level;
+    view.beatDivision = *division;
     return view;
 }
 
