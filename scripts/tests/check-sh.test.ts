@@ -125,6 +125,24 @@ test("the static checks run before any full build, and performance after everyth
     expect(index, check.source).toBeLessThan(fullBuild);
   }
   expect(calls.at(-1)).toMatch(/^performance.sh/);
+  // What the macOS lint reads: the configured commands and the generated protocol header.
+  const lint = calls.findIndex((call) => call.startsWith("clang-tidy"));
+  const header = calls.indexOf(
+    "cmake --build --preset asan --target protocol_header",
+  );
+  expect(header).toBeGreaterThanOrEqual(0);
+  expect(header).toBeLessThan(lint);
+  expect(calls.indexOf("cmake --preset asan")).toBeLessThan(header);
+});
+
+test("SKIP_APP_TESTS=1 alone leaves out only the app tests", () => {
+  const { calls, output } = run(variables(["SKIP_APP_TESTS", "1"]));
+  const reported = [...summary(output).keys()];
+  expect(reported).not.toContain("App tests");
+  expect(reported).toContain("TypeScript tests");
+  expect(calls.filter((call) => call.startsWith("npm run test:app"))).toEqual(
+    [],
+  );
 });
 
 test("a performance miss runs once and says how to rerun it alone", () => {
