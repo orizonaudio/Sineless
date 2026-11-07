@@ -3,11 +3,20 @@
 // labels stay those Grid shows; and Cross hair held for another time base (a project edited by
 // hand) draws Grid there. Lines are counted on the page's own canvas.
 import { describe, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 
 import { defaultTriggerPosition as triggerPosition } from "../../../protocol/src/limits.ts";
 import type { SettingValue } from "../../../protocol/src/messages.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
-import { byId, inTimeBase, settle, startApp, type Started } from "./harness.ts";
+import {
+  byId,
+  chips,
+  inTimeBase,
+  settle,
+  startApp,
+  type Started,
+  typeInto,
+} from "./harness.ts";
 
 async function set(
   app: Started,
@@ -104,6 +113,107 @@ describe("in Trig", () => {
     expect(labelTexts()).toEqual(labels);
     // The dashed trigger line still marks the trigger point.
     expect(byId("trigger-line").hidden).toBe(false);
+  });
+});
+
+// A zoom about a screen position, one wheel notch in, as a user makes it.
+async function zoomAt(screenFraction: number): Promise<void> {
+  const trace = byId("trace");
+  const bounds = trace.getBoundingClientRect();
+  trace.dispatchEvent(
+    new WheelEvent("wheel", {
+      deltaY: -100,
+      metaKey: true,
+      clientX: bounds.left + screenFraction * bounds.width,
+      clientY: bounds.top + bounds.height / 2,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  await settle(4);
+}
+
+describe("in Trig, zoomed", () => {
+  test("Cross hair's line follows the trigger point, with the dashed trigger line", async () => {
+    const app = await startApp();
+    await inTimeBase("Trig");
+    await set(app, "gridTypeTrigger", "crossHair");
+    // Zoomed about the left edge: the trigger point moves right, still on screen.
+    await zoomAt(0);
+    const width = byId("screen").clientWidth;
+    const dashed = (parseFloat(byId("trigger-line").style.left) / 100) * width;
+    expect(dashed).toBeGreaterThan(triggerPosition * width + 10);
+    const across = runsAlongRow(3);
+    expect(across).toHaveLength(1);
+    expect(across[0]).toBeCloseTo(dashed, -0.5);
+  });
+
+  test("zoomed off the trigger point, Cross hair draws no line and no level ticks", async () => {
+    const app = await startApp();
+    await inTimeBase("Trig");
+    await set(app, "gridTypeTrigger", "crossHair");
+    // Zoomed about the right edge: the trigger point leaves the screen.
+    await zoomAt(1);
+    expect(byId("trigger-line").hidden).toBe(true);
+    expect(runsAlongRow(3)).toEqual([]);
+    const width = byId("screen").clientWidth;
+    for (const x of [2, triggerPosition * width + 2, width * 0.55]) {
+      expect(runsDownColumn(x, 2), `ticks at ${String(x)}`).toBe(0);
+    }
+  });
+});
+
+// Types `text` into a field of the Trigger popover, opened.
+async function typeInTrigger(host: string, text: string): Promise<void> {
+  await userEvent.click(byId("wordmark"));
+  const popover = byId(host).closest<HTMLElement>(".popover");
+  if (popover?.hidden === true) {
+    await userEvent.click(byId(popover.id.replace(/-popover$/u, "-details")));
+  }
+  await typeInto(host, text);
+  await userEvent.click(byId("wordmark"));
+}
+
+// The trigger point the engine placed (#358): the cross line sits where the frame says, with the
+// dashed trigger line, live and frozen, also where a frozen view could not put it where the
+// Position setting asks.
+describe("in Trig, at the trigger point the engine placed", () => {
+  const lastFrame = () => window.orizonDebug?.lastFrame;
+  const crossLine = () => {
+    const across = runsAlongRow(3);
+    expect(across).toHaveLength(1);
+    return (across[0] ?? Number.NaN) / byId("screen").clientWidth;
+  };
+
+  test("at Position 50%, the line sits mid-screen with the dashed line", async () => {
+    const app = await startApp();
+    await inTimeBase("Trig");
+    await set(app, "gridTypeTrigger", "crossHair");
+    await typeInto("span-field", "100 ms");
+    await typeInTrigger("position-field", "50%");
+    await expect.poll(() => lastFrame()?.triggerPosition).toBeCloseTo(0.5, 6);
+    await settle();
+    expect(crossLine()).toBeCloseTo(0.5, 2);
+  });
+
+  test("frozen, the line stays at the frame's trigger point, not the setting's", async () => {
+    const app = await startApp();
+    await inTimeBase("Trig");
+    await set(app, "gridTypeTrigger", "crossHair");
+    await typeInto("span-field", "100 ms");
+    await userEvent.click(byId("freeze"));
+    await expect.poll(chips).toContain("Frozen");
+    // At 0% and 500 ms the trigger would need 500 ms after it; about 90 ms is held.
+    await typeInTrigger("position-field", "0%");
+    await typeInto("span-field", "500 ms");
+    await expect
+      .poll(() => lastFrame()?.triggerPosition ?? 0)
+      .toBeGreaterThan(0.5);
+    await settle();
+    const place = lastFrame()?.triggerPosition ?? Number.NaN;
+    const dashed = Number.parseFloat(byId("trigger-line").style.left) / 100;
+    expect(dashed).toBeCloseTo(place, 3);
+    expect(crossLine()).toBeCloseTo(place, 2);
   });
 });
 
