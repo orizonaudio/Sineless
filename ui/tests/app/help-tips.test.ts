@@ -89,6 +89,9 @@ describe("turning help on", () => {
       const box = tip().getBoundingClientRect();
       const button = byId("help").getBoundingClientRect();
       expect(box.bottom).toBeLessThanOrEqual(button.top);
+      // Just above it, right edges aligned.
+      expect(button.top - box.bottom).toBeLessThan(button.height);
+      expect(box.right).toBeCloseTo(button.right, -0.5);
       expect(box.left).toBeGreaterThanOrEqual(0);
       expect(box.right).toBeLessThanOrEqual(width);
       expect(box.top).toBeGreaterThanOrEqual(0);
