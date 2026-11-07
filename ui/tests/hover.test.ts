@@ -359,6 +359,56 @@ describe("hover readout", () => {
     ]);
   });
 
+  // The position keeps one shape as the pointer moves: on a whole beat the sixteenth shows too.
+  test("names a whole beat's sixteenth too", () => {
+    const values = new Float32Array(96000);
+    const position = (x: number) =>
+      hoverReadout(
+        {
+          frame: rawFrame(values, {
+            synced: true,
+            cycleStart: 8,
+            cycleSeconds: 4,
+            spanQuarterNotes: 4,
+          }),
+          traces: [{ name: "Kick", values }],
+          overlaid: 0,
+          layout: ViewLayout.overlaid,
+          view: fullView,
+          a4: 440,
+          freeRunning: false,
+        },
+        x,
+        0.5,
+      )?.rows.find(({ label }) => label === "Position")?.value;
+    expect(position(0.5)).toBe("3.3.1");
+    expect(position(0.5625)).toBe("3.3.2");
+  });
+
+  // A cycle outside the audible range has no frequency to name, and no note (FR-7).
+  test.each([
+    { sampleRate: 480, cycle: "250 ms" },
+    { sampleRate: 9_600_000, cycle: "0.0125 ms" },
+  ])(
+    "reads the frequency of a cycle at $sampleRate Hz as a dash",
+    ({ sampleRate }) => {
+      // 480 samples of 4 cycles: 4 Hz at 480 Hz, 80 kHz at 9.6 MHz.
+      const values = sine(480, 4);
+      const rows = lines(
+        hoverReadout(
+          context(rawFrame(values, { sampleRate }), values),
+          150 / 480,
+          0.5,
+        ),
+      );
+      expect(rows).toContain("f —");
+      expect(rows).toContain("Note —");
+      expect(
+        rows.some((row) => row.startsWith("Cycle ") && row !== "Cycle —"),
+      ).toBe(true);
+    },
+  );
+
   test("reads a frame that covers part of the span as the part it covers", () => {
     // The frozen view zoomed in: 480 samples of 4 cycles cover the span from 0.25 to 0.75.
     const values = sine(480, 4);
