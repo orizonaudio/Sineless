@@ -489,15 +489,21 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-warn);
 }
 
-/* The lane's colour key. */
+/* The lane's colour key: a filled square the size and place of Compare's check box, in a box the
+   size of the check box's button, so turning Compare on or off moves no label. */
 .lane-label > span::before {
   content: "";
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 6px;
-  border-radius: 50%;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-radius: 2.5px;
   background: var(--swatch);
+}
+
+.lane-label > span:not(.checkable) {
+  padding-right: 4px;
+  border: 1px solid transparent;
 }
 
 /* The Compare view's labels: each swatch a check box, then how the track lines up with this one;
