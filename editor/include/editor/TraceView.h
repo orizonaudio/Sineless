@@ -17,7 +17,7 @@ using Rgba = std::array<float, 4>;
 
 // What only the page knows about drawing the traces, from its traceView message
 // (protocol/src/messages.ts, TraceViewMessage): the view window on screen, the layout, the vertical
-// scale, the Waiting dim, the line width and the colours.
+// scale, the Waiting dim, the line width, the colours and the grid the page draws.
 struct TraceView
 {
     ViewWindow view;
@@ -48,6 +48,11 @@ struct TraceView
     Rgba cursor{};
     Rgba previous{};
     Rgba cancellation{};
+    // The grid the page draws (its gridChoice): Cross hair arrives only in Trig.
+    protocol::GridType gridType = protocol::GridType::kGrid;
+    protocol::GridDensity gridTime = protocol::GridDensity::kMedium;
+    protocol::GridDensity gridLevel = protocol::GridDensity::kMedium;
+    protocol::BeatDivision beatDivision = protocol::BeatDivision::kRegular;
 
     // A frame's lane colours, as the page picks them: its lane set's (the newest held when the
     // frame's is not), the Sum's last in Compare; by position from the fallback palette when the

@@ -1,26 +1,28 @@
-// The screen grid: 10 time divisions, level lines every 3 dB down from the top of each lane and
-// a brighter zero line per lane, drawn on a 2D canvas behind the traces. Redrawn only when the
-// size or the lanes change; level lines do not depend on the vertical scale. The macOS editor
-// draws the same lines natively (gridLines; protocol/tests/data/trace-geometry.json holds cases
-// both read).
+// The screen grid: equal time divisions (or Beats' lines), level lines down from the top of each
+// lane and a brighter zero line per lane, by the grid settings of the time base shown, drawn on a
+// 2D canvas behind the traces. Redrawn only when the size, the lanes or the grid settings change;
+// level lines do not depend on the vertical scale. The macOS editor draws the same lines natively
+// (gridLines; protocol/tests/data/trace-geometry.json holds cases both read).
 import { ViewLayout } from "../../../protocol/src/enums.ts";
-import { lanes, type Lane } from "../render/trace-geometry.ts";
 import {
+  gridColumnsCoarse,
+  gridColumnsFine,
   gridColumnsMedium,
-  levelFraction,
-  levelSteps,
-  minimumLineGap,
-} from "./axis-labels.ts";
+} from "../../../protocol/src/limits.ts";
+import { lanes, type Lane } from "../render/trace-geometry.ts";
+import { dbFraction, levelLines } from "./axis-labels.ts";
+import type { GridDensityName } from "./grid-settings.ts";
 
 // Vertical lines at the given positions (fractions of the width), e.g. on beats in a tempo-synced
-// sweep; strong lines use the axis colour. Without them, the 10 equal divisions are drawn.
+// sweep; strong lines use the axis colour. Without them, the Time step's equal divisions are drawn.
 export interface VerticalLine {
   readonly position: number;
   readonly strong: boolean;
 }
 
 // The grid's lines in device pixels: each a line `lineWidth` wide centred at `x` (vertical) or
-// `y` (horizontal) from the top left; `strong` and `axis` lines take the axis colour.
+// `y` (horizontal) from the top left; `strong` and `axis` lines take the axis colour (the zero
+// lines, and Fine's 3 dB lines).
 export interface GridLines {
   readonly lineWidth: number;
   readonly vertical: readonly {
@@ -33,17 +35,33 @@ export interface GridLines {
   }[];
 }
 
+// The equal divisions of the width at each Time step.
+export const gridColumns: Readonly<Record<GridDensityName, number>> = {
+  coarse: gridColumnsCoarse,
+  medium: gridColumnsMedium,
+  fine: gridColumnsFine,
+};
+
+// What to draw: the Level step, the number of equal time divisions (gridColumns by the Time step)
+// and Beats' lines in their place.
+export interface GridOptions {
+  readonly level?: GridDensityName;
+  readonly columns?: number;
+  readonly verticalLines?: readonly VerticalLine[] | undefined;
+}
+
 export function gridLines(
   width: number,
   height: number,
   laneCount: number,
   pixelRatio: number,
-  verticalLines?: readonly VerticalLine[],
+  options: GridOptions = {},
 ): GridLines {
+  const count = options.columns ?? gridColumnsMedium;
   const columns =
-    verticalLines ??
-    Array.from({ length: gridColumnsMedium - 1 }, (_, index) => ({
-      position: (index + 1) / gridColumnsMedium,
+    options.verticalLines ??
+    Array.from({ length: count - 1 }, (_, index) => ({
+      position: (index + 1) / count,
       strong: false,
     }));
   const vertical = columns.map((column) => ({
@@ -59,11 +77,11 @@ export function gridLines(
   for (const lane of laneList) {
     const halfLaneCss =
       (lane.halfHeight * height) / 2 / Math.max(1, pixelRatio);
-    for (const step of levelSteps(halfLaneCss, minimumLineGap)) {
+    for (const line of levelLines(halfLaneCss, options.level ?? "medium")) {
       for (const sign of [1, -1]) {
         horizontal.push({
-          y: rowY(lane, sign * levelFraction(step)),
-          axis: false,
+          y: rowY(lane, sign * dbFraction(line.step)),
+          axis: line.strong,
         });
       }
     }
@@ -82,7 +100,7 @@ export function drawGrid(
   canvas: HTMLCanvasElement,
   laneCount: number,
   colors: { grid: string; axis: string },
-  verticalLines?: readonly VerticalLine[],
+  options: GridOptions = {},
 ): void {
   const context = canvas.getContext("2d");
   if (context === null) {
@@ -95,7 +113,7 @@ export function drawGrid(
     height,
     laneCount,
     window.devicePixelRatio,
-    verticalLines,
+    options,
   );
   context.lineWidth = lines.lineWidth;
   const line = (x0: number, y0: number, x1: number, y1: number) => {

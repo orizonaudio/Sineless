@@ -133,15 +133,33 @@ export const screenMargin = 8;
 export const screenBorder = 1;
 export const screenRadius = 10;
 
-// The screen's grid, which the page and the macOS editor both draw: at the Medium Time step this
-// many equal time divisions in Trig and Free; level lines every gridLevelStepDb down from the top
-// of each lane, at most gridLevelsBelowTop below it (the trace is linear, so step s sits at
-// 10^(-gridLevelStepDb * s / 20) of the half-lane); and at the Medium Level step no two drawn level
-// lines closer than gridMediumLineGap CSS pixels, so a short lane shows fewer.
+// The screen's grid, which the page and the macOS editor both draw.
+//
+// Time, in Trig and Free: the screen's width in gridColumnsCoarse, gridColumnsMedium or
+// gridColumnsFine equal divisions by the Time step. Time labels sit on its fifths
+// (timeLabelColumns), which every step's divisions include: four labels at each step, on the
+// lines Medium labels, neither crowded at Fine nor thinned at Coarse.
+export const gridColumnsCoarse = 5;
 export const gridColumnsMedium = 10;
+export const gridColumnsFine = 20;
+export const timeLabelColumns = 5;
+
+// Level: lines every gridLevelStepDb down from the top of each lane, at most gridLevelsBelowTop
+// below it (the trace is linear, so a line d dB down sits at 10^(-d / 20) of the half-lane), at
+// every Level step. Coarse draws every gridCoarseLevelStride-th of them (6 dB); Fine adds
+// gridFineLevelSubdivisions - 1 minor lines inside each step (every 1 dB).
 export const gridLevelStepDb = 3;
 export const gridLevelsBelowTop = 4;
+export const gridCoarseLevelStride = 2;
+export const gridFineLevelSubdivisions = 3;
+// The closest (CSS pixels) drawn level lines come at each Level step before a short lane drops
+// some. Medium's 3 dB lines thin to 6 dB, then to the top only, then to none; Coarse's 6 dB lines
+// to the top only, then to none. Fine's minor 1 dB lines may come closer than the major lines,
+// being minor and drawn only between two of them; those nearest zero, the narrowest, drop first.
+// Coarse's and Medium's are equal but kept apart: each is the spacing of its own lines.
+export const gridCoarseLineGap = 8;
 export const gridMediumLineGap = 8;
+export const gridFineLineGap = 6;
 
 // Compare's cancellation shading, which the page and the macOS editor both draw. Where the sum's
 // peak falls more than cancellationDb below the louder compared track's, they cancel strongly.
@@ -252,10 +270,25 @@ export const limits: readonly {
   { name: "screenMargin", value: screenMargin, kind: "pixels" },
   { name: "screenBorder", value: screenBorder, kind: "pixels" },
   { name: "screenRadius", value: screenRadius, kind: "pixels" },
+  { name: "gridColumnsCoarse", value: gridColumnsCoarse, kind: "count" },
   { name: "gridColumnsMedium", value: gridColumnsMedium, kind: "count" },
+  { name: "gridColumnsFine", value: gridColumnsFine, kind: "count" },
+  { name: "timeLabelColumns", value: timeLabelColumns, kind: "count" },
   { name: "gridLevelStepDb", value: gridLevelStepDb, kind: "double" },
   { name: "gridLevelsBelowTop", value: gridLevelsBelowTop, kind: "count" },
+  {
+    name: "gridCoarseLevelStride",
+    value: gridCoarseLevelStride,
+    kind: "count",
+  },
+  {
+    name: "gridFineLevelSubdivisions",
+    value: gridFineLevelSubdivisions,
+    kind: "count",
+  },
+  { name: "gridCoarseLineGap", value: gridCoarseLineGap, kind: "double" },
   { name: "gridMediumLineGap", value: gridMediumLineGap, kind: "double" },
+  { name: "gridFineLineGap", value: gridFineLineGap, kind: "double" },
   { name: "cancellationDb", value: cancellationDb, kind: "double" },
   { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
   { name: "barcodeDataBits", value: barcodeDataBits, kind: "count" },

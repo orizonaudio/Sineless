@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <limits>
 
 namespace orizon::editor {
@@ -155,17 +156,22 @@ std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout
 
 namespace {
 
-double levelFraction(int step)
+double dbFraction(double db)
 {
-    return std::pow(10.0, -protocol::kGridLevelStepDb * step / 20.0);
+    return std::pow(10.0, -db / 20.0);
 }
 
-} // namespace
+double levelFraction(int step)
+{
+    return dbFraction(protocol::kGridLevelStepDb * step);
+}
 
-std::vector<int> levelSteps(double halfLane, double minimumGap)
+// The steps of the first stride whose lines all stay `minimumGap` apart, else the top only, else
+// none.
+std::vector<int> strideSteps(double halfLane, double minimumGap, std::initializer_list<int> strides)
 {
     const int below = static_cast<int>(protocol::kGridLevelsBelowTop);
-    for (const int stride : {1, 2}) {
+    for (const int stride : strides) {
         std::vector<int> steps;
         for (int step = 0; step <= below; step += stride) {
             steps.push_back(step);
@@ -181,18 +187,83 @@ std::vector<int> levelSteps(double halfLane, double minimumGap)
     return halfLane >= minimumGap ? std::vector<int>{0} : std::vector<int>{};
 }
 
-GridLines gridLines(double width, double height, std::size_t laneCount, double pixelRatio,
-                    const std::vector<VerticalLine>* vertical)
+} // namespace
+
+std::vector<int> levelSteps(double halfLane, double minimumGap)
 {
+    return strideSteps(halfLane, minimumGap,
+                       {1, static_cast<int>(protocol::kGridCoarseLevelStride)});
+}
+
+std::vector<LevelLine> levelLines(double halfLane, protocol::GridDensity density)
+{
+    constexpr double kStepDb = protocol::kGridLevelStepDb;
+    std::vector<LevelLine> lines;
+    if (density == protocol::GridDensity::kCoarse) {
+        for (const int step : strideSteps(halfLane, protocol::kGridCoarseLineGap,
+                                          {static_cast<int>(protocol::kGridCoarseLevelStride)})) {
+            lines.push_back({.step = step * kStepDb});
+        }
+        return lines;
+    }
+    const std::vector<int> steps = levelSteps(halfLane, protocol::kGridMediumLineGap);
+    if (density == protocol::GridDensity::kMedium) {
+        for (const int step : steps) {
+            lines.push_back({.step = step * kStepDb});
+        }
+        return lines;
+    }
+    const auto below = static_cast<int>(protocol::kGridLevelsBelowTop);
+    const auto subdivisions = static_cast<int>(protocol::kGridFineLevelSubdivisions);
+    const double minor = kStepDb / subdivisions;
+    const bool everyStep = steps.size() == static_cast<std::size_t>(below) + 1;
+    for (const int step : steps) {
+        const double top = step * kStepDb;
+        lines.push_back({.step = top, .strong = true});
+        if (!everyStep || step >= below) {
+            continue;
+        }
+        bool fits = true;
+        for (int edge = 0; edge < subdivisions; ++edge) {
+            const double gap =
+                dbFraction(top + edge * minor) - dbFraction(top + (edge + 1) * minor);
+            fits = fits && gap * halfLane >= protocol::kGridFineLineGap;
+        }
+        if (fits) {
+            for (int inside = 1; inside < subdivisions; ++inside) {
+                lines.push_back({.step = top + inside * minor});
+            }
+        }
+    }
+    return lines;
+}
+
+std::size_t gridColumns(protocol::GridDensity time)
+{
+    switch (time) {
+    case protocol::GridDensity::kCoarse:
+        return protocol::kGridColumnsCoarse;
+    case protocol::GridDensity::kFine:
+        return protocol::kGridColumnsFine;
+    case protocol::GridDensity::kMedium:
+        break;
+    }
+    return protocol::kGridColumnsMedium;
+}
+
+GridLines gridLines(double width, double height, std::size_t laneCount, double pixelRatio,
+                    const GridOptions& options)
+{
+    const std::vector<VerticalLine>* vertical = options.vertical;
     GridLines lines;
     lines.lineWidth = std::max(1.0, std::round(pixelRatio));
     // JavaScript's Math.round: halves round up.
     const auto round = [](double value) { return std::floor(value + 0.5); };
     std::vector<VerticalLine> divisions;
     if (vertical == nullptr) {
-        for (std::size_t index = 1; index < protocol::kGridColumnsMedium; ++index) {
-            divisions.push_back({.position = static_cast<double>(index) /
-                                             static_cast<double>(protocol::kGridColumnsMedium)});
+        for (std::size_t index = 1; index < options.columns; ++index) {
+            divisions.push_back(
+                {.position = static_cast<double>(index) / static_cast<double>(options.columns)});
         }
         vertical = &divisions;
     }
@@ -205,9 +276,10 @@ GridLines gridLines(double width, double height, std::size_t laneCount, double p
     };
     for (const Lane& lane : laneList) {
         const double halfLaneCss = lane.halfHeight * height / 2.0 / std::max(1.0, pixelRatio);
-        for (const int step : levelSteps(halfLaneCss, protocol::kGridMediumLineGap)) {
+        for (const LevelLine& level : levelLines(halfLaneCss, options.level)) {
             for (const double sign : {1.0, -1.0}) {
-                lines.horizontal.push_back({.y = rowY(lane, sign * levelFraction(step))});
+                lines.horizontal.push_back(
+                    {.y = rowY(lane, sign * dbFraction(level.step)), .axis = level.strong});
             }
         }
     }

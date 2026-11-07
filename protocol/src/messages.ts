@@ -201,6 +201,15 @@ export interface TraceViewMessage {
   readonly cursor: Rgba;
   readonly previous: Rgba;
   readonly cancellation: Rgba;
+  // The grid the page draws now (ui/src/view/grid-settings.ts): GridType, GridDensity (Time and
+  // Level) and BeatDivision names. Cross hair only in Trig: the page sends Grid in its place
+  // elsewhere.
+  readonly gridChoice: {
+    readonly type: string;
+    readonly time: string;
+    readonly level: string;
+    readonly division: string;
+  };
 }
 
 // Editor to UI: native drawing stopped for good this session (a removed GPU, persistent errors,

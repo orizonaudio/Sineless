@@ -12,10 +12,20 @@ import { fullView } from "../src/view/zoom.ts";
 import { valueNames } from "../../protocol/src/setting-values.ts";
 import {
   amplitudeLabels,
+  dbFraction,
   levelFraction,
+  levelLabelSteps,
+  levelLines,
   levelSteps,
   timeLabels,
 } from "../src/view/axis-labels.ts";
+import {
+  gridCoarseLineGap,
+  gridFineLineGap,
+  gridMediumLineGap,
+  timeLabelColumns,
+} from "../../protocol/src/limits.ts";
+import type { GridDensityName } from "../src/view/grid-settings.ts";
 import {
   formatDb,
   formatDbValue,
@@ -198,6 +208,93 @@ describe("axis labels", () => {
     expect(levelSteps(5, 8)).toEqual([]);
   });
 
+  // The gaps between a half-lane's drawn lines, top down, the last to the zero line.
+  const gaps = (halfLane: number, density: GridDensityName) => {
+    const fractions = [
+      ...levelLines(halfLane, density).map((line) => dbFraction(line.step)),
+      0,
+    ];
+    return fractions.slice(1).map((below, index) => {
+      return ((fractions[index] ?? 0) - below) * halfLane;
+    });
+  };
+  const halfLanes = Array.from({ length: 120 }, (_, index) => 4 + index * 2.5);
+
+  test("Coarse draws every 6 dB, never closer than its gap, and never more lines than Medium", () => {
+    for (const halfLane of halfLanes) {
+      const coarse = levelLines(halfLane, "coarse");
+      expect(coarse.every((line) => line.step % 6 === 0)).toBe(true);
+      expect(Math.min(...gaps(halfLane, "coarse"))).toBeGreaterThanOrEqual(
+        gridCoarseLineGap,
+      );
+      expect(coarse.length).toBeLessThanOrEqual(
+        levelLines(halfLane, "medium").length,
+      );
+    }
+    expect(levelLines(400, "coarse").map((line) => line.step)).toEqual([
+      0, 6, 12,
+    ]);
+  });
+
+  test("Medium draws today's lines", () => {
+    for (const halfLane of halfLanes) {
+      expect(levelLines(halfLane, "medium")).toEqual(
+        levelSteps(halfLane, gridMediumLineGap).map((step) => ({
+          step: step * 3,
+          strong: false,
+        })),
+      );
+    }
+  });
+
+  test("Fine draws Medium's lines strong and adds 1 dB lines where they keep their gap, nearest zero last", () => {
+    for (const halfLane of halfLanes) {
+      const fine = levelLines(halfLane, "fine");
+      const medium = levelLines(halfLane, "medium");
+      // Medium's lines, every one strong; the added ones minor, on whole dB.
+      expect(
+        fine.filter((line) => line.strong).map((line) => line.step),
+      ).toEqual(medium.map((line) => line.step));
+      const minor = fine.filter((line) => !line.strong);
+      expect(minor.every((line) => Number.isInteger(line.step))).toBe(true);
+      // Between two 3 dB lines only, never below the lowest.
+      const lowest = Math.max(...medium.map((line) => line.step));
+      expect(minor.every((line) => line.step < lowest)).toBe(true);
+      if (minor.length > 0) {
+        expect(Math.min(...gaps(halfLane, "fine"))).toBeGreaterThanOrEqual(
+          Math.min(gridFineLineGap, Math.min(...gaps(halfLane, "medium"))),
+        );
+        // The intervals fill from the top: the one nearest zero is the narrowest.
+        const steps = minor.map((line) => line.step);
+        expect(steps).toEqual(
+          Array.from({ length: steps.length }, (_, index) => {
+            return 3 * Math.floor(index / 2) + 1 + (index % 2);
+          }),
+        );
+      }
+    }
+    // A tall lane has every 1 dB line; a short one none.
+    expect(levelLines(1000, "fine")).toHaveLength(13);
+    expect(levelLines(40, "fine").some((line) => !line.strong)).toBe(false);
+  });
+
+  test("labels Coarse's 6 dB lines and Medium's and Fine's 3 dB lines", () => {
+    expect(levelLabelSteps(400, "coarse")).toEqual([0, 2, 4]);
+    expect(levelLabelSteps(400, "medium")).toEqual([0, 1, 2, 3, 4]);
+    expect(levelLabelSteps(400, "fine")).toEqual([0, 1, 2, 3, 4]);
+    const texts = (density: GridDensityName) =>
+      amplitudeLabels(0, 1, ViewLayout.overlaid, 800, density)
+        .slice(0, 4)
+        .map((label) => label.text);
+    expect(texts("coarse")).toEqual([
+      "0 dB",
+      `${minus}6`,
+      `${minus}12`,
+      `${minus}∞`,
+    ]);
+    expect(texts("fine")).toEqual(texts("medium"));
+  });
+
   test("places level lines where the linear trace reaches them", () => {
     expect(levelFraction(0)).toBe(1);
     expect(levelFraction(2)).toBeCloseTo(0.501, 3); // -6 dB
@@ -275,6 +372,27 @@ describe("axis labels", () => {
     ]);
     expect(labels[3]?.position).toBe(0.25);
     expect(labels[4]?.position).toBe(0.5);
+  });
+
+  test("puts four time labels on the fifths, which every Time step's divisions hold", () => {
+    for (const free of [false, true]) {
+      expect(
+        timeLabels(1, free, fullView, 0.1).map((label) => label.position),
+      ).toEqual(
+        Array.from(
+          { length: timeLabelColumns - 1 },
+          (_, index) => (index + 1) / timeLabelColumns,
+        ),
+      );
+    }
+    for (const columns of [5, 10, 20]) {
+      for (const label of timeLabels(1, false, fullView, 0.1)) {
+        expect(label.position * columns).toBeCloseTo(
+          Math.round(label.position * columns),
+          9,
+        );
+      }
+    }
   });
 
   test("counts time from the trigger point, or back from the right edge when running free", () => {

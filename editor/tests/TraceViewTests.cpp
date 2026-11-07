@@ -37,6 +37,27 @@ TEST(TraceViewMessage, ReadsEveryFieldOfThePagesMessage)
     EXPECT_EQ(view->fallbackColours.size(), message.at("fallbackColours").size());
     EXPECT_EQ(view->cancellation[3], message.at("cancellation")[3].get<float>());
     EXPECT_EQ(view->previous[3], message.at("previous")[3].get<float>());
+    EXPECT_EQ(view->gridType, protocol::GridType::kCrossHair);
+    EXPECT_EQ(view->gridTime, protocol::GridDensity::kFine);
+    EXPECT_EQ(view->gridLevel, protocol::GridDensity::kCoarse);
+    EXPECT_EQ(view->beatDivision, protocol::BeatDivision::kTriplets);
+}
+
+// A grid choice missing a part, or naming a value the protocol does not have, is refused: the
+// editor keeps drawing the last good grid rather than one the page does not draw (QS-7).
+TEST(TraceViewMessage, RefusesAGridChoiceItCannotRead)
+{
+    for (const char* part : {"type", "time", "level", "division"}) {
+        nlohmann::json missing = example();
+        missing["gridChoice"].erase(part);
+        EXPECT_FALSE(TraceView::parse(missing)) << "without " << part;
+        nlohmann::json unknown = example();
+        unknown["gridChoice"][part] = "dense";
+        EXPECT_FALSE(TraceView::parse(unknown)) << part << " unknown";
+        nlohmann::json number = example();
+        number["gridChoice"][part] = 1;
+        EXPECT_FALSE(TraceView::parse(number)) << part << " as a number";
+    }
 }
 
 // A message missing any field is refused, and the editor keeps the last good one (QS-7).

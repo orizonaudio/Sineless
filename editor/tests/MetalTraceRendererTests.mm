@@ -386,10 +386,10 @@ TEST_F(MetalTraceRendererTest, KeepsThePlayheadEquallyBrightWhereverItSits)
     }
 }
 
-// The grid under the traces, where the page strokes it: the ten divisions, or a Beats sweep's
-// beats and bars, and each lane's level and zero lines, over the screen's colour. A Beats sweep
-// with no tempo yet (the host not yet played: FR-9.1) has no beats to show, and shows the ten
-// divisions as the page does.
+// The grid under the traces, where the page strokes it: the Time step's divisions, or a Beats
+// sweep's beats and bars, and each lane's level and zero lines at the Level step, over the screen's
+// colour, for the steps the page's trace view names. A Beats sweep with no tempo yet (the host not
+// yet played: FR-9.1) has no beats to show, and shows the divisions as the page does.
 TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
 {
     TraceView view = scenes().front().view;
@@ -397,61 +397,72 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
     view.grid = {0.0f, 1.0f, 0.0f, 1.0f};
     view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
     view.layout = protocol::ViewLayout::kStacked;
-    for (const double ratio : {1.0, 2.0}) {
-        for (const auto& [beats, noTempo] :
-             std::vector<std::pair<bool, bool>>{{false, false}, {true, false}, {true, true}}) {
-            FrameView frame;
-            std::vector<float> values(std::size_t{2} * 10, 0.0f);
-            frame.mode = protocol::FrameMode::kMinMax;
-            frame.pointCount = 10;
-            frame.views = {{.channelView = 0, .values = values},
-                           {.channelView = 1, .values = values}};
-            if (noTempo) {
-                // As the engine sends it: no cycle fields.
-                frame.flags =
-                    static_cast<std::uint8_t>(static_cast<unsigned>(protocol::FrameFlag::kSynced) |
-                                              static_cast<unsigned>(protocol::FrameFlag::kNoTempo));
-            } else if (beats) {
-                frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kSynced);
-                frame.cycleStart = 4.0f;
-                frame.spanQuarterNotes = 8.0f;
-                frame.barQuarterNotes = 4.0f;
-            }
-            view.viewColours = {};
-            const auto width = static_cast<std::size_t>(300 * ratio);
-            const auto height = static_cast<std::size_t>(200 * ratio);
-            const auto drawn = draw(width, height, &frame, view, ratio, true);
-            ASSERT_TRUE(drawn);
-            std::vector<VerticalLine> musical = musicalGridLines(4.0, 8.0, 4.0, view.view);
-            const GridLines lines =
-                gridLines(static_cast<double>(width), static_cast<double>(height), 2, ratio,
-                          beats && !noTempo ? &musical : nullptr);
-            ASSERT_FALSE(lines.vertical.empty());
-            // A line's middle column or row is wholly covered: the line's colour there.
-            const std::size_t row = height / 2 + 3;
-            for (const GridLines::Vertical& line : lines.vertical) {
-                const auto x = static_cast<std::size_t>(std::floor(line.x));
-                const std::uint8_t* pixel = drawn->at(x, row);
-                EXPECT_EQ(pixel[1], line.strong ? 0 : 255) << line.x << " at " << ratio;
-                EXPECT_EQ(pixel[2], line.strong ? 255 : 0) << line.x << " at " << ratio;
-            }
-            const std::size_t column = 7;
-            for (const GridLines::Horizontal& line : lines.horizontal) {
-                // The bottom lane's lowest level line falls just below the screen, as on the page.
-                if (line.y >= static_cast<double>(height)) {
-                    continue;
+    using protocol::GridDensity;
+    for (const auto& [time, level] : std::vector<std::pair<GridDensity, GridDensity>>{
+             {GridDensity::kMedium, GridDensity::kMedium},
+             {GridDensity::kCoarse, GridDensity::kFine},
+             {GridDensity::kFine, GridDensity::kCoarse}}) {
+        view.gridTime = time;
+        view.gridLevel = level;
+        for (const double ratio : {1.0, 2.0}) {
+            for (const auto& [beats, noTempo] :
+                 std::vector<std::pair<bool, bool>>{{false, false}, {true, false}, {true, true}}) {
+                FrameView frame;
+                std::vector<float> values(std::size_t{2} * 10, 0.0f);
+                frame.mode = protocol::FrameMode::kMinMax;
+                frame.pointCount = 10;
+                frame.views = {{.channelView = 0, .values = values},
+                               {.channelView = 1, .values = values}};
+                if (noTempo) {
+                    // As the engine sends it: no cycle fields.
+                    frame.flags = static_cast<std::uint8_t>(
+                        static_cast<unsigned>(protocol::FrameFlag::kSynced) |
+                        static_cast<unsigned>(protocol::FrameFlag::kNoTempo));
+                } else if (beats) {
+                    frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kSynced);
+                    frame.cycleStart = 4.0f;
+                    frame.spanQuarterNotes = 8.0f;
+                    frame.barQuarterNotes = 4.0f;
                 }
-                // From the top on the page; the picture's rows count from the bottom.
-                const auto y = height - 1 - static_cast<std::size_t>(std::floor(line.y));
-                const std::uint8_t* pixel = drawn->at(column, y);
-                EXPECT_EQ(pixel[1], line.axis ? 0 : 255) << line.y << " at " << ratio;
-                EXPECT_EQ(pixel[2], line.axis ? 255 : 0) << line.y << " at " << ratio;
+                view.viewColours = {};
+                const auto width = static_cast<std::size_t>(300 * ratio);
+                const auto height = static_cast<std::size_t>(200 * ratio);
+                const auto drawn = draw(width, height, &frame, view, ratio, true);
+                ASSERT_TRUE(drawn);
+                std::vector<VerticalLine> musical = musicalGridLines(4.0, 8.0, 4.0, view.view);
+                const GridLines lines =
+                    gridLines(static_cast<double>(width), static_cast<double>(height), 2, ratio,
+                              {.level = level,
+                               .columns = gridColumns(time),
+                               .vertical = beats && !noTempo ? &musical : nullptr});
+                ASSERT_FALSE(lines.vertical.empty());
+                // A line's middle column or row is wholly covered: the line's colour there.
+                const std::size_t row = height / 2 + 3;
+                for (const GridLines::Vertical& line : lines.vertical) {
+                    const auto x = static_cast<std::size_t>(std::floor(line.x));
+                    const std::uint8_t* pixel = drawn->at(x, row);
+                    EXPECT_EQ(pixel[1], line.strong ? 0 : 255) << line.x << " at " << ratio;
+                    EXPECT_EQ(pixel[2], line.strong ? 255 : 0) << line.x << " at " << ratio;
+                }
+                const std::size_t column = 7;
+                for (const GridLines::Horizontal& line : lines.horizontal) {
+                    // The bottom lane's lowest level line falls just below the screen, as on the
+                    // page.
+                    if (line.y >= static_cast<double>(height)) {
+                        continue;
+                    }
+                    // From the top on the page; the picture's rows count from the bottom.
+                    const auto y = height - 1 - static_cast<std::size_t>(std::floor(line.y));
+                    const std::uint8_t* pixel = drawn->at(column, y);
+                    EXPECT_EQ(pixel[1], line.axis ? 0 : 255) << line.y << " at " << ratio;
+                    EXPECT_EQ(pixel[2], line.axis ? 255 : 0) << line.y << " at " << ratio;
+                }
+                // Between lines, the screen.
+                const std::uint8_t* clear = drawn->at(3, height / 2 + 3);
+                EXPECT_EQ(clear[1], 0);
+                EXPECT_EQ(clear[2], 0);
+                EXPECT_EQ(clear[3], 255);
             }
-            // Between lines, the screen.
-            const std::uint8_t* clear = drawn->at(3, height / 2 + 3);
-            EXPECT_EQ(clear[1], 0);
-            EXPECT_EQ(clear[2], 0);
-            EXPECT_EQ(clear[3], 255);
         }
     }
 }
@@ -557,7 +568,7 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
         const auto drawn = draw(kWidth, kHeight, each.noFrame ? nullptr : &frame, view, 1.0, true);
         ASSERT_TRUE(drawn) << each.name;
         const GridLines lines = gridLines(static_cast<double>(kWidth), static_cast<double>(kHeight),
-                                          each.expected, 1.0, nullptr);
+                                          each.expected, 1.0, {});
         const std::size_t column = 7;
         for (const GridLines::Horizontal& line : lines.horizontal) {
             if (line.y >= static_cast<double>(kHeight)) {
