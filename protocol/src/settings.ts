@@ -1,9 +1,12 @@
 // The plugin's settings. Times are in seconds. The engine validates against these
 // ranges, and the UI builds its controls from them.
 import {
+  BeatDivision,
   BeatSpan,
   ChannelView,
   DisplayMode,
+  GridDensity,
+  GridType,
   Group,
   TimeBase,
   Toggle,
@@ -160,6 +163,59 @@ export const settings = {
     maximum: 500,
     defaultValue: 440,
     logarithmic: false,
+  },
+  // The screen's grid, for each time base: what it draws (Cross hair applies in Trig only, and
+  // draws as Grid in the others), and how closely it divides time and level.
+  gridTypeBeats: {
+    kind: "enum",
+    values: "GridType",
+    defaultValue: GridType.grid,
+  },
+  gridTypeFree: {
+    kind: "enum",
+    values: "GridType",
+    defaultValue: GridType.grid,
+  },
+  gridTypeTrigger: {
+    kind: "enum",
+    values: "GridType",
+    defaultValue: GridType.grid,
+  },
+  gridTimeBeats: {
+    kind: "enum",
+    values: "GridDensity",
+    defaultValue: GridDensity.medium,
+  },
+  gridTimeFree: {
+    kind: "enum",
+    values: "GridDensity",
+    defaultValue: GridDensity.medium,
+  },
+  gridTimeTrigger: {
+    kind: "enum",
+    values: "GridDensity",
+    defaultValue: GridDensity.medium,
+  },
+  gridLevelBeats: {
+    kind: "enum",
+    values: "GridDensity",
+    defaultValue: GridDensity.medium,
+  },
+  gridLevelFree: {
+    kind: "enum",
+    values: "GridDensity",
+    defaultValue: GridDensity.medium,
+  },
+  gridLevelTrigger: {
+    kind: "enum",
+    values: "GridDensity",
+    defaultValue: GridDensity.medium,
+  },
+  // Beats' grid below the beat, in every Beats view.
+  beatDivision: {
+    kind: "enum",
+    values: "BeatDivision",
+    defaultValue: BeatDivision.regular,
   },
 } as const satisfies Record<string, Setting>;
 

@@ -45,7 +45,7 @@ TEST(TraceGeometry, PlacesLanesAsThePageDoes)
 TEST(TraceGeometry, FitsLevelLinesAsThePageDoes)
 {
     for (const nlohmann::json& entry : vectors().at("levelSteps")) {
-        EXPECT_EQ(levelSteps(entry.at("halfLane").get<double>(), protocol::kGridMinimumLineGap),
+        EXPECT_EQ(levelSteps(entry.at("halfLane").get<double>(), protocol::kGridMediumLineGap),
                   entry.at("steps").get<std::vector<int>>())
             << entry.dump();
     }

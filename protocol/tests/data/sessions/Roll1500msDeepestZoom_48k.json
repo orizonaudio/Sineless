@@ -33,6 +33,7 @@
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "on",
+      "beatDivision": "regular",
       "beatSpan": "oneBar",
       "channelViews": [
         "left",
@@ -42,6 +43,15 @@
       "concertPitch": 440.0,
       "displayMode": "single",
       "freeSpan": 1.5,
+      "gridLevelBeats": "medium",
+      "gridLevelFree": "medium",
+      "gridLevelTrigger": "medium",
+      "gridTimeBeats": "medium",
+      "gridTimeFree": "medium",
+      "gridTimeTrigger": "medium",
+      "gridTypeBeats": "grid",
+      "gridTypeFree": "grid",
+      "gridTypeTrigger": "grid",
       "group": "a",
       "hoverReadout": "off",
       "meter": "off",

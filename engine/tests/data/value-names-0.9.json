@@ -1,5 +1,6 @@
 {
   "autoFreeze": ["off", "on"],
+  "beatDivision": ["regular", "triplets"],
   "beatSpan": [
     "eighthBar",
     "sixthBar",
@@ -17,6 +18,15 @@
   "channelViews": ["left", "right", "mid", "side"],
   "compare": ["off", "on"],
   "displayMode": ["single", "multi"],
+  "gridLevelBeats": ["coarse", "medium", "fine"],
+  "gridLevelFree": ["coarse", "medium", "fine"],
+  "gridLevelTrigger": ["coarse", "medium", "fine"],
+  "gridTimeBeats": ["coarse", "medium", "fine"],
+  "gridTimeFree": ["coarse", "medium", "fine"],
+  "gridTimeTrigger": ["coarse", "medium", "fine"],
+  "gridTypeBeats": ["none", "grid", "crossHair"],
+  "gridTypeFree": ["none", "grid", "crossHair"],
+  "gridTypeTrigger": ["none", "grid", "crossHair"],
   "group": ["a", "b", "c", "d"],
   "hoverReadout": ["off", "on"],
   "meter": ["off", "on"],
