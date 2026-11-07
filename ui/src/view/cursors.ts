@@ -3,7 +3,7 @@
 // two horizontal lines, 1 and 2, at sample values, so that they follow the vertical scale.
 // Temporary display state only; they are never saved.
 import {
-  formatBeats,
+  formatMusicalLength,
   formatDbDifference,
   formatDbfs,
   formatFrequency,
@@ -25,6 +25,8 @@ export interface CursorMeasurement {
   readonly hertz: number | undefined;
   // The distance in beats (quarter notes), in a tempo-synced sweep only.
   readonly quarterNotes: number | undefined;
+  // The bar's length in beats, in a tempo-synced sweep only.
+  readonly barQuarterNotes?: number;
 }
 
 // New cursors sit a third and two thirds across the screen.
@@ -38,6 +40,7 @@ export function measure(
   cursors: CursorPair,
   spanSeconds: number,
   spanQuarterNotes?: number,
+  barQuarterNotes?: number,
 ): CursorMeasurement {
   const fraction = Math.abs(cursors.b - cursors.a);
   const seconds = fraction * spanSeconds;
@@ -46,6 +49,7 @@ export function measure(
     hertz: seconds > 0 ? 1 / seconds : undefined,
     quarterNotes:
       spanQuarterNotes === undefined ? undefined : fraction * spanQuarterNotes,
+    ...(barQuarterNotes === undefined ? {} : { barQuarterNotes }),
   };
 }
 
@@ -80,27 +84,57 @@ export function noteName(hertz: number, a4 = 440): string | undefined {
   return `${name} ${cents > 0 ? "+" : "−"}${String(Math.abs(cents))} ct`;
 }
 
-// The readout lines: the distance, in samples at `sampleRate` too, its frequency with the nearest
-// note (tuned to `a4`), and the distance in beats.
+// One line of a cursor readout: what it is, then its value, as a popover's rows.
+export interface ReadoutRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+// The readout rows: where A and B are (`times`, when known), the distance between them, its
+// frequency and nearest note (tuned to `a4`), the distance in beats, and in samples at
+// `sampleRate`.
 export function cursorReadout(
   measurement: CursorMeasurement,
   sampleRate?: number,
   a4 = 440,
-): string[] {
-  const lines = [`Δt ${formatSeconds(measurement.seconds)}`];
-  if (sampleRate !== undefined) {
-    lines.push(formatSamples(measurement.seconds * sampleRate));
+  times?: { readonly a: string; readonly b: string },
+): ReadoutRow[] {
+  const rows: ReadoutRow[] = [];
+  if (times !== undefined) {
+    rows.push({ label: "A", value: times.a }, { label: "B", value: times.b });
   }
-  if (measurement.hertz !== undefined) {
-    const note = noteName(measurement.hertz, a4);
-    lines.push(
-      `${formatFrequency(measurement.hertz)} Hz${note === undefined ? "" : ` · ${note}`}`,
-    );
-  }
+  rows.push({ label: "Δt", value: formatSeconds(measurement.seconds) });
+  // Every row stays, a dash when it has no value, so the readout keeps its shape.
+  rows.push({
+    label: "f",
+    value:
+      measurement.hertz === undefined
+        ? "—"
+        : `${formatFrequency(measurement.hertz)} Hz`,
+  });
+  rows.push({
+    label: "Note",
+    value:
+      (measurement.hertz === undefined
+        ? undefined
+        : noteName(measurement.hertz, a4)) ?? "—",
+  });
   if (measurement.quarterNotes !== undefined) {
-    lines.push(formatBeats(measurement.quarterNotes));
+    rows.push({
+      label: "Δb",
+      value: formatMusicalLength(
+        measurement.quarterNotes,
+        measurement.barQuarterNotes ?? Number.NaN,
+      ),
+    });
   }
-  return lines;
+  if (sampleRate !== undefined) {
+    rows.push({
+      label: "Δs",
+      value: formatSamples(measurement.seconds * sampleRate),
+    });
+  }
+  return rows;
 }
 
 export interface LevelPair {
@@ -113,8 +147,8 @@ export function initialLevels(fullScale: number): LevelPair {
   return { first: fullScale / 2, second: fullScale / 4 };
 }
 
-// The readout lines: each level in dBFS, and the difference between them in dB.
-export function levelReadout(levels: LevelPair): string[] {
+// The readout rows: each level in dBFS, and the difference between them in dB.
+export function levelReadout(levels: LevelPair): ReadoutRow[] {
   const first = toDb(levels.first);
   const second = toDb(levels.second);
   const difference =
@@ -122,8 +156,8 @@ export function levelReadout(levels: LevelPair): string[] {
       ? Number.NaN
       : Math.abs(first - second);
   return [
-    `1 ${formatDbfs(Math.abs(levels.first))} dBFS`,
-    `2 ${formatDbfs(Math.abs(levels.second))} dBFS`,
-    `\u0394 ${formatDbDifference(difference)}`,
+    { label: "1", value: `${formatDbfs(Math.abs(levels.first))} dBFS` },
+    { label: "2", value: `${formatDbfs(Math.abs(levels.second))} dBFS` },
+    { label: "\u0394", value: formatDbDifference(difference) },
   ];
 }

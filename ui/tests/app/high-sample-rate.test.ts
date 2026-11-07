@@ -8,6 +8,7 @@ import {
   beforeApp,
   byId,
   choice,
+  cursorRow,
   press,
   settle,
   showDisplay,
@@ -55,11 +56,8 @@ describe("at 384 kHz", () => {
     await expect.poll(text).toMatch(/samples/u);
     // "Δt 500 ms" and "192000.0 samples": samples over seconds is the rate, to Δt's three
     // significant digits.
-    const seconds = parseQuantity(
-      /Δt ([^Δ]+?(?:ms|s))/u.exec(text())?.[1] ?? "",
-      "time",
-    );
-    const samples = Number(/([\d.]+) samples/u.exec(text())?.[1]);
+    const seconds = parseQuantity(cursorRow("Δt"), "time");
+    const samples = Number(cursorRow("Δs").split(" ")[0]);
     expect(seconds).toBeGreaterThan(0);
     expect(samples / (seconds ?? NaN)).toBeCloseTo(384000, -3);
   });

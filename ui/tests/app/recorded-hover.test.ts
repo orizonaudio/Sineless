@@ -35,11 +35,13 @@ describe("the hover on a recorded 1 kHz sine at 44.1 kHz", () => {
     await settle();
     // The upper lane, L (stacked by default), half way across.
     hoverAt(0.5, 0.25);
-    const text = () => byId("hover-readout").textContent;
-    await expect.poll(text).toContain(" Hz");
-    expect(text()).toContain(
-      `${formatSeconds(1 / hertz)} · ${formatSamples(rate / hertz)}`,
-    );
-    expect(text()).toContain(`${formatFrequency(hertz)} Hz`);
+    // The readout's rows by label.
+    const row = (label: string) =>
+      [...byId("hover-readout").querySelectorAll(".cursor-row")]
+        .find((line) => line.querySelector("span")?.textContent === label)
+        ?.querySelector("b")?.textContent;
+    await expect.poll(() => row("f")).toBe(`${formatFrequency(hertz)} Hz`);
+    expect(row("Cycle")).toBe(formatSeconds(1 / hertz));
+    expect(row("Δs")).toBe(formatSamples(rate / hertz));
   });
 });
