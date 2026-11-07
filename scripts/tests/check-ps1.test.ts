@@ -119,17 +119,20 @@ describe.skipIf(!pwsh)("check.ps1", () => {
     expect(status).toBe(0);
   });
 
-  test("bundles nothing when one preset's build fails", () => {
-    const { output } = run(
-      variables(
-        ["PRESETS", "windows-arm64,windows-x64"],
-        ["CHECKS", "main"],
-        ["STUB_FAIL", "^cmake --build --preset windows-arm64 "],
-      ),
-    );
-    expect(summary(output).get("Bundle")).toMatch(/^skipped/);
-    expect(summary(output).get("pluginval")).toMatch(/^skipped/);
-  });
+  test.each(["windows-arm64", "windows-x64"])(
+    "bundles nothing when the %s build fails",
+    (preset) => {
+      const { output } = run(
+        variables(
+          ["PRESETS", "windows-arm64,windows-x64"],
+          ["CHECKS", "main"],
+          ["STUB_FAIL", `^cmake --build --preset ${preset} `],
+        ),
+      );
+      expect(summary(output).get("Bundle")).toMatch(/^skipped/);
+      expect(summary(output).get("pluginval")).toMatch(/^skipped/);
+    },
+  );
 
   // A guard, not a change: what CI's Windows jobs check stays the same.
   const skips = variables(

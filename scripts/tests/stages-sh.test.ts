@@ -1,7 +1,14 @@
 // The check scripts' stage runner (scripts/stages.sh): every stage runs and the failures are
 // reported at the end, so one run of scripts/check.sh shows every finding, not only the first.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -166,7 +173,11 @@ describe("a run", () => {
       stage Later -- touch later
     `);
       // Ctrl-C signals the terminal's whole foreground process group.
-      const child = spawn("bash", [path], { detached: true, stdio: "ignore" });
+      const output = openSync(join(folder ?? "", "output"), "w");
+      const child = spawn("bash", [path], {
+        detached: true,
+        stdio: ["ignore", output, output],
+      });
       const startedAt = Date.now();
       while (!ran("started") && Date.now() - startedAt < 10_000) {
         await new Promise((done) => setTimeout(done, 50));
@@ -179,6 +190,12 @@ describe("a run", () => {
       );
       expect(ran("later")).toBe(false);
       expect(status).toBe(130);
+      // What was found before the interruption is still reported.
+      if (before !== "") {
+        expect(readFileSync(join(folder ?? "", "output"), "utf8")).toMatch(
+          /Interrupted\.[\s\S]*==> Summary[\s\S]*FAILED .*Earlier/,
+        );
+      }
     },
   );
 });
