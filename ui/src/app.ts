@@ -502,7 +502,12 @@ export class OscilloscopeApp {
     const field = new DragField({
       label: spec.label,
       format: spec.format,
-      parse: (text) => parseQuantity(text, spec.quantity, spec.bareScale),
+      parse: (text) => {
+        const value = parseQuantity(text, spec.quantity, spec.bareScale);
+        return spec.whole === true && !Number.isInteger(value)
+          ? undefined
+          : value;
+      },
       step: (value, delta, fine) =>
         clampTo(name, spec.step(value, delta, fine)),
       onRequest: (value) => {

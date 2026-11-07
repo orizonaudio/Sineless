@@ -23,6 +23,7 @@ export interface NumberField {
   readonly step: (value: number, delta: number, fine: boolean) => number;
   readonly quantity: Quantity;
   readonly bareScale?: number; // What a bare typed number is in: 0.001 for milliseconds.
+  readonly whole?: boolean; // Typed values must be whole numbers, as its steps are.
 }
 
 // The trigger level, to its finest step (0.001), wherever it is shown.
@@ -63,6 +64,8 @@ export const numberFields: Partial<Record<SettingName, NumberField>> = {
     step: (value, delta, fine) =>
       stepLinear(value, delta, fine ? 1 : 3, -60, 6),
     quantity: "level",
+    // Whole dB, as the steps: a typed 1.5 would also widen the field.
+    whole: true,
   },
   triggerLevel: {
     host: "level-field",
