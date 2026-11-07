@@ -6,9 +6,10 @@ import {
   formatMusicalLength,
   formatDbDifference,
   formatDbfs,
-  formatFrequency,
+  formatHertz,
   formatSamples,
   formatSeconds,
+  isAudible,
   isBelowFloor,
   toDb,
 } from "./format.ts";
@@ -71,7 +72,7 @@ const noteNames = [
 // The nearest equal-tempered note, tuned to `a4` Hz, and the offset from it in cents, e.g.
 // "A3 +2 ct". Undefined outside the audible range.
 export function noteName(hertz: number, a4 = 440): string | undefined {
-  if (!(hertz >= 20 && hertz <= 20000)) {
+  if (!isAudible(hertz)) {
     return undefined;
   }
   const semitones = 69 + 12 * Math.log2(hertz / a4);
@@ -107,10 +108,7 @@ export function cursorReadout(
   // Every row stays, a dash when it has no value, so the readout keeps its shape.
   rows.push({
     label: "f",
-    value:
-      measurement.hertz === undefined
-        ? "—"
-        : `${formatFrequency(measurement.hertz)} Hz`,
+    value: formatHertz(measurement.hertz),
   });
   rows.push({
     label: "Note",

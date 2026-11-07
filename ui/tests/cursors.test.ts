@@ -92,10 +92,10 @@ describe("time cursors", () => {
       "Note —",
       "Δb 0 beats",
     ]);
-    // 2 Hz is far below any note.
+    // 2 Hz is below the audible range: no frequency, no note.
     expect(rows(cursorReadout(measure({ a: 0, b: 0.25 }, 2)))).toEqual([
       "Δt 500 ms",
-      "f ≈ 2.0 Hz",
+      "f —",
       "Note —",
     ]);
   });

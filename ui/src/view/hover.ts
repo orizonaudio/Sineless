@@ -20,7 +20,7 @@ import { noteName, type ReadoutRow } from "./cursors.ts";
 import {
   formatClock,
   formatDbfs,
-  formatFrequency,
+  formatHertz,
   formatSeconds,
 } from "./format.ts";
 import { musicalPosition } from "./musical-grid.ts";
@@ -338,7 +338,7 @@ export function hoverReadout(
     const about = coarse ? "≈ " : "";
     rows.push({ label: "Cycle", value: `${about}${formatSeconds(seconds)}` });
     const hertz = 1 / seconds;
-    rows.push({ label: "f", value: `${formatFrequency(hertz)} Hz` });
+    rows.push({ label: "f", value: formatHertz(hertz) });
     // With its cents, as the time cursors' note.
     const note = noteName(hertz, context.a4);
     rows.push({
