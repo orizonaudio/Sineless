@@ -4,6 +4,8 @@
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { formatMusicalLength } from "../../src/view/format.ts";
+
 import { byId, inTimeBase, settle, startApp, type Started } from "./harness.ts";
 
 async function setPressed(id: string, pressed: boolean): Promise<void> {
@@ -113,6 +115,19 @@ describe("the cursor readout", () => {
       expect(a).not.toBe(b);
       expect(hoverTimeAt("a")).toBe(a);
       expect(hoverTimeAt("b")).toBe(b);
+      // In Beats the distance in bars and beats, from the frame's span and bar length.
+      const frame = window.orizonDebug?.lastFrame;
+      if (timeBase === "Beats" && frame !== undefined) {
+        const at = (cursor: "a" | "b") =>
+          frame.viewStart +
+          (Number.parseFloat(byId(`cursor-${cursor}`).style.left) / 100) *
+            (frame.viewEnd - frame.viewStart);
+        const distance = Math.abs(at("b") - at("a")) * frame.spanQuarterNotes;
+        expect(rows.get("Δb")).toBe(
+          formatMusicalLength(distance, frame.barQuarterNotes),
+        );
+        expect(rows.get("Δb")).not.toBe("—");
+      }
     }
 
     test("A and B read as the hover does at their lines, live", async () => {
