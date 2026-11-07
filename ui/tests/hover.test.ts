@@ -23,6 +23,7 @@ import {
   type HoverReadout,
 } from "../src/view/hover.ts";
 import { noteName } from "../src/view/cursors.ts";
+import { formatSeconds } from "../src/view/format.ts";
 import { fullView, type ViewWindow } from "../src/view/zoom.ts";
 
 // A readout's rows, each as "label value".
@@ -419,6 +420,11 @@ describe("hover readout", () => {
     // Its cycles last as long as unzoomed: 120 samples, 2.5 ms.
     const readout = hoverReadout(context(frame, values), 0.5, 0.5);
     expect(lines(readout)[2]).toBe("Cycle 2.5 ms");
+    // Its time too: 10 ms over half the span, so the span is 20 ms, from the trigger.
+    const seconds = (0.5 - triggerPosition) * (480 / 48000 / 0.5);
+    expect(lines(readout)[0]).toBe(
+      `Time ${seconds < 0 ? minus : "+"}${formatSeconds(Math.abs(seconds))}`,
+    );
     // Min/max columns zoomed in alike: a cycle of 32 of them is still fine enough to measure.
     const columns = sineColumns(96, 32);
     const zoomedColumns = rawFrame(new Float32Array(480), {
