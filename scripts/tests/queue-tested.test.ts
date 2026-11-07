@@ -80,13 +80,45 @@ describe("the command", () => {
     return { status: result.status, output: result.stdout.trim() };
   };
 
-  test("prints true when the queue tested the commit", () => {
-    const head = spawnSync("git", ["rev-parse", "HEAD"], {
-      encoding: "utf8",
-    }).stdout.trim();
-    // GitHub's answer, in its own field names.
-    const runs = `{"workflow_runs": [{"head_sha": "${head}", "conclusion": "success"}]}`;
-    expect(command(`echo '${runs}'`)).toEqual({ status: 0, output: "true" });
+  const head = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const headTree = spawnSync("git", ["rev-parse", "HEAD^{tree}"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  // A fake gh that answers the query by the commit, and the one for the newest runs, each with
+  // its own runs, and logs what it was asked. GitHub's answers, in its own field names.
+  const answering = (byCommit: string, newest: string) =>
+    `echo "$2" >> "$(dirname "$0")/asked"
+case "$2" in
+  *head_sha=*) echo '{"workflow_runs": [${byCommit}]}' ;;
+  *) echo '{"workflow_runs": [${newest}]}' ;;
+esac`;
+  const asked = () =>
+    readFileSync(join(folder ?? "", "bin/asked"), "utf8")
+      .trim()
+      .split("\n");
+
+  test("prints true when the queue tested the commit, asking for its successful runs", () => {
+    const run = `{"head_sha": "${head}", "conclusion": "success"}`;
+    expect(command(answering(run, ""))).toEqual({ status: 0, output: "true" });
+    expect(asked()[0]).toMatch(
+      /^repos\/orizonaudio\/Sineless\/actions\/workflows\/ci\.yml\/runs\?event=merge_group&status=success&head_sha=[0-9a-f]{40}$/,
+    );
+  });
+
+  test("prints true when only a newer queue run had the same tree", () => {
+    const run = `{"head_sha": "another", "conclusion": "success", "head_commit": {"tree_id": "${headTree}"}}`;
+    expect(command(answering("", run))).toEqual({ status: 0, output: "true" });
+    expect(asked()[1]).toMatch(/event=merge_group&status=success&per_page=50$/);
+  });
+
+  test("prints false when neither the commit nor its tree was tested", () => {
+    const run = `{"head_sha": "another", "conclusion": "success", "head_commit": {"tree_id": "another"}}`;
+    expect(command(answering(run, run))).toEqual({
+      status: 0,
+      output: "false",
+    });
   });
 
   test("prints false, and succeeds, when GitHub cannot be asked", () => {
