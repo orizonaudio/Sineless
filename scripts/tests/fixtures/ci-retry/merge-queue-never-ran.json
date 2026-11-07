@@ -1,0 +1,580 @@
+{
+  "run": {
+    "id": 41887720105,
+    "event": "merge_group",
+    "run_attempt": 1,
+    "head_branch": "gh-readonly-queue/main/pr-324-aaf7f6b757f447151026338d15a97890df173373",
+    "conclusion": "failure"
+  },
+  "jobs": {
+    "total_count": 23,
+    "jobs": [
+      {
+        "name": "changes",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018273",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run case \"$EVENT\" in",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "reuse",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018276",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "REUSE lint (reuse 6.2.0)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "app",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "macos",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "macos-glue",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "windows-x64",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018280",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install the current WebView2 runtime",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run the checks",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "linux-rtsan",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018278",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install LLVM 23",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run scripts/check-linux.sh rtsan",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "typescript",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018281",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm run typecheck",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm run lint",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm run format:check",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm test",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm run build",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "linux-tsan",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018282",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install LLVM 23",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run scripts/check-linux.sh tsan",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "linux",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018283",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "C++ format (clang-format 23.1.3)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install LLVM 23",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run scripts/check-linux.sh asan",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "windows-x64-glue",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018288",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install the current WebView2 runtime",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run the checks",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "linux-lint",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018284",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Install LLVM 23",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run npm ci",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run scripts/check-linux.sh lint",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "macos-unbranded",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "engine-work",
+        "status": "completed",
+        "conclusion": "success",
+        "run_attempt": 1,
+        "runner_name": "GitHub Actions 1000018285",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Run actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Compare",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "mutation",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "fuzz",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "performance-${{ matrix.os }}",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "coverage",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "mutation-au",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "mutation-cpp-list",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "mutation-cpp-share-${{ matrix.share }}",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "engine-work-${{ matrix.build }}",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      },
+      {
+        "name": "mutation-cpp",
+        "status": "completed",
+        "conclusion": "skipped",
+        "run_attempt": 1,
+        "runner_name": "",
+        "steps": []
+      }
+    ]
+  }
+}
