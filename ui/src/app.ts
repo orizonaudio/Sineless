@@ -1677,8 +1677,10 @@ export class OscilloscopeApp {
       y + hoverOffset + node.offsetHeight <= height
         ? y + hoverOffset
         : y - hoverOffset - node.offsetHeight;
-    node.style.left = `${String(Math.max(0, left))}px`;
-    node.style.top = `${String(Math.max(0, top))}px`;
+    // At whole pixels: the pointer comes in fractions of one, and text placed at a fraction snaps
+    // to the pixel grid apart from its box, so it would step a pixel up and down as the hand moves.
+    node.style.left = `${String(Math.round(Math.max(0, left)))}px`;
+    node.style.top = `${String(Math.round(Math.max(0, top)))}px`;
   }
 
   private updateCursorReadout(): void {
