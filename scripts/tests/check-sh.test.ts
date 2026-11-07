@@ -21,7 +21,7 @@ afterEach(() => {
   layout = undefined;
 });
 
-const run = (env: Record<string, string> = {}) => {
+const run = (env: Record<string, string> = {}, packages = true) => {
   if (layout === undefined) {
     layout = new Layout(["scripts/check.sh", "scripts/stages.sh"], tools, [
       "scripts/performance.sh",
@@ -29,7 +29,9 @@ const run = (env: Record<string, string> = {}) => {
       "scripts/check-linux.sh",
       pluginval,
     ]);
-    layout.stub("node_modules/.keep");
+    if (packages) {
+      layout.stub("node_modules/.keep");
+    }
   }
   return layout.run(["scripts/check.sh"], env);
 };
@@ -161,7 +163,25 @@ test("a missing LLVM tool stops the run before any stage", () => {
   expect(status).not.toBe(0);
 });
 
+test("installs the packages first when they are missing", () => {
+  const { calls, status } = run({}, false);
+  expect(calls.findIndex((call) => call === "npm ci")).toBe(
+    calls.findIndex((call) => call.startsWith("npm")),
+  );
+  expect(calls).toContain("npm ci");
+  expect(status).toBe(0);
+});
+
 describe("BUILD_ONLY=1", () => {
+  test("with CHECKS=linux runs the Linux builds, not the lint", () => {
+    const { calls, status } = run(
+      variables(["BUILD_ONLY", "1"], ["CHECKS", "linux"]),
+    );
+    expect(calls).toContain("check-linux.sh asan tsan rtsan");
+    expect(calls).not.toContain("check-linux.sh lint");
+    expect(status).toBe(0);
+  });
+
   test.each(["main", "glue"])(
     "with CHECKS=%s runs the builds and nothing else",
     (part) => {
