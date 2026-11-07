@@ -237,7 +237,7 @@ export const helpTexts = {
   },
   gridTime: {
     title: "Time lines",
-    text: `How closely lines divide time. In Trig and Free: ${String(gridColumnsCoarse)}, ${String(gridColumnsMedium)} or ${String(gridColumnsFine)} equal divisions. In Beats: one step coarser or finer than Medium, which follows the zoom (bars, beats, sixteenths); Fine steps finer only where its lines stay ${String(gridFineBeatLineGap)} pixels apart.`,
+    text: `How closely lines divide time. In Trig and Free: ${String(gridColumnsCoarse)}, ${String(gridColumnsMedium)} or ${String(gridColumnsFine)} equal divisions. In Beats: one step coarser or finer than Medium, which follows the zoom (bars, beats, sixteenths); Fine steps finer only where its lines stay ${String(gridFineBeatLineGap)} pixels apart. Before the host reports a tempo, Beats shows the equal divisions.`,
   },
   gridLevel: {
     title: "Level lines",
