@@ -834,10 +834,11 @@ button[aria-pressed="true"]:focus-visible {
   justify-content: flex-start;
   align-items: center;
   gap: 10px;
-  /* What the status bar leaves at the minimum width, less the 8 px it keeps to spare (measured: the
-     left group 381, the gap between the groups 16, the right group's buttons and gaps 60, of 986
-     between the bar's padding), rounded down to 10. Fixed, so the chips fold at the same count at
-     every window width. */
+  /* What the status bar left at a 1010 px minimum width, less the 8 px it keeps to spare (measured:
+     the left group 381, the gap between the groups 16, the right group's buttons and gaps 60, of
+     986 between the bar's padding), rounded down to 10. The Grid field raised the minimum width
+     instead of taking from it (#364), so the chips keep this width. Fixed, so the chips fold at the
+     same count at every window width. */
   width: 520px;
 }
 
@@ -936,6 +937,20 @@ button[aria-pressed="true"]:focus-visible {
 }
 
 .readout-popover {
+  top: auto;
+  left: 0;
+  bottom: calc(100% + 8px);
+}
+
+/* The grid's field, as wide as its longest type ("Cross hair") since the stacked labels set it, so
+   a choice moves nothing; its popover opens upward, its left edge on the button's. */
+.grid-group {
+  position: relative;
+  display: flex;
+  align-self: center;
+}
+
+.grid-popover {
   top: auto;
   left: 0;
   bottom: calc(100% + 8px);

@@ -41,20 +41,28 @@ function verticalLines(): { strong: boolean }[] {
   const row = context?.getImageData(0, y, canvas.width, 1).data;
   const axis = tokenRgb("--sl-grid-strong");
   const lines: { strong: boolean }[] = [];
-  let inside = false;
-  for (let x = 0; x < canvas.width; x++) {
-    const at = x * 4;
-    const drawn = (row?.[at + 3] ?? 0) > 127;
-    if (drawn && !inside) {
-      // The run's first pixel is wholly covered at a line width of a pixel or more.
+  // Each run of drawn pixels, judged by its most covered pixel, which is wholly covered.
+  let densest = -1;
+  const close = () => {
+    if (densest >= 0) {
+      const at = densest * 4;
       lines.push({
         strong: [0, 1, 2].every(
           (channel) => row?.[at + channel] === axis[channel],
         ),
       });
     }
-    inside = drawn;
+    densest = -1;
+  };
+  for (let x = 0; x < canvas.width; x++) {
+    const alpha = row?.[x * 4 + 3] ?? 0;
+    if (alpha <= 127) {
+      close();
+    } else if (densest < 0 || alpha > (row?.[densest * 4 + 3] ?? 0)) {
+      densest = x;
+    }
   }
+  close();
   return lines;
 }
 
@@ -111,9 +119,9 @@ test("Triplets draws a quarter bar in sixths, strong on the thirds, labelled in 
 });
 
 // The page's screen is as wide in CSS pixels on a Retina display as on a 1x one; its canvas has
-// twice the pixels. In the narrowest editor, an 8-bar sweep zoomed to 31.5 beats draws beats at
-// Medium, and sixteenths at Fine would stand under 8 CSS pixels apart (twice that in device
-// pixels): closer than the guard, so Fine draws the beats.
+// twice the pixels. In the narrowest editor, a 6-bar sweep of 6/4 draws beats at Medium, and
+// sixteenths at Fine would stand under 8 CSS pixels apart (twice that in device pixels): closer
+// than the guard, so Fine draws the beats. (In 4/4 no view puts them that close at this width.)
 describe("on a display at twice the pixel ratio", () => {
   const ratio = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
   beforeApp(() => {
@@ -130,41 +138,19 @@ describe("on a display at twice the pixel ratio", () => {
 
   test("Fine keeps Medium's beats where its sixteenths would crowd in CSS pixels", async () => {
     await page.viewport(minimumEditorWidth, 600);
-    const app = await startApp();
-    await set(app, "beatSpan", "eightBars");
+    const bar = 6;
+    const app = await startApp({ barQuarterNotes: bar });
+    await set(app, "beatSpan", "sixBars");
     await set(app, "gridTimeBeats", "fine");
-    // A wheel notch in, then a wheel stream back out, to 31.5 / 32 of the span.
-    const trace = byId("trace");
-    const bounds = trace.getBoundingClientRect();
-    for (const deltaY of [-100, 23.43]) {
-      trace.dispatchEvent(
-        new WheelEvent("wheel", {
-          deltaY,
-          metaKey: true,
-          clientX: bounds.left + bounds.width / 2,
-          clientY: bounds.top + bounds.height / 2,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-    }
-    await settle(6);
-    const frame = window.orizonDebug?.lastFrame;
-    expect(frame).toBeDefined();
-    const visible = ((frame?.viewEnd ?? 1) - (frame?.viewStart ?? 0)) * 32;
-    const start = (frame?.cycleStart ?? 0) + (frame?.viewStart ?? 0) * 32;
-    const sixteenthCss = (0.25 / visible) * byId("screen").clientWidth;
+    const beats = 6 * bar;
+    const sixteenthCss = (0.25 / beats) * byId("screen").clientWidth;
     expect(sixteenthCss).toBeLessThan(gridFineBeatLineGap);
     expect(sixteenthCss * window.devicePixelRatio).toBeGreaterThanOrEqual(
       gridFineBeatLineGap,
     );
-    // Medium's beats: the whole quarter notes inside the view.
-    let beats = 0;
-    for (let beat = Math.ceil(start); beat < start + visible; beat++) {
-      if (beat > start + 1e-6 && beat < start + visible - 1e-6) {
-        beats++;
-      }
-    }
-    expect(verticalLines()).toHaveLength(beats);
+    // Medium's beats inside a bar-aligned sweep, the five bar lines strong.
+    const lines = verticalLines();
+    expect(lines).toHaveLength(beats - 1);
+    expect(lines.filter((line) => line.strong)).toHaveLength(5);
   });
 });

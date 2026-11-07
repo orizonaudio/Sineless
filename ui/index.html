@@ -260,9 +260,9 @@
           <span id="message-text"></span>
         </div>
       </main>
-      <!-- Left: the Meter's button and the cursor buttons, then the channel they read and concert
-           pitch, which never change width. Right: the state, in a fixed width, Help and About.
-           Nothing here moves when the state or a value changes. -->
+      <!-- Left: the Meter's button and the cursor buttons, then the channel they read, concert
+           pitch and the grid, which never change width. Right: the state, in a fixed width, Help
+           and About. Nothing here moves when the state or a value changes. -->
       <footer class="statusbar">
         <div class="status-left">
           <button
@@ -326,6 +326,43 @@
           <div class="tool icon-field" data-help="concertPitch">
             <i>A4</i>
             <div id="concert-pitch-field"></div>
+          </div>
+          <span class="divider"></span>
+          <div class="grid-group" id="grid-group" data-help="grid">
+            <button
+              class="field-button"
+              id="grid-details"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="grid-popover"
+            >
+              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M1.5 1.5h9v9h-9Z" />
+                <path d="M6 1.5v9M1.5 6h9" /></svg
+              ><b id="grid-summary"></b
+              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                <path d="M1.5 3 4 5.5 6.5 3" />
+              </svg>
+            </button>
+            <div class="popover grid-popover" id="grid-popover" hidden>
+              <div class="popover-title">Grid</div>
+              <div class="popover-row" data-help="gridType">
+                <span>Type</span>
+                <div class="segmented" id="grid-type"></div>
+              </div>
+              <div class="popover-row" data-help="gridTime">
+                <span>Time</span>
+                <div class="segmented" id="grid-time"></div>
+              </div>
+              <div class="popover-row" data-help="gridLevel">
+                <span>Level</span>
+                <div class="segmented" id="grid-level"></div>
+              </div>
+              <div class="popover-row" data-help="beatDivision">
+                <span>Beat division</span>
+                <div class="segmented" id="beat-division"></div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="status-right">

@@ -173,6 +173,8 @@ export interface MockOptions {
   // Whether the host has reported a tempo, as an instance it has not played through yet has not:
   // Beats frames then say so and hold nothing, until reportTempo(). Reported by default.
   readonly hostTempo?: boolean;
+  // The host's bar, in quarter notes: 6 for 6/4. mockBarQuarterNotes (4/4) by default.
+  readonly barQuarterNotes?: number;
   // Whether the editor draws the traces itself (macOS 14+), as its snapshots then say; not by
   // default, as on Windows.
   readonly nativeTraces?: boolean;
@@ -204,6 +206,7 @@ export class MockTransport implements Transport {
   private inputChannels: 1 | 2;
   private readonly brokenSamples: number;
   private tempoKnown: boolean;
+  private readonly barQuarterNotes: number;
   private readonly keptSeconds: number;
   private readonly nativeTraces: boolean;
   private readonly frameBarcode: boolean;
@@ -231,6 +234,7 @@ export class MockTransport implements Transport {
     this.brokenSamples = options.brokenSamples ?? 0;
     this.keptSeconds = options.keptSeconds ?? Infinity;
     this.tempoKnown = options.hostTempo ?? true;
+    this.barQuarterNotes = options.barQuarterNotes ?? mockBarQuarterNotes;
     this.nativeTraces = options.nativeTraces ?? false;
     this.frameBarcode = options.frameBarcode ?? false;
     this.about = options.about ?? { version: "preview", contact: true };
@@ -624,7 +628,7 @@ export class MockTransport implements Transport {
       const name = this.setting("beatSpan") as keyof typeof BeatSpan;
       spanQuarterNotes = beatSpanQuarterNotes(
         BeatSpan[name],
-        mockBarQuarterNotes,
+        this.barQuarterNotes,
       );
       const secondsPerQuarterNote = 60 / mockTempo;
       span = spanQuarterNotes * secondsPerQuarterNote;
@@ -772,7 +776,7 @@ export class MockTransport implements Transport {
         cycleStart,
         cycleSeconds: (cycleStart * 60) / mockTempo,
         spanQuarterNotes,
-        barQuarterNotes: synced ? mockBarQuarterNotes : 0,
+        barQuarterNotes: synced ? this.barQuarterNotes : 0,
         viewStart: this.view.start,
         viewEnd: this.view.end,
         // As the engine places a free-running window (FreeRunning.h), its part on screen is
