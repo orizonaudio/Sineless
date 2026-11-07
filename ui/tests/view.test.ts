@@ -7,6 +7,8 @@ import {
   ViewLayout,
 } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
+import { defaultTriggerPosition } from "../../protocol/src/limits.ts";
+import { fullView } from "../src/view/zoom.ts";
 import { valueNames } from "../../protocol/src/setting-values.ts";
 import {
   amplitudeLabels,
@@ -276,18 +278,40 @@ describe("axis labels", () => {
   });
 
   test("counts time from the trigger point, or back from the right edge when running free", () => {
-    expect(timeLabels(0.02, false).map((label) => label.text)).toEqual([
-      "2 ms",
-      "6 ms",
-      "10 ms",
-      "14 ms",
-    ]);
-    expect(timeLabels(2, true).map((label) => label.text)).toEqual([
+    expect(
+      timeLabels(0.02, false, fullView, defaultTriggerPosition).map(
+        (label) => label.text,
+      ),
+    ).toEqual(["2 ms", "6 ms", "10 ms", "14 ms"]);
+    expect(
+      timeLabels(2, true, fullView, Number.NaN).map((label) => label.text),
+    ).toEqual([
       `${minus}1.6 s`,
       `${minus}1.2 s`,
       `${minus}800 ms`,
       `${minus}400 ms`,
     ]);
+  });
+
+  // The engine says where time zero is (the frame's triggerPosition); the labels count from there,
+  // negative to its left, zoomed or not.
+  test.each([
+    [0, fullView, ["4 ms", "8 ms", "12 ms", "16 ms"]],
+    [0.5, fullView, [`${minus}6 ms`, `${minus}2 ms`, "2 ms", "6 ms"]],
+    [
+      1,
+      fullView,
+      [`${minus}16 ms`, `${minus}12 ms`, `${minus}8 ms`, `${minus}4 ms`],
+    ],
+    [
+      0.5,
+      { start: 0.25, end: 0.75 },
+      [`${minus}3 ms`, `${minus}1 ms`, "1 ms", "3 ms"],
+    ],
+  ])("counts from a trigger point at %s", (zero, view, texts) => {
+    expect(
+      timeLabels(0.02, false, view, zero).map((label) => label.text),
+    ).toEqual(texts);
   });
 });
 
@@ -316,6 +340,7 @@ describe("status chips", () => {
     spanSeconds: 0,
     readoutView: ChannelView.mid,
     triggerView: ChannelView.mid,
+    triggerPosition: undefined,
     spanQuarterNotes: 0,
     barQuarterNotes: 0,
     viewStart: 0,

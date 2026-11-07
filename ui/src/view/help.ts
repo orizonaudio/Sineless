@@ -13,7 +13,7 @@ import {
   summingMarginDb,
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
-import { formatSeconds } from "./format.ts";
+import { formatPercent, formatSeconds } from "./format.ts";
 import { beatSpanLabels } from "./musical-grid.ts";
 
 // Modifier keys as the platform names them: the page also runs in WebView2 on Windows.
@@ -28,6 +28,9 @@ const frequencyWindow = formatSeconds(frequencyWindowSeconds);
 const margin = String(summingMarginDb);
 const levelFloor = String(levelFloorDbfs).replace("-", "−");
 const gate = String(analysisGateDbfs).replace("-", "−");
+const positionDefault = formatPercent(settings.triggerPosition.defaultValue);
+const positionLowest = formatPercent(settings.triggerPosition.minimum);
+const positionHighest = formatPercent(settings.triggerPosition.maximum);
 // The audible range, as the readouts name frequencies only within it.
 const lowestAudible = `${String(lowestAudibleHz)} Hz`;
 const highestAudible = `${String(highestAudibleHz / 1000)} kHz`;
@@ -212,6 +215,10 @@ export const helpTexts = {
   triggerHoldOff: {
     title: "Hold-off",
     text: "The least time between triggers. Use it to lock onto the start of a repeating pattern instead of a hit inside it. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type.",
+  },
+  triggerPosition: {
+    title: "Position",
+    text: `Where the trigger point sits across the screen, from ${positionLowest} at the left edge (only what follows the trigger) to ${positionHighest} at the right (only what led up to it); ${positionDefault} by default. Time counts from it, and the dashed line marks it. A trace is drawn once the part after the trigger has arrived, so a low position waits longer on a long span. Frozen, the trace moves to keep its trigger at the new position, as far as the audio held allows. Drag up or down or scroll to step 5% (Shift for 1%); double-click to type.`,
   },
   hoverReadout: {
     title: "Hover readout",

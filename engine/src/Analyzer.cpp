@@ -93,12 +93,21 @@ bool contains(const std::vector<std::uint64_t>& ids, std::uint64_t id)
     return std::ranges::find(ids, id) != ids.end();
 }
 
+// Where a window's time zero sits across its unpanned span, for the frame; NaN without one.
+template <typename Window> float triggerPositionOf(const Window& window)
+{
+    return std::isfinite(window.zero)
+               ? static_cast<float>((window.zero - window.placedStart) / window.span)
+               : std::numeric_limits<float>::quiet_NaN();
+}
+
 TriggerParameters triggerParameters(const Settings& settings, double sampleRate)
 {
     return {.level = settings.value(SettingId::kTriggerLevel),
             .hysteresis = settings.value(SettingId::kTriggerHysteresis),
             .slope = settings.enumValue<protocol::TriggerSlope>(SettingId::kTriggerSlope),
-            .holdOffSamples = settings.value(SettingId::kTriggerHoldOff) * sampleRate};
+            .holdOffSamples = settings.value(SettingId::kTriggerHoldOff) * sampleRate,
+            .position = settings.value(SettingId::kTriggerPosition)};
 }
 
 // Samples per block of levels: kStatsBlockSeconds of audio.
@@ -707,7 +716,10 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         // live window has no trigger point: Trigger chosen while frozen shows its span ending at
         // that window's right edge, as a live switch shows the newest span. A Beats sweep's
         // window is a place in the sweep, not in the capture: frozen from Beats, the view ends at
-        // the newest audio held, as when frozen before any live frame.
+        // the newest audio held, as when frozen before any live frame. The trigger point stays
+        // where the Position puts it, unless too little is held after it; an untriggered view
+        // counts time from the Position, wherever that leaves it.
+        const double position = settings.value(SettingId::kTriggerPosition);
         const auto held = static_cast<double>(hold.endIndex());
         const std::optional<Window> live =
             lastLive && !lastLive->synced ? lastLive : std::optional<Window>{};
@@ -715,8 +727,8 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
                                  : live                    ? live->start + live->span
                                                            : held;
         const bool fromEdge = !live || freeRunning || live->freeRunning;
-        const double anchor = fromEdge ? rightEdge : live->start + kTriggerPosition * live->span;
-        const double anchorOffset = fromEdge ? span : kTriggerPosition * span;
+        const double anchor = fromEdge ? rightEdge : live->zero;
+        const double anchorOffset = fromEdge ? span : position * span;
         const double latestStart = held - span;
         // A view pans back through the newest frozenHoldSeconds held. The hold reaches a little
         // further (kSecondsFreezeSeconds), so the unpanned window, which may end a paced delay
@@ -727,11 +739,17 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             held - static_cast<double>(std::llround(protocol::kFrozenHoldSeconds * sampleRate)));
         const double unpanned = anchor - anchorOffset;
         const double lowest = std::max(heldStart, std::min(earliestStart, unpanned));
-        window.start = std::clamp(unpanned - command.panSeconds * sampleRate, lowest,
-                                  std::max(lowest, latestStart));
+        const double highest = std::max(lowest, latestStart);
+        // The pan counts back from where the span is placed, so all of its reach moves the view.
+        window.placedStart = std::clamp(unpanned, lowest, highest);
+        window.start =
+            std::clamp(window.placedStart - command.panSeconds * sampleRate, lowest, highest);
         // The UI keeps its pan within this, so it never asks for more than is held.
-        window.panReach = std::max(0.0, (unpanned - earliestStart) / sampleRate);
+        window.panReach = std::max(0.0, (window.placedStart - earliestStart) / sampleRate);
         window.triggered = live && live->triggered;
+        window.zero = freeRunning        ? std::numeric_limits<double>::quiet_NaN()
+                      : window.triggered ? anchor
+                                         : window.placedStart + position * span;
     } else if (freeRunning) {
         const std::uint64_t end = edge;
         const auto spanSamples = static_cast<std::uint64_t>(std::llround(span));
@@ -800,15 +818,24 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             if (!changed || !lastShown) {
                 return false;
             }
+            // A held trace keeps its trigger point; a new Position applies from the next trigger.
             window.start = lastShown->start;
             window.triggered = lastShown->triggered;
+            window.zero = lastShown->zero;
         } else {
             // Auto drawing untriggered shows the newest span, ending at the paced edge.
             window.start =
                 decision.triggered ? decision.windowStart : static_cast<double>(edge) - span;
             window.triggered = decision.triggered;
+            window.zero =
+                decision.triggered ? decision.trigger : std::numeric_limits<double>::quiet_NaN();
             freezeAfterRender = decision.freeze;
         }
+        // An untriggered window counts time from the Position, whatever it and the span are now.
+        if (!window.triggered) {
+            window.zero = window.start + settings.value(SettingId::kTriggerPosition) * span;
+        }
+        window.placedStart = window.start;
     }
 
     window.viewStart = command.viewStart;
@@ -878,7 +905,8 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         .visibleSamples = static_cast<float>(visibleSamples),
         .panReach = static_cast<float>(window.panReach),
         .sampleRate = static_cast<float>(sampleRate),
-        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate)};
+        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate),
+        .triggerPosition = triggerPositionOf(window)};
     frameData.clear();
     std::size_t pointCount = 0;
     // Each view keeps its columns from frame to frame where it can: a tempo-synced sweep reduces
@@ -1772,7 +1800,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         .laneSet = laneSet().id,
         .panReach = static_cast<float>(window.panReach),
         .sampleRate = static_cast<float>(sampleRate),
-        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate)};
+        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate),
+        .triggerPosition = triggerPositionOf(window)};
     // Where each lane's part of the window starts in its own capture (or hold).
     const auto sourceOf =
         [&](std::uint64_t serial) -> std::pair<const SampleSource*, std::uint64_t> {

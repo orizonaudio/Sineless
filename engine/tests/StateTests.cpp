@@ -138,6 +138,7 @@ constexpr std::array kEveryGoldenStateFile{
     "state-v3.json",
     "state-v4.json",
     "state-v5.json",
+    "state-v5-trigger-position.json",
 };
 
 // A project saved before Auto-freeze existed opens with it on, as a new instance does (FR-11):
@@ -156,6 +157,22 @@ TEST(State, AStateWithoutAutoFreezeOpensWithItOn)
             << file;
     }
     EXPECT_GT(without, 0) << "no golden state predates Auto-freeze";
+}
+
+// A project saved before the trigger Position was a setting reopens with the trigger point where
+// it was then, 10% from the left.
+TEST(State, AStateWithoutATriggerPositionOpensAtTheOldPlace)
+{
+    int without = 0;
+    for (const char* file : kEveryGoldenStateFile) {
+        const std::string text = readTestFile(file);
+        if (nlohmann::json::parse(text).at("settings").contains("triggerPosition")) {
+            continue;
+        }
+        ++without;
+        EXPECT_EQ(deserializeState(text).value(SettingId::kTriggerPosition), 0.1) << file;
+    }
+    EXPECT_GT(without, 0) << "no golden state predates the trigger Position";
 }
 
 // Version 1 states from 0.1.0 already carry a time base: one saved in Beats reopens in Beats.
@@ -320,6 +337,12 @@ constexpr std::array kVersion5Values{
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
 };
 
+// The version 5 state with the trigger Position, which 0.8 added: saved by the build that adds it,
+// as the next release saves it.
+constexpr std::array kVersion5TriggerPositionValues{
+    GoldenValue{.id = SettingId::kTriggerPosition, .value = 0.35},
+};
+
 // Golden states saved by released builds that added settings without a state version raise,
 // each with the values it holds. A release that adds a setting adds its own file here; the
 // files already here stay as their release saved them.
@@ -336,6 +359,7 @@ constexpr std::array kGoldenStates{
     GoldenState{.file = "state-v3.json", .values = kVersion3Values},
     GoldenState{.file = "state-v4.json", .values = kVersion4Values},
     GoldenState{.file = "state-v5.json", .values = kVersion5Values},
+    GoldenState{.file = "state-v5-trigger-position.json", .values = kVersion5TriggerPositionValues},
 };
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold

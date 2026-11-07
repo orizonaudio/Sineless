@@ -9,8 +9,8 @@ import {
 } from "../../protocol/src/enums.ts";
 import { decodeFrame, type Frame } from "../../protocol/src/frame-decoder.ts";
 import {
+  defaultTriggerPosition,
   frozenHoldSeconds,
-  triggerPosition,
 } from "../../protocol/src/limits.ts";
 import {
   mockFundamental,
@@ -389,11 +389,15 @@ describe("mock back end", () => {
     transport.send({ type: "freeze", frozen: true });
     transport.requestFrame();
     const trigger = 0.9;
+    // From where the span is placed: around the trigger point, as late as the audio held, which
+    // ends at 1 s, allows.
     const reach = (span: number) =>
-      trigger - triggerPosition * span - (1 - frozenHoldSeconds);
+      Math.min(trigger - defaultTriggerPosition * span, 1 - span) -
+      (1 - frozenHoldSeconds);
     expect(frames.at(-1)?.panReach).toBeCloseTo(reach(0.1), 3);
 
-    // A longer span grows around the trigger point, so the reach shrinks.
+    // A longer span grows around the trigger point, so the reach shrinks: here it ends at the
+    // newest audio held, short of 90% of it after the trigger.
     transport.send({ type: "setSetting", name: "triggerSpan", value: 0.5 });
     transport.requestFrame();
     expect(frames.at(-1)?.panReach).toBeCloseTo(reach(0.5), 3);
@@ -403,7 +407,7 @@ describe("mock back end", () => {
     runFree(transport, 2);
     transport.requestFrame();
     expect(frames.at(-1)?.freeRunning).toBe(true);
-    const liveEnd = trigger + (1 - triggerPosition) * 0.1;
+    const liveEnd = trigger + (1 - defaultTriggerPosition) * 0.1;
     expect(frames.at(-1)?.panReach).toBeCloseTo(
       liveEnd - 2 - (1 - frozenHoldSeconds),
       3,
@@ -413,6 +417,38 @@ describe("mock back end", () => {
     transport.send({ type: "freeze", frozen: false });
     transport.requestFrame();
     expect(frames.at(-1)?.panReach).toBe(0);
+  });
+
+  // As the engine does: a frozen view that cannot keep its trigger point where the Position asks,
+  // for too little audio held after it, says where the trigger point is, and pans back from there.
+  test("says where a frozen trigger point is when the held audio cannot place it", () => {
+    const { transport, frames } = connect(); // now = 1 s.
+    useTrigger(transport);
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
+    transport.requestFrame();
+    expect(frames.at(-1)?.triggerPosition).toBeCloseTo(
+      defaultTriggerPosition,
+      6,
+    );
+    transport.send({ type: "freeze", frozen: true });
+    transport.send({ type: "setSetting", name: "triggerPosition", value: 0.5 });
+    transport.requestFrame();
+    expect(frames.at(-1)?.triggerPosition).toBeCloseTo(0.5, 6); // Room for it: placed there.
+
+    // At 0% and a 0.5 s span the trigger, at 0.9 s, would need 0.5 s after it; 0.1 s is held. The
+    // span ends at the newest audio held, at 1 s, with the trigger point 0.4 s into it.
+    transport.send({ type: "setSetting", name: "triggerPosition", value: 0 });
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.5 });
+    transport.requestFrame();
+    expect(frames.at(-1)?.triggerPosition).toBeCloseTo(0.8, 3);
+    expect(frames.at(-1)?.panReach).toBeCloseTo(
+      0.5 - (1 - frozenHoldSeconds),
+      3,
+    );
+
+    runFree(transport, 2);
+    transport.requestFrame();
+    expect(frames.at(-1)?.triggerPosition).toBeUndefined(); // Free counts from the right edge.
   });
 
   test("measures L on a mono track, whatever the trigger and readout sources", () => {

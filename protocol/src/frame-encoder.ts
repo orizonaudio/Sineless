@@ -27,6 +27,7 @@ export interface FrameContent {
   readonly spanSeconds?: number;
   readonly readoutView?: ChannelView;
   readonly triggerView?: ChannelView;
+  readonly triggerPosition?: number | undefined;
   readonly spanQuarterNotes?: number;
   readonly barQuarterNotes?: number;
   readonly viewStart?: number;
@@ -109,6 +110,11 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setUint32(
     offsets.triggerView,
     content.triggerView ?? ChannelView.mid,
+    true,
+  );
+  header.setFloat32(
+    offsets.triggerPosition,
+    content.triggerPosition ?? Number.NaN,
     true,
   );
   header.setFloat32(

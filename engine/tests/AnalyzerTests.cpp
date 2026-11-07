@@ -654,7 +654,7 @@ TEST_F(AnalyzerTest, AlignsTheTriggerAtTenPercentWithSubSampleAccuracy)
     ASSERT_EQ(frame->pointCount, 24u);
     // The trigger (rising zero crossing) sits 2.4 samples into the span; interpolating the
     // raw points there must give the trigger level.
-    const double position = frame->startFraction + kTriggerPosition * 24.0;
+    const double position = frame->startFraction + protocol::kDefaultTriggerPosition * 24.0;
     const auto index = static_cast<std::size_t>(position);
     const double fraction = position - static_cast<double>(index);
     const double value =
@@ -3015,6 +3015,348 @@ TEST_F(CompareTest, SumsALongSweepAgainOverFrames)
     ASSERT_TRUE(frame) << "frames go on while the sum is redone";
     EXPECT_TRUE(fixedEverywhere(*frame));
     EXPECT_FALSE(produce()) << "and stop once it is done";
+}
+
+// The Position setting: where the trigger point sits, and the frame saying where it is.
+class TriggerPositionTest : public AnalyzerTest
+{
+protected:
+    void SetUp() override
+    {
+        AnalyzerTest::SetUp();
+        engine.settings().set(SettingId::kChannelViews, 0b0001); // L only.
+        analyzer.setColumns(kRawColumns);                        // Raw samples at 20 ms.
+    }
+
+    void setPosition(double position)
+    {
+        engine.settings().set(SettingId::kTriggerPosition, position);
+    }
+
+    // Appends `count` samples on both channels holding their index less `edge`: a ramp that rises
+    // through 0 at `edge` alone (one rising edge), whose values say which sample each is.
+    void writeRampThrough(double edge, std::size_t count)
+    {
+        std::vector<float> ramp(count);
+        const std::uint64_t start = engine.captureRing().writeIndex();
+        for (std::size_t i = 0; i < count; ++i) {
+            ramp[i] = static_cast<float>(static_cast<double>(start + i) - edge);
+        }
+        std::array<const float*, 2> channels{ramp.data(), ramp.data()};
+        engine.captureRing().write(channels.data(), 2, static_cast<int>(count));
+    }
+
+    // Appends a ramp with its edge `before` seconds in and `after` seconds after it.
+    double writeEdge(double before, double after)
+    {
+        const double edge =
+            static_cast<double>(engine.captureRing().writeIndex()) + before * kSampleRate - 0.5;
+        writeRampThrough(edge, static_cast<std::size_t>((before + after) * kSampleRate));
+        return edge;
+    }
+
+    // Where the rising zero crossing sits across a raw frame's span (0 at the left edge), read from
+    // its points, not from its header.
+    static double edgePlace(const DecodedFrame& frame)
+    {
+        for (std::size_t k = 0; k + 1 < frame.data.size(); ++k) {
+            if (frame.data[k] < 0.0f && frame.data[k + 1] >= 0.0f) {
+                const double crossing =
+                    static_cast<double>(k) + (-frame.data[k]) / (frame.data[k + 1] - frame.data[k]);
+                return (crossing - frame.startFraction) / frame.visibleSamples;
+            }
+        }
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    // The sample index at a raw frame's left edge, from the ramp's values.
+    static double firstShown(const DecodedFrame& frame, double edge)
+    {
+        return frame.data.front() + edge + frame.startFraction;
+    }
+
+    static constexpr double kPlace = 1.5 / kSpanSamples; // A sample and a half of the span.
+};
+
+TEST_F(TriggerPositionTest, PutsTheTriggerPointWhereThePositionSaysAndTheFrameSaysSo)
+{
+    for (const double position : {0.0, 0.1, 0.5, 1.0}) {
+        SCOPED_TRACE(position);
+        Analyzer fresh(engine);
+        fresh.setColumns(kRawColumns);
+        setTriggerMode(protocol::TriggerMode::kNormal);
+        setPosition(position);
+        writeEdge(0.1, 0.1);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(fresh.produce(bytes));
+        const DecodedFrame frame = decode(bytes);
+        ASSERT_TRUE(frame.has(FrameFlag::kTriggered));
+        EXPECT_NEAR(frame.triggerPosition, position, 1e-6);
+        if (position < 1.0) { // At 100% the crossing's later sample lies past the span.
+            EXPECT_NEAR(edgePlace(frame), position, kPlace) << "the edge is drawn there";
+        }
+    }
+}
+
+// Untriggered frames (Auto timed out) count time from the Position, as from 10% before it was a
+// setting, so the trigger line stays put as Auto goes between triggered and untriggered.
+TEST_F(TriggerPositionTest, CarriesThePositionInBothStatesOfAuto)
+{
+    setPosition(0.3);
+    writeEdge(0.1, 0.05);
+    const auto triggered = produce();
+    ASSERT_TRUE(triggered);
+    ASSERT_TRUE(triggered->has(FrameFlag::kTriggered));
+    EXPECT_NEAR(triggered->triggerPosition, 0.3, 1e-6);
+    writeSilence(0.5); // No edge: Auto times out.
+    const auto untriggered = produce();
+    ASSERT_TRUE(untriggered);
+    ASSERT_FALSE(untriggered->has(FrameFlag::kTriggered));
+    EXPECT_NEAR(untriggered->triggerPosition, 0.3, 1e-6);
+}
+
+TEST_F(TriggerPositionTest, CarriesNoPositionWhenRunningFreeOrBeforeATempo)
+{
+    writeSilence(1.0);
+    runFree(engine, 0.5);
+    const auto free = produce();
+    ASSERT_TRUE(free);
+    ASSERT_TRUE(free->has(FrameFlag::kFreeRunning));
+    EXPECT_TRUE(std::isnan(free->triggerPosition));
+    analyzer.setFrozen(true);
+    analyzer.setColumns(kRawColumns + 1); // Forces a frame.
+    const auto frozen = produce();
+    ASSERT_TRUE(frozen);
+    EXPECT_TRUE(std::isnan(frozen->triggerPosition)) << "frozen in Free";
+    analyzer.setFrozen(false);
+    engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+    const auto beats = produce();
+    ASSERT_TRUE(beats);
+    ASSERT_TRUE(beats->has(FrameFlag::kNoTempo));
+    EXPECT_TRUE(std::isnan(beats->triggerPosition)) << "Beats before a tempo";
+}
+
+// Frozen, a new Position places the frozen span around the same trigger, as a new span does.
+TEST_F(TriggerPositionTest, PlacesAFrozenViewAroundItsTrigger)
+{
+    setTriggerMode(protocol::TriggerMode::kNormal);
+    writeEdge(0.1, 0.1);
+    ASSERT_TRUE(produce());
+    analyzer.setFrozen(true);
+    ASSERT_TRUE(produce());
+    for (const double position : {0.5, 1.0, 0.0}) {
+        SCOPED_TRACE(position);
+        setPosition(position);
+        const auto frame = produce();
+        ASSERT_TRUE(frame);
+        ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
+        EXPECT_NEAR(frame->triggerPosition, position, 1e-6);
+        if (position < 1.0) {
+            EXPECT_NEAR(edgePlace(*frame), position, kPlace);
+        }
+    }
+}
+
+// Frozen right after a Single capture at 100%, little audio is held after the trigger: at 0% the
+// span is placed as late as the audio held allows, and the frame says where the trigger then is,
+// so the line and labels stay on it. The whole pan reach moves the view, back to the oldest audio
+// held.
+TEST_F(TriggerPositionTest, SaysWhereAClampedFrozenTriggerIsAndPansAllTheWayBack)
+{
+    setTriggerMode(protocol::TriggerMode::kSingle);
+    setPosition(1.0);
+    const double edge = static_cast<double>(engine.captureRing().writeIndex()) + 5.0 * kSampleRate;
+    writeRampThrough(edge, static_cast<std::size_t>(5.0 * kSampleRate)); // Up to the edge.
+    std::optional<DecodedFrame> captured;
+    for (int chunk = 0; chunk < 10 && !captured; ++chunk) {
+        writeRampThrough(edge, 48);
+        captured = produce();
+    }
+    ASSERT_TRUE(captured);
+    ASSERT_TRUE(captured->has(FrameFlag::kTriggered));
+    EXPECT_NEAR(captured->triggerPosition, 1.0, 1e-6);
+
+    setPosition(0.0);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(analyzer.produce(bytes));
+    const DecodedFrame clamped = decode(bytes);
+    ASSERT_TRUE(clamped.has(FrameFlag::kFrozen)) << "Single froze on its capture";
+    EXPECT_GT(clamped.triggerPosition, 0.9) << "not where the setting asks: too little held";
+    EXPECT_NEAR(clamped.triggerPosition, edgePlace(clamped), kPlace) << "where the edge is";
+
+    const auto held = static_cast<double>(engine.captureRing().writeIndex());
+    const double reach = get<float>(bytes, FrameHeader::kPanReachOffset);
+    analyzer.setPan(reach / 2.0);
+    const auto half = produce();
+    ASSERT_TRUE(half);
+    EXPECT_NEAR(firstShown(clamped, edge) - firstShown(*half, edge), reach / 2.0 * kSampleRate, 1.5)
+        << "half the reach moves the view by half of it: no dead zone";
+    analyzer.setPan(reach);
+    const auto oldest = produce();
+    ASSERT_TRUE(oldest);
+    EXPECT_NEAR(firstShown(*oldest, edge), held - protocol::kFrozenHoldSeconds * kSampleRate, 1.5)
+        << "the whole reach reaches the oldest audio held";
+}
+
+// The same with a longer span after a Single capture at the default Position: the trigger point
+// stays where the trace has it, not at 10% of the longer span.
+TEST_F(TriggerPositionTest, SaysWhereTheTriggerIsWhenALongerFrozenSpanIsClamped)
+{
+    analyzer.setColumns(6000); // Raw samples at 100 ms.
+    setTriggerMode(protocol::TriggerMode::kSingle);
+    const double edge = static_cast<double>(engine.captureRing().writeIndex()) + 2.0 * kSampleRate;
+    writeRampThrough(edge, static_cast<std::size_t>(2.0 * kSampleRate));
+    std::optional<DecodedFrame> captured;
+    for (int chunk = 0; chunk < 40 && !captured; ++chunk) {
+        writeRampThrough(edge, 48);
+        captured = produce();
+    }
+    ASSERT_TRUE(captured);
+    setSpan(engine, 0.1);
+    const auto longer = produce();
+    ASSERT_TRUE(longer);
+    EXPECT_GT(longer->triggerPosition, 0.5) << "clamped to the audio held after the trigger";
+    EXPECT_NEAR(longer->triggerPosition, edgePlace(*longer), 1.5 / 4800.0);
+}
+
+// A frozen view from an untriggered Auto frame follows the Position, as an untriggered live one
+// does, even where too little is held to keep its old place.
+TEST_F(TriggerPositionTest, AFrozenUntriggeredViewFollowsThePosition)
+{
+    setPosition(0.5);
+    writeSilence(1.0);
+    const auto live = produce();
+    ASSERT_TRUE(live);
+    ASSERT_FALSE(live->has(FrameFlag::kTriggered));
+    analyzer.setFrozen(true);
+    ASSERT_TRUE(produce());
+    for (const double position : {0.1, 0.0}) {
+        SCOPED_TRACE(position);
+        setPosition(position);
+        const auto frame = produce();
+        ASSERT_TRUE(frame);
+        EXPECT_NEAR(frame->triggerPosition, position, 1e-6);
+    }
+}
+
+// Frozen in Free, then Trigger chosen, or frozen before any live frame: the span ends at the right
+// edge as before, and time counts from the Position.
+TEST_F(TriggerPositionTest, CountsFromThePositionFrozenFromTheRightEdge)
+{
+    for (const bool fromFree : {true, false}) {
+        SCOPED_TRACE(fromFree ? "frozen in Free" : "frozen before a live frame");
+        Analyzer fresh(engine);
+        fresh.setColumns(kRawColumns);
+        setPosition(protocol::kDefaultTriggerPosition);
+        writeSilence(1.0);
+        std::vector<std::byte> bytes;
+        if (fromFree) {
+            runFree(engine, 0.5);
+            ASSERT_TRUE(fresh.produce(bytes));
+        }
+        fresh.setFrozen(true);
+        (void)fresh.produce(bytes);
+        showSpan(engine, 0.02);
+        for (const double position : {0.5, 0.1}) {
+            SCOPED_TRACE(position);
+            setPosition(position);
+            ASSERT_TRUE(fresh.produce(bytes));
+            const DecodedFrame frame = decode(bytes);
+            ASSERT_TRUE(frame.has(FrameFlag::kFrozen));
+            EXPECT_NEAR(frame.triggerPosition, position, 1e-6);
+        }
+    }
+}
+
+// Normal holding its last trace keeps it, with its trigger point, when the Position or span
+// changes: the new Position applies from the next trigger.
+TEST_F(TriggerPositionTest, KeepsAHeldTraceAndItsTriggerPoint)
+{
+    setTriggerMode(protocol::TriggerMode::kNormal);
+    writeEdge(0.1, 0.1);
+    ASSERT_TRUE(produce());
+    EXPECT_FALSE(produce()) << "held";
+    setPosition(0.5);
+    const auto moved = produce();
+    ASSERT_TRUE(moved);
+    EXPECT_NEAR(moved->triggerPosition, protocol::kDefaultTriggerPosition, 1e-6);
+    EXPECT_NEAR(edgePlace(*moved), protocol::kDefaultTriggerPosition, kPlace);
+    analyzer.setColumns(4000);
+    setSpan(engine, 0.04); // Twice the span, from the same start.
+    const auto longer = produce();
+    ASSERT_TRUE(longer);
+    EXPECT_NEAR(longer->triggerPosition, protocol::kDefaultTriggerPosition / 2.0, 1e-6)
+        << "the held trigger, at its place in the longer span";
+    EXPECT_NEAR(edgePlace(*longer), longer->triggerPosition, 1.5 / 1920.0);
+}
+
+// Normal waiting with nothing triggered yet (switched from Free, or after Auto timed out) shows an
+// untriggered window, whose time counts from the Position, whatever it and the span are set to.
+TEST_F(TriggerPositionTest, AHeldUntriggeredWindowFollowsThePositionAndSpan)
+{
+    for (const bool fromFree : {true, false}) {
+        SCOPED_TRACE(fromFree ? "from Free" : "from Auto timed out");
+        Analyzer fresh(engine);
+        fresh.setColumns(4000);
+        setPosition(protocol::kDefaultTriggerPosition);
+        setSpan(engine, 0.02);
+        writeSilence(1.0);
+        std::vector<std::byte> bytes;
+        if (fromFree) {
+            setTriggerMode(protocol::TriggerMode::kNormal);
+            runFree(engine, 0.5);
+            ASSERT_TRUE(fresh.produce(bytes));
+            showSpan(engine, 0.02);
+        } else {
+            setTriggerMode(protocol::TriggerMode::kAuto);
+            ASSERT_TRUE(fresh.produce(bytes));
+            ASSERT_FALSE(decode(bytes).has(FrameFlag::kTriggered));
+            setTriggerMode(protocol::TriggerMode::kNormal);
+        }
+        (void)fresh.produce(bytes);
+        setPosition(0.5);
+        ASSERT_TRUE(fresh.produce(bytes));
+        EXPECT_FALSE(decode(bytes).has(FrameFlag::kTriggered));
+        EXPECT_NEAR(decode(bytes).triggerPosition, 0.5, 1e-6);
+        setSpan(engine, 0.01); // Shorter: a held window holds no audio past its end.
+        ASSERT_TRUE(fresh.produce(bytes));
+        EXPECT_NEAR(decode(bytes).triggerPosition, 0.5, 1e-6) << "after a span change";
+    }
+}
+
+// Multi and Compare show the time window the own track's trigger places (FR-14.4), and say where
+// its trigger point is; a Beats sweep of lanes says there is none.
+TEST_F(MultiTrackTest, SaysWhereTheOwnTracksTriggerPointIs)
+{
+    play(9600);
+    const auto beats = produce();
+    ASSERT_TRUE(beats);
+    EXPECT_TRUE(std::isnan(beats->triggerPosition)) << "Beats lanes";
+    for (const Display display : {Display::kMulti, Display::kCompare}) {
+        SCOPED_TRACE(display == Display::kMulti ? "Multi" : "Compare");
+        show(own->settings(), display);
+        own->settings().set(SettingId::kTimeBase,
+                            static_cast<double>(protocol::TimeBase::kTrigger));
+        own->settings().set(SettingId::kTriggerSpan, 0.02);
+        own->settings().set(SettingId::kTriggerPosition, 0.5);
+        // A ramp through 0 halfway into the next 0.2 s: one rising edge on the own track.
+        const double edge = static_cast<double>(hostSample) + 4800.0 - 0.5;
+        tracks.front().second = [edge](std::uint64_t sample) {
+            return static_cast<float>(static_cast<double>(sample) - edge);
+        };
+        play(9600);
+        const auto frame = produce();
+        ASSERT_TRUE(frame);
+        ASSERT_TRUE(frame->has(FrameFlag::kTriggered));
+        EXPECT_NEAR(frame->triggerPosition, 0.5, 1e-6);
+        const std::vector<float> ownLane = lane(*frame, 0);
+        const auto at = std::ranges::find_if(ownLane, [](float value) { return value >= 0.0f; });
+        ASSERT_NE(at, ownLane.end());
+        const double place =
+            (static_cast<double>(at - ownLane.begin()) - 0.5 - frame->startFraction) /
+            frame->visibleSamples;
+        EXPECT_NEAR(place, 0.5, 1.5 / 960.0) << "the own track's edge sits there";
+    }
 }
 
 } // namespace

@@ -33,6 +33,7 @@ struct DecodedFrame
     float spanSeconds = 0.0f;
     protocol::ChannelView readoutView = protocol::ChannelView::kMid;
     protocol::ChannelView triggerView = protocol::ChannelView::kMid;
+    float triggerPosition = 0.0f;
     std::vector<float> data;
 
     [[nodiscard]] bool has(protocol::FrameFlag value) const
@@ -74,6 +75,7 @@ inline DecodedFrame decode(const std::vector<std::byte>& bytes)
         get<std::uint32_t>(bytes, protocol::FrameHeader::kReadoutViewOffset));
     frame.triggerView = static_cast<protocol::ChannelView>(
         get<std::uint32_t>(bytes, protocol::FrameHeader::kTriggerViewOffset));
+    frame.triggerPosition = get<float>(bytes, protocol::FrameHeader::kTriggerPositionOffset);
     frame.data.resize((bytes.size() - protocol::FrameHeader::kSize) / sizeof(float));
     if (!frame.data.empty()) { // A frame of no points: no data to copy from or to.
         std::memcpy(frame.data.data(), bytes.data() + protocol::FrameHeader::kSize,

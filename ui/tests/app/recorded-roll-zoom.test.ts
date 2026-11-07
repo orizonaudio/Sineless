@@ -21,7 +21,7 @@ function labelSeconds(): number[] {
 // Whether the labels mark a rolling span of `span` seconds seen through `view`, within the
 // labels' three digits.
 function marksSpan(view: ViewWindow): boolean {
-  const expected = axisTimeLabels(span, true, view).map((label) =>
+  const expected = axisTimeLabels(span, true, view, Number.NaN).map((label) =>
     parseQuantity(label.text, "time"),
   );
   const shown = labelSeconds();

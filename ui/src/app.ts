@@ -46,11 +46,7 @@ import {
   type TraceView,
 } from "./render/trace-renderer.ts";
 import type { SettingsStore } from "./store/settings-store.ts";
-import {
-  amplitudeLabels,
-  timeLabels,
-  triggerPosition,
-} from "./view/axis-labels.ts";
+import { amplitudeLabels, timeLabels } from "./view/axis-labels.ts";
 import {
   formatDbfs,
   formatGain,
@@ -231,6 +227,19 @@ function clampTo(name: SettingName, value: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+// A typed value that must be a whole number of its bare unit (`scale`: 0.01 for percent): that
+// value, divided rather than multiplied back so 57% is 0.57 exactly; undefined if not whole.
+function wholeOf(value: number | undefined, scale = 1): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const units = value / scale;
+  const whole = Math.round(units);
+  return Math.abs(units - whole) < 1e-9
+    ? whole / Math.round(1 / scale)
+    : undefined;
+}
+
 export interface DebugState {
   frameCount: number;
   lastFrame?: Frame;
@@ -273,6 +282,8 @@ export class OscilloscopeApp {
   private lastFrame: Frame | undefined;
   // The span in seconds the time labels were last placed for.
   private labelledSpan = 0;
+  // The trigger point the time labels were last placed for.
+  private labelledZero = Number.NaN;
   private lastFrameTime = 0;
   // Readouts refresh on a fixed schedule of one per readoutInterval, as frames are drawn (see
   // RenderLoop), whether frames or the idle timer prompt them.
@@ -505,9 +516,7 @@ export class OscilloscopeApp {
       format: spec.format,
       parse: (text) => {
         const value = parseQuantity(text, spec.quantity, spec.bareScale);
-        return spec.whole === true && !Number.isInteger(value)
-          ? undefined
-          : value;
+        return spec.whole === true ? wholeOf(value, spec.bareScale) : value;
       },
       step: (value, delta, fine) =>
         clampTo(name, spec.step(value, delta, fine)),
@@ -1363,12 +1372,33 @@ export class OscilloscopeApp {
         );
   }
 
+  // Where time zero sits across the span, as the engine placed it: the trigger point. The
+  // Position setting until a frame comes; NaN while running free or in Beats.
+  private triggerPoint(): number {
+    const frame = this.lastFrame;
+    return frame === undefined
+      ? this.store.number("triggerPosition")
+      : (frame.triggerPosition ?? Number.NaN);
+  }
+
+  // Whether the trigger point moved since the labels were placed: by more than float rounding,
+  // which would otherwise place them again on every frame.
+  private triggerPointMoved(): boolean {
+    const zero = this.triggerPoint();
+    return (
+      Number.isNaN(zero) !== Number.isNaN(this.labelledZero) ||
+      Math.abs(zero - this.labelledZero) > 1e-6
+    );
+  }
+
   private placeLabels(): void {
     const container = element("labels");
     const height = this.screen.clientHeight;
     const width = this.screen.clientWidth;
     const span = this.secondsSpan();
+    const zero = this.triggerPoint();
     this.labelledSpan = span;
+    this.labelledZero = zero;
     const free = this.freeRunning();
     const labels: HTMLElement[] = [];
     for (const label of amplitudeLabels(
@@ -1388,7 +1418,7 @@ export class OscilloscopeApp {
     // Beats without the host's tempo: no positions to label.
     const untimed = this.beatsMode() && this.lastFrame?.noTempo === true;
     for (const label of this.musicalLayout()?.labels ??
-      (untimed ? [] : timeLabels(span, free, this.view))) {
+      (untimed ? [] : timeLabels(span, free, this.view, zero))) {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;
@@ -1405,10 +1435,14 @@ export class OscilloscopeApp {
     }
     container.replaceChildren(...labels);
     const triggerLine = element("trigger-line");
-    const triggerX = toScreen(this.view, triggerPosition);
+    const triggerX = toScreen(this.view, zero);
     triggerLine.style.left = `${String(triggerX * 100)}%`;
     triggerLine.hidden =
-      free || this.beatsMode() || triggerX < 0 || triggerX > 1;
+      free ||
+      this.beatsMode() ||
+      !Number.isFinite(triggerX) ||
+      triggerX < 0 ||
+      triggerX > 1;
   }
 
   // The level marker sits in the lane of the trigger source when stacked, else on the full height.
@@ -2101,7 +2135,8 @@ export class OscilloscopeApp {
       const span = this.secondsSpan();
       if (
         frame.freeRunning !== wasFree ||
-        Math.abs(span - this.labelledSpan) > 1e-3 * this.labelledSpan
+        Math.abs(span - this.labelledSpan) > 1e-3 * this.labelledSpan ||
+        this.triggerPointMoved()
       ) {
         this.placeLabels();
         this.placeTriggerMarker();

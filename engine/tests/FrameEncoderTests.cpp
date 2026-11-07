@@ -69,6 +69,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .spanSeconds = header["spanSeconds"].get<float>(),
         .readoutView = static_cast<protocol::ChannelView>(header["readoutView"].get<int>()),
         .triggerView = static_cast<protocol::ChannelView>(header["triggerView"].get<int>()),
+        .triggerPosition = floatOf(header["triggerPosition"]),
     };
 }
 

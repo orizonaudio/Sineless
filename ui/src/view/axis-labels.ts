@@ -7,12 +7,11 @@ import {
   gridLevelStepDb,
   gridLevelsBelowTop,
   gridMinimumLineGap,
-  triggerPosition,
 } from "../../../protocol/src/limits.ts";
 import { formatDb, formatDbValue, formatSeconds } from "./format.ts";
-import { fullView, toFrame, type ViewWindow } from "./zoom.ts";
+import { toFrame, type ViewWindow } from "./zoom.ts";
 
-export { gridColumns, triggerPosition };
+export { gridColumns };
 
 // Level lines (protocol/src/limits.ts: gridLevelStepDb, gridLevelsBelowTop). Closest spacing (CSS
 // px) between drawn level lines (gridMinimumLineGap), and between level labels.
@@ -88,12 +87,14 @@ export function amplitudeLabels(
   return labels;
 }
 
-// Time labels every second grid division: relative to the trigger point, or back from the right
-// edge (now, live) while running free. Under view zoom they show the times at those screen positions.
+// Time labels every second grid division: relative to the trigger point, `zero` across the span
+// (the frame's triggerPosition), or back from the right edge (now, live) while running free. Under
+// view zoom they show the times at those screen positions.
 export function timeLabels(
   spanSeconds: number,
   freeRunning: boolean,
-  view: ViewWindow = fullView,
+  view: ViewWindow,
+  zero: number,
 ): AxisLabel[] {
   const labels: AxisLabel[] = [];
   for (let division = 2; division < gridColumns; division += 2) {
@@ -101,7 +102,7 @@ export function timeLabels(
     const frame = toFrame(view, x);
     const seconds = freeRunning
       ? -(1 - frame) * spanSeconds
-      : (frame - triggerPosition) * spanSeconds;
+      : (frame - zero) * spanSeconds;
     const text = formatSeconds(Math.abs(seconds));
     labels.push({ text: seconds < 0 ? `\u2212${text}` : text, position: x });
   }

@@ -52,6 +52,9 @@ struct FrameHeaderValues
     protocol::ChannelView readoutView = protocol::ChannelView::kMid;
     // The channel view the trigger reads under the current settings.
     protocol::ChannelView triggerView = protocol::ChannelView::kMid;
+    // Where time zero sits across the unpanned span (0 to 1 from the left, the trigger point in
+    // Trigger); NaN in Free and Beats.
+    float triggerPosition = std::numeric_limits<float>::quiet_NaN();
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,

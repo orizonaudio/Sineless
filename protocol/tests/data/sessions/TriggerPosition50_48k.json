@@ -1,0 +1,50 @@
+{
+  "page": {
+    "pixelRatio": 1.0,
+    "viewWidth": 1182
+  },
+  "phases": [
+    {
+      "after": null,
+      "answers": [],
+      "frames": [
+        "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"
+      ],
+      "replies": []
+    }
+  ],
+  "protocolVersion": 14,
+  "scenario": "TriggerPosition50_48k",
+  "snapshot": {
+    "inputChannels": 2,
+    "protocolVersion": 14,
+    "sampleRate": 48000.0,
+    "settings": {
+      "autoFreeze": "on",
+      "beatSpan": "oneBar",
+      "channelViews": [
+        "left",
+        "right"
+      ],
+      "compare": "off",
+      "concertPitch": 440.0,
+      "displayMode": "single",
+      "freeSpan": 4.0,
+      "group": "a",
+      "hoverReadout": "off",
+      "readoutSource": "mid",
+      "timeBase": "trigger",
+      "triggerHoldOff": 0.0,
+      "triggerHysteresis": 0.01,
+      "triggerLevel": 0.0,
+      "triggerMode": "auto",
+      "triggerPosition": 0.5,
+      "triggerSlope": "rising",
+      "triggerSource": "mid",
+      "triggerSpan": 0.01,
+      "verticalScale": 0.0,
+      "viewLayout": "stacked"
+    },
+    "type": "snapshot"
+  }
+}

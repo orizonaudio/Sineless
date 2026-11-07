@@ -3,6 +3,7 @@
 import { settings, type SettingName } from "../../../protocol/src/settings.ts";
 import {
   formatDb,
+  formatPercent,
   formatPitch,
   formatSeconds,
   signed,
@@ -23,7 +24,9 @@ export interface NumberField {
   readonly step: (value: number, delta: number, fine: boolean) => number;
   readonly quantity: Quantity;
   readonly bareScale?: number; // What a bare typed number is in: 0.001 for milliseconds.
-  readonly whole?: boolean; // Typed values must be whole numbers, as its steps are.
+  // Typed values must be whole numbers of the bare unit (whole dB, whole percent), as its steps
+  // are.
+  readonly whole?: boolean;
 }
 
 // The trigger level, to its finest step (0.001), wherever it is shown.
@@ -93,6 +96,17 @@ export const numberFields: Partial<Record<SettingName, NumberField>> = {
         : stepThrough(holdOffSteps, value, delta),
     quantity: "time",
     bareScale: 0.001,
+  },
+  triggerPosition: {
+    host: "position-field",
+    label: "Trigger position",
+    format: formatPercent,
+    step: (value, delta, fine) =>
+      stepLinear(value, delta, fine ? 0.01 : 0.05, 0, 1),
+    quantity: "percent",
+    bareScale: 0.01,
+    // Whole percent, as its steps.
+    whole: true,
   },
   concertPitch: {
     host: "concert-pitch-field",
