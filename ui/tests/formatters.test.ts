@@ -67,11 +67,17 @@ describe("formatMusicalLength", () => {
     [1, 4, "1.00 beats"],
     [2.26, 4, "2.26 beats"],
     [3.99, 4, "3.99 beats"],
+    // Rounded to a bar, it reads as a bar, not "4.00 beats".
+    [3.996, 4, "1.00 bars"],
+    // Closer than a 64th of a beat: no fraction names it.
+    [0.01, 4, "0 beats"],
     [4, 4, "1.00 bars"],
     [6.24, 4, "1.56 bars"],
     [3, 3, "1.00 bars"],
     [2.5, 3, "2.50 beats"],
     [Number.NaN, 4, "—"],
+    [1, 0, "—"],
+    [1, Number.NaN, "—"],
   ])(
     "reads %s quarter notes in %s-beat bars as %s",
     (quarterNotes, bar, text) => {
