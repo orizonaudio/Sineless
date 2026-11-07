@@ -9,6 +9,7 @@
     "freeSpan": 2.0,
     "group": "c",
     "hoverReadout": "on",
+    "meter": "on",
     "readoutSource": "right",
     "timeBase": "free",
     "triggerHoldOff": 0.125,

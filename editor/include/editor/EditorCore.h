@@ -26,7 +26,8 @@ public:
     // the embedded fonts, the wordmark included; the editor tests check the page against it. The
     // page takes it as its minimum width too (docs/ui/README.md).
     static constexpr int kMinimumWidth = protocol::kMinimumEditorWidth;
-    static constexpr int kMinimumHeight = 400;
+    // The shortest window whose screen fits the tallest panel in its corner (limits.ts).
+    static constexpr int kMinimumHeight = protocol::kMinimumEditorHeight;
     static constexpr int kDefaultWidth = protocol::kDefaultEditorWidth;
     static constexpr int kDefaultHeight = 580;
     // Stacked lanes of the multi-track view need this much height each, for their label chip
