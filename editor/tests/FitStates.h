@@ -8,7 +8,7 @@
 
 // The editor's states whose controls and labels set the widths of the toolbar and the status bar.
 // The editor tests of each platform check that everything fits in each, at the minimum width and
-// at the default width with the wordmark, with the embedded fonts as that platform's webview
+// at the default width, with the embedded fonts as that platform's webview
 // renders them. A state's script presses buttons that are not pressed yet, so that the states
 // apply in any order.
 namespace orizon::editor::fit {
@@ -38,6 +38,10 @@ inline std::vector<State> states()
          .script = ""},
         {.name = "Trig, 250 ms",
          .settings = {{SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.25}},
+         .script = ""},
+        // The span pill's longest value, a fine step of Trig's span (8 characters).
+        {.name = "Trig, 0.562 ms",
+         .settings = {{SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.000562}},
          .script = ""},
         {.name = "Trig, 12.5 ms",
          .settings = {{SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.0125}},

@@ -3,7 +3,6 @@
 import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
-  defaultEditorWidth,
   leftOutAlpha,
   minimumEditorWidth,
   readoutIntervalSeconds,
@@ -632,8 +631,8 @@ export class OscilloscopeApp {
       ["d", "D"],
     ]);
     segment("compare", "compare", [
-      ["on", "On"],
       ["off", "Off"],
+      ["on", "On"],
     ]);
     choiceField("timeBase", "time-base", "time-base", "Time");
     choiceField("viewLayout", "layout", "layout", "Layout");
@@ -796,14 +795,22 @@ export class OscilloscopeApp {
     const frame = this.lastFrame;
     const thisTrack =
       frame === undefined ? this.multiMode() : frame.laneSet !== 0;
-    const text = thisTrack
-      ? "This track"
-      : frame === undefined
-        ? "—"
-        : viewNames[readoutView(frame)];
+    // Short, as the Views field's letters: TT for this track, L, R, M or S; named in full for
+    // screen readers.
+    const view =
+      frame === undefined ? undefined : viewOrder[readoutView(frame)];
+    const [text, name] = thisTrack
+      ? ["TT", "This track"]
+      : view === undefined
+        ? ["—", "—"]
+        : [viewLabels[view], viewNames[readoutView(frame as Frame)]];
     const tag = element("readout-tag");
     if (tag.textContent !== text) {
       tag.textContent = text;
+      element("readout-details").setAttribute(
+        "aria-label",
+        `Readouts: ${name}`,
+      );
     }
     const choosable =
       !thisTrack && frame !== undefined && this.inputChannels > 1;
@@ -829,12 +836,13 @@ export class OscilloscopeApp {
       return;
     }
     this.viewSummary = text;
+    // Dot-separated, as Multi's "A·Σ".
     element("views-summary").replaceChildren(
-      ...viewOrder.map((view) => {
+      ...viewOrder.flatMap((view, index) => {
         const letter = document.createElement("span");
         letter.textContent = viewLabels[view];
         letter.className = drawn.includes(view) ? "on" : "";
-        return letter;
+        return index === 0 ? [letter] : ["·", letter];
       }),
     );
     element("views-details").setAttribute("aria-label", `Views: ${text}`);
@@ -858,9 +866,7 @@ export class OscilloscopeApp {
   // and the popover closes. Re-arm shows in the Single trigger mode only.
   private updateTriggerControls(): void {
     const triggered = this.store.get("timeBase") === "trigger";
-    for (const id of ["trigger-group", "trigger-divider"]) {
-      element(id).hidden = !triggered;
-    }
+    element("trigger-group").hidden = !triggered;
     element("arm").hidden =
       !triggered || this.store.get("triggerMode") !== "single";
     if (!triggered) {
@@ -1015,11 +1021,6 @@ export class OscilloscopeApp {
   }
 
   private resize(): void {
-    // Below the default width only the mark stays.
-    document.documentElement.classList.toggle(
-      "narrow",
-      window.innerWidth < defaultEditorWidth,
-    );
     for (const [group, , id] of popovers) {
       this.placePopover(id, group);
     }

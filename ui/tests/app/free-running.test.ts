@@ -66,7 +66,6 @@ describe("the time base", () => {
       );
       const triggered = name === "trigger";
       expect(byId("trigger-group").hidden).toBe(!triggered);
-      expect(byId("trigger-divider").hidden).toBe(!triggered);
     },
   );
 

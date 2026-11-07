@@ -192,21 +192,21 @@ describe("controls", () => {
     await press(choice("time-base", "Trig"));
     // Away from the default source: the tag stays.
     await press(choice("source", "R"));
-    await expect.poll(tag).toBe("Left");
+    await expect.poll(tag).toBe("L");
     await press(choice("time-base", "Beats"));
-    await expect.poll(tag).toBe("Left");
+    await expect.poll(tag).toBe("L");
     await press(choice("display-mode", "Multi"));
-    await expect.poll(tag).toBe("This track");
+    await expect.poll(tag).toBe("TT");
     await press(choice("display-mode", "Single"));
     await press(choice("time-base", "Trig"));
     await press(choice("source", "L"));
     await useReadout("R");
-    await expect.poll(tag).toBe("Right");
+    await expect.poll(tag).toBe("R");
     // Back to the default, Mid, which the default views do not draw: Left again.
     await showViews(["L", "R", "M"]);
     await useReadout("M");
     await showViews(["L", "R"]);
-    await expect.poll(tag).toBe("Left");
+    await expect.poll(tag).toBe("L");
   });
 
   // In Single the tag is a button that opens the readouts' popover above it, in the status bar,
@@ -255,8 +255,8 @@ describe("controls", () => {
     displays
       .filter((display) => display !== "Single")
       .flatMap((mode) => [
-        ["Single", mode, "Left", "This track"] as const,
-        [mode, "Single", "This track", "Left"] as const,
+        ["Single", mode, "L", "TT"] as const,
+        [mode, "Single", "TT", "L"] as const,
       ]),
   )(
     "labels the readouts measured in %s until a frame measures them in %s",
@@ -499,7 +499,7 @@ describe("choice fields", () => {
         .element(choice(host, label))
         .toHaveAttribute("aria-pressed", "true");
       await expect.poll(() => shownValue(id)).toEqual([label]);
-      expect(button.querySelector("i")?.textContent).toBe(word);
+      expect(button.querySelector("svg.icon")).not.toBeNull();
       expect(button.getAttribute("aria-label")).toBe(`${word}: ${label}`);
       // Choosing keeps it open, as Group's does; a press elsewhere closes it.
       await expect.element(popover).toBeVisible();
@@ -519,6 +519,32 @@ describe("choice fields", () => {
       await userEvent.click(byId("wordmark"));
     },
   );
+});
+
+// Each choice field's popover labels its row, as the other popovers do; Compare offers Off before
+// On, as the other switches read.
+describe("choice field popovers", () => {
+  beforeApp(async () => {
+    await startApp();
+  });
+
+  test.each([
+    ["mode", "Tracks"],
+    ["time-base", "Sweep"],
+    ["layout", "Traces"],
+  ])("%s labels its row %s", (id, label) => {
+    const row = byId(`${id}-popover`).querySelector(".popover-row");
+    expect(row?.querySelector("span")?.textContent).toBe(label);
+    expect(row?.querySelector(".segmented")).not.toBeNull();
+  });
+
+  test("Compare offers Off, then On", () => {
+    expect(
+      [...byId("compare").querySelectorAll("button")].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Off", "On"]);
+  });
 });
 
 // The help topic of each choice field.

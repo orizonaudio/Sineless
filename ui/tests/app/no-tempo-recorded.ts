@@ -19,6 +19,6 @@ export function noTempoTests(scenario: string): void {
 
   test("names what the readouts measure: this track", async () => {
     await settle();
-    expect(byId("readout-tag").textContent).toBe("This track");
+    expect(byId("readout-tag").textContent).toBe("TT");
   });
 }

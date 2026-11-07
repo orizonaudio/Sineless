@@ -86,17 +86,17 @@ export const summingMarginDb = 1;
 // How much of the newest audio the frequency readout measures (seconds).
 export const frequencyWindowSeconds = 1;
 
-// The editor's layout (CSS pixels): its default width, from which the widest toolbar fits with the
-// wordmark (Trig, the Single trigger mode and frozen, in Single or in Multi with Compare on: one
-// width since Single's and Multi's Views share a place, measured at 1064); its
-// minimum width, the widest of that toolbar without the wordmark (measured at 1005) and the status
-// bar, whose parts keep fixed widths in every state (measured at 1018, docs/ui/README.md); each
-// with at least 8 px to spare for text that renders wider on another platform, rounded up to 10;
+// The editor's layout (CSS pixels): its minimum width, the wider of the widest toolbar (Trig, the
+// Single trigger mode and frozen, in Single or in Multi with Compare on: one width since Single's
+// and Multi's Views share a place; measured at 997 with the wordmark) and the status bar, whose
+// parts keep fixed widths in every state (measured at 995, docs/ui/README.md), with at least 8 px
+// to spare for text that renders wider on another platform, rounded up to 10; its default width,
+// the same, as nothing in the window changes with its width;
 // the minimum height of a stacked lane; and the height of everything around the screen (toolbar
 // and status bar), at most: measured at 82, with room for rounding at other display scales. The
 // editor tests check the page against them.
-export const defaultEditorWidth = 1080;
-export const minimumEditorWidth = 1030;
+export const defaultEditorWidth = 1010;
+export const minimumEditorWidth = 1010;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;
 

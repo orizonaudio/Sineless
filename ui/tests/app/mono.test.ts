@@ -34,7 +34,7 @@ describe("a mono track", () => {
 
   test("labels the readouts Left, whatever the trigger source", async () => {
     await press(choice("time-base", "Trig"));
-    await expect.poll(() => byId("readout-tag").textContent).toBe("Left");
+    await expect.poll(() => byId("readout-tag").textContent).toBe("L");
     // The Views field lights L alone, as the frame draws it.
     await expect
       .poll(() =>
@@ -106,18 +106,18 @@ describe("a track that changes channels", () => {
     await press(choice("source", "R"));
     await showViews(["L", "S"]);
     await useReadout("S");
-    await expect.poll(tag).toBe("Side");
+    await expect.poll(tag).toBe("S");
     await userEvent.click(byId("readout-details"));
     await expect.element(byId("readout-popover")).toBeVisible();
     app.transport.changeChannels(1, true);
-    await expect.poll(tag).toBe("Left");
+    await expect.poll(tag).toBe("L");
     await expect.element(byId("readout-popover")).not.toBeVisible();
     await expect
       .element(byId("readout-details"))
       .toHaveAttribute("aria-disabled", "true");
     await expectOnlyLeftEnabled(toggles);
     app.transport.changeChannels(2, true);
-    await expect.poll(tag).toBe("Side");
+    await expect.poll(tag).toBe("S");
     await expect
       .element(byId("readout-details"))
       .toHaveAttribute("aria-disabled", "false");

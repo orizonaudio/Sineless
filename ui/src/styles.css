@@ -77,11 +77,6 @@ body {
   height: 100%;
 }
 
-/* Below the default width (defaultEditorWidth, set by the page) only the mark stays. */
-.narrow .wordmark {
-  display: none;
-}
-
 .divider {
   width: 1px;
   height: 18px;
@@ -258,8 +253,7 @@ body {
 }
 
 /* A drop-down's arrow at its right edge, however wide its field. */
-.field-button .chevron,
-.readout-tag .chevron {
+.field-button .chevron {
   margin-left: auto;
 }
 
@@ -286,10 +280,11 @@ body {
   border-radius: 3px;
 }
 
-/* Every time base's span as wide as the longest beat span, "1/16 beat", so switching time base
-   moves nothing after it. */
+/* Every time base's span as wide as the longest of any: a Trig span's fine step, "0.562 ms"
+   (Geist Mono; the beat spans are at most "16 bars"), so switching time base or stepping moves
+   nothing after it. */
 #time-group .field {
-  min-width: 9ch;
+  min-width: 8ch;
 }
 
 .popover .field {
@@ -884,7 +879,8 @@ button[aria-pressed="true"]:focus-visible {
   flex: 1 1 auto !important;
   display: flex;
   justify-content: center;
-  align-items: baseline;
+  /* Centred on the bar: the channel button is taller than the readouts' text. */
+  align-items: center;
   gap: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -897,20 +893,11 @@ button[aria-pressed="true"]:focus-visible {
   align-self: center;
 }
 
+/* A field like the toolbar's, as wide as "TT" and its arrow (measured at 64.4), so the name
+   changing moves nothing. */
 .readout-tag {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  gap: 4px;
-  min-width: 88px;
+  min-width: 65px;
   box-sizing: border-box;
-  padding: 1px 6px;
-  font: 600 11px var(--sl-font-ui);
-  color: var(--sl-ink);
-  background: transparent;
-  border: 1px solid var(--sl-line);
-  border-radius: 4px;
-  cursor: pointer;
 }
 
 .readout-tag[aria-disabled="true"] {

@@ -23,9 +23,8 @@ class EditorCore
 {
 public:
     // The narrowest window that fits the whole toolbar and status bar with their edge padding, in
-    // the embedded fonts, with only the mark beside them; the editor tests check the page against
-    // it. The page takes it as its minimum width too. The default size also fits the wordmark,
-    // which the page shows from that width (docs/ui/README.md).
+    // the embedded fonts, the wordmark included; the editor tests check the page against it. The
+    // page takes it as its minimum width too (docs/ui/README.md).
     static constexpr int kMinimumWidth = protocol::kMinimumEditorWidth;
     static constexpr int kMinimumHeight = 400;
     static constexpr int kDefaultWidth = protocol::kDefaultEditorWidth;

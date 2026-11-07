@@ -430,8 +430,8 @@ TEST_F(EditorTest, LaysOutAtTheDefaultCssSizeAtAnyDisplayScale)
     }
 }
 
-// With the embedded fonts as Windows renders them, everything fits at the minimum size and, with
-// the wordmark, at the default size, in every state that changes the labels' widths.
+// With the embedded fonts as Windows renders them, everything fits, the wordmark included, at the
+// minimum and the default size, in every state that changes the labels' widths.
 TEST_F(EditorTest, FitsTheMinimumAndDefaultSizesInEveryState)
 {
     const ScopedDpiAwareness awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -444,19 +444,12 @@ TEST_F(EditorTest, FitsTheMinimumAndDefaultSizesInEveryState)
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
     ViewRect minimum(0, 0, 0, 0);
     editor->checkSizeConstraint(&minimum);
-    // The minimum size with the mark alone, then the default size with the wordmark.
     for (ViewRect size : {minimum, ViewRect(0, 0, Editor::kDefaultWidth, Editor::kDefaultHeight)}) {
         ASSERT_EQ(editor->onSize(&size), kResultTrue);
         ASSERT_TRUE(pumpUntil(
             [&] { return evaluate(view, "String(innerWidth)") == std::to_string(size.getWidth()); },
             std::chrono::seconds(5)));
-        const bool isDefault = size.getWidth() == Editor::kDefaultWidth;
-        // The page shows or hides it on the resize event that follows.
-        EXPECT_TRUE(pumpUntil(
-            [&] {
-                return evaluate(view, fit::kWordmarkScript) == (isDefault ? "shown" : "hidden");
-            },
-            std::chrono::seconds(5)))
+        EXPECT_EQ(evaluate(view, fit::kWordmarkScript), "shown")
             << "the wordmark at " << size.getWidth();
         for (const fit::State& state : fit::states()) {
             engine::Settings settings;
