@@ -1,7 +1,8 @@
 // Runs a check script (scripts/check.sh, scripts/check-linux.sh) for real, in a temporary copy of
 // the repository's layout, with the tools it calls replaced by stubs. Each stub logs its call, and
 // fails when the call matches the pattern a test gives (STUB_FAIL, an extended regular
-// expression), so a test can fail any stage and see which others still ran.
+// expression), with STUB_STATUS (default 1), so a test can fail any stage and see which others
+// still ran.
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -27,18 +28,33 @@ case "$name $*" in
   "sysctl -n hw.ncpu") echo 4 ;;
   "brew --prefix llvm") echo "$STUB_LLVM" ;;
   "xcrun --show-sdk-path") echo /sdk ;;
+  # Windows: robocopy's destination, as check.ps1's Bundle reads it, and the sanitizer runtime
+  # the glue tests must load.
+  "robocopy "*) mkdir -p "\${2//\\\\//}/Contents/x86_64-win" ;;
+  "dumpbin "*) echo "    clang_rt.asan_dynamic-x86_64.dll" ;;
 esac
+`;
+
+// A PowerShell script's stub is PowerShell, run by & as check.ps1 runs it; it fails by throwing,
+// as the real one does.
+const powerShellStub = `$name = [IO.Path]::GetFileName($PSCommandPath)
+Add-Content $env:STUB_LOG "$name $args"
+if ($env:STUB_FAIL -and "$name $args" -match $env:STUB_FAIL) { throw "$name failed" }
 `;
 
 const stub = (path: string) => {
   mkdirSync(dirname(path), { recursive: true });
+  if (path.endsWith(".ps1")) {
+    writeFileSync(path, powerShellStub);
+    return;
+  }
   writeFileSync(
     path,
     `#!/bin/bash
 name="$(basename "$0")"
 echo "$name $*" >> "$STUB_LOG"
 ${stubOutput}
-if [[ -n "\${STUB_FAIL:-}" && "$name $*" =~ $STUB_FAIL ]]; then exit 1; fi
+if [[ -n "\${STUB_FAIL:-}" && "$name $*" =~ $STUB_FAIL ]]; then exit "\${STUB_STATUS:-1}"; fi
 exit 0
 `,
   );
@@ -88,9 +104,13 @@ export class Layout {
     stub(join(this.root, path));
   }
 
-  run(command: string[], env: Record<string, string> = {}): Run {
+  run(
+    command: string[],
+    env: Record<string, string> = {},
+    shell = "bash",
+  ): Run {
     rmSync(this.log, { force: true });
-    const result = spawnSync("bash", command, {
+    const result = spawnSync(shell, command, {
       cwd: this.root,
       encoding: "utf8",
       env: {
