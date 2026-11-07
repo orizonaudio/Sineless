@@ -16,7 +16,6 @@ export interface Frame {
   readonly startFraction: number;
   readonly peak: number;
   readonly rms: number;
-  readonly frequency: number | undefined;
   readonly synced: boolean;
   readonly limited: boolean;
   readonly partial: boolean; // The sweep's first pass is still filling in.
@@ -136,7 +135,6 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     }
   }
 
-  const frequency = f32("frequency");
   const cursor = f32("cursor");
   const triggerPosition = f32("triggerPosition");
   return {
@@ -148,7 +146,6 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     startFraction: f32("startFraction"),
     peak: f32("peak"),
     rms: f32("rms"),
-    frequency: Number.isNaN(frequency) ? undefined : frequency,
     synced: (flags & FrameFlag.synced) !== 0,
     limited: (flags & FrameFlag.limited) !== 0,
     partial: (flags & FrameFlag.partial) !== 0,

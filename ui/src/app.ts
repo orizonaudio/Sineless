@@ -48,10 +48,8 @@ import {
 import type { SettingsStore } from "./store/settings-store.ts";
 import { amplitudeLabels, timeLabels } from "./view/axis-labels.ts";
 import {
-  formatDbfs,
   formatGain,
   formatOffset,
-  formatFrequency,
   parseQuantity,
   signed,
 } from "./view/format.ts";
@@ -60,6 +58,7 @@ import {
   initialCursors,
   initialLevels,
   levelReadout,
+  meterReadout,
   type ReadoutRow,
   measure,
   type CursorPair,
@@ -298,6 +297,9 @@ export class OscilloscopeApp {
   // The fields whose button names the value chosen in their popover.
   private readonly choiceSummaries = new Map<ChoiceSetting, ChoiceSummary>();
   private triggerSummary: StackedSummary | undefined;
+  // What the Meter shows: the frame's peak and RMS as last taken on the readout schedule, so a
+  // cursor drag between two refreshes redraws the corner without refreshing them.
+  private meterValues = { peak: Number.NaN, rms: Number.NaN };
   // The readouts' channel: lit as the frame measured it, not as the setting asks.
   private readoutChoices: Segmented | undefined;
   // The trigger's source: lit as the frame's trigger reads, not as the setting asks.
@@ -753,6 +755,9 @@ export class OscilloscopeApp {
         this.store.get("hoverReadout") === "on" ? "off" : "on",
       );
     });
+    element("meter-toggle").addEventListener("click", () => {
+      this.request("meter", this.store.get("meter") === "on" ? "off" : "on");
+    });
     element("auto-freeze").addEventListener("click", () => {
       this.request(
         "autoFreeze",
@@ -797,16 +802,17 @@ export class OscilloscopeApp {
     element(button).setAttribute("aria-expanded", "false");
   }
 
-  // What Peak, RMS and Freq measure (DESIGN.md 1.2.1): in Single the channel the frame names,
-  // this track's Mid in Multi, whose frames carry a lane set, a frame with no tempo
-  // included. Read from the frame on screen, whatever the settings now say until the next frame
-  // comes; before any frame, the display mode decides. In Single on a stereo track the tag opens
-  // the readouts' popover, which lights the channel measured and offers only the views drawn.
+  // The Channel button: what the Meter, snapping and the overlaid hover read (DESIGN.md 1.2.1): in
+  // Single the channel the frame names, this track's Mid in Multi, whose frames carry a lane set,
+  // a frame with no tempo included. Read from the frame on screen, whatever the settings now say
+  // until the next frame comes; before any frame, the display mode decides. In Single it opens the
+  // Channel popover, which lights the channel read and offers only the views drawn (L alone on a
+  // mono track); in Multi it is a label.
   private updateReadoutTag(): void {
     const frame = this.lastFrame;
     const thisTrack =
       frame === undefined ? this.multiMode() : frame.laneSet !== 0;
-    // Short, as the Views field's letters: TT for this track, L, R, M or S; named in full for
+    // Short, as the Views field's letters, L, R, M or S, or TT for this track; named in full for
     // screen readers.
     const view =
       frame === undefined ? undefined : viewOrder[readoutView(frame)];
@@ -818,13 +824,9 @@ export class OscilloscopeApp {
     const tag = element("readout-tag");
     if (tag.textContent !== text) {
       tag.textContent = text;
-      element("readout-details").setAttribute(
-        "aria-label",
-        `Readouts: ${name}`,
-      );
+      element("readout-details").setAttribute("aria-label", `Channel: ${name}`);
     }
-    const choosable =
-      !thisTrack && frame !== undefined && this.inputChannels > 1;
+    const choosable = !thisTrack && frame !== undefined;
     element("readout-details").setAttribute(
       "aria-disabled",
       String(!choosable),
@@ -945,6 +947,13 @@ export class OscilloscopeApp {
         String(value === "on"),
       );
       this.updateHover();
+    }
+    if (name === "meter") {
+      element("meter-toggle").setAttribute(
+        "aria-pressed",
+        String(value === "on"),
+      );
+      this.updateCursorReadout();
     }
     if (name === "autoFreeze") {
       element("auto-freeze").setAttribute(
@@ -1724,8 +1733,15 @@ export class OscilloscopeApp {
       frame === undefined
         ? 0
         : frame.visibleSamples / (frame.viewEnd - frame.viewStart);
-    // A titled section per kind of cursor, its rows a label and a value, as a popover's.
+    // A titled section for the Meter, on top as its button comes first, then one per kind of
+    // cursor, its rows a label and a value, as a popover's.
     const sections: { title: string; rows: ReadoutRow[] }[] = [];
+    if (this.store.get("meter") === "on") {
+      sections.push({
+        title: "Meter",
+        rows: meterReadout(this.meterValues.peak, this.meterValues.rms),
+      });
+    }
     if (
       this.timeCursors !== undefined &&
       frame !== undefined &&
@@ -2298,13 +2314,14 @@ export class OscilloscopeApp {
       this.shownChips = shown;
       this.showChips(chips);
     }
-    this.updateCursorReadout();
-    this.updateHover(); // Live data changes under a resting pointer.
     const frame = this.lastFrame;
     if (frame !== undefined) {
-      element("peak").textContent = formatDbfs(frame.peak);
-      element("rms").textContent = formatDbfs(frame.rms);
-      element("frequency").textContent = formatFrequency(frame.frequency);
+      // Taken on the readout schedule whether or not the Meter shows, so it shows them at once.
+      this.meterValues = { peak: frame.peak, rms: frame.rms };
+    }
+    this.updateCursorReadout();
+    this.updateHover(); // Live data changes under a resting pointer.
+    if (frame !== undefined) {
       this.updateMatches(frame);
     }
   }

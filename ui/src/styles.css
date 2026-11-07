@@ -822,8 +822,9 @@ button[aria-pressed="true"]:focus-visible {
   gap: 6px;
 }
 
-/* A fixed width, so the state coming and going never moves the readouts. */
+/* At the bar's right edge, in a fixed width, so the state coming and going moves nothing. */
 .status-right {
+  margin-left: auto;
   gap: 10px;
 }
 
@@ -833,7 +834,11 @@ button[aria-pressed="true"]:focus-visible {
   justify-content: flex-start;
   align-items: center;
   gap: 10px;
-  width: 200px;
+  /* What the status bar leaves at the minimum width, less the 8 px it keeps to spare (measured: the
+     left group 381, the gap between the groups 16, the right group's buttons and gaps 60, of 986
+     between the bar's padding), rounded down to 10. Fixed, so the chips fold at the same count at
+     every window width. */
+  width: 520px;
 }
 
 .chip {
@@ -907,28 +912,18 @@ button[aria-pressed="true"]:focus-visible {
   display: grid;
 }
 
-.readouts {
-  flex: 1 1 auto !important;
-  display: flex;
-  justify-content: center;
-  /* Centred on the bar: the channel button is taller than the readouts' text. */
-  align-items: center;
-  gap: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* What the readouts measure: in Single a button that opens the readouts' popover above it; a
-   plain label otherwise, with no chevron. A fixed width, so the name changing moves nothing. */
+/* The Channel button, what the Meter, snapping and the overlaid hover read: in Single a button
+   that opens its popover above it; a plain label in Multi, with no chevron. */
 .readout-group {
   position: relative;
   display: flex;
   align-self: center;
 }
 
-/* A field like the toolbar's, as wide as "TT" and its arrow (measured at 64.4), so the name
-   changing moves nothing. */
+/* A field like the toolbar's, as wide as a letter and its arrow (measured at 57.2; TT, with no
+   arrow, takes 50.4), so the name changing moves nothing. */
 .readout-tag {
-  min-width: 65px;
+  min-width: 58px;
   box-sizing: border-box;
 }
 
@@ -944,32 +939,6 @@ button[aria-pressed="true"]:focus-visible {
   top: auto;
   left: 0;
   bottom: calc(100% + 8px);
-}
-
-/* Each readout keeps a fixed width, so a longer value never moves the next one. */
-.readout {
-  display: flex;
-  gap: 5px;
-  align-items: baseline;
-  min-width: 104px;
-}
-
-.readout:last-child {
-  min-width: 112px;
-}
-
-.readout b {
-  font-weight: 400;
-  color: var(--sl-ink-2);
-}
-
-.readout span {
-  font: 500 12px var(--sl-font-value);
-}
-
-.readout small {
-  font-size: 11px;
-  color: var(--sl-ink-2);
 }
 
 /* The help switch, and the tooltips it turns on. */

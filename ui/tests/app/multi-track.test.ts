@@ -88,11 +88,6 @@ describe("the multi-track view", () => {
     expect(y).toBeGreaterThan(0);
     expect(y).toBeLessThan(0.25);
   });
-
-  test("shows no frequency: a multi-track frame carries none", async () => {
-    await show("Multi");
-    await expect.element(byId("frequency")).toHaveTextContent("—");
-  });
 });
 
 describe("the Compare view", () => {

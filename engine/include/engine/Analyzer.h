@@ -337,13 +337,6 @@ private:
     // image could not be read.
     bool updateStats(BlockStats& stats, const SweepImage& image, protocol::ChannelView view,
                      int channels, bool fresh, std::size_t block);
-    // Readouts of samples [first, end) of a sweep: their levels from `stats`, and the frequency
-    // over the newest second of `view` in `live` (the capture, or what was held on freeze) ending
-    // at `liveEnd`, recorded at `sampleRate`. False, with `readouts` untouched, if that audio is
-    // gone.
-    bool measureSweepReadouts(const BlockStats& stats, std::size_t first, std::size_t end,
-                              const SampleSource& live, std::uint64_t liveEnd, double sampleRate,
-                              protocol::ChannelView view, int channels, Readouts& readouts);
     // Tempo-synced Compare frames, over screen positions of the sweep of `length` samples: lane
     // `index`'s Mid from `from` (silent while the lane is not on that length), and the sum of
     // `parts` from `position`.

@@ -88,8 +88,9 @@ export const settings = {
     values: "ChannelView",
     defaultValue: ChannelView.mid,
   },
-  // The channel Peak, RMS and Freq measure in the Single display mode, when it is drawn; the
-  // first drawn view otherwise. Multi, with or without Compare, measures this track's Mid.
+  // The Channel: what the Meter, and with the views overlaid the hover and snapping, read in the
+  // Single display mode, when it is drawn; the first drawn view otherwise. Multi, with or without
+  // Compare, reads this track's Mid. Saved under its first name.
   readoutSource: {
     kind: "enum",
     values: "ChannelView",
@@ -150,6 +151,8 @@ export const settings = {
   compare: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
   // The readout beside the pointer over the traces.
   hoverReadout: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
+  // The Meter in the screen's corner: Peak, RMS and their crest factor, over the whole span.
+  meter: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
   // The pitch of A4 that note names refer to, in Hz.
   concertPitch: {
     kind: "number",

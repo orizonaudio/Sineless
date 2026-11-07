@@ -3,7 +3,7 @@
 import { describe, expect, test } from "vitest";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
-import { formatDbfs, formatFrequency } from "../../src/view/format.ts";
+import { formatDbfs } from "../../src/view/format.ts";
 import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
 
 describe("a recorded mono track, a full-scale 400 Hz sine", () => {
@@ -29,13 +29,14 @@ describe("a recorded mono track, a full-scale 400 Hz sine", () => {
     ]);
   });
 
-  test("reads the sine's levels and pitch", async () => {
-    await expect.element(byId("peak")).toHaveTextContent(formatDbfs(1));
+  // What the Meter shows, which this recording keeps off: the frame's levels of the one channel,
+  // not 6 dB lower as half of a stereo pair would read.
+  test("measures the sine's levels on its one channel", async () => {
     await expect
-      .element(byId("rms"))
-      .toHaveTextContent(formatDbfs(Math.SQRT1_2));
-    await expect
-      .element(byId("frequency"))
-      .toHaveTextContent(formatFrequency(400));
+      .poll(() => formatDbfs(window.orizonDebug?.lastFrame?.peak ?? Number.NaN))
+      .toBe(formatDbfs(1));
+    expect(formatDbfs(window.orizonDebug?.lastFrame?.rms ?? Number.NaN)).toBe(
+      formatDbfs(Math.SQRT1_2),
+    );
   });
 });

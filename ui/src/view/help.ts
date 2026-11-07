@@ -3,9 +3,6 @@
 
 import {
   analysisGateDbfs,
-  highestAudibleHz,
-  lowestAudibleHz,
-  frequencyWindowSeconds,
   levelFloorDbfs,
   matchReachSeconds,
   matchWindowSeconds,
@@ -25,7 +22,6 @@ const lanesMulti = String(maxLanes);
 const lanesCompare = String(maxLanes - 1);
 const reach = formatSeconds(matchReachSeconds);
 const matchWindow = formatSeconds(matchWindowSeconds);
-const frequencyWindow = formatSeconds(frequencyWindowSeconds);
 const margin = String(summingMarginDb);
 const levelFloor = String(levelFloorDbfs).replace("-", "−");
 const gate = String(analysisGateDbfs).replace("-", "−");
@@ -34,9 +30,6 @@ const positionLowest = formatPercent(settings.triggerPosition.minimum);
 const positionHighest = formatPercent(settings.triggerPosition.maximum);
 const positionCoarse = formatPercent(positionStep);
 const positionFine = formatPercent(positionFineStep);
-// The audible range, as the readouts name frequencies only within it.
-const lowestAudible = `${String(lowestAudibleHz)} Hz`;
-const highestAudible = `${String(highestAudibleHz / 1000)} kHz`;
 const shortestTriggerSpan = formatSeconds(settings.triggerSpan.minimum);
 const longestTriggerSpan = formatSeconds(settings.triggerSpan.maximum);
 const shortestFreeSpan = formatSeconds(settings.freeSpan.minimum);
@@ -105,19 +98,11 @@ export const helpTexts = {
   },
   status: {
     title: "Status",
-    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode, Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in yellow.",
+    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode, Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the Meter and Compare measure around them, and the lanes holding them are named in yellow.",
   },
-  peak: {
-    title: "Peak",
-    text: `The highest sample level over the whole span, in dBFS, of the channel named beside the readouts. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
-  },
-  rms: {
-    title: "RMS",
-    text: `The average power over the whole span, in dBFS, measured like Peak: a full-scale sine reads −3 dB RMS. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
-  },
-  frequency: {
-    title: "Frequency",
-    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average, of the channel named beside the readouts. A dash means no steady repetition was found, the signal is below ${gate} dBFS, or the pitch is outside the audible range, ${lowestAudible} to ${highestAudible}.`,
+  meter: {
+    title: "Meter",
+    text: `When on, the screen's corner shows the Meter, over the whole span of the channel named in the status bar (this track in Multi): Peak, the highest sample level, and RMS, the average power, in dBFS (a full-scale sine reads −3 dB RMS), and Crest, how far the peak stands above the RMS, in dB: 3 dB for a sine, more for spikier sounds. Below ${levelFloor} dBFS a level reads −∞, and Crest a dash. Indicative, not a standards-compliant meter.`,
   },
   screen: {
     title: "Screen",
@@ -201,7 +186,7 @@ export const helpTexts = {
   },
   triggerSource: {
     title: "Trigger source",
-    text: "Which signal the trigger watches, among the views drawn; while the one chosen is hidden, it watches the first view drawn. It changes only what the trigger reads: the readouts keep their own channel, chosen beside them in the status bar. Not used in Multi, which shows each track's Mid.",
+    text: "Which signal the trigger watches, among the views drawn; while the one chosen is hidden, it watches the first view drawn. It changes only what the trigger reads: the Meter, the hover and snapping keep their own channel, chosen with the Channel button in the status bar. Not used in Multi, which shows each track's Mid.",
   },
   triggerSlope: {
     title: "Slope",
@@ -228,8 +213,8 @@ export const helpTexts = {
     text: "When on, resting the pointer on a trace shows, beside it, the position there, the level, and the length, frequency and note of the cycle around it. A dotted line marks the column or point read, and a faint band the cycle measured.",
   },
   readoutSource: {
-    title: "What the readouts measure",
-    text: "The channel Peak, RMS and Freq read: L, R, M or S for Left, Right, Mid or Side, TT for this track. In Single, click to choose L, R, M or S among the views drawn; while the one chosen is hidden, they read the first view drawn. Multi reads this track's Mid (TT), and a mono track its one channel, L.",
+    title: "Channel",
+    text: "The channel the Meter reads: L, R, M or S for Left, Right, Mid or Side. With the views overlaid, the hover readout and the cursors' snapping read it too; stacked, each lane reads its own trace. In Single, click to choose among the views drawn; while the one chosen is hidden, the first view drawn is read. A mono track has only L. Multi reads this track's Mid: TT, this track.",
   },
   concertPitch: {
     title: "Concert pitch",

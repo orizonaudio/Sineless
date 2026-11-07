@@ -260,11 +260,19 @@
           <span id="message-text"></span>
         </div>
       </main>
-      <!-- Left: the cursor buttons and concert pitch, which never change width. Centre: the
-           readouts, labelled with what they measure. Right: the state, in a fixed width, and
-           Help. Nothing here moves when the state or a value changes. -->
+      <!-- Left: the Meter's button and the cursor buttons, then the channel they read and concert
+           pitch, which never change width. Right: the state, in a fixed width, Help and About.
+           Nothing here moves when the state or a value changes. -->
       <footer class="statusbar">
         <div class="status-left">
+          <button
+            class="action"
+            id="meter-toggle"
+            aria-pressed="false"
+            data-help="meter"
+          >
+            Meter
+          </button>
           <button
             class="action"
             id="time-cursors"
@@ -290,12 +298,6 @@
             Hover
           </button>
           <span class="divider"></span>
-          <div class="tool icon-field" data-help="concertPitch">
-            <i>A4</i>
-            <div id="concert-pitch-field"></div>
-          </div>
-        </div>
-        <div class="readouts">
           <div class="readout-group" id="readout-group">
             <button
               class="field-button readout-tag"
@@ -314,21 +316,16 @@
               </svg>
             </button>
             <div class="popover readout-popover" id="readout-popover" hidden>
-              <div class="popover-title">Readouts</div>
+              <div class="popover-title">Channel</div>
               <div class="popover-row" data-help="readoutSource">
-                <span>Channel</span>
+                <span>Reads</span>
                 <div class="segmented" id="readout-source"></div>
               </div>
             </div>
           </div>
-          <div class="readout" data-help="peak">
-            <b>Peak</b><span id="peak">—</span><small>dBFS</small>
-          </div>
-          <div class="readout" data-help="rms">
-            <b>RMS</b><span id="rms">—</span><small>dBFS</small>
-          </div>
-          <div class="readout" data-help="frequency">
-            <b>Freq</b><span id="frequency">—</span><small>Hz</small>
+          <div class="tool icon-field" data-help="concertPitch">
+            <i>A4</i>
+            <div id="concert-pitch-field"></div>
           </div>
         </div>
         <div class="status-right">

@@ -41,7 +41,7 @@ TEST(ProtocolHeader, LaysOutTheFrameHeaderWithNaturalAlignment)
     EXPECT_EQ(FrameHeader::kReadoutViewOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kTriggerViewOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kTriggerPositionOffset % 4, 0u);
-    EXPECT_EQ(FrameHeader::kSize, 100u);
+    EXPECT_EQ(FrameHeader::kSize, 96u);
     EXPECT_EQ(kMatchValues, 3u);
 }
 

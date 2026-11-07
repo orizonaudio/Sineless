@@ -3,6 +3,7 @@
 // two horizontal lines, 1 and 2, at sample values, so that they follow the vertical scale.
 // Temporary display state only; they are never saved.
 import {
+  crestFactorDb,
   formatMusicalLength,
   formatDbDifference,
   formatDbfs,
@@ -143,6 +144,18 @@ export interface LevelPair {
 // New level cursors sit at half and a quarter of full scale: 6 and 12 dB below the top.
 export function initialLevels(fullScale: number): LevelPair {
   return { first: fullScale / 2, second: fullScale / 4 };
+}
+
+// The Meter's rows, from the frame's peak and RMS (linear): each in dBFS, and the crest factor
+// between them in dB; "—" without a unit for a value the frame does not have.
+export function meterReadout(peak: number, rms: number): ReadoutRow[] {
+  const level = (linear: number) =>
+    Number.isFinite(linear) ? `${formatDbfs(linear)} dBFS` : formatDbfs(linear);
+  return [
+    { label: "Peak", value: level(peak) },
+    { label: "RMS", value: level(rms) },
+    { label: "Crest", value: formatDbDifference(crestFactorDb(peak, rms)) },
+  ];
 }
 
 // The readout rows: each level in dBFS, and the difference between them in dB.

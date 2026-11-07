@@ -14,7 +14,7 @@ Sineless™ is an open-source oscilloscope by Orizon Audio, as a VST3 plugin and
 - Freeze, then pan back through the last 4 seconds in Trig and Free; optionally freeze automatically when the transport stops.
 - Zoom in down to individual samples with ⌘ + scroll (Ctrl on Windows), pinch or drag.
 - Time and level cursors that snap to zero crossings and peaks: read the time between them, its frequency and nearest note, beats, and levels in dB.
-- Indicative peak, RMS and frequency readouts, of L, R, Mid or Side as you choose.
+- An optional Meter: indicative peak, RMS and crest factor, of L, R, Mid or Side as you choose.
 - Built-in help: turn it on, and every control explains itself.
 - Settings are saved with your project.
 

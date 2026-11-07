@@ -65,21 +65,22 @@ and what a freeze holds.
 | | Trigger | Free | Beats (sweep) |
 | --- | --- | --- | --- |
 | **Single display mode**: trigger reads | Trigger source, when drawn | — | — |
-| **Single display mode**: readouts, cursor snap, hover | Readout source, when drawn | Same | Same |
+| **Single display mode**: the Meter; overlaid, cursor snap and hover | The Channel, when drawn | Same | Same |
 | **Multi** (Compare on or off): trigger reads | This track's Mid | — | — |
 | **Multi** (Compare on or off): readouts, cursor snap | This track's Mid | This track's Mid | This track's Mid |
 | Freeze holds | Newest 4.25 s (4 s to pan through); lanes 1 s more | Same | Readable capture (7/8); sweep image kept |
 | Pan while frozen | Yes, not zoomed | Yes, not zoomed | No |
 | Time labels | From the trigger point | Back from the right edge | bar.beat over project time |
 
-The trigger source picks only the channel the trigger reads. Like the readout source, it is used only
+The trigger source picks only the channel the trigger reads. Like the Channel, it is used only
 while its view is drawn; otherwise the trigger reads the first view drawn, and the frame names the
-view read, which the level marker takes the lane and colour of. The readout source, chosen in the
-status bar, is measured only while its view is drawn; otherwise the readouts measure the first view
-drawn (L, R, M, S order), and the choice applies again once its view is drawn again. The frame
-names the channel measured, the *readout channel*, so it is always a drawn trace. On a mono track,
-L takes the place of the trigger source and of the readout channel in Single display mode. Level
-cursors in stacked lanes snap to each lane's own trace. Holds keep 7/8 of the capture because the audio thread keeps writing into the
+view read, which the level marker takes the lane and colour of. The Channel (the readout source
+setting), chosen with the Channel button in the status bar, is read only while its view is drawn;
+otherwise the first view drawn (L, R, M, S order) is read, and the choice applies again once its
+view is drawn again. The frame names the channel read, the *readout channel*, which the button
+names, so it is always a drawn trace. On a mono track, L takes the place of the trigger source and
+of the readout channel in Single display mode. In stacked lanes, level cursors snap to each lane's
+own trace and the hover reads the lane under the pointer. Holds keep 7/8 of the capture because the audio thread keeps writing into the
 last eighth while a freeze copies (5.2, CaptureRing).
 
 #### 1.2.2 Requirements
@@ -92,7 +93,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-4 | In the Free time base the window *runs free*, whatever the trigger mode: it ends at the newest audio and moves with it. It shows exactly the span, on columns on a grid fixed to absolute sample positions (column *k* covers ⌊*k*·span/columns⌋ onwards), so the trace does not shimmer; time labels and hover read back from the right edge; a freeze keeps the right edge, also when Trigger is then chosen (its span then ends there); no chip names it, as the time base's button does. Live, the right edge is *paced* (AD-29): it moves evenly between the host's blocks, a measured delay (about a block, at most `pacingDelayCapSeconds`) behind the newest audio, never past it; the newest sample offline, before the block clock locks, and for spans under `pacedSpanMinimumSeconds`. Auto drawing untriggered ends at the paced edge too. On macOS 14+ each frame reads the edge at the display clock's time, so successive frames move by exactly their refreshes' worth of audio (AD-30). | `FreeRunningTests`, `AnalyzerTests`, `PacedAnalyzerTests`, `MotionTests`, `FramePacingTests` |
 | FR-5 | Channel views L, R, Mid = (L+R)/2 and Side = (L−R)/2, overlaid or stacked, with the trigger source selectable among the views drawn. On a mono track only L exists: it is drawn, triggered on and measured, and the other views are disabled. Views apply in Single display mode; Multi shows each track's Mid. | `ChannelViewsTests`, `ui/tests/app/mono.test.ts` |
 | FR-6 | Freeze holds recent audio, and scale, views, zoom, cursors and readouts keep working on it. In Trigger and Free a freeze holds the newest 4 s (`frozenHoldSeconds`), which can be panned back through while not zoomed, as far as the frame's pan reach, and twice `pacingDelayCapSeconds` more, so that freezing a paced window keeps the window last shown. In Beats it holds what the capture holds (FR-9.6). A frozen view keeps the sample rate its audio was recorded at. Freeze is never saved. | `HoldBufferTests`, `ui/tests/app/frozen-pan.test.ts`, `held-rate.test.ts` |
-| FR-7 | Readouts of sample peak, RMS and estimated frequency, for the readout channel (1.2.1), which the readout source chooses in Single display mode. They are indicative, not standards-compliant metering; help says so. Peak and RMS cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen. Frequency is measured over the newest 1 s (`frequencyWindowSeconds`) from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`); it is shown only when at least 60% of cycles fall within 15% of the median (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`), as the mean of those cycles, marked ≈, and only within the audible range, 20 Hz to 20 kHz (`lowestAudibleHz`, `highestAudibleHz`): outside it every frequency, here, at the time cursors and in the hover readout, reads "—". Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/app/readouts.test.ts` |
+| FR-7 | The Meter: with its toggle on (saved, off by default), a panel in the screen's top-right corner, above the cursor readouts, shows the sample peak and the RMS in dBFS of the readout channel (1.2.1), which the readout source chooses in Single display mode, and their crest factor in dB: the peak's level over the RMS's, from the levels as measured and rounded once, so a sine reads 3.0 dB at every level; "—" when either has no level (not measured, or −∞ at the level floor, as silence is). They are indicative, not standards-compliant metering; help says so. They cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen; switched on, the Meter shows the levels last taken at once. The engine measures them with the Meter off too, for the Invalid samples chip. There is no frequency readout: the time cursors (FR-12.1) and the hover readout (FR-16.1) give the frequency where the signal repeats. Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/crest-factor.test.ts`, `ui/tests/app/meter.test.ts` |
 | FR-8 | All settings (table below) are saved with the host project as plugin state; none is a host-automatable parameter. A value is accepted only if finite and in range (enum and flag values integral, flags non-empty); an invalid value is refused, not clamped. | `StateTests`, `SettingsTests`, `setting-values.test.ts` |
 | FR-9 | Tempo sync (Beats time base). | `SweepTests`, `SweepImageTests`, `TimelineTests`, `MatrixTests` |
 | FR-9.1 | The span is a beat span, in bars of the host time signature, from 1/8 bar to 16 bars (1.3), at the host tempo; a beat is a quarter note. Typed, a span may be its number alone ("16", "1/4"). The display sweeps: the left edge is the start of the current cycle, aligned to multiples of the span from the project start. Until the host has reported a tempo (an instance it has not played through yet), nothing is placed: no sweep, grid or bar labels, and the UI says so ("No tempo"). | `AnalyzerTests`, `ui/tests/app/no-tempo.test.ts` |
@@ -104,9 +105,9 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-10 | View zoom: the displayed frame can be magnified horizontally, to 1/256 of the span (`minimumViewWidth`), and panned, in every mode. Zoom is temporary: it never changes a setting, and it resets when the span, beat span or time base changes. The engine renders the zoomed region at full resolution: the trigger, free-running or sweep window is placed from the whole span, and only the visible part is reduced to screen columns. Peak and RMS still cover the whole span. | `zoom.test.ts`, `AnalyzerTests` |
 | FR-11 | Auto-freeze: when on, the display freezes when the host transport goes from playing to stopped while the editor is open, and resumes when it plays again. A freeze made by the user or by Single mode is never ended by playback; unfreezing by hand while stopped cancels the resume. Turning Auto-freeze off leaves a current freeze in place. When off, the transport does not affect freezing. On in a new instance; a project saved before Auto-freeze existed (state version 1) opens with it on, as a missing setting takes its default (8.4). | `AnalyzerTests` |
 | FR-12 | Cursors. | `cursors.test.ts`, `snap.test.ts` |
-| FR-12.1 | Time cursors: two vertical lines, A and B, starting at 1/3 and 2/3 of the screen. The readout, titled "Time cursors", gives one row each: A and B (the project time in Beats; from the trigger point when triggered; back from the right edge when free-running, as the hover reads a point), Δt, its frequency 1/Δt (f) and the nearest note with its cent offset (Note), both "—" outside the audible range (FR-7), in Beats the distance Δb (below a beat in fractions of a beat to a 32nd, then in beats to two decimals up to a bar, then in bars), and Δs in samples; a row with no value shows "—". They sit at positions in the signal, so they follow zoom and pan. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
+| FR-12.1 | Time cursors: two vertical lines, A and B, starting at 1/3 and 2/3 of the screen. The readout, titled "Time cursors", gives one row each: A and B (the project time in Beats; from the trigger point when triggered; back from the right edge when free-running, as the hover reads a point), Δt, its frequency 1/Δt (f) and the nearest note with its cent offset (Note), both "—" outside the audible range (FR-16.1), in Beats the distance Δb (below a beat in fractions of a beat to a 32nd, then in beats to two decimals up to a bar, then in bars), and Δs in samples; a row with no value shows "—". They sit at positions in the signal, so they follow zoom and pan. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
 | FR-12.2 | Level cursors: two horizontal lines, 1 and 2, drawn in every lane at a sample value, starting 6 and 12 dB below the top of the screen (−6 and −12 dBFS at the default scale); the readout, titled "Level cursors" and ruled off from the time cursors' when both are on, gives each level in dBFS and the difference in dB. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
-| FR-12.3 | While dragged, time cursors snap to zero crossings and to where the trace reaches its highest and lowest values, and level cursors to the trace's highest and lowest values and to zero, within 10 px; holding ⌥ (Alt on Windows) places them freely. They snap to the readout channel (1.2.1), always a drawn trace; level cursors in stacked lanes use the lane's own trace. | |
+| FR-12.3 | While dragged, time cursors snap to zero crossings and to where the trace reaches its highest and lowest values, and level cursors to the trace's highest and lowest values and to zero, within 10 px; holding ⌥ (Alt on Windows) places them freely. With the views overlaid they snap to the readout channel, which the Channel button chooses (1.2.1), always a drawn trace; stacked, time cursors snap to the lane they are dragged in and level cursors to the lane's own trace. | |
 | FR-12.4 | Cursors work live and frozen, and are temporary (not saved). | |
 | FR-13 | Help: a toggle near the right end of the status bar, before About, off whenever the editor opens. While on, resting the pointer on any control, readout or the screen for 400 ms shows a tooltip that explains what it is, what it does and how to use it, with numbers read from the shared limits. A drag, a move with a mouse button held, never shows one. While off, the UI shows no tooltips except the help switch's own, so it can be found. Turning help on with the switch says so at once, in a tooltip above the switch, until the switch is pressed again, a press lands elsewhere or the pointer leaves the switch; a small move over the switch keeps it. | `help.test.ts`, `ui/tests/app/help-tips.test.ts` |
 | FR-13.1 | About: an info button after Help, at the right end of the status bar, opens a popover with the product's name and its version as the host lists it, shown also when the editor cannot reach the engine. In a build with the brand (AD-27) it also holds About us, which opens the vendor's contact page in the default browser, never in the editor. The page names no address: the editor opens only the one it was built with. | `ui/tests/app/about.test.ts`, `EditorTest.ShowsTheVersionTheHostIsGiven`, `EditorTest.AboutUsOpensTheVendorsPageOnlyInABrandedBuild` |
@@ -125,7 +126,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-15.6 | The sum lane is shaded where its peak is more than 3 dB below the louder compared track's, when at least one checked track is related to this one; very quiet stretches (about 26 dB below the loudest) are not shaded, and gaps of three columns or less are bridged. | `trace-geometry.test.ts` |
 | FR-15.7 | Freeze, zoom, cursors and every time base work as in Multi without Compare. | |
 | FR-16 | Hover readout and measuring extras. | `hover.test.ts`, `musical-grid.test.ts` |
-| FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace shows beside it the trace's name, the position (bar.beat.sixteenth, the sixteenth shown on whole beats too, and project time in Beats; time from the trigger point when triggered; time back from the right edge when free-running), the peak level there, and the cycle around the pointer: its length and its frequency and note, one row each, a row with no value "—". The readout is placed at whole pixels. Cycles are found as in FR-7 (rising crossings of the mean, with neighbouring cycles within 15%, above −90 dBFS); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and marked approximate (≈), its note's cents included. A dotted line marks the point read and a band the cycle. | |
+| FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace (stacked, the lane under the pointer; overlaid, the readout channel, 1.2.1) shows beside it the trace's name, the position (bar.beat.sixteenth, the sixteenth shown on whole beats too, and project time in Beats; time from the trigger point when triggered; time back from the right edge when free-running), the peak level there, and the cycle around the pointer: its length and its frequency and note, one row each, a row with no value "—". The readout is placed at whole pixels. Cycles are found from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`), only where a neighbouring cycle lasts within 15% of it (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and marked approximate (≈), its note's cents included. A frequency outside the audible range, 20 Hz to 20 kHz (`lowestAudibleHz`, `highestAudibleHz`), here and at the time cursors, reads "—" and has no note. A dotted line marks the point read and a band the cycle. | |
 | FR-16.2 | Beats-mode grid labels carry the project time under bar.beat. | |
 | FR-16.3 | A concert pitch setting (A4, 400–500 Hz, default 440) in the status bar tunes every note name. | |
 
@@ -143,7 +144,7 @@ against it and the UI builds its controls from it.
 | View layout | Overlaid, stacked | Stacked |
 | Trigger mode | Auto, Normal, Single | Auto |
 | Trigger source (used only while drawn, 1.2.1) | L, R, Mid, Side | Mid |
-| Readout source (Single; measured only while drawn, 1.2.1) | L, R, Mid, Side | Mid |
+| Channel, saved as the readout source (Single; read only while drawn, 1.2.1) | L, R, Mid, Side | Mid |
 | Trigger slope | Rising, falling | Rising |
 | Trigger level | −1.0 … +1.0 (linear, full scale) | 0.0 |
 | Trigger hysteresis | 0 … 0.5 (linear, full scale) | 0.01 |
@@ -156,6 +157,7 @@ against it and the UI builds its controls from it.
 | Group | A, B, C, D | A |
 | Compare (applies in Multi; kept in Single) | Off, on | Off |
 | Hover readout | Off, on | Off |
+| Meter | Off, on | Off |
 | Concert pitch (A4) | 400 – 500 Hz, linear | 440 Hz |
 
 Enumeration names are stable: projects save them; the numbers may change. Values that are not
@@ -197,7 +199,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   folds away or hides as the window narrows (AD-26).
 - The editor's minimum width, 1010 px, is the narrowest that fits the widest toolbar (Trigger, the
   Single trigger mode and frozen) and the status bar in every state, the wordmark included (the
-  editor tests check each state). Its minimum height is 400 px, or 84 px plus 40 px per stacked
+  editor tests check each state). Its minimum height is 420 px (`minimumEditorHeight`, the tallest corner panel: Time cursors in Beats, Level cursors and the Meter), or 84 px plus 40 px per stacked
   lane when that is more (with Compare on, its sum lane counts); the editor asks the host to grow when lanes
   are added. The default size is 1010 × 580. The size is kept in CSS
   pixels across display-scale changes.
@@ -211,9 +213,9 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Views popover in Multi | Group (A \| B \| C \| D) · Compare (On \| Off) |
 | Views popover | L, R, M, S toggles, each with its trace's colour |
 | Trigger popover | Mode (Auto \| Normal \| Single), Source (Single; the views not drawn disabled, the view the trigger reads lit), Slope, Level, Hysteresis, Hold-off, Position |
-| Screen, top right | The cursor readout; the frame barcode instead while the diagnostic switch is on (§8.3) |
-| Status bar | Left: Time, Level, Hover · A4 (concert pitch). Centre: what the readouts measure (in Single on a stereo track, a button opening the readout popover) · Peak, RMS, Freq. Right: the state chips, in a fixed width · Help switch · About |
-| Readout popover | Channel: L \| R \| M \| S, the views not drawn disabled; the channel measured lit |
+| Screen, top right | The Meter and the cursor readouts, in that order; the frame barcode instead while the diagnostic switch is on (§8.3) |
+| Status bar | Left: Meter, Time, Level, Hover · Channel (what the Meter reads; in Single a button opening the Channel popover) · A4 (concert pitch). Right: the state chips, in a fixed width · Help switch · About |
+| Channel popover | L \| R \| M \| S, the views not drawn disabled (R, M and S on a mono track); the channel read lit |
 
 - Every toolbar field shows an icon, not a word, then its value: Mode, Views (a track list), Layout,
   Time, Span, Scale, Trigger. The Views field shows all four letters as "L·R·M·S", those the frame
@@ -224,13 +226,14 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   arrow sits at its right edge.
 - A field's button opens its popover under it, aligned with its left edge and kept 8 px inside the
   window; it closes any other popover, and a press outside closes it. The status bar's popovers
-  open above their buttons instead, About's aligned with its right edge and the readout popover
+  open above their buttons instead, About's aligned with its right edge and the Channel popover
   with its button's left edge, and follow the same rules.
-- The status bar never moves: the cursor buttons and A4 keep their width, each readout has a fixed
-  width, and the chips have a fixed area. The readouts are labelled with the channel they measure
-  (1.2.1), a field like the toolbar's with a meter icon, in one width: in Single the channel the
-  frame measured, L, R, M or S (L on a mono track), opening the readout popover on a stereo track;
-  TT, this track, in Multi; "—" before a frame. Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
+- The status bar never moves: the Meter, the cursor buttons, Channel and A4 keep their width, and the
+  chips have a fixed area, as wide as the bar leaves at the minimum width. The Channel button
+  names the channel read (1.2.1), a field like the toolbar's with a meter icon, in one width (that
+  of a letter and its arrow): in Single the channel the frame read, L, R, M or S (L on a mono
+  track), opening the Channel popover; TT (this track) in Multi, a label that opens nothing; "—" before a
+  frame. Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
   do not fit fold, from the last, into one "+n" chip that lists them on hover or focus; the first
   stays shown.
 
@@ -283,7 +286,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 
 #### Readouts and states
 
-- Peak and RMS in dBFS; frequency marked ≈; "—" when there is no value.
+- Peak and RMS in dBFS, Crest in dB; frequencies (time cursors, hover) marked ≈ where approximate; "—" when there is no value.
 
 | Chip | Shown when |
 | --- | --- |
@@ -296,7 +299,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Frozen | Frozen (in the accent colour); followed by the pan offset (for example "−1.2 s") when panned, **Span limited** when the span was shortened to what is held, and **Partial** when the held audio does not cover the span. |
 | Zoom ×n | Zoomed in. |
 | +n hidden | Multi with more tracks than lanes (one fewer lane for tracks with Compare on). |
-| Invalid samples | A drawn trace, or the channel the readouts measure, holds samples that are not finite (in yellow, the problem colour). |
+| Invalid samples | A drawn trace, or the channel the Meter reads, holds samples that are not finite (in yellow, the problem colour). |
 
 - Messages over the screen replace the traces and explain what to do: **Version mismatch**,
   **Display unavailable** (no engine) and **Display error** come from the engine; **Graphics
@@ -484,7 +487,7 @@ The tables follow the diagram from the audio thread to the frame.
 | Analyzer | Produces each frame: places the trigger, free-running or sweep window, reduces it to columns, measures readouts and Compare, and encodes the frame. Reads all sources through `SampleSource`, an abstraction over the ring, held audio and sweep images. |
 | SweepImage | One per lane in Beats: the sweep as columns that persist between frames, reporting which ranges changed (AD-17, AD-19). |
 | Reducer, FreeRunning, Trigger | Min/max reduction to about one pair per device pixel (raw samples when zoomed in far enough), free-running columns on a grid fixed to absolute indices (FR-4), edge trigger (FR-3). |
-| Readouts, BlockStats | Peak, RMS and frequency (FR-7); per-10 ms block statistics that keep readout and summing-gain cost proportional to new audio. |
+| Readouts, BlockStats | Peak and RMS (FR-7); per-10 ms block statistics that keep readout and summing-gain cost proportional to new audio. |
 | PairAnalysis | Compare's correlation, offset and polarity, and summing gains (FR-15). |
 | HoldBuffer, LaneHold | On freeze, this track's held audio (4.25 s in Trigger and Free, the readable capture in Beats) and each other track's Mid (4.25 s + 1 s margin). HoldBuffer is allocated at the capture's size when the editor opens and kept until it closes; LaneHold is allocated on freeze and released on unfreeze. |
 | InstanceRegistry | Process-wide list of engines, held weakly, filtered by group and ordered by host position, then creation (AD-14). |
@@ -876,7 +879,7 @@ flowchart TB
 the page's or the engine's own timestamps (the `frame-timing` skill). With
 `SINELESS_FRAME_BARCODE=1` in the host's environment as the editor opens, every picture of the
 traces, the page's (WebGL) and the editor's (Metal) alike, carries the frame barcode in the
-screen's top right corner, which the cursor readout gives up meanwhile (FR-12.1, FR-12.2): two rows
+screen's top right corner, which the cursor readouts and the Meter give up meanwhile (FR-12.1, FR-12.2, FR-7): two rows
 of cells holding the picture's number and the time it was drawn for (`limits.ts`). A screen
 recording, read back by `scripts/frame-barcode`, then counts per refresh the pictures shown on
 time or late, the repeats with nothing drawn for them (making) or with a picture drawn and shown
@@ -964,7 +967,7 @@ incompatible change.
 
 | Part | Contents |
 | --- | --- |
-| Header | mode (min/max or raw), flags, views, lane count, point count; start fraction; peak, RMS, frequency; sweep cursor, cycle start, span and bar in quarter notes; view start and end, visible samples; lane set; summing gain and fixed gain; cycle seconds; pan reach; invalid sample count and lane mask; sample rate. |
+| Header | mode (min/max or raw), flags, views, lane count, point count; start fraction; peak, RMS; sweep cursor, cycle start, span and bar in quarter notes; view start and end, visible samples; lane set; summing gain and fixed gain; cycle seconds; pan reach; invalid sample count and lane mask; sample rate. |
 | Flags | triggered, frozen, freeRunning, synced, limited, compared, partial (shown as "Filling" live, "Partial" frozen). |
 | Data | Per view (Single) or per lane (Multi, Compare; the sum last): min/max pairs or raw samples. Compare frames then carry correlation, offset and polarity for each track. |
 
@@ -980,8 +983,8 @@ floats of min/max pairs, then 3 × 3 match values.
 - Levels are converted, floored and formatted only through the shared helpers
   (`protocol/src/limits.ts`, `ui/src/view/format.ts`).
 - Three different "too quiet" limits apply to three quantities: level readouts show −∞ at or
-  below −120 dBFS; a summing gain shows −∞ at or below −140 dB; analysis (frequency, Compare)
-  ignores audio at or below −90 dBFS RMS.
+  below −120 dBFS; a summing gain shows −∞ at or below −140 dB; analysis (Compare, the hover's
+  cycles) ignores audio at or below −90 dBFS RMS.
 - Samples that are not finite are left out of measurements, counted, and shown: an "Invalid
   samples" chip, and affected lanes named in yellow, the problem colour.
 
@@ -993,7 +996,7 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `gainFloorDb` | −140 dB | Summing gains show −∞ at or below. |
 | `analysisGateDbfs` | −90 dBFS | Analysis ignores audio at or below. |
 | `crossingHysteresis` | 0.1 | Of peak-to-peak, for finding cycles. |
-| `periodTolerance` | 0.15 | Steady cycles lie within this of the median. |
+| `periodTolerance` | 0.15 | A cycle under the hover is steady when a neighbouring cycle lasts within this fraction of it. |
 | `frozenHoldSeconds` | 4 s | How far a frozen Trigger or Free view pans back (the longest span, Free's); the freeze holds twice `pacingDelayCapSeconds` more (AD-29). |
 | `defaultTriggerPosition` | 0.1 | The Trigger position setting's default: the trigger point's place from the left, and where it sat before it was a setting. |
 | `longestTriggerSpanSeconds` | 1 s | Trigger's longest span: longer, a trigger holds one trace too long. |
@@ -1006,13 +1009,13 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `matchReachSeconds` | 0.01 s | Compare offset reach, each way. |
 | `matchWindowSeconds` | 8 s | Audio Compare matches over. |
 | `summingMarginDb` | 1 dB | Harmless summing band. |
-| `frequencyWindowSeconds` | 1 s | Audio the frequency readout measures. |
 | `minimumEditorWidth` | 1010 px | Editor minimum width. |
+| `minimumEditorHeight` | 420 px | Editor minimum height: the tallest corner panel fits. |
 | `minimumLaneHeight` | 40 px | Stacked lane minimum height. |
 | `chromeHeight` | 84 px | Height around the screen. |
 
 Engine-only thresholds live in the engine source, each with its reason; the requirements state
-the behaviour they set: the Auto timeout (FR-3), the steady share of cycles (FR-7), the sweep cap
+the behaviour they set: the Auto timeout (FR-3), the sweep cap
 and tempo tolerance (FR-9.3, FR-9.4), Compare's "together", "audible" and "related" levels and its
 match pacing (FR-15.3, FR-15.4), the 10 ms statistics block and the lane hold margin (5.2), and
 the highest sample rate the capture is sized for (5.2, CaptureRing).
@@ -1135,7 +1138,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | AD-23 | Superseded by AD-26 | The editor's layout is stable: nothing is cropped, hidden or moved as the window is resized. The minimum width (`minimumEditorWidth`) fits the widest content in every state, and content of unbounded width (the status chips) wraps in a place with room for it, the screen's top-right corner. No responsive breakpoints, compact labels or hidden elements. | A control that disappears, shortens or moves at some sizes is hard to find again and makes the window feel unreliable; and a plugin window is resized often. Rejected: a shrinking chip area, hiding the wordmark below a width, single-letter compact controls. Cost: a wider minimum window (900 px), checked in every state by the editor tests. |
 | AD-24 | Accepted | Windows ships x64 only; no native ARM64 build is built, tested or released for now. Windows on Arm runs the x64 build in an x64 host or in REAPER's ARM64EC build. The ARM64 presets stay, and `scripts/package.ps1` says how to bring the build back. | No native ARM64 Windows host is expected among users soon, and its CI job was among the slowest, waiting for an ARM runner. Shipping only what CI tests means dropping the binary with the job. Revisit when a user needs a native ARM64 host (R-5). |
 | AD-25 | Accepted | On macOS, also an Audio Unit v2, native on Apple's AudioUnitSDK, in its own module (`au`) beside the VST3 glue, sharing the engine and `editor_core`. Codes `aufx`/`Snls`/`Oriz` (placeholders in a build without the brand, AD-27). Its view is a Cocoa view factory named per build; it exports only its factory and leaves out `sandboxSafe`, so sandboxed hosts load it out of process. | Logic Pro and GarageBand load Audio Units only. AUv2 with the host's context name keeps track names, and a spike showed Logic and GarageBand keep a project's instances in one process (out of process, in AUHostingService) and Live in its own, so Multi works, Compare included. Rejected: Steinberg's VST3-to-AU wrapper (no track names, Xcode generator only), clap-wrapper (needs a CLAP port first, no track names), AUv3 (an app extension in a sandboxed process where instances do not reliably share a process, which Multi needs, and a Developer ID for distribution). |
-| AD-26 | Accepted | The editor's layout (1.5, `docs/ui/`): a toolbar holding every control that applies in the current mode, always; controls that don't apply are hidden; popovers carry the details and the choices (Mode, Views, Time base, Layout, Trigger); a status bar with the cursor buttons and A4, the readouts labelled with what they measure (in Single, a button choosing it), the state chips in a fixed width, folding into "+n", Help and About. Nothing folds away or hides as the window narrows: the minimum width (`minimumEditorWidth`, 1010 px) fits the widest toolbar, wordmark included, and the status bar. Controls also keep their place and width when a mode changes: each field is as wide as its longest value, and Single's Views and Multi's share one place. Replaces AD-23. | The redesign gives the signal most of the window (the screen gets about 85% at the default size, against about 70% with the old strip) and shows what applies instead of dimming what doesn't, which the audit found cluttered and ambiguous. AD-23's stability is kept where it matters: no control moves, shortens or folds as the window is resized, and the status bar never moves when values or states change. Rejected: folding controls into a ⋯ menu (controls move between places), a side panel of settings (a third less screen, and a tall window). Cost: a minimum window of 1010 px, checked in every state by the editor tests. |
+| AD-26 | Accepted | The editor's layout (1.5, `docs/ui/`): a toolbar holding every control that applies in the current mode, always; controls that don't apply are hidden; popovers carry the details and the choices (Mode, Views, Time base, Layout, Trigger); a status bar with the cursor buttons, the Meter's, the Channel button naming what the Meter reads (in Single, choosing it) and A4, the state chips in a fixed width, folding into "+n", Help and About. Nothing folds away or hides as the window narrows: the minimum width (`minimumEditorWidth`, 1010 px) fits the widest toolbar, wordmark included, and the status bar. Controls also keep their place and width when a mode changes: each field is as wide as its longest value, and Single's Views and Multi's share one place. Replaces AD-23. | The redesign gives the signal most of the window (the screen gets about 85% at the default size, against about 70% with the old strip) and shows what applies instead of dimming what doesn't, which the audit found cluttered and ambiguous. AD-23's stability is kept where it matters: no control moves, shortens or folds as the window is resized, and the status bar never moves when values or states change. Rejected: folding controls into a ⋯ menu (controls move between places), a side panel of settings (a third less screen, and a tall window). Cost: a minimum window of 1010 px, checked in every state by the editor tests. |
 | AD-27 | Accepted | The product's name, logo and plugin IDs come from one switch, `SINELESS_BRANDING` (cmake/Branding.cmake, on by default). The logo lives in `ui/src/brand/` under terms of its own (LICENSES/LicenseRef-Orizon-Brand.txt), shipped beside it; with the switch off, the page takes `ui/src/unbranded/`, and the plugin a neutral name, placeholder VST3 IDs and Audio Unit codes, no logo or its terms, and no contact page (FR-13.1). | The code is GPL, and forks are welcome, but the names and the logo identify official releases (TRADEMARKS.md, GPLv3 section 7(c) and (e)); a fork must be able to build without them in one step, and must not collide with Sineless in a host's plugin list or saved projects. Keeping the logo in files of its own, never inlined in GPL source, keeps the split clear in REUSE.toml and the build. The switch also names the VST3 and Audio Unit bundles and the Audio Unit's view class. Not covered: internal identifiers (CMake target names, Windows window classes, the WebView2 data folder, thread names), which a fork renames with the project. |
 | AD-28 | Accepted | While a value is dragged with the mouse (1.5), the macOS editor holds the pointer natively: on the press the page asks for the hold, and the editor hides the pointer and dissociates it from the mouse (`CGDisplayHideCursor`, `CGAssociateMouseAndMouseCursorPosition`), reads the motion from the drag events' deltas, reports the travel since the press to the page, and on release moves the pointer back to the press point before reassociating it. The shared state machine is `editor/src/PointerHold.cpp`. In Apple's hosts (Logic Pro Creator Studio, tested; Logic Pro and GarageBand, by the same bundle-identifier gate, not yet tested) the Audio Unit's view also turns the window server's undocumented `SetsCursorInBackground` connection property on for each hold and off once the pointer shows again (`CGSSetConnectionProperty`, looked up at run time and skipped where missing). Not where a host loads the Audio Unit in an XPC service, which cannot dissociate the pointer (AD-25's statement that Logic does was measured on an earlier Logic and is re-checked in its own issue); Windows keeps a moving pointer for now. | It is WebKit's own pointer lock, which the page cannot use: WKWebView grants Pointer Lock only through a private delegate, and WebView2 shows a banner that cannot be hidden. Travel is measured from the press on both sides, so the page switches from its own travel to the editor's without losing or repeating a step, and drags as before wherever the editor does not answer. Holding from the press, as Live's own devices do, hides the pointer before it can move; a click or the double-click to type hides it briefly, and a pointer still within a point of the press is shown there without a warp, so nothing delays the double-click's second press. Logic Pro Creator Studio 12.4 runs the Audio Unit in its own process, where the public calls report success without hiding the pointer, and nothing public hid it (a blank cursor, `[NSCursor hide]`, CSS `cursor: none`); since the failure cannot be detected, the property is chosen by host, and it is on only while a hold hides the pointer. |
 | AD-29 | Accepted | A free-running window's right edge, and a live sweep's playhead, are paced, not the newest sample. The audio thread stamps each block with its capture index and the time it arrived (a nonblocking read of the platform's monotonic clock, published through a seqlock), and whether the host processes in real time (VST3 `kRealtime`; the Audio Unit's `OfflineRender` unset). The analysis worker filters the arrival times with a delay-locked loop (Adriaensen 2005, JACK2's frame timer: B = 1/8 Hz, b = √2·ω, c = ω²) into the index due at any time, and draws the edge a delay behind it: the largest lead seen while the loop locked, rising by at most 10% of the motion when a later block needs more, falling by 1% a second, capped at `pacingDelayCapSeconds`; never past the newest sample or backwards. Unpaced (the newest sample) before the loop locks (16 updates), after a stall, offline, when blocks come further apart than the cap, and for a window or sweep shorter than `pacedSpanMinimumSeconds`. A freeze holds twice the cap beyond the longest span. Triggered frames stay keyed on new audio. In Beats, the sweep is filled and its playhead placed up to the paced edge, each lane's at the same musical position (AD-15): a lane whose blocks come later raises the delay while they do, and one whose blocks stopped (as long as a stall takes) is left at its newest audio. Lanes follow their own newest audio while this track's blocks have stopped (its playhead stands still), and until both instances have played with a host position (a position reported while stopped, which an instance takes on its first block, is not shared). Audio is placed by the position it was played at, from the positions the audio thread records where they change (AD-13), so a sweep that was frozen, in Trigger or Free or in the other display mode meanwhile places it the same way. A sweep redrawn whole (its length changed: the beat span, live or frozen, or a tempo or metre change live) starts over: it places the audio held by the position at its newest audio alone. On macOS 14+ frames and sweeps read the edge at the display clock's time (AD-30). | Hosts deliver blocks (512 samples every 10.7 ms at 48 kHz) and frames come every 11 to 20 ms, so an edge at the newest sample moved by one block on some frames and two on others: a visible stutter at long spans. None of the open-source scopes checked paces its edge (JUCE `AudioVisualiserComponent`, x42 sisco, Surge XT); they hide the steps with coarse zoom, which Sineless's sample-level detail does not. Host time fields are not used: Live does not set VST3 `systemTime`, and an Audio Unit's host time is up to the host. Cost: the display trails the audio by about a block; on macOS 14+ by the display link's lead and a refresh more (about 65 ms at 60 Hz, AD-30). |
@@ -1216,7 +1219,7 @@ not reused.
 | No value | NaN in a frame, shown "—": not measured, silent or never sounding together. |
 | This track (own track) | The track this instance is inserted on; the UI says "this track". |
 | Partial | A frozen sweep whose held audio does not cover the span. |
-| Readout channel | What readouts, cursors and hover measure in each mode (1.2.1). |
+| Readout channel | What the Meter, and overlaid the cursors and the hover, read in each mode, as the Channel button names it (1.2.1). |
 | Related | A track whose best match with this track reaches 0.3. |
 | Free | The time base whose window runs free, ending at the newest audio. |
 | Free-running | A window that ends at the newest audio and moves with it: the Free time base. |

@@ -16,16 +16,16 @@ export const levelFloorDbfs = -120;
 export const gainFloorDb = -140;
 
 // Analysis leaves out audio whose RMS level (dBFS) is at or below this: Compare does not match
-// tracks there, and the frequency readout finds no pitch there. 16-bit dither falls below it.
+// tracks there, and the hover readout finds no cycle there. 16-bit dither falls below it.
 export const analysisGateDbfs = -90;
 
-// How a signal's cycles are found, for its frequency: where it rises through its mean level,
+// How the hover readout finds a signal's cycles: where it rises through its mean level,
 // after first falling this fraction of its peak-to-peak range below it, so noise riding on a
 // crossing does not count twice.
 export const crossingHysteresis = 0.1;
 
-// A signal repeats steadily when most of its cycles last within this fraction of the median
-// cycle; otherwise it has no frequency to show (noise, or several pitches at once).
+// A cycle under the hover is steady when a neighbouring cycle lasts within this fraction of it;
+// otherwise it has no frequency to show (noise, or several pitches at once).
 export const periodTolerance = 0.15;
 
 // Seconds a frozen Trigger or Free view can be panned back through: the longest span, Free's
@@ -86,10 +86,7 @@ export const matchWindowSeconds = 8;
 // is harmless.
 export const summingMarginDb = 1;
 
-// How much of the newest audio the frequency readout measures (seconds).
-export const frequencyWindowSeconds = 1;
-
-// The audible range (Hz): a frequency outside it, from the readout, the time cursors or the hover,
+// The audible range (Hz): a frequency outside it, from the time cursors or the hover,
 // reads "—" and has no note; below 20 Hz a "frequency" is a slow change, above 20 kHz an artefact.
 export const lowestAudibleHz = 20;
 export const highestAudibleHz = 20000;
@@ -97,14 +94,18 @@ export const highestAudibleHz = 20000;
 // The editor's layout (CSS pixels): its minimum width, the wider of the widest toolbar (Trig, the
 // Single trigger mode and frozen, in Single or in Multi with Compare on: one width since Single's
 // and Multi's Views share a place; measured at 997 with the wordmark) and the status bar, whose
-// parts keep fixed widths in every state (measured at 995, docs/ui/README.md), with at least 8 px
+// parts keep fixed widths in every state (measured at 1001, the chips' area sized to fill it,
+// docs/ui/README.md), with at least 8 px
 // to spare for text that renders wider on another platform, rounded up to 10; its default width,
-// the same, as nothing in the window changes with its width;
+// the same, as nothing in the window changes with its width; its minimum height, which fits the
+// tallest panel in the screen's corner (Time cursors in Beats, Level cursors and the Meter, measured
+// at 315 px from 9 px below the screen's top) with at least 8 px to spare, rounded up to 10;
 // the minimum height of a stacked lane; and the height of everything around the screen (toolbar
 // and status bar), at most: measured at 82, with room for rounding at other display scales. The
 // editor tests check the page against them.
 export const defaultEditorWidth = 1010;
 export const minimumEditorWidth = 1010;
+export const minimumEditorHeight = 420;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;
 
@@ -239,13 +240,9 @@ export const limits: readonly {
   { name: "matchReachSeconds", value: matchReachSeconds, kind: "double" },
   { name: "matchWindowSeconds", value: matchWindowSeconds, kind: "double" },
   { name: "summingMarginDb", value: summingMarginDb, kind: "double" },
-  {
-    name: "frequencyWindowSeconds",
-    value: frequencyWindowSeconds,
-    kind: "double",
-  },
   { name: "defaultEditorWidth", value: defaultEditorWidth, kind: "pixels" },
   { name: "minimumEditorWidth", value: minimumEditorWidth, kind: "pixels" },
+  { name: "minimumEditorHeight", value: minimumEditorHeight, kind: "pixels" },
   { name: "minimumLaneHeight", value: minimumLaneHeight, kind: "pixels" },
   { name: "chromeHeight", value: chromeHeight, kind: "pixels" },
   { name: "fullRateUpToHz", value: fullRateUpToHz, kind: "double" },

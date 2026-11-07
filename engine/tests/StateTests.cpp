@@ -334,6 +334,7 @@ constexpr std::array kVersion5Values{
     GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kCompare, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kMeter, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
 };
 

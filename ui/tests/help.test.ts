@@ -66,10 +66,10 @@ describe("help texts", () => {
     expect(text).toContain(String(maxLanes - 1));
   });
 
-  // The readouts' channel is chosen (and named beside them), so no help says they measure one
-  // fixed channel; the trigger source picks only what the trigger reads.
-  test.each(["peak", "rms", "frequency", "triggerSource"] as const)(
-    "%s does not tie the readouts to one channel",
+  // The Meter's channel is chosen (and named) with the Channel button, so no help says it measures
+  // one fixed channel; the trigger source picks only what the trigger reads.
+  test.each(["meter", "triggerSource"] as const)(
+    "%s does not tie the Meter to one channel",
     (topic) => {
       expect(helpTexts[topic].text).not.toMatch(
         /(?:readouts measure|of) (?:this track's )?(?:the )?(?:Mid|Left|Right|Side)\b/u,

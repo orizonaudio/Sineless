@@ -100,7 +100,6 @@ describe("mock back end", () => {
       ChannelView.mid,
       ChannelView.side,
     ]);
-    expect(frame?.frequency).toBe(mockFundamental);
     expect(frame?.triggered).toBe(true);
   });
 

@@ -3,6 +3,9 @@
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { FrameFlag, frameHeader } from "../../../protocol/src/frame.ts";
+import type { ControlMessage } from "../../src/bridge/transport.ts";
+import { MockTransport } from "../../src/bridge/mock-transport.ts";
 import {
   beforeApp,
   byId,
@@ -15,6 +18,28 @@ import {
   swipe,
   typeInto,
 } from "./harness.ts";
+
+// A crowded state the mock does not make by itself, as the engine sends it: a group of 30 tracks,
+// more than the lanes show (the lanes message says how many are hidden), and, frozen, held audio
+// that does not cover the span (the frame's partial flag).
+class Crowded extends MockTransport {
+  override onMessage(handler: (message: ControlMessage) => void): void {
+    super.onMessage((message) => {
+      handler(message.type === "lanes" ? { ...message, hidden: 14 } : message);
+    });
+  }
+  override onFrame(handler: (frame: ArrayBuffer) => void): void {
+    super.onFrame((frame) => {
+      const flags = new DataView(frame).getUint8(flagsOffset);
+      if ((flags & FrameFlag.frozen) !== 0) {
+        new DataView(frame).setUint8(flagsOffset, flags | FrameFlag.partial);
+      }
+      handler(frame);
+    });
+  }
+}
+const flagsOffset =
+  frameHeader.fields.find((field) => field.name === "flags")?.offset ?? 1;
 
 const chipTexts = () =>
   [...byId("chips").children].map((chip) => chip.textContent);
@@ -72,20 +97,39 @@ describe("a track sending samples that are not finite", () => {
     expect(markedColours()).toEqual([warnColour(), warnColour()]);
   });
 
-  // More states than the status bar's fixed area holds: invalid samples, frozen and panned back.
-  // The first, the problem, stays shown in yellow; the rest fold into one "+n" chip that still
-  // lists them, and nothing runs outside the area, so the readouts beside it never move.
+  // More states than the status bar's fixed area holds, which takes every state frozen can show,
+  // with long values: invalid samples in Multi with 14 tracks hidden, frozen with a span longer than
+  // the capture kept and not all of it held, panned back and zoomed past ten times. The first, the
+  // problem, stays shown in yellow; the rest fold into one "+n" chip that still lists them, and
+  // nothing runs outside the area, so nothing beside it moves.
   test("folds the states that don't fit into one chip that lists them", async () => {
-    await press(choice("display-mode", "Single"));
-    await press(choice("time-base", "Trig"));
-    await typeInto("span-field", "100 ms");
+    await startApp({}, new Crowded({ brokenSamples: 3, keptSeconds: 1 }));
+    await press(choice("display-mode", "Multi"));
+    await press(choice("time-base", "Free"));
+    await typeInto("free-span-field", "4 s");
     if (byId("freeze").getAttribute("aria-pressed") !== "true") {
       await userEvent.click(byId("freeze"));
     }
     // Panned back once frozen, which adds the offset's chip.
     await expect.poll(chips).toContain("Frozen");
-    swipe(-0.5);
-    await expect.poll(() => chips().length).toBe(3);
+    swipe(-0.1);
+    await settle();
+    // Zoomed in to ten times or more, which the chip says in two digits.
+    const trace = byId("trace").getBoundingClientRect();
+    for (let step = 0; step < 10; step += 1) {
+      byId("trace").dispatchEvent(
+        new WheelEvent("wheel", {
+          deltaY: -400,
+          metaKey: true,
+          clientX: trace.left + trace.width / 2,
+          clientY: trace.top + trace.height / 2,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
+    await settle();
+    await expect.poll(() => chips().length).toBe(7);
     await expect.poll(chips).toContain("Invalid samples");
     const states = chips();
     expect(states[0]).toBe("Invalid samples");

@@ -20,10 +20,9 @@
 // or of tracks that never sound together, is NaN too.
 //
 // The visible span starts `startFraction` samples after the first point (sub-sample trigger
-// alignment). `peak`, `rms`, `frequency` and `invalidSamples` measure `readoutView` (a
-// ChannelView): in Single the readout source when it is drawn, else the first view drawn; in Multi
-// this track's Mid. `peak`, `rms` and `frequency` are NaN when not measured (no
-// frequency found, or nothing to measure). `triggerView` is the view the trigger reads under the
+// alignment). `peak`, `rms` and `invalidSamples` measure `readoutView` (a ChannelView): in
+// Single the readout source when it is drawn, else the first view drawn; in Multi this track's
+// Mid. `peak` and `rms` are NaN when there is nothing to measure. `triggerView` is the view the trigger reads under the
 // current settings: in Single the trigger source when it is drawn, else the first view drawn; in
 // Multi this track's Mid. In Beats and Free, which do not trigger, it still names it. In a tempo-synced sweep, `cursor` is the
 // playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
@@ -72,7 +71,6 @@ export const frameHeaderFields = [
   { name: "startFraction", type: "f32" },
   { name: "peak", type: "f32" },
   { name: "rms", type: "f32" },
-  { name: "frequency", type: "f32" },
   { name: "cursor", type: "f32" },
   { name: "cycleStart", type: "f32" },
   { name: "spanQuarterNotes", type: "f32" },

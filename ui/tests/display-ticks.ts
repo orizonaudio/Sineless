@@ -67,7 +67,6 @@ export function frame(id: number): Frame {
     startFraction: 0,
     peak: 0,
     rms: 0,
-    frequency: undefined,
     synced: false,
     limited: false,
     partial: false,

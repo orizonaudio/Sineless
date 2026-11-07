@@ -146,8 +146,7 @@ struct Signal
     // Every other run of this many samples is at a quarter of the amplitude (none if 0), the first
     // run loud.
     std::int64_t quieterEvery = 0;
-    double quieterFrequency = 0.0; // A tone's frequency in the quieter runs (its own if 0).
-    std::int64_t louderFrom = -1;  // Four times the amplitude from this host sample, if any.
+    std::int64_t louderFrom = -1; // Four times the amplitude from this host sample, if any.
     // Every `brokenEvery` samples (none if 0), one that is not finite, as a broken plugin upstream
     // might send.
     std::int64_t brokenEvery = 0;
@@ -272,17 +271,10 @@ private:
             const auto index = static_cast<std::int64_t>(from) + i;
             double value = 0.0;
             switch (signal.kind) {
-            case Signal::Kind::kTone: {
-                const bool quieter =
-                    signal.quieterEvery > 0 && (index / signal.quieterEvery) % 2 == 1;
-                const double toneStep =
-                    quieter && signal.quieterFrequency > 0.0
-                        ? 2.0 * std::numbers::pi * signal.quieterFrequency / rate
-                        : step;
-                value = signal.offset +
-                        signal.amplitude * std::sin(toneStep * static_cast<double>(index));
+            case Signal::Kind::kTone:
+                value =
+                    signal.offset + signal.amplitude * std::sin(step * static_cast<double>(index));
                 break;
-            }
             case Signal::Kind::kNoise:
                 value = signal.amplitude * 2.0 * noiseAt(index - signal.delay, signal.seed);
                 break;
@@ -634,9 +626,6 @@ TEST_P(SecondsSpans, DrawsTheWholeSpanLiveAndFrozen)
     EXPECT_TRUE(std::isfinite(frame->peak));
     EXPECT_GT(frame->peak, 0.1f) << "readouts measured nothing";
     EXPECT_GT(frame->rms, 0.1f);
-    if (c.span.seconds * seconds.own.frequency >= 4.0) {
-        EXPECT_NEAR(frame->frequency, seconds.own.frequency, seconds.own.frequency * 0.01);
-    }
 
     frame = seconds.freeze();
     ASSERT_TRUE(frame) << "no frozen frame";
@@ -1163,10 +1152,10 @@ std::vector<ModeCase> beatCases()
 }
 
 // Frozen, a shorter beat span shows part of the held sweep, and its readouts describe that part:
-// Peak and RMS of what is shown, the frequency of its newest audio. A tone alternates every two
-// beats between loud at 1 kHz and quiet at 700 Hz; frozen at the end of a 1-bar cycle that holds a
-// loud half and then a quiet half, the newest two beats shown are the quiet half, read as such:
-// its level and its note, not the loud bar's. In every mode, at every rate.
+// Peak and RMS of what is shown. A tone alternates every two beats between loud and quiet; frozen
+// at the end of a 1-bar cycle that holds a loud half and then a quiet half, the newest two beats
+// shown are the quiet half, read as such: its level, not the loud bar's. In every mode, at every
+// rate.
 class FrozenShorterSpan : public ::testing::TestWithParam<ModeCase>
 {
 };
@@ -1177,11 +1166,8 @@ TEST_P(FrozenShorterSpan, ReadsThePartShown)
     constexpr double kAmplitude = 0.5;
     const auto twoBeats = static_cast<std::int64_t>(std::llround(c.rate)); // At 120 BPM.
     Session session(c.rate, c.channels);
-    session.join({.frequency = 1000.0,
-                  .amplitude = kAmplitude,
-                  .offset = 0.0,
-                  .quieterEvery = twoBeats,
-                  .quieterFrequency = 700.0});
+    session.join(
+        {.frequency = 1000.0, .amplitude = kAmplitude, .offset = 0.0, .quieterEvery = twoBeats});
     session.join({.frequency = 1500.0});
     configure(session.own(), c.mode, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
@@ -1198,7 +1184,6 @@ TEST_P(FrozenShorterSpan, ReadsThePartShown)
     const double quiet = 0.25 * kAmplitude * (c.channels == 2 && isMulti(c.mode) ? 0.75 : 1.0);
     EXPECT_NEAR(frame->peak, quiet, 0.02 * quiet) << "the quiet half's peak, not the bar's";
     EXPECT_NEAR(frame->rms, quiet / std::numbers::sqrt2, 0.02 * quiet);
-    EXPECT_NEAR(frame->frequency, 700.0, 7.0) << "the quiet half's note, not the bar's";
 }
 
 class BeatSpans : public ::testing::TestWithParam<ModeCase>
@@ -2253,8 +2238,12 @@ std::vector<ModeCase> timeBaseCases(Display mode)
     return cases;
 }
 
-// Plays enough for the readouts of `timeBase` (a sweep of one beat, a 50 ms triggered window, or
-// Free's shortest, 100 ms), producing frames as a page does, and returns the last frame.
+// Longer than any span the readout cases below show (a sweep of one beat, a 50 ms triggered window,
+// or Free's shortest, 100 ms), so that span holds only what was played.
+constexpr double kReadoutPlaySeconds = 1.0;
+
+// Plays enough for the readouts of `timeBase`, producing frames as a page does, and returns the
+// last frame.
 std::optional<DecodedFrame> playForReadouts(Session& session, TimeBase timeBase,
                                             unsigned views = 0b0011)
 {
@@ -2263,7 +2252,7 @@ std::optional<DecodedFrame> playForReadouts(Session& session, TimeBase timeBase,
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     session.own().settings().set(SettingId::kTriggerSpan, 0.05);
     session.own().settings().set(SettingId::kFreeSpan, protocol::kShortestFreeSpanSeconds);
-    session.play(protocol::kFrequencyWindowSeconds + 0.1, protocol::kReadoutIntervalSeconds);
+    session.play(kReadoutPlaySeconds + 0.1, protocol::kReadoutIntervalSeconds);
     session.play(protocol::kReadoutIntervalSeconds);
     return session.produce();
 }
@@ -2640,7 +2629,7 @@ TEST_P(ReadoutSwitch, MeasuresTheAudioNowInTheSpan)
                                          static_cast<double>(protocol::ChannelView::kMid));
         }
         session.setSignal(0, {.frequency = 1000.0, .amplitude = kQuiet, .offset = 0.0});
-        session.play(protocol::kFrequencyWindowSeconds + 0.6, protocol::kReadoutIntervalSeconds);
+        session.play(kReadoutPlaySeconds + 0.6, protocol::kReadoutIntervalSeconds);
         if (c.frozen) {
             session.analyzer().setFrozen(true);
             session.play(static_cast<double>(kBlock) / c.rate);
@@ -2734,7 +2723,7 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, TriggerChannelChange, ::testing::ValuesIn(sw
 
 // A mono track is its one channel, not a stereo pair with a silent right: its trace (Single's
 // view, or its lane in the multi-track view and Compare) reaches the tone's amplitude, and its
-// readouts are the tone's level and frequency, not 6 dB lower. In every time base, live, frozen,
+// readouts are the tone's level, not 6 dB lower. In every time base, live, frozen,
 // and frozen at another span (whose lanes are rebuilt from the held audio), at every rate.
 class MonoLanes : public ::testing::TestWithParam<ModeCase>
 {
@@ -2771,7 +2760,6 @@ TEST_P(MonoLanes, ShowTheTrackAtItsLevel)
         EXPECT_NEAR(std::abs(loudest), kAmplitude, 0.02 * kAmplitude) << "this track's trace";
         EXPECT_NEAR(frame->peak, kAmplitude, 0.02 * kAmplitude);
         EXPECT_NEAR(frame->rms, kAmplitude / std::numbers::sqrt2, 0.02 * kAmplitude);
-        EXPECT_NEAR(frame->frequency, 1000.0, 10.0);
     }
 }
 
@@ -2790,9 +2778,9 @@ class AnalysisGate : public ::testing::TestWithParam<ModeCase>
 {
 };
 
-// A tone just above the analysis gate has its frequency measured, one just below has none
-// (frequency 0, as the frame defines it); either way the level travels as measured, not floored.
-TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
+// A tone just above the analysis gate and one just below it: either way the level travels as
+// measured, not floored, since the gate holds back analysis (Compare), not the readouts.
+TEST_P(AnalysisGate, SendsTheLevelAsMeasuredOnEitherSide)
 {
     const ModeCase c = GetParam();
     for (const double aboveGate : {1.0, -1.0}) {
@@ -2813,11 +2801,6 @@ TEST_P(AnalysisGate, MeasuresTheFrequencyAboveTheGateOnly)
         EXPECT_NEAR(frame->peak, amplitude * viewGain, amplitude * viewGain * 1e-3)
             << "the peak as measured";
         EXPECT_NEAR(frame->rms, rms, rms * 0.02);
-        if (aboveGate > 0.0) {
-            EXPECT_NEAR(frame->frequency, 1000.0f, 10.0f);
-        } else {
-            EXPECT_TRUE(std::isnan(frame->frequency)) << "no frequency: no value";
-        }
     }
 }
 
@@ -3213,7 +3196,6 @@ TEST_P(AllBroken, HasNoReadouts)
     ASSERT_TRUE(frame);
     EXPECT_TRUE(std::isnan(frame->peak)) << "no value, not silence";
     EXPECT_TRUE(std::isnan(frame->rms)) << "no value, not silence";
-    EXPECT_TRUE(std::isnan(frame->frequency)) << "no value";
     // Every sample the readouts measure: the span, rounded out to whole blocks of levels.
     const auto spanSamples = static_cast<std::uint32_t>(std::lround(span * rate));
     const auto block = static_cast<std::uint32_t>(std::lround(kStatsBlockSeconds * rate));

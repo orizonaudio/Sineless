@@ -95,9 +95,9 @@ describe("a track that changes channels", () => {
     await expect.poll(lit).toEqual(["L", "R"]);
   });
 
-  // The new count relabels the readouts and the view toggles by itself, with no control touched:
-  // a mono track draws and measures L alone, so its tag is a label, and the readouts' popover
-  // closes; stereo again, the readout channel chosen comes back.
+  // The new count relabels the Channel button and the view toggles by itself, with no control
+  // touched: a mono track draws and measures L alone, so its popover lights L and offers nothing
+  // else; stereo again, the channel chosen comes back.
   test("relabels the readouts and the toggles when the snapshot says", async () => {
     const tag = () => byId("readout-tag").textContent;
     const toggles = [...byId("views").querySelectorAll("button")];
@@ -111,10 +111,16 @@ describe("a track that changes channels", () => {
     await expect.element(byId("readout-popover")).toBeVisible();
     app.transport.changeChannels(1, true);
     await expect.poll(tag).toBe("L");
-    await expect.element(byId("readout-popover")).not.toBeVisible();
     await expect
       .element(byId("readout-details"))
-      .toHaveAttribute("aria-disabled", "true");
+      .toHaveAttribute("aria-disabled", "false");
+    await expect
+      .element(choice("readout-source", "L"))
+      .toHaveAttribute("aria-pressed", "true");
+    for (const other of ["R", "M", "S"]) {
+      await expect.element(choice("readout-source", other)).toBeDisabled();
+    }
+    await userEvent.click(byId("readout-details"));
     await expectOnlyLeftEnabled(toggles);
     app.transport.changeChannels(2, true);
     await expect.poll(tag).toBe("S");

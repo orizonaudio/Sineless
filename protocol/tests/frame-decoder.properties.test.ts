@@ -72,7 +72,6 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       startFraction: f32,
       peak: f32,
       rms: f32,
-      frequency: fc.option(f32, { nil: undefined }),
       cursor: fc.option(f32, { nil: undefined }),
       cycleStart: f32,
       cycleSeconds: f32,
@@ -147,7 +146,6 @@ function expectedHeader(
     startFraction: content.startFraction,
     peak: content.peak,
     rms: content.rms,
-    frequency: content.frequency ?? Number.NaN,
     cursor: content.cursor ?? -1,
     cycleStart: content.cycleStart ?? 0,
     spanQuarterNotes: content.spanQuarterNotes ?? 0,
@@ -189,12 +187,11 @@ function offsetOf(name: FrameHeaderFieldName): number {
 const toFloat32 = (values: ArrayLike<number>): number[] =>
   Array.from(Float32Array.from(Array.from(values)));
 
-// The frame the decoder should return for a content: float32 precision, "no frequency" (NaN)
-// and "no cursor" (below 0) as undefined, and a polarity that is either related or not.
+// The frame the decoder should return for a content: float32 precision, "no cursor" (below 0)
+// as undefined, and a polarity that is either related or not.
 function expectedFrame(content: FrameContent): Frame {
   const header = expectedHeader(content);
   const f = Math.fround;
-  const frequency = f(header.frequency);
   const cursor = f(header.cursor);
   const triggerPosition = f(header.triggerPosition);
   return {
@@ -206,7 +203,6 @@ function expectedFrame(content: FrameContent): Frame {
     startFraction: f(header.startFraction),
     peak: f(header.peak),
     rms: f(header.rms),
-    frequency: Number.isNaN(frequency) ? undefined : frequency,
     synced: content.synced === true,
     limited: content.limited === true,
     partial: content.partial === true,

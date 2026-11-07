@@ -183,7 +183,7 @@ describe("controls", () => {
     await press(choice("mode", "Auto"));
   });
 
-  // The tag says which channel Peak, RMS and Freq measure (DESIGN.md 1.2.1): in Single the readout
+  // The tag says which channel Peak and RMS measure (DESIGN.md 1.2.1): in Single the readout
   // source when drawn, else the first view drawn (Left with the default views, L and R), whatever
   // the trigger source; this track's Mid in Multi.
   test("labels the readouts with the channel they measure", async () => {
@@ -248,7 +248,7 @@ describe("controls", () => {
     },
   );
 
-  // Peak, RMS and Freq on screen come from the last frame: until a frame measures the new display
+  // Peak and RMS on screen come from the last frame: until a frame measures the new display
   // mode, between Single, which measures the readout channel, and each mode that measures this
   // track's Mid, either way, the tag keeps naming what the one on screen measured.
   test.each(
@@ -400,6 +400,11 @@ describe("controls", () => {
       // It shows where the pointer is over the screen.
       show: () =>
         userEvent.hover(byId("screen"), { position: { x: 300, y: 80 } }),
+    },
+    {
+      name: "Meter",
+      toggle: "meter-toggle",
+      parts: () => [byId("cursor-readout")],
     },
   ];
   const showing = (parts: HTMLElement[]) =>

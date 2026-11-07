@@ -1,5 +1,4 @@
-// The button beside the readouts names what they measure, short as the Views field's letters: TT
-// for this track in Multi, L, R, M or S in Single, a dash before any frame; in full for screen
+// The Channel button names what the Meter, snapping and Hover read: TT (this track) in Multi, L, R, M or S in Single, a dash before any frame; in full for screen
 // readers. It keeps one width whichever it names, so nothing beside it moves.
 import { describe, expect, test } from "vitest";
 
@@ -21,7 +20,7 @@ const width = () => byId("readout-details").getBoundingClientRect().width;
 const named = { L: "Left", R: "Right", M: "Mid", S: "Side" } as const;
 
 describe("the readouts' button", () => {
-  test("names each channel chosen in Single, then TT in Multi, at one width", async () => {
+  test("names each channel chosen in Single, then TT, this track, in Multi, at one width", async () => {
     await startApp();
     await settle();
     // Every view drawn, so each can be chosen.
@@ -30,13 +29,13 @@ describe("the readouts' button", () => {
     for (const [letter, name] of Object.entries(named)) {
       await useReadout(letter);
       await expect.poll(tag).toBe(letter);
-      expect(label()).toBe(`Readouts: ${name}`);
+      expect(label()).toBe(`Channel: ${name}`);
       widths.add(Math.round(width() * 100));
     }
     for (const display of displays.filter((shown) => shown !== "Single")) {
       await showDisplay(display);
       await expect.poll(tag).toBe("TT");
-      expect(label()).toBe("Readouts: This track");
+      expect(label()).toBe("Channel: This track");
       widths.add(Math.round(width() * 100));
     }
     expect(widths.size).toBe(1);
@@ -46,7 +45,7 @@ describe("the readouts' button", () => {
     await startApp({ inputChannels: 1 });
     await settle();
     await expect.poll(tag).toBe("L");
-    expect(label()).toBe("Readouts: Left");
+    expect(label()).toBe("Channel: Left");
   });
 
   test("shows a dash before the first frame, as wide as when it names a channel", async () => {

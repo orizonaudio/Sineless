@@ -113,3 +113,22 @@ describe("overlaid views", () => {
     expect(near(dragCursorA(at + offset), at)).toBe(true);
   });
 });
+
+// Stacked, each lane is its own trace: the hover reads the lane under the pointer, whatever the
+// channel chosen, so a pointer on the top lane reads Left with the channel on the Side.
+describe("stacked views", () => {
+  beforeApp(async () => {
+    await startApp();
+    await press(choice("display-mode", "Single"));
+    await press(choice("time-base", "Trig"));
+    await press(choice("layout", "Stack"));
+  });
+
+  test("the hover reads the lane under the pointer, not the channel chosen", async () => {
+    await setPressed(byId("hover-toggle"), true);
+    await showViews(["L", "R", "M", "S"]);
+    await useReadout("S");
+    await settle();
+    await expect.poll(hoverTitle).toBe("Left");
+  });
+});
