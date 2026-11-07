@@ -298,6 +298,7 @@ constexpr std::array kVersion4Values{
 // span that only version 5 names.
 constexpr std::array kVersion5Values{
     GoldenValue{.id = SettingId::kTriggerSpan, .value = 0.25},
+    GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOff)},
     GoldenValue{.id = SettingId::kFreeSpan, .value = 2.0},
     GoldenValue{.id = SettingId::kVerticalScale, .value = -9.0},
     GoldenValue{.id = SettingId::kChannelViews,

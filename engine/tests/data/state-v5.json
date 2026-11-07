@@ -1,6 +1,6 @@
 {
   "settings": {
-    "autoFreeze": "on",
+    "autoFreeze": "off",
     "beatSpan": "thirdBar",
     "channelViews": ["right", "side"],
     "compare": "on",
