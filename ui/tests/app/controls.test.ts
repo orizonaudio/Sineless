@@ -401,6 +401,11 @@ describe("controls", () => {
       show: () =>
         userEvent.hover(byId("screen"), { position: { x: 300, y: 80 } }),
     },
+    {
+      name: "Meter",
+      toggle: "meter-toggle",
+      parts: () => [byId("cursor-readout")],
+    },
   ];
   const showing = (parts: HTMLElement[]) =>
     parts.filter((part) => part.isConnected && !part.hidden).length;
