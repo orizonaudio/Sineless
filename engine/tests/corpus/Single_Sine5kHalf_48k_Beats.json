@@ -1,18 +1,17 @@
 {
   "flags": {
     "compared": false,
+    "freeRunning": false,
     "frozen": false,
     "limited": false,
     "noTempo": false,
     "partial": false,
-    "freeRunning": false,
     "synced": true,
     "triggered": false
   },
   "mode": "minMax",
   "pointCount": 500,
   "readouts": {
-    "frequency": 4999.997,
     "peak": 0.5,
     "rms": 0.3535534
   },

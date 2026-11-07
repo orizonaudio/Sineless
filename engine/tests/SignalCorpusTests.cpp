@@ -61,7 +61,6 @@ constexpr int kSignificantDigits = 7;
 // deviation) over a 4800-sample span; the corpus's reads 0.02 dB high.
 constexpr double kPeakToleranceDb = 0.01;
 constexpr double kRmsToleranceDb = 0.05;
-constexpr double kFrequencyTolerance = 1e-3; // Of the frequency.
 // A copy correlates at exactly 1 and sums exactly 3.01 dB louder; what is left is float rounding.
 constexpr double kCorrelationTolerance = 1e-3;
 constexpr double kGainToleranceDb = 0.01;
@@ -85,11 +84,9 @@ struct Expect
     // Whether the trigger fired: a sine that swings well past the trigger's hysteresis
     // (settings.ts, triggerHysteresis: 0.01 by default) crosses its level once a cycle.
     std::optional<bool> triggered;
-    // Readouts of this track's trigger view (dBFS; -infinity: exactly 0, silent) and its
-    // frequency (Hz; NaN: none found).
+    // Readouts of this track's trigger view (dBFS; -infinity: exactly 0, silent).
     std::optional<double> peakDbfs;
     std::optional<double> rmsDbfs;
-    std::optional<double> frequency;
     // Compare: the other track's match and the summing gains (dB). NaN: nothing measured;
     // -infinity: an exact cancellation, the sum exactly 0 (never a floor: the UI applies that).
     std::optional<double> correlation;
@@ -138,11 +135,6 @@ struct Case
         expect.rmsDbfs = rmsDbfs;
         return *this;
     }
-    Case& pitch(double hertz)
-    {
-        expect.frequency = hertz;
-        return *this;
-    }
     Case& match(double correlation, double offset, int polarity)
     {
         expect.correlation = correlation;
@@ -181,7 +173,7 @@ Case compare(std::string_view name, const Track& own, const Track& other)
 
 constexpr TimeBase kTrigger = TimeBase::kTrigger;
 constexpr TimeBase kBeats = TimeBase::kBeats;
-constexpr double kNone = kNaN;              // No frequency found, nothing measured.
+constexpr double kNone = kNaN;              // Nothing measured.
 constexpr double kSilent = kMinusInfinity;  // The dBFS of exactly 0.
 constexpr double kCancels = kMinusInfinity; // The summing gain of an exact cancellation.
 constexpr float kNaNSample = std::numeric_limits<float>::quiet_NaN();
@@ -210,31 +202,31 @@ std::vector<Case> corpus()
     const Signal hiss = noise(1, 0.5);
     return {
         // Single: one track's readouts (of L, the first of the default views, L and R) and its views.
-        single("Single_Sine1kHalf_48k_Stereo", stereo(tone)).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
-        single("Single_Sine1kHalf_44k1_Stereo", stereo(tone)).at(44100).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
-        single("Single_Sine1kHalf_384k_Stereo", stereo(tone)).at(384000).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
-        single("Single_Sine1kHalf_48k_Frozen", stereo(tone)).freeze().triggers().levels(kHalf, kHalf + kSine).pitch(1000),
-        single("Single_Sine5kHalf_48k_Beats", stereo(sine(5000, 0.5))).in(kBeats).levels(kHalf, kHalf + kSine).pitch(5000),
-        single("Single_Sine440Full_48k_Mono", mono(sine(440, 1.0))).triggers().levels(0, kSine).pitch(440),
-        single("Single_Sine440Full_192k_Mono", mono(sine(440, 1.0))).at(192000).triggers().levels(0, kSine).pitch(440),
+        single("Single_Sine1kHalf_48k_Stereo", stereo(tone)).triggers().levels(kHalf, kHalf + kSine),
+        single("Single_Sine1kHalf_44k1_Stereo", stereo(tone)).at(44100).triggers().levels(kHalf, kHalf + kSine),
+        single("Single_Sine1kHalf_384k_Stereo", stereo(tone)).at(384000).triggers().levels(kHalf, kHalf + kSine),
+        single("Single_Sine1kHalf_48k_Frozen", stereo(tone)).freeze().triggers().levels(kHalf, kHalf + kSine),
+        single("Single_Sine5kHalf_48k_Beats", stereo(sine(5000, 0.5))).in(kBeats).levels(kHalf, kHalf + kSine),
+        single("Single_Sine440Full_48k_Mono", mono(sine(440, 1.0))).triggers().levels(0, kSine),
+        single("Single_Sine440Full_192k_Mono", mono(sine(440, 1.0))).at(192000).triggers().levels(0, kSine),
         // A quiet sine, at twice the trigger's default hysteresis (0.01) so that it triggers
         // clearly, not by a rounding either way.
-        single("Single_Sine100At34dB_48k_Stereo", stereo(sine(100, 0.02))).triggers().levels(dbfs(0.02), dbfs(0.02) + kSine).pitch(100),
+        single("Single_Sine100At34dB_48k_Stereo", stereo(sine(100, 0.02))).triggers().levels(dbfs(0.02), dbfs(0.02) + kSine),
         // A sine on the left alone: L, measured and triggered on, holds it at its level.
-        single("Single_SineLeftOnly_48k_Stereo", stereo(tone, silence())).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
+        single("Single_SineLeftOnly_48k_Stereo", stereo(tone, silence())).triggers().levels(kHalf, kHalf + kSine),
         // Channels in opposite polarity: L, measured and triggered on (the Mid, silent, is not drawn),
         // holds the sine.
-        single("Single_SineOutOfPhase_48k_Stereo", stereo(tone, inverted(tone))).triggers().levels(kHalf, kHalf + kSine).pitch(1000),
-        single("Single_DcQuarter_48k_Stereo", stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf).pitch(kNone),
-        single("Single_DcMinusHalf_192k_Mono", mono(dc(-0.5))).at(192000).levels(kHalf, kHalf).pitch(kNone),
-        single("Single_Silence_48k_Stereo", stereo(silence())).levels(kSilent, kSilent).pitch(kNone),
-        single("Single_Silence_384k_Mono", mono(silence())).at(384000).levels(kSilent, kSilent).pitch(kNone),
-        single("Single_Silence_48k_Beats", stereo(silence())).in(kBeats).levels(kSilent, kSilent).pitch(kNone),
-        single("Single_Noise_48k_Stereo", stereo(hiss)).levels(kHalf, kHalf + kUniform).pitch(kNone),
+        single("Single_SineOutOfPhase_48k_Stereo", stereo(tone, inverted(tone))).triggers().levels(kHalf, kHalf + kSine),
+        single("Single_DcQuarter_48k_Stereo", stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf),
+        single("Single_DcMinusHalf_192k_Mono", mono(dc(-0.5))).at(192000).levels(kHalf, kHalf),
+        single("Single_Silence_48k_Stereo", stereo(silence())).levels(kSilent, kSilent),
+        single("Single_Silence_384k_Mono", mono(silence())).at(384000).levels(kSilent, kSilent),
+        single("Single_Silence_48k_Beats", stereo(silence())).in(kBeats).levels(kSilent, kSilent),
+        single("Single_Noise_48k_Stereo", stereo(hiss)).levels(kHalf, kHalf + kUniform),
         // Samples no host should send, one in every 4800: they are measured around, so the
         // readouts are those of the tone.
-        single("Single_SineWithNaN_48k_Stereo", stereo(spiked(tone, kNaNSample, 4800))).levels(kHalf, kHalf + kSine).pitch(1000),
-        single("Single_SineWithInfinity_48k_Stereo", stereo(spiked(tone, kInfSample, 4800))).levels(kHalf, kHalf + kSine).pitch(1000),
+        single("Single_SineWithNaN_48k_Stereo", stereo(spiked(tone, kNaNSample, 4800))).levels(kHalf, kHalf + kSine),
+        single("Single_SineWithInfinity_48k_Stereo", stereo(spiked(tone, kInfSample, 4800))).levels(kHalf, kHalf + kSine),
 
         // Compare: the other track's match against this one, and their summing gains.
         compare("Compare_NoiseCopy_48k", stereo(hiss), stereo(hiss)).match(1, 0, 1).gains(kIdentical, kIdentical),
@@ -262,9 +254,9 @@ std::vector<Case> corpus()
         compare("Compare_SineCopy_44k1", stereo(tone), stereo(tone)).at(44100).match(1, 0, 1).gains(kIdentical, kIdentical),
         // Silence on either side: the tracks never sound together, so nothing is measured.
         compare("Compare_OtherSilent_48k", stereo(hiss), stereo(silence())).match(kNone, kNone, 0).gains(kNone, kNone),
-        compare("Compare_BothSilent_48k", stereo(silence()), stereo(silence())).levels(kSilent, kSilent).pitch(kNone).match(kNone, kNone, 0).gains(kNone, kNone),
+        compare("Compare_BothSilent_48k", stereo(silence()), stereo(silence())).levels(kSilent, kSilent).match(kNone, kNone, 0).gains(kNone, kNone),
         // A steady offset is sound to the analysis too: two equal ones sum as copies.
-        compare("Compare_DcCopy_48k", stereo(dc(0.25)), stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf).pitch(kNone).match(1, 0, 1).gains(kIdentical, kIdentical),
+        compare("Compare_DcCopy_48k", stereo(dc(0.25)), stereo(dc(0.25))).levels(2 * kHalf, 2 * kHalf).match(1, 0, 1).gains(kIdentical, kIdentical),
         // NaN or infinite samples on this track, as in Single: measured around, so the copy still matches
         // and sums as one; the sum lane carries the NaN points.
         compare("Compare_NoiseWithNaN_48k", stereo(spiked(hiss, kNaNSample, 4800)), stereo(hiss)).match(1, 0, 1).gains(kIdentical, kIdentical),
@@ -376,7 +368,6 @@ json snapshot(const Case& c, const DecodedFrame& frame, const std::vector<std::b
     out["visibleSamples"] = number(frame.visibleSamples);
     out["readouts"]["peak"] = number(frame.peak);
     out["readouts"]["rms"] = number(frame.rms);
-    out["readouts"]["frequency"] = number(frame.frequency);
     // Samples that are not finite, measured around: recorded where there are any.
     if (frame.invalidSamples > 0) {
         out["readouts"]["invalidSamples"] = frame.invalidSamples;
@@ -557,15 +548,6 @@ TEST_P(SignalCorpus, MatchesTheApprovedFrame)
         EXPECT_EQ(frame->rms, 0.0f) << "silence has no level, not a tiny one";
     } else {
         expectNear("RMS (dBFS)", dbfs(frame->rms), expect.rmsDbfs, kRmsToleranceDb);
-    }
-    if (expect.frequency) {
-        // The frame carries NaN for no frequency (protocol/src/frame.ts).
-        if (std::isnan(*expect.frequency)) {
-            EXPECT_TRUE(std::isnan(frame->frequency)) << "no frequency to find";
-        } else {
-            EXPECT_NEAR(frame->frequency, *expect.frequency,
-                        kFrequencyTolerance * *expect.frequency);
-        }
     }
     if (c.mode == Display::kCompare) {
         const json& match = actual.at("matches").at("track1");

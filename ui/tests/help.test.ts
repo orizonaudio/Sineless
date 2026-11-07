@@ -68,7 +68,7 @@ describe("help texts", () => {
 
   // The readouts' channel is chosen (and named beside them), so no help says they measure one
   // fixed channel; the trigger source picks only what the trigger reads.
-  test.each(["peak", "rms", "frequency", "triggerSource"] as const)(
+  test.each(["peak", "rms", "triggerSource"] as const)(
     "%s does not tie the readouts to one channel",
     (topic) => {
       expect(helpTexts[topic].text).not.toMatch(

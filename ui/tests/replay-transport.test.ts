@@ -27,7 +27,6 @@ function frame(peak: number, spanSeconds = 1): string {
       startFraction: 0,
       peak,
       rms: 0,
-      frequency: undefined,
       sampleRate: 48000,
       spanSeconds,
       views: new Map(),

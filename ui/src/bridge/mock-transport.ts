@@ -596,7 +596,6 @@ export class MockTransport implements Transport {
           startFraction: 0,
           peak: Number.NaN,
           rms: Number.NaN,
-          frequency: undefined,
           sampleRate: this.sampleRate,
           views: new Map(),
           laneSet: multi ? this.laneSet : 0,
@@ -786,7 +785,6 @@ export class MockTransport implements Transport {
           readoutSamples > 0
             ? Math.sqrt(sumOfSquares / readoutSamples)
             : Number.NaN,
-        frequency: multi ? undefined : mockFundamental,
         views,
         lanes,
         laneSet: multi ? this.laneSet : 0,

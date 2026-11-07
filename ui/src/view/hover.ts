@@ -211,8 +211,8 @@ export function cycleBounds(
   if (after === undefined || before === undefined) {
     return undefined;
   }
-  // A cycle is only a cycle if the signal repeats: next to another of about the same length,
-  // as the engine's frequency readout requires. A lone cycle, zoomed in on, has none to compare.
+  // A cycle is only a cycle if the signal repeats: next to another of about the same length.
+  // A lone cycle, zoomed in on, has none to compare.
   const length = after - before;
   const neighbours = [
     next > 1 ? before - (crossings[next - 2] ?? before) : undefined,

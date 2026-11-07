@@ -639,7 +639,6 @@ TEST_F(AnalyzerTest, ProducesATriggeredMinMaxFrameWithReadouts)
     EXPECT_NEAR(frame->peak, 0.5f, 1e-3f);
     // 20 ms holds 8.8 cycles of 440 Hz; RMS over a partial cycle deviates by about 1%.
     EXPECT_NEAR(frame->rms, 0.5f / std::numbers::sqrt2_v<float>, 0.02f * 0.354f);
-    EXPECT_NEAR(frame->frequency, 440.0f, 1.0f);
 }
 
 TEST_F(AnalyzerTest, AlignsTheTriggerAtTenPercentWithSubSampleAccuracy)
@@ -1018,7 +1017,6 @@ TEST_F(AnalyzerTest, FreezeKeepsShowingHeldDataWhileViewsStillChange)
     ASSERT_TRUE(rescaled);
     EXPECT_TRUE(rescaled->has(FrameFlag::kFrozen));
     EXPECT_NEAR(rescaled->peak, 0.5f, 1e-3f) << "readouts work on held data";
-    EXPECT_NEAR(rescaled->frequency, 440.0f, 1.0f);
 
     analyzer.setFrozen(false);
     writeSilence(0.5); // Longer than the trigger search region, so no edge remains in it.
@@ -1293,7 +1291,6 @@ TEST_F(ZoomTest, KeepsReadoutsOverTheWholeSpan)
     const auto zoomed = produce();
     ASSERT_TRUE(whole && zoomed);
     EXPECT_NEAR(zoomed->rms, whole->rms, 0.01f);
-    EXPECT_NEAR(zoomed->frequency, 440.0f, 1.0f);
 }
 
 TEST_F(ZoomTest, RedrawsWhenOnlyTheViewChanges)
@@ -2093,10 +2090,6 @@ TEST_F(MultiTrackTest, KeepsSweepReadoutsInStepWithAFreshMeasurement)
         EXPECT_EQ(frame->rms, expected.rms) << "mode " << static_cast<int>(mode);
         EXPECT_NEAR(frame->peak, 0.5f, 1e-3f);
         EXPECT_NEAR(frame->rms, 0.5f / std::numbers::sqrt2_v<float>, 0.01f);
-        EXPECT_NEAR(frame->frequency,
-                    kRadiansPerSample * static_cast<float>(kSampleRate) /
-                        (2.0f * std::numbers::pi_v<float>),
-                    1.0f);
     }
 }
 
