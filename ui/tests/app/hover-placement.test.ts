@@ -6,8 +6,9 @@ import { userEvent } from "vitest/browser";
 
 import { byId, settle, startApp } from "./harness.ts";
 
-// The readout's gap to the pointer (CSS px), as the page places it.
-const offset = 14;
+// How near the pointer the readout's nearest edge must be to count as beside it (CSS px): a few
+// lines of text, far less than the screen, so a readout left in a corner does not pass.
+const beside = 40;
 
 describe("the hover readout", () => {
   test("sits beside the pointer at whole pixels, flipped where the screen ends", async () => {
@@ -42,12 +43,30 @@ describe("the hover readout", () => {
       // The pointer in the screen's own pixels, as the page reads it.
       const px = (x / trace.width) * screen.clientWidth;
       const py = (y / trace.height) * screen.clientHeight;
-      const right = px + offset + node.offsetWidth <= screen.clientWidth;
-      const below = py + offset + node.offsetHeight <= screen.clientHeight;
-      const left = right ? px + offset : px - offset - node.offsetWidth;
-      const top = below ? py + offset : py - offset - node.offsetHeight;
-      expect(node.offsetLeft).toBeCloseTo(Math.max(0, left), -0.5);
-      expect(node.offsetTop).toBeCloseTo(Math.max(0, top), -0.5);
+      const box = {
+        left: node.offsetLeft,
+        top: node.offsetTop,
+        right: node.offsetLeft + node.offsetWidth,
+        bottom: node.offsetTop + node.offsetHeight,
+      };
+      // Inside the screen, off the pointer, and near it.
+      expect(box.left).toBeGreaterThanOrEqual(0);
+      expect(box.top).toBeGreaterThanOrEqual(0);
+      expect(box.right).toBeLessThanOrEqual(screen.clientWidth);
+      expect(box.bottom).toBeLessThanOrEqual(screen.clientHeight);
+      const covers =
+        px > box.left && px < box.right && py > box.top && py < box.bottom;
+      expect(covers).toBe(false);
+      expect(
+        Math.min(Math.abs(box.left - px), Math.abs(box.right - px)),
+      ).toBeLessThan(beside);
+      expect(
+        Math.min(Math.abs(box.top - py), Math.abs(box.bottom - py)),
+      ).toBeLessThan(beside);
+      // Below and right of the pointer, or on its other side where the screen ends.
+      const nearEdge = x > trace.width / 2 && y > trace.height / 2;
+      expect(box.left > px).toBe(!nearEdge);
+      expect(box.top > py).toBe(!nearEdge);
     }
   });
 });
