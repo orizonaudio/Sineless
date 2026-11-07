@@ -1015,7 +1015,7 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `chromeHeight` | 84 px | Height around the screen. |
 
 Engine-only thresholds live in the engine source, each with its reason; the requirements state
-the behaviour they set: the Auto timeout (FR-3), the steady share of cycles (FR-7), the sweep cap
+the behaviour they set: the Auto timeout (FR-3), the sweep cap
 and tempo tolerance (FR-9.3, FR-9.4), Compare's "together", "audible" and "related" levels and its
 match pacing (FR-15.3, FR-15.4), the 10 ms statistics block and the lane hold margin (5.2), and
 the highest sample rate the capture is sized for (5.2, CaptureRing).
