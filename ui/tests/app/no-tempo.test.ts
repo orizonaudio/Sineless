@@ -40,10 +40,7 @@ describe("before the host reports a tempo", () => {
   test.each(
     [...displays]
       .sort((a, b) => Number(a === "Single") - Number(b === "Single"))
-      .map(
-        (display) =>
-          [display, display === "Single" ? "Left" : "This track"] as const,
-      ),
+      .map((display) => [display, display === "Single" ? "L" : "TT"] as const),
   )("in %s, the readout tag says %s", async (mode, tag) => {
     await showDisplay(mode);
     await expect.poll(chips).toEqual(["No tempo"]);

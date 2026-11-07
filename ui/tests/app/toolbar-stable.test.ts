@@ -10,6 +10,8 @@ import {
 } from "../../../protocol/src/limits.ts";
 import { valueNames } from "../../../protocol/src/setting-values.ts";
 import { settings, type SettingName } from "../../../protocol/src/settings.ts";
+import { numberFields } from "../../src/view/fields.ts";
+import { beatSpanLabels } from "../../src/view/musical-grid.ts";
 import { byId, settle, startApp, type Started } from "./harness.ts";
 
 afterAll(async () => {
@@ -129,11 +131,9 @@ describe.each(widths)("the toolbar at %i px", (width) => {
     "mode-group",
     "views-slot",
     "layout-group",
-    "divider#0",
     "time-base-group",
     "time-group",
     "vertical-group",
-    "trigger-divider",
     "trigger-group",
     "arm",
     "freeze",
@@ -197,4 +197,55 @@ describe.each(widths)("the toolbar at %i px", (width) => {
     expect(multi.left).toBeCloseTo(single.left, 1);
     expect(multi.width).toBeCloseTo(single.width, 1);
   });
+});
+
+// Every value the span pill can show, in any time base: the beat spans' labels, and each step
+// Trig's and Free's spans take, coarse and fine, from their shortest to their longest.
+function spanLabels(): { host: string; label: string }[] {
+  const shown: { host: string; label: string }[] = beatSpanLabels.map(
+    (label) => ({ host: "beat-span-field", label }),
+  );
+  for (const name of ["triggerSpan", "freeSpan"] as const) {
+    const field = numberFields[name];
+    const { minimum, maximum } = settings[name];
+    if (field === undefined) {
+      continue;
+    }
+    for (const fine of [false, true]) {
+      for (
+        let value: number = minimum, step = 0;
+        value <= maximum && step < 1000;
+        value = field.step(value, 1, fine), step++
+      ) {
+        shown.push({ host: field.host, label: field.format(value) });
+      }
+    }
+  }
+  return shown;
+}
+
+// The span pill is as wide as its longest value: none of them widens it, so a step or a switch of
+// time base moves nothing after it.
+test("the span pill holds every value its steps can show at one width", async () => {
+  await startApp();
+  await settle();
+  const pill = byId("time-group");
+  const width = pill.getBoundingClientRect().width;
+  const wider: string[] = [];
+  for (const { host, label } of spanLabels()) {
+    for (const id of ["span-field", "free-span-field", "beat-span-field"]) {
+      byId(id).hidden = id !== host;
+    }
+    const field = byId(host).querySelector<HTMLElement>(".field");
+    if (field === null) {
+      continue;
+    }
+    const before = field.textContent;
+    field.textContent = label;
+    if (pill.getBoundingClientRect().width > width + 0.5) {
+      wider.push(label);
+    }
+    field.textContent = before;
+  }
+  expect(wider).toEqual([]);
 });

@@ -508,8 +508,8 @@ TEST_F(EditorTest, StreamsFramesAndReportsHostStateChanges)
     [window close];
 }
 
-// With the embedded fonts as WebKit renders them, everything fits at the minimum size and, with the
-// wordmark, at the default size, in every state that changes the labels' widths.
+// With the embedded fonts as WebKit renders them, everything fits, the wordmark included, at the
+// minimum and the default size, in every state that changes the labels' widths.
 TEST_F(EditorTest, FitsTheMinimumAndDefaultSizesInEveryState)
 {
     auto engine = std::make_shared<engine::Engine>();
@@ -522,7 +522,6 @@ TEST_F(EditorTest, FitsTheMinimumAndDefaultSizesInEveryState)
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
     ViewRect minimum(0, 0, 0, 0);
     editor->checkSizeConstraint(&minimum);
-    // The minimum size with the mark alone, then the default size with the wordmark.
     for (ViewRect size : {minimum, ViewRect(0, 0, Editor::kDefaultWidth, Editor::kDefaultHeight)}) {
         ASSERT_EQ(editor->onSize(&size), kResultTrue);
         ASSERT_TRUE(pumpUntil(
@@ -530,14 +529,7 @@ TEST_F(EditorTest, FitsTheMinimumAndDefaultSizesInEveryState)
                 return evaluate(webView, @"String(innerWidth)") == std::to_string(size.getWidth());
             },
             std::chrono::seconds(5)));
-        const bool isDefault = size.getWidth() == Editor::kDefaultWidth;
-        // The page shows or hides it on the resize event that follows.
-        EXPECT_TRUE(pumpUntil(
-            [&] {
-                return evaluate(webView, @(fit::kWordmarkScript)) ==
-                       (isDefault ? "shown" : "hidden");
-            },
-            std::chrono::seconds(5)))
+        EXPECT_EQ(evaluate(webView, @(fit::kWordmarkScript)), "shown")
             << "the wordmark at " << size.getWidth();
         for (const fit::State& state : fit::states()) {
             engine::Settings settings;

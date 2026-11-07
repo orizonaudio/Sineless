@@ -9,7 +9,7 @@
   <body>
     <div class="app">
       <!-- Every control that applies in the current mode, in one row; nothing folds away, so the
-           editor's minimum width is the widest row's. Only the wordmark hides when it is narrow. -->
+           editor's minimum width is the widest row's. -->
       <header class="toolbar" id="toolbar">
         <div class="brand">
           <span class="brand-mark" id="brand-mark" aria-hidden="true"></span>
@@ -22,14 +22,22 @@
             aria-expanded="false"
             aria-controls="mode-popover"
           >
-            <i>Mode</i><b id="mode-summary"></b
+            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="4" height="4" rx=".8" />
+              <rect x="6.5" y="1.5" width="4" height="4" rx=".8" />
+              <rect x="1.5" y="6.5" width="4" height="4" rx=".8" />
+              <rect x="6.5" y="6.5" width="4" height="4" rx=".8" /></svg
+            ><b id="mode-summary"></b
             ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
               <path d="M1.5 3 4 5.5 6.5 3" />
             </svg>
           </button>
           <div class="popover" id="mode-popover" hidden>
             <div class="popover-title">Mode</div>
-            <div class="segmented" id="display-mode"></div>
+            <div class="popover-row">
+              <span>Tracks</span>
+              <div class="segmented" id="display-mode"></div>
+            </div>
           </div>
         </div>
         <!-- Each field that opens a popover holds it, so the popover follows its button in the
@@ -45,9 +53,8 @@
               aria-controls="views-popover"
             >
               <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-                <path
-                  d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"
-                /></svg
+                <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
+                <circle cx="10" cy="9" r=".6" /></svg
               ><b id="views-summary"></b
               ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
                 <path d="M1.5 3 4 5.5 6.5 3" />
@@ -69,9 +76,8 @@
               aria-controls="group-popover"
             >
               <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-                <path
-                  d="M1 3.5c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0M1 9c1.2-2 2.3-2 3.5 0s2.3 2 3.5 0 2.3-2 3 0"
-                /></svg
+                <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
+                <circle cx="10" cy="9" r=".6" /></svg
               ><b id="group-summary">A</b
               ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
                 <path d="M1.5 3 4 5.5 6.5 3" />
@@ -97,17 +103,22 @@
             aria-expanded="false"
             aria-controls="layout-popover"
           >
-            <i>Layout</i><b id="layout-summary"></b
+            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M6 1.5 10.5 4 6 6.5 1.5 4Z" />
+              <path d="M1.5 6.5 6 9 10.5 6.5" /></svg
+            ><b id="layout-summary"></b
             ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
               <path d="M1.5 3 4 5.5 6.5 3" />
             </svg>
           </button>
           <div class="popover" id="layout-popover" hidden>
             <div class="popover-title">Layout</div>
-            <div class="segmented" id="layout"></div>
+            <div class="popover-row">
+              <span>Traces</span>
+              <div class="segmented" id="layout"></div>
+            </div>
           </div>
         </div>
-        <span class="divider"></span>
         <div class="tool" id="time-base-group" data-help="timeBase">
           <button
             class="field-button"
@@ -115,14 +126,20 @@
             aria-expanded="false"
             aria-controls="time-base-popover"
           >
-            <i>Time</i><b id="time-base-summary"></b
+            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+              <circle cx="6" cy="6" r="4.5" />
+              <path d="M6 3.3V6l1.8 1.2" /></svg
+            ><b id="time-base-summary"></b
             ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
               <path d="M1.5 3 4 5.5 6.5 3" />
             </svg>
           </button>
           <div class="popover" id="time-base-popover" hidden>
             <div class="popover-title">Time base</div>
-            <div class="segmented" id="time-base"></div>
+            <div class="popover-row">
+              <span>Sweep</span>
+              <div class="segmented" id="time-base"></div>
+            </div>
           </div>
         </div>
         <div class="tool icon-field" id="time-group" data-help="triggerSpan">
@@ -147,7 +164,6 @@
           </svg>
           <div id="scale-field" data-help="verticalScale"></div>
         </div>
-        <span class="divider" id="trigger-divider"></span>
         <div class="tool" id="trigger-group" data-help="trigger">
           <button
             class="field-button"
@@ -278,14 +294,17 @@
         <div class="readouts">
           <div class="readout-group" id="readout-group">
             <button
-              class="readout-tag"
+              class="field-button readout-tag"
               id="readout-details"
               data-help="readoutSource"
               aria-haspopup="true"
               aria-expanded="false"
               aria-disabled="true"
             >
-              <span id="readout-tag"></span
+              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M1.5 9a4.5 4.5 0 0 1 9 0" />
+                <path d="M6 9 8.5 5" /></svg
+              ><b id="readout-tag"></b
               ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
                 <path d="M1.5 3 4 5.5 6.5 3" />
               </svg>

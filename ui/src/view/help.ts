@@ -208,7 +208,7 @@ export const helpTexts = {
   },
   readoutSource: {
     title: "What the readouts measure",
-    text: "The channel Peak, RMS and Freq read. In Single, click to choose L, R, M or S among the views drawn; while the one chosen is hidden, they read the first view drawn. Multi reads this track's Mid, and a mono track its one channel, Left.",
+    text: "The channel Peak, RMS and Freq read: L, R, M or S for Left, Right, Mid or Side, TT for this track. In Single, click to choose L, R, M or S among the views drawn; while the one chosen is hidden, they read the first view drawn. Multi reads this track's Mid (TT), and a mono track its one channel, L.",
   },
   concertPitch: {
     title: "Concert pitch",
