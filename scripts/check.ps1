@@ -63,13 +63,13 @@ if ($main) {
         Stage -Name "C++ build: $preset" -Body {
             Run cmake --preset $preset
             Run cmake --build --preset $preset '--' /m /nologo /v:minimal
-        }.GetNewClosure()
+        }
         if ($preset -like '*arm64' -and -not $hostIsArm) {
             Write-Host "Tests skipped: this machine cannot run $preset binaries."
         } else {
             Stage -Name "C++ tests: $preset" -Needs "C++ build: $preset" -Body {
                 Run ctest --preset $preset -j $env:NUMBER_OF_PROCESSORS
-            }.GetNewClosure()
+            }
         }
     }
 
