@@ -87,8 +87,8 @@ Written first, each failing on its parent commit; the dimensions covered.
 Commits (one issue each) and pull requests, in order.
 ## 11. Remaining risks
 ## 12. Declined points
-Every finding a verifier refuted or downgraded, and every suggestion not applied, one line each
-with its reason.
+Every finding a verifier refuted or downgraded, one line each with its reason. (Suggestions not
+applied stay in the log, recorded, not applied.)
 ```
 
 No open questions: ask the owner before review, not in the plan.
@@ -130,9 +130,10 @@ No open questions: ask the owner before review, not in the plan.
    rejected with their reasons. Then implement. Each open measurement's spike runs before the
    code that depends on it, and its result goes into the plan. While writing the tests, read the
    logged suggestions; one that proves real is fixed in the code, not by revising the plan.
-   Before opening the pull request, check each declined point against the code: one the code now
-   contradicts becomes a fix and its test; one that still holds is listed in the pull request's
-   body under "Considered and not done", with its reason.
+   Before opening the pull request, check each declined point, and each suggestion the log records
+   as not applied, against the code: one the code now contradicts becomes a fix and its test; one
+   that still holds is listed in the pull request's body under "Considered and not done", with its
+   reason.
 
 During implementation, a change to what is built, how, or its tests updates the plan and is
 reviewed as a later round before the code that depends on it. A commit that only adds a test

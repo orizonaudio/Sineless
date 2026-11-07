@@ -56,8 +56,9 @@ message with a short `Prior art:` note naming the sources.
   code the audio thread runs, a change to what an FR, AD or QS states, and `CLAUDE.md`,
   `REVIEW.md` and `.claude/**`.
 - **A change to tests, scripts, tools or CI workflows only** (no product code, `protocol/`, agent
-  files, FR, AD or QS) gets a light plan: two reviewers, blocking findings only, at most two
-  rounds (the `plan-before-code` skill, section 1).
+  files, FR, AD or QS) gets a light plan: the design and tests reviewers (and the real-time one
+  when `prior-art` applied), blocking findings only, at most two rounds (the `plan-before-code`
+  skill, section 1).
 - **Say in one line before coding** whether the change is exempt, and why.
 - **The plan is local** (`Research Topics/` is ignored): reviews of a diff do not ask for it.
 
