@@ -25,7 +25,7 @@ import {
 import { musicalPosition } from "./musical-grid.ts";
 import { toFrame, toScreen, type ViewWindow } from "./zoom.ts";
 
-// An RMS level at the analysis gate: quieter signals have no cycles, as in the engine.
+// An RMS level at the analysis gate: quieter signals have no cycles.
 const gateLevel = 10 ** (analysisGateDbfs / 20);
 
 export interface HoverTrace {
@@ -68,9 +68,9 @@ export function traceAt(
   return found < 0 ? (clip > 0 ? 0 : count - 1) : found;
 }
 
-// Span positions (0 to 1) where `values` rises through its mean level, by the engine's rule for
-// its frequency readout: only after first falling `crossingHysteresis` of the peak-to-peak range
-// below it, so noise riding on a crossing does not count twice. None for a signal at or below
+// Span positions (0 to 1) where `values` rises through its mean level: only after first falling
+// `crossingHysteresis` of the peak-to-peak range below it, so noise riding on a crossing does not
+// count twice. None for a signal at or below
 // the analysis gate. Min/max columns cross inside a column that spans the level, entered from
 // below, or at the edge between a column wholly below it and one wholly above. Values that are
 // not finite (from a broken signal upstream) are measured around, as the engine does.
