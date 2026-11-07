@@ -4,7 +4,11 @@
 import { describe, expect, test } from "vitest";
 
 import { settings } from "../../protocol/src/settings.ts";
-import { maxLanes } from "../../protocol/src/limits.ts";
+import {
+  highestAudibleHz,
+  lowestAudibleHz,
+  maxLanes,
+} from "../../protocol/src/limits.ts";
 import { levelReadout } from "../src/view/cursors.ts";
 import { numberFields } from "../src/view/fields.ts";
 import {
@@ -84,6 +88,25 @@ describe("formatMusicalLength", () => {
       expect(format.formatMusicalLength(quarterNotes, bar)).toBe(text);
     },
   );
+});
+
+// A frequency is named only within the audible range: below it a slow change, above it an
+// artefact, both read "—", in the readout, at the time cursors and in the hover.
+describe("formatHertz", () => {
+  test.each([
+    [lowestAudibleHz - 0.01, "—"],
+    [lowestAudibleHz, `≈ ${lowestAudibleHz.toFixed(1)} Hz`],
+    [440, "≈ 440.0 Hz"],
+    [highestAudibleHz, `≈ ${String(highestAudibleHz)} Hz`],
+    [highestAudibleHz + 1, "—"],
+    [Number.NaN, "—"],
+    [undefined, "—"],
+  ])("reads %s Hz as %s", (hertz, text) => {
+    expect(format.formatHertz(hertz)).toBe(text);
+    expect(format.formatFrequency(hertz)).toBe(
+      text === "—" ? "—" : text.replace(/ Hz$/u, ""),
+    );
+  });
 });
 
 describe("formatDbDifference", () => {

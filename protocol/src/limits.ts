@@ -86,6 +86,11 @@ export const summingMarginDb = 1;
 // How much of the newest audio the frequency readout measures (seconds).
 export const frequencyWindowSeconds = 1;
 
+// The audible range (Hz): a frequency outside it, from the readout, the time cursors or the hover,
+// reads "—" and has no note; below 20 Hz a "frequency" is a slow change, above 20 kHz an artefact.
+export const lowestAudibleHz = 20;
+export const highestAudibleHz = 20000;
+
 // The editor's layout (CSS pixels): its minimum width, the wider of the widest toolbar (Trig, the
 // Single trigger mode and frozen, in Single or in Multi with Compare on: one width since Single's
 // and Multi's Views share a place; measured at 997 with the wordmark) and the status bar, whose

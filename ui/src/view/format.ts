@@ -2,7 +2,12 @@
 // missing, or not a number (from a broken signal upstream), shows as a dash. Every formatter
 // rounds first and then chooses its unit and decimals, so a value just under a boundary ("999.96")
 // shows as the value it rounds to ("1000"), and none uses exponent notation.
-import { gainFloorDb, levelFloorDbfs } from "../../../protocol/src/limits.ts";
+import {
+  gainFloorDb,
+  highestAudibleHz,
+  levelFloorDbfs,
+  lowestAudibleHz,
+} from "../../../protocol/src/limits.ts";
 
 const minus = "−";
 const none = "—";
@@ -176,10 +181,22 @@ export function formatMusicalLength(
 
 // Frequency readout: approximate, or a dash when unavailable.
 export function formatFrequency(hertz: number | undefined): string {
-  if (hertz === undefined || !Number.isFinite(hertz)) {
+  if (!isAudible(hertz)) {
     return none;
   }
   return `≈ ${hertz.toFixed(rounded(hertz, 1) < 1000 ? 1 : 0)}`;
+}
+
+// Whether `hertz` is a frequency the readouts name: within the audible range.
+export function isAudible(hertz: number | undefined): hertz is number {
+  return (
+    hertz !== undefined && hertz >= lowestAudibleHz && hertz <= highestAudibleHz
+  );
+}
+
+// A frequency with its unit, "≈ 440.0 Hz", or a dash outside the audible range.
+export function formatHertz(hertz: number | undefined): string {
+  return isAudible(hertz) ? `${formatFrequency(hertz)} Hz` : none;
 }
 
 // A reference pitch, to a tenth of a hertz without trailing zeros: "440", "441.5".
