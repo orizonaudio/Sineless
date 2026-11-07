@@ -68,8 +68,10 @@ import { choiceLabels } from "./view/choice-labels.ts";
 import { drawGrid, gridColumns } from "./view/grid.ts";
 import {
   gridChoice,
+  gridSettingName,
   isGridSetting,
   type GridChoice,
+  type GridSettingKind,
   type TimeBaseName,
 } from "./view/grid-settings.ts";
 import {
@@ -187,6 +189,7 @@ const popovers = [
   ["trigger-group", "trigger-details", "trigger-popover"],
   ["about-group", "about-details", "about-popover"],
   ["readout-group", "readout-details", "readout-popover"],
+  ["grid-group", "grid-details", "grid-popover"],
 ] as const;
 // The settings chosen in a toolbar field's popover, whose button names the value.
 type ChoiceSetting = "displayMode" | "timeBase" | "viewLayout";
@@ -198,7 +201,11 @@ interface ChoiceSummary {
 }
 // The status bar's popovers, which CSS places above their buttons; the others open under their
 // field.
-const placedByStyle = new Set<string>(["about-popover", "readout-popover"]);
+const placedByStyle = new Set<string>([
+  "about-popover",
+  "readout-popover",
+  "grid-popover",
+]);
 // The hover readout keeps this far (CSS px) from the pointer.
 const hoverOffset = 14;
 
@@ -308,6 +315,13 @@ export class OscilloscopeApp {
   private meterValues = { peak: Number.NaN, rms: Number.NaN };
   // The readouts' channel: lit as the frame measured it, not as the setting asks.
   private readoutChoices: Segmented | undefined;
+  // The grid's popover: a row per choice, each reading and writing the shown time base's setting
+  // (Beat division its one setting), and the field naming the type drawn.
+  private readonly gridRows = new Map<
+    GridSettingKind | "Division",
+    Segmented
+  >();
+  private gridSummary: StackedSummary | undefined;
   // The trigger's source: lit as the frame's trigger reads, not as the setting asks.
   private sourceChoices: Segmented | undefined;
   // The view the trigger level marker was last placed for, in lane and colour.
@@ -679,6 +693,36 @@ export class OscilloscopeApp {
       },
     );
 
+    const gridRow = (
+      kind: GridSettingKind | "Division",
+      host: string,
+      labels: Readonly<Record<string, string>>,
+    ) => {
+      this.gridRows.set(
+        kind,
+        new Segmented(
+          element(host),
+          Object.entries(labels).map(([value, label]) => ({ value, label })),
+          (value) => {
+            this.request(
+              kind === "Division"
+                ? "beatDivision"
+                : gridSettingName(kind, this.timeBaseName()),
+              value,
+            );
+          },
+        ),
+      );
+    };
+    gridRow("Type", "grid-type", choiceLabels.gridType);
+    gridRow("Time", "grid-time", choiceLabels.gridDensity);
+    gridRow("Level", "grid-level", choiceLabels.gridDensity);
+    gridRow("Division", "beat-division", choiceLabels.beatDivision);
+    this.gridSummary = new StackedSummary(
+      element("grid-summary"),
+      choiceLabels.gridType,
+    );
+
     element("brand-mark").innerHTML = brand.mark;
     element("wordmark").textContent = brand.name;
     document.title = brand.name;
@@ -1009,6 +1053,9 @@ export class OscilloscopeApp {
       "triggerMode",
       "timeBase",
     ];
+    if (name === "timeBase" || isGridSetting(name)) {
+      this.updateGridControls();
+    }
     if (screenSettings.includes(name) || isGridSetting(name)) {
       this.drawScreen();
       this.loop.invalidate();
@@ -1323,12 +1370,41 @@ export class OscilloscopeApp {
     return this.store.get("timeBase") === "beats";
   }
 
+  private timeBaseName(): TimeBaseName {
+    return this.store.get("timeBase") as TimeBaseName;
+  }
+
   // The grid the screen draws: the settings of the time base the toolbar shows.
   private gridChoice(): GridChoice {
-    return gridChoice(
-      (name) => this.store.get(name),
-      this.store.get("timeBase") as TimeBaseName,
+    return gridChoice((name) => this.store.get(name), this.timeBaseName());
+  }
+
+  // The grid's field and popover show the shown time base's grid, the type as drawn. Cross hair
+  // only in Trig, which has a trigger point to mark; Time and Level with lines to draw; the Beat
+  // division in Beats.
+  private updateGridControls(): void {
+    const grid = this.gridChoice();
+    const timeBase = this.timeBaseName();
+    this.gridSummary?.show(grid.type);
+    element("grid-details").setAttribute(
+      "aria-label",
+      `Grid: ${choiceLabels.gridType[grid.type]}`,
     );
+    const rows = [
+      [
+        "Type",
+        grid.type,
+        (value: string) => value !== "crossHair" || timeBase === "trigger",
+      ],
+      ["Time", grid.time, () => grid.type !== "none"],
+      ["Level", grid.level, () => grid.type !== "none"],
+      ["Division", grid.division, () => timeBase === "beats"],
+    ] as const;
+    for (const [kind, value, enabled] of rows) {
+      const row = this.gridRows.get(kind);
+      row?.show(value);
+      row?.enable(enabled);
+    }
   }
 
   // The musical grid of the last synced frame, when in Beats mode.

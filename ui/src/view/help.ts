@@ -3,6 +3,13 @@
 
 import {
   analysisGateDbfs,
+  gridColumnsCoarse,
+  gridColumnsFine,
+  gridColumnsMedium,
+  gridCoarseLevelStride,
+  gridFineBeatLineGap,
+  gridFineLevelSubdivisions,
+  gridLevelStepDb,
   levelFloorDbfs,
   matchReachSeconds,
   matchWindowSeconds,
@@ -35,6 +42,10 @@ const longestTriggerSpan = formatSeconds(settings.triggerSpan.maximum);
 const shortestFreeSpan = formatSeconds(settings.freeSpan.minimum);
 const longestFreeSpan = formatSeconds(settings.freeSpan.maximum);
 const option = isMac ? "⌥" : "Alt";
+// The level lines' steps at Coarse, Medium and Fine, in dB.
+const coarseLevelDb = String(gridLevelStepDb * gridCoarseLevelStride);
+const mediumLevelDb = String(gridLevelStepDb);
+const fineLevelDb = String(gridLevelStepDb / gridFineLevelSubdivisions);
 
 export interface HelpText {
   readonly title: string;
@@ -215,6 +226,26 @@ export const helpTexts = {
   readoutSource: {
     title: "Channel",
     text: "The channel the Meter reads: L, R, M or S for Left, Right, Mid or Side. With the views overlaid, the hover readout and the cursors' snapping read it too; stacked, each lane reads its own trace. In Single, click to choose among the views drawn; while the one chosen is hidden, the first view drawn is read. A mono track has only L. Multi reads this track's Mid: TT, this track.",
+  },
+  grid: {
+    title: "Grid",
+    text: "The screen's grid in the current time base: what it draws, and how closely it divides time and level. Click to choose; each time base keeps its own.",
+  },
+  gridType: {
+    title: "Grid type",
+    text: "Grid draws the time and level lines. None leaves each lane's zero line. Cross hair, in Trig, draws the zero lines and a line through the trigger point, with ticks where the time and level lines would be. The labels stay in every type.",
+  },
+  gridTime: {
+    title: "Time lines",
+    text: `How closely lines divide time. In Trig and Free: ${String(gridColumnsCoarse)}, ${String(gridColumnsMedium)} or ${String(gridColumnsFine)} equal divisions. In Beats: one step coarser or finer than Medium, which follows the zoom (bars, beats, sixteenths); Fine steps finer only where its lines stay ${String(gridFineBeatLineGap)} pixels apart.`,
+  },
+  gridLevel: {
+    title: "Level lines",
+    text: `How closely lines divide each lane's level, down from its top: every ${coarseLevelDb} dB, every ${mediumLevelDb} dB, or every ${mediumLevelDb} dB in the brighter colour with ${fineLevelDb} dB lines between them. A short lane shows fewer.`,
+  },
+  beatDivision: {
+    title: "Beat division",
+    text: "In Beats, below the beat: Regular divides it in halves, quarters and finer; Triplets in thirds, sixths and finer, labelled as fractions of a beat such as +1/3. Positions count as before.",
   },
   concertPitch: {
     title: "Concert pitch",
