@@ -28,8 +28,9 @@ for check in "${checks[@]}"; do
 done
 shard=()
 if [[ -n "${CTEST_SHARD:-}" ]]; then
-    if [[ ! "$CTEST_SHARD" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]]; then
-        echo "CTEST_SHARD is k/n, as 2/4; it is $CTEST_SHARD." >&2
+    if [[ ! "$CTEST_SHARD" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] ||
+        ((BASH_REMATCH[1] > BASH_REMATCH[2])); then
+        echo "CTEST_SHARD is k/n with k from 1 to n, as 2/4; it is $CTEST_SHARD." >&2
         exit 1
     fi
     shard=(-I "${BASH_REMATCH[1]},,${BASH_REMATCH[2]}")

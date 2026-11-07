@@ -74,6 +74,12 @@ test("the lint runs first, before any full build", () => {
   );
   expect(lint).toBeGreaterThanOrEqual(0);
   expect(fullBuild).toBeGreaterThan(lint);
+  // What clang-tidy reads: the configured commands and the generated protocol header.
+  expect(calls.indexOf("cmake --preset linux")).toBeLessThan(lint);
+  expect(
+    calls.indexOf("cmake --build --preset linux --target protocol_header"),
+  ).toBeLessThan(lint);
+  expect(calls.indexOf("cmake --preset linux")).toBeGreaterThanOrEqual(0);
   expect(status).toBe(0);
 });
 
@@ -103,11 +109,17 @@ describe("CTEST_SHARD", () => {
     );
   });
 
-  test("not of the form k/n stops the run", () => {
-    const { calls, status } = run(["asan"], variables(["CTEST_SHARD", "2"]));
-    expect(calls.filter((call) => /^(cmake|ctest)/.test(call))).toEqual([]);
-    expect(status).not.toBe(0);
-  });
+  test.each(["2", "5/4", "0/4", "2/0"])(
+    "of %s, not k/n with k from 1 to n, stops the run",
+    (shard) => {
+      const { calls, status } = run(
+        ["asan"],
+        variables(["CTEST_SHARD", shard]),
+      );
+      expect(calls.filter((call) => /^(cmake|ctest)/.test(call))).toEqual([]);
+      expect(status).not.toBe(0);
+    },
+  );
 });
 
 test("BUILD_ONLY=1 runs the builds and nothing else", () => {
@@ -133,6 +145,12 @@ describe("in Docker", () => {
   test("a worktree's git folder is mounted, read-only, where git looks for it", () => {
     expect(dockerRun("/elsewhere/repo/.git")).toContain(
       "-v /elsewhere/repo/.git:/elsewhere/repo/.git:ro",
+    );
+  });
+
+  test("passes the builds-only and shard settings on", () => {
+    expect(dockerRun("/elsewhere/repo/.git")).toMatch(
+      /-e BUILD_ONLY -e CTEST_SHARD /,
     );
   });
 
