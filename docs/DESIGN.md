@@ -92,7 +92,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-4 | In the Free time base the window *runs free*, whatever the trigger mode: it ends at the newest audio and moves with it. It shows exactly the span, on columns on a grid fixed to absolute sample positions (column *k* covers ⌊*k*·span/columns⌋ onwards), so the trace does not shimmer; time labels and hover read back from the right edge; a freeze keeps the right edge, also when Trigger is then chosen (its span then ends there); no chip names it, as the time base's button does. Live, the right edge is *paced* (AD-29): it moves evenly between the host's blocks, a measured delay (about a block, at most `pacingDelayCapSeconds`) behind the newest audio, never past it; the newest sample offline, before the block clock locks, and for spans under `pacedSpanMinimumSeconds`. Auto drawing untriggered ends at the paced edge too. On macOS 14+ each frame reads the edge at the display clock's time, so successive frames move by exactly their refreshes' worth of audio (AD-30). | `FreeRunningTests`, `AnalyzerTests`, `PacedAnalyzerTests`, `MotionTests`, `FramePacingTests` |
 | FR-5 | Channel views L, R, Mid = (L+R)/2 and Side = (L−R)/2, overlaid or stacked, with the trigger source selectable among the views drawn. On a mono track only L exists: it is drawn, triggered on and measured, and the other views are disabled. Views apply in Single display mode; Multi shows each track's Mid. | `ChannelViewsTests`, `ui/tests/app/mono.test.ts` |
 | FR-6 | Freeze holds recent audio, and scale, views, zoom, cursors and readouts keep working on it. In Trigger and Free a freeze holds the newest 4 s (`frozenHoldSeconds`), which can be panned back through while not zoomed, as far as the frame's pan reach, and twice `pacingDelayCapSeconds` more, so that freezing a paced window keeps the window last shown. In Beats it holds what the capture holds (FR-9.6). A frozen view keeps the sample rate its audio was recorded at. Freeze is never saved. | `HoldBufferTests`, `ui/tests/app/frozen-pan.test.ts`, `held-rate.test.ts` |
-| FR-7 | Readouts of sample peak and RMS, for the readout channel (1.2.1), which the readout source chooses in Single display mode. They are indicative, not standards-compliant metering; help says so. They cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen. There is no frequency readout: the time cursors (FR-12.1) and the hover readout (FR-16.1) give the frequency where the signal repeats. Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/app/readouts.test.ts` |
+| FR-7 | The Meter: with its toggle on (saved, off by default), a panel in the screen's top-right corner, under the cursor readouts, shows the sample peak and the RMS in dBFS of the readout channel (1.2.1), which the readout source chooses in Single display mode, and their crest factor in dB: the peak's level over the RMS's, from the levels as measured and rounded once, so a sine reads 3.0 dB at every level; "—" when either has no level (not measured, or −∞ at the level floor, as silence is). They are indicative, not standards-compliant metering; help says so. They cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen; switched on, the Meter shows the levels last taken at once. The engine measures them with the Meter off too, for the Invalid samples chip. There is no frequency readout: the time cursors (FR-12.1) and the hover readout (FR-16.1) give the frequency where the signal repeats. Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/app/readouts.test.ts` |
 | FR-8 | All settings (table below) are saved with the host project as plugin state; none is a host-automatable parameter. A value is accepted only if finite and in range (enum and flag values integral, flags non-empty); an invalid value is refused, not clamped. | `StateTests`, `SettingsTests`, `setting-values.test.ts` |
 | FR-9 | Tempo sync (Beats time base). | `SweepTests`, `SweepImageTests`, `TimelineTests`, `MatrixTests` |
 | FR-9.1 | The span is a beat span, in bars of the host time signature, from 1/8 bar to 16 bars (1.3), at the host tempo; a beat is a quarter note. Typed, a span may be its number alone ("16", "1/4"). The display sweeps: the left edge is the start of the current cycle, aligned to multiples of the span from the project start. Until the host has reported a tempo (an instance it has not played through yet), nothing is placed: no sweep, grid or bar labels, and the UI says so ("No tempo"). | `AnalyzerTests`, `ui/tests/app/no-tempo.test.ts` |
@@ -156,6 +156,7 @@ against it and the UI builds its controls from it.
 | Group | A, B, C, D | A |
 | Compare (applies in Multi; kept in Single) | Off, on | Off |
 | Hover readout | Off, on | Off |
+| Meter | Off, on | Off |
 | Concert pitch (A4) | 400 – 500 Hz, linear | 440 Hz |
 
 Enumeration names are stable: projects save them; the numbers may change. Values that are not
@@ -197,7 +198,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   folds away or hides as the window narrows (AD-26).
 - The editor's minimum width, 1010 px, is the narrowest that fits the widest toolbar (Trigger, the
   Single trigger mode and frozen) and the status bar in every state, the wordmark included (the
-  editor tests check each state). Its minimum height is 400 px, or 84 px plus 40 px per stacked
+  editor tests check each state). Its minimum height is 420 px (`minimumEditorHeight`, the tallest corner panel: Time cursors in Beats, Level cursors and the Meter), or 84 px plus 40 px per stacked
   lane when that is more (with Compare on, its sum lane counts); the editor asks the host to grow when lanes
   are added. The default size is 1010 × 580. The size is kept in CSS
   pixels across display-scale changes.
@@ -211,8 +212,8 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Views popover in Multi | Group (A \| B \| C \| D) · Compare (On \| Off) |
 | Views popover | L, R, M, S toggles, each with its trace's colour |
 | Trigger popover | Mode (Auto \| Normal \| Single), Source (Single; the views not drawn disabled, the view the trigger reads lit), Slope, Level, Hysteresis, Hold-off, Position |
-| Screen, top right | The cursor readout; the frame barcode instead while the diagnostic switch is on (§8.3) |
-| Status bar | Left: Time, Level, Hover · A4 (concert pitch). Centre: what the readouts measure (in Single on a stereo track, a button opening the readout popover) · Peak, RMS. Right: the state chips, in a fixed width · Help switch · About |
+| Screen, top right | The cursor readouts and the Meter, in that order; the frame barcode instead while the diagnostic switch is on (§8.3) |
+| Status bar | Left: Time, Level, Hover, Meter · A4 (concert pitch). Centre: what the Meter measures (in Single on a stereo track, a button opening the readout popover). Right: the state chips, in a fixed width · Help switch · About |
 | Readout popover | Channel: L \| R \| M \| S, the views not drawn disabled; the channel measured lit |
 
 - Every toolbar field shows an icon, not a word, then its value: Mode, Views (a track list), Layout,
@@ -226,9 +227,9 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   window; it closes any other popover, and a press outside closes it. The status bar's popovers
   open above their buttons instead, About's aligned with its right edge and the readout popover
   with its button's left edge, and follow the same rules.
-- The status bar never moves: the cursor buttons and A4 keep their width, each readout has a fixed
-  width, and the chips have a fixed area. The readouts are labelled with the channel they measure
-  (1.2.1), a field like the toolbar's with a meter icon, in one width: in Single the channel the
+- The status bar never moves: the cursor buttons, Meter and A4 keep their width, and the chips
+  have a fixed area. The channel the Meter measures (1.2.1) is named in the centre, a field like
+  the toolbar's with a meter icon, in one width: in Single the channel the
   frame measured, L, R, M or S (L on a mono track), opening the readout popover on a stereo track;
   TT, this track, in Multi; "—" before a frame. Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
   do not fit fold, from the last, into one "+n" chip that lists them on hover or focus; the first
@@ -283,7 +284,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 
 #### Readouts and states
 
-- Peak and RMS in dBFS; frequencies (time cursors, hover) marked ≈ where approximate; "—" when there is no value.
+- Peak and RMS in dBFS, Crest in dB; frequencies (time cursors, hover) marked ≈ where approximate; "—" when there is no value.
 
 | Chip | Shown when |
 | --- | --- |
@@ -1007,6 +1008,7 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `matchWindowSeconds` | 8 s | Audio Compare matches over. |
 | `summingMarginDb` | 1 dB | Harmless summing band. |
 | `minimumEditorWidth` | 1010 px | Editor minimum width. |
+| `minimumEditorHeight` | 420 px | Editor minimum height: the tallest corner panel fits. |
 | `minimumLaneHeight` | 40 px | Stacked lane minimum height. |
 | `chromeHeight` | 84 px | Height around the screen. |
 

@@ -48,7 +48,6 @@ import {
 import type { SettingsStore } from "./store/settings-store.ts";
 import { amplitudeLabels, timeLabels } from "./view/axis-labels.ts";
 import {
-  formatDbfs,
   formatGain,
   formatOffset,
   parseQuantity,
@@ -59,6 +58,7 @@ import {
   initialCursors,
   initialLevels,
   levelReadout,
+  meterReadout,
   type ReadoutRow,
   measure,
   type CursorPair,
@@ -297,6 +297,9 @@ export class OscilloscopeApp {
   // The fields whose button names the value chosen in their popover.
   private readonly choiceSummaries = new Map<ChoiceSetting, ChoiceSummary>();
   private triggerSummary: StackedSummary | undefined;
+  // What the Meter shows: the frame's peak and RMS as last taken on the readout schedule, so a
+  // cursor drag between two refreshes redraws the corner without refreshing them.
+  private meterValues = { peak: Number.NaN, rms: Number.NaN };
   // The readouts' channel: lit as the frame measured it, not as the setting asks.
   private readoutChoices: Segmented | undefined;
   // The trigger's source: lit as the frame's trigger reads, not as the setting asks.
@@ -752,6 +755,9 @@ export class OscilloscopeApp {
         this.store.get("hoverReadout") === "on" ? "off" : "on",
       );
     });
+    element("meter-toggle").addEventListener("click", () => {
+      this.request("meter", this.store.get("meter") === "on" ? "off" : "on");
+    });
     element("auto-freeze").addEventListener("click", () => {
       this.request(
         "autoFreeze",
@@ -944,6 +950,13 @@ export class OscilloscopeApp {
         String(value === "on"),
       );
       this.updateHover();
+    }
+    if (name === "meter") {
+      element("meter-toggle").setAttribute(
+        "aria-pressed",
+        String(value === "on"),
+      );
+      this.updateCursorReadout();
     }
     if (name === "autoFreeze") {
       element("auto-freeze").setAttribute(
@@ -1755,6 +1768,12 @@ export class OscilloscopeApp {
         rows: levelReadout(this.levelCursors),
       });
     }
+    if (this.store.get("meter") === "on") {
+      sections.push({
+        title: "Meter",
+        rows: meterReadout(this.meterValues.peak, this.meterValues.rms),
+      });
+    }
     readout.hidden = sections.length === 0;
     readout.replaceChildren(
       ...sections.flatMap(({ title, rows }, index) => {
@@ -2297,12 +2316,14 @@ export class OscilloscopeApp {
       this.shownChips = shown;
       this.showChips(chips);
     }
-    this.updateCursorReadout();
-    this.updateHover(); // Live data changes under a resting pointer.
     const frame = this.lastFrame;
     if (frame !== undefined) {
-      element("peak").textContent = formatDbfs(frame.peak);
-      element("rms").textContent = formatDbfs(frame.rms);
+      // Taken on the readout schedule whether or not the Meter shows, so it shows them at once.
+      this.meterValues = { peak: frame.peak, rms: frame.rms };
+    }
+    this.updateCursorReadout();
+    this.updateHover(); // Live data changes under a resting pointer.
+    if (frame !== undefined) {
       this.updateMatches(frame);
     }
   }

@@ -153,6 +153,21 @@ describe("turning help on", () => {
     );
   });
 
+  // The status bar's own controls each explain themselves, not the bar around them.
+  test.each([["meter-toggle", "meter"]] as const)(
+    "explains %s with its own help",
+    async (id, topic) => {
+      await turnOn();
+      moveOver(id);
+      await vi.waitFor(
+        () => {
+          expect(tip().textContent).toContain(helpTexts[topic].text);
+        },
+        { timeout: 5000 },
+      );
+    },
+  );
+
   test("shows nothing when help is turned off", async () => {
     await turnOn();
     await userEvent.click(byId("help"));

@@ -50,6 +50,7 @@
       "freeSpan": 2.0,
       "group": "a",
       "hoverReadout": "off",
+      "meter": "off",
       "readoutSource": "mid",
       "timeBase": "free",
       "triggerHoldOff": 0.0,

@@ -946,28 +946,6 @@ button[aria-pressed="true"]:focus-visible {
   bottom: calc(100% + 8px);
 }
 
-/* Each readout keeps a fixed width, so a longer value never moves the next one. */
-.readout {
-  display: flex;
-  gap: 5px;
-  align-items: baseline;
-  min-width: 104px;
-}
-
-.readout b {
-  font-weight: 400;
-  color: var(--sl-ink-2);
-}
-
-.readout span {
-  font: 500 12px var(--sl-font-value);
-}
-
-.readout small {
-  font-size: 11px;
-  color: var(--sl-ink-2);
-}
-
 /* The help switch, and the tooltips it turns on. */
 .help-toggle {
   width: 20px;

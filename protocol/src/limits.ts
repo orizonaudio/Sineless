@@ -96,12 +96,15 @@ export const highestAudibleHz = 20000;
 // and Multi's Views share a place; measured at 997 with the wordmark) and the status bar, whose
 // parts keep fixed widths in every state (measured at 995, docs/ui/README.md), with at least 8 px
 // to spare for text that renders wider on another platform, rounded up to 10; its default width,
-// the same, as nothing in the window changes with its width;
+// the same, as nothing in the window changes with its width; its minimum height, which fits the
+// tallest panel in the screen's corner (Time cursors in Beats, Level cursors and the Meter, measured
+// at 315 px from 9 px below the screen's top) with at least 8 px to spare, rounded up to 10;
 // the minimum height of a stacked lane; and the height of everything around the screen (toolbar
 // and status bar), at most: measured at 82, with room for rounding at other display scales. The
 // editor tests check the page against them.
 export const defaultEditorWidth = 1010;
 export const minimumEditorWidth = 1010;
+export const minimumEditorHeight = 420;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;
 
@@ -238,6 +241,7 @@ export const limits: readonly {
   { name: "summingMarginDb", value: summingMarginDb, kind: "double" },
   { name: "defaultEditorWidth", value: defaultEditorWidth, kind: "pixels" },
   { name: "minimumEditorWidth", value: minimumEditorWidth, kind: "pixels" },
+  { name: "minimumEditorHeight", value: minimumEditorHeight, kind: "pixels" },
   { name: "minimumLaneHeight", value: minimumLaneHeight, kind: "pixels" },
   { name: "chromeHeight", value: chromeHeight, kind: "pixels" },
   { name: "fullRateUpToHz", value: fullRateUpToHz, kind: "double" },

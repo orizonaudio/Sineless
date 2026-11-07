@@ -100,13 +100,9 @@ export const helpTexts = {
     title: "Status",
     text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode, Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in yellow.",
   },
-  peak: {
-    title: "Peak",
-    text: `The highest sample level over the whole span, in dBFS, of the channel named beside the readouts. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
-  },
-  rms: {
-    title: "RMS",
-    text: `The average power over the whole span, in dBFS, measured like Peak: a full-scale sine reads −3 dB RMS. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
+  meter: {
+    title: "Meter",
+    text: `When on, the screen's corner shows the Meter, over the whole span of the channel named in the status bar (this track in Multi): Peak, the highest sample level, and RMS, the average power, in dBFS (a full-scale sine reads −3 dB RMS), and Crest, how far the peak stands above the RMS, in dB: 3 dB for a sine, more for spikier sounds. Below ${levelFloor} dBFS a level reads −∞, and Crest a dash. Indicative, not a standards-compliant meter.`,
   },
   screen: {
     title: "Screen",
