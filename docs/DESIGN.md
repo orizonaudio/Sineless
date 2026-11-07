@@ -837,7 +837,8 @@ benchmark builds. Test levels, where each runs and the definition of done are in
 CI runs on pull requests, the merge queue and pushes to main; changes to documentation only skip
 the builds. `main` is changed only through the merge queue. A push to main whose commit the queue
 already tested only fuzzes and builds what fills main's compiler caches, which no other run saves
-for main; when that cannot be told, everything runs.
+for main; the performance measurements (reported, never judged on CI) come from the pull request's
+run. When it cannot be told whether the queue tested the commit, everything runs.
 
 ```mermaid
 flowchart TB
