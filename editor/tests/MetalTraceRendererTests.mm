@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <ranges>
@@ -400,18 +401,24 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
     view.grid = {0.0f, 1.0f, 0.0f, 1.0f};
     view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
     view.layout = protocol::ViewLayout::kStacked;
+    using protocol::BeatDivision;
     using protocol::GridDensity;
     using protocol::GridType;
-    for (const auto& [type, time, level] :
-         std::vector<std::tuple<GridType, GridDensity, GridDensity>>{
-             {GridType::kGrid, GridDensity::kMedium, GridDensity::kMedium},
-             {GridType::kGrid, GridDensity::kCoarse, GridDensity::kFine},
-             {GridType::kGrid, GridDensity::kFine, GridDensity::kCoarse},
-             {GridType::kCrossHair, GridDensity::kCoarse, GridDensity::kFine},
-             {GridType::kNone, GridDensity::kMedium, GridDensity::kMedium}}) {
+    for (const auto& [type, time, level, division] :
+         std::vector<std::tuple<GridType, GridDensity, GridDensity, BeatDivision>>{
+             {GridType::kGrid, GridDensity::kMedium, GridDensity::kMedium, BeatDivision::kRegular},
+             {GridType::kGrid, GridDensity::kCoarse, GridDensity::kFine, BeatDivision::kRegular},
+             {GridType::kGrid, GridDensity::kFine, GridDensity::kCoarse, BeatDivision::kRegular},
+             // Two bars at Fine in Triplets: thirds of the beat, where Regular draws sixteenths.
+             {GridType::kGrid, GridDensity::kFine, GridDensity::kMedium, BeatDivision::kTriplets},
+             {GridType::kCrossHair, GridDensity::kCoarse, GridDensity::kFine,
+              BeatDivision::kRegular},
+             {GridType::kNone, GridDensity::kMedium, GridDensity::kMedium,
+              BeatDivision::kRegular}}) {
         view.gridType = type;
         view.gridTime = time;
         view.gridLevel = level;
+        view.beatDivision = division;
         for (const double ratio : {1.0, 2.0}) {
             for (const auto& [beats, noTempo] :
                  std::vector<std::pair<bool, bool>>{{false, false}, {true, false}, {true, true}}) {
@@ -445,9 +452,11 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
                 const auto height = static_cast<std::size_t>(200 * ratio);
                 const auto drawn = draw(width, height, &frame, view, ratio, true);
                 ASSERT_TRUE(drawn);
-                std::vector<VerticalLine> musical = musicalGridLines(
-                    4.0, 8.0, 4.0, view.view,
-                    {.time = time, .widthCss = static_cast<double>(width) / ratio});
+                std::vector<VerticalLine> musical =
+                    musicalGridLines(4.0, 8.0, 4.0, view.view,
+                                     {.time = time,
+                                      .division = division,
+                                      .widthCss = static_cast<double>(width) / ratio});
                 const GridLines lines =
                     gridLines(static_cast<double>(width), static_cast<double>(height), 2, ratio,
                               {.type = type,
@@ -518,6 +527,70 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
             }
         }
     }
+}
+
+// Cross hair's line sits at the trigger point the frame carries (as the engine placed it), mapped
+// through the zoomed view as the page maps it: at 10% zoomed to 5% to 25% of the span, a quarter of
+// the way across; at 50% zoomed to 25% to 75%, mid-screen; at 10% zoomed to 30% to 60%, or with no
+// trigger point (NaN, running free), neither the line nor its level ticks are drawn.
+TEST_F(MetalTraceRendererTest, DrawsCrossHairAtTheTriggerPointOfTheZoomedView)
+{
+    TraceView view = scenes().front().view;
+    view.screen = {0.0f, 0.0f, 0.0f, 1.0f};
+    view.grid = {0.0f, 1.0f, 0.0f, 1.0f};
+    view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
+    view.layout = protocol::ViewLayout::kStacked;
+    view.viewColours = {};
+    view.gridType = protocol::GridType::kCrossHair;
+    constexpr std::size_t kWidth = 400;
+    constexpr std::size_t kHeight = 200;
+    FrameView frame;
+    std::vector<float> values(std::size_t{2} * 10, 0.0f);
+    frame.mode = protocol::FrameMode::kMinMax;
+    frame.pointCount = 10;
+    frame.views = {{.channelView = 0, .values = values}, {.channelView = 1, .values = values}};
+    // Under the top lane's top: only the cross line crosses this row.
+    const std::size_t row = kHeight - 1 - 3;
+    const auto at = [&](const auto& drawn, double fraction) {
+        return drawn->at(static_cast<std::size_t>(std::floor(fraction * kWidth)), row);
+    };
+
+    frame.triggerPosition = 0.1f;
+    view.view = {.start = 0.05, .end = 0.25};
+    const auto onScreen = draw(kWidth, kHeight, &frame, view, 1.0, true);
+    ASSERT_TRUE(onScreen);
+    const std::uint8_t* line = at(onScreen, 0.25);
+    EXPECT_EQ(line[2], 255) << "the line at the trigger point";
+    const std::uint8_t* unzoomed = at(onScreen, 0.1);
+    EXPECT_EQ(unzoomed[2], 0) << "no line where the trigger point is unzoomed";
+
+    frame.triggerPosition = 0.5f;
+    view.view = {.start = 0.25, .end = 0.75};
+    const auto placed = draw(kWidth, kHeight, &frame, view, 1.0, true);
+    ASSERT_TRUE(placed);
+    EXPECT_EQ(at(placed, 0.5)[2], 255) << "the line at the frame's trigger point";
+    EXPECT_EQ(at(placed, 0.25)[2], 0) << "no line where the default position would map";
+
+    frame.triggerPosition = 0.1f;
+    view.view = {.start = 0.3, .end = 0.6};
+    const auto offScreen = draw(kWidth, kHeight, &frame, view, 1.0, true);
+    ASSERT_TRUE(offScreen);
+    for (std::size_t x = 0; x < kWidth; ++x) {
+        EXPECT_EQ(offScreen->at(x, row)[2], 0) << "no line at " << x;
+    }
+    frame.triggerPosition = std::numeric_limits<float>::quiet_NaN();
+    view.view = {.start = 0.0, .end = 1.0};
+    const auto running = draw(kWidth, kHeight, &frame, view, 1.0, true);
+    ASSERT_TRUE(running);
+    for (std::size_t x = 0; x < kWidth; ++x) {
+        EXPECT_EQ(running->at(x, row)[2], 0) << "no line with no trigger point, at " << x;
+    }
+    // No level tick: the top lane's 0 dB row, which only ticks on the line would mark, is clear.
+    for (std::size_t x = 0; x < kWidth; ++x) {
+        EXPECT_EQ(offScreen->at(x, kHeight - 1)[1], 0) << "no tick at " << x;
+    }
+    EXPECT_EQ(onScreen->at(static_cast<std::size_t>(0.25 * kWidth) + 2, kHeight - 1)[1], 255)
+        << "the 0 dB tick on the line";
 }
 
 // Beats' Fine step guards its finer lines in CSS pixels, as the page measures its screen: at
