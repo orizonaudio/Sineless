@@ -55,8 +55,8 @@ message with a short `Prior art:` note naming the sources.
   later plan round before it is pushed; without a plan, it goes to the owner. Never exempt: `protocol/`, `.github/workflows/`,
   code the audio thread runs, a change to what an FR, AD or QS states, and `CLAUDE.md`,
   `REVIEW.md` and `.claude/**`.
-- **A change to tests, scripts, tools or CI workflows only** (no product code, `protocol/`, agent
-  files, FR, AD or QS) gets a light plan: the design and tests reviewers (and the real-time one
+- **A change to tests, scripts, tools or CI workflows only** (no product code, `protocol/`, release
+  packaging, agent files, FR, AD or QS) gets a light plan: the design and tests reviewers (and the real-time one
   when `prior-art` applied), blocking findings only, at most two rounds (the `plan-before-code`
   skill, section 1).
 - **Say in one line before coding** whether the change is exempt, and why.

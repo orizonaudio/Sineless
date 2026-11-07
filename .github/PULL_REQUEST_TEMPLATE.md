@@ -2,6 +2,10 @@
 
 <!-- What was wrong or missing, for whom, and what this changes. Link the issue if there is one. -->
 
+## Considered and not done
+
+<!-- Points a review raised that this change does not act on, each with why (a plan's declined points, a nit not fixed). Leave out if there are none. -->
+
 ## Checklist
 
 See [CONTRIBUTING.md](https://github.com/orizonaudio/Sineless/blob/main/CONTRIBUTING.md) for the definition of done.

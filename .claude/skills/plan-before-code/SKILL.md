@@ -33,9 +33,12 @@ what an FR, AD or QS states, and the files that steer agents (`CLAUDE.md`, `REVI
 `.claude/**`). Before coding, say in one line whether the change is exempt and why. The owner can
 ask for a plan or waive one.
 
-**A light plan** is one for a change that touches only tests and their fixtures, `scripts/`,
-`tools/` and `.github/workflows/`: no product code (`engine/`, `plugin/`, `editor/`, `au/`,
-`ui/src/`), nothing in `protocol/`, no file that steers agents and no FR, AD or QS. Its Status line
+**A light plan** is one for a change that touches only tests and their fixtures (the `tests/`
+folders), benchmarks, `scripts/`, `tools/` and `.github/workflows/`: no product code (anything in
+`engine/`, `plugin/`, `editor/` or `au/` outside their `tests/` and `bench/` folders, or in
+`ui/src/`), nothing in `protocol/`, nothing that builds or ships a release (`scripts/package.*`,
+`scripts/installer.iss`, `scripts/release-*.ts`, `.github/workflows/release.yml`), no file that
+steers agents and no FR, AD or QS. Its Status line
 says `light`, and its review is lighter (section 4): the design and tests reviewers only, blocking
 findings only, at most two rounds.
 
