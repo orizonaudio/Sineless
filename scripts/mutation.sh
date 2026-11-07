@@ -50,8 +50,10 @@ args=()
 if ((${#mutate[@]} > 0)); then
     args=(--mutate "$(IFS=,; echo "${mutate[*]}")")
 fi
-# The tracked files only, as they are in the working tree.
-git ls-files -z -- protocol ui tsconfig.base.json vitest.mutation.config.ts vitest.unit.ts |
+# The tracked files only, as they are in the working tree, with the engine's signal corpus, which
+# the unit tests read as what the engine measured.
+git ls-files -z -- protocol ui engine/tests/corpus tsconfig.base.json vitest.mutation.config.ts \
+    vitest.unit.ts |
     tar --null -T - -cf - | tar -xf - -C "$work"
 cp tools/mutation/package.json tools/mutation/stryker.config.json "$work/"
 # Installed again only when the lockfile changed, and forgotten if the install fails.
