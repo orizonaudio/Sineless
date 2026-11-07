@@ -4,11 +4,11 @@ name: CI
 # ruleset on main requires the jobs below except "fuzz" and "performance", and the engine-work jobs
 # until their counts have matched exactly for a week. A push to main whose commit the merge queue
 # already tested (the changes job's "tested") only fuzzes and builds what fills main's compiler
-# caches, which no other run saves for main: the queue ran every other check on it. The "linux"
-# check is a gate over the four shards of the AddressSanitizer tests (linux-asan). A change to
-# documentation only skips them: a skipped job satisfies the ruleset and the queue, where a job that
-# never started would block them. Actions are pinned to commits, so a moved tag cannot change what
-# runs.
+# caches, which no other run saves for main: the queue ran every other required check on it, and the
+# pull request measured performance (reported, never judged on CI). The "linux" check is a gate over
+# the four shards of the AddressSanitizer tests (linux-asan). A change to documentation only skips
+# them: a skipped job satisfies the ruleset and the queue, where a job that never started would
+# block them. Actions are pinned to commits, so a moved tag cannot change what runs.
 on:
   pull_request:
   merge_group:
