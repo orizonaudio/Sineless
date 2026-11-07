@@ -305,12 +305,17 @@ body {
   color: inherit;
   background: transparent;
   border: 0;
-  width: 9ch;
-  text-align: right;
+  text-align: inherit;
   padding: 0;
   outline: none;
   user-select: text;
   -webkit-user-select: text;
+}
+
+/* Selected text being typed over takes the accent. */
+.field input::selection {
+  color: var(--sl-ink);
+  background: var(--sl-accent);
 }
 
 button:focus-visible,

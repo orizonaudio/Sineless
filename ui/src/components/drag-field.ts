@@ -176,6 +176,13 @@ export class DragField {
   private edit(): void {
     const input = document.createElement("input");
     input.value = this.options.format(this.value);
+    // Typed in the room the value took, so editing moves and widens nothing.
+    const style = getComputedStyle(this.display);
+    const room =
+      this.display.getBoundingClientRect().width -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight);
+    input.style.width = `${String(room)}px`;
     this.display.replaceChildren(input);
     input.focus();
     input.select();
