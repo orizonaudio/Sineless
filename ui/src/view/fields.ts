@@ -17,6 +17,10 @@ import {
   stepThrough,
 } from "./steps.ts";
 
+// The trigger Position's steps, a drag or scroll step and its Shift step; the help names them.
+export const positionStep = 0.05;
+export const positionFineStep = 0.01;
+
 export interface NumberField {
   readonly host: string; // The element the field goes into.
   readonly label: string;
@@ -102,7 +106,7 @@ export const numberFields: Partial<Record<SettingName, NumberField>> = {
     label: "Trigger position",
     format: formatPercent,
     step: (value, delta, fine) =>
-      stepLinear(value, delta, fine ? 0.01 : 0.05, 0, 1),
+      stepLinear(value, delta, fine ? positionFineStep : positionStep, 0, 1),
     quantity: "percent",
     bareScale: 0.01,
     // Whole percent, as its steps.

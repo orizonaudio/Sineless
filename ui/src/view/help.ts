@@ -13,6 +13,7 @@ import {
   summingMarginDb,
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
+import { positionFineStep, positionStep } from "./fields.ts";
 import { formatPercent, formatSeconds } from "./format.ts";
 import { beatSpanLabels } from "./musical-grid.ts";
 
@@ -31,6 +32,8 @@ const gate = String(analysisGateDbfs).replace("-", "−");
 const positionDefault = formatPercent(settings.triggerPosition.defaultValue);
 const positionLowest = formatPercent(settings.triggerPosition.minimum);
 const positionHighest = formatPercent(settings.triggerPosition.maximum);
+const positionCoarse = formatPercent(positionStep);
+const positionFine = formatPercent(positionFineStep);
 // The audible range, as the readouts name frequencies only within it.
 const lowestAudible = `${String(lowestAudibleHz)} Hz`;
 const highestAudible = `${String(highestAudibleHz / 1000)} kHz`;
@@ -218,7 +221,7 @@ export const helpTexts = {
   },
   triggerPosition: {
     title: "Position",
-    text: `Where the trigger point sits across the screen, from ${positionLowest} at the left edge (only what follows the trigger) to ${positionHighest} at the right (only what led up to it); ${positionDefault} by default. Time counts from it, and the dashed line marks it. A trace is drawn once the part after the trigger has arrived, so a low position waits longer on a long span. Frozen, the trace moves to keep its trigger at the new position, as far as the audio held allows. Drag up or down or scroll to step 5% (Shift for 1%); double-click to type.`,
+    text: `Where the trigger point sits across the screen, from ${positionLowest} at the left edge (only what follows the trigger) to ${positionHighest} at the right (only what led up to it); ${positionDefault} by default. Time counts from it, and the dashed line marks it. A trace is drawn once the part after the trigger has arrived, so a low position waits longer on a long span. Frozen, the trace moves to keep its trigger at the new position, as far as the audio held allows. Drag up or down or scroll to step ${positionCoarse} (Shift for ${positionFine}); double-click to type.`,
   },
   hoverReadout: {
     title: "Hover readout",
