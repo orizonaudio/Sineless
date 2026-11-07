@@ -23,7 +23,8 @@ const repository = resolve(import.meta.dirname, "../..");
 const stubOutput = `
 case "$name $*" in
   "git ls-files"*) printf '%s\\n' engine/src/A.cpp editor/src/mac/B.mm au/src/C.cpp ;;
-  "uname -s") echo Linux ;;
+  "uname -s") echo "\${STUB_UNAME:-Linux}" ;;
+  "git -C "*" rev-parse "*) echo "\${STUB_GIT_COMMON:-$PWD/.git}" ;;
   "nproc"*) echo 4 ;;
   "sysctl -n hw.ncpu") echo 4 ;;
   "brew --prefix llvm") echo "$STUB_LLVM" ;;
