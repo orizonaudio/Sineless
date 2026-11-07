@@ -16,7 +16,7 @@ import {
   pointPosition,
 } from "../render/trace-geometry.ts";
 import { triggerPosition } from "./axis-labels.ts";
-import { noteName } from "./cursors.ts";
+import { noteName, type ReadoutRow } from "./cursors.ts";
 import {
   formatClock,
   formatDbfs,
@@ -254,7 +254,8 @@ export function cycleAt(
 // trace's lane from `top` to `bottom` (the whole screen unless lanes are stacked).
 export interface HoverReadout {
   readonly title: string;
-  readonly lines: string[];
+  // A label and a value per line, as the cursor readout's rows.
+  readonly rows: ReadoutRow[];
   readonly x: number;
   readonly cycle: { start: number; end: number } | undefined;
   readonly top: number;
@@ -264,6 +265,28 @@ export interface HoverReadout {
 const clip = (value: number) => Math.min(1, Math.max(0, value));
 
 // The readout at screen position (`x`, `y`), both 0 to 1 from the top left.
+// The time at `position` (a fraction of the frame): the host's clock in a tempo-synced sweep;
+// otherwise from the newest audio at the right edge (Free) or from the trigger (Trig).
+export function timeAt(
+  frame: Frame,
+  position: number,
+  freeRunning: boolean,
+): string {
+  const covered = frame.viewEnd - frame.viewStart;
+  const spanSeconds =
+    covered > 0 && frame.sampleRate > 0
+      ? frame.visibleSamples / frame.sampleRate / covered
+      : Number.NaN;
+  if (frame.synced && frame.spanQuarterNotes > 0) {
+    return formatClock(frame.cycleSeconds + position * spanSeconds);
+  }
+  const seconds = freeRunning
+    ? -(1 - position) * spanSeconds
+    : (position - triggerPosition) * spanSeconds;
+  const text = formatSeconds(Math.abs(seconds));
+  return seconds < 0 ? `−${text}` : `+${text}`;
+}
+
 export function hoverReadout(
   context: HoverContext,
   x: number,
@@ -283,49 +306,60 @@ export function hoverReadout(
   }
   const position = toFrame(context.view, x);
   const spanSeconds = frame.visibleSamples / sampleRate / covered;
-  const lines: string[] = [];
+  const rows: ReadoutRow[] = [];
 
   if (frame.synced && frame.spanQuarterNotes > 0) {
     const quarterNotes = frame.cycleStart + position * frame.spanQuarterNotes;
-    const seconds = frame.cycleSeconds + position * spanSeconds;
-    lines.push(
-      `${musicalPosition(quarterNotes, frame.barQuarterNotes)} · ${formatClock(seconds)}`,
-    );
-  } else {
-    const seconds = context.freeRunning
-      ? -(1 - position) * spanSeconds
-      : (position - triggerPosition) * spanSeconds;
-    const text = formatSeconds(Math.abs(seconds));
-    lines.push(seconds < 0 ? `−${text}` : `+${text}`);
+    rows.push({
+      label: "Position",
+      value: musicalPosition(quarterNotes, frame.barQuarterNotes),
+    });
   }
+  rows.push({
+    label: "Time",
+    value: timeAt(frame, position, context.freeRunning),
+  });
 
   const level = levelAt(frame, trace.values, position);
   if (level !== undefined) {
-    lines.push(`${formatDbfs(level)} dBFS`);
+    rows.push({ label: "Level", value: `${formatDbfs(level)} dBFS` });
   }
 
+  // The cycle around the pointer; its rows stay, a dash each, where none is found, so the readout
+  // keeps its shape as the pointer moves.
   const bounds = cycleBounds(frame, trace.values, position);
-  if (bounds !== undefined) {
-    // From min/max columns the cycle is approximate: rounded, and named without cents.
+  if (bounds === undefined) {
+    for (const label of ["Cycle", "Δs", "f", "Note"]) {
+      rows.push({ label, value: "—" });
+    }
+  } else {
+    // From min/max columns the cycle is approximate, and marked so.
     const coarse = frame.mode === FrameMode.minMax;
     const seconds = (bounds.end - bounds.start) * spanSeconds;
     const samples = seconds * sampleRate;
-    lines.push(
-      `${coarse ? "≈ " : ""}${formatSeconds(seconds)} · ${
-        coarse ? `${samples.toFixed(0)} samples` : formatSamples(samples)
-      }`,
+    const about = coarse ? "≈ " : "";
+    rows.push(
+      { label: "Cycle", value: `${about}${formatSeconds(seconds)}` },
+      {
+        label: "Δs",
+        value: coarse
+          ? `${about}${samples.toFixed(0)} samples`
+          : formatSamples(samples),
+      },
     );
     const hertz = 1 / seconds;
-    const note = noteName(hertz, context.a4)?.replace(/ [+−]\d+ ct$/u, "");
-    const named = coarse ? note : noteName(hertz, context.a4);
-    lines.push(
-      `${formatFrequency(hertz)} Hz${named === undefined ? "" : ` · ${named}`}`,
-    );
+    rows.push({ label: "f", value: `${formatFrequency(hertz)} Hz` });
+    // With its cents, as the time cursors' note.
+    const note = noteName(hertz, context.a4);
+    rows.push({
+      label: "Note",
+      value: note === undefined ? "—" : `${about}${note}`,
+    });
   }
   const read = readPosition(frame, position);
   return {
     title: trace.name,
-    lines,
+    rows,
     x: clip(toScreen(context.view, read ?? position)),
     cycle:
       bounds === undefined

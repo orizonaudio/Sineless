@@ -9,6 +9,7 @@ import type { ReplayTransport } from "./replay-transport.ts";
 import {
   beforeApp,
   byId,
+  cursorRow,
   settle,
   type Started,
   startRecorded,
@@ -34,11 +35,8 @@ describe("a recorded frozen Compare frame after the host changed rate", () => {
     await userEvent.click(byId("time-cursors"));
     const text = () => byId("cursor-readout").textContent;
     await expect.poll(text).toMatch(/samples/u);
-    const seconds = parseQuantity(
-      /Δt ([^Δ]+?(?:ms|s))/u.exec(text())?.[1] ?? "",
-      "time",
-    );
-    const samples = Number(/([\d.]+) samples/u.exec(text())?.[1]);
+    const seconds = parseQuantity(cursorRow("Δt"), "time");
+    const samples = Number(cursorRow("Δs").split(" ")[0]);
     expect(samples / (seconds ?? Number.NaN)).toBeCloseTo(heldRate, -3);
   });
 

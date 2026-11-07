@@ -527,6 +527,14 @@ export async function typeInto(hostId: string, text: string): Promise<void> {
   await userEvent.keyboard("{Enter}");
 }
 
+// A row of the cursor readout, by its label ("Δt", "Δs"): its value, or "" without the row.
+export function cursorRow(label: string): string {
+  const row = [...byId("cursor-readout").querySelectorAll(".cursor-row")].find(
+    (line) => line.querySelector("span")?.textContent === label,
+  );
+  return row?.querySelector("b")?.textContent ?? "";
+}
+
 // The status chips' texts, in order, those folded into "+n" included.
 export function chips(): string[] {
   return [...byId("chips").querySelectorAll(".chip")].map(

@@ -64,6 +64,7 @@ import {
   initialCursors,
   initialLevels,
   levelReadout,
+  type ReadoutRow,
   measure,
   type CursorPair,
   type LevelPair,
@@ -72,6 +73,7 @@ import { choiceLabels } from "./view/choice-labels.ts";
 import { drawGrid } from "./view/grid.ts";
 import {
   hoverReadout,
+  timeAt,
   traceAt,
   type HoverContext,
   type HoverTrace,
@@ -1650,9 +1652,14 @@ export class OscilloscopeApp {
     title.textContent = readout.title;
     node.replaceChildren(
       title,
-      ...readout.lines.map((text) => {
+      ...readout.rows.map(({ label, value }) => {
         const line = document.createElement("div");
-        line.textContent = text;
+        line.className = "cursor-row";
+        const name = document.createElement("span");
+        name.textContent = label;
+        const shown = document.createElement("b");
+        shown.textContent = value;
+        line.append(name, shown);
         return line;
       }),
     );
@@ -1681,33 +1688,61 @@ export class OscilloscopeApp {
       frame === undefined
         ? 0
         : frame.visibleSamples / (frame.viewEnd - frame.viewStart);
-    const lines: string[] = [];
+    // A titled section per kind of cursor, its rows a label and a value, as a popover's.
+    const sections: { title: string; rows: ReadoutRow[] }[] = [];
     if (
       this.timeCursors !== undefined &&
       frame !== undefined &&
       spanSamples > 0
     ) {
-      lines.push(
-        ...cursorReadout(
+      const { a, b } = this.timeCursors;
+      sections.push({
+        title: "Time cursors",
+        rows: cursorReadout(
           measure(
             this.timeCursors,
             spanSamples / frame.sampleRate,
             frame.synced ? frame.spanQuarterNotes : undefined,
+            frame.synced ? frame.barQuarterNotes : undefined,
           ),
           frame.sampleRate,
           this.store.number("concertPitch"),
+          {
+            a: timeAt(frame, a, frame.freeRunning),
+            b: timeAt(frame, b, frame.freeRunning),
+          },
         ),
-      );
+      });
     }
     if (this.levelCursors !== undefined) {
-      lines.push(...levelReadout(this.levelCursors));
+      sections.push({
+        title: "Level cursors",
+        rows: levelReadout(this.levelCursors),
+      });
     }
-    readout.hidden = lines.length === 0;
+    readout.hidden = sections.length === 0;
     readout.replaceChildren(
-      ...lines.map((text) => {
-        const line = document.createElement("div");
-        line.textContent = text;
-        return line;
+      ...sections.flatMap(({ title, rows }, index) => {
+        const heading = document.createElement("div");
+        heading.className = "cursor-title";
+        heading.textContent = title;
+        const lines = rows.map(({ label, value }) => {
+          const line = document.createElement("div");
+          line.className = "cursor-row";
+          const name = document.createElement("span");
+          name.textContent = label;
+          const shown = document.createElement("b");
+          shown.textContent = value;
+          line.append(name, shown);
+          return line;
+        });
+        const parts = [heading, ...lines];
+        if (index > 0) {
+          const rule = document.createElement("hr");
+          rule.className = "cursor-rule";
+          parts.unshift(rule);
+        }
+        return parts;
       }),
     );
   }

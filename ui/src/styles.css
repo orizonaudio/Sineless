@@ -682,7 +682,7 @@ button[aria-pressed="true"]:focus-visible {
 .cursor-readout {
   display: grid;
   gap: 2px;
-  padding: 6px 9px;
+  padding: 8px 10px;
   font: 500 11px/1.35 var(--sl-font-value);
   font-variant-numeric: tabular-nums;
   color: var(--sl-ink);
@@ -693,13 +693,45 @@ button[aria-pressed="true"]:focus-visible {
   pointer-events: none;
 }
 
+/* Each kind of cursor titled as a popover is, its rows a label and its value; a rule, short of
+   the edges, between the two kinds. */
+.cursor-readout .cursor-title {
+  margin-bottom: 2px;
+  font: 500 11px var(--sl-font-ui);
+  color: var(--sl-ink-2);
+}
+
+.hover-readout .cursor-row,
+.cursor-readout .cursor-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.hover-readout .cursor-row span,
+.cursor-readout .cursor-row span {
+  color: var(--sl-ink-2);
+}
+
+.hover-readout .cursor-row b,
+.cursor-readout .cursor-row b {
+  font-weight: 500;
+}
+
+.cursor-readout .cursor-rule {
+  width: calc(100% - 8px);
+  margin: 5px auto;
+  border: 0;
+  border-top: 1px solid var(--sl-line);
+}
+
 .hover-readout {
   position: absolute;
   z-index: 2;
 }
 
 .hover-readout strong {
-  font: 600 11px var(--sl-font-ui);
+  font: 500 11px var(--sl-font-ui);
   color: var(--sl-ink-2);
 }
 

@@ -15,6 +15,7 @@ import {
   beforeApp,
   byId,
   choice,
+  cursorRow,
   press,
   settle,
   showDisplay,
@@ -46,11 +47,8 @@ describe("frames of audio held at another rate than the host's", () => {
     await settle();
     const text = () => byId("cursor-readout").textContent;
     await expect.poll(text).toMatch(/samples/u);
-    const seconds = parseQuantity(
-      /Δt ([^Δ]+?(?:ms|s))/u.exec(text())?.[1] ?? "",
-      "time",
-    );
-    const samples = Number(/([\d.]+) samples/u.exec(text())?.[1]);
+    const seconds = parseQuantity(cursorRow("Δt"), "time");
+    const samples = Number(cursorRow("Δs").split(" ")[0]);
     // The cursors start a third of the span apart, which reads as that much time, held at the
     // frame's rate: its samples over its seconds.
     const spanSeconds = defaultSettingValues().triggerSpan as number;

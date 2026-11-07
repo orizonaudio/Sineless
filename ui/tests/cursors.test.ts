@@ -1,11 +1,5 @@
 import { describe, expect, test } from "vitest";
 
-import { beatSpanLengths } from "../../protocol/src/enums.ts";
-import {
-  minimumEditorWidth,
-  minimumViewWidth,
-} from "../../protocol/src/limits.ts";
-
 import {
   cursorReadout,
   initialCursors,
@@ -57,49 +51,53 @@ describe("time cursors", () => {
     expect(noteName(25000)).toBeUndefined();
   });
 
-  test("read out the time in samples too", () => {
-    expect(cursorReadout(measure({ a: 0.25, b: 0.75 }, 0.01), 48000)).toEqual([
+  // One label and value per row, in the order A, B, Δt, f, Note, Δb, Δs; every row a user reads
+  // stays when it has no value, a dash, so the readout keeps its shape as the cursors move.
+  const rows = (list: readonly { label: string; value: string }[]) =>
+    list.map(({ label, value }) => `${label} ${value}`);
+
+  test("read out where A and B are, the distance, its frequency and note, and samples", () => {
+    expect(
+      rows(
+        cursorReadout(measure({ a: 0.25, b: 0.75 }, 0.01), 48000, 440, {
+          a: "+1.0 ms",
+          b: "+6.0 ms",
+        }),
+      ),
+    ).toEqual([
+      "A +1.0 ms",
+      "B +6.0 ms",
       "Δt 5 ms",
-      "240.0 samples",
-      "≈ 200.0 Hz · G3 +35 ct",
+      "f ≈ 200.0 Hz",
+      "Note G3 +35 ct",
+      "Δs 240.0 samples",
     ]);
   });
 
-  test("read out time, frequency with note, and beats", () => {
-    expect(cursorReadout(measure({ a: 0.25, b: 0.75 }, 0.009_090_9))).toEqual([
-      "Δt 4.55 ms",
-      "≈ 220.0 Hz · A3",
-    ]);
-    expect(cursorReadout(measure({ a: 0, b: 0.25 }, 2, 4))).toEqual([
-      "Δt 500 ms",
-      "≈ 2.0 Hz",
-      "1 beat",
-    ]);
-    expect(cursorReadout(measure({ a: 0.5, b: 0.5 }, 1, 4))).toEqual([
+  test("read out the distance in beats in a tempo-synced sweep only", () => {
+    expect(rows(cursorReadout(measure({ a: 0, b: 0.25 }, 2, 4, 4)))).toContain(
+      "Δb 1.00 beats",
+    );
+    expect(
+      rows(cursorReadout(measure({ a: 0.25, b: 0.75 }, 0.009_090_9))).some(
+        (row) => row.startsWith("Δb"),
+      ),
+    ).toBe(false);
+  });
+
+  test("keep f and Note, as dashes, when the cursors coincide or the note is out of range", () => {
+    expect(rows(cursorReadout(measure({ a: 0.5, b: 0.5 }, 1, 4, 4)))).toEqual([
       "Δt 0 ms",
-      "0 beats",
+      "f —",
+      "Note —",
+      "Δb 0 beats",
     ]);
-  });
-});
-
-// Time cursors a pixel apart at the deepest zoom of the shortest beat span, on screens from the
-// narrowest editor to an 8K display: millionths of a beat, read as plain decimals.
-describe("beats between the closest time cursors", () => {
-  const shortest = Math.min(
-    ...beatSpanLengths
-      .filter((length) => !length.inBars)
-      .map((length) => length.amount),
-  );
-  test.each([minimumEditorWidth, 7680])("are readable %i px wide", (width) => {
-    const quarterNotes = (shortest * minimumViewWidth) / width;
-    const lines = cursorReadout({
-      seconds: 1e-6,
-      hertz: undefined,
-      quarterNotes,
-    });
-    const beats = lines.at(-1) ?? "";
-    expect(beats).toMatch(/^0\.0+\d+ beats$/u);
-    expect(Number(beats.split(" ")[0])).toBeCloseTo(quarterNotes, 9);
+    // 2 Hz is far below any note.
+    expect(rows(cursorReadout(measure({ a: 0, b: 0.25 }, 2)))).toEqual([
+      "Δt 500 ms",
+      "f ≈ 2.0 Hz",
+      "Note —",
+    ]);
   });
 });
 
@@ -109,17 +107,19 @@ describe("level cursors", () => {
   });
 
   test("read out each level and the difference, on either side of zero", () => {
-    expect(levelReadout({ first: 0.5, second: -0.25 })).toEqual([
+    const rows = (levels: { first: number; second: number }) =>
+      levelReadout(levels).map(({ label, value }) => `${label} ${value}`);
+    expect(rows({ first: 0.5, second: -0.25 })).toEqual([
       `1 ${minus}6.0 dBFS`,
       `2 ${minus}12.0 dBFS`,
       "Δ 6.0 dB",
     ]);
-    expect(levelReadout({ first: 0, second: 1 })).toEqual([
+    expect(rows({ first: 0, second: 1 })).toEqual([
       `1 ${minus}∞ dBFS`,
       "2 0.0 dBFS",
       "Δ —",
     ]);
-    expect(levelReadout({ first: 1e-6, second: 1 })).toEqual([
+    expect(rows({ first: 1e-6, second: 1 })).toEqual([
       `1 ${minus}∞ dBFS`,
       "2 0.0 dBFS",
       "Δ —",

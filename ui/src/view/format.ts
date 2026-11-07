@@ -143,13 +143,35 @@ export function formatDbDifference(db: number): string {
   return `${Math.abs(rounded(db, 1)).toFixed(1)} dB`;
 }
 
-// Quarter notes as beats, to three significant digits: "1 beat", "0.25 beats".
-export function formatBeats(quarterNotes: number): string {
-  if (!Number.isFinite(quarterNotes)) {
+// A musical length: below a beat in fractions of a beat down to a 32nd ("3/8 beat"), then in beats
+// to two decimals up to a bar ("2.26 beats"), then in bars to two decimals ("1.56 bars").
+// `barQuarterNotes` is the bar's length in beats (quarter notes).
+export function formatMusicalLength(
+  quarterNotes: number,
+  barQuarterNotes: number,
+): string {
+  if (!Number.isFinite(quarterNotes) || !(barQuarterNotes > 0)) {
     return none;
   }
-  const text = significant(quarterNotes, 3);
-  return `${text.replace("-", minus)} ${Number(text) === 1 ? "beat" : "beats"}`;
+  const length = Math.abs(quarterNotes);
+  const finest = 32; // Parts of a beat.
+  const parts = Math.round(length * finest);
+  if (parts < finest) {
+    if (parts === 0) {
+      return "0 beats";
+    }
+    let numerator = parts;
+    let denominator = finest;
+    while (numerator % 2 === 0) {
+      numerator /= 2;
+      denominator /= 2;
+    }
+    return `${String(numerator)}/${String(denominator)} beat`;
+  }
+  if (rounded(length, 2) < barQuarterNotes) {
+    return `${length.toFixed(2)} beats`;
+  }
+  return `${(length / barQuarterNotes).toFixed(2)} bars`;
 }
 
 // Frequency readout: approximate, or a dash when unavailable.

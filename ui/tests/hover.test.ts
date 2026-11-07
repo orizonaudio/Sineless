@@ -20,8 +20,14 @@ import {
   readPosition,
   risingCrossings,
   traceAt,
+  type HoverReadout,
 } from "../src/view/hover.ts";
+import { noteName } from "../src/view/cursors.ts";
 import { fullView, type ViewWindow } from "../src/view/zoom.ts";
+
+// A readout's rows, each as "label value".
+const lines = (readout: HoverReadout | undefined): string[] =>
+  readout?.rows.map(({ label, value }) => `${label} ${value}`) ?? [];
 
 const minus = "−";
 const sampleRate = 48000;
@@ -221,11 +227,13 @@ describe("hover readout", () => {
       0.5,
     );
     expect(readout?.title).toBe("Left");
-    expect(readout?.lines).toEqual([
-      "+2.13 ms",
-      `${minus}6.0 dBFS`,
-      "2.5 ms · 120.0 samples",
-      "≈ 400.0 Hz · G4 +35 ct",
+    expect(lines(readout)).toEqual([
+      "Time +2.13 ms",
+      `Level ${minus}6.0 dBFS`,
+      "Cycle 2.5 ms",
+      "Δs 120.0 samples",
+      "f ≈ 400.0 Hz",
+      "Note G4 +35 ct",
     ]);
     expect(readout?.x).toBeCloseTo(150 / 480, 6);
     expect(readout?.cycle?.start).toBeCloseTo(0.25, 3);
@@ -266,8 +274,11 @@ describe("hover readout", () => {
       150 / 480,
       0.5,
     );
-    expect(readout?.lines[2]).toBe("1.25 ms · 120.0 samples");
-    expect(readout?.lines[3]).toMatch(/^≈ 800\.0 Hz/u);
+    expect(lines(readout).slice(2, 5)).toEqual([
+      "Cycle 1.25 ms",
+      "Δs 120.0 samples",
+      "f ≈ 800.0 Hz",
+    ]);
   });
 
   test("marks the point and cycle as screen positions, clipped to the view", () => {
@@ -314,10 +325,14 @@ describe("hover readout", () => {
       0.5,
       0.5,
     );
-    expect(readout?.lines.slice(2)).toEqual([
-      "≈ 3.33 ms · 160 samples",
-      "≈ 300.0 Hz · D4",
+    // Approximate from min/max columns, and marked so; the note with its cents (owner, FR-16.1).
+    expect(lines(readout).slice(2)).toEqual([
+      "Cycle ≈ 3.33 ms",
+      "Δs ≈ 160 samples",
+      "f ≈ 300.0 Hz",
+      `Note ≈ ${noteName(1 / 0.003_333_333) ?? ""}`,
     ]);
+    expect(lines(readout).at(-1)).toMatch(/ ct$/u);
   });
 
   test("names the musical position and project time in a synced sweep", () => {
@@ -341,7 +356,10 @@ describe("hover readout", () => {
       0.625,
       0.5,
     );
-    expect(readout?.lines[0]).toBe("3.3.3 · 0:05.250");
+    expect(lines(readout).slice(0, 2)).toEqual([
+      "Position 3.3.3",
+      "Time 0:05.250",
+    ]);
   });
 
   test("reads a frame that covers part of the span as the part it covers", () => {
@@ -353,7 +371,7 @@ describe("hover readout", () => {
     expect(readPosition(frame, crest)).toBeCloseTo(crest, 6);
     // Its cycles last as long as unzoomed: 120 samples, 2.5 ms.
     const readout = hoverReadout(context(frame, values), 0.5, 0.5);
-    expect(readout?.lines[2]).toBe("2.5 ms · 120.0 samples");
+    expect(lines(readout)[2]).toBe("Cycle 2.5 ms");
     // Min/max columns zoomed in alike: a cycle of 32 of them is still fine enough to measure.
     const columns = sineColumns(96, 32);
     const zoomedColumns = rawFrame(new Float32Array(480), {
@@ -511,9 +529,10 @@ describe("hover readout", () => {
       pointCount: 96,
     });
     expect(cycleAt(frame, values, 0.5)).toBeUndefined();
-    expect(hoverReadout(context(frame, values), 0.5, 0.5)?.lines).toHaveLength(
-      2,
-    );
+    // The cycle's rows stay, dashes, so the readout keeps its shape as the pointer moves.
+    expect(
+      lines(hoverReadout(context(frame, values), 0.5, 0.5)).slice(2),
+    ).toEqual(["Cycle —", "Δs —", "f —", "Note —"]);
   });
 
   test("shows no minus sign at the trigger point itself", () => {
@@ -523,7 +542,7 @@ describe("hover readout", () => {
       triggerPosition,
       0.5,
     );
-    expect(readout?.lines[0]).not.toContain(minus);
+    expect(lines(readout)[0]).not.toContain(minus);
   });
 
   test("counts time back from the right edge in a free-running window", () => {
@@ -534,6 +553,6 @@ describe("hover readout", () => {
       0.75,
       0.5,
     );
-    expect(readout?.lines[0]).toBe(`${minus}2.5 ms`);
+    expect(lines(readout)[0]).toBe(`Time ${minus}2.5 ms`);
   });
 });

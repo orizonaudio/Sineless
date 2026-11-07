@@ -35,7 +35,7 @@ const notNumbers = [Number.NaN, Infinity];
 const linearFormatters = {
   formatDbfs,
   levelCursor: (linear: number) =>
-    levelReadout({ first: linear, second: 0.5 })[0] ?? "",
+    levelReadout({ first: linear, second: 0.5 })[0]?.value ?? "",
 };
 const linearValues = [
   0, 1e-45, 1e-10, 1e-6, 9.9958e-7, 1.2e-6, 1e-5, 0.5, 0.999, 1, 2,
@@ -56,16 +56,28 @@ describe.each(Object.entries(linearFormatters))("%s", (_, format) => {
   });
 });
 
-describe("formatBeats", () => {
+// The distance between time cursors in a tempo-synced sweep: fractions of a beat to a 32nd below
+// a beat, beats to two decimals up to a bar, bars to two decimals from a bar on.
+describe("formatMusicalLength", () => {
   test.each([
-    [1, "1 beat"],
-    [0.25, "0.25 beats"],
-    [0, "0 beats"],
-    [6.1e-7, "0.00000061 beats"],
-    [0.99996, "1 beat"],
-  ])("reads %s quarter notes as %s", (quarterNotes, text) => {
-    expect(format.formatBeats(quarterNotes)).toBe(text);
-  });
+    [0, 4, "0 beats"],
+    [1 / 32, 4, "1/32 beat"],
+    [0.375, 4, "3/8 beat"],
+    [0.5, 4, "1/2 beat"],
+    [1, 4, "1.00 beats"],
+    [2.26, 4, "2.26 beats"],
+    [3.99, 4, "3.99 beats"],
+    [4, 4, "1.00 bars"],
+    [6.24, 4, "1.56 bars"],
+    [3, 3, "1.00 bars"],
+    [2.5, 3, "2.50 beats"],
+    [Number.NaN, 4, "—"],
+  ])(
+    "reads %s quarter notes in %s-beat bars as %s",
+    (quarterNotes, bar, text) => {
+      expect(format.formatMusicalLength(quarterNotes, bar)).toBe(text);
+    },
+  );
 });
 
 describe("formatDbDifference", () => {
