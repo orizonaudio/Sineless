@@ -13,11 +13,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 12,
+  "protocolVersion": 13,
   "scenario": "MonoSine400_48k",
   "snapshot": {
     "inputChannels": 1,
-    "protocolVersion": 12,
+    "protocolVersion": 13,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "on",

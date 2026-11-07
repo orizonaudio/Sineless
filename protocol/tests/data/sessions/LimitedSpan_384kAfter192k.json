@@ -31,11 +31,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 12,
+  "protocolVersion": 13,
   "scenario": "LimitedSpan_384kAfter192k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 12,
+    "protocolVersion": 13,
     "sampleRate": 384000.0,
     "settings": {
       "autoFreeze": "on",

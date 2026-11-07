@@ -486,7 +486,7 @@ TEST_P(SweepCapacity, KeepsTheLongestBeatSpanThatFits)
             const double perQuarterNote = 60.0 * rate / tempo;
             const auto lengthOf = [&](std::size_t span) {
                 const protocol::BeatSpanLength& length = protocol::kBeatSpanLengths.at(span);
-                return length.inBars ? length.amount * barQuarterNotes : length.amount;
+                return length.amount * barQuarterNotes;
             };
             for (std::size_t span = 0; span < protocol::kBeatSpanCount; ++span) {
                 SCOPED_TRACE(::testing::Message()
@@ -1190,7 +1190,7 @@ TEST_P(FrozenShorterSpan, ReadsThePartShown)
                  protocol::kReadoutIntervalSeconds / 2.0);
     session.analyzer().setFrozen(true);
     ASSERT_TRUE(session.produce()) << "no frozen frame";
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kTwoBeats));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
     const auto frame = session.produce();
     ASSERT_TRUE(frame) << "no frame at the shorter span";
     ASSERT_TRUE(frame->has(FrameFlag::kFrozen));
@@ -1219,7 +1219,8 @@ std::uint64_t beatSpanSamples(double rate, double tempo, std::size_t span)
 }
 
 // The sweep is whole once it has played, and frozen it stays whole: as it is, cropped to a shorter
-// span, rebuilt for a longer one from the held audio, and at the zoom limit.
+// span that divides it, rebuilt from the held audio for a shorter one that does not and for a
+// longer one, and at the zoom limit.
 TEST_P(BeatSpans, DrawsTheWholeSweepLiveAndFrozen)
 {
     const ModeCase c = GetParam();
@@ -1228,7 +1229,7 @@ TEST_P(BeatSpans, DrawsTheWholeSweepLiveAndFrozen)
     session.join({.frequency = 1000.0});
     session.join({.frequency = 1500.0});
     configure(session.own(), c.mode, TimeBase::kBeats);
-    const auto span = static_cast<std::size_t>(BeatSpan::kOneBeat);
+    const auto span = static_cast<std::size_t>(BeatSpan::kQuarterBar);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(span));
     const std::size_t traces = expectedTraces(c.mode, c.channels, 2);
     const auto lengthOf = [&](std::size_t beatSpan) {
@@ -1260,8 +1261,11 @@ TEST_P(BeatSpans, DrawsTheWholeSweepLiveAndFrozen)
     EXPECT_EQ(frame->visibleSamples, static_cast<float>(lengthOf(span)));
     expectTraces(*frame, traces);
 
-    // Shorter and longer spans chosen while frozen, then back.
-    for (const std::size_t other : {span - 1, span + 1, span}) {
+    // Shorter and longer spans chosen while frozen, then back: 1/8 bar divides 1/4 bar, 1/6 does
+    // not.
+    for (const auto other : {static_cast<std::size_t>(BeatSpan::kEighthBar),
+                             static_cast<std::size_t>(BeatSpan::kSixthBar),
+                             static_cast<std::size_t>(BeatSpan::kHalfBar), span}) {
         SCOPED_TRACE(protocol::kBeatSpanNames.at(other));
         session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(other));
         frame = session.produce();
@@ -1302,7 +1306,7 @@ TEST_P(ZoomedHalves, ShowTheSameColumnsAsTheWholeView)
     session.join({.kind = Signal::Kind::kNoise, .seed = 3});
     session.join({.kind = Signal::Kind::kNoise, .seed = 4});
     configure(session.own(), c.mode, c.timeBase);
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     const double spanSeconds = c.timeBase == TimeBase::kBeats ? 0.5 : 2.0;
     setSpan(session.own(), c.timeBase, spanSeconds);
     const auto half = static_cast<std::size_t>(std::llround(spanSeconds * c.rate / 2.0));
@@ -1355,7 +1359,7 @@ TEST_P(LiveZoom, KeepsZoomedAndPannedTracesInStep)
     session.join({.kind = Signal::Kind::kNoise, .seed = 5});
     session.join({.kind = Signal::Kind::kNoise, .seed = 6});
     configure(session.own(), c.mode, TimeBase::kBeats);
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     constexpr std::size_t kZoomedColumns = 200;
     session.analyzer().setColumns(kZoomedColumns);
     session.play(captureSeconds(c.rate) + 1.0, protocol::kReadoutIntervalSeconds / 2.0);
@@ -1442,7 +1446,7 @@ TEST_P(BeatGrid, PlacesTheCycleInTheSong)
     };
     for (const Expected expected :
          {Expected{.span = BeatSpan::kOneBar, .cycleStart = 8.0, .spanQuarterNotes = 4.0},
-          Expected{.span = BeatSpan::kTwoBeats, .cycleStart = 10.0, .spanQuarterNotes = 2.0}}) {
+          Expected{.span = BeatSpan::kHalfBar, .cycleStart = 10.0, .spanQuarterNotes = 2.0}}) {
         SCOPED_TRACE(static_cast<int>(expected.span));
         Session session(c.rate, c.channels);
         session.secondsOffset = kProjectTimeAhead;
@@ -1533,8 +1537,8 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, LimitedSweep, ::testing::ValuesIn(everyMode(
 
 // The longest beat span whose sweep at `tempo` fits in the capture, which bounds what a freeze in
 // Beats mode holds. The freeze keeps a little less, leaving the audio thread a margin to write on
-// (frozenLength in Analyzer.cpp); spans double, so at these rates none falls in that margin, and
-// the test below would find one that did, its frozen frame not whole.
+// (frozenLength in Analyzer.cpp); spans grow by a third or more, so at these rates none falls in
+// that margin, and the test below would find one that did, its frozen frame not whole.
 std::size_t longestBeatSpanHeld(double rate, double tempo)
 {
     std::size_t span = 0;
@@ -1563,6 +1567,22 @@ std::vector<ModeCase> heldBeatCases()
 class HeldBeatSpans : public ::testing::TestWithParam<ModeCase>
 {
 };
+
+// The longest beat span up to `limit` that divides `span`, so that a frozen sweep of `span` crops
+// it (frozenSweep): a span that does not divide it, as two bars do not divide three, is rebuilt
+// from the held audio instead.
+std::size_t longestDividingSpan(std::size_t span, std::size_t limit)
+{
+    const double bar = Timeline::barQuarterNotes(MusicalStamp{});
+    const double length = beatSpanQuarterNotes(static_cast<BeatSpan>(span), bar);
+    for (std::size_t candidate = limit; candidate > 0; --candidate) {
+        const double ratio = length / beatSpanQuarterNotes(static_cast<BeatSpan>(candidate), bar);
+        if (std::abs(ratio - std::round(ratio)) < 1e-9) {
+            return candidate;
+        }
+    }
+    return 0; // 1/8 bar divides every span.
+}
 
 constexpr double kHeldTempo = 120.0;
 
@@ -1656,13 +1676,13 @@ TEST_P(HeldBeatSpans, StaysWholeFrozenBackFromALongerSpan)
 }
 
 // Frozen after playing the next span up, which the hold does not cover but the live sweep kept,
-// the frame is whole: as it is, cropped to the held span, and back.
+// the frame is whole: as it is, cropped to the longest held span that divides it, and back.
 TEST_P(HeldBeatSpans, StaysWholeFrozenFromALongerSpanAndBack)
 {
     const ModeCase c = GetParam();
-    const std::size_t fits = longestBeatSpanHeld(c.rate, kHeldTempo);
-    const std::size_t longer = fits + 1;
+    const std::size_t longer = longestBeatSpanHeld(c.rate, kHeldTempo) + 1;
     ASSERT_LT(longer, protocol::kBeatSpanCount) << "every beat span fits the capture";
+    const std::size_t cropped = longestDividingSpan(longer, longer - 1);
     HeldSession held(c, longer);
     Session& session = held.session;
     const std::size_t traces = expectedTraces(c.mode, c.channels, 2);
@@ -1683,7 +1703,7 @@ TEST_P(HeldBeatSpans, StaysWholeFrozenFromALongerSpanAndBack)
         SCOPED_TRACE("frozen");
         expectTraces(*frame, traces);
     }
-    for (const std::size_t span : {fits, longer}) {
+    for (const std::size_t span : {cropped, longer}) {
         SCOPED_TRACE(protocol::kBeatSpanNames.at(span));
         frame = frozenAt(session, span);
         ASSERT_TRUE(frame);
@@ -2022,15 +2042,20 @@ std::uint64_t firstSimilarLength()
 struct LengthCase
 {
     double rate = 48000.0;
-    std::uint64_t length = 0; // The own track's sweep, in samples; 0 for a sixteenth at 120 BPM.
+    std::uint64_t length = 0; // The own track's sweep, in samples; 0 for 1/8 bar at 120 BPM.
     bool within = true;       // The other track's sweep: at the tolerance, or one sample beyond.
     Display mode = Display::kMulti;
 };
 
+// The shortest beat span, 1/8 bar, in quarter notes of the bar Session plays.
+double eighthBarQuarterNotes()
+{
+    return beatSpanQuarterNotes(BeatSpan::kEighthBar, Timeline::barQuarterNotes(MusicalStamp{}));
+}
+
 std::uint64_t ownLength(const LengthCase& c)
 {
-    const double sixteenth = protocol::kBeatSpanLengths.at(0).amount;
-    return c.length > 0 ? c.length : beatSamples(c.rate, 120.0, sixteenth);
+    return c.length > 0 ? c.length : beatSamples(c.rate, 120.0, eighthBarQuarterNotes());
 }
 
 std::string nameOf(const LengthCase& c)
@@ -2050,7 +2075,7 @@ std::string lengthTestName(const ::testing::TestParamInfo<LengthCase>& info)
     return nameOf(info.param);
 }
 
-// Every rate at a sixteenth beat, the lanes' modes; and at 48 kHz, lengths on both sides of each
+// Every rate at 1/8 bar, the lanes' modes; and at 48 kHz, lengths on both sides of each
 // edge sweepLengthsSimilar has, each within and beyond the tolerance. Below the first (1023
 // samples) it allows nothing and only the one sample lets a lane through; from it, it allows that
 // sample too; from the next ones (2046, 3069) it allows two and three samples.
@@ -2087,18 +2112,20 @@ TEST_P(LaneLengths, DrawsALaneWithinTheToleranceOnly)
     const double rate = c.rate;
     const std::uint64_t length = ownLength(c);
     const std::uint64_t apart = laneTolerance(length) + (c.within ? 0 : 1);
-    const double sixteenth = protocol::kBeatSpanLengths.at(0).amount;
+    // The tempo at which 1/8 bar lasts `samples`: the short lengths come at fast tempi in 4/4,
+    // as they would in a short bar at a slower one.
+    const double eighthBar = eighthBarQuarterNotes();
     const auto tempoFor = [&](std::uint64_t samples) {
-        return sixteenth * 60.0 * rate / static_cast<double>(samples);
+        return eighthBar * 60.0 * rate / static_cast<double>(samples);
     };
-    ASSERT_EQ(beatSamples(rate, tempoFor(length), sixteenth), length);
-    ASSERT_EQ(beatSamples(rate, tempoFor(length + apart), sixteenth), length + apart);
+    ASSERT_EQ(beatSamples(rate, tempoFor(length), eighthBar), length);
+    ASSERT_EQ(beatSamples(rate, tempoFor(length + apart), eighthBar), length + apart);
 
     Session session(rate, 2);
     session.join({.frequency = 1000.0}, tempoFor(length));
     session.join({.frequency = 1500.0}, tempoFor(length + apart));
     configure(session.own(), c.mode, TimeBase::kBeats);
-    session.own().settings().set(SettingId::kBeatSpan, 0.0);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kEighthBar));
     const std::size_t traces = expectedTraces(c.mode, 2, 2);
     const std::optional<std::size_t> silent =
         c.within ? std::nullopt : std::optional<std::size_t>(1);
@@ -2233,7 +2260,7 @@ std::optional<DecodedFrame> playForReadouts(Session& session, TimeBase timeBase,
 {
     configure(session.own(), displayOf(session.own().settings().get()), timeBase);
     session.own().settings().set(SettingId::kChannelViews, static_cast<double>(views));
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     session.own().settings().set(SettingId::kTriggerSpan, 0.05);
     session.own().settings().set(SettingId::kFreeSpan, protocol::kShortestFreeSpanSeconds);
     session.play(protocol::kFrequencyWindowSeconds + 0.1, protocol::kReadoutIntervalSeconds);
@@ -2251,7 +2278,8 @@ TEST(ChannelViewsInBeats, ShowAHiddenViewAsItIsNow)
         Session session(rate, 2);
         session.join({.kind = Signal::Kind::kNoise, .seed = 7});
         configure(session.own(), Display::kSingle, TimeBase::kBeats);
-        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+        session.own().settings().set(SettingId::kBeatSpan,
+                                     static_cast<double>(BeatSpan::kQuarterBar));
         const auto side = 1U << static_cast<unsigned>(protocol::ChannelView::kSide);
         session.own().settings().set(SettingId::kChannelViews, static_cast<double>(0b0011U | side));
         session.play(1.0, protocol::kReadoutIntervalSeconds / 2.0);
@@ -2668,7 +2696,7 @@ TEST_P(TriggerChannelChange, FollowsTheViewsAndTheTrack)
     session.own().settings().set(SettingId::kTriggerSource,
                                  static_cast<double>(protocol::ChannelView::kRight));
     session.own().settings().set(SettingId::kTriggerSpan, 0.005);
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     session.analyzer().setColumns(4096);
     session.play(0.6, 0.01);
     if (c.frozen) {
@@ -2719,7 +2747,7 @@ TEST_P(MonoLanes, ShowTheTrackAtItsLevel)
     session.join({.frequency = 1000.0, .amplitude = kAmplitude, .offset = 0.0});
     session.join({.frequency = 1500.0, .amplitude = kAmplitude, .offset = 0.0});
     configure(session.own(), c.mode, c.timeBase);
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     auto frame = playForReadouts(session, c.timeBase);
     // Live; frozen; and frozen at another span, which rebuilds the lanes from what is held.
     for (const int step : {0, 1, 2}) {
@@ -2732,7 +2760,7 @@ TEST_P(MonoLanes, ShowTheTrackAtItsLevel)
             session.own().settings().set(SettingId::kTriggerSpan, 0.03);
             session.own().settings().set(SettingId::kFreeSpan, 0.2);
             session.own().settings().set(SettingId::kBeatSpan,
-                                         static_cast<double>(BeatSpan::kTwoBeats));
+                                         static_cast<double>(BeatSpan::kHalfBar));
             frame = session.produce();
         }
         ASSERT_TRUE(frame) << "no frame";
@@ -2881,7 +2909,7 @@ TEST_P(BrokenSamples, AreMeasuredAroundAndCounted)
     session.join({.frequency = 1500.0});
     configure(session.own(), c.mode.mode, c.mode.timeBase);
     setSpan(session.own(), c.mode.timeBase, span);
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     session.play(played);
     auto frame = session.produce();
     ASSERT_TRUE(frame);
@@ -2948,7 +2976,8 @@ TEST_P(BrokenChannel, IsFlaggedWhenDrawn)
                                      static_cast<double>(protocol::ChannelView::kLeft));
         session.own().settings().set(SettingId::kChannelViews, static_cast<double>(drawn));
         setSpan(session.own(), c.mode.timeBase, brokenSpan(c));
-        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+        session.own().settings().set(SettingId::kBeatSpan,
+                                     static_cast<double>(BeatSpan::kQuarterBar));
         session.play(c.longSpan ? 3.0 : 1.5);
         const auto frame = session.produce();
         ASSERT_TRUE(frame);
@@ -3003,7 +3032,7 @@ TEST_P(BrokenOtherTrack, FlagsItsLaneOnly)
                                        : std::numeric_limits<float>::quiet_NaN()});
     configure(session.own(), c.mode.mode, c.mode.timeBase);
     setSpan(session.own(), c.mode.timeBase, brokenSpan(c));
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     session.play(c.longSpan ? 3.0 : 1.5);
     const auto frame = session.produce();
     ASSERT_TRUE(frame);
@@ -3177,7 +3206,7 @@ TEST_P(AllBroken, HasNoReadouts)
     session.join({.frequency = 1500.0});
     configure(session.own(), c.mode.mode, c.mode.timeBase);
     setSpan(session.own(), c.mode.timeBase, span);
-    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kQuarterBar));
     session.play(c.longSpan ? 3.0 : 1.5);
     const auto frame = session.produce();
     ASSERT_TRUE(frame);
@@ -3254,7 +3283,7 @@ protected:
         configure(session->own(), Display::kCompare, c.timeBase);
         setSpan(session->own(), c.timeBase, 0.2);
         session->own().settings().set(SettingId::kBeatSpan,
-                                      static_cast<double>(BeatSpan::kOneBeat));
+                                      static_cast<double>(BeatSpan::kQuarterBar));
         std::vector<std::uint64_t> others;
         for (const GroupMember& member : session->registry.members(protocol::Group::kA)) {
             if (member.engine.get() != &session->own()) {
@@ -3571,7 +3600,8 @@ TEST_P(PartlyPresentCopy, SumsWhereBothSound)
         session.join({.kind = Signal::Kind::kNoise});
         session.join({.kind = Signal::Kind::kNoise, .delay = delay, .endsAt = until});
         configure(session.own(), Display::kCompare, c.timeBase);
-        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+        session.own().settings().set(SettingId::kBeatSpan,
+                                     static_cast<double>(BeatSpan::kQuarterBar));
         setSpan(session.own(), c.timeBase, shown);
         session.play(kPlayed, protocol::kReadoutIntervalSeconds / 2.0);
         session.play(static_cast<double>(kBlock) / c.rate);
@@ -3708,7 +3738,8 @@ TEST_P(ZoomedMatch, FindsTheCopyInTheView)
         session.join({.kind = Signal::Kind::kNoise, .delay = kDelay});
         configure(session.own(), Display::kCompare, c.timeBase);
         setSpan(session.own(), c.timeBase, 0.2);
-        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBeat));
+        session.own().settings().set(SettingId::kBeatSpan,
+                                     static_cast<double>(BeatSpan::kQuarterBar));
         // Zoomed from the start, so that the match shown comes from searches of the zoomed view.
         session.analyzer().setView(start, end);
         session.play(2.0, 0.01);

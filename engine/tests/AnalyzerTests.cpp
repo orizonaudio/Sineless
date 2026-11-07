@@ -151,7 +151,8 @@ TEST_F(AnalyzerTest, KeepsRollColumnsInStepWithAFreshReduction)
 TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
 {
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
-    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    engine.settings().set(SettingId::kBeatSpan,
+                          static_cast<double>(protocol::BeatSpan::kQuarterBar));
     engine.settings().set(SettingId::kChannelViews, 0b0011);
     analyzer.setColumns(300);
     std::uint64_t written = 0;
@@ -184,7 +185,8 @@ TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
 void playBeatsThenSilence(Engine& engine, Analyzer& analyzer, double silence = 1.0)
 {
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
-    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    engine.settings().set(SettingId::kBeatSpan,
+                          static_cast<double>(protocol::BeatSpan::kQuarterBar));
     analyzer.setColumns(300);
     std::vector<std::byte> bytes;
     const auto steps = 50 + static_cast<std::uint64_t>(std::llround(silence * 100.0));
@@ -1335,7 +1337,8 @@ TEST_F(ZoomTest, IgnoresInvalidViews)
     EXPECT_EQ(frame->viewEnd, 1.0f);
 }
 
-// Tempo sync: audio and the host clock advance together at 120 BPM, 4/4.
+// Tempo sync: audio and the host clock advance together at 120 BPM, in 2/4 unless a test counts
+// 4/4 bars, so the default 1/8-bar span is a quarter beat: 6000 samples.
 class SweepTest : public AnalyzerTest
 {
 protected:
@@ -1345,7 +1348,7 @@ protected:
         engine.settings().set(SettingId::kTimeBase, 1.0); // Beats.
         engine.settings().set(
             SettingId::kBeatSpan,
-            static_cast<double>(protocol::BeatSpan::kQuarterBeat)); // 6000 samples.
+            static_cast<double>(protocol::BeatSpan::kEighthBar)); // 6000 samples in 2/4.
         engine.settings().set(SettingId::kChannelViews, 0b0001);
         analyzer.setColumns(8000); // More columns than samples: raw points, exact values.
     }
@@ -1392,7 +1395,7 @@ protected:
     }
 
     double tempo = 120.0;
-    int numerator = 4;
+    int numerator = 2;
     int denominator = 4;
 };
 
@@ -1401,6 +1404,7 @@ protected:
 TEST_F(SweepTest, FillsASweepLongerThanTheCaptureAsItPlays)
 {
     tempo = 20.0;
+    numerator = 4;
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
     analyzer.setColumns(1000); // 2304 samples per column.
     play(1200000);             // 25 s: the capture holds the newest 21.8 s.
@@ -1431,6 +1435,7 @@ TEST_F(SweepTest, FillsASweepLongerThanTheCaptureAsItPlays)
 TEST_F(SweepTest, AdvancesTheSweepBetweenFrames)
 {
     tempo = 20.0;
+    numerator = 4;
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
     analyzer.setColumns(1000);
     for (int chunk = 0; chunk < 60; ++chunk) { // 60 s: more than a pass.
@@ -1461,6 +1466,7 @@ TEST_F(SweepTest, SweepsTheHostsBarInSevenEight)
 
 TEST_F(SweepTest, CropsAShorterSpanFromAFrozenSweepAndRebuildsALongerOne)
 {
+    numerator = 4;
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
     analyzer.setColumns(96000); // Raw points.
     play(120000);               // 1.25 bars: bar 2 began at sample 96000.
@@ -1469,7 +1475,7 @@ TEST_F(SweepTest, CropsAShorterSpanFromAFrozenSweepAndRebuildsALongerOne)
     ASSERT_TRUE(produce());
     play(48000); // After the freeze: must not show.
 
-    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kTwoBeats));
+    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kHalfBar));
     const auto cropped = produce();
     ASSERT_TRUE(cropped);
     EXPECT_TRUE(cropped->has(FrameFlag::kFrozen));
@@ -1494,7 +1500,7 @@ TEST_F(SweepTest, CropsAShorterSpanFromAFrozenSweepAndRebuildsALongerOne)
 
 TEST_F(SweepTest, StartsTheScreenAtTheCycleStart)
 {
-    play(9600); // 0.4 beats: the quarter-beat cycle started at sample 6000.
+    play(9600); // 0.4 beats: the 1/8-bar cycle (a quarter beat) started at sample 6000.
     const auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_TRUE(frame->has(FrameFlag::kSynced));
@@ -1538,6 +1544,7 @@ TEST_F(SweepTest, KeepsEarlierDrawingWhenTheTransportJumps)
 // Freezing at 1 bar, then choosing a longer span, still renders the held audio.
 TEST_F(SweepTest, ShowsALongerSpanChosenWhileFrozen)
 {
+    numerator = 4;
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
     play(500160); // More than four bars (384000 samples at 120 BPM).
     ASSERT_TRUE(produce());
@@ -1553,6 +1560,7 @@ TEST_F(SweepTest, ShowsALongerSpanChosenWhileFrozen)
 // When less audio was held than a newly chosen span needs, the longest span that fits is shown.
 TEST_F(SweepTest, ShowsALongerSpanChosenWhileFrozenAsFarAsHeld)
 {
+    numerator = 4;
     engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
     play(200160); // About two bars in total.
     ASSERT_TRUE(produce());
@@ -1691,8 +1699,8 @@ TEST_F(SweepTest, FreezesTheWholeSweep)
     EXPECT_NEAR(redrawn->cursor, 0.6f, 1e-6f);
 }
 
-// The multi-track view: several engines on one host clock, at 120 BPM in 4/4, with a quarter-
-// beat sweep (6000 samples). Each engine's lane is its Mid.
+// The multi-track view: several engines on one host clock, at 120 BPM in 2/4 unless a test counts
+// 4/4 bars, with a 1/8-bar sweep: a quarter beat, 6000 samples. Each engine's lane is its Mid.
 class MultiTrackTest : public ::testing::Test
 {
 protected:
@@ -1702,7 +1710,7 @@ protected:
         own->settings().set(SettingId::kDisplayMode,
                             static_cast<double>(protocol::DisplayMode::kMulti));
         own->settings().set(SettingId::kBeatSpan,
-                            static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+                            static_cast<double>(protocol::BeatSpan::kEighthBar));
         analyzer = std::make_unique<Analyzer>(*own, registry);
         analyzer->setColumns(8000); // More columns than samples: raw points, exact values.
     }
@@ -1746,7 +1754,10 @@ protected:
                                             .positionValid = true,
                                             .quarterNotes = quarterNotes,
                                             .tempoValid = true,
-                                            .tempo = tempo},
+                                            .tempo = tempo,
+                                            .timeSignatureValid = true,
+                                            .numerator = numerator,
+                                            .denominator = 4},
                                            static_cast<int>(kBlock), kSampleRate);
             }
             hostSample += kBlock;
@@ -1776,6 +1787,7 @@ protected:
     std::vector<std::byte> analyzerBytes; // The last frame, for header fields the decoder skips.
     std::uint64_t hostSample = 0;
     double tempo = 120.0;
+    int numerator = 2;
     double quarterNotes = 0.0;
 };
 
@@ -2011,14 +2023,13 @@ TEST_F(MultiTrackTest, CropsAShorterSpanFromFrozenLanes)
 {
     tracks.front().second = hostTime;
     join();
-    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
-    play(26880); // 1.12 beats: the beat began at sample 24000.
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kHalfBar));
+    play(26880); // 1.12 beats: the beat (half a bar) began at sample 24000.
     ASSERT_TRUE(produce());
     analyzer->setFrozen(true);
     ASSERT_TRUE(produce());
     play(4800);
-    own->settings().set(SettingId::kBeatSpan,
-                        static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kEighthBar));
     const auto frame = produce();
     ASSERT_TRUE(frame);
     ASSERT_EQ(frame->laneCount, 2);
@@ -2041,7 +2052,7 @@ TEST_F(MultiTrackTest, ShowsALongerSpanChosenWhileFrozenInEveryLane)
     analyzer->setFrozen(true);
     ASSERT_TRUE(produce());
     play(4800); // Audio after the freeze must not appear.
-    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kHalfBeat));
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kQuarterBar));
     analyzer->setColumns(12000); // Raw points for the longer span too.
     const auto frame = produce();
     ASSERT_TRUE(frame);
@@ -2366,6 +2377,7 @@ TEST_F(CompareTest, KeepsATrackCheckedWhileItIsInAnotherGroup)
 // 14 s, then as it is: the match follows the newest 8 s before the playhead, not the whole view.
 TEST_F(CompareTest, SearchesTheMatchOverTheNewestPartOfTheView)
 {
+    numerator = 4;
     constexpr std::uint64_t kFlipAt = std::uint64_t{14} * 48000;
     joinWith([](std::uint64_t sample) {
         return sample < kFlipAt ? -noiseAt(sample, 1) : noiseAt(sample, 1);
@@ -2848,6 +2860,7 @@ TEST_F(CompareTest, FollowsTheFixAsTheDelayChanges)
 // ones while in step, so that each block's level depends on the part of the song it holds.
 TEST_F(CompareTest, MeasuresAShiftedTrackAgainWhenItsShiftChanges)
 {
+    numerator = 4;
     own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
     std::uint64_t delay = 37;
     std::uint64_t phase = 0;
@@ -2930,6 +2943,7 @@ TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
 // all round the bar, instead of reading as unrelated while the bar's first beat has no snare.
 TEST_F(CompareTest, KeepsAMatchThroughTheCycleStart)
 {
+    numerator = 4;
     const auto snare = [](std::uint64_t sample) {
         const std::uint64_t beat = (sample / 24000) % 4;
         return (beat == 1 || beat == 3) && sample % 24000 < 4800 ? noiseAt(sample, 1) : 0.0f;
@@ -2958,6 +2972,7 @@ TEST_F(CompareTest, KeepsAMatchThroughTheCycleStart)
 // take two frames.
 TEST_F(CompareTest, SumsALongSweepAgainOverFrames)
 {
+    numerator = 4;
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     own->settings().set(SettingId::kBeatSpan,
                         static_cast<double>(protocol::BeatSpan::kSixteenBars));

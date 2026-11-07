@@ -161,7 +161,8 @@ void configure(Engine& engine, Display mode, TimeBase timeBase)
 {
     show(engine.settings(), mode);
     engine.settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
-    engine.settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBeat));
+    engine.settings().set(SettingId::kBeatSpan,
+                          static_cast<double>(protocol::BeatSpan::kQuarterBar));
     engine.settings().set(SettingId::kTriggerSpan, 0.05);
     engine.settings().set(SettingId::kFreeSpan, protocol::kShortestFreeSpanSeconds);
     engine.settings().set(SettingId::kChannelViews, 0b0011); // L and R asked for.
@@ -339,7 +340,7 @@ TEST(AnalyzerLimits, DrawsShortSweepsWholeThroughATempoRamp)
         tracks.otherTempoOffset = -0.15; // The other tracks' sweeps: a sample longer.
         configure(tracks.own(), mode, TimeBase::kBeats);
         tracks.own().settings().set(SettingId::kBeatSpan,
-                                    static_cast<double>(protocol::BeatSpan::kSixteenthBeat));
+                                    static_cast<double>(protocol::BeatSpan::kEighthBar));
         Analyzer analyzer(tracks.own(), tracks.registry);
         analyzer.setColumns(400);
         std::optional<DecodedFrame> frame;

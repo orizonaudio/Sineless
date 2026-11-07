@@ -18,47 +18,47 @@ export type TriggerSlope = (typeof TriggerSlope)[keyof typeof TriggerSlope];
 export const TimeBase = { trigger: 0, beats: 1, free: 2 } as const;
 export type TimeBase = (typeof TimeBase)[keyof typeof TimeBase];
 
-// Tempo-synced spans: fractions of a beat (a quarter note), then bars.
+// Tempo-synced spans, in bars of the host time signature: fractions of a bar, then bars.
 export const BeatSpan = {
-  sixteenthBeat: 0,
-  eighthBeat: 1,
-  quarterBeat: 2,
-  halfBeat: 3,
-  oneBeat: 4,
-  twoBeats: 5,
-  oneBar: 6,
-  twoBars: 7,
+  eighthBar: 0,
+  sixthBar: 1,
+  quarterBar: 2,
+  thirdBar: 3,
+  halfBar: 4,
+  oneBar: 5,
+  twoBars: 6,
+  threeBars: 7,
   fourBars: 8,
-  eightBars: 9,
-  sixteenBars: 10,
+  sixBars: 9,
+  eightBars: 10,
+  sixteenBars: 11,
 } as const;
 export type BeatSpan = (typeof BeatSpan)[keyof typeof BeatSpan];
 
-// Length of each beat span: an amount of beats (quarter notes), or of bars, which follow the
-// host time signature. Indexed by BeatSpan value.
+// Length of each beat span, in bars of the host time signature. Indexed by BeatSpan value.
 export const beatSpanLengths: readonly {
   readonly amount: number;
-  readonly inBars: boolean;
 }[] = [
-  { amount: 1 / 16, inBars: false },
-  { amount: 1 / 8, inBars: false },
-  { amount: 1 / 4, inBars: false },
-  { amount: 1 / 2, inBars: false },
-  { amount: 1, inBars: false },
-  { amount: 2, inBars: false },
-  { amount: 1, inBars: true },
-  { amount: 2, inBars: true },
-  { amount: 4, inBars: true },
-  { amount: 8, inBars: true },
-  { amount: 16, inBars: true },
+  { amount: 1 / 8 },
+  { amount: 1 / 6 },
+  { amount: 1 / 4 },
+  { amount: 1 / 3 },
+  { amount: 1 / 2 },
+  { amount: 1 },
+  { amount: 2 },
+  { amount: 3 },
+  { amount: 4 },
+  { amount: 6 },
+  { amount: 8 },
+  { amount: 16 },
 ];
 
 export function beatSpanQuarterNotes(
   span: BeatSpan,
   barQuarterNotes: number,
 ): number {
-  const length = beatSpanLengths[span] ?? { amount: 1, inBars: true };
-  return length.inBars ? length.amount * barQuarterNotes : length.amount;
+  const length = beatSpanLengths[span] ?? { amount: 1 };
+  return length.amount * barQuarterNotes;
 }
 
 export const Toggle = { off: 0, on: 1 } as const;

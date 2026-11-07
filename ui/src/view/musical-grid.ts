@@ -10,19 +10,34 @@ export interface GridLine {
   readonly strong: boolean;
 }
 
+// Indexed by BeatSpan value.
 export const beatSpanLabels = [
-  "1/16 beat",
-  "1/8 beat",
-  "1/4 beat",
-  "1/2 beat",
-  "1 beat",
-  "2 beats",
+  "1/8 bar",
+  "1/6 bar",
+  "1/4 bar",
+  "1/3 bar",
+  "1/2 bar",
   "1 bar",
   "2 bars",
+  "3 bars",
   "4 bars",
+  "6 bars",
   "8 bars",
   "16 bars",
 ] as const;
+
+// The beat span a typed text names: a label, or its number alone ("16" for 16 bars, "1/4" for
+// 1/4 bar), with or without the unit and spaces.
+export function parseBeatSpan(text: string): number | undefined {
+  const amount = (label: string) =>
+    label
+      .toLowerCase()
+      .replace(/\s*bars?$/u, "")
+      .replace(/\s+/gu, "");
+  const typed = amount(text.trim());
+  const index = beatSpanLabels.findIndex((label) => amount(label) === typed);
+  return index < 0 ? undefined : index;
+}
 
 const maximumLabels = 5;
 const epsilon = musicalTolerance;

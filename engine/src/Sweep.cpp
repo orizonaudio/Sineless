@@ -25,7 +25,7 @@ double beatSpanQuarterNotes(BeatSpan span, double barQuarterNotes)
 {
     const protocol::BeatSpanLength& length =
         protocol::kBeatSpanLengths.at(static_cast<std::size_t>(span));
-    return length.inBars ? length.amount * barQuarterNotes : length.amount;
+    return length.amount * barQuarterNotes;
 }
 
 std::optional<SweepWindow> sweepWindow(const MusicalStamp& stamp, std::uint64_t end,
@@ -36,9 +36,15 @@ std::optional<SweepWindow> sweepWindow(const MusicalStamp& stamp, std::uint64_t 
     bool limited = false;
     double length = beatSpanQuarterNotes(span, bar);
     while (length * samplesPerQuarterNote > static_cast<double>(maxSamples) &&
-           span != BeatSpan::kSixteenthBeat) {
+           span != BeatSpan::kEighthBar) {
         span = static_cast<BeatSpan>(static_cast<int>(span) - 1);
         length = beatSpanQuarterNotes(span, bar);
+        limited = true;
+    }
+    // The shortest span, 1/8 bar, can still exceed the capture in a long bar at a slow tempo (16/1
+    // below about 22 BPM at 384 kHz): the window shortens to what the capture holds.
+    if (length * samplesPerQuarterNote > static_cast<double>(maxSamples)) {
+        length = static_cast<double>(maxSamples) / samplesPerQuarterNote;
         limited = true;
     }
 

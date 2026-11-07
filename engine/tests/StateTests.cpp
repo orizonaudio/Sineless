@@ -137,6 +137,7 @@ constexpr std::array kEveryGoldenStateFile{
     "state-v2-0.5-new-instance.json",
     "state-v3.json",
     "state-v4.json",
+    "state-v5.json",
 };
 
 // A project saved before Auto-freeze existed opens with it on, as a new instance does (FR-11):
@@ -293,6 +294,31 @@ constexpr std::array kVersion4Values{
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
 };
 
+// What state version 5 saves, in state-v5.json: every setting away from its default, with a beat
+// span that only version 5 names.
+constexpr std::array kVersion5Values{
+    GoldenValue{.id = SettingId::kTriggerSpan, .value = 0.25},
+    GoldenValue{.id = SettingId::kFreeSpan, .value = 2.0},
+    GoldenValue{.id = SettingId::kVerticalScale, .value = -9.0},
+    GoldenValue{.id = SettingId::kChannelViews,
+                .value = flag(ChannelView::kRight) + flag(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kOverlaid)},
+    GoldenValue{.id = SettingId::kTriggerMode, .value = asValue(TriggerMode::kSingle)},
+    GoldenValue{.id = SettingId::kTriggerSource, .value = asValue(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kReadoutSource, .value = asValue(ChannelView::kRight)},
+    GoldenValue{.id = SettingId::kTriggerSlope, .value = asValue(TriggerSlope::kFalling)},
+    GoldenValue{.id = SettingId::kTriggerLevel, .value = -0.25},
+    GoldenValue{.id = SettingId::kTriggerHysteresis, .value = 0.05},
+    GoldenValue{.id = SettingId::kTriggerHoldOff, .value = 0.125},
+    GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
+    GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kThirdBar)},
+    GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
+    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
+    GoldenValue{.id = SettingId::kCompare, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
+};
+
 // Golden states saved by released builds that added settings without a state version raise,
 // each with the values it holds. A release that adds a setting adds its own file here; the
 // files already here stay as their release saved them.
@@ -308,6 +334,7 @@ constexpr std::array kGoldenStates{
                 .values = kVersion2Release05NewInstanceValues},
     GoldenState{.file = "state-v3.json", .values = kVersion3Values},
     GoldenState{.file = "state-v4.json", .values = kVersion4Values},
+    GoldenState{.file = "state-v5.json", .values = kVersion5Values},
 };
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
@@ -324,13 +351,14 @@ struct GoldenValueNames
 constexpr std::array kGoldenValueNames{
     GoldenValueNames{.file = "value-names-0.5.json", .version = 2},
     GoldenValueNames{.file = "value-names-0.8.json", .version = 3},
-    GoldenValueNames{.file = "value-names-0.9.json", .version = 4},
+    GoldenValueNames{.file = "value-names-0.9.json", .version = 5},
 };
 
 // Released names a migration maps to another value, rather than names the protocol still reads:
 // "seconds" became Trigger or Free, the Free trigger mode Auto (version 3):
 // MigratesEachKindOfProject checks what each becomes. The Compare display mode became Multi with
-// Compare on (version 4): OpensEachReleasedDisplayModeAsSaved checks it.
+// Compare on (version 4): OpensEachReleasedDisplayModeAsSaved checks it. The beat spans counted in
+// beats became the bar spans they equal in 4/4, or 1/8 bar (version 5): SavedBeatSpan checks them.
 struct MigratedName
 {
     std::string_view setting;
@@ -341,6 +369,12 @@ constexpr std::array kMigratedNames{
     MigratedName{.setting = "timeBase", .name = "seconds"},
     MigratedName{.setting = "triggerMode", .name = "free"},
     MigratedName{.setting = "displayMode", .name = "compare"},
+    MigratedName{.setting = "beatSpan", .name = "sixteenthBeat"},
+    MigratedName{.setting = "beatSpan", .name = "eighthBeat"},
+    MigratedName{.setting = "beatSpan", .name = "quarterBeat"},
+    MigratedName{.setting = "beatSpan", .name = "halfBeat"},
+    MigratedName{.setting = "beatSpan", .name = "oneBeat"},
+    MigratedName{.setting = "beatSpan", .name = "twoBeats"},
 };
 
 struct SavedSetting
@@ -482,6 +516,59 @@ INSTANTIATE_TEST_SUITE_P(State, SavedValueName, ::testing::ValuesIn(everyNamedVa
                          [](const ::testing::TestParamInfo<NamedValue>& info) {
                              return std::string(info.param.setting->name) + "_" +
                                     std::string(info.param.setting->valueNames[info.param.index]);
+                         });
+
+// A beat span saved before version 5, under its released name, and the span it opens as: a span
+// in beats as the bar span it equals in 4/4 (two beats are half a bar, one beat a quarter), those
+// shorter than 1/8 bar as 1/8 bar; a span in bars as itself.
+struct SavedSpan
+{
+    std::string_view name;
+    protocol::BeatSpan span{};
+};
+
+constexpr std::array kSavedSpans{
+    SavedSpan{.name = "sixteenthBeat", .span = protocol::BeatSpan::kEighthBar},
+    SavedSpan{.name = "eighthBeat", .span = protocol::BeatSpan::kEighthBar},
+    SavedSpan{.name = "quarterBeat", .span = protocol::BeatSpan::kEighthBar},
+    SavedSpan{.name = "halfBeat", .span = protocol::BeatSpan::kEighthBar},
+    SavedSpan{.name = "oneBeat", .span = protocol::BeatSpan::kQuarterBar},
+    SavedSpan{.name = "twoBeats", .span = protocol::BeatSpan::kHalfBar},
+    SavedSpan{.name = "oneBar", .span = protocol::BeatSpan::kOneBar},
+    SavedSpan{.name = "twoBars", .span = protocol::BeatSpan::kTwoBars},
+    SavedSpan{.name = "fourBars", .span = protocol::BeatSpan::kFourBars},
+    SavedSpan{.name = "eightBars", .span = protocol::BeatSpan::kEightBars},
+    SavedSpan{.name = "sixteenBars", .span = protocol::BeatSpan::kSixteenBars},
+};
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const SavedSpan& c, std::ostream* out)
+{
+    *out << c.name;
+}
+
+class SavedBeatSpan : public ::testing::TestWithParam<SavedSpan>
+{
+};
+
+// A project saved with a beat span before version 5 (0.5 and 0.8 saved every one of these names)
+// reopens at the nearest span there is, not at the default.
+TEST_P(SavedBeatSpan, OpensAsTheNearestSpan)
+{
+    const SavedSpan& c = GetParam();
+    for (const int version : {2, 3, 4}) {
+        const nlohmann::json state = {{"version", version},
+                                      {"settings", {{"beatSpan", std::string(c.name)}}}};
+        EXPECT_EQ(
+            deserializeState(state.dump()).enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
+            c.span)
+            << "version " << version;
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(State, SavedBeatSpan, ::testing::ValuesIn(kSavedSpans),
+                         [](const ::testing::TestParamInfo<SavedSpan>& info) {
+                             return std::string(info.param.name);
                          });
 
 TEST(State, DefaultsToABeatsSweepOfOneBar)

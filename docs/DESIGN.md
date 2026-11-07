@@ -95,9 +95,9 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-7 | Readouts of sample peak, RMS and estimated frequency, for the readout channel (1.2.1), which the readout source chooses in Single display mode. They are indicative, not standards-compliant metering; help says so. Peak and RMS cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen. Frequency is measured over the newest 1 s (`frequencyWindowSeconds`) from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`); it is shown only when at least 60% of cycles fall within 15% of the median (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`), as the mean of those cycles, marked ≈. Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/app/readouts.test.ts` |
 | FR-8 | All settings (table below) are saved with the host project as plugin state; none is a host-automatable parameter. A value is accepted only if finite and in range (enum and flag values integral, flags non-empty); an invalid value is refused, not clamped. | `StateTests`, `SettingsTests`, `setting-values.test.ts` |
 | FR-9 | Tempo sync (Beats time base). | `SweepTests`, `SweepImageTests`, `TimelineTests`, `MatrixTests` |
-| FR-9.1 | The span is a beat span, from 1/16 beat to 16 bars, at the host tempo; a beat is a quarter note and a bar follows the host time signature. The display sweeps: the left edge is the start of the current cycle, aligned to multiples of the span from the project start. Until the host has reported a tempo (an instance it has not played through yet), nothing is placed: no sweep, grid or bar labels, and the UI says so ("No tempo"). | `AnalyzerTests`, `ui/tests/app/no-tempo.test.ts` |
+| FR-9.1 | The span is a beat span, in bars of the host time signature, from 1/8 bar to 16 bars (1.3), at the host tempo; a beat is a quarter note. Typed, a span may be its number alone ("16", "1/4"). The display sweeps: the left edge is the start of the current cycle, aligned to multiples of the span from the project start. Until the host has reported a tempo (an instance it has not played through yet), nothing is placed: no sweep, grid or bar labels, and the UI says so ("No tempo"). | `AnalyzerTests`, `ui/tests/app/no-tempo.test.ts` |
 | FR-9.2 | A playhead line follows the host position, with the current cycle to its left and the previous cycle, dimmed, to its right. As on a sweeping scope, what is drawn stays in place until the playhead passes it again, also when the transport jumps (stop and play, loops, relocation): audio is placed by the position of the block it came in, except when a change of the sweep's length (its beat span, or a tempo or metre change too large for it to keep its length, FR-9.4) redraws the whole sweep from the audio held, which places all of it by the position at its newest audio. While stopped, the sweep continues at the last tempo. Live, the playhead and the audio reaching it stand at the paced edge (AD-29), so they move evenly between blocks and nothing newer than the playhead shows in the dimmed cycle; other tracks' lanes reach the same musical position, except until both instances have played with a host position (before that each timeline runs on from where it started; after it they stay aligned while stopped, AD-15), and while this track receives no blocks, when each lane is drawn to its own newest audio. A freeze shows the newest audio held. On macOS 14+ the playhead and the sweeps are placed at the display clock's time, and the playhead at its exact position with soft edges (AD-30). | `PacedSweepTests`, `MetalTraceRendererTests` |
-| FR-9.3 | A sweep may be longer than the audio the capture holds: it shows what has been captured and fills in as the playhead passes ("Filling"). A sweep is limited to 2^23 samples per lane (87 s at 96 kHz); a longer beat span is stepped down and the UI says so ("Span limited"). | |
+| FR-9.3 | A sweep may be longer than the audio the capture holds: it shows what has been captured and fills in as the playhead passes ("Filling"). A sweep is limited to 2^23 samples per lane (87 s at 96 kHz); a longer beat span is stepped down, or at the shortest, 1/8 bar, shortened to the capture (a long bar at a slow tempo), and the UI says so ("Span limited"). | |
 | FR-9.4 | A tempo change that alters the sweep's length by at most 1/1024 keeps the sweep; a larger one starts it again. Other tracks' lanes take this track's sweep length within the same tolerance. | |
 | FR-9.5 | Sweeps keep receiving audio while the editor's page is hidden, so it is complete when shown again. | |
 | FR-9.6 | Freezing a sweep keeps the image on screen and holds as much audio as the capture can (7/8 of it). Choosing a shorter span while frozen crops it from the image once the image is complete; a longer span is rebuilt from the held audio and, where the held audio does not reach, is drawn in part and flagged ("Partial"). A frozen sweep does not pan. | |
@@ -149,7 +149,7 @@ against it and the UI builds its controls from it.
 | Trigger hysteresis | 0 … 0.5 (linear, full scale) | 0.01 |
 | Trigger hold-off | 0 … 1 s (stored in seconds, shown in ms) | 0 |
 | Time base | Beats, Free, Trigger | Beats |
-| Beat span | 1/16, 1/8, 1/4, 1/2, 1 and 2 beats; 1, 2, 4, 8 and 16 bars | 1 bar |
+| Beat span | 1/8, 1/6, 1/4, 1/3 and 1/2 bar; 1, 2, 3, 4, 6, 8 and 16 bars | 1 bar |
 | Auto-freeze | Off, on | On |
 | Display mode | Single, Multi | Single |
 | Group | A, B, C, D | A |
@@ -1188,7 +1188,7 @@ not reused.
 | Term | Meaning |
 | --- | --- |
 | Beat | A quarter note, whatever the time signature. |
-| Beat span | The span in Beats, from 1/16 beat to 16 bars. |
+| Beat span | The span in Beats, in bars, from 1/8 bar to 16 bars. |
 | Capture (ring) | Each instance's recent audio, written by the audio thread. |
 | Channel view | L, R, Mid or Side of this track. Not to be confused with the zoomed *view*. |
 | Clock (musical) | An instance's mapping between capture samples and quarter notes (AD-13). |
@@ -1211,7 +1211,7 @@ not reused.
 | Free-running | A window that ends at the newest audio and moves with it: the Free time base. |
 | Single | A display mode (one track, its channel views) and, separately, a trigger mode (capture one triggered frame, then freeze). Always qualified. |
 | Span | The time the full screen width shows: seconds, or a beat span. |
-| Span limited | A span shortened to what can be kept: a beat span stepped down because its sweep would exceed the cap, or a Free span longer than the capture or the freeze holds. |
+| Span limited | A span shortened to what can be kept: a beat span stepped down, or shortened at 1/8 bar, because its sweep would exceed the cap, or a Free span longer than the capture or the freeze holds. |
 | Sum lane | The lane Compare adds to Multi, with the sample-by-sample sum of the checked tracks. |
 | Trigger | The time base whose window is placed by the trigger; labelled "Trig" in the UI. Also the toolbar's field for the trigger's settings. |
 | Summing gain | The level of the checked tracks' sum against the level they would give if unrelated, in dB. |

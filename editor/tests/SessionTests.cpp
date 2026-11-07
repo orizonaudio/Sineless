@@ -347,7 +347,7 @@ TEST_F(SessionTest, ReportsTheMultiTrackLanes)
     engine.settings().set(protocol::SettingId::kTimeBase,
                           static_cast<double>(protocol::TimeBase::kBeats));
     engine.settings().set(protocol::SettingId::kBeatSpan,
-                          static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+                          static_cast<double>(protocol::BeatSpan::kEighthBar));
     engine.settings().set(protocol::SettingId::kDisplayMode,
                           static_cast<double>(protocol::DisplayMode::kMulti));
     engine.setTrackInfo({.name = "Kick", .colour = 0xe03030, .index = std::nullopt});
@@ -424,7 +424,7 @@ void changeEverythingTheSessionReports(engine::Engine& engine, engine::Analyzer&
     restored.set(SettingId::kTriggerLevel, 0.5);
     restored.set(SettingId::kDisplayMode, static_cast<double>(protocol::DisplayMode::kMulti));
     restored.set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
-    restored.set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kQuarterBeat));
+    restored.set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kEighthBar));
     engine.settings().replace(restored);
     engine.prepare(96000.0);
     engine.setInputChannels(1);

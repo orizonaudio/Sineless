@@ -12,7 +12,7 @@
   "mode": "minMax",
   "pointCount": 500,
   "readouts": {
-    "frequency": 4999.994,
+    "frequency": 4999.997,
     "peak": 0.5,
     "rms": 0.3535534
   },
@@ -36,5 +36,5 @@
       "nanPoints": 0
     }
   },
-  "visibleSamples": 6000
+  "visibleSamples": 12000
 }

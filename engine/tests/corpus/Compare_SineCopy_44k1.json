@@ -39,7 +39,7 @@
   "readouts": {
     "frequency": 1000,
     "peak": 0.4999968,
-    "rms": 0.3535377
+    "rms": 0.3535534
   },
   "signal": {
     "channels": 2,
@@ -50,5 +50,5 @@
     "timeBase": "beats"
   },
   "sumGain": 3.0103,
-  "visibleSamples": 5513
+  "visibleSamples": 11025
 }
