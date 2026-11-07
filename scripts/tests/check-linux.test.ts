@@ -1,5 +1,6 @@
 // scripts/check-linux.sh, the shared code's sanitizers and lint: each check runs whatever another
 // found, so one run shows every finding, and the lint comes first, without a full build.
+import { realpathSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { Layout, summary, variables } from "./check-harness.ts";
@@ -118,4 +119,28 @@ test("BUILD_ONLY=1 runs the builds and nothing else", () => {
   }
   expect(calls.filter((call) => /^(ctest|clang-tidy)/.test(call))).toEqual([]);
   expect(status).toBe(0);
+});
+
+// On macOS the checks run in Docker, which sees only the checkout. A worktree's git folder lives
+// in the main checkout's, outside it, and without it git ls-files fails there, so the lint did.
+describe("in Docker", () => {
+  const dockerRun = (common: string) =>
+    run(
+      ["lint"],
+      variables(["STUB_UNAME", "Darwin"], ["STUB_GIT_COMMON", common]),
+    ).calls.find((call) => call.startsWith("docker run")) ?? "";
+
+  test("a worktree's git folder is mounted, read-only, where git looks for it", () => {
+    expect(dockerRun("/elsewhere/repo/.git")).toContain(
+      "-v /elsewhere/repo/.git:/elsewhere/repo/.git:ro",
+    );
+  });
+
+  test("a checkout's own git folder is not mounted again", () => {
+    layout ??= new Layout(
+      ["scripts/check-linux.sh", "scripts/stages.sh"],
+      tools,
+    );
+    expect(dockerRun(`${realpathSync(layout.root)}/.git`)).not.toContain(":ro");
+  });
 });

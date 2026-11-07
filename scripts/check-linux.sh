@@ -40,9 +40,16 @@ if [[ "$(uname -s)" != Linux ]]; then
     docker build -q -t sineless-linux-checks tools/linux-checks > /dev/null
     # ThreadSanitizer needs its memory layout without address randomisation: it turns it off for
     # itself, which Docker's default seccomp profile forbids (the personality call).
+    # A worktree's git folder is in the main checkout's, outside this one: mounted read-only where
+    # git looks for it, or git ls-files (the lint's file list) fails in the container.
+    gitMount=()
+    common="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)"
+    if [[ "$common" != "$(cd "$root" && pwd -P)"/* ]]; then
+        gitMount=(-v "$common:$common:ro")
+    fi
     exec docker run --rm --security-opt seccomp=unconfined \
         -v "$root":/src -v sineless-linux-build:/src/build -v sineless-linux-modules:/src/node_modules \
-        -e BUILD_ONLY -e CTEST_SHARD \
+        ${gitMount[@]+"${gitMount[@]}"} -e BUILD_ONLY -e CTEST_SHARD \
         -w /src sineless-linux-checks bash -c 'npm ci --silent && scripts/check-linux.sh "$@"' \
         check-linux "${checks[@]}"
 fi
