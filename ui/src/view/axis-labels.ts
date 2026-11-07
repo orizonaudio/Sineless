@@ -3,21 +3,21 @@
 import { lanes } from "../render/trace-geometry.ts";
 import { ViewLayout } from "../../../protocol/src/enums.ts";
 import {
-  gridColumns,
+  gridColumnsMedium,
   gridLevelStepDb,
   gridLevelsBelowTop,
-  gridMinimumLineGap,
+  gridMediumLineGap,
 } from "../../../protocol/src/limits.ts";
 import { formatDb, formatDbValue, formatSeconds } from "./format.ts";
 import { toFrame, type ViewWindow } from "./zoom.ts";
 
-export { gridColumns };
+export { gridColumnsMedium };
 
 // Level lines (protocol/src/limits.ts: gridLevelStepDb, gridLevelsBelowTop). Closest spacing (CSS
-// px) between drawn level lines (gridMinimumLineGap), and between level labels.
+// px) between drawn level lines (gridMediumLineGap), and between level labels.
 const levelStepDb = gridLevelStepDb;
 const levelsBelowTop = gridLevelsBelowTop;
-export const minimumLineGap = gridMinimumLineGap;
+export const minimumLineGap = gridMediumLineGap;
 export const minimumLabelGap = 14;
 
 export function levelFraction(step: number): number {
@@ -97,8 +97,8 @@ export function timeLabels(
   zero: number,
 ): AxisLabel[] {
   const labels: AxisLabel[] = [];
-  for (let division = 2; division < gridColumns; division += 2) {
-    const x = division / gridColumns;
+  for (let division = 2; division < gridColumnsMedium; division += 2) {
+    const x = division / gridColumnsMedium;
     const frame = toFrame(view, x);
     const seconds = freeRunning
       ? -(1 - frame) * spanSeconds

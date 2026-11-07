@@ -76,6 +76,19 @@ export type Group = (typeof Group)[keyof typeof Group];
 export const FrameMode = { minMax: 0, raw: 1 } as const;
 export type FrameMode = (typeof FrameMode)[keyof typeof FrameMode];
 
+// What the screen's grid draws in a time base: nothing but each lane's zero line; the full grid; or
+// the cross hair, the zero lines and the trigger point's vertical line with ticks, in Trig only.
+export const GridType = { none: 0, grid: 1, crossHair: 2 } as const;
+export type GridType = (typeof GridType)[keyof typeof GridType];
+
+// How closely the grid divides the time or the level axis.
+export const GridDensity = { coarse: 0, medium: 1, fine: 2 } as const;
+export type GridDensity = (typeof GridDensity)[keyof typeof GridDensity];
+
+// Beats' grid below the beat: halves and quarters, or thirds of the beat and their halves.
+export const BeatDivision = { regular: 0, triplets: 1 } as const;
+export type BeatDivision = (typeof BeatDivision)[keyof typeof BeatDivision];
+
 // Every enumeration, by name, for code generation.
 export const enums = {
   ChannelView,
@@ -88,5 +101,8 @@ export const enums = {
   DisplayMode,
   Group,
   FrameMode,
+  GridType,
+  GridDensity,
+  BeatDivision,
 } as const;
 export type EnumName = keyof typeof enums;

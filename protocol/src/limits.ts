@@ -133,15 +133,15 @@ export const screenMargin = 8;
 export const screenBorder = 1;
 export const screenRadius = 10;
 
-// The screen's grid, which the page and the macOS editor both draw: this many equal time divisions;
-// level lines every gridLevelStepDb down from the top of each lane, at most gridLevelsBelowTop
-// below it (the trace is linear, so step s sits at 10^(-gridLevelStepDb * s / 20) of the half-lane);
-// and no two drawn level lines closer than gridMinimumLineGap CSS pixels, so a short lane shows
-// fewer.
-export const gridColumns = 10;
+// The screen's grid, which the page and the macOS editor both draw: at the Medium Time step this
+// many equal time divisions in Trig and Free; level lines every gridLevelStepDb down from the top
+// of each lane, at most gridLevelsBelowTop below it (the trace is linear, so step s sits at
+// 10^(-gridLevelStepDb * s / 20) of the half-lane); and at the Medium Level step no two drawn level
+// lines closer than gridMediumLineGap CSS pixels, so a short lane shows fewer.
+export const gridColumnsMedium = 10;
 export const gridLevelStepDb = 3;
 export const gridLevelsBelowTop = 4;
-export const gridMinimumLineGap = 8;
+export const gridMediumLineGap = 8;
 
 // Compare's cancellation shading, which the page and the macOS editor both draw. Where the sum's
 // peak falls more than cancellationDb below the louder compared track's, they cancel strongly.
@@ -252,10 +252,10 @@ export const limits: readonly {
   { name: "screenMargin", value: screenMargin, kind: "pixels" },
   { name: "screenBorder", value: screenBorder, kind: "pixels" },
   { name: "screenRadius", value: screenRadius, kind: "pixels" },
-  { name: "gridColumns", value: gridColumns, kind: "count" },
+  { name: "gridColumnsMedium", value: gridColumnsMedium, kind: "count" },
   { name: "gridLevelStepDb", value: gridLevelStepDb, kind: "double" },
   { name: "gridLevelsBelowTop", value: gridLevelsBelowTop, kind: "count" },
-  { name: "gridMinimumLineGap", value: gridMinimumLineGap, kind: "double" },
+  { name: "gridMediumLineGap", value: gridMediumLineGap, kind: "double" },
   { name: "cancellationDb", value: cancellationDb, kind: "double" },
   { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
   { name: "barcodeDataBits", value: barcodeDataBits, kind: "count" },

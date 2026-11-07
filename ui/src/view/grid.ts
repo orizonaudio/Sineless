@@ -6,7 +6,7 @@
 import { ViewLayout } from "../../../protocol/src/enums.ts";
 import { lanes, type Lane } from "../render/trace-geometry.ts";
 import {
-  gridColumns,
+  gridColumnsMedium,
   levelFraction,
   levelSteps,
   minimumLineGap,
@@ -42,8 +42,8 @@ export function gridLines(
 ): GridLines {
   const columns =
     verticalLines ??
-    Array.from({ length: gridColumns - 1 }, (_, index) => ({
-      position: (index + 1) / gridColumns,
+    Array.from({ length: gridColumnsMedium - 1 }, (_, index) => ({
+      position: (index + 1) / gridColumnsMedium,
       strong: false,
     }));
   const vertical = columns.map((column) => ({

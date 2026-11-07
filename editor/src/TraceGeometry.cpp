@@ -190,9 +190,9 @@ GridLines gridLines(double width, double height, std::size_t laneCount, double p
     const auto round = [](double value) { return std::floor(value + 0.5); };
     std::vector<VerticalLine> divisions;
     if (vertical == nullptr) {
-        for (std::size_t index = 1; index < protocol::kGridColumns; ++index) {
+        for (std::size_t index = 1; index < protocol::kGridColumnsMedium; ++index) {
             divisions.push_back({.position = static_cast<double>(index) /
-                                             static_cast<double>(protocol::kGridColumns)});
+                                             static_cast<double>(protocol::kGridColumnsMedium)});
         }
         vertical = &divisions;
     }
@@ -205,7 +205,7 @@ GridLines gridLines(double width, double height, std::size_t laneCount, double p
     };
     for (const Lane& lane : laneList) {
         const double halfLaneCss = lane.halfHeight * height / 2.0 / std::max(1.0, pixelRatio);
-        for (const int step : levelSteps(halfLaneCss, protocol::kGridMinimumLineGap)) {
+        for (const int step : levelSteps(halfLaneCss, protocol::kGridMediumLineGap)) {
             for (const double sign : {1.0, -1.0}) {
                 lines.horizontal.push_back({.y = rowY(lane, sign * levelFraction(step))});
             }
