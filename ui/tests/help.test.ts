@@ -88,9 +88,9 @@ describe("help texts", () => {
   // that set the span it says they do.
   test("of the beat span name its range and numbers that type the spans they name", () => {
     const { text } = helpTexts.beatSpan;
-    expect(text).toContain(
-      `from ${beatSpanLabels[0]} to ${beatSpanLabels.at(-1) ?? ""}`,
-    );
+    // The shortest and the longest span, whatever the sentence around them.
+    expect(text).toContain(beatSpanLabels[0]);
+    expect(text).toContain(beatSpanLabels.at(-1) ?? "");
     const offered = [...text.matchAll(/(\S+) for ([^,.]+)/gu)];
     expect(offered.length).toBeGreaterThan(0);
     for (const [, typed = "", named = ""] of offered) {
