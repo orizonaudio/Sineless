@@ -16,16 +16,16 @@ export const levelFloorDbfs = -120;
 export const gainFloorDb = -140;
 
 // Analysis leaves out audio whose RMS level (dBFS) is at or below this: Compare does not match
-// tracks there, and the frequency readout finds no pitch there. 16-bit dither falls below it.
+// tracks there, and the hover readout finds no cycle there. 16-bit dither falls below it.
 export const analysisGateDbfs = -90;
 
-// How a signal's cycles are found, for its frequency: where it rises through its mean level,
+// How the hover readout finds a signal's cycles: where it rises through its mean level,
 // after first falling this fraction of its peak-to-peak range below it, so noise riding on a
 // crossing does not count twice.
 export const crossingHysteresis = 0.1;
 
-// A signal repeats steadily when most of its cycles last within this fraction of the median
-// cycle; otherwise it has no frequency to show (noise, or several pitches at once).
+// A cycle under the hover is steady when a neighbouring cycle lasts within this fraction of it;
+// otherwise it has no frequency to show (noise, or several pitches at once).
 export const periodTolerance = 0.15;
 
 // Seconds a frozen Trigger or Free view can be panned back through: the longest span, Free's
@@ -86,10 +86,7 @@ export const matchWindowSeconds = 8;
 // is harmless.
 export const summingMarginDb = 1;
 
-// How much of the newest audio the frequency readout measures (seconds).
-export const frequencyWindowSeconds = 1;
-
-// The audible range (Hz): a frequency outside it, from the readout, the time cursors or the hover,
+// The audible range (Hz): a frequency outside it, from the time cursors or the hover,
 // reads "—" and has no note; below 20 Hz a "frequency" is a slow change, above 20 kHz an artefact.
 export const lowestAudibleHz = 20;
 export const highestAudibleHz = 20000;
@@ -239,11 +236,6 @@ export const limits: readonly {
   { name: "matchReachSeconds", value: matchReachSeconds, kind: "double" },
   { name: "matchWindowSeconds", value: matchWindowSeconds, kind: "double" },
   { name: "summingMarginDb", value: summingMarginDb, kind: "double" },
-  {
-    name: "frequencyWindowSeconds",
-    value: frequencyWindowSeconds,
-    kind: "double",
-  },
   { name: "defaultEditorWidth", value: defaultEditorWidth, kind: "pixels" },
   { name: "minimumEditorWidth", value: minimumEditorWidth, kind: "pixels" },
   { name: "minimumLaneHeight", value: minimumLaneHeight, kind: "pixels" },

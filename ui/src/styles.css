@@ -954,10 +954,6 @@ button[aria-pressed="true"]:focus-visible {
   min-width: 104px;
 }
 
-.readout:last-child {
-  min-width: 112px;
-}
-
 .readout b {
   font-weight: 400;
   color: var(--sl-ink-2);

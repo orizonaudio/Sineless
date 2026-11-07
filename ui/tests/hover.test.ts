@@ -44,7 +44,6 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     startFraction: 0,
     peak: 0,
     rms: 0,
-    frequency: undefined,
     synced: false,
     limited: false,
     partial: false,

@@ -3,7 +3,7 @@
 import { describe, expect, test } from "vitest";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
-import { formatDbfs, formatFrequency } from "../../src/view/format.ts";
+import { formatDbfs } from "../../src/view/format.ts";
 import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
 
 describe("a recorded mono track, a full-scale 400 Hz sine", () => {
@@ -34,8 +34,5 @@ describe("a recorded mono track, a full-scale 400 Hz sine", () => {
     await expect
       .element(byId("rms"))
       .toHaveTextContent(formatDbfs(Math.SQRT1_2));
-    await expect
-      .element(byId("frequency"))
-      .toHaveTextContent(formatFrequency(400));
   });
 });

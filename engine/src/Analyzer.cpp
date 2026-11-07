@@ -393,8 +393,6 @@ void Analyzer::applyReadouts(FrameHeaderValues& header)
     header.invalidSamples = readoutCache.values.invalid;
     header.peak = readoutCache.values.peak;
     header.rms = readoutCache.values.rms;
-    header.frequency = static_cast<float>(
-        readoutCache.values.frequencyHz.value_or(std::numeric_limits<double>::quiet_NaN()));
 }
 
 Analyzer::Commands Analyzer::takeCommands()
@@ -1025,15 +1023,10 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     if (readoutsDue(end, readoutView)) {
         if (synced) {
             const auto shown = static_cast<double>(sampleCount);
-            Readouts readouts;
-            if (measureSweepReadouts(
-                    sweepStats, static_cast<std::size_t>(std::llround(window.subStart * shown)),
-                    static_cast<std::size_t>(std::llround(window.subEnd * shown)),
-                    isFrozen ? static_cast<const SampleSource&>(hold) : engine.captureRing(),
-                    isFrozen ? hold.endIndex() : end, sampleRate, readoutView, inputChannels,
-                    readouts)) {
-                storeReadouts(readouts, end, readoutView);
-            }
+            storeReadouts(levelsOf(sweepStats,
+                                   static_cast<std::size_t>(std::llround(window.subStart * shown)),
+                                   static_cast<std::size_t>(std::llround(window.subEnd * shown))),
+                          end, readoutView);
         } else {
             const std::uint64_t readoutStart =
                 window.readoutCount > 0 ? window.readoutStart : start;
@@ -1045,7 +1038,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                              scratch)) {
                 return false;
             }
-            storeReadouts(computeReadouts(viewSamples, sampleRate), end, readoutView);
+            storeReadouts(computeReadouts(viewSamples), end, readoutView);
         }
     }
     applyReadouts(header);
@@ -1073,25 +1066,6 @@ bool Analyzer::updateStats(BlockStats& stats, const SweepImage& sweep, ChannelVi
                    measured;
     }
     return measured;
-}
-
-bool Analyzer::measureSweepReadouts(const BlockStats& stats, std::size_t first, std::size_t end,
-                                    const SampleSource& live, std::uint64_t liveEnd,
-                                    double sampleRate, ChannelView view, int channels,
-                                    Readouts& readouts)
-{
-    const std::uint64_t begin = live.beginIndex();
-    const std::uint64_t available = liveEnd > begin ? liveEnd - begin : 0;
-    const std::size_t window = frequencyWindow(
-        static_cast<std::size_t>(std::min<std::uint64_t>(available, end - first)), sampleRate);
-    viewSamples.resize(window);
-    scratch.resize(std::max(scratch.size(), viewSamples.size()));
-    if (!readSamples(live, channels, view, liveEnd - window, viewSamples, scratch)) {
-        return false;
-    }
-    readouts = levelsOf(stats, first, end);
-    readouts.frequencyHz = estimateFrequency(viewSamples, sampleRate);
-    return true;
 }
 
 // The tracks of the multi-track view: the group in order, at most kMaxLanes (one fewer in the
@@ -1640,20 +1614,15 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     }
 
     // Readouts measure the own track's Mid: peak and RMS over the whole span from its levels per
-    // block, the frequency over the newest second, at most every 100 ms of audio.
+    // block, at most every 100 ms of audio.
     const std::uint64_t ownEnd = own.engine->captureRing().endIndex();
     if (readoutsDue(ownEnd, ChannelView::kMid) &&
         own.stats.fits(static_cast<std::size_t>(count), block)) {
-        Readouts readouts;
-        if (measureSweepReadouts(
-                own.stats,
-                static_cast<std::size_t>(std::llround(subStart * static_cast<double>(count))),
-                static_cast<std::size_t>(std::llround(subEnd * static_cast<double>(count))),
-                isFrozen ? static_cast<const SampleSource&>(own.hold) : own.engine->captureRing(),
-                isFrozen ? own.hold.endIndex() : ownEnd, sampleRate, ChannelView::kMid,
-                engine.inputChannels(), readouts)) {
-            storeReadouts(readouts, ownEnd, ChannelView::kMid);
-        }
+        storeReadouts(
+            levelsOf(own.stats,
+                     static_cast<std::size_t>(std::llround(subStart * static_cast<double>(count))),
+                     static_cast<std::size_t>(std::llround(subEnd * static_cast<double>(count)))),
+            ownEnd, ChannelView::kMid);
     }
     applyReadouts(header);
 
@@ -1888,7 +1857,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         scratch.resize(std::max(scratch.size(), viewSamples.size()));
         if (readSamples(ownSource, engine.inputChannels(), ChannelView::kMid, readoutStart,
                         viewSamples, scratch)) {
-            storeReadouts(computeReadouts(viewSamples, sampleRate), ownEnd, ChannelView::kMid);
+            storeReadouts(computeReadouts(viewSamples), ownEnd, ChannelView::kMid);
         }
     }
     applyReadouts(header);
@@ -2808,7 +2777,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         scratch.resize(std::max(scratch.size(), viewSamples.size()));
         if (readSamples(*laneSources[ownIndex].first, engine.inputChannels(), ChannelView::kMid,
                         readoutStart, viewSamples, scratch)) {
-            storeReadouts(computeReadouts(viewSamples, sampleRate), ownEnd, ChannelView::kMid);
+            storeReadouts(computeReadouts(viewSamples), ownEnd, ChannelView::kMid);
         }
     }
     applyReadouts(header);

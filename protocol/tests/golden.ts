@@ -10,7 +10,6 @@ export const goldenLanes = {
   ...goldenLanesFile,
   header: {
     ...goldenLanesFile.header,
-    frequency: valueOf(goldenLanesFile.header.frequency),
   },
   matches: goldenLanesFile.matches.map((match) => ({
     ...match,

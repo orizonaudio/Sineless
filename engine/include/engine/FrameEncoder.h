@@ -22,7 +22,6 @@ struct FrameHeaderValues
     // Readouts; NaN when not measured.
     float peak = std::numeric_limits<float>::quiet_NaN();
     float rms = std::numeric_limits<float>::quiet_NaN();
-    float frequency = std::numeric_limits<float>::quiet_NaN();
     float cursor = -1.0f; // Sweep playhead position (0 to 1), or -1.
     // Musical context of a synced sweep in quarter notes; 0 otherwise.
     float cycleStart = 0.0f;
@@ -48,7 +47,7 @@ struct FrameHeaderValues
     // The time the whole screen width shows in Trigger or Free (what is kept of the span when
     // limited); 0 in a tempo-synced sweep.
     float spanSeconds = 0.0f;
-    // The channel view `peak`, `rms`, `frequency` and `invalidSamples` measure.
+    // The channel view `peak`, `rms` and `invalidSamples` measure.
     protocol::ChannelView readoutView = protocol::ChannelView::kMid;
     // The channel view the trigger reads under the current settings.
     protocol::ChannelView triggerView = protocol::ChannelView::kMid;

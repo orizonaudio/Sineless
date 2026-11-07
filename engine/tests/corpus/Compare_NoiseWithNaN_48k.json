@@ -2,11 +2,11 @@
   "fixedGain": 3.0103,
   "flags": {
     "compared": true,
+    "freeRunning": false,
     "frozen": false,
     "limited": false,
     "noTempo": false,
     "partial": false,
-    "freeRunning": false,
     "synced": true,
     "triggered": false
   },
@@ -38,7 +38,6 @@
   "mode": "minMax",
   "pointCount": 500,
   "readouts": {
-    "frequency": "NaN",
     "invalidSamples": 2,
     "peak": 0.4999602,
     "rms": 0.2874315

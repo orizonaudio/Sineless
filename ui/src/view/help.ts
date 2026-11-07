@@ -3,9 +3,6 @@
 
 import {
   analysisGateDbfs,
-  highestAudibleHz,
-  lowestAudibleHz,
-  frequencyWindowSeconds,
   levelFloorDbfs,
   matchReachSeconds,
   matchWindowSeconds,
@@ -25,7 +22,6 @@ const lanesMulti = String(maxLanes);
 const lanesCompare = String(maxLanes - 1);
 const reach = formatSeconds(matchReachSeconds);
 const matchWindow = formatSeconds(matchWindowSeconds);
-const frequencyWindow = formatSeconds(frequencyWindowSeconds);
 const margin = String(summingMarginDb);
 const levelFloor = String(levelFloorDbfs).replace("-", "−");
 const gate = String(analysisGateDbfs).replace("-", "−");
@@ -34,9 +30,6 @@ const positionLowest = formatPercent(settings.triggerPosition.minimum);
 const positionHighest = formatPercent(settings.triggerPosition.maximum);
 const positionCoarse = formatPercent(positionStep);
 const positionFine = formatPercent(positionFineStep);
-// The audible range, as the readouts name frequencies only within it.
-const lowestAudible = `${String(lowestAudibleHz)} Hz`;
-const highestAudible = `${String(highestAudibleHz / 1000)} kHz`;
 const shortestTriggerSpan = formatSeconds(settings.triggerSpan.minimum);
 const longestTriggerSpan = formatSeconds(settings.triggerSpan.maximum);
 const shortestFreeSpan = formatSeconds(settings.freeSpan.minimum);
@@ -114,10 +107,6 @@ export const helpTexts = {
   rms: {
     title: "RMS",
     text: `The average power over the whole span, in dBFS, measured like Peak: a full-scale sine reads −3 dB RMS. Below ${levelFloor} dBFS it reads −∞. Indicative, not a standards-compliant meter.`,
-  },
-  frequency: {
-    title: "Frequency",
-    text: `An estimate of the pitch over the last ${frequencyWindow}, from how often the signal rises through its average, of the channel named beside the readouts. A dash means no steady repetition was found, the signal is below ${gate} dBFS, or the pitch is outside the audible range, ${lowestAudible} to ${highestAudible}.`,
   },
   screen: {
     title: "Screen",

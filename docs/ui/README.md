@@ -72,7 +72,7 @@ Grouped by how often someone reaches for it.
 - Time base and span: Beats (1/8 bar to 16 bars), Free (100 ms to 4 s) or Trig (0.5 ms to 1 s).
 - Vertical scale: −60 to +6 dBFS at the top of the screen.
 - Freeze and Auto-freeze, and whether the display is frozen.
-- Readouts: peak and RMS (dBFS), frequency (Hz, ≈).
+- Readouts: the Meter's peak and RMS (dBFS) and crest factor (dB).
 - State: triggered, waiting, roll, sync, filling, no tempo, frozen, zoom, hidden lanes, invalid samples.
 
 **Often, one step away**
@@ -140,7 +140,7 @@ From 2026-10-24 and 2026-10-25.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
 - **Sizes**, measured on the widest toolbar (Trig with trigger mode Single, so Re-arm shows, and Frozen; Single and Multi alike, since their Views share one place): default and minimum **1010 × 580** and **1010 × 400** (the toolbar needs 997 px with the wordmark since every field shows an icon; the status bar 995 px, its readout button showing TT or a letter). The wordmark always shows.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.
-- **Status bar:** Time, Level, Hover and A4 on the left; what the readouts measure (in Single the channel measured, a button that chooses it on a stereo track, Left on a mono track; "This track" in Multi, where the readouts measure this track's Mid, DESIGN §1.2.1), then Peak, RMS and Freq in the centre; the state, Help and About on the right. The left group never changes width and the state area has a fixed width, so the readouts never move.
+- **Status bar:** Time, Level, Hover and A4 on the left; what the readouts measure (in Single the channel measured, a button that chooses it on a stereo track, Left on a mono track; "This track" in Multi, where the readouts measure this track's Mid, DESIGN §1.2.1), then Peak and RMS in the centre; the state, Help and About on the right. The left group never changes width and the state area has a fixed width, so the readouts never move.
 - **More states than fit** fold into a "+n" chip that lists them on hover, keeping the order of the state table in DESIGN §1.5.
 
 ![Minimum size, five states at once with +3 open](images/layout-states.png)

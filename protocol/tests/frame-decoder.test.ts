@@ -35,7 +35,6 @@ describe("frame decoder", () => {
     expect(frame.startFraction).toBe(golden.header.startFraction);
     expect(frame.peak).toBe(golden.header.peak);
     expect(frame.rms).toBe(golden.header.rms);
-    expect(frame.frequency).toBe(golden.header.frequency);
     expect(frame.cursor).toBeUndefined();
     expect(frame.synced).toBe(false);
     expect(frame.limited).toBe(false);
@@ -59,7 +58,6 @@ describe("frame decoder", () => {
     expect(frame.synced).toBe(true);
     expect(frame.cursor).toBe(goldenLanes.header.cursor);
     expect(frame.cycleSeconds).toBe(goldenLanes.header.cycleSeconds);
-    expect(frame.frequency).toBeUndefined();
     expect(frame.invalidLanes).toBe(goldenLanes.header.invalidLanes);
     expect(frame.sampleRate).toBe(goldenLanes.header.sampleRate);
     expect(frame.spanSeconds).toBe(goldenLanes.header.spanSeconds);
@@ -81,15 +79,6 @@ describe("frame decoder", () => {
     expect(frame.lanes).toEqual([]);
     expect(frame.laneSet).toBe(0);
     expect(frame.comparison).toBeUndefined();
-  });
-
-  test("reports an unavailable frequency (NaN) as undefined", () => {
-    const buffer = fromHex(golden.hex);
-    const frequency = frameHeader.fields.find(
-      (field) => field.name === "frequency",
-    );
-    new DataView(buffer).setFloat32(frequency?.offset ?? 0, Number.NaN, true);
-    expect(decodeFrame(buffer).frequency).toBeUndefined();
   });
 
   test("rejects truncated frames", () => {

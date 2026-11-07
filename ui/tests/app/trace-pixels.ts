@@ -132,7 +132,6 @@ export function frameOf(
       startFraction: 0,
       peak: 0,
       rms: 0,
-      frequency: undefined,
       sampleRate: 48000,
       views: new Map(),
       ...content,

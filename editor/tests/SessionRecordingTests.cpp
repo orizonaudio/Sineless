@@ -502,7 +502,7 @@ constexpr std::array kIntegerWords{
     FrameHeader::kInvalidSamplesOffset, FrameHeader::kInvalidLanesOffset,
     FrameHeader::kReadoutViewOffset,    FrameHeader::kTriggerViewOffset};
 constexpr std::size_t kByteFields = 4; // mode, flags, views, laneCount.
-static_assert(FrameHeader::kSize == 100,
+static_assert(FrameHeader::kSize == 96,
               "the frame header changed: say here which of its fields are integers, which the "
               "comparison must not take for float32");
 
@@ -752,8 +752,8 @@ TEST(SessionRecordingComparison, PassesARecordingWithNaNValuesComparedWithItself
     ASSERT_FALSE(sample().is_null());
     const std::vector<std::byte> frame = lastFrameOf(sample());
     ASSERT_GE(frame.size(), FrameHeader::kSize);
-    EXPECT_TRUE(std::isnan(read<float>(frame, FrameHeader::kFrequencyOffset)))
-        << "the sample should carry a NaN";
+    EXPECT_TRUE(std::isnan(read<float>(frame, FrameHeader::kSumGainOffset)))
+        << "the sample should carry a NaN: the other track is silent, so no summing gain";
     EXPECT_TRUE(compareRecordings(sample(), sample()).empty());
 }
 

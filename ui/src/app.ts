@@ -51,7 +51,6 @@ import {
   formatDbfs,
   formatGain,
   formatOffset,
-  formatFrequency,
   parseQuantity,
   signed,
 } from "./view/format.ts";
@@ -2304,7 +2303,6 @@ export class OscilloscopeApp {
     if (frame !== undefined) {
       element("peak").textContent = formatDbfs(frame.peak);
       element("rms").textContent = formatDbfs(frame.rms);
-      element("frequency").textContent = formatFrequency(frame.frequency);
       this.updateMatches(frame);
     }
   }

@@ -12,7 +12,6 @@ export interface FrameContent {
   readonly startFraction: number;
   readonly peak: number;
   readonly rms: number;
-  readonly frequency: number | undefined;
   readonly synced?: boolean;
   readonly limited?: boolean;
   readonly partial?: boolean;
@@ -93,7 +92,6 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setFloat32(offsets.startFraction, content.startFraction, true);
   header.setFloat32(offsets.peak, content.peak, true);
   header.setFloat32(offsets.rms, content.rms, true);
-  header.setFloat32(offsets.frequency, content.frequency ?? Number.NaN, true);
   header.setFloat32(offsets.cursor, content.cursor ?? -1, true);
   header.setFloat32(offsets.cycleStart, content.cycleStart ?? 0, true);
   header.setFloat32(offsets.cycleSeconds, content.cycleSeconds ?? 0, true);

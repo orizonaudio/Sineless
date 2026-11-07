@@ -325,7 +325,6 @@ describe("status chips", () => {
     startFraction: 0,
     peak: 0,
     rms: 0,
-    frequency: undefined,
     synced: false,
     limited: false,
     partial: false,

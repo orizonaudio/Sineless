@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { ChannelView, TimeBase } from "../../../protocol/src/enums.ts";
-import { formatDbfs, formatFrequency } from "../../src/view/format.ts";
+import { formatDbfs } from "../../src/view/format.ts";
 import {
   mockFundamental,
   viewSample,
@@ -110,15 +110,6 @@ describe("readouts", () => {
       .element(choice("readout-source", "S"))
       .toHaveAttribute("aria-pressed", "true");
     await userEvent.click(byId("readout-details"));
-  });
-
-  test("show the frequency with the shared formatter", async () => {
-    await press(choice("time-base", "Trig"));
-    await useSource("L");
-    await settle();
-    await expect
-      .element(byId("frequency"))
-      .toHaveTextContent(formatFrequency(mockFundamental));
   });
 
   test("use a true minus sign and no exponent notation", () => {

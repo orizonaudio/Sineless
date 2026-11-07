@@ -92,7 +92,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-4 | In the Free time base the window *runs free*, whatever the trigger mode: it ends at the newest audio and moves with it. It shows exactly the span, on columns on a grid fixed to absolute sample positions (column *k* covers ⌊*k*·span/columns⌋ onwards), so the trace does not shimmer; time labels and hover read back from the right edge; a freeze keeps the right edge, also when Trigger is then chosen (its span then ends there); no chip names it, as the time base's button does. Live, the right edge is *paced* (AD-29): it moves evenly between the host's blocks, a measured delay (about a block, at most `pacingDelayCapSeconds`) behind the newest audio, never past it; the newest sample offline, before the block clock locks, and for spans under `pacedSpanMinimumSeconds`. Auto drawing untriggered ends at the paced edge too. On macOS 14+ each frame reads the edge at the display clock's time, so successive frames move by exactly their refreshes' worth of audio (AD-30). | `FreeRunningTests`, `AnalyzerTests`, `PacedAnalyzerTests`, `MotionTests`, `FramePacingTests` |
 | FR-5 | Channel views L, R, Mid = (L+R)/2 and Side = (L−R)/2, overlaid or stacked, with the trigger source selectable among the views drawn. On a mono track only L exists: it is drawn, triggered on and measured, and the other views are disabled. Views apply in Single display mode; Multi shows each track's Mid. | `ChannelViewsTests`, `ui/tests/app/mono.test.ts` |
 | FR-6 | Freeze holds recent audio, and scale, views, zoom, cursors and readouts keep working on it. In Trigger and Free a freeze holds the newest 4 s (`frozenHoldSeconds`), which can be panned back through while not zoomed, as far as the frame's pan reach, and twice `pacingDelayCapSeconds` more, so that freezing a paced window keeps the window last shown. In Beats it holds what the capture holds (FR-9.6). A frozen view keeps the sample rate its audio was recorded at. Freeze is never saved. | `HoldBufferTests`, `ui/tests/app/frozen-pan.test.ts`, `held-rate.test.ts` |
-| FR-7 | Readouts of sample peak, RMS and estimated frequency, for the readout channel (1.2.1), which the readout source chooses in Single display mode. They are indicative, not standards-compliant metering; help says so. Peak and RMS cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen. Frequency is measured over the newest 1 s (`frequencyWindowSeconds`) from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`); it is shown only when at least 60% of cycles fall within 15% of the median (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`), as the mean of those cycles, marked ≈, and only within the audible range, 20 Hz to 20 kHz (`lowestAudibleHz`, `highestAudibleHz`): outside it every frequency, here, at the time cursors and in the hover readout, reads "—". Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/app/readouts.test.ts` |
+| FR-7 | Readouts of sample peak and RMS, for the readout channel (1.2.1), which the readout source chooses in Single display mode. They are indicative, not standards-compliant metering; help says so. They cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen. There is no frequency readout: the time cursors (FR-12.1) and the hover readout (FR-16.1) give the frequency where the signal repeats. Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/app/readouts.test.ts` |
 | FR-8 | All settings (table below) are saved with the host project as plugin state; none is a host-automatable parameter. A value is accepted only if finite and in range (enum and flag values integral, flags non-empty); an invalid value is refused, not clamped. | `StateTests`, `SettingsTests`, `setting-values.test.ts` |
 | FR-9 | Tempo sync (Beats time base). | `SweepTests`, `SweepImageTests`, `TimelineTests`, `MatrixTests` |
 | FR-9.1 | The span is a beat span, in bars of the host time signature, from 1/8 bar to 16 bars (1.3), at the host tempo; a beat is a quarter note. Typed, a span may be its number alone ("16", "1/4"). The display sweeps: the left edge is the start of the current cycle, aligned to multiples of the span from the project start. Until the host has reported a tempo (an instance it has not played through yet), nothing is placed: no sweep, grid or bar labels, and the UI says so ("No tempo"). | `AnalyzerTests`, `ui/tests/app/no-tempo.test.ts` |
@@ -104,7 +104,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-10 | View zoom: the displayed frame can be magnified horizontally, to 1/256 of the span (`minimumViewWidth`), and panned, in every mode. Zoom is temporary: it never changes a setting, and it resets when the span, beat span or time base changes. The engine renders the zoomed region at full resolution: the trigger, free-running or sweep window is placed from the whole span, and only the visible part is reduced to screen columns. Peak and RMS still cover the whole span. | `zoom.test.ts`, `AnalyzerTests` |
 | FR-11 | Auto-freeze: when on, the display freezes when the host transport goes from playing to stopped while the editor is open, and resumes when it plays again. A freeze made by the user or by Single mode is never ended by playback; unfreezing by hand while stopped cancels the resume. Turning Auto-freeze off leaves a current freeze in place. When off, the transport does not affect freezing. On in a new instance; a project saved before Auto-freeze existed (state version 1) opens with it on, as a missing setting takes its default (8.4). | `AnalyzerTests` |
 | FR-12 | Cursors. | `cursors.test.ts`, `snap.test.ts` |
-| FR-12.1 | Time cursors: two vertical lines, A and B, starting at 1/3 and 2/3 of the screen. The readout, titled "Time cursors", gives one row each: A and B (the project time in Beats; from the trigger point when triggered; back from the right edge when free-running, as the hover reads a point), Δt, its frequency 1/Δt (f) and the nearest note with its cent offset (Note), both "—" outside the audible range (FR-7), in Beats the distance Δb (below a beat in fractions of a beat to a 32nd, then in beats to two decimals up to a bar, then in bars), and Δs in samples; a row with no value shows "—". They sit at positions in the signal, so they follow zoom and pan. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
+| FR-12.1 | Time cursors: two vertical lines, A and B, starting at 1/3 and 2/3 of the screen. The readout, titled "Time cursors", gives one row each: A and B (the project time in Beats; from the trigger point when triggered; back from the right edge when free-running, as the hover reads a point), Δt, its frequency 1/Δt (f) and the nearest note with its cent offset (Note), both "—" outside the audible range (FR-16.1), in Beats the distance Δb (below a beat in fractions of a beat to a 32nd, then in beats to two decimals up to a bar, then in bars), and Δs in samples; a row with no value shows "—". They sit at positions in the signal, so they follow zoom and pan. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
 | FR-12.2 | Level cursors: two horizontal lines, 1 and 2, drawn in every lane at a sample value, starting 6 and 12 dB below the top of the screen (−6 and −12 dBFS at the default scale); the readout, titled "Level cursors" and ruled off from the time cursors' when both are on, gives each level in dBFS and the difference in dB. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
 | FR-12.3 | While dragged, time cursors snap to zero crossings and to where the trace reaches its highest and lowest values, and level cursors to the trace's highest and lowest values and to zero, within 10 px; holding ⌥ (Alt on Windows) places them freely. They snap to the readout channel (1.2.1), always a drawn trace; level cursors in stacked lanes use the lane's own trace. | |
 | FR-12.4 | Cursors work live and frozen, and are temporary (not saved). | |
@@ -125,7 +125,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-15.6 | The sum lane is shaded where its peak is more than 3 dB below the louder compared track's, when at least one checked track is related to this one; very quiet stretches (about 26 dB below the loudest) are not shaded, and gaps of three columns or less are bridged. | `trace-geometry.test.ts` |
 | FR-15.7 | Freeze, zoom, cursors and every time base work as in Multi without Compare. | |
 | FR-16 | Hover readout and measuring extras. | `hover.test.ts`, `musical-grid.test.ts` |
-| FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace shows beside it the trace's name, the position (bar.beat.sixteenth, the sixteenth shown on whole beats too, and project time in Beats; time from the trigger point when triggered; time back from the right edge when free-running), the peak level there, and the cycle around the pointer: its length and its frequency and note, one row each, a row with no value "—". The readout is placed at whole pixels. Cycles are found as in FR-7 (rising crossings of the mean, with neighbouring cycles within 15%, above −90 dBFS); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and marked approximate (≈), its note's cents included. A dotted line marks the point read and a band the cycle. | |
+| FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace shows beside it the trace's name, the position (bar.beat.sixteenth, the sixteenth shown on whole beats too, and project time in Beats; time from the trigger point when triggered; time back from the right edge when free-running), the peak level there, and the cycle around the pointer: its length and its frequency and note, one row each, a row with no value "—". The readout is placed at whole pixels. Cycles are found from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`), only where a neighbouring cycle lasts within 15% of it (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and marked approximate (≈), its note's cents included. A frequency outside the audible range, 20 Hz to 20 kHz (`lowestAudibleHz`, `highestAudibleHz`), here and at the time cursors, reads "—" and has no note. A dotted line marks the point read and a band the cycle. | |
 | FR-16.2 | Beats-mode grid labels carry the project time under bar.beat. | |
 | FR-16.3 | A concert pitch setting (A4, 400–500 Hz, default 440) in the status bar tunes every note name. | |
 
@@ -212,7 +212,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Views popover | L, R, M, S toggles, each with its trace's colour |
 | Trigger popover | Mode (Auto \| Normal \| Single), Source (Single; the views not drawn disabled, the view the trigger reads lit), Slope, Level, Hysteresis, Hold-off, Position |
 | Screen, top right | The cursor readout; the frame barcode instead while the diagnostic switch is on (§8.3) |
-| Status bar | Left: Time, Level, Hover · A4 (concert pitch). Centre: what the readouts measure (in Single on a stereo track, a button opening the readout popover) · Peak, RMS, Freq. Right: the state chips, in a fixed width · Help switch · About |
+| Status bar | Left: Time, Level, Hover · A4 (concert pitch). Centre: what the readouts measure (in Single on a stereo track, a button opening the readout popover) · Peak, RMS. Right: the state chips, in a fixed width · Help switch · About |
 | Readout popover | Channel: L \| R \| M \| S, the views not drawn disabled; the channel measured lit |
 
 - Every toolbar field shows an icon, not a word, then its value: Mode, Views (a track list), Layout,
@@ -283,7 +283,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 
 #### Readouts and states
 
-- Peak and RMS in dBFS; frequency marked ≈; "—" when there is no value.
+- Peak and RMS in dBFS; frequencies (time cursors, hover) marked ≈ where approximate; "—" when there is no value.
 
 | Chip | Shown when |
 | --- | --- |
@@ -484,7 +484,7 @@ The tables follow the diagram from the audio thread to the frame.
 | Analyzer | Produces each frame: places the trigger, free-running or sweep window, reduces it to columns, measures readouts and Compare, and encodes the frame. Reads all sources through `SampleSource`, an abstraction over the ring, held audio and sweep images. |
 | SweepImage | One per lane in Beats: the sweep as columns that persist between frames, reporting which ranges changed (AD-17, AD-19). |
 | Reducer, FreeRunning, Trigger | Min/max reduction to about one pair per device pixel (raw samples when zoomed in far enough), free-running columns on a grid fixed to absolute indices (FR-4), edge trigger (FR-3). |
-| Readouts, BlockStats | Peak, RMS and frequency (FR-7); per-10 ms block statistics that keep readout and summing-gain cost proportional to new audio. |
+| Readouts, BlockStats | Peak and RMS (FR-7); per-10 ms block statistics that keep readout and summing-gain cost proportional to new audio. |
 | PairAnalysis | Compare's correlation, offset and polarity, and summing gains (FR-15). |
 | HoldBuffer, LaneHold | On freeze, this track's held audio (4.25 s in Trigger and Free, the readable capture in Beats) and each other track's Mid (4.25 s + 1 s margin). HoldBuffer is allocated at the capture's size when the editor opens and kept until it closes; LaneHold is allocated on freeze and released on unfreeze. |
 | InstanceRegistry | Process-wide list of engines, held weakly, filtered by group and ordered by host position, then creation (AD-14). |
@@ -964,7 +964,7 @@ incompatible change.
 
 | Part | Contents |
 | --- | --- |
-| Header | mode (min/max or raw), flags, views, lane count, point count; start fraction; peak, RMS, frequency; sweep cursor, cycle start, span and bar in quarter notes; view start and end, visible samples; lane set; summing gain and fixed gain; cycle seconds; pan reach; invalid sample count and lane mask; sample rate. |
+| Header | mode (min/max or raw), flags, views, lane count, point count; start fraction; peak, RMS; sweep cursor, cycle start, span and bar in quarter notes; view start and end, visible samples; lane set; summing gain and fixed gain; cycle seconds; pan reach; invalid sample count and lane mask; sample rate. |
 | Flags | triggered, frozen, freeRunning, synced, limited, compared, partial (shown as "Filling" live, "Partial" frozen). |
 | Data | Per view (Single) or per lane (Multi, Compare; the sum last): min/max pairs or raw samples. Compare frames then carry correlation, offset and polarity for each track. |
 
@@ -980,8 +980,8 @@ floats of min/max pairs, then 3 × 3 match values.
 - Levels are converted, floored and formatted only through the shared helpers
   (`protocol/src/limits.ts`, `ui/src/view/format.ts`).
 - Three different "too quiet" limits apply to three quantities: level readouts show −∞ at or
-  below −120 dBFS; a summing gain shows −∞ at or below −140 dB; analysis (frequency, Compare)
-  ignores audio at or below −90 dBFS RMS.
+  below −120 dBFS; a summing gain shows −∞ at or below −140 dB; analysis (Compare, the hover's
+  cycles) ignores audio at or below −90 dBFS RMS.
 - Samples that are not finite are left out of measurements, counted, and shown: an "Invalid
   samples" chip, and affected lanes named in yellow, the problem colour.
 
@@ -993,7 +993,7 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `gainFloorDb` | −140 dB | Summing gains show −∞ at or below. |
 | `analysisGateDbfs` | −90 dBFS | Analysis ignores audio at or below. |
 | `crossingHysteresis` | 0.1 | Of peak-to-peak, for finding cycles. |
-| `periodTolerance` | 0.15 | Steady cycles lie within this of the median. |
+| `periodTolerance` | 0.15 | A cycle under the hover is steady when a neighbouring cycle lasts within this fraction of it. |
 | `frozenHoldSeconds` | 4 s | How far a frozen Trigger or Free view pans back (the longest span, Free's); the freeze holds twice `pacingDelayCapSeconds` more (AD-29). |
 | `defaultTriggerPosition` | 0.1 | The Trigger position setting's default: the trigger point's place from the left, and where it sat before it was a setting. |
 | `longestTriggerSpanSeconds` | 1 s | Trigger's longest span: longer, a trigger holds one trace too long. |
@@ -1006,7 +1006,6 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `matchReachSeconds` | 0.01 s | Compare offset reach, each way. |
 | `matchWindowSeconds` | 8 s | Audio Compare matches over. |
 | `summingMarginDb` | 1 dB | Harmless summing band. |
-| `frequencyWindowSeconds` | 1 s | Audio the frequency readout measures. |
 | `minimumEditorWidth` | 1010 px | Editor minimum width. |
 | `minimumLaneHeight` | 40 px | Stacked lane minimum height. |
 | `chromeHeight` | 84 px | Height around the screen. |

@@ -50,7 +50,6 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .startFraction = header["startFraction"].get<float>(),
         .peak = header["peak"].get<float>(),
         .rms = header["rms"].get<float>(),
-        .frequency = floatOf(header["frequency"]),
         .cursor = header["cursor"].get<float>(),
         .cycleStart = header["cycleStart"].get<float>(),
         .spanQuarterNotes = header["spanQuarterNotes"].get<float>(),
@@ -113,14 +112,13 @@ TEST(FrameEncoder, WritesAHeaderOnlyFrame)
     EXPECT_EQ(output.size(), protocol::FrameHeader::kSize);
 }
 
-// Readouts not measured travel as no value, never as the level of silence or 0 Hz.
+// Readouts not measured travel as no value, never as the level of silence.
 TEST(FrameEncoder, SendsNoValueForReadoutsNotMeasured)
 {
     std::vector<std::byte> output;
     encodeFrame({}, {}, output);
     for (const std::size_t offset :
-         {protocol::FrameHeader::kPeakOffset, protocol::FrameHeader::kRmsOffset,
-          protocol::FrameHeader::kFrequencyOffset}) {
+         {protocol::FrameHeader::kPeakOffset, protocol::FrameHeader::kRmsOffset}) {
         float value = 0.0f;
         std::memcpy(&value, output.data() + offset, sizeof value);
         EXPECT_TRUE(std::isnan(value)) << "at byte " << offset;
