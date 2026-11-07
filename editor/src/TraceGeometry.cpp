@@ -256,32 +256,59 @@ std::size_t gridColumns(protocol::GridDensity time)
 GridLines gridLines(double width, double height, std::size_t laneCount, double pixelRatio,
                     const GridOptions& options)
 {
-    const std::vector<VerticalLine>* vertical = options.vertical;
     GridLines lines;
     lines.lineWidth = std::max(1.0, std::round(pixelRatio));
     // JavaScript's Math.round: halves round up.
     const auto round = [](double value) { return std::floor(value + 0.5); };
     std::vector<VerticalLine> divisions;
-    if (vertical == nullptr) {
+    if (options.vertical != nullptr) {
+        divisions = *options.vertical;
+    } else {
         for (std::size_t index = 1; index < options.columns; ++index) {
             divisions.push_back(
                 {.position = static_cast<double>(index) / static_cast<double>(options.columns)});
         }
-        vertical = &divisions;
     }
-    for (const VerticalLine& line : *vertical) {
-        lines.vertical.push_back({.x = round(width * line.position) + 0.5, .strong = line.strong});
-    }
+    const auto xOf = [&](double position) { return round(width * position) + 0.5; };
     const std::vector<Lane> laneList = lanes(laneCount, protocol::ViewLayout::kStacked);
     const auto rowY = [&](const Lane& lane, double fraction) {
         return round((1.0 - (lane.center + fraction * lane.halfHeight)) / 2.0 * height) + 0.5;
     };
+    // Each lane's level lines, both signs, top lane first.
+    std::vector<GridLines::Horizontal> levelRows;
     for (const Lane& lane : laneList) {
         const double halfLaneCss = lane.halfHeight * height / 2.0 / std::max(1.0, pixelRatio);
         for (const LevelLine& level : levelLines(halfLaneCss, options.level)) {
             for (const double sign : {1.0, -1.0}) {
-                lines.horizontal.push_back(
+                levelRows.push_back(
                     {.y = rowY(lane, sign * dbFraction(level.step)), .axis = level.strong});
+            }
+        }
+    }
+    if (options.type == protocol::GridType::kGrid) {
+        for (const VerticalLine& line : divisions) {
+            lines.vertical.push_back({.x = xOf(line.position), .strong = line.strong});
+        }
+        lines.horizontal = levelRows;
+    } else if (options.type == protocol::GridType::kCrossHair) {
+        const double half = protocol::kGridTickLength * std::max(1.0, pixelRatio) / 2.0;
+        for (const Lane& lane : laneList) {
+            const double zero = rowY(lane, 0.0);
+            for (const VerticalLine& line : divisions) {
+                const double x = xOf(line.position);
+                lines.ticks.push_back({.x0 = x,
+                                       .y0 = zero - half,
+                                       .x1 = x,
+                                       .y1 = zero + half,
+                                       .strong = line.strong});
+            }
+        }
+        if (options.trigger >= 0.0 && options.trigger <= 1.0) {
+            const double x = xOf(options.trigger);
+            lines.vertical.push_back({.x = x, .strong = true});
+            for (const GridLines::Horizontal& row : levelRows) {
+                lines.ticks.push_back(
+                    {.x0 = x - half, .y0 = row.y, .x1 = x + half, .y1 = row.y, .strong = row.axis});
             }
         }
     }

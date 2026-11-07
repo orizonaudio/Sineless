@@ -66,10 +66,19 @@ struct LevelLine
 [[nodiscard]] std::vector<LevelLine> levelLines(double halfLane, protocol::GridDensity density);
 
 // The grid in device pixels: lines `lineWidth` wide centred at `x` or `y` from the top left;
-// `strong` and `axis` lines take the axis colour (the zero lines, and Fine's 3 dB lines).
+// `strong` and `axis` lines take the axis colour (the zero lines, and Fine's 3 dB lines). Ticks are
+// short lines as wide from (x0, y0) to (x1, y1), vertical (x0 = x1) or horizontal (y0 = y1).
 struct GridLines
 {
     double lineWidth = 1.0;
+    struct Tick
+    {
+        double x0 = 0.0;
+        double y0 = 0.0;
+        double x1 = 0.0;
+        double y1 = 0.0;
+        bool strong = false;
+    };
     struct Vertical
     {
         double x = 0.0;
@@ -82,6 +91,7 @@ struct GridLines
     };
     std::vector<Vertical> vertical;
     std::vector<Horizontal> horizontal;
+    std::vector<Tick> ticks;
 };
 // A vertical line at a fraction of the width (a beat, a bar).
 struct VerticalLine
@@ -91,13 +101,16 @@ struct VerticalLine
 };
 // The equal divisions of the width at a Time step.
 [[nodiscard]] std::size_t gridColumns(protocol::GridDensity time);
-// What to draw: the Level step, the number of equal time divisions, and Beats' lines in their
-// place when `vertical` is not null.
+// What to draw: the type (as the page draws it: Cross hair only in Trig), the Level step, the
+// number of equal time divisions, Beats' lines in their place when `vertical` is not null, and for
+// Cross hair the trigger point's position on screen (0 to 1; elsewhere it is off screen).
 struct GridOptions
 {
+    protocol::GridType type = protocol::GridType::kGrid;
     protocol::GridDensity level = protocol::GridDensity::kMedium;
     std::size_t columns = protocol::kGridColumnsMedium;
     const std::vector<VerticalLine>* vertical = nullptr;
+    double trigger = -1.0;
 };
 [[nodiscard]] GridLines gridLines(double width, double height, std::size_t laneCount,
                                   double pixelRatio, const GridOptions& options);

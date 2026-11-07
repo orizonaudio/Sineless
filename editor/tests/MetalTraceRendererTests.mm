@@ -11,6 +11,7 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include <zlib.h>
@@ -388,8 +389,10 @@ TEST_F(MetalTraceRendererTest, KeepsThePlayheadEquallyBrightWhereverItSits)
 
 // The grid under the traces, where the page strokes it: the Time step's divisions, or a Beats
 // sweep's beats and bars, and each lane's level and zero lines at the Level step, over the screen's
-// colour, for the steps the page's trace view names. A Beats sweep with no tempo yet (the host not
-// yet played: FR-9.1) has no beats to show, and shows the divisions as the page does.
+// colour, for the type and steps the page's trace view names; Cross hair (Trig only) its zero
+// lines, the trigger point's line and their ticks; None its zero lines alone. A Beats sweep with no
+// tempo yet (the host not yet played: FR-9.1) has no beats to show, and shows the divisions as the
+// page does.
 TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
 {
     TraceView view = scenes().front().view;
@@ -398,21 +401,34 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
     view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
     view.layout = protocol::ViewLayout::kStacked;
     using protocol::GridDensity;
-    for (const auto& [time, level] : std::vector<std::pair<GridDensity, GridDensity>>{
-             {GridDensity::kMedium, GridDensity::kMedium},
-             {GridDensity::kCoarse, GridDensity::kFine},
-             {GridDensity::kFine, GridDensity::kCoarse}}) {
+    using protocol::GridType;
+    for (const auto& [type, time, level] :
+         std::vector<std::tuple<GridType, GridDensity, GridDensity>>{
+             {GridType::kGrid, GridDensity::kMedium, GridDensity::kMedium},
+             {GridType::kGrid, GridDensity::kCoarse, GridDensity::kFine},
+             {GridType::kGrid, GridDensity::kFine, GridDensity::kCoarse},
+             {GridType::kCrossHair, GridDensity::kCoarse, GridDensity::kFine},
+             {GridType::kNone, GridDensity::kMedium, GridDensity::kMedium}}) {
+        view.gridType = type;
         view.gridTime = time;
         view.gridLevel = level;
         for (const double ratio : {1.0, 2.0}) {
             for (const auto& [beats, noTempo] :
                  std::vector<std::pair<bool, bool>>{{false, false}, {true, false}, {true, true}}) {
+                // The page sends Cross hair in Trig only.
+                if (beats && type == GridType::kCrossHair) {
+                    continue;
+                }
                 FrameView frame;
                 std::vector<float> values(std::size_t{2} * 10, 0.0f);
                 frame.mode = protocol::FrameMode::kMinMax;
                 frame.pointCount = 10;
                 frame.views = {{.channelView = 0, .values = values},
                                {.channelView = 1, .values = values}};
+                if (!beats) {
+                    // Trig: the trigger point where a new instance's Position puts it.
+                    frame.triggerPosition = static_cast<float>(protocol::kDefaultTriggerPosition);
+                }
                 if (noTempo) {
                     // As the engine sends it: no cycle fields.
                     frame.flags = static_cast<std::uint8_t>(
@@ -434,10 +450,13 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
                     {.time = time, .widthCss = static_cast<double>(width) / ratio});
                 const GridLines lines =
                     gridLines(static_cast<double>(width), static_cast<double>(height), 2, ratio,
-                              {.level = level,
+                              {.type = type,
+                               .level = level,
                                .columns = gridColumns(time),
-                               .vertical = beats && !noTempo ? &musical : nullptr});
-                ASSERT_FALSE(lines.vertical.empty());
+                               .vertical = beats && !noTempo ? &musical : nullptr,
+                               .trigger = protocol::kDefaultTriggerPosition});
+                ASSERT_EQ(lines.vertical.empty(), type == GridType::kNone);
+                ASSERT_EQ(lines.ticks.empty(), type != GridType::kCrossHair);
                 // A line's middle column or row is wholly covered: the line's colour there.
                 const std::size_t row = height / 2 + 3;
                 for (const GridLines::Vertical& line : lines.vertical) {
@@ -458,6 +477,38 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
                     const std::uint8_t* pixel = drawn->at(column, y);
                     EXPECT_EQ(pixel[1], line.axis ? 0 : 255) << line.y << " at " << ratio;
                     EXPECT_EQ(pixel[2], line.axis ? 255 : 0) << line.y << " at " << ratio;
+                }
+                // Grid's divisions that None and Cross hair leave out: the screen there.
+                const GridLines full =
+                    gridLines(static_cast<double>(width), static_cast<double>(height), 2, ratio,
+                              {.columns = gridColumns(time),
+                               .vertical = beats && !noTempo ? &musical : nullptr});
+                for (const GridLines::Vertical& line : full.vertical) {
+                    if (std::ranges::any_of(lines.vertical, [&](const GridLines::Vertical& kept) {
+                            return std::abs(kept.x - line.x) < 2.0 * ratio;
+                        })) {
+                        continue;
+                    }
+                    const std::uint8_t* pixel =
+                        drawn->at(static_cast<std::size_t>(std::floor(line.x)), row);
+                    EXPECT_EQ(pixel[1], 0) << "no line at " << line.x << " at " << ratio;
+                    EXPECT_EQ(pixel[2], 0) << "no line at " << line.x << " at " << ratio;
+                }
+                // A tick's pixel a step in from its end, clear of the line it marks.
+                for (const GridLines::Tick& tick : lines.ticks) {
+                    // As the lowest level line, its tick may fall just below the screen.
+                    if (tick.y0 + 1.0 >= static_cast<double>(height)) {
+                        continue;
+                    }
+                    const bool vertical = tick.x0 == tick.x1;
+                    const auto x =
+                        static_cast<std::size_t>(std::floor(tick.x0)) + (vertical ? 0 : 1);
+                    const auto y =
+                        height - 1 -
+                        (static_cast<std::size_t>(std::floor(tick.y0)) + (vertical ? 1 : 0));
+                    const std::uint8_t* pixel = drawn->at(x, y);
+                    EXPECT_EQ(pixel[1], tick.strong ? 0 : 255) << tick.x0 << ", " << tick.y0;
+                    EXPECT_EQ(pixel[2], tick.strong ? 255 : 0) << tick.x0 << ", " << tick.y0;
                 }
                 // Between lines, the screen.
                 const std::uint8_t* clear = drawn->at(3, height / 2 + 3);

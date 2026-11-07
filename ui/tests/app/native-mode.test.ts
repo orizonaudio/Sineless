@@ -313,6 +313,28 @@ describe("native traces: what the page sends", () => {
       },
     })),
     {
+      // Cross hair held for Beats (a project edited by hand): drawn there as Grid, so the editor
+      // is told Grid.
+      field: "the grid's type as drawn",
+      act: async (started: Started) => {
+        started.deliver({
+          type: "stateChanged",
+          name: "gridTypeBeats",
+          value: "none",
+        });
+        await settle();
+        started.deliver({
+          type: "stateChanged",
+          name: "gridTypeBeats",
+          value: "crossHair",
+        });
+        await settle();
+      },
+      check: (view: TraceViewMessage) => {
+        expect(view.gridChoice.type).toBe("grid");
+      },
+    },
+    {
       field: "the grid of the time base switched to",
       act: async (started: Started) => {
         started.deliver({

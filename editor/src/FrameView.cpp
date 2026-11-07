@@ -35,6 +35,7 @@ std::optional<FrameView> FrameView::read(std::span<const std::byte> bytes)
     frame.viewStart = field<float>(bytes, FrameHeader::kViewStartOffset);
     frame.viewEnd = field<float>(bytes, FrameHeader::kViewEndOffset);
     frame.visibleSamples = field<float>(bytes, FrameHeader::kVisibleSamplesOffset);
+    frame.triggerPosition = field<float>(bytes, FrameHeader::kTriggerPositionOffset);
     const auto viewMask = field<std::uint8_t>(bytes, FrameHeader::kViewsOffset);
     const auto laneCount = field<std::uint8_t>(bytes, FrameHeader::kLaneCountOffset);
 

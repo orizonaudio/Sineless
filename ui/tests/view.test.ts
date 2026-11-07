@@ -19,7 +19,9 @@ import {
   levelSteps,
   timeLabels,
 } from "../src/view/axis-labels.ts";
+import { gridLines } from "../src/view/grid.ts";
 import {
+  gridTickLength,
   gridCoarseLineGap,
   gridFineLineGap,
   gridMediumLineGap,
@@ -639,5 +641,66 @@ describe("shownChipCount", () => {
   test("folds at least the last chip when not all fit", () => {
     // The first two fit beside "+n" but all three don't: the last folds.
     expect(shownChipCount([40, 40, 40], 10, 10, 129)).toBe(2);
+  });
+});
+
+describe("grid types", () => {
+  const sizes = [
+    [1002, 451, 1],
+    [2004, 902, 2],
+  ] as const;
+
+  test("None draws each lane's zero line alone", () => {
+    for (const [width, height, ratio] of sizes) {
+      const lines = gridLines(width, height, 3, ratio, { type: "none" });
+      expect(lines.vertical).toEqual([]);
+      expect(lines.ticks).toEqual([]);
+      expect(lines.horizontal.map((line) => line.axis)).toEqual([
+        true,
+        true,
+        true,
+      ]);
+    }
+  });
+
+  test("Cross hair marks the trigger point and ticks the lines it leaves out, gridTickLength long", () => {
+    for (const [width, height, ratio] of sizes) {
+      const options = { columns: 5, level: "medium" } as const;
+      const full = gridLines(width, height, 2, ratio, options);
+      const cross = gridLines(width, height, 2, ratio, {
+        ...options,
+        type: "crossHair",
+        trigger: 0.1,
+      });
+      expect(cross.vertical).toEqual([
+        { x: Math.round(width * 0.1) + 0.5, strong: true },
+      ]);
+      expect(cross.horizontal).toEqual(
+        full.horizontal.filter((line) => line.axis),
+      );
+      const upright = cross.ticks.filter((tick) => tick.x0 === tick.x1);
+      const across = cross.ticks.filter((tick) => tick.y0 === tick.y1);
+      // A tick on each lane's zero line at each division; one on the line at each level line.
+      expect(upright.map((tick) => tick.x0)).toEqual(
+        [0, 1].flatMap(() => full.vertical.map((line) => line.x)),
+      );
+      expect(across.map((tick) => tick.y0)).toEqual(
+        full.horizontal.filter((line) => !line.axis).map((line) => line.y),
+      );
+      for (const tick of cross.ticks) {
+        expect(tick.x1 - tick.x0 + tick.y1 - tick.y0).toBe(
+          gridTickLength * ratio,
+        );
+      }
+    }
+  });
+
+  test("Cross hair zoomed off the trigger point draws no line and no level ticks", () => {
+    for (const trigger of [-0.2, 1.2]) {
+      const cross = gridLines(1002, 451, 1, 1, { type: "crossHair", trigger });
+      expect(cross.vertical).toEqual([]);
+      expect(cross.ticks.every((tick) => tick.x0 === tick.x1)).toBe(true);
+      expect(cross.ticks).toHaveLength(9);
+    }
   });
 });
