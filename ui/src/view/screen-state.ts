@@ -6,7 +6,7 @@ import { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 export const viewOrder = ["left", "right", "mid", "side"] as const;
 export type ViewName = (typeof viewOrder)[number];
 
-// Each channel view's name, as the readout tag and the hover show it.
+// Each channel view's name, as the Channel button and the hover show it.
 export const viewNames: Record<ChannelView, string> = {
   [ChannelView.left]: "Left",
   [ChannelView.right]: "Right",
@@ -14,7 +14,7 @@ export const viewNames: Record<ChannelView, string> = {
   [ChannelView.side]: "Side",
 };
 
-// The channel the readouts, the hover and snapping measure when views are overlaid: the one the
+// The channel the Meter, and with the views overlaid the hover and snapping, measure: the one the
 // frame says its readouts measured. The engine decides it (the readout source when drawn, else
 // the first view drawn; L on a mono track), so it is always a view the frame draws.
 export function readoutView(frame: {

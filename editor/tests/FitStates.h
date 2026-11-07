@@ -97,8 +97,10 @@ inline std::vector<State> states()
          .settings = {{SettingId::kTriggerMode, 1.0}, {SettingId::kTriggerLevel, -0.555}},
          .script = ""},
         {.name = "A4 432.5", .settings = {{SettingId::kConcertPitch, 432.5}}, .script = ""},
-        {.name = "frozen, auto-freeze, cursors, hover",
-         .settings = {{SettingId::kAutoFreeze, 1.0}, {SettingId::kHoverReadout, 1.0}},
+        {.name = "frozen, auto-freeze, cursors, hover, Meter",
+         .settings = {{SettingId::kAutoFreeze, 1.0},
+                      {SettingId::kHoverReadout, 1.0},
+                      {SettingId::kMeter, 1.0}},
          .script = "for (const id of ['freeze', 'time-cursors', 'level-cursors']) {"
                    "  const button = document.getElementById(id);"
                    "  if (button.getAttribute('aria-pressed') !== 'true') button.click();"

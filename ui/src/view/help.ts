@@ -98,7 +98,7 @@ export const helpTexts = {
   },
   status: {
     title: "Status",
-    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode, Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the readouts and Compare measure around them, and the lanes holding them are named in yellow.",
+    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode, Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the Meter and Compare measure around them, and the lanes holding them are named in yellow.",
   },
   meter: {
     title: "Meter",
@@ -186,7 +186,7 @@ export const helpTexts = {
   },
   triggerSource: {
     title: "Trigger source",
-    text: "Which signal the trigger watches, among the views drawn; while the one chosen is hidden, it watches the first view drawn. It changes only what the trigger reads: the readouts keep their own channel, chosen beside them in the status bar. Not used in Multi, which shows each track's Mid.",
+    text: "Which signal the trigger watches, among the views drawn; while the one chosen is hidden, it watches the first view drawn. It changes only what the trigger reads: the Meter, the hover and snapping keep their own channel, chosen with the Channel button in the status bar. Not used in Multi, which shows each track's Mid.",
   },
   triggerSlope: {
     title: "Slope",
@@ -213,8 +213,8 @@ export const helpTexts = {
     text: "When on, resting the pointer on a trace shows, beside it, the position there, the level, and the length, frequency and note of the cycle around it. A dotted line marks the column or point read, and a faint band the cycle measured.",
   },
   readoutSource: {
-    title: "What the readouts measure",
-    text: "The channel Peak, RMS and Freq read: L, R, M or S for Left, Right, Mid or Side, TT for this track. In Single, click to choose L, R, M or S among the views drawn; while the one chosen is hidden, they read the first view drawn. Multi reads this track's Mid (TT), and a mono track its one channel, L.",
+    title: "Channel",
+    text: "The channel the Meter reads: L, R, M or S for Left, Right, Mid or Side. With the views overlaid, the hover readout and the cursors' snapping read it too; stacked, each lane reads its own trace. In Single, click to choose among the views drawn; while the one chosen is hidden, the first view drawn is read. A mono track has only L. Multi reads this track's Mid: TT, this track.",
   },
   concertPitch: {
     title: "Concert pitch",
