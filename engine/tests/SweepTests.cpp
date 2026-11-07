@@ -70,7 +70,7 @@ TEST(Sweep, ShortensSpansThatDoNotFit)
 // it is the 1/8 bar it was asked for. At every rate, in bars of 4/4, 16/4 and 16/1.
 TEST(Sweep, ShortensTheShortestSpanToTheCapture)
 {
-    constexpr std::uint64_t kCapture = std::uint64_t{1} << 23;
+    constexpr std::uint64_t kCapture = kMaxSweepSamples;
     for (const double rate : kSampleRates) {
         for (const auto& [numerator, denominator] :
              {std::pair{4, 4}, std::pair{16, 4}, std::pair{16, 1}}) {
