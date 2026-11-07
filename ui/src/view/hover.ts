@@ -21,7 +21,6 @@ import {
   formatClock,
   formatDbfs,
   formatFrequency,
-  formatSamples,
   formatSeconds,
 } from "./format.ts";
 import { musicalPosition } from "./musical-grid.ts";
@@ -312,7 +311,7 @@ export function hoverReadout(
     const quarterNotes = frame.cycleStart + position * frame.spanQuarterNotes;
     rows.push({
       label: "Position",
-      value: musicalPosition(quarterNotes, frame.barQuarterNotes),
+      value: musicalPosition(quarterNotes, frame.barQuarterNotes, true),
     });
   }
   rows.push({
@@ -329,24 +328,15 @@ export function hoverReadout(
   // keeps its shape as the pointer moves.
   const bounds = cycleBounds(frame, trace.values, position);
   if (bounds === undefined) {
-    for (const label of ["Cycle", "Δs", "f", "Note"]) {
+    for (const label of ["Cycle", "f", "Note"]) {
       rows.push({ label, value: "—" });
     }
   } else {
     // From min/max columns the cycle is approximate, and marked so.
     const coarse = frame.mode === FrameMode.minMax;
     const seconds = (bounds.end - bounds.start) * spanSeconds;
-    const samples = seconds * sampleRate;
     const about = coarse ? "≈ " : "";
-    rows.push(
-      { label: "Cycle", value: `${about}${formatSeconds(seconds)}` },
-      {
-        label: "Δs",
-        value: coarse
-          ? `${about}${samples.toFixed(0)} samples`
-          : formatSamples(samples),
-      },
-    );
+    rows.push({ label: "Cycle", value: `${about}${formatSeconds(seconds)}` });
     const hertz = 1 / seconds;
     rows.push({ label: "f", value: `${formatFrequency(hertz)} Hz` });
     // With its cents, as the time cursors' note.

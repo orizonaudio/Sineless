@@ -3,15 +3,10 @@
 // timed at the rate the frame carries.
 import { describe, expect, test } from "vitest";
 
-import {
-  formatFrequency,
-  formatSamples,
-  formatSeconds,
-} from "../../src/view/format.ts";
+import { formatFrequency, formatSeconds } from "../../src/view/format.ts";
 import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
 
 const hertz = 1000;
-const rate = 44100;
 
 // Rests the pointer, no button held, at (`x`, `y`), fractions of the trace.
 function hoverAt(x: number, y: number): void {
@@ -31,7 +26,7 @@ describe("the hover on a recorded 1 kHz sine at 44.1 kHz", () => {
     await startRecorded("SineHalf1k_44k1");
   });
 
-  test("reads one cycle as a millisecond, its samples at the frame's rate and 1 kHz", async () => {
+  test("reads one cycle as a millisecond and 1 kHz", async () => {
     await settle();
     // The upper lane, L (stacked by default), half way across.
     hoverAt(0.5, 0.25);
@@ -42,6 +37,5 @@ describe("the hover on a recorded 1 kHz sine at 44.1 kHz", () => {
         ?.querySelector("b")?.textContent;
     await expect.poll(() => row("f")).toBe(`${formatFrequency(hertz)} Hz`);
     expect(row("Cycle")).toBe(formatSeconds(1 / hertz));
-    expect(row("Δs")).toBe(formatSamples(rate / hertz));
   });
 });
