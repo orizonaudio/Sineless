@@ -24,6 +24,7 @@ TEST(ProcessorState, RoundTripsThroughAHostStream)
     source->engine()->settings().set(SettingId::kFreeSpan, 2.0);
     source->engine()->settings().set(SettingId::kTriggerMode,
                                      static_cast<double>(protocol::TriggerMode::kNormal));
+    source->engine()->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
     auto stream = owned(new MemoryStream());
     ASSERT_EQ(source->getState(stream), kResultOk);
 
@@ -31,6 +32,25 @@ TEST(ProcessorState, RoundTripsThroughAHostStream)
     stream->seek(0, IBStream::kIBSeekSet, nullptr);
     ASSERT_EQ(restored->setState(stream), kResultOk);
     EXPECT_EQ(restored->engine()->settings().get(), source->engine()->settings().get());
+    EXPECT_EQ(restored->engine()->editorSize(), (engine::EditorSize{.width = 1200, .height = 500}))
+        << "the editor reopens at the size the user chose";
+    source->terminate();
+    restored->terminate();
+}
+
+// A state without an editor size, loaded into an instance that has one, opens the editor at the
+// default next time, as a new instance would.
+TEST(ProcessorState, AStateWithoutAnEditorSizeResetsIt)
+{
+    auto source = makeProcessor();
+    auto stream = owned(new MemoryStream());
+    ASSERT_EQ(source->getState(stream), kResultOk);
+
+    auto restored = makeProcessor();
+    restored->engine()->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
+    stream->seek(0, IBStream::kIBSeekSet, nullptr);
+    ASSERT_EQ(restored->setState(stream), kResultOk);
+    EXPECT_FALSE(restored->engine()->editorSize());
     source->terminate();
     restored->terminate();
 }

@@ -766,12 +766,15 @@ TEST(AudioUnit, ReopensWithTheSettingsSaved)
         Instance saved(host);
         ASSERT_EQ(saved.open(48000.0, 2, 2), noErr);
         saved.engine()->settings().replace(notDefaults());
+        saved.engine()->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
         state = saved.saveState();
     }
     Instance reopened(host);
     ASSERT_EQ(reopened.open(48000.0, 2, 2), noErr);
     ASSERT_EQ(reopened.restoreState(state), noErr);
     EXPECT_EQ(reopened.engine()->settings().get(), notDefaults());
+    EXPECT_EQ(reopened.engine()->editorSize(), (engine::EditorSize{.width = 1200, .height = 500}))
+        << "the editor reopens at the size the user chose";
     CFRelease(state);
 }
 
@@ -790,7 +793,8 @@ TEST(AudioUnit, LoadsEveryGoldenState)
         CFDataRef data = dataOf(json);
         CFPropertyListRef state = withEntry(saved, data);
         ASSERT_EQ(instance.restoreState(state), noErr) << file;
-        EXPECT_EQ(instance.engine()->settings().get(), engine::deserializeState(json)) << file;
+        EXPECT_EQ(instance.engine()->settings().get(), engine::deserializeState(json).settings)
+            << file;
         CFRelease(state);
         CFRelease(data);
         CFRelease(saved);

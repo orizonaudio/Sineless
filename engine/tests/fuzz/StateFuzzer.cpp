@@ -19,15 +19,17 @@ using namespace orizon;
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size)
 {
     const std::string_view text(reinterpret_cast<const char*>(data), size);
-    const engine::Settings loaded = engine::deserializeState(text);
+    const engine::SavedState loaded = engine::deserializeState(text);
     for (const auto& setting : protocol::kSettings) {
-        require(engine::Settings::isValid(setting.id, loaded.value(setting.id)),
+        require(engine::Settings::isValid(setting.id, loaded.settings.value(setting.id)),
                 "a loaded setting is valid");
     }
 
-    const std::string saved = engine::serializeState(loaded);
-    const engine::Settings reloaded = engine::deserializeState(saved);
-    require(reloaded == loaded, "saving and reloading keeps every setting");
-    require(engine::serializeState(reloaded) == saved, "saving a reloaded state is stable");
+    const std::string saved = engine::serializeState(loaded.settings, loaded.editorSize);
+    const engine::SavedState reloaded = engine::deserializeState(saved);
+    require(reloaded.settings == loaded.settings, "saving and reloading keeps every setting");
+    require(reloaded.editorSize == loaded.editorSize, "saving and reloading keeps the editor size");
+    require(engine::serializeState(reloaded.settings, reloaded.editorSize) == saved,
+            "saving a reloaded state is stable");
     return 0;
 }

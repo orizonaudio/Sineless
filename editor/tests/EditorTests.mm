@@ -573,7 +573,7 @@ TEST_F(EditorTest, EnforcesMinimumSize)
 }
 
 // Stands in for the host's window: records the sizes the editor asks for, and grants them, by
-// calling onSize as the VST3 contract has it or, like some hosts, without.
+// calling onSize as the VST3 contract has it or, like some hosts, without; or refuses them.
 class TestFrame final : public IPlugFrame
 {
 public:
@@ -593,12 +593,16 @@ public:
     {
         requested = *newSize;
         ++requests;
+        if (refuses) {
+            return kResultFalse;
+        }
         return callsOnSize ? view->onSize(newSize) : kResultTrue;
     }
 
     ViewRect requested;
     int requests = 0;
     bool callsOnSize = true;
+    bool refuses = false;
 };
 
 // With stacked lanes on show, the minimum height grows so that every lane fits its label, and the
@@ -642,10 +646,16 @@ TEST_F(EditorTest, GrowsTheMinimumHeightWithStackedLanes)
 
         own->settings().set(protocol::SettingId::kViewLayout,
                             static_cast<double>(protocol::ViewLayout::kOverlaid));
-        ASSERT_TRUE(pumpUntil([&] { return editor->minimumHeight() == Editor::kMinimumHeight; },
-                              kPageTimeout))
-            << "overlaid lanes share the screen";
-        EXPECT_EQ(frame.requests, 1) << "no request to shrink";
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 2; }, kPageTimeout))
+            << "overlaid lanes share the screen: the window returns to the size chosen";
+        EXPECT_EQ(editor->minimumHeight(), Editor::kMinimumHeight);
+        EXPECT_EQ(frame.requested.getHeight(), Editor::kDefaultHeight);
+        EXPECT_EQ(editor->getRect().getHeight(), Editor::kDefaultHeight) << "granted";
+        EXPECT_FALSE(own->editorSize() && own->editorSize()->height == wanted)
+            << "the room for the lanes is never the size saved";
+        auto reopened = makeEditor(received, own);
+        EXPECT_EQ(reopened->getRect().getHeight(), Editor::kDefaultHeight)
+            << "opens again at the size chosen, not the one the lanes forced";
 
         editor->removed();
         [window close];
@@ -766,7 +776,186 @@ TEST_F(EditorTest, KeepsTheLanesHeightWhenTheGripIsDraggedIn)
     }
 }
 
-// The editor opens again at the size it was left at, for as long as the plugin stays loaded.
+// An instance showing `tracks` stacked tracks in Multi, its group registered while it lives.
+class StackedTracks
+{
+public:
+    explicit StackedTracks(int tracks)
+    {
+        own->settings().set(protocol::SettingId::kDisplayMode,
+                            static_cast<double>(protocol::DisplayMode::kMulti));
+        own->settings().set(protocol::SettingId::kViewLayout,
+                            static_cast<double>(protocol::ViewLayout::kStacked));
+        group.push_back(own);
+        for (int track = 1; track < tracks; ++track) {
+            group.push_back(std::make_shared<engine::Engine>());
+        }
+        for (const auto& engine : group) {
+            engine::InstanceRegistry::shared().add(engine);
+        }
+    }
+    ~StackedTracks()
+    {
+        for (const auto& engine : group) {
+            engine::InstanceRegistry::shared().remove(*engine);
+        }
+    }
+    StackedTracks(const StackedTracks&) = delete;
+    StackedTracks& operator=(const StackedTracks&) = delete;
+
+    void setLayout(protocol::ViewLayout layout) const
+    {
+        own->settings().set(protocol::SettingId::kViewLayout, static_cast<double>(layout));
+    }
+
+    std::shared_ptr<engine::Engine> own = std::make_shared<engine::Engine>();
+
+private:
+    std::vector<std::shared_ptr<engine::Engine>> group;
+};
+
+// Twelve stacked tracks need this height (DESIGN.md 1.5).
+constexpr int kTwelveLanes = Editor::kChromeHeight + 12 * Editor::kMinimumLaneHeight;
+
+// The user drags the host's window edge: the host checks the size, then gives it.
+void dragHostEdge(Editor& editor, int width, int height)
+{
+    ViewRect size(0, 0, width, height);
+    editor.checkSizeConstraint(&size);
+    editor.onSize(&size);
+}
+
+// Issue #383's example: twelve stacked tracks hold a chosen 1200 × 500 at 1200 × 564; the user
+// drags the host's edge wider, at the lanes' minimum; leaving Stacked returns to 1400 × 500. A drag
+// above the minimum is the user's height too.
+TEST_F(EditorTest, ASidewaysDragAtTheLanesMinimumKeepsTheHeightChosen)
+{
+    for (const bool callsOnSize : {true, false}) {
+        SCOPED_TRACE(callsOnSize ? "host calls onSize" : "host resizes without onSize");
+        const StackedTracks tracks(12);
+        tracks.own->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
+        TestFrame frame;
+        frame.callsOnSize = callsOnSize;
+        std::vector<std::string> received;
+        auto editor = makeEditor(received, tracks.own);
+        editor->setFrame(&frame);
+        NSView* content = [[OrizonTestKeyRecorder alloc] initWithFrame:NSMakeRect(0, 0, 1200, 500)];
+        NSWindow* window = makeWindow(content);
+        ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout));
+        EXPECT_EQ(editor->getRect().getHeight(), kTwelveLanes) << "grown for the lanes";
+
+        dragHostEdge(*editor, 1400, 400); // Held at the lanes' minimum.
+        EXPECT_EQ(editor->getRect().getHeight(), kTwelveLanes);
+        tracks.setLayout(protocol::ViewLayout::kOverlaid);
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 2; }, kPageTimeout))
+            << "the window returns to the size chosen when the lanes go";
+        EXPECT_EQ(frame.requested.getWidth(), 1400);
+        EXPECT_EQ(frame.requested.getHeight(), 500);
+        ASSERT_TRUE(tracks.own->editorSize());
+        EXPECT_EQ(tracks.own->editorSize()->width, 1400);
+        EXPECT_EQ(tracks.own->editorSize()->height, 500);
+
+        dragHostEdge(*editor, 1500, 700);
+        EXPECT_EQ(tracks.own->editorSize()->width, 1500);
+        EXPECT_EQ(tracks.own->editorSize()->height, 700);
+
+        editor->removed();
+        [window close];
+    }
+}
+
+// A host may set the window to a size it remembers before the editor has opened, perhaps a height
+// the lanes once forced: the size chosen stays, and the window returns to it, in a layout whose
+// minimum is the editor's own (no change of minimum asks for anything) and in one with lanes.
+TEST_F(EditorTest, TheHostsOwnPlacementAsTheEditorOpensIsNotTheSizeChosen)
+{
+    for (const bool stacked : {false, true}) {
+        SCOPED_TRACE(stacked ? "twelve stacked lanes" : "overlaid");
+        const StackedTracks tracks(12);
+        if (!stacked) {
+            tracks.setLayout(protocol::ViewLayout::kOverlaid);
+        }
+        tracks.own->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
+        TestFrame frame;
+        std::vector<std::string> received;
+        auto editor = makeEditor(received, tracks.own);
+        editor->setFrame(&frame);
+        ViewRect remembered(0, 0, 1200, 800);
+        editor->onSize(&remembered);
+        NSView* content = [[OrizonTestKeyRecorder alloc] initWithFrame:NSMakeRect(0, 0, 1200, 800)];
+        NSWindow* window = makeWindow(content);
+        ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout))
+            << "the editor asks for the size it should have";
+        EXPECT_EQ(frame.requested.getWidth(), 1200);
+        EXPECT_EQ(frame.requested.getHeight(), stacked ? kTwelveLanes : 500);
+        ASSERT_TRUE(tracks.own->editorSize());
+        EXPECT_EQ(tracks.own->editorSize()->height, 500);
+
+        editor->removed();
+        [window close];
+    }
+}
+
+// A host that refuses the editor's request leaves the window as it is, and nothing is saved.
+TEST_F(EditorTest, ARefusedResizeSavesNothing)
+{
+    const StackedTracks tracks(16); // More than the default height fits.
+    TestFrame frame;
+    frame.refuses = true;
+    std::vector<std::string> received;
+    auto editor = makeEditor(received, tracks.own);
+    editor->setFrame(&frame);
+    NSView* content = [[OrizonTestKeyRecorder alloc]
+        initWithFrame:NSMakeRect(0, 0, Editor::kDefaultWidth, Editor::kDefaultHeight)];
+    NSWindow* window = makeWindow(content);
+    ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout)) << "for the lanes";
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+    dragGrip(webView, 1400, 900);
+    ASSERT_TRUE(pumpUntil([&] { return frame.requests == 2; }, kPageTimeout));
+    EXPECT_EQ(editor->getRect().getHeight(), Editor::kDefaultHeight);
+    EXPECT_FALSE(tracks.own->editorSize());
+
+    editor->removed();
+    [window close];
+}
+
+// The grip dragged down as far as the lanes let it, from a size chosen above their minimum: the
+// size chosen comes down to the minimum, and stays there when the lanes go.
+TEST_F(EditorTest, AGripDragDownToTheLanesMinimumLowersTheHeightChosen)
+{
+    const StackedTracks tracks(12);
+    tracks.own->setEditorSize(engine::EditorSize{.width = 1200, .height = 700});
+    TestFrame frame;
+    std::vector<std::string> received;
+    auto editor = makeEditor(received, tracks.own);
+    editor->setFrame(&frame);
+    NSView* content = [[OrizonTestKeyRecorder alloc] initWithFrame:NSMakeRect(0, 0, 1200, 700)];
+    NSWindow* window = makeWindow(content);
+    ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+    auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
+    ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
+    ASSERT_TRUE(pumpUntil([&] { return editor->minimumHeight() == kTwelveLanes; }, kPageTimeout));
+    dragGrip(webView, 1200, 300);
+    ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout));
+    EXPECT_EQ(editor->getRect().getHeight(), kTwelveLanes);
+    ASSERT_TRUE(tracks.own->editorSize());
+    EXPECT_EQ(tracks.own->editorSize()->height, kTwelveLanes);
+
+    tracks.setLayout(protocol::ViewLayout::kOverlaid);
+    ASSERT_TRUE(
+        pumpUntil([&] { return editor->minimumHeight() == Editor::kMinimumHeight; }, kPageTimeout));
+    pumpUntil([] { return false; }, std::chrono::milliseconds(300)); // A sync or two.
+    EXPECT_EQ(frame.requests, 1) << "the window is at the size chosen already";
+
+    editor->removed();
+    [window close];
+}
+
+// The editor opens again at the size it was left at, saved with the instance.
 TEST_F(EditorTest, OpensAtTheSizeItWasLeftAt)
 {
     auto engine = std::make_shared<engine::Engine>();
@@ -793,9 +982,8 @@ TEST_F(EditorTest, OpensAtTheSizeItWasLeftAt)
     auto another = makeEditor(received);
     EXPECT_EQ(another->getRect().getWidth(), Editor::kDefaultWidth) << "another instance's own";
 
-    // A host that left it smaller than its minimum: it opens again at the minimum, not cropped.
-    ViewRect small(0, 0, 300, 200);
-    reopened->onSize(&small);
+    // A size saved smaller than the minimum: it opens again at the minimum, not cropped.
+    engine->setEditorSize(engine::EditorSize{.width = 300, .height = 200});
     auto again = makeEditor(received, engine);
     EXPECT_EQ(again->getRect().getWidth(), Editor::kMinimumWidth);
     EXPECT_EQ(again->getRect().getHeight(), Editor::kMinimumHeight);

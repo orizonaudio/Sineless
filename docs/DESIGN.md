@@ -206,8 +206,11 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   Single trigger mode and frozen) and the status bar in every state, the wordmark included (the
   editor tests check each state); the status bar, with the Grid field, is the wider. Its minimum height is 420 px (`minimumEditorHeight`, the tallest corner panel: Time cursors in Beats, Level cursors and the Meter), or 84 px plus 40 px per stacked
   lane when that is more (with Compare on, its sum lane counts); the editor asks the host to grow when lanes
-  are added. The default size is 1030 × 580. The size is kept in CSS
-  pixels across display-scale changes.
+  are added, and to return to the size the user chose when they go. The default size is 1030 × 580.
+  The size the user chose, by dragging the host's window edge or the editor's grip, is saved with
+  the project (8.4); the editor's own growth for lanes, a display-scale change and the host's
+  placement of the window as it opens never change it. The size is kept in CSS pixels across
+  display-scale changes.
 
 | Area | Left to right |
 | --- | --- |
@@ -922,16 +925,21 @@ what it is, not by convenience.
 
 | Tier | Lasts | Values |
 | --- | --- | --- |
-| Saved with the project | Until changed; travels with the project | The settings table (1.2.3). |
+| Saved with the project | Until changed; travels with the project | The settings table (1.2.3); the editor's size the user chose (1.5). |
 | Kept while the plugin is loaded | Until the instance is removed or the project closed; survives closing and opening the editor | Compare's checked tracks (on the Engine). |
 | Reset when the editor closes | The editor session | Freeze and held audio, pan, zoom, cursors, Preview fix, Help. |
 
 Saved state:
 
-- Format: `{ "version": n, "settings": { ... } }`, current version in the header. Settings are
-  saved by name, and enum and flag values by the names of their values, so the protocol may
-  reorder or add values without breaking saved projects; renaming or removing one needs a
-  migration.
+- Format: `{ "version": n, "settings": { ... }, "editor": { "width", "height" } }`, current
+  version in the header. Settings are saved by name, and enum and flag values by the names of
+  their values, so the protocol may reorder or add values without breaking saved projects;
+  renaming or removing one needs a migration.
+- `editor` is the size the user chose, in CSS pixels, absent until the user resizes. Width and
+  height that are not both numbers give the default size; the editor raises a size below its
+  minimum and lowers one above its largest (16384) when it opens. It is read only when the editor
+  opens: a project, preset or host undo loaded while the editor is open applies at the next open.
+  Older versions ignore it.
 - On load, migrations run in sequence from the saved version up to the current one. Version 2
   made Beats the default time base; its migration gives a version 1 state without a time base
   (saved before tempo sync) the Seconds time base. Version 3 made Free a time base: a Seconds
@@ -1161,7 +1169,7 @@ when it is replaced, its status says by which decision, and git history keeps ea
 | AD-17 | Accepted | Display cost follows change, not size. Lanes and views keep their screen columns between frames: a sweep reduces again only the columns its newest samples landed in (SweepImage reports changed ranges), a free-running window only the columns that scrolled in (columns on a grid fixed to absolute indices, exact for any span and width), and a Compare sum lane only where compared tracks changed. Readouts and summing gains are measured at most every 0.1 s of audio (always while frozen), from per-block statistics; Compare matches at most every 0.5 s per track, one track per frame, one every 0.1 s at most. The engine is optimised in Debug builds too. Measured with `editor/bench/PerfBench.mm` (`scripts/bench.sh`). | The analysis thread spent 70% of a core re-reducing whole lanes every frame, and Debug builds dropped to 5–16 frames/s. After: costs nearly flat in tracks, span and window width (doubling the width adds about 1 point). |
 | AD-18 | Accepted | Numbers the engine and UI share are defined once in `protocol/src/limits.ts`, with what each measures and why it has its value, and generated into the C++ header; help text reads them from there. "No value" is NaN end to end. | Two copies of a threshold drift apart, and a display that shows 0 for "not measured" misleads. One definition makes engine, UI and help agree by construction. |
 | AD-19 | Accepted | Long sweeps keep raw sample images per lane, with no lower-resolution tier: a sweep may be longer than the capture and fills in as it plays, up to 2^23 samples per lane. The worst case accepted is 15 lanes of 16 bars at 60 BPM and 96 kHz, about 580 MB, checked in Live. | One representation keeps zoom exact at every span and the code simple. The cap bounds memory; the worst case was measured acceptable in a host, and the performance check keeps it so. |
-| AD-20 | Accepted | Values are persisted in three tiers (8.4): saved with the project, kept while the plugin is loaded, reset when the editor closes. | Zoom, freeze, cursors and Compare's checks are viewing choices, not settings of the track; saving them would make the project change when it is only looked at. Compare's checks are kept while the plugin is loaded so that closing and opening the editor does not undo them. |
+| AD-20 | Accepted | Values are persisted in three tiers (8.4): saved with the project, kept while the plugin is loaded, reset when the editor closes. | Zoom, freeze, cursors and Compare's checks are viewing choices, not settings of the track; saving them would make the project change when it is only looked at. Compare's checks are kept while the plugin is loaded so that closing and opening the editor does not undo them. One viewing choice is saved all the same: the editor's size the user chose, since each instance's window is laid out for its track and a reopened project should show it as it was; only the user's own resizes change it, so looking at a project never does. |
 | AD-21 | Accepted | Frames travel as the binary body of the response to the page's fetch of `orizon://ui/frame`, which is also the credit (AD-12). Replaces AD-3's frames as base64 text over the message channel. On macOS 14+ frames reach the native renderer directly, and the fetch carries copies of the frames drawn (AD-30). | Text encoding and decoding on both sides cost a fixed share of every frame in WebKit. A fetch carries bytes as they are, and the open request is a natural credit. |
 | AD-22 | Accepted | The page builds trace geometry on the GPU: instanced quads read from the frame's bytes as received (uploaded as a vertex buffer), one instance per column or raw point drawing its piece of the trace as quads for the band to the next point, the two lines joining their maxes and their mins and, beside a missing point, its own vertical line, each writing the coverage worked out from the pixel's distance to that part into the trace's channel of its group's offscreen target (four traces a target, each writing only its own channel), keeping the larger where pieces overlap; one pass then layers the traces over the screen. Edges are anti-aliased without relying on multisampling, and a translucent trace blends once, as a group with an opacity is composited; no per-frame JavaScript geometry. The sweep playhead is drawn in WebGL, not as page elements, on whole device pixels. While the diagnostic switch is on (§8.3), every picture ends with the frame barcode, drawn the same way. On macOS 14+ the same passes run natively in Metal (AD-30), where the playhead and Compare's shading edges are drawn at their exact positions with coverage. | Per-frame JavaScript geometry and DOM changes added fixed WebKit cost on every frame. The remaining cost is WebKit's per-frame display pipeline (QS-3). Boxes per column and quads per segment, smoothed by multisampling, drew steep flanks as stairs and blended a translucent trace twice where quads overlapped (#269). Shading each pixel from a loop over its neighbouring points drew the same picture but made drawing without a GPU 3 to 5 times slower than before, too slow for the app tests on GPU-less CI runners. One quad per piece, shading its whole box with all its distances, every trace writing all four targets and a composite indexed at run time cost about twice the GPU time for the same picture. |
 | AD-23 | Superseded by AD-26 | The editor's layout is stable: nothing is cropped, hidden or moved as the window is resized. The minimum width (`minimumEditorWidth`) fits the widest content in every state, and content of unbounded width (the status chips) wraps in a place with room for it, the screen's top-right corner. No responsive breakpoints, compact labels or hidden elements. | A control that disappears, shortens or moves at some sizes is hard to find again and makes the window feel unreliable; and a plugin window is resized often. Rejected: a shrinking chip area, hiding the wordmark below a width, single-letter compact controls. Cost: a wider minimum window (900 px), checked in every state by the editor tests. |

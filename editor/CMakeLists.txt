@@ -34,6 +34,7 @@ add_custom_command(
 # the page), and the VST3 view around it (editor), which alone needs the VST3 SDK. The Audio Unit
 # links editor_core.
 add_library(editor_core STATIC
+    src/ChosenSize.cpp
     src/EditorCore.cpp
     src/EmbeddedAssets.cpp
     src/FrameBarcode.cpp
@@ -72,6 +73,7 @@ target_link_libraries(editor PUBLIC editor_core sdk PRIVATE orizon_warnings)
 
 if(BUILD_TESTING)
     add_executable(editor_tests
+        tests/ChosenSizeTests.cpp
         tests/EmbeddedAssetsTests.cpp
         tests/FrameBarcodeTests.cpp
         tests/FrameFlowTests.cpp

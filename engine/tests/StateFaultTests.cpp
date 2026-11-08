@@ -111,12 +111,12 @@ TEST_P(DamagedState, TruncatedAtEveryByteKeepsEveryDefault)
 {
     const std::string& text = GetParam().text;
     ASSERT_FALSE(text.empty());
-    const Settings full = deserializeState(text);
+    const Settings full = deserializeState(text).settings;
     ASSERT_NE(full, Settings()) << "the source must differ from the defaults to prove anything";
     // Only trailing whitespace can go without losing the closing brace.
     const std::size_t complete = text.find_last_not_of(" \t\r\n") + 1;
     for (std::size_t length = 0; length < text.size(); ++length) {
-        const Settings loaded = deserializeState(std::string_view(text).substr(0, length));
+        const Settings loaded = deserializeState(std::string_view(text).substr(0, length)).settings;
         if (length < complete) {
             EXPECT_EQ(loaded, Settings()) << "cut at byte " << length;
         } else {
@@ -131,13 +131,13 @@ TEST_P(DamagedState, TruncatedAtEveryByteKeepsEveryDefault)
 TEST_P(DamagedState, ADamagedByteNeverInventsAValue)
 {
     const std::string& text = GetParam().text;
-    const Settings full = deserializeState(text);
+    const Settings full = deserializeState(text).settings;
     const Settings defaults;
     for (const char damage : {'x', '\0'}) {
         for (std::size_t offset = 0; offset < text.size(); ++offset) {
             std::string damaged = text;
             damaged[offset] = damage;
-            const Settings loaded = deserializeState(damaged);
+            const Settings loaded = deserializeState(damaged).settings;
             for (const protocol::SettingDescriptor& setting : protocol::kSettings) {
                 const double value = loaded.value(setting.id);
                 // A Seconds project opens in Trigger or Free by its trigger mode and span (state
@@ -237,7 +237,8 @@ class BadField : public ::testing::TestWithParam<FieldCase>
 TEST_P(BadField, KeepsTheDefaultForThatSettingOnly)
 {
     const auto& [setting, token] = GetParam();
-    expectOnlyDefaulted(deserializeState(stateWithRawValue(setting->name, token)), setting->id);
+    expectOnlyDefaulted(deserializeState(stateWithRawValue(setting->name, token)).settings,
+                        setting->id);
 }
 
 INSTANTIATE_TEST_SUITE_P(StateFaults, BadField, ::testing::ValuesIn(badFieldCases()),
@@ -253,10 +254,11 @@ TEST(StateFaults, NonJsonNumbersMakeTheWholeStateUnreadable)
     for (const std::string_view number : kNonJsonNumbers) {
         const std::string token(number);
         for (const protocol::SettingDescriptor& setting : protocol::kSettings) {
-            EXPECT_EQ(deserializeState(stateWithRawValue(setting.name, token)), Settings())
+            EXPECT_EQ(deserializeState(stateWithRawValue(setting.name, token)).settings, Settings())
                 << setting.name << ": " << token;
         }
-        EXPECT_EQ(deserializeState(stateWithRawVersion(token)), Settings()) << "version " << token;
+        EXPECT_EQ(deserializeState(stateWithRawVersion(token)).settings, Settings())
+            << "version " << token;
     }
 }
 
@@ -267,7 +269,7 @@ TEST(StateFaults, ReadsTheSettingsWhateverTheVersionSays)
     for (const char* version : {"null", "true", R"("2")", "[]", "{}", "2.0", "2.5", "-1", "0", "3",
                                 "2147483647", "2147483648", "4294967298", "9223372036854775807",
                                 "18446744073709551615", "-9223372036854775809", "1e308"}) {
-        EXPECT_EQ(deserializeState(stateWithRawVersion(version)), everyValueChanged())
+        EXPECT_EQ(deserializeState(stateWithRawVersion(version)).settings, everyValueChanged())
             << "version " << version;
     }
 }
@@ -281,12 +283,13 @@ TEST(StateFaults, FallsBackToDefaultsForEmptyAndUndecodableInput)
           R"({"version": 2, "settings": {"viewLayout": "overlaid"}} trailing)"sv,
           "{\"version\": 2, \"settings\": {\"viewLayout\": \"\xFF\"}}"sv,
           R"({"version": 2, "settings": {"viewLayout": "\ud800"}})"sv}) {
-        EXPECT_EQ(deserializeState(input), Settings()) << testing::PrintToString(input);
+        EXPECT_EQ(deserializeState(input).settings, Settings()) << testing::PrintToString(input);
     }
     // The parser stops at a NUL, as at the end of a C string: a host that hands back the text with
     // its terminator loses nothing.
     const Settings terminated =
-        deserializeState("{\"version\": 2, \"settings\": {\"viewLayout\": \"overlaid\"}}\0"sv);
+        deserializeState("{\"version\": 2, \"settings\": {\"viewLayout\": \"overlaid\"}}\0"sv)
+            .settings;
     EXPECT_EQ(terminated.enumValue<protocol::ViewLayout>(protocol::SettingId::kViewLayout),
               protocol::ViewLayout::kOverlaid);
 }
@@ -298,12 +301,14 @@ TEST(StateFaults, SurvivesDeepNesting)
     const std::string open(kDepth, '[');
     const std::string close(kDepth, ']');
     const Settings field = deserializeState(R"({"version": 2, "settings": {"channelViews": )" +
-                                            open + close + R"(, "triggerLevel": 0.5}})");
+                                            open + close + R"(, "triggerLevel": 0.5}})")
+                               .settings;
     EXPECT_EQ(field.value(protocol::SettingId::kChannelViews),
               Settings().value(protocol::SettingId::kChannelViews));
     EXPECT_EQ(field.value(protocol::SettingId::kTriggerLevel), 0.5);
-    EXPECT_EQ(deserializeState(open + serializeState(everyValueChanged()) + close), Settings());
-    EXPECT_EQ(deserializeState(open), Settings()) << "unclosed";
+    EXPECT_EQ(deserializeState(open + serializeState(everyValueChanged()) + close).settings,
+              Settings());
+    EXPECT_EQ(deserializeState(open).settings, Settings()) << "unclosed";
 }
 
 } // namespace

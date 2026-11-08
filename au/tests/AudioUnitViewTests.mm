@@ -724,6 +724,8 @@ TEST_F(AudioUnitViewTest, KeepsLanesThatGrewInRoomInAHostThatUsesAutoLayout)
     NSWindow* window = windowFor(view);
     pinWithAutoLayout(view);
     const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
+    // The user makes the window larger once it is open (before, a size is the host's placement).
+    ASSERT_TRUE(pumpUntil([&] { return editorCoreOf(view)->windowOpened(); }, kPageTimeout));
     [window setContentSize:NSMakeSize(EditorCore::kDefaultWidth, wanted + 100)];
     layOut(view);
     runQueuedWork();
@@ -934,8 +936,8 @@ TEST_F(AudioUnitViewTest, FollowsAnAutoLayoutHostAfterTheGripsSize)
     closeWindow(window, view);
 }
 
-// The view opens again at the size it was left at while the plugin stays loaded, and at the
-// editor's minimum, not cropped, after a host insisted on a smaller one.
+// The view opens again at the size the host's window was left at, saved with the instance, and at
+// the editor's minimum, not cropped, after a host insisted on a smaller one.
 TEST_F(AudioUnitViewTest, OpensAgainAtTheSizeItWasLeftAt)
 {
     const NSSize left =
@@ -943,6 +945,7 @@ TEST_F(AudioUnitViewTest, OpensAgainAtTheSizeItWasLeftAt)
     {
         NSView* view = openView(unit);
         NSWindow* window = windowFor(view);
+        ASSERT_TRUE(pumpUntil([&] { return editorCoreOf(view)->windowOpened(); }, kPageTimeout));
         [view setFrameSize:left];
         closeWindow(window, view);
     }
@@ -951,6 +954,7 @@ TEST_F(AudioUnitViewTest, OpensAgainAtTheSizeItWasLeftAt)
         << reopened.frame.size.width << "x" << reopened.frame.size.height;
 
     NSWindow* window = windowFor(reopened);
+    ASSERT_TRUE(pumpUntil([&] { return editorCoreOf(reopened)->windowOpened(); }, kPageTimeout));
     const NSSize small = NSMakeSize(300, 200);
     [reopened setFrameSize:small];
     runQueuedWork();
@@ -961,6 +965,56 @@ TEST_F(AudioUnitViewTest, OpensAgainAtTheSizeItWasLeftAt)
     NSView* again = openView(unit);
     EXPECT_EQ(again.frame.size.width, EditorCore::kMinimumWidth);
     EXPECT_EQ(again.frame.size.height, EditorCore::kMinimumHeight);
+}
+
+// The user drags the window below the minimum twelve stacked lanes need, which an Audio Unit host
+// allows until the drag ends: the size chosen goes no lower than that minimum. Chosen above it,
+// it comes down to the minimum and stays there when the lanes go; chosen below it (the lanes were
+// holding the height, and the editor's own request for them is not the size chosen), it stays,
+// and the window returns to it.
+TEST_F(AudioUnitViewTest, ADragBelowTheLanesMinimumStopsTheSizeChosenAtTheMinimum)
+{
+    const int twelveLanes = EditorCore::kChromeHeight + 12 * EditorCore::kMinimumLaneHeight;
+    for (const double chosenHeight : {700.0, 500.0}) {
+        SCOPED_TRACE(chosenHeight);
+        const auto own = engineOf(unit);
+        own->setEditorSize(engine::EditorSize{.width = 1200, .height = chosenHeight});
+        const auto others = stackTracks(12);
+        NSView* view = openView(unit);
+        NSWindow* window = windowFor(view);
+        ASSERT_TRUE(pumpUntil(
+            [&] {
+                return editorCoreOf(view)->windowOpened() &&
+                       view.frame.size.height == std::max(chosenHeight, double{twelveLanes});
+            },
+            kPageTimeout));
+        EXPECT_EQ(own->editorSize()->height, chosenHeight) << "not the room for the lanes";
+
+        [view viewWillStartLiveResize];
+        [view setFrameSize:NSMakeSize(600, 300)];
+        runQueuedWork();
+        [view viewDidEndLiveResize];
+        runQueuedWork();
+        EXPECT_EQ(view.frame.size.width, EditorCore::kMinimumWidth);
+        EXPECT_EQ(view.frame.size.height, twelveLanes);
+        ASSERT_TRUE(own->editorSize());
+        EXPECT_EQ(own->editorSize()->width, EditorCore::kMinimumWidth);
+        EXPECT_EQ(own->editorSize()->height, std::min(chosenHeight, double{twelveLanes}));
+
+        own->settings().set(protocol::SettingId::kViewLayout,
+                            static_cast<double>(protocol::ViewLayout::kOverlaid));
+        const double back = std::min(chosenHeight, double{twelveLanes});
+        EXPECT_TRUE(pumpUntil(
+            [&] {
+                return editorCoreOf(view)->minimumHeight() == EditorCore::kMinimumHeight &&
+                       view.frame.size.height == back;
+            },
+            kPageTimeout))
+            << view.frame.size.height;
+
+        closeWindow(window, view);
+        removeTracks(others);
+    }
 }
 
 // A host may dispose of the Audio Unit before it closes the view: the view keeps what it shows

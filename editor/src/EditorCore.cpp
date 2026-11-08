@@ -26,10 +26,6 @@ namespace {
 // How often host state changes (setState) are reported to the page.
 constexpr std::chrono::milliseconds kStateSyncInterval{100};
 
-// The largest size the resize grip may ask for, in CSS pixels on either side: beyond any display,
-// and small enough that the size in window units stays well within an int.
-constexpr double kMaximumGripSize = 16384.0;
-
 // Until the display link reports its screen's (before its first callback), the refresh rate the
 // display clock assumes.
 constexpr double kAssumedRefreshHertz = 60.0;
@@ -58,13 +54,9 @@ void EditorCore::setNativeTraces(bool enabled)
 
 EditorCore::EditorCore(std::shared_ptr<engine::Engine> engine, MessageObserver observer)
     : observer(std::move(observer)), linkOpener(&openInBrowser), scale(displayScale(nullptr)),
-      engineState(std::move(engine))
+      chosen(engine ? engine->editorSize() : std::nullopt), cssWidth(chosen.width()),
+      cssHeight(chosen.height()), engineState(std::move(engine))
 {
-    // The size the editor was left at, while the plugin stays loaded.
-    if (const auto size = engineState ? engineState->editorSize() : std::nullopt) {
-        cssWidth = std::max(size->width, static_cast<double>(kMinimumWidth));
-        cssHeight = std::max(size->height, static_cast<double>(kMinimumHeight));
-    }
     windowWidth = width();
     windowHeight = height();
 }
@@ -76,7 +68,7 @@ EditorCore::~EditorCore()
 
 int EditorCore::toHostUnits(double cssPixels) const
 {
-    return static_cast<int>(std::ceil(cssPixels * scale - 1e-6));
+    return toWindowUnits(cssPixels, scale);
 }
 
 bool EditorCore::takeScaleOf(void* window)
@@ -85,6 +77,7 @@ bool EditorCore::takeScaleOf(void* window)
     if (windowScale == scale) {
         return false;
     }
+    chosen.scaleChanged(scale);
     scale = windowScale;
     // Before attaching, the editor's own size is the window's (the format's view sets it).
     windowWidth = width();
@@ -101,6 +94,7 @@ bool EditorCore::refreshScale()
     if (windowScale == scale) {
         return false;
     }
+    chosen.scaleChanged(scale);
     scale = windowScale;
     if (view) {
         view->setScale(scale);
@@ -111,6 +105,7 @@ bool EditorCore::refreshScale()
 void EditorCore::attach(void* window)
 {
     parent = window;
+    chosen.close(); // Until the first state sync: the host may still be placing the window.
     // Each frame request from the page is its credit for one frame.
     view = WebView::create(
         parent, windowWidth, windowHeight,
@@ -219,6 +214,7 @@ void EditorCore::detach()
     nativeTraces = false;
     view.reset();
     parent = nullptr;
+    chosen.close();
 }
 
 void EditorCore::updateScale()
@@ -227,8 +223,8 @@ void EditorCore::updateScale()
         return;
     }
     // The same CSS size in the new window units, if they differ from the window's.
-    if ((width() != windowWidth || height() != windowHeight) && sizeRequest) {
-        sizeRequest(width(), height());
+    if (width() != windowWidth || height() != windowHeight) {
+        request({.width = width(), .height = height()}, false);
     }
 }
 
@@ -276,8 +272,10 @@ void EditorCore::setSize(int newWidth, int newHeight)
     windowHeight = newHeight;
     cssWidth = newWidth / scale;
     cssHeight = newHeight / scale;
-    if (engineState) {
-        engineState->setEditorSize({.width = cssWidth, .height = cssHeight});
+    if (chosen.take({.width = newWidth, .height = newHeight}, scale, minimumHeight()) &&
+        engineState) {
+        engineState->setEditorSize(
+            engine::EditorSize{.width = chosen.width(), .height = chosen.height()});
     }
     if (view) {
         view->setSize(newWidth, newHeight);
@@ -292,10 +290,19 @@ void EditorCore::resize(const nlohmann::json& message)
         return;
     }
     const double newWidth =
-        std::clamp(*askedWidth, static_cast<double>(kMinimumWidth), kMaximumGripSize);
+        std::clamp(*askedWidth, static_cast<double>(kMinimumWidth), ChosenSize::kLargestSize);
     const double newHeight =
-        std::clamp(*askedHeight, static_cast<double>(minimumHeight()), kMaximumGripSize);
-    sizeRequest(toHostUnits(newWidth), toHostUnits(newHeight));
+        std::clamp(*askedHeight, static_cast<double>(minimumHeight()), ChosenSize::kLargestSize);
+    request({.width = toHostUnits(newWidth), .height = toHostUnits(newHeight)}, true);
+}
+
+void EditorCore::request(WindowSize size, bool fromGrip)
+{
+    if (!sizeRequest) {
+        return;
+    }
+    chosen.requested(size, fromGrip); // First: the host may reply within the request.
+    sizeRequest(size.width, size.height);
 }
 
 // After this message is handled, not from within it: WebView2 does not support re-entering it from
@@ -345,14 +352,15 @@ int EditorCore::minimumHeightFor(const engine::Settings& settings, int inputChan
 void EditorCore::requestMinimumHeight()
 {
     const int minimum = minimumHeight();
-    if (minimum == lastMinimumHeight) {
+    if (chosen.opened() && minimum == lastMinimumHeight) {
         return;
     }
     lastMinimumHeight = minimum;
-    if (!sizeRequest || windowHeight >= toHostUnits(minimum)) {
-        return;
+    chosen.open();
+    const WindowSize target = chosen.target(scale, minimum);
+    if (target != WindowSize{.width = windowWidth, .height = windowHeight}) {
+        request(target, false);
     }
-    sizeRequest(windowWidth, toHostUnits(minimum));
 }
 
 } // namespace orizon::editor

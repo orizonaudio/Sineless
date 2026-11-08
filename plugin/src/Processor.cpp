@@ -166,7 +166,8 @@ tresult PLUGIN_API Processor::getState(IBStream* state)
         return kInvalidArgument;
     }
     try {
-        const std::string text = engine::serializeState(engineState->settings().get());
+        const std::string text =
+            engine::serializeState(engineState->settings().get(), engineState->editorSize());
         return writeAll(state, text);
     } catch (...) {
         return kInternalError;
@@ -179,7 +180,10 @@ tresult PLUGIN_API Processor::setState(IBStream* state)
         return kInvalidArgument;
     }
     try {
-        engineState->settings().replace(engine::deserializeState(readAll(state)));
+        engine::SavedState saved = engine::deserializeState(readAll(state));
+        engineState->settings().replace(saved.settings);
+        // An open editor keeps its size: this one applies when it opens next.
+        engineState->setEditorSize(saved.editorSize);
         return kResultOk;
     } catch (...) {
         return kInternalError;

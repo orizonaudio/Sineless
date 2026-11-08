@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/ChosenSize.h"
 #include "editor/FrameFlow.h"
 #include "editor/Session.h"
 #include "editor/Transport.h"
@@ -25,11 +26,11 @@ public:
     // The narrowest window that fits the whole toolbar and status bar with their edge padding, in
     // the embedded fonts, the wordmark included; the editor tests check the page against it. The
     // page takes it as its minimum width too (docs/ui/README.md).
-    static constexpr int kMinimumWidth = protocol::kMinimumEditorWidth;
+    static constexpr int kMinimumWidth = ChosenSize::kMinimumWidth;
     // The shortest window whose screen fits the tallest panel in its corner (limits.ts).
-    static constexpr int kMinimumHeight = protocol::kMinimumEditorHeight;
-    static constexpr int kDefaultWidth = protocol::kDefaultEditorWidth;
-    static constexpr int kDefaultHeight = 580;
+    static constexpr int kMinimumHeight = ChosenSize::kMinimumHeight;
+    static constexpr int kDefaultWidth = ChosenSize::kDefaultWidth;
+    static constexpr int kDefaultHeight = ChosenSize::kDefaultHeight;
     // Stacked lanes of the multi-track view need this much height each, for their label chip
     // and a clear trace, above the toolbar and status bar (kChromeHeight, measured): the
     // minimum height grows with the lanes shown, and the editor asks the host for the room.
@@ -91,6 +92,9 @@ public:
     [[nodiscard]] static int minimumHeightFor(const engine::Settings& settings, int inputChannels,
                                               const engine::LaneSet& laneSet);
 
+    // True once the window has opened (the first state sync after attach): from then on, sizes
+    // from the host may be the user's. For tests.
+    [[nodiscard]] bool windowOpened() const { return chosen.opened(); }
     // Host window units per CSS pixel.
     [[nodiscard]] double scaleFactor() const { return scale; }
     // False when the editor must show the "unavailable" state.
@@ -112,8 +116,12 @@ private:
     // The page asked for the vendor's contact page: opened after this message, if the build has
     // one.
     void openContactPage();
-    // Asks the host for more height when the lanes on show no longer fit, once per change.
+    // Asks the host for the size the window should have (ChosenSize::target) when the lanes'
+    // minimum changes, growing or shrinking, and once as the window opens, at the first state sync
+    // after attach, whatever the minimum: the host may have placed the window at a size of its own.
     void requestMinimumHeight();
+    // Asks the host for `size`, in window units; from the user's drag of the grip or not.
+    void request(WindowSize size, bool fromGrip);
     // Follows a change of display scaling (the window moved to another display): the same size
     // in CSS pixels, in the new window units.
     void updateScale();
@@ -131,7 +139,9 @@ private:
     WebView::PointerHiding pointerHiding = WebView::PointerHiding::kPublic;
     void* parent = nullptr;
     double scale = 1.0;
-    // The editor's size in CSS pixels, the truth that the size in window units follows: a scale
+    // The size the user chose, which the window returns to; saved on the engine.
+    ChosenSize chosen;
+    // The window's size in CSS pixels, the truth that the size in window units follows: a scale
     // change applied to the size itself would apply twice if the host has resized it already.
     double cssWidth = kDefaultWidth;
     double cssHeight = kDefaultHeight;
@@ -140,7 +150,7 @@ private:
     // followed a scale change, and decides whether more room must be asked for.
     int windowWidth = 0;
     int windowHeight = 0;
-    int lastMinimumHeight = kMinimumHeight;
+    int lastMinimumHeight = kMinimumHeight; // Read once the window has opened.
     std::shared_ptr<engine::Engine> engineState;
     std::unique_ptr<WebView> view;
     std::unique_ptr<WebViewTransport> transport;
