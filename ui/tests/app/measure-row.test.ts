@@ -1,7 +1,7 @@
 // The channel the Meter, snapping and Hover read is chosen in the Views popover's Measure row, beside
 // the views it can read (DESIGN.md 1.2.1): only the views drawn can be chosen, the one read is lit,
 // and the Views field names both, the views drawn lit, then a dot and the channel read. Multi reads
-// this track's Mid and has no Measure row.
+// this track's lane channel and has no Measure row.
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -113,7 +113,7 @@ describe("the Measure row", () => {
     expect(summaryWidth()).toBeCloseTo(before, 1);
   });
 
-  // Multi reads this track's Mid: the Views field, and the Measure row with it, is out of reach, and
+  // Multi reads this track's lane channel: the Views field, and the Measure row with it, is out of reach, and
   // nothing else offers a channel.
   test.each(displays.filter((display) => display !== "Single"))(
     "is out of reach in %s",
