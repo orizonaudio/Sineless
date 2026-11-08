@@ -850,7 +850,7 @@ button[aria-pressed="true"]:focus-visible {
   /* What the status bar left at a 1010 px minimum width, less the 8 px it keeps to spare (measured:
      the left group 381, the gap between the groups 16, the right group's buttons and gaps 60, of
      986 between the bar's padding), rounded down to 10. The Grid field raised the minimum width
-     instead of taking from it (#364), and the Channel button's leaving lowered it again (#380), so
+     instead of taking from it (#364), the Channel button's leaving lowered it again (#380) and Ticks raised it (#384), so
      the chips keep this width. Fixed, so the chips fold at the same count at every window width. */
   width: 520px;
 }

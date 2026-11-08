@@ -410,6 +410,8 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
              {GridType::kGrid, GridDensity::kFine, GridDensity::kCoarse, BeatDivision::kRegular},
              // Two bars at Fine in Triplets: thirds of the beat, where Regular draws sixteenths.
              {GridType::kGrid, GridDensity::kFine, GridDensity::kMedium, BeatDivision::kTriplets},
+             {GridType::kTicks, GridDensity::kMedium, GridDensity::kMedium,
+              BeatDivision::kRegular},
              {GridType::kNone, GridDensity::kMedium, GridDensity::kMedium,
               BeatDivision::kRegular}}) {
         view.gridType = type;
@@ -452,7 +454,7 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
                                .level = level,
                                .columns = gridColumns(time),
                                .vertical = beats && !noTempo ? &musical : nullptr});
-                ASSERT_EQ(lines.vertical.empty(), type == GridType::kNone);
+                ASSERT_EQ(lines.vertical.empty(), type != GridType::kGrid);
                 // A line's middle column or row is wholly covered: the line's colour there.
                 const std::size_t row = height / 2 + 3;
                 for (const GridLines::Vertical& line : lines.vertical) {

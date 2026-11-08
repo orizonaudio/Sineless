@@ -1,6 +1,6 @@
-// The screen grid, by the grid settings of the time base shown: equal time divisions (or Beats'
-// lines), level lines down from the top of each lane and a brighter zero line per lane (Grid), or
-// the zero lines alone (None). Drawn on a 2D canvas behind the traces. Redrawn only when the size, the lanes or the grid settings change;
+// The screen grid, by the grid settings: equal time divisions (or Beats' lines), level lines down
+// from the top of each lane and a brighter zero line per lane (Grid), or the zero lines alone (None
+// and Ticks, whose labels the page places). Drawn on a 2D canvas behind the traces. Redrawn only when the size, the lanes or the grid settings change;
 // level lines do not depend on the vertical scale. The macOS editor draws the same lines natively
 // (gridLines; protocol/tests/data/trace-geometry.json holds cases both read).
 import { ViewLayout } from "../../../protocol/src/enums.ts";
@@ -11,7 +11,11 @@ import {
 } from "../../../protocol/src/limits.ts";
 import { lanes, type Lane } from "../render/trace-geometry.ts";
 import { dbFraction, levelLines } from "./axis-labels.ts";
-import type { GridDensityName, GridTypeName } from "./grid-settings.ts";
+import {
+  drawsLines,
+  type GridDensityName,
+  type GridTypeName,
+} from "./grid-settings.ts";
 
 // Vertical lines at the given positions (fractions of the width), e.g. on beats in a tempo-synced
 // sweep; strong lines use the axis colour. Without them, the Time step's equal divisions are drawn.
@@ -72,7 +76,7 @@ export function gridLines(
     ) + 0.5;
   const vertical: { x: number; strong: boolean }[] = [];
   const horizontal: { y: number; axis: boolean }[] = [];
-  if ((options.type ?? "grid") === "grid") {
+  if (drawsLines(options.type ?? "grid")) {
     for (const column of columns) {
       vertical.push({
         x: Math.round(width * column.position) + 0.5,

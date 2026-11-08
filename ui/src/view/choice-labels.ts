@@ -28,7 +28,7 @@ export const choiceLabels: {
   timeBase: { beats: "Beats", free: "Free", trigger: "Trig" },
   viewLayout: { overlaid: "Overlay", stacked: "Stack" },
   triggerMode: { auto: "Auto", normal: "Normal", single: "Single" },
-  gridType: { none: "None", grid: "Grid" },
+  gridType: { none: "None", ticks: "Ticks", grid: "Grid" },
   gridDensity: { coarse: "Coarse", medium: "Medium", fine: "Fine" },
   beatDivision: { regular: "Regular", triplets: "Triplets" },
   triggerSlope: { rising: "Rising", falling: "Falling" },

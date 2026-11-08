@@ -4,7 +4,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
+import {
+  ChannelView,
+  GridType,
+  ViewLayout,
+} from "../../../protocol/src/enums.ts";
 import {
   defaultEditorWidth,
   minimumEditorWidth,
@@ -294,16 +298,18 @@ describe("native traces: what the page sends", () => {
         expect(view.verticalScaleDb).toBe(-12);
       },
     },
-    // The grid the page would draw, from the time base shown (Beats in a new instance).
+    // The grid the page would draw: each type away from the default, and the other choices.
     ...(
       [
-        ["gridTimeBeats", "time", "fine"],
-        ["gridLevelBeats", "level", "coarse"],
-        ["gridTypeBeats", "type", "none"],
+        ["gridTime", "time", "fine"],
+        ["gridLevel", "level", "coarse"],
+        ...Object.keys(GridType)
+          .filter((type) => type !== "grid")
+          .map((type) => ["gridType", "type", type] as const),
         ["beatDivision", "division", "triplets"],
       ] as const
     ).map(([name, part, value]) => ({
-      field: `the grid's ${part}`,
+      field: `the grid's ${part}, ${value}`,
       act: async (started: Started) => {
         started.deliver({ type: "stateChanged", name, value });
         await settle();
@@ -313,11 +319,11 @@ describe("native traces: what the page sends", () => {
       },
     })),
     {
-      field: "the grid of the time base switched to",
+      field: "the grid, kept on a switch of time base",
       act: async (started: Started) => {
         started.deliver({
           type: "stateChanged",
-          name: "gridTimeTrigger",
+          name: "gridTime",
           value: "coarse",
         });
         await settle();

@@ -1,7 +1,7 @@
 // The grid's Time and Level steps as the page draws them in Trig and Free: Time divides the screen
-// into its equal divisions, Level draws its level lines and labels, each time base keeps its own
-// steps, and the time labels stay on the fifths at every Time step. Lines are counted on the page's
-// own canvas, not worked out again from the geometry that draws them.
+// into its equal divisions, Level draws its level lines and labels, a step chosen in one time base
+// is drawn in every other, and the time labels stay on the fifths at every Time step. Lines are
+// counted on the page's own canvas, not worked out again from the geometry that draws them.
 import { describe, expect, test } from "vitest";
 
 import { GridDensity } from "../../../protocol/src/enums.ts";
@@ -18,16 +18,13 @@ const divisions: Readonly<Record<GridDensityName, number>> = {
   fine: 20,
 };
 
-const timeBases = [
-  { label: "Trig", suffix: "Trigger" },
-  { label: "Free", suffix: "Free" },
-] as const;
+const timeBases = [{ label: "Trig" }, { label: "Free" }] as const;
 
 // Sets a setting as the engine would on the toolbar's request.
 async function set(
   app: Started,
   name: SettingName,
-  value: GridDensityName,
+  value: string,
 ): Promise<void> {
   app.transport.send({ type: "setSetting", name, value });
   await settle();
@@ -100,13 +97,13 @@ function timeLabelPositions(): number[] {
     .map((label) => (parseFloat(label.style.left) - 4) / width);
 }
 
-describe.each(timeBases)("in $label", ({ label, suffix }) => {
+describe.each(timeBases)("in $label", ({ label }) => {
   test.each(densities)(
     "the %s Time step divides the screen as the issue says, with time labels on its fifths",
     async (density) => {
       const app = await startApp();
       await inTimeBase(label);
-      await set(app, `gridTime${suffix}` as SettingName, density);
+      await set(app, "gridTime", density);
       expect(verticalLines()).toBe(divisions[density] - 1);
       const positions = timeLabelPositions();
       expect(positions).toHaveLength(4);
@@ -122,7 +119,7 @@ describe.each(timeBases)("in $label", ({ label, suffix }) => {
     const counts = new Map<GridDensityName, number>();
     const labels = new Map<GridDensityName, string[]>();
     for (const density of densities) {
-      await set(app, `gridLevel${suffix}` as SettingName, density);
+      await set(app, "gridLevel", density);
       counts.set(density, levelLinesInTopLane(2));
       labels.set(density, axisTexts());
     }
@@ -139,23 +136,30 @@ describe.each(timeBases)("in $label", ({ label, suffix }) => {
   });
 });
 
-test("each time base keeps its own Time and Level steps", async () => {
+test("a Time or Level step chosen in one time base is drawn in every other", async () => {
+  // Chosen in Beats, a new instance's time base: four bars of 4/4 at Fine draw sixteenths, where
+  // Medium draws beats (15 lines).
   const app = await startApp();
+  await set(app, "beatSpan", "fourBars");
+  await set(app, "gridTime", "fine");
+  await set(app, "gridLevel", "coarse");
+  expect(verticalLines()).toBe(4 * 4 * 4 - 1);
+  expect(levelLinesInTopLane(2)).toBe(3);
+
   await inTimeBase("Trig");
-  await set(app, "gridTimeTrigger", "fine");
-  await set(app, "gridLevelTrigger", "coarse");
-  expect(verticalLines()).toBe(19);
+  await settle();
+  expect(verticalLines()).toBe(divisions.fine - 1);
   expect(levelLinesInTopLane(2)).toBe(3);
 
   await inTimeBase("Free");
   await settle();
-  expect(verticalLines()).toBe(9);
-  expect(levelLinesInTopLane(2)).toBe(5);
-  await set(app, "gridTimeFree", "coarse");
-  expect(verticalLines()).toBe(4);
+  expect(verticalLines()).toBe(divisions.fine - 1);
+  expect(levelLinesInTopLane(2)).toBe(3);
+  await set(app, "gridTime", "coarse");
+  await set(app, "gridLevel", "medium");
 
   await inTimeBase("Trig");
   await settle();
-  expect(verticalLines()).toBe(19);
-  expect(levelLinesInTopLane(2)).toBe(3);
+  expect(verticalLines()).toBe(divisions.coarse - 1);
+  expect(levelLinesInTopLane(2)).toBe(5);
 });
