@@ -695,6 +695,25 @@ describe("grid types", () => {
     }
   });
 
+  test("Cross hair marks a trigger point on the screen's very edge, as Position 0% and 100% put it", () => {
+    for (const trigger of [0, 1]) {
+      const cross = gridLines(1002, 451, 1, 1, { type: "crossHair", trigger });
+      expect(cross.vertical).toEqual([
+        { x: Math.round(1002 * trigger) + 0.5, strong: true },
+      ]);
+      expect(cross.ticks.some((tick) => tick.y0 === tick.y1)).toBe(true);
+    }
+  });
+
+  test("Cross hair with no trigger point (running free) draws no line and no level ticks", () => {
+    const cross = gridLines(1002, 451, 1, 1, {
+      type: "crossHair",
+      trigger: Number.NaN,
+    });
+    expect(cross.vertical).toEqual([]);
+    expect(cross.ticks.every((tick) => tick.x0 === tick.x1)).toBe(true);
+  });
+
   test("Cross hair zoomed off the trigger point draws no line and no level ticks", () => {
     for (const trigger of [-0.2, 1.2]) {
       const cross = gridLines(1002, 451, 1, 1, { type: "crossHair", trigger });
