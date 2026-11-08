@@ -1,7 +1,7 @@
 // The cursor readout in the screen's corner: a titled section per kind of cursor, a rule between
 // them, one label and value per row; A and B are where the time cursors are, read as the hover
 // readout reads a point (from the trigger, from the right edge, or on the host's clock).
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { formatMusicalLength } from "../../src/view/format.ts";
@@ -135,10 +135,13 @@ describe("the cursor readout", () => {
 
     test("A and B read as the hover does at their lines, live", async () => {
       await cursorsAfterZoom();
-      // One frame on screen while both are read.
+      // One frame on screen while both are read. The hover reads the newest frame at once, the
+      // cursor rows at the next readout refresh, within one readout interval: in Beats a frame past
+      // a cycle's end can land between refreshes, and the rows then read a cycle earlier until the
+      // next one.
       app.holdFrames(true);
       try {
-        expectCursorsReadAsTheHover();
+        await vi.waitFor(expectCursorsReadAsTheHover);
       } finally {
         app.holdFrames(false);
       }
