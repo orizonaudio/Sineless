@@ -4,6 +4,7 @@
 #include "engine/CaptureRing.h"
 #include "engine/MonotonicClock.h"
 #include "engine/Settings.h"
+#include "engine/State.h"
 #include "engine/Timeline.h"
 
 #include <atomic>
@@ -111,16 +112,10 @@ public:
         return comparedIds;
     }
 
-    // The editor's size in CSS pixels, as last given (by the host, or the user's drag of the
-    // resize grip), or none yet. Kept with the instance, not its editor, so that the editor opens
-    // again at the size it was left at; not saved, like the Compare view's tracks. Non-audio
-    // threads only.
-    struct EditorSize
-    {
-        double width = 0.0;
-        double height = 0.0;
-    };
-    void setEditorSize(EditorSize size)
+    // The editor's size as the user chose it (EditorCore's ChosenSize), or none: the default.
+    // Saved with the project and read when the editor opens, so a state loaded while it is open
+    // applies at the next open. Non-audio threads only.
+    void setEditorSize(std::optional<EditorSize> size)
     {
         const std::scoped_lock lock(trackMutex);
         editorSizeValue = size;

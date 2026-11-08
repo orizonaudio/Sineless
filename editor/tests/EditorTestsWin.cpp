@@ -6,6 +6,7 @@
 #include "editor/UiDispatcher.h"
 #include "editor/WebView.h"
 #include "engine/Engine.h"
+#include "engine/InstanceRegistry.h"
 #include "engine/Version.h"
 #include "win/WebViewWinTesting.h"
 
@@ -394,6 +395,58 @@ TEST_F(EditorTest, AsksTheHostForTheGripSizeInWindowUnits)
         << "the page has the width dragged to, in CSS pixels";
     EXPECT_EQ(editor->removed(), kResultOk);
     DestroyWindow(window);
+}
+
+// Stacked lanes grow the window at the display's scale and, once they go, it returns to the size
+// chosen; the room asked for is never the size saved, nor is the window at its own size, sent
+// again in window units. Meaningful on a display scaled above 100 %; the scale is printed.
+TEST_F(EditorTest, ReturnsToTheSizeChosenWhenTheLanesGoAtAnyDisplayScale)
+{
+    const ScopedDpiAwareness awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    auto own = std::make_shared<engine::Engine>();
+    own->settings().set(protocol::SettingId::kDisplayMode,
+                        static_cast<double>(protocol::DisplayMode::kMulti));
+    own->settings().set(protocol::SettingId::kViewLayout,
+                        static_cast<double>(protocol::ViewLayout::kStacked));
+    own->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
+    std::vector<std::shared_ptr<engine::Engine>> group{own}; // Sixteen tracks.
+    for (int track = 1; track < 16; ++track) {
+        group.push_back(std::make_shared<engine::Engine>());
+    }
+    for (const auto& engine : group) {
+        engine::InstanceRegistry::shared().add(engine);
+    }
+    HWND window = makeWindow();
+    TestFrame frame; // Outlives the editor, which keeps a pointer to it.
+    std::vector<std::string> received;
+    auto editor = makeEditor(received, own);
+    editor->setFrame(&frame);
+    ASSERT_EQ(attach(window, *editor), kResultTrue);
+    const double scale = displayScale(window);
+    std::cout << "display scale " << scale << "\n";
+    const auto units = [scale](double css) {
+        return static_cast<int>(std::ceil(css * scale - 1e-6));
+    };
+    const int wanted = Editor::kChromeHeight + 16 * Editor::kMinimumLaneHeight;
+    ASSERT_TRUE(
+        pumpUntil([&] { return editor->getRect().getHeight() == units(wanted); }, kPageTimeout))
+        << "grown for the lanes";
+    ViewRect same = editor->getRect();
+    editor->onSize(&same); // The host sends the size again.
+
+    own->settings().set(protocol::SettingId::kViewLayout,
+                        static_cast<double>(protocol::ViewLayout::kOverlaid));
+    ASSERT_TRUE(
+        pumpUntil([&] { return editor->getRect().getHeight() == units(500); }, kPageTimeout))
+        << "back to the size chosen";
+    EXPECT_EQ(editor->getRect().getWidth(), units(1200));
+    EXPECT_EQ(own->editorSize(), (engine::EditorSize{.width = 1200, .height = 500}));
+
+    EXPECT_EQ(editor->removed(), kResultOk);
+    DestroyWindow(window);
+    for (const auto& engine : group) {
+        engine::InstanceRegistry::shared().remove(*engine);
+    }
 }
 
 // The page lays out in CSS pixels at the editor's default size whatever the display scaling, in

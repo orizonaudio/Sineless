@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <nlohmann/json.hpp>
+#include <optional>
 
 namespace orizon::engine {
 
@@ -105,25 +106,47 @@ void migrateToVersion5(nlohmann::json& settings)
 constexpr std::array<Migration, kStateVersion - 1> kMigrations{
     &migrateToVersion2, &migrateToVersion3, &migrateToVersion4, &migrateToVersion5};
 
+// The editor's size in a state, or none: both a width and a height that are numbers (JSON's are
+// finite: a number too large for a double makes the whole state unreadable). Their range is the
+// editor's to check, where its minimum and largest sizes live.
+std::optional<EditorSize> editorSizeIn(const nlohmann::json& state)
+{
+    const auto editor = state.find("editor");
+    if (editor == state.end() || !editor->is_object()) {
+        return std::nullopt;
+    }
+    const auto width = editor->find("width");
+    const auto height = editor->find("height");
+    if (width == editor->end() || height == editor->end() || !width->is_number() ||
+        !height->is_number()) {
+        return std::nullopt;
+    }
+    return EditorSize{.width = width->get<double>(), .height = height->get<double>()};
+}
+
 } // namespace
 
-std::string serializeState(const Settings& settings)
+std::string serializeState(const Settings& settings, std::optional<EditorSize> editorSize)
 {
     nlohmann::json values = nlohmann::json::object();
     for (const auto& setting : protocol::kSettings) {
         values[std::string(setting.name)] = settingToJson(setting.id, settings.value(setting.id));
     }
-    const nlohmann::json state = {{"version", kStateVersion}, {"settings", values}};
+    nlohmann::json state = {{"version", kStateVersion}, {"settings", values}};
+    if (editorSize) {
+        state["editor"] = {{"width", editorSize->width}, {"height", editorSize->height}};
+    }
     return state.dump(2);
 }
 
-Settings deserializeState(std::string_view text) noexcept
+SavedState deserializeState(std::string_view text) noexcept
 {
-    Settings settings;
+    SavedState saved;
+    Settings& settings = saved.settings;
     try {
         nlohmann::json state = nlohmann::json::parse(text, nullptr, false);
         if (!state.is_object() || !state.contains("settings") || !state["settings"].is_object()) {
-            return settings;
+            return saved;
         }
         int version = 1;
         if (state.contains("version") && state["version"].is_number_integer()) {
@@ -142,10 +165,11 @@ Settings deserializeState(std::string_view text) noexcept
                 settings.set(setting.id, *value);
             }
         }
+        saved.editorSize = editorSizeIn(state);
     } catch (...) {
-        return Settings{};
+        return SavedState{};
     }
-    return settings;
+    return saved;
 }
 
 } // namespace orizon::engine

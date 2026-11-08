@@ -164,7 +164,8 @@ OSStatus AudioUnit::SaveState(CFPropertyListRef* outData)
     }
     // The SDK's state is a mutable dictionary it has just made.
     auto* dictionary = static_cast<CFMutableDictionaryRef>(const_cast<void*>(*outData));
-    const std::string json = engine::serializeState(engineState->settings().get());
+    const std::string json =
+        engine::serializeState(engineState->settings().get(), engineState->editorSize());
     CFDataRef data = CFDataCreate(nullptr, reinterpret_cast<const UInt8*>(json.data()),
                                   static_cast<CFIndex>(json.size()));
     if (data == nullptr) {
@@ -197,7 +198,10 @@ OSStatus AudioUnit::RestoreState(CFPropertyListRef plist)
             }
         }
         // Missing, of the wrong type, too large or unreadable: every default, as in VST3.
-        engineState->settings().replace(engine::deserializeState(json));
+        engine::SavedState saved = engine::deserializeState(json);
+        engineState->settings().replace(saved.settings);
+        // An open editor keeps its size: this one applies when it opens next.
+        engineState->setEditorSize(saved.editorSize);
     } catch (...) {
         return kAudioUnitErr_InvalidPropertyValue;
     }

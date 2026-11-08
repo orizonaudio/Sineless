@@ -87,7 +87,7 @@ TEST_P(EverySetting, RoundTripsThroughStateAndJson)
     const auto [setting, value] = GetParam();
     Settings settings;
     ASSERT_TRUE(settings.set(setting->id, value)) << "the table's own value is refused";
-    EXPECT_EQ(deserializeState(serializeState(settings)).value(setting->id), value);
+    EXPECT_EQ(deserializeState(serializeState(settings)).settings.value(setting->id), value);
     const auto parsed = settingFromJson(setting->id, settingToJson(setting->id, value));
     ASSERT_TRUE(parsed.has_value());
     EXPECT_EQ(*parsed, value);
@@ -109,7 +109,7 @@ TEST(State, WritesTheVersionEnvelope)
 // One golden file per released state version proves that old projects still load.
 TEST(State, LoadsTheVersion1GoldenFile)
 {
-    const Settings settings = deserializeState(readTestFile("state-v1.json"));
+    const Settings settings = deserializeState(readTestFile("state-v1.json")).settings;
     EXPECT_EQ(settings.value(SettingId::kTriggerSpan), 0.5);
     EXPECT_EQ(settings.value(SettingId::kVerticalScale), -12.0);
     EXPECT_EQ(settings.value(SettingId::kChannelViews), 0b1100);
@@ -139,6 +139,7 @@ constexpr std::array kEveryGoldenStateFile{
     "state-v4.json",
     "state-v5.json",
     "state-v5-trigger-position.json",
+    "state-v5-editor-size.json",
 };
 
 // A project saved before Auto-freeze existed opens with it on, as a new instance does (FR-11):
@@ -152,8 +153,9 @@ TEST(State, AStateWithoutAutoFreezeOpensWithItOn)
             continue;
         }
         ++without;
-        EXPECT_EQ(deserializeState(text).enumValue<protocol::Toggle>(SettingId::kAutoFreeze),
-                  protocol::Toggle::kOn)
+        EXPECT_EQ(
+            deserializeState(text).settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze),
+            protocol::Toggle::kOn)
             << file;
     }
     EXPECT_GT(without, 0) << "no golden state predates Auto-freeze";
@@ -170,7 +172,7 @@ TEST(State, AStateWithoutATriggerPositionOpensAtTheOldPlace)
             continue;
         }
         ++without;
-        EXPECT_EQ(deserializeState(text).value(SettingId::kTriggerPosition), 0.1) << file;
+        EXPECT_EQ(deserializeState(text).settings.value(SettingId::kTriggerPosition), 0.1) << file;
     }
     EXPECT_GT(without, 0) << "no golden state predates the trigger Position";
 }
@@ -179,7 +181,7 @@ TEST(State, AStateWithoutATriggerPositionOpensAtTheOldPlace)
 // The file is what 0.1.0's serializeState wrote for a Beats project.
 TEST(State, LoadsAVersion1GoldenFileSavedInBeats)
 {
-    const Settings settings = deserializeState(readTestFile("state-v1-beats.json"));
+    const Settings settings = deserializeState(readTestFile("state-v1-beats.json")).settings;
     EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
               protocol::TimeBase::kBeats);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
@@ -192,7 +194,7 @@ TEST(State, LoadsAVersion1GoldenFileSavedInBeats)
 
 TEST(State, LoadsTheVersion2GoldenFile)
 {
-    const Settings settings = deserializeState(readTestFile("state-v2.json"));
+    const Settings settings = deserializeState(readTestFile("state-v2.json")).settings;
     // Saved in the Free trigger mode at 50 ms: it opens in Free at Free's shortest span, with the
     // span kept for Trigger and the trigger mode at its default.
     EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
@@ -374,6 +376,8 @@ constexpr std::array kGoldenStates{
     GoldenState{.file = "state-v4.json", .values = kVersion4Values},
     GoldenState{.file = "state-v5.json", .values = kVersion5Values},
     GoldenState{.file = "state-v5-trigger-position.json", .values = kVersion5TriggerPositionValues},
+    // The same settings, with the editor's size beside them (written by hand, as 8.4 has it).
+    GoldenState{.file = "state-v5-editor-size.json", .values = kVersion5TriggerPositionValues},
 };
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
@@ -460,7 +464,8 @@ TEST_P(SavedProject, ReopensWithEachSettingAsSaved)
             << setting.name << " is not in " << golden.file;
         ASSERT_NE(expected->value, defaultOf(setting.id))
             << "a default value would load even if its saved form were no longer read";
-        EXPECT_EQ(deserializeState(text).value(setting.id), expected->value) << golden.file;
+        EXPECT_EQ(deserializeState(text).settings.value(setting.id), expected->value)
+            << golden.file;
     }
     EXPECT_GT(heldBy, 0) << setting.name
                          << " is in no golden state: add one saved by the release that adds it";
@@ -521,7 +526,7 @@ TEST_P(SavedValueName, ReopensAsTheValueSaved)
         ++heldBy;
         const nlohmann::json saved = isFlags ? nlohmann::json::array({name}) : nlohmann::json(name);
         const nlohmann::json state = {{"version", golden.version}, {"settings", {{key, saved}}}};
-        EXPECT_EQ(deserializeState(state.dump()).value(setting->id), expected)
+        EXPECT_EQ(deserializeState(state.dump()).settings.value(setting->id), expected)
             << golden.file << ": " << name;
     }
     EXPECT_GT(heldBy, 0) << "no released name list holds this value: add the list of the "
@@ -598,9 +603,9 @@ TEST_P(SavedBeatSpan, OpensAsTheNearestSpan)
     for (const int version : {2, 3, 4}) {
         const nlohmann::json state = {{"version", version},
                                       {"settings", {{"beatSpan", std::string(c.name)}}}};
-        EXPECT_EQ(
-            deserializeState(state.dump()).enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
-            c.span)
+        EXPECT_EQ(deserializeState(state.dump())
+                      .settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
+                  c.span)
             << "version " << version;
     }
 }
@@ -612,7 +617,7 @@ INSTANTIATE_TEST_SUITE_P(State, SavedBeatSpan, ::testing::ValuesIn(kSavedSpans),
 
 TEST(State, DefaultsToABeatsSweepOfOneBar)
 {
-    const Settings settings = deserializeState(R"({"version": 2, "settings": {}})");
+    const Settings settings = deserializeState(R"({"version": 2, "settings": {}})").settings;
     EXPECT_EQ(settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase),
               protocol::TimeBase::kBeats);
     EXPECT_EQ(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan),
@@ -630,7 +635,8 @@ TEST(State, KeepsDefaultsForMissingAndInvalidFieldsOnly)
             "channelViews": [],
             "triggerLevel": 0.5
         }
-    })");
+    })")
+                                  .settings;
     EXPECT_EQ(settings.value(SettingId::kTriggerSpan), defaultOf(SettingId::kTriggerSpan));
     EXPECT_EQ(settings.value(SettingId::kFreeSpan), defaultOf(SettingId::kFreeSpan));
     EXPECT_EQ(settings.value(SettingId::kTriggerMode), defaultOf(SettingId::kTriggerMode));
@@ -765,7 +771,7 @@ TEST_P(MigratesEachKindOfProject, OpensShowingWhatItShowed)
 {
     const Migration& c = GetParam();
     const nlohmann::json state = {{"version", 2}, {"settings", nlohmann::json::parse(c.saved)}};
-    const Settings settings = deserializeState(state.dump());
+    const Settings settings = deserializeState(state.dump()).settings;
     EXPECT_EQ(settings.enumValue<TimeBase>(SettingId::kTimeBase), c.timeBase);
     EXPECT_EQ(settings.value(SettingId::kTriggerSpan), c.triggerSpan);
     EXPECT_EQ(settings.value(SettingId::kFreeSpan), c.freeSpan);
@@ -780,7 +786,7 @@ INSTANTIATE_TEST_SUITE_P(State, MigratesEachKindOfProject, ::testing::ValuesIn(m
 // The 0.5 release's saved project, in Seconds at 0.25 s in Single, opens in Trigger at 0.25 s.
 TEST(State, OpensTheReleasedSecondsProjectInTrigger)
 {
-    const Settings settings = deserializeState(readTestFile("state-v2-0.5.json"));
+    const Settings settings = deserializeState(readTestFile("state-v2-0.5.json")).settings;
     EXPECT_EQ(settings.enumValue<TimeBase>(SettingId::kTimeBase), TimeBase::kTrigger);
     EXPECT_EQ(settings.value(SettingId::kTriggerSpan), 0.25);
     EXPECT_EQ(settings.value(SettingId::kFreeSpan), defaultOf(SettingId::kFreeSpan));
@@ -791,7 +797,7 @@ TEST(State, OpensTheReleasedSecondsProjectInTrigger)
 TEST(State, OpensAProjectSavedInCompareInMultiWithCompareOn)
 {
     for (const char* file : {"state-v2-0.5.json", "state-v3.json"}) {
-        const Settings settings = deserializeState(readTestFile(file));
+        const Settings settings = deserializeState(readTestFile(file)).settings;
         EXPECT_EQ(settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
                   protocol::DisplayMode::kMulti)
             << file;
@@ -823,7 +829,7 @@ TEST(State, OpensEachReleasedDisplayModeAsSaved)
         for (const auto& name : released.at("displayMode")) {
             const nlohmann::json state = {{"version", golden.version},
                                           {"settings", {{"displayMode", name}}}};
-            const Settings settings = deserializeState(state.dump());
+            const Settings settings = deserializeState(state.dump()).settings;
             const Shown expected = shown(name.get_ref<const std::string&>());
             EXPECT_EQ(settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
                       expected.mode)
@@ -840,7 +846,7 @@ TEST(State, KeepsCompareOnInSingle)
 {
     Settings saved;
     saved.set(SettingId::kCompare, asValue(protocol::Toggle::kOn));
-    const Settings settings = deserializeState(serializeState(saved));
+    const Settings settings = deserializeState(serializeState(saved)).settings;
     EXPECT_EQ(settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
               protocol::DisplayMode::kSingle);
     EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kCompare), protocol::Toggle::kOn);
@@ -853,20 +859,21 @@ TEST(State, LoadsCompareOffWhenTheStateDoesNotSayOtherwise)
     for (const char* text : {R"({"version": 3, "settings": {"displayMode": 2}})",
                              R"({"version": 3, "settings": {"displayMode": ["compare"]}})",
                              R"({"version": 4, "settings": {"displayMode": "multi"}})"}) {
-        const Settings settings = deserializeState(text);
+        const Settings settings = deserializeState(text).settings;
         EXPECT_EQ(settings.enumValue<protocol::Toggle>(SettingId::kCompare), protocol::Toggle::kOff)
             << text;
     }
     EXPECT_EQ(deserializeState(R"({"version": 4, "settings": {"displayMode": "multi"}})")
-                  .enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
+                  .settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
               protocol::DisplayMode::kMulti);
 }
 
 // A version 3 state holds no time span; one that does ignores it, as any unknown field.
 TEST(State, IgnoresATimeSpanInAVersion3State)
 {
-    const Settings settings = deserializeState(
-        R"({"version": 3, "settings": {"timeBase": "trigger", "timeSpan": 0.25}})");
+    const Settings settings =
+        deserializeState(R"({"version": 3, "settings": {"timeBase": "trigger", "timeSpan": 0.25}})")
+            .settings;
     EXPECT_EQ(settings.value(SettingId::kTriggerSpan), defaultOf(SettingId::kTriggerSpan));
 }
 
@@ -876,15 +883,67 @@ TEST(State, IgnoresUnknownFieldsAndLoadsNewerVersions)
         "version": 7,
         "settings": {"triggerLevel": 0.5, "futureSetting": true},
         "futureSection": {}
-    })");
+    })")
+                                  .settings;
     EXPECT_EQ(settings.value(SettingId::kTriggerLevel), 0.5);
+}
+
+// The editor's size the user chose reopens with the project, beside the settings.
+TEST(State, ReopensAtTheEditorSizeSaved)
+{
+    Settings settings;
+    settings.set(SettingId::kTriggerLevel, 0.5);
+    const SavedState saved =
+        deserializeState(serializeState(settings, EditorSize{.width = 1234.5, .height = 678.25}));
+    EXPECT_EQ(saved.settings, settings);
+    EXPECT_EQ(saved.editorSize, (EditorSize{.width = 1234.5, .height = 678.25}));
+
+    const SavedState golden = deserializeState(readTestFile("state-v5-editor-size.json"));
+    EXPECT_EQ(golden.editorSize, (EditorSize{.width = 1200, .height = 500}));
+}
+
+// A project saved before the size was saved, or by an instance whose size was never changed,
+// opens at the default size.
+TEST(State, AStateWithoutAnEditorSizeOpensAtTheDefault)
+{
+    for (const char* file : kEveryGoldenStateFile) {
+        const std::string text = readTestFile(file);
+        if (nlohmann::json::parse(text).contains("editor")) {
+            continue;
+        }
+        EXPECT_FALSE(deserializeState(text).editorSize) << file;
+    }
+    EXPECT_FALSE(deserializeState(serializeState(Settings())).editorSize);
+    EXPECT_FALSE(nlohmann::json::parse(serializeState(Settings())).contains("editor"));
+}
+
+// An editor size that is not one opens at the default, and never costs a setting.
+TEST(State, AnInvalidEditorSizeOpensAtTheDefaultAndKeepsTheSettings)
+{
+    for (const char* editor :
+         {R"("big")", "null", "[1200, 500]", R"({"width": 1200})", R"({"height": 500})",
+          R"({"width": "1200", "height": 500})", R"({"width": 1200, "height": null})"}) {
+        const SavedState saved = deserializeState(
+            std::string(R"({"version": 5, "settings": {"triggerLevel": 0.5}, "editor": )") +
+            editor + "}");
+        EXPECT_FALSE(saved.editorSize) << editor;
+        EXPECT_EQ(saved.settings.value(SettingId::kTriggerLevel), 0.5) << editor;
+    }
+}
+
+// A size out of the editor's range is still a size: the editor raises or lowers it as it opens.
+TEST(State, KeepsAnEditorSizeOutOfRangeForTheEditorToBound)
+{
+    const SavedState saved = deserializeState(
+        R"({"version": 5, "settings": {}, "editor": {"width": -5, "height": 1e9}})");
+    EXPECT_EQ(saved.editorSize, (EditorSize{.width = -5, .height = 1e9}));
 }
 
 TEST(State, FallsBackToDefaultsForUnreadableInput)
 {
     for (const char* input : {"", "not json", "[1, 2]", R"({"version": 1})",
                               R"({"settings": "nope"})", R"({"settings": {"timeSpan": 0.5)"}) {
-        EXPECT_EQ(deserializeState(input), Settings()) << input;
+        EXPECT_EQ(deserializeState(input).settings, Settings()) << input;
     }
 }
 
