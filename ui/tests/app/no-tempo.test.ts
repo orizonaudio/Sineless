@@ -48,9 +48,7 @@ describe("before the host reports a tempo", () => {
     expect(byId("readout-tag").textContent).toBe(tag);
   });
 
-  // With no beats to draw, the page draws the equal divisions of Beats' own Time step, as it drew
-  // ten before the grid could be chosen. This keeps that drawing; FR-9.1's "no grid" here is not
-  // settled by it.
+  // With no beats to draw, the page draws the equal divisions of Beats' own Time step (FR-9.1).
   test.each([
     ["coarse", 5],
     ["medium", 10],
