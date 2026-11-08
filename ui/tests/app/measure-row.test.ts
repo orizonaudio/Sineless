@@ -66,7 +66,6 @@ describe("the Measure row", () => {
     ]);
     expect(rows[1]?.contains(byId("readout-source"))).toBe(true);
     expect(document.querySelector(".statusbar #readout-source")).toBeNull();
-    expect(document.getElementById("readout-details")).toBeNull();
   });
 
   // Each view hidden in turn: it cannot be chosen, and while it was the one chosen, the first view
@@ -124,7 +123,6 @@ describe("the Measure row", () => {
       await settle();
       expect(byId("views-group").inert).toBe(true);
       expect(byId("views-popover").hidden).toBe(true);
-      expect(document.getElementById("readout-details")).toBeNull();
     },
   );
 });

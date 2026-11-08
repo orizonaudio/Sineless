@@ -65,16 +65,16 @@ and what a freeze holds.
 | | Trigger | Free | Beats (sweep) |
 | --- | --- | --- | --- |
 | **Single display mode**: trigger reads | Trigger source, when drawn | — | — |
-| **Single display mode**: the Meter; overlaid, cursor snap and hover | The Channel, when drawn | Same | Same |
+| **Single display mode**: the Meter; overlaid, cursor snap and hover | The Measure choice, when drawn | Same | Same |
 | **Multi** (Compare on or off): trigger reads | This track's lane channel | — | — |
 | **Multi** (Compare on or off): readouts, cursor snap | This track's lane channel | Same | Same |
 | Freeze holds | Newest 4.25 s (4 s to pan through); lanes 1 s more | Same | Readable capture (7/8); sweep image kept |
 | Pan while frozen | Yes, not zoomed | Yes, not zoomed | No |
 | Time labels | From the trigger point | Back from the right edge | bar.beat over project time |
 
-The trigger source picks only the channel the trigger reads. Like the Channel, it is used only
+The trigger source picks only the channel the trigger reads. Like Measure, it is used only
 while its view is drawn; otherwise the trigger reads the first view drawn, and the frame names the
-view read, which the level marker takes the lane and colour of. The Channel (the readout source
+view read, which the level marker takes the lane and colour of. Measure (the readout source
 setting), chosen in the Views popover's Measure row, beside the views it can read, is read only while
 its view is drawn; otherwise the first view drawn (L, R, M, S order) is read, and the choice applies
 again once its view is drawn again. The frame names the channel read, the *readout channel*, which
@@ -144,7 +144,7 @@ against it and the UI builds its controls from it.
 | View layout | Overlaid, stacked | Stacked |
 | Trigger mode | Auto, Normal, Single | Auto |
 | Trigger source (used only while drawn, 1.2.1) | L, R, Mid, Side | Mid |
-| Channel, saved as the readout source (Single; read only while drawn, 1.2.1) | L, R, Mid, Side | Mid |
+| Measure, saved as the readout source (Single; read only while drawn, 1.2.1) | L, R, Mid, Side | Mid |
 | Lane channel (Multi, FR-14.2) | L, R, Mid, Side | Mid |
 | Trigger slope | Rising, falling | Rising |
 | Trigger level | −1.0 … +1.0 (linear, full scale) | 0.0 |
