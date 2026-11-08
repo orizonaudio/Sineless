@@ -100,14 +100,14 @@ describe.each([minimumEditorWidth, defaultEditorWidth])(
   },
 );
 
-// The grid and concert pitch shape what the screen draws, so they come first, by the screen's
+// Concert pitch and the grid shape what the screen draws, so they come first, by the screen's
 // left edge; the Meter, the cursors and Hover, which read it, come after them (#380).
-test("puts Grid and A4 first, then the Meter, the cursors and Hover", async () => {
+test("puts A4 and Grid first, then the Meter, the cursors and Hover", async () => {
   await startApp();
   const left = [...(document.querySelector(".status-left")?.children ?? [])];
   expect(left.map((child) => child.id || child.className)).toEqual([
-    "grid-group",
     "tool icon-field",
+    "grid-group",
     "divider",
     "meter-toggle",
     "time-cursors",

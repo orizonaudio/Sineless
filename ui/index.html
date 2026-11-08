@@ -273,11 +273,15 @@
           <span id="message-text"></span>
         </div>
       </main>
-      <!-- Left: the grid and concert pitch, which shape what the screen draws, then the Meter's
+      <!-- Left: concert pitch and the grid, which shape what the screen draws, then the Meter's
            button and the cursor buttons, which read it; none changes width. Right: the state, in a
            fixed width, Help and About. Nothing here moves when the state or a value changes. -->
       <footer class="statusbar">
         <div class="status-left">
+          <div class="tool icon-field" data-help="concertPitch">
+            <i>A4</i>
+            <div id="concert-pitch-field"></div>
+          </div>
           <div class="grid-group" id="grid-group" data-help="grid">
             <button
               class="field-button"
@@ -313,10 +317,6 @@
                 <div class="segmented" id="beat-division"></div>
               </div>
             </div>
-          </div>
-          <div class="tool icon-field" data-help="concertPitch">
-            <i>A4</i>
-            <div id="concert-pitch-field"></div>
           </div>
           <span class="divider"></span>
           <button
