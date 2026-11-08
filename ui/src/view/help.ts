@@ -129,7 +129,7 @@ export function helpTextsFor(mac: boolean) {
       lead: "What the screen shows: this track, or every track of its group.",
       choices: choicesOf(choiceLabels.displayMode, {
         single: "this track's channels",
-        multi: `every track of this instance's group with this plugin, one lane each as its Mid, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds their sum)`,
+        multi: `every track of this instance's group with this plugin, one lane each, showing the channel chosen in the Group popover, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds their sum)`,
       }),
       notes: [
         "Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.",
@@ -204,15 +204,26 @@ export function helpTextsFor(mac: boolean) {
       title: "Views",
       lead: "Which group's tracks Multi shows, and with Compare their sum.",
       notes: [
-        "The field's Σ is dimmed while Compare is off.",
+        "The field names the group, the lane channel and Σ, which is dimmed while Compare is off.",
         "Instances in the same group appear together; use groups to keep comparisons apart, such as drums in A and bass in B.",
         "Every instance belongs to a group, whatever its own mode.",
+      ],
+    },
+    laneChannel: {
+      title: "Channel",
+      lead: "Which channel every lane of Multi shows: Left, Right, Mid or Side.",
+      notes: [
+        "The trigger, the Meter, snapping and Compare read it too.",
+        "A mono track shows its one channel whatever the choice.",
+        "Chosen while frozen, it redraws this track and leaves the others empty until the display resumes.",
       ],
     },
     channelViews: {
       title: "Views",
       lead: "Which channels this track shows.",
-      notes: ["In Multi every track shows its Mid, so these apply in Single."],
+      notes: [
+        "In Multi every track shows the channel chosen in the Group popover, so these apply in Single.",
+      ],
     },
     status: {
       title: "Status",
@@ -444,7 +455,7 @@ export function helpTextsFor(mac: boolean) {
       notes: [
         "While the one chosen is hidden, it watches the first view drawn.",
         "It changes only what the trigger reads: the Meter, the hover and snapping keep their own channel, chosen with the Channel button.",
-        "Not used in Multi, which shows each track's Mid.",
+        "Not used in Multi, which triggers on the channel chosen in the Group popover.",
       ],
     },
     triggerSlope: {
@@ -516,7 +527,7 @@ export function helpTextsFor(mac: boolean) {
       notes: [
         "With the views overlaid, the hover and the cursors' snapping read it too; stacked, each lane reads its own trace.",
         "While the one chosen is hidden, the first view drawn is read.",
-        "A mono track has only Left. Multi reads this track's Mid: This, this track.",
+        "A mono track has only Left. Multi reads this track's channel chosen in the Group popover: This, this track.",
       ],
     },
     grid: {
@@ -650,6 +661,7 @@ export const choiceHelp: {
   },
   triggerSource: { exempt: "channel letters, as the views name them" },
   readoutSource: { exempt: "channel names, explained in the topic's lead" },
+  laneChannel: { exempt: "channel names, explained in the topic's lead" },
   gridTypeBeats: { topic: "gridType", labels: "gridType" },
   gridTimeBeats: { topic: "gridTime", labels: "gridDensity" },
   gridLevelBeats: { topic: "gridLevel", labels: "gridDensity" },

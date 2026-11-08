@@ -663,6 +663,12 @@ export class OscilloscopeApp {
       ["c", "C"],
       ["d", "D"],
     ]);
+    // One channel for every lane: single choice, unlike Single's views.
+    segment(
+      "laneChannel",
+      "lane-channel",
+      viewOrder.map((name) => [name, viewLabels[name]]),
+    );
     segment("compare", "compare", [
       ["off", "Off"],
       ["on", "On"],
@@ -822,8 +828,9 @@ export class OscilloscopeApp {
     });
   }
 
-  // Only the controls that apply are shown. Multi shows each track's Mid: the channel views and the
-  // trigger source do not apply, and the group (with Compare) does only there.
+  // Only the controls that apply are shown. Multi shows each track's lane channel: the channel views
+  // and the trigger source do not apply, and the group (with its lane channel and Compare) does
+  // only there.
   private updateMultiControls(): void {
     const multi = this.multiMode();
     element("source-row").hidden = multi;
@@ -854,8 +861,8 @@ export class OscilloscopeApp {
   }
 
   // The Channel button: what the Meter, snapping and the overlaid hover read (DESIGN.md 1.2.1): in
-  // Single the channel the frame names, this track's Mid in Multi, whose frames carry a lane set,
-  // a frame with no tempo included. Read from the frame on screen, whatever the settings now say
+  // Single the channel the frame names, this track's lane channel in Multi, whose frames carry a
+  // lane set, a frame with no tempo included. Read from the frame on screen, whatever the settings now say
   // until the next frame comes; before any frame, the display mode decides. In Single it opens the
   // Channel popover, which lights the channel read and offers only the views drawn (L alone on a
   // mono track); in Multi it is a label.
@@ -898,7 +905,7 @@ export class OscilloscopeApp {
       return;
     }
     this.viewSummary = text;
-    // Dot-separated, as Multi's "A·Σ".
+    // Dot-separated, as Multi's "A·M·Σ".
     element("views-summary").replaceChildren(
       ...viewOrder.flatMap((view, index) => {
         const letter = document.createElement("span");
@@ -910,9 +917,9 @@ export class OscilloscopeApp {
     element("views-details").setAttribute("aria-label", `Views: ${text}`);
   }
 
-  // The view toggles: pressed as asked for; disabled in Multi, which shows each track's Mid, and
-  // for R, M and S on a mono track, which would only repeat L. The one place that decides, for
-  // every case.
+  // The view toggles: pressed as asked for; disabled in Multi, which shows each track's lane
+  // channel, and for R, M and S on a mono track, which would only repeat L. The one place that
+  // decides, for every case.
   private updateViewToggles(): void {
     const shown = this.shownViews();
     const multi = this.multiMode();
@@ -1029,7 +1036,7 @@ export class OscilloscopeApp {
     if (name === "concertPitch") {
       this.updateCursorReadout();
     }
-    if (name === "group" || name === "compare") {
+    if (name === "group" || name === "laneChannel" || name === "compare") {
       this.updateGroupSummary();
     }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
@@ -1150,19 +1157,24 @@ export class OscilloscopeApp {
     return this.multiMode() && this.store.get("compare") === "on";
   }
 
-  // Multi's Views field (Single's shows the channel views) names the group and Σ, the sum Compare
-  // adds, dimmed while Compare is off, as Single's dims the views not drawn; its name for screen
-  // readers says Compare.
+  // Multi's Views field (Single's shows the channel views) names the group, the lane channel and Σ,
+  // the sum Compare adds, as "A·M·Σ", Σ dimmed while Compare is off, as Single's dims the views not
+  // drawn; its name for screen readers says the channel in full, and Compare.
   private updateGroupSummary(): void {
     const group = String(this.store.get("group")).toUpperCase();
+    const channel = this.store.get("laneChannel") as ViewName;
     const compare = this.store.get("compare") === "on";
     const sum = document.createElement("span");
     sum.textContent = "Σ";
     sum.className = compare ? "on" : "";
-    element("group-summary").replaceChildren(`${group}·`, sum);
+    element("group-summary").replaceChildren(
+      `${group}·${viewLabels[channel]}·`,
+      sum,
+    );
+    const named = `Views: group ${group}, ${viewNames[ChannelView[channel]]}`;
     element("group-details").setAttribute(
       "aria-label",
-      compare ? `Views: group ${group}, Compare on` : `Views: group ${group}`,
+      compare ? `${named}, Compare on` : named,
     );
   }
 

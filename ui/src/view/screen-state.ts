@@ -47,7 +47,7 @@ export function markerLane(
 }
 
 // A view toggle: pressed when the view is shown; disabled in the multi-track view, where each lane
-// is a track's Mid, and, on a mono track, for all but Left.
+// is a track's lane channel, and, on a mono track, for all but Left.
 export function viewToggleState(
   view: ViewName,
   shown: readonly ViewName[],
