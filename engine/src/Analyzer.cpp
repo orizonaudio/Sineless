@@ -1646,6 +1646,13 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                                     lane.image.changes().end());
             }
             lane.image.clearChanges();
+        } else if (lane.stats.fits(static_cast<std::size_t>(count), block)) {
+            // Emptied, as by a channel chosen while frozen that its hold lacks: its levels go, and
+            // the sums that held them are summed again.
+            lane.stats = {};
+            if (comparing && lane.compared) {
+                frameChanges.push_back({.first = 0, .end = count});
+            }
         }
         if (!updated) {
             // Not on this sweep's length (yet): silent, and updated afresh once it is.
