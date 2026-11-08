@@ -6,7 +6,9 @@ import { ChannelView } from "../../../protocol/src/enums.ts";
 import {
   beforeApp,
   byId,
+  channelRead,
   choice,
+  drawnLetters,
   inTimeBase,
   press,
   settle,
@@ -32,18 +34,14 @@ describe("a mono track", () => {
     await expectOnlyLeftEnabled(toggles);
   });
 
-  test("labels the readouts Left, whatever the trigger source", async () => {
+  test("reads Left, whatever the trigger source", async () => {
     await press(choice("time-base", "Trig"));
-    await expect.poll(() => byId("readout-tag").textContent).toBe("Left");
+    await expect.poll(channelRead).toBe("Left");
     // The Views field lights L alone, as the frame draws it.
-    await expect
-      .poll(() =>
-        [...byId("views-summary").querySelectorAll(".on")].map(
-          (letter) => letter.textContent,
-        ),
-      )
-      .toEqual(["L"]);
-    expect(byId("views-details").getAttribute("aria-label")).toBe("Views: L");
+    await expect.poll(drawnLetters).toEqual(["L"]);
+    expect(byId("views-details").getAttribute("aria-label")).toBe(
+      "Views: L, reads Left",
+    );
   });
 
   test("draws one lane when stacked, with the trigger marker in it", async () => {
@@ -80,10 +78,7 @@ describe("a track that changes channels", () => {
     app = await startApp({ inputChannels: 2 });
   });
 
-  const lit = () =>
-    [...byId("views-summary").querySelectorAll(".on")].map(
-      (letter) => letter.textContent,
-    );
+  const lit = drawnLetters;
 
   test("names the views the frames draw before any snapshot says", async () => {
     await press(choice("display-mode", "Single"));
@@ -95,41 +90,38 @@ describe("a track that changes channels", () => {
     await expect.poll(lit).toEqual(["L", "R"]);
   });
 
-  // The new count relabels the Channel button and the view toggles by itself, with no control
-  // touched: a mono track draws and measures L alone, so its popover lights L and offers nothing
-  // else; stereo again, the channel chosen comes back.
+  // The new count relabels the Views field, the Reads row and the view toggles by itself, with no
+  // control touched: a mono track draws and measures L alone, so the Reads row lights L and offers
+  // nothing else; stereo again, the channel chosen comes back.
   test("relabels the readouts and the toggles when the snapshot says", async () => {
-    const tag = () => byId("readout-tag").textContent;
     const toggles = [...byId("views").querySelectorAll("button")];
     await press(choice("display-mode", "Single"));
     await inTimeBase("Trig");
     await press(choice("source", "R"));
     await showViews(["L", "S"]);
     await useReadout("S");
-    await expect.poll(tag).toBe("Side");
-    await userEvent.click(byId("readout-details"));
-    await expect.element(byId("readout-popover")).toBeVisible();
+    await expect.poll(channelRead).toBe("Side");
+    await userEvent.click(byId("views-details"));
+    await expect.element(byId("views-popover")).toBeVisible();
     app.transport.changeChannels(1, true);
-    await expect.poll(tag).toBe("Left");
-    await expect
-      .element(byId("readout-details"))
-      .toHaveAttribute("aria-disabled", "false");
+    await expect.poll(channelRead).toBe("Left");
     await expect
       .element(choice("readout-source", "L"))
       .toHaveAttribute("aria-pressed", "true");
+    await expect.element(choice("readout-source", "L")).toBeEnabled();
     for (const other of ["R", "M", "S"]) {
       await expect.element(choice("readout-source", other)).toBeDisabled();
     }
-    await userEvent.click(byId("readout-details"));
     await expectOnlyLeftEnabled(toggles);
     app.transport.changeChannels(2, true);
-    await expect.poll(tag).toBe("Side");
-    await expect
-      .element(byId("readout-details"))
-      .toHaveAttribute("aria-disabled", "false");
+    await expect.poll(channelRead).toBe("Side");
+    for (const letter of ["L", "S"]) {
+      await expect.element(choice("readout-source", letter)).toBeEnabled();
+    }
     for (const button of toggles) {
       await expect.element(button).toBeEnabled();
     }
+    await userEvent.click(byId("views-details"));
     await showViews(["L", "R"]);
     await press(choice("source", "L"));
   });

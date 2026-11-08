@@ -487,19 +487,35 @@ export async function showViews(shown: readonly string[]): Promise<void> {
   const drawn = toggles
     .map((button) => button.textContent)
     .filter((label) => shown.includes(label));
-  await expect
-    .element(byId("views-details"))
-    .toHaveAttribute("aria-label", `Views: ${drawn.join(" ")}`);
+  await expect.poll(drawnLetters).toEqual(drawn);
   await userEvent.click(byId("views-details"));
 }
 
-// Chooses the channel the readouts measure in the status bar's popover ("S"), and closes it.
+// The letters the Views field lights: the views the frame draws, not the channel read after them.
+export function drawnLetters(): string[] {
+  return [...byId("views-summary").querySelectorAll(":scope > .on")].map(
+    (letter) => letter.textContent,
+  );
+}
+
+// The channel the Views field names as read, in full ("Left"; "—" before a frame says), from its
+// label.
+export function channelRead(): string | undefined {
+  return /, reads (.+)$/.exec(
+    byId("views-details").getAttribute("aria-label") ?? "",
+  )?.[1];
+}
+
+// Chooses the channel the readouts measure in the Views popover's Reads row ("S"), and closes it.
 export async function useReadout(label: string): Promise<void> {
+  if (byId("views-popover").hidden) {
+    await userEvent.click(byId("views-details"));
+  }
   await press(choice("readout-source", label));
   await expect
     .element(choice("readout-source", label))
     .toHaveAttribute("aria-pressed", "true");
-  await userEvent.click(byId("readout-details"));
+  await userEvent.click(byId("views-details"));
 }
 
 // Waits until the page has drawn frames that reflect everything asked so far.

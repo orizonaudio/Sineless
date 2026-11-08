@@ -188,7 +188,6 @@ const popovers = [
   ["views-group", "views-details", "views-popover"],
   ["trigger-group", "trigger-details", "trigger-popover"],
   ["about-group", "about-details", "about-popover"],
-  ["readout-group", "readout-details", "readout-popover"],
   ["grid-group", "grid-details", "grid-popover"],
 ] as const;
 // The settings chosen in a toolbar field's popover, whose button names the value.
@@ -201,11 +200,7 @@ interface ChoiceSummary {
 }
 // The status bar's popovers, which CSS places above their buttons; the others open under their
 // field.
-const placedByStyle = new Set<string>([
-  "about-popover",
-  "readout-popover",
-  "grid-popover",
-]);
+const placedByStyle = new Set<string>(["about-popover", "grid-popover"]);
 // The hover readout keeps this far (CSS px) from the pointer.
 const hoverOffset = 14;
 
@@ -313,8 +308,13 @@ export class OscilloscopeApp {
   // What the Meter shows: the frame's peak and RMS as last taken on the readout schedule, so a
   // cursor drag between two refreshes redraws the corner without refreshing them.
   private meterValues = { peak: Number.NaN, rms: Number.NaN };
-  // The readouts' channel: lit as the frame measured it, not as the setting asks.
+  // The readouts' channel, the Views popover's Reads row: lit as the frame measured it, not as the
+  // setting asks.
   private readoutChoices: Segmented | undefined;
+  // What the Reads row last showed: the view lit and the views enabled.
+  private readoutShown: string | undefined;
+  // The Views field's channel read: every channel's letter and "—" in one place, one shown.
+  private readSummary: StackedSummary | undefined;
   // The grid's popover: a row per choice, each reading and writing the shown time base's setting
   // (Beat division its one setting), and the field naming the type drawn.
   private readonly gridRows = new Map<
@@ -699,6 +699,10 @@ export class OscilloscopeApp {
         this.request("readoutSource", value);
       },
     );
+    this.readSummary = new StackedSummary(element("views-read"), {
+      ...viewLabels,
+      none: "—",
+    });
 
     const gridRow = (
       kind: GridSettingKind | "Division",
@@ -850,7 +854,7 @@ export class OscilloscopeApp {
       this.closePopover("group-details", "group-popover");
     }
     this.updateViewToggles();
-    this.updateReadoutTag();
+    this.updateReadoutChoices();
     this.updateSourceChoices();
     this.updateStatus();
   }
@@ -860,60 +864,64 @@ export class OscilloscopeApp {
     element(button).setAttribute("aria-expanded", "false");
   }
 
-  // The Channel button: what the Meter, snapping and the overlaid hover read (DESIGN.md 1.2.1): in
-  // Single the channel the frame names, this track's lane channel in Multi, whose frames carry a
-  // lane set, a frame with no tempo included. Read from the frame on screen, whatever the settings now say
-  // until the next frame comes; before any frame, the display mode decides. In Single it opens the
-  // Channel popover, which lights the channel read and offers only the views drawn (L alone on a
-  // mono track); in Multi it is a label.
-  private updateReadoutTag(): void {
+  // The channel the Meter, snapping and the overlaid hover read (DESIGN.md 1.2.1), as the frame on
+  // screen names it, whatever the settings now say until the next frame comes: in Single only, once
+  // a Single frame has come. Multi reads this track's lane channel, chosen in the same popover, and
+  // its frames carry a lane set, a frame with no tempo included.
+  private readChannel(): ViewName | undefined {
     const frame = this.lastFrame;
-    const thisTrack =
-      frame === undefined ? this.multiMode() : frame.laneSet !== 0;
-    // Named in full, Left, Right, Mid or Side, or This for this track; "This track" for screen
-    // readers.
-    const [text, name] = thisTrack
-      ? ["This", "This track"]
-      : frame === undefined
-        ? ["—", "—"]
-        : [viewNames[readoutView(frame)], viewNames[readoutView(frame)]];
-    const tag = element("readout-tag");
-    if (tag.textContent !== text) {
-      tag.textContent = text;
-      element("readout-details").setAttribute("aria-label", `Channel: ${name}`);
+    return frame === undefined || frame.laneSet !== 0
+      ? undefined
+      : viewOrder[readoutView(frame)];
+  }
+
+  // The Views popover's Reads row: lights the channel read and offers only the views drawn (L
+  // alone on a mono track, as the Source row), nothing before a Single frame says what is read.
+  private updateReadoutChoices(): void {
+    const read = this.readChannel();
+    const offered: readonly ViewName[] =
+      read === undefined
+        ? []
+        : this.inputChannels < 2
+          ? ["left"]
+          : this.drawnViews();
+    // Touched only when what it shows changes: it is asked on every frame.
+    const shown = `${read ?? ""} ${offered.join(" ")}`;
+    if (shown !== this.readoutShown) {
+      this.readoutShown = shown;
+      this.readoutChoices?.show(read ?? "");
+      this.readoutChoices?.enable((value) =>
+        offered.includes(value as ViewName),
+      );
     }
-    const choosable = !thisTrack && frame !== undefined;
-    element("readout-details").setAttribute(
-      "aria-disabled",
-      String(!choosable),
-    );
-    if (!choosable) {
-      this.closePopover("readout-details", "readout-popover");
-      return;
-    }
-    const drawn = this.drawnViews();
-    this.readoutChoices?.show(viewOrder[readoutView(frame)]);
-    this.readoutChoices?.enable((value) => drawn.includes(value as ViewName));
+    this.updateViewSummary();
   }
 
   // The Views field names the views the frame draws (a mono track's L alone, whatever was asked
-  // for): all four letters, those drawn lit, so the field keeps its width whichever are shown.
+  // for): all four letters, those drawn lit, so the field keeps its width whichever are shown; then
+  // a dot and the channel read, "—" until a Single frame says, in one width whichever it is.
   private updateViewSummary(): void {
     const drawn = this.drawnViews();
-    const text = drawn.map((view) => viewLabels[view]).join(" ");
+    const read = this.readChannel();
+    const text = `${drawn.map((view) => viewLabels[view]).join(" ")}, reads ${
+      read === undefined ? "—" : viewNames[ChannelView[read]]
+    }`;
     if (text === this.viewSummary) {
       return;
     }
     this.viewSummary = text;
-    // Dot-separated, as Multi's "A·M·Σ".
+    const readHost = element("views-read");
     element("views-summary").replaceChildren(
-      ...viewOrder.flatMap((view, index) => {
+      ...viewOrder.map((view) => {
         const letter = document.createElement("span");
         letter.textContent = viewLabels[view];
         letter.className = drawn.includes(view) ? "on" : "";
-        return index === 0 ? [letter] : ["·", letter];
+        return letter;
       }),
+      "·",
+      readHost,
     );
+    this.readSummary?.show(read ?? "none");
     element("views-details").setAttribute("aria-label", `Views: ${text}`);
   }
 
@@ -941,7 +949,7 @@ export class OscilloscopeApp {
     if (!triggered) {
       this.closePopover("trigger-details", "trigger-popover");
     }
-    this.updateReadoutTag();
+    this.updateReadoutChoices();
     this.updateSourceChoices();
   }
 
@@ -2295,7 +2303,7 @@ export class OscilloscopeApp {
       }
       this.loop.submit(frame);
       this.updateViewSummary();
-      this.updateReadoutTag();
+      this.updateReadoutChoices();
       this.updateSourceChoices();
       // A track joined or left, or the views drawn changed (a track turned mono): lanes, grid
       // and labels change with it. A new lane set (a track checked, a renamed track) changes the
@@ -2346,7 +2354,7 @@ export class OscilloscopeApp {
       this.engineError = false;
       element("message").hidden = !this.graphicsMessage;
       this.inputChannels = message.inputChannels;
-      this.updateReadoutTag();
+      this.updateReadoutChoices();
       this.updateSourceChoices();
       this.updateViewToggles();
       this.showSetting("channelViews", this.store.get("channelViews"));

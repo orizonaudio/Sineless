@@ -164,9 +164,7 @@ describe.each(widths)("the toolbar at %i px", (width) => {
       for (const state of [{ compare: "off", ...from }, to]) {
         await show(started, state);
         const buttons = [
-          ...document.querySelectorAll<HTMLElement>(
-            ".field-button, .readout-tag:not([aria-disabled='true'])",
-          ),
+          ...document.querySelectorAll<HTMLElement>(".field-button"),
         ].filter((button) => button.getBoundingClientRect().width > 0);
         expect(buttons.length).toBeGreaterThan(3);
         for (const button of buttons) {

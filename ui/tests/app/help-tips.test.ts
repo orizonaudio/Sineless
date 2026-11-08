@@ -157,7 +157,7 @@ describe("turning help on", () => {
   // The status bar's own controls each explain themselves, not the bar around them.
   test.each([
     ["meter-toggle", "meter"],
-    ["readout-details", "readoutSource"],
+    ["grid-details", "grid"],
   ] as const)("explains %s with its own help", async (id, topic) => {
     await turnOn();
     moveOver(id);
@@ -167,6 +167,22 @@ describe("turning help on", () => {
       },
       { timeout: 5000 },
     );
+  });
+
+  // The Reads row explains the channel read, not the Views it sits in.
+  test("explains the Reads row with the readout source's help", async () => {
+    await turnOn();
+    if (byId("views-popover").hidden) {
+      await userEvent.click(byId("views-details"));
+    }
+    moveOver("readout-source");
+    await vi.waitFor(
+      () => {
+        expect(tip().textContent).toContain(helpTexts.readoutSource.lead);
+      },
+      { timeout: 5000 },
+    );
+    await userEvent.click(byId("views-details"));
   });
 
   test("shows nothing when help is turned off", async () => {

@@ -6,7 +6,7 @@ import { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 export const viewOrder = ["left", "right", "mid", "side"] as const;
 export type ViewName = (typeof viewOrder)[number];
 
-// Each channel view's name, as the Channel button and the hover show it.
+// Each channel view's name, as the Views field's label and the hover show it.
 export const viewNames: Record<ChannelView, string> = {
   [ChannelView.left]: "Left",
   [ChannelView.right]: "Right",

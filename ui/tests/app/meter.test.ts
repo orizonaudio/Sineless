@@ -21,6 +21,7 @@ import { viewOrder } from "../../src/view/screen-state.ts";
 import {
   beforeApp,
   byId,
+  channelRead,
   choice,
   cursorRow,
   displays,
@@ -55,7 +56,7 @@ const timeBaseLabels = Object.keys(TimeBase).map((name) =>
 // A view's label in the controls: its initial ("mid" → "M").
 const labelOf = (name: string) => name.charAt(0).toUpperCase();
 
-// What the readout tag calls each channel, as a user reads it.
+// What the Views field calls each channel read, as a screen reader says it.
 const tagOf: Record<ChannelView, string> = {
   [ChannelView.left]: "Left",
   [ChannelView.right]: "Right",
@@ -92,7 +93,7 @@ async function useSource(label: string): Promise<void> {
 }
 
 async function expectMeterOf(view: ChannelView): Promise<void> {
-  await expect.poll(() => byId("readout-tag").textContent).toBe(tagOf[view]);
+  await expect.poll(channelRead).toBe(tagOf[view]);
   const { peak, rms } = levelsOf(view);
   await expect.poll(() => cursorRow("Peak")).toBe(`${formatDbfs(peak)} dBFS`);
   await expect.poll(() => cursorRow("RMS")).toBe(`${formatDbfs(rms)} dBFS`);
@@ -185,13 +186,13 @@ describe("the Meter", () => {
     await showViews(["R", "M"]);
     await settle();
     await expectMeterOf(ChannelView.right);
-    await userEvent.click(byId("readout-details"));
+    await userEvent.click(byId("views-details"));
     await expect
       .element(choice("readout-source", "R"))
       .toHaveAttribute("aria-pressed", "true");
     await expect.element(choice("readout-source", "S")).toBeDisabled();
     await expect.element(choice("readout-source", "L")).toBeDisabled();
-    await userEvent.click(byId("readout-details"));
+    await userEvent.click(byId("views-details"));
     await showViews(["L", "R", "M", "S"]);
     await settle();
     await expectMeterOf(ChannelView.side);

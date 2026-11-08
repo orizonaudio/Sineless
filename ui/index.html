@@ -60,7 +60,7 @@
               <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
                 <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
                 <circle cx="10" cy="9" r=".6" /></svg
-              ><b id="views-summary"></b
+              ><b id="views-summary"><span id="views-read"></span></b
               ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
                 <path d="M1.5 3 4 5.5 6.5 3" />
               </svg>
@@ -70,6 +70,10 @@
               <div class="popover-row">
                 <span>Channels</span>
                 <div class="segmented toggles" id="views"></div>
+              </div>
+              <div class="popover-row" data-help="readoutSource">
+                <span>Reads</span>
+                <div class="segmented" id="readout-source"></div>
               </div>
             </div>
           </div>
@@ -269,8 +273,8 @@
           <span id="message-text"></span>
         </div>
       </main>
-      <!-- Left: the Meter's button and the cursor buttons, then the channel they read, concert
-           pitch and the grid, which never change width. Right: the state, in a fixed width, Help
+      <!-- Left: the Meter's button and the cursor buttons, then concert pitch and the grid, which
+           never change width. Right: the state, in a fixed width, Help
            and About. Nothing here moves when the state or a value changes. -->
       <footer class="statusbar">
         <div class="status-left">
@@ -307,31 +311,6 @@
             Hover
           </button>
           <span class="divider"></span>
-          <div class="readout-group" id="readout-group">
-            <button
-              class="field-button readout-tag"
-              id="readout-details"
-              data-help="readoutSource"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-disabled="true"
-            >
-              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-                <path d="M1.5 9a4.5 4.5 0 0 1 9 0" />
-                <path d="M6 9 8.5 5" /></svg
-              ><b id="readout-tag"></b
-              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-                <path d="M1.5 3 4 5.5 6.5 3" />
-              </svg>
-            </button>
-            <div class="popover readout-popover" id="readout-popover" hidden>
-              <div class="popover-title">Channel</div>
-              <div class="popover-row" data-help="readoutSource">
-                <span>Reads</span>
-                <div class="segmented" id="readout-source"></div>
-              </div>
-            </div>
-          </div>
           <div class="tool icon-field" data-help="concertPitch">
             <i>A4</i>
             <div id="concert-pitch-field"></div>
