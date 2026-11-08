@@ -778,6 +778,25 @@ TEST(AudioUnit, ReopensWithTheSettingsSaved)
     CFRelease(state);
 }
 
+// A state without an editor size, loaded into an instance that has one, opens the editor at the
+// default next time, as a new instance would.
+TEST(AudioUnit, AStateWithoutAnEditorSizeResetsIt)
+{
+    Host host;
+    CFPropertyListRef state = nullptr;
+    {
+        Instance saved(host);
+        ASSERT_EQ(saved.open(48000.0, 2, 2), noErr);
+        state = saved.saveState();
+    }
+    Instance reopened(host);
+    ASSERT_EQ(reopened.open(48000.0, 2, 2), noErr);
+    reopened.engine()->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
+    ASSERT_EQ(reopened.restoreState(state), noErr);
+    EXPECT_FALSE(reopened.engine()->editorSize());
+    CFRelease(state);
+}
+
 // Settings saved by any release load through the Audio Unit as they do through the VST3 plugin:
 // the same golden states, the same migrations.
 TEST(AudioUnit, LoadsEveryGoldenState)

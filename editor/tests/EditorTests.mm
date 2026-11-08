@@ -955,6 +955,79 @@ TEST_F(EditorTest, AGripDragDownToTheLanesMinimumLowersTheHeightChosen)
     [window close];
 }
 
+// Gives editors `source` for the display scale while it lives (macOS always reports 1).
+class ScopedDisplayScale
+{
+public:
+    explicit ScopedDisplayScale(EditorCore::ScaleSource source)
+    {
+        EditorCore::setDisplayScaleForTests(std::move(source));
+    }
+    ~ScopedDisplayScale() { EditorCore::setDisplayScaleForTests({}); }
+    ScopedDisplayScale(const ScopedDisplayScale&) = delete;
+    ScopedDisplayScale& operator=(const ScopedDisplayScale&) = delete;
+};
+
+// The window moves to a display scaled 150 % while open (Windows): the editor asks for the same
+// size in the new units, and a size the host sends late in the old display's units, as Live does,
+// is the window as it was, not the user's resize, so the size saved stays.
+TEST_F(EditorTest, ADisplayChangeWhileOpenNeverChangesTheSizeSaved)
+{
+    for (const bool callsOnSize : {true, false}) {
+        SCOPED_TRACE(callsOnSize ? "host calls onSize" : "host resizes without onSize");
+        double displayed = 1.0;
+        const ScopedDisplayScale scale([&displayed](void* /*window*/) { return displayed; });
+        auto engine = std::make_shared<engine::Engine>();
+        engine->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
+        TestFrame frame;
+        frame.callsOnSize = callsOnSize;
+        std::vector<std::string> received;
+        auto editor = makeEditor(received, engine);
+        editor->setFrame(&frame);
+        NSView* content = [[OrizonTestKeyRecorder alloc] initWithFrame:NSMakeRect(0, 0, 1200, 500)];
+        NSWindow* window = makeWindow(content);
+        ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+        ASSERT_TRUE(pumpUntil([&] { return editor->windowOpened(); }, kPageTimeout));
+
+        displayed = 1.5;
+        ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout))
+            << "the same size in the new display's units";
+        EXPECT_EQ(frame.requested.getWidth(), 1800);
+        EXPECT_EQ(frame.requested.getHeight(), 750);
+        ViewRect late(0, 0, 1200, 500);
+        editor->onSize(&late);
+        EXPECT_EQ(engine->editorSize(), (engine::EditorSize{.width = 1200, .height = 500}));
+
+        editor->removed();
+        [window close];
+    }
+}
+
+// The host's window is on a display scaled 150 % when the editor attaches, made before at the
+// scale of none: a size the host sends late in those units, once the window has opened, is not the
+// user's resize either.
+TEST_F(EditorTest, ADisplayChangeAsTheEditorAttachesNeverChangesTheSizeSaved)
+{
+    const ScopedDisplayScale scale([](void* window) { return window == nullptr ? 1.0 : 1.5; });
+    auto engine = std::make_shared<engine::Engine>();
+    engine->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
+    TestFrame frame;
+    std::vector<std::string> received;
+    auto editor = makeEditor(received, engine);
+    editor->setFrame(&frame);
+    NSView* content = [[OrizonTestKeyRecorder alloc] initWithFrame:NSMakeRect(0, 0, 1800, 750)];
+    NSWindow* window = makeWindow(content);
+    ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
+    EXPECT_EQ(editor->getRect().getWidth(), 1800) << "the size in the window's units";
+    ASSERT_TRUE(pumpUntil([&] { return editor->windowOpened(); }, kPageTimeout));
+    ViewRect late(0, 0, 1200, 500);
+    editor->onSize(&late);
+    EXPECT_EQ(engine->editorSize(), (engine::EditorSize{.width = 1200, .height = 500}));
+
+    editor->removed();
+    [window close];
+}
+
 // The editor opens again at the size it was left at, saved with the instance.
 TEST_F(EditorTest, OpensAtTheSizeItWasLeftAt)
 {

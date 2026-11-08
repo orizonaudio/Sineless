@@ -36,6 +36,19 @@ std::atomic<bool>& nativeTracesEnabled()
     return enabled;
 }
 
+// A test's display scale, read on the UI thread only; empty: the window's own.
+EditorCore::ScaleSource& scaleSourceForTests()
+{
+    static EditorCore::ScaleSource source;
+    return source;
+}
+
+double scaleOf(void* window)
+{
+    const EditorCore::ScaleSource& source = scaleSourceForTests();
+    return source ? source(window) : displayScale(window);
+}
+
 // A size the page gave, or none. JSON numbers are finite.
 std::optional<double> dimension(const nlohmann::json& message, const char* name)
 {
@@ -52,8 +65,13 @@ void EditorCore::setNativeTraces(bool enabled)
     nativeTracesEnabled().store(enabled);
 }
 
+void EditorCore::setDisplayScaleForTests(ScaleSource source)
+{
+    scaleSourceForTests() = std::move(source);
+}
+
 EditorCore::EditorCore(std::shared_ptr<engine::Engine> engine, MessageObserver observer)
-    : observer(std::move(observer)), linkOpener(&openInBrowser), scale(displayScale(nullptr)),
+    : observer(std::move(observer)), linkOpener(&openInBrowser), scale(scaleOf(nullptr)),
       chosen(engine ? engine->editorSize() : std::nullopt), cssWidth(chosen.width()),
       cssHeight(chosen.height()), engineState(std::move(engine))
 {
@@ -73,7 +91,7 @@ int EditorCore::toHostUnits(double cssPixels) const
 
 bool EditorCore::takeScaleOf(void* window)
 {
-    const double windowScale = displayScale(window);
+    const double windowScale = scaleOf(window);
     if (windowScale == scale) {
         return false;
     }
@@ -90,7 +108,7 @@ bool EditorCore::refreshScale()
     if (parent == nullptr) {
         return false;
     }
-    const double windowScale = displayScale(parent);
+    const double windowScale = scaleOf(parent);
     if (windowScale == scale) {
         return false;
     }

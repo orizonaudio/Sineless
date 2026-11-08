@@ -112,6 +112,15 @@ protected:
         return window;
     }
 
+    // A host window holding `view`, once the editor has opened in it (its first state sync): sizes
+    // the host gives from then on may be the user's; before, they are the host's own placement.
+    static NSWindow* openWindowFor(NSView* view)
+    {
+        NSWindow* window = windowFor(view);
+        EXPECT_TRUE(pumpUntil([&] { return editorCoreOf(view)->windowOpened(); }, kPageTimeout));
+        return window;
+    }
+
     // Runs what the main queue holds now: anything the view put off to the next turn of the run
     // loop has run when this returns.
     static void runQueuedWork()
@@ -552,7 +561,7 @@ TEST_F(AudioUnitViewTest, FreesEachViewTheHostReleases)
 TEST_F(AudioUnitViewTest, FollowsTheHostsResizes)
 {
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     for (const NSSize size : {NSMakeSize(1200, 700), NSMakeSize(EditorCore::kMinimumWidth, 300)}) {
         [view setFrameSize:size];
         WKWebView* webView = webViewOf(view);
@@ -569,7 +578,7 @@ TEST_F(AudioUnitViewTest, FollowsTheHostsResizes)
 TEST_F(AudioUnitViewTest, ReturnsToItsMinimumAfterTheHostMakesItSmaller)
 {
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     const NSSize minimum = NSMakeSize(EditorCore::kMinimumWidth, EditorCore::kMinimumHeight);
     for (const NSSize small :
          {NSMakeSize(0, 0), NSMakeSize(300, 200), NSMakeSize(minimum.width - 1, 600),
@@ -594,7 +603,7 @@ TEST_F(AudioUnitViewTest, ReturnsToItsMinimumAfterTheHostMakesItSmaller)
 TEST_F(AudioUnitViewTest, ReturnsToItsMinimumWhenTheUserStopsDragging)
 {
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     // Twice to the same smallest size, as a window stops at its own minimum each time: every drag
     // is the user's, never a size the host insists on.
     for (int drag = 0; drag < 2; ++drag) {
@@ -618,7 +627,7 @@ TEST_F(AudioUnitViewTest, ReturnsToItsMinimumWhenTheUserStopsDragging)
 TEST_F(AudioUnitViewTest, LeavesASmallSizeTheHostInsistsOn)
 {
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     const NSSize small = NSMakeSize(300, 200);
     [view setFrameSize:small];
     runQueuedWork();
@@ -701,7 +710,7 @@ TEST_F(AudioUnitViewTest, GrowsForStackedLanesInAHostThatUsesAutoLayout)
 TEST_F(AudioUnitViewTest, FillsALargerWindowInAHostThatUsesAutoLayout)
 {
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     pinWithAutoLayout(view);
     const NSSize larger =
         NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 400);
@@ -721,11 +730,9 @@ TEST_F(AudioUnitViewTest, FillsALargerWindowInAHostThatUsesAutoLayout)
 TEST_F(AudioUnitViewTest, KeepsLanesThatGrewInRoomInAHostThatUsesAutoLayout)
 {
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     pinWithAutoLayout(view);
     const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
-    // The user makes the window larger once it is open (before, a size is the host's placement).
-    ASSERT_TRUE(pumpUntil([&] { return editorCoreOf(view)->windowOpened(); }, kPageTimeout));
     [window setContentSize:NSMakeSize(EditorCore::kDefaultWidth, wanted + 100)];
     layOut(view);
     runQueuedWork();
@@ -759,7 +766,7 @@ TEST_F(AudioUnitViewTest, FollowsASmallerWindowOnceTheLanesAreGoneInAHostThatUse
 {
     const auto others = stackTracks(16);
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     pinWithAutoLayout(view);
     const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
     ASSERT_TRUE(pumpUntil(
@@ -836,7 +843,7 @@ constexpr std::chrono::milliseconds kHostCatchUp{300};
 TEST_F(AudioUnitViewTest, HoldsTheGripsSizeWhileAnAutoLayoutHostCatchesUp)
 {
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     pinWithAutoLayout(view);
     WKWebView* webView = webViewOf(view);
     ASSERT_NE(webView, nil);
@@ -908,7 +915,7 @@ TEST_F(AudioUnitViewTest, HoldsTheLatestSizeOfADragLongerThanAHold)
 TEST_F(AudioUnitViewTest, FollowsAnAutoLayoutHostAfterTheGripsSize)
 {
     NSView* view = openView(unit);
-    NSWindow* window = windowFor(view);
+    NSWindow* window = openWindowFor(view);
     pinWithAutoLayout(view);
     WKWebView* webView = webViewOf(view);
     ASSERT_NE(webView, nil);
@@ -944,8 +951,7 @@ TEST_F(AudioUnitViewTest, OpensAgainAtTheSizeItWasLeftAt)
         NSMakeSize(EditorCore::kDefaultWidth + 400, EditorCore::kDefaultHeight + 300);
     {
         NSView* view = openView(unit);
-        NSWindow* window = windowFor(view);
-        ASSERT_TRUE(pumpUntil([&] { return editorCoreOf(view)->windowOpened(); }, kPageTimeout));
+        NSWindow* window = openWindowFor(view);
         [view setFrameSize:left];
         closeWindow(window, view);
     }
@@ -953,8 +959,7 @@ TEST_F(AudioUnitViewTest, OpensAgainAtTheSizeItWasLeftAt)
     EXPECT_TRUE(NSEqualSizes(reopened.frame.size, left))
         << reopened.frame.size.width << "x" << reopened.frame.size.height;
 
-    NSWindow* window = windowFor(reopened);
-    ASSERT_TRUE(pumpUntil([&] { return editorCoreOf(reopened)->windowOpened(); }, kPageTimeout));
+    NSWindow* window = openWindowFor(reopened);
     const NSSize small = NSMakeSize(300, 200);
     [reopened setFrameSize:small];
     runQueuedWork();
