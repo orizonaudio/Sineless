@@ -134,6 +134,21 @@ describe("a value's pill", () => {
     },
   );
 
+  // The value takes no keys, so a ring on it would point at nothing to do; it drew one inside the
+  // pill, only until a popover's button was first clicked, as the browser judged the focus to come
+  // from the keyboard.
+  test.each(pills)(
+    "$name: a focused value draws no ring",
+    async ({ host, timeBase }) => {
+      await showTimeBase(timeBase, host);
+      // A key press first, so a browser that would show a ring shows one.
+      await userEvent.keyboard("{Shift}");
+      fieldOf(host).focus();
+      expect(getComputedStyle(fieldOf(host)).outlineStyle).toBe("none");
+      fieldOf(host).blur();
+    },
+  );
+
   test.each(pills)(
     "$name: the wheel over the icon steps the value",
     async ({ host, setting, timeBase }) => {
