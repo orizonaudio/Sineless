@@ -225,7 +225,7 @@ export const helpTexts = {
   },
   readoutSource: {
     title: "Channel",
-    text: "The channel the Meter reads: L, R, M or S for Left, Right, Mid or Side. With the views overlaid, the hover readout and the cursors' snapping read it too; stacked, each lane reads its own trace. In Single, click to choose among the views drawn; while the one chosen is hidden, the first view drawn is read. A mono track has only L. Multi reads this track's Mid: TT, this track.",
+    text: "The channel the Meter reads: Left, Right, Mid or Side. With the views overlaid, the hover readout and the cursors' snapping read it too; stacked, each lane reads its own trace. In Single, click to choose among the views drawn; while the one chosen is hidden, the first view drawn is read. A mono track has only Left. Multi reads this track's Mid: This, this track.",
   },
   grid: {
     title: "Grid",

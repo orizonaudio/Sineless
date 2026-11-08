@@ -1,5 +1,5 @@
 // Before the engine's first frame there are no readouts: the tag says nothing is measured yet in
-// Single ("—", a label that opens nothing) and "TT" in Multi, Compare on or off; the
+// Single ("—", a label that opens nothing) and "This" in Multi, Compare on or off; the
 // first frame names the channel, and in Single the tag becomes the button that chooses it.
 import { describe, expect, test } from "vitest";
 
@@ -18,8 +18,8 @@ describe("the readout tag before the first frame", () => {
       (display) =>
         [
           display,
-          display === "Single" ? "—" : "TT",
-          display === "Single" ? "L" : "TT",
+          display === "Single" ? "—" : "This",
+          display === "Single" ? "Left" : "This",
         ] as const,
     ),
   )("in %s, says %s, then %s", async (mode, before, after) => {

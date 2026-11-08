@@ -921,10 +921,10 @@ button[aria-pressed="true"]:focus-visible {
   align-self: center;
 }
 
-/* A field like the toolbar's, as wide as a letter and its arrow (measured at 57.2; TT, with no
-   arrow, takes 50.4), so the name changing moves nothing. */
+/* A field like the toolbar's, as wide as its longest name and arrow (Right, measured at 86; This,
+   with no arrow, takes 64.8), so the name changing moves nothing. */
 .readout-tag {
-  min-width: 58px;
+  min-width: 86px;
   box-sizing: border-box;
 }
 

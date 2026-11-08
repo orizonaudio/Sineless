@@ -192,21 +192,21 @@ describe("controls", () => {
     await press(choice("time-base", "Trig"));
     // Away from the default source: the tag stays.
     await press(choice("source", "R"));
-    await expect.poll(tag).toBe("L");
+    await expect.poll(tag).toBe("Left");
     await press(choice("time-base", "Beats"));
-    await expect.poll(tag).toBe("L");
+    await expect.poll(tag).toBe("Left");
     await press(choice("display-mode", "Multi"));
-    await expect.poll(tag).toBe("TT");
+    await expect.poll(tag).toBe("This");
     await press(choice("display-mode", "Single"));
     await press(choice("time-base", "Trig"));
     await press(choice("source", "L"));
     await useReadout("R");
-    await expect.poll(tag).toBe("R");
+    await expect.poll(tag).toBe("Right");
     // Back to the default, Mid, which the default views do not draw: Left again.
     await showViews(["L", "R", "M"]);
     await useReadout("M");
     await showViews(["L", "R"]);
-    await expect.poll(tag).toBe("L");
+    await expect.poll(tag).toBe("Left");
   });
 
   // In Single the tag is a button that opens the readouts' popover above it, in the status bar,
@@ -255,8 +255,8 @@ describe("controls", () => {
     displays
       .filter((display) => display !== "Single")
       .flatMap((mode) => [
-        ["Single", mode, "L", "TT"] as const,
-        [mode, "Single", "TT", "L"] as const,
+        ["Single", mode, "Left", "This"] as const,
+        [mode, "Single", "This", "Left"] as const,
       ]),
   )(
     "labels the readouts measured in %s until a frame measures them in %s",
