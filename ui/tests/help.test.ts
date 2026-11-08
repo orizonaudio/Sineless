@@ -196,7 +196,7 @@ describe("help texts", () => {
       expect(words).toContain(String(maxLanes - 1));
     });
 
-    // The Meter's channel is chosen (and named) in the Views popover's Reads row, so no help says it
+    // The Meter's channel is chosen (and named) in the Views popover's Measure row, so no help says it
     // measures one fixed channel; the trigger source picks only what the trigger reads.
     test.each(["meter", "triggerSource"] as const)(
       "%s does not tie the Meter to one channel",
@@ -207,7 +207,7 @@ describe("help texts", () => {
       },
     );
 
-    // The channel read is chosen in the Views popover's Reads row: help that sends the user to it
+    // The channel read is chosen in the Views popover's Measure row: help that sends the user to it
     // names that row, and none names the Channel button the status bar once held.
     test.each(Object.keys(texts) as (keyof typeof texts)[])(
       "%s names no Channel button",
@@ -216,9 +216,9 @@ describe("help texts", () => {
       },
     );
     test.each(["meter", "triggerSource"] as const)(
-      "%s says the channel read is chosen in the Reads row",
+      "%s says the channel read is chosen in the Measure row",
       (topic) => {
-        expect(helpWords(texts[topic])).toContain("Reads");
+        expect(helpWords(texts[topic])).toContain("Measure");
       },
     );
 

@@ -250,7 +250,7 @@ describe("controls", () => {
     await expect.poll(channelRead).toBe("Left");
   });
 
-  // The Views popover, with its Reads row, opens under its field, kept inside the window at the
+  // The Views popover, with its Measure row, opens under its field, kept inside the window at the
   // minimum width; a press elsewhere closes it.
   test("keeps the Views popover inside the window", async () => {
     const [width, height] = [window.innerWidth, window.innerHeight];
@@ -274,7 +274,7 @@ describe("controls", () => {
   });
 
   // The readouts come from the last frame: switched from Multi to Single, until a frame measures
-  // Single the Reads row offers nothing and the field reads a dash, as nothing it could name was
+  // Single the Measure row offers nothing and the field reads a dash, as nothing it could name was
   // measured; the first Single frame names the channel and offers the views drawn.
   test.each(displays.filter((display) => display !== "Single"))(
     "reads nothing from %s's frame once Single is chosen, until a Single frame comes",

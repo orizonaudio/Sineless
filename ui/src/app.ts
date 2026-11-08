@@ -308,10 +308,10 @@ export class OscilloscopeApp {
   // What the Meter shows: the frame's peak and RMS as last taken on the readout schedule, so a
   // cursor drag between two refreshes redraws the corner without refreshing them.
   private meterValues = { peak: Number.NaN, rms: Number.NaN };
-  // The readouts' channel, the Views popover's Reads row: lit as the frame measured it, not as the
+  // The readouts' channel, the Views popover's Measure row: lit as the frame measured it, not as the
   // setting asks.
   private readoutChoices: Segmented | undefined;
-  // What the Reads row last showed: the view lit and the views enabled.
+  // What the Measure row last showed: the view lit and the views enabled.
   private readoutShown: string | undefined;
   // The Views field's channel read: every channel's letter and "—" in one place, one shown.
   private readSummary: StackedSummary | undefined;
@@ -875,7 +875,7 @@ export class OscilloscopeApp {
       : viewOrder[readoutView(frame)];
   }
 
-  // The Views popover's Reads row: lights the channel read and offers only the views drawn (L
+  // The Views popover's Measure row: lights the channel read and offers only the views drawn (L
   // alone on a mono track, as the Source row), nothing before a Single frame says what is read.
   private updateReadoutChoices(): void {
     const read = this.readChannel();
@@ -903,7 +903,7 @@ export class OscilloscopeApp {
   private updateViewSummary(): void {
     const drawn = this.drawnViews();
     const read = this.readChannel();
-    const text = `${drawn.map((view) => viewLabels[view]).join(" ")}, reads ${
+    const text = `${drawn.map((view) => viewLabels[view]).join(" ")}, measures ${
       read === undefined ? "—" : viewNames[ChannelView[read]]
     }`;
     if (text === this.viewSummary) {

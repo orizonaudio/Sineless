@@ -251,7 +251,7 @@ export function helpTextsFor(mac: boolean) {
     },
     meter: {
       title: "Meter",
-      lead: "When on, shows levels over the whole span of the channel chosen under Reads.",
+      lead: "When on, shows levels over the whole span of the channel chosen under Measure.",
       choices: [
         { name: "Peak", text: "the highest sample level, in dBFS" },
         {
@@ -455,7 +455,7 @@ export function helpTextsFor(mac: boolean) {
       lead: "Which signal the trigger watches, among the views drawn.",
       notes: [
         "While the one chosen is hidden, it watches the first view drawn.",
-        "It changes only what the trigger reads: the Meter, the hover and snapping keep their own channel, chosen in Views, under Reads.",
+        "It changes only what the trigger reads: the Meter, the hover and snapping keep their own channel, chosen in Views, under Measure.",
         "Not used in Multi, which triggers on the channel chosen in the Group popover.",
       ],
     },
@@ -520,7 +520,7 @@ export function helpTextsFor(mac: boolean) {
       ],
     },
     readoutSource: {
-      title: "Reads",
+      title: "Measure",
       lead: "The channel the Meter reads: Left, Right, Mid or Side.",
       actions: [{ gesture: "Click", effect: "choose among the views drawn" }],
       notes: [
