@@ -273,49 +273,11 @@
           <span id="message-text"></span>
         </div>
       </main>
-      <!-- Left: the Meter's button and the cursor buttons, then concert pitch and the grid, which
-           never change width. Right: the state, in a fixed width, Help
-           and About. Nothing here moves when the state or a value changes. -->
+      <!-- Left: the grid and concert pitch, which shape what the screen draws, then the Meter's
+           button and the cursor buttons, which read it; none changes width. Right: the state, in a
+           fixed width, Help and About. Nothing here moves when the state or a value changes. -->
       <footer class="statusbar">
         <div class="status-left">
-          <button
-            class="action"
-            id="meter-toggle"
-            aria-pressed="false"
-            data-help="meter"
-          >
-            Meter
-          </button>
-          <button
-            class="action"
-            id="time-cursors"
-            aria-pressed="false"
-            data-help="timeCursors"
-          >
-            Time
-          </button>
-          <button
-            class="action"
-            id="level-cursors"
-            aria-pressed="false"
-            data-help="levelCursors"
-          >
-            Level
-          </button>
-          <button
-            class="action"
-            id="hover-toggle"
-            aria-pressed="false"
-            data-help="hoverReadout"
-          >
-            Hover
-          </button>
-          <span class="divider"></span>
-          <div class="tool icon-field" data-help="concertPitch">
-            <i>A4</i>
-            <div id="concert-pitch-field"></div>
-          </div>
-          <span class="divider"></span>
           <div class="grid-group" id="grid-group" data-help="grid">
             <button
               class="field-button"
@@ -352,6 +314,43 @@
               </div>
             </div>
           </div>
+          <div class="tool icon-field" data-help="concertPitch">
+            <i>A4</i>
+            <div id="concert-pitch-field"></div>
+          </div>
+          <span class="divider"></span>
+          <button
+            class="action"
+            id="meter-toggle"
+            aria-pressed="false"
+            data-help="meter"
+          >
+            Meter
+          </button>
+          <button
+            class="action"
+            id="time-cursors"
+            aria-pressed="false"
+            data-help="timeCursors"
+          >
+            Time
+          </button>
+          <button
+            class="action"
+            id="level-cursors"
+            aria-pressed="false"
+            data-help="levelCursors"
+          >
+            Level
+          </button>
+          <button
+            class="action"
+            id="hover-toggle"
+            aria-pressed="false"
+            data-help="hoverReadout"
+          >
+            Hover
+          </button>
         </div>
         <div class="status-right">
           <div class="chips" id="chips" data-help="status"></div>
