@@ -2400,6 +2400,75 @@ TEST_F(LaneChannelTest, SwitchingChannelRedrawsLanesAtOnce)
 // channels, and leaves the other tracks' lanes empty until the display resumes: they were held as
 // the channel chosen before. A mono track's lane stays, since every view reads its one channel.
 // Compare then sums what is drawn and shows no match measured on the channel before.
+// A free-running window longer than the columns keeps each lane's columns and the sum's as it
+// rolls; a channel chosen live reduces them all again, so that the next frame shows no column of
+// the old channel.
+TEST_F(LaneChannelTest, SwitchingChannelReducesRolledColumnsAgain)
+{
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kFree));
+    own->settings().set(SettingId::kFreeSpan, 1.0);
+    analyzer->setColumns(1000); // Fewer columns than samples: min/max pairs that roll.
+    for (const bool compare : {false, true}) {
+        SCOPED_TRACE(::testing::Message() << "compare " << compare);
+        show(own->settings(), compare ? Display::kCompare : Display::kMulti);
+        // Every value of every lane, min and max alike: each track's level is steady.
+        const auto expectRolled = [&](protocol::ChannelView channel) {
+            play(480);
+            const auto frame = produce();
+            ASSERT_TRUE(frame);
+            ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+            const std::vector<float> expected = expectedLanes(channel, compare);
+            ASSERT_EQ(frame->laneCount, expected.size());
+            const std::size_t values = std::size_t{2} * frame->pointCount;
+            for (std::size_t index = 0; index < expected.size(); ++index) {
+                const auto begin =
+                    frame->data.begin() + static_cast<std::ptrdiff_t>(index * values);
+                EXPECT_EQ(std::vector<float>(begin, begin + static_cast<std::ptrdiff_t>(values)),
+                          std::vector<float>(values, expected[index]))
+                    << "lane " << index;
+            }
+        };
+        setLaneChannel(protocol::ChannelView::kLeft);
+        play(96000);
+        expectRolled(protocol::ChannelView::kLeft);
+        setLaneChannel(protocol::ChannelView::kRight);
+        expectRolled(protocol::ChannelView::kRight);
+    }
+}
+
+// A mono track's lane shows its one channel whatever is chosen, so it stays as drawn when the
+// channel changes, live or frozen: with a sweep longer than the capture (four bars at 20 BPM are
+// 48 s), drawing it again would leave what the capture no longer holds blank.
+TEST_F(LaneChannelTest, AMonoLaneStaysWholeWhenTheChannelChanges)
+{
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kFourBars));
+    tempo = 20.0;
+    numerator = 4;
+    analyzer->setColumns(1000);
+    for (int chunk = 0; chunk < 55; ++chunk) { // 55 s with frames: more than a whole pass.
+        play(48000);
+        ASSERT_TRUE(produce());
+    }
+    const auto expectMonoWhole = [&](const char* when) {
+        const auto frame = produce();
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+        ASSERT_EQ(frame->laneCount, 3);
+        const std::size_t values = std::size_t{2} * frame->pointCount;
+        const auto begin = frame->data.begin() + static_cast<std::ptrdiff_t>(2 * values);
+        EXPECT_EQ(std::vector<float>(begin, begin + static_cast<std::ptrdiff_t>(values)),
+                  std::vector<float>(values, 0.125f))
+            << when;
+    };
+    setLaneChannel(protocol::ChannelView::kSide);
+    expectMonoWhole("live");
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    setLaneChannel(protocol::ChannelView::kLeft);
+    expectMonoWhole("frozen");
+}
+
 TEST_F(LaneChannelTest, AChannelChosenWhileFrozenRedrawsThisTrackAndEmptiesTheOthers)
 {
     for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
