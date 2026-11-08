@@ -132,6 +132,8 @@ function musicalCases() {
     // Two bars of 7/8 from bar 3: beats on whole quarter notes, so the odd bar line between them
     // is not drawn, as before this grid's choices (pinned, not endorsed).
     [7, 7, 3.5],
+    // Eight bars of 3/4: bars at Medium, whose coarser levels (4 and 16 bars) are bars' multiples.
+    [0, 24, 3],
   ] as const) {
     for (const [start, end] of [
       [0, 1],
@@ -232,6 +234,26 @@ function gridCases() {
           }
         }
       }
+    }
+  }
+  // Cross hair with the trigger point on the screen's very edges, as Position 0% and 100% put it.
+  for (const trigger of [0, 1]) {
+    for (const ratio of [1, 2]) {
+      const options = {
+        type: "crossHair",
+        columns: gridColumns.coarse,
+        level: "fine",
+        trigger,
+      } as const;
+      cases.push({
+        width: 1002,
+        height: 451,
+        ratio,
+        laneCount: 2,
+        ...options,
+        time: "coarse",
+        lines: gridLines(1002, 451, 2, ratio, options),
+      });
     }
   }
   const musical = musicalGrid(16, 16, 4, { start: 0.1, end: 0.9 }).lines;

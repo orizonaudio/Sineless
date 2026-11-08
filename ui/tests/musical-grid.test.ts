@@ -335,6 +335,25 @@ describe("Beats' Time steps and Beat division", () => {
     }
   });
 
+  test("Triplets labels step from a third of a beat to the beat, so they stand on the beats", () => {
+    // Half a bar of 4/4 and a bar of 3/4 draw thirds of the beat, too many to label each.
+    const texts = (span: number, bar: number) =>
+      musicalGrid(
+        0,
+        span,
+        bar,
+        undefined,
+        undefined,
+        grid("medium", "triplets"),
+      ).labels.map((label) => label.text);
+    expect(beatSteps(2, 4, grid("medium", "triplets")).step).toBeCloseTo(
+      1 / 3,
+      9,
+    );
+    expect(texts(2, 4)).toEqual(["1.1", "1.2"]);
+    expect(texts(3, 3)).toEqual(["1.1", "1.2", "1.3"]);
+  });
+
   test("Coarse at one bar in 4/4 draws no line inside a bar-aligned sweep", () => {
     // The issue's rule: where Medium draws beats, Coarse draws bars, which a one-bar sweep holds
     // only at its edges.

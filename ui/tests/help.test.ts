@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import { DisplayMode } from "../../protocol/src/enums.ts";
 import { maxLanes } from "../../protocol/src/limits.ts";
+import { levelLines } from "../src/view/axis-labels.ts";
 import { helpTexts, isHelpTopic } from "../src/view/help.ts";
 import { beatSpanLabels, parseBeatSpan } from "../src/view/musical-grid.ts";
 
@@ -99,5 +100,25 @@ describe("help texts", () => {
         beatSpanLabels.indexOf(named as (typeof beatSpanLabels)[number]),
       );
     }
+  });
+});
+
+describe("the grid's Level help", () => {
+  // The spacing a tall lane's lines stand at, at a Level step: the gap between its first two lines,
+  // or between Fine's minor lines.
+  const spacing = (density: "coarse" | "medium" | "fine", strong: boolean) => {
+    const steps = levelLines(1000, density)
+      .filter((line) => line.strong === strong || density !== "fine")
+      .map((line) => line.step);
+    return (steps[1] ?? 0) - (steps[0] ?? 0);
+  };
+
+  test("names the spacing the grid draws at Coarse, Medium and Fine", () => {
+    const text = helpTexts.gridLevel.text;
+    expect(text).toContain(`every ${String(spacing("coarse", false))} dB`);
+    expect(text).toContain(`every ${String(spacing("medium", false))} dB`);
+    const fineMinor = levelLines(1000, "fine").filter((line) => !line.strong);
+    const minor = (fineMinor[1]?.step ?? 0) - (fineMinor[0]?.step ?? 0);
+    expect(text).toContain(`with ${String(minor)} dB lines between them`);
   });
 });
