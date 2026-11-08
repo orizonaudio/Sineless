@@ -1,6 +1,7 @@
 // Help texts, shown as tooltips while help is on. An element names its topic with a data-help
 // attribute; the nearest such element under the pointer gives the tooltip.
 
+import type { TriggerMode } from "../../../protocol/src/enums.ts";
 import {
   analysisGateDbfs,
   gridColumnsCoarse,
@@ -17,14 +18,15 @@ import {
   summingMarginDb,
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
+import { choiceLabels } from "./choice-labels.ts";
 import { positionFineStep, positionStep } from "./fields.ts";
 import { formatPercent, formatSeconds } from "./format.ts";
 import { beatSpanLabels } from "./musical-grid.ts";
 
-// Modifier keys as the platform names them: the page also runs in WebView2 on Windows.
+// Whether the page runs on macOS, which names the modifier keys ⌘ and ⌥: the page also runs in
+// WebView2 on Windows, which names them Ctrl and Alt.
 export const isMac =
   typeof navigator !== "undefined" && /Mac/u.test(navigator.platform);
-const command = isMac ? "⌘" : "Ctrl";
 const lanesMulti = String(maxLanes);
 const lanesCompare = String(maxLanes - 1);
 const reach = formatSeconds(matchReachSeconds);
@@ -41,15 +43,56 @@ const shortestTriggerSpan = formatSeconds(settings.triggerSpan.minimum);
 const longestTriggerSpan = formatSeconds(settings.triggerSpan.maximum);
 const shortestFreeSpan = formatSeconds(settings.freeSpan.minimum);
 const longestFreeSpan = formatSeconds(settings.freeSpan.maximum);
-const option = isMac ? "⌥" : "Alt";
 // The level lines' steps at Coarse, Medium and Fine, in dB.
 const coarseLevelDb = String(gridLevelStepDb * gridCoarseLevelStride);
 const mediumLevelDb = String(gridLevelStepDb);
 const fineLevelDb = String(gridLevelStepDb / gridFineLevelSubdivisions);
 
+// A topic is read in one order: what it is, its choices, what the hand does, then the limits.
+export interface HelpChoice {
+  readonly name: string; // as the control names it
+  readonly text: string; // what it does, a line of a list
+}
+export interface HelpAction {
+  readonly gesture: string; // such as "Double-click" or "⌘ + scroll"
+  readonly effect: string; // what it does, a line of a list
+}
 export interface HelpText {
   readonly title: string;
-  readonly text: string;
+  readonly lead: string; // one sentence: what this is
+  readonly choices?: readonly HelpChoice[];
+  readonly actions?: readonly HelpAction[];
+  readonly notes?: readonly string[]; // limits and caveats, as sentences
+}
+
+// The lead is read first, to decide whether to read on: a short sentence. Past the topic's budget
+// (title aside, choice names and gestures counted) a tip stops being quick to read; the longest
+// texts are rewritten to fit, not cut.
+export const leadWordBudget = 16;
+export const topicWordBudget = 70;
+
+// A topic's words in reading order, a part to a line.
+export function helpWords(text: HelpText): string {
+  return [
+    text.lead,
+    ...(text.choices ?? []).map(({ name, text }) => `${name} ${text}`),
+    ...(text.actions ?? []).map(
+      ({ gesture, effect }) => `${gesture} ${effect}`,
+    ),
+    ...(text.notes ?? []),
+  ].join("\n");
+}
+
+// A setting's choices, named by its control's labels and in their order, so help and control
+// never differ; a value added to the setting needs its text here before it compiles.
+function choicesOf<Value extends string>(
+  labels: Readonly<Record<Value, string>>,
+  texts: Readonly<Record<Value, string>>,
+): HelpChoice[] {
+  return (Object.entries(labels) as [Value, string][]).map(([value, name]) => ({
+    name,
+    text: texts[value],
+  }));
 }
 
 // The beat spans' range, from their labels, and a label's amount alone as it may be typed.
@@ -57,220 +100,573 @@ const [shortestBeatSpan] = beatSpanLabels;
 const longestBeatSpan: string = beatSpanLabels.at(-1) ?? shortestBeatSpan;
 const bareAmount = (label: string) => label.split(" ")[0] ?? label;
 
-export const helpTexts = {
-  help: {
-    title: "Help",
-    text: "Turns help on or off. While it is on, resting the pointer on any control explains what it is, what it does and how to use it.",
-  },
-  // Shown at once beside the switch when it turns help on.
-  helpOn: {
-    title: "Help is on",
-    text: "Rest the pointer on any control to see what it does. Click ? again to turn it off.",
-  },
-  about: {
-    title: "About",
-    text: "Shows which version of the plugin this is, as your host lists it: give it when you report a problem.",
-  },
-  contact: {
-    title: "About us",
-    text: "Opens our About page, with how to contact us, in your default browser.",
-  },
-  displayMode: {
-    title: "Single or Multi",
-    text: `Single shows this track's channels. Multi shows every track of this instance's group that has this plugin inserted, one lane each as the track's Mid, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds their sum). Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.`,
-  },
-  compare: {
-    title: "Compare",
-    text: `In beta. In Multi, adds the sum of the tracks you check against this one, to find where they cancel: each checked track's offset, polarity and likeness to this track, and how loud they are together. The sum takes a lane, so Multi then shows at most ${lanesCompare} tracks. It stays on or off as you leave Multi and come back, and is saved with the project.`,
-  },
-  compareTrack: {
-    title: "Compare",
-    text: "Check a track to add it to the sum and measure it against this track, which is always part of the comparison. Uncheck it to leave it out.",
-  },
-  previewFix: {
-    title: "Preview fix",
-    text: "Redraws the sum as if every checked track were moved by its offset and, if needed, flipped in polarity, and shows the summing gain that would give. Apply it in your host, with track delay and a phase or polarity switch.",
-  },
-  sumGain: {
-    title: "Summing gain",
-    text: `How loud the checked tracks are together, against unrelated signals of the same levels. Within ${margin} dB of 0 is harmless; above that they reinforce, and below it they cancel. Where they cancel strongly, the sum's lane is shaded yellow, provided a checked track is related to yours: unrelated tracks only beat against each other. A dash means they never sound together, or nothing is measured yet. Measured over the visible part, but only where at least two of them sound together above ${gate} dBFS, so a long view does not water down a short clash.`,
-  },
-  match: {
-    title: "Against this track",
-    text: `How late this track is against yours, within ${reach} (negative: early), with Ø when its polarity is opposite, and how alike they move, from +1 (in step) through 0 (unrelated) to -1 (opposite), measured over the ${matchWindow} before the playhead (zoomed away from it, the newest ${matchWindow} shown). Unrelated means no shift makes them match clearly, as with a kick and a hi-hat: there is nothing to fix, and Preview fix leaves the track as it is. Only audio above ${gate} dBFS is compared; a dash means they never sound together there, or the track is not measured yet.`,
-  },
-  group: {
-    title: "Views",
-    text: "What Multi shows: the tracks of a group, and with Compare their sum (Σ in the field, dimmed while Compare is off). Instances in the same group appear together in Multi. Use different groups to keep separate comparisons apart, such as drums in A and bass in B. Every instance belongs to a group, whatever its own mode.",
-  },
-  channelViews: {
-    title: "Views",
-    text: "Which channels this track shows. In Multi every track shows its Mid, so these apply in Single mode.",
-  },
-  status: {
-    title: "Status",
-    text: "What the display is doing: Trig'd when it is locked to a trigger, Waiting while Normal or Single mode waits for one, the trigger mode, Sync, Frozen or Zoom, and Filling while a sweep longer than the capture draws its first pass (Partial when frozen before it did). Invalid samples means the audio holds samples that are not numbers or are infinite, from a broken plugin or file upstream: the Meter and Compare measure around them, and the lanes holding them are named in yellow.",
-  },
-  meter: {
-    title: "Meter",
-    text: `When on, the screen's corner shows the Meter, over the whole span of the channel named in the status bar (this track in Multi): Peak, the highest sample level, and RMS, the average power, in dBFS (a full-scale sine reads −3 dB RMS), and Crest, how far the peak stands above the RMS, in dB: 3 dB for a sine, more for spikier sounds. Below ${levelFloor} dBFS a level reads −∞, and Crest a dash. Indicative, not a standards-compliant meter.`,
-  },
-  screen: {
-    title: "Screen",
-    text: `The signal over time. ${command} + scroll or pinch to zoom around the pointer, drag across to zoom to a region, swipe sideways to pan, double-click to reset. In Trig and Free, while frozen and not zoomed, swipe to look further back.`,
-  },
-  triggerMarker: {
-    title: "Trigger level",
-    text: "The level the signal must cross to trigger. Drag the arrow up or down to set it.",
-  },
-  timeCursor: {
-    title: "Time cursor",
-    text: `Drag sideways to move it. It snaps to zero crossings and to the highest and lowest points; hold ${option} to place it freely.`,
-  },
-  levelCursor: {
-    title: "Level cursor",
-    text: `Drag up or down to move it. It snaps to the highest and lowest levels and to zero; hold ${option} to place it freely.`,
-  },
-  resizeGrip: {
-    title: "Resize",
-    text: "Drag to resize the window. It stays wide enough for every control and, with stacked lanes, tall enough for every lane.",
-  },
-  triggerSpan: {
-    title: "Time span",
-    text: `How much time the screen shows in Trig, from ${shortestTriggerSpan} to ${longestTriggerSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one, such as 20 ms (a number alone is in milliseconds). Longer spans are shown in Free.`,
-  },
-  freeSpan: {
-    title: "Time span",
-    text: `How much time the screen shows in Free, from ${shortestFreeSpan} to ${longestFreeSpan}. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type one with its unit, such as 2 s (a number alone is in milliseconds). Shorter spans are shown in Trig, where the trigger holds the trace still.`,
-  },
-  beatSpan: {
-    title: "Span",
-    text: `How many bars the screen shows at the host tempo, from ${shortestBeatSpan} to ${longestBeatSpan}. Drag up or down or scroll to change it; double-click to type, a number alone included: ${bareAmount(longestBeatSpan)} for ${longestBeatSpan}, ${bareAmount(shortestBeatSpan)} for ${shortestBeatSpan}.`,
-  },
-  timeBase: {
-    title: "Time base",
-    text: "Beats sweeps across the screen in time with the host, from bar line to bar line, with a playhead. Free shows a fixed amount of time ending at the newest audio, moving with it, its times counted back from the right edge. Trig shows a fixed amount of time placed by the trigger, so a repeating signal stands still.",
-  },
-  verticalScale: {
-    title: "Vertical scale",
-    text: "The level at the top of the screen, from −60 to +6 dBFS. Drag up or down or scroll to step by 3 dB (Shift for 1 dB); double-click to type.",
-  },
-  viewLeft: {
-    title: "Left",
-    text: "Shows or hides the left channel. At least one view stays on.",
-  },
-  viewRight: {
-    title: "Right",
-    text: "Shows or hides the right channel. At least one view stays on.",
-  },
-  viewMid: {
-    title: "Mid",
-    text: "Shows or hides the mid signal, (L + R) / 2: what both channels share. At least one view stays on.",
-  },
-  viewSide: {
-    title: "Side",
-    text: "Shows or hides the side signal, (L − R) / 2: the difference between the channels, which carries the stereo width. At least one view stays on.",
-  },
-  layout: {
-    title: "Layout",
-    text: "Overlay draws all views on one screen; Stack gives each view its own lane.",
-  },
-  trigger: {
-    title: "Trigger",
-    text: "Decides when the display draws, so a repeating signal stands still. Click it for the mode, source, slope, level, hysteresis and hold-off. Shown in Trig only: Beats follows the host tempo, and Free the newest audio.",
-  },
-  modeAuto: {
-    title: "Auto",
-    text: "Draws on every trigger, and keeps drawing without one when none arrives for a moment. The usual choice.",
-  },
-  modeNormal: {
-    title: "Normal",
-    text: "Draws only when the signal triggers; otherwise the last trace stays.",
-  },
-  modeSingle: {
-    title: "Single",
-    text: "Captures one triggered trace and freezes it. Re-arm waits for the next.",
-  },
-  rearm: {
-    title: "Re-arm",
-    text: "In Single mode, waits for the next trigger again.",
-  },
-  triggerSource: {
-    title: "Trigger source",
-    text: "Which signal the trigger watches, among the views drawn; while the one chosen is hidden, it watches the first view drawn. It changes only what the trigger reads: the Meter, the hover and snapping keep their own channel, chosen with the Channel button in the status bar. Not used in Multi, which shows each track's Mid.",
-  },
-  triggerSlope: {
-    title: "Slope",
-    text: "Rising triggers when the signal crosses the level going up; Falling, going down.",
-  },
-  triggerLevel: {
-    title: "Trigger level",
-    text: "The sample value the signal must cross, from −1 to +1. Drag, scroll or double-click to type; or drag the arrow at the screen's left edge.",
-  },
-  triggerHysteresis: {
-    title: "Hysteresis",
-    text: "How far the signal must move away from the level before it can trigger again. Raise it when noise causes false triggers.",
-  },
-  triggerHoldOff: {
-    title: "Hold-off",
-    text: "The least time between triggers. Use it to lock onto the start of a repeating pattern instead of a hit inside it. Drag up or down or scroll to step through 1-2-5 values (Shift for fine steps); double-click to type.",
-  },
-  triggerPosition: {
-    title: "Position",
-    text: `Where the trigger point sits across the screen, from ${positionLowest} at the left edge (only what follows the trigger) to ${positionHighest} at the right (only what led up to it); ${positionDefault} by default. Time counts from it, and the dashed line marks it. A trace is drawn once the part after the trigger has arrived, so a low position waits longer on a long span. Frozen, the trace moves to keep its trigger at the new position, as far as the audio held allows. Drag up or down or scroll to step ${positionCoarse} (Shift for ${positionFine}); double-click to type.`,
-  },
-  hoverReadout: {
-    title: "Hover readout",
-    text: "When on, resting the pointer on a trace shows, beside it, the position there, the level, and the length, frequency and note of the cycle around it. A dotted line marks the column or point read, and a faint band the cycle measured.",
-  },
-  readoutSource: {
-    title: "Channel",
-    text: "The channel the Meter reads: Left, Right, Mid or Side. With the views overlaid, the hover readout and the cursors' snapping read it too; stacked, each lane reads its own trace. In Single, click to choose among the views drawn; while the one chosen is hidden, the first view drawn is read. A mono track has only Left. Multi reads this track's Mid: This, this track.",
-  },
-  grid: {
-    title: "Grid",
-    text: "The screen's grid in the current time base: what it draws, and how closely it divides time and level. Click to choose; each time base keeps its own.",
-  },
-  gridType: {
-    title: "Grid type",
-    text: "Grid draws the time and level lines. None leaves each lane's zero line. The labels stay either way.",
-  },
-  gridTime: {
-    title: "Time lines",
-    text: `How closely lines divide time. In Trig and Free: ${String(gridColumnsCoarse)}, ${String(gridColumnsMedium)} or ${String(gridColumnsFine)} equal divisions. In Beats: one step coarser or finer than Medium, which follows the zoom (bars, beats, sixteenths); Fine steps finer only where its lines stay ${String(gridFineBeatLineGap)} pixels apart. Before the host reports a tempo, Beats shows the equal divisions.`,
-  },
-  gridLevel: {
-    title: "Level lines",
-    text: `How closely lines divide each lane's level, down from its top: every ${coarseLevelDb} dB, every ${mediumLevelDb} dB, or every ${mediumLevelDb} dB in the brighter colour with ${fineLevelDb} dB lines between them. A short lane shows fewer.`,
-  },
-  beatDivision: {
-    title: "Beat division",
-    text: "In Beats, below the beat: Regular divides it in halves, quarters and finer; Triplets in thirds, sixths and finer, labelled as fractions of a beat such as +1/3. Positions count as before.",
-  },
-  concertPitch: {
-    title: "Concert pitch",
-    text: "The pitch of A4 that note names in the readouts refer to, from 400 to 500 Hz. Drag up or down or scroll to change it (Shift for 0.1 Hz); double-click to type.",
-  },
-  freeze: {
-    title: "Freeze",
-    text: "Holds the display so you can study it. Scale, views, zoom and cursors keep working, and in Trig and Free you can swipe to look back. Click again to go live.",
-  },
-  autoFreeze: {
-    title: "Auto-freeze",
-    text: "On by default. The display freezes when the host stops and goes live again when it plays; while stopped it stays frozen even if you play an instrument through the track. Click Freeze to go live. Turning Auto-freeze off stops later freezes and keeps the current one. A freeze you make yourself is kept.",
-  },
-  timeCursors: {
-    title: "Time cursors",
-    text: "Two vertical lines, A and B, for measuring time. Drag them; the readout shows where each is (in Beats on the project's clock, in Trig from the trigger, in Free back from the newest audio), the time between them, its frequency and nearest note, the bars and beats between them in Beats mode, and the samples between them.",
-  },
-  levelCursors: {
-    title: "Level cursors",
-    text: "Two horizontal lines, 1 and 2, for measuring levels. Drag them; the readout shows each level in dBFS and the difference in dB.",
-  },
-} as const satisfies Record<string, HelpText>;
+// The table for a platform: `mac` names the keys as macOS does, otherwise as Windows does.
+export function helpTextsFor(mac: boolean) {
+  const command = mac ? "⌘" : "Ctrl";
+  const option = mac ? "⌥" : "Alt";
+  return {
+    help: {
+      title: "Help",
+      lead: "Turns help on or off: while on, resting on any control explains it.",
+    },
+    // Shown at once beside the switch when it turns help on.
+    helpOn: {
+      title: "Help is on",
+      lead: "Rest the pointer on any control to see what it does.",
+      actions: [{ gesture: "Click ?", effect: "turn help off" }],
+    },
+    about: {
+      title: "About",
+      lead: "Shows which version of the plugin this is, as your host lists it.",
+      notes: ["Give it when you report a problem."],
+    },
+    contact: {
+      title: "About us",
+      lead: "Opens our About page, with how to contact us, in your default browser.",
+    },
+    displayMode: {
+      title: "Single or Multi",
+      lead: "What the screen shows: this track, or every track of its group.",
+      choices: choicesOf(choiceLabels.displayMode, {
+        single: "this track's channels",
+        multi: `every track of this instance's group with this plugin, one lane each as its Mid, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds their sum)`,
+      }),
+      notes: [
+        "Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.",
+      ],
+    },
+    compare: {
+      title: "Compare",
+      lead: "In Multi, sums the tracks you check and measures how each lines up with this one.",
+      notes: [
+        `In beta. The sum takes a lane, so Multi then shows at most ${lanesCompare} tracks.`,
+        "It stays on or off as you leave Multi and come back, and is saved with the project.",
+      ],
+    },
+    compareTrack: {
+      title: "Compare",
+      lead: "Check a track to add it to the sum and measure it against this track.",
+      notes: [
+        "This track is always compared; uncheck another to leave it out.",
+      ],
+    },
+    previewFix: {
+      title: "Preview fix",
+      lead: "Redraws the sum as if every checked track were shifted and flipped as suggested.",
+      notes: [
+        "The summing gain shown is the one that would give.",
+        "Apply it in your host, with track delay and a phase or polarity switch.",
+      ],
+    },
+    sumGain: {
+      title: "Summing gain",
+      lead: "How loud the checked tracks are together, against unrelated signals of the same levels.",
+      choices: [
+        { name: `Within ±${margin} dB`, text: "harmless" },
+        { name: "Above", text: "they reinforce" },
+        {
+          name: "Below",
+          text: "they cancel; strongly, the sum's lane is shaded yellow if a checked track is related to yours",
+        },
+        {
+          name: "—",
+          text: "they never sound together, or nothing is measured yet",
+        },
+      ],
+      notes: [
+        `Measured over the visible part, only where two or more sound together above ${gate} dBFS.`,
+      ],
+    },
+    match: {
+      title: "Against this track",
+      lead: "How this track lines up with yours.",
+      choices: [
+        {
+          name: "Offset",
+          text: `how late it is, within ±${reach}; negative is early`,
+        },
+        { name: "Ø", text: "its polarity is opposite" },
+        { name: "Likeness", text: "+1 in step, 0 unrelated, −1 opposite" },
+        {
+          name: "Unrelated",
+          text: "no shift makes them match clearly; Preview fix leaves it",
+        },
+        {
+          name: "—",
+          text: "they never sound together there, or not measured yet",
+        },
+      ],
+      notes: [
+        `Over the ${matchWindow} before the playhead (zoomed away, the newest shown), above ${gate} dBFS only.`,
+      ],
+    },
+    group: {
+      title: "Views",
+      lead: "Which group's tracks Multi shows, and with Compare their sum.",
+      notes: [
+        "The field's Σ is dimmed while Compare is off.",
+        "Instances in the same group appear together; use groups to keep comparisons apart, such as drums in A and bass in B.",
+        "Every instance belongs to a group, whatever its own mode.",
+      ],
+    },
+    channelViews: {
+      title: "Views",
+      lead: "Which channels this track shows.",
+      notes: ["In Multi every track shows its Mid, so these apply in Single."],
+    },
+    status: {
+      title: "Status",
+      lead: "What the display is doing.",
+      choices: [
+        { name: "Trig’d", text: "locked to a trigger" },
+        { name: "Waiting", text: "Normal or Single awaits a trigger" },
+        { name: "Sync", text: "following the host's beats" },
+        {
+          name: "Filling",
+          text: "a long sweep draws its first pass",
+        },
+        { name: "Partial", text: "frozen before it did" },
+        { name: "Span limited", text: "shortened to what can be kept" },
+        { name: "No tempo", text: "none from the host yet" },
+        {
+          name: "Invalid samples",
+          text: "not numbers, or infinite",
+        },
+      ],
+      notes: [
+        "The Meter and Compare measure around them; their lanes are named in yellow.",
+      ],
+    },
+    meter: {
+      title: "Meter",
+      lead: "When on, shows levels over the whole span of the Channel button's channel.",
+      choices: [
+        { name: "Peak", text: "the highest sample level, in dBFS" },
+        {
+          name: "RMS",
+          text: "the average power, in dBFS; a full-scale sine reads −3 dB",
+        },
+        {
+          name: "Crest",
+          text: "how far peak stands above RMS: 3 dB for a sine, more if spikier",
+        },
+      ],
+      notes: [
+        `Below ${levelFloor} dBFS a level reads −∞, and Crest a dash.`,
+        "In Multi it reads this track. Indicative, not a standards-compliant meter.",
+      ],
+    },
+    screen: {
+      title: "Screen",
+      lead: "The signal over time.",
+      actions: [
+        {
+          gesture: `${command} + scroll or pinch`,
+          effect: "zoom around the pointer",
+        },
+        { gesture: "Drag across", effect: "zoom to a region" },
+        { gesture: "Swipe sideways", effect: "pan" },
+        { gesture: "Double-click", effect: "reset" },
+      ],
+      notes: [
+        "In Trig and Free, frozen and not zoomed, swipe to look further back.",
+      ],
+    },
+    triggerMarker: {
+      title: "Trigger level",
+      lead: "The level the signal must cross to trigger.",
+      actions: [{ gesture: "Drag up or down", effect: "set it" }],
+    },
+    timeCursor: {
+      title: "Time cursor",
+      lead: "A time cursor, for measuring time.",
+      actions: [
+        {
+          gesture: "Drag sideways",
+          effect:
+            "move it; it snaps to zero crossings and the highest and lowest points",
+        },
+        { gesture: `${option} + drag`, effect: "place it freely" },
+      ],
+    },
+    levelCursor: {
+      title: "Level cursor",
+      lead: "A level cursor, for measuring levels.",
+      actions: [
+        {
+          gesture: "Drag up or down",
+          effect:
+            "move it; it snaps to the highest and lowest levels and to zero",
+        },
+        { gesture: `${option} + drag`, effect: "place it freely" },
+      ],
+    },
+    resizeGrip: {
+      title: "Resize",
+      lead: "Drag to resize the window.",
+      notes: [
+        "It stays wide enough for every control and, with stacked lanes, tall enough for every lane.",
+      ],
+    },
+    triggerSpan: {
+      title: "Time span",
+      lead: `How much time the screen shows in Trig, from ${shortestTriggerSpan} to ${longestTriggerSpan}.`,
+      actions: [
+        {
+          gesture: "Drag or scroll",
+          effect: "step through 1-2-5 values, with Shift finer",
+        },
+        {
+          gesture: "Double-click",
+          effect: "type one, such as 20 ms; a number alone is in milliseconds",
+        },
+      ],
+      notes: ["Longer spans are shown in Free."],
+    },
+    freeSpan: {
+      title: "Time span",
+      lead: `How much time the screen shows in Free, from ${shortestFreeSpan} to ${longestFreeSpan}.`,
+      actions: [
+        {
+          gesture: "Drag or scroll",
+          effect: "step through 1-2-5 values, with Shift finer",
+        },
+        {
+          gesture: "Double-click",
+          effect:
+            "type one with its unit, such as 2 s; a number alone is in milliseconds",
+        },
+      ],
+      notes: [
+        "Shorter spans are shown in Trig, where the trigger holds the trace still.",
+      ],
+    },
+    beatSpan: {
+      title: "Span",
+      lead: `How many bars the screen shows at the host tempo, from ${shortestBeatSpan} to ${longestBeatSpan}.`,
+      actions: [
+        { gesture: "Drag or scroll", effect: "change it" },
+        {
+          gesture: "Double-click",
+          effect: `type it, a number alone included: ${bareAmount(longestBeatSpan)} for ${longestBeatSpan}, ${bareAmount(shortestBeatSpan)} for ${shortestBeatSpan}`,
+        },
+      ],
+    },
+    timeBase: {
+      title: "Time base",
+      lead: "How the screen follows time.",
+      choices: choicesOf(choiceLabels.timeBase, {
+        beats:
+          "sweeps in time with the host, bar line to bar line, with a playhead",
+        free: "a fixed amount of time ending at the newest audio; times count back from the right edge",
+        trigger:
+          "a fixed amount of time placed by the trigger, so a repeating signal stands still",
+      }),
+    },
+    verticalScale: {
+      title: "Vertical scale",
+      lead: "The level at the top of the screen, from −60 to +6 dBFS.",
+      actions: [
+        {
+          gesture: "Drag or scroll",
+          effect: "step by 3 dB, with Shift by 1 dB",
+        },
+        { gesture: "Double-click", effect: "type a level" },
+      ],
+    },
+    viewLeft: {
+      title: "Left",
+      lead: "Shows or hides the left channel.",
+      notes: ["At least one view stays on."],
+    },
+    viewRight: {
+      title: "Right",
+      lead: "Shows or hides the right channel.",
+      notes: ["At least one view stays on."],
+    },
+    viewMid: {
+      title: "Mid",
+      lead: "Shows or hides the mid signal, (L + R) / 2: what both channels share.",
+      notes: ["At least one view stays on."],
+    },
+    viewSide: {
+      title: "Side",
+      lead: "Shows or hides the side signal, (L − R) / 2, which carries the stereo width.",
+      notes: ["At least one view stays on."],
+    },
+    layout: {
+      title: "Layout",
+      lead: "How the views share the screen.",
+      choices: choicesOf(choiceLabels.viewLayout, {
+        overlaid: "all views on one screen",
+        stacked: "each view in its own lane",
+      }),
+    },
+    trigger: {
+      title: "Trigger",
+      lead: "Decides when the display draws, so a repeating signal stands still.",
+      choices: choicesOf(choiceLabels.triggerMode, {
+        auto: "draws on every trigger, and without one when none comes",
+        normal: "draws only on a trigger; otherwise the last trace stays",
+        single: "captures one trace and freezes it; Re-arm waits for the next",
+      }),
+      actions: [
+        {
+          gesture: "Click",
+          effect: "set the mode, source, slope, level, hysteresis and hold-off",
+        },
+      ],
+      notes: [
+        "Shown in Trig only: Beats follows the host tempo, and Free the newest audio.",
+      ],
+    },
+    modeAuto: {
+      title: "Auto",
+      lead: "Draws on every trigger, and keeps drawing without one when none arrives for a moment.",
+      notes: ["The usual choice."],
+    },
+    modeNormal: {
+      title: "Normal",
+      lead: "Draws only when the signal triggers; otherwise the last trace stays.",
+    },
+    modeSingle: {
+      title: "Single",
+      lead: "Captures one triggered trace and freezes it.",
+      notes: ["Re-arm waits for the next."],
+    },
+    rearm: {
+      title: "Re-arm",
+      lead: "In Single mode, waits for the next trigger again.",
+    },
+    triggerSource: {
+      title: "Trigger source",
+      lead: "Which signal the trigger watches, among the views drawn.",
+      notes: [
+        "While the one chosen is hidden, it watches the first view drawn.",
+        "It changes only what the trigger reads: the Meter, the hover and snapping keep their own channel, chosen with the Channel button.",
+        "Not used in Multi, which shows each track's Mid.",
+      ],
+    },
+    triggerSlope: {
+      title: "Slope",
+      lead: "Which way the signal must cross the level to trigger.",
+      choices: choicesOf(choiceLabels.triggerSlope, {
+        rising: "crossing it going up",
+        falling: "crossing it going down",
+      }),
+    },
+    triggerLevel: {
+      title: "Trigger level",
+      lead: "The sample value the signal must cross, from −1 to +1.",
+      actions: [
+        { gesture: "Drag or scroll", effect: "change it" },
+        { gesture: "Double-click", effect: "type it" },
+      ],
+      notes: ["Or drag the arrow at the screen's left edge."],
+    },
+    triggerHysteresis: {
+      title: "Hysteresis",
+      lead: "How far the signal must move away from the level before it can trigger again.",
+      notes: ["Raise it when noise causes false triggers."],
+    },
+    triggerHoldOff: {
+      title: "Hold-off",
+      lead: "The least time between triggers.",
+      actions: [
+        {
+          gesture: "Drag or scroll",
+          effect: "step through 1-2-5 values, with Shift finer",
+        },
+        { gesture: "Double-click", effect: "type it" },
+      ],
+      notes: [
+        "Use it to lock onto the start of a repeating pattern instead of a hit inside it.",
+      ],
+    },
+    triggerPosition: {
+      title: "Position",
+      lead: "Where the trigger point sits; the dashed line marks it, and time counts from it.",
+      actions: [
+        {
+          gesture: "Drag or scroll",
+          effect: `step ${positionCoarse}, with Shift ${positionFine}`,
+        },
+        { gesture: "Double-click", effect: "type it" },
+      ],
+      notes: [
+        `From ${positionLowest}, only what follows the trigger, to ${positionHighest}, only what led up to it; ${positionDefault} by default.`,
+        "A low position waits longer on long spans, for audio after the trigger.",
+        "Frozen, the trace follows, as far as the held audio allows.",
+      ],
+    },
+    hoverReadout: {
+      title: "Hover readout",
+      lead: "When on, resting the pointer on a trace shows what is under it.",
+      notes: [
+        "It shows the position, the level, and the length, frequency and note of the cycle around it.",
+        "A dotted line marks the column or point read, and a faint band the cycle measured.",
+      ],
+    },
+    readoutSource: {
+      title: "Channel",
+      lead: "The channel the Meter reads: Left, Right, Mid or Side.",
+      actions: [
+        { gesture: "Click", effect: "choose among the views drawn, in Single" },
+      ],
+      notes: [
+        "With the views overlaid, the hover and the cursors' snapping read it too; stacked, each lane reads its own trace.",
+        "While the one chosen is hidden, the first view drawn is read.",
+        "A mono track has only Left. Multi reads this track's Mid: This, this track.",
+      ],
+    },
+    grid: {
+      title: "Grid",
+      lead: "The screen's grid: what it draws, and how closely it divides time and level.",
+      actions: [{ gesture: "Click", effect: "choose" }],
+      notes: ["Each time base keeps its own."],
+    },
+    gridType: {
+      title: "Grid type",
+      lead: "What the grid draws.",
+      choices: choicesOf(choiceLabels.gridType, {
+        none: "each lane's zero line alone",
+        grid: "the time and level lines",
+      }),
+      notes: ["The labels stay either way."],
+    },
+    gridTime: {
+      title: "Time lines",
+      lead: "How closely lines divide time.",
+      choices: choicesOf(choiceLabels.gridDensity, {
+        coarse: `${String(gridColumnsCoarse)} equal divisions in Trig and Free; in Beats, one step coarser than Medium`,
+        medium: `${String(gridColumnsMedium)} in Trig and Free; in Beats, as the zoom gives (bars, beats, sixteenths)`,
+        fine: `${String(gridColumnsFine)} in Trig and Free; in Beats, one step finer where its lines stay ${String(gridFineBeatLineGap)} pixels apart`,
+      }),
+      notes: [
+        "Before the host reports a tempo, Beats shows the equal divisions.",
+      ],
+    },
+    gridLevel: {
+      title: "Level lines",
+      lead: "How closely lines divide each lane's level, down from its top.",
+      choices: choicesOf(choiceLabels.gridDensity, {
+        coarse: `every ${coarseLevelDb} dB`,
+        medium: `every ${mediumLevelDb} dB`,
+        fine: `every ${mediumLevelDb} dB in the brighter colour, with ${fineLevelDb} dB lines between them`,
+      }),
+      notes: ["A short lane shows fewer."],
+    },
+    beatDivision: {
+      title: "Beat division",
+      lead: "How Beats divides the beat.",
+      choices: choicesOf(choiceLabels.beatDivision, {
+        regular: "halves, quarters and finer",
+        triplets:
+          "thirds, sixths and finer, labelled as fractions of a beat such as +1/3",
+      }),
+      notes: ["Positions count as before."],
+    },
+    concertPitch: {
+      title: "Concert pitch",
+      lead: "The pitch of A4 that note names refer to, from 400 to 500 Hz.",
+      actions: [
+        {
+          gesture: "Drag or scroll",
+          effect: "change it, with Shift by 0.1 Hz",
+        },
+        { gesture: "Double-click", effect: "type it" },
+      ],
+    },
+    freeze: {
+      title: "Freeze",
+      lead: "Holds the display so you can study it.",
+      actions: [{ gesture: "Click again", effect: "go live" }],
+      notes: [
+        "Scale, views, zoom and cursors keep working, and in Trig and Free you can swipe to look back.",
+      ],
+    },
+    autoFreeze: {
+      title: "Auto-freeze",
+      lead: "Freezes the display when the host stops, and goes live again when it plays.",
+      notes: [
+        "On by default.",
+        "While stopped it stays frozen even if you play an instrument through the track; click Freeze to go live.",
+        "Turning it off stops later freezes and keeps the current one.",
+        "A freeze you make yourself is kept.",
+      ],
+    },
+    timeCursors: {
+      title: "Time cursors",
+      lead: "Two vertical lines, A and B, for measuring time.",
+      actions: [{ gesture: "Drag", effect: "move them" }],
+      notes: [
+        "The readout shows where each is: in Beats on the project's clock, in Trig from the trigger, in Free back from the newest audio.",
+        "It also shows the time between them, its frequency and nearest note, the samples between them and, in Beats, the bars and beats.",
+      ],
+    },
+    levelCursors: {
+      title: "Level cursors",
+      lead: "Two horizontal lines, 1 and 2, for measuring levels.",
+      actions: [{ gesture: "Drag", effect: "move them" }],
+      notes: ["The readout shows each level in dBFS and the difference in dB."],
+    },
+  } as const satisfies Record<string, HelpText>;
+}
+
+export const helpTexts = helpTextsFor(isMac);
 
 export type HelpTopic = keyof typeof helpTexts;
 
 export function isHelpTopic(name: string): name is HelpTopic {
   return Object.hasOwn(helpTexts, name);
 }
+
+// Which topic explains each of a setting's values, or why none lists them. Every setting the
+// protocol makes a choice of one value is here: one added without an entry does not compile.
+type EnumSetting = {
+  [
+    Name in keyof typeof settings
+  ]: (typeof settings)[Name]["kind"] extends "enum" ? Name : never;
+}[keyof typeof settings];
+
+// `labels` names the control's labels where several settings share them (each time base's grid).
+export const choiceHelp: {
+  readonly [Name in EnumSetting]:
+    | { readonly topic: HelpTopic; readonly labels?: keyof typeof choiceLabels }
+    | { readonly exempt: string };
+} = {
+  displayMode: { topic: "displayMode" },
+  timeBase: { topic: "timeBase" },
+  viewLayout: { topic: "layout" },
+  triggerSlope: { topic: "triggerSlope" },
+  triggerMode: { topic: "trigger" },
+  group: { exempt: "letters A to D, which say nothing to explain one by one" },
+  compare: { exempt: "an on/off switch, whose topic says what on does" },
+  autoFreeze: { exempt: "an on/off switch, whose topic says what on does" },
+  hoverReadout: { exempt: "an on/off switch, whose topic says what on does" },
+  meter: { exempt: "an on/off switch, whose topic says what on does" },
+  beatSpan: {
+    exempt: "a range of twelve spans, named by its shortest and longest",
+  },
+  triggerSource: { exempt: "channel letters, as the views name them" },
+  readoutSource: { exempt: "channel names, explained in the topic's lead" },
+  gridTypeBeats: { topic: "gridType", labels: "gridType" },
+  gridTimeBeats: { topic: "gridTime", labels: "gridDensity" },
+  gridLevelBeats: { topic: "gridLevel", labels: "gridDensity" },
+  gridTypeFree: { topic: "gridType", labels: "gridType" },
+  gridTimeFree: { topic: "gridTime", labels: "gridDensity" },
+  gridLevelFree: { topic: "gridLevel", labels: "gridDensity" },
+  gridTypeTrigger: { topic: "gridType", labels: "gridType" },
+  gridTimeTrigger: { topic: "gridTime", labels: "gridDensity" },
+  gridLevelTrigger: { topic: "gridLevel", labels: "gridDensity" },
+  beatDivision: { topic: "beatDivision" },
+};
+
+// Each trigger mode's button explains its own mode.
+export const triggerModeHelp: Readonly<
+  Record<keyof typeof TriggerMode, HelpTopic>
+> = {
+  auto: "modeAuto",
+  normal: "modeNormal",
+  single: "modeSingle",
+};

@@ -8,6 +8,7 @@ import type {
   GridType,
   TimeBase,
   TriggerMode,
+  TriggerSlope,
   ViewLayout,
 } from "../../../protocol/src/enums.ts";
 
@@ -21,6 +22,7 @@ export const choiceLabels: {
   readonly gridType: Labels<typeof GridType>;
   readonly gridDensity: Labels<typeof GridDensity>;
   readonly beatDivision: Labels<typeof BeatDivision>;
+  readonly triggerSlope: Labels<typeof TriggerSlope>;
 } = {
   displayMode: { single: "Single", multi: "Multi" },
   timeBase: { beats: "Beats", free: "Free", trigger: "Trig" },
@@ -29,4 +31,5 @@ export const choiceLabels: {
   gridType: { none: "None", grid: "Grid" },
   gridDensity: { coarse: "Coarse", medium: "Medium", fine: "Fine" },
   beatDivision: { regular: "Regular", triplets: "Triplets" },
+  triggerSlope: { rising: "Rising", falling: "Falling" },
 };

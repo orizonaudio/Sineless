@@ -4,11 +4,16 @@
 // explains itself even while help is off, so it can be found, and says at once that help is on
 // when it turns it on: that tip stays by the switch until a press anywhere, or the pointer leaves
 // the switch.
-import { type HelpTopic, helpTexts, isHelpTopic } from "../view/help.ts";
+import {
+  type HelpText,
+  type HelpTopic,
+  helpTexts,
+  isHelpTopic,
+} from "../view/help.ts";
 
 const showDelay = 400; // ms
-const offset = 14; // px between the pointer and the tooltip
-const edge = 6; // px kept free at the window edges
+export const offset = 14; // px between the pointer and the tooltip
+export const edge = 6; // px kept free at the window edges
 const alwaysShown = new Set<string>(["help"]);
 
 export class HelpTips {
@@ -88,13 +93,44 @@ export class HelpTips {
     this.tip.hidden = true;
   }
 
+  // Builds the tip from plain text, in reading order: title, lead, choices, actions, notes.
   private fill(topic: HelpTopic): void {
-    const { title, text } = helpTexts[topic];
-    const heading = document.createElement("strong");
-    heading.textContent = title;
-    const body = document.createElement("span");
-    body.textContent = text;
-    this.tip.replaceChildren(heading, body);
+    const text: HelpText = helpTexts[topic];
+    const part = (tag: string, className: string, content?: string) => {
+      const element = document.createElement(tag);
+      element.className = className;
+      if (content !== undefined) {
+        element.textContent = content;
+      }
+      return element;
+    };
+    const parts = [
+      part("strong", "help-title", text.title),
+      part("p", "help-lead", text.lead),
+    ];
+    if (text.choices !== undefined) {
+      const list = part("dl", "help-choices");
+      for (const { name, text: does } of text.choices) {
+        const row = document.createElement("div");
+        row.append(part("dt", "", name), part("dd", "", does));
+        list.append(row);
+      }
+      parts.push(list);
+    }
+    if (text.actions !== undefined) {
+      const list = part("dl", "help-actions");
+      for (const { gesture, effect } of text.actions) {
+        list.append(part("dt", "", gesture), part("dd", "", effect));
+      }
+      parts.push(list);
+    }
+    for (const note of text.notes ?? []) {
+      parts.push(part("p", "help-note", note));
+    }
+    this.tip.replaceChildren(...parts);
+    // Measured where it has the whole window, not squeezed against where the last tip stood.
+    this.tip.style.left = "0";
+    this.tip.style.top = "0";
     this.tip.hidden = false;
   }
 

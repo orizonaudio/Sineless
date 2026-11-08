@@ -7,6 +7,7 @@ import {
   defaultEditorWidth,
   minimumEditorWidth,
 } from "../../../protocol/src/limits.ts";
+import { edge, HelpTips, offset } from "../../src/components/help-tips.ts";
 import { helpTexts } from "../../src/view/help.ts";
 import { beforeApp, byId, startApp } from "./harness.ts";
 
@@ -39,7 +40,7 @@ const pastDelay = () => new Promise((resolve) => setTimeout(resolve, 1500));
 
 const tip = () => byId("help-tip");
 const explainsHelpOn = () =>
-  !tip().hidden && tip().textContent.includes(helpTexts.helpOn.text);
+  !tip().hidden && tip().textContent.includes(helpTexts.helpOn.lead);
 
 describe("help tooltips", () => {
   beforeApp(async () => {
@@ -162,7 +163,7 @@ describe("turning help on", () => {
     moveOver(id);
     await vi.waitFor(
       () => {
-        expect(tip().textContent).toContain(helpTexts[topic].text);
+        expect(tip().textContent).toContain(helpTexts[topic].lead);
       },
       { timeout: 5000 },
     );
@@ -174,5 +175,227 @@ describe("turning help on", () => {
     expect(tip().hidden).toBe(true);
     await pastDelay();
     expect(explainsHelpOn()).toBe(false);
+  });
+});
+
+// A tip of its own, shown by its own HelpTips, so the app's tip and its help switch stay out of the
+// way: `showAt` rests the pointer on `topic` at (x, y) and gives the tip once shown.
+function ownTips(): {
+  tip: HTMLElement;
+  showAt: (topic: string, x: number, y?: number) => Promise<HTMLElement>;
+} {
+  const tip = document.createElement("div");
+  tip.className = "help-tip";
+  tip.hidden = true;
+  document.body.append(tip);
+  const tips = new HelpTips(tip);
+  tips.setEnabled(true);
+  const target = document.createElement("div");
+  document.body.append(target);
+  return {
+    tip,
+    showAt: async (topic, x, y = 20) => {
+      document.dispatchEvent(new PointerEvent("pointerdown"));
+      target.dataset["help"] = topic;
+      target.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+      await vi.waitFor(
+        () => {
+          expect(tip.hidden).toBe(false);
+        },
+        { timeout: 5000 },
+      );
+      return tip;
+    },
+  };
+}
+
+// The parts of a tip, in the order it shows them, by the class each part's element has.
+const partOrder = ["help-lead", "help-choices", "help-actions", "help-note"];
+const partsOf = (tip: HTMLElement) =>
+  [...tip.children]
+    .map((child) => partOrder.find((part) => child.classList.contains(part)))
+    .filter((part) => part !== undefined);
+
+// One reading order in every tip: what it is, its choices, what the hand does, then the limits.
+describe("a help tip's parts", () => {
+  beforeApp(async () => {
+    await page.viewport(defaultEditorWidth, 580);
+    await startApp();
+    await userEvent.click(byId("help"));
+  });
+
+  async function restOn(element: Element): Promise<void> {
+    document.dispatchEvent(new PointerEvent("pointerdown"));
+    const box = element.getBoundingClientRect();
+    element.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        clientX: box.left + 2,
+        clientY: box.top + 2,
+      }),
+    );
+    await vi.waitFor(
+      () => {
+        expect(tip().hidden).toBe(false);
+      },
+      { timeout: 5000 },
+    );
+  }
+
+  test("come in order: lead, choices, actions, notes", async () => {
+    const { showAt } = ownTips();
+    for (const topic of Object.keys(helpTexts)) {
+      const shown = await showAt(topic, 10);
+      const parts = partsOf(shown);
+      expect(parts[0], topic).toBe("help-lead");
+      expect(parts, topic).toEqual(
+        [...parts].sort((a, b) => partOrder.indexOf(a) - partOrder.indexOf(b)),
+      );
+    }
+  });
+
+  test("show the screen's gestures beside what each does", async () => {
+    await restOn(byId("screen"));
+    expect(partsOf(tip())).toContain("help-actions");
+    const gestures = [...tip().querySelectorAll(".help-actions dt")];
+    const effects = [...tip().querySelectorAll(".help-actions dd")];
+    expect(gestures.length).toBeGreaterThan(1);
+    expect(effects.length).toBe(gestures.length);
+  });
+
+  // The page runs in WKWebView on macOS and WebView2 on Windows; its help names the keys of the
+  // platform it runs on.
+  test("name the keys of the platform the page runs on", async () => {
+    await restOn(byId("screen"));
+    const gestures = [...tip().querySelectorAll(".help-actions dt")]
+      .map((gesture) => gesture.textContent)
+      .join(" ");
+    expect(gestures).toContain(/Mac/u.test(navigator.platform) ? "⌘" : "Ctrl");
+  });
+
+  // Each field's tip names its choices as the field's popover does, in its order.
+  test.each([
+    ["mode-group", "display-mode"],
+    ["time-base-group", "time-base"],
+    ["layout-group", "layout"],
+    ["trigger-group", "mode"],
+  ])("of %s name the choices its popover shows", async (field, choices) => {
+    await restOn(byId(field));
+    const shown = [...tip().querySelectorAll(".help-choices dt")].map(
+      (name) => name.textContent,
+    );
+    const offered = [...byId(choices).querySelectorAll("button")].map(
+      (button) => button.textContent,
+    );
+    expect(shown).toEqual(offered);
+  });
+
+  // A popover row's tip names the choices its own buttons show.
+  test.each(["slope", "grid-type", "grid-time", "grid-level", "beat-division"])(
+    "of the %s row name the choices the row shows",
+    async (choices) => {
+      const row = byId(choices).closest("[data-help]");
+      expect(row).not.toBeNull();
+      await restOn(row ?? byId(choices));
+      const shown = [...tip().querySelectorAll(".help-choices dt")].map(
+        (name) => name.textContent,
+      );
+      const offered = [...byId(choices).querySelectorAll("button")].map(
+        (button) => button.textContent,
+      );
+      expect(offered.length).toBeGreaterThan(1);
+      expect(shown).toEqual(offered);
+    },
+  );
+
+  // A trigger mode's button explains that mode, not another.
+  test("of each trigger mode button explain that mode", async () => {
+    const buttons = [...byId("mode").querySelectorAll("button")];
+    expect(buttons.length).toBeGreaterThan(1);
+    for (const button of buttons) {
+      await restOn(button);
+      expect(tip().querySelector(".help-title")?.textContent).toBe(
+        button.textContent,
+      );
+    }
+  });
+});
+
+// A tip larger than the editor at its smallest would be cut off by the window.
+describe("a help tip's size", () => {
+  // The editor's minimum height, `kMinimumHeight` in editor/include/editor/EditorCore.h (not a
+  // shared limit). The "Help is on" tests above use 420 px for their own case.
+  const minimumEditorHeight = 400;
+
+  beforeApp(async () => {
+    await page.viewport(minimumEditorWidth, minimumEditorHeight);
+    await startApp();
+  });
+
+  test.each(Object.keys(helpTexts))(
+    "keeps %s inside the editor at its minimum size wherever the pointer rests",
+    async (topic) => {
+      const { tip, showAt } = ownTips();
+      const { innerWidth: width, innerHeight: height } = window;
+      const places = [
+        [1, 1],
+        [width - 1, 1],
+        [1, height - 1],
+        [width - 1, height - 1],
+        [width / 2, height / 2],
+      ];
+      for (const [x = 0, y = 0] of places) {
+        const box = (await showAt(topic, x, y)).getBoundingClientRect();
+        expect(
+          box.left,
+          `${topic} at ${String(x)}, ${String(y)}`,
+        ).toBeGreaterThanOrEqual(0);
+        expect(box.top).toBeGreaterThanOrEqual(0);
+        expect(box.right).toBeLessThanOrEqual(width);
+        expect(box.bottom).toBeLessThanOrEqual(height);
+        expect(box.width).toBeLessThanOrEqual(300);
+      }
+      // A gesture reads on one line, beside what it does.
+      const text = helpTexts[topic as keyof typeof helpTexts];
+      const gestures = [...tip.querySelectorAll(".help-actions dt")];
+      expect(gestures.length).toBe("actions" in text ? text.actions.length : 0);
+      for (const gesture of gestures) {
+        const line = parseFloat(getComputedStyle(gesture).lineHeight);
+        expect(gesture.getBoundingClientRect().height).toBeLessThan(line * 1.5);
+      }
+      tip.remove();
+    },
+  );
+
+  // A tip is placed by its size, measured before it moves: measured squeezed against where the
+  // last tip stood, a long tip would be placed beside the pointer and stay squeezed there,
+  // narrower and taller than it is anywhere else.
+  test("does not depend on where the tip before it stood", async () => {
+    const { showAt } = ownTips();
+    // Every topic's own width, shown where it has the whole window to its right.
+    const widths = new Map<string, number>();
+    for (const topic of Object.keys(helpTexts)) {
+      widths.set(
+        topic,
+        (await showAt(topic, 10)).getBoundingClientRect().width,
+      );
+    }
+    const byWidth = [...widths].sort(([, a], [, b]) => a - b);
+    const [narrow = "", narrowWidth = 0] = byWidth[0] ?? [];
+    const [wide = "", wideWidth = 0] = byWidth.at(-1) ?? [];
+    // The narrow tip, flipped left of a pointer at the right edge, leaves this much room after it.
+    const room = 1 + offset + narrowWidth;
+    expect(room).toBeLessThan(wideWidth);
+    await showAt(narrow, window.innerWidth - 1);
+    // A pointer where the wide tip fits to its right only if measured in that room.
+    const x = window.innerWidth - edge - offset - room;
+    const shown = await showAt(wide, x);
+    expect(shown.getBoundingClientRect().width).toBeCloseTo(wideWidth, 0);
   });
 });

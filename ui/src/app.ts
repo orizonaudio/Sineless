@@ -88,7 +88,7 @@ import {
   sumLaneColour,
   type LaneStyle,
 } from "./view/lanes.ts";
-import { isMac, type HelpTopic } from "./view/help.ts";
+import { isMac, type HelpTopic, triggerModeHelp } from "./view/help.ts";
 import { brand } from "@brand/brand.ts";
 import {
   extremePositions,
@@ -669,11 +669,15 @@ export class OscilloscopeApp {
     ]);
     choiceField("timeBase", "time-base", "time-base", "Time");
     choiceField("viewLayout", "layout", "layout", "Layout");
-    segment("triggerMode", "mode", [
-      ["auto", "Auto", "modeAuto"],
-      ["normal", "Normal", "modeNormal"],
-      ["single", "Single", "modeSingle"],
-    ]);
+    segment(
+      "triggerMode",
+      "mode",
+      Object.entries(choiceLabels.triggerMode).map(([mode, label]) => [
+        mode,
+        label,
+        triggerModeHelp[mode as keyof typeof triggerModeHelp],
+      ]),
+    );
     this.sourceChoices = new Segmented(
       element("source"),
       viewOrder.map((name) => ({ value: name, label: viewLabels[name] })),
@@ -681,10 +685,7 @@ export class OscilloscopeApp {
         this.request("triggerSource", value);
       },
     );
-    segment("triggerSlope", "slope", [
-      ["rising", "Rising"],
-      ["falling", "Falling"],
-    ]);
+    segment("triggerSlope", "slope", Object.entries(choiceLabels.triggerSlope));
     this.readoutChoices = new Segmented(
       element("readout-source"),
       viewOrder.map((name) => ({ value: name, label: viewLabels[name] })),
