@@ -123,13 +123,14 @@ describe("the Meter", () => {
     expect(sections()).not.toContain("Meter");
   });
 
-  // Its button comes first in the status bar, and its panel on top in the corner, whichever was
-  // turned on first.
+  // Its button comes before the cursors' in the status bar, and its panel on top in the corner,
+  // whichever was turned on first.
   test("comes before the time and level cursors, button and readouts", async () => {
     const buttons = [
       ...(document.querySelector(".status-left")?.children ?? []),
     ].map((child) => child.id);
-    expect(buttons.slice(0, 3)).toEqual([
+    const meter = buttons.indexOf("meter-toggle");
+    expect(buttons.slice(meter, meter + 3)).toEqual([
       "meter-toggle",
       "time-cursors",
       "level-cursors",
