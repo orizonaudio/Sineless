@@ -81,7 +81,7 @@ Grouped by how often someone reaches for it.
 - Trigger mode: Auto, Normal, Single; Re-arm (Trig only).
 - Cursors: time (A/B) and level (1/2), with their readouts.
 - Hover readout.
-- Group A–D and the Compare switch (Multi's Views).
+- Group A–D, the lane Channel (L, R, M or S) and the Compare switch (Multi's Views).
 - Compare: which tracks are checked, match per track (offset, polarity, correlation), summing gain, Preview fix.
 
 **Rarely**
@@ -136,11 +136,11 @@ From 2026-10-24 and 2026-10-25.
 
 ![Default size with the trigger popover open](images/layout-trigger.png)
 
-- **Toolbar, left to right**, each field an icon and its value: mark and wordmark; Mode (Tracks: Single | Multi in its popover); Views, in one place in both modes: in Single the channel views, reading "L·R·M·S", in Multi a dropdown holding the group and Compare, Off | On, reading "A·Σ" with Σ dimmed while Compare is off; Layout (Traces: Overlay | Stack); Time (Sweep: Beats | Free | Trig); Span; Scale; Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
+- **Toolbar, left to right**, each field an icon and its value: mark and wordmark; Mode (Tracks: Single | Multi in its popover); Views, in one place in both modes: in Single the channel views, reading "L·R·M·S", in Multi a dropdown holding the group, the lane channel and Compare, Off | On, reading "A·M·Σ" with Σ dimmed while Compare is off; Layout (Traces: Overlay | Stack); Time (Sweep: Beats | Free | Trig); Span; Scale; Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
 - **Sizes**, measured on the widest toolbar (Trig with trigger mode Single, so Re-arm shows, and Frozen; Single and Multi alike, since their Views share one place): default and minimum **1130 × 580** and **1130 × 420** (the height fits the tallest corner panel: Time cursors in Beats, Level cursors and the Meter) (the toolbar needs 997 px with the wordmark since every field shows an icon; the status bar 1121 px, its Channel button as wide as "Right" and its arrow, its Grid field as wide as "None", and the state area as wide as the bar left at 1010 px before the Grid field). The wordmark always shows.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.
-- **Status bar:** Meter, Time, Level and Hover, then the Channel button (in Single the channel the Meter reads, a button that chooses it, Left alone on a mono track; This, this track, in Multi, where the Meter reads this track's Mid, DESIGN §1.2.1), A4 and Grid (the grid's type, opening the Grid popover above it), on the left; the state, Help and About on the right. Peak, RMS and Crest are in the Meter, in the screen's top-right corner, above the cursor readouts. The left group never changes width and the state area has a fixed width, as wide as the bar leaves at the minimum width, so nothing moves.
+- **Status bar:** Meter, Time, Level and Hover, then the Channel button (in Single the channel the Meter reads, a button that chooses it, Left alone on a mono track; This, this track, in Multi, where the Meter reads this track's lane channel, chosen in the Group popover, DESIGN §1.2.1), A4 and Grid (the grid's type, opening the Grid popover above it), on the left; the state, Help and About on the right. Peak, RMS and Crest are in the Meter, in the screen's top-right corner, above the cursor readouts. The left group never changes width and the state area has a fixed width, as wide as the bar leaves at the minimum width, so nothing moves.
 - **More states than fit** fold into a "+n" chip that lists them on hover, keeping the order of the state table in DESIGN §1.5.
 
 ![Minimum size, five states at once with +3 open](images/layout-states.png)

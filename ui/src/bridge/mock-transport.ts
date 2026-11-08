@@ -569,13 +569,16 @@ export class MockTransport implements Transport {
   }
 
   // What the engine's readouts measure, or its trigger reads (`setting` names the source): in
-  // Single the source when it is drawn, else the first view drawn; in Multi this track's Mid.
+  // Single the source when it is drawn, else the first view drawn; in Multi this track's lane
+  // channel, L on a mono track.
   private drawnChoice(
     setting: "readoutSource" | "triggerSource",
     multi: boolean,
   ): ChannelView {
     if (multi) {
-      return ChannelView.mid;
+      return this.inputChannels === 1
+        ? ChannelView.left
+        : ChannelView[this.setting("laneChannel") as ViewName];
     }
     const drawn = this.drawnViews();
     const source = this.setting(setting) as ViewName;

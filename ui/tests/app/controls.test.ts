@@ -94,16 +94,59 @@ describe("controls", () => {
     ];
     await press(choice("display-mode", "Multi"));
     await press(choice("group", "B"));
-    await expect.poll(field).toEqual(["B·Σ", "Views: group B"]);
+    await expect.poll(field).toEqual(["B·M·Σ", "Views: group B, Mid"]);
     app.deliver({ type: "stateChanged", name: "group", value: "c" });
-    await expect.poll(field).toEqual(["C·Σ", "Views: group C"]);
+    await expect.poll(field).toEqual(["C·M·Σ", "Views: group C, Mid"]);
     // Another setting leaves it be.
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "single" });
     await expect.poll(() => shownValue("trigger").join("")).toBe("Single");
-    expect(field()).toEqual(["C·Σ", "Views: group C"]);
+    expect(field()).toEqual(["C·M·Σ", "Views: group C, Mid"]);
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "auto" });
     await press(choice("group", "A"));
-    await expect.poll(field).toEqual(["A·Σ", "Views: group A"]);
+    await expect.poll(field).toEqual(["A·M·Σ", "Views: group A, Mid"]);
+    await press(choice("display-mode", "Single"));
+  });
+
+  // Multi's Views popover picks the one channel every lane shows: shown in Multi, Compare off or on,
+  // out of reach in Single; Mid until chosen; one choice at a time, named in the field; and chosen
+  // while frozen too.
+  test("picks one channel for every lane in Multi's Views popover", async () => {
+    const pressed = () =>
+      [...byId("lane-channel").querySelectorAll("button")]
+        .filter((button) => button.getAttribute("aria-pressed") === "true")
+        .map((button) => button.textContent);
+    const enabled = () =>
+      [...byId("lane-channel").querySelectorAll("button")].map(
+        (button) => !button.disabled,
+      );
+    for (const display of displays) {
+      await showDisplay(display);
+      expect(byId("group-group").inert, display).toBe(display === "Single");
+    }
+    await showDisplay("Multi");
+    await expect.poll(pressed).toEqual(["M"]);
+    await press(choice("lane-channel", "L"));
+    await expect.poll(pressed).toEqual(["L"]);
+    // The field names it between the group and Σ.
+    await expect
+      .poll(() => [
+        byId("group-summary").textContent,
+        byId("group-details").getAttribute("aria-label"),
+      ])
+      .toEqual(["A·L·Σ", "Views: group A, Left"]);
+    await press(choice("lane-channel", "S"));
+    await expect.poll(pressed).toEqual(["S"]);
+
+    await userEvent.click(byId("freeze"));
+    await expect.element(byId("freeze")).toHaveTextContent("Frozen");
+    expect(enabled()).toEqual([true, true, true, true]);
+    await press(choice("lane-channel", "R"));
+    await expect.poll(pressed).toEqual(["R"]);
+    await userEvent.click(byId("freeze"));
+    await expect.element(byId("freeze")).toHaveTextContent("Freeze");
+
+    await press(choice("lane-channel", "M"));
+    await expect.poll(pressed).toEqual(["M"]);
     await press(choice("display-mode", "Single"));
   });
 
@@ -126,24 +169,24 @@ describe("controls", () => {
     await expect
       .element(choice("compare", "Off"))
       .toHaveAttribute("aria-pressed", "true");
-    await expect.poll(field).toEqual(["A·Σ", false, "Views: group A"]);
+    await expect.poll(field).toEqual(["A·M·Σ", false, "Views: group A, Mid"]);
     await userEvent.click(choice("compare", "On"));
     await expect
       .element(choice("compare", "On"))
       .toHaveAttribute("aria-pressed", "true");
     await expect
       .poll(field)
-      .toEqual(["A·Σ", true, "Views: group A, Compare on"]);
+      .toEqual(["A·M·Σ", true, "Views: group A, Mid, Compare on"]);
     await press(choice("group", "B"));
     await expect
       .poll(field)
-      .toEqual(["B·Σ", true, "Views: group B, Compare on"]);
+      .toEqual(["B·M·Σ", true, "Views: group B, Mid, Compare on"]);
     // The host restores it off.
     app.deliver({ type: "stateChanged", name: "compare", value: "off" });
     await expect
       .element(choice("compare", "Off"))
       .toHaveAttribute("aria-pressed", "true");
-    await expect.poll(field).toEqual(["B·Σ", false, "Views: group B"]);
+    await expect.poll(field).toEqual(["B·M·Σ", false, "Views: group B, Mid"]);
     await press(choice("group", "A"));
     await press(choice("display-mode", "Single"));
   });
@@ -185,7 +228,7 @@ describe("controls", () => {
 
   // The tag says which channel Peak and RMS measure (DESIGN.md 1.2.1): in Single the readout
   // source when drawn, else the first view drawn (Left with the default views, L and R), whatever
-  // the trigger source; this track's Mid in Multi.
+  // the trigger source; this track's lane channel in Multi.
   test("labels the readouts with the channel they measure", async () => {
     const tag = () => byId("readout-tag").textContent;
     await press(choice("display-mode", "Single"));
@@ -211,7 +254,7 @@ describe("controls", () => {
 
   // In Single the tag is a button that opens the readouts' popover above it, in the status bar,
   // kept inside the window; a press elsewhere closes it. In Multi, Compare off or on, which measures
-  // this track's Mid, it is a label: it opens nothing, and switching there closes the popover.
+  // this track's lane channel, it is a label: it opens nothing, and switching there closes the popover.
   test.each(displays.filter((display) => display !== "Single"))(
     "chooses the readout channel in Single, not in %s",
     async (mode) => {

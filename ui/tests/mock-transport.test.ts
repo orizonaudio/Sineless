@@ -288,8 +288,9 @@ describe("mock back end", () => {
   });
 
   // As the engine does: the trigger source when drawn, else the first view drawn, a mono track's L
-  // alone, and this track's Mid in Multi, Compare off or on; the frame names it. Every source,
-  // every set of views, every display mode with Compare off and on.
+  // alone, and this track's lane channel in Multi (L on a mono track), Compare off or on; the frame
+  // names it. Every source (the lane channel follows it), every set of views, every display mode
+  // with Compare off and on.
   test.each(
     Object.keys(DisplayMode).flatMap((mode) =>
       Object.keys(Toggle).flatMap((compare) =>
@@ -325,6 +326,11 @@ describe("mock back end", () => {
             name: "compare",
             value: compare,
           });
+          transport.send({
+            type: "setSetting",
+            name: "laneChannel",
+            value: source,
+          });
           useTrigger(transport);
           transport.requestFrame();
           const shown: readonly (typeof viewOrder)[number][] =
@@ -334,7 +340,9 @@ describe("mock back end", () => {
               ? ChannelView[
                   shown.includes(source) ? source : (shown[0] ?? "left")
                 ]
-              : ChannelView.mid;
+              : inputChannels === 1
+                ? ChannelView.left
+                : ChannelView[source];
           expect(
             frames.at(-1)?.triggerView,
             `${views.join(" ")}, ${String(inputChannels)}`,
@@ -365,12 +373,17 @@ describe("mock back end", () => {
       });
       transport.send({ type: "setSetting", name: "displayMode", value: mode });
       transport.send({ type: "setSetting", name: "compare", value: compare });
+      transport.send({
+        type: "setSetting",
+        name: "laneChannel",
+        value: "right",
+      });
       transport.send({ type: "setSetting", name: "timeBase", value: "beats" });
       transport.requestFrame();
       const frame = frames.at(-1);
       expect(frame?.noTempo).toBe(true);
       expect(frame?.readoutView).toBe(
-        mode === "single" ? ChannelView.side : ChannelView.mid,
+        mode === "single" ? ChannelView.side : ChannelView.right,
       );
       expect(frame?.laneSet !== 0).toBe(mode !== "single");
     },
