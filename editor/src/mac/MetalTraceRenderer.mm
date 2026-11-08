@@ -718,11 +718,10 @@ private:
         }
     }
 
-    // The page's grid (grid.ts): the ten divisions, or a tempo-synced sweep's beats and bars in
-    // Beats mode (the frame's cycle fields), and each lane's level and zero lines, as lines of
-    // the page's width centred where it strokes them.
     // Where the frame's trigger point sits on screen, as the page maps it through the view; NaN
-    // (no line) with no frame or no trigger point, as while running free.
+    // (no line) with no frame or no trigger point, as while running free. Before the first frame
+    // the page draws Cross hair's line at the Position setting and the editor draws none: the
+    // editor reads the trigger point only from frames, which come within a refresh or two.
     static double triggerOnScreen(const FrameView* frame, const TraceView& view)
     {
         if (frame == nullptr) {
@@ -732,6 +731,10 @@ private:
                (view.view.end - view.view.start);
     }
 
+    // The page's grid (grid.ts), by the type and steps its trace view names: the Time step's
+    // equal divisions, or a tempo-synced sweep's beats and bars in Beats mode (the frame's cycle
+    // fields), each lane's level and zero lines, or Cross hair's zero lines, trigger line and
+    // ticks, as lines of the page's width centred where it strokes them.
     static void addGrid(std::vector<BandInstance>& out, const FrameView* frame,
                         const TraceView& view, std::size_t blocks, double width, double height,
                         double pixelRatio)
