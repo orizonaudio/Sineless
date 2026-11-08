@@ -1004,7 +1004,8 @@ button[aria-pressed="true"]:focus-visible {
   z-index: 10;
   display: grid;
   gap: 4px;
-  max-width: 260px;
+  box-sizing: border-box;
+  max-width: 300px;
   padding: 8px 10px;
   font-size: 12px;
   line-height: 1.4;
@@ -1016,9 +1017,46 @@ button[aria-pressed="true"]:focus-visible {
   pointer-events: none;
 }
 
-.help-tip strong {
+.help-tip p,
+.help-tip dl,
+.help-tip dd {
+  margin: 0;
+}
+
+.help-title {
   font-size: 11px;
   font-weight: 600;
+  color: var(--sl-ink-2);
+}
+
+/* A choice per line: its name in the title's weight, then what it does. */
+.help-choices dt,
+.help-choices dd {
+  display: inline;
+}
+
+.help-choices dt {
+  font-weight: 600;
+}
+
+.help-choices dt::after {
+  content: ": ";
+}
+
+/* Gestures in a column as wide as the longest, each on one line; what they do beside them. */
+.help-actions {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  align-items: start;
+}
+
+.help-actions dt {
+  white-space: nowrap;
+}
+
+.help-note {
+  font-size: 11px;
   color: var(--sl-ink-2);
 }
 

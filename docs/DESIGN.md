@@ -329,6 +329,18 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   which never replaces it. Each says that audio still passes through. Failures of the webview
   itself are in 8.9.
 
+#### Help
+
+- Each help tooltip (FR-13) reads in one order: its heading; a lead, one sentence of at most 16
+  words saying what the control is; then, where they apply, its choices (each value under the
+  name its control shows, in semibold, then what it does, one to a line), its actions (gestures
+  in one column, each on one line, and what each does beside it) and its notes (limits and
+  caveats, smaller, in the heading's ink). A tooltip holds at most 70 words besides its heading,
+  and is at most 300 px wide.
+- Help lists every value of the display mode, time base, layout, trigger slope and trigger mode;
+  each trigger mode's button also explains its own mode. Gestures name the keys as the platform
+  does: ⌘ and ⌥ on macOS, Ctrl and Alt on Windows.
+
 #### Style
 
 The colours are tokens (`ui/src/tokens.css`, from `docs/ui/tokens/`), checked for contrast and
