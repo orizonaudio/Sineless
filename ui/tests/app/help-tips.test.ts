@@ -255,10 +255,10 @@ describe("a help tip's parts", () => {
   }
 
   test(
-    "come in order: lead, choices, actions, notes",
+    "come in order: lead, choices, actions, notes, each note as written",
     async () => {
       const { showAt } = ownTips();
-      for (const topic of Object.keys(helpTexts)) {
+      for (const [topic, text] of Object.entries(helpTexts)) {
         const shown = await showAt(topic, 10);
         const parts = partsOf(shown);
         expect(parts[0], topic).toBe("help-lead");
@@ -267,6 +267,11 @@ describe("a help tip's parts", () => {
             (a, b) => partOrder.indexOf(a) - partOrder.indexOf(b),
           ),
         );
+        // A topic's limits reach the tip as written; one without any shows none.
+        const notes = [...shown.querySelectorAll(".help-note")].map(
+          (note) => note.textContent,
+        );
+        expect(notes, topic).toEqual("notes" in text ? text.notes : []);
       }
     },
     everyTopicTimeout,
