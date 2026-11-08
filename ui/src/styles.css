@@ -228,6 +228,12 @@ body {
   stroke-linejoin: round;
 }
 
+/* A solid shape where an outline would be too fine to read at 12 px: Mode's front square, this
+   track among the others. */
+.icon .filled {
+  fill: var(--sl-ink-2);
+}
+
 .icon .dashed {
   stroke-width: 1;
   stroke-dasharray: 1 1.6;
