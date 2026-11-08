@@ -64,6 +64,10 @@ public:
     // Whether editors opened from now on draw the traces natively where the platform can (macOS
     // 14+, AD-30); on by default. The showcase films the page alone, so it turns this off.
     static void setNativeTraces(bool enabled);
+    // Where editors read the display scale of a window (null: before attaching): displayScale,
+    // unless a test gives its own, as macOS always reports 1. Empty restores displayScale.
+    using ScaleSource = std::function<double(void* window)>;
+    static void setDisplayScaleForTests(ScaleSource source);
     // Whether this editor draws the traces natively. For tests.
     [[nodiscard]] bool drawsTracesNatively() const { return nativeTraces; }
 

@@ -42,6 +42,7 @@ public:
         return EditorCore::minimumHeightFor(settings, inputChannels, laneSet);
     }
     [[nodiscard]] double scaleFactor() const { return core.scaleFactor(); }
+    [[nodiscard]] bool windowOpened() const { return core.windowOpened(); }
     [[nodiscard]] bool engineAvailable() const { return core.engineAvailable(); }
     [[nodiscard]] bool workerRunning() const { return core.workerRunning(); }
     [[nodiscard]] bool analyzerAllocated() const { return core.analyzerAllocated(); }
