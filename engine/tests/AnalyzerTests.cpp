@@ -2362,6 +2362,10 @@ TEST_P(EveryLaneChannelTest, LanesShowTheChosenChannelOfEveryTrack)
     expectLanes(*frame, c.channel, c.compare);
     EXPECT_EQ(frame->readoutView, c.channel);
     EXPECT_EQ(frame->triggerView, c.channel);
+    // This track's level, steady: the Meter reads the lane channel it names.
+    const float level = std::abs(channelOf(c.channel, 0.5f, 0.25f));
+    EXPECT_NEAR(frame->peak, level, 1e-6f) << "the Meter's peak, on the lane channel";
+    EXPECT_NEAR(frame->rms, level, 1e-6f) << "the Meter's RMS, on the lane channel";
 }
 
 INSTANTIATE_TEST_SUITE_P(Lanes, EveryLaneChannelTest, ::testing::ValuesIn(everyLaneChannelCase()),
