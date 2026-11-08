@@ -233,7 +233,7 @@ export const helpTexts = {
   },
   gridType: {
     title: "Grid type",
-    text: "Grid draws the time and level lines. None leaves each lane's zero line. Cross hair, in Trig, draws the zero lines and a line through the trigger point, with ticks where the time and level lines would be. The labels stay in every type.",
+    text: "Grid draws the time and level lines. None leaves each lane's zero line. The labels stay either way.",
   },
   gridTime: {
     title: "Time lines",

@@ -1,5 +1,5 @@
-// Which grid the screen draws: the shown time base's Type, Time and Level, the one Beat division,
-// and Cross hair drawn as Grid where there is no trigger point to mark.
+// Which grid the screen draws: the shown time base's Type, Time and Level, and the one Beat
+// division.
 import { expect, test } from "vitest";
 
 import { GridType, TimeBase } from "../../protocol/src/enums.ts";
@@ -7,7 +7,6 @@ import type { SettingValue } from "../../protocol/src/messages.ts";
 import { defaultSettingValues } from "../../protocol/src/setting-values.ts";
 import type { SettingName } from "../../protocol/src/settings.ts";
 import {
-  effectiveGridType,
   gridChoice,
   gridSettingName,
   isGridSetting,
@@ -53,19 +52,11 @@ test.each(
   timeBases.flatMap((timeBase) =>
     types.map((type) => [timeBase, type] as const),
   ),
-)(
-  "in %s, %s draws as itself, Cross hair outside Trig as Grid",
-  (timeBase, type) => {
-    expect(effectiveGridType(type, timeBase)).toBe(
-      type === "crossHair" && timeBase !== "trigger" ? "grid" : type,
-    );
-    const values = defaultSettingValues();
-    values[gridSettingName("Type", timeBase)] = type;
-    expect(gridChoice((name) => values[name], timeBase).type).toBe(
-      effectiveGridType(type, timeBase),
-    );
-  },
-);
+)("in %s, %s draws as chosen", (timeBase, type) => {
+  const values = defaultSettingValues();
+  values[gridSettingName("Type", timeBase)] = type;
+  expect(gridChoice((name) => values[name], timeBase).type).toBe(type);
+});
 
 test("every grid setting, and only those, redraw the grid", () => {
   const names = Object.keys(defaultSettingValues()) as SettingName[];

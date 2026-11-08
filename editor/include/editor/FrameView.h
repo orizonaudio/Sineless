@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <span>
 #include <vector>
@@ -29,9 +28,6 @@ struct FrameView
     float viewStart = 0.0f;
     float viewEnd = 1.0f;
     float visibleSamples = 0.0f;
-    // Where the trigger point sits across the unpanned span, as the engine placed it; NaN while
-    // running free and in Beats.
-    float triggerPosition = std::numeric_limits<float>::quiet_NaN();
     // Views present, in ChannelView order, each with its ChannelView index; empty in lane frames.
     struct View
     {

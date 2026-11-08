@@ -1,7 +1,7 @@
 // The Grid field in the status bar and its popover (#364): each row chooses the shown time base's
 // setting (Beat division its one setting), the field names the type drawn and keeps its width, each
-// time base keeps its own choices, and the rows that do not apply are disabled: Cross hair outside
-// Trig, Time and Level with None, Beat division outside Beats.
+// time base keeps its own choices, and the rows that do not apply are disabled: Time, Level and Beat
+// division with None, Beat division outside Beats.
 import { describe, expect, test } from "vitest";
 
 import {
@@ -55,14 +55,10 @@ const rows = [
   })),
 ];
 
-// The choices a user can make in each time base: Cross hair in Trig only, Beat division in Beats.
+// The choices a user can make in each time base: Beat division in Beats only.
 const cases = timeBases.flatMap((timeBase) =>
   rows
-    .filter(
-      (entry) =>
-        (entry.value !== "crossHair" || timeBase === "trigger") &&
-        (entry.row !== "beat-division" || timeBase === "beats"),
-    )
+    .filter((entry) => entry.row !== "beat-division" || timeBase === "beats")
     .map((entry) => ({ ...entry, timeBase, base: timeBaseLabel[timeBase] })),
 );
 
@@ -97,21 +93,18 @@ describe("the Grid popover", () => {
     await press(choice("grid-type", "None"));
     await settle();
     expect(summary()).toBe("None");
-    await press(choice("grid-type", "Cross hair"));
-    await settle();
-    expect(summary()).toBe("Cross hair");
     await inTimeBase("Beats");
+    await settle();
+    expect(summary()).toBe("Grid");
+    await inTimeBase("Free");
     await settle();
     expect(summary()).toBe("Grid");
     await press(choice("grid-type", "None"));
     await settle();
-    await inTimeBase("Free");
+    await inTimeBase("Beats");
     await settle();
     expect(summary()).toBe("Grid");
     await inTimeBase("Trig");
-    await settle();
-    expect(summary()).toBe("Cross hair");
-    await inTimeBase("Beats");
     await settle();
     expect(summary()).toBe("None");
   });
@@ -121,10 +114,8 @@ describe("the Grid popover", () => {
     async (timeBase) => {
       await startApp();
       await inTimeBase(timeBaseLabel[timeBase]);
-      expect(choice("grid-type", "Cross hair").disabled).toBe(
-        timeBase !== "trigger",
-      );
       expect(choice("grid-type", "None").disabled).toBe(false);
+      expect(choice("grid-type", "Grid").disabled).toBe(false);
       for (const label of ["Regular", "Triplets"]) {
         expect(choice("beat-division", label).disabled).toBe(
           timeBase !== "beats",
@@ -134,12 +125,16 @@ describe("the Grid popover", () => {
       for (const row of densityRows) {
         expect(choice(row, "Fine").disabled).toBe(false);
       }
+      // With None, nothing the steps or the division set is drawn.
       await press(choice("grid-type", "None"));
       await settle();
       for (const row of densityRows) {
         for (const label of ["Coarse", "Medium", "Fine"]) {
           expect(choice(row, label).disabled, `${row} ${label}`).toBe(true);
         }
+      }
+      for (const label of ["Regular", "Triplets"]) {
+        expect(choice("beat-division", label).disabled).toBe(true);
       }
     },
   );
@@ -152,7 +147,7 @@ describe("the Grid popover", () => {
       return { left, width };
     };
     const first = box();
-    for (const label of ["None", "Cross hair", "Grid"]) {
+    for (const label of ["None", "Grid"]) {
       await press(choice("grid-type", label));
       await settle();
       expect(box(), label).toEqual(first);

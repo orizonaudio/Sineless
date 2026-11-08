@@ -57,11 +57,11 @@ inline std::vector<State> states()
          .settings = {{SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kEighthBar)}},
          .script = ""},
         {.name = "-60 dB", .settings = {{SettingId::kVerticalScale, -60.0}}, .script = ""},
-        // The grid field's longest value, Cross hair, which applies in Trig.
-        {.name = "Trig, Cross hair",
+        // The grid field's other value, None.
+        {.name = "Trig, grid None",
          .settings = {{SettingId::kTimeBase, kTrigger},
                       {SettingId::kGridTypeTrigger,
-                       static_cast<double>(protocol::GridType::kCrossHair)}},
+                       static_cast<double>(protocol::GridType::kNone)}},
          .script = ""},
         // Layout's other value; the field is as wide as its longest either way.
         {.name = "Overlay",

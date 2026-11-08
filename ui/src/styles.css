@@ -942,7 +942,7 @@ button[aria-pressed="true"]:focus-visible {
   bottom: calc(100% + 8px);
 }
 
-/* The grid's field, as wide as its longest type ("Cross hair") since the stacked labels set it, so
+/* The grid's field, as wide as its longest type ("None") since the stacked labels set it, so
    a choice moves nothing; its popover opens upward, its left edge on the button's. */
 .grid-group {
   position: relative;

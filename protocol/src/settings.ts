@@ -164,8 +164,8 @@ export const settings = {
     defaultValue: 440,
     logarithmic: false,
   },
-  // The screen's grid, for each time base: what it draws (Cross hair applies in Trig only, and
-  // draws as Grid in the others), and how closely it divides time and level.
+  // The screen's grid, for each time base: what it draws, and how closely it divides time and
+  // level.
   gridTypeBeats: {
     kind: "enum",
     values: "GridType",

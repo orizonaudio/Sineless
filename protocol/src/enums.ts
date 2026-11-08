@@ -76,9 +76,8 @@ export type Group = (typeof Group)[keyof typeof Group];
 export const FrameMode = { minMax: 0, raw: 1 } as const;
 export type FrameMode = (typeof FrameMode)[keyof typeof FrameMode];
 
-// What the screen's grid draws in a time base: nothing but each lane's zero line; the full grid; or
-// the cross hair, the zero lines and the trigger point's vertical line with ticks, in Trig only.
-export const GridType = { none: 0, grid: 1, crossHair: 2 } as const;
+// What the screen's grid draws in a time base: nothing but each lane's zero line, or the full grid.
+export const GridType = { none: 0, grid: 1 } as const;
 export type GridType = (typeof GridType)[keyof typeof GridType];
 
 // How closely the grid divides the time or the level axis.

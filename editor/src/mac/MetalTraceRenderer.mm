@@ -8,7 +8,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <limits>
 #include <span>
 #include <string>
 #include <vector>
@@ -718,23 +717,10 @@ private:
         }
     }
 
-    // Where the frame's trigger point sits on screen, as the page maps it through the view; NaN
-    // (no line) with no frame or no trigger point, as while running free. Before the first frame
-    // the page draws Cross hair's line at the Position setting and the editor draws none: the
-    // editor reads the trigger point only from frames, which come within a refresh or two.
-    static double triggerOnScreen(const FrameView* frame, const TraceView& view)
-    {
-        if (frame == nullptr) {
-            return std::numeric_limits<double>::quiet_NaN();
-        }
-        return (static_cast<double>(frame->triggerPosition) - view.view.start) /
-               (view.view.end - view.view.start);
-    }
-
     // The page's grid (grid.ts), by the type and steps its trace view names: the Time step's
     // equal divisions, or a tempo-synced sweep's beats and bars in Beats mode (the frame's cycle
-    // fields), each lane's level and zero lines, or Cross hair's zero lines, trigger line and
-    // ticks, as lines of the page's width centred where it strokes them.
+    // fields), and each lane's level and zero lines (the zero lines alone with None), as lines of
+    // the page's width centred where it strokes them.
     static void addGrid(std::vector<BandInstance>& out, const FrameView* frame,
                         const TraceView& view, std::size_t blocks, double width, double height,
                         double pixelRatio)
@@ -758,24 +744,8 @@ private:
                                           {.type = view.gridType,
                                            .level = view.gridLevel,
                                            .columns = gridColumns(view.gridTime),
-                                           .vertical = synced ? &musical : nullptr,
-                                           .trigger = triggerOnScreen(frame, view)});
+                                           .vertical = synced ? &musical : nullptr});
         const double half = lines.lineWidth / 2.0;
-        // Cross hair's ticks, as short lines, first: the zero and cross lines stay whole over them.
-        for (const GridLines::Tick& tick : lines.ticks) {
-            const bool vertical = tick.x0 == tick.x1;
-            const double left = vertical ? tick.x0 - half : tick.x0;
-            const double right = vertical ? tick.x0 + half : tick.x1;
-            const double bottom = vertical ? height - tick.y1 : height - tick.y0 - half;
-            const double top = vertical ? height - tick.y0 : height - tick.y0 + half;
-            out.push_back({.left = static_cast<float>(left),
-                           .right = static_cast<float>(right),
-                           .bottom = static_cast<float>(bottom),
-                           .top = static_cast<float>(top),
-                           .colour = tick.strong ? view.axis : view.grid,
-                           .softX = vertical ? 1 : 0,
-                           .softY = vertical ? 0 : 1});
-        }
         for (const GridLines::Vertical& line : lines.vertical) {
             out.push_back({.left = static_cast<float>(line.x - half),
                            .right = static_cast<float>(line.x + half),

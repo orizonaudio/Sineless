@@ -164,9 +164,6 @@ export const gridFineLineGap = 6;
 // this far apart (CSS pixels); closer, it draws Medium's. A time spacing, kept apart from the
 // level gaps.
 export const gridFineBeatLineGap = 8;
-// A Cross hair tick's length (CSS pixels), centred on the line it marks: long enough to read at 1x,
-// short enough not to read as a line.
-export const gridTickLength = 6;
 
 // Compare's cancellation shading, which the page and the macOS editor both draw. Where the sum's
 // peak falls more than cancellationDb below the louder compared track's, they cancel strongly.
@@ -297,7 +294,6 @@ export const limits: readonly {
   { name: "gridMediumLineGap", value: gridMediumLineGap, kind: "double" },
   { name: "gridFineLineGap", value: gridFineLineGap, kind: "double" },
   { name: "gridFineBeatLineGap", value: gridFineBeatLineGap, kind: "double" },
-  { name: "gridTickLength", value: gridTickLength, kind: "double" },
   { name: "cancellationDb", value: cancellationDb, kind: "double" },
   { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
   { name: "barcodeDataBits", value: barcodeDataBits, kind: "count" },

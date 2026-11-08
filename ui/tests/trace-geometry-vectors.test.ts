@@ -36,7 +36,6 @@ import {
   gridLevelStepDb,
   gridLevelsBelowTop,
   gridMediumLineGap,
-  defaultTriggerPosition,
   cancellationBridgedPoints,
   cancellationQuietShare,
   cancellationReachDivisor,
@@ -182,8 +181,7 @@ function musicalCases() {
 }
 
 // The Time and Level steps each type is written at: Grid at each step and each against the
-// other's extremes; None, whose zero lines no step changes, at one; Cross hair at Medium and at
-// steps whose ticks include strong ones (Fine's 3 dB lines).
+// other's extremes; None, whose zero lines no step changes, at one.
 const steps: Readonly<
   Record<GridTypeName, readonly (readonly [GridDensityName, GridDensityName])[]>
 > = {
@@ -193,14 +191,9 @@ const steps: Readonly<
     ["fine", "coarse"],
   ],
   none: [["medium", "medium"]],
-  crossHair: [
-    ["medium", "medium"],
-    ["coarse", "fine"],
-  ],
 };
 
-// The grid of every type; Cross hair with the trigger point on screen (where Trig puts it) and
-// zoomed off it.
+// The grid of every type.
 function gridCases() {
   const cases = [];
   for (const [width, height] of [
@@ -212,48 +205,19 @@ function gridCases() {
       for (const laneCount of [1, 2, 3, 15]) {
         for (const type of types) {
           for (const [time, level] of steps[type]) {
-            for (const trigger of type === "crossHair"
-              ? [defaultTriggerPosition, -0.4]
-              : [undefined]) {
-              const options = {
-                type,
-                columns: gridColumns[time],
-                level,
-                ...(trigger === undefined ? {} : { trigger }),
-              };
-              cases.push({
-                width,
-                height,
-                ratio,
-                laneCount,
-                ...options,
-                time,
-                lines: gridLines(width, height, laneCount, ratio, options),
-              });
-            }
+            const options = { type, columns: gridColumns[time], level };
+            cases.push({
+              width,
+              height,
+              ratio,
+              laneCount,
+              ...options,
+              time,
+              lines: gridLines(width, height, laneCount, ratio, options),
+            });
           }
         }
       }
-    }
-  }
-  // Cross hair with the trigger point on the screen's very edges, as Position 0% and 100% put it.
-  for (const trigger of [0, 1]) {
-    for (const ratio of [1, 2]) {
-      const options = {
-        type: "crossHair",
-        columns: gridColumns.coarse,
-        level: "fine",
-        trigger,
-      } as const;
-      cases.push({
-        width: 1002,
-        height: 451,
-        ratio,
-        laneCount: 2,
-        ...options,
-        time: "coarse",
-        lines: gridLines(1002, 451, 2, ratio, options),
-      });
     }
   }
   const musical = musicalGrid(16, 16, 4, { start: 0.1, end: 0.9 }).lines;

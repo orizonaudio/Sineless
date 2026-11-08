@@ -291,27 +291,6 @@ GridLines gridLines(double width, double height, std::size_t laneCount, double p
             lines.vertical.push_back({.x = xOf(line.position), .strong = line.strong});
         }
         lines.horizontal = levelRows;
-    } else if (options.type == protocol::GridType::kCrossHair) {
-        const double half = protocol::kGridTickLength * std::max(1.0, pixelRatio) / 2.0;
-        for (const Lane& lane : laneList) {
-            const double zero = rowY(lane, 0.0);
-            for (const VerticalLine& line : divisions) {
-                const double x = xOf(line.position);
-                lines.ticks.push_back({.x0 = x,
-                                       .y0 = zero - half,
-                                       .x1 = x,
-                                       .y1 = zero + half,
-                                       .strong = line.strong});
-            }
-        }
-        if (options.trigger >= 0.0 && options.trigger <= 1.0) {
-            const double x = xOf(options.trigger);
-            lines.vertical.push_back({.x = x, .strong = true});
-            for (const GridLines::Horizontal& row : levelRows) {
-                lines.ticks.push_back(
-                    {.x0 = x - half, .y0 = row.y, .x1 = x + half, .y1 = row.y, .strong = row.axis});
-            }
-        }
     }
     for (const Lane& lane : laneList) {
         lines.horizontal.push_back({.y = rowY(lane, 0.0), .axis = true});
