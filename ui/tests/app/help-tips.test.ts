@@ -182,6 +182,7 @@ describe("turning help on", () => {
 // way: `showAt` rests the pointer on `topic` at (x, y) and gives the tip once shown.
 function ownTips(): {
   tip: HTMLElement;
+  tips: HelpTips;
   showAt: (topic: string, x: number, y?: number) => Promise<HTMLElement>;
 } {
   const tip = document.createElement("div");
@@ -194,6 +195,7 @@ function ownTips(): {
   document.body.append(target);
   return {
     tip,
+    tips,
     showAt: async (topic, x, y = 20) => {
       document.dispatchEvent(new PointerEvent("pointerdown"));
       target.dataset["help"] = topic;
@@ -214,6 +216,10 @@ function ownTips(): {
     },
   };
 }
+
+// A test that shows every topic waits out the hover delay for each: a second per topic, so a topic
+// added does not bring it to the default timeout.
+const everyTopicTimeout = Object.keys(helpTexts).length * 1000;
 
 // The parts of a tip, in the order it shows them, by the class each part's element has.
 const partOrder = ["help-lead", "help-choices", "help-actions", "help-note"];
@@ -248,17 +254,23 @@ describe("a help tip's parts", () => {
     );
   }
 
-  test("come in order: lead, choices, actions, notes", async () => {
-    const { showAt } = ownTips();
-    for (const topic of Object.keys(helpTexts)) {
-      const shown = await showAt(topic, 10);
-      const parts = partsOf(shown);
-      expect(parts[0], topic).toBe("help-lead");
-      expect(parts, topic).toEqual(
-        [...parts].sort((a, b) => partOrder.indexOf(a) - partOrder.indexOf(b)),
-      );
-    }
-  });
+  test(
+    "come in order: lead, choices, actions, notes",
+    async () => {
+      const { showAt } = ownTips();
+      for (const topic of Object.keys(helpTexts)) {
+        const shown = await showAt(topic, 10);
+        const parts = partsOf(shown);
+        expect(parts[0], topic).toBe("help-lead");
+        expect(parts, topic).toEqual(
+          [...parts].sort(
+            (a, b) => partOrder.indexOf(a) - partOrder.indexOf(b),
+          ),
+        );
+      }
+    },
+    everyTopicTimeout,
+  );
 
   test("show the screen's gestures beside what each does", async () => {
     await restOn(byId("screen"));
@@ -338,6 +350,25 @@ describe("a help tip's size", () => {
     await startApp();
   });
 
+  // Every topic's own width, shown where it has the whole window to its right, narrowest first;
+  // measured once, as each tip waits out the hover delay.
+  let widths: [string, number][] | undefined;
+  const widthsOf = async (
+    showAt: ReturnType<typeof ownTips>["showAt"],
+  ): Promise<[string, number][]> => {
+    if (widths === undefined) {
+      const measured: [string, number][] = [];
+      for (const topic of Object.keys(helpTexts)) {
+        measured.push([
+          topic,
+          (await showAt(topic, 10)).getBoundingClientRect().width,
+        ]);
+      }
+      widths = measured.sort(([, a], [, b]) => a - b);
+    }
+    return widths;
+  };
+
   test.each(Object.keys(helpTexts))(
     "keeps %s inside the editor at its minimum size wherever the pointer rests",
     async (topic) => {
@@ -376,26 +407,40 @@ describe("a help tip's size", () => {
   // A tip is placed by its size, measured before it moves: measured squeezed against where the
   // last tip stood, a long tip would be placed beside the pointer and stay squeezed there,
   // narrower and taller than it is anywhere else.
-  test("does not depend on where the tip before it stood", async () => {
-    const { showAt } = ownTips();
-    // Every topic's own width, shown where it has the whole window to its right.
-    const widths = new Map<string, number>();
-    for (const topic of Object.keys(helpTexts)) {
-      widths.set(
-        topic,
-        (await showAt(topic, 10)).getBoundingClientRect().width,
-      );
-    }
-    const byWidth = [...widths].sort(([, a], [, b]) => a - b);
-    const [narrow = "", narrowWidth = 0] = byWidth[0] ?? [];
-    const [wide = "", wideWidth = 0] = byWidth.at(-1) ?? [];
-    // The narrow tip, flipped left of a pointer at the right edge, leaves this much room after it.
-    const room = 1 + offset + narrowWidth;
-    expect(room).toBeLessThan(wideWidth);
+  test(
+    "does not depend on where the tip before it stood",
+    async () => {
+      const { showAt } = ownTips();
+      const byWidth = await widthsOf(showAt);
+      const [narrow = "", narrowWidth = 0] = byWidth[0] ?? [];
+      const [wide = "", wideWidth = 0] = byWidth.at(-1) ?? [];
+      // The narrow tip, flipped left of a pointer at the right edge, leaves this much room after it.
+      const room = 1 + offset + narrowWidth;
+      expect(room).toBeLessThan(wideWidth);
+      await showAt(narrow, window.innerWidth - 1);
+      // A pointer where the wide tip fits to its right only if measured in that room.
+      const x = window.innerWidth - edge - offset - room;
+      const shown = await showAt(wide, x);
+      expect(shown.getBoundingClientRect().width).toBeCloseTo(wideWidth, 0);
+    },
+    everyTopicTimeout,
+  );
+
+  // Turning help on from the switch pins "Help is on" above it, sized the same way.
+  test("pins Help is on at its own width wherever the tip before it stood", async () => {
+    const { tip, tips, showAt } = ownTips();
+    const button = document.createElement("button");
+    button.style.cssText = `position: fixed; right: ${String(edge)}px; bottom: ${String(edge)}px`;
+    button.textContent = "?";
+    document.body.append(button);
+    tips.setEnabled(true, button);
+    const own = tip.getBoundingClientRect().width;
+    // The narrowest tip, flipped left of a pointer at the right edge, leaves less room than that.
+    const [narrow = "", narrowWidth = 0] = (await widthsOf(showAt))[0] ?? [];
+    expect(1 + offset + narrowWidth).toBeLessThan(own);
     await showAt(narrow, window.innerWidth - 1);
-    // A pointer where the wide tip fits to its right only if measured in that room.
-    const x = window.innerWidth - edge - offset - room;
-    const shown = await showAt(wide, x);
-    expect(shown.getBoundingClientRect().width).toBeCloseTo(wideWidth, 0);
+    tips.setEnabled(true, button);
+    expect(tip.getBoundingClientRect().width).toBeCloseTo(own, 0);
+    button.remove();
   });
 });
