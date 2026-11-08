@@ -174,49 +174,19 @@ export const settings = {
     defaultValue: 440,
     logarithmic: false,
   },
-  // The screen's grid, for each time base: what it draws, and how closely it divides time and
+  // The screen's grid, in every time base: what it draws, and how closely it divides time and
   // level.
-  gridTypeBeats: {
+  gridType: {
     kind: "enum",
     values: "GridType",
     defaultValue: GridType.grid,
   },
-  gridTypeFree: {
-    kind: "enum",
-    values: "GridType",
-    defaultValue: GridType.grid,
-  },
-  gridTypeTrigger: {
-    kind: "enum",
-    values: "GridType",
-    defaultValue: GridType.grid,
-  },
-  gridTimeBeats: {
+  gridTime: {
     kind: "enum",
     values: "GridDensity",
     defaultValue: GridDensity.medium,
   },
-  gridTimeFree: {
-    kind: "enum",
-    values: "GridDensity",
-    defaultValue: GridDensity.medium,
-  },
-  gridTimeTrigger: {
-    kind: "enum",
-    values: "GridDensity",
-    defaultValue: GridDensity.medium,
-  },
-  gridLevelBeats: {
-    kind: "enum",
-    values: "GridDensity",
-    defaultValue: GridDensity.medium,
-  },
-  gridLevelFree: {
-    kind: "enum",
-    values: "GridDensity",
-    defaultValue: GridDensity.medium,
-  },
-  gridLevelTrigger: {
+  gridLevel: {
     kind: "enum",
     values: "GridDensity",
     defaultValue: GridDensity.medium,

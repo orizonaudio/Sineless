@@ -13382,6 +13382,26 @@
       "height": 451,
       "ratio": 1,
       "laneCount": 1,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 226.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 1,
+      "laneCount": 1,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -14004,6 +14024,30 @@
       "ratio": 1,
       "laneCount": 2,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 113.5,
+            "axis": true
+          },
+          {
+            "y": 338.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 1,
+      "laneCount": 2,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -14864,6 +14908,34 @@
       "height": 451,
       "ratio": 1,
       "laneCount": 3,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 376.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 1,
+      "laneCount": 3,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -15590,6 +15662,82 @@
       "ratio": 1,
       "laneCount": 15,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 15.5,
+            "axis": true
+          },
+          {
+            "y": 45.5,
+            "axis": true
+          },
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 105.5,
+            "axis": true
+          },
+          {
+            "y": 135.5,
+            "axis": true
+          },
+          {
+            "y": 165.5,
+            "axis": true
+          },
+          {
+            "y": 195.5,
+            "axis": true
+          },
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 256.5,
+            "axis": true
+          },
+          {
+            "y": 286.5,
+            "axis": true
+          },
+          {
+            "y": 316.5,
+            "axis": true
+          },
+          {
+            "y": 346.5,
+            "axis": true
+          },
+          {
+            "y": 376.5,
+            "axis": true
+          },
+          {
+            "y": 406.5,
+            "axis": true
+          },
+          {
+            "y": 436.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 1,
+      "laneCount": 15,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -16871,6 +17019,26 @@
       "ratio": 2,
       "laneCount": 1,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 226.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 2,
+      "laneCount": 1,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -17471,6 +17639,30 @@
       "height": 451,
       "ratio": 2,
       "laneCount": 2,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 113.5,
+            "axis": true
+          },
+          {
+            "y": 338.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 2,
+      "laneCount": 2,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -18057,6 +18249,34 @@
       "ratio": 2,
       "laneCount": 3,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 376.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 2,
+      "laneCount": 3,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -18810,6 +19030,82 @@
       "ratio": 2,
       "laneCount": 15,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 15.5,
+            "axis": true
+          },
+          {
+            "y": 45.5,
+            "axis": true
+          },
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 105.5,
+            "axis": true
+          },
+          {
+            "y": 135.5,
+            "axis": true
+          },
+          {
+            "y": 165.5,
+            "axis": true
+          },
+          {
+            "y": 195.5,
+            "axis": true
+          },
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 256.5,
+            "axis": true
+          },
+          {
+            "y": 286.5,
+            "axis": true
+          },
+          {
+            "y": 316.5,
+            "axis": true
+          },
+          {
+            "y": 346.5,
+            "axis": true
+          },
+          {
+            "y": 376.5,
+            "axis": true
+          },
+          {
+            "y": 406.5,
+            "axis": true
+          },
+          {
+            "y": 436.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 2,
+      "laneCount": 15,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -19491,6 +19787,26 @@
       "ratio": 1.5,
       "laneCount": 1,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 226.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 1.5,
+      "laneCount": 1,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -20123,6 +20439,30 @@
       "height": 451,
       "ratio": 1.5,
       "laneCount": 2,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 113.5,
+            "axis": true
+          },
+          {
+            "y": 338.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 1.5,
+      "laneCount": 2,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -20709,6 +21049,34 @@
       "ratio": 1.5,
       "laneCount": 3,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 376.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 1.5,
+      "laneCount": 3,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -21462,6 +21830,82 @@
       "ratio": 1.5,
       "laneCount": 15,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 15.5,
+            "axis": true
+          },
+          {
+            "y": 45.5,
+            "axis": true
+          },
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 105.5,
+            "axis": true
+          },
+          {
+            "y": 135.5,
+            "axis": true
+          },
+          {
+            "y": 165.5,
+            "axis": true
+          },
+          {
+            "y": 195.5,
+            "axis": true
+          },
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 256.5,
+            "axis": true
+          },
+          {
+            "y": 286.5,
+            "axis": true
+          },
+          {
+            "y": 316.5,
+            "axis": true
+          },
+          {
+            "y": 346.5,
+            "axis": true
+          },
+          {
+            "y": 376.5,
+            "axis": true
+          },
+          {
+            "y": 406.5,
+            "axis": true
+          },
+          {
+            "y": 436.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 1002,
+      "height": 451,
+      "ratio": 1.5,
+      "laneCount": 15,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -22743,6 +23187,26 @@
       "ratio": 1,
       "laneCount": 1,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 451.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 1,
+      "laneCount": 1,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -23384,6 +23848,30 @@
       "ratio": 1,
       "laneCount": 2,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 677.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 1,
+      "laneCount": 2,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -24345,6 +24833,34 @@
       "ratio": 1,
       "laneCount": 3,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 451.5,
+            "axis": true
+          },
+          {
+            "y": 752.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 1,
+      "laneCount": 3,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -25605,6 +26121,82 @@
       "height": 902,
       "ratio": 1,
       "laneCount": 15,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 30.5,
+            "axis": true
+          },
+          {
+            "y": 90.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 210.5,
+            "axis": true
+          },
+          {
+            "y": 271.5,
+            "axis": true
+          },
+          {
+            "y": 331.5,
+            "axis": true
+          },
+          {
+            "y": 391.5,
+            "axis": true
+          },
+          {
+            "y": 451.5,
+            "axis": true
+          },
+          {
+            "y": 511.5,
+            "axis": true
+          },
+          {
+            "y": 571.5,
+            "axis": true
+          },
+          {
+            "y": 631.5,
+            "axis": true
+          },
+          {
+            "y": 692.5,
+            "axis": true
+          },
+          {
+            "y": 752.5,
+            "axis": true
+          },
+          {
+            "y": 812.5,
+            "axis": true
+          },
+          {
+            "y": 872.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 1,
+      "laneCount": 15,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -26830,6 +27422,26 @@
       "height": 902,
       "ratio": 2,
       "laneCount": 1,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 451.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 2,
+      "laneCount": 1,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -27452,6 +28064,30 @@
       "ratio": 2,
       "laneCount": 2,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 677.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 2,
+      "laneCount": 2,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -28312,6 +28948,34 @@
       "height": 902,
       "ratio": 2,
       "laneCount": 3,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 451.5,
+            "axis": true
+          },
+          {
+            "y": 752.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 2,
+      "laneCount": 3,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -29038,6 +29702,82 @@
       "ratio": 2,
       "laneCount": 15,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 30.5,
+            "axis": true
+          },
+          {
+            "y": 90.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 210.5,
+            "axis": true
+          },
+          {
+            "y": 271.5,
+            "axis": true
+          },
+          {
+            "y": 331.5,
+            "axis": true
+          },
+          {
+            "y": 391.5,
+            "axis": true
+          },
+          {
+            "y": 451.5,
+            "axis": true
+          },
+          {
+            "y": 511.5,
+            "axis": true
+          },
+          {
+            "y": 571.5,
+            "axis": true
+          },
+          {
+            "y": 631.5,
+            "axis": true
+          },
+          {
+            "y": 692.5,
+            "axis": true
+          },
+          {
+            "y": 752.5,
+            "axis": true
+          },
+          {
+            "y": 812.5,
+            "axis": true
+          },
+          {
+            "y": 872.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 2,
+      "laneCount": 15,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -30319,6 +31059,26 @@
       "ratio": 1.5,
       "laneCount": 1,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 451.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 1.5,
+      "laneCount": 1,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -30960,6 +31720,30 @@
       "ratio": 1.5,
       "laneCount": 2,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 226.5,
+            "axis": true
+          },
+          {
+            "y": 677.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 1.5,
+      "laneCount": 2,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -31857,6 +32641,34 @@
       "ratio": 1.5,
       "laneCount": 3,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 451.5,
+            "axis": true
+          },
+          {
+            "y": 752.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 1.5,
+      "laneCount": 3,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -33021,6 +33833,82 @@
       "height": 902,
       "ratio": 1.5,
       "laneCount": 15,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 30.5,
+            "axis": true
+          },
+          {
+            "y": 90.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 210.5,
+            "axis": true
+          },
+          {
+            "y": 271.5,
+            "axis": true
+          },
+          {
+            "y": 331.5,
+            "axis": true
+          },
+          {
+            "y": 391.5,
+            "axis": true
+          },
+          {
+            "y": 451.5,
+            "axis": true
+          },
+          {
+            "y": 511.5,
+            "axis": true
+          },
+          {
+            "y": 571.5,
+            "axis": true
+          },
+          {
+            "y": 631.5,
+            "axis": true
+          },
+          {
+            "y": 692.5,
+            "axis": true
+          },
+          {
+            "y": 752.5,
+            "axis": true
+          },
+          {
+            "y": 812.5,
+            "axis": true
+          },
+          {
+            "y": 872.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 2004,
+      "height": 902,
+      "ratio": 1.5,
+      "laneCount": 15,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -34246,6 +35134,26 @@
       "height": 300,
       "ratio": 1,
       "laneCount": 1,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 150.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 1,
+      "laneCount": 1,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -34859,6 +35767,30 @@
       "height": 300,
       "ratio": 1,
       "laneCount": 2,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 225.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 1,
+      "laneCount": 2,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -35445,6 +36377,34 @@
       "ratio": 1,
       "laneCount": 3,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 50.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 250.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 1,
+      "laneCount": 3,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -36273,6 +37233,82 @@
       "height": 300,
       "ratio": 1,
       "laneCount": 15,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 1,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 10.5,
+            "axis": true
+          },
+          {
+            "y": 30.5,
+            "axis": true
+          },
+          {
+            "y": 50.5,
+            "axis": true
+          },
+          {
+            "y": 70.5,
+            "axis": true
+          },
+          {
+            "y": 90.5,
+            "axis": true
+          },
+          {
+            "y": 110.5,
+            "axis": true
+          },
+          {
+            "y": 130.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 170.5,
+            "axis": true
+          },
+          {
+            "y": 190.5,
+            "axis": true
+          },
+          {
+            "y": 210.5,
+            "axis": true
+          },
+          {
+            "y": 230.5,
+            "axis": true
+          },
+          {
+            "y": 250.5,
+            "axis": true
+          },
+          {
+            "y": 270.5,
+            "axis": true
+          },
+          {
+            "y": 290.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 1,
+      "laneCount": 15,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -37498,6 +38534,26 @@
       "height": 300,
       "ratio": 2,
       "laneCount": 1,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 150.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 2,
+      "laneCount": 1,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -37944,6 +39000,30 @@
       "ratio": 2,
       "laneCount": 2,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 225.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 2,
+      "laneCount": 2,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -38553,6 +39633,34 @@
       "ratio": 2,
       "laneCount": 3,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 50.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 250.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 2,
+      "laneCount": 3,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -39066,6 +40174,82 @@
       "ratio": 2,
       "laneCount": 15,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 10.5,
+            "axis": true
+          },
+          {
+            "y": 30.5,
+            "axis": true
+          },
+          {
+            "y": 50.5,
+            "axis": true
+          },
+          {
+            "y": 70.5,
+            "axis": true
+          },
+          {
+            "y": 90.5,
+            "axis": true
+          },
+          {
+            "y": 110.5,
+            "axis": true
+          },
+          {
+            "y": 130.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 170.5,
+            "axis": true
+          },
+          {
+            "y": 190.5,
+            "axis": true
+          },
+          {
+            "y": 210.5,
+            "axis": true
+          },
+          {
+            "y": 230.5,
+            "axis": true
+          },
+          {
+            "y": 250.5,
+            "axis": true
+          },
+          {
+            "y": 270.5,
+            "axis": true
+          },
+          {
+            "y": 290.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 2,
+      "laneCount": 15,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -39747,6 +40931,26 @@
       "ratio": 1.5,
       "laneCount": 1,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 150.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 1.5,
+      "laneCount": 1,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -40347,6 +41551,30 @@
       "height": 300,
       "ratio": 1.5,
       "laneCount": 2,
+      "type": "ticks",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 75.5,
+            "axis": true
+          },
+          {
+            "y": 225.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 1.5,
+      "laneCount": 2,
       "type": "grid",
       "columns": 5,
       "level": "coarse",
@@ -40933,6 +42161,34 @@
       "ratio": 1.5,
       "laneCount": 3,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 50.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 250.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 1.5,
+      "laneCount": 3,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",
@@ -41686,6 +42942,82 @@
       "ratio": 1.5,
       "laneCount": 15,
       "type": "none",
+      "columns": 10,
+      "level": "medium",
+      "time": "medium",
+      "lines": {
+        "lineWidth": 2,
+        "vertical": [],
+        "horizontal": [
+          {
+            "y": 10.5,
+            "axis": true
+          },
+          {
+            "y": 30.5,
+            "axis": true
+          },
+          {
+            "y": 50.5,
+            "axis": true
+          },
+          {
+            "y": 70.5,
+            "axis": true
+          },
+          {
+            "y": 90.5,
+            "axis": true
+          },
+          {
+            "y": 110.5,
+            "axis": true
+          },
+          {
+            "y": 130.5,
+            "axis": true
+          },
+          {
+            "y": 150.5,
+            "axis": true
+          },
+          {
+            "y": 170.5,
+            "axis": true
+          },
+          {
+            "y": 190.5,
+            "axis": true
+          },
+          {
+            "y": 210.5,
+            "axis": true
+          },
+          {
+            "y": 230.5,
+            "axis": true
+          },
+          {
+            "y": 250.5,
+            "axis": true
+          },
+          {
+            "y": 270.5,
+            "axis": true
+          },
+          {
+            "y": 290.5,
+            "axis": true
+          }
+        ]
+      }
+    },
+    {
+      "width": 640,
+      "height": 300,
+      "ratio": 1.5,
+      "laneCount": 15,
+      "type": "ticks",
       "columns": 10,
       "level": "medium",
       "time": "medium",

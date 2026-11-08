@@ -1,7 +1,7 @@
 // Beats' grid as the page draws it from the mock host's synced frames: the Time step moves the
 // lines one ladder level (bars, beats, sixteenths in a 4-bar sweep of 4/4), Triplets draws thirds of
-// the beat with labels that read them, Trig's and Free's steps never reach Beats, and Fine's guard
-// measures the screen in CSS pixels on a Retina display. Lines are counted on the page's own
+// the beat with labels that read them, and Fine's guard measures the screen in CSS pixels on a
+// Retina display. Lines are counted on the page's own
 // canvas, not worked out again from the geometry that draws them.
 import { afterAll, describe, expect, test } from "vitest";
 import { page } from "vitest/browser";
@@ -88,16 +88,8 @@ describe("in Beats, a 4-bar sweep of 4/4", () => {
       gridFineBeatLineGap,
     );
     await set(app, "beatSpan", "fourBars");
-    await set(app, "gridTimeBeats", time);
+    await set(app, "gridTime", time);
     expect(verticalLines()).toHaveLength(count);
-  });
-
-  test("Trig's and Free's Time steps leave Beats' grid as it is", async () => {
-    const app = await startApp();
-    await set(app, "beatSpan", "fourBars");
-    await set(app, "gridTimeTrigger", "fine");
-    await set(app, "gridTimeFree", "coarse");
-    expect(verticalLines()).toHaveLength(15);
   });
 });
 
@@ -141,7 +133,7 @@ describe("on a display at twice the pixel ratio", () => {
     const bar = 6;
     const app = await startApp({ barQuarterNotes: bar });
     await set(app, "beatSpan", "sixBars");
-    await set(app, "gridTimeBeats", "fine");
+    await set(app, "gridTime", "fine");
     const beats = 6 * bar;
     const sixteenthCss = (0.25 / beats) * byId("screen").clientWidth;
     expect(sixteenthCss).toBeLessThan(gridFineBeatLineGap);

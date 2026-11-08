@@ -52,7 +52,7 @@ describe("before the host reports a tempo", () => {
     async (time, divisions) => {
       app.transport.send({
         type: "setSetting",
-        name: "gridTimeBeats",
+        name: "gridTime",
         value: time,
       });
       await settle();

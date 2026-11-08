@@ -67,6 +67,7 @@ import {
 import { choiceLabels } from "./view/choice-labels.ts";
 import { drawGrid, gridColumns } from "./view/grid.ts";
 import {
+  drawsLabels,
   gridChoice,
   gridSettingName,
   isGridSetting,
@@ -716,9 +717,7 @@ export class OscilloscopeApp {
           Object.entries(labels).map(([value, label]) => ({ value, label })),
           (value) => {
             this.request(
-              kind === "Division"
-                ? "beatDivision"
-                : gridSettingName(kind, this.timeBaseName()),
+              kind === "Division" ? "beatDivision" : gridSettingName(kind),
               value,
             );
           },
@@ -1393,17 +1392,17 @@ export class OscilloscopeApp {
     return this.store.get("timeBase") as TimeBaseName;
   }
 
-  // The grid the screen draws: the settings of the time base the toolbar shows.
+  // The grid the screen draws, the same in every time base.
   private gridChoice(): GridChoice {
-    return gridChoice((name) => this.store.get(name), this.timeBaseName());
+    return gridChoice((name) => this.store.get(name));
   }
 
-  // The grid's field and popover show the shown time base's grid. Time, Level and the Beat
-  // division apply only with lines to draw; the Beat division in Beats only.
+  // The grid's field and popover show the grid drawn. Time, Level and the Beat division apply only
+  // with labels to place (and lines, which come with them); the Beat division in Beats only.
   private updateGridControls(): void {
     const grid = this.gridChoice();
     const timeBase = this.timeBaseName();
-    const lines = grid.type !== "none";
+    const steps = drawsLabels(grid.type);
     this.gridSummary?.show(grid.type);
     element("grid-details").setAttribute(
       "aria-label",
@@ -1411,9 +1410,9 @@ export class OscilloscopeApp {
     );
     const rows = [
       ["Type", grid.type, () => true],
-      ["Time", grid.time, () => lines],
-      ["Level", grid.level, () => lines],
-      ["Division", grid.division, () => lines && timeBase === "beats"],
+      ["Time", grid.time, () => steps],
+      ["Level", grid.level, () => steps],
+      ["Division", grid.division, () => steps && timeBase === "beats"],
     ] as const;
     for (const [kind, value, enabled] of rows) {
       const row = this.gridRows.get(kind);
@@ -1526,14 +1525,19 @@ export class OscilloscopeApp {
     this.labelledSpan = span;
     this.labelledZero = zero;
     const free = this.freeRunning();
+    const grid = this.gridChoice();
+    // None places no label; the trigger line below stays in every type.
+    const labelled = drawsLabels(grid.type);
     const labels: HTMLElement[] = [];
-    for (const label of amplitudeLabels(
-      this.store.number("verticalScale"),
-      this.laneCount(),
-      this.layout(),
-      height,
-      this.gridChoice().level,
-    )) {
+    for (const label of labelled
+      ? amplitudeLabels(
+          this.store.number("verticalScale"),
+          this.laneCount(),
+          this.layout(),
+          height,
+          grid.level,
+        )
+      : []) {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;
@@ -1544,8 +1548,10 @@ export class OscilloscopeApp {
     }
     // Beats without the host's tempo: no positions to label.
     const untimed = this.beatsMode() && this.lastFrame?.noTempo === true;
-    for (const label of this.musicalLayout()?.labels ??
-      (untimed ? [] : timeLabels(span, free, this.view, zero))) {
+    for (const label of labelled
+      ? (this.musicalLayout()?.labels ??
+        (untimed ? [] : timeLabels(span, free, this.view, zero)))
+      : []) {
       const node = document.createElement("div");
       node.className = "axis-label";
       node.textContent = label.text;

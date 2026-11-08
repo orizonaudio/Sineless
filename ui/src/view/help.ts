@@ -533,16 +533,15 @@ export function helpTextsFor(mac: boolean) {
       title: "Grid",
       lead: "The screen's grid: what it draws, and how closely it divides time and level.",
       actions: [{ gesture: "Click", effect: "choose" }],
-      notes: ["Each time base keeps its own."],
     },
     gridType: {
       title: "Grid type",
       lead: "What the grid draws.",
       choices: choicesOf(choiceLabels.gridType, {
         none: "each lane's zero line alone",
-        grid: "the time and level lines",
+        ticks: "the time and level labels, without lines",
+        grid: "the time and level lines and their labels",
       }),
-      notes: ["The labels stay either way."],
     },
     gridTime: {
       title: "Time lines",
@@ -554,6 +553,7 @@ export function helpTextsFor(mac: boolean) {
       }),
       notes: [
         "Before the host reports a tempo, Beats shows the equal divisions.",
+        "Labels follow it in Beats.",
       ],
     },
     gridLevel: {
@@ -564,7 +564,10 @@ export function helpTextsFor(mac: boolean) {
         medium: `every ${mediumLevelDb} dB`,
         fine: `every ${mediumLevelDb} dB in the brighter colour, with ${fineLevelDb} dB lines between them`,
       }),
-      notes: ["A short lane shows fewer."],
+      notes: [
+        `With Ticks or Grid, Coarse labels every ${coarseLevelDb} dB, Medium and Fine every ${mediumLevelDb} dB.`,
+        "A short lane shows fewer.",
+      ],
     },
     beatDivision: {
       title: "Beat division",
@@ -639,7 +642,8 @@ type EnumSetting = {
   ]: (typeof settings)[Name]["kind"] extends "enum" ? Name : never;
 }[keyof typeof settings];
 
-// `labels` names the control's labels where several settings share them (each time base's grid).
+// `labels` names the control's labels where several settings share them (the grid's Time and
+// Level).
 export const choiceHelp: {
   readonly [Name in EnumSetting]:
     | { readonly topic: HelpTopic; readonly labels?: keyof typeof choiceLabels }
@@ -661,15 +665,9 @@ export const choiceHelp: {
   triggerSource: { exempt: "channel letters, as the views name them" },
   readoutSource: { exempt: "channel names, explained in the topic's lead" },
   laneChannel: { exempt: "channel names, explained in the topic's lead" },
-  gridTypeBeats: { topic: "gridType", labels: "gridType" },
-  gridTimeBeats: { topic: "gridTime", labels: "gridDensity" },
-  gridLevelBeats: { topic: "gridLevel", labels: "gridDensity" },
-  gridTypeFree: { topic: "gridType", labels: "gridType" },
-  gridTimeFree: { topic: "gridTime", labels: "gridDensity" },
-  gridLevelFree: { topic: "gridLevel", labels: "gridDensity" },
-  gridTypeTrigger: { topic: "gridType", labels: "gridType" },
-  gridTimeTrigger: { topic: "gridTime", labels: "gridDensity" },
-  gridLevelTrigger: { topic: "gridLevel", labels: "gridDensity" },
+  gridType: { topic: "gridType" },
+  gridTime: { topic: "gridTime", labels: "gridDensity" },
+  gridLevel: { topic: "gridLevel", labels: "gridDensity" },
   beatDivision: { topic: "beatDivision" },
 };
 

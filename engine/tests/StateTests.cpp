@@ -338,16 +338,9 @@ constexpr std::array kVersion5Values{
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kMeter, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
-    GoldenValue{.id = SettingId::kGridTypeBeats, .value = asValue(protocol::GridType::kNone)},
-    GoldenValue{.id = SettingId::kGridTypeFree, .value = asValue(protocol::GridType::kNone)},
-    GoldenValue{.id = SettingId::kGridTypeTrigger, .value = asValue(protocol::GridType::kNone)},
-    GoldenValue{.id = SettingId::kGridTimeBeats, .value = asValue(protocol::GridDensity::kFine)},
-    GoldenValue{.id = SettingId::kGridTimeFree, .value = asValue(protocol::GridDensity::kCoarse)},
-    GoldenValue{.id = SettingId::kGridTimeTrigger, .value = asValue(protocol::GridDensity::kFine)},
-    GoldenValue{.id = SettingId::kGridLevelBeats, .value = asValue(protocol::GridDensity::kCoarse)},
-    GoldenValue{.id = SettingId::kGridLevelFree, .value = asValue(protocol::GridDensity::kFine)},
-    GoldenValue{.id = SettingId::kGridLevelTrigger,
-                .value = asValue(protocol::GridDensity::kCoarse)},
+    GoldenValue{.id = SettingId::kGridType, .value = asValue(protocol::GridType::kTicks)},
+    GoldenValue{.id = SettingId::kGridTime, .value = asValue(protocol::GridDensity::kFine)},
+    GoldenValue{.id = SettingId::kGridLevel, .value = asValue(protocol::GridDensity::kCoarse)},
     GoldenValue{.id = SettingId::kBeatDivision,
                 .value = asValue(protocol::BeatDivision::kTriplets)},
     GoldenValue{.id = SettingId::kLaneChannel, .value = asValue(protocol::ChannelView::kSide)},
@@ -937,6 +930,27 @@ TEST(State, KeepsAnEditorSizeOutOfRangeForTheEditorToBound)
     const SavedState saved = deserializeState(
         R"({"version": 5, "settings": {}, "editor": {"width": -5, "height": 1e9}})");
     EXPECT_EQ(saved.editorSize, (EditorSize{.width = -5, .height = 1e9}));
+}
+
+// A project saved by a development build while each time base kept its own grid opens with the
+// grid's defaults: those settings were never released, so nothing carries them over (#384).
+TEST(State, OpensThePerTimeBaseGridSettingsAtTheGridsDefaults)
+{
+    const Settings settings = deserializeState(R"({
+        "version": 5,
+        "settings": {
+            "gridTypeBeats": "none", "gridTypeFree": "none", "gridTypeTrigger": "none",
+            "gridTimeBeats": "fine", "gridTimeFree": "coarse", "gridTimeTrigger": "fine",
+            "gridLevelBeats": "coarse", "gridLevelFree": "fine", "gridLevelTrigger": "coarse"
+        }
+    })")
+                                  .settings;
+    EXPECT_EQ(settings.enumValue<protocol::GridType>(SettingId::kGridType),
+              protocol::GridType::kGrid);
+    EXPECT_EQ(settings.enumValue<protocol::GridDensity>(SettingId::kGridTime),
+              protocol::GridDensity::kMedium);
+    EXPECT_EQ(settings.enumValue<protocol::GridDensity>(SettingId::kGridLevel),
+              protocol::GridDensity::kMedium);
 }
 
 TEST(State, FallsBackToDefaultsForUnreadableInput)

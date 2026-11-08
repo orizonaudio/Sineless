@@ -76,8 +76,9 @@ export type Group = (typeof Group)[keyof typeof Group];
 export const FrameMode = { minMax: 0, raw: 1 } as const;
 export type FrameMode = (typeof FrameMode)[keyof typeof FrameMode];
 
-// What the screen's grid draws in a time base: nothing but each lane's zero line, or the full grid.
-export const GridType = { none: 0, grid: 1 } as const;
+// What the screen's grid draws, each type adding to the one before: each lane's zero line alone,
+// then the time and level labels, then the time and level lines.
+export const GridType = { none: 0, ticks: 1, grid: 2 } as const;
 export type GridType = (typeof GridType)[keyof typeof GridType];
 
 // How closely the grid divides the time or the level axis.

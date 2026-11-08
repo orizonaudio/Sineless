@@ -43,6 +43,18 @@ TEST(TraceViewMessage, ReadsEveryFieldOfThePagesMessage)
     EXPECT_EQ(view->beatDivision, protocol::BeatDivision::kTriplets);
 }
 
+// Every grid type the page can choose reaches the editor as chosen, so it draws the same lines.
+TEST(TraceViewMessage, ReadsEveryGridType)
+{
+    for (std::size_t index = 0; index < protocol::kGridTypeNames.size(); ++index) {
+        nlohmann::json message = example();
+        message["gridChoice"]["type"] = protocol::kGridTypeNames[index];
+        const auto view = TraceView::parse(message);
+        ASSERT_TRUE(view) << protocol::kGridTypeNames[index];
+        EXPECT_EQ(view->gridType, static_cast<protocol::GridType>(index));
+    }
+}
+
 // A grid choice missing a part, or naming a value the protocol does not have, is refused: the
 // editor keeps drawing the last good grid rather than one the page does not draw (QS-7).
 TEST(TraceViewMessage, RefusesAGridChoiceItCannotRead)

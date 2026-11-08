@@ -1,6 +1,6 @@
-// Which grid the screen draws: the Type, Time and Level settings of the time base shown, and the
-// one Beat division. The page draws and labels with it and sends it to the macOS editor in its
-// trace view, so both draw the same grid.
+// Which grid the screen draws: one Type, Time and Level for every time base, and the one Beat
+// division. The page draws and labels with it and sends it to the macOS editor in its trace view,
+// so both draw the same grid.
 import {
   BeatDivision,
   GridDensity,
@@ -23,23 +23,25 @@ export interface GridChoice {
 
 export type GridSettingKind = "Type" | "Time" | "Level";
 
-const timeBaseSuffix = {
-  trigger: "Trigger",
-  beats: "Beats",
-  free: "Free",
-} as const;
-
-// The setting holding a grid choice for a time base, e.g. gridTimeFree.
-export function gridSettingName(
-  kind: GridSettingKind,
-  timeBase: TimeBaseName,
-): SettingName {
-  return `grid${kind}${timeBaseSuffix[timeBase]}`;
+// The setting holding a grid choice, e.g. gridTime.
+export function gridSettingName(kind: GridSettingKind): SettingName {
+  return `grid${kind}`;
 }
 
 // Whether a setting is one the grid is drawn from.
 export function isGridSetting(name: SettingName): boolean {
   return name.startsWith("grid") || name === "beatDivision";
+}
+
+// Each type adds to the one before (GridType): the zero lines, then the labels, then the lines.
+// Whether a type draws the time and level lines.
+export function drawsLines(type: GridTypeName): boolean {
+  return GridType[type] >= GridType.grid;
+}
+
+// Whether a type draws the time and level labels.
+export function drawsLabels(type: GridTypeName): boolean {
+  return GridType[type] >= GridType.ticks;
 }
 
 function nameOf<T extends Record<string, number>>(
@@ -52,19 +54,14 @@ function nameOf<T extends Record<string, number>>(
     : fallback;
 }
 
-// The grid drawn in `timeBase`, from the store's values.
+// The grid drawn, from the store's values.
 export function gridChoice(
   get: (name: SettingName) => SettingValue,
-  timeBase: TimeBaseName,
 ): GridChoice {
   return {
-    type: nameOf(GridType, get(gridSettingName("Type", timeBase)), "grid"),
-    time: nameOf(GridDensity, get(gridSettingName("Time", timeBase)), "medium"),
-    level: nameOf(
-      GridDensity,
-      get(gridSettingName("Level", timeBase)),
-      "medium",
-    ),
+    type: nameOf(GridType, get("gridType"), "grid"),
+    time: nameOf(GridDensity, get("gridTime"), "medium"),
+    level: nameOf(GridDensity, get("gridLevel"), "medium"),
     division: nameOf(BeatDivision, get("beatDivision"), "regular"),
   };
 }

@@ -94,7 +94,7 @@ export const highestAudibleHz = 20000;
 // The editor's layout (CSS pixels): its minimum width, the wider of the widest toolbar (Trig, the
 // Single trigger mode and frozen, in Single or in Multi with Compare on: one width since Single's
 // and Multi's Views share a place; measured at 991.5 with the wordmark) and the status bar, whose
-// parts keep fixed widths in every state (measured at 1021.8 with the Grid field, in WebKit and
+// parts keep fixed widths in every state (measured at 1029 with the Grid field as wide as Ticks, in WebKit and
 // Chromium, docs/ui/README.md), with at least 8 px to spare for text that renders wider on another
 // platform, rounded up to 10; its default width,
 // the same, as nothing in the window changes with its width; its minimum height, which fits the
@@ -103,8 +103,8 @@ export const highestAudibleHz = 20000;
 // the minimum height of a stacked lane; and the height of everything around the screen (toolbar
 // and status bar), at most: measured at 82, with room for rounding at other display scales. The
 // editor tests check the page against them.
-export const defaultEditorWidth = 1030;
-export const minimumEditorWidth = 1030;
+export const defaultEditorWidth = 1040;
+export const minimumEditorWidth = 1040;
 export const minimumEditorHeight = 420;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;

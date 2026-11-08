@@ -181,7 +181,7 @@ function musicalCases() {
 }
 
 // The Time and Level steps each type is written at: Grid at each step and each against the
-// other's extremes; None, whose zero lines no step changes, at one.
+// other's extremes; None and Ticks, whose zero lines no step changes, at one.
 const steps: Readonly<
   Record<GridTypeName, readonly (readonly [GridDensityName, GridDensityName])[]>
 > = {
@@ -190,6 +190,7 @@ const steps: Readonly<
     ["coarse", "fine"],
     ["fine", "coarse"],
   ],
+  ticks: [["medium", "medium"]],
   none: [["medium", "medium"]],
 };
 
