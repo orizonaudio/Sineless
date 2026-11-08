@@ -102,7 +102,7 @@
     "previous": [0.012, 0.012, 0.016, 0.5],
     "cancellation": [1, 0.8, 0.2, 0.16],
     "gridChoice": {
-      "type": "crossHair",
+      "type": "none",
       "time": "fine",
       "level": "coarse",
       "division": "triplets"

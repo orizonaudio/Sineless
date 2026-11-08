@@ -202,8 +202,7 @@ export interface TraceViewMessage {
   readonly previous: Rgba;
   readonly cancellation: Rgba;
   // The grid the page draws now (ui/src/view/grid-settings.ts): GridType, GridDensity (Time and
-  // Level) and BeatDivision names. Cross hair only in Trig: the page sends Grid in its place
-  // elsewhere.
+  // Level) and BeatDivision names.
   readonly gridChoice: {
     readonly type: string;
     readonly time: string;

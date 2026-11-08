@@ -1379,10 +1379,10 @@ export class OscilloscopeApp {
     return gridChoice((name) => this.store.get(name), this.timeBaseName());
   }
 
-  // The grid's field and popover show the shown time base's grid, the type as drawn. Cross hair
-  // only in Trig, which has a trigger point to mark; Time and Level with lines to draw; the Beat
-  // division in Beats.
+  // The grid's field and popover show the shown time base's grid. Time, Level and the Beat
+  // division apply only with lines to draw; the Beat division in Beats only.
   private updateGridControls(): void {
+    const lines = grid.type !== "none";
     const grid = this.gridChoice();
     const timeBase = this.timeBaseName();
     this.gridSummary?.show(grid.type);
@@ -1391,14 +1391,10 @@ export class OscilloscopeApp {
       `Grid: ${choiceLabels.gridType[grid.type]}`,
     );
     const rows = [
-      [
-        "Type",
-        grid.type,
-        (value: string) => value !== "crossHair" || timeBase === "trigger",
-      ],
-      ["Time", grid.time, () => grid.type !== "none"],
-      ["Level", grid.level, () => grid.type !== "none"],
-      ["Division", grid.division, () => timeBase === "beats"],
+      ["Type", grid.type, () => true],
+      ["Time", grid.time, () => lines],
+      ["Level", grid.level, () => lines],
+      ["Division", grid.division, () => lines && timeBase === "beats"],
     ] as const;
     for (const [kind, value, enabled] of rows) {
       const row = this.gridRows.get(kind);
@@ -1449,7 +1445,6 @@ export class OscilloscopeApp {
           level: grid.level,
           columns: gridColumns[grid.time],
           verticalLines: this.musicalLayout()?.lines,
-          trigger: toScreen(this.view, this.triggerPoint()),
         },
       );
     }
@@ -2254,14 +2249,10 @@ export class OscilloscopeApp {
       }
       // A limited span labels the axis anew; a change below what the labels show does not.
       const span = this.secondsSpan();
-      const moved = this.triggerPointMoved();
-      if (moved && this.gridChoice().type === "crossHair") {
-        // Cross hair's line marks the trigger point: the grid moves with it, labels included.
-        this.drawScreen();
-      } else if (
+      if (
         frame.freeRunning !== wasFree ||
         Math.abs(span - this.labelledSpan) > 1e-3 * this.labelledSpan ||
-        moved
+        this.triggerPointMoved()
       ) {
         this.placeLabels();
         this.placeTriggerMarker();

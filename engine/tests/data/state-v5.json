@@ -16,7 +16,7 @@
     "gridTimeTrigger": "fine",
     "gridTypeBeats": "none",
     "gridTypeFree": "none",
-    "gridTypeTrigger": "crossHair",
+    "gridTypeTrigger": "none",
     "group": "c",
     "hoverReadout": "on",
     "meter": "on",

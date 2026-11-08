@@ -42,15 +42,6 @@ export function isGridSetting(name: SettingName): boolean {
   return name.startsWith("grid") || name === "beatDivision";
 }
 
-// Cross hair marks the trigger point, which only Trig has: a project holding it for another time
-// base (edited by hand) draws Grid there.
-export function effectiveGridType(
-  type: GridTypeName,
-  timeBase: TimeBaseName,
-): GridTypeName {
-  return type === "crossHair" && timeBase !== "trigger" ? "grid" : type;
-}
-
 function nameOf<T extends Record<string, number>>(
   values: T,
   value: SettingValue,
@@ -66,9 +57,8 @@ export function gridChoice(
   get: (name: SettingName) => SettingValue,
   timeBase: TimeBaseName,
 ): GridChoice {
-  const type = nameOf(GridType, get(gridSettingName("Type", timeBase)), "grid");
   return {
-    type: effectiveGridType(type, timeBase),
+    type: nameOf(GridType, get(gridSettingName("Type", timeBase)), "grid"),
     time: nameOf(GridDensity, get(gridSettingName("Time", timeBase)), "medium"),
     level: nameOf(
       GridDensity,

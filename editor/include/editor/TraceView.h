@@ -48,7 +48,7 @@ struct TraceView
     Rgba cursor{};
     Rgba previous{};
     Rgba cancellation{};
-    // The grid the page draws (its gridChoice): Cross hair arrives only in Trig.
+    // The grid the page draws (its gridChoice).
     protocol::GridType gridType = protocol::GridType::kGrid;
     protocol::GridDensity gridTime = protocol::GridDensity::kMedium;
     protocol::GridDensity gridLevel = protocol::GridDensity::kMedium;
