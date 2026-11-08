@@ -866,7 +866,7 @@ export class OscilloscopeApp {
 
   // The channel the Meter, snapping and the overlaid hover read (DESIGN.md 1.2.1), as the frame on
   // screen names it, whatever the settings now say until the next frame comes: in Single only, once
-  // a Single frame has come. Multi reads this track's lane channel, chosen in the same popover, and
+  // a Single frame has come. Multi reads this track's lane channel, chosen in the Group popover, and
   // its frames carry a lane set, a frame with no tempo included.
   private readChannel(): ViewName | undefined {
     const frame = this.lastFrame;

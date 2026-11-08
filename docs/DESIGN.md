@@ -211,7 +211,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 
 | Area | Left to right |
 | --- | --- |
-| Toolbar | Mark and wordmark · Mode (the display mode) · Views, in one place in both modes (in Single the channel views; in Multi the group, the lane channel and Σ, as "A·M·Σ", Σ dimmed with Compare off) · Layout · Time (the time base) · Span (the time base's own, one width in every time base) · Vertical scale · Trigger (Trigger), and Re-arm in the Single trigger mode · Freeze, Auto-freeze |
+| Toolbar | Mark and wordmark · Mode (the display mode) · Views, in one place in both modes (in Single the channel views and the channel read, as "LRMS·L"; in Multi the group, the lane channel and Σ, as "A·M·Σ", Σ dimmed with Compare off) · Layout · Time (the time base) · Span (the time base's own, one width in every time base) · Vertical scale · Trigger (Trigger), and Re-arm in the Single trigger mode · Freeze, Auto-freeze |
 | Mode popover | Single \| Multi |
 | Time base popover | Beats \| Free \| Trig |
 | Layout popover | Overlay \| Stack |
