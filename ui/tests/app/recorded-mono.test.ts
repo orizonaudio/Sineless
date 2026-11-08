@@ -4,26 +4,26 @@ import { describe, expect, test } from "vitest";
 
 import { ChannelView } from "../../../protocol/src/enums.ts";
 import { formatDbfs } from "../../src/view/format.ts";
-import { beforeApp, byId, settle, startRecorded } from "./harness.ts";
+import {
+  beforeApp,
+  channelRead,
+  drawnLetters,
+  settle,
+  startRecorded,
+} from "./harness.ts";
 
 describe("a recorded mono track, a full-scale 400 Hz sine", () => {
   beforeApp(async () => {
     await startRecorded("MonoSine400_48k");
   });
 
-  test("labels the readouts Left, though the trigger source is Mid", async () => {
+  test("reads Left, though the trigger source is Mid", async () => {
     await settle();
-    await expect.poll(() => byId("readout-tag").textContent).toBe("Left");
+    await expect.poll(channelRead).toBe("Left");
   });
 
   test("lights L alone in the Views field, as the frame draws it", async () => {
-    await expect
-      .poll(() =>
-        [...byId("views-summary").querySelectorAll(".on")].map(
-          (letter) => letter.textContent,
-        ),
-      )
-      .toEqual(["L"]);
+    await expect.poll(drawnLetters).toEqual(["L"]);
     expect([...(window.orizonDebug?.lastFrame?.views.keys() ?? [])]).toEqual([
       ChannelView.left,
     ]);

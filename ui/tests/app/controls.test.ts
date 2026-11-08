@@ -1,9 +1,10 @@
 // Which controls the page enables and shows, decided from the settings the engine reports.
 import { describe, expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { brand } from "@brand/brand.ts";
 
+import { minimumEditorWidth } from "../../../protocol/src/limits.ts";
 import { valueNames } from "../../../protocol/src/setting-values.ts";
 import { settings } from "../../../protocol/src/settings.ts";
 import { choiceLabels } from "../../src/view/choice-labels.ts";
@@ -11,6 +12,7 @@ import { choiceLabels } from "../../src/view/choice-labels.ts";
 import {
   beforeApp,
   byId,
+  channelRead,
   chips,
   choice,
   displays,
@@ -226,100 +228,86 @@ describe("controls", () => {
     await press(choice("mode", "Auto"));
   });
 
-  // The tag says which channel Peak and RMS measure (DESIGN.md 1.2.1): in Single the readout
-  // source when drawn, else the first view drawn (Left with the default views, L and R), whatever
-  // the trigger source; this track's lane channel in Multi.
-  test("labels the readouts with the channel they measure", async () => {
-    const tag = () => byId("readout-tag").textContent;
+  // The Views field names the channel Peak and RMS measure (DESIGN.md 1.2.1): in Single the
+  // readout source when drawn, else the first view drawn (Left with the default views, L and R),
+  // whatever the trigger source, in every time base.
+  test("names the channel the readouts measure, not the trigger's", async () => {
     await press(choice("display-mode", "Single"));
     await press(choice("time-base", "Trig"));
-    // Away from the default source: the tag stays.
+    // Away from the default source: the channel read stays.
     await press(choice("source", "R"));
-    await expect.poll(tag).toBe("Left");
+    await expect.poll(channelRead).toBe("Left");
     await press(choice("time-base", "Beats"));
-    await expect.poll(tag).toBe("Left");
-    await press(choice("display-mode", "Multi"));
-    await expect.poll(tag).toBe("This");
-    await press(choice("display-mode", "Single"));
+    await expect.poll(channelRead).toBe("Left");
     await press(choice("time-base", "Trig"));
     await press(choice("source", "L"));
     await useReadout("R");
-    await expect.poll(tag).toBe("Right");
+    await expect.poll(channelRead).toBe("Right");
     // Back to the default, Mid, which the default views do not draw: Left again.
     await showViews(["L", "R", "M"]);
     await useReadout("M");
     await showViews(["L", "R"]);
-    await expect.poll(tag).toBe("Left");
+    await expect.poll(channelRead).toBe("Left");
   });
 
-  // In Single the tag is a button that opens the readouts' popover above it, in the status bar,
-  // kept inside the window; a press elsewhere closes it. In Multi, Compare off or on, which measures
-  // this track's lane channel, it is a label: it opens nothing, and switching there closes the popover.
-  test.each(displays.filter((display) => display !== "Single"))(
-    "chooses the readout channel in Single, not in %s",
-    async (mode) => {
-      const popover = byId("readout-popover");
+  // The Views popover, with its Reads row, opens under its field, kept inside the window at the
+  // minimum width; a press elsewhere closes it.
+  test("keeps the Views popover inside the window", async () => {
+    const [width, height] = [window.innerWidth, window.innerHeight];
+    await page.viewport(minimumEditorWidth, 600);
+    try {
       await press(choice("display-mode", "Single"));
       await settle();
-      await expect
-        .element(byId("readout-details"))
-        .toHaveAttribute("aria-disabled", "false");
-      await userEvent.click(byId("readout-details"));
+      const popover = byId("views-popover");
+      await userEvent.click(byId("views-details"));
       await expect.element(popover).toBeVisible();
-      const button = byId("readout-details").getBoundingClientRect();
+      const button = byId("views-details").getBoundingClientRect();
       const box = popover.getBoundingClientRect();
-      expect(box.bottom).toBeLessThanOrEqual(button.top);
-      // Aligned with the tag's left edge (DESIGN.md 1.5), not placed by script.
-      expect(Math.abs(box.left - button.left)).toBeLessThan(1);
+      expect(box.top).toBeGreaterThanOrEqual(button.bottom);
       expect(box.left).toBeGreaterThanOrEqual(8);
       expect(box.right).toBeLessThanOrEqual(window.innerWidth - 8);
       await userEvent.click(byId("screen"));
       await expect.element(popover).not.toBeVisible();
+    } finally {
+      await page.viewport(width, height);
+    }
+  });
 
-      await userEvent.click(byId("readout-details"));
-      await expect.element(popover).toBeVisible();
-      await showDisplay(mode);
-      await expect.element(popover).not.toBeVisible();
-      await settle();
-      await expect
-        .element(byId("readout-details"))
-        .toHaveAttribute("aria-disabled", "true");
-      // A user's click, which the test runner itself refuses on a disabled control.
-      byId("readout-details").click();
-      expect(popover.hidden).toBe(true);
-      await press(choice("display-mode", "Single"));
-    },
-  );
-
-  // Peak and RMS on screen come from the last frame: until a frame measures the new display
-  // mode, between Single, which measures the readout channel, and each mode that measures this
-  // track's Mid, either way, the tag keeps naming what the one on screen measured.
-  test.each(
-    displays
-      .filter((display) => display !== "Single")
-      .flatMap((mode) => [
-        ["Single", mode, "Left", "This"] as const,
-        [mode, "Single", "This", "Left"] as const,
-      ]),
-  )(
-    "labels the readouts measured in %s until a frame measures them in %s",
-    async (from, to, before, after) => {
-      const tag = () => byId("readout-tag").textContent;
+  // The readouts come from the last frame: switched from Multi to Single, until a frame measures
+  // Single the Reads row offers nothing and the field reads a dash, as nothing it could name was
+  // measured; the first Single frame names the channel and offers the views drawn.
+  test.each(displays.filter((display) => display !== "Single"))(
+    "reads nothing from %s's frame once Single is chosen, until a Single frame comes",
+    async (from) => {
+      const reads = () =>
+        [...byId("readout-source").querySelectorAll("button")].map((b) => [
+          b.textContent,
+          b.disabled,
+          b.getAttribute("aria-pressed"),
+        ]);
       await press(choice("display-mode", "Single"));
       await press(choice("time-base", "Trig"));
       await showDisplay(from);
-      await expect.poll(tag).toBe(before);
+      await settle();
       app.holdFrames(true);
       try {
         await new Promise((resolve) => setTimeout(resolve, 300));
-        await showDisplay(to);
+        await showDisplay("Single");
         await new Promise((resolve) => setTimeout(resolve, 300));
-        expect(tag()).toBe(before);
+        expect(channelRead()).toBe("—");
+        expect(reads()).toEqual(
+          ["L", "R", "M", "S"].map((letter) => [letter, true, "false"]),
+        );
       } finally {
         app.holdFrames(false);
       }
-      await expect.poll(tag).toBe(after);
-      await press(choice("display-mode", "Single"));
+      await expect.poll(channelRead).toBe("Left");
+      expect(reads()).toEqual([
+        ["L", false, "true"],
+        ["R", false, "false"],
+        ["M", true, "false"],
+        ["S", true, "false"],
+      ]);
     },
   );
 

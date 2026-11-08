@@ -57,11 +57,6 @@ inline std::vector<State> states()
          .settings = {{SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kEighthBar)}},
          .script = ""},
         {.name = "-60 dB", .settings = {{SettingId::kVerticalScale, -60.0}}, .script = ""},
-        // The Channel button's widest name, Right, read with the default views (L and R).
-        {.name = "Channel Right",
-         .settings = {{SettingId::kReadoutSource,
-                       static_cast<double>(protocol::ChannelView::kRight)}},
-         .script = ""},
         // The grid field's other value, None.
         {.name = "Trig, grid None",
          .settings = {{SettingId::kTimeBase, kTrigger},

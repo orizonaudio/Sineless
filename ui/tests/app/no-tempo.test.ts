@@ -5,8 +5,8 @@ import { describe, expect, test } from "vitest";
 import {
   beforeApp,
   byId,
+  channelRead,
   chips,
-  displays,
   settle,
   showDisplay,
   startApp,
@@ -33,21 +33,13 @@ describe("before the host reports a tempo", () => {
     expect(timeAxisLabels()).toEqual([]);
   });
 
-  // A frame with no tempo carries no lanes, even in Multi, Compare off or on: the readout tag
-  // still names what those modes measure, this track, by the frame's lane set, and in Single the channel
-  // the frame names (Left, the first of the default views). Single comes last, so the tests after
-  // these start where the page starts.
-  test.each(
-    [...displays]
-      .sort((a, b) => Number(a === "Single") - Number(b === "Single"))
-      .map(
-        (display) => [display, display === "Single" ? "Left" : "This"] as const,
-      ),
-  )("in %s, the readout tag says %s", async (mode, tag) => {
-    await showDisplay(mode);
+  // A frame with no tempo carries no lanes: in Single the Views field names the channel the frame
+  // reads, Left, the first of the default views.
+  test("in Single, reads the channel the frame names", async () => {
+    await showDisplay("Single");
     await expect.poll(chips).toEqual(["No tempo"]);
     await settle();
-    expect(byId("readout-tag").textContent).toBe(tag);
+    expect(channelRead()).toBe("Left");
   });
 
   // With no beats to draw, the page draws the equal divisions of Beats' own Time step (FR-9.1).
