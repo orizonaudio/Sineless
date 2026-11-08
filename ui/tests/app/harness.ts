@@ -501,12 +501,12 @@ export function drawnLetters(): string[] {
 // The channel the Views field names as read, in full ("Left"; "—" before a frame says), from its
 // label.
 export function channelRead(): string | undefined {
-  return /, reads (.+)$/.exec(
+  return /, measures (.+)$/.exec(
     byId("views-details").getAttribute("aria-label") ?? "",
   )?.[1];
 }
 
-// Chooses the channel the readouts measure in the Views popover's Reads row ("S"), and closes it.
+// Chooses the channel the readouts measure in the Views popover's Measure row ("S"), and closes it.
 export async function useReadout(label: string): Promise<void> {
   if (byId("views-popover").hidden) {
     await userEvent.click(byId("views-details"));

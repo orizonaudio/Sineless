@@ -40,7 +40,7 @@ describe("a mono track", () => {
     // The Views field lights L alone, as the frame draws it.
     await expect.poll(drawnLetters).toEqual(["L"]);
     expect(byId("views-details").getAttribute("aria-label")).toBe(
-      "Views: L, reads Left",
+      "Views: L, measures Left",
     );
   });
 
@@ -90,8 +90,8 @@ describe("a track that changes channels", () => {
     await expect.poll(lit).toEqual(["L", "R"]);
   });
 
-  // The new count relabels the Views field, the Reads row and the view toggles by itself, with no
-  // control touched: a mono track draws and measures L alone, so the Reads row lights L and offers
+  // The new count relabels the Views field, the Measure row and the view toggles by itself, with no
+  // control touched: a mono track draws and measures L alone, so the Measure row lights L and offers
   // nothing else; stereo again, the channel chosen comes back.
   test("relabels the readouts and the toggles when the snapshot says", async () => {
     const toggles = [...byId("views").querySelectorAll("button")];

@@ -1,7 +1,7 @@
-// The channel the Meter, snapping and Hover read is chosen in the Views popover's Reads row, beside
+// The channel the Meter, snapping and Hover read is chosen in the Views popover's Measure row, beside
 // the views it can read (DESIGN.md 1.2.1): only the views drawn can be chosen, the one read is lit,
 // and the Views field names both, the views drawn lit, then a dot and the channel read. Multi reads
-// this track's Mid and has no Reads row.
+// this track's Mid and has no Measure row.
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -21,7 +21,7 @@ import {
 const letters = ["L", "R", "M", "S"] as const;
 const named = { L: "Left", R: "Right", M: "Mid", S: "Side" } as const;
 
-// The Reads row's choices: which can be chosen and which is lit.
+// The Measure row's choices: which can be chosen and which is lit.
 function readsRow(): { enabled: string[]; lit: string[] } {
   const buttons = [...byId("readout-source").querySelectorAll("button")];
   return {
@@ -54,7 +54,7 @@ async function openViews(): Promise<void> {
   await expect.element(byId("views-popover")).toBeVisible();
 }
 
-describe("the Reads row", () => {
+describe("the Measure row", () => {
   test("sits in the Views popover, under Channels, and leaves the status bar", async () => {
     await startApp();
     await settle();
@@ -62,7 +62,7 @@ describe("the Reads row", () => {
     const rows = [...byId("views-popover").querySelectorAll(".popover-row")];
     expect(rows.map((row) => row.querySelector("span")?.textContent)).toEqual([
       "Channels",
-      "Reads",
+      "Measure",
     ]);
     expect(rows[1]?.contains(byId("readout-source"))).toBe(true);
     expect(document.querySelector(".statusbar #readout-source")).toBeNull();
@@ -113,7 +113,7 @@ describe("the Reads row", () => {
     expect(summaryWidth()).toBeCloseTo(before, 1);
   });
 
-  // Multi reads this track's Mid: the Views field, and the Reads row with it, is out of reach, and
+  // Multi reads this track's Mid: the Views field, and the Measure row with it, is out of reach, and
   // nothing else offers a channel.
   test.each(displays.filter((display) => display !== "Single"))(
     "is out of reach in %s",
@@ -143,7 +143,7 @@ describe("the Views field", () => {
       expect(byId("views-summary").textContent.startsWith("LRMS·")).toBe(true);
       expect(readLetter()).toEqual({ text: letter, opacity: 1 });
       expect(byId("views-details").getAttribute("aria-label")).toBe(
-        `Views: L R M, reads ${named[letter]}`,
+        `Views: L R M, measures ${named[letter]}`,
       );
       widths.add(Math.round(summaryWidth() * 100));
     }

@@ -169,8 +169,8 @@ describe("turning help on", () => {
     );
   });
 
-  // The Reads row explains the channel read, not the Views it sits in.
-  test("explains the Reads row with the readout source's help", async () => {
+  // The Measure row explains the channel read, not the Views it sits in.
+  test("explains the Measure row with the readout source's help", async () => {
     await turnOn();
     if (byId("views-popover").hidden) {
       await userEvent.click(byId("views-details"));
