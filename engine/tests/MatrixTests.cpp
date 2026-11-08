@@ -4681,6 +4681,42 @@ TEST_P(MatchWork, SpreadsALongSearchOverFrames)
     EXPECT_LE(most, kMatchSearchWork + window) << "a frame did a whole search's work at once";
 }
 
+// On a lane channel other than Mid, a search spread over frames still ends, and its match shows
+// and stays while the channel does: the channel is compared with the one last measured, not
+// taken as a new choice in every frame.
+TEST_P(MatchWork, ShowsAMatchSearchedOverFramesOnAnotherLaneChannel)
+{
+    const ModeCase c = GetParam();
+    constexpr double kRate = 96000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = 40});
+    configure(session.own(), Display::kCompare, c.timeBase);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kEightBars));
+    setSpan(session.own(), c.timeBase, setting(spanSetting(c.timeBase)).maximum);
+    session.own().settings().set(SettingId::kLaneChannel,
+                                 static_cast<double>(protocol::ChannelView::kLeft));
+    session.analyzer().setCompared(othersOf(session));
+    session.play(17.0);
+    const auto correlationOf = [](const DecodedFrame& frame) {
+        return frame.data.at(std::size_t{frame.laneCount} * traceLength(frame) +
+                             std::size_t{1} * protocol::kMatchValues);
+    };
+    std::optional<DecodedFrame> frame;
+    for (int step = 0; step < 20 && !(frame && std::isfinite(correlationOf(*frame))); ++step) {
+        session.play(0.01);
+        frame = session.produce();
+    }
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(std::isfinite(correlationOf(*frame))) << "the search ended on Left";
+    for (int step = 0; step < 10; ++step) {
+        session.play(0.01);
+        frame = session.produce();
+        ASSERT_TRUE(frame);
+        EXPECT_TRUE(std::isfinite(correlationOf(*frame))) << "the match stays, frame " << step;
+    }
+}
+
 // Frozen, the audio shown is held and does not change: once its matches are found, a frozen view
 // has nothing more to search or measure while the host plays on: it reads nothing and draws no
 // more frames, and redrawn at another width, it searches no match again. Nine
