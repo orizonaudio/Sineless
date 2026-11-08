@@ -7,8 +7,8 @@
 namespace orizon::engine {
 
 // Indicative readouts of the channel the display measures (in Single the readout source when drawn,
-// else the first view drawn; this track's Mid in Multi): sample peak and RMS over the whole span,
-// whatever part of it is on screen. Not standards-compliant metering.
+// else the first view drawn; this track's lane channel in Multi): sample peak and RMS over the
+// whole span, whatever part of it is on screen. Not standards-compliant metering.
 struct Readouts
 {
     // Largest absolute sample value, and the RMS; NaN with nothing to measure.

@@ -21,10 +21,10 @@
 //
 // The visible span starts `startFraction` samples after the first point (sub-sample trigger
 // alignment). `peak`, `rms` and `invalidSamples` measure `readoutView` (a ChannelView): in
-// Single the readout source when it is drawn, else the first view drawn; in Multi this track's
-// Mid. `peak` and `rms` are NaN when there is nothing to measure. `triggerView` is the view the trigger reads under the
+// Single the readout source when it is drawn, else the first view drawn; in Multi the lane channel
+// (Left on a mono track). `peak` and `rms` are NaN when there is nothing to measure. `triggerView` is the view the trigger reads under the
 // current settings: in Single the trigger source when it is drawn, else the first view drawn; in
-// Multi this track's Mid. In Beats and Free, which do not trigger, it still names it. In a tempo-synced sweep, `cursor` is the
+// Multi the lane channel (Left on a mono track). In Beats and Free, which do not trigger, it still names it. In a tempo-synced sweep, `cursor` is the
 // playhead's position across the screen (0 to 1), and -1 otherwise; `cycleStart` is the
 // project position of the left edge, `spanQuarterNotes` the span shown and `barQuarterNotes` the
 // bar length, all in quarter notes (0 when not synced); `cycleSeconds` is the left edge's project

@@ -93,7 +93,7 @@ export const settings = {
   },
   // The Channel: what the Meter, and with the views overlaid the hover and snapping, read in the
   // Single display mode, when it is drawn; the first drawn view otherwise. Multi, with or without
-  // Compare, reads this track's Mid. Saved under its first name.
+  // Compare, reads this track's lane channel. Saved under its first name.
   readoutSource: {
     kind: "enum",
     values: "ChannelView",
@@ -152,6 +152,16 @@ export const settings = {
   // In Multi, adds the sum of the tracks checked against this one, with their matches and summing
   // gains (Compare, FR-15). Kept while the display mode is Single.
   compare: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
+  // The channel every lane of Multi shows, with or without Compare, and what Multi's trigger,
+  // readouts, sum, matches and summing gains read: one choice for the whole display. A mono track
+  // shows its one channel whatever the choice. Mid keeps what Multi showed before the choice
+  // existed. Chosen while frozen, this track's lane is redrawn from its hold and the other
+  // tracks' lanes are empty until the display resumes: their audio is held as one channel.
+  laneChannel: {
+    kind: "enum",
+    values: "ChannelView",
+    defaultValue: ChannelView.mid,
+  },
   // The readout beside the pointer over the traces.
   hoverReadout: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
   // The Meter in the screen's corner: Peak, RMS and their crest factor, over the whole span.

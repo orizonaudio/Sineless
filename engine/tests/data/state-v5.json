@@ -19,6 +19,7 @@
     "gridTypeTrigger": "none",
     "group": "c",
     "hoverReadout": "on",
+    "laneChannel": "side",
     "meter": "on",
     "readoutSource": "right",
     "timeBase": "free",

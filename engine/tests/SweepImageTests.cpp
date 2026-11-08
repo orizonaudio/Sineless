@@ -130,6 +130,33 @@ TEST_F(SweepImageTest, HoldsTheMidWithOneChannel)
     EXPECT_EQ(mono.length(), 0u);
 }
 
+// A one-channel image holds one view of the source: asked for another, it is built again, and
+// positions the source no longer holds are silent, never the view drawn before.
+TEST_F(SweepImageTest, AOneChannelImageRebuildsForAnotherView)
+{
+    SweepImage lane(1);
+    writeUpTo(2000); // The ring holds samples 976 to 1999, drawn at positions 176 to 1199.
+    ASSERT_TRUE(lane.update(ring, {.start = 800, .sampleCount = 1200, .rotation = 0}, false, 2, 0,
+                            protocol::ChannelView::kLeft));
+    writeUpTo(2300); // Now 1276 to 2299; the cycle that began at 2000 draws from position 0.
+    ASSERT_TRUE(lane.update(ring, {.start = 1100, .sampleCount = 1200, .rotation = 900}, false, 2,
+                            0, protocol::ChannelView::kLeft));
+    std::vector<float> samples(1200);
+    ASSERT_TRUE(lane.read(0, 0, samples));
+    ASSERT_EQ(samples[300], 1100.0f) << "the left channel, drawn on the last pass";
+
+    lane.clearChanges();
+    ASSERT_TRUE(lane.update(ring, {.start = 1100, .sampleCount = 1200, .rotation = 900}, false, 2,
+                            0, protocol::ChannelView::kRight));
+    ASSERT_TRUE(lane.read(0, 0, samples));
+    EXPECT_EQ(samples[300], 0.0f) << "no longer held: silent, not the left channel";
+    EXPECT_EQ(samples[476], -1276.0f) << "the right channel of the oldest sample held";
+    EXPECT_EQ(samples[299], -2299.0f) << "and of the newest";
+    ASSERT_FALSE(lane.changes().empty());
+    EXPECT_EQ(lane.changes().front().first, 0u) << "every position redrawn";
+    EXPECT_FALSE(lane.complete()) << "it fills in over the next pass";
+}
+
 TEST_F(SweepImageTest, KeepsItsLengthThroughASmallTempoChange)
 {
     writeUpTo(3024); // The ring holds samples 2000 to 3023.

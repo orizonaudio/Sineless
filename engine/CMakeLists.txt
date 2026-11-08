@@ -62,6 +62,7 @@ if(BUILD_TESTING)
         tests/FreeRunningTests.cpp
         tests/HoldBufferTests.cpp
         tests/InstanceRegistryTests.cpp
+        tests/LaneHoldTests.cpp
         tests/MatrixTests.cpp
         tests/MotionTests.cpp
         tests/PacedAnalyzerTests.cpp
