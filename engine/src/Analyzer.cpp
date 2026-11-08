@@ -1494,10 +1494,16 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         std::vector<std::uint64_t> byOwn{ownSerial};
         std::ranges::copy_if(laneOrder, std::back_inserter(byOwn),
                              [&](std::uint64_t serial) { return serial != ownSerial; });
+        const std::uint64_t ownLength = own.image.length();
         for (const std::uint64_t serial : byOwn) {
             Lane& lane = *lanes.at(serial);
             const ChannelView view = laneView(lane, channel);
-            if (!lane.window || lane.image.view() == view) {
+            // A lane that stays, as a mono track's, is drawn again too when this track's was
+            // redrawn at another length, as after a tempo change too small to resize the sweep.
+            const bool resized = serial != ownSerial && own.image.length() != ownLength &&
+                                 lane.image.length() > 0 && lane.window &&
+                                 lane.image.length() != sharedLength(serial, *lane.window);
+            if (!lane.window || (lane.image.view() == view && !resized)) {
                 continue;
             }
             if (!lane.hold.held() || !lane.hold.shows(view)) {

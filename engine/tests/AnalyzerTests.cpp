@@ -2529,6 +2529,30 @@ INSTANTIATE_TEST_SUITE_P(Lanes, CropLaneChannelTest, ::testing::ValuesIn(everyCh
 
 // Multi triggers on this track's lane channel: a crossing on its left channel alone is not there
 // on Right, and is found on Left.
+// After a tempo change too small to resize the sweep, the images keep their length; a channel
+// chosen while frozen redraws this track's lane at the sweep's new one, and the mono track's lane,
+// which stays, with it, so that it is still drawn.
+TEST_F(LaneChannelTest, AChannelChosenWhileFrozenKeepsTheLanesLengthAfterASmallTempoChange)
+{
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+    play(48000);
+    ASSERT_TRUE(produce());
+    tempo = 120.06; // 0.05% faster: the sweep keeps its length.
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    setLaneChannel(protocol::ChannelView::kSide);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    const std::vector<float> side = expectedLanes(protocol::ChannelView::kSide, false);
+    ASSERT_EQ(frame->laneCount, 3);
+    EXPECT_EQ(lane(*frame, 0), std::vector<float>(frame->pointCount, side[0]))
+        << "this track, redrawn on Side";
+    EXPECT_EQ(lane(*frame, 2), std::vector<float>(frame->pointCount, side[2]))
+        << "the mono track's lane stays";
+}
+
 TEST_F(LaneChannelTest, TriggersOnTheLaneChannel)
 {
     // A step up on the left channel only, every 4800 samples.
