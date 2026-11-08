@@ -151,6 +151,8 @@ describe("the trigger source on a mono track", () => {
 
   test("follows the track turning stereo and back", async () => {
     app.transport.changeChannels(2, true);
+    // The stereo frame renames the Views field, which is found by its name: open it after.
+    await settle();
     await showViews(["L", "S"]);
     await settle();
     expect(await sourceRow()).toEqual({ lit: "S", enabled: ["L", "S"] });
