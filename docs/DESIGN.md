@@ -354,7 +354,8 @@ colour blindness in `docs/ui/colour.html`.
 - Geist for text and labels, Geist Mono for values (embedded).
 - The mark and the product's name come from `ui/src/brand/`, which has terms of its own (README,
   TRADEMARKS.md); a build without the brand shows neutral ones (AD-27).
-- A visible focus ring on every control.
+- A visible focus ring on every control that takes keys; a dragged value takes none, so it draws
+  none.
 
 ## 2. Constraints
 
