@@ -319,10 +319,15 @@ body {
   background: var(--sl-accent);
 }
 
-button:focus-visible,
-.field:focus-visible {
+/* A dragged value takes no keys, so it draws no ring: the browser would show one on a press
+   before any button was clicked, judging that focus to come from the keyboard. */
+button:focus-visible {
   outline: 2px solid var(--sl-ink);
   outline-offset: 2px;
+}
+
+.field:focus-visible {
+  outline: none;
 }
 
 /* A selected option's fill is the ring's colour: the ring goes inside, with a case-coloured edge. */
