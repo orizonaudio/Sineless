@@ -175,8 +175,10 @@ body {
   border-radius: 6px;
 }
 
+/* Whole pixels: a half pixel's sides blend into the case, and its corners, blended more, read
+   fainter than its sides. */
 .field-button[aria-expanded="true"] {
-  box-shadow: 0 0 0 1.5px var(--sl-ink);
+  box-shadow: 0 0 0 2px var(--sl-ink);
 }
 
 /* The whole pill drags, scrolls and opens for typing like its value (DragField.attach). */

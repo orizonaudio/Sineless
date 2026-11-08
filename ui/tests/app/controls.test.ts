@@ -7,6 +7,7 @@ import { brand } from "@brand/brand.ts";
 import { minimumEditorWidth } from "../../../protocol/src/limits.ts";
 import { valueNames } from "../../../protocol/src/setting-values.ts";
 import { settings } from "../../../protocol/src/settings.ts";
+import html from "../../index.html?raw";
 import { choiceLabels } from "../../src/view/choice-labels.ts";
 
 import {
@@ -562,6 +563,26 @@ describe("choice fields", () => {
 describe("choice field popovers", () => {
   beforeApp(async () => {
     await startApp();
+  });
+
+  // An open popover's button is ringed in whole CSS pixels, so the ring's sides cover whole device
+  // pixels at every pixel ratio: a half pixel blends into the case, and its corners, blended more,
+  // read fainter than its sides. Closed, the button has no ring.
+  test.each(
+    [
+      ...new DOMParser()
+        .parseFromString(html, "text/html")
+        .querySelectorAll(".field-button"),
+    ].map((button) => button.id),
+  )("%s is ringed in whole pixels while its popover is open", (id) => {
+    const button = byId(id);
+    expect(getComputedStyle(button).boxShadow).toBe("none");
+    button.setAttribute("aria-expanded", "true");
+    const ring = getComputedStyle(button).boxShadow;
+    button.setAttribute("aria-expanded", "false");
+    const spread = Number(/([\d.]+)px$/.exec(ring)?.[1]);
+    expect(spread).toBeGreaterThan(0);
+    expect(Number.isInteger(spread)).toBe(true);
   });
 
   // A row with a label, and in it the setting's choices, one per value, as the other popovers.
