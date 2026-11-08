@@ -18,14 +18,17 @@ constexpr std::uint64_t kChunkSamples = 16384;
 SweepImage::SweepImage(int channels) : channelCount(channels) {}
 
 bool SweepImage::update(const SampleSource& source, const SweepWindow& window, bool rebuild,
-                        int inputChannels, std::uint64_t length)
+                        int inputChannels, std::uint64_t length, protocol::ChannelView view)
 {
     clearPart();
     const std::int64_t end = window.start + static_cast<std::int64_t>(window.sampleCount);
     // An image already at the length asked for keeps it, even where that length is not similar
     // enough to the window's for an image to keep its own (a lane on this track's length).
     const bool atLength = length != 0 && count == length;
-    if (rebuild || (!atLength && !sweepLengthsSimilar(window.sampleCount, count))) {
+    // A one-channel image holds one view: another one is drawn afresh.
+    const bool otherView = channelCount == 1 && view != imageView;
+    if (rebuild || otherView || (!atLength && !sweepLengthsSimilar(window.sampleCount, count))) {
+        imageView = view;
         count = length != 0 ? length : window.sampleCount;
         samples.assign(static_cast<std::size_t>(count) * static_cast<std::size_t>(channelCount),
                        0.0f);
@@ -63,8 +66,7 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
             bool read = false;
             if (channelCount == 1) {
                 viewScratch.resize(scratch.size());
-                read = readView(source, inputChannels, protocol::ChannelView::kMid, chunkFirst,
-                                scratch, viewScratch);
+                read = readView(source, inputChannels, view, chunkFirst, scratch, viewScratch);
             } else {
                 read = source.read(channel, chunkFirst, scratch);
             }
@@ -95,6 +97,7 @@ void SweepImage::clear()
     changed.clear();
     samples.clear();
     samples.shrink_to_fit();
+    imageView.reset();
 }
 
 void SweepImage::showPart(const SweepImage& part, std::uint64_t first)

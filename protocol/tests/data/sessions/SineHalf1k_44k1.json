@@ -42,6 +42,7 @@
       "gridTypeTrigger": "grid",
       "group": "a",
       "hoverReadout": "on",
+      "laneChannel": "mid",
       "meter": "off",
       "readoutSource": "mid",
       "timeBase": "trigger",

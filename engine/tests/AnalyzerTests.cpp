@@ -8,7 +8,9 @@
 #include <functional>
 #include <gtest/gtest.h>
 #include <limits>
+#include <map>
 #include <numbers>
+#include <string>
 #include <vector>
 
 namespace orizon::engine {
@@ -262,7 +264,8 @@ TEST_F(AnalyzerTest, DrawsNoBeatsSweepUntilTheHostReportsATempo)
 // first view drawn (L, with the default views, which leave out the default source, the Mid), and
 // L on a mono track whatever the source; from the frame that says there is no tempo yet, and the
 // first frame placed, which marks itself Single with no lane set. In Multi this
-// track's Mid, with the lane set that marks them multi-track.
+// track's lane channel (L on a mono track, which reads its one channel), with the lane set that
+// marks them multi-track; Single ignores the lane channel.
 TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
 {
     struct Track
@@ -291,42 +294,50 @@ TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
               .measured = protocol::ChannelView::kLeft},
     };
     for (const auto display : everyDisplay()) {
-        for (const Track& track : kTracks) {
-            SCOPED_TRACE(::testing::Message() << displayName(display) << ", " << track.name);
-            const bool single = !isMulti(display);
-            Engine fresh;
-            fresh.prepare(kSampleRate);
-            fresh.setInputChannels(track.channels);
-            show(fresh.settings(), display);
-            fresh.settings().set(SettingId::kChannelViews, static_cast<double>(track.views));
-            fresh.settings().set(SettingId::kReadoutSource, static_cast<double>(track.source));
-            // The trigger chooses by the same rule: its source, drawn or not, names the same view.
-            fresh.settings().set(SettingId::kTriggerSource, static_cast<double>(track.source));
-            Analyzer view(fresh);
-            view.setColumns(300);
-            std::vector<float> block(480, 0.25f);
-            std::array<const float*, 2> channels{block.data(), block.data()};
-            const auto expected = single ? track.measured : protocol::ChannelView::kMid;
-            std::vector<std::byte> bytes;
-            ASSERT_TRUE(view.produce(bytes));
-            DecodedFrame frame = decode(bytes);
-            ASSERT_TRUE(frame.has(FrameFlag::kNoTempo));
-            EXPECT_EQ(frame.readoutView, expected) << "no tempo";
-            EXPECT_EQ(frame.triggerView, expected) << "no tempo";
-            EXPECT_EQ(frame.laneSet != 0, !single) << "no tempo";
+        for (std::size_t laneIndex = 0; laneIndex < protocol::kChannelViewCount; ++laneIndex) {
+            for (const Track& track : kTracks) {
+                const auto laneChannel = static_cast<protocol::ChannelView>(laneIndex);
+                SCOPED_TRACE(::testing::Message() << displayName(display) << ", lane channel "
+                                                  << laneIndex << ", " << track.name);
+                const bool single = !isMulti(display);
+                Engine fresh;
+                fresh.prepare(kSampleRate);
+                fresh.setInputChannels(track.channels);
+                show(fresh.settings(), display);
+                fresh.settings().set(SettingId::kLaneChannel, static_cast<double>(laneChannel));
+                fresh.settings().set(SettingId::kChannelViews, static_cast<double>(track.views));
+                fresh.settings().set(SettingId::kReadoutSource, static_cast<double>(track.source));
+                // The trigger chooses by the same rule: its source, drawn or not, names the same
+                // view.
+                fresh.settings().set(SettingId::kTriggerSource, static_cast<double>(track.source));
+                Analyzer view(fresh);
+                view.setColumns(300);
+                std::vector<float> block(480, 0.25f);
+                std::array<const float*, 2> channels{block.data(), block.data()};
+                const auto expected = single                ? track.measured
+                                      : track.channels == 1 ? protocol::ChannelView::kLeft
+                                                            : laneChannel;
+                std::vector<std::byte> bytes;
+                ASSERT_TRUE(view.produce(bytes));
+                DecodedFrame frame = decode(bytes);
+                ASSERT_TRUE(frame.has(FrameFlag::kNoTempo));
+                EXPECT_EQ(frame.readoutView, expected) << "no tempo";
+                EXPECT_EQ(frame.triggerView, expected) << "no tempo";
+                EXPECT_EQ(frame.laneSet != 0, !single) << "no tempo";
 
-            for (int step = 0; step < 20; ++step) {
-                fresh.captureRing().write(channels.data(), 2, 480);
-                fresh.timeline().advance(
-                    {.playing = true, .positionValid = true, .tempoValid = true, .tempo = 90.0},
-                    480, kSampleRate);
+                for (int step = 0; step < 20; ++step) {
+                    fresh.captureRing().write(channels.data(), 2, 480);
+                    fresh.timeline().advance(
+                        {.playing = true, .positionValid = true, .tempoValid = true, .tempo = 90.0},
+                        480, kSampleRate);
+                }
+                ASSERT_TRUE(view.produce(bytes));
+                frame = decode(bytes);
+                ASSERT_FALSE(frame.has(FrameFlag::kNoTempo));
+                EXPECT_EQ(frame.readoutView, expected) << "placed";
+                EXPECT_EQ(frame.triggerView, expected) << "placed";
+                EXPECT_EQ(frame.laneSet != 0, !single) << "placed";
             }
-            ASSERT_TRUE(view.produce(bytes));
-            frame = decode(bytes);
-            ASSERT_FALSE(frame.has(FrameFlag::kNoTempo));
-            EXPECT_EQ(frame.readoutView, expected) << "placed";
-            EXPECT_EQ(frame.triggerView, expected) << "placed";
-            EXPECT_EQ(frame.laneSet != 0, !single) << "placed";
         }
     }
 }
@@ -1697,7 +1708,9 @@ TEST_F(SweepTest, FreezesTheWholeSweep)
 }
 
 // The multi-track view: several engines on one host clock, at 120 BPM in 2/4 unless a test counts
-// 4/4 bars, with a 1/8-bar sweep: a quarter beat, 6000 samples. Each engine's lane is its Mid.
+// 4/4 bars, with a 1/8-bar sweep: a quarter beat, 6000 samples. Each engine's lane is its Mid
+// (the default lane channel); a track records the same audio on both channels unless given a
+// right channel of its own, or one channel when mono.
 class MultiTrackTest : public ::testing::Test
 {
 protected:
@@ -1735,6 +1748,22 @@ protected:
         return engine;
     }
 
+    // A track whose left and right channels differ.
+    std::shared_ptr<Engine> joinStereo(Signal left, Signal right)
+    {
+        auto engine = joinWith(std::move(left));
+        rightChannels.insert_or_assign(engine.get(), std::move(right));
+        return engine;
+    }
+
+    // A mono track: one channel.
+    std::shared_ptr<Engine> joinMono(Signal signal)
+    {
+        auto engine = joinWith(std::move(signal));
+        engine->setInputChannels(1);
+        return engine;
+    }
+
     // Advances the host by `count` samples; every engine records its block on the same clock.
     void play(std::uint64_t count)
     {
@@ -1742,11 +1771,16 @@ protected:
         for (std::uint64_t done = 0; done < count; done += kBlock) {
             for (const auto& [engine, signal] : tracks) {
                 std::vector<float> block(kBlock);
+                std::vector<float> right(kBlock);
+                const auto ownRight = rightChannels.find(engine.get());
                 for (std::uint64_t i = 0; i < kBlock; ++i) {
                     block[i] = signal(hostSample + i);
+                    right[i] = ownRight != rightChannels.end() ? ownRight->second(hostSample + i)
+                                                               : block[i];
                 }
-                std::array<const float*, 2> channels{block.data(), block.data()};
-                engine->captureRing().write(channels.data(), 2, static_cast<int>(kBlock));
+                std::array<const float*, 2> channels{block.data(), right.data()};
+                engine->captureRing().write(channels.data(), engine->inputChannels(),
+                                            static_cast<int>(kBlock));
                 engine->timeline().advance({.playing = true,
                                             .positionValid = true,
                                             .quarterNotes = quarterNotes,
@@ -1779,6 +1813,7 @@ protected:
 
     InstanceRegistry registry;
     std::vector<std::pair<std::shared_ptr<Engine>, Signal>> tracks;
+    std::map<const Engine*, Signal> rightChannels;
     std::shared_ptr<Engine> own;
     std::unique_ptr<Analyzer> analyzer;
     std::vector<std::byte> analyzerBytes; // The last frame, for header fields the decoder skips.
@@ -2166,6 +2201,350 @@ TEST_F(SecondsLanesTest, ShowsTheLatestFreezeAfterASingleModeInterlude)
     EXPECT_EQ(lane(*frame, 1), lane(*frame, 0));
 }
 
+// The lane channel: which channel every lane of Multi shows (FR-14.2). Tracks hold constant audio
+// that differs between their channels, so each channel draws a value of its own: this track L 0.5
+// and R 0.25, a stereo track L 0.25 and R 0.75, and a mono track 0.125 on its one channel.
+class LaneChannelTest : public MultiTrackTest
+{
+protected:
+    void SetUp() override
+    {
+        MultiTrackTest::SetUp();
+        tracks.front().second = [](std::uint64_t) { return 0.5f; };
+        rightChannels.insert_or_assign(own.get(), [](std::uint64_t) { return 0.25f; });
+        joinStereo([](std::uint64_t) { return 0.25f; }, [](std::uint64_t) { return 0.75f; });
+        joinMono([](std::uint64_t) { return 0.125f; });
+        // Spans shorter than the columns: raw points, exact values.
+        own->settings().set(SettingId::kTriggerSpan, 0.05);
+        own->settings().set(SettingId::kFreeSpan, 0.1);
+    }
+
+    static float channelOf(protocol::ChannelView channel, float left, float right)
+    {
+        switch (channel) {
+        case protocol::ChannelView::kLeft:
+            return left;
+        case protocol::ChannelView::kRight:
+            return right;
+        case protocol::ChannelView::kMid:
+            return 0.5f * (left + right);
+        case protocol::ChannelView::kSide:
+            return 0.5f * (left - right);
+        }
+        return 0.0f;
+    }
+
+    // What each lane draws on `channel`: the tracks in creation order and, with Compare on, the sum
+    // of this track and the first other one, the two compared until asked.
+    static std::vector<float> expectedLanes(protocol::ChannelView channel, bool compare)
+    {
+        const float ownValue = channelOf(channel, 0.5f, 0.25f);
+        const float stereo = channelOf(channel, 0.25f, 0.75f);
+        std::vector<float> values{ownValue, stereo, 0.125f};
+        if (compare) {
+            values.push_back(ownValue + stereo);
+        }
+        return values;
+    }
+
+    void setLaneChannel(protocol::ChannelView channel)
+    {
+        own->settings().set(SettingId::kLaneChannel, static_cast<double>(channel));
+    }
+
+    static void expectLanes(const DecodedFrame& frame, protocol::ChannelView channel, bool compare)
+    {
+        const std::vector<float> expected = expectedLanes(channel, compare);
+        ASSERT_EQ(frame.laneCount, expected.size());
+        for (std::size_t index = 0; index < expected.size(); ++index) {
+            EXPECT_EQ(lane(frame, index), std::vector<float>(frame.pointCount, expected[index]))
+                << "lane " << index;
+        }
+    }
+};
+
+// What a lane-channel case does before the frame checked: draws live; freezes; or freezes and then
+// shows a longer or shorter beat span, built again from the audio held.
+enum class LaneHoldCase : std::uint8_t
+{
+    kLive,
+    kFrozen,
+    kFrozenLongerSpan,
+    kFrozenShorterSpan,
+};
+
+struct LaneChannelCase
+{
+    protocol::ChannelView channel;
+    protocol::TimeBase timeBase;
+    bool compare;
+    LaneHoldCase hold;
+};
+
+std::vector<LaneChannelCase> everyLaneChannelCase()
+{
+    std::vector<LaneChannelCase> cases;
+    for (std::size_t channel = 0; channel < protocol::kChannelViewCount; ++channel) {
+        for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+            for (const bool compare : {false, true}) {
+                for (const LaneHoldCase hold :
+                     {LaneHoldCase::kLive, LaneHoldCase::kFrozen, LaneHoldCase::kFrozenLongerSpan,
+                      LaneHoldCase::kFrozenShorterSpan}) {
+                    const auto base = static_cast<protocol::TimeBase>(timeBase);
+                    const bool spanChange = hold == LaneHoldCase::kFrozenLongerSpan ||
+                                            hold == LaneHoldCase::kFrozenShorterSpan;
+                    if (spanChange && base != protocol::TimeBase::kBeats) {
+                        continue; // Only a sweep is built again from the held audio.
+                    }
+                    cases.push_back({.channel = static_cast<protocol::ChannelView>(channel),
+                                     .timeBase = base,
+                                     .compare = compare,
+                                     .hold = hold});
+                }
+            }
+        }
+    }
+    return cases;
+}
+
+std::string laneChannelCaseName(const ::testing::TestParamInfo<LaneChannelCase>& info)
+{
+    constexpr std::array kChannels{"Left", "Right", "Mid", "Side"};
+    constexpr std::array kTimeBases{"Trigger", "Beats", "Free"};
+    constexpr std::array kHolds{"Live", "Frozen", "FrozenLongerSpan", "FrozenShorterSpan"};
+    static_assert(kChannels.size() == protocol::kChannelViewCount);
+    static_assert(kTimeBases.size() == protocol::kTimeBaseCount);
+    const LaneChannelCase& c = info.param;
+    return std::string(kChannels.at(static_cast<std::size_t>(c.channel))) +
+           kTimeBases.at(static_cast<std::size_t>(c.timeBase)) + (c.compare ? "Compare" : "") +
+           kHolds.at(static_cast<std::size_t>(c.hold));
+}
+
+class EveryLaneChannelTest : public LaneChannelTest,
+                             public ::testing::WithParamInterface<LaneChannelCase>
+{
+};
+
+// Every lane shows the chosen channel of its track, this track's included, a mono track its one
+// channel, and with Compare on the sum is the sum of that channel: live, frozen (other tracks held
+// as that channel, this track as both), and built again from the held audio for another span.
+TEST_P(EveryLaneChannelTest, LanesShowTheChosenChannelOfEveryTrack)
+{
+    const LaneChannelCase& c = GetParam();
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(c.timeBase));
+    show(own->settings(), c.compare ? Display::kCompare : Display::kMulti);
+    setLaneChannel(c.channel);
+    if (c.hold == LaneHoldCase::kFrozenShorterSpan) {
+        own->settings().set(SettingId::kBeatSpan,
+                            static_cast<double>(protocol::BeatSpan::kHalfBar));
+    }
+    play(48000);
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    if (c.hold != LaneHoldCase::kLive) {
+        analyzer->setFrozen(true);
+        ASSERT_TRUE(produce());
+        play(2400); // Audio after the freeze must not appear.
+        if (c.hold == LaneHoldCase::kFrozenLongerSpan) {
+            own->settings().set(SettingId::kBeatSpan,
+                                static_cast<double>(protocol::BeatSpan::kQuarterBar));
+            analyzer->setColumns(12000);
+        } else if (c.hold == LaneHoldCase::kFrozenShorterSpan) {
+            own->settings().set(SettingId::kBeatSpan,
+                                static_cast<double>(protocol::BeatSpan::kEighthBar));
+        } else {
+            analyzer->setColumns(7999); // Forces a frame.
+        }
+        frame = produce();
+        ASSERT_TRUE(frame);
+    }
+    EXPECT_EQ(frame->has(FrameFlag::kFrozen), c.hold != LaneHoldCase::kLive);
+    expectLanes(*frame, c.channel, c.compare);
+    EXPECT_EQ(frame->readoutView, c.channel);
+    EXPECT_EQ(frame->triggerView, c.channel);
+}
+
+INSTANTIATE_TEST_SUITE_P(Lanes, EveryLaneChannelTest, ::testing::ValuesIn(everyLaneChannelCase()),
+                         laneChannelCaseName);
+
+// A channel chosen live redraws every lane in the next frame, with no new audio needed for what is
+// on screen: a sweep's lanes are built again, a free-running window's rolled columns, and the
+// sum's, reduced again.
+TEST_F(LaneChannelTest, SwitchingChannelRedrawsLanesAtOnce)
+{
+    for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+        for (const bool compare : {false, true}) {
+            SCOPED_TRACE(::testing::Message()
+                         << "time base " << timeBase << ", compare " << compare);
+            own->settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
+            show(own->settings(), compare ? Display::kCompare : Display::kMulti);
+            setLaneChannel(protocol::ChannelView::kLeft);
+            play(48000);
+            const auto before = produce();
+            ASSERT_TRUE(before);
+            expectLanes(*before, protocol::ChannelView::kLeft, compare);
+            play(480);
+            setLaneChannel(protocol::ChannelView::kRight);
+            const auto after = produce();
+            ASSERT_TRUE(after);
+            expectLanes(*after, protocol::ChannelView::kRight, compare);
+        }
+    }
+}
+
+// A channel chosen while frozen redraws this track's lane from its hold, which holds both its
+// channels, and leaves the other tracks' lanes empty until the display resumes: they were held as
+// the channel chosen before. A mono track's lane stays, since every view reads its one channel.
+// Compare then sums what is drawn and shows no match measured on the channel before.
+TEST_F(LaneChannelTest, AChannelChosenWhileFrozenRedrawsThisTrackAndEmptiesTheOthers)
+{
+    for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+        for (const bool compare : {false, true}) {
+            SCOPED_TRACE(::testing::Message()
+                         << "time base " << timeBase << ", compare " << compare);
+            own->settings().set(SettingId::kTimeBase, static_cast<double>(timeBase));
+            own->settings().set(SettingId::kBeatSpan,
+                                static_cast<double>(protocol::BeatSpan::kEighthBar));
+            show(own->settings(), compare ? Display::kCompare : Display::kMulti);
+            setLaneChannel(protocol::ChannelView::kMid);
+            analyzer->setColumns(8000);
+            play(48000);
+            ASSERT_TRUE(produce());
+            analyzer->setFrozen(true);
+            ASSERT_TRUE(produce());
+            play(2400);
+            setLaneChannel(protocol::ChannelView::kSide);
+            const std::vector<float> side = expectedLanes(protocol::ChannelView::kSide, false);
+            const auto expectFrozen = [&](const DecodedFrame& frame) {
+                EXPECT_TRUE(frame.has(FrameFlag::kFrozen));
+                ASSERT_EQ(frame.laneCount, compare ? 4u : 3u);
+                EXPECT_EQ(frame.readoutView, protocol::ChannelView::kSide);
+                const std::vector<float> silent(frame.pointCount, 0.0f);
+                EXPECT_EQ(lane(frame, 0), std::vector<float>(frame.pointCount, side[0]))
+                    << "this track, redrawn on Side";
+                EXPECT_EQ(lane(frame, 1), silent) << "held as Mid: empty";
+                EXPECT_EQ(lane(frame, 2), std::vector<float>(frame.pointCount, side[2]))
+                    << "the mono track's one channel";
+                if (compare) {
+                    EXPECT_EQ(lane(frame, 3), std::vector<float>(frame.pointCount, side[0]))
+                        << "the sum of what is drawn";
+                }
+            };
+            // Back on the channel held: every lane as held.
+            const auto expectHeld = [&] {
+                setLaneChannel(protocol::ChannelView::kMid);
+                const auto held = produce();
+                ASSERT_TRUE(held);
+                EXPECT_TRUE(held->has(FrameFlag::kFrozen));
+                expectLanes(*held, protocol::ChannelView::kMid, compare);
+            };
+            auto frame = produce();
+            ASSERT_TRUE(frame);
+            expectFrozen(*frame);
+            EXPECT_FALSE(produce()) << "nothing changed since: no frame drawn again";
+            expectHeld();
+            if (timeBase == static_cast<std::size_t>(protocol::TimeBase::kBeats)) {
+                // A longer span after the choice, then before it: built again from the holds.
+                setLaneChannel(protocol::ChannelView::kSide);
+                ASSERT_TRUE(produce());
+                own->settings().set(SettingId::kBeatSpan,
+                                    static_cast<double>(protocol::BeatSpan::kQuarterBar));
+                analyzer->setColumns(12000);
+                frame = produce();
+                ASSERT_TRUE(frame);
+                expectFrozen(*frame);
+                expectHeld();
+                setLaneChannel(protocol::ChannelView::kSide);
+                frame = produce();
+                ASSERT_TRUE(frame);
+                expectFrozen(*frame);
+                expectHeld();
+                own->settings().set(SettingId::kBeatSpan,
+                                    static_cast<double>(protocol::BeatSpan::kEighthBar));
+            }
+            setLaneChannel(protocol::ChannelView::kSide);
+
+            analyzer->setFrozen(false);
+            play(4800);
+            analyzer->setColumns(8001); // Forces a frame.
+            const auto live = produce();
+            ASSERT_TRUE(live);
+            EXPECT_FALSE(live->has(FrameFlag::kFrozen));
+            expectLanes(*live, protocol::ChannelView::kSide, compare);
+        }
+    }
+}
+
+class CropLaneChannelTest : public LaneChannelTest,
+                            public ::testing::WithParamInterface<protocol::ChannelView>
+{
+};
+
+// Frozen during a sweep's first pass, a shorter span crops lanes still filling in: each shows that
+// span built again from its hold, in the lane channel, this track's from all its channels.
+TEST_P(CropLaneChannelTest, CropsLanesStillFillingInOnTheLaneChannel)
+{
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kHalfBar));
+    setLaneChannel(GetParam());
+    play(13440); // Part of the first half-bar cycle: the sweeps are still filling in.
+    ASSERT_TRUE(produce());
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kEighthBar));
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+    const std::vector<float> expected = expectedLanes(GetParam(), false);
+    ASSERT_EQ(frame->laneCount, expected.size());
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        std::vector<float> shown = lane(*frame, index);
+        shown.pop_back(); // The point beyond the right edge, past the crop.
+        EXPECT_EQ(shown, std::vector<float>(shown.size(), expected[index])) << "lane " << index;
+    }
+}
+
+std::vector<protocol::ChannelView> everyChannel()
+{
+    std::vector<protocol::ChannelView> channels;
+    channels.reserve(protocol::kChannelViewCount);
+    for (std::size_t channel = 0; channel < protocol::kChannelViewCount; ++channel) {
+        channels.push_back(static_cast<protocol::ChannelView>(channel));
+    }
+    return channels;
+}
+
+std::string channelName(const ::testing::TestParamInfo<protocol::ChannelView>& info)
+{
+    constexpr std::array kChannels{"Left", "Right", "Mid", "Side"};
+    static_assert(kChannels.size() == protocol::kChannelViewCount);
+    return kChannels.at(static_cast<std::size_t>(info.param));
+}
+
+INSTANTIATE_TEST_SUITE_P(Lanes, CropLaneChannelTest, ::testing::ValuesIn(everyChannel()),
+                         channelName);
+
+// Multi triggers on this track's lane channel: a crossing on its left channel alone is not there
+// on Right, and is found on Left.
+TEST_F(LaneChannelTest, TriggersOnTheLaneChannel)
+{
+    // A step up on the left channel only, every 4800 samples.
+    tracks.front().second = [](std::uint64_t sample) {
+        return sample % 4800 < 2400 ? -0.5f : 0.5f;
+    };
+    rightChannels.insert_or_assign(own.get(), [](std::uint64_t) { return -0.25f; });
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kTrigger));
+    own->settings().set(SettingId::kTriggerMode,
+                        static_cast<double>(protocol::TriggerMode::kNormal));
+    for (const auto channel : {protocol::ChannelView::kRight, protocol::ChannelView::kLeft}) {
+        SCOPED_TRACE(::testing::Message() << "channel " << static_cast<int>(channel));
+        setLaneChannel(channel);
+        play(48000);
+        const auto frame = produce();
+        const bool triggered = frame && frame->has(FrameFlag::kTriggered);
+        EXPECT_EQ(triggered, channel == protocol::ChannelView::kLeft);
+    }
+}
+
 // The Compare view: the group's tracks, with the sum of the compared ones. Tracks carry
 // deterministic noise of the host time, so a track can be this one's signal inverted, delayed, or
 // unrelated.
@@ -2285,6 +2664,67 @@ TEST_F(CompareTest, SumsEveryComparedTrack)
     EXPECT_EQ(match(*frame, 2).polarity, 0.0f) << "unrelated: no clear match";
     EXPECT_TRUE(std::isnan(match(*frame, 2).offset)) << "unrelated: no offset";
     EXPECT_TRUE(std::isnan(match(*frame, 3).correlation)) << "not compared: no value";
+}
+
+// Compare measures the lane channel: a track equal to this one on the left and inverted on the
+// right matches it on Left and matches it inverted on Right, the sum reinforcing on one and
+// cancelling on the other. Right after a switch nothing measured on the old channel is shown.
+TEST_F(CompareTest, FollowsTheLaneChannel)
+{
+    joinStereo([](std::uint64_t sample) { return noiseAt(sample, 1); },
+               [](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    own->settings().set(SettingId::kLaneChannel, static_cast<double>(protocol::ChannelView::kLeft));
+    play(9600);
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_NEAR(match(*frame, 1).correlation, 1.0f, 1e-4f);
+    EXPECT_GT(sumGain(), 2.0f) << "a copy reinforces";
+
+    own->settings().set(SettingId::kLaneChannel,
+                        static_cast<double>(protocol::ChannelView::kRight));
+    play(480);
+    frame = produce();
+    ASSERT_TRUE(frame);
+    const float switched = match(*frame, 1).correlation;
+    EXPECT_TRUE(std::isnan(switched) || switched < -0.99f) << "never Left's match";
+    EXPECT_TRUE(std::isnan(sumGain()) || sumGain() < -60.0f) << "never Left's gain";
+    EXPECT_LT(loudest(lane(*frame, 2)), 1e-6f) << "the inverted copy cancels in the sum";
+    for (int step = 0; step < 10 && std::isnan(match(*frame, 1).correlation); ++step) {
+        play(480);
+        frame = produce();
+        ASSERT_TRUE(frame);
+    }
+    EXPECT_NEAR(match(*frame, 1).correlation, -1.0f, 1e-4f);
+    EXPECT_TRUE(match(*frame, 1).inverted());
+}
+
+// Frozen, the summing gain is measured from the audio held, the other tracks' as the lane channel
+// alone: a track with this one's channels swapped has the same Mid but the opposite Side, so on
+// Side the two cancel, frozen as live (where Mid would reinforce).
+TEST_F(CompareTest, MeasuresTheSameGainFrozenOnTheLaneChannel)
+{
+    rightChannels.insert_or_assign(own.get(),
+                                   [](std::uint64_t sample) { return noiseAt(sample, 2); });
+    joinStereo([](std::uint64_t sample) { return noiseAt(sample, 2); },
+               [](std::uint64_t sample) { return noiseAt(sample, 1); });
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kTrigger));
+    own->settings().set(SettingId::kTriggerSpan, 0.1);
+    own->settings().set(SettingId::kLaneChannel, static_cast<double>(protocol::ChannelView::kSide));
+    play(48000);
+    ASSERT_TRUE(produce());
+    for (int step = 0; step < 20 && std::isnan(sumGain()); ++step) {
+        play(480);
+        ASSERT_TRUE(produce());
+    }
+    ASSERT_LT(sumGain(), -60.0f) << "opposite Sides cancel";
+
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    for (int step = 0; step < 20 && !(sumGain() < -60.0f); ++step) {
+        analyzer->setColumns(7999 - step); // Forces a frame.
+        ASSERT_TRUE(produce());
+    }
+    EXPECT_LT(sumGain(), -60.0f) << "measured on the held Sides, not on silence";
 }
 
 TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)

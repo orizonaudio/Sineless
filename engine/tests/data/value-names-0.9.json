@@ -29,6 +29,7 @@
   "gridTypeTrigger": ["none", "grid"],
   "group": ["a", "b", "c", "d"],
   "hoverReadout": ["off", "on"],
+  "laneChannel": ["left", "right", "mid", "side"],
   "meter": ["off", "on"],
   "readoutSource": ["left", "right", "mid", "side"],
   "timeBase": ["trigger", "beats", "free"],

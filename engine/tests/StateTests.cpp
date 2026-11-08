@@ -348,6 +348,7 @@ constexpr std::array kVersion5Values{
                 .value = asValue(protocol::GridDensity::kCoarse)},
     GoldenValue{.id = SettingId::kBeatDivision,
                 .value = asValue(protocol::BeatDivision::kTriplets)},
+    GoldenValue{.id = SettingId::kLaneChannel, .value = asValue(protocol::ChannelView::kSide)},
 };
 
 // The version 5 state with the trigger Position, which 0.8 added: saved by the build that adds it,

@@ -241,7 +241,7 @@ private:
     struct Lane
     {
         std::shared_ptr<Engine> engine;
-        SweepImage image{1}; // The track's Mid.
+        SweepImage image{1}; // The track's lane channel.
         std::optional<SweepWindow> window;
         std::uint64_t end = 0; // Where the last update placed the sweep to.
         // Beats, live: this lane's capture index of the audio played with this track's index i
@@ -289,9 +289,19 @@ private:
     void rememberInputs(const Settings& settings, const Commands& command, std::uint32_t laneSetId);
     [[nodiscard]] bool formatsChanged(bool multi);
     // The view the trigger reads: in Single the trigger source when drawn, else the first view
-    // drawn; this track's Mid in Multi. The one place the trigger search and the
+    // drawn; this track's lane channel in Multi. The one place the trigger search and the
     // frames that name it decide it.
     [[nodiscard]] protocol::ChannelView triggerViewFor(const Settings& settings, bool multi) const;
+    // The channel every lane shows in Multi: the one `settings` choose. Frozen, another track's
+    // lane held in another channel is drawn empty.
+    [[nodiscard]] protocol::ChannelView laneChannel(const Settings& settings) const;
+    // What this track's lane reads, which the frame names: its lane channel, or L on a mono
+    // track, whose one channel every view reads.
+    [[nodiscard]] protocol::ChannelView ownLaneView(const Settings& settings) const;
+    // The view `lane`'s image holds of `channel`: L on a mono track, whose one channel every view
+    // reads, so that its image is kept when the channel changes.
+    [[nodiscard]] static protocol::ChannelView laneView(const Lane& lane,
+                                                        protocol::ChannelView channel);
     bool placeLanes(const Settings& settings, protocol::BeatSpan span);
     [[nodiscard]] std::uint64_t sharedLength(std::uint64_t serial, const SweepWindow& sweep) const;
     void catchUpToHold(Lane& lane);
@@ -338,8 +348,8 @@ private:
     bool updateStats(BlockStats& stats, const SweepImage& image, protocol::ChannelView view,
                      int channels, bool fresh, std::size_t block);
     // Tempo-synced Compare frames, over screen positions of the sweep of `length` samples: lane
-    // `index`'s Mid from `from` (silent while the lane is not on that length), and the sum of
-    // `parts` from `position`.
+    // `index`'s lane channel from `from` (silent while the lane is not on that length), and the sum
+    // of `parts` from `position`.
     void readLaneImage(std::size_t index, std::size_t length, std::uint64_t from,
                        std::span<float> into);
     void readSum(const std::vector<SumPart>& parts, std::size_t length, std::size_t position,
@@ -424,6 +434,8 @@ private:
     // The rate the audio held on freeze was recorded at, which places it and gives its times: the
     // host may change the track's while frozen.
     double frozenRate = 0.0;
+    // The lane channel the lanes' rolled columns, and the sum's, were reduced from.
+    protocol::ChannelView rolledLaneChannel = protocol::ChannelView::kMid;
     std::uint64_t lastEnd = 0;
     // Multi-track view: lanes by member serial, and their order on screen.
     std::map<std::uint64_t, std::unique_ptr<Lane>> lanes;
@@ -441,7 +453,15 @@ private:
     bool comparing = false;
     bool lastPreviewFix = false;
     std::uint64_t lastRedraws = 0;
-    std::vector<std::pair<const SampleSource*, std::uint64_t>> laneSources;
+    // Where a lane's part of the window is: its source, where the part starts there, and how many
+    // channels to read it with (one for audio held as the lane channel alone).
+    struct LaneSource
+    {
+        const SampleSource* source = nullptr;
+        std::uint64_t start = 0;
+        int channels = 1;
+    };
+    std::vector<LaneSource> laneSources;
     RollColumns sumRoll;
     std::vector<float> sumSamples;
     std::vector<std::vector<float>> laneSamples;
@@ -589,8 +609,9 @@ private:
         0;                       // Frozen in Trigger or Free: where the window starts, as panned.
     double matchViewStart = 0.0; // The view zoomed or panned, as the page asked.
     double matchViewEnd = 1.0;
-    bool panning = false;      // Frozen and panned this frame: its searches and gains wait a frame.
-    bool matchFrozen = false;  // Frozen or live: the audio the matches were searched over.
+    bool panning = false;     // Frozen and panned this frame: its searches and gains wait a frame.
+    bool matchFrozen = false; // Frozen or live: the audio the matches were searched over.
+    protocol::ChannelView matchLaneChannel = protocol::ChannelView::kMid; // The channel matched.
     bool searchAtOnce = false; // Matches made due with no audio to space their searches by.
     std::uint32_t lastLaneSet = 0;
     mutable std::mutex laneMutex;
