@@ -862,15 +862,13 @@ export class OscilloscopeApp {
     const frame = this.lastFrame;
     const thisTrack =
       frame === undefined ? this.multiMode() : frame.laneSet !== 0;
-    // Short, as the Views field's letters, L, R, M or S, or TT for this track; named in full for
-    // screen readers.
-    const view =
-      frame === undefined ? undefined : viewOrder[readoutView(frame)];
+    // Named in full, Left, Right, Mid or Side, or This for this track; "This track" for screen
+    // readers.
     const [text, name] = thisTrack
-      ? ["TT", "This track"]
-      : view === undefined
+      ? ["This", "This track"]
+      : frame === undefined
         ? ["—", "—"]
-        : [viewLabels[view], viewNames[readoutView(frame as Frame)]];
+        : [viewNames[readoutView(frame)], viewNames[readoutView(frame)]];
     const tag = element("readout-tag");
     if (tag.textContent !== text) {
       tag.textContent = text;
@@ -1382,9 +1380,9 @@ export class OscilloscopeApp {
   // The grid's field and popover show the shown time base's grid. Time, Level and the Beat
   // division apply only with lines to draw; the Beat division in Beats only.
   private updateGridControls(): void {
-    const lines = grid.type !== "none";
     const grid = this.gridChoice();
     const timeBase = this.timeBaseName();
+    const lines = grid.type !== "none";
     this.gridSummary?.show(grid.type);
     element("grid-details").setAttribute(
       "aria-label",

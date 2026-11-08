@@ -1,5 +1,5 @@
 // The status bar never moves (AD-26, DESIGN 1.5): switching the display mode (the Channel button
-// then names a letter or "TT"), Compare, the Meter, the hover or a freeze (which brings
+// then names a channel or "This"), Compare, the Meter, the hover or a freeze (which brings
 // chips) moves and resizes none of its parts, and all of them stay inside the window, at the
 // minimum width and the default.
 import { afterAll, describe, expect, test } from "vitest";

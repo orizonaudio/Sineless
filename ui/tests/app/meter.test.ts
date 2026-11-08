@@ -57,10 +57,10 @@ const labelOf = (name: string) => name.charAt(0).toUpperCase();
 
 // What the readout tag calls each channel, as a user reads it.
 const tagOf: Record<ChannelView, string> = {
-  [ChannelView.left]: "L",
-  [ChannelView.right]: "R",
-  [ChannelView.mid]: "M",
-  [ChannelView.side]: "S",
+  [ChannelView.left]: "Left",
+  [ChannelView.right]: "Right",
+  [ChannelView.mid]: "Mid",
+  [ChannelView.side]: "Side",
 };
 
 // The titles of the corner panel's sections, in order.
