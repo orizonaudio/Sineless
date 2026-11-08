@@ -2727,6 +2727,36 @@ TEST_F(CompareTest, MeasuresTheSameGainFrozenOnTheLaneChannel)
     EXPECT_LT(sumGain(), -60.0f) << "measured on the held Sides, not on silence";
 }
 
+// Frozen in Beats on a mono track, a channel another track's hold lacks empties its lane, and the
+// sum and summing gain leave it out too: here it cancelled this track on Mid, and on Side the sum
+// is this track alone, with no gain, the two never sounding together.
+TEST_F(CompareTest, LeavesALaneEmptiedWhileFrozenOutOfTheSum)
+{
+    own->setInputChannels(1);
+    joinStereo([](std::uint64_t sample) { return -noiseAt(sample, 1); },
+               [](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    own->settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
+    play(48000);
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    for (int step = 0; step < 20 && std::isnan(sumGain()); ++step) {
+        play(480);
+        frame = produce();
+        ASSERT_TRUE(frame);
+    }
+    ASSERT_LT(sumGain(), -60.0f) << "an inverted copy cancels on Mid";
+
+    analyzer->setFrozen(true);
+    ASSERT_TRUE(produce());
+    own->settings().set(SettingId::kLaneChannel, static_cast<double>(protocol::ChannelView::kSide));
+    frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 3);
+    EXPECT_LT(loudest(lane(*frame, 1)), 1e-6f) << "held as Mid: empty";
+    EXPECT_EQ(lane(*frame, 2), lane(*frame, 0)) << "the sum is this track alone";
+    EXPECT_TRUE(std::isnan(sumGain())) << "the two never sound together: no value";
+}
+
 TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)
 {
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
