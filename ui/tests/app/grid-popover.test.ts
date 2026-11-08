@@ -125,7 +125,8 @@ describe("the Grid popover", () => {
       for (const row of densityRows) {
         expect(choice(row, "Fine").disabled).toBe(false);
       }
-      // With None, nothing the steps or the division set is drawn.
+      // With None no lines are drawn, so the rows that set them are greyed out; the labels keep
+      // the steps and the division last chosen.
       await press(choice("grid-type", "None"));
       await settle();
       for (const row of densityRows) {

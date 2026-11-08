@@ -258,7 +258,8 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 - Level labels in dB on the left: the top reads the vertical scale with its unit, the zero line
   −∞; labels sit on the 6 dB lines at Coarse and the 3 dB lines at Medium and Fine, thinning by
   the same rules at 14 px, and stacked lanes are labelled above their zero line only.
-- Type None draws each lane's zero line alone; the labels stay.
+- Type None draws each lane's zero line alone; the labels stay, at the Time and Level steps and
+  the Beat division last chosen, which the Grid popover greys out while None is chosen.
 - A dashed line marks the trigger point, and a level marker on the left edge, in the own lane's
   colour, can be dragged.
 - Beats, at Medium: grid lines on bars with stronger lines every four bars when 8 bars or more are
