@@ -93,7 +93,7 @@ export const highestAudibleHz = 20000;
 
 // The editor's layout (CSS pixels): its minimum width, the wider of the widest toolbar (Trig, the
 // Single trigger mode and frozen, in Single or in Multi with Compare on: one width since Single's
-// and Multi's Views share a place; measured at 991.5 with the wordmark) and the status bar, whose
+// and Multi's Views share a place; measured at 1003.5 with the wordmark and its two dividers) and the status bar, whose
 // parts keep fixed widths in every state (measured at 1029 with the Grid field as wide as Ticks, in WebKit and
 // Chromium, docs/ui/README.md), with at least 8 px to spare for text that renders wider on another
 // platform, rounded up to 10; its default width,
