@@ -21,9 +21,12 @@ void HoldBuffer::resize(std::size_t size)
     end = 0;
 }
 
-bool HoldBuffer::capture(const SampleSource& source, std::size_t length)
+bool HoldBuffer::capture(const SampleSource& source, std::size_t length,
+                         std::optional<std::uint64_t> upTo)
 {
-    const std::uint64_t sourceEnd = source.endIndex();
+    const std::uint64_t sourceEnd =
+        upTo && *upTo > source.beginIndex() && *upTo <= source.endIndex() ? *upTo
+                                                                          : source.endIndex();
     const std::uint64_t available = sourceEnd - source.beginIndex();
     const auto count = std::min<std::uint64_t>({length, available, capacity});
     const std::uint64_t start = sourceEnd - count;

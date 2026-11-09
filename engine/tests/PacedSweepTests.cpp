@@ -221,6 +221,14 @@ public:
         return static_cast<std::uint64_t>(std::llround(time * 1e9));
     }
 
+    // Each track's next block at once, ahead of when play() would write it.
+    void writeBlocks()
+    {
+        for (Track& track : tracks) {
+            writeBlock(track);
+        }
+    }
+
     struct Drawn
     {
         double seconds = 0.0;
@@ -707,10 +715,11 @@ TEST(PacedSweep, PlacesAudioPlayedDuringAFreezeWhereItWasPlayed)
 }
 
 // Frozen just after a transport jump the playhead has not reached yet, the frozen sweep holds
-// the audio up to the newest, each block where it was played: the audio between the playhead and
-// the jump, and the jump's own. 2048-sample blocks, later from 3 s by 60 ms (absorbed, not a
-// jump), so the delay rises past a block and the playhead trails the jump when it arrives.
-TEST(PacedSweep, FreezesAJumpThePlayheadHadNotReachedWhereItWasPlayed)
+// the audio up to the playhead, each block where it was played, and not the jump: the picture
+// stays as it was shown (FR-9.2), and the jump shows once the playhead reaches it live. 2048-sample
+// blocks, later from 3 s by 60 ms (absorbed, not a jump), so the delay rises past a block and the
+// playhead trails the jump when it arrives.
+TEST(PacedSweep, FreezesBeforeAJumpThePlayheadHadNotReached)
 {
     for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
         SCOPED_TRACE(static_cast<int>(mode));
@@ -730,6 +739,7 @@ TEST(PacedSweep, FreezesAJumpThePlayheadHadNotReachedWhereItWasPlayed)
         (void)host.tracks.front().engine->takeEdges();
         std::vector<std::byte> bytes;
         ASSERT_TRUE(host.analyzer->produce(bytes));
+        const DecodedFrame live = decode(bytes);
         const auto playhead =
             static_cast<std::uint64_t>(playheads(*host.tracks.front().engine).back().edge);
         ASSERT_LT(playhead + 64, jump) << "the playhead had not reached the jump";
@@ -737,11 +747,14 @@ TEST(PacedSweep, FreezesAJumpThePlayheadHadNotReachedWhereItWasPlayed)
         ASSERT_TRUE(host.analyzer->produce(bytes));
         const DecodedFrame frame = decode(bytes);
         ASSERT_TRUE(frame.has(FrameFlag::kFrozen));
+        // The playhead line stays where it was drawn, by the position before the jump.
+        EXPECT_NEAR(frame.cursor, live.cursor, 0.01) << "frozen playhead against the live one";
         for (std::size_t lane = 0; lane < tracks; ++lane) {
-            for (const std::uint64_t sample : {(playhead + jump) / 2, jump + 256}) {
-                EXPECT_TRUE(sitsWherePlayed(frame, lane, sample, host.quarterNotesAt(sample)))
-                    << "lane " << lane << ", sample " << sample;
-            }
+            const std::uint64_t shown = playhead - 2048;
+            EXPECT_TRUE(sitsWherePlayed(frame, lane, shown, host.quarterNotesAt(shown)))
+                << "lane " << lane << ", sample " << shown;
+            EXPECT_LT(newestDrawn(frame, lane), static_cast<float>(jump))
+                << "lane " << lane << ": the jump the playhead had not reached";
         }
     }
 }
@@ -1255,6 +1268,166 @@ INSTANTIATE_TEST_SUITE_P(
                (c.automatic ? "AutoFreeze" : "ByHand") + "_" +
                std::to_string(static_cast<int>(c.rate)) + "Hz_" + std::to_string(c.block);
     });
+
+// Auto-freeze in Beats: the picture at the stop, and again at play.
+struct AutoFreezeCase
+{
+    protocol::DisplayMode mode;
+    double rate;
+    std::uint64_t block;
+};
+
+std::vector<AutoFreezeCase> autoFreezeCases()
+{
+    std::vector<AutoFreezeCase> cases;
+    for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
+        for (const double rate : {48000.0, 384000.0}) {
+            for (const std::uint64_t block : {std::uint64_t{512}, std::uint64_t{4096}}) {
+                cases.push_back({.mode = mode, .rate = rate, .block = block});
+            }
+        }
+    }
+    return cases;
+}
+
+class PacedAutoFreeze : public ::testing::TestWithParam<AutoFreezeCase>
+{
+protected:
+    void SetUp() override
+    {
+        const AutoFreezeCase& c = GetParam();
+        host = std::make_unique<BeatsHost>(c.rate, c.block, 2, c.mode);
+        for (auto& track : host->tracks) {
+            track.engine->settings().set(SettingId::kAutoFreeze,
+                                         static_cast<double>(protocol::Toggle::kOn));
+        }
+    }
+
+    void transport(bool playing)
+    {
+        host->playing = playing;
+        for (auto& track : host->tracks) {
+            track.playing = playing;
+        }
+    }
+
+    // This track's newest host sample written.
+    [[nodiscard]] double newest() const { return static_cast<double>(host->tracks.front().played); }
+
+    std::unique_ptr<BeatsHost> host;
+};
+
+// A stop freezes the picture where the playhead was going, not at the newest audio, which the
+// paced playhead had not reached: before, the playhead and the sweep jumped forward by the pacing
+// delay at the stop (a block or more). Also after a while with no frames drawn (the window
+// hidden): where the sweep was placed meanwhile, not where the last frame showed it.
+TEST_P(PacedAutoFreeze, FreezesWhereThePlayheadWasGoing)
+{
+    for (const bool hidden : {false, true}) {
+        SCOPED_TRACE(hidden ? "after no frames for 3 s" : "drawn until the stop");
+        SetUp();
+        host->play(3.0); // The clock locks.
+        host->play(hidden ? 3.0 : 0.5, !hidden);
+        const double frame = host->rate / 60.0;
+        const std::size_t before = host->frames.size();
+        transport(false);
+        host->play(0.3);
+        const auto firstFrozen = std::find_if(
+            host->frames.begin() + static_cast<std::ptrdiff_t>(before), host->frames.end(),
+            [](const auto& drawn) { return drawn.frame.has(FrameFlag::kFrozen); });
+        ASSERT_NE(firstFrozen, host->frames.end());
+        // The last picture shown live, up to the freeze (none drawn while hidden).
+        const double lastShown = hidden || firstFrozen == host->frames.begin()
+                                     ? 0.0
+                                     : newestDrawn(std::prev(firstFrozen)->frame);
+        const double playhead = newestDrawn(firstFrozen->frame);
+        // The newest audio when it froze: the blocks this track had by then.
+        const auto block = static_cast<double>(host->block);
+        const double atFreeze =
+            std::floor((firstFrozen->seconds - kStart) * host->rate / block) * block;
+        // Behind it, as the paced playhead always is (by at least PacedEdge's margin, up to the
+        // delay, with where in a block the freeze falls): not jumped to its last sample.
+        EXPECT_LT(playhead, atFreeze - 1.0 - 0.25 * PacedEdge::kMarginSeconds * host->rate)
+            << "jumped to the newest audio";
+        // Not where a frame showed it seconds ago: within the pacing cap of the audio.
+        EXPECT_GT(playhead, atFreeze - (protocol::kPacingDelayCapSeconds + 0.02) * host->rate);
+        if (!hidden) {
+            // About a frame's motion past the last picture shown, not the delay more.
+            EXPECT_LE(playhead, lastShown + frame + 0.002 * host->rate);
+            EXPECT_GE(playhead, lastShown);
+        }
+    }
+}
+
+// After a stop of any length, play shows the frozen picture until the playhead reaches audio
+// played after it, then that: never, for a few frames, audio processed while stopped placed on
+// the clock that ran on at the last tempo, the playhead ahead of where play resumed and then
+// jumping back. Resuming where it stopped and from the start.
+TEST_P(PacedAutoFreeze, ResumesWithNoAudioFromTheStop)
+{
+    for (const double stopped : {0.1, 0.5, 1.4, 4.0}) {
+        for (const bool fromStart : {false, true}) {
+            SCOPED_TRACE(std::to_string(stopped) + " s stopped" +
+                         (fromStart ? ", from the start" : ""));
+            SetUp();
+            host->play(3.0);
+            transport(false);
+            host->play(stopped);
+            const auto resumed = host->tracks.front().played;
+            if (fromStart) {
+                host->jumpAt(resumed, 0.0);
+            }
+            transport(true);
+            host->frames.clear();
+            host->play(1.0);
+            std::size_t live = 0;
+            for (const BeatsHost::Drawn& drawn : host->frames) {
+                if (drawn.frame.has(FrameFlag::kFrozen)) {
+                    continue;
+                }
+                ++live;
+                EXPECT_GE(newestDrawn(drawn.frame), static_cast<float>(resumed))
+                    << "audio from the stop at " << drawn.seconds;
+            }
+            EXPECT_GT(live, 30U) << "the view stayed frozen";
+        }
+    }
+}
+
+// Stopped again while play waits for the playhead to reach audio played after the stop (a
+// double tap of the space bar), the picture stays frozen: never live over the second stop's
+// silence until the next play.
+TEST_P(PacedAutoFreeze, StaysFrozenWhenStoppedAgainBeforeResuming)
+{
+    host->play(3.0);
+    transport(false);
+    host->play(0.5);
+    // A block played, a frame that sees it (the wait begins), then a stopped block and a frame
+    // that sees that, before the playhead reaches the play. A frame asked for that would be the
+    // same frozen picture is not made, and a live one would be.
+    std::vector<std::byte> bytes;
+    for (const bool playing : {true, false}) {
+        transport(playing);
+        host->writeBlocks();
+        ASSERT_FALSE(host->analyzer->produce(bytes) && !decode(bytes).has(FrameFlag::kFrozen))
+            << "resumed before the stop";
+    }
+    host->frames.clear();
+    host->play(1.0);
+    for (const BeatsHost::Drawn& drawn : host->frames) {
+        EXPECT_TRUE(drawn.frame.has(FrameFlag::kFrozen))
+            << "live while stopped at " << drawn.seconds;
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(ModesAndHosts, PacedAutoFreeze, ::testing::ValuesIn(autoFreezeCases()),
+                         [](const ::testing::TestParamInfo<AutoFreezeCase>& info) {
+                             const AutoFreezeCase& c = info.param;
+                             return std::string(protocol::kDisplayModeNames.at(
+                                        static_cast<std::size_t>(c.mode))) +
+                                    "_" + std::to_string(static_cast<int>(c.rate)) + "Hz_" +
+                                    std::to_string(c.block);
+                         });
 
 } // namespace
 } // namespace orizon::engine

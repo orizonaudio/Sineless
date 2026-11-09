@@ -373,7 +373,12 @@ private:
                          std::vector<std::span<const double>>& spans, std::vector<double>& sums);
     // Auto-freeze: a transport stop freezes the display, and playing again ends that freeze.
     void followTransport(const Settings& settings, Commands& command);
-    bool freeze(double sampleRate, std::uint64_t minimumSamples = 0);
+    // Ends a freeze Auto-freeze made, as playing again does.
+    void unfreezeAfterStop(Commands& command);
+    // Waiting to resume (resumeAt): moves the paced edge on and unfreezes once it gets there.
+    void resume(const Settings& settings, Commands& command);
+    bool freeze(double sampleRate, std::uint64_t minimumSamples = 0,
+                std::optional<std::uint64_t> holdEnd = std::nullopt);
     bool render(const SampleSource& source, const Settings& settings, double sampleRate,
                 const Window& window, std::uint64_t sampleCount, std::size_t columns,
                 std::vector<std::byte>& frame);
@@ -414,6 +419,9 @@ private:
                         const MusicalStamp& fallback,
                         const std::function<void(const MusicalStamp&, std::uint64_t)>& placeBefore);
     std::array<MusicalStamp, Timeline::kPositionChanges> positions; // placeThroughChanges' copy.
+    // The position to place a hold ending at `end` by: the one in effect there when a change was
+    // recorded after it (a jump still ahead of the playhead), `fallback` (the newest) otherwise.
+    MusicalStamp clockAt(const Timeline& timeline, std::uint64_t end, const MusicalStamp& fallback);
     // Live, in either time base: the channel counts and sample rates of this track and of each lane
     // shown, now and when the last frame was drawn, which are inputs too (formatsChanged).
     std::vector<std::uint64_t> liveFormats;
@@ -428,6 +436,10 @@ private:
     // from a stop (only such a freeze ends when the transport plays again).
     std::optional<bool> lastPlaying;
     bool autoFrozen = false;
+    // Auto-freeze in Beats, playing again: the capture index the paced playhead must reach before
+    // the view goes live (the newest audio when play was seen), so no frame shows audio from the
+    // stop placed on the clock that ran on meanwhile.
+    std::optional<std::uint64_t> resumeAt;
     // Tempo sync: the clock and capture end when frozen, and the capture end of the last frame.
     MusicalStamp frozenStamp;
     std::uint64_t frozenEnd = 0;
