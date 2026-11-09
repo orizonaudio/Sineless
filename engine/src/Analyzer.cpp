@@ -1351,13 +1351,12 @@ std::uint64_t Analyzer::laneSweepEdge(Lane& lane, const Lane& own)
     }
     const auto mapped = std::llround(static_cast<double>(own.end) * scale) + *lane.indexOffset;
     // A lane whose audio has not arrived as far as this track's playhead (its blocks come later)
-    // stops at its newest sample; the delay rises to cover it, so the lanes stay together. Not
-    // for a track whose blocks stopped (suspended or bypassed): it would hold every lane back by
-    // the largest delay.
+    // stops at its newest sample; the delay rises to cover it, and stays where the lane needs it,
+    // so the lanes stay together. Not for a track whose blocks stopped (suspended or bypassed): it
+    // would hold every lane back by the largest delay.
     const auto laneBlock = lane.engine->blockStamp().latest();
-    if (laneBlock && !pacedEdge.stopped(laneBlock->nanos, clockNanos()) &&
-        std::cmp_greater(mapped, newest)) {
-        // The shortfall in this track's samples, which the delay counts.
+    if (laneBlock && !pacedEdge.stopped(laneBlock->nanos, clockNanos())) {
+        // The shortfall in this track's samples, which the delay counts (negative: to spare).
         pacedEdge.coverShortfall(static_cast<double>(mapped - static_cast<std::int64_t>(newest)) /
                                  scale);
     }
