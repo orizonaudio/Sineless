@@ -127,10 +127,16 @@ public:
                 }
             }
             if (time >= nextTarget - lead) {
-                if (pacing.callback(nextTarget, time, nanos()).requestFrame) {
-                    wanted = true;
+                if (const auto decision = pacing.callback(nextTarget, time, nanos());
+                    decision.requestFrame) {
+                    // Asked for just before the next callback, as the layer's timer does.
+                    requestAt = time + decision.requestAfterSeconds;
                 }
                 nextTarget += 1.0 / refreshHertz;
+            }
+            if (requestAt && time >= *requestAt) {
+                wanted = true;
+                requestAt.reset();
             }
             if (std::fmod(time * 1000.0, 2.0) >= 0.5) {
                 continue;
@@ -240,6 +246,7 @@ public:
     double nextDraw = kStart;
     std::vector<Drawn> frames;
     double nextTarget = kStart + 0.1; // link(): the next refresh's target.
+    std::optional<double> requestAt;  // link(): when the pending request is made.
     bool wanted = false;              // link(): the display link waits for a frame.
 
 private:

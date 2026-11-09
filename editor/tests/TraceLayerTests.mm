@@ -64,15 +64,26 @@ struct Source
     bool ready = false;
     std::atomic<int> requests{0};
     std::atomic<int> takes{0};
+    // Whether every request came on the render thread.
+    bool requestsOnRenderThread = true;
     std::atomic<int> losses{0};
+    // Where a frame's time from request to ready goes, as the editor's frame flow reports it: this
+    // source's frames are ready at once, so the time is how late the request's timer fired.
+    engine::FramePacing* pacing = nullptr;
 
     TraceLayer::Hooks hooks()
     {
         return {.requestFrame =
-                    [this] {
+                    [this](std::uint64_t lateNanos) {
+                        if (pacing != nullptr) {
+                            pacing->frameMade(lateNanos);
+                        }
                         const std::scoped_lock lock(mutex);
                         ++requests;
                         ready = true;
+                        requestsOnRenderThread =
+                            requestsOnRenderThread &&
+                            [NSThread.currentThread.name isEqualToString:@"Sineless traces"];
                     },
                 .takeFrame =
                     [this](std::vector<std::byte>& into) {
@@ -114,6 +125,7 @@ protected:
         TraceLayer::setOcclusionForTesting(false);
         pacing = std::make_unique<engine::FramePacing>(
             static_cast<double>(window.screen.maximumFramesPerSecond));
+        source.pacing = pacing.get();
         layer = TraceLayer::create(container, above, *pacing, source.hooks());
     }
 
@@ -316,8 +328,15 @@ TEST_F(TraceLayerTest, MeasuresTheLeadAgainOnAnotherScreen)
                    static_cast<std::uint64_t>(engine::FramePacing::kLeadCallbacks) + 5;
         },
         3s, "the callbacks that measure the lead"));
-    const std::uint64_t measured = engine::monotonicNanos();
-    ASSERT_LT(pacing->clock(measured), measured) << "the display clock, once the lead is known";
+    // The display clock, once the lead is known: behind the time now once a frame's moment has
+    // passed (before it, a read gets the time now).
+    ASSERT_TRUE(pumpUntil(
+        [&] {
+            const std::uint64_t measured = engine::monotonicNanos();
+            return pacing->clock(measured) < measured;
+        },
+        1s))
+        << "the display clock, once the lead is known";
     [NSNotificationCenter.defaultCenter postNotificationName:NSWindowDidChangeScreenNotification
                                                       object:window];
     pumpUntil([] { return false; }, 50ms); // A few callbacks: far fewer than measuring takes.
@@ -453,6 +472,29 @@ TEST_F(TraceLayerTest, AsksForFramesAndDrawsEachOneMade)
         drawsWithin([&] { return source.takes.load() >= 10; }, 3s, "10 frames taken"));
     EXPECT_GE(source.requests.load(), 10);
     EXPECT_GE(layer->statsForTesting().submitted, 10U);
+}
+
+// The frame a refresh draws is asked for after the callback before it, on a timer, not at that
+// callback: still on the render thread, as the hook says, and in time for the refresh that draws
+// it, so each refresh finds its frame. (When it is asked for, and so how fresh the picture is, is
+// FramePacing's: DisplayClock.PlacesEachFrameWhenItIsMade.)
+TEST_F(TraceLayerTest, AsksForEachFrameOnTheRenderThreadInTime)
+{
+    show();
+    // Past the first few refreshes (the lead being measured), then over 60 more.
+    ASSERT_DISPLAY_WAIT(
+        drawsWithin([&] { return source.takes.load() >= 20; }, 3s, "20 frames taken"));
+    const int takesBefore = source.takes.load();
+    const std::uint64_t callbacksBefore = layer->statsForTesting().callbacks;
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return source.takes.load() >= takesBefore + 60; }, 4s,
+                                    "60 more frames taken"));
+    const int takes = source.takes.load() - takesBefore;
+    const std::uint64_t callbacks = layer->statsForTesting().callbacks - callbacksBefore;
+    const std::scoped_lock lock(source.mutex);
+    EXPECT_TRUE(source.requestsOnRenderThread);
+    // Each refresh takes the frame it asked for (but the one or two whose take is still to come).
+    EXPECT_GE(static_cast<double>(takes), 0.9 * static_cast<double>(callbacks))
+        << "refreshes found no frame";
 }
 
 // A wait through which the running display link did not call back is read as the display

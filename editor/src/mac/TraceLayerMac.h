@@ -39,8 +39,8 @@ public:
     struct Hooks
     {
         // Render thread: the next shown refresh wants a frame (FrameFlow::requestForDisplay, and
-        // the worker woken).
-        std::function<void()> requestFrame;
+        // the worker woken), asked for `lateNanos` after it was due: the timer fired that late.
+        std::function<void(std::uint64_t lateNanos)> requestFrame;
         // Render thread: the newest frame made for the display since the last take, swapped into
         // `into`; false if none (FrameFlow::takeDisplayFrame).
         std::function<bool(std::vector<std::byte>& into)> takeFrame;
