@@ -124,10 +124,16 @@ public:
                 writeBlock();
             }
             if (time >= nextTarget - lead) {
-                if (pacing.callback(nextTarget, time, nanos()).requestFrame) {
-                    credit = true;
+                if (const auto decision = pacing.callback(nextTarget, time, nanos());
+                    decision.requestFrame) {
+                    // Asked for just before the next callback, as the layer's timer does.
+                    requestAt = time + decision.requestAfterSeconds;
                 }
                 nextTarget += 1.0 / refreshHertz;
+            }
+            if (requestAt && time >= *requestAt) {
+                credit = true;
+                requestAt.reset();
             }
             if (std::fmod(time * 1000.0, 2.0) >= 0.5) {
                 continue;
@@ -181,6 +187,7 @@ public:
     std::vector<EdgeDraw> edges;
     bool credit = false; // flow(): the page waits for a frame; link(): the display link does.
     double nextTarget = kStart + 0.1; // link(): the next refresh's target.
+    std::optional<double> requestAt;  // link(): when the pending request is made.
     // The audio, by sample index; the ramp when unset.
     std::function<float(std::uint64_t)> signal;
 

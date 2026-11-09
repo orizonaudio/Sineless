@@ -373,6 +373,59 @@ TEST_F(FrameFlowTest, KeepsTheDisplaysRequestWhenThereIsNothingNew)
     EXPECT_TRUE(flow.takeDisplayFrame(taken)) << "the open request allows the next frame";
 }
 
+// The pacing asks for frames as early as they take to make (FramePacing::frameMade): each frame
+// made for the display reports how long it took from when the request was due, the request's
+// timer firing late and the worker's wait included, counted from the first request while it was
+// open, as a refresh that asks again does not make the frame any quicker.
+TEST_F(FrameFlowTest, ReportsHowLongEachDisplayFrameTookFromItsRequest)
+{
+    std::uint64_t now = 1000;
+    std::vector<std::uint64_t> reported;
+    flow.measureDisplayFrames([&](std::uint64_t nanos) { reported.push_back(nanos); },
+                              [&] { return now; });
+    flow.setNative(true);
+    flow.requestForDisplay(700); // Its timer fired 700 ns late.
+    now = 1500;
+    flow.requestForDisplay(); // The next refresh, before the frame is ready.
+    now = 4000;
+    flow.step();
+    std::vector<std::byte> taken;
+    ASSERT_TRUE(flow.takeDisplayFrame(taken));
+    EXPECT_EQ(reported, std::vector<std::uint64_t>{3700});
+}
+
+// A request kept open because there was nothing new to show (silence held, frozen) waited for
+// audio, not for the making: the frame that ends that wait reports nothing, so a frozen spell does
+// not make the next frames asked for seconds early. The next request is measured again.
+TEST_F(FrameFlowTest, ReportsNothingForAFrameThatWaitedForSomethingNew)
+{
+    std::uint64_t now = 1000;
+    std::vector<std::uint64_t> reported;
+    flow.measureDisplayFrames([&](std::uint64_t nanos) { reported.push_back(nanos); },
+                              [&] { return now; });
+    flow.setNative(true);
+    holdOnSilence();
+    std::vector<float> silence(48000, 0.0f);
+    std::array<const float*, 2> channels{silence.data(), silence.data()};
+    engine.captureRing().write(channels.data(), 2, 48000);
+    flow.requestForDisplay();
+    flow.step();
+    std::vector<std::byte> taken;
+    ASSERT_FALSE(flow.takeDisplayFrame(taken));
+    now = 900000000;
+    flow.requestForDisplay(); // Refreshes go on asking meanwhile.
+    runFree();
+    flow.step();
+    ASSERT_TRUE(flow.takeDisplayFrame(taken));
+    EXPECT_TRUE(reported.empty()) << "reported the wait for audio as making";
+    flow.requestForDisplay();
+    now += 2000;
+    writeSamples(480);
+    flow.step();
+    ASSERT_TRUE(flow.takeDisplayFrame(taken));
+    EXPECT_EQ(reported, std::vector<std::uint64_t>{2000});
+}
+
 // Native drawing lost: the page's fetch makes frames again, as on Windows, so readouts stay live.
 TEST_F(FrameFlowTest, MakesFramesForThePageAgainOnceNativeDrawingStops)
 {

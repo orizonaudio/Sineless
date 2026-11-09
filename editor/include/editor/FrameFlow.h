@@ -2,10 +2,12 @@
 
 #include "editor/UiDispatcher.h"
 #include "engine/Analyzer.h"
+#include "engine/MonotonicClock.h"
 
 #include <cstddef>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -35,8 +37,14 @@ public:
     // page has not had, at once or when it next asks. Without a request from the display link the
     // worker advances the sweeps. Any thread.
     void setNative(bool native);
-    // Display link thread: the next refresh wants a frame.
-    void requestForDisplay();
+    // Display link thread: the next refresh wants a frame, asked for `lateNanos` after it was due
+    // (counted in the time it took).
+    void requestForDisplay(std::uint64_t lateNanos = 0);
+    // Native: each frame made for the display reports, on the worker, how long it took from when
+    // the request was due (the first while it was open) to being ready, by `clock`; none for a
+    // request kept open because there was nothing new to show. Set before the worker starts.
+    void measureDisplayFrames(std::function<void(std::uint64_t nanos)> made,
+                              std::function<std::uint64_t()> clock = engine::monotonicNanos);
     // Display link thread: the newest frame made for the display since the last take, swapped into
     // `into`; false if none.
     bool takeDisplayFrame(std::vector<std::byte>& into);
@@ -53,6 +61,9 @@ private:
     bool native = false;
     bool displayRequest = false;
     bool displayReady = false;
+    std::optional<std::uint64_t> requestedAt; // Unset: none open, or one not to measure.
+    std::function<void(std::uint64_t)> madeForDisplay;
+    std::function<std::uint64_t()> clock = engine::monotonicNanos;
     bool pageBehind = false;             // Native: `pending` holds a frame the page has not had.
     std::vector<std::byte> displayFrame; // Made for the display, waiting for its thread.
     std::vector<std::byte> pending;      // Produced, waiting for the UI thread.

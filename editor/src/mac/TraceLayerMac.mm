@@ -228,6 +228,8 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
         }
         return;
     }
+    // When this callback ran, which the request's delay counts from (its drawing below included).
+    const CFAbsoluteTime calledAt = CFAbsoluteTimeGetCurrent();
     const auto decision = s.pacing.callback(update.targetPresentationTimestamp,
                                             CACurrentMediaTime(), engine::monotonicNanos());
     s.targetTime = update.targetPresentationTimestamp;
@@ -250,7 +252,27 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
         draw(shared, update.drawable);
     }
     if (decision.requestFrame) {
-        s.hooks.requestFrame();
+        // Asked for just before the next callback, which draws it, so the frame is made, and
+        // placed, a refresh later than at this one (FramePacing::Decision::requestAfterSeconds). On
+        // this thread's run loop, so the request stays on the render thread; once stopped or lost,
+        // none is made.
+        // How late the timer fires counts as part of the frame's making (FramePacing::frameMade):
+        // a busy machine's late timers ask earlier too.
+        const std::weak_ptr<Shared> weak = shared;
+        const CFAbsoluteTime due = calledAt + decision.requestAfterSeconds;
+        CFRunLoopTimerRef timer = CFRunLoopTimerCreateWithHandler(
+            kCFAllocatorDefault, due, 0, 0, 0, ^(CFRunLoopTimerRef) {
+              if (const auto alive = weak.lock()) {
+                  const std::scoped_lock later(alive->callbackMutex);
+                  if (!alive->stopped && !alive->lost.load()) {
+                      const double late = std::max(0.0, CFAbsoluteTimeGetCurrent() - due);
+                      alive->hooks.requestFrame(
+                          static_cast<std::uint64_t>(std::llround(late * 1e9)));
+                  }
+              }
+            });
+        CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, kCFRunLoopDefaultMode);
+        CFRelease(timer);
     }
 }
 

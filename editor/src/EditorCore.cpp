@@ -193,8 +193,8 @@ void EditorCore::startNativeTraces()
     nativeTraces = view->drawTracesNatively(
         {.pacing = pacing.get(),
          .requestFrame =
-             [this] {
-                 frameFlow->requestForDisplay();
+             [this](std::uint64_t lateNanos) {
+                 frameFlow->requestForDisplay(lateNanos);
                  worker->wake();
              },
          .takeFrame =
@@ -213,6 +213,8 @@ void EditorCore::startNativeTraces()
     }
     engine::FramePacing* clock = pacing.get();
     analyzer->setClock([clock] { return clock->clock(engine::monotonicNanos()); });
+    // Frames are asked for as early as they take to make.
+    frameFlow->measureDisplayFrames([clock](std::uint64_t nanos) { clock->frameMade(nanos); });
     frameFlow->setNative(true);
     session->setNativeTraces(true);
 }

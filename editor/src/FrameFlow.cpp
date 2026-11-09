@@ -1,5 +1,6 @@
 #include "editor/FrameFlow.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace orizon::editor {
@@ -19,11 +20,24 @@ void FrameFlow::setNative(bool isNative)
     const std::scoped_lock lock(mutex);
     native = isNative;
     displayRequest = false;
+    requestedAt.reset();
 }
 
-void FrameFlow::requestForDisplay()
+void FrameFlow::measureDisplayFrames(std::function<void(std::uint64_t nanos)> made,
+                                     std::function<std::uint64_t()> clockNanos)
 {
     const std::scoped_lock lock(mutex);
+    madeForDisplay = std::move(made);
+    clock = std::move(clockNanos);
+}
+
+void FrameFlow::requestForDisplay(std::uint64_t lateNanos)
+{
+    const std::scoped_lock lock(mutex);
+    if (!displayRequest) {
+        const std::uint64_t now = clock();
+        requestedAt = now - std::min(now, lateNanos);
+    }
     displayRequest = true;
 }
 
@@ -51,6 +65,7 @@ void FrameFlow::step()
         }
     }
     if (display) {
+        std::optional<std::uint64_t> made;
         if (!credit) {
             analyzer.advance(); // No refresh waits for a frame: keep the sweeps current.
         } else if (analyzer.produce(producing)) {
@@ -62,6 +77,17 @@ void FrameFlow::step()
             // no newer frame may ever come.
             pending = displayFrame;
             pageBehind = true;
+            if (requestedAt && madeForDisplay) {
+                const std::uint64_t ready = clock();
+                made = ready - std::min(ready, *requestedAt);
+            }
+            requestedAt.reset();
+        } else {
+            const std::scoped_lock lock(mutex);
+            requestedAt.reset(); // Waiting for something new to show, not for the making.
+        }
+        if (made) {
+            madeForDisplay(*made);
         }
         bool give = false;
         {

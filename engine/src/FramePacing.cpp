@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace orizon::engine {
 
@@ -110,16 +111,23 @@ FramePacing::Decision FramePacing::callback(double target, double now, std::uint
             lead = maxLead;
         }
     }
+    followMaking(callbackPeriodSeconds());
+    double requestAfter = requestDelaySeconds();
     if (lead && !lost) {
-        // D on the engine's clock: the target less L, as far from now as it is on the link's.
+        // D on the engine's clock: the target less L, as far from now as it is on the link's, then
+        // moved on to the moment the frame is asked for (requestDelaySeconds after this callback).
         const double fromNow = target - *lead - now;
-        std::uint64_t placed = engineNow;
+        double placedFromNow = fromNow;
         if (fromNow > 0.0) {
-            ++early; // A callback earlier than L allowed: placed now, not in the future.
-        } else {
-            const auto back = static_cast<std::uint64_t>(std::llround(-fromNow * 1e9));
-            placed = back < engineNow ? engineNow - back : 0;
+            ++early; // A callback earlier than L allowed: placed from now, not further on.
+            placedFromNow = 0.0;
         }
+        placedFromNow += requestDelaySeconds();
+        requestAfter = std::max(0.0, placedFromNow);
+        const auto offset = static_cast<std::int64_t>(std::llround(placedFromNow * 1e9));
+        const std::uint64_t placed =
+            offset >= 0 ? engineNow + static_cast<std::uint64_t>(offset)
+                        : engineNow - std::min(engineNow, static_cast<std::uint64_t>(-offset));
         displayNanos.store(std::max(displayNanos.load(std::memory_order_relaxed), placed),
                            std::memory_order_relaxed);
         lastCallbackNanos.store(engineNow, std::memory_order_relaxed);
@@ -134,7 +142,50 @@ FramePacing::Decision FramePacing::callback(double target, double now, std::uint
             ? std::max(1L, std::lround(median(callbackSteps, callbackStepCount) / period))
             : 1L;
     frameDue = periodsSinceShown + static_cast<int>(callbackPeriods) >= ticks();
-    return {.requestFrame = frameDue};
+    return {.requestFrame = frameDue, .requestAfterSeconds = requestAfter};
+}
+
+double FramePacing::callbackPeriodSeconds() const
+{
+    const auto callbackNanos = callbackPeriodNanos.load(std::memory_order_relaxed);
+    return callbackNanos > 0 ? static_cast<double>(callbackNanos) / 1e9
+                             : static_cast<double>(ticks()) / rate;
+}
+
+double FramePacing::requestDelaySeconds() const
+{
+    return std::max(0.0, callbackPeriodSeconds() - margin);
+}
+
+void FramePacing::frameMade(std::uint64_t nanos)
+{
+    // The slowest since the callback last took one: a frame that missed its refresh is reported
+    // just before the next frame, and must not be lost behind it. Stored one more, so 0 is none.
+    const std::uint64_t stored = nanos + 1;
+    std::uint64_t slowest = slowestMade.load(std::memory_order_relaxed);
+    while (slowest < stored &&
+           !slowestMade.compare_exchange_weak(slowest, stored, std::memory_order_relaxed)) {
+    }
+}
+
+void FramePacing::followMaking(double callbackPeriod)
+{
+    const std::uint64_t made = slowestMade.exchange(0, std::memory_order_relaxed);
+    if (made != 0) {
+        makeTimes[nextMake] = static_cast<double>(made - 1) / 1e9;
+        nextMake = (nextMake + 1) % kMakeHistory;
+        makeCount = std::min(makeCount + 1, kMakeHistory);
+    }
+    if (makeCount == 0) {
+        return;
+    }
+    const double slowest = *std::max_element(
+        makeTimes.begin(), makeTimes.begin() + static_cast<std::ptrdiff_t>(makeCount));
+    // Beyond a callback period the frame is asked for at the callback anyway: more would only
+    // place D earlier.
+    const double wanted =
+        std::min(callbackPeriod, std::max(kHandOffMarginSeconds, slowest + kHandOffSlackSeconds));
+    margin = std::clamp(wanted, margin - kMarginSlewSeconds, margin + kMarginSlewSeconds);
 }
 
 std::uint64_t FramePacing::clock(std::uint64_t engineNow)
@@ -148,7 +199,8 @@ std::uint64_t FramePacing::clock(std::uint64_t engineNow)
             static_cast<double>(callbackPeriodNanos.load(std::memory_order_relaxed)) *
             kStallCallbackPeriods;
         if (stall <= 0.0 || static_cast<double>(since) < stall) {
-            value = displayNanos.load(std::memory_order_relaxed);
+            // Never in the future: a read before the frame's moment gets the time now.
+            value = std::min(engineNow, displayNanos.load(std::memory_order_relaxed));
         }
     }
     lastReturned = std::max(lastReturned, value);

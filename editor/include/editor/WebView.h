@@ -75,8 +75,9 @@ public:
     struct NativeTraces
     {
         engine::FramePacing* pacing = nullptr;
-        // The display thread: the next shown refresh wants a frame.
-        std::function<void()> requestFrame;
+        // The display thread: the next shown refresh wants a frame, asked for `lateNanos` after it
+        // was due (the request's timer firing late).
+        std::function<void(std::uint64_t lateNanos)> requestFrame;
         // The display thread: the newest frame made for the display, swapped into `into`.
         std::function<bool(std::vector<std::byte>& into)> takeFrame;
         // The UI thread, at most once: native drawing stopped for good.
