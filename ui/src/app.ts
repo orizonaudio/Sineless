@@ -316,8 +316,8 @@ export class OscilloscopeApp {
   private readoutShown: string | undefined;
   // The Views field's channel read: every channel's letter and "—" in one place, one shown.
   private readSummary: StackedSummary | undefined;
-  // The grid's popover: a row per choice, each reading and writing the shown time base's setting
-  // (Beat division its one setting), and the field naming the type drawn.
+  // The grid's popover: a row per choice, each reading and writing its one setting, in force in
+  // every time base, and the field naming the type drawn.
   private readonly gridRows = new Map<
     GridSettingKind | "Division",
     Segmented
