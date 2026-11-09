@@ -465,6 +465,10 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     spreadStepped = false;
     searchEnded = false;
     resultsOnly = false;
+    // The block clock sees every stamp, whichever path returns below: a frame that does not change
+    // (frozen in Multi and Beats) keeps the request open, so the worker asks again at each step and
+    // never advances, and blocks seen only after a long freeze would fold into one late update.
+    pacedEdge.observe(engine.blockStamp().latest(), engine.sampleRate());
     Commands command = takeCommands();
     const Settings settings = engine.settings().get();
     frameSettings = settings;

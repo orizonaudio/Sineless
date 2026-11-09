@@ -1143,5 +1143,111 @@ TEST(PacedSweep, KeepsTheLanesPlayheadsTogether)
     }
 }
 
+// A freeze held for seconds while the host keeps delivering blocks leaves the paced delay as it was
+// once the view is live again. Frozen in Multi and Beats, no frame changes and the display's
+// request stays open, so the worker asks for a frame at each step and never advances: the block
+// clock saw no stamp for the whole freeze, folded it into one update whose lead is the freeze's
+// length, and the delay rose to the cap and stayed there (the playhead an eighth of a second behind
+// the audio until the editor was reopened). Compared with a host that was never frozen, at the same
+// moments.
+struct FreezeCase
+{
+    protocol::DisplayMode mode;
+    protocol::TimeBase timeBase;
+    bool automatic; // Auto-freeze on stop and play; otherwise by hand.
+    double rate;
+    std::uint64_t block;
+};
+
+std::vector<FreezeCase> freezeCases()
+{
+    std::vector<FreezeCase> cases;
+    for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
+        for (const auto timeBase : {protocol::TimeBase::kBeats, protocol::TimeBase::kFree}) {
+            for (const bool automatic : {true, false}) {
+                for (const double rate : {44100.0, 384000.0}) {
+                    for (const std::uint64_t block : {std::uint64_t{512}, std::uint64_t{4096}}) {
+                        cases.push_back({.mode = mode,
+                                         .timeBase = timeBase,
+                                         .automatic = automatic,
+                                         .rate = rate,
+                                         .block = block});
+                    }
+                }
+            }
+        }
+    }
+    return cases;
+}
+
+class PacedAfterFreeze : public ::testing::TestWithParam<FreezeCase>
+{
+};
+
+TEST_P(PacedAfterFreeze, KeepsTheDelayOfAHostNeverFrozen)
+{
+    const FreezeCase& c = GetParam();
+    BeatsHost frozen(c.rate, c.block, 1, c.mode);
+    BeatsHost control(c.rate, c.block, 1, c.mode);
+    for (BeatsHost* host : {&frozen, &control}) {
+        Engine& engine = *host->tracks.front().engine;
+        engine.settings().set(SettingId::kTimeBase, static_cast<double>(c.timeBase));
+        engine.settings().set(SettingId::kFreeSpan, 0.5);
+    }
+    if (c.automatic) {
+        frozen.tracks.front().engine->settings().set(SettingId::kAutoFreeze,
+                                                     static_cast<double>(protocol::Toggle::kOn));
+    }
+    FramePacing frozenPacing(60.0);
+    FramePacing controlPacing(60.0);
+    frozen.useDisplayClock(frozenPacing);
+    control.useDisplayClock(controlPacing);
+    const auto both = [&](double seconds) {
+        frozen.link(seconds, frozenPacing, 60.0, 0.05);
+        control.link(seconds, controlPacing, 60.0, 0.05);
+    };
+    const auto transport = [&](bool playing) {
+        for (BeatsHost* host : {&frozen, &control}) {
+            host->playing = playing;
+            host->tracks.front().playing = playing;
+        }
+    };
+    both(3.0); // The clocks lock.
+    if (c.automatic) {
+        transport(false);
+    } else {
+        frozen.analyzer->setFrozen(true);
+    }
+    both(3.0);
+    if (c.automatic) {
+        transport(true);
+    } else {
+        frozen.analyzer->setFrozen(false);
+    }
+    both(0.5);
+    (void)frozen.tracks.front().engine->takeEdges();
+    (void)control.tracks.front().engine->takeEdges();
+    both(1.0);
+    const auto frozenDraws = playheads(*frozen.tracks.front().engine);
+    const auto controlDraws = playheads(*control.tracks.front().engine);
+    ASSERT_GT(frozenDraws.size(), 30U);
+    ASSERT_GT(controlDraws.size(), 30U);
+    // A few milliseconds: the frozen host's delay did not fall while nothing was drawn, the
+    // control's did (by 1 % a second); the cap is tens of milliseconds above either.
+    EXPECT_NEAR(measureMotion(frozenDraws, c.rate).lagMax,
+                measureMotion(controlDraws, c.rate).lagMax, 5.0)
+        << "the playhead trails the audio further after the freeze";
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ModesAndHosts, PacedAfterFreeze, ::testing::ValuesIn(freezeCases()),
+    [](const ::testing::TestParamInfo<FreezeCase>& info) {
+        const FreezeCase& c = info.param;
+        return std::string(protocol::kDisplayModeNames.at(static_cast<std::size_t>(c.mode))) +
+               std::string(protocol::kTimeBaseNames.at(static_cast<std::size_t>(c.timeBase))) +
+               (c.automatic ? "AutoFreeze" : "ByHand") + "_" +
+               std::to_string(static_cast<int>(c.rate)) + "Hz_" + std::to_string(c.block);
+    });
+
 } // namespace
 } // namespace orizon::engine
