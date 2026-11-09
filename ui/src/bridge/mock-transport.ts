@@ -23,7 +23,7 @@ import {
   isValidSettingValue,
 } from "../../../protocol/src/setting-values.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
-import { frozenHoldSeconds } from "../../../protocol/src/limits.ts";
+import { frozenHoldSeconds, maxLanes } from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
 import { clampPan, viewOrder, type ViewName } from "../view/screen-state.ts";
 import type { ControlMessage, Transport } from "./transport.ts";
@@ -184,6 +184,25 @@ export interface MockOptions {
   // page. A preview version with a contact page by default; false sends nothing, as a page that
   // has not heard yet.
   readonly about?: Omit<AboutMessage, "type"> | false;
+  // The tracks in the group: mockTracks, then plain sines, up to maxLanes. mockTracks' four by
+  // default.
+  readonly trackCount?: number;
+}
+
+// The group's tracks: mockTracks, then unnamed sines, one octave step apart, as many as asked.
+function groupOf(count: number): typeof mockTracks {
+  return Array.from(
+    { length: Math.min(maxLanes, Math.max(1, count)) },
+    (_, index) =>
+      mockTracks[index] ?? {
+        id: index + 1,
+        name: "",
+        colour: null,
+        own: false,
+        sample: (time: number) =>
+          0.5 * Math.sin(2 * Math.PI * 110 * (index - 2) * time),
+      },
+  );
 }
 
 export class MockTransport implements Transport {
@@ -211,6 +230,7 @@ export class MockTransport implements Transport {
   private readonly nativeTraces: boolean;
   private readonly frameBarcode: boolean;
   private readonly about: Omit<AboutMessage, "type"> | false;
+  private readonly tracks: typeof mockTracks;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
   // The last live Trigger or Free window before a freeze (none when frozen in Beats mode), whether
@@ -238,6 +258,7 @@ export class MockTransport implements Transport {
     this.nativeTraces = options.nativeTraces ?? false;
     this.frameBarcode = options.frameBarcode ?? false;
     this.about = options.about ?? { version: "preview", contact: true };
+    this.tracks = groupOf(options.trackCount ?? mockTracks.length);
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -382,8 +403,8 @@ export class MockTransport implements Transport {
 
   private groupTracks(): typeof mockTracks {
     return this.setting("group") === "a"
-      ? mockTracks
-      : mockTracks.filter((track) => track.own);
+      ? this.tracks
+      : this.tracks.filter((track) => track.own);
   }
 
   // The ids of the tracks compared in the Compare view: this one and the others asked for (until
@@ -402,7 +423,7 @@ export class MockTransport implements Transport {
         (track) => this.compared?.includes(track.id) ?? track === others[0],
       )
       .map((track) => track.id);
-    const own = mockTracks.find((track) => track.own)?.id ?? 0;
+    const own = this.tracks.find((track) => track.own)?.id ?? 0;
     return others.length === 0 ? [] : [own, ...asked];
   }
 
@@ -687,7 +708,7 @@ export class MockTransport implements Transport {
     // The multi-track view draws the group's tracks; readouts measure this one. The Compare view
     // adds the sum of the compared tracks.
     const comparedIds = this.comparedIds();
-    const compared = mockTracks.filter((track) =>
+    const compared = this.tracks.filter((track) =>
       comparedIds.includes(track.id),
     );
     const views = new Map<ChannelView, Float32Array>();

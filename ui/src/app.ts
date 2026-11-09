@@ -177,7 +177,7 @@ interface GestureEvent extends UIEvent {
   readonly clientX: number;
 }
 
-// Room taken by the amplitude labels at the left edge (CSS px).
+// Room taken by the amplitude labels at the left edge (CSS px), which the lane labels keep clear of.
 const amplitudeLabelWidth = 56;
 const readoutInterval = readoutIntervalSeconds * 1000; // ms, as the engine measures them.
 // Toolbar fields that open a popover: the field's container, its button and the popover.
@@ -1516,6 +1516,27 @@ export class OscilloscopeApp {
     );
   }
 
+  // Leaves out the level labels that reach into the band the time labels take at the bottom, the
+  // screen's full width, so that the first time label can sit at its line on the left edge. With no
+  // time labels there is no band. All boxes are read before any label is removed: one layout.
+  private dropLevelsInTimeBand(
+    levels: readonly HTMLElement[],
+    times: readonly HTMLElement[],
+  ): void {
+    if (times.length === 0) {
+      return;
+    }
+    const bandTop = Math.min(
+      ...times.map((node) => node.getBoundingClientRect().top),
+    );
+    const inBand = levels.filter(
+      (node) => node.getBoundingClientRect().bottom > bandTop,
+    );
+    for (const node of inBand) {
+      node.remove();
+    }
+  }
+
   private placeLabels(): void {
     const container = element("labels");
     const height = this.screen.clientHeight;
@@ -1528,7 +1549,7 @@ export class OscilloscopeApp {
     const grid = this.gridChoice();
     // None places no label; the trigger line below stays in every type.
     const labelled = drawsLabels(grid.type);
-    const labels: HTMLElement[] = [];
+    const levels: HTMLElement[] = [];
     for (const label of labelled
       ? amplitudeLabels(
           this.store.number("verticalScale"),
@@ -1544,10 +1565,11 @@ export class OscilloscopeApp {
       // Clear of the trigger level marker, which sits on the left edge.
       node.style.left = "13px";
       node.style.top = `${String(Math.min(height - 14, Math.max(2, label.position * height - 6)))}px`;
-      labels.push(node);
+      levels.push(node);
     }
     // Beats without the host's tempo: no positions to label.
     const untimed = this.beatsMode() && this.lastFrame?.noTempo === true;
+    const times: HTMLElement[] = [];
     for (const label of labelled
       ? (this.musicalLayout()?.labels ??
         (untimed ? [] : timeLabels(span, free, this.view, zero)))
@@ -1561,12 +1583,12 @@ export class OscilloscopeApp {
         detail.textContent = label.detail;
         node.append(detail);
       }
-      // The left edge label sits clear of the amplitude labels.
-      node.style.left = `${String(Math.max(label.position * width + 4, label.position === 0 ? amplitudeLabelWidth : 0))}px`;
+      node.style.left = `${String(label.position * width + 4)}px`;
       node.style.bottom = "3px";
-      labels.push(node);
+      times.push(node);
     }
-    container.replaceChildren(...labels);
+    container.replaceChildren(...levels, ...times);
+    this.dropLevelsInTimeBand(levels, times);
     const triggerLine = element("trigger-line");
     const triggerX = toScreen(this.view, zero);
     triggerLine.style.left = `${String(triggerX * 100)}%`;
