@@ -410,8 +410,7 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
              {GridType::kGrid, GridDensity::kFine, GridDensity::kCoarse, BeatDivision::kRegular},
              // Two bars at Fine in Triplets: thirds of the beat, where Regular draws sixteenths.
              {GridType::kGrid, GridDensity::kFine, GridDensity::kMedium, BeatDivision::kTriplets},
-             {GridType::kTicks, GridDensity::kMedium, GridDensity::kMedium,
-              BeatDivision::kRegular},
+             {GridType::kTicks, GridDensity::kMedium, GridDensity::kMedium, BeatDivision::kRegular},
              {GridType::kNone, GridDensity::kMedium, GridDensity::kMedium,
               BeatDivision::kRegular}}) {
         view.gridType = type;

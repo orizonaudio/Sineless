@@ -926,7 +926,7 @@ button[aria-pressed="true"]:focus-visible {
   display: grid;
 }
 
-/* The grid's field, as wide as its longest type ("None") since the stacked labels set it, so
+/* The grid's field, as wide as its longest type ("Ticks") since the stacked labels set it, so
    a choice moves nothing; its popover opens upward, its left edge on the button's. */
 .grid-group {
   position: relative;
