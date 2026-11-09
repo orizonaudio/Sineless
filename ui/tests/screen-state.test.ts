@@ -1,12 +1,36 @@
 import { describe, expect, test } from "vitest";
 
-import { ViewLayout } from "../../protocol/src/enums.ts";
+import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import {
   clampPan,
   markerLane,
+  meterTitle,
+  viewNames,
   viewOrder,
   viewToggleState,
 } from "../src/view/screen-state.ts";
+
+// The Meter's title names the channel the frame's readouts measured (#393).
+describe("meterTitle", () => {
+  test.each(Object.values(ChannelView))(
+    "names channel view %i in Single",
+    (view) => {
+      expect(meterTitle({ laneSet: 0, readoutView: view })).toBe(
+        `Meter (${viewNames[view]})`,
+      );
+    },
+  );
+
+  test("says This track for a frame with lanes, whatever view it names", () => {
+    expect(meterTitle({ laneSet: 3, readoutView: ChannelView.side })).toBe(
+      "Meter (This track)",
+    );
+  });
+
+  test("is plain before any frame", () => {
+    expect(meterTitle(undefined)).toBe("Meter");
+  });
+});
 
 describe("clampPan", () => {
   test.each([
