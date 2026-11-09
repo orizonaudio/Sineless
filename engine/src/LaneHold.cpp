@@ -7,13 +7,15 @@
 namespace orizon::engine {
 
 bool LaneHold::capture(const Engine& engine, protocol::ChannelView view, std::size_t length,
-                       std::vector<float>& scratch, bool allChannels)
+                       std::vector<float>& scratch, bool allChannels,
+                       std::optional<std::uint64_t> upTo)
 {
     const CaptureRing& ring = engine.captureRing();
     const MusicalStamp clockNow = engine.timeline().latest();
     const double rateNow = engine.sampleRate();
     const int inputChannels = engine.inputChannels();
-    const std::uint64_t ringEnd = ring.endIndex();
+    const std::uint64_t ringEnd =
+        upTo && *upTo > ring.beginIndex() && *upTo <= ring.endIndex() ? *upTo : ring.endIndex();
     const auto count = std::min<std::uint64_t>(length, ringEnd - ring.beginIndex());
     const auto blockSize = static_cast<std::size_t>(count);
     // A mono track's one channel is every view of it.

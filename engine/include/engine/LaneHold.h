@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -21,11 +22,13 @@ namespace orizon::engine {
 class LaneHold final : public SampleSource
 {
 public:
-    // Copies `view` of the newest `length` samples of `engine` (fewer if fewer exist), or with
-    // `allChannels` every channel it captures. False if the writer outran the copy; nothing is
-    // held then. `scratch` is working space.
+    // Copies `view` of the newest `length` samples of `engine` (fewer if fewer exist), or of the
+    // `length` up to `upTo` when it is given and still readable, or with `allChannels` every
+    // channel it captures. False if the writer outran the copy; nothing is held then. `scratch`
+    // is working space.
     bool capture(const Engine& engine, protocol::ChannelView view, std::size_t length,
-                 std::vector<float>& scratch, bool allChannels = false);
+                 std::vector<float>& scratch, bool allChannels = false,
+                 std::optional<std::uint64_t> upTo = std::nullopt);
     // How many channels it holds: the track's, or the one view captured.
     [[nodiscard]] int channels() const { return channelCount; }
     // Whether reading `view` from it reads that view of the track: it holds every channel, or the
@@ -38,6 +41,8 @@ public:
 
     [[nodiscard]] bool held() const { return isHeld; }
     [[nodiscard]] const MusicalStamp& clock() const { return stamp; }
+    // Held up to before the newest audio, the position in effect where the hold ends.
+    void placeBy(const MusicalStamp& clock) { stamp = clock; }
     // The rate the audio held was recorded at: the host may change the track's since.
     [[nodiscard]] double sampleRate() const { return rate; }
 

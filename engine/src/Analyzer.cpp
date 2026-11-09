@@ -411,6 +411,7 @@ void Analyzer::followTransport(const Settings& settings, Commands& command)
         settings.enumValue<protocol::Toggle>(SettingId::kAutoFreeze) == protocol::Toggle::kOn;
     if (!enabled || !command.frozen) {
         autoFrozen = false;
+        resumeAt.reset(); // Unfrozen by hand, or Auto-freeze turned off, while waiting.
     }
     if (enabled && lastPlaying.has_value()) {
         if (*lastPlaying && !playing && !command.frozen) {
@@ -418,25 +419,58 @@ void Analyzer::followTransport(const Settings& settings, Commands& command)
             command.frozen = true;
             autoFrozen = true;
         } else if (!*lastPlaying && playing && autoFrozen) {
-            setFrozen(false);
-            command.frozen = false;
-            command.panSeconds = 0.0;
-            autoFrozen = false;
+            if (settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) ==
+                protocol::TimeBase::kBeats) {
+                // The paced playhead is still in audio from the stop: frozen until it reaches what
+                // was played after (resume).
+                resumeAt = engine.captureRing().endIndex();
+            } else {
+                unfreezeAfterStop(command);
+            }
+        } else if (*lastPlaying && !playing) {
+            resumeAt.reset(); // Stopped again while waiting: still frozen, until the next play.
         }
     }
     lastPlaying = playing;
+    resume(settings, command);
 }
 
-bool Analyzer::freeze(double sampleRate, std::uint64_t minimumSamples)
+void Analyzer::unfreezeAfterStop(Commands& command)
+{
+    setFrozen(false);
+    command.frozen = false;
+    command.panSeconds = 0.0;
+    autoFrozen = false;
+    resumeAt.reset();
+}
+
+void Analyzer::resume(const Settings& settings, Commands& command)
+{
+    if (!resumeAt) {
+        return;
+    }
+    const std::uint64_t until = *resumeAt;
+    // The edge moves on while frozen only here: once it reaches audio played after the stop, or
+    // is not paced (it is then the newest audio, past it), the view goes live.
+    const std::uint64_t edge =
+        ownSweepEdge(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan));
+    if (!pacedEdge.paced() || edge >= until) {
+        unfreezeAfterStop(command);
+    }
+}
+
+bool Analyzer::freeze(double sampleRate, std::uint64_t minimumSamples,
+                      std::optional<std::uint64_t> holdEnd)
 {
     hold.resize(engine.captureRing().capacity()); // The rate may have changed since it opened.
     frozenStamp = engine.timeline().latest();
-    frozenEnd = engine.captureRing().endIndex();
     frozenRate = sampleRate;
     const auto length = std::max<std::uint64_t>(hold.holdLength(sampleRate), minimumSamples);
-    if (!hold.capture(engine.captureRing(), static_cast<std::size_t>(length))) {
+    if (!hold.capture(engine.captureRing(), static_cast<std::size_t>(length), holdEnd)) {
         return false; // The writer outran the copy; try again on the next step.
     }
+    frozenEnd = hold.endIndex();
+    frozenStamp = clockAt(engine.timeline(), frozenEnd, frozenStamp);
     isFrozen = true;
     const std::scoped_lock lock(commandMutex);
     commands.frozen = true; // Single mode freezes on its own; keep the command in step.
@@ -480,7 +514,16 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
     if (command.frozen && !isFrozen) {
-        if (!freeze(liveRate, frozenLength(engine.captureRing(), liveRate, synced))) {
+        // A live Beats sweep is held up to the paced playhead now, not to the newest audio,
+        // which it had not reached (the newest when not paced, as the playhead then is).
+        const bool multiNow = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
+                              protocol::DisplayMode::kSingle;
+        const std::optional<std::uint64_t> placed =
+            synced && !multiNow && !isFrozen
+                ? std::optional(
+                      ownSweepEdge(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan)))
+                : std::nullopt;
+        if (!freeze(liveRate, frozenLength(engine.captureRing(), liveRate, synced), placed)) {
             return false;
         }
         if (synced) {
@@ -1152,10 +1195,17 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
             // drawn from it (in Trigger and Free its lane reads the HoldBuffer); another track's
             // holds its lane channel alone.
             const bool allChannels = synced && member.serial == ownSerial;
+            // A live Beats lane is held where it was placed at the paced playhead (each step
+            // places it), as Single's sweep is (freeze); not paced, to its newest audio.
+            const std::optional<std::uint64_t> placed = synced && lane->window && pacedEdge.paced()
+                                                            ? std::optional(lane->end)
+                                                            : std::nullopt;
             if (lane->hold.capture(*lane->engine, laneView(*lane, laneChannel(settings)),
                                    frozenLength(ring, lane->engine->sampleRate(), synced, true),
-                                   scratch, allChannels) &&
+                                   scratch, allChannels, placed) &&
                 synced) {
+                lane->hold.placeBy(
+                    clockAt(lane->engine->timeline(), lane->hold.endIndex(), lane->hold.clock()));
                 catchUpToHold(*lane);
             }
         } else if (!isFrozen && lane->hold.held()) {
@@ -1389,6 +1439,19 @@ MusicalStamp Analyzer::placeThroughChanges(
     return positions[current];
 }
 
+MusicalStamp Analyzer::clockAt(const Timeline& timeline, std::uint64_t end,
+                               const MusicalStamp& fallback)
+{
+    const std::size_t count = timeline.positionsSince(end, positions);
+    std::size_t current = 0;
+    while (current + 1 < count && positions[current + 1].sampleIndex <= end) {
+        ++current;
+    }
+    // With no change after the end, the newest position places it as well (and as before, to the
+    // last rounding).
+    return current + 1 < count ? positions[current] : fallback;
+}
+
 // Lanes are drawn on the own lane's grid, so their sweeps must hold as many samples. A tempo
 // change reaches each track's clock at a slightly different moment, and each image keeps its
 // length through small changes (see sweepLengthsSimilar), so on their own the lengths would part
@@ -1415,6 +1478,11 @@ void Analyzer::advance()
     // The block clock sees every block's stamp it can, also between frames.
     pacedEdge.observe(engine.blockStamp().latest(), engine.sampleRate());
     const Settings settings = engine.settings().get();
+    if (resumeAt) {
+        // Unfreezes through setFrozen, whose command the next frame takes.
+        Commands untaken;
+        resume(settings, untaken);
+    }
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
     if (isFrozen || !synced) {
