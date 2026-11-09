@@ -257,7 +257,11 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   go first).
 - Level labels in dB on the left, with Ticks and Grid: the top reads the vertical scale with its unit, the zero line
   −∞; labels sit on the 6 dB lines at Coarse and the 3 dB lines at Medium and Fine, thinning by
-  the same rules at 14 px, and stacked lanes are labelled above their zero line only.
+  the same rules at 14 px, and stacked lanes are labelled above their zero line only. Level labels
+  that would reach into the band of the time labels along the bottom are left out, across the whole
+  width: with one lane, the bottom-left label that repeats the top's value; stacked, the bottom
+  lane's −∞ once its lane is short (about 64 px or less in Beats, 42 px in Trig and Free). Every time
+  label sits 4 px right of its line, the first one on the left edge included.
 - The types add to one another: None draws each lane's zero line alone, with no lines or labels,
   and the Grid popover greys out Time, Level and the Beat division, which keep their choice; Ticks
   adds the time and level labels, without lines, the level labels at the Level step and, in Beats,
