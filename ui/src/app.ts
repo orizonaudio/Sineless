@@ -122,6 +122,7 @@ import {
 import {
   clampPan,
   markerLane,
+  meterTitle,
   readoutView,
   viewNames,
   viewOrder,
@@ -307,8 +308,13 @@ export class OscilloscopeApp {
   private readonly choiceSummaries = new Map<ChoiceSetting, ChoiceSummary>();
   private triggerSummary: StackedSummary | undefined;
   // What the Meter shows: the frame's peak and RMS as last taken on the readout schedule, so a
-  // cursor drag between two refreshes redraws the corner without refreshing them.
-  private meterValues = { peak: Number.NaN, rms: Number.NaN };
+  // cursor drag between two refreshes redraws the corner without refreshing them, and its title,
+  // naming the channel they were measured on, from the same frame.
+  private meterValues = {
+    peak: Number.NaN,
+    rms: Number.NaN,
+    title: meterTitle(undefined),
+  };
   // The readouts' channel, the Views popover's Measure row: lit as the frame measured it, not as the
   // setting asks.
   private readoutChoices: Segmented | undefined;
@@ -1886,7 +1892,7 @@ export class OscilloscopeApp {
     const sections: { title: string; rows: ReadoutRow[] }[] = [];
     if (this.store.get("meter") === "on") {
       sections.push({
-        title: "Meter",
+        title: this.meterValues.title,
         rows: meterReadout(this.meterValues.peak, this.meterValues.rms),
       });
     }
@@ -2466,7 +2472,11 @@ export class OscilloscopeApp {
     const frame = this.lastFrame;
     if (frame !== undefined) {
       // Taken on the readout schedule whether or not the Meter shows, so it shows them at once.
-      this.meterValues = { peak: frame.peak, rms: frame.rms };
+      this.meterValues = {
+        peak: frame.peak,
+        rms: frame.rms,
+        title: meterTitle(frame),
+      };
     }
     this.updateCursorReadout();
     this.updateHover(); // Live data changes under a resting pointer.

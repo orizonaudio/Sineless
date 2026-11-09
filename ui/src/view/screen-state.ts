@@ -23,6 +23,21 @@ export function readoutView(frame: {
   return frame.readoutView;
 }
 
+// The Meter's title, naming the channel its levels come from, as the frame that carried them says:
+// the readout channel in Single; this track in Multi, whose frames carry a lane set; plain before
+// any frame.
+export function meterTitle(
+  frame:
+    { readonly laneSet: number; readonly readoutView: ChannelView } | undefined,
+): string {
+  if (frame === undefined) {
+    return "Meter";
+  }
+  return frame.laneSet !== 0
+    ? "Meter (This track)"
+    : `Meter (${viewNames[readoutView(frame)]})`;
+}
+
 // How far back a frozen Seconds view is panned: from the freeze (0) to as far as the engine holds
 // audio for this span (`reach`, which shrinks when the span grows).
 export function clampPan(seconds: number, reach: number): number {

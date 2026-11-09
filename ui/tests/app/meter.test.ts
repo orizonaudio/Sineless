@@ -64,11 +64,20 @@ const tagOf: Record<ChannelView, string> = {
   [ChannelView.side]: "Side",
 };
 
-// The titles of the corner panel's sections, in order.
+// The titles of the corner panel's sections, in order, without the channel the Meter's names.
 function sections(): string[] {
+  return titles().map((title) => title.replace(/ \(.*\)$/u, ""));
+}
+
+function titles(): string[] {
   return [...byId("cursor-readout").querySelectorAll(".cursor-title")].map(
     (title) => title.textContent,
   );
+}
+
+// The Meter's title, which names the channel it reads (#393).
+function meterTitle(): string | undefined {
+  return titles().find((title) => title.startsWith("Meter"));
 }
 
 // The Meter's rows as shown, label and value.
@@ -94,6 +103,7 @@ async function useSource(label: string): Promise<void> {
 
 async function expectMeterOf(view: ChannelView): Promise<void> {
   await expect.poll(channelRead).toBe(tagOf[view]);
+  await expect.poll(meterTitle).toBe(`Meter (${tagOf[view]})`);
   const { peak, rms } = levelsOf(view);
   await expect.poll(() => cursorRow("Peak")).toBe(`${formatDbfs(peak)} dBFS`);
   await expect.poll(() => cursorRow("RMS")).toBe(`${formatDbfs(rms)} dBFS`);
@@ -212,6 +222,16 @@ describe("the Meter", () => {
     await expect.poll(meterShown).toEqual(meterOfFrame());
     if (display === "Single") {
       expect(cursorRow("Crest")).toBe("3.0 dB");
+      expect(meterTitle()).toBe("Meter (Left)");
+    } else {
+      // The longest title keeps to the corner's width.
+      expect(meterTitle()).toBe("Meter (This track)");
+      const corner = Number.parseFloat(
+        getComputedStyle(byId("screen")).getPropertyValue("--corner-width"),
+      );
+      expect(
+        byId("cursor-readout").getBoundingClientRect().width,
+      ).toBeLessThanOrEqual(corner);
     }
     await showDisplay("Single");
   });
@@ -234,6 +254,7 @@ describe("the Meter", () => {
         .toHaveAttribute("aria-pressed", "true");
       expect(cursorRow("Peak")).not.toBe("—");
       expect(meterShown()).toEqual(meterOfFrame());
+      expect(meterTitle()).toBe(`Meter (${channelRead() ?? ""})`);
       await setPressed(byId("freeze"), false);
     },
   );
