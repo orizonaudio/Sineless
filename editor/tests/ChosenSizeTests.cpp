@@ -53,6 +53,19 @@ TEST_P(ChosenSizeAtScale, AGrowForLanesNeverBecomesTheChosenSize)
     EXPECT_EQ(chosen.height(), 500);
 }
 
+// The lanes go before the host grants the room asked for them: the window should have the chosen
+// size again, which it still has, so nothing more is asked. The host's late grant is still the
+// reply to that request, not the user's resize.
+TEST_P(ChosenSizeAtScale, ALateGrantForLanesThatHaveGoneIsNotTheUsers)
+{
+    ChosenSize chosen = opened();
+    const WindowSize grown = chosen.target(scale(), kLanesMinimum);
+    chosen.requested(grown, false);
+    EXPECT_FALSE(chosen.take(grown, scale(), kNoLanes));
+    EXPECT_EQ(chosen.width(), 1200);
+    EXPECT_EQ(chosen.height(), 500);
+}
+
 TEST_P(ChosenSizeAtScale, TheGripsSizeIsTheUsersOnceTheHostGrantsIt)
 {
     ChosenSize chosen = opened();
