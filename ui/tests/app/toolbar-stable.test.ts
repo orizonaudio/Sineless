@@ -125,15 +125,18 @@ describe.each(widths)("the toolbar at %i px", (width) => {
     },
   );
 
-  // The order #355 sets: the Views slot after the mode, Layout after it, then the time base.
+  // The order #355 sets: the Views slot after the mode, Layout after it, then the time base; a
+  // divider before the span and another before Trigger (#393).
   const order = [
     "brand#0",
     "mode-group",
     "views-slot",
     "layout-group",
     "time-base-group",
+    "divider#0",
     "time-group",
     "vertical-group",
+    "trigger-divider",
     "trigger-group",
     "arm",
     "freeze",
@@ -246,4 +249,38 @@ test("the span pill holds every value its steps can show at one width", async ()
     field.textContent = before;
   }
   expect(wider).toEqual([]);
+});
+
+// Dividers group the toolbar (#393): the time base's fields, then span and scale, then the
+// trigger's. The one before Trigger shows exactly when Trigger does, so none is left at the end.
+describe("the toolbar's dividers", () => {
+  test("sit after the time base and before Trigger", async () => {
+    const started = await startApp();
+    await show(started, { displayMode: "single", timeBase: "trigger" });
+    const after = (id: string) => byId(id).nextElementSibling;
+    expect(after("time-base-group")?.className).toBe("divider");
+    expect(byId("trigger-group").previousElementSibling?.className).toBe(
+      "divider",
+    );
+    for (const divider of byId("toolbar").querySelectorAll(".divider")) {
+      expect(divider.getBoundingClientRect().width).toBeGreaterThan(0);
+    }
+  });
+
+  test.each(timeBases)(
+    "in %s, the one before Trigger shows with it",
+    async (timeBase) => {
+      const started = await startApp();
+      await show(started, { displayMode: "single", timeBase });
+      const trigger = byId("trigger-group");
+      const divider = trigger.previousElementSibling as HTMLElement | null;
+      expect(divider?.className).toBe("divider");
+      expect(divider?.getBoundingClientRect().width === 0).toBe(
+        trigger.getBoundingClientRect().width === 0,
+      );
+      expect(divider?.getBoundingClientRect().width === 0).toBe(
+        timeBase !== "trigger",
+      );
+    },
+  );
 });
