@@ -10,6 +10,8 @@
 #include <functional>
 #include <gtest/gtest.h>
 #include <iterator>
+#include <optional>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -286,38 +288,132 @@ TEST(PacedEdge, RaisesTheDelayBySlowingNotStalling)
     EXPECT_LE(motion.advanceErrorMax, 2.0) << "no frame stalls for the rise";
 }
 
-// After one late block the delay, raised to cover it, falls back: the display does not keep
-// trailing the audio by the worst lead it saw. One block 15 ms late (absorbed, not a jump) at
-// 4 s; over the next 8 s the edge trails the audio less, by about 1% a second, and never moves
-// back.
-TEST(PacedEdge, LowersTheDelayAfterALateBlock)
+// Mean of how far the edge trails the newest audio over draws in [from, to), in samples.
+double meanLag(std::span<const EdgeDraw> draws, double from, double to)
+{
+    double sum = 0.0;
+    int count = 0;
+    for (const EdgeDraw& draw : draws) {
+        if (draw.seconds >= from && draw.seconds < to) {
+            sum += draw.newest - draw.edge;
+            ++count;
+        }
+    }
+    return count > 0 ? sum / count : 0.0;
+}
+
+std::vector<EdgeDraw> drawsFrom(std::span<const EdgeDraw> draws, double from)
+{
+    std::vector<EdgeDraw> kept;
+    std::ranges::copy_if(draws, std::back_inserter(kept),
+                         [&](const EdgeDraw& draw) { return draw.seconds >= from; });
+    return kept;
+}
+
+struct LateBlockCase
+{
+    std::uint64_t block;
+    double rate;
+};
+
+class PacedEdgeLateBlock : public ::testing::TestWithParam<LateBlockCase>
+{
+protected:
+    // A hiccup at 6 s: the blocks due over most of what the clock absorbs without starting over
+    // come only at its end, together, as a host that fell behind catches up.
+    [[nodiscard]] static std::vector<EdgeDraw> play(const testing::HostPattern& pattern,
+                                                    PacedEdge& edge)
+    {
+        const double period = pattern.periodSeconds();
+        const auto late = static_cast<std::uint64_t>(
+            0.6 * std::max(BlockClock::kJumpPeriods * period, BlockClock::kJumpSeconds) * 1e9);
+        std::optional<BlockStampValue> before;
+        return playEdge(edge, pattern, protocol::kPacingDelayCapSeconds,
+                        [&](BlockStampValue stamp) {
+                            if (stamp.nanos < 6 * kSecond) {
+                                before = stamp;
+                            } else if (stamp.nanos < 6 * kSecond + late && before) {
+                                return *before; // Not delivered yet.
+                            }
+                            return stamp;
+                        });
+    }
+};
+
+// After one late block the delay, raised to cover it, is back where it was within seconds: the
+// display does not keep trailing the audio by the worst lead it saw (it fell by 1% a second, so
+// one late block kept it high for minutes). While it falls the edge runs fast by no more than the
+// fall allows (half the delay a second, so at most that fraction of a frame more than steady), and
+// never moves back.
+TEST_P(PacedEdgeLateBlock, FallsBackToItsSteadyDelayWithinSeconds)
+{
+    const LateBlockCase& c = GetParam();
+    PacedEdge edge;
+    // Arrivals on time but for the one late block: the fall, not jitter (MotionTests), is tested.
+    const testing::HostPattern pattern{
+        .block = c.block, .rate = c.rate, .jitterSeconds = 0.0, .seconds = 12.0};
+    const auto draws = play(pattern, edge);
+    const double steady = meanLag(draws, 4.0, 5.5);
+    EXPECT_GT(meanLag(draws, 6.2, 6.6), steady + 0.001 * pattern.rate)
+        << "the late block raised it";
+    // A millisecond, and a twentieth of a block: over a second, frames sample few cycles of a
+    // long block, whose mean lag depends on where in each cycle they fall.
+    EXPECT_NEAR(meanLag(draws, 11.0, 12.0), steady,
+                0.001 * pattern.rate + 0.05 * static_cast<double>(pattern.block))
+        << "the delay stayed where the late block put it";
+    const double frameMs = 1000.0 / pattern.drawHertz;
+    const std::vector<EdgeDraw> before(
+        draws.begin(),
+        std::ranges::find_if(draws, [](const EdgeDraw& draw) { return draw.seconds >= 3.5; }));
+    const Motion steadyMotion = measureMotion(drawsFrom(before, 4.0), pattern.rate);
+    const Motion falling = measureMotion(drawsFrom(draws, 7.0), pattern.rate);
+    EXPECT_FALSE(measureMotion(drawsFrom(draws, 4.0), pattern.rate).backwards);
+    // The fall at the largest delay runs the edge fast by kDecayRate × the cap, under the tenth it
+    // runs slow while rising (as much as the design already allows a frame to differ); the
+    // clock's own correction after the hiccup adds a little.
+    EXPECT_LE(falling.advanceErrorMax,
+              steadyMotion.advanceErrorMax +
+                  std::max(PacedEdge::kDecayRate * protocol::kPacingDelayCapSeconds,
+                           PacedEdge::kRiseRate) *
+                      frameMs)
+        << "the edge ran faster than the fall allows";
+}
+
+std::vector<LateBlockCase> lateBlockCases()
+{
+    std::vector<LateBlockCase> cases;
+    for (const std::uint64_t block : {std::uint64_t{64}, std::uint64_t{512}, std::uint64_t{4096}}) {
+        for (const double rate : {44100.0, 48000.0, 96000.0, 384000.0}) {
+            cases.push_back({.block = block, .rate = rate});
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(BlocksAndRates, PacedEdgeLateBlock, ::testing::ValuesIn(lateBlockCases()),
+                         [](const ::testing::TestParamInfo<LateBlockCase>& info) {
+                             return std::to_string(info.param.block) + "_" +
+                                    std::to_string(static_cast<int>(info.param.rate)) + "Hz";
+                         });
+
+// A host whose blocks come late again and again, every 0.3 s, keeps the delay where the lateness
+// needs it: it neither falls between late blocks nor rises at each, so the edge moves as evenly
+// as with steady blocks.
+TEST(PacedEdge, HoldsItsDelayThroughRecurringLateness)
 {
     PacedEdge edge;
-    const testing::HostPattern pattern{.block = 512, .rate = 48000.0, .seconds = 14.0};
-    const auto period = static_cast<std::uint64_t>(pattern.periodSeconds() * 1e9);
+    const testing::HostPattern pattern{.block = 512, .rate = 48000.0, .seconds = 12.0};
+    const auto periodNanos = static_cast<std::uint64_t>(pattern.periodSeconds() * 1e9);
     const auto draws =
         playEdge(edge, pattern, protocol::kPacingDelayCapSeconds, [&](BlockStampValue stamp) {
-            if (stamp.nanos >= 4 * kSecond && stamp.nanos < 4 * kSecond + period) {
-                stamp.nanos += 15'000'000;
+            if (stamp.nanos % (300'000'000) < periodNanos) {
+                stamp.nanos += 8'000'000;
             }
             return stamp;
         });
-    const auto meanLag = [&](double from, double to) {
-        double sum = 0.0;
-        int count = 0;
-        for (const EdgeDraw& draw : draws) {
-            if (draw.seconds >= from && draw.seconds < to) {
-                sum += draw.newest - draw.edge;
-                ++count;
-            }
-        }
-        return sum / count;
-    };
-    const double raised = meanLag(5.0, 6.0);
-    const double later = meanLag(12.0, 13.0);
-    EXPECT_GT(raised, meanLag(2.0, 3.0) + 0.01 * pattern.rate) << "the late block raised it";
-    EXPECT_LT(later, raised * 0.96) << "the delay stayed where the late block put it";
-    EXPECT_FALSE(measureMotion(draws, pattern.rate).backwards);
+    const Motion steady = measureMotion(drawsFrom(draws, 6.0), pattern.rate);
+    EXPECT_FALSE(steady.backwards);
+    EXPECT_LE(steady.advanceErrorMax, 1.0) << "the delay rose and fell between late blocks";
 }
 
 // Blocks further apart than the largest delay are not paced: the edge is the newest sample, as

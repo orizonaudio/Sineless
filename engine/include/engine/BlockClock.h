@@ -3,7 +3,9 @@
 #include "engine/RealtimeSafety.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -109,9 +111,17 @@ public:
     // While the delay has to grow (a block later than any before), the edge slows by this fraction
     // rather than stalling.
     static constexpr double kRiseRate = 0.1;
-    // While it can shrink, it does by this fraction of itself per second: the edge speeds up by a
-    // hundredth of the delay per second, 1 ms in a second at the largest delay.
-    static constexpr double kDecayRate = 0.01;
+    // While it can shrink, it does by this fraction of itself per second, down to the recent
+    // peak: from 60 ms to a block of 10 ms in under four seconds, so one late block does not keep
+    // the display behind for long. The edge then runs fast by this fraction of the delay: 6% at
+    // the largest delay, 1% at 20 ms.
+    static constexpr double kDecayRate = 0.5;
+    // The delay rises toward, and falls no lower than, the largest lead of the blocks in the last
+    // kPeakBuckets windows of kPeakBucketSeconds: long enough that a lateness recurring within it
+    // holds the delay instead of raising it again each time, short enough that one late block is
+    // forgotten within a second.
+    static constexpr double kPeakBucketSeconds = 0.5;
+    static constexpr std::size_t kPeakBuckets = 2;
     // Room for the analysis thread seeing a block up to one of its 2 ms steps late.
     static constexpr double kMarginSeconds = 0.0005;
     // The delay follows the time between edges up to this: frames come at display rate, and a
@@ -136,11 +146,17 @@ public:
     // Whether the last edge was paced.
     [[nodiscard]] bool paced() const { return pacedLast; }
     // Another track drawn with this edge had `samples` less audio than the edge asked for (its
-    // blocks come later): the next edge's delay rises to cover it, as it does for a late block of
-    // its own, while the shortfall lasts.
+    // blocks come later; negative: that much to spare). Short, the next edge's delay rises to
+    // cover it, as it does for a late block of its own. Either way the delay it needs is held as
+    // a late block's lead is, so a track steadily later keeps the delay where it needs it instead
+    // of the delay falling back under it and rising again.
     void coverShortfall(double samples)
     {
-        shortfallTarget = std::max(shortfallTarget, delaySamples + samples);
+        const double needed = delaySamples + samples;
+        peaks[peakBucket] = std::max(peaks[peakBucket], needed);
+        if (samples > 0.0) {
+            shortfallTarget = std::max(shortfallTarget, needed);
+        }
     }
     // The delay in samples (0 unpaced).
     [[nodiscard]] double delay() const { return delaySamples; }
@@ -163,9 +179,13 @@ private:
     double rate = 0.0;
     std::uint64_t knownRestarts = 0;
     double delaySamples = 0.0;
-    double target = 0.0;          // What the delay rises toward.
     double shortfallTarget = 0.0; // What another track's shortfall asks of the next edge.
     double lockingPeak = 0.0;     // The largest lead seen while the clock locked.
+    // The largest lead in each recent window, the newest at peakBucket, which began at
+    // bucketStart (0 until the clock locks).
+    std::array<double, kPeakBuckets> peaks{};
+    std::size_t peakBucket = 0;
+    std::uint64_t bucketStart = 0;
     bool hadLock = false;
     std::optional<std::uint64_t> lastNanos;
     std::uint64_t lastEdge = 0;

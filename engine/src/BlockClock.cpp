@@ -132,9 +132,10 @@ void PacedEdge::observe(const std::optional<BlockStampValue>& stamp, double samp
         // A delay measured before no longer applies: measure it again while the clock locks.
         knownRestarts = clock.restarts();
         delaySamples = 0.0;
-        target = 0.0;
         lockingPeak = 0.0;
         hadLock = false;
+        peaks.fill(0.0);
+        bucketStart = 0;
     }
     if (!updated) {
         return;
@@ -142,9 +143,17 @@ void PacedEdge::observe(const std::optional<BlockStampValue>& stamp, double samp
     const double lead = clock.lastLead() + kMarginSeconds * sampleRate;
     if (!clock.locked()) {
         lockingPeak = std::max(lockingPeak, lead);
-    } else {
-        target = std::max(target, lead);
+        return;
     }
+    if (bucketStart == 0) {
+        bucketStart = stamp->nanos;
+    } else if (static_cast<double>(stamp->nanos - bucketStart) >=
+               kPeakBucketSeconds * kNanosPerSecond) {
+        peakBucket = (peakBucket + 1) % kPeakBuckets;
+        peaks[peakBucket] = 0.0;
+        bucketStart = stamp->nanos;
+    }
+    peaks[peakBucket] = std::max(peaks[peakBucket], lead);
 }
 
 std::uint64_t PacedEdge::edge(std::uint64_t nanos, std::uint64_t newest, double capSeconds)
@@ -163,19 +172,22 @@ std::uint64_t PacedEdge::edge(std::uint64_t nanos, std::uint64_t newest, double 
         // Locked: start from the largest lead seen while locking, so the delay seldom rises.
         hadLock = true;
         delaySamples = std::min(lockingPeak, cap);
-        target = delaySamples;
     } else {
         const double seconds =
             lastNanos && nanos > *lastNanos
                 ? std::min(static_cast<double>(nanos - *lastNanos) / kNanosPerSecond,
                            kLongestStepSeconds)
                 : 0.0;
-        const double wanted = std::max(target, std::exchange(shortfallTarget, 0.0));
+        // The recent peak, or another track's shortfall, never above the cap: a delay held below
+        // what it wants would never fall.
+        const double recentPeak = *std::ranges::max_element(peaks);
+        const double wanted =
+            std::min(cap, std::max(recentPeak, std::exchange(shortfallTarget, 0.0)));
         if (wanted > delaySamples) {
             delaySamples = std::min(wanted, delaySamples + kRiseRate * seconds * rate);
         } else {
-            delaySamples -= delaySamples * kDecayRate * seconds;
-            target = delaySamples;
+            // Down toward what it wants, never below it, so a steady peak holds it still.
+            delaySamples = std::max(wanted, delaySamples - delaySamples * kDecayRate * seconds);
         }
     }
     delaySamples = std::min(delaySamples, cap);
