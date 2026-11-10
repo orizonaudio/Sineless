@@ -3,7 +3,7 @@
 # where they do not run on Linux (on macOS, scripts/check.sh runs the first here). Built from
 # tools/linux-checks. Valgrind is Ubuntu's own package, which cannot be pinned by hash.
 # Pinned by digest, so the image cannot change under the tag; Dependabot proposes new digests.
-FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 # The oldest Node the build accepts (protocol/CMakeLists.txt), as in tools/mutation/Dockerfile.
 # The Node checksums below are for this version.
 ARG NODE=22.18.0
