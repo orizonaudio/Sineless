@@ -3,7 +3,7 @@
 # installed (on macOS, whose Homebrew LLVM is newer than any Mull supports). Built from
 # tools/mutation.
 # Pinned by digest, so the image cannot change under the tag; Dependabot proposes new digests.
-FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 # The oldest Node the build accepts (protocol/CMakeLists.txt): the first 22 to run .ts files
 # without a flag. CI takes the newest of .nvmrc's major instead; both meet that minimum.
 # The Node checksums below are for this version.
