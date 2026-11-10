@@ -1420,6 +1420,41 @@ TEST_P(PacedAutoFreeze, StaysFrozenWhenStoppedAgainBeforeResuming)
     }
 }
 
+// Unfrozen by hand, or Auto-freeze turned off, while play waits for the playhead to reach audio
+// played after the stop: the wait ends there, so playback never ends a freeze the user then made
+// by hand, nor the freeze that turning Auto-freeze off leaves in place.
+TEST_P(PacedAutoFreeze, LeavesAFreezeMadeByHandDuringTheWaitToResume)
+{
+    for (const bool turnOff : {false, true}) {
+        SCOPED_TRACE(turnOff ? "Auto-freeze turned off" : "unfrozen and frozen again by hand");
+        SetUp();
+        host->play(3.0);
+        transport(false);
+        host->play(0.5);
+        // A block played and a frame that sees it: the wait begins.
+        transport(true);
+        host->writeBlocks();
+        std::vector<std::byte> bytes;
+        ASSERT_FALSE(host->analyzer->produce(bytes) && !decode(bytes).has(FrameFlag::kFrozen))
+            << "resumed at once";
+        if (turnOff) {
+            host->tracks.front().engine->settings().set(
+                SettingId::kAutoFreeze, static_cast<double>(protocol::Toggle::kOff));
+        } else {
+            host->analyzer->setFrozen(false);
+            (void)host->analyzer->produce(bytes);
+            host->analyzer->setFrozen(true);
+        }
+        (void)host->analyzer->produce(bytes);
+        host->frames.clear();
+        host->play(1.0);
+        for (const BeatsHost::Drawn& drawn : host->frames) {
+            EXPECT_TRUE(drawn.frame.has(FrameFlag::kFrozen))
+                << "playback ended the freeze at " << drawn.seconds;
+        }
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(ModesAndHosts, PacedAutoFreeze, ::testing::ValuesIn(autoFreezeCases()),
                          [](const ::testing::TestParamInfo<AutoFreezeCase>& info) {
                              const AutoFreezeCase& c = info.param;
