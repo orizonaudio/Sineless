@@ -1252,8 +1252,8 @@ TEST_P(PacedAfterFreeze, KeepsTheDelayOfAHostNeverFrozen)
     const auto controlDraws = playheads(*control.tracks.front().engine);
     ASSERT_GT(frozenDraws.size(), 30U);
     ASSERT_GT(controlDraws.size(), 30U);
-    // A few milliseconds: the frozen host's delay did not fall while nothing was drawn, the
-    // control's did (by 1 % a second); the cap is tens of milliseconds above either.
+    // A few milliseconds: both delays sit at the lead of their recent blocks, which the two hosts
+    // deliver alike; the cap, where the frozen host's delay stuck, is tens of milliseconds above.
     EXPECT_NEAR(measureMotion(frozenDraws, c.rate).lagMax,
                 measureMotion(controlDraws, c.rate).lagMax, 5.0)
         << "the playhead trails the audio further after the freeze";
