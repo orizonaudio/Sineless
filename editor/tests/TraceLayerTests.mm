@@ -70,6 +70,9 @@ struct Source
     // Where a frame's time from request to ready goes, as the editor's frame flow reports it: this
     // source's frames are ready at once, so the time is how late the request's timer fired.
     engine::FramePacing* pacing = nullptr;
+    // For each frame taken after a request, how long before the take the request came (seconds).
+    std::vector<double> askedBeforeTake;
+    std::optional<double> lastRequestAt;
 
     TraceLayer::Hooks hooks()
     {
@@ -81,6 +84,7 @@ struct Source
                         const std::scoped_lock lock(mutex);
                         ++requests;
                         ready = true;
+                        lastRequestAt = CACurrentMediaTime();
                         requestsOnRenderThread =
                             requestsOnRenderThread &&
                             [NSThread.currentThread.name isEqualToString:@"Sineless traces"];
@@ -94,6 +98,10 @@ struct Source
                         ready = false;
                         ++takes;
                         into = frame;
+                        if (lastRequestAt) {
+                            askedBeforeTake.push_back(CACurrentMediaTime() - *lastRequestAt);
+                            lastRequestAt.reset();
+                        }
                         return true;
                     },
                 .lost = [this] { ++losses; },
@@ -476,7 +484,9 @@ TEST_F(TraceLayerTest, AsksForFramesAndDrawsEachOneMade)
 
 // The frame a refresh draws is asked for after the callback before it, on a timer, not at that
 // callback: still on the render thread, as the hook says, and in time for the refresh that draws
-// it, so each refresh finds its frame. (When it is asked for, and so how fresh the picture is, is
+// it, so each refresh finds its frame, and close to it, so the frame is fresh: most are asked for
+// well under a callback period before they are taken (asked for at the callback before, a whole
+// period). (When it is asked for, and so how fresh the picture is, is
 // FramePacing's: DisplayClock.PlacesEachFrameWhenItIsMade.)
 TEST_F(TraceLayerTest, AsksForEachFrameOnTheRenderThreadInTime)
 {
@@ -486,6 +496,10 @@ TEST_F(TraceLayerTest, AsksForEachFrameOnTheRenderThreadInTime)
         drawsWithin([&] { return source.takes.load() >= 20; }, 3s, "20 frames taken"));
     const int takesBefore = source.takes.load();
     const std::uint64_t callbacksBefore = layer->statsForTesting().callbacks;
+    {
+        const std::scoped_lock lock(source.mutex);
+        source.askedBeforeTake.clear();
+    }
     ASSERT_DISPLAY_WAIT(drawsWithin([&] { return source.takes.load() >= takesBefore + 60; }, 4s,
                                     "60 more frames taken"));
     const int takes = source.takes.load() - takesBefore;
@@ -495,6 +509,13 @@ TEST_F(TraceLayerTest, AsksForEachFrameOnTheRenderThreadInTime)
     // Each refresh takes the frame it asked for (but the one or two whose take is still to come).
     EXPECT_GE(static_cast<double>(takes), 0.9 * static_cast<double>(callbacks))
         << "refreshes found no frame";
+    std::vector<double> before = source.askedBeforeTake;
+    ASSERT_GT(before.size(), 30U);
+    std::nth_element(before.begin(),
+                     before.begin() + static_cast<std::ptrdiff_t>(before.size() / 2), before.end());
+    const double period = 1.0 / static_cast<double>(window.screen.maximumFramesPerSecond);
+    EXPECT_LT(before[before.size() / 2], 0.75 * period)
+        << "frames asked for a whole callback before they are drawn";
 }
 
 // A wait through which the running display link did not call back is read as the display
