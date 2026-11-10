@@ -103,7 +103,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-9.5 | Sweeps keep receiving audio while the editor's page is hidden, so it is complete when shown again. | |
 | FR-9.6 | Freezing a sweep keeps the image on screen and holds as much audio as the capture can (7/8 of it). Choosing a shorter span while frozen crops it from the image once the image is complete; a longer span is rebuilt from the held audio and, where the held audio does not reach, is drawn in part and flagged ("Partial"). A frozen sweep does not pan. | |
 | FR-10 | View zoom: the displayed frame can be magnified horizontally, to 1/256 of the span (`minimumViewWidth`), and panned, in every mode. Zoom is temporary: it never changes a setting, and it resets when the span, beat span or time base changes. The engine renders the zoomed region at full resolution: the trigger, free-running or sweep window is placed from the whole span, and only the visible part is reduced to screen columns. Peak and RMS still cover the whole span. | `zoom.test.ts`, `AnalyzerTests` |
-| FR-11 | Auto-freeze: when on, the display freezes when the host transport goes from playing to stopped while the editor is open, and resumes when it plays again. A freeze made by the user or by Single mode is never ended by playback; unfreezing by hand while stopped cancels the resume. Turning Auto-freeze off leaves a current freeze in place. When off, the transport does not affect freezing. In Beats, playing again keeps the frozen picture until the paced playhead reaches the audio played after the stop (about the pacing delay, at most the cap and a frame), so no audio processed while stopped shows ahead of where play resumed; a stop, or unfreezing by hand, meanwhile ends that wait. On in a new instance; a project saved before Auto-freeze existed (state version 1) opens with it on, as a missing setting takes its default (8.4). | `AnalyzerTests` |
+| FR-11 | Auto-freeze: when on, the display freezes when the host transport goes from playing to stopped while the editor is open, and resumes when it plays again. A freeze made by the user or by Single mode is never ended by playback; unfreezing by hand while stopped cancels the resume. Turning Auto-freeze off leaves a current freeze in place. When off, the transport does not affect freezing. In Beats, playing again keeps the frozen picture until the paced playhead reaches the audio played after the stop (about the pacing delay, at most the cap and a frame), so no audio processed while stopped shows ahead of where play resumed; a stop, or unfreezing by hand, meanwhile ends that wait. On in a new instance; a project saved before Auto-freeze existed (state version 1) opens with it on, as a missing setting takes its default (8.4). | `AnalyzerTests`, `PacedSweepTests` (`PacedAutoFreeze`) |
 | FR-12 | Cursors. | `cursors.test.ts`, `snap.test.ts` |
 | FR-12.1 | Time cursors: two vertical lines, A and B, starting at 1/3 and 2/3 of the screen. The readout, titled "Time cursors", gives one row each: A and B (the project time in Beats; from the trigger point when triggered; back from the right edge when free-running, as the hover reads a point), Δt, its frequency 1/Δt (f) and the nearest note with its cent offset (Note), both "—" outside the audible range (FR-16.1), in Beats the distance Δb (below a beat in fractions of a beat to a 32nd, then in beats to two decimals up to a bar, then in bars), and Δs in samples; a row with no value shows "—". They sit at positions in the signal, so they follow zoom and pan. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
 | FR-12.2 | Level cursors: two horizontal lines, 1 and 2, drawn in every lane at a sample value, starting 6 and 12 dB below the top of the screen (−6 and −12 dBFS at the default scale); the readout, titled "Level cursors" and ruled off from the time cursors' when both are on, gives each level in dBFS and the difference in dB. While the diagnostic switch is on (§8.3), the readout is hidden; the cursors stay. | |
@@ -638,7 +638,12 @@ stateDiagram-v2
   Live --> FrozenUser: Freeze
   Live --> FrozenAuto: transport stops [Auto-freeze on]
   Live --> FrozenSingle: trigger [Single trigger mode, armed]
-  FrozenAuto --> Live: transport plays
+  FrozenAuto --> Live: transport plays [Trigger, Free]
+  FrozenAuto --> Resuming: transport plays [Beats]
+  Resuming --> Live: paced playhead reaches the audio played after the stop
+  Resuming --> FrozenAuto: transport stops
+  Resuming --> FrozenUser: Auto-freeze turned off
+  Resuming --> Live: Unfreeze or Re-arm
   FrozenAuto --> FrozenUser: Auto-freeze turned off
   FrozenUser --> Live: Unfreeze or Re-arm
   FrozenAuto --> Live: Unfreeze (cancels the resume) or Re-arm
@@ -654,7 +659,8 @@ stateDiagram-v2
   Disarmed --> Armed: Re-arm
 ```
 
-- Only an automatic freeze is ended by playback (FR-11).
+- Only an automatic freeze is ended by playback (FR-11). In Beats, Resuming still shows the frozen
+  picture: the paced playhead is a delay behind the newest audio, in audio from the stop.
 - Re-arm is the page sending `arm` and then `freeze(false)`, so it also ends any freeze.
 - Unfrozen without Re-arm, the Single trigger mode stays disarmed and keeps showing the last trace.
 - Every frozen state holds audio as FR-6 and FR-9.6 describe.
