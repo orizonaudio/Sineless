@@ -716,15 +716,29 @@ TEST(PacedSweep, PlacesAudioPlayedDuringAFreezeWhereItWasPlayed)
 
 // Frozen just after a transport jump the playhead has not reached yet, the frozen sweep holds
 // the audio up to the playhead, each block where it was played, and not the jump: the picture
-// stays as it was shown (FR-9.2), and the jump shows once the playhead reaches it live. 2048-sample
-// blocks, later from 3 s by 60 ms (absorbed, not a jump), so the delay rises past a block and the
-// playhead trails the jump when it arrives.
+// stays as it was shown (FR-9.2), and the jump shows once the playhead reaches it live. Also with
+// the other track's instance started earlier, so its capture indices are ahead of this track's.
+// 2048-sample blocks, later from 3 s by 60 ms (absorbed, not a jump), so the delay rises past a
+// block and the playhead trails the jump when it arrives.
 TEST(PacedSweep, FreezesBeforeAJumpThePlayheadHadNotReached)
 {
-    for (const auto mode : {protocol::DisplayMode::kSingle, protocol::DisplayMode::kMulti}) {
-        SCOPED_TRACE(static_cast<int>(mode));
+    struct Case
+    {
+        protocol::DisplayMode mode;
+        std::uint64_t laneOffset; // The other track's capture this far ahead of this track's.
+    };
+    for (const Case c :
+         {Case{.mode = protocol::DisplayMode::kSingle, .laneOffset = 0},
+          Case{.mode = protocol::DisplayMode::kMulti, .laneOffset = 0},
+          Case{.mode = protocol::DisplayMode::kMulti, .laneOffset = std::uint64_t{37} * 2048}}) {
+        const protocol::DisplayMode mode = c.mode;
+        SCOPED_TRACE(std::to_string(static_cast<int>(mode)) + ", lane offset " +
+                     std::to_string(c.laneOffset));
         const std::size_t tracks = mode == protocol::DisplayMode::kSingle ? 1 : 2;
         BeatsHost host(48000.0, 2048, tracks, mode);
+        if (c.laneOffset > 0) {
+            host.restart(1, c.laneOffset);
+        }
         host.play(3.0);
         for (BeatsHost::Track& track : host.tracks) {
             track.lateSeconds = 0.06;

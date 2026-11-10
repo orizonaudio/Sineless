@@ -1442,14 +1442,9 @@ MusicalStamp Analyzer::placeThroughChanges(
 MusicalStamp Analyzer::clockAt(const Timeline& timeline, std::uint64_t end,
                                const MusicalStamp& fallback)
 {
-    const std::size_t count = timeline.positionsSince(end, positions);
-    std::size_t current = 0;
-    while (current + 1 < count && positions[current + 1].sampleIndex <= end) {
-        ++current;
-    }
-    // With no change after the end, the newest position places it as well (and as before, to the
-    // last rounding).
-    return current + 1 < count ? positions[current] : fallback;
+    // The one in effect at `end` comes first, then each recorded after it. With none after, the
+    // newest position places the hold as well (and as before, to the last rounding).
+    return timeline.positionsSince(end, positions) >= 2 ? positions[0] : fallback;
 }
 
 // Lanes are drawn on the own lane's grid, so their sweeps must hold as many samples. A tempo
