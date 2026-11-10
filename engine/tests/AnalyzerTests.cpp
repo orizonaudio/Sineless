@@ -1593,6 +1593,45 @@ TEST_F(SweepTest, ZoomsIntoTheSweep)
     EXPECT_NEAR(frame->cursor, 0.6f, 1e-6f) << "the cursor stays a fraction of the whole cycle";
 }
 
+// Single's capture in the frame that playing again resumes an Auto-freeze is Single's freeze, not
+// Auto-freeze's: the next stop and play leave it frozen until Arm (FR-11, only an automatic freeze
+// is ended by playback).
+TEST_F(AnalyzerTest, KeepsASingleCaptureMadeAsPlayResumesAnAutoFreeze)
+{
+    setTriggerMode(protocol::TriggerMode::kSingle);
+    analyzer.setColumns(400);
+    const auto play = [&](bool playing, double seconds, double amplitude) {
+        const auto start = static_cast<double>(engine.captureRing().writeIndex());
+        writeTone(440.0, seconds, amplitude);
+        engine.timeline().advance({.playing = playing,
+                                   .positionValid = true,
+                                   .quarterNotes = start * 2.0 / kSampleRate,
+                                   .tempoValid = true,
+                                   .tempo = 120.0},
+                                  static_cast<int>(seconds * kSampleRate), kSampleRate);
+    };
+    std::size_t columns = 400;
+    const auto frozen = [&] {
+        columns = columns == 400 ? 401 : 400; // A frozen view sends a frame only for a change.
+        analyzer.setColumns(columns);
+        const auto frame = produce();
+        return frame && frame->has(FrameFlag::kFrozen);
+    };
+    play(true, 0.1, 0.0);
+    (void)produce();
+    play(false, 0.01, 0.0);
+    (void)produce(); // The stop freezes the display (Auto-freeze); armed on silence, nothing shows.
+    play(true, 0.05, 0.5);
+    const auto captured = produce();
+    ASSERT_TRUE(captured);
+    ASSERT_TRUE(captured->has(FrameFlag::kTriggered)) << "Single captured as play resumed";
+    ASSERT_TRUE(frozen()) << "Single's capture froze the display";
+    play(false, 0.01, 0.0);
+    EXPECT_TRUE(frozen());
+    play(true, 0.05, 0.0);
+    EXPECT_TRUE(frozen()) << "playing again ended Single's freeze";
+}
+
 // Auto-freeze follows the transport, and is on in a new instance: these tests keep the default
 // settings. A frozen sweep sends no new frames by itself, so each check changes the width to force
 // one.
