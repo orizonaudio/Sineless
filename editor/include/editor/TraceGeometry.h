@@ -65,8 +65,10 @@ struct LevelLine
 // kGridFineLineGap.
 [[nodiscard]] std::vector<LevelLine> levelLines(double halfLane, protocol::GridDensity density);
 
-// The grid in device pixels: lines `lineWidth` wide centred at `x` or `y` from the top left;
-// `strong` and `axis` lines take the axis colour (the zero lines, and Fine's 3 dB lines).
+// The grid in device pixels: lines `lineWidth` wide centred at `x` or `y` from the top left, so
+// that their edges fall on whole pixels (an odd width centred mid-pixel, an even one on a pixel
+// boundary) and they are drawn crisp; `strong` and `axis` lines take the axis colour (the zero
+// lines, and Fine's 3 dB lines).
 struct GridLines
 {
     double lineWidth = 1.0;

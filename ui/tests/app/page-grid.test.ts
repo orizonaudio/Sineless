@@ -1,7 +1,7 @@
 // The grid the page draws under its own traces (WebGL mode: Windows, and macOS before 14): the time
 // divisions, each lane's level lines and its zero line, in the grid and axis colours, where the
 // shared geometry puts them, and nothing left of a layout it no longer shows.
-import { expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 
 import { gridLines } from "../../src/view/grid.ts";
 import {
@@ -103,3 +103,77 @@ test("the page draws its grid where the lines belong, in their colours, and clea
     expect(at(3, line.y)[3], `old line at ${String(line.y)}`).toBe(0);
   }
 });
+
+// At every display scale each line is crisp: whole device pixels of its colour, as many as its
+// width, and nothing partly covered beside it. A line of even width centred mid-pixel would be
+// spread over three pixels, its full colour only one pixel wide, and look faint (a Retina display
+// at scale 2).
+const realRatio = window.devicePixelRatio;
+afterEach(() => {
+  Object.defineProperty(window, "devicePixelRatio", {
+    value: realRatio,
+    configurable: true,
+  });
+});
+
+test.each([1, 1.25, 1.5, 2, 2.5])(
+  "the page draws each grid line crisp at scale %s",
+  async (scale) => {
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: scale,
+      configurable: true,
+    });
+    await startApp();
+    await inTimeBase("Trig");
+    await press(choice("layout", "Stack"));
+    await settle();
+    const { canvas, at } = gridPixels();
+    const lines = gridLines(canvas.width, canvas.height, 2, scale);
+    const width = Math.max(1, Math.round(scale));
+    // The pixels across a line, centred at `centre`, inside the canvas (`size` long): all whole,
+    // and as many of its colour as its band has inside the canvas (the 0 dB lines on the canvas's
+    // edges show only their inner part).
+    const across = (
+      centre: number,
+      size: number,
+      pixelAt: (offset: number) => number[],
+      name: string,
+    ) => {
+      const from = Math.max(0, Math.floor(centre - width / 2) - 1);
+      const to = Math.min(size, Math.ceil(centre + width / 2) + 1);
+      const pixels = Array.from({ length: to - from }, (_, k) =>
+        pixelAt(from + k),
+      );
+      const partial = pixels.filter(
+        (pixel) => (pixel[3] ?? 0) > 0 && (pixel[3] ?? 0) < 255,
+      );
+      expect(partial, `${name}: partly covered pixels`).toEqual([]);
+      const inside = Math.max(
+        0,
+        Math.min(size, centre + width / 2) - Math.max(0, centre - width / 2),
+      );
+      expect(
+        pixels.filter((pixel) => pixel[3] === 255).length,
+        `${name}: pixels of its colour`,
+      ).toBe(Math.round(inside));
+    };
+    expect(lines.vertical.length).toBeGreaterThan(0);
+    const row = canvas.height / 4 + 5;
+    for (const column of lines.vertical) {
+      across(
+        column.x,
+        canvas.width,
+        (x) => at(x, row),
+        `column at ${String(column.x)}`,
+      );
+    }
+    for (const line of lines.horizontal) {
+      across(
+        line.y,
+        canvas.height,
+        (y) => at(3, y),
+        `row at ${String(line.y)}`,
+      );
+    }
+  },
+);

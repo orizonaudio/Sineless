@@ -270,10 +270,11 @@ GridLines gridLines(double width, double height, std::size_t laneCount, double p
                 {.position = static_cast<double>(index) / static_cast<double>(options.columns)});
         }
     }
-    const auto xOf = [&](double position) { return round(width * position) + 0.5; };
+    const double offset = std::fmod(lines.lineWidth, 2.0) / 2.0;
+    const auto xOf = [&](double position) { return round(width * position) + offset; };
     const std::vector<Lane> laneList = lanes(laneCount, protocol::ViewLayout::kStacked);
     const auto rowY = [&](const Lane& lane, double fraction) {
-        return round((1.0 - (lane.center + fraction * lane.halfHeight)) / 2.0 * height) + 0.5;
+        return round((1.0 - (lane.center + fraction * lane.halfHeight)) / 2.0 * height) + offset;
     };
     // Each lane's level lines, both signs, top lane first.
     std::vector<GridLines::Horizontal> levelRows;

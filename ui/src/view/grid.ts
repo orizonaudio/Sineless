@@ -25,8 +25,9 @@ export interface VerticalLine {
 }
 
 // The grid's lines in device pixels: each a line `lineWidth` wide centred at `x` (vertical) or
-// `y` (horizontal) from the top left; `strong` and `axis` lines take the axis colour (the zero
-// lines, and Fine's 3 dB lines).
+// `y` (horizontal) from the top left, so that its edges fall on whole pixels (an odd width centred
+// mid-pixel, an even one on a pixel boundary) and it is drawn crisp; `strong` and `axis` lines take
+// the axis colour (the zero lines, and Fine's 3 dB lines).
 export interface GridLines {
   readonly lineWidth: number;
   readonly vertical: readonly {
@@ -69,17 +70,19 @@ export function gridLines(
       position: (index + 1) / count,
       strong: false,
     }));
+  const lineWidth = Math.max(1, Math.round(pixelRatio));
+  const offset = (lineWidth % 2) / 2;
   const laneList = lanes(laneCount, ViewLayout.stacked);
   const rowY = (lane: Lane, fraction: number) =>
     Math.round(
       ((1 - (lane.center + fraction * lane.halfHeight)) / 2) * height,
-    ) + 0.5;
+    ) + offset;
   const vertical: { x: number; strong: boolean }[] = [];
   const horizontal: { y: number; axis: boolean }[] = [];
   if (drawsLines(options.type ?? "grid")) {
     for (const column of columns) {
       vertical.push({
-        x: Math.round(width * column.position) + 0.5,
+        x: Math.round(width * column.position) + offset,
         strong: column.strong,
       });
     }
@@ -100,7 +103,7 @@ export function gridLines(
     horizontal.push({ y: rowY(lane, 0), axis: true });
   }
   return {
-    lineWidth: Math.max(1, Math.round(pixelRatio)),
+    lineWidth,
     vertical,
     horizontal,
   };

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <gtest/gtest.h>
 #include <limits>
 #include <nlohmann/json.hpp>
@@ -582,6 +583,69 @@ TEST_F(MetalTraceRendererTest, DimsThePreviousCyclesTracesNotTheGrid)
                 }
                 EXPECT_EQ(wrong, 0U) << "type " << static_cast<int>(type) << " at ratio " << ratio
                                      << ", playhead at " << position << ": first " << first;
+            }
+        }
+    }
+}
+
+// At every display scale each grid line is crisp, as the page draws it: whole device pixels of its
+// colour, as many as its band has inside the screen, and nothing partly covered beside it. A line
+// of even width centred mid-pixel would be spread over three pixels, its full colour one pixel
+// wide, and look faint (a Retina display at scale 2).
+TEST_F(MetalTraceRendererTest, DrawsEachGridLineCrispAtEveryScale)
+{
+    TraceView view = scenes().front().view;
+    view.screen = {0.0f, 0.0f, 0.0f, 1.0f};
+    view.grid = {0.0f, 1.0f, 0.0f, 1.0f};
+    view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
+    view.layout = protocol::ViewLayout::kStacked;
+    view.emptyFrameLanes = 2;
+    for (const protocol::GridType type :
+         {protocol::GridType::kNone, protocol::GridType::kTicks, protocol::GridType::kGrid}) {
+        view.gridType = type;
+        for (const double ratio : {1.0, 1.25, 1.5, 2.0, 2.5}) {
+            const auto width = static_cast<std::size_t>(300 * ratio);
+            const auto height = static_cast<std::size_t>(200 * ratio);
+            const auto drawn = draw(width, height, nullptr, view, ratio, true);
+            ASSERT_TRUE(drawn);
+            const GridLines lines = gridLines(
+                static_cast<double>(width), static_cast<double>(height), 2, ratio,
+                {.type = type, .level = view.gridLevel, .columns = gridColumns(view.gridTime)});
+            const double lineWidth = lines.lineWidth;
+            // The pixels across a line centred at `centre` (from the left or the top), `size`
+            // long: none partly covered, and as many of its colour as its band has inside.
+            const auto across = [&](double centre, std::size_t size,
+                                    const std::function<const std::uint8_t*(std::size_t)>& at,
+                                    const std::string& name) {
+                const auto from = static_cast<std::size_t>(
+                    std::max(0.0, std::floor(centre - lineWidth / 2.0) - 1.0));
+                const auto to = static_cast<std::size_t>(
+                    std::min(static_cast<double>(size), std::ceil(centre + lineWidth / 2.0) + 1.0));
+                std::size_t full = 0;
+                for (std::size_t offset = from; offset < to; ++offset) {
+                    const std::uint8_t* pixel = at(offset);
+                    const int shade = std::max(pixel[1], pixel[2]);
+                    EXPECT_TRUE(shade == 0 || shade == 255)
+                        << name << " at " << offset << ": " << shade << ", scale " << ratio;
+                    full += shade == 255 ? 1 : 0;
+                }
+                const double inside =
+                    std::max(0.0, std::min(static_cast<double>(size), centre + lineWidth / 2.0) -
+                                      std::max(0.0, centre - lineWidth / 2.0));
+                EXPECT_EQ(full, static_cast<std::size_t>(std::lround(inside)))
+                    << name << ", scale " << ratio;
+            };
+            const std::size_t row = height / 2 + 3;
+            for (const GridLines::Vertical& line : lines.vertical) {
+                across(
+                    line.x, width, [&](std::size_t x) { return drawn->at(x, row); },
+                    "column at " + std::to_string(line.x));
+            }
+            for (const GridLines::Horizontal& line : lines.horizontal) {
+                // From the top on the page; the picture's rows count from the bottom.
+                across(
+                    line.y, height, [&](std::size_t y) { return drawn->at(3, height - 1 - y); },
+                    "row at " + std::to_string(line.y));
             }
         }
     }
