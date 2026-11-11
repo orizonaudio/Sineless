@@ -296,11 +296,25 @@ describe("native traces: what the page sends", () => {
         expect(view.verticalScaleDb).toBe(-12);
       },
     },
-    // The grid the page would draw: each type away from the default, and the other choices.
+    // The grid the page would draw: a Density sets both steps.
+    {
+      field: "the grid's time and level steps, from one Density",
+      act: async (started: Started) => {
+        started.deliver({
+          type: "stateChanged",
+          name: "gridDensity",
+          value: "fine",
+        });
+        await settle();
+      },
+      check: (view: TraceViewMessage) => {
+        expect(view.gridChoice.time).toBe("fine");
+        expect(view.gridChoice.level).toBe("fine");
+      },
+    },
+    // Each type away from the default, and the Beat division.
     ...(
       [
-        ["gridTime", "time", "fine"],
-        ["gridLevel", "level", "coarse"],
         ...Object.keys(GridType)
           .filter((type) => type !== "grid")
           .map((type) => ["gridType", "type", type] as const),
@@ -321,7 +335,7 @@ describe("native traces: what the page sends", () => {
       act: async (started: Started) => {
         started.deliver({
           type: "stateChanged",
-          name: "gridTime",
+          name: "gridDensity",
           value: "coarse",
         });
         await settle();
@@ -330,6 +344,7 @@ describe("native traces: what the page sends", () => {
       check: (view: TraceViewMessage, before: TraceViewMessage) => {
         expect(before.gridChoice.time).toBe("medium");
         expect(view.gridChoice.time).toBe("coarse");
+        expect(view.gridChoice.level).toBe("coarse");
       },
     },
     {

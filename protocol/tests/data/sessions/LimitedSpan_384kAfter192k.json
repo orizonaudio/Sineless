@@ -31,11 +31,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 15,
+  "protocolVersion": 16,
   "scenario": "LimitedSpan_384kAfter192k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 15,
+    "protocolVersion": 16,
     "sampleRate": 384000.0,
     "settings": {
       "autoFreeze": "on",
@@ -49,8 +49,7 @@
       "concertPitch": 440.0,
       "displayMode": "single",
       "freeSpan": 2.0,
-      "gridLevel": "medium",
-      "gridTime": "medium",
+      "gridDensity": "medium",
       "gridType": "grid",
       "group": "a",
       "hoverReadout": "off",

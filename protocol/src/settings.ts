@@ -175,18 +175,13 @@ export const settings = {
     logarithmic: false,
   },
   // The screen's grid, in every time base: what it draws, and how closely it divides time and
-  // level.
+  // level. One density sets both the time step and the level step.
   gridType: {
     kind: "enum",
     values: "GridType",
     defaultValue: GridType.grid,
   },
-  gridTime: {
-    kind: "enum",
-    values: "GridDensity",
-    defaultValue: GridDensity.medium,
-  },
-  gridLevel: {
+  gridDensity: {
     kind: "enum",
     values: "GridDensity",
     defaultValue: GridDensity.medium,

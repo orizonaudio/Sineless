@@ -100,11 +100,24 @@ void migrateToVersion5(nlohmann::json& settings)
     }
 }
 
+// Version 6 sets the grid's time and level steps with one Density: a project opens with its Time
+// step's density, and a Level step that differed is lost. A missing or unreadable Time leaves the
+// Density to its default, as the field's own validation does.
+void migrateToVersion6(nlohmann::json& settings)
+{
+    if (const auto found = settings.find("gridTime"); found != settings.end()) {
+        settings["gridDensity"] = *found;
+    }
+    settings.erase("gridTime");
+    settings.erase("gridLevel");
+}
+
 // kMigrations[n - 1] upgrades the settings object of state version n to version n + 1.
 // Add an entry, and a golden state file, whenever kStateVersion is raised. A release that adds
 // settings or values without raising it gets a golden state file too (state-v2-0.5.json).
 constexpr std::array<Migration, kStateVersion - 1> kMigrations{
-    &migrateToVersion2, &migrateToVersion3, &migrateToVersion4, &migrateToVersion5};
+    &migrateToVersion2, &migrateToVersion3, &migrateToVersion4, &migrateToVersion5,
+    &migrateToVersion6};
 
 // The editor's size in a state, or none: both a width and a height that are numbers (JSON's are
 // finite: a number too large for a double makes the whole state unreadable). Their range is the

@@ -42,17 +42,17 @@ describe("before the host reports a tempo", () => {
     expect(channelRead()).toBe("Left");
   });
 
-  // With no beats to draw, the page draws the equal divisions of Beats' own Time step (FR-9.1).
+  // With no beats to draw, the page draws the equal divisions of Beats' own Density (FR-9.1).
   test.each([
     ["coarse", 5],
     ["medium", 10],
     ["fine", 20],
   ] as const)(
-    "draws Beats' %s Time step as %i equal divisions",
+    "draws Beats' %s Density as %i equal divisions",
     async (time, divisions) => {
       app.transport.send({
         type: "setSetting",
-        name: "gridTime",
+        name: "gridDensity",
         value: time,
       });
       await settle();

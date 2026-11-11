@@ -731,8 +731,7 @@ export class OscilloscopeApp {
       );
     };
     gridRow("Type", "grid-type", choiceLabels.gridType);
-    gridRow("Time", "grid-time", choiceLabels.gridDensity);
-    gridRow("Level", "grid-level", choiceLabels.gridDensity);
+    gridRow("Density", "grid-density", choiceLabels.gridDensity);
     gridRow("Division", "beat-division", choiceLabels.beatDivision);
     this.gridSummary = new StackedSummary(
       element("grid-summary"),
@@ -1410,7 +1409,7 @@ export class OscilloscopeApp {
     return gridChoice((name) => this.store.get(name));
   }
 
-  // The grid's field and popover show the grid drawn. Time, Level and the Beat division apply only
+  // The grid's field and popover show the grid drawn. The Density and the Beat division apply only
   // with labels to place (and lines, which come with them); the Beat division in Beats only.
   private updateGridControls(): void {
     const grid = this.gridChoice();
@@ -1423,8 +1422,7 @@ export class OscilloscopeApp {
     );
     const rows = [
       ["Type", grid.type, () => true],
-      ["Time", grid.time, () => steps],
-      ["Level", grid.level, () => steps],
+      ["Density", grid.time, () => steps],
       ["Division", grid.division, () => steps && timeBase === "beats"],
     ] as const;
     for (const [kind, value, enabled] of rows) {

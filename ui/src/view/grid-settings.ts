@@ -1,6 +1,6 @@
-// Which grid the screen draws: one Type, Time and Level for every time base, and the one Beat
-// division. The page draws and labels with it and sends it to the macOS editor in its trace view,
-// so both draw the same grid.
+// Which grid the screen draws: one Type and Density for every time base, and the one Beat
+// division. The Density sets both the time step and the level step. The page draws and labels with
+// it and sends it to the macOS editor in its trace view, so both draw the same grid.
 import {
   BeatDivision,
   GridDensity,
@@ -21,9 +21,9 @@ export interface GridChoice {
   readonly division: BeatDivisionName;
 }
 
-export type GridSettingKind = "Type" | "Time" | "Level";
+export type GridSettingKind = "Type" | "Density";
 
-// The setting holding a grid choice, e.g. gridTime.
+// The setting holding a grid choice, e.g. gridDensity.
 export function gridSettingName(kind: GridSettingKind): SettingName {
   return `grid${kind}`;
 }
@@ -58,10 +58,11 @@ function nameOf<T extends Record<string, number>>(
 export function gridChoice(
   get: (name: SettingName) => SettingValue,
 ): GridChoice {
+  const density = nameOf(GridDensity, get("gridDensity"), "medium");
   return {
     type: nameOf(GridType, get("gridType"), "grid"),
-    time: nameOf(GridDensity, get("gridTime"), "medium"),
-    level: nameOf(GridDensity, get("gridLevel"), "medium"),
+    time: density,
+    level: density,
     division: nameOf(BeatDivision, get("beatDivision"), "regular"),
   };
 }

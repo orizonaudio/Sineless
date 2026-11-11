@@ -79,7 +79,7 @@ describe("in Beats, a 4-bar sweep of 4/4", () => {
     ["coarse", 4 - 1],
     ["medium", 4 * mockBarQuarterNotes - 1],
     ["fine", 4 * 4 * mockBarQuarterNotes - 1],
-  ] as const)("the %s Time step draws %i lines", async (time, count) => {
+  ] as const)("the %s Density draws %i lines", async (time, count) => {
     expect(mockBarQuarterNotes).toBe(4);
     const app = await startApp();
     // Wide enough that Fine's sixteenths keep their gap.
@@ -88,7 +88,7 @@ describe("in Beats, a 4-bar sweep of 4/4", () => {
       gridFineBeatLineGap,
     );
     await set(app, "beatSpan", "fourBars");
-    await set(app, "gridTime", time);
+    await set(app, "gridDensity", time);
     expect(verticalLines()).toHaveLength(count);
   });
 });
@@ -133,7 +133,7 @@ describe("on a display at twice the pixel ratio", () => {
     const bar = 6;
     const app = await startApp({ barQuarterNotes: bar });
     await set(app, "beatSpan", "sixBars");
-    await set(app, "gridTime", "fine");
+    await set(app, "gridDensity", "fine");
     const beats = 6 * bar;
     const sixteenthCss = (0.25 / beats) * byId("screen").clientWidth;
     expect(sixteenthCss).toBeLessThan(gridFineBeatLineGap);

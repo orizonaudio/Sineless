@@ -242,7 +242,7 @@ describe("help texts", () => {
   });
 });
 
-describe("the grid's Level help", () => {
+describe("the grid's Density help", () => {
   // The spacing a tall lane's lines stand at, at a Level step: the gap between its first two lines,
   // or between Fine's minor lines.
   const spacing = (density: "coarse" | "medium" | "fine", strong: boolean) => {
@@ -253,7 +253,7 @@ describe("the grid's Level help", () => {
   };
 
   test("names the spacing the grid draws at Coarse, Medium and Fine", () => {
-    const text = helpWords(helpTexts.gridLevel);
+    const text = helpWords(helpTexts.gridDensity);
     expect(text).toContain(`every ${String(spacing("coarse", false))} dB`);
     expect(text).toContain(`every ${String(spacing("medium", false))} dB`);
     const fineMinor = levelLines(1000, "fine").filter((line) => !line.strong);

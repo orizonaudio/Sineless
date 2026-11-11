@@ -13,11 +13,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 15,
+  "protocolVersion": 16,
   "scenario": "MonoSine400_48k",
   "snapshot": {
     "inputChannels": 1,
-    "protocolVersion": 15,
+    "protocolVersion": 16,
     "sampleRate": 48000.0,
     "settings": {
       "autoFreeze": "on",
@@ -31,8 +31,7 @@
       "concertPitch": 440.0,
       "displayMode": "single",
       "freeSpan": 4.0,
-      "gridLevel": "medium",
-      "gridTime": "medium",
+      "gridDensity": "medium",
       "gridType": "grid",
       "group": "a",
       "hoverReadout": "off",
