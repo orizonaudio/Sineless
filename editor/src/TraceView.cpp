@@ -162,13 +162,12 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
         view.fallbackColours.push_back(*parsed);
     }
 
-    const std::array<std::pair<const char*, Rgba*>, 7> colours{{
+    const std::array<std::pair<const char*, Rgba*>, 6> colours{{
         {"sumColour", &view.sumColour},
         {"screen", &view.screen},
         {"grid", &view.grid},
         {"axis", &view.axis},
         {"cursor", &view.cursor},
-        {"previous", &view.previous},
         {"cancellation", &view.cancellation},
     }};
     for (const auto& [name, into] : colours) {

@@ -199,7 +199,6 @@ export interface TraceViewMessage {
   readonly grid: Rgba;
   readonly axis: Rgba;
   readonly cursor: Rgba;
-  readonly previous: Rgba;
   readonly cancellation: Rgba;
   // The grid the page draws now (ui/src/view/grid-settings.ts): GridType, GridDensity (Time and
   // Level) and BeatDivision names.

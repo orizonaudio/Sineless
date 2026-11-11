@@ -46,7 +46,6 @@ struct TraceView
     Rgba grid{};
     Rgba axis{};
     Rgba cursor{};
-    Rgba previous{};
     Rgba cancellation{};
     // The grid the page draws (its gridChoice).
     protocol::GridType gridType = protocol::GridType::kGrid;

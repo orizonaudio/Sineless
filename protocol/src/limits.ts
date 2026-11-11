@@ -186,6 +186,11 @@ export const cancellationReachDivisor = 128;
 // leftOutAlpha of theirs, so the compared tracks and their sum stand out.
 export const waitingAlpha = 0.45;
 export const leftOutAlpha = 0.2;
+// In Beats, right of the playhead, the previous cycle's traces and Compare's shading in a colour
+// moved previousCycleAlpha of the way from the screen's to their own, so the old cycle reads as old
+// beside the new one; they keep their coverage, so they cover the grid as live traces do, and the
+// grid, its zero lines and labels are not dimmed, so the scale stays steady (FR-9.2).
+export const previousCycleAlpha = 0.5;
 
 // Musical positions worked out in floating point (a step's multiples, a view's edges) count as
 // whole, or as on an edge, within musicalTolerance quarter notes or steps: far above the rounding
@@ -296,6 +301,7 @@ export const limits: readonly {
   { name: "gridFineBeatLineGap", value: gridFineBeatLineGap, kind: "double" },
   { name: "cancellationDb", value: cancellationDb, kind: "double" },
   { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
+  { name: "previousCycleAlpha", value: previousCycleAlpha, kind: "double" },
   { name: "barcodeDataBits", value: barcodeDataBits, kind: "count" },
   {
     name: "barcodeTicksPerMillisecond",
