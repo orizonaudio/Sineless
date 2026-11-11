@@ -1,6 +1,6 @@
 // The Grid field in the status bar and its popover (#364, #384): each row chooses its one setting,
 // in force in every time base, the field names the type drawn and keeps its width, and the rows
-// that do not apply are disabled: Time, Level and Beat division with None, Beat division outside
+// that do not apply are disabled: Density and Beat division with None, Beat division outside
 // Beats.
 import { describe, expect, test } from "vitest";
 
@@ -40,14 +40,12 @@ const rows = [
     label: choiceLabels.gridType[value],
     setting: "gridType",
   })),
-  ...(["Time", "Level"] as const).flatMap((kind) =>
-    Object.keys(GridDensity).map((value) => ({
-      row: kind === "Time" ? "grid-time" : "grid-level",
-      value,
-      label: choiceLabels.gridDensity[value as keyof typeof GridDensity],
-      setting: `grid${kind}`,
-    })),
-  ),
+  ...Object.keys(GridDensity).map((value) => ({
+    row: "grid-density",
+    value,
+    label: choiceLabels.gridDensity[value as keyof typeof GridDensity],
+    setting: "gridDensity",
+  })),
   ...Object.keys(BeatDivision).map((value) => ({
     row: "beat-division",
     value,
@@ -105,8 +103,8 @@ describe("the Grid popover", () => {
     }
   });
 
-  // Time, Level and (in Beats) Beat division set where the lines and the labels go: greyed out
-  // under None, which draws neither; they keep their choice for when another type is chosen.
+  // Density and (in Beats) Beat division set where the lines and the labels go: greyed out under
+  // None, which draws neither; they keep their choice for when another type is chosen.
   test.each(
     timeBases.flatMap((timeBase) =>
       types.map((type) => ({ timeBase, type, base: timeBaseLabel[timeBase] })),
@@ -124,11 +122,15 @@ describe("the Grid popover", () => {
         );
       }
       const steps = type !== "none";
-      for (const row of ["grid-time", "grid-level"]) {
-        for (const label of Object.values(choiceLabels.gridDensity)) {
-          expect(choice(row, label).disabled, `${row} ${label}`).toBe(!steps);
-        }
+      for (const label of Object.values(choiceLabels.gridDensity)) {
+        expect(choice("grid-density", label).disabled, label).toBe(!steps);
       }
+      // The choice stays lit, greyed out or not.
+      expect(
+        choice("grid-density", choiceLabels.gridDensity.medium).getAttribute(
+          "aria-pressed",
+        ),
+      ).toBe("true");
       for (const label of Object.values(choiceLabels.beatDivision)) {
         expect(choice("beat-division", label).disabled, label).toBe(
           !steps || timeBase !== "beats",
@@ -136,6 +138,16 @@ describe("the Grid popover", () => {
       }
     },
   );
+
+  test("holds a row each for Type, Density and Beat division", async () => {
+    await startApp();
+    const rows = [...byId("grid-popover").querySelectorAll(".popover-row")];
+    expect(rows.map((row) => row.firstElementChild?.textContent)).toEqual([
+      "Type",
+      "Density",
+      "Beat division",
+    ]);
+  });
 
   test("the field keeps its width and place whatever the type", async () => {
     await startApp();

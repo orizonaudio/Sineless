@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -10,6 +11,7 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace orizon::engine {
@@ -140,6 +142,7 @@ constexpr std::array kEveryGoldenStateFile{
     "state-v5.json",
     "state-v5-trigger-position.json",
     "state-v5-editor-size.json",
+    "state-v6.json",
 };
 
 // A project saved before Auto-freeze existed opens with it on, as a new instance does (FR-11):
@@ -339,8 +342,40 @@ constexpr std::array kVersion5Values{
     GoldenValue{.id = SettingId::kMeter, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
     GoldenValue{.id = SettingId::kGridType, .value = asValue(protocol::GridType::kTicks)},
-    GoldenValue{.id = SettingId::kGridTime, .value = asValue(protocol::GridDensity::kFine)},
-    GoldenValue{.id = SettingId::kGridLevel, .value = asValue(protocol::GridDensity::kCoarse)},
+    GoldenValue{.id = SettingId::kBeatDivision,
+                .value = asValue(protocol::BeatDivision::kTriplets)},
+    GoldenValue{.id = SettingId::kLaneChannel, .value = asValue(protocol::ChannelView::kSide)},
+};
+// Its grid Time and Level, which version 6 made one Density, are checked by
+// OpensA09ProjectWithItsTimeStepAsTheDensity: this list holds only keys the file still names.
+
+// What state version 6 saves, in state-v6.json: every setting away from its default.
+constexpr std::array kVersion6Values{
+    GoldenValue{.id = SettingId::kTriggerSpan, .value = 0.25},
+    GoldenValue{.id = SettingId::kAutoFreeze, .value = asValue(protocol::Toggle::kOff)},
+    GoldenValue{.id = SettingId::kFreeSpan, .value = 2.0},
+    GoldenValue{.id = SettingId::kVerticalScale, .value = -9.0},
+    GoldenValue{.id = SettingId::kChannelViews,
+                .value = flag(ChannelView::kRight) + flag(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kViewLayout, .value = asValue(ViewLayout::kOverlaid)},
+    GoldenValue{.id = SettingId::kTriggerMode, .value = asValue(TriggerMode::kSingle)},
+    GoldenValue{.id = SettingId::kTriggerSource, .value = asValue(ChannelView::kSide)},
+    GoldenValue{.id = SettingId::kReadoutSource, .value = asValue(ChannelView::kRight)},
+    GoldenValue{.id = SettingId::kTriggerSlope, .value = asValue(TriggerSlope::kFalling)},
+    GoldenValue{.id = SettingId::kTriggerLevel, .value = -0.25},
+    GoldenValue{.id = SettingId::kTriggerHysteresis, .value = 0.05},
+    GoldenValue{.id = SettingId::kTriggerHoldOff, .value = 0.125},
+    GoldenValue{.id = SettingId::kTriggerPosition, .value = 0.35},
+    GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
+    GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kThirdBar)},
+    GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
+    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
+    GoldenValue{.id = SettingId::kCompare, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kMeter, .value = asValue(protocol::Toggle::kOn)},
+    GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
+    GoldenValue{.id = SettingId::kGridType, .value = asValue(protocol::GridType::kTicks)},
+    GoldenValue{.id = SettingId::kGridDensity, .value = asValue(protocol::GridDensity::kCoarse)},
     GoldenValue{.id = SettingId::kBeatDivision,
                 .value = asValue(protocol::BeatDivision::kTriplets)},
     GoldenValue{.id = SettingId::kLaneChannel, .value = asValue(protocol::ChannelView::kSide)},
@@ -371,6 +406,7 @@ constexpr std::array kGoldenStates{
     GoldenState{.file = "state-v5-trigger-position.json", .values = kVersion5TriggerPositionValues},
     // The same settings, with the editor's size beside them (written by hand, as 8.4 has it).
     GoldenState{.file = "state-v5-editor-size.json", .values = kVersion5TriggerPositionValues},
+    GoldenState{.file = "state-v6.json", .values = kVersion6Values},
 };
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
@@ -388,7 +424,41 @@ constexpr std::array kGoldenValueNames{
     GoldenValueNames{.file = "value-names-0.5.json", .version = 2},
     GoldenValueNames{.file = "value-names-0.8.json", .version = 3},
     GoldenValueNames{.file = "value-names-0.9.json", .version = 5},
+    GoldenValueNames{.file = "value-names-0.10.json", .version = 6},
 };
+
+// Released settings a migration renamed or removed: their saved names are read under the setting
+// they became, or no longer at all. Version 6 made the grid's Time and Level one Density, which
+// takes Time's value; Level's is dropped (GridDensityFromVersion5 checks both).
+struct MigratedSetting
+{
+    std::string_view setting;
+    std::string_view becomes; // Empty: dropped.
+};
+
+constexpr std::array kMigratedSettings{
+    MigratedSetting{.setting = "gridTime", .becomes = "gridDensity"},
+    MigratedSetting{.setting = "gridLevel", .becomes = ""},
+};
+
+const MigratedSetting* migratedSetting(std::string_view setting)
+{
+    const auto found = std::ranges::find(kMigratedSettings, setting, &MigratedSetting::setting);
+    return found == kMigratedSettings.end() ? nullptr : &*found;
+}
+
+// The keys a release saved a setting's values under: its own name, and any released name a
+// migration renamed to it.
+std::vector<std::string> releasedKeysOf(std::string_view setting)
+{
+    std::vector<std::string> keys{std::string(setting)};
+    for (const MigratedSetting& migrated : kMigratedSettings) {
+        if (migrated.becomes == setting) {
+            keys.emplace_back(migrated.setting);
+        }
+    }
+    return keys;
+}
 
 // Released names a migration maps to another value, rather than names the protocol still reads:
 // "seconds" became Trigger or Free, the Free trigger mode Auto (version 3):
@@ -506,21 +576,24 @@ TEST_P(SavedValueName, ReopensAsTheValueSaved)
     const auto [setting, index] = GetParam();
     const bool isFlags = setting->kind == protocol::SettingKind::kFlags;
     const double expected = isFlags ? static_cast<double>(1U << index) : static_cast<double>(index);
-    const std::string key(setting->name);
     const std::string name(setting->valueNames[index]);
     int heldBy = 0;
     for (const GoldenValueNames& golden : kGoldenValueNames) {
         const auto released = nlohmann::json::parse(readTestFile(golden.file));
-        const auto names = released.find(key);
-        if (names == released.end() ||
-            std::find(names->begin(), names->end(), name) == names->end()) {
-            continue;
+        for (const std::string& key : releasedKeysOf(setting->name)) {
+            const auto names = released.find(key);
+            if (names == released.end() ||
+                std::find(names->begin(), names->end(), name) == names->end()) {
+                continue;
+            }
+            ++heldBy;
+            const nlohmann::json saved =
+                isFlags ? nlohmann::json::array({name}) : nlohmann::json(name);
+            const nlohmann::json state = {{"version", golden.version},
+                                          {"settings", {{key, saved}}}};
+            EXPECT_EQ(deserializeState(state.dump()).settings.value(setting->id), expected)
+                << golden.file << ": " << key << "." << name;
         }
-        ++heldBy;
-        const nlohmann::json saved = isFlags ? nlohmann::json::array({name}) : nlohmann::json(name);
-        const nlohmann::json state = {{"version", golden.version}, {"settings", {{key, saved}}}};
-        EXPECT_EQ(deserializeState(state.dump()).settings.value(setting->id), expected)
-            << golden.file << ": " << name;
     }
     EXPECT_GT(heldBy, 0) << "no released name list holds this value: add the list of the "
                             "release that adds it";
@@ -532,18 +605,23 @@ TEST(State, KeepsEveryReleasedValueName)
 {
     for (const GoldenValueNames& golden : kGoldenValueNames) {
         const auto released = nlohmann::json::parse(readTestFile(golden.file));
-        for (const auto& [key, names] : released.items()) {
-            const auto setting = std::ranges::find(protocol::kSettings, std::string_view(key),
-                                                   &protocol::SettingDescriptor::name);
-            ASSERT_NE(setting, protocol::kSettings.end()) << golden.file << ": " << key;
+        for (const auto& [savedKey, names] : released.items()) {
+            const MigratedSetting* migrated = migratedSetting(savedKey);
+            if (migrated != nullptr && migrated->becomes.empty()) {
+                continue; // Dropped by a migration: no longer read.
+            }
+            const std::string_view key = migrated != nullptr ? migrated->becomes : savedKey;
+            const auto setting =
+                std::ranges::find(protocol::kSettings, key, &protocol::SettingDescriptor::name);
+            ASSERT_NE(setting, protocol::kSettings.end()) << golden.file << ": " << savedKey;
             for (const auto& name : names) {
                 const std::string_view text = name.get_ref<const std::string&>();
-                const bool migrated = std::ranges::any_of(kMigratedNames, [&](const auto& m) {
+                const bool renamed = std::ranges::any_of(kMigratedNames, [&](const auto& m) {
                     return m.setting == key && m.name == text;
                 });
-                EXPECT_TRUE(migrated || std::ranges::find(setting->valueNames, text) !=
-                                            setting->valueNames.end())
-                    << golden.file << ": " << key << "." << name;
+                EXPECT_TRUE(renamed || std::ranges::find(setting->valueNames, text) !=
+                                           setting->valueNames.end())
+                    << golden.file << ": " << savedKey << "." << name;
             }
         }
     }
@@ -947,9 +1025,92 @@ TEST(State, OpensThePerTimeBaseGridSettingsAtTheGridsDefaults)
                                   .settings;
     EXPECT_EQ(settings.enumValue<protocol::GridType>(SettingId::kGridType),
               protocol::GridType::kGrid);
-    EXPECT_EQ(settings.enumValue<protocol::GridDensity>(SettingId::kGridTime),
+    EXPECT_EQ(settings.enumValue<protocol::GridDensity>(SettingId::kGridDensity),
               protocol::GridDensity::kMedium);
-    EXPECT_EQ(settings.enumValue<protocol::GridDensity>(SettingId::kGridLevel),
+}
+
+// A 0.9 project whose grid Time was Fine and Level Coarse opens with the Fine density: one Density
+// now sets both, and it takes the Time step's choice.
+TEST(State, OpensA09ProjectWithItsTimeStepAsTheDensity)
+{
+    const Settings settings = deserializeState(readTestFile("state-v5.json")).settings;
+    EXPECT_EQ(settings.enumValue<protocol::GridDensity>(SettingId::kGridDensity),
+              protocol::GridDensity::kFine);
+}
+
+// A version 5 grid Time and Level, each of every density, open as the density Time had; a Level
+// that differed is lost.
+struct SavedGridSteps
+{
+    std::size_t time = 0;
+    std::size_t level = 0;
+};
+
+std::vector<SavedGridSteps> everyGridStepPair()
+{
+    std::vector<SavedGridSteps> cases;
+    for (std::size_t time = 0; time < protocol::kGridDensityNames.size(); ++time) {
+        for (std::size_t level = 0; level < protocol::kGridDensityNames.size(); ++level) {
+            cases.push_back({.time = time, .level = level});
+        }
+    }
+    return cases;
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const SavedGridSteps& c, std::ostream* out)
+{
+    *out << "time " << protocol::kGridDensityNames[c.time] << ", level "
+         << protocol::kGridDensityNames[c.level];
+}
+
+class GridDensityFromVersion5 : public ::testing::TestWithParam<SavedGridSteps>
+{
+};
+
+TEST_P(GridDensityFromVersion5, TakesTheTimeStep)
+{
+    const auto [time, level] = GetParam();
+    const nlohmann::json state = {{"version", 5},
+                                  {"settings",
+                                   {{"gridTime", protocol::kGridDensityNames[time]},
+                                    {"gridLevel", protocol::kGridDensityNames[level]}}}};
+    EXPECT_EQ(deserializeState(state.dump()).settings.value(SettingId::kGridDensity),
+              static_cast<double>(time));
+}
+
+INSTANTIATE_TEST_SUITE_P(State, GridDensityFromVersion5, ::testing::ValuesIn(everyGridStepPair()),
+                         [](const ::testing::TestParamInfo<SavedGridSteps>& info) {
+                             return "Time_" +
+                                    std::string(protocol::kGridDensityNames[info.param.time]) +
+                                    "_Level_" +
+                                    std::string(protocol::kGridDensityNames[info.param.level]);
+                         });
+
+// A version 5 project with no grid Time, or one the protocol cannot read, opens at Medium, whatever
+// its Level says.
+TEST(State, OpensAVersion5ProjectWithoutAReadableTimeStepAtMediumDensity)
+{
+    for (const char* time :
+         {"", R"("gridTime": "huge",)", R"("gridTime": 3,)", R"("gridTime": null,)"}) {
+        for (const auto& level : protocol::kGridDensityNames) {
+            const std::string text = std::string(R"({"version": 5, "settings": {)") + time +
+                                     R"("gridLevel": ")" + std::string(level) + R"("}})";
+            EXPECT_EQ(deserializeState(text).settings.enumValue<protocol::GridDensity>(
+                          SettingId::kGridDensity),
+                      protocol::GridDensity::kMedium)
+                << text;
+        }
+    }
+}
+
+// The migration runs only on states older than version 6: a version 6 state's stray grid Time is
+// an unknown field, ignored.
+TEST(State, ReadsNoGridTimeFromAVersion6State)
+{
+    const Settings settings =
+        deserializeState(R"({"version": 6, "settings": {"gridTime": "fine"}})").settings;
+    EXPECT_EQ(settings.enumValue<protocol::GridDensity>(SettingId::kGridDensity),
               protocol::GridDensity::kMedium);
 }
 

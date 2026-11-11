@@ -96,7 +96,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-7 | The Meter: with its toggle on (saved, off by default), a panel in the screen's top-right corner, above the cursor readouts, shows the sample peak and the RMS in dBFS of the readout channel (1.2.1), which the readout source chooses in Single display mode, and their crest factor in dB: the peak's level over the RMS's, from the levels as measured and rounded once, so a sine reads 3.0 dB at every level; "—" when either has no level (not measured, or −∞ at the level floor, as silence is). Its title names the channel: Meter (Left), (Right), (Mid) or (Side) in Single, Meter (This track) in Multi. They are indicative, not standards-compliant metering; help says so. They cover the whole span (not only the zoomed part) and refresh every 0.1 s of audio (`readoutIntervalSeconds`), and on every frame while frozen; switched on, the Meter shows the levels last taken at once. The engine measures them with the Meter off too, for the Invalid samples chip. There is no frequency readout: the time cursors (FR-12.1) and the hover readout (FR-16.1) give the frequency where the signal repeats. Samples that are not finite are left out of every measurement, counted, and reported (8.6; the Invalid samples chip, 1.5). | `ReadoutsTests`, `SignalCorpusTests`, `ui/tests/crest-factor.test.ts`, `ui/tests/app/meter.test.ts` |
 | FR-8 | All settings (table below) are saved with the host project as plugin state; none is a host-automatable parameter. A value is accepted only if finite and in range (enum and flag values integral, flags non-empty); an invalid value is refused, not clamped. | `StateTests`, `SettingsTests`, `setting-values.test.ts` |
 | FR-9 | Tempo sync (Beats time base). | `SweepTests`, `SweepImageTests`, `TimelineTests`, `MatrixTests` |
-| FR-9.1 | The span is a beat span, in bars of the host time signature, from 1/8 bar to 16 bars (1.3), at the host tempo; a beat is a quarter note. Typed, a span may be its number alone ("16", "1/4"). The display sweeps: the left edge is the start of the current cycle, aligned to multiples of the span from the project start. Until the host has reported a tempo (an instance it has not played through yet), nothing musical is placed: no sweep, beats, bars or bar labels, and the UI says so ("No tempo"); the grid shows the equal divisions of Beats' Time step, as in Trigger and Free. | `AnalyzerTests`, `ui/tests/app/no-tempo.test.ts` |
+| FR-9.1 | The span is a beat span, in bars of the host time signature, from 1/8 bar to 16 bars (1.3), at the host tempo; a beat is a quarter note. Typed, a span may be its number alone ("16", "1/4"). The display sweeps: the left edge is the start of the current cycle, aligned to multiples of the span from the project start. Until the host has reported a tempo (an instance it has not played through yet), nothing musical is placed: no sweep, beats, bars or bar labels, and the UI says so ("No tempo"); the grid shows the equal divisions of the grid Density, as in Trigger and Free. | `AnalyzerTests`, `ui/tests/app/no-tempo.test.ts` |
 | FR-9.2 | A playhead line follows the host position, with the current cycle to its left and the previous cycle to its right, its traces (and in Compare the shading) dimmed, their colour moved `previousCycleAlpha` of the way from the screen's and still covering what is under them as live traces do; the grid, the zero lines and the labels are not dimmed, so the scale stays steady across the playhead. As on a sweeping scope, what is drawn stays in place until the playhead passes it again, also when the transport jumps (stop and play, loops, relocation): audio is placed by the position of the block it came in, except when a change of the sweep's length (its beat span, or a tempo or metre change too large for it to keep its length, FR-9.4) redraws the whole sweep from the audio held, which places all of it by the position at its newest audio. While stopped, the sweep continues at the last tempo. Live, the playhead and the audio reaching it stand at the paced edge (AD-29), so they move evenly between blocks and nothing newer than the playhead shows in the dimmed cycle; other tracks' lanes reach the same musical position, except until both instances have played with a host position (before that each timeline runs on from where it started; after it they stay aligned while stopped, AD-15), and while this track receives no blocks, when each lane is drawn to its own newest audio. A freeze keeps the playhead and the sweep where they were going: the audio is held up to the playhead (the paced edge at the freeze, each lane's where it was placed), not the newest audio it had not reached, as Trigger and Free keep the window last shown; not paced, the playhead is the newest audio, held as before. On macOS 14+ the playhead and the sweeps are placed at the display clock's time, and the playhead at its exact position with soft edges (AD-30). | `PacedSweepTests`, `MetalTraceRendererTests` |
 | FR-9.3 | A sweep may be longer than the audio the capture holds: it shows what has been captured and fills in as the playhead passes ("Filling"). A sweep is limited to 2^23 samples per lane (87 s at 96 kHz); a longer beat span is stepped down, or at the shortest, 1/8 bar, shortened to the capture (a long bar at a slow tempo), and the UI says so ("Span limited"). | |
 | FR-9.4 | A tempo change that alters the sweep's length by at most 1/1024 keeps the sweep; a larger one starts it again. Other tracks' lanes take this track's sweep length within the same tolerance. | |
@@ -161,8 +161,7 @@ against it and the UI builds its controls from it.
 | Meter | Off, on | Off |
 | Concert pitch (A4) | 400 – 500 Hz, linear | 440 Hz |
 | Grid type | None, Ticks, Grid | Grid |
-| Grid time step | Coarse, Medium, Fine | Medium |
-| Grid level step | Coarse, Medium, Fine | Medium |
+| Grid density (sets the time and the level steps) | Coarse, Medium, Fine | Medium |
 | Beat division | Regular, Triplets | Regular |
 
 Enumeration names are stable: projects save them; the numbers may change. Values that are not
@@ -223,7 +222,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Trigger popover | Mode (Auto \| Normal \| Single), Source (Single; the views not drawn disabled, the view the trigger reads lit), Slope, Level, Hysteresis, Hold-off, Position |
 | Screen, top right | The Meter and the cursor readouts, in that order; the frame barcode instead while the diagnostic switch is on (§8.3) |
 | Status bar | Left: A4 (concert pitch) · Grid (the type drawn) \| Meter, Time, Level, Hover. Right: the state chips, in a fixed width · Help switch · About |
-| Grid popover | Type (None \| Ticks \| Grid) · Time and Level (Coarse \| Medium \| Fine) · Beat division (Regular \| Triplets, Beats only); with None, all but Type disabled |
+| Grid popover | Type (None \| Ticks \| Grid) · Density (Coarse \| Medium \| Fine) · Beat division (Regular \| Triplets, Beats only); with None, all but Type disabled |
 
 - Every toolbar field shows an icon, not a word, then its value: Mode, Views (a track list), Layout,
   Time, Span, Scale, Trigger. The Views field shows all four letters, those the frame
@@ -245,8 +244,8 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 
 #### Screen
 
-- The grid follows the Grid settings, one Type, Time and Level for every time base; a new instance
-  draws Grid at Medium.
+- The grid follows the Grid settings, one Type and Density for every time base; the Density sets
+  both the time and the level steps; a new instance draws Grid at Medium.
 - Time, in Trigger and Free: 5, 10 or 20 equal divisions (Coarse, Medium, Fine); time labels on the
   fifths of the screen at every step, following zoom.
 - Level lines down from the top of each lane to 12 dB below it, placed where the linear trace
@@ -263,9 +262,9 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   lane's −∞ once its lane is short (about 64 px or less in Beats, 42 px in Trig and Free). Every time
   label sits 4 px right of its line, the first one on the left edge included.
 - The types add to one another: None draws each lane's zero line alone, with no lines or labels,
-  and the Grid popover greys out Time, Level and the Beat division, which keep their choice; Ticks
-  adds the time and level labels, without lines, the level labels at the Level step and, in Beats,
-  the time labels at the Time step and the Beat division (Trig and Free label the fifths); Grid adds the lines. The trigger point's line and the lane labels stay in every type.
+  and the Grid popover greys out the Density and the Beat division, which keep their choice; Ticks
+  adds the time and level labels, without lines, the level labels at the Density's level step and, in Beats,
+  the time labels at its time step and the Beat division (Trig and Free label the fifths); Grid adds the lines. The trigger point's line and the lane labels stay in every type.
 - A dashed line marks the trigger point, and a level marker on the left edge, in the own lane's
   colour, can be dragged.
 - Beats, at Medium: grid lines on bars with stronger lines every four bars when 8 bars or more are
@@ -275,7 +274,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   apart (else Medium's); both draw stronger lines one level up. With the Beat division Triplets,
   the levels below the beat are 1/3, 1/6, 1/12 … of a beat, stronger on the next coarser triplet
   level, and labels read thirds of a beat ("+1/3"). Positions count as before (a beat is a quarter
-  note). With no tempo yet, the Time step's equal divisions. At most five labels, each bar.beat
+  note). With no tempo yet, the Density's equal divisions. At most five labels, each bar.beat
   with the project time under it. The playhead is
   a vertical line; the previous cycle's traces are dimmed, and the grid stays as it is. Trigger controls do not apply: they are hidden,
   the trigger popover closes, and the trigger line and marker are hidden.
@@ -961,7 +960,9 @@ Saved state:
   trigger mode becomes Auto. Version 4 made Compare a switch in Multi rather than a display mode: a
   project saved in Compare opens in Multi with Compare on. Version 5 counts beat spans in bars: a
   span saved in beats opens as the bar span it equals in 4/4 (2 beats as 1/2 bar, 1 beat as 1/4
-  bar, shorter ones as 1/8 bar).
+  bar, shorter ones as 1/8 bar). Version 6 sets the grid's time and level steps with one Density:
+  a project opens with its Time step's density, and a Level step that differed is lost; a missing
+  or unreadable Time step gives Medium.
 - Each field is validated on its own. A missing or invalid field takes its default, and unknown
   fields are ignored, so a project saved by a newer version still opens in an older one; a
   setting added without a version change is simply absent from older states.
@@ -995,7 +996,7 @@ incompatible change.
 | `lanes` | engine → UI | laneSet, lanes (id, name, colour, own, compared), hidden | Who the lanes are. |
 | `compare` | UI → engine | ids | Checked tracks. |
 | `previewFix` | UI → engine | on | Preview fix. |
-| `traceView` | UI → engine | viewStart, viewEnd, layout, verticalScaleDb, dim, lineWidth, emptyFrameLanes, colours, laneSets, gridChoice (the grid drawn: type, Time, Level, Beat division) | What only the page knows about drawing the traces, while the editor draws them (AD-30). |
+| `traceView` | UI → engine | viewStart, viewEnd, layout, verticalScaleDb, dim, lineWidth, emptyFrameLanes, colours, laneSets, gridChoice (the grid drawn: type, the Density's time and level steps, Beat division) | What only the page knows about drawing the traces, while the editor draws them (AD-30). |
 | `nativeGraphicsLost` | engine → UI | — | The editor's native drawing stopped for good (AD-30). |
 | `about` | editor → UI | version, contact | In reply to every `hello`, first and with or without an engine: the version the host lists, and whether the build has a contact page (FR-13.1). |
 | `contact` | UI → editor | — | Open the vendor's contact page in the default browser, if the build has one (FR-13.1). |

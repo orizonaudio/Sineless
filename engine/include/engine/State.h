@@ -9,7 +9,7 @@
 namespace orizon::engine {
 
 // Saved plugin state: {"version": n, "settings": {...}, "editor": {"width", "height"}}.
-inline constexpr int kStateVersion = 5;
+inline constexpr int kStateVersion = 6;
 
 // The editor's size as the user chose it, in CSS pixels. Saved as read; the editor checks it
 // against its minimum and largest sizes when it opens.

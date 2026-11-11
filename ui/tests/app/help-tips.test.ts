@@ -330,7 +330,7 @@ describe("a help tip's parts", () => {
   });
 
   // A popover row's tip names the choices its own buttons show.
-  test.each(["slope", "grid-type", "grid-time", "grid-level", "beat-division"])(
+  test.each(["slope", "grid-type", "grid-density", "beat-division"])(
     "of the %s row name the choices the row shows",
     async (choices) => {
       const row = byId(choices).closest("[data-help]");

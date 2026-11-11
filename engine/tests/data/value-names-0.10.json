@@ -1,0 +1,33 @@
+{
+  "autoFreeze": ["off", "on"],
+  "beatDivision": ["regular", "triplets"],
+  "beatSpan": [
+    "eighthBar",
+    "sixthBar",
+    "quarterBar",
+    "thirdBar",
+    "halfBar",
+    "oneBar",
+    "twoBars",
+    "threeBars",
+    "fourBars",
+    "sixBars",
+    "eightBars",
+    "sixteenBars"
+  ],
+  "channelViews": ["left", "right", "mid", "side"],
+  "compare": ["off", "on"],
+  "displayMode": ["single", "multi"],
+  "gridDensity": ["coarse", "medium", "fine"],
+  "gridType": ["none", "ticks", "grid"],
+  "group": ["a", "b", "c", "d"],
+  "hoverReadout": ["off", "on"],
+  "laneChannel": ["left", "right", "mid", "side"],
+  "meter": ["off", "on"],
+  "readoutSource": ["left", "right", "mid", "side"],
+  "timeBase": ["trigger", "beats", "free"],
+  "triggerMode": ["auto", "normal", "single"],
+  "triggerSlope": ["rising", "falling"],
+  "triggerSource": ["left", "right", "mid", "side"],
+  "viewLayout": ["overlaid", "stacked"]
+}

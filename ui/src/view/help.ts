@@ -543,30 +543,17 @@ export function helpTextsFor(mac: boolean) {
         grid: "the time and level lines and their labels",
       }),
     },
-    gridTime: {
-      title: "Time lines",
-      lead: "How closely lines divide time.",
+    gridDensity: {
+      title: "Density",
+      lead: "How closely lines divide time and level.",
       choices: choicesOf(choiceLabels.gridDensity, {
-        coarse: `${String(gridColumnsCoarse)} equal divisions in Trig and Free; in Beats, one step coarser than Medium`,
-        medium: `${String(gridColumnsMedium)} in Trig and Free; in Beats, as the zoom gives (bars, beats, sixteenths)`,
-        fine: `${String(gridColumnsFine)} in Trig and Free; in Beats, one step finer where its lines stay ${String(gridFineBeatLineGap)} pixels apart`,
+        coarse: `${String(gridColumnsCoarse)} divisions, or in Beats one coarser; lines every ${coarseLevelDb} dB`,
+        medium: `${String(gridColumnsMedium)}, or in Beats as the zoom gives; every ${mediumLevelDb} dB`,
+        fine: `${String(gridColumnsFine)}, or in Beats one finer where lines stay ${String(gridFineBeatLineGap)} pixels apart; Medium's, with ${fineLevelDb} dB lines between them`,
       }),
       notes: [
-        "Before the host reports a tempo, Beats shows the equal divisions.",
-        "Labels follow it in Beats.",
-      ],
-    },
-    gridLevel: {
-      title: "Level lines",
-      lead: "How closely lines divide each lane's level, down from its top.",
-      choices: choicesOf(choiceLabels.gridDensity, {
-        coarse: `every ${coarseLevelDb} dB`,
-        medium: `every ${mediumLevelDb} dB`,
-        fine: `every ${mediumLevelDb} dB in the brighter colour, with ${fineLevelDb} dB lines between them`,
-      }),
-      notes: [
-        `With Ticks or Grid, Coarse labels every ${coarseLevelDb} dB, Medium and Fine every ${mediumLevelDb} dB.`,
-        "A short lane shows fewer.",
+        "Before the host reports a tempo, Beats divides equally.",
+        "Labels follow it; a short lane shows fewer.",
       ],
     },
     beatDivision: {
@@ -666,8 +653,7 @@ export const choiceHelp: {
   readoutSource: { exempt: "channel names, explained in the topic's lead" },
   laneChannel: { exempt: "channel names, explained in the topic's lead" },
   gridType: { topic: "gridType" },
-  gridTime: { topic: "gridTime", labels: "gridDensity" },
-  gridLevel: { topic: "gridLevel", labels: "gridDensity" },
+  gridDensity: { topic: "gridDensity", labels: "gridDensity" },
   beatDivision: { topic: "beatDivision" },
 };
 

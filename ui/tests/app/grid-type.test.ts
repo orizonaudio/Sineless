@@ -181,32 +181,32 @@ function timeLabels(): string[] {
 
 describe("with Ticks, the labels follow the steps", () => {
   test.each(timeBases)(
-    "in %s, Level moves the level labels",
+    "in %s, the Density moves the level labels",
     async (timeBase) => {
       const app = await startApp();
       await inTimeBase(timeBase);
       await set(app, "gridType", "ticks");
-      await set(app, "gridLevel", "medium");
+      await set(app, "gridDensity", "medium");
       const medium = levelLabels();
-      await set(app, "gridLevel", "coarse");
+      await set(app, "gridDensity", "coarse");
       expect(levelLabels()).not.toEqual(medium);
       expect(levelLabels().length).toBeGreaterThan(0);
     },
   );
 
-  test("in Beats, Time moves the time labels", async () => {
+  test("in Beats, the Density moves the time labels", async () => {
     const app = await startApp();
     // A bar: Medium labels beats, Coarse the bar alone.
     await set(app, "beatSpan", "oneBar");
     await set(app, "gridType", "ticks");
     const medium = timeLabels();
-    await set(app, "gridTime", "coarse");
+    await set(app, "gridDensity", "coarse");
     expect(timeLabels()).not.toEqual(medium);
     expect(timeLabels().length).toBeGreaterThan(0);
   });
 
   test.each(["Trig", "Free"] as const)(
-    "in %s the time labels stay on the fifths at every Time step",
+    "in %s the time labels stay on the fifths at every Density",
     async (timeBase) => {
       const app = await startApp();
       await inTimeBase(timeBase);
@@ -214,7 +214,7 @@ describe("with Ticks, the labels follow the steps", () => {
       const medium = timeLabels();
       expect(medium).toHaveLength(4);
       for (const time of ["coarse", "fine"]) {
-        await set(app, "gridTime", time);
+        await set(app, "gridDensity", time);
         expect(timeLabels(), time).toEqual(medium);
       }
     },

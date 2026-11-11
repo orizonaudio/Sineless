@@ -1,17 +1,27 @@
-// The grid's Time and Level steps as the page draws them in Trig and Free: Time divides the screen
-// into its equal divisions, Level draws its level lines and labels, a step chosen in one time base
-// is drawn in every other, and the time labels stay on the fifths at every Time step. Lines are
-// counted on the page's own canvas, not worked out again from the geometry that draws them.
+// The grid's Density as the page draws it in Trig and Free: one choice divides the screen into its
+// equal divisions and draws its level lines and labels at once, in every display and layout; a
+// Density chosen in one time base is drawn in every other, and the time labels stay on the fifths
+// at every Density. Lines are counted on the page's own canvas, not worked out again from the
+// geometry that draws them.
 import { describe, expect, test } from "vitest";
+import { page } from "vitest/browser";
 
 import { GridDensity } from "../../../protocol/src/enums.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import type { GridDensityName } from "../../src/view/grid-settings.ts";
-import { byId, inTimeBase, settle, startApp, type Started } from "./harness.ts";
+import {
+  byId,
+  displays,
+  inTimeBase,
+  settle,
+  showDisplay,
+  startApp,
+  type Started,
+} from "./harness.ts";
 
 const densities = Object.keys(GridDensity) as GridDensityName[];
 
-// Equal divisions at each Time step, from the issue (#364): 5, 10 and 20.
+// Equal divisions at each Density, from the issues (#364, #407): 5, 10 and 20.
 const divisions: Readonly<Record<GridDensityName, number>> = {
   coarse: 5,
   medium: 10,
@@ -99,11 +109,11 @@ function timeLabelPositions(): number[] {
 
 describe.each(timeBases)("in $label", ({ label }) => {
   test.each(densities)(
-    "the %s Time step divides the screen as the issue says, with time labels on its fifths",
+    "the %s Density divides the screen as the issue says, with time labels on its fifths",
     async (density) => {
       const app = await startApp();
       await inTimeBase(label);
-      await set(app, "gridTime", density);
+      await set(app, "gridDensity", density);
       expect(verticalLines()).toBe(divisions[density] - 1);
       const positions = timeLabelPositions();
       expect(positions).toHaveLength(4);
@@ -113,13 +123,13 @@ describe.each(timeBases)("in $label", ({ label }) => {
     },
   );
 
-  test("Level's steps draw 6 dB, 3 dB, then 1 dB lines, and label 6 dB or 3 dB", async () => {
+  test("the Density's level steps draw 6 dB, 3 dB, then 1 dB lines, and label 6 dB or 3 dB", async () => {
     const app = await startApp();
     await inTimeBase(label);
     const counts = new Map<GridDensityName, number>();
     const labels = new Map<GridDensityName, string[]>();
     for (const density of densities) {
-      await set(app, "gridLevel", density);
+      await set(app, "gridDensity", density);
       counts.set(density, levelLinesInTopLane(2));
       labels.set(density, axisTexts());
     }
@@ -134,32 +144,63 @@ describe.each(timeBases)("in $label", ({ label }) => {
     expect(labels.get("medium")).toContain(`${minus}3`);
     expect(labels.get("fine")).toEqual(labels.get("medium"));
   });
+
+  // In every display and layout, one Density moves both steps: the time divisions and the level
+  // lines of the top lane, which thin from Fine to Coarse.
+  describe.each(displays)("%s", (display) => {
+    test.each(["overlaid", "stacked"])(
+      "%s, each Density sets the time and the level step together",
+      async (layout) => {
+        // Tall enough that Compare's five stacked lanes keep Medium's 3 dB lines apart from
+        // Coarse's 6 dB ones (shorter lanes thin them to the same lines).
+        await page.viewport(1000, 1400);
+        const app = await startApp();
+        await inTimeBase(label);
+        await showDisplay(display);
+        await set(app, "viewLayout", layout);
+        const lanes =
+          layout === "stacked"
+            ? (window.orizonDebug?.lastFrame?.lanes.length ?? 0)
+            : 1;
+        const laneCount = Math.max(lanes, 1);
+        const levels = new Map<GridDensityName, number>();
+        for (const density of densities) {
+          await set(app, "gridDensity", density);
+          expect(verticalLines(), density).toBe(divisions[density] - 1);
+          levels.set(density, levelLinesInTopLane(laneCount));
+        }
+        expect(levels.get("coarse")).toBeLessThan(levels.get("medium") ?? 0);
+        expect(levels.get("medium")).toBeLessThanOrEqual(
+          levels.get("fine") ?? 0,
+        );
+      },
+    );
+  });
 });
 
-test("a Time or Level step chosen in one time base is drawn in every other", async () => {
+test("a Density chosen in one time base is drawn in every other", async () => {
   // Chosen in Beats, a new instance's time base: four bars of 4/4 at Fine draw sixteenths, where
-  // Medium draws beats (15 lines).
+  // Medium draws beats (15 lines), with Fine's level lines.
   const app = await startApp();
   await set(app, "beatSpan", "fourBars");
-  await set(app, "gridTime", "fine");
-  await set(app, "gridLevel", "coarse");
+  await set(app, "gridDensity", "fine");
   expect(verticalLines()).toBe(4 * 4 * 4 - 1);
-  expect(levelLinesInTopLane(2)).toBe(3);
+  const fineLevels = levelLinesInTopLane(2);
+  expect(fineLevels).toBeGreaterThan(5);
 
   await inTimeBase("Trig");
   await settle();
   expect(verticalLines()).toBe(divisions.fine - 1);
-  expect(levelLinesInTopLane(2)).toBe(3);
+  expect(levelLinesInTopLane(2)).toBe(fineLevels);
 
   await inTimeBase("Free");
   await settle();
   expect(verticalLines()).toBe(divisions.fine - 1);
-  expect(levelLinesInTopLane(2)).toBe(3);
-  await set(app, "gridTime", "coarse");
-  await set(app, "gridLevel", "medium");
+  expect(levelLinesInTopLane(2)).toBe(fineLevels);
+  await set(app, "gridDensity", "coarse");
 
   await inTimeBase("Trig");
   await settle();
   expect(verticalLines()).toBe(divisions.coarse - 1);
-  expect(levelLinesInTopLane(2)).toBe(5);
+  expect(levelLinesInTopLane(2)).toBe(3);
 });
