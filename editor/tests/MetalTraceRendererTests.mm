@@ -588,6 +588,57 @@ TEST_F(MetalTraceRendererTest, DimsThePreviousCyclesTracesNotTheGrid)
     }
 }
 
+// While Normal mode waits for a trigger, the last traces are dimmed the same way: their colour
+// moved kWaitingAlpha of the way from the screen's, their coverage kept, so they cover the grid
+// and each lane's zero line as live traces do rather than letting them show through (#405).
+TEST_F(MetalTraceRendererTest, DimsWaitingTracesWithoutMakingThemSeeThrough)
+{
+    TraceView view = scenes().front().view;
+    const Rgba screen{0.2f, 0.1f, 0.05f, 1.0f};
+    view.screen = screen;
+    view.grid = {0.0f, 1.0f, 0.0f, 1.0f};
+    view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
+    view.layout = protocol::ViewLayout::kStacked;
+    view.gridType = protocol::GridType::kGrid;
+    const Rgba trace{1.0f, 0.5f, 0.25f, 0.8f};
+    view.viewColours = {trace, trace, trace, trace};
+    // A flat trace in each lane, off its zero and level lines; Grid's vertical lines cross it.
+    constexpr std::size_t kPoints = 30;
+    std::vector<float> values(std::size_t{2} * kPoints, 0.3f);
+    FrameView frame;
+    frame.mode = protocol::FrameMode::kMinMax;
+    frame.pointCount = kPoints;
+    frame.views = {{.channelView = 0, .values = values}, {.channelView = 1, .values = values}};
+    for (const double ratio : {1.0, 2.0}) {
+        const auto width = static_cast<std::size_t>(300 * ratio);
+        const auto height = static_cast<std::size_t>(200 * ratio);
+        view.dim = false;
+        const auto traced = draw(width, height, &frame, view, ratio, true);
+        const auto bare = draw(width, height, &frame, view, ratio, false);
+        view.dim = true;
+        const auto waiting = draw(width, height, &frame, view, ratio, true);
+        ASSERT_TRUE(traced && bare && waiting);
+        std::size_t wrong = 0;
+        std::string first;
+        for (std::size_t x = 0; x < width; ++x) {
+            for (std::size_t y = 0; y < height; ++y) {
+                for (std::size_t channel = 0; channel < 3; ++channel) {
+                    // What the live traces add over the bare screen, kWaitingAlpha of it.
+                    const double added = bare->at(x, y)[channel] - screen[channel] * 255.0;
+                    const double expected =
+                        traced->at(x, y)[channel] - (1.0 - protocol::kWaitingAlpha) * added;
+                    if (std::abs(expected - waiting->at(x, y)[channel]) > 2.0 && wrong++ == 0) {
+                        first = "(" + std::to_string(x) + ", " + std::to_string(y) + ") expected " +
+                                std::to_string(expected) + " drew " +
+                                std::to_string(waiting->at(x, y)[channel]);
+                    }
+                }
+            }
+        }
+        EXPECT_EQ(wrong, 0U) << "at ratio " << ratio << ": first " << first;
+    }
+}
+
 // At every display scale each grid line is crisp, as the page draws it: whole device pixels of its
 // colour, as many as its band has inside the screen, and nothing partly covered beside it. A line
 // of even width centred mid-pixel would be spread over three pixels, its full colour one pixel

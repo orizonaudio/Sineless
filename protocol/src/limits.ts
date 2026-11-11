@@ -181,9 +181,10 @@ export const cancellationBridgedPoints = 3;
 export const cancellationReachDivisor = 128;
 
 // What the page and the macOS editor draw fainter than the live picture: while Normal mode waits
-// for a trigger, the last traces, the playhead and the shading at waitingAlpha of their opacity, so
-// the picture reads as old but stays legible; in Compare, tracks left out of the comparison at
-// leftOutAlpha of theirs, so the compared tracks and their sum stand out.
+// for a trigger, the last traces and the shading in a colour moved waitingAlpha of the way from the
+// screen's to their own, so the picture reads as old but stays legible, still covering the grid as
+// live traces do; in Compare, tracks left out of the comparison at leftOutAlpha of their opacity,
+// so the compared tracks and their sum stand out and what is under them shows through.
 export const waitingAlpha = 0.45;
 export const leftOutAlpha = 0.2;
 // In Beats, right of the playhead, the previous cycle's traces and Compare's shading in a colour

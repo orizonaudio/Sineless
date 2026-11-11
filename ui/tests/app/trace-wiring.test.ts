@@ -20,11 +20,13 @@ import {
   type Started,
 } from "./harness.ts";
 
-// The most opaque pixel of each lane of a frame drawn (one lane for overlaid views), measured
-// on request only: reading the pixels back at every frame would slow the page.
+// The most opaque pixel of each lane of a frame drawn (one lane for overlaid views), and its
+// brightest (the most light it gives off, 0 to 1), measured on request only: reading the pixels
+// back at every frame would slow the page.
 interface Measured {
   readonly frame: Frame;
   readonly laneAlpha: readonly number[];
+  readonly laneLight: readonly number[];
 }
 let wanted = false;
 // Every draw measured: while frames are held, the page draws only when its state changes.
@@ -85,21 +87,34 @@ beforeApp(async () => {
     const pixels = new Uint8Array(width * height * 4);
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     const count = Math.max(frame.lanes.length, 1);
-    const laneAlpha = lanes(
+    const measured = lanes(
       count,
       frame.lanes.length > 0 ? layout : ViewLayout.overlaid,
     ).map(({ center, halfHeight }) => {
       const bottom = Math.ceil(((center - halfHeight + 1) / 2) * height);
       const top = Math.floor(((center + halfHeight + 1) / 2) * height);
-      let most = 0;
+      let alpha = 0;
+      let light = 0;
       for (let y = bottom; y < top; y++) {
         for (let x = 0; x < width; x++) {
-          most = Math.max(most, pixels[(y * width + x) * 4 + 3] ?? 0);
+          const at = (y * width + x) * 4;
+          alpha = Math.max(alpha, pixels[at + 3] ?? 0);
+          light = Math.max(
+            light,
+            ((pixels[at] ?? 0) +
+              (pixels[at + 1] ?? 0) +
+              (pixels[at + 2] ?? 0)) /
+              3,
+          );
         }
       }
-      return most / 255;
+      return { alpha: alpha / 255, light: light / 255 };
     });
-    drawn = { frame, laneAlpha };
+    drawn = {
+      frame,
+      laneAlpha: measured.map(({ alpha }) => alpha),
+      laneLight: measured.map(({ light }) => light),
+    };
   });
   app = await startApp();
 });
@@ -149,19 +164,23 @@ test("a track left out of the comparison is fainter than a compared one", async 
   expect(left).toBeLessThan(compared);
 });
 
-test("a trace waiting for a trigger is fainter than the same trace live", async () => {
+// Fainter, but as opaque: it covers the grid under it as a live trace does, not letting it show
+// through.
+test("a trace waiting for a trigger is fainter than the same trace live, and as opaque", async () => {
   await press(choice("display-mode", "Single"));
   await press(choice("mode", "Normal"));
   await settle();
-  const live = (await nextDraw()).laneAlpha[0] ?? Number.NaN;
+  const live = await nextDraw();
+  const liveLight = live.laneLight[0] ?? Number.NaN;
   everyDraw = true;
   app.holdFrames(true);
   await expect.poll(chips, { timeout: 3000 }).toContain("Waiting");
   // The page redraws the last frame dimmed once it says it is waiting.
   await expect
-    .poll(() => drawn?.laneAlpha[0] ?? Number.NaN, { timeout: 3000 })
-    .toBeLessThan(live);
-  expect(drawn?.laneAlpha[0]).toBeGreaterThan(0);
+    .poll(() => drawn?.laneLight[0] ?? Number.NaN, { timeout: 3000 })
+    .toBeLessThan(liveLight);
+  expect(drawn?.laneLight[0]).toBeGreaterThan(0);
+  expect(drawn?.laneAlpha[0]).toBe(live.laneAlpha[0]);
   everyDraw = false;
   app.holdFrames(false);
   await press(choice("mode", "Auto"));

@@ -249,44 +249,38 @@ test("edges are anti-aliased, with many alpha levels across a diagonal edge", ()
   expect(levels.size).toBeGreaterThanOrEqual(8);
 });
 
-describe("a dimmed or faint trace blends once at its joins", () => {
+// A translucent trace (a track left out of a comparison) is one layer, not its pieces layered over
+// each other. A dimmed one (Waiting, the previous cycle) keeps its coverage, so it has no joins to
+// blend.
+describe("a faint trace blends once at its joins", () => {
   // A third of the points flat, where nothing overlaps, then a zigzag.
   const amplitude = 20;
   const cases = [FrameMode.raw, FrameMode.minMax].flatMap((mode) =>
-    spacings.flatMap((spacing) => [
-      { mode, spacing, translucent: true },
-      { mode, spacing, translucent: false },
-    ]),
+    spacings.map((spacing) => ({ mode, spacing })),
   );
-  test.each(cases)(
-    "mode $mode, $spacing px apart, translucent $translucent (else dimmed)",
-    ({ mode, spacing, translucent }) => {
-      const count = Math.floor((width * 0.9) / spacing);
-      const flat = Math.floor(count / 3);
-      // On a pixel row's centre, so the flat run reaches the colour's full alpha.
-      const level = (point: number) =>
-        point < flat
-          ? height / 2 + 0.5
-          : height / 2 + (point % 2 === 0 ? amplitude : -amplitude);
-      const frame = spaced(mode, count, spacing, (point) =>
-        mode === FrameMode.minMax
-          ? [valueAt(level(point) - 2), valueAt(level(point) + 2)]
-          : valueAt(level(point)),
-      );
-      const options: DrawOptions = translucent
-        ? { color: [1, 1, 1, 0.5] }
-        : { dim: true };
-      const drawing = draw(frame, options);
-      // The flat run, from the first point to the last before the zigzag, away from both ends.
-      const flatColumns = range(
-        centreX(drawing, 0) + 3,
-        centreX(drawing, flat - 1) - 3,
-      );
-      const single = maxAlpha(drawing, flatColumns);
-      expect(single).toBeGreaterThan(0.3);
-      expect(maxAlpha(drawing)).toBeLessThanOrEqual(single + byte);
-    },
-  );
+  test.each(cases)("mode $mode, $spacing px apart", ({ mode, spacing }) => {
+    const count = Math.floor((width * 0.9) / spacing);
+    const flat = Math.floor(count / 3);
+    // On a pixel row's centre, so the flat run reaches the colour's full alpha.
+    const level = (point: number) =>
+      point < flat
+        ? height / 2 + 0.5
+        : height / 2 + (point % 2 === 0 ? amplitude : -amplitude);
+    const frame = spaced(mode, count, spacing, (point) =>
+      mode === FrameMode.minMax
+        ? [valueAt(level(point) - 2), valueAt(level(point) + 2)]
+        : valueAt(level(point)),
+    );
+    const drawing = draw(frame, { color: [1, 1, 1, 0.5] });
+    // The flat run, from the first point to the last before the zigzag, away from both ends.
+    const flatColumns = range(
+      centreX(drawing, 0) + 3,
+      centreX(drawing, flat - 1) - 3,
+    );
+    const single = maxAlpha(drawing, flatColumns);
+    expect(single).toBeGreaterThan(0.3);
+    expect(maxAlpha(drawing)).toBeLessThanOrEqual(single + byte);
+  });
 });
 
 describe("lanes are drawn apart", () => {

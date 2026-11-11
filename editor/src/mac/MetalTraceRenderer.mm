@@ -31,7 +31,7 @@ constexpr std::size_t kSlots = 3;
 // moves; a soft one looks much the same wherever it sits. On Retina, where the line is two pixels
 // wide, the fade softens it by less than a point.
 constexpr float kPlayheadSoftness = 1.5f;
-constexpr auto kDimmedAlpha = static_cast<float>(protocol::kWaitingAlpha);
+constexpr auto kWaitingAlpha = static_cast<float>(protocol::kWaitingAlpha);
 constexpr auto kPreviousCycleAlpha = static_cast<float>(protocol::kPreviousCycleAlpha);
 
 // The trace pass's uniforms, laid out as the shaders' TraceUniforms: scalars only, so both sides
@@ -55,10 +55,11 @@ struct TraceUniforms
     std::uint32_t first = 0;
 };
 
-// The previous cycle right of a Beats playhead, laid out as the shaders' Fade: what is drawn from
-// the audio (the traces and the shading) has its colour moved `keep` of the way from `screen`'s
-// between `from` and `to`, in device pixels from the left, a pixel partly inside in proportion,
-// and keeps its coverage, so it covers the grid as live traces do. keep 1 dims nothing. Its float4
+// What is drawn from the audio (the traces and the shading), dimmed, laid out as the shaders' Fade:
+// its colour moved a share of the way from `screen`'s, `all` over the whole screen (Waiting) times
+// `keep` between `from` and `to` (the previous cycle right of a Beats playhead), in device pixels
+// from the left, a pixel partly inside in proportion. It keeps its coverage, so it covers the grid
+// as live traces do. 1 dims nothing. Its float4
 // aligns it to 16 bytes in the shaders (Metal Shading Language Specification, Table 2.3), so it is
 // here too.
 struct alignas(16) Fade
@@ -67,6 +68,7 @@ struct alignas(16) Fade
     float from = 0.0f;
     float to = 0.0f;
     float keep = 1.0f;
+    float all = 1.0f;
 };
 static_assert(sizeof(Fade) == 32, "laid out as the shaders' Fade");
 
@@ -286,13 +288,15 @@ struct Fade {
   float from;
   float to;
   float keep;
+  float all;
 };
 
-// A colour in pixel column `pixel` under the fade, moved toward the screen's by the share of the
-// pixel [pixel, pixel + 1) the faded span covers, as the page's dimming covers whole columns.
+// A colour in pixel column `pixel` under the fade, moved toward the screen's: all over, and by the
+// share of the pixel [pixel, pixel + 1) the faded span covers, as the page's dimming covers whole
+// columns.
 float3 dimmed(float3 colour, float pixel, Fade fade) {
   float covered = clamp(min(pixel + 1.0, fade.to) - max(pixel, fade.from), 0.0, 1.0);
-  float keep = 1.0 - (1.0 - fade.keep) * covered;
+  float keep = fade.all * (1.0 - (1.0 - fade.keep) * covered);
   return fade.screen.rgb + keep * (colour - fade.screen.rgb);
 }
 
@@ -417,11 +421,6 @@ void blendOver(MTLRenderPipelineColorAttachmentDescriptor* attachment)
     attachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 }
 
-std::array<float, 4> dimmed(const Rgba& colour, bool dim)
-{
-    return {colour[0], colour[1], colour[2], dim ? colour[3] * kDimmedAlpha : colour[3]};
-}
-
 class Renderer final : public MetalTraceRenderer
 {
 public:
@@ -496,7 +495,10 @@ public:
             position ? std::optional(playheadBand(*position, width, pixelRatio)) : std::nullopt;
         const Fade undimmed{
             .screen = view.screen, .from = 0.0f, .to = static_cast<float>(width), .keep = 1.0f};
+        // The traces and shading dim: all over while waiting for a trigger, and right of the
+        // playhead.
         Fade fade = undimmed;
+        fade.all = view.dim ? kWaitingAlpha : 1.0f;
         if (line && *position < 1.0) {
             fade.from = static_cast<float>(line->left);
             fade.keep = kPreviousCycleAlpha;
@@ -509,7 +511,7 @@ public:
         }
         const std::size_t gridBands = under.size();
         if (frame != nullptr) {
-            const auto colour = dimmed(view.cancellation, view.dim);
+            const Rgba& colour = view.cancellation;
             for (const Band& band :
                  cancellationBands(*frame, view.layout, view.comparedLanes(*frame), view.view)) {
                 under.push_back({.left = clipToPixels(band.left, width),
@@ -735,8 +737,7 @@ private:
                         vertexCount:24
                       instanceCount:frame.pointCount];
             const Rgba white{1.0f, 1.0f, 1.0f, 1.0f};
-            composite.colours[index] =
-                dimmed(index < colours.size() ? colours[index] : white, view.dim);
+            composite.colours[index] = index < colours.size() ? colours[index] : white;
         }
         [encoder endEncoding];
         return composite;
