@@ -1004,6 +1004,11 @@ export class OscilloscopeApp {
         this.backend.previewFix(false);
       }
     }
+    // Compare's note and controls follow the switch at once: a track alone in its group gets no
+    // new lanes from it, so no frame would place them.
+    if (name === "compare") {
+      this.placeLaneLabels();
+    }
     // Level cursors are drawn at their level in each lane.
     if (
       name === "verticalScale" ||
