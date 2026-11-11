@@ -247,3 +247,49 @@ describe("the Compare switch", () => {
     },
   );
 });
+
+// A track alone in its group: Compare adds no sum and checks nothing, so its frames' lanes stay as
+// they were. The note must still follow the switch at once, live or frozen, in either layout.
+describe("a track alone in its group", () => {
+  const note = () =>
+    byId("lane-labels").querySelector(".compare-note")?.textContent ?? null;
+
+  async function alone(layout: string, frozen: boolean): Promise<void> {
+    await show("Multi");
+    await press(choice("group", "B"));
+    await press(choice("layout", layout));
+    await settle();
+    await expect.poll(laneNames).toHaveLength(1);
+    if (frozen) {
+      await userEvent.click(byId("freeze"));
+      await expect.element(byId("freeze")).toHaveTextContent("Frozen");
+    }
+  }
+
+  describe.each(["Stack", "Overlay"])("%s", (layout) => {
+    test.each([
+      ["live", false],
+      ["frozen", true],
+    ])(
+      "says there is no other track as soon as Compare is on, %s, and stops when it is off",
+      async (_, frozen) => {
+        await alone(layout, frozen);
+        expect(note()).toBeNull();
+        await setCompare(true);
+        await expect.poll(note).toContain("No other track in group B");
+        await setCompare(false);
+        await expect.poll(note).toBeNull();
+      },
+    );
+
+    test("says it again on coming back to Multi from Single with Compare on", async () => {
+      await alone(layout, false);
+      await setCompare(true);
+      await expect.poll(note).toContain("No other track in group B");
+      await press(choice("display-mode", "Single"));
+      await expect.poll(note).toBeNull();
+      await press(choice("display-mode", "Multi"));
+      await expect.poll(note).toContain("No other track in group B");
+    });
+  });
+});
