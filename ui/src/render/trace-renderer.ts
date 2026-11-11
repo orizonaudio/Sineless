@@ -244,17 +244,18 @@ void main() {
   coverage = vec4(covered);
 }`;
 
-// The previous cycle, right of a Beats playhead: what is drawn from the audio (the traces and the
-// shading) has its colour moved dimKeep of the way from the screen's, from pixel column dimFrom on,
-// and keeps its coverage, so a dimmed trace covers the grid under the canvas as a live one does
-// and the grid shows unchanged where nothing is drawn. dimKeep 1 dims nothing. Pixel centres are
-// half a pixel in, so a whole column dimFrom starts the dimming on that column, as the playhead's
-// left edge does.
+// What is drawn from the audio (the traces and the shading), dimmed: its colour moved a share of
+// the way from the screen's, its coverage kept, so a dimmed trace covers the grid under the canvas
+// as a live one does and the grid shows unchanged where nothing is drawn. dimAll over the whole
+// screen (Waiting), and dimKeep from pixel column dimFrom on (the previous cycle, right of a Beats
+// playhead); 1 dims nothing. Pixel centres are half a pixel in, so a whole column dimFrom starts
+// the dimming on that column, as the playhead's left edge does.
 const dimming = `uniform highp float dimFrom;
 uniform highp float dimKeep;
+uniform highp float dimAll;
 uniform highp vec3 screen;
 vec3 dimmed(vec3 colour) {
-  float keep = gl_FragCoord.x >= dimFrom ? dimKeep : 1.0;
+  float keep = dimAll * (gl_FragCoord.x >= dimFrom ? dimKeep : 1.0);
   return screen + keep * (colour - screen);
 }`;
 
@@ -383,13 +384,14 @@ class Program {
 // than drawing nothing.
 export class TraceMemoryError extends Error {}
 
-// Where the previous cycle starts, in device pixels from the left, and the share of the way from
-// the screen's colour to its own that its colour keeps.
+// The share of the way from the screen's colour to its own that a colour keeps: `all` over the
+// whole screen, times `keep` from `from` on, in device pixels from the left.
 interface Dimming {
   readonly from: number;
   readonly keep: number;
+  readonly all: number;
 }
-const undimmed: Dimming = { from: 0, keep: 1 };
+const undimmed: Dimming = { from: 0, keep: 1, all: 1 };
 
 export class TraceRenderer implements FrameRenderer {
   private readonly canvas: HTMLCanvasElement;
@@ -534,14 +536,17 @@ export class TraceRenderer implements FrameRenderer {
     const [r, g, b] = this.style.screenColor();
     gl.uniform1f(program.uniform("dimFrom"), dimming.from);
     gl.uniform1f(program.uniform("dimKeep"), dimming.keep);
+    gl.uniform1f(program.uniform("dimAll"), dimming.all);
     gl.uniform3f(program.uniform("screen"), r, g, b);
   }
 
-  // The previous cycle right of the playhead, from the playhead's left edge (a whole device pixel),
-  // or none once the playhead reaches the right edge.
-  private dimmingAt(position: number | undefined): Dimming {
+  // The whole screen while waiting for a trigger; the previous cycle right of the playhead, from
+  // the playhead's left edge (a whole device pixel), or none once the playhead reaches the right
+  // edge.
+  private dimmingAt(position: number | undefined, waiting: boolean): Dimming {
+    const all = waiting ? waitingAlpha : 1;
     if (position === undefined || position >= 1) {
-      return undimmed;
+      return { ...undimmed, all };
     }
     const { left } = playheadEdges(
       position,
@@ -551,6 +556,7 @@ export class TraceRenderer implements FrameRenderer {
     return {
       from: Math.round(((left + 1) / 2) * this.canvas.width),
       keep: previousCycleAlpha,
+      all,
     };
   }
 
@@ -616,8 +622,6 @@ export class TraceRenderer implements FrameRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
     const view = this.view();
     const white: Rgba = [1, 1, 1, 1];
-    const alpha = (color: Rgba) =>
-      view.dim === true ? color[3] * waitingAlpha : color[3];
 
     // The traces: views in ChannelView order, or lanes, each in its own lane of the screen.
     let blocks: [Float32Array, Rgba][];
@@ -649,7 +653,7 @@ export class TraceRenderer implements FrameRenderer {
       frame.synced && frame.cursor !== undefined
         ? (frame.cursor - screen.start) / (screen.end - screen.start)
         : undefined;
-    const dimming = this.dimmingAt(sweep);
+    const dimming = this.dimmingAt(sweep, view.dim === true);
 
     const shading = cancellationBands(
       frame,
@@ -657,9 +661,7 @@ export class TraceRenderer implements FrameRenderer {
       this.style.comparedLanes(),
     );
     if (shading.length > 0) {
-      const color = this.style.cancellationColor();
-      const [r, g, b] = color;
-      this.drawTriangles(shading, [r, g, b, alpha(color)], dimming);
+      this.drawTriangles(shading, this.style.cancellationColor(), dimming);
     }
     if (blocks.length === 0 || frame.pointCount === 0) {
       if (sweep !== undefined) {
@@ -761,7 +763,7 @@ export class TraceRenderer implements FrameRenderer {
       );
       // Four parts of six vertices each.
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 24, frame.pointCount);
-      colors.set([color[0], color[1], color[2], alpha(color)], index * 4);
+      colors.set(color, index * 4);
     });
     for (const attribute of [here, next, previous]) {
       gl.vertexAttribDivisor(attribute, 0);

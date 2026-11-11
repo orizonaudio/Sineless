@@ -7,7 +7,10 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
 import type { FrameContent } from "../../../protocol/src/frame-encoder.ts";
-import { previousCycleAlpha } from "../../../protocol/src/limits.ts";
+import {
+  previousCycleAlpha,
+  waitingAlpha,
+} from "../../../protocol/src/limits.ts";
 import { playheadEdges } from "../../src/render/trace-geometry.ts";
 import type { Rgba } from "../../src/render/trace-renderer.ts";
 import type { ViewWindow } from "../../src/view/zoom.ts";
@@ -174,4 +177,48 @@ describe("the previous cycle dims its traces only", () => {
       expect(wrong.slice(0, 5), `${String(wrong.length)} pixels`).toEqual([]);
     },
   );
+});
+
+// While Normal mode waits for a trigger, the last traces and Compare's shading are dimmed the same
+// way: their colour moved waitingAlpha of the way from the screen's, their coverage kept, so they
+// cover the grid as live traces do rather than letting it show through (#405).
+describe("waiting traces dim their colour, not their coverage", () => {
+  test.each(
+    displays.flatMap((display) =>
+      layouts.map((layout) => ({ display, layout })),
+    ),
+  )("$display, $layout", ({ display, layout }) => {
+    const frame = frameOf({
+      mode: FrameMode.minMax,
+      pointCount: count,
+      viewStart: 0,
+      viewEnd: 1,
+      ...contentOf(display),
+    });
+    const options: DrawOptions = {
+      color: colour(0),
+      laneColors: [0, 1, 2].map(colour),
+      comparedLanes: display === "Compare" ? [true, true] : [],
+      layout: ViewLayout[layout],
+    };
+    const live = draw(frame, options);
+    const waiting = draw(frame, { ...options, dim: true });
+    expect(waiting.error).toBe(0);
+    const wrong: string[] = [];
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height; y++) {
+        const before = live.pixel(x, y);
+        const after = waiting.pixel(x, y);
+        const expected = dimmed(before, waitingAlpha);
+        if (
+          expected.some((value, k) => Math.abs(value - (after[k] ?? 0)) > 2)
+        ) {
+          wrong.push(
+            `(${String(x)}, ${String(y)}) ${before.join(",")} → ${after.join(",")}`,
+          );
+        }
+      }
+    }
+    expect(wrong.slice(0, 5), `${String(wrong.length)} pixels`).toEqual([]);
+  });
 });

@@ -350,66 +350,69 @@ const scenes: Scene[] = [
     },
   },
   // Waiting dims the shading with the traces, as everything drawn from the stale frame. In Beats,
-  // the previous cycle right of the playhead dims them too, and not the screen under them.
-  ...[false, true]
-    .flatMap((sweep) => [false, true].map((dim) => ({ sweep, dim })))
-    .map(({ sweep, dim }): Scene => ({
-      // Two compared tracks cancelling in the middle third, a third left out (faint), and the sum.
-      name: `Compare shading where the tracks cancel${dim ? ", while Waiting" : ""}${sweep ? ", a Beats playhead mid-screen" : ""}`,
-      width: 300,
-      height: 200,
-      ratio: 1,
-      frame: (() => {
-        const count = 300;
-        const first = columns(count, 4, 0.6);
-        const second = first.map((value, index) => {
-          const column = Math.floor(index / 2);
-          return column > count / 3 && column < (2 * count) / 3
-            ? -value
-            : value * 0.5;
-        });
-        const sum = first.map((value, index) => value + (second[index] ?? 0));
-        return {
-          ...baseFrame,
-          ...(sweep
-            ? {
-                synced: true,
-                cursor: 0.5,
-                cycleStart: 0,
-                spanQuarterNotes: 16,
-                barQuarterNotes: 4,
-              }
-            : {}),
-          pointCount: count,
+  // the previous cycle right of the playhead dims them too, and not the screen under them. Beats
+  // never waits for a trigger, so the two never meet.
+  ...[
+    { sweep: false, dim: false },
+    { sweep: false, dim: true },
+    { sweep: true, dim: false },
+  ].map(({ sweep, dim }): Scene => ({
+    // Two compared tracks cancelling in the middle third, a third left out (faint), and the sum.
+    name: `Compare shading where the tracks cancel${dim ? ", while Waiting" : ""}${sweep ? ", a Beats playhead mid-screen" : ""}`,
+    width: 300,
+    height: 200,
+    ratio: 1,
+    frame: (() => {
+      const count = 300;
+      const first = columns(count, 4, 0.6);
+      const second = first.map((value, index) => {
+        const column = Math.floor(index / 2);
+        return column > count / 3 && column < (2 * count) / 3
+          ? -value
+          : value * 0.5;
+      });
+      const sum = first.map((value, index) => value + (second[index] ?? 0));
+      return {
+        ...baseFrame,
+        ...(sweep
+          ? {
+              synced: true,
+              cursor: 0.5,
+              cycleStart: 0,
+              spanQuarterNotes: 16,
+              barQuarterNotes: 4,
+            }
+          : {}),
+        pointCount: count,
+        laneSet: 5,
+        lanes: [first, second, columns(count, 2, 0.4), sum],
+        comparison: {
+          sumGain: 1,
+          fixedGain: 1,
+          matches: [
+            { correlation: 1, related: true, offset: 0, inverted: false },
+            { correlation: -1, related: true, offset: 0, inverted: true },
+            { correlation: 0, related: false, offset: 0, inverted: false },
+          ],
+        },
+      };
+    })(),
+    view: {
+      ...baseView,
+      layout: "stacked",
+      dim,
+      laneSets: [
+        {
           laneSet: 5,
-          lanes: [first, second, columns(count, 2, 0.4), sum],
-          comparison: {
-            sumGain: 1,
-            fixedGain: 1,
-            matches: [
-              { correlation: 1, related: true, offset: 0, inverted: false },
-              { correlation: -1, related: true, offset: 0, inverted: true },
-              { correlation: 0, related: false, offset: 0, inverted: false },
-            ],
-          },
-        };
-      })(),
-      view: {
-        ...baseView,
-        layout: "stacked",
-        dim,
-        laneSets: [
-          {
-            laneSet: 5,
-            lanes: [
-              { id: 1, colour: colour(0.4, 0.8, 1), compared: true },
-              { id: 2, colour: colour(1, 0.7, 0.3), compared: true },
-              { id: 3, colour: colour(0.7, 1, 0.4), compared: false },
-            ],
-          },
-        ],
-      },
-    })),
+          lanes: [
+            { id: 1, colour: colour(0.4, 0.8, 1), compared: true },
+            { id: 2, colour: colour(1, 0.7, 0.3), compared: true },
+            { id: 3, colour: colour(0.7, 1, 0.4), compared: false },
+          ],
+        },
+      ],
+    },
+  })),
 ];
 
 // Some of them again with the frame barcode, by the branches the renderers take: no playhead, a
