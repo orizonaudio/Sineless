@@ -317,7 +317,6 @@ TEST_F(MetalTraceRendererTest, FollowsEachDrawablesSizeAndEachFramesLanes)
 TEST_F(MetalTraceRendererTest, DrawsThePlayheadAtItsExactPosition)
 {
     TraceView view = scenes().front().view;
-    view.previous = {0.0f, 0.0f, 0.0f, 0.0f};
     view.cursor = {1.0f, 1.0f, 1.0f, 1.0f};
     // The light a value gives off: sRGB decoded (IEC 61966-2-1).
     const auto light = [](double value) {
@@ -361,7 +360,6 @@ TEST_F(MetalTraceRendererTest, DrawsThePlayheadAtItsExactPosition)
 TEST_F(MetalTraceRendererTest, KeepsThePlayheadEquallyBrightWhereverItSits)
 {
     TraceView view = scenes().front().view;
-    view.previous = {0.0f, 0.0f, 0.0f, 0.0f};
     view.cursor = {1.0f, 1.0f, 1.0f, 1.0f};
     for (const double ratio : {1.0, 2.0}) {
         const auto width = static_cast<std::size_t>(200 * ratio);
@@ -496,6 +494,94 @@ TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
                 EXPECT_EQ(clear[1], 0);
                 EXPECT_EQ(clear[2], 0);
                 EXPECT_EQ(clear[3], 255);
+            }
+        }
+    }
+}
+
+// In Beats, right of the playhead, the previous cycle's traces are dimmed and the grid is not: the
+// traces keep their coverage, their colour moved kPreviousCycleAlpha of the way from the screen's,
+// so they cover the grid and each lane's zero line as live traces do, and where nothing is drawn
+// the grid is as bright as left of the playhead, in every grid type. The dimming starts at the
+// playhead's exact left edge, the column it starts in dimmed by the share of it the previous cycle
+// covers (FR-9.2).
+TEST_F(MetalTraceRendererTest, DimsThePreviousCyclesTracesNotTheGrid)
+{
+    TraceView view = scenes().front().view;
+    // A screen colour of its own, so the traces' move toward it shows.
+    const Rgba screen{0.2f, 0.1f, 0.05f, 1.0f};
+    view.screen = screen;
+    view.grid = {0.0f, 1.0f, 0.0f, 1.0f};
+    view.axis = {0.0f, 0.0f, 1.0f, 1.0f};
+    // The line itself out of the way: what is under it is checked too.
+    view.cursor = {0.0f, 0.0f, 0.0f, 0.0f};
+    view.layout = protocol::ViewLayout::kStacked;
+    view.view = {.start = 0.0, .end = 1.0};
+    const Rgba trace{1.0f, 0.5f, 0.25f, 0.8f};
+    // A flat trace in each lane, off its zero and level lines; Grid's vertical lines cross it.
+    constexpr std::size_t kPoints = 30;
+    std::vector<float> values(std::size_t{2} * kPoints, 0.3f);
+    const auto frameAt = [&](float cursor) {
+        FrameView frame;
+        frame.mode = protocol::FrameMode::kMinMax;
+        frame.pointCount = kPoints;
+        frame.views = {{.channelView = 0, .values = values}, {.channelView = 1, .values = values}};
+        frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kSynced);
+        frame.cycleStart = 4.0f;
+        frame.spanQuarterNotes = 8.0f;
+        frame.barQuarterNotes = 4.0f;
+        frame.cursor = cursor;
+        return frame;
+    };
+    for (const protocol::GridType type :
+         {protocol::GridType::kNone, protocol::GridType::kTicks, protocol::GridType::kGrid}) {
+        view.gridType = type;
+        for (const double ratio : {1.0, 1.25, 2.0}) {
+            const auto width = static_cast<std::size_t>(300 * ratio);
+            const auto height = static_cast<std::size_t>(200 * ratio);
+            view.viewColours = {trace, trace, trace, trace};
+            const auto drawAt = [&](float cursor, bool withGrid) {
+                const FrameView frame = frameAt(cursor);
+                return draw(width, height, &frame, view, ratio, withGrid);
+            };
+            // The traces live (the playhead past the right edge) over the grid, and over the bare
+            // screen.
+            const auto traced = drawAt(2.0f, true);
+            const auto bare = drawAt(2.0f, false);
+            ASSERT_TRUE(traced && bare);
+            for (const double position : {0.0, 0.5, 0.4137, 1.0}) {
+                const auto drawn = drawAt(static_cast<float>(position), true);
+                ASSERT_TRUE(drawn);
+                const double left = playheadBand(position, static_cast<double>(width), ratio).left;
+                std::size_t wrong = 0;
+                std::string first;
+                for (std::size_t x = 0; x < width; ++x) {
+                    // Traces of coverage a and colour c add a·(c − S) over the bare screen; moved
+                    // keep of the way from S, they add keep of that, over the grid as over the
+                    // screen, so the grid shows only where the traces leave it uncovered.
+                    const double covered =
+                        position < 1.0
+                            ? bandCoverage(static_cast<double>(x),
+                                           {.left = left, .right = static_cast<double>(width)})
+                            : 0.0;
+                    const double keep = 1.0 - (1.0 - protocol::kPreviousCycleAlpha) * covered;
+                    for (std::size_t y = 0; y < height; ++y) {
+                        for (std::size_t channel = 0; channel < 3; ++channel) {
+                            const double added = bare->at(x, y)[channel] - screen[channel] * 255.0;
+                            const double expected =
+                                traced->at(x, y)[channel] - (1.0 - keep) * added;
+                            if (std::abs(expected - drawn->at(x, y)[channel]) > 2.0) {
+                                if (wrong++ == 0) {
+                                    first = "(" + std::to_string(x) + ", " + std::to_string(y) +
+                                            ") expected " + std::to_string(expected) + " drew " +
+                                            std::to_string(drawn->at(x, y)[channel]);
+                                }
+                            }
+                        }
+                    }
+                }
+                EXPECT_EQ(wrong, 0U) << "type " << static_cast<int>(type) << " at ratio " << ratio
+                                     << ", playhead at " << position << ": first " << first;
             }
         }
     }

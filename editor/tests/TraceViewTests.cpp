@@ -36,7 +36,6 @@ TEST(TraceViewMessage, ReadsEveryFieldOfThePagesMessage)
     EXPECT_FALSE(view->laneSets[0].lanes[1].compared);
     EXPECT_EQ(view->fallbackColours.size(), message.at("fallbackColours").size());
     EXPECT_EQ(view->cancellation[3], message.at("cancellation")[3].get<float>());
-    EXPECT_EQ(view->previous[3], message.at("previous")[3].get<float>());
     EXPECT_EQ(view->gridType, protocol::GridType::kNone);
     EXPECT_EQ(view->gridTime, protocol::GridDensity::kFine);
     EXPECT_EQ(view->gridLevel, protocol::GridDensity::kCoarse);

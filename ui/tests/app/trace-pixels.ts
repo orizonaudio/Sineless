@@ -47,6 +47,9 @@ export interface DrawOptions {
   readonly verticalScaleDb?: number;
 }
 
+// The screen's colour, which dimmed traces move toward: distinct, so the move shows.
+export const screenColor: Rgba = [0.2, 0.1, 0.05, 1];
+
 // One renderer per canvas size: a page holds only a few WebGL contexts.
 export interface Surface {
   readonly canvas: HTMLCanvasElement;
@@ -109,7 +112,8 @@ function makeSurface(width: number, height: number): Surface {
         new Map(Object.values(ChannelView).map((v) => [v, style.color])),
       laneColors: () => style.laneColors,
       comparedLanes: () => style.comparedLanes,
-      sweepColors: () => ({ cursor: [1, 1, 1, 1], previous: [0, 0, 0, 0.5] }),
+      sweepColors: () => ({ cursor: [1, 1, 1, 1] }),
+      screenColor: () => screenColor,
       cancellationColor: () => [1, 0, 0, 0.16],
       get lineWidthPixels() {
         return style.lineWidthPixels;

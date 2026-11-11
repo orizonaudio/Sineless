@@ -198,7 +198,6 @@ describe("native traces: what the page sends", () => {
       view?.grid,
       view?.axis,
       view?.cursor,
-      view?.previous,
       view?.cancellation,
       view?.sumColour,
     ]) {
@@ -221,7 +220,6 @@ describe("native traces: what the page sends", () => {
     expect(rgbOf(view?.grid)).toEqual(tokenRgb("--sl-grid"));
     expect(rgbOf(view?.axis)).toEqual(tokenRgb("--sl-grid-strong"));
     expect(rgbOf(view?.cursor)).toEqual(tokenRgb("--sl-ink"));
-    expect(rgbOf(view?.previous)).toEqual(tokenRgb("--sl-screen"));
     expect(rgbOf(view?.cancellation)).toEqual(tokenRgb("--sl-warn"));
   });
 

@@ -6,8 +6,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -30,6 +32,7 @@ constexpr std::size_t kSlots = 3;
 // wide, the fade softens it by less than a point.
 constexpr float kPlayheadSoftness = 1.5f;
 constexpr auto kDimmedAlpha = static_cast<float>(protocol::kWaitingAlpha);
+constexpr auto kPreviousCycleAlpha = static_cast<float>(protocol::kPreviousCycleAlpha);
 
 // The trace pass's uniforms, laid out as the shaders' TraceUniforms: scalars only, so both sides
 // agree without alignment rules.
@@ -52,17 +55,34 @@ struct TraceUniforms
     std::uint32_t first = 0;
 };
 
+// The previous cycle right of a Beats playhead, laid out as the shaders' Fade: what is drawn from
+// the audio (the traces and the shading) has its colour moved `keep` of the way from `screen`'s
+// between `from` and `to`, in device pixels from the left, a pixel partly inside in proportion,
+// and keeps its coverage, so it covers the grid as live traces do. keep 1 dims nothing. Its float4
+// aligns it to 16 bytes in the shaders (Metal Shading Language Specification, Table 2.3), so it is
+// here too.
+struct alignas(16) Fade
+{
+    std::array<float, 4> screen{};
+    float from = 0.0f;
+    float to = 0.0f;
+    float keep = 1.0f;
+};
+static_assert(sizeof(Fade) == 32, "laid out as the shaders' Fade");
+
 // The composite pass's uniforms, laid out as the shaders' CompositeUniforms. Their float4 colours
 // align the shaders' struct to 16 bytes (Metal Shading Language Specification, Table 2.3), which
-// rounds its size up from 264 to 272: bound with fewer bytes, every composite draw is a binding
-// shorter than the shader's argument, which Metal's API validation stops on.
+// puts the fade at 272 and rounds the size up to 304: bound with fewer bytes, every composite draw
+// is a binding shorter than the shader's argument, which Metal's API validation stops on.
 struct alignas(16) CompositeUniforms
 {
     std::array<std::array<float, 4>, kTracesPerPass> colours{};
     std::int32_t traces = 0;
     std::int32_t attachments = 0;
+    Fade fade;
 };
 static_assert(sizeof(CompositeUniforms) % 16 == 0, "rounded up as the shaders' CompositeUniforms");
+static_assert(offsetof(CompositeUniforms, fade) == 272, "the fade where the shaders read it");
 
 // A rectangle in device pixels from the bottom left, in one colour (not premultiplied). A soft
 // axis has its edges at their exact positions with coverage; a hard one is left to the
@@ -261,10 +281,26 @@ vertex Corner compositeVertex(uint vertexId [[vertex_id]]) {
   return out;
 }
 
+struct Fade {
+  float4 screen;
+  float from;
+  float to;
+  float keep;
+};
+
+// A colour in pixel column `pixel` under the fade, moved toward the screen's by the share of the
+// pixel [pixel, pixel + 1) the faded span covers, as the page's dimming covers whole columns.
+float3 dimmed(float3 colour, float pixel, Fade fade) {
+  float covered = clamp(min(pixel + 1.0, fade.to) - max(pixel, fade.from), 0.0, 1.0);
+  float keep = 1.0 - (1.0 - fade.keep) * covered;
+  return fade.screen.rgb + keep * (colour - fade.screen.rgb);
+}
+
 struct CompositeUniforms {
   float4 colours[16];
   int traces;
   int attachments;
+  Fade fade;
 };
 
 fragment float4 compositeFragment(Corner in [[stage_in]],
@@ -284,7 +320,8 @@ fragment float4 compositeFragment(Corner in [[stage_in]],
            R"(  if (alpha <= 0.0) {
     discard_fragment();
   }
-  return float4(rgb / alpha, alpha);
+  // The traces dim as one group, as a layer with an opacity is composited.
+  return float4(dimmed(rgb / alpha, floor(in.position.x), u.fade), alpha);
 }
 
 struct Band {
@@ -334,7 +371,8 @@ float covers(float pixel, float low, float high) {
 }
 
 fragment float4 bandFragment(BandPixel in [[stage_in]], device const Band* bands [[buffer(0)]],
-                             constant float2& canvas [[buffer(1)]]) {
+                             constant float2& canvas [[buffer(1)]],
+                             constant Fade& fade [[buffer(2)]]) {
   Band band = bands[in.band];
   float2 pixel = floor(float2(in.position.x, canvas.y - in.position.y));
   float coverage = 1.0;
@@ -362,7 +400,7 @@ fragment float4 bandFragment(BandPixel in [[stage_in]], device const Band* bands
   if (coverage <= 0.0) {
     discard_fragment();
   }
-  return float4(band.colour.rgb, coverage);
+  return float4(dimmed(band.colour.rgb, pixel.x, fade), coverage);
 }
 )";
 }
@@ -447,11 +485,29 @@ public:
             blocks.resize(kTracesPerPass);
         }
 
+        // A tempo-synced sweep's playhead, as a fraction of the screen from the left, and the
+        // previous cycle to its right, which starts under the line: its traces and shading dim, the
+        // grid does not.
+        std::optional<double> position;
+        if (frame != nullptr && frame->has(protocol::FrameFlag::kSynced) && frame->cursor >= 0.0f) {
+            position = (frame->cursor - view.view.start) / (view.view.end - view.view.start);
+        }
+        const std::optional<PixelBand> line =
+            position ? std::optional(playheadBand(*position, width, pixelRatio)) : std::nullopt;
+        const Fade undimmed{
+            .screen = view.screen, .from = 0.0f, .to = static_cast<float>(width), .keep = 1.0f};
+        Fade fade = undimmed;
+        if (line && *position < 1.0) {
+            fade.from = static_cast<float>(line->left);
+            fade.keep = kPreviousCycleAlpha;
+        }
+
         // What the page draws as triangles and on its grid canvas, in the order it draws it.
         std::vector<BandInstance> under;
         if (grid) {
             addGrid(under, frame, view, blocks.size(), width, height, pixelRatio);
         }
+        const std::size_t gridBands = under.size();
         if (frame != nullptr) {
             const auto colour = dimmed(view.cancellation, view.dim);
             for (const Band& band :
@@ -465,28 +521,15 @@ public:
             }
         }
         std::vector<BandInstance> over;
-        if (frame != nullptr && frame->has(protocol::FrameFlag::kSynced) && frame->cursor >= 0.0f) {
-            // A tempo-synced sweep's playhead, as a fraction of the screen from the left, and the
-            // dimming over the previous cycle to its right, which starts under the line.
-            const double position =
-                (frame->cursor - view.view.start) / (view.view.end - view.view.start);
-            const PixelBand line = playheadBand(position, width, pixelRatio);
-            const auto band = [&](double left, double right, const Rgba& colour, bool line) {
-                over.push_back({.left = static_cast<float>(left),
-                                .right = static_cast<float>(right),
-                                .bottom = 0.0f,
-                                .top = static_cast<float>(height),
-                                .colour = colour,
-                                .softX = 1,
-                                .linearCoverage = line ? 1 : 0,
-                                .softness = line ? kPlayheadSoftness : 0.0f});
-            };
-            if (position < 1.0) {
-                band(line.left, std::max(line.right, width), view.previous, false);
-            }
-            if (position >= 0.0 && position <= 1.0) {
-                band(line.left, line.right, view.cursor, true);
-            }
+        if (line && *position >= 0.0 && *position <= 1.0) {
+            over.push_back({.left = static_cast<float>(line->left),
+                            .right = static_cast<float>(line->right),
+                            .bottom = 0.0f,
+                            .top = static_cast<float>(height),
+                            .colour = view.cursor,
+                            .softX = 1,
+                            .linearCoverage = 1,
+                            .softness = kPlayheadSoftness});
         }
         // The frame barcode over everything, on every picture, as the page draws it.
         if (barcode != nullptr) {
@@ -534,6 +577,7 @@ public:
             composite =
                 encodeCoverage(buffer, slot, *frame, view, blocks, colours, firsts, width, height);
         }
+        composite.fade = fade;
 
         MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
         pass.colorAttachments[0].texture = target;
@@ -544,11 +588,12 @@ public:
             screen[0] * screen[3], screen[1] * screen[3], screen[2] * screen[3], screen[3]);
         id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
         const std::array<float, 2> canvas{static_cast<float>(width), static_cast<float>(height)};
-        const auto drawBands = [&](std::size_t first, std::size_t count) {
+        const auto drawBands = [&](std::size_t first, std::size_t count, const Fade& bandFade) {
             if (count == 0) {
                 return;
             }
             [encoder setRenderPipelineState:bandPipeline];
+            [encoder setFragmentBytes:&bandFade length:sizeof(bandFade) atIndex:2];
             [encoder setVertexBuffer:slot.bands offset:first * sizeof(BandInstance) atIndex:0];
             [encoder setFragmentBuffer:slot.bands offset:first * sizeof(BandInstance) atIndex:0];
             [encoder setVertexBytes:canvas.data() length:sizeof(canvas) atIndex:1];
@@ -558,7 +603,8 @@ public:
                         vertexCount:6
                       instanceCount:count];
         };
-        drawBands(0, under.size());
+        drawBands(0, gridBands, undimmed);
+        drawBands(gridBands, under.size() - gridBands, fade);
         if (traces) {
             // Then the traces layered over the screen, once.
             [encoder setRenderPipelineState:compositePipeline];
@@ -568,7 +614,7 @@ public:
             }
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
         }
-        drawBands(under.size(), over.size());
+        drawBands(under.size(), over.size(), undimmed);
         [encoder endEncoding];
         return Result::kDrawn;
     }

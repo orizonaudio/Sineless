@@ -76,28 +76,12 @@ describe("the Beats playhead at 2.5x", () => {
     return { quads, width };
   }
 
-  // The playhead is opaque; the dimmed previous cycle, drawn just before it, runs from it to the
-  // screen's right edge.
-  async function drawnFrames(): Promise<
-    { line: Quad; dimmed?: Quad; width: number }[]
-  > {
+  // The playhead is the opaque quad.
+  async function drawnFrames(): Promise<{ line: Quad; width: number }[]> {
     const { quads, width } = await drawnQuads();
-    const frames: { line: Quad; dimmed?: Quad; width: number }[] = [];
-    quads.forEach((quad, index) => {
-      if (quad.alpha === 1) {
-        const before = quads[index - 1];
-        frames.push({
-          line: quad,
-          width,
-          ...(before !== undefined &&
-          before.alpha < 1 &&
-          Math.abs(before.right - width) < 1e-3
-            ? { dimmed: before }
-            : {}),
-        });
-      }
-    });
-    return frames;
+    return quads
+      .filter((quad) => quad.alpha === 1)
+      .map((line) => ({ line, width }));
   }
 
   test("draws the playhead on whole device pixels as it moves, so it does not flicker", async () => {
@@ -122,14 +106,5 @@ describe("the Beats playhead at 2.5x", () => {
     expect(width).toBeGreaterThanOrEqual(1);
     expect(width).toBeLessThanOrEqual(ratio);
     expect(width).toBeGreaterThan(ratio - 1);
-  });
-
-  test("starts the dimmed previous cycle on the playhead's pixel boundary", async () => {
-    const frames = await drawnFrames();
-    const withDimming = frames.filter(({ dimmed }) => dimmed !== undefined);
-    expect(withDimming.length).toBeGreaterThan(0);
-    for (const { line, dimmed } of withDimming) {
-      expect(dimmed?.left).toBeCloseTo(line.left, 3);
-    }
   });
 });

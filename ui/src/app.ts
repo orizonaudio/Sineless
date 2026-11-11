@@ -406,9 +406,9 @@ export class OscilloscopeApp {
       comparedLanes: () =>
         this.lanesOf(this.lastFrame).map((lane) => lane.compared),
       sweepColors: () => {
-        const [r, g, b] = rgba(token("--sl-screen"));
-        return { cursor: rgba(token("--sl-ink")), previous: [r, g, b, 0.5] };
+        return { cursor: rgba(token("--sl-ink")) };
       },
+      screenColor: () => rgba(token("--sl-screen")),
       frameBarcode: () => this.frameBarcode,
       // Cancelling is a problem in the audio: the problem colour, faint behind the sum.
       cancellationColor: () => {
@@ -2275,7 +2275,6 @@ export class OscilloscopeApp {
       grid: rgba(token("--sl-grid")),
       axis: rgba(token("--sl-grid-strong")),
       cursor: sweep?.cursor ?? white,
-      previous: sweep?.previous ?? white,
       cancellation: style?.cancellationColor() ?? white,
       gridChoice: this.gridChoice(),
     };

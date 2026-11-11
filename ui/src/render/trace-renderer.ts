@@ -18,6 +18,7 @@ import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
   barcodeDataBits,
   barcodeTicksPerMillisecond,
+  previousCycleAlpha,
   waitingAlpha,
 } from "../../../protocol/src/limits.ts";
 import { barcodeRow, barcodeStrip } from "./frame-barcode.ts";
@@ -43,11 +44,12 @@ export interface TraceStyle {
   // are compared.
   readonly laneColors: () => readonly Rgba[];
   readonly comparedLanes: () => readonly boolean[];
-  // A tempo-synced sweep's playhead, and the dimming over the previous cycle to its right.
+  // A tempo-synced sweep's playhead.
   readonly sweepColors: () => {
     readonly cursor: Rgba;
-    readonly previous: Rgba;
   };
+  // The screen behind this canvas, which dimmed traces move toward.
+  readonly screenColor: () => Rgba;
   // Behind a Compare frame's sum lane, where the compared tracks cancel.
   readonly cancellationColor: () => Rgba;
   readonly lineWidthPixels: number;
@@ -242,6 +244,20 @@ void main() {
   coverage = vec4(covered);
 }`;
 
+// The previous cycle, right of a Beats playhead: what is drawn from the audio (the traces and the
+// shading) has its colour moved dimKeep of the way from the screen's, from pixel column dimFrom on,
+// and keeps its coverage, so a dimmed trace covers the grid under the canvas as a live one does
+// and the grid shows unchanged where nothing is drawn. dimKeep 1 dims nothing. Pixel centres are
+// half a pixel in, so a whole column dimFrom starts the dimming on that column, as the playhead's
+// left edge does.
+const dimming = `uniform highp float dimFrom;
+uniform highp float dimKeep;
+uniform highp vec3 screen;
+vec3 dimmed(vec3 colour) {
+  float keep = gl_FragCoord.x >= dimFrom ? dimKeep : 1.0;
+  return screen + keep * (colour - screen);
+}`;
+
 // One triangle over the whole screen.
 const compositeVertexShader = `#version 300 es
 void main() {
@@ -277,6 +293,7 @@ uniform vec4 colors[${String(tracesPerPass)}];
 uniform int traces;
 uniform int attachments;
 out vec4 fragmentColor;
+${dimming}
 void main() {
   ivec2 at = ivec2(gl_FragCoord.xy);
   vec4 coverage[${String(coverageAttachments)}];
@@ -290,11 +307,12 @@ ${compositeLayering()}
   if (alpha <= 0.0) {
     discard;
   }
-  // Not premultiplied: the blend multiplies by alpha.
-  fragmentColor = vec4(rgb / alpha, alpha);
+  // Not premultiplied: the blend multiplies by alpha. The traces dim as one group, their layered
+  // colour moved toward the screen's.
+  fragmentColor = vec4(dimmed(rgb / alpha), alpha);
 }`;
 
-// Ready-made clip-space triangles, for the cancellation shading and the playhead.
+// Ready-made clip-space triangles, for the cancellation shading, the playhead and the barcode.
 const plainShader = `#version 300 es
 in vec2 position;
 void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
@@ -303,7 +321,8 @@ const plainFragmentShader = `#version 300 es
 precision mediump float;
 uniform vec4 color;
 out vec4 fragmentColor;
-void main() { fragmentColor = color; }`;
+${dimming}
+void main() { fragmentColor = vec4(dimmed(color.rgb), color.a); }`;
 
 function compile(
   gl: WebGL2RenderingContext,
@@ -363,6 +382,14 @@ class Program {
 // The graphics memory for the traces' coverage could not be allocated: the page says so rather
 // than drawing nothing.
 export class TraceMemoryError extends Error {}
+
+// Where the previous cycle starts, in device pixels from the left, and the share of the way from
+// the screen's colour to its own that its colour keeps.
+interface Dimming {
+  readonly from: number;
+  readonly keep: number;
+}
+const undimmed: Dimming = { from: 0, keep: 1 };
 
 export class TraceRenderer implements FrameRenderer {
   private readonly canvas: HTMLCanvasElement;
@@ -477,7 +504,11 @@ export class TraceRenderer implements FrameRenderer {
   }
 
   // Ready-made clip-space triangles in one colour.
-  private drawTriangles(vertices: Float32Array, color: Rgba): void {
+  private drawTriangles(
+    vertices: Float32Array,
+    color: Rgba,
+    dimming: Dimming = undimmed,
+  ): void {
     const gl = this.gl;
     const program = this.plain;
     gl.useProgram(program.program);
@@ -493,14 +524,40 @@ export class TraceRenderer implements FrameRenderer {
       color[2],
       color[3],
     );
+    this.setDimming(program, dimming);
     gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 2);
     gl.disableVertexAttribArray(position);
   }
 
-  // The playhead and the dimmed previous cycle, over the traces; drawn here rather than as page
-  // elements, so that a sweep changes nothing on the page but this canvas.
+  private setDimming(program: Program, dimming: Dimming): void {
+    const gl = this.gl;
+    const [r, g, b] = this.style.screenColor();
+    gl.uniform1f(program.uniform("dimFrom"), dimming.from);
+    gl.uniform1f(program.uniform("dimKeep"), dimming.keep);
+    gl.uniform3f(program.uniform("screen"), r, g, b);
+  }
+
+  // The previous cycle right of the playhead, from the playhead's left edge (a whole device pixel),
+  // or none once the playhead reaches the right edge.
+  private dimmingAt(position: number | undefined): Dimming {
+    if (position === undefined || position >= 1) {
+      return undimmed;
+    }
+    const { left } = playheadEdges(
+      position,
+      this.canvas.width,
+      window.devicePixelRatio,
+    );
+    return {
+      from: Math.round(((left + 1) / 2) * this.canvas.width),
+      keep: previousCycleAlpha,
+    };
+  }
+
+  // The playhead, over the traces; drawn here rather than as a page element, so that a sweep
+  // changes nothing on the page but this canvas.
   private drawSweep(position: number): void {
-    const { cursor, previous } = this.style.sweepColors();
+    const { cursor } = this.style.sweepColors();
     const { left, right } = playheadEdges(
       position,
       this.canvas.width,
@@ -521,10 +578,6 @@ export class TraceRenderer implements FrameRenderer {
         right,
         1,
       ]);
-    // The dimming starts under the line, so its edge is on the same pixel boundary.
-    if (position < 1) {
-      this.drawTriangles(rectangle(left, 1), previous);
-    }
     if (position >= 0 && position <= 1) {
       this.drawTriangles(rectangle(left, right), cursor);
     }
@@ -590,6 +643,14 @@ export class TraceRenderer implements FrameRenderer {
       lineWidthPixels: this.style.lineWidthPixels,
       ...(view.view === undefined ? {} : { view: view.view }),
     };
+    // A tempo-synced sweep's playhead, as a fraction of the screen from the left.
+    const screen = view.view ?? fullView;
+    const sweep =
+      frame.synced && frame.cursor !== undefined
+        ? (frame.cursor - screen.start) / (screen.end - screen.start)
+        : undefined;
+    const dimming = this.dimmingAt(sweep);
+
     const shading = cancellationBands(
       frame,
       layout,
@@ -598,15 +659,8 @@ export class TraceRenderer implements FrameRenderer {
     if (shading.length > 0) {
       const color = this.style.cancellationColor();
       const [r, g, b] = color;
-      this.drawTriangles(shading, [r, g, b, alpha(color)]);
+      this.drawTriangles(shading, [r, g, b, alpha(color)], dimming);
     }
-
-    // A tempo-synced sweep's playhead, as a fraction of the screen from the left.
-    const screen = view.view ?? fullView;
-    const sweep =
-      frame.synced && frame.cursor !== undefined
-        ? (frame.cursor - screen.start) / (screen.end - screen.start)
-        : undefined;
     if (blocks.length === 0 || frame.pointCount === 0) {
       if (sweep !== undefined) {
         this.drawSweep(sweep);
@@ -731,6 +785,7 @@ export class TraceRenderer implements FrameRenderer {
     gl.uniform4fv(composite.uniform("colors"), colors);
     gl.uniform1i(composite.uniform("traces"), traces.length);
     gl.uniform1i(composite.uniform("attachments"), targets);
+    this.setDimming(composite, dimming);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     if (sweep !== undefined) {
       this.drawSweep(sweep);
