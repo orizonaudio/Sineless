@@ -51,6 +51,23 @@ TEST(EmbeddedAssets, CarryTheBrandOnlyInABrandedBuild)
     }
 }
 
+// About Us takes the user to the vendor's site at its home page (FR-13.1), not to a page within
+// it: a secure address whose path is the site's root.
+TEST(Branding, AboutUsOpensTheVendorsSiteAtItsHomePage)
+{
+    const std::string url = branding::kContactUrl;
+    if (SINELESS_BRANDED != 1) {
+        EXPECT_TRUE(url.empty()) << "a build without the brand has no vendor's site";
+        return;
+    }
+    const std::string scheme = "https://";
+    ASSERT_TRUE(url.starts_with(scheme)) << url;
+    const auto path = url.find('/', scheme.size());
+    ASSERT_NE(path, std::string::npos) << url;
+    EXPECT_GT(path, scheme.size()) << "no host: " << url;
+    EXPECT_EQ(url.substr(path), "/") << "a page within the site: " << url;
+}
+
 TEST(EmbeddedAssets, ReturnsNullForUnknownPath)
 {
     EXPECT_EQ(findEmbeddedAsset("missing.txt"), nullptr);
