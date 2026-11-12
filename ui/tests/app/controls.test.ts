@@ -23,6 +23,7 @@ import {
   showDisplay,
   showViews,
   startApp,
+  startBeforeFrames,
   useReadout,
   type Started,
 } from "./harness.ts";
@@ -505,6 +506,14 @@ function shownValue(id: string): string[] {
     .filter((value) => getComputedStyle(value).visibility !== "hidden")
     .map((value) => value.textContent);
 }
+
+// Freeze is labelled from the start, before any frame: in Normal or Single trigger mode with nothing
+// triggering, the engine sends none, and the button must not stand blank meanwhile.
+test("Freeze reads Freeze before the first frame", async () => {
+  const app = await startBeforeFrames();
+  expect(freezeLabel()).toBe("Freeze");
+  app.holdFrames(false);
+});
 
 describe("choice fields", () => {
   beforeApp(async () => {
