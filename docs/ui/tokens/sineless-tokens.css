@@ -4,17 +4,49 @@
 :root {
   /* Chrome and screen */
   --sl-case: #18181b; /* Window chrome: toolbar, status bar and the frame around the screen */
-  --sl-control: #26262a; /* Fields, segmented controls and buttons at rest */
-  --sl-popover: #222226; /* Open popovers and the cursor readout */
-  --sl-line: #2b2b30; /* Dividers and the screen's edge */
-  --sl-selected: #f5f5f7; /* The selected option, and toggles that are on */
+  --sl-control: #2c2c2e; /* Bar controls at rest: menus, drag fields, switches, Help and About */
+  --sl-control-hover: #38383b; /* A bar control under the pointer */
+  --sl-control-open: #4a4a4e; /* A menu whose popover is open */
+  --sl-popover: #2a2a2f; /* Open popovers, help tips and the "+n" list */
+  --sl-track: rgb(255 255 255 / 6%); /* Popover tracks, number fields and buttons in a popover */
+  --sl-track-hover: rgb(255 255 255 / 7%); /* A popover option under the pointer */
+  --sl-line: #2b2b30; /* The screen's edge, the cursor readout's rule, the resize grip */
+  --sl-selected: #d4d4d8; /* The chosen option, and switches that are on */
   --sl-on-selected: #0b0b0c; /* Text on a selected option */
   --sl-ink: #f5f5f7; /* Primary text, values, cursors */
-  --sl-ink-2: #9a9aa3; /* Labels, units, icons, grid labels */
+  --sl-ink-2: #a1a1aa; /* Labels, units, icons, grid labels */
   --sl-screen: #030304; /* The screen behind the traces */
   --sl-grid: #111114; /* Time and level grid lines */
   --sl-grid-strong: #1c1c21; /* Bar lines in Beats; each lane's zero line */
   --sl-lane-edge: #26262c; /* The line between stacked lanes */
+
+  /* Edges and shadows: a control's glass rim, an open menu's, a popover's edge and drop, a chosen
+     thumb, a readout's hairline */
+  --sl-rim-top: rgb(255 255 255 / 9%);
+  --sl-rim-edge: rgb(255 255 255 / 4%);
+  --sl-rim-open-top: rgb(255 255 255 / 12%);
+  --sl-rim-open-edge: rgb(255 255 255 / 6%);
+  --sl-popover-rim-edge: rgb(255 255 255 / 5%);
+  --sl-popover-edge: rgb(0 0 0 / 65%);
+  --sl-popover-drop: rgb(0 0 0 / 55%);
+  --sl-thumb-shade: rgb(0 0 0 / 50%);
+  --sl-readout-edge: rgb(255 255 255 / 8%);
+  --sl-lane-hover: rgb(255 255 255 / 8%);
+  --sl-rim: inset 0 1px 0 var(--sl-rim-top), inset 0 0 0 1px var(--sl-rim-edge);
+  --sl-rim-open: inset 0 1px 0 var(--sl-rim-open-top), inset 0 0 0 1px var(--sl-rim-open-edge);
+  --sl-popover-shadow: inset 0 1px 0 var(--sl-rim-top), inset 0 0 0 1px var(--sl-popover-rim-edge), 0 16px 40px var(--sl-popover-drop);
+  --sl-thumb-shadow: 0 1px 2px var(--sl-thumb-shade);
+
+  /* Shapes and spacing */
+  --sl-radius-control: 12px; /* A group's outer ends: a capsule at the 24 px control height */
+  --sl-radius-inner: 2px; /* Corners between controls of a group */
+  --sl-radius-thumb: 10px; /* A thumb, concentric in its track (12 - 2) */
+  --sl-radius-readout: 10px; /* Readout panels */
+  --sl-radius-tip: 12px; /* Help tips and the "+n" list */
+  --sl-radius-popover: 14px; /* Popovers */
+  --sl-gap-inner: 2px; /* Between controls of a group */
+  --sl-group-space: 13px; /* Between groups in a bar, whatever the bar's own gap */
+  --sl-dim-disabled: 0.35; /* Every disabled control */
 
   /* States: the accent marks Frozen and nothing else */
   --sl-accent: #ff5f1f; /* Frozen only: the Frozen button and the Frozen chip */
@@ -58,7 +90,6 @@
   --sl-toolbar-height: 48px;
   --sl-status-height: 34px;
   --sl-control-height: 24px;
-  --sl-control-radius: 6px;
   --sl-screen-inset: 8px;
   --sl-screen-radius: 10px;
   --sl-trace-width: 1.5px;

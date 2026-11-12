@@ -22,17 +22,55 @@
 
   /* Chrome and screen */
   --sl-case: #18181b;
-  --sl-control: #26262a;
-  --sl-popover: #222226;
+  --sl-control: #2c2c2e;
+  --sl-control-hover: #38383b;
+  --sl-control-open: #4a4a4e;
+  --sl-popover: #2a2a2f;
+  --sl-track: rgb(255 255 255 / 6%);
+  --sl-track-hover: rgb(255 255 255 / 7%);
   --sl-line: #2b2b30;
-  --sl-selected: #f5f5f7;
+  --sl-selected: #d4d4d8;
   --sl-on-selected: #0b0b0c;
   --sl-ink: #f5f5f7;
-  --sl-ink-2: #9a9aa3;
+  --sl-ink-2: #a1a1aa;
   --sl-screen: #030304;
   --sl-grid: #111114;
   --sl-grid-strong: #1c1c21;
   --sl-lane-edge: #26262c;
+
+  /* Edges: a control's glass rim (brighter at the top), an open menu's, a popover's dark outer
+     edge and its drop, a thumb's shadow, a readout's hairline. */
+  --sl-rim-top: rgb(255 255 255 / 9%);
+  --sl-rim-edge: rgb(255 255 255 / 4%);
+  --sl-rim-open-top: rgb(255 255 255 / 12%);
+  --sl-rim-open-edge: rgb(255 255 255 / 6%);
+  --sl-popover-rim-edge: rgb(255 255 255 / 5%);
+  --sl-popover-edge: rgb(0 0 0 / 65%);
+  --sl-popover-drop: rgb(0 0 0 / 55%);
+  --sl-thumb-shade: rgb(0 0 0 / 50%);
+  --sl-readout-edge: rgb(255 255 255 / 8%);
+  --sl-lane-hover: rgb(255 255 255 / 8%);
+  --sl-rim: inset 0 1px 0 var(--sl-rim-top), inset 0 0 0 1px var(--sl-rim-edge);
+  --sl-rim-open:
+    inset 0 1px 0 var(--sl-rim-open-top),
+    inset 0 0 0 1px var(--sl-rim-open-edge);
+  --sl-popover-shadow:
+    inset 0 1px 0 var(--sl-rim-top), inset 0 0 0 1px var(--sl-popover-rim-edge),
+    0 16px 40px var(--sl-popover-drop);
+  --sl-thumb-shadow: 0 1px 2px var(--sl-thumb-shade);
+
+  /* Shapes and spacing: a group's capsule ends and its 2 px inner corners, a thumb concentric in
+     its track (12 − 2), readouts, tips and popovers; controls 2 px apart in a group, groups 13 px
+     apart whatever a bar's own gap. */
+  --sl-radius-control: 12px;
+  --sl-radius-inner: 2px;
+  --sl-radius-thumb: 10px;
+  --sl-radius-readout: 10px;
+  --sl-radius-tip: 12px;
+  --sl-radius-popover: 14px;
+  --sl-gap-inner: 2px;
+  --sl-group-space: 13px;
+  --sl-dim-disabled: 0.35;
 
   /* States */
   --sl-accent: #ff5f1f;
