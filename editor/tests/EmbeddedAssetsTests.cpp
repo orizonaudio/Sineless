@@ -56,7 +56,8 @@ TEST(EmbeddedAssets, CarryTheBrandOnlyInABrandedBuild)
 TEST(Branding, AboutUsOpensTheVendorsSiteAtItsHomePage)
 {
     const std::string url = branding::kContactUrl;
-    if (SINELESS_BRANDED != 1) {
+    const bool branded = SINELESS_BRANDED == 1;
+    if (!branded) {
         EXPECT_TRUE(url.empty()) << "a build without the brand has no vendor's site";
         return;
     }
