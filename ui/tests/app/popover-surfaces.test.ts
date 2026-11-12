@@ -3,6 +3,7 @@
 // tracks, so it stands off the popover; every text in a popover is legible; and a switch on a lane
 // label reads as on against off.
 import { describe, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 
 import {
   caseColour,
@@ -73,6 +74,21 @@ describe("popovers", () => {
     expect(contact.backgroundColor).not.toBe(
       getComputedStyle(byId("meter-toggle")).backgroundColor,
     );
+  });
+
+  // Under the pointer it lightens as a popover's options do, not to a bar control's hover fill.
+  test("a button in a popover lightens as the popover's options do", async () => {
+    await startApp();
+    await settle();
+    await userEvent.click(byId("about-details"));
+    const contact = byId("contact");
+    await userEvent.hover(contact);
+    const probe = document.createElement("div");
+    probe.style.background = "var(--sl-track-hover)";
+    document.body.append(probe);
+    const optionHover = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    expect(getComputedStyle(contact).backgroundColor).toBe(optionHover);
   });
 
   // Every popover's text: row names, options chosen and not, number values, the version (a guard:

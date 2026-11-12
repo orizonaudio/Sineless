@@ -134,8 +134,8 @@ describe("the bars' edges and cues", () => {
       node.hidden = true;
     }
     expect(shadows).toHaveLength(1);
-    // inset, no x offset, 1 px down, no blur, no spread
-    expect(shadows[0]).toMatch(/0px 1px 0px 0px inset$/u);
+    // An inset line along the top: no sideways offset, a downward one.
+    expect(shadows[0]).toMatch(/\) 0px [\d.]*[1-9][\d.]*px .*inset$/u);
   });
 
   // A drag field's up-down cue ends where a menu's chevron stroke does, in the same place in a

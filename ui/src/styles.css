@@ -482,7 +482,8 @@ button[aria-pressed="true"]:focus-visible {
   box-shadow: none;
 }
 
-.popover .action:hover {
+/* As specific as the bars' hover rule, and after it, so a popover's button lightens as its options. */
+.popover .action:not([aria-pressed="true"]):not(:disabled):hover {
   background: var(--sl-track-hover);
 }
 
