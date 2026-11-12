@@ -13,6 +13,7 @@
     "group": "c",
     "hoverReadout": "on",
     "laneChannel": "side",
+    "laneLabels": "off",
     "meter": "on",
     "readoutSource": "right",
     "timeBase": "free",

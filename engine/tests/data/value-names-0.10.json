@@ -23,6 +23,7 @@
   "group": ["a", "b", "c", "d"],
   "hoverReadout": ["off", "on"],
   "laneChannel": ["left", "right", "mid", "side"],
+  "laneLabels": ["off", "on"],
   "meter": ["off", "on"],
   "readoutSource": ["left", "right", "mid", "side"],
   "timeBase": ["trigger", "beats", "free"],

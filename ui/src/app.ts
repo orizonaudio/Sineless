@@ -680,6 +680,10 @@ export class OscilloscopeApp {
       ["off", "Off"],
       ["on", "On"],
     ]);
+    segment("laneLabels", "lane-labels-choice", [
+      ["off", "Off"],
+      ["on", "On"],
+    ]);
     choiceField("timeBase", "time-base", "time-base", "Time");
     choiceField("viewLayout", "layout", "layout", "Layout");
     segment(
@@ -857,6 +861,9 @@ export class OscilloscopeApp {
     } else {
       this.closePopover("group-details", "group-popover");
     }
+    // Compare's labels hold its controls and always show: the Labels row is greyed out meanwhile,
+    // keeping its choice for when Compare is off.
+    this.segmented.get("laneLabels")?.enable(() => !this.compareMode());
     this.updateViewToggles();
     this.updateReadoutChoices();
     this.updateSourceChoices();
@@ -1005,7 +1012,7 @@ export class OscilloscopeApp {
     }
     // Compare's note and controls follow the switch at once: a track alone in its group gets no
     // new lanes from it, so no frame would place them.
-    if (name === "compare") {
+    if (name === "compare" || name === "laneLabels") {
       this.placeLaneLabels();
     }
     // Level cursors are drawn at their level in each lane.
@@ -1235,15 +1242,17 @@ export class OscilloscopeApp {
   }
 
   // Lane names: at the top of each stacked lane, or as a legend when overlaid, after the top
-  // level label.
+  // level label. Labels Off hides them, except with Compare on, whose controls they hold.
   private placeLaneLabels(): void {
     const container = element("lane-labels");
     const frame = this.lastFrame;
     const styles = this.lanesOf(frame);
     const height = this.screen.clientHeight;
     const comparing = frame?.comparison !== undefined;
+    const shown = this.compareMode() || this.store.get("laneLabels") !== "off";
     // Rebuilt only when what they show changes, so a click on a label is never lost to a redraw.
     const key = JSON.stringify([
+      shown,
       styles,
       comparing,
       this.previewFix,
@@ -1256,6 +1265,14 @@ export class OscilloscopeApp {
       return;
     }
     this.laneLabelsKey = key;
+    if (!shown) {
+      // No lane is named, nor marked for samples that are not finite: the status chip reports them.
+      this.matchNodes = [];
+      this.sumNode = undefined;
+      this.laneNameNodes = [];
+      container.replaceChildren();
+      return;
+    }
     const button = (
       text: string,
       help: HelpTopic,
