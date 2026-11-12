@@ -286,11 +286,21 @@ body {
   visibility: hidden;
 }
 
-/* The Views field: every view's letter, those not drawn dimmed, not the channel read after them,
-   whose letters are stacked (.choices); in Multi, Σ dimmed while Compare is off. */
-#views-summary > span:not(.on):not(.choices),
-#group-summary span:not(.on) {
+/* The Views field holds Single's summary and Multi's in one place (.choices), the current one
+   shown. Single's: every view's letter, those not drawn dimmed, not the channel read after them,
+   whose letters are stacked (.choices). Multi's: Σ dimmed while Compare is off, and the tag
+   while the lane labels do not show. */
+#views-single > span:not(.on):not(.choices),
+#views-multi > :is(.sum, .tag):not(.on) {
   opacity: 0.35;
+}
+
+/* The labels' tag, after a dot as Σ is: an outline in the letters' colour and stroke weight, as
+   tall as the capitals, with no hole, too fine at 12 px (a solid shape outweighed the letters);
+   centred on the capitals (it sat 0.75 px high on the text's baseline alignment). */
+#views-multi > .tag {
+  vertical-align: -1.75px;
+  stroke: currentColor;
 }
 
 .icon {
@@ -312,25 +322,6 @@ body {
 .icon .dashed {
   stroke-width: 1;
   stroke-dasharray: 1 1.6;
-}
-
-/* Single's Views and Multi's in one place, as wide as the wider; the one that does not apply keeps
-   its room unseen. Not positioned, so its fields' popovers are placed from the toolbar. */
-.slot {
-  display: grid;
-}
-
-.slot > .tool {
-  grid-area: 1 / 1;
-}
-
-.slot .field-button {
-  box-sizing: border-box;
-  width: 100%;
-}
-
-.tool.off {
-  visibility: hidden;
 }
 
 /* A drop-down's arrow at its right edge, however wide its field. */
@@ -1006,7 +997,8 @@ button[aria-pressed="true"]:focus-visible {
      controls (#409): the left side 418.6, the gap between the sides 16, the right side's buttons and
      gaps 68 (Help and About at 24 px), of 1016 between the bar's padding, leaving 513.4. Earlier the
      minimum width grew instead (#364, #384); the restyle kept 1040 and narrowed this area from 520.
-     Fixed, so the chips fold at the same count at every window width. */
+     A4 has since moved into the Views popover (#412), leaving the left side narrower: the area kept
+     its width, so the chips fold as before. Fixed, so the chips fold at the same count at every window width. */
   width: 500px;
 }
 

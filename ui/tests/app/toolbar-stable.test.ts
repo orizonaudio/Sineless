@@ -131,12 +131,12 @@ describe.each(widths)("the toolbar at %i px", (width) => {
     },
   );
 
-  // The order #355 sets: the Views slot after the mode, Layout after it, then the time base, the
+  // The order #355 sets: the Views field after the mode, Layout after it, then the time base, the
   // span and the scale, Trigger and Re-arm; Auto-freeze before Freeze (#409).
   const order = [
     "brand#0",
     "mode-group",
-    "views-slot",
+    "views-group",
     "layout-group",
     "time-base-group",
     "time-group",
@@ -158,7 +158,7 @@ describe.each(widths)("the toolbar at %i px", (width) => {
       .sort(([, a], [, b]) => a.left - b.left)
       .map(([key]) => key);
     expect(shown).toEqual(order.filter((key) => shown.includes(key)));
-    expect(shown).toContain("views-slot");
+    expect(shown).toContain("views-group");
   });
 
   // A drop-down's arrow sits at its right edge, whatever the value; Single's Views and Multi's
@@ -192,15 +192,42 @@ describe.each(widths)("the toolbar at %i px", (width) => {
     },
   );
 
-  test("gives Single's Views and Multi's Views one width", async () => {
+  // One Views field for every display (#412): it keeps the wider summary's width, so switching
+  // modes moves nothing after it, and Multi's summary, its tag lit, stays inside it.
+  test("keeps one Views field, one width, in Single and in Multi", async () => {
     await page.viewport(width, 600);
     const started = await startApp();
-    await show(started, { displayMode: "single" });
-    const single = byId("views-details").getBoundingClientRect();
-    await show(started, { displayMode: "multi" });
-    const multi = byId("group-details").getBoundingClientRect();
-    expect(multi.left).toBeCloseTo(single.left, 1);
-    expect(multi.width).toBeCloseTo(single.width, 1);
+    const states: State[] = [
+      { displayMode: "single" },
+      { displayMode: "multi", compare: "off", laneLabels: "off" },
+      { displayMode: "multi", compare: "on", laneLabels: "on" },
+    ];
+    const boxes = [];
+    for (const state of states) {
+      await show(started, state);
+      const button = byId("views-details").getBoundingClientRect();
+      const single = byId("views-single").getBoundingClientRect();
+      const multi = byId("views-multi").getBoundingClientRect();
+      expect(multi.left).toBeCloseTo(single.left, 1);
+      expect(multi.width).toBeCloseTo(single.width, 1);
+      const tag = byId("views-multi").querySelector(".tag");
+      expect(tag).not.toBeNull();
+      const tagBox = tag?.getBoundingClientRect();
+      expect(tagBox?.right ?? Infinity).toBeLessThanOrEqual(button.right);
+      boxes.push({
+        left: button.left,
+        width: button.width,
+        next: byId("layout-group").getBoundingClientRect().left,
+      });
+      expect(byId("toolbar").scrollWidth).toBeLessThanOrEqual(
+        window.innerWidth,
+      );
+    }
+    for (const box of boxes.slice(1)) {
+      expect(box.left).toBeCloseTo(boxes[0]?.left ?? NaN, 1);
+      expect(box.width).toBeCloseTo(boxes[0]?.width ?? NaN, 1);
+      expect(box.next).toBeCloseTo(boxes[0]?.next ?? NaN, 1);
+    }
   });
 });
 
@@ -258,7 +285,7 @@ test("the span pill holds every value its steps can show at one width", async ()
 // The toolbar's groups (#409): the view (Mode, Views, Layout), the time (time base, span, scale),
 // the trigger (Trigger, Re-arm) and freezing (Auto-freeze, Freeze), set apart by space alone.
 const groups = [
-  ["mode-group", "views-slot", "layout-group"],
+  ["mode-group", "views-group", "layout-group"],
   ["time-base-group", "time-group", "vertical-group"],
   ["trigger-group", "arm"],
   ["auto-freeze", "freeze"],
@@ -339,7 +366,7 @@ describe.each(widths)("the toolbar's groups at %i px", (width) => {
         expect(gap).toBeCloseTo(apart[0] ?? NaN, 0);
       }
       // A group is rounded at its outer ends only; a control alone in its group, on both sides.
-      const innerCorner = corner(surface(byId("views-slot")), "left");
+      const innerCorner = corner(surface(byId("views-group")), "left");
       for (const controls of shown) {
         controls.forEach((control, i) => {
           const element = surface(control);

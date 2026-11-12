@@ -129,7 +129,7 @@ export function helpTextsFor(mac: boolean) {
       lead: "What the screen shows: this track, or every track of its group.",
       choices: choicesOf(choiceLabels.displayMode, {
         single: "this track's channels",
-        multi: `every track of this instance's group with this plugin, one lane each, showing the channel chosen in the Group popover, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds their sum)`,
+        multi: `every track of this instance's group with this plugin, one lane each, showing the channel chosen in the Views popover, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds their sum)`,
       }),
       notes: [
         "Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.",
@@ -212,7 +212,7 @@ export function helpTextsFor(mac: boolean) {
       title: "Views",
       lead: "Which group's tracks Multi shows, and with Compare their sum.",
       notes: [
-        "The field names the group, the lane channel and Σ, which is dimmed while Compare is off.",
+        "The field names the group, the lane channel, Σ (dimmed with Compare off) and a tag (dimmed while lane labels are hidden).",
         "Instances in the same group appear together; use groups to keep comparisons apart, such as drums in A and bass in B.",
         "Every instance belongs to a group, whatever its own mode.",
       ],
@@ -231,7 +231,7 @@ export function helpTextsFor(mac: boolean) {
       lead: "Which channels this track shows, and which one the Meter reads.",
       notes: [
         "The letter after the dot is the channel the Meter reads.",
-        "In Multi every track shows the channel chosen in the Group popover, so these apply in Single.",
+        "In Multi every track shows one channel, chosen in this popover's Channel row, so these apply in Single.",
       ],
     },
     status: {
@@ -464,7 +464,7 @@ export function helpTextsFor(mac: boolean) {
       notes: [
         "While the one chosen is hidden, it watches the first view drawn.",
         "It changes only what the trigger reads: the Meter, the hover and snapping keep their own channel, chosen in Views, under Measure.",
-        "Not used in Multi, which triggers on the channel chosen in the Group popover.",
+        "Not used in Multi, which triggers on the channel chosen in the Views popover.",
       ],
     },
     triggerSlope: {
@@ -534,7 +534,7 @@ export function helpTextsFor(mac: boolean) {
       notes: [
         "With the views overlaid, the hover and the cursors' snapping read it too; stacked, each lane reads its own trace.",
         "While the one chosen is hidden, the first view drawn is read.",
-        "A mono track has only Left. Multi reads the channel chosen in the Group popover.",
+        "A mono track has only Left. Multi reads the channel chosen in the Views popover.",
       ],
     },
     grid: {

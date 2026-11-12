@@ -17,6 +17,7 @@ import {
   settle,
   startApp,
   type Started,
+  multiSummary,
 } from "./harness.ts";
 
 const layouts = ["Stack", "Overlay"] as const;
@@ -47,6 +48,17 @@ function compareChecks(): number {
 
 function labelsRow(label: "Off" | "On"): HTMLButtonElement {
   return choice("lane-labels-choice", label);
+}
+
+// Multi's summary in the Views field ends in a tag, lit (.on) while the lane labels show.
+function tagLit(): boolean {
+  const tag = byId("views-multi").querySelector(".tag");
+  expect(tag, "the Views field's tag").not.toBeNull();
+  return tag?.classList.contains("on") ?? false;
+}
+
+function viewsName(): string {
+  return byId("views-details").getAttribute("aria-label") ?? "";
 }
 
 async function setLabels(on: boolean): Promise<void> {
@@ -124,7 +136,7 @@ describe("the Labels row", () => {
   test("is in Multi's Views popover, and asks the engine for the choice", async () => {
     const app = await startApp();
     await press(choice("display-mode", "Multi"));
-    expect(byId("group-popover").contains(labelsRow("Off"))).toBe(true);
+    expect(byId("views-popover").contains(labelsRow("Off"))).toBe(true);
     await press(labelsRow("Off"));
     const sent = app.sent.filter((message) => message.type === "setSetting");
     expect(sent.at(-1)).toEqual({
@@ -134,12 +146,14 @@ describe("the Labels row", () => {
     });
   });
 
-  test("is out of reach in Single, which shows no lane labels, and applies back in Multi", async () => {
+  test("is hidden in Single, which shows no lane labels, and applies back in Multi", async () => {
     const app = await startApp();
     await multi("A", "Stack", false);
     await press(choice("display-mode", "Single"));
     await settle();
-    expect(byId("group-group").inert).toBe(true);
+    expect(labelsRow("Off").closest<HTMLElement>(".popover-row")?.hidden).toBe(
+      true,
+    );
     expect(labelCount()).toBe(0);
     // Chosen while Single shows (a host's automation or undo), it holds once Multi is back.
     app.transport.send({
@@ -155,15 +169,44 @@ describe("the Labels row", () => {
     await expect.poll(labelCount).toBeGreaterThan(0);
   });
 
-  test("leaves the Views field's summary as it is", async () => {
+  // The Views field's tag, after Σ, is lit while the labels show and dimmed while they do not, and
+  // its name says so: Compare's labels always show, so it is lit with Compare on (#412).
+  test("lights the Views field's tag while the labels show, Compare's included", async () => {
     await startApp();
     await press(choice("display-mode", "Multi"));
-    const summary = () => byId("group-summary").textContent;
-    const label = () => byId("group-details").getAttribute("aria-label");
-    const [on, onLabel] = [summary(), label()];
+    await setCompare(false);
+    await setLabels(true);
+    expect(tagLit()).toBe(true);
+    expect(viewsName()).toMatch(/, labels on$/);
+    expect(multiSummary()).toBe("A·M·Σ·");
     await setLabels(false);
-    expect(summary()).toBe(on);
-    expect(label()).toBe(onLabel);
+    expect(tagLit()).toBe(false);
+    expect(viewsName()).not.toContain("labels");
+    await setCompare(true);
+    expect(tagLit()).toBe(true);
+    expect(viewsName()).toMatch(/, Compare on, labels on$/);
+    await setCompare(false);
+    expect(tagLit()).toBe(false);
+  });
+
+  test("dims the tag in Multi when the labels were turned off while Single showed", async () => {
+    const app = await startApp();
+    await press(choice("display-mode", "Multi"));
+    await setCompare(false);
+    await setLabels(true);
+    await press(choice("display-mode", "Single"));
+    expect(viewsName()).toMatch(/^Views: L/);
+    // As a host's undo would.
+    app.transport.send({
+      type: "setSetting",
+      name: "laneLabels",
+      value: "off",
+    });
+    await settle();
+    await press(choice("display-mode", "Multi"));
+    await settle();
+    expect(tagLit()).toBe(false);
+    expect(viewsName()).toBe("Views: group A, Mid");
   });
 
   test("is the engine's: the page reopened shows the labels off", async () => {

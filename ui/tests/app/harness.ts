@@ -425,6 +425,19 @@ export async function press(button: HTMLElement): Promise<void> {
   await userEvent.click(button);
 }
 
+// Multi's summary in the Views field as it reads ("A·M·Σ·"; its tag is an icon).
+export function multiSummary(): string {
+  return byId("views-multi").textContent.replace(/\s/g, "");
+}
+
+// Whether the popover row holding a control is hidden: the Views popover hides the rows of the
+// display mode not shown (#412).
+export function rowHidden(id: string): boolean {
+  const row = byId(id).closest<HTMLElement>(".popover-row");
+  expect(row, `${id}'s row`).not.toBeNull();
+  return row !== null && row.hidden !== false;
+}
+
 // Turns Compare on or off in Multi's Views popover, opening the popover if it is closed.
 export async function setCompare(on: boolean): Promise<void> {
   const button = choice("compare", on ? "On" : "Off");
@@ -499,7 +512,7 @@ export async function showViews(shown: readonly string[]): Promise<void> {
 
 // The letters the Views field lights: the views the frame draws, not the channel read after them.
 export function drawnLetters(): string[] {
-  return [...byId("views-summary").querySelectorAll(":scope > .on")].map(
+  return [...byId("views-single").querySelectorAll(":scope > .on")].map(
     (letter) => letter.textContent,
   );
 }

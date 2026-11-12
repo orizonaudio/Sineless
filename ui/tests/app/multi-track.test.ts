@@ -14,6 +14,7 @@ import {
   settle,
   startApp,
   type Started,
+  multiSummary,
 } from "./harness.ts";
 
 function laneNames(): string[] {
@@ -181,7 +182,7 @@ describe("the Compare switch", () => {
     await press(choice("display-mode", "Multi"));
     await expect.poll(compareChecks).toBe(4);
     await expect.poll(hasSumLane).toBe(true);
-    expect(byId("group-summary").textContent).toBe("A·M·Σ");
+    expect(multiSummary()).toBe("A·M·Σ·");
   });
 
   // While Compare stays on screen, Preview fix stays on: pressing the Multi or On already pressed,

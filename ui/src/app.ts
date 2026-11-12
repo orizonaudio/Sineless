@@ -186,7 +186,6 @@ const popovers = [
   ["mode-group", "mode-details", "mode-popover"],
   ["time-base-group", "time-base-details", "time-base-popover"],
   ["layout-group", "layout-details", "layout-popover"],
-  ["group-group", "group-details", "group-popover"],
   ["views-group", "views-details", "views-popover"],
   ["trigger-group", "trigger-details", "trigger-popover"],
   ["about-group", "about-details", "about-popover"],
@@ -364,6 +363,12 @@ export class OscilloscopeApp {
   private drawnLaneCount = 0;
   private drawnLaneSet = 0;
   private viewSummary: string | undefined;
+  // The Views field's names for screen readers, Single's and Multi's: the button carries the
+  // current mode's.
+  private viewsNames = { single: "", multi: "" };
+  // The mode the Views popover's rows last followed, so that a mode change closes it and a
+  // setting resent unchanged, or Compare chosen in it, does not.
+  private viewsMultiShown: boolean | undefined;
 
   constructor(backend: Backend, store: SettingsStore, debug: DebugState) {
     this.backend = backend;
@@ -560,7 +565,7 @@ export class OscilloscopeApp {
     this.fields.set(name, field);
   }
 
-  // A field in a bar's pill (Span, Scale, A4) answers anywhere on the pill, its icon or label
+  // A field in a bar's pill (Span, Scale) answers anywhere on the pill, its icon or label
   // included, which looks like one control; the popovers' fields have no pill.
   private attachToPill(field: DragField, host: string): void {
     const pill = element(host).closest<HTMLElement>(".icon-field");
@@ -854,20 +859,21 @@ export class OscilloscopeApp {
   private updateMultiControls(): void {
     const multi = this.multiMode();
     element("source-row").hidden = multi;
-    // Single's Views and Multi's share one place, which keeps the wider one's width: the one that
-    // does not apply keeps its room, out of sight and out of reach.
-    for (const [id, off] of [
-      ["views-group", multi],
-      ["group-group", !multi],
-    ] as const) {
-      const field = element(id);
-      field.classList.toggle("off", off);
-      field.inert = off;
-    }
-    if (multi) {
+    // One Views field: its popover's rows are the mode's, A4 in both; its button shows the mode's
+    // summary, the other's keeping its room out of sight, and the mode's help. The rows are set
+    // before the popover can open, as it is placed by its width when it opens.
+    if (multi !== this.viewsMultiShown) {
+      this.viewsMultiShown = multi;
       this.closePopover("views-details", "views-popover");
-    } else {
-      this.closePopover("group-details", "group-popover");
+      for (const row of element("views-popover").querySelectorAll<HTMLElement>(
+        "[data-mode]",
+      )) {
+        row.hidden = (row.dataset["mode"] === "multi") !== multi;
+      }
+      element("views-single").classList.toggle("on", !multi);
+      element("views-multi").classList.toggle("on", multi);
+      element("views-group").dataset["help"] = multi ? "group" : "channelViews";
+      this.nameViews();
     }
     // Compare's labels hold its controls and always show: the Labels row is greyed out meanwhile,
     // keeping its choice for when Compare is off.
@@ -885,7 +891,7 @@ export class OscilloscopeApp {
 
   // The channel the Meter, snapping and the overlaid hover read (DESIGN.md 1.2.1), as the frame on
   // screen names it, whatever the settings now say until the next frame comes: in Single only, once
-  // a Single frame has come. Multi reads this track's lane channel, chosen in the Group popover, and
+  // a Single frame has come. Multi reads this track's lane channel, chosen in the Views popover, and
   // its frames carry a lane set, a frame with no tempo included.
   private readChannel(): ViewName | undefined {
     const frame = this.lastFrame;
@@ -930,7 +936,7 @@ export class OscilloscopeApp {
     }
     this.viewSummary = text;
     const readHost = element("views-read");
-    element("views-summary").replaceChildren(
+    element("views-single").replaceChildren(
       ...viewOrder.map((view) => {
         const letter = document.createElement("span");
         letter.textContent = viewLabels[view];
@@ -941,7 +947,16 @@ export class OscilloscopeApp {
       readHost,
     );
     this.readSummary?.show(read ?? "none");
-    element("views-details").setAttribute("aria-label", `Views: ${text}`);
+    this.viewsNames.single = `Views: ${text}`;
+    this.nameViews();
+  }
+
+  // The Views field's name for screen readers: the current mode's summary, in words.
+  private nameViews(): void {
+    element("views-details").setAttribute(
+      "aria-label",
+      this.multiMode() ? this.viewsNames.multi : this.viewsNames.single,
+    );
   }
 
   // The view toggles: pressed as asked for; disabled in Multi, which shows each track's lane
@@ -1070,7 +1085,13 @@ export class OscilloscopeApp {
     if (name === "concertPitch") {
       this.updateCursorReadout();
     }
-    if (name === "group" || name === "laneChannel" || name === "compare") {
+    if (
+      name === "group" ||
+      name === "laneChannel" ||
+      name === "compare" ||
+      name === "laneLabels" ||
+      name === "displayMode"
+    ) {
       this.updateGroupSummary();
     }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
@@ -1191,25 +1212,32 @@ export class OscilloscopeApp {
     return this.multiMode() && this.store.get("compare") === "on";
   }
 
-  // Multi's Views field (Single's shows the channel views) names the group, the lane channel and Σ,
-  // the sum Compare adds, as "A·M·Σ", Σ dimmed while Compare is off, as Single's dims the views not
-  // drawn; its name for screen readers says the channel in full, and Compare.
+  // Multi's summary in the Views field (Single's shows the channel views) names the group, the lane
+  // channel and Σ, the sum Compare adds, as "A·M·Σ", then a dot and a tag for the lane labels: Σ dimmed while
+  // Compare is off and the tag while the labels do not show, as Single's dims the views not drawn.
+  // Its name for screen readers says the channel in full, Compare and the labels.
   private updateGroupSummary(): void {
     const group = String(this.store.get("group")).toUpperCase();
     const channel = this.store.get("laneChannel") as ViewName;
     const compare = this.store.get("compare") === "on";
-    const sum = document.createElement("span");
-    sum.textContent = "Σ";
-    sum.className = compare ? "on" : "";
-    element("group-summary").replaceChildren(
-      `${group}·${viewLabels[channel]}·`,
-      sum,
-    );
-    const named = `Views: group ${group}, ${viewNames[ChannelView[channel]]}`;
-    element("group-details").setAttribute(
-      "aria-label",
-      compare ? `${named}, Compare on` : named,
-    );
+    const labels = this.labelsShown(true);
+    const summary = element("views-multi");
+    element("views-lanes").textContent = `${group}·${viewLabels[channel]}·`;
+    summary.querySelector(".sum")?.classList.toggle("on", compare);
+    summary.querySelector(".tag")?.classList.toggle("on", labels);
+    this.viewsNames.multi = `Views: group ${group}, ${viewNames[ChannelView[channel]]}${
+      compare ? ", Compare on" : ""
+    }${labels ? ", labels on" : ""}`;
+    this.nameViews();
+  }
+
+  // Whether Multi's lane labels show: Labels On, or Compare on, whose controls they hold. `inMulti`
+  // asks as if Multi showed, for the Views field's summary, which says it while Single shows too.
+  private labelsShown(inMulti = false): boolean {
+    const comparing = inMulti
+      ? this.store.get("compare") === "on"
+      : this.compareMode();
+    return comparing || this.store.get("laneLabels") !== "off";
   }
 
   // The names and colours of a multi-track frame's lanes: its own lane set, or the latest.
@@ -1257,7 +1285,7 @@ export class OscilloscopeApp {
     const styles = this.lanesOf(frame);
     const height = this.screen.clientHeight;
     const comparing = frame?.comparison !== undefined;
-    const shown = this.compareMode() || this.store.get("laneLabels") !== "off";
+    const shown = this.labelsShown();
     // Rebuilt only when what they show changes, so a click on a label is never lost to a redraw.
     const key = JSON.stringify([
       shown,

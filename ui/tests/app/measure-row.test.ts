@@ -16,6 +16,7 @@ import {
   startApp,
   startBeforeFrames,
   useReadout,
+  rowHidden,
 } from "./harness.ts";
 
 const letters = ["L", "R", "M", "S"] as const;
@@ -45,7 +46,7 @@ function readLetter(): { text: string; opacity: number } {
   };
 }
 
-const summaryWidth = () => byId("views-summary").getBoundingClientRect().width;
+const summaryWidth = () => byId("views-single").getBoundingClientRect().width;
 
 async function openViews(): Promise<void> {
   if (byId("views-popover").hidden) {
@@ -59,10 +60,13 @@ describe("the Measure row", () => {
     await startApp();
     await settle();
     await openViews();
-    const rows = [...byId("views-popover").querySelectorAll(".popover-row")];
+    const rows = [
+      ...byId("views-popover").querySelectorAll<HTMLElement>(".popover-row"),
+    ].filter((row) => !row.hidden);
     expect(rows.map((row) => row.querySelector("span")?.textContent)).toEqual([
       "Channels",
       "Measure",
+      "A4",
     ]);
     expect(rows[1]?.contains(byId("readout-source"))).toBe(true);
     expect(document.querySelector(".statusbar #readout-source")).toBeNull();
@@ -112,17 +116,16 @@ describe("the Measure row", () => {
     expect(summaryWidth()).toBeCloseTo(before, 1);
   });
 
-  // Multi reads this track's lane channel: the Views field, and the Measure row with it, is out of reach, and
+  // Multi reads this track's lane channel: the Measure row is hidden in the Views popover, and
   // nothing else offers a channel.
   test.each(displays.filter((display) => display !== "Single"))(
-    "is out of reach in %s",
+    "is hidden in %s",
     async (display) => {
       await startApp();
       await settle();
       await showDisplay(display);
       await settle();
-      expect(byId("views-group").inert).toBe(true);
-      expect(byId("views-popover").hidden).toBe(true);
+      expect(rowHidden("readout-source")).toBe(true);
     },
   );
 });
@@ -138,7 +141,7 @@ describe("the Views field", () => {
       await useReadout(letter);
       await expect.poll(channelRead).toBe(named[letter]);
       expect(drawnLetters()).toEqual(["L", "R", "M"]);
-      expect(byId("views-summary").textContent.startsWith("LRMS·")).toBe(true);
+      expect(byId("views-single").textContent.startsWith("LRMS·")).toBe(true);
       expect(readLetter()).toEqual({ text: letter, opacity: 1 });
       expect(byId("views-details").getAttribute("aria-label")).toBe(
         `Views: L R M, measures ${named[letter]}`,
@@ -146,7 +149,7 @@ describe("the Views field", () => {
       widths.add(Math.round(summaryWidth() * 100));
     }
     // A view not drawn stays in its place, dimmed.
-    const side = byId("views-summary").querySelector(
+    const side = byId("views-single").querySelector(
       ":scope > span:nth-child(4)",
     );
     expect(side?.textContent).toBe("S");
