@@ -41,7 +41,8 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 5px;
+  --bar-gap: 5px;
+  gap: var(--bar-gap);
   padding-inline: 10px;
   min-width: 0;
   font-size: 12px;
@@ -60,7 +61,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-right: 2px;
+  /* As far from the first group as the groups are from each other. */
+  margin-right: calc(var(--sl-group-space) - var(--bar-gap));
   font-weight: 600;
   font-size: 13px;
   letter-spacing: -0.01em;
@@ -77,10 +79,18 @@ body {
   height: 100%;
 }
 
-.divider {
-  width: 1px;
-  height: 18px;
-  background: var(--sl-line);
+/* A bar's controls in groups set apart by space alone (#409): 2 px apart inside a group, 13 px
+   between groups whatever the bar's own gap. The group after the toolbar's spacer, Auto-freeze and
+   Freeze, is set apart by the spacer. Not positioned, so the popovers inside are placed from the
+   toolbar (placePopover reads offsetLeft). */
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sl-gap-inner);
+}
+
+.group + .group {
+  margin-left: calc(var(--sl-group-space) - var(--bar-gap));
 }
 
 .spacer {
@@ -108,7 +118,7 @@ body {
   padding: 0 7px;
   font: inherit;
   font-weight: 500;
-  color: var(--sl-ink-2);
+  color: var(--sl-ink);
   background: transparent;
   border: 0;
   border-radius: 4px;
@@ -136,20 +146,74 @@ body {
 }
 
 .segmented button:disabled {
-  opacity: 0.35;
+  opacity: var(--sl-dim-disabled);
   cursor: default;
 }
 
-.action {
+/* A field with an icon or a short label before its value, a button that opens a popover, or a
+   switch. In the bars each is a flat fill with a glass rim (whole CSS pixels: a half pixel blends
+   into the case), its corners small inside a group and capsule-round at the group's ends. */
+.action,
+.icon-field,
+.field-button {
+  --pad: 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 24px;
-  padding: 0 10px;
+  padding: 0 var(--pad);
   background: var(--sl-control);
-  border-radius: 6px;
+  border-radius: var(--sl-radius-inner);
+  box-shadow: var(--sl-rim);
+}
+
+.action {
+  --pad: 10px;
+}
+
+.group > :first-child:is(.action, .icon-field, .field-button),
+.group > :first-child .field-button {
+  padding-left: calc(var(--pad) + 3px);
+  border-top-left-radius: var(--sl-radius-control);
+  border-bottom-left-radius: var(--sl-radius-control);
+}
+
+/* Trigger keeps its end padding whether Re-arm shows or not, so Re-arm appearing resizes nothing
+   (AD-26); only its corner follows. */
+.group > :last-child:is(.action, .icon-field, .field-button),
+.group > :last-child .field-button,
+#trigger-group .field-button {
+  padding-right: calc(var(--pad) + 3px);
+}
+
+.group > :last-child:is(.action, .icon-field, .field-button),
+.group > :last-child .field-button,
+.group > #trigger-group:has(+ #arm[hidden]) .field-button {
+  border-top-right-radius: var(--sl-radius-control);
+  border-bottom-right-radius: var(--sl-radius-control);
+}
+
+/* Under the pointer, a step lighter; a menu whose popover is open, a step lighter again, its rim
+   brighter and its chevron turned up; a switch that is on, the light fill; Frozen, the accent. */
+:is(.action, .icon-field, .field-button):not([aria-pressed="true"]):not(
+    [aria-expanded="true"]
+  ):not(:disabled):hover {
+  background: var(--sl-control-hover);
+}
+
+.field-button[aria-expanded="true"] {
+  background: var(--sl-control-open);
+  box-shadow: var(--sl-rim-open);
+}
+
+.field-button[aria-expanded="true"] .chevron {
+  transform: rotate(180deg);
 }
 
 .action[aria-pressed="true"] {
   color: var(--sl-on-selected);
   background: var(--sl-selected);
+  box-shadow: none;
 }
 
 /* The one accent: the display is frozen. */
@@ -159,32 +223,37 @@ body {
 }
 
 .action:disabled {
-  opacity: 0.35;
+  opacity: var(--sl-dim-disabled);
   cursor: default;
 }
 
-/* A field with an icon or a short label before its value, or a button that opens a popover. */
-.icon-field,
-.field-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 9px;
-  background: var(--sl-control);
-  border-radius: 6px;
-}
-
-/* Whole pixels: a half pixel's sides blend into the case, and its corners, blended more, read
-   fainter than its sides. */
-.field-button[aria-expanded="true"] {
-  box-shadow: 0 0 0 2px var(--sl-ink);
-}
-
-/* The whole pill drags, scrolls and opens for typing like its value (DragField.attach). */
+/* The whole pill drags, scrolls and opens for typing like its value (DragField.attach); an up-down
+   cue where a menu has its chevron says so. */
 .icon-field {
+  padding-right: calc(var(--pad) - 1px);
   cursor: ns-resize;
   touch-action: none;
+}
+
+.icon-field::after {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 9px;
+  margin-left: -1px;
+  background:
+    conic-gradient(from 135deg at 50% 0, var(--sl-ink-2) 90deg, transparent 0) 0
+      0 / 5px 3px no-repeat,
+    conic-gradient(
+        from -45deg at 50% 100%,
+        var(--sl-ink-2) 90deg,
+        transparent 0
+      )
+      0 100% / 5px 3px no-repeat;
+}
+
+.group > :last-child.icon-field {
+  padding-right: calc(var(--pad) + 2px);
 }
 
 .icon-field i,
@@ -193,8 +262,10 @@ body {
   color: var(--sl-ink-2);
 }
 
+/* A menu's summary is words or letters, in the UI face; numbers (the drag fields, the readouts)
+   stay in the value face. */
 .field-button b {
-  font: 500 12px var(--sl-font-value);
+  font: 500 12px var(--sl-font-ui);
   color: var(--sl-ink);
   font-variant-numeric: tabular-nums;
 }
@@ -832,7 +903,8 @@ button[aria-pressed="true"]:focus-visible {
 .status-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  --bar-gap: 6px;
+  gap: var(--bar-gap);
 }
 
 /* At the bar's right edge, in a fixed width, so the state coming and going moves nothing. */
@@ -847,12 +919,13 @@ button[aria-pressed="true"]:focus-visible {
   justify-content: flex-start;
   align-items: center;
   gap: 10px;
-  /* What the status bar left at a 1010 px minimum width, less the 8 px it keeps to spare (measured:
-     the left group 381, the gap between the groups 16, the right group's buttons and gaps 60, of
-     986 between the bar's padding), rounded down to 10. The Grid field raised the minimum width
-     instead of taking from it (#364), the Channel button's leaving lowered it again (#380) and Ticks raised it (#384), so
-     the chips keep this width. Fixed, so the chips fold at the same count at every window width. */
-  width: 520px;
+  /* What the status bar leaves at the minimum width (1040 px), less the 8 px it keeps to spare for
+     text that renders wider on another platform, rounded down to 10. Measured with the grouped
+     controls (#409): the left side 424.6, the gap between the sides 16, the right side's buttons and
+     gaps 68 (Help and About at 24 px), of 1016 between the bar's padding, leaving 507.4. Earlier the
+     minimum width grew instead (#364, #384); the restyle kept 1040 and narrowed this area from 520.
+     Fixed, so the chips fold at the same count at every window width. */
+  width: 490px;
 }
 
 .chip {
@@ -942,19 +1015,20 @@ button[aria-pressed="true"]:focus-visible {
 
 /* The help switch, and the tooltips it turns on. */
 .help-toggle {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  font: 600 11px var(--sl-font-ui);
-  color: var(--sl-ink-2);
-  background: transparent;
-  border: 1px solid var(--sl-line);
+  font: 500 11px var(--sl-font-ui);
+  color: var(--sl-ink);
+  background: var(--sl-control);
+  border: 0;
   border-radius: 50%;
+  box-shadow: var(--sl-rim);
   cursor: pointer;
 }
 
-.help-toggle:hover {
-  color: var(--sl-ink);
+.help-toggle:not([aria-pressed="true"]):not([aria-expanded="true"]):hover {
+  background: var(--sl-control-hover);
 }
 
 /* About, after Help: its popover opens upward from the status bar, its right edge on the button's. */
@@ -979,7 +1053,7 @@ button[aria-pressed="true"]:focus-visible {
 .help-toggle[aria-pressed="true"] {
   color: var(--sl-on-selected);
   background: var(--sl-selected);
-  border-color: var(--sl-selected);
+  box-shadow: none;
 }
 
 .help-tip {

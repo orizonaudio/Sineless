@@ -15,240 +15,252 @@
           <span class="brand-mark" id="brand-mark" aria-hidden="true"></span>
           <span class="wordmark" id="wordmark"></span>
         </div>
-        <div class="tool" id="mode-group" data-help="displayMode">
-          <button
-            class="field-button"
-            id="mode-details"
-            aria-expanded="false"
-            aria-controls="mode-popover"
-          >
-            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-              <rect x="1.5" y="1.5" width="6" height="6" rx="1.2" />
-              <rect
-                class="filled"
-                x="4.5"
-                y="4.5"
-                width="6"
-                height="6"
-                rx="1.2"
-              /></svg
-            ><b id="mode-summary"></b
-            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-              <path d="M1.5 3 4 5.5 6.5 3" />
-            </svg>
-          </button>
-          <div class="popover" id="mode-popover" hidden>
-            <div class="popover-title">Mode</div>
-            <div class="popover-row">
-              <span>Tracks</span>
-              <div class="segmented" id="display-mode"></div>
-            </div>
-          </div>
-        </div>
-        <!-- Each field that opens a popover holds it, so the popover follows its button in the
-             focus order and shares its help. -->
-        <!-- One place for Single's Views and Multi's: as wide as the wider, so switching modes moves
-             nothing after it. -->
-        <div class="slot" id="views-slot">
-          <div class="tool" id="views-group" data-help="channelViews">
+        <div class="group">
+          <div class="tool" id="mode-group" data-help="displayMode">
             <button
               class="field-button"
-              id="views-details"
+              id="mode-details"
               aria-expanded="false"
-              aria-controls="views-popover"
+              aria-controls="mode-popover"
             >
               <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-                <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
-                <circle cx="10" cy="9" r=".6" /></svg
-              ><b id="views-summary"><span id="views-read"></span></b
+                <rect x="1.5" y="1.5" width="6" height="6" rx="1.2" />
+                <rect
+                  class="filled"
+                  x="4.5"
+                  y="4.5"
+                  width="6"
+                  height="6"
+                  rx="1.2"
+                /></svg
+              ><b id="mode-summary"></b
               ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
                 <path d="M1.5 3 4 5.5 6.5 3" />
               </svg>
             </button>
-            <div class="popover" id="views-popover" hidden>
-              <div class="popover-title">Views</div>
+            <div class="popover" id="mode-popover" hidden>
+              <div class="popover-title">Mode</div>
               <div class="popover-row">
-                <span>Channels</span>
-                <div class="segmented toggles" id="views"></div>
-              </div>
-              <div class="popover-row" data-help="readoutSource">
-                <span>Measure</span>
-                <div class="segmented" id="readout-source"></div>
+                <span>Tracks</span>
+                <div class="segmented" id="display-mode"></div>
               </div>
             </div>
           </div>
-          <div class="tool" id="group-group" data-help="group">
+          <!-- Each field that opens a popover holds it, so the popover follows its button in the
+               focus order and shares its help. -->
+          <!-- One place for Single's Views and Multi's: as wide as the wider, so switching modes moves
+               nothing after it. -->
+          <div class="slot" id="views-slot">
+            <div class="tool" id="views-group" data-help="channelViews">
+              <button
+                class="field-button"
+                id="views-details"
+                aria-expanded="false"
+                aria-controls="views-popover"
+              >
+                <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                  <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
+                  <circle cx="10" cy="9" r=".6" /></svg
+                ><b id="views-summary"><span id="views-read"></span></b
+                ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                  <path d="M1.5 3 4 5.5 6.5 3" />
+                </svg>
+              </button>
+              <div class="popover" id="views-popover" hidden>
+                <div class="popover-title">Views</div>
+                <div class="popover-row">
+                  <span>Channels</span>
+                  <div class="segmented toggles" id="views"></div>
+                </div>
+                <div class="popover-row" data-help="readoutSource">
+                  <span>Measure</span>
+                  <div class="segmented" id="readout-source"></div>
+                </div>
+              </div>
+            </div>
+            <div class="tool" id="group-group" data-help="group">
+              <button
+                class="field-button"
+                id="group-details"
+                aria-expanded="false"
+                aria-controls="group-popover"
+              >
+                <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                  <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
+                  <circle cx="10" cy="9" r=".6" /></svg
+                ><b id="group-summary">A</b
+                ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                  <path d="M1.5 3 4 5.5 6.5 3" />
+                </svg>
+              </button>
+              <div class="popover" id="group-popover" hidden>
+                <div class="popover-title">Views</div>
+                <div class="popover-row">
+                  <span>Group</span>
+                  <div class="segmented" id="group"></div>
+                </div>
+                <div class="popover-row" data-help="laneChannel">
+                  <span>Channel</span>
+                  <div class="segmented" id="lane-channel"></div>
+                </div>
+                <div class="popover-row" data-help="compare">
+                  <span>Compare</span>
+                  <div class="segmented" id="compare"></div>
+                </div>
+                <div class="popover-row" data-help="laneLabels">
+                  <span>Labels</span>
+                  <div class="segmented" id="lane-labels-choice"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tool" id="layout-group" data-help="layout">
             <button
               class="field-button"
-              id="group-details"
+              id="layout-details"
               aria-expanded="false"
-              aria-controls="group-popover"
+              aria-controls="layout-popover"
             >
               <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-                <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
-                <circle cx="10" cy="9" r=".6" /></svg
-              ><b id="group-summary">A</b
+                <path d="M6 1 10.5 3.25 6 5.5 1.5 3.25Z" />
+                <path d="M1.5 6 6 8.25 10.5 6" />
+                <path d="M1.5 8.75 6 11 10.5 8.75" /></svg
+              ><b id="layout-summary"></b
               ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
                 <path d="M1.5 3 4 5.5 6.5 3" />
               </svg>
             </button>
-            <div class="popover" id="group-popover" hidden>
-              <div class="popover-title">Views</div>
+            <div class="popover" id="layout-popover" hidden>
+              <div class="popover-title">Layout</div>
               <div class="popover-row">
-                <span>Group</span>
-                <div class="segmented" id="group"></div>
-              </div>
-              <div class="popover-row" data-help="laneChannel">
-                <span>Channel</span>
-                <div class="segmented" id="lane-channel"></div>
-              </div>
-              <div class="popover-row" data-help="compare">
-                <span>Compare</span>
-                <div class="segmented" id="compare"></div>
-              </div>
-              <div class="popover-row" data-help="laneLabels">
-                <span>Labels</span>
-                <div class="segmented" id="lane-labels-choice"></div>
+                <span>Traces</span>
+                <div class="segmented" id="layout"></div>
               </div>
             </div>
           </div>
         </div>
-        <div class="tool" id="layout-group" data-help="layout">
-          <button
-            class="field-button"
-            id="layout-details"
-            aria-expanded="false"
-            aria-controls="layout-popover"
+        <div class="group">
+          <div class="tool" id="time-base-group" data-help="timeBase">
+            <button
+              class="field-button"
+              id="time-base-details"
+              aria-expanded="false"
+              aria-controls="time-base-popover"
+            >
+              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                <circle cx="6" cy="6" r="4.5" />
+                <path d="M6 3.3V6l1.8 1.2" /></svg
+              ><b id="time-base-summary"></b
+              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                <path d="M1.5 3 4 5.5 6.5 3" />
+              </svg>
+            </button>
+            <div class="popover" id="time-base-popover" hidden>
+              <div class="popover-title">Time base</div>
+              <div class="popover-row">
+                <span>Sweep</span>
+                <div class="segmented" id="time-base"></div>
+              </div>
+            </div>
+          </div>
+          <div class="tool icon-field" id="time-group" data-help="triggerSpan">
+            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M1 3v6M11 3v6M2.5 6h7M4 4.5 2.5 6 4 7.5M8 4.5 9.5 6 8 7.5"
+              />
+            </svg>
+            <div id="span-field" data-help="triggerSpan"></div>
+            <div id="free-span-field" data-help="freeSpan" hidden></div>
+            <div id="beat-span-field" data-help="beatSpan" hidden></div>
+          </div>
+          <div
+            class="tool icon-field"
+            id="vertical-group"
+            data-help="verticalScale"
           >
             <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-              <path d="M6 1 10.5 3.25 6 5.5 1.5 3.25Z" />
-              <path d="M1.5 6 6 8.25 10.5 6" />
-              <path d="M1.5 8.75 6 11 10.5 8.75" /></svg
-            ><b id="layout-summary"></b
-            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-              <path d="M1.5 3 4 5.5 6.5 3" />
+              <path
+                d="M3 1h6M3 11h6M6 2.5v7M4.5 4 6 2.5 7.5 4M4.5 8 6 9.5 7.5 8"
+              />
             </svg>
-          </button>
-          <div class="popover" id="layout-popover" hidden>
-            <div class="popover-title">Layout</div>
-            <div class="popover-row">
-              <span>Traces</span>
-              <div class="segmented" id="layout"></div>
-            </div>
+            <div id="scale-field" data-help="verticalScale"></div>
           </div>
         </div>
-        <div class="tool" id="time-base-group" data-help="timeBase">
-          <button
-            class="field-button"
-            id="time-base-details"
-            aria-expanded="false"
-            aria-controls="time-base-popover"
-          >
-            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-              <circle cx="6" cy="6" r="4.5" />
-              <path d="M6 3.3V6l1.8 1.2" /></svg
-            ><b id="time-base-summary"></b
-            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-              <path d="M1.5 3 4 5.5 6.5 3" />
-            </svg>
-          </button>
-          <div class="popover" id="time-base-popover" hidden>
-            <div class="popover-title">Time base</div>
-            <div class="popover-row">
-              <span>Sweep</span>
-              <div class="segmented" id="time-base"></div>
+        <div class="group" id="trigger-tools">
+          <div class="tool" id="trigger-group" data-help="trigger">
+            <button
+              class="field-button"
+              id="trigger-details"
+              aria-expanded="false"
+              aria-controls="trigger-popover"
+            >
+              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M1 10h3.5L7.5 2H11" />
+                <path class="dashed" d="M1 6h10" /></svg
+              ><b id="trigger-summary"></b
+              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                <path d="M1.5 3 4 5.5 6.5 3" />
+              </svg>
+            </button>
+            <div class="popover" id="trigger-popover" hidden>
+              <div class="popover-title">Trigger</div>
+              <div class="popover-row">
+                <span>Mode</span>
+                <div class="segmented" id="mode"></div>
+              </div>
+              <div
+                class="popover-row"
+                id="source-row"
+                data-help="triggerSource"
+              >
+                <span>Source</span>
+                <div class="segmented" id="source"></div>
+              </div>
+              <div class="popover-row" data-help="triggerSlope">
+                <span>Slope</span>
+                <div class="segmented" id="slope"></div>
+              </div>
+              <div class="popover-row" data-help="triggerLevel">
+                <span>Level</span>
+                <div id="level-field"></div>
+              </div>
+              <div class="popover-row" data-help="triggerHysteresis">
+                <span>Hysteresis</span>
+                <div id="hysteresis-field"></div>
+              </div>
+              <div class="popover-row" data-help="triggerHoldOff">
+                <span>Hold-off</span>
+                <div id="hold-off-field"></div>
+              </div>
+              <div class="popover-row" data-help="triggerPosition">
+                <span>Position</span>
+                <div id="position-field"></div>
+              </div>
             </div>
           </div>
-        </div>
-        <span class="divider" aria-hidden="true"></span>
-        <div class="tool icon-field" id="time-group" data-help="triggerSpan">
-          <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              d="M1 3v6M11 3v6M2.5 6h7M4 4.5 2.5 6 4 7.5M8 4.5 9.5 6 8 7.5"
-            />
-          </svg>
-          <div id="span-field" data-help="triggerSpan"></div>
-          <div id="free-span-field" data-help="freeSpan" hidden></div>
-          <div id="beat-span-field" data-help="beatSpan" hidden></div>
-        </div>
-        <div
-          class="tool icon-field"
-          id="vertical-group"
-          data-help="verticalScale"
-        >
-          <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              d="M3 1h6M3 11h6M6 2.5v7M4.5 4 6 2.5 7.5 4M4.5 8 6 9.5 7.5 8"
-            />
-          </svg>
-          <div id="scale-field" data-help="verticalScale"></div>
-        </div>
-        <span class="divider" id="trigger-divider" aria-hidden="true"></span>
-        <div class="tool" id="trigger-group" data-help="trigger">
-          <button
-            class="field-button"
-            id="trigger-details"
-            aria-expanded="false"
-            aria-controls="trigger-popover"
-          >
-            <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-              <path d="M1 10h3.5L7.5 2H11" />
-              <path class="dashed" d="M1 6h10" /></svg
-            ><b id="trigger-summary"></b
-            ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-              <path d="M1.5 3 4 5.5 6.5 3" />
-            </svg>
+          <button class="action" id="arm" data-help="rearm" hidden>
+            Re-arm
           </button>
-          <div class="popover" id="trigger-popover" hidden>
-            <div class="popover-title">Trigger</div>
-            <div class="popover-row">
-              <span>Mode</span>
-              <div class="segmented" id="mode"></div>
-            </div>
-            <div class="popover-row" id="source-row" data-help="triggerSource">
-              <span>Source</span>
-              <div class="segmented" id="source"></div>
-            </div>
-            <div class="popover-row" data-help="triggerSlope">
-              <span>Slope</span>
-              <div class="segmented" id="slope"></div>
-            </div>
-            <div class="popover-row" data-help="triggerLevel">
-              <span>Level</span>
-              <div id="level-field"></div>
-            </div>
-            <div class="popover-row" data-help="triggerHysteresis">
-              <span>Hysteresis</span>
-              <div id="hysteresis-field"></div>
-            </div>
-            <div class="popover-row" data-help="triggerHoldOff">
-              <span>Hold-off</span>
-              <div id="hold-off-field"></div>
-            </div>
-            <div class="popover-row" data-help="triggerPosition">
-              <span>Position</span>
-              <div id="position-field"></div>
-            </div>
-          </div>
         </div>
-        <button class="action" id="arm" data-help="rearm" hidden>Re-arm</button>
         <span class="spacer"></span>
-        <button
-          class="action freeze"
-          id="freeze"
-          aria-pressed="false"
-          data-help="freeze"
-        >
-          Freeze
-        </button>
-        <button
-          class="action"
-          id="auto-freeze"
-          aria-pressed="false"
-          data-help="autoFreeze"
-        >
-          Auto-freeze
-        </button>
+        <div class="group">
+          <button
+            class="action"
+            id="auto-freeze"
+            aria-pressed="false"
+            data-help="autoFreeze"
+          >
+            Auto-freeze
+          </button>
+          <button
+            class="action freeze"
+            id="freeze"
+            aria-pressed="false"
+            data-help="freeze"
+          >
+            Freeze
+          </button>
+        </div>
       </header>
       <main class="screen" id="screen" data-help="screen">
         <canvas class="grid" id="grid"></canvas>
@@ -285,75 +297,80 @@
            fixed width, Help and About. Nothing here moves when the state or a value changes. -->
       <footer class="statusbar">
         <div class="status-left">
-          <div class="tool icon-field" data-help="concertPitch">
-            <i>A4</i>
-            <div id="concert-pitch-field"></div>
+          <div class="group">
+            <div class="tool icon-field" data-help="concertPitch">
+              <i>A4</i>
+              <div id="concert-pitch-field"></div>
+            </div>
           </div>
-          <div class="grid-group" id="grid-group" data-help="grid">
-            <button
-              class="field-button"
-              id="grid-details"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-controls="grid-popover"
-            >
-              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-                <path d="M1.5 1.5h9v9h-9Z" />
-                <path d="M6 1.5v9M1.5 6h9" /></svg
-              ><b id="grid-summary"></b
-              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-                <path d="M1.5 3 4 5.5 6.5 3" />
-              </svg>
-            </button>
-            <div class="popover grid-popover" id="grid-popover" hidden>
-              <div class="popover-title">Grid</div>
-              <div class="popover-row" data-help="gridType">
-                <span>Type</span>
-                <div class="segmented" id="grid-type"></div>
-              </div>
-              <div class="popover-row" data-help="gridDensity">
-                <span>Density</span>
-                <div class="segmented" id="grid-density"></div>
-              </div>
-              <div class="popover-row" data-help="beatDivision">
-                <span>Beat division</span>
-                <div class="segmented" id="beat-division"></div>
+          <div class="group">
+            <div class="grid-group" id="grid-group" data-help="grid">
+              <button
+                class="field-button"
+                id="grid-details"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="grid-popover"
+              >
+                <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                  <path d="M1.5 1.5h9v9h-9Z" />
+                  <path d="M6 1.5v9M1.5 6h9" /></svg
+                ><b id="grid-summary"></b
+                ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                  <path d="M1.5 3 4 5.5 6.5 3" />
+                </svg>
+              </button>
+              <div class="popover grid-popover" id="grid-popover" hidden>
+                <div class="popover-title">Grid</div>
+                <div class="popover-row" data-help="gridType">
+                  <span>Type</span>
+                  <div class="segmented" id="grid-type"></div>
+                </div>
+                <div class="popover-row" data-help="gridDensity">
+                  <span>Density</span>
+                  <div class="segmented" id="grid-density"></div>
+                </div>
+                <div class="popover-row" data-help="beatDivision">
+                  <span>Beat division</span>
+                  <div class="segmented" id="beat-division"></div>
+                </div>
               </div>
             </div>
           </div>
-          <span class="divider"></span>
-          <button
-            class="action"
-            id="meter-toggle"
-            aria-pressed="false"
-            data-help="meter"
-          >
-            Meter
-          </button>
-          <button
-            class="action"
-            id="time-cursors"
-            aria-pressed="false"
-            data-help="timeCursors"
-          >
-            Time
-          </button>
-          <button
-            class="action"
-            id="level-cursors"
-            aria-pressed="false"
-            data-help="levelCursors"
-          >
-            Level
-          </button>
-          <button
-            class="action"
-            id="hover-toggle"
-            aria-pressed="false"
-            data-help="hoverReadout"
-          >
-            Hover
-          </button>
+          <div class="group">
+            <button
+              class="action"
+              id="meter-toggle"
+              aria-pressed="false"
+              data-help="meter"
+            >
+              Meter
+            </button>
+            <button
+              class="action"
+              id="time-cursors"
+              aria-pressed="false"
+              data-help="timeCursors"
+            >
+              Time
+            </button>
+            <button
+              class="action"
+              id="level-cursors"
+              aria-pressed="false"
+              data-help="levelCursors"
+            >
+              Level
+            </button>
+            <button
+              class="action"
+              id="hover-toggle"
+              aria-pressed="false"
+              data-help="hoverReadout"
+            >
+              Hover
+            </button>
+          </div>
         </div>
         <div class="status-right">
           <div class="chips" id="chips" data-help="status"></div>

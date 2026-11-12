@@ -136,9 +136,9 @@ describe("the Meter", () => {
   // Its button comes before the cursors' in the status bar, and its panel on top in the corner,
   // whichever was turned on first.
   test("comes before the time and level cursors, button and readouts", async () => {
-    const buttons = [
-      ...(document.querySelector(".status-left")?.children ?? []),
-    ].map((child) => child.id);
+    const buttons = [...document.querySelectorAll(".status-left .action")].map(
+      (button) => button.id,
+    );
     const meter = buttons.indexOf("meter-toggle");
     expect(buttons.slice(meter, meter + 3)).toEqual([
       "meter-toggle",
