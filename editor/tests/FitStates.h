@@ -100,7 +100,6 @@ inline std::vector<State> states()
         {.name = "trigger Normal, -0.555",
          .settings = {{SettingId::kTriggerMode, 1.0}, {SettingId::kTriggerLevel, -0.555}},
          .script = ""},
-        {.name = "A4 432.5", .settings = {{SettingId::kConcertPitch, 432.5}}, .script = ""},
         {.name = "frozen, auto-freeze, cursors, hover, Meter",
          .settings = {{SettingId::kAutoFreeze, 1.0},
                       {SettingId::kHoverReadout, 1.0},
