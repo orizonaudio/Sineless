@@ -157,6 +157,7 @@ against it and the UI builds its controls from it.
 | Display mode | Single, Multi | Single |
 | Group | A, B, C, D | A |
 | Compare (applies in Multi; kept in Single) | Off, on | Off |
+| Lane labels (Multi; always shown with Compare on) | Off, on | On |
 | Hover readout | Off, on | Off |
 | Meter | Off, on | Off |
 | Concert pitch (A4) | 400 – 500 Hz, linear | 440 Hz |
@@ -217,7 +218,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Mode popover | Single \| Multi |
 | Time base popover | Beats \| Free \| Trig |
 | Layout popover | Overlay \| Stack |
-| Views popover in Multi | Group (A \| B \| C \| D) · Compare (On \| Off) |
+| Views popover in Multi | Group (A \| B \| C \| D) · Channel (L \| R \| M \| S) · Compare (Off \| On) · Labels (Off \| On; disabled, keeping its choice, while Compare is on) |
 | Views popover | Channels: L, R, M, S toggles, each with its trace's colour · Measure: L \| R \| M \| S, the readout source (1.2.1), the views not drawn disabled (R, M and S on a mono track), the channel read lit; nothing before a Single frame says what is read |
 | Trigger popover | Mode (Auto \| Normal \| Single), Source (Single; the views not drawn disabled, the view the trigger reads lit), Slope, Level, Hysteresis, Hold-off, Position |
 | Screen, top right | The Meter and the cursor readouts, in that order; the frame barcode instead while the diagnostic switch is on (§8.3) |
@@ -264,7 +265,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 - The types add to one another: None draws each lane's zero line alone, with no lines or labels,
   and the Grid popover greys out the Density and the Beat division, which keep their choice; Ticks
   adds the time and level labels, without lines, the level labels at the Density's level step and, in Beats,
-  the time labels at its time step and the Beat division (Trig and Free label the fifths); Grid adds the lines. The trigger point's line and the lane labels stay in every type.
+  the time labels at its time step and the Beat division (Trig and Free label the fifths); Grid adds the lines. The trigger point's line and the lane labels (while Labels is On, or Compare on) stay in every type.
 - A dashed line marks the trigger point, and a level marker on the left edge, in the own lane's
   colour, can be dragged.
 - Beats, at Medium: grid lines on bars with stronger lines every four bars when 8 bars or more are
@@ -280,7 +281,8 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   the trigger popover closes, and the trigger line and marker are hidden.
 - Lane labels at the top of each stacked lane, or as a legend when overlaid: a dot in the lane's
   colour, the name, and "this track" on the own track. Compare, when on, adds check-box swatches, match
-  readouts, the sum's gain (yellow where tracks cancel), and Preview fix.
+  readouts, the sum's gain (yellow where tracks cancel), and Preview fix. Labels Off hides them,
+  stacked and overlaid, except with Compare on, whose controls they hold.
 - A trace waiting for a trigger is dimmed.
 
 #### Interaction
@@ -1036,7 +1038,8 @@ floats of min/max pairs, then 3 × 3 match values.
   below −120 dBFS; a summing gain shows −∞ at or below −140 dB; analysis (Compare, the hover's
   cycles) ignores audio at or below −90 dBFS RMS.
 - Samples that are not finite are left out of measurements, counted, and shown: an "Invalid
-  samples" chip, and affected lanes named in yellow, the problem colour.
+  samples" chip, and, while the lane labels show, affected lanes named in yellow, the problem
+  colour.
 
 Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file explains each):
 

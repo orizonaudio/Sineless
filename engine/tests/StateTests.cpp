@@ -164,6 +164,25 @@ TEST(State, AStateWithoutAutoFreezeOpensWithItOn)
     EXPECT_GT(without, 0) << "no golden state predates Auto-freeze";
 }
 
+// A project saved before the Labels switch existed opens with Multi's lane labels on, as they
+// always showed then.
+TEST(State, AStateWithoutLaneLabelsOpensWithThemOn)
+{
+    int without = 0;
+    for (const char* file : kEveryGoldenStateFile) {
+        const std::string text = readTestFile(file);
+        if (nlohmann::json::parse(text).at("settings").contains("laneLabels")) {
+            continue;
+        }
+        ++without;
+        EXPECT_EQ(
+            deserializeState(text).settings.enumValue<protocol::Toggle>(SettingId::kLaneLabels),
+            protocol::Toggle::kOn)
+            << file;
+    }
+    EXPECT_GT(without, 0) << "no golden state predates the Labels switch";
+}
+
 // A project saved before the trigger Position was a setting reopens with the trigger point where
 // it was then, 10% from the left.
 TEST(State, AStateWithoutATriggerPositionOpensAtTheOldPlace)
@@ -376,6 +395,7 @@ constexpr std::array kVersion6Values{
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
     GoldenValue{.id = SettingId::kGridType, .value = asValue(protocol::GridType::kTicks)},
     GoldenValue{.id = SettingId::kGridDensity, .value = asValue(protocol::GridDensity::kCoarse)},
+    GoldenValue{.id = SettingId::kLaneLabels, .value = asValue(protocol::Toggle::kOff)},
     GoldenValue{.id = SettingId::kBeatDivision,
                 .value = asValue(protocol::BeatDivision::kTriplets)},
     GoldenValue{.id = SettingId::kLaneChannel, .value = asValue(protocol::ChannelView::kSide)},

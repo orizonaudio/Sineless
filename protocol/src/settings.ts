@@ -152,6 +152,10 @@ export const settings = {
   // In Multi, adds the sum of the tracks checked against this one, with their matches and summing
   // gains (Compare, FR-15). Kept while the display mode is Single.
   compare: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
+  // Multi's lane labels: each lane's colour dot and track name, at the top of each stacked lane or
+  // as a legend when overlaid. With Compare on they hold its check boxes and readouts, so they
+  // always show. On in a new instance and in a project saved before the switch existed.
+  laneLabels: { kind: "enum", values: "Toggle", defaultValue: Toggle.on },
   // The channel every lane of Multi shows, with or without Compare, and what Multi's trigger,
   // readouts, sum, matches and summing gains read: one choice for the whole display. A mono track
   // shows its one channel whatever the choice. Mid keeps what Multi showed before the choice

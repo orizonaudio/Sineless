@@ -143,6 +143,14 @@ export function helpTextsFor(mac: boolean) {
         "It stays on or off as you leave Multi and come back, and is saved with the project.",
       ],
     },
+    laneLabels: {
+      title: "Labels",
+      lead: "Shows each lane's colour and track name in Multi.",
+      notes: [
+        "With Compare on they hold its check boxes and readouts, so they always show.",
+        "Saved with the project.",
+      ],
+    },
     compareTrack: {
       title: "Compare",
       lead: "Check a track to add it to the sum and measure it against this track.",
@@ -246,7 +254,7 @@ export function helpTextsFor(mac: boolean) {
         },
       ],
       notes: [
-        "The Meter and Compare measure around them; their lanes are named in yellow.",
+        "The Meter and Compare measure around them; lane labels name their lanes in yellow.",
       ],
     },
     meter: {
@@ -643,6 +651,7 @@ export const choiceHelp: {
   triggerMode: { topic: "trigger" },
   group: { exempt: "letters A to D, which say nothing to explain one by one" },
   compare: { exempt: "an on/off switch, whose topic says what on does" },
+  laneLabels: { exempt: "an on/off switch, whose topic says what on does" },
   autoFreeze: { exempt: "an on/off switch, whose topic says what on does" },
   hoverReadout: { exempt: "an on/off switch, whose topic says what on does" },
   meter: { exempt: "an on/off switch, whose topic says what on does" },

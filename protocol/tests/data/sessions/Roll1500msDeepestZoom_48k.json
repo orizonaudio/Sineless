@@ -48,6 +48,7 @@
       "group": "a",
       "hoverReadout": "off",
       "laneChannel": "mid",
+      "laneLabels": "on",
       "meter": "off",
       "readoutSource": "mid",
       "timeBase": "free",
