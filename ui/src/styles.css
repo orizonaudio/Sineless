@@ -436,8 +436,8 @@ button[aria-pressed="true"]:focus-visible {
 
 /* In a popover, a choice is a track a step lighter than the popover with the bars' glass rim, the
    chosen option a raised light thumb concentric in it; options not chosen read in the text colour,
-   the thumb alone marks the choice. Channels may have several chosen: neighbours that are both chosen join into one
-   thumb, rounded only at its ends. */
+   the thumb alone marks the choice. Channels may have several chosen: chosen neighbours stand
+   2 px apart with small facing corners, as controls in a bar group. */
 .popover .segmented {
   background: var(--sl-track);
   border-radius: var(--sl-radius-control);
@@ -459,17 +459,13 @@ button[aria-pressed="true"]:focus-visible {
 .popover
   .segmented
   button[aria-pressed="true"]:has(+ button[aria-pressed="true"]) {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  clip-path: inset(-4px 0 -4px -4px);
+  border-top-right-radius: var(--sl-radius-inner);
+  border-bottom-right-radius: var(--sl-radius-inner);
 }
 
 .popover .segmented button[aria-pressed="true"] + button[aria-pressed="true"] {
-  margin-left: -2px;
-  padding-left: 9px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  clip-path: inset(-4px -4px -4px 0);
+  border-top-left-radius: var(--sl-radius-inner);
+  border-bottom-left-radius: var(--sl-radius-inner);
 }
 
 .popover

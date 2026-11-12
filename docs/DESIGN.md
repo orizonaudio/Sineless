@@ -368,7 +368,8 @@ colour blindness in `docs/ui/colour.html`.
 - Popovers float lighter than the bars, with a dark outer and a faint light inner edge. A choice,
   and a number field, is a track a step lighter than the popover with the controls' rim, the chosen
   option a raised thumb in it; Channels, which
-  may have several chosen, joins neighbouring chosen ones into one thumb. Help tips and the "+n"
+  may have several chosen, keeps chosen neighbours 2 px apart with small facing corners, as
+  controls in a bar group. Help tips and the "+n"
   list take the popover's edge. The Meter, cursor and hover readouts are drawn in the bars' colour,
   opaque, with a hairline edge: part of the instrument, not menus.
 - Colour belongs to traces. Trace colours: L blue, R pink, Mid white, Side lime. Lanes take the
