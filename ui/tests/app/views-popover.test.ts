@@ -55,6 +55,20 @@ async function openViews(): Promise<void> {
 }
 
 describe.each(displays)("in %s", (display) => {
+  // Both modes' summaries share one place in the field: only the display's own is drawn, so the
+  // field is never blank nor two summaries over each other.
+  test("the Views field shows the display's summary alone", async () => {
+    await startApp();
+    await showDisplay(display);
+    const drawn = (id: string) => getComputedStyle(byId(id)).visibility;
+    expect(drawn("views-single")).toBe(
+      display === "Single" ? "visible" : "hidden",
+    );
+    expect(drawn("views-multi")).toBe(
+      display === "Single" ? "hidden" : "visible",
+    );
+  });
+
   test("the Views popover shows the display's rows, then A4, and hides the others", async () => {
     await startApp();
     await showDisplay(display);
