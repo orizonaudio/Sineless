@@ -1,6 +1,7 @@
 // The toolbar keeps its controls in place when a mode changes (AD-26): switching the display mode,
 // time base, layout or trigger mode moves and resizes nothing that shows before and after, the
-// changed control included, and the controls keep one order (#355).
+// changed control included, and the controls keep one order (#355), in groups set apart by space
+// (#409).
 import { afterAll, describe, expect, test } from "vitest";
 import { page } from "vitest/browser";
 
@@ -12,6 +13,7 @@ import { valueNames } from "../../../protocol/src/setting-values.ts";
 import { settings, type SettingName } from "../../../protocol/src/settings.ts";
 import { numberFields } from "../../src/view/fields.ts";
 import { beatSpanLabels } from "../../src/view/musical-grid.ts";
+import { gaps } from "./colour.ts";
 import { byId, settle, startApp, type Started } from "./harness.ts";
 
 afterAll(async () => {
@@ -20,12 +22,16 @@ afterAll(async () => {
 
 type State = Partial<Record<SettingName, string>>;
 
-// The toolbar's children that show, by name (an id, or a class and its place among its kind),
-// with their left edge and width. The spacer is left out: it takes up whatever room is left.
+// The toolbar's controls that show, by name (an id, or a class and its place among its kind),
+// with their left edge and width; a group's controls are measured one by one. The spacer is left
+// out: it takes up whatever room is left.
 function measure(): Map<string, { left: number; width: number }> {
   const seen = new Map<string, number>();
   const boxes = new Map<string, { left: number; width: number }>();
-  for (const child of byId("toolbar").children) {
+  const controls = [...byId("toolbar").children].flatMap((child) =>
+    child.classList.contains("group") ? [...child.children] : [child],
+  );
+  for (const child of controls) {
     const element = child as HTMLElement;
     const kind = element.className;
     const count = seen.get(kind) ?? 0;
@@ -125,22 +131,20 @@ describe.each(widths)("the toolbar at %i px", (width) => {
     },
   );
 
-  // The order #355 sets: the Views slot after the mode, Layout after it, then the time base; a
-  // divider before the span and another before Trigger (#393).
+  // The order #355 sets: the Views slot after the mode, Layout after it, then the time base, the
+  // span and the scale, Trigger and Re-arm; Auto-freeze before Freeze (#409).
   const order = [
     "brand#0",
     "mode-group",
     "views-slot",
     "layout-group",
     "time-base-group",
-    "divider#0",
     "time-group",
     "vertical-group",
-    "trigger-divider",
     "trigger-group",
     "arm",
-    "freeze",
     "auto-freeze",
+    "freeze",
   ];
   test.each([
     { displayMode: "single", timeBase: "beats" },
@@ -251,36 +255,117 @@ test("the span pill holds every value its steps can show at one width", async ()
   expect(wider).toEqual([]);
 });
 
-// Dividers group the toolbar (#393): the time base's fields, then span and scale, then the
-// trigger's. The one before Trigger shows exactly when Trigger does, so none is left at the end.
-describe("the toolbar's dividers", () => {
-  test("sit after the time base and before Trigger", async () => {
-    const started = await startApp();
-    await show(started, { displayMode: "single", timeBase: "trigger" });
-    const after = (id: string) => byId(id).nextElementSibling;
-    expect(after("time-base-group")?.className).toBe("divider");
-    expect(byId("trigger-group").previousElementSibling?.className).toBe(
-      "divider",
-    );
-    for (const divider of byId("toolbar").querySelectorAll(".divider")) {
-      expect(divider.getBoundingClientRect().width).toBeGreaterThan(0);
-    }
-  });
+// The toolbar's groups (#409): the view (Mode, Views, Layout), the time (time base, span, scale),
+// the trigger (Trigger, Re-arm) and freezing (Auto-freeze, Freeze), set apart by space alone.
+const groups = [
+  ["mode-group", "views-slot", "layout-group"],
+  ["time-base-group", "time-group", "vertical-group"],
+  ["trigger-group", "arm"],
+  ["auto-freeze", "freeze"],
+];
 
-  test.each(timeBases)(
-    "in %s, the one before Trigger shows with it",
-    async (timeBase) => {
+const shownBox = (element: Element): DOMRect | undefined => {
+  const box = element.getBoundingClientRect();
+  return box.width > 0 && getComputedStyle(element).visibility !== "hidden"
+    ? box
+    : undefined;
+};
+
+// The element that draws a control's shape: the control itself, or its shown button.
+function surface(control: Element): HTMLElement {
+  if (control.matches("button, .icon-field")) {
+    return control as HTMLElement;
+  }
+  const button = [
+    ...control.querySelectorAll<HTMLElement>(":scope .field-button"),
+  ].find((candidate) => shownBox(candidate) !== undefined);
+  return button ?? (control as HTMLElement);
+}
+
+const corner = (element: HTMLElement, side: "left" | "right") => {
+  const style = getComputedStyle(element);
+  return parseFloat(
+    side === "left" ? style.borderTopLeftRadius : style.borderTopRightRadius,
+  );
+};
+
+const toolbarStates = ["single", "multi"].flatMap((displayMode) =>
+  timeBases.flatMap((timeBase) =>
+    (timeBase === "trigger" ? triggerModes : ["auto"]).map((triggerMode) => ({
+      displayMode,
+      timeBase,
+      triggerMode,
+    })),
+  ),
+);
+
+describe.each(widths)("the toolbar's groups at %i px", (width) => {
+  test.each(toolbarStates)(
+    "in $displayMode, $timeBase, $triggerMode: in order, apart, capped at their ends",
+    async (state) => {
+      await page.viewport(width, 600);
       const started = await startApp();
-      await show(started, { displayMode: "single", timeBase });
-      const trigger = byId("trigger-group");
-      const divider = trigger.previousElementSibling as HTMLElement | null;
-      expect(divider?.className).toBe("divider");
-      expect(divider?.getBoundingClientRect().width === 0).toBe(
-        trigger.getBoundingClientRect().width === 0,
+      await show(started, state);
+      const shown = [...byId("toolbar").querySelectorAll(":scope > .group")]
+        .filter((group) => shownBox(group) !== undefined)
+        .map((group) =>
+          [...group.children].filter((child) => shownBox(child) !== undefined),
+        );
+      // Every shown group holds a shown control, and the groups hold what they should.
+      expect(shown.every((controls) => controls.length > 0)).toBe(true);
+      expect(
+        shown.map((controls) => controls.map((control) => control.id)),
+      ).toEqual(
+        groups
+          .map((ids) => ids.filter((id) => shownBox(byId(id)) !== undefined))
+          .filter((ids) => ids.length > 0),
       );
-      expect(divider?.getBoundingClientRect().width === 0).toBe(
-        timeBase !== "trigger",
-      );
+      // Controls in a group are closer than the groups before the spacer are to each other.
+      const inside = shown.flatMap((controls) => gaps(controls));
+      const apart = shown
+        .slice(0, -1)
+        .flatMap((controls, i, left) =>
+          i === 0
+            ? []
+            : gaps(
+                [left[i - 1]?.at(-1), controls[0]].filter(
+                  (c) => c !== undefined,
+                ),
+              ),
+        );
+      expect(apart.length).toBeGreaterThan(0);
+      expect(Math.max(...inside)).toBeLessThan(Math.min(...apart));
+      for (const gap of apart) {
+        expect(gap).toBeCloseTo(apart[0] ?? NaN, 0);
+      }
+      // A group is rounded at its outer ends only; a control alone in its group, on both sides.
+      const innerCorner = corner(surface(byId("views-slot")), "left");
+      for (const controls of shown) {
+        controls.forEach((control, i) => {
+          const element = surface(control);
+          const isFirst = i === 0;
+          const isLast = i === controls.length - 1;
+          const name = `${control.id} (${String(i + 1)} of ${String(controls.length)})`;
+          expect(corner(element, "left") > innerCorner, name).toBe(isFirst);
+          expect(corner(element, "right") > innerCorner, name).toBe(isLast);
+        });
+      }
     },
   );
 });
+
+// Auto-freeze comes before Freeze (#409), live and frozen alike.
+test.each([false, true])(
+  "puts Auto-freeze before Freeze, frozen: %s",
+  async (frozen) => {
+    await startApp();
+    await settle();
+    if (frozen) {
+      byId("freeze").click();
+      await settle();
+    }
+    expect(byId("auto-freeze").getBoundingClientRect().right).toBeLessThan(
+      byId("freeze").getBoundingClientRect().left,
+    );
+  },
+);

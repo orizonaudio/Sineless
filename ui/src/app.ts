@@ -952,12 +952,12 @@ export class OscilloscopeApp {
   }
 
   // Only the Trigger time base is triggered: in Beats and Free the trigger controls are hidden,
-  // with the divider before them, and the popover closes. Re-arm shows in the Single trigger mode
-  // only.
+  // with their group, so no empty group keeps its space, and the popover closes. Re-arm shows in
+  // the Single trigger mode only.
   private updateTriggerControls(): void {
     const triggered = this.store.get("timeBase") === "trigger";
     element("trigger-group").hidden = !triggered;
-    element("trigger-divider").hidden = !triggered;
+    element("trigger-tools").hidden = !triggered;
     element("arm").hidden =
       !triggered || this.store.get("triggerMode") !== "single";
     if (!triggered) {

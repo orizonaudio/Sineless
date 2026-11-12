@@ -565,24 +565,48 @@ describe("choice field popovers", () => {
     await startApp();
   });
 
-  // An open popover's button is ringed in whole CSS pixels, so the ring's sides cover whole device
-  // pixels at every pixel ratio: a half pixel blends into the case, and its corners, blended more,
-  // read fainter than its sides. Closed, the button has no ring.
+  // An open menu looks open: a lighter fill than at rest or under the pointer, its chevron turned,
+  // and no ring (#409). Its rim is drawn in whole CSS pixels, so its sides cover whole device
+  // pixels at every pixel ratio (a half pixel blends into the case). Closed, it looks as before.
   test.each(
     [
       ...new DOMParser()
         .parseFromString(html, "text/html")
         .querySelectorAll(".field-button"),
     ].map((button) => button.id),
-  )("%s is ringed in whole pixels while its popover is open", (id) => {
+  )("%s looks open while its popover is open", (id) => {
     const button = byId(id);
-    expect(getComputedStyle(button).boxShadow).toBe("none");
+    // A control hidden in the current mode (Trigger outside Trig) is shown for the check.
+    const hidden: HTMLElement[] = [];
+    for (let node = button.parentElement; node; node = node.parentElement) {
+      if (node.hidden) {
+        hidden.push(node);
+        node.hidden = false;
+      }
+    }
+    const chevron = button.querySelector(".chevron");
+    const rest = getComputedStyle(button).backgroundColor;
+    const turnedAtRest = chevron && getComputedStyle(chevron).transform;
     button.setAttribute("aria-expanded", "true");
-    const ring = getComputedStyle(button).boxShadow;
+    const open = getComputedStyle(button);
+    expect(open.backgroundColor).not.toBe(rest);
+    if (chevron !== null) {
+      expect(getComputedStyle(chevron).transform).not.toBe(turnedAtRest);
+    }
+    for (const length of open.boxShadow.match(/-?[\d.]+px/gu) ?? []) {
+      expect(Number.isInteger(parseFloat(length)), open.boxShadow).toBe(true);
+    }
+    // No ring outside the button: every shadow is drawn inside it.
+    expect(
+      open.boxShadow
+        .split(/,(?![^(]*\))/u)
+        .every((shadow) => shadow.includes("inset")),
+    ).toBe(true);
     button.setAttribute("aria-expanded", "false");
-    const spread = Number(/([\d.]+)px$/.exec(ring)?.[1]);
-    expect(spread).toBeGreaterThan(0);
-    expect(Number.isInteger(spread)).toBe(true);
+    expect(getComputedStyle(button).backgroundColor).toBe(rest);
+    for (const node of hidden) {
+      node.hidden = true;
+    }
   });
 
   // A row with a label, and in it the setting's choices, one per value, as the other popovers.

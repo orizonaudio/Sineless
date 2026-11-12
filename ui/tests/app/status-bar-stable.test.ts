@@ -9,6 +9,7 @@ import {
   minimumEditorWidth,
 } from "../../../protocol/src/limits.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
+import { gaps } from "./colour.ts";
 import { byId, settle, startApp, type Started } from "./harness.ts";
 
 afterAll(async () => {
@@ -24,7 +25,11 @@ function measure(): Map<string, { left: number; width: number }> {
   for (const group of [".status-left", ".status-right"]) {
     for (const [index, child] of [
       ...(document.querySelector(group)?.children ?? []),
-    ].entries()) {
+    ]
+      .flatMap((part) =>
+        part.classList.contains("group") ? [...part.children] : [part],
+      )
+      .entries()) {
       const box = child.getBoundingClientRect();
       boxes.set(`${group} ${child.id || String(index)}`, {
         left: box.left,
@@ -101,17 +106,41 @@ describe.each([minimumEditorWidth, defaultEditorWidth])(
 );
 
 // Concert pitch and the grid shape what the screen draws, so they come first, by the screen's
-// left edge; the Meter, the cursors and Hover, which read it, come after them (#380).
-test("puts A4 and Grid first, then the Meter, the cursors and Hover", async () => {
+// left edge; the Meter, the cursors and Hover, which read it, come after them (#380). Each is a
+// group of its own, set apart by space alone, as far apart as the toolbar's groups (#409).
+test("puts A4 and Grid first, then the Meter, the cursors and Hover, in three groups", async () => {
   await startApp();
-  const left = [...(document.querySelector(".status-left")?.children ?? [])];
-  expect(left.map((child) => child.id || child.className)).toEqual([
-    "tool icon-field",
-    "grid-group",
-    "divider",
-    "meter-toggle",
-    "time-cursors",
-    "level-cursors",
-    "hover-toggle",
+  await settle();
+  const groups = [...document.querySelectorAll(".status-left > .group")].map(
+    (group) => [...group.children],
+  );
+  expect(
+    groups.map((controls) =>
+      controls.map((child) => child.id || child.className),
+    ),
+  ).toEqual([
+    ["tool icon-field"],
+    ["grid-group"],
+    ["meter-toggle", "time-cursors", "level-cursors", "hover-toggle"],
   ]);
+  expect(document.querySelector(".status-left > .divider")).toBeNull();
+  const inside = gaps(groups.at(-1) ?? []);
+  const apart = gaps(
+    groups
+      .flatMap((controls) => [controls[0], controls.at(-1)])
+      .filter((c) => c !== undefined),
+  ).filter((_, i) => i % 2 === 1);
+  // The toolbar's gap between its first two groups, on the same page.
+  const [firstGroup, secondGroup] = [
+    ...byId("toolbar").querySelectorAll(":scope > .group"),
+  ];
+  const toolbarGap = gaps(
+    [firstGroup?.lastElementChild, secondGroup?.firstElementChild].filter(
+      (c) => c !== null && c !== undefined,
+    ),
+  )[0];
+  expect(Math.max(...inside)).toBeLessThan(Math.min(...apart));
+  for (const gap of apart) {
+    expect(gap).toBeCloseTo(toolbarGap ?? NaN, 0);
+  }
 });
