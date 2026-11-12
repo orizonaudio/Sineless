@@ -260,13 +260,16 @@ describe("a track alone in its group", () => {
     await press(choice("layout", layout));
     await settle();
     await expect.poll(laneNames).toHaveLength(1);
-    if (frozen) {
+    // The file's tests share one page (beforeApp), which an earlier test may have left frozen:
+    // press Freeze only when the page is not already as this test needs it. The frozen frame can
+    // take longer than the matcher's default second in a busy browser.
+    const wanted = frozen ? "Frozen" : "Freeze";
+    if (byId("freeze").textContent !== wanted) {
       await userEvent.click(byId("freeze"));
-      // The frozen frame can take longer than the matcher's default second in a busy browser.
-      await expect
-        .poll(() => byId("freeze").textContent, { timeout: 5000 })
-        .toBe("Frozen");
     }
+    await expect
+      .poll(() => byId("freeze").textContent, { timeout: 5000 })
+      .toBe(wanted);
   }
 
   describe.each(["Stack", "Overlay"])("%s", (layout) => {
