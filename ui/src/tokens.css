@@ -15,29 +15,30 @@
 }
 
 /* The UI's colours, from the redesign's tokens (docs/ui/tokens/sineless-tokens.json, step 4).
-   Dark only. The chrome's greys share one cool tint (red and green equal, blue 4 above), so every
-   surface reads as one material. The chrome is greys; colour belongs to traces; orange marks Frozen and nothing else;
+   Dark only. The chrome's greys share one cool hue (red and green equal, blue above them), the
+   lighter ones bluer (+4 on the bar, +5 on controls, +6 on an open menu, about +10 on grey text and
+   +11 on the on fill), so every surface reads as one material. The chrome is greys; colour belongs to traces; orange marks Frozen and nothing else;
    yellow marks a problem. The engine-shared sizes live in protocol/src/limits.ts. */
 :root {
   color-scheme: dark;
 
   /* Chrome and screen */
-  --sl-case: #1b1b1f;
-  --sl-control: #2e2e32;
-  --sl-control-hover: #3a3a3e;
-  --sl-control-open: #4c4c50;
-  --sl-popover: #2d2d31;
+  --sl-case: #1c1c20;
+  --sl-control: #2f2f34;
+  --sl-control-hover: #3b3b41;
+  --sl-control-open: #4d4d53;
+  --sl-popover: #2e2e33;
   --sl-track: rgb(255 255 255 / 6%);
   --sl-track-hover: rgb(255 255 255 / 7%);
-  --sl-line: #2c2c30;
-  --sl-selected: #d4d4d8;
+  --sl-line: #2d2d32;
+  --sl-selected: #d3d3de;
   --sl-on-selected: #0b0b0c;
   --sl-ink: #f5f5f7;
-  --sl-ink-2: #a5a5a9;
+  --sl-ink-2: #a6a6b0;
   --sl-screen: #030307;
-  --sl-grid: #111115;
-  --sl-grid-strong: #1c1c20;
-  --sl-lane-edge: #26262a;
+  --sl-grid: #121216;
+  --sl-grid-strong: #1d1d21;
+  --sl-lane-edge: #27272c;
 
   /* Edges: a control's rim, a faint highlight along its top only, so it sits in the bar rather than
      being traced against it; an open menu's, brighter; a popover's dark outer edge and its drop, a

@@ -56,8 +56,9 @@ test.each(Object.entries(json.sl.color))(
   },
 );
 
-// The chrome is one material (#409): its greys share one tint, red and green equal and blue the same
-// step above them, so no surface reads warmer or bluer than the one it sits on or opens from.
+// The chrome is one material (#409): its greys share one hue, red and green equal and blue above
+// them, the lighter ones carrying more blue, so the tint holds from the bar up to the light "on"
+// fill rather than fading out of the lighter greys.
 const chromeGreys = [
   "case",
   "control",
@@ -73,13 +74,18 @@ const chromeGreys = [
   "lane-edge",
 ];
 
-test("the chrome's greys share one tint", () => {
-  const tints = chromeGreys.map((name) => {
-    const [r, g, b] = rgba(cssToken(name) ?? "");
-    return { name, redGreen: g - r, blue: b - r };
-  });
-  for (const tint of tints) {
-    expect(tint.redGreen, tint.name).toBe(0);
-    expect(tint.blue, tint.name).toBe(tints[0]?.blue);
+test("the chrome's greys share one hue, the lighter ones bluer", () => {
+  const greys = chromeGreys
+    .map((name) => {
+      const [r, g, b] = rgba(cssToken(name) ?? "");
+      return { name, redGreen: g - r, blue: b - r, light: r };
+    })
+    .sort((a, b) => a.light - b.light);
+  for (const grey of greys) {
+    expect(grey.redGreen, grey.name).toBe(0);
   }
+  for (const [i, grey] of greys.slice(1).entries()) {
+    expect(grey.blue, grey.name).toBeGreaterThanOrEqual(greys[i]?.blue ?? NaN);
+  }
+  expect(greys.at(-1)?.blue).toBeGreaterThan(greys[0]?.blue ?? NaN);
 });
