@@ -970,6 +970,11 @@ button[aria-pressed="true"]:focus-visible {
   min-width: 180px;
 }
 
+/* The version is the row's value: in the ink values are read in, not the grey that names the row. */
+.about-popover #about-version {
+  color: var(--sl-ink);
+}
+
 .help-toggle[aria-expanded="true"],
 .help-toggle[aria-pressed="true"] {
   color: var(--sl-on-selected);
