@@ -130,24 +130,25 @@ From 2026-10-24 and 2026-10-25.
 6. **Layout:** concept A (Toolbar), as in [layout.html](layout.html).
 7. **Treatment:** Graphite, with the accent on Frozen ([direction.html](direction.html)).
 8. **Colour:** the tokens in [tokens/](tokens/) ([colour.html](colour.html)).
-9. **Sizes:** the design sets them, and `protocol/src/limits.ts` holds the ones the engine shares: `minimumEditorWidth` 1040 (the widest of the toolbar, measured at 1003.5 px in Geist with the wordmark and its dividers, and the status bar, 1029 px with the Grid field as wide as "Ticks") and `chromeHeight` 84 (toolbar and status bar, measured at 82). The native default is 1040 × 580 and the minimum height `minimumEditorHeight`, 420. The size tokens in `tokens/` record the design; `ui/src/tokens.css` holds the colours the page uses.
+9. **Sizes:** the design sets them, and `protocol/src/limits.ts` holds the ones the engine shares: `minimumEditorWidth` 1040 (the widest toolbar fits with 9.8 px to spare in WebKit and 10.6 in Chromium since the grouped controls of #409; the status bar's state area takes what that bar leaves, less 8 px) and `chromeHeight` 84 (toolbar and status bar, measured at 82). The native default is 1040 × 580 and the minimum height `minimumEditorHeight`, 420. The size tokens in `tokens/` record the design; `ui/src/tokens.css` holds the colours the page uses.
 
 ## 9. The layout: concept A, Toolbar
 
 ![Default size with the trigger popover open](images/layout-trigger.png)
 
-- **Toolbar, left to right**, each field an icon and its value: mark and wordmark; Mode (Tracks: Single | Multi in its popover); Views, in one place in both modes: in Single the channel views and the channel the Meter reads (Measure: L | R | M | S in its popover), reading "LRMS·L", in Multi a dropdown holding the group, the lane channel and Compare, Off | On, reading "A·M·Σ" with Σ dimmed while Compare is off; Layout (Traces: Overlay | Stack); Time (Sweep: Beats | Free | Trig); a divider; Span; Scale; a divider and Trigger (Trig), and Re-arm when the trigger mode is Single; Freeze and Auto-freeze at the right. Only the controls that apply in the current mode are there.
+- **Toolbar, left to right**, each field an icon and its value: mark and wordmark; Mode (Tracks: Single | Multi in its popover); Views, in one place in both modes: in Single the channel views and the channel the Meter reads (Measure: L | R | M | S in its popover), reading "LRMS·L", in Multi a dropdown holding the group, the lane channel and Compare, Off | On, reading "A·M·Σ" with Σ dimmed while Compare is off; Layout (Traces: Overlay | Stack); then, in groups set apart by space alone (#409): Time (Sweep: Beats | Free | Trig), Span, Scale; Trigger (Trig), and Re-arm when the trigger mode is Single; Auto-freeze and Freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
-- **Sizes**, measured on the widest toolbar (Trig with trigger mode Single, so Re-arm shows, and Frozen; Single and Multi alike, since their Views share one place): default and minimum **1040 × 580** and **1040 × 420** (the height fits the tallest corner panel: Time cursors in Beats, Level cursors and the Meter) (the toolbar needs 1003.5 px with the wordmark and its two dividers since every field shows an icon; the status bar 1029 px, its Grid field as wide as "Ticks", and the state area as wide as the bar left at 1010 px before the Grid field). The wordmark always shows.
+- **Sizes**, measured on the widest toolbar (Trig with trigger mode Single, so Re-arm shows, and Frozen; Single and Multi alike, since their Views share one place): default and minimum **1040 × 580** and **1040 × 420** (the height fits the tallest corner panel: Time cursors in Beats, Level cursors and the Meter) (the toolbar leaves 9.8 px in WebKit, 10.6 in Chromium; the status bar's state area is 490 px, what the bar leaves less 8 px). The wordmark always shows.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.
-- **Status bar:** A4 and Grid (the grid's type, opening the Grid popover above it), then Meter, Time, Level and Hover, on the left; the state, Help and About on the right. Peak, RMS and Crest are in the Meter, in the screen's top-right corner, above the cursor readouts. The left group never changes width and the state area has a fixed width, as wide as the bar leaves at the minimum width, so nothing moves.
+- **Status bar:** A4 and Grid (the grid's type, opening the Grid popover above it), then Meter, Time, Level and Hover, each a group, on the left; the state, Help and About on the right. Peak, RMS and Crest are in the Meter, in the screen's top-right corner, above the cursor readouts. The left group never changes width and the state area has a fixed width, as wide as the bar leaves at the minimum width, so nothing moves.
 - **More states than fit** fold into a "+n" chip that lists them on hover, keeping the order of the state table in DESIGN §1.5.
 
 ![Minimum size, five states at once with +3 open](images/layout-states.png)
 
 ## 10. The look: Graphite, accent on Frozen
 
-- **Graphite chrome** around an inset black screen with rounded corners; the selected option is white.
+- **Graphite chrome** around an inset black screen with rounded corners.
+- **Controls (#409):** flat neutral fills with a faint light rim, grouped by space with capsule ends; hover, an open menu and "on" are steps of lightness, "on" and the chosen option a light fill (`#D4D4D8`) with dark text. Popovers float lighter than the bars with a dark outer and light inner edge; their choices are lifted tracks with raised thumbs. Readouts are drawn in the bars' colour, opaque. The step-3 look (controls `#26262A`, a darker popover, white selection, dividers) is replaced; see `tokens/`.
 - **Type:** Geist for controls in sentence case; Geist Mono for every number.
 - **Colour only in the traces:** Left blue, Right pink, Mid white, Side lime in Single; host track colours in Multi; a white sum.
 - **Orange marks Frozen**, on the Frozen button and the Frozen chip: the one state where the screen isn't live.
@@ -161,7 +162,7 @@ From 2026-10-24 and 2026-10-25.
 - **Rules:** the chrome is greys; colour only in traces; orange (`#FF5F1F`) for Frozen only; yellow (`#FFD23F`) for problems (invalid samples, tracks that cancel when summed); cursors, the playhead, the hover line, the zoom band and the focus ring are white or grey. The current UI's green, blue and pink state colours are retired.
 - **Channel colours:** Left `#5AB0FF`, Right `#FF5C8A`, Mid `#F5F5F7`, Side `#B3F06B`. Side was violet in step 3; with deuteranopia it was nearly the same as Left's blue (CIEDE2000 ΔE 2.5). With lime, the closest pair is ΔE 18.7 or more in normal vision, protanopia, deuteranopia and tritanopia (simulated after Machado 2009).
 - **Track palette:** 16 colours for lanes whose host gives no colour (every Audio Unit host today), at OKLCH lightness 0.66 / 0.76 / 0.86, clear of the accent and the white sum, all at least 6.1:1 on the screen. Ordered so adjacent lanes differ by ΔE 18 or more in every vision type tested, and lanes two apart by ΔE 11 or more in normal vision. Not all 16 can be told apart with colour blindness; every lane shows its track's name.
-- **Contrast:** every text pair passes WCAG 2.2 AA (lowest: labels on controls 5.4:1, the Frozen chip 5.8:1); traces are 7.0–18.9:1 on the screen.
+- **Contrast:** every text pair passes WCAG 2.2 AA (lowest since #409: grey labels on a popover track 4.62:1, on a control under the pointer 4.56:1; labels on controls 5.4:1, the Frozen chip 5.8:1); traces are 7.0–18.9:1 on the screen.
 
 ![Channel colours in four kinds of vision](images/colour-channels.png)
 

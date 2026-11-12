@@ -204,7 +204,8 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   folds away or hides as the window narrows (AD-26).
 - The editor's minimum width, 1040 px, is the narrowest that fits the widest toolbar (Trigger, the
   Single trigger mode and frozen) and the status bar in every state, the wordmark included (the
-  editor tests check each state); the status bar, with the Grid field, is the wider. Its minimum height is 420 px (`minimumEditorHeight`, the tallest corner panel: Time cursors in Beats, Level cursors and the Meter), or 84 px plus 40 px per stacked
+  editor tests check each state); the toolbar is the wider, and the status bar's chip area takes what
+  that bar leaves (below). Its minimum height is 420 px (`minimumEditorHeight`, the tallest corner panel: Time cursors in Beats, Level cursors and the Meter), or 84 px plus 40 px per stacked
   lane when that is more (with Compare on, its sum lane counts); the editor asks the host to grow when lanes
   are added, and to return to the size the user chose when they go. The default size is 1040 × 580.
   The size the user chose, by dragging the host's window edge or the editor's grip, is saved with
@@ -214,7 +215,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 
 | Area | Left to right |
 | --- | --- |
-| Toolbar | Mark and wordmark · Mode (the display mode) · Views, in one place in both modes (in Single the channel views and the channel read, as "LRMS·L"; in Multi the group, the lane channel and Σ, as "A·M·Σ", Σ dimmed with Compare off) · Layout · Time (the time base) \| Span (the time base's own, one width in every time base) · Vertical scale \| Trigger (Trigger), and Re-arm in the Single trigger mode · Freeze, Auto-freeze; the dividers (\|) as the status bar's, the second shown only with Trigger |
+| Toolbar | Mark and wordmark · Mode (the display mode) · Views, in one place in both modes (in Single the channel views and the channel read, as "LRMS·L"; in Multi the group, the lane channel and Σ, as "A·M·Σ", Σ dimmed with Compare off) · Layout ‖ Time (the time base) · Span (the time base's own, one width in every time base) · Vertical scale ‖ Trigger (Trigger), and Re-arm in the Single trigger mode ‖ Auto-freeze · Freeze, at the right. Groups (‖) are set apart by space alone, 13 px, the Trigger group shown only with Trigger; the last is set apart by the space left (#409, replacing #393's dividers) |
 | Mode popover | Single \| Multi |
 | Time base popover | Beats \| Free \| Trig |
 | Layout popover | Overlay \| Stack |
@@ -222,7 +223,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Views popover | Channels: L, R, M, S toggles, each with its trace's colour · Measure: L \| R \| M \| S, the readout source (1.2.1), the views not drawn disabled (R, M and S on a mono track), the channel read lit; nothing before a Single frame says what is read |
 | Trigger popover | Mode (Auto \| Normal \| Single), Source (Single; the views not drawn disabled, the view the trigger reads lit), Slope, Level, Hysteresis, Hold-off, Position |
 | Screen, top right | The Meter and the cursor readouts, in that order; the frame barcode instead while the diagnostic switch is on (§8.3) |
-| Status bar | Left: A4 (concert pitch) · Grid (the type drawn) \| Meter, Time, Level, Hover. Right: the state chips, in a fixed width · Help switch · About |
+| Status bar | Left: A4 (concert pitch) ‖ Grid (the type drawn) ‖ Meter, Time, Level, Hover, groups set apart as the toolbar's. Right: the state chips, in a fixed width · Help switch · About |
 | Grid popover | Type (None \| Ticks \| Grid) · Density (Coarse \| Medium \| Fine) · Beat division (Regular \| Triplets, Beats only); with None, all but Type disabled |
 
 - Every toolbar field shows an icon, not a word, then its value: Mode, Views (a track list), Layout,
@@ -238,8 +239,9 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   open above their buttons instead, About's aligned with its right edge and the Grid popover with
   its button's left edge, and follow the same rules.
 - The status bar never moves: A4, the Grid field (as wide as "Ticks"), the Meter and the cursor
-  buttons keep their width, and the chips have a fixed area, as wide as the bar left at a
-  1010 px minimum width before the Grid field. Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
+  buttons keep their width, and the chips have a fixed area, as wide as the bar leaves at the
+  minimum width less 8 px (490 px; it was 520, what the bar left before the Grid field, until the
+  grouped controls of #409 took the room and the minimum width was kept instead). Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
   do not fit fold, from the last, into one "+n" chip that lists them on hover or focus; the first
   stays shown.
 
@@ -353,8 +355,18 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 The colours are tokens (`ui/src/tokens.css`, from `docs/ui/tokens/`), checked for contrast and
 colour blindness in `docs/ui/colour.html`.
 
-- Dark theme only: graphite chrome around an inset black screen; the selected option is white. The
-  case colour is also the webview's native background, so nothing flashes while loading.
+- Dark theme only: graphite chrome around an inset black screen. The case colour is also the
+  webview's native background, so nothing flashes while loading.
+- The bars' controls are flat fills with a faint light rim, in groups: 2 px apart with small inner
+  corners, capsule-round at the group's ends. Under the pointer a control lightens a step; a menu
+  whose popover is open lightens a step more and turns its chevron up; a switch that is on, and a
+  chosen option, take a light fill with dark text. Menus show a chevron, drag fields (Span, Scale,
+  A4) an up-down cue. Control text is white; disabled controls are at 35%.
+- Popovers float lighter than the bars, with a dark outer and a faint light inner edge. A choice is
+  a track a step lighter than the popover, the chosen option a raised thumb in it; Channels, which
+  may have several chosen, joins neighbouring chosen ones into one thumb. Help tips and the "+n"
+  list take the popover's edge. The Meter, cursor and hover readouts are drawn in the bars' colour,
+  opaque, with a hairline edge: part of the instrument, not menus.
 - Colour belongs to traces. Trace colours: L blue, R pink, Mid white, Side lime. Lanes take the
   host's track colour, or a 16-colour fallback palette ordered so that neighbouring lanes differ
   with colour blindness too; the sum lane is white. Cursors, the playhead, the hover line and the
