@@ -175,3 +175,55 @@ describe("the bars' edges and cues", () => {
     },
   );
 });
+
+describe("the focus ring on a switch that is on", () => {
+  // A switch that is on, or a chosen option, is filled in the ring's own light colour, so the ring
+  // goes inside it with a band of the bars' colour between: it shows under keyboard focus whichever
+  // kind of pressed button it is on.
+  const pressed: readonly [string, () => HTMLElement][] = [
+    [
+      "a switch in the bars, on",
+      () => {
+        const button = byId("meter-toggle");
+        button.setAttribute("aria-pressed", "true");
+        return button;
+      },
+    ],
+    [
+      "a chosen option in a popover",
+      () =>
+        byId("mode-popover").querySelector<HTMLElement>(
+          'button[aria-pressed="true"]',
+        ) ?? byId("mode-popover"),
+    ],
+    [
+      "Preview fix, on",
+      () => {
+        const label = document.createElement("div");
+        label.className = "lane-label";
+        const button = document.createElement("button");
+        button.className = "preview-fix";
+        button.textContent = "Preview fix";
+        button.setAttribute("aria-pressed", "true");
+        label.append(button);
+        byId("lane-labels").append(label);
+        return button;
+      },
+    ],
+  ];
+  test.each(pressed)("%s keeps the band inside its ring", async (_, find) => {
+    await startApp();
+    await settle();
+    byId("mode-popover").hidden = false;
+    const button = find();
+    // A key press makes the next focus a keyboard one, whatever the pointer did before.
+    await userEvent.keyboard("{Tab}");
+    button.focus();
+    expect(button.matches(":focus-visible")).toBe(true);
+    const caseRgb = getComputedStyle(document.body).backgroundColor;
+    const shadow = getComputedStyle(button).boxShadow;
+    button.blur();
+    byId("mode-popover").hidden = true;
+    expect(shadow).toContain(`${caseRgb} 0px 0px 0px 4px inset`);
+  });
+});
