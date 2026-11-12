@@ -56,18 +56,33 @@ describe("about", () => {
   });
 
   // A build without the brand has no contact page: the editor says so, and the page offers none.
-  test("offers About us only once the editor says there is a contact page", async () => {
+  test("offers About Us only once the editor says there is a contact page", async () => {
     await startApp({ about: false });
     await openAbout();
-    expect(byId("contact").hidden).toBe(true);
+    expect(byId("contact-row").hidden).toBe(true);
     const app = await startApp({ about: { version: "1.0.0", contact: false } });
     await openAbout();
-    expect(byId("contact").hidden).toBe(true);
+    expect(byId("contact-row").hidden).toBe(true);
     app.deliver({ type: "about", version: "1.0.0", contact: true });
-    expect(byId("contact").hidden).toBe(false);
+    expect(byId("contact-row").hidden).toBe(false);
   });
 
-  test("About us asks the editor to open the contact page, and closes the popover", async () => {
+  // As the popover's other rows: its name on the left, the control on the right, here a button
+  // named after the vendor, whose page it opens.
+  test("lays About Us out as a row, its button named after the vendor", async () => {
+    await startApp();
+    await openAbout();
+    const row = byId("contact-row");
+    expect(row.classList.contains("popover-row")).toBe(true);
+    expect(row.firstElementChild?.textContent).toBe("About Us");
+    expect(row.lastElementChild).toBe(byId("contact"));
+    expect(byId("contact").textContent).toBe("Orizon Audio");
+    expect(byId("contact").getBoundingClientRect().left).toBeGreaterThan(
+      (row.firstElementChild as HTMLElement).getBoundingClientRect().right,
+    );
+  });
+
+  test("About Us asks the editor to open the contact page, and closes the popover", async () => {
     const app = await startApp();
     await openAbout();
     await userEvent.click(byId("contact"));
@@ -101,7 +116,7 @@ describe("about", () => {
   });
 
   // FR-13: with Help on, everything in the popover explains itself.
-  test("with help on, explains About us and the rest of the popover", async () => {
+  test("with help on, explains About Us and the rest of the popover", async () => {
     await startApp();
     await userEvent.click(byId("help"));
     await openAbout();

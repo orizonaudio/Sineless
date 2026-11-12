@@ -747,6 +747,7 @@ export class OscilloscopeApp {
     document.title = brand.name;
     element("about-name").textContent = brand.name;
     element("about-details").setAttribute("aria-label", `About ${brand.name}`);
+    element("contact").textContent = brand.vendor;
 
     // A field's button opens its popover, and closes any other; a press elsewhere closes it.
     for (const [group, button, id] of popovers) {
@@ -2434,7 +2435,7 @@ export class OscilloscopeApp {
     // What the editor says of itself: shown as it says it, never worked out by the page.
     this.backend.on("about", (message) => {
       element("about-version").textContent = message.version;
-      element("contact").hidden = !message.contact;
+      element("contact-row").hidden = !message.contact;
     });
     this.backend.on("nativeGraphicsLost", () => {
       this.nativeGraphicsLost = true;

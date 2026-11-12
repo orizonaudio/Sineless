@@ -121,7 +121,7 @@ export function helpTextsFor(mac: boolean) {
       notes: ["Give it when you report a problem."],
     },
     contact: {
-      title: "About us",
+      title: "About Us",
       lead: "Opens our About page, with how to contact us, in your default browser.",
     },
     displayMode: {

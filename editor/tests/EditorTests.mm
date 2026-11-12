@@ -1173,7 +1173,7 @@ TEST_F(EditorTest, AboutUsOpensTheVendorsPageOnlyInABrandedBuild)
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
     const bool branded = SINELESS_BRANDED == 1;
     const std::string shown =
-        evaluate(webView, @"String(!(document.getElementById('contact')?.hidden ?? true))");
+        evaluate(webView, @"String(!(document.getElementById('contact-row')?.hidden ?? true))");
     EXPECT_EQ(shown, branded ? "true" : "false") << "About us offered";
     if (branded) {
         evaluate(webView, @"document.getElementById('about-details').click();"
