@@ -179,28 +179,37 @@ describe.each(timeBases)("in $label", ({ label }) => {
 });
 
 test("a Density chosen in one time base is drawn in every other", async () => {
-  // Chosen in Beats, a new instance's time base: four bars of 4/4 at Fine draw sixteenths, where
-  // Medium draws beats (15 lines), with Fine's level lines.
+  // Each Density's level lines, as Trig draws them: the reference every other time base matches.
   const app = await startApp();
+  await inTimeBase("Trig");
+  const levels = new Map<GridDensityName, number>();
+  for (const density of densities) {
+    await set(app, "gridDensity", density);
+    levels.set(density, levelLinesInTopLane(2));
+  }
+  expect(levels.get("fine")).not.toBe(levels.get("coarse"));
+
+  // Chosen in Beats, a new instance's time base: four bars of 4/4 at Fine draw sixteenths, where
+  // Medium draws beats, with Fine's level lines.
+  await inTimeBase("Beats");
   await set(app, "beatSpan", "fourBars");
   await set(app, "gridDensity", "fine");
   expect(verticalLines()).toBe(4 * 4 * 4 - 1);
-  const fineLevels = levelLinesInTopLane(2);
-  expect(fineLevels).toBeGreaterThan(5);
+  expect(levelLinesInTopLane(2)).toBe(levels.get("fine"));
 
   await inTimeBase("Trig");
   await settle();
   expect(verticalLines()).toBe(divisions.fine - 1);
-  expect(levelLinesInTopLane(2)).toBe(fineLevels);
+  expect(levelLinesInTopLane(2)).toBe(levels.get("fine"));
 
   await inTimeBase("Free");
   await settle();
   expect(verticalLines()).toBe(divisions.fine - 1);
-  expect(levelLinesInTopLane(2)).toBe(fineLevels);
+  expect(levelLinesInTopLane(2)).toBe(levels.get("fine"));
   await set(app, "gridDensity", "coarse");
 
   await inTimeBase("Trig");
   await settle();
   expect(verticalLines()).toBe(divisions.coarse - 1);
-  expect(levelLinesInTopLane(2)).toBe(3);
+  expect(levelLinesInTopLane(2)).toBe(levels.get("coarse"));
 });
