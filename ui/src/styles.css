@@ -232,7 +232,7 @@ body {
 /* The whole pill drags, scrolls and opens for typing like its value (DragField.attach); an up-down
    cue where a menu has its chevron says so. */
 .icon-field {
-  padding-right: calc(var(--pad) - 1px);
+  padding-right: calc(var(--pad) + 1px);
   cursor: ns-resize;
   touch-action: none;
 }
@@ -255,7 +255,7 @@ body {
 }
 
 .group > :last-child.icon-field {
-  padding-right: calc(var(--pad) + 2px);
+  padding-right: calc(var(--pad) + 4px);
 }
 
 .icon-field i,
@@ -994,8 +994,8 @@ button[aria-pressed="true"]:focus-visible {
   gap: 10px;
   /* What the status bar leaves at the minimum width (1040 px), less the 8 px it keeps to spare for
      text that renders wider on another platform, rounded down to 10. Measured with the grouped
-     controls (#409): the left side 416.6, the gap between the sides 16, the right side's buttons and
-     gaps 68 (Help and About at 24 px), of 1016 between the bar's padding, leaving 515.4. Earlier the
+     controls (#409): the left side 418.6, the gap between the sides 16, the right side's buttons and
+     gaps 68 (Help and About at 24 px), of 1016 between the bar's padding, leaving 513.4. Earlier the
      minimum width grew instead (#364, #384); the restyle kept 1040 and narrowed this area from 520.
      Fixed, so the chips fold at the same count at every window width. */
   width: 500px;

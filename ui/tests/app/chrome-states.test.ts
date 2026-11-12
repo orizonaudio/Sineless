@@ -137,4 +137,41 @@ describe("the bars' edges and cues", () => {
     // inset, no x offset, 1 px down, no blur, no spread
     expect(shadows[0]).toMatch(/0px 1px 0px 0px inset$/u);
   });
+
+  // A drag field's up-down cue ends where a menu's chevron stroke does, in the same place in a
+  // group: inside one, at its end, and alone.
+  const chevronEnd = (menu: HTMLElement) => {
+    const chevron = menu.querySelector<SVGSVGElement>(".chevron");
+    const path = chevron?.querySelector("path");
+    if (!chevron || !path) {
+      throw new Error("no chevron");
+    }
+    const box = chevron.getBoundingClientRect();
+    const scale = box.width / chevron.viewBox.baseVal.width;
+    const stroke = parseFloat(getComputedStyle(path).strokeWidth);
+    const right =
+      (path.getBBox().x + path.getBBox().width + stroke / 2) * scale;
+    return menu.getBoundingClientRect().right - (box.left + right);
+  };
+  const cueEnd = (field: HTMLElement) =>
+    parseFloat(getComputedStyle(field).paddingRight);
+  test.each([
+    ["inside a group", "time-group", "views-details"],
+    ["at a group's end", "vertical-group", "layout-details"],
+    ["alone", "a4-field", "grid-details"],
+  ] as const)(
+    "a drag field's cue ends where a menu's chevron does, %s",
+    async (_, field, menu) => {
+      await startApp();
+      await settle();
+      const drag =
+        field === "a4-field"
+          ? document.querySelector<HTMLElement>(".status-left .icon-field")
+          : byId(field);
+      expect(drag).not.toBeNull();
+      expect(
+        Math.abs(cueEnd(drag ?? byId(menu)) - chevronEnd(byId(menu))),
+      ).toBeLessThanOrEqual(0.5);
+    },
+  );
 });

@@ -93,8 +93,8 @@ export const highestAudibleHz = 20000;
 
 // The editor's layout (CSS pixels): its minimum width, which fits the widest toolbar (Trig, the
 // Single trigger mode with Re-arm, frozen, in Single or in Multi with Compare on: one width since
-// Single's and Multi's Views share a place; with the grouped controls of #409 it leaves 15.8 px in
-// WebKit and 16.6 in Chromium) with at least 8 px to spare for text that renders wider on another
+// Single's and Multi's Views share a place; with the grouped controls of #409 it leaves 11.8 px in
+// WebKit and 12.6 in Chromium) with at least 8 px to spare for text that renders wider on another
 // platform; the status bar fits too, its chip area being what that bar leaves less the same 8 px
 // (ui/src/styles.css, .chips; docs/ui/README.md); its default width,
 // the same, as nothing in the window changes with its width; its minimum height, which fits the
