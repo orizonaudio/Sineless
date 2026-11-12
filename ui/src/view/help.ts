@@ -122,7 +122,7 @@ export function helpTextsFor(mac: boolean) {
     },
     contact: {
       title: "About Us",
-      lead: "Opens our About page, with how to contact us, in your default browser.",
+      lead: "Opens our website in your default browser.",
     },
     displayMode: {
       title: "Single or Multi",
