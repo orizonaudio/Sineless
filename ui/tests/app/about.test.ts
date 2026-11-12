@@ -95,6 +95,7 @@ describe("about", () => {
     const row = byId("contact-row");
     expect(row.classList.contains("popover-row")).toBe(true);
     expect(row.lastElementChild).toBe(byId("contact"));
+    expect(byId("contact").textContent).toMatch(/\S/u);
     expect(byId("contact").textContent).toBe(brand.vendor);
     expect(byId("contact").getBoundingClientRect().left).toBeGreaterThan(
       (row.firstElementChild as HTMLElement).getBoundingClientRect().right,
