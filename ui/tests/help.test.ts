@@ -243,8 +243,8 @@ describe("help texts", () => {
 });
 
 describe("the grid's Density help", () => {
-  // The spacing a tall lane's lines stand at, at a Level step: the gap between its first two lines,
-  // or between Fine's minor lines.
+  // The spacing a tall lane's lines stand at, at a Density's level step: the gap between its first
+  // two lines, or between Fine's minor lines.
   const spacing = (density: "coarse" | "medium" | "fine", strong: boolean) => {
     const steps = levelLines(1000, density)
       .filter((line) => line.strong === strong || density !== "fine")

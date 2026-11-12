@@ -18,7 +18,7 @@ import {
 } from "./grid-settings.ts";
 
 // Vertical lines at the given positions (fractions of the width), e.g. on beats in a tempo-synced
-// sweep; strong lines use the axis colour. Without them, the Time step's equal divisions are drawn.
+// sweep; strong lines use the axis colour. Without them, the Density's equal divisions are drawn.
 export interface VerticalLine {
   readonly position: number;
   readonly strong: boolean;
@@ -40,15 +40,15 @@ export interface GridLines {
   }[];
 }
 
-// The equal divisions of the width at each Time step.
+// The equal divisions of the width at each Density.
 export const gridColumns: Readonly<Record<GridDensityName, number>> = {
   coarse: gridColumnsCoarse,
   medium: gridColumnsMedium,
   fine: gridColumnsFine,
 };
 
-// What to draw: the type, the Level step, the number of equal time divisions (gridColumns by the
-// Time step), and Beats' lines in their place.
+// What to draw: the type, the Density's level step, the number of equal time divisions
+// (gridColumns by the Density), and Beats' lines in their place.
 export interface GridOptions {
   readonly type?: GridTypeName;
   readonly level?: GridDensityName;

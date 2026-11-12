@@ -375,7 +375,7 @@ describe("axis labels", () => {
     expect(labels[4]?.position).toBe(0.5);
   });
 
-  test("puts four time labels on the fifths, which every Time step's divisions hold", () => {
+  test("puts four time labels on the fifths, which every Density's divisions hold", () => {
     for (const free of [false, true]) {
       expect(
         timeLabels(1, free, fullView, 0.1).map((label) => label.position),

@@ -181,7 +181,7 @@ export interface MockOptions {
   // Whether the diagnostic switch is on, as its snapshots then say.
   readonly frameBarcode?: boolean;
   // What the editor says of itself in reply to hello: the version and whether there is a contact
-  // page. A preview version with a contact page by default; false sends nothing, as a page that
+  // page. A preview version with a vendor's site by default; false sends nothing, as a page that
   // has not heard yet.
   readonly about?: Omit<AboutMessage, "type"> | false;
   // The tracks in the group: mockTracks, then plain sines, up to maxLanes. mockTracks' four by

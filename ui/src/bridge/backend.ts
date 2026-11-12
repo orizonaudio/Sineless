@@ -115,7 +115,7 @@ export class Backend {
     this.transport.send({ type: "resize", width, height });
   }
 
-  // Asks the editor to open the vendor's contact page in the default browser.
+  // Asks the editor to open the vendor's site in the default browser.
   contact(): void {
     this.transport.send({ type: "contact" });
   }

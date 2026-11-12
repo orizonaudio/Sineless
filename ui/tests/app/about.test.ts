@@ -1,5 +1,5 @@
 // The About popover beside Help: the version the editor reports and, in a build with the brand, a
-// way to the vendor's contact page, which the editor opens (DESIGN FR-13.1).
+// way to the vendor's site, which the editor opens (DESIGN FR-13.1).
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -55,8 +55,8 @@ describe("about", () => {
     );
   });
 
-  // A build without the brand has no contact page: the editor says so, and the page offers none.
-  test("offers About Us only once the editor says there is a contact page", async () => {
+  // A build without the brand has no vendor's site: the editor says so, and the page offers none.
+  test("offers About Us only once the editor says there is a vendor's site", async () => {
     await startApp({ about: false });
     await openAbout();
     expect(byId("contact-row").hidden).toBe(true);
@@ -102,7 +102,7 @@ describe("about", () => {
     );
   });
 
-  test("About Us asks the editor to open the contact page, and closes the popover", async () => {
+  test("About Us asks the editor to open the vendor's site, and closes the popover", async () => {
     const app = await startApp();
     await openAbout();
     await userEvent.click(byId("contact"));

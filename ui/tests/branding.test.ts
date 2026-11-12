@@ -62,7 +62,7 @@ describe("the page's brand", () => {
       expect(unbranded).not.toContain(mark);
     }
     expect(branded).toContain("Sineless");
-    // The vendor's domain too, as in its contact page, which only the editor of a branded build
+    // The vendor's domain too, as in its site's address, which only the editor of a branded build
     // knows.
     for (const name of ["Sineless", "Orizon", "orizonaudio"]) {
       expect(unbranded).not.toContain(name);

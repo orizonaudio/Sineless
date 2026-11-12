@@ -225,7 +225,7 @@ export interface AboutMessage {
   readonly contact: boolean;
 }
 
-// UI to editor: open the vendor's contact page in the default browser. The page names no address;
+// UI to editor: open the vendor's site in the default browser. The page names no address;
 // the editor opens only the one it was built with, and nothing in a build without the brand.
 export interface ContactMessage {
   readonly type: "contact";

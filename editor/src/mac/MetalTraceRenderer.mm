@@ -764,7 +764,7 @@ private:
         }
     }
 
-    // The page's grid (grid.ts), by the type and steps its trace view names: the Time step's
+    // The page's grid (grid.ts), by the type and steps its trace view names: the Density's
     // equal divisions, or a tempo-synced sweep's beats and bars in Beats mode (the frame's cycle
     // fields), and each lane's level and zero lines (the zero lines alone with None), as lines of
     // the page's width centred where it strokes them.
