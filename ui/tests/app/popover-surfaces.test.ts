@@ -4,7 +4,14 @@
 // label reads as on against off.
 import { describe, expect, test } from "vitest";
 
-import { caseColour, contrast, opaque, over, type Rgb } from "./colour.ts";
+import {
+  caseColour,
+  contrast,
+  gaps,
+  opaque,
+  over,
+  type Rgb,
+} from "./colour.ts";
 import {
   byId,
   choice,
@@ -201,6 +208,79 @@ function ancestorsHidden(element: HTMLElement): HTMLElement[] {
   }
   return hidden;
 }
+
+describe("joined channels", () => {
+  // Channels can have several chosen. Chosen neighbours read as a bar group: apart by a group's inner
+  // gap, their facing corners a group's inner corners, their outer ends a thumb's full radius; and
+  // choosing or dropping a channel moves none of them. Every channel on, and L, R and S on with M
+  // off, so a join and a lone chosen channel both show.
+  test.each([
+    ["every channel on", ["M", "S"]],
+    ["L, R and S on, M off", ["S"]],
+  ] as const)("%s: chosen neighbours read as a bar group", async (_, extra) => {
+    await startApp();
+    await settle();
+    const channels = () => [...byId("views").querySelectorAll("button")];
+    // Each channel's place in its track, wherever the popover sits.
+    const lefts = () =>
+      channels().map(
+        (button) =>
+          button.getBoundingClientRect().left -
+          byId("views").getBoundingClientRect().left,
+      );
+    const popover = byId("views-popover");
+    const hidden = [popover, ...ancestorsHidden(popover)];
+    for (const node of hidden) {
+      node.hidden = false;
+    }
+    const before = lefts();
+    for (const node of hidden) {
+      node.hidden = true;
+    }
+    for (const label of extra) {
+      await press(choice("views", label));
+    }
+    await settle();
+    for (const node of hidden) {
+      node.hidden = false;
+    }
+    const after = lefts();
+    const barGap = gaps([byId("time-base-details"), byId("time-group")])[0];
+    const barInner = getComputedStyle(byId("time-group")).borderTopLeftRadius;
+    const chosen = channels().filter(
+      (button) => button.getAttribute("aria-pressed") === "true",
+    );
+    const looks = chosen.map((button) => ({
+      box: button.getBoundingClientRect(),
+      style: getComputedStyle(button),
+      joinedLeft:
+        button.previousElementSibling?.getAttribute("aria-pressed") === "true",
+      joinedRight:
+        button.nextElementSibling?.getAttribute("aria-pressed") === "true",
+    }));
+    const thumb = getComputedStyle(
+      byId("mode-popover").querySelector('button[aria-pressed="true"]') ??
+        document.body,
+    ).borderTopLeftRadius;
+    for (const node of hidden) {
+      node.hidden = true;
+    }
+    expect(after).toEqual(before);
+    expect(looks.filter((look) => look.joinedRight).length).toBeGreaterThan(0);
+    for (const [i, look] of looks.entries()) {
+      expect(look.style.borderTopLeftRadius).toBe(
+        look.joinedLeft ? barInner : thumb,
+      );
+      expect(look.style.borderTopRightRadius).toBe(
+        look.joinedRight ? barInner : thumb,
+      );
+      const next = looks[i + 1];
+      if (look.joinedRight && next) {
+        expect(next.box.left - look.box.right).toBeCloseTo(barGap ?? NaN, 1);
+      }
+    }
+  });
+});
 
 describe("lane labels", () => {
   // A label's buttons sit concentric in its chip (the chip's corner less its padding is theirs),
