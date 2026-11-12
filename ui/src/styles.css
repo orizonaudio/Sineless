@@ -150,6 +150,12 @@ body {
   cursor: default;
 }
 
+/* An option that cannot be chosen recedes in the labels' grey under the dim; one chosen keeps its
+   thumb's dark label. */
+.segmented button:disabled:not([aria-pressed="true"]) {
+  color: var(--sl-ink-2);
+}
+
 /* A field with an icon or a short label before its value, a button that opens a popover, or a
    switch. In the bars each is a flat fill with a glass rim (whole CSS pixels: a half pixel blends
    into the case), its corners small inside a group and capsule-round at the group's ends. */
@@ -165,10 +171,6 @@ body {
   background: var(--sl-control);
   border-radius: var(--sl-radius-inner);
   box-shadow: var(--sl-rim);
-}
-
-.action {
-  --pad: 10px;
 }
 
 .group > :first-child:is(.action, .icon-field, .field-button),
@@ -372,6 +374,7 @@ body {
   padding: 4px 9px;
   background: var(--sl-track);
   border-radius: var(--sl-radius-control);
+  box-shadow: var(--sl-rim);
 }
 
 .popover .field:hover {
@@ -431,13 +434,14 @@ button[aria-pressed="true"]:focus-visible {
   box-shadow: var(--sl-popover-shadow);
 }
 
-/* In a popover, a choice is a track a step lighter than the popover, the chosen option a raised
-   light thumb concentric in it; options not chosen read in the text colour, the thumb alone marks
-   the choice. Channels may have several chosen: neighbours that are both chosen join into one
+/* In a popover, a choice is a track a step lighter than the popover with the bars' glass rim, the
+   chosen option a raised light thumb concentric in it; options not chosen read in the text colour,
+   the thumb alone marks the choice. Channels may have several chosen: neighbours that are both chosen join into one
    thumb, rounded only at its ends. */
 .popover .segmented {
   background: var(--sl-track);
   border-radius: var(--sl-radius-control);
+  box-shadow: var(--sl-rim);
 }
 
 .popover .segmented button {
@@ -620,7 +624,7 @@ button[aria-pressed="true"]:focus-visible {
 .lane-label > span {
   padding: 2px 6px;
   background: color-mix(in srgb, var(--sl-screen) 85%, transparent);
-  border-radius: 5px;
+  border-radius: 8px;
 }
 
 /* A lane showing samples that are not finite (NaN or infinite). In Compare a track's name is its
@@ -662,7 +666,8 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-ink);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  /* Concentric in the chip: its 8 px corner less its 2 px padding. */
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -720,10 +725,10 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-ink-2);
 }
 
-/* A switch like the bars': a capsule in the control fill and rim, the light fill when on. */
+/* A switch like the bars': a capsule in the control fill and rim, the light fill when on, padded as
+   the label's other buttons. */
 .lane-label .preview-fix {
   margin-left: 4px;
-  padding: 0 8px;
   font-weight: 500;
   background: var(--sl-control);
   border: 0;
@@ -989,11 +994,11 @@ button[aria-pressed="true"]:focus-visible {
   gap: 10px;
   /* What the status bar leaves at the minimum width (1040 px), less the 8 px it keeps to spare for
      text that renders wider on another platform, rounded down to 10. Measured with the grouped
-     controls (#409): the left side 424.6, the gap between the sides 16, the right side's buttons and
-     gaps 68 (Help and About at 24 px), of 1016 between the bar's padding, leaving 507.4. Earlier the
+     controls (#409): the left side 416.6, the gap between the sides 16, the right side's buttons and
+     gaps 68 (Help and About at 24 px), of 1016 between the bar's padding, leaving 515.4. Earlier the
      minimum width grew instead (#364, #384); the restyle kept 1040 and narrowed this area from 520.
      Fixed, so the chips fold at the same count at every window width. */
-  width: 490px;
+  width: 500px;
 }
 
 .chip {

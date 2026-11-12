@@ -5,7 +5,14 @@
 import { describe, expect, test } from "vitest";
 
 import { caseColour, contrast, opaque, over, type Rgb } from "./colour.ts";
-import { byId, settle, startApp } from "./harness.ts";
+import {
+  byId,
+  choice,
+  press,
+  setCompare,
+  settle,
+  startApp,
+} from "./harness.ts";
 
 // WCAG 2.2: text 4.5:1 (1.4.3), a state shown by a fill 3:1 (1.4.11).
 const textContrast = 4.5;
@@ -104,6 +111,87 @@ describe("popovers", () => {
   });
 });
 
+describe("popover choices", () => {
+  // A choice's track and a number field stand off the popover with the bars' glass rim, so they
+  // read as controls, not as tinted patches.
+  test.each([
+    "mode-popover",
+    "views-popover",
+    "group-popover",
+    "layout-popover",
+    "time-base-popover",
+    "trigger-popover",
+    "grid-popover",
+  ])("%s draws its choices and fields with the bars' rim", async (id) => {
+    await startApp();
+    await settle();
+    const rim = getComputedStyle(byId("layout-details")).boxShadow;
+    expect(rim).not.toBe("none");
+    const popover = byId(id);
+    const hidden = [popover, ...ancestorsHidden(popover)];
+    for (const node of hidden) {
+      node.hidden = false;
+    }
+    const controls = [...popover.querySelectorAll(".segmented, .field")];
+    const drawn = controls.map(
+      (control) => getComputedStyle(control).boxShadow,
+    );
+    for (const node of hidden) {
+      node.hidden = true;
+    }
+    expect(controls.length).toBeGreaterThan(0);
+    for (const shadow of drawn) {
+      expect(shadow).toBe(rim);
+    }
+  });
+
+  // An option that cannot be chosen recedes in the row names' grey under its dim, rather than
+  // reading as a white option that is merely faint; one that is chosen keeps the thumb's dark label,
+  // legible on the light thumb. Every way an option is unavailable: Source's views that are off,
+  // the view toggles in Multi (which shows each track's channel instead), and R, M and S on a mono
+  // track.
+  test.each([
+    ["Source, its views off", "trigger-popover", "source", 2, false],
+    ["the view toggles in Multi", "views-popover", "views", 2, true],
+    ["the view toggles on a mono track", "views-popover", "views", 1, false],
+  ] as const)(
+    "%s: unavailable options read as unavailable, a chosen one stays legible",
+    async (_, popoverId, groupId, inputChannels, multi) => {
+      await startApp({ inputChannels });
+      await settle();
+      if (multi) {
+        await press(choice("display-mode", "Multi"));
+        await settle();
+      }
+      const popover = byId(popoverId);
+      const hidden = [popover, ...ancestorsHidden(popover)];
+      for (const node of hidden) {
+        node.hidden = false;
+      }
+      const buttons = [...byId(groupId).querySelectorAll("button")];
+      const name = popover.querySelector(".popover-row > span");
+      const grey = getComputedStyle(name ?? document.body).color;
+      const chosen = getComputedStyle(
+        byId("mode-popover").querySelector('button[aria-pressed="true"]') ??
+          document.body,
+      ).color;
+      const looks = buttons
+        .filter((button) => button.disabled)
+        .map((button) => ({
+          pressed: button.getAttribute("aria-pressed") === "true",
+          colour: getComputedStyle(button).color,
+        }));
+      for (const node of hidden) {
+        node.hidden = true;
+      }
+      expect(looks.some((look) => !look.pressed)).toBe(true);
+      for (const look of looks) {
+        expect(look.colour).toBe(look.pressed ? chosen : grey);
+      }
+    },
+  );
+});
+
 function ancestorsHidden(element: HTMLElement): HTMLElement[] {
   const hidden: HTMLElement[] = [];
   for (let node = element.parentElement; node; node = node.parentElement) {
@@ -115,6 +203,38 @@ function ancestorsHidden(element: HTMLElement): HTMLElement[] {
 }
 
 describe("lane labels", () => {
+  // A label's buttons sit concentric in its chip (the chip's corner less its padding is theirs),
+  // as the bars' thumbs in their tracks; Preview fix keeps the lane buttons' side padding, so it is
+  // a capsule of the label's size. Multi with Compare on, where the labels carry buttons.
+  test("a lane label's buttons sit concentric in its chip", async () => {
+    await startApp();
+    await settle();
+    await press(choice("display-mode", "Multi"));
+    await setCompare(true);
+    await settle();
+    const px = (value: string) => parseFloat(value);
+    const chips = [
+      ...byId("lane-labels").querySelectorAll<HTMLElement>(
+        ".lane-label > span",
+      ),
+    ].filter((chip) => chip.querySelector("button:not(.preview-fix)"));
+    expect(chips.length).toBeGreaterThan(0);
+    for (const chip of chips) {
+      const style = getComputedStyle(chip);
+      for (const button of chip.querySelectorAll("button:not(.preview-fix)")) {
+        expect(px(getComputedStyle(button).borderTopLeftRadius)).toBe(
+          px(style.borderTopLeftRadius) - px(style.paddingTop),
+        );
+      }
+    }
+    const fix = byId("lane-labels").querySelector(".preview-fix");
+    const check = byId("lane-labels").querySelector(".compare-check");
+    expect(fix).not.toBeNull();
+    const side = getComputedStyle(check ?? document.body).paddingRight;
+    expect(getComputedStyle(fix ?? document.body).paddingLeft).toBe(side);
+    expect(getComputedStyle(fix ?? document.body).paddingRight).toBe(side);
+  });
+
   // Preview fix, on a Compare sum lane, is a switch like the bars': on reads as on against off.
   test("Preview fix reads as on against off, its label legible in both", async () => {
     await startApp();
