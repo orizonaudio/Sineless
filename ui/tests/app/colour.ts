@@ -3,11 +3,18 @@
 
 export type Rgb = [number, number, number];
 
-// A computed colour ("rgb(r, g, b)" or "rgba(r, g, b, a)") laid over an opaque one.
+// A computed colour ("rgb(r, g, b)", "rgba(r, g, b, a)", or "color(srgb r g b / a)" as color-mix
+// resolves) laid over an opaque one.
 export function over(colour: string, under: Rgb): Rgb {
-  const [r, g, b, alpha = 1] = (/rgba?\(([^)]+)\)/u.exec(colour)?.[1] ?? "")
-    .split(",")
-    .map(Number);
+  const srgb = /color\(srgb ([^)]+)\)/u.exec(colour)?.[1];
+  const [r, g, b, alpha = 1] =
+    srgb === undefined
+      ? (/rgba?\(([^)]+)\)/u.exec(colour)?.[1] ?? "").split(",").map(Number)
+      : srgb
+          .replace("/", " ")
+          .split(/\s+/u)
+          .map(Number)
+          .map((value, i) => (i < 3 ? value * 255 : value));
   if (
     r === undefined ||
     g === undefined ||

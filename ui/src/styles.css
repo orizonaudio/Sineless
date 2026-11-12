@@ -370,8 +370,12 @@ body {
   min-width: 7ch;
   text-align: right;
   padding: 4px 9px;
-  background: var(--sl-control);
-  border-radius: 6px;
+  background: var(--sl-track);
+  border-radius: var(--sl-radius-control);
+}
+
+.popover .field:hover {
+  background: var(--sl-track-hover);
 }
 
 .field input {
@@ -411,6 +415,8 @@ button[aria-pressed="true"]:focus-visible {
 
 /* ----- Popovers ----- */
 
+/* A popover floats above the bars: lighter than they are, a dark outer edge and a faint light inner
+   one (brighter at the top) so it holds on the black screen and over a readout, and a drop. */
 .popover {
   position: absolute;
   top: calc(100% + 2px);
@@ -420,9 +426,64 @@ button[aria-pressed="true"]:focus-visible {
   min-width: 100px;
   padding: 12px 14px;
   background: var(--sl-popover);
-  border: 1px solid var(--sl-line);
-  border-radius: 10px;
-  box-shadow: 0 16px 40px rgb(0 0 0 / 55%);
+  border: 1px solid var(--sl-popover-edge);
+  border-radius: var(--sl-radius-popover);
+  box-shadow: var(--sl-popover-shadow);
+}
+
+/* In a popover, a choice is a track a step lighter than the popover, the chosen option a raised
+   light thumb concentric in it; options not chosen read in the text colour, the thumb alone marks
+   the choice. Channels may have several chosen: neighbours that are both chosen join into one
+   thumb, rounded only at its ends. */
+.popover .segmented {
+  background: var(--sl-track);
+  border-radius: var(--sl-radius-control);
+}
+
+.popover .segmented button {
+  border-radius: var(--sl-radius-thumb);
+}
+
+.popover .segmented button:not([aria-pressed="true"]):not(:disabled):hover {
+  background: var(--sl-track-hover);
+}
+
+.popover .segmented button[aria-pressed="true"] {
+  box-shadow: var(--sl-thumb-shadow);
+}
+
+.popover
+  .segmented
+  button[aria-pressed="true"]:has(+ button[aria-pressed="true"]) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  clip-path: inset(-4px 0 -4px -4px);
+}
+
+.popover .segmented button[aria-pressed="true"] + button[aria-pressed="true"] {
+  margin-left: -2px;
+  padding-left: 9px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  clip-path: inset(-4px -4px -4px 0);
+}
+
+.popover
+  .segmented
+  button[aria-pressed="true"]
+  + button[aria-pressed="true"]:has(+ button[aria-pressed="true"]) {
+  clip-path: inset(-4px 0);
+}
+
+/* A button in a popover (About's vendor) is not a bar control: it takes the popover's track. */
+.popover .action {
+  background: var(--sl-track);
+  border-radius: var(--sl-radius-control);
+  box-shadow: none;
+}
+
+.popover .action:hover {
+  background: var(--sl-track-hover);
 }
 
 .popover-title {
@@ -437,6 +498,7 @@ button[aria-pressed="true"]:focus-visible {
   align-items: center;
   justify-content: start;
   gap: 10px;
+  min-height: 24px;
 }
 
 .popover-row > span {
@@ -605,7 +667,7 @@ button[aria-pressed="true"]:focus-visible {
 }
 
 .lane-label button:hover:not(:disabled) {
-  border-color: var(--sl-line);
+  background: var(--sl-lane-hover);
 }
 
 .lane-label > .checkable::before {
@@ -658,20 +720,25 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-ink-2);
 }
 
+/* A switch like the bars': a capsule in the control fill and rim, the light fill when on. */
 .lane-label .preview-fix {
   margin-left: 4px;
+  padding: 0 8px;
   font-weight: 500;
-  border-color: var(--sl-line);
+  background: var(--sl-control);
+  border: 0;
+  border-radius: var(--sl-radius-control);
+  box-shadow: var(--sl-rim);
 }
 
 .lane-label button.preview-fix:hover {
-  border-color: var(--sl-ink-2);
+  background: var(--sl-control-hover);
 }
 
 .lane-label .preview-fix[aria-pressed="true"] {
   color: var(--sl-on-selected);
   background: var(--sl-selected);
-  border-color: var(--sl-selected);
+  box-shadow: none;
 }
 
 .compare-note {
@@ -771,9 +838,10 @@ button[aria-pressed="true"]:focus-visible {
   font-variant-numeric: tabular-nums;
   color: var(--sl-ink);
   white-space: nowrap;
-  background: var(--sl-popover);
-  border: 1px solid var(--sl-line);
-  border-radius: 6px;
+  /* Part of the instrument, not a menu: the bars' colour, opaque so values never sit over a trace. */
+  background: var(--sl-case);
+  border: 1px solid var(--sl-readout-edge);
+  border-radius: var(--sl-radius-readout);
   pointer-events: none;
 }
 
@@ -974,8 +1042,9 @@ button[aria-pressed="true"]:focus-visible {
   padding: 1px 7px;
   border: 0;
   font: 600 11px var(--sl-font-value);
-  color: var(--sl-on-selected);
-  background: var(--sl-selected);
+  /* A count, not a switch: the control fill, not the "on" one. */
+  color: var(--sl-ink);
+  background: var(--sl-control);
   border-radius: 9999px;
   cursor: default;
 }
@@ -989,9 +1058,9 @@ button[aria-pressed="true"]:focus-visible {
   gap: 6px;
   padding: 8px 10px;
   background: var(--sl-popover);
-  border: 1px solid var(--sl-line);
-  border-radius: 8px;
-  box-shadow: 0 16px 40px rgb(0 0 0 / 55%);
+  border: 1px solid var(--sl-popover-edge);
+  border-radius: var(--sl-radius-tip);
+  box-shadow: var(--sl-popover-shadow);
 }
 
 .chip-more:hover .chip-list,
@@ -1068,9 +1137,9 @@ button[aria-pressed="true"]:focus-visible {
   line-height: 1.4;
   color: var(--sl-ink);
   background: var(--sl-popover);
-  border: 1px solid var(--sl-line);
-  border-radius: 8px;
-  box-shadow: 0 16px 40px rgb(0 0 0 / 55%);
+  border: 1px solid var(--sl-popover-edge);
+  border-radius: var(--sl-radius-tip);
+  box-shadow: var(--sl-popover-shadow);
   pointer-events: none;
 }
 
