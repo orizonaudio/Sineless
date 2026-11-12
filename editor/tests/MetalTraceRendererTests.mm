@@ -388,10 +388,10 @@ TEST_F(MetalTraceRendererTest, KeepsThePlayheadEquallyBrightWhereverItSits)
 }
 
 // The grid under the traces, where the page strokes it: the Time step's divisions, or a Beats
-// sweep's beats and bars, and each lane's level and zero lines at the Level step, over the screen's
-// colour, for the type and steps the page's trace view names; None its zero lines alone. A Beats
-// sweep with no tempo yet (the host not yet played: FR-9.1) has no beats to show, and shows the
-// divisions as the page does.
+// sweep's beats and bars, and each lane's level and zero lines at the Density's level step, over
+// the screen's colour, for the type and steps the page's trace view names; None its zero lines
+// alone. A Beats sweep with no tempo yet (the host not yet played: FR-9.1) has no beats to show,
+// and shows the divisions as the page does.
 TEST_F(MetalTraceRendererTest, DrawsTheGridWhereThePageDoes)
 {
     TraceView view = scenes().front().view;

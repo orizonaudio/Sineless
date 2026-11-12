@@ -106,7 +106,7 @@ export function beatLadder(
   );
 }
 
-// Which Beats grid to draw: the Time step and Beat division, and the screen's width in CSS pixels,
+// Which Beats grid to draw: the Density and Beat division, and the screen's width in CSS pixels,
 // which Fine's finer step must keep gridFineBeatLineGap apart on.
 export interface BeatGridOptions {
   readonly time: GridDensityName;
@@ -180,7 +180,7 @@ export function beatSteps(
 
 // Lines and labels over the visible part of a sweep. `cycleStart` and `span` (quarter notes)
 // describe the whole frame; `view` the part on screen. Lines sit on absolute musical positions,
-// so they refine as the view narrows (beatSteps), at the Time step and Beat division `grid` names.
+// so they refine as the view narrows (beatSteps), at the Density and Beat division `grid` names.
 // With `timing` (the left edge's project time and the seconds per quarter note), labels carry
 // their project time too.
 export function musicalGrid(

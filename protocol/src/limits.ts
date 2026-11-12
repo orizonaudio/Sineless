@@ -136,7 +136,7 @@ export const screenRadius = 10;
 // The screen's grid, which the page and the macOS editor both draw.
 //
 // Time, in Trig and Free: the screen's width in gridColumnsCoarse, gridColumnsMedium or
-// gridColumnsFine equal divisions by the Time step. Time labels sit on its fifths
+// gridColumnsFine equal divisions by the Density. Time labels sit on its fifths
 // (timeLabelColumns), which every step's divisions include: four labels at each step, on the
 // lines Medium labels, neither crowded at Fine nor thinned at Coarse.
 export const gridColumnsCoarse = 5;
@@ -146,13 +146,13 @@ export const timeLabelColumns = 5;
 
 // Level: lines every gridLevelStepDb down from the top of each lane, at most gridLevelsBelowTop
 // below it (the trace is linear, so a line d dB down sits at 10^(-d / 20) of the half-lane), at
-// every Level step. Coarse draws every gridCoarseLevelStride-th of them (6 dB); Fine adds
+// every Density. Coarse draws every gridCoarseLevelStride-th of them (6 dB); Fine adds
 // gridFineLevelSubdivisions - 1 minor lines inside each step (every 1 dB).
 export const gridLevelStepDb = 3;
 export const gridLevelsBelowTop = 4;
 export const gridCoarseLevelStride = 2;
 export const gridFineLevelSubdivisions = 3;
-// The closest (CSS pixels) drawn level lines come at each Level step before a short lane drops
+// The closest (CSS pixels) drawn level lines come at each Density before a short lane drops
 // some. Medium's 3 dB lines thin to 6 dB, then to the top only, then to none; Coarse's 6 dB lines
 // to the top only, then to none. Fine's minor 1 dB lines may come closer than the major lines,
 // being minor and drawn only between two of them; those nearest zero, the narrowest, drop first.
@@ -160,7 +160,7 @@ export const gridFineLevelSubdivisions = 3;
 export const gridCoarseLineGap = 8;
 export const gridMediumLineGap = 8;
 export const gridFineLineGap = 6;
-// Beats at the Fine Time step draws one ladder level finer than Medium only where those lines stay
+// Beats at Fine draws one ladder level finer than Medium only where those lines stay
 // this far apart (CSS pixels); closer, it draws Medium's. A time spacing, kept apart from the
 // level gaps.
 export const gridFineBeatLineGap = 8;

@@ -59,9 +59,9 @@ struct LevelLine
     double step = 0.0;
     bool strong = false;
 };
-// The level lines of a half-lane `halfLane` CSS pixels tall at a Level step, top first: Medium's
-// 3 dB lines as levelSteps fits them; Coarse's 6 dB lines, else the top only, else none; Fine's,
-// Medium's lines, strong, with the 1 dB lines between neighbouring 3 dB lines that keep
+// The level lines of a half-lane `halfLane` CSS pixels tall at a Density's level step, top first:
+// Medium's 3 dB lines as levelSteps fits them; Coarse's 6 dB lines, else the top only, else none;
+// Fine's, Medium's lines, strong, with the 1 dB lines between neighbouring 3 dB lines that keep
 // kGridFineLineGap.
 [[nodiscard]] std::vector<LevelLine> levelLines(double halfLane, protocol::GridDensity density);
 
@@ -91,10 +91,10 @@ struct VerticalLine
     double position = 0.0;
     bool strong = false;
 };
-// The equal divisions of the width at a Time step.
+// The equal divisions of the width at a Density's time step.
 [[nodiscard]] std::size_t gridColumns(protocol::GridDensity time);
-// What to draw: the type, the Level step, the number of equal time divisions, and Beats' lines in
-// their place when `vertical` is not null.
+// What to draw: the type, the Density's level step, the number of equal time divisions, and Beats'
+// lines in their place when `vertical` is not null.
 struct GridOptions
 {
     protocol::GridType type = protocol::GridType::kGrid;
@@ -105,7 +105,7 @@ struct GridOptions
 [[nodiscard]] GridLines gridLines(double width, double height, std::size_t laneCount,
                                   double pixelRatio, const GridOptions& options);
 
-// Which Beats grid to draw: the Time step and Beat division, and the screen's width in CSS pixels,
+// Which Beats grid to draw: the Density and Beat division, and the screen's width in CSS pixels,
 // which Fine's finer step must keep kGridFineBeatLineGap apart on.
 struct BeatGrid
 {
@@ -114,7 +114,7 @@ struct BeatGrid
     double widthCss = 0.0;
 };
 // A tempo-synced sweep's grid lines over the part of it on screen: bars, beats or fractions of a
-// beat, as the view narrows, one level coarser or finer by the Time step, in thirds of the beat in
+// beat, as the view narrows, one level coarser or finer by the Density, in thirds of the beat in
 // Triplets (the page's beatSteps).
 [[nodiscard]] std::vector<VerticalLine> musicalGridLines(double cycleStart, double span,
                                                          double barQuarterNotes, ViewWindow view,

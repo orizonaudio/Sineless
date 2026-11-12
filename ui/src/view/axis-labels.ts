@@ -17,7 +17,7 @@ import type { GridDensityName } from "./grid-settings.ts";
 import { toFrame, type ViewWindow } from "./zoom.ts";
 
 // Level lines (protocol/src/limits.ts: gridLevelStepDb, gridLevelsBelowTop). Closest spacing (CSS
-// px) between drawn level lines at the Medium Level step (gridMediumLineGap), and between level
+// px) between drawn level lines at Medium's level step (gridMediumLineGap), and between level
 // labels.
 const levelStepDb = gridLevelStepDb;
 const levelsBelowTop = gridLevelsBelowTop;
@@ -72,7 +72,7 @@ export interface LevelLine {
   readonly strong: boolean;
 }
 
-// The level lines of a half-lane `halfLanePx` tall at a Level step, top first:
+// The level lines of a half-lane `halfLanePx` tall at a Density's level step, top first:
 // - Medium: every 3 dB as levelSteps fits them;
 // - Coarse: every 6 dB, else the top only, else none;
 // - Fine: Medium's lines, strong, and between each two neighbouring 3 dB lines its 1 dB lines
@@ -121,8 +121,8 @@ export function levelLines(
   return lines;
 }
 
-// The steps (of gridLevelStepDb) level labels sit on at a Level step, at least minimumLabelGap
-// apart: Coarse's on its 6 dB lines, Medium's and Fine's on the 3 dB ones.
+// The steps (of gridLevelStepDb) level labels sit on at a Density's level step, at least
+// minimumLabelGap apart: Coarse's on its 6 dB lines, Medium's and Fine's on the 3 dB ones.
 export function levelLabelSteps(
   halfLanePx: number,
   density: GridDensityName,
@@ -174,7 +174,7 @@ export function amplitudeLabels(
   return labels;
 }
 
-// Time labels on the fifths of the screen, which every Time step's divisions include: relative to
+// Time labels on the fifths of the screen, which every Density's divisions include: relative to
 // the trigger point, `zero` across the span (the frame's triggerPosition), or back from the right
 // edge (now, live) while running free. Under view zoom they show the times at those screen
 // positions.

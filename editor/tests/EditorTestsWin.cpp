@@ -630,8 +630,8 @@ TEST_F(EditorTest, ShowsTheVersionTheHostIsGiven)
     }
 }
 
-// About us opens the vendor's contact page in the default browser, never in the editor. A build
-// without the brand has no contact page: it offers none, and a request for one opens nothing.
+// About Us opens the vendor's site in the default browser, never in the editor. A build
+// without the brand has no vendor's site: it offers none, and a request for one opens nothing.
 TEST_F(EditorTest, AboutUsOpensTheVendorsPageOnlyInABrandedBuild)
 {
     HWND window = makeWindow();

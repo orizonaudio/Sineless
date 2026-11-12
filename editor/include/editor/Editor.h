@@ -48,7 +48,7 @@ public:
     [[nodiscard]] bool analyzerAllocated() const { return core.analyzerAllocated(); }
     [[nodiscard]] const engine::FramePacing* displayClock() const { return core.displayClock(); }
     [[nodiscard]] WebView* webView() const { return core.webView(); }
-    // For tests: what opens the contact page, instead of the default browser.
+    // For tests: what opens the vendor's site, instead of the default browser.
     void setLinkOpener(EditorCore::LinkOpener opener) { core.setLinkOpener(std::move(opener)); }
 
 private:

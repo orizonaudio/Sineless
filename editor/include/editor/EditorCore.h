@@ -117,7 +117,7 @@ private:
     void receive(std::string_view message);
     // The user dragged the resize grip: asks the host for that size, no smaller than the minimum.
     void resize(const nlohmann::json& message);
-    // The page asked for the vendor's contact page: opened after this message, if the build has
+    // The page asked for the vendor's site: opened after this message, if the build has
     // one.
     void openContactPage();
     // Asks the host for the size the window should have (ChosenSize::target) when the lanes'
