@@ -81,7 +81,7 @@ constexpr const wchar_t* kKeyScript = LR"JS(
 )JS";
 
 // The page's background (--sl-case in ui/src/tokens.css), shown until the page draws.
-constexpr COREWEBVIEW2_COLOR kBackground{255, 0x1b, 0x1b, 0x1f};
+constexpr COREWEBVIEW2_COLOR kBackground{255, 0x1c, 0x1c, 0x20};
 constexpr wchar_t kContainerClass[] = L"OrizonSinelessWebViewHost";
 constexpr UINT_PTR kVisibilityTimer = 1;
 constexpr UINT kVisibilityInterval = 250; // ms

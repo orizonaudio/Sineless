@@ -4,27 +4,27 @@
     "color": {
       "case": {
         "$type": "color",
-        "$value": "#1b1b1f",
+        "$value": "#1c1c20",
         "$description": "Window chrome: toolbar, status bar and the frame around the screen"
       },
       "control": {
         "$type": "color",
-        "$value": "#2e2e32",
+        "$value": "#2f2f34",
         "$description": "Bar controls at rest: menus, drag fields, switches, Help and About"
       },
       "control-hover": {
         "$type": "color",
-        "$value": "#3a3a3e",
+        "$value": "#3b3b41",
         "$description": "A bar control under the pointer"
       },
       "control-open": {
         "$type": "color",
-        "$value": "#4c4c50",
+        "$value": "#4d4d53",
         "$description": "A menu whose popover is open"
       },
       "popover": {
         "$type": "color",
-        "$value": "#2d2d31",
+        "$value": "#2e2e33",
         "$description": "Open popovers, help tips and the \"+n\" list"
       },
       "track": {
@@ -39,12 +39,12 @@
       },
       "line": {
         "$type": "color",
-        "$value": "#2c2c30",
+        "$value": "#2d2d32",
         "$description": "The screen's edge, the cursor readout's rule, the resize grip"
       },
       "selected": {
         "$type": "color",
-        "$value": "#d4d4d8",
+        "$value": "#d3d3de",
         "$description": "The chosen option, and switches that are on"
       },
       "on-selected": {
@@ -59,7 +59,7 @@
       },
       "ink-2": {
         "$type": "color",
-        "$value": "#a5a5a9",
+        "$value": "#a6a6b0",
         "$description": "Labels, units, icons, grid labels"
       },
       "screen": {
@@ -69,17 +69,17 @@
       },
       "grid": {
         "$type": "color",
-        "$value": "#111115",
+        "$value": "#121216",
         "$description": "Time and level grid lines"
       },
       "grid-strong": {
         "$type": "color",
-        "$value": "#1c1c20",
+        "$value": "#1d1d21",
         "$description": "Bar lines in Beats; each lane's zero line"
       },
       "lane-edge": {
         "$type": "color",
-        "$value": "#26262a",
+        "$value": "#27272c",
         "$description": "The line between stacked lanes"
       },
       "accent": {
