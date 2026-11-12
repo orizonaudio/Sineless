@@ -158,19 +158,13 @@ describe("the bars' edges and cues", () => {
   test.each([
     ["inside a group", "time-group", "views-details"],
     ["at a group's end", "vertical-group", "layout-details"],
-    ["alone", "a4-field", "grid-details"],
   ] as const)(
     "a drag field's cue ends where a menu's chevron does, %s",
     async (_, field, menu) => {
       await startApp();
       await settle();
-      const drag =
-        field === "a4-field"
-          ? document.querySelector<HTMLElement>(".status-left .icon-field")
-          : byId(field);
-      expect(drag).not.toBeNull();
       expect(
-        Math.abs(cueEnd(drag ?? byId(menu)) - chevronEnd(byId(menu))),
+        Math.abs(cueEnd(byId(field)) - chevronEnd(byId(menu))),
       ).toBeLessThanOrEqual(0.5);
     },
   );

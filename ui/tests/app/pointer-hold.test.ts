@@ -47,7 +47,6 @@ const pills = [
   { host: "free-span-field", setting: "freeSpan", timeBase: "Free" },
   { host: "beat-span-field", setting: "beatSpan", timeBase: "Beats" },
   { host: "scale-field", setting: "verticalScale", timeBase: "Trig" },
-  { host: "concert-pitch-field", setting: "concertPitch", timeBase: "Trig" },
 ] as const;
 const drags = [
   // Free's span shows in Free; every other field in Trig.

@@ -48,69 +48,83 @@
           </div>
           <!-- Each field that opens a popover holds it, so the popover follows its button in the
                focus order and shares its help. -->
-          <!-- One place for Single's Views and Multi's: as wide as the wider, so switching modes moves
-               nothing after it. -->
-          <div class="slot" id="views-slot">
-            <div class="tool" id="views-group" data-help="channelViews">
-              <button
-                class="field-button"
-                id="views-details"
-                aria-expanded="false"
-                aria-controls="views-popover"
-              >
-                <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-                  <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
-                  <circle cx="10" cy="9" r=".6" /></svg
-                ><b id="views-summary"><span id="views-read"></span></b
-                ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-                  <path d="M1.5 3 4 5.5 6.5 3" />
-                </svg>
-              </button>
-              <div class="popover" id="views-popover" hidden>
-                <div class="popover-title">Views</div>
-                <div class="popover-row">
-                  <span>Channels</span>
-                  <div class="segmented toggles" id="views"></div>
-                </div>
-                <div class="popover-row" data-help="readoutSource">
-                  <span>Measure</span>
-                  <div class="segmented" id="readout-source"></div>
-                </div>
+          <!-- One Views field for every mode: its rows follow the mode, and its button holds both
+               modes' summaries in one place, the current one shown, so it keeps the wider's width
+               and switching modes moves nothing after it. -->
+          <div class="tool" id="views-group" data-help="channelViews">
+            <button
+              class="field-button"
+              id="views-details"
+              aria-expanded="false"
+              aria-controls="views-popover"
+            >
+              <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
+                <circle cx="10" cy="9" r=".6" /></svg
+              ><b id="views-summary" class="choices"
+                ><span id="views-single" class="on"
+                  ><span id="views-read"></span></span
+                ><span id="views-multi"
+                  ><span id="views-lanes"></span><span class="sum">Σ</span>·<svg
+                    class="icon tag"
+                    viewBox="0 0 12 12"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M1.5 2.5h5.75L10.5 6 7.25 9.5H1.5Z"
+                    /></svg></span></b
+              ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
+                <path d="M1.5 3 4 5.5 6.5 3" />
+              </svg>
+            </button>
+            <div class="popover" id="views-popover" hidden>
+              <div class="popover-title">Views</div>
+              <div class="popover-row" data-mode="single">
+                <span>Channels</span>
+                <div class="segmented toggles" id="views"></div>
               </div>
-            </div>
-            <div class="tool" id="group-group" data-help="group">
-              <button
-                class="field-button"
-                id="group-details"
-                aria-expanded="false"
-                aria-controls="group-popover"
+              <div
+                class="popover-row"
+                data-mode="single"
+                data-help="readoutSource"
               >
-                <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
-                  <path d="M1.5 3h9M1.5 6h9M1.5 9h6" />
-                  <circle cx="10" cy="9" r=".6" /></svg
-                ><b id="group-summary">A</b
-                ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
-                  <path d="M1.5 3 4 5.5 6.5 3" />
-                </svg>
-              </button>
-              <div class="popover" id="group-popover" hidden>
-                <div class="popover-title">Views</div>
-                <div class="popover-row">
-                  <span>Group</span>
-                  <div class="segmented" id="group"></div>
-                </div>
-                <div class="popover-row" data-help="laneChannel">
-                  <span>Channel</span>
-                  <div class="segmented" id="lane-channel"></div>
-                </div>
-                <div class="popover-row" data-help="compare">
-                  <span>Compare</span>
-                  <div class="segmented" id="compare"></div>
-                </div>
-                <div class="popover-row" data-help="laneLabels">
-                  <span>Labels</span>
-                  <div class="segmented" id="lane-labels-choice"></div>
-                </div>
+                <span>Measure</span>
+                <div class="segmented" id="readout-source"></div>
+              </div>
+              <div class="popover-row" data-mode="multi" hidden>
+                <span>Group</span>
+                <div class="segmented" id="group"></div>
+              </div>
+              <div
+                class="popover-row"
+                data-mode="multi"
+                data-help="laneChannel"
+                hidden
+              >
+                <span>Channel</span>
+                <div class="segmented" id="lane-channel"></div>
+              </div>
+              <div
+                class="popover-row"
+                data-mode="multi"
+                data-help="compare"
+                hidden
+              >
+                <span>Compare</span>
+                <div class="segmented" id="compare"></div>
+              </div>
+              <div
+                class="popover-row"
+                data-mode="multi"
+                data-help="laneLabels"
+                hidden
+              >
+                <span>Labels</span>
+                <div class="segmented" id="lane-labels-choice"></div>
+              </div>
+              <div class="popover-row" data-help="concertPitch">
+                <span>A4</span>
+                <div id="concert-pitch-field"></div>
               </div>
             </div>
           </div>
@@ -292,17 +306,11 @@
           <span id="message-text"></span>
         </div>
       </main>
-      <!-- Left: concert pitch and the grid, which shape what the screen draws, then the Meter's
-           button and the cursor buttons, which read it; none changes width. Right: the state, in a
-           fixed width, Help and About. Nothing here moves when the state or a value changes. -->
+      <!-- Left: the grid, which shapes what the screen draws, then the Meter's button and the
+           cursor buttons, which read it; none changes width. Right: the state, in a fixed width,
+           Help and About. Nothing here moves when the state or a value changes. -->
       <footer class="statusbar">
         <div class="status-left">
-          <div class="group">
-            <div class="tool icon-field" data-help="concertPitch">
-              <i>A4</i>
-              <div id="concert-pitch-field"></div>
-            </div>
-          </div>
           <div class="group">
             <div class="grid-group" id="grid-group" data-help="grid">
               <button

@@ -26,6 +26,8 @@ import {
   startBeforeFrames,
   useReadout,
   type Started,
+  rowHidden,
+  multiSummary,
 } from "./harness.ts";
 
 function viewToggle(label: string): HTMLButtonElement {
@@ -54,61 +56,58 @@ describe("controls", () => {
   test("shows one popover at a time, and none for a hidden field", async () => {
     await press(choice("time-base", "Trig"));
     await press(choice("display-mode", "Multi"));
-    await userEvent.click(byId("group-details"));
-    await expect.element(byId("group-popover")).toBeVisible();
+    await userEvent.click(byId("views-details"));
+    await expect.element(byId("views-popover")).toBeVisible();
     await userEvent.click(byId("trigger-details"));
     await expect.element(byId("trigger-popover")).toBeVisible();
-    await expect.element(byId("group-popover")).not.toBeVisible();
-    expect(byId("group-details").getAttribute("aria-expanded")).toBe("false");
+    await expect.element(byId("views-popover")).not.toBeVisible();
+    expect(byId("views-details").getAttribute("aria-expanded")).toBe("false");
     // From the keyboard too, where no press lands outside the open popover.
-    byId("group-details").focus();
+    byId("views-details").focus();
     await userEvent.keyboard("{Enter}");
-    await expect.element(byId("group-popover")).toBeVisible();
+    await expect.element(byId("views-popover")).toBeVisible();
     await expect.element(byId("trigger-popover")).not.toBeVisible();
     expect(byId("trigger-details").getAttribute("aria-expanded")).toBe("false");
     await userEvent.keyboard("{Enter}");
-    await expect.element(byId("group-popover")).not.toBeVisible();
-
-    await userEvent.click(byId("group-details"));
-    await expect.element(byId("group-popover")).toBeVisible();
-    app.deliver({ type: "stateChanged", name: "displayMode", value: "single" });
-    await expect.element(byId("group-details")).not.toBeVisible();
-    app.deliver({ type: "stateChanged", name: "displayMode", value: "multi" });
-    await expect.element(byId("group-details")).toBeVisible();
-    await expect.element(byId("group-popover")).not.toBeVisible();
-
-    // Views has no field in Multi: its popover closes the same way.
-    app.deliver({ type: "stateChanged", name: "displayMode", value: "single" });
-    await expect.element(byId("views-details")).toBeVisible();
-    await userEvent.click(byId("views-details"));
-    await expect.element(byId("views-popover")).toBeVisible();
-    app.deliver({ type: "stateChanged", name: "displayMode", value: "multi" });
-    await expect.element(byId("views-details")).not.toBeVisible();
-    app.deliver({ type: "stateChanged", name: "displayMode", value: "single" });
-    await expect.element(byId("views-details")).toBeVisible();
     await expect.element(byId("views-popover")).not.toBeVisible();
-    expect(byId("views-details").getAttribute("aria-expanded")).toBe("false");
+
+    // Trigger has no field in Multi with Free's time base: its popover closes with it and does not
+    // come back with the field. The Views field shows in every mode.
+    await userEvent.click(byId("trigger-details"));
+    await expect.element(byId("trigger-popover")).toBeVisible();
+    app.deliver({ type: "stateChanged", name: "timeBase", value: "free" });
+    await expect.element(byId("trigger-details")).not.toBeVisible();
+    app.deliver({ type: "stateChanged", name: "timeBase", value: "trigger" });
+    await expect.element(byId("trigger-details")).toBeVisible();
+    await expect.element(byId("trigger-popover")).not.toBeVisible();
+    expect(byId("trigger-details").getAttribute("aria-expanded")).toBe("false");
     await press(choice("display-mode", "Single"));
   });
 
   // Multi's Views field names the group shown, whether the user picks it or the host restores it.
   test("names the current group in its field", async () => {
     const field = () => [
-      byId("group-summary").textContent,
-      byId("group-details").getAttribute("aria-label"),
+      multiSummary(),
+      byId("views-details").getAttribute("aria-label"),
     ];
     await press(choice("display-mode", "Multi"));
     await press(choice("group", "B"));
-    await expect.poll(field).toEqual(["B·M·Σ", "Views: group B, Mid"]);
+    await expect
+      .poll(field)
+      .toEqual(["B·M·Σ·", "Views: group B, Mid, labels on"]);
     app.deliver({ type: "stateChanged", name: "group", value: "c" });
-    await expect.poll(field).toEqual(["C·M·Σ", "Views: group C, Mid"]);
+    await expect
+      .poll(field)
+      .toEqual(["C·M·Σ·", "Views: group C, Mid, labels on"]);
     // Another setting leaves it be.
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "single" });
     await expect.poll(() => shownValue("trigger").join("")).toBe("Single");
-    expect(field()).toEqual(["C·M·Σ", "Views: group C, Mid"]);
+    expect(field()).toEqual(["C·M·Σ·", "Views: group C, Mid, labels on"]);
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "auto" });
     await press(choice("group", "A"));
-    await expect.poll(field).toEqual(["A·M·Σ", "Views: group A, Mid"]);
+    await expect
+      .poll(field)
+      .toEqual(["A·M·Σ·", "Views: group A, Mid, labels on"]);
     await press(choice("display-mode", "Single"));
   });
 
@@ -126,7 +125,7 @@ describe("controls", () => {
       );
     for (const display of displays) {
       await showDisplay(display);
-      expect(byId("group-group").inert, display).toBe(display === "Single");
+      expect(rowHidden("lane-channel"), display).toBe(display === "Single");
     }
     await showDisplay("Multi");
     await expect.poll(pressed).toEqual(["M"]);
@@ -135,10 +134,10 @@ describe("controls", () => {
     // The field names it between the group and Σ.
     await expect
       .poll(() => [
-        byId("group-summary").textContent,
-        byId("group-details").getAttribute("aria-label"),
+        multiSummary(),
+        byId("views-details").getAttribute("aria-label"),
       ])
-      .toEqual(["A·L·Σ", "Views: group A, Left"]);
+      .toEqual(["A·L·Σ·", "Views: group A, Left, labels on"]);
     await press(choice("lane-channel", "S"));
     await expect.poll(pressed).toEqual(["S"]);
 
@@ -163,35 +162,39 @@ describe("controls", () => {
     );
     expect(modes).toEqual(["Single", "Multi"]);
     const sumLit = () =>
-      byId("group-summary").querySelector("span")?.classList.contains("on");
+      byId("views-multi").querySelector(".sum")?.classList.contains("on");
     const field = () => [
-      byId("group-summary").textContent,
+      multiSummary(),
       sumLit(),
-      byId("group-details").getAttribute("aria-label"),
+      byId("views-details").getAttribute("aria-label"),
     ];
     await press(choice("display-mode", "Multi"));
     await press(choice("group", "A"));
     await expect
       .element(choice("compare", "Off"))
       .toHaveAttribute("aria-pressed", "true");
-    await expect.poll(field).toEqual(["A·M·Σ", false, "Views: group A, Mid"]);
+    await expect
+      .poll(field)
+      .toEqual(["A·M·Σ·", false, "Views: group A, Mid, labels on"]);
     await userEvent.click(choice("compare", "On"));
     await expect
       .element(choice("compare", "On"))
       .toHaveAttribute("aria-pressed", "true");
     await expect
       .poll(field)
-      .toEqual(["A·M·Σ", true, "Views: group A, Mid, Compare on"]);
+      .toEqual(["A·M·Σ·", true, "Views: group A, Mid, Compare on, labels on"]);
     await press(choice("group", "B"));
     await expect
       .poll(field)
-      .toEqual(["B·M·Σ", true, "Views: group B, Mid, Compare on"]);
+      .toEqual(["B·M·Σ·", true, "Views: group B, Mid, Compare on, labels on"]);
     // The host restores it off.
     app.deliver({ type: "stateChanged", name: "compare", value: "off" });
     await expect
       .element(choice("compare", "Off"))
       .toHaveAttribute("aria-pressed", "true");
-    await expect.poll(field).toEqual(["B·M·Σ", false, "Views: group B, Mid"]);
+    await expect
+      .poll(field)
+      .toEqual(["B·M·Σ·", false, "Views: group B, Mid, labels on"]);
     await press(choice("group", "A"));
     await press(choice("display-mode", "Single"));
   });
@@ -367,18 +370,20 @@ describe("controls", () => {
   });
 
   // Multi, with Compare off and on, shows each track's Mid: the channel views and the trigger
-  // source don't apply, so they are hidden; the group applies only there.
+  // source don't apply, so they are hidden; the group applies only there. The Views field shows in
+  // every mode, its rows following it.
   test("the multi-track views hide the channel views and trigger source", async () => {
     for (const mode of ["Multi", "Compare"] as const) {
       await showDisplay(mode);
-      await expect.element(byId("views-group")).not.toBeVisible();
+      await expect.element(byId("views-group")).toBeVisible();
+      expect(rowHidden("views")).toBe(true);
       expect(byId("source-row").hidden).toBe(true);
-      await expect.element(byId("group-group")).toBeVisible();
+      expect(rowHidden("group")).toBe(false);
     }
     await press(choice("display-mode", "Single"));
     await expect.element(byId("views-group")).toBeVisible();
     expect(byId("source-row").hidden).toBe(false);
-    await expect.element(byId("group-group")).not.toBeVisible();
+    expect(rowHidden("group")).toBe(true);
   });
 
   test("Freeze holds the view and says so", async () => {

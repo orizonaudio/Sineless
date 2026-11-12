@@ -1,4 +1,4 @@
-// A value in a bar sits in a pill with its icon or label (Span, Scale, A4), which reads as one
+// A value in a bar sits in a pill with its icon or label (Span, Scale), which reads as one
 // control: a drag, the wheel or a double-click anywhere on the pill, its icon included, does
 // what it does on the value.
 import { describe, expect, test } from "vitest";
@@ -46,12 +46,6 @@ const pills: readonly {
     name: "Scale",
     host: "scale-field",
     setting: "verticalScale",
-    timeBase: "Trig",
-  },
-  {
-    name: "A4",
-    host: "concert-pitch-field",
-    setting: "concertPitch",
     timeBase: "Trig",
   },
 ];

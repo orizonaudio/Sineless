@@ -96,7 +96,6 @@ describe("popovers", () => {
   test.each([
     "mode-popover",
     "views-popover",
-    "group-popover",
     "layout-popover",
     "time-base-popover",
     "trigger-popover",
@@ -140,7 +139,6 @@ describe("popover choices", () => {
   test.each([
     "mode-popover",
     "views-popover",
-    "group-popover",
     "layout-popover",
     "time-base-popover",
     "trigger-popover",
@@ -171,21 +169,15 @@ describe("popover choices", () => {
   // An option that cannot be chosen recedes in the row names' grey under its dim, rather than
   // reading as a white option that is merely faint; one that is chosen keeps the thumb's dark label,
   // legible on the light thumb. Every way an option is unavailable: Source's views that are off,
-  // the view toggles in Multi (which shows each track's channel instead), and R, M and S on a mono
-  // track.
+  // and R, M and S on a mono track. (In Multi the view toggles' row is hidden, not unavailable.)
   test.each([
-    ["Source, its views off", "trigger-popover", "source", 2, false],
-    ["the view toggles in Multi", "views-popover", "views", 2, true],
-    ["the view toggles on a mono track", "views-popover", "views", 1, false],
+    ["Source, its views off", "trigger-popover", "source", 2],
+    ["the view toggles on a mono track", "views-popover", "views", 1],
   ] as const)(
     "%s: unavailable options read as unavailable, a chosen one stays legible",
-    async (_, popoverId, groupId, inputChannels, multi) => {
+    async (_, popoverId, groupId, inputChannels) => {
       await startApp({ inputChannels });
       await settle();
-      if (multi) {
-        await press(choice("display-mode", "Multi"));
-        await settle();
-      }
       const popover = byId(popoverId);
       const hidden = [popover, ...ancestorsHidden(popover)];
       for (const node of hidden) {
