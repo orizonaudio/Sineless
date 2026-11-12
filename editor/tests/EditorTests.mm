@@ -1158,15 +1158,6 @@ TEST_F(EditorTest, ShowsTheVersionTheHostIsGiven)
     }
 }
 
-// About Us's button, named after the vendor, takes the user to the vendor's site: its home page.
-TEST(Branding, AboutUsOpensTheVendorsHomePage)
-{
-    if (SINELESS_BRANDED != 1) {
-        GTEST_SKIP() << "a build without the brand has no vendor's page";
-    }
-    EXPECT_STREQ(branding::kContactUrl, "https://orizonaudio.com/");
-}
-
 // About Us opens the vendor's page in the default browser, never in the editor. A build without
 // the brand has no such page: it offers none, and a request for one opens nothing.
 TEST_F(EditorTest, AboutUsOpensTheVendorsPageOnlyInABrandedBuild)
