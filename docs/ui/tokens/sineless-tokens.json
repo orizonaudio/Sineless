@@ -4,27 +4,27 @@
     "color": {
       "case": {
         "$type": "color",
-        "$value": "#18181b",
+        "$value": "#1b1b1f",
         "$description": "Window chrome: toolbar, status bar and the frame around the screen"
       },
       "control": {
         "$type": "color",
-        "$value": "#2c2c2e",
+        "$value": "#2e2e32",
         "$description": "Bar controls at rest: menus, drag fields, switches, Help and About"
       },
       "control-hover": {
         "$type": "color",
-        "$value": "#38383b",
+        "$value": "#3a3a3e",
         "$description": "A bar control under the pointer"
       },
       "control-open": {
         "$type": "color",
-        "$value": "#4a4a4e",
+        "$value": "#4c4c50",
         "$description": "A menu whose popover is open"
       },
       "popover": {
         "$type": "color",
-        "$value": "#2a2a2f",
+        "$value": "#2d2d31",
         "$description": "Open popovers, help tips and the \"+n\" list"
       },
       "track": {
@@ -39,7 +39,7 @@
       },
       "line": {
         "$type": "color",
-        "$value": "#2b2b30",
+        "$value": "#2c2c30",
         "$description": "The screen's edge, the cursor readout's rule, the resize grip"
       },
       "selected": {
@@ -59,27 +59,27 @@
       },
       "ink-2": {
         "$type": "color",
-        "$value": "#a1a1aa",
+        "$value": "#a5a5a9",
         "$description": "Labels, units, icons, grid labels"
       },
       "screen": {
         "$type": "color",
-        "$value": "#030304",
+        "$value": "#030307",
         "$description": "The screen behind the traces"
       },
       "grid": {
         "$type": "color",
-        "$value": "#111114",
+        "$value": "#111115",
         "$description": "Time and level grid lines"
       },
       "grid-strong": {
         "$type": "color",
-        "$value": "#1c1c21",
+        "$value": "#1c1c20",
         "$description": "Bar lines in Beats; each lane's zero line"
       },
       "lane-edge": {
         "$type": "color",
-        "$value": "#26262c",
+        "$value": "#26262a",
         "$description": "The line between stacked lanes"
       },
       "accent": {
@@ -119,23 +119,13 @@
       },
       "rim-top": {
         "$type": "color",
-        "$value": "#ffffff17",
-        "$description": "A control's rim, its top edge (white 9%)"
-      },
-      "rim-edge": {
-        "$type": "color",
-        "$value": "#ffffff0a",
-        "$description": "A control's rim all round (white 4%)"
+        "$value": "#ffffff0d",
+        "$description": "A control's rim, a highlight along its top only (white 5%)"
       },
       "rim-open-top": {
         "$type": "color",
-        "$value": "#ffffff1f",
-        "$description": "An open menu's rim, its top edge (white 12%)"
-      },
-      "rim-open-edge": {
-        "$type": "color",
-        "$value": "#ffffff0f",
-        "$description": "An open menu's rim all round (white 6%)"
+        "$value": "#ffffff12",
+        "$description": "An open menu's rim, along its top (white 7%)"
       },
       "popover-rim-edge": {
         "$type": "color",
@@ -377,17 +367,9 @@
             "blur": "0px",
             "spread": "0px",
             "inset": true
-          },
-          {
-            "color": "{sl.color.rim-edge}",
-            "offsetX": "0px",
-            "offsetY": "0px",
-            "blur": "0px",
-            "spread": "1px",
-            "inset": true
           }
         ],
-        "$description": "Bar controls' glass rim"
+        "$description": "Bar controls' rim: a faint highlight along the top, no line all round"
       },
       "rim-open": {
         "$type": "shadow",
@@ -398,14 +380,6 @@
             "offsetY": "1px",
             "blur": "0px",
             "spread": "0px",
-            "inset": true
-          },
-          {
-            "color": "{sl.color.rim-open-edge}",
-            "offsetX": "0px",
-            "offsetY": "0px",
-            "blur": "0px",
-            "spread": "1px",
             "inset": true
           }
         ],

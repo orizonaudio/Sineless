@@ -148,7 +148,7 @@ From 2026-10-24 and 2026-10-25.
 ## 10. The look: Graphite, accent on Frozen
 
 - **Graphite chrome** around an inset black screen with rounded corners.
-- **Controls (#409):** flat neutral fills with a faint light rim, grouped by space with capsule ends; hover, an open menu and "on" are steps of lightness, "on" and the chosen option a light fill (`#D4D4D8`) with dark text. Popovers float lighter than the bars with a dark outer and light inner edge; their choices and number fields are lifted tracks with the controls' rim, the chosen option a raised thumb; an option that cannot be chosen is grey. Readouts are drawn in the bars' colour, opaque. The step-3 look (controls `#26262A`, a darker popover, white selection, dividers) is replaced; see `tokens/`.
+- **Controls (#409):** flat fills with a faint highlight along the top and no outline, in the chrome's one cool tint, grouped by space with capsule ends; hover, an open menu and "on" are steps of lightness, "on" and the chosen option a light fill (`#D4D4D8`) with dark text. Popovers float lighter than the bars with a dark outer and light inner edge; their choices and number fields are lifted tracks with the controls' rim, the chosen option a raised thumb; an option that cannot be chosen is grey. Readouts are drawn in the bars' colour, opaque. The step-3 look (controls `#26262A`, a darker popover, white selection, dividers) is replaced; see `tokens/`.
 - **Type:** Geist for controls in sentence case; Geist Mono for every number.
 - **Colour only in the traces:** Left blue, Right pink, Mid white, Side lime in Single; host track colours in Multi; a white sum.
 - **Orange marks Frozen**, on the Frozen button and the Frozen chip: the one state where the screen isn't live.
@@ -162,7 +162,7 @@ From 2026-10-24 and 2026-10-25.
 - **Rules:** the chrome is greys; colour only in traces; orange (`#FF5F1F`) for Frozen only; yellow (`#FFD23F`) for problems (invalid samples, tracks that cancel when summed); cursors, the playhead, the hover line, the zoom band and the focus ring are white or grey. The current UI's green, blue and pink state colours are retired.
 - **Channel colours:** Left `#5AB0FF`, Right `#FF5C8A`, Mid `#F5F5F7`, Side `#B3F06B`. Side was violet in step 3; with deuteranopia it was nearly the same as Left's blue (CIEDE2000 ΔE 2.5). With lime, the closest pair is ΔE 18.7 or more in normal vision, protanopia, deuteranopia and tritanopia (simulated after Machado 2009).
 - **Track palette:** 16 colours for lanes whose host gives no colour (every Audio Unit host today), at OKLCH lightness 0.66 / 0.76 / 0.86, clear of the accent and the white sum, all at least 6.1:1 on the screen. Ordered so adjacent lanes differ by ΔE 18 or more in every vision type tested, and lanes two apart by ΔE 11 or more in normal vision. Not all 16 can be told apart with colour blindness; every lane shows its track's name.
-- **Contrast:** every text pair passes WCAG 2.2 AA (lowest since #409: grey labels on a popover track 4.62:1, on a control under the pointer 4.56:1; labels on controls 5.4:1, the Frozen chip 5.8:1); traces are 7.0–18.9:1 on the screen.
+- **Contrast:** every text pair passes WCAG 2.2 AA (lowest since #409: grey labels on a popover track 4.62:1, on a control under the pointer 4.61:1; labels on controls 5.5:1, the Frozen chip 5.6:1); traces are 7.0–18.9:1 on the screen.
 
 ![Channel colours in four kinds of vision](images/colour-channels.png)
 

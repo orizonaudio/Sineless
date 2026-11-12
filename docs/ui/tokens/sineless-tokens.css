@@ -3,37 +3,35 @@
 
 :root {
   /* Chrome and screen */
-  --sl-case: #18181b; /* Window chrome: toolbar, status bar and the frame around the screen */
-  --sl-control: #2c2c2e; /* Bar controls at rest: menus, drag fields, switches, Help and About */
-  --sl-control-hover: #38383b; /* A bar control under the pointer */
-  --sl-control-open: #4a4a4e; /* A menu whose popover is open */
-  --sl-popover: #2a2a2f; /* Open popovers, help tips and the "+n" list */
+  --sl-case: #1b1b1f; /* Window chrome: toolbar, status bar and the frame around the screen */
+  --sl-control: #2e2e32; /* Bar controls at rest: menus, drag fields, switches, Help and About */
+  --sl-control-hover: #3a3a3e; /* A bar control under the pointer */
+  --sl-control-open: #4c4c50; /* A menu whose popover is open */
+  --sl-popover: #2d2d31; /* Open popovers, help tips and the "+n" list */
   --sl-track: rgb(255 255 255 / 6%); /* Popover tracks, number fields and buttons in a popover */
   --sl-track-hover: rgb(255 255 255 / 7%); /* A popover option under the pointer */
-  --sl-line: #2b2b30; /* The screen's edge, the cursor readout's rule, the resize grip */
+  --sl-line: #2c2c30; /* The screen's edge, the cursor readout's rule, the resize grip */
   --sl-selected: #d4d4d8; /* The chosen option, and switches that are on */
   --sl-on-selected: #0b0b0c; /* Text on a selected option */
   --sl-ink: #f5f5f7; /* Primary text, values, cursors */
-  --sl-ink-2: #a1a1aa; /* Labels, units, icons, grid labels */
-  --sl-screen: #030304; /* The screen behind the traces */
-  --sl-grid: #111114; /* Time and level grid lines */
-  --sl-grid-strong: #1c1c21; /* Bar lines in Beats; each lane's zero line */
-  --sl-lane-edge: #26262c; /* The line between stacked lanes */
+  --sl-ink-2: #a5a5a9; /* Labels, units, icons, grid labels */
+  --sl-screen: #030307; /* The screen behind the traces */
+  --sl-grid: #111115; /* Time and level grid lines */
+  --sl-grid-strong: #1c1c20; /* Bar lines in Beats; each lane's zero line */
+  --sl-lane-edge: #26262a; /* The line between stacked lanes */
 
-  /* Edges and shadows: a control's glass rim, an open menu's, a popover's edge and drop, a chosen
+  /* Edges and shadows: a control's rim (a top highlight only), an open menu's, a popover's edge and drop, a chosen
      thumb, a readout's hairline */
-  --sl-rim-top: rgb(255 255 255 / 9%);
-  --sl-rim-edge: rgb(255 255 255 / 4%);
-  --sl-rim-open-top: rgb(255 255 255 / 12%);
-  --sl-rim-open-edge: rgb(255 255 255 / 6%);
+  --sl-rim-top: rgb(255 255 255 / 5%);
+  --sl-rim-open-top: rgb(255 255 255 / 7%);
   --sl-popover-rim-edge: rgb(255 255 255 / 5%);
   --sl-popover-edge: rgb(0 0 0 / 65%);
   --sl-popover-drop: rgb(0 0 0 / 55%);
   --sl-thumb-shade: rgb(0 0 0 / 50%);
   --sl-readout-edge: rgb(255 255 255 / 8%);
   --sl-lane-hover: rgb(255 255 255 / 8%);
-  --sl-rim: inset 0 1px 0 var(--sl-rim-top), inset 0 0 0 1px var(--sl-rim-edge);
-  --sl-rim-open: inset 0 1px 0 var(--sl-rim-open-top), inset 0 0 0 1px var(--sl-rim-open-edge);
+  --sl-rim: inset 0 1px 0 var(--sl-rim-top);
+  --sl-rim-open: inset 0 1px 0 var(--sl-rim-open-top);
   --sl-popover-shadow: inset 0 1px 0 var(--sl-rim-top), inset 0 0 0 1px var(--sl-popover-rim-edge), 0 16px 40px var(--sl-popover-drop);
   --sl-thumb-shadow: 0 1px 2px var(--sl-thumb-shade);
 

@@ -15,45 +15,43 @@
 }
 
 /* The UI's colours, from the redesign's tokens (docs/ui/tokens/sineless-tokens.json, step 4).
-   Dark only. The chrome is greys; colour belongs to traces; orange marks Frozen and nothing else;
+   Dark only. The chrome's greys share one cool tint (red and green equal, blue 4 above), so every
+   surface reads as one material. The chrome is greys; colour belongs to traces; orange marks Frozen and nothing else;
    yellow marks a problem. The engine-shared sizes live in protocol/src/limits.ts. */
 :root {
   color-scheme: dark;
 
   /* Chrome and screen */
-  --sl-case: #18181b;
-  --sl-control: #2c2c2e;
-  --sl-control-hover: #38383b;
-  --sl-control-open: #4a4a4e;
-  --sl-popover: #2a2a2f;
+  --sl-case: #1b1b1f;
+  --sl-control: #2e2e32;
+  --sl-control-hover: #3a3a3e;
+  --sl-control-open: #4c4c50;
+  --sl-popover: #2d2d31;
   --sl-track: rgb(255 255 255 / 6%);
   --sl-track-hover: rgb(255 255 255 / 7%);
-  --sl-line: #2b2b30;
+  --sl-line: #2c2c30;
   --sl-selected: #d4d4d8;
   --sl-on-selected: #0b0b0c;
   --sl-ink: #f5f5f7;
-  --sl-ink-2: #a1a1aa;
-  --sl-screen: #030304;
-  --sl-grid: #111114;
-  --sl-grid-strong: #1c1c21;
-  --sl-lane-edge: #26262c;
+  --sl-ink-2: #a5a5a9;
+  --sl-screen: #030307;
+  --sl-grid: #111115;
+  --sl-grid-strong: #1c1c20;
+  --sl-lane-edge: #26262a;
 
-  /* Edges: a control's glass rim (brighter at the top), an open menu's, a popover's dark outer
-     edge and its drop, a thumb's shadow, a readout's hairline. */
-  --sl-rim-top: rgb(255 255 255 / 9%);
-  --sl-rim-edge: rgb(255 255 255 / 4%);
-  --sl-rim-open-top: rgb(255 255 255 / 12%);
-  --sl-rim-open-edge: rgb(255 255 255 / 6%);
+  /* Edges: a control's rim, a faint highlight along its top only, so it sits in the bar rather than
+     being traced against it; an open menu's, brighter; a popover's dark outer edge and its drop, a
+     thumb's shadow, a readout's hairline. */
+  --sl-rim-top: rgb(255 255 255 / 5%);
+  --sl-rim-open-top: rgb(255 255 255 / 7%);
   --sl-popover-rim-edge: rgb(255 255 255 / 5%);
   --sl-popover-edge: rgb(0 0 0 / 65%);
   --sl-popover-drop: rgb(0 0 0 / 55%);
   --sl-thumb-shade: rgb(0 0 0 / 50%);
   --sl-readout-edge: rgb(255 255 255 / 8%);
   --sl-lane-hover: rgb(255 255 255 / 8%);
-  --sl-rim: inset 0 1px 0 var(--sl-rim-top), inset 0 0 0 1px var(--sl-rim-edge);
-  --sl-rim-open:
-    inset 0 1px 0 var(--sl-rim-open-top),
-    inset 0 0 0 1px var(--sl-rim-open-edge);
+  --sl-rim: inset 0 1px 0 var(--sl-rim-top);
+  --sl-rim-open: inset 0 1px 0 var(--sl-rim-open-top);
   --sl-popover-shadow:
     inset 0 1px 0 var(--sl-rim-top), inset 0 0 0 1px var(--sl-popover-rim-edge),
     0 16px 40px var(--sl-popover-drop);
