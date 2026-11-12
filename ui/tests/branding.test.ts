@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { build } from "vite";
 import { afterAll, describe, expect, test } from "vitest";
 
+import { brand as unbranded } from "../src/unbranded/brand.ts";
+
 const ui = join(import.meta.dirname, "..");
 const brandFiles = readdirSync(join(ui, "src", "brand"))
   .filter((name) => name.endsWith(".svg"))
@@ -68,4 +70,14 @@ describe("the page's brand", () => {
       expect(unbranded).not.toContain(name);
     }
   }, 60000);
+});
+
+// What a build without the brand shows in its own place: a name for the toolbar, the window title,
+// About and the Compare note, a mark drawn as an image, and no vendor, so About Us stays hidden.
+describe("the neutral brand", () => {
+  test("names the product and draws its mark, with no vendor", () => {
+    expect(unbranded.name).toMatch(/\S/u);
+    expect(unbranded.mark).toMatch(/^<svg[\s>]/u);
+    expect(unbranded.vendor).toBe("");
+  });
 });
