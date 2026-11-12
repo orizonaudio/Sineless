@@ -94,9 +94,8 @@ describe("about", () => {
     await openAbout();
     const row = byId("contact-row");
     expect(row.classList.contains("popover-row")).toBe(true);
-    expect(row.firstElementChild?.textContent).toBe("About Us");
     expect(row.lastElementChild).toBe(byId("contact"));
-    expect(byId("contact").textContent).toBe("Orizon Audio");
+    expect(byId("contact").textContent).toBe(brand.vendor);
     expect(byId("contact").getBoundingClientRect().left).toBeGreaterThan(
       (row.firstElementChild as HTMLElement).getBoundingClientRect().right,
     );

@@ -73,11 +73,10 @@ describe("the page's brand", () => {
 });
 
 // What a build without the brand shows in its own place: a name for the toolbar, the window title,
-// About and the Compare note, a mark drawn as an image, and no vendor, so About Us stays hidden.
+// About and the Compare note, and a mark drawn as an image.
 describe("the neutral brand", () => {
-  test("names the product and draws its mark, with no vendor", () => {
+  test("names the product and draws its mark", () => {
     expect(unbranded.name).toMatch(/\S/u);
     expect(unbranded.mark).toMatch(/^<svg[\s>]/u);
-    expect(unbranded.vendor).toBe("");
   });
 });

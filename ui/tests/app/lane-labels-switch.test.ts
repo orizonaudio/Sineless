@@ -122,13 +122,17 @@ describe.each(groups)("with %s", (_, group, names) => {
 });
 
 describe("the Labels row", () => {
-  test("follows Compare in Multi's Views popover", async () => {
-    await startApp();
+  test("is in Multi's Views popover, and asks the engine for the choice", async () => {
+    const app = await startApp();
     await press(choice("display-mode", "Multi"));
-    const rows = [
-      ...byId("group-popover").querySelectorAll(".popover-row"),
-    ].map((row) => row.firstElementChild?.textContent);
-    expect(rows).toEqual(["Group", "Channel", "Compare", "Labels"]);
+    expect(byId("group-popover").contains(labelsRow("Off"))).toBe(true);
+    await press(labelsRow("Off"));
+    const sent = app.sent.filter((message) => message.type === "setSetting");
+    expect(sent.at(-1)).toEqual({
+      type: "setSetting",
+      name: "laneLabels",
+      value: "off",
+    });
   });
 
   test("is out of reach in Single, which shows no lane labels, and applies back in Multi", async () => {

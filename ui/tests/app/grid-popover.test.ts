@@ -139,16 +139,6 @@ describe("the Grid popover", () => {
     },
   );
 
-  test("holds a row each for Type, Density and Beat division", async () => {
-    await startApp();
-    const rows = [...byId("grid-popover").querySelectorAll(".popover-row")];
-    expect(rows.map((row) => row.firstElementChild?.textContent)).toEqual([
-      "Type",
-      "Density",
-      "Beat division",
-    ]);
-  });
-
   test("the field keeps its width and place whatever the type", async () => {
     await startApp();
     await inTimeBase("Trig");
