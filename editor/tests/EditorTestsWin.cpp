@@ -643,7 +643,7 @@ TEST_F(EditorTest, AboutUsOpensTheVendorsPageOnlyInABrandedBuild)
     WebView& view = *editor->webView();
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(view); }, kPageTimeout));
     const bool branded = SINELESS_BRANDED == 1;
-    EXPECT_EQ(evaluate(view, "String(!(document.getElementById('contact')?.hidden ?? true))"),
+    EXPECT_EQ(evaluate(view, "String(!(document.getElementById('contact-row')?.hidden ?? true))"),
               branded ? "true" : "false")
         << "About us offered";
     if (branded) {
