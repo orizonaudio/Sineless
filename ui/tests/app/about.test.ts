@@ -67,6 +67,26 @@ describe("about", () => {
     expect(byId("contact-row").hidden).toBe(false);
   });
 
+  // The version is the row's value, not a second name: in the ink values are read in, not the
+  // grey that names the row.
+  test("shows the version in the value colour, apart from the row's name", async () => {
+    await startApp({ about: { version: "12.3.4", contact: true } });
+    await openAbout();
+    const colourOf = (token: string) => {
+      const probe = document.createElement("span");
+      probe.style.color = `var(${token})`;
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    };
+    const version = byId("about-version");
+    expect(getComputedStyle(version).color).toBe(colourOf("--sl-ink"));
+    expect(
+      getComputedStyle(version.previousElementSibling as HTMLElement).color,
+    ).toBe(colourOf("--sl-ink-2"));
+  });
+
   // As the popover's other rows: its name on the left, the control on the right, here a button
   // named after the vendor, whose page it opens.
   test("lays About Us out as a row, its button named after the vendor", async () => {
