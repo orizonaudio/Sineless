@@ -17,13 +17,14 @@ import {
   chips,
   choice,
   displays,
+  freezeLabel,
   press,
   settle,
   showDisplay,
   showViews,
   startApp,
-  type Started,
   useReadout,
+  type Started,
 } from "./harness.ts";
 
 function viewToggle(label: string): HTMLButtonElement {
@@ -141,12 +142,12 @@ describe("controls", () => {
     await expect.poll(pressed).toEqual(["S"]);
 
     await userEvent.click(byId("freeze"));
-    await expect.element(byId("freeze")).toHaveTextContent("Frozen");
+    await expect.poll(freezeLabel).toBe("Frozen");
     expect(enabled()).toEqual([true, true, true, true]);
     await press(choice("lane-channel", "R"));
     await expect.poll(pressed).toEqual(["R"]);
     await userEvent.click(byId("freeze"));
-    await expect.element(byId("freeze")).toHaveTextContent("Freeze");
+    await expect.poll(freezeLabel).toBe("Freeze");
 
     await press(choice("lane-channel", "M"));
     await expect.poll(pressed).toEqual(["M"]);

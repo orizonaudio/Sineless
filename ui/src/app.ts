@@ -322,6 +322,8 @@ export class OscilloscopeApp {
   private readoutShown: string | undefined;
   // The Views field's channel read: every channel's letter and "—" in one place, one shown.
   private readSummary: StackedSummary | undefined;
+  // Freeze's label, "Freeze" or "Frozen", both in one place so freezing resizes nothing (AD-26).
+  private freezeLabel: StackedSummary | undefined;
   // The grid's popover: a row per choice, each reading and writing its one setting, in force in
   // every time base, and the field naming the type drawn.
   private readonly gridRows = new Map<
@@ -741,6 +743,11 @@ export class OscilloscopeApp {
       element("grid-summary"),
       choiceLabels.gridType,
     );
+    this.freezeLabel = new StackedSummary(element("freeze-label"), {
+      live: "Freeze",
+      frozen: "Frozen",
+    });
+    this.freezeLabel.show("live");
 
     element("brand-mark").innerHTML = brand.mark;
     element("wordmark").textContent = brand.name;
@@ -2344,7 +2351,7 @@ export class OscilloscopeApp {
       if (frame.frozen !== this.shownFrozen) {
         this.shownFrozen = frame.frozen;
         element("freeze").setAttribute("aria-pressed", String(frame.frozen));
-        element("freeze").textContent = frame.frozen ? "Frozen" : "Freeze";
+        this.freezeLabel?.show(frame.frozen ? "frozen" : "live");
       }
       // The engine may resume on its own (auto-freeze); a new freeze starts unpanned.
       if (!frame.frozen) {

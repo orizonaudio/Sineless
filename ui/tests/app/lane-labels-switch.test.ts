@@ -11,6 +11,7 @@ import {
   byId,
   chips,
   choice,
+  freezeLabel,
   press,
   setCompare,
   settle,
@@ -70,9 +71,7 @@ async function multi(
   if (frozen) {
     await userEvent.click(byId("freeze"));
     // The frozen frame can take longer than the matcher's default second in a busy browser.
-    await expect
-      .poll(() => byId("freeze").textContent, { timeout: 5000 })
-      .toBe("Frozen");
+    await expect.poll(() => freezeLabel(), { timeout: 5000 }).toBe("Frozen");
   }
 }
 

@@ -383,6 +383,12 @@ export function byId(id: string): HTMLElement {
   return found as HTMLElement;
 }
 
+// Freeze's label as shown, "Freeze" or "Frozen": both sit in the button, one of them invisible, so
+// freezing resizes nothing; its text content holds both.
+export function freezeLabel(): string {
+  return byId("freeze-label").querySelector(".on")?.textContent ?? "";
+}
+
 // A button of a segmented control, by its label.
 export function choice(groupId: string, label: string): HTMLButtonElement {
   const button = [...byId(groupId).querySelectorAll("button")].find(

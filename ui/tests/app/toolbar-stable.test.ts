@@ -369,3 +369,36 @@ test.each([false, true])(
     );
   },
 );
+
+// Freezing the display moves and resizes nothing in the toolbar (AD-26): Freeze reads "Frozen" while
+// frozen, and its group sits at the toolbar's right end, so a wider or narrower label would move
+// Auto-freeze. Live to frozen and back, at both widths, in each display mode.
+describe.each(widths)("freezing, at %i px", (width) => {
+  test.each(["single", "multi"])(
+    "moves and resizes nothing in %s",
+    async (displayMode) => {
+      await page.viewport(width, 600);
+      const started = await startApp();
+      await show(started, { compare: "off", displayMode });
+      const live = measure();
+      for (const frozen of [true, false]) {
+        byId("freeze").click();
+        await expect
+          .poll(() => byId("freeze").getAttribute("aria-pressed"))
+          .toBe(String(frozen));
+        await settle();
+        const now = measure();
+        for (const [key, box] of live) {
+          expect(
+            now.get(key)?.left,
+            `${key}, frozen: ${String(frozen)}`,
+          ).toBeCloseTo(box.left, 1);
+          expect(
+            now.get(key)?.width,
+            `${key}, frozen: ${String(frozen)}`,
+          ).toBeCloseTo(box.width, 1);
+        }
+      }
+    },
+  );
+});
