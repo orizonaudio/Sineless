@@ -9,23 +9,43 @@
       },
       "control": {
         "$type": "color",
-        "$value": "#26262a",
-        "$description": "Fields, segmented controls and buttons at rest"
+        "$value": "#2c2c2e",
+        "$description": "Bar controls at rest: menus, drag fields, switches, Help and About"
+      },
+      "control-hover": {
+        "$type": "color",
+        "$value": "#38383b",
+        "$description": "A bar control under the pointer"
+      },
+      "control-open": {
+        "$type": "color",
+        "$value": "#4a4a4e",
+        "$description": "A menu whose popover is open"
       },
       "popover": {
         "$type": "color",
-        "$value": "#222226",
-        "$description": "Open popovers and the cursor readout"
+        "$value": "#2a2a2f",
+        "$description": "Open popovers, help tips and the \"+n\" list"
+      },
+      "track": {
+        "$type": "color",
+        "$value": "#ffffff0f",
+        "$description": "Popover tracks, number fields and buttons in a popover (white 6%)"
+      },
+      "track-hover": {
+        "$type": "color",
+        "$value": "#ffffff12",
+        "$description": "A popover option under the pointer (white 7%)"
       },
       "line": {
         "$type": "color",
         "$value": "#2b2b30",
-        "$description": "Dividers and the screen's edge"
+        "$description": "The screen's edge, the cursor readout's rule, the resize grip"
       },
       "selected": {
         "$type": "color",
-        "$value": "#f5f5f7",
-        "$description": "The selected option, and toggles that are on"
+        "$value": "#d4d4d8",
+        "$description": "The chosen option, and switches that are on"
       },
       "on-selected": {
         "$type": "color",
@@ -39,7 +59,7 @@
       },
       "ink-2": {
         "$type": "color",
-        "$value": "#9a9aa3",
+        "$value": "#a1a1aa",
         "$description": "Labels, units, icons, grid labels"
       },
       "screen": {
@@ -96,6 +116,56 @@
         "$type": "color",
         "$value": "#b3f06b",
         "$description": "Side channel"
+      },
+      "rim-top": {
+        "$type": "color",
+        "$value": "#ffffff17",
+        "$description": "A control's rim, its top edge (white 9%)"
+      },
+      "rim-edge": {
+        "$type": "color",
+        "$value": "#ffffff0a",
+        "$description": "A control's rim all round (white 4%)"
+      },
+      "rim-open-top": {
+        "$type": "color",
+        "$value": "#ffffff1f",
+        "$description": "An open menu's rim, its top edge (white 12%)"
+      },
+      "rim-open-edge": {
+        "$type": "color",
+        "$value": "#ffffff0f",
+        "$description": "An open menu's rim all round (white 6%)"
+      },
+      "popover-rim-edge": {
+        "$type": "color",
+        "$value": "#ffffff0d",
+        "$description": "A popover's inner edge all round (white 5%)"
+      },
+      "popover-edge": {
+        "$type": "color",
+        "$value": "#000000a6",
+        "$description": "A popover's outer edge (black 65%)"
+      },
+      "popover-drop": {
+        "$type": "color",
+        "$value": "#0000008c",
+        "$description": "A popover's drop shadow (black 55%)"
+      },
+      "thumb-shade": {
+        "$type": "color",
+        "$value": "#00000080",
+        "$description": "A chosen thumb's shadow (black 50%)"
+      },
+      "readout-edge": {
+        "$type": "color",
+        "$value": "#ffffff14",
+        "$description": "Readout panels' hairline (white 8%)"
+      },
+      "lane-hover": {
+        "$type": "color",
+        "$value": "#ffffff14",
+        "$description": "A lane-label button under the pointer (white 8%)"
       }
     },
     "track": {
@@ -189,6 +259,11 @@
         "$type": "number",
         "$value": 0.1,
         "$description": "Ink over the region being dragged to zoom"
+      },
+      "dim-disabled": {
+        "$type": "number",
+        "$value": 0.35,
+        "$description": "Every disabled control"
       }
     },
     "font": {
@@ -222,10 +297,6 @@
         "$type": "dimension",
         "$value": "24px"
       },
-      "control-radius": {
-        "$type": "dimension",
-        "$value": "6px"
-      },
       "screen-inset": {
         "$type": "dimension",
         "$value": "8px"
@@ -253,6 +324,134 @@
       "font-label": {
         "$type": "dimension",
         "$value": "11px"
+      },
+      "radius-control": {
+        "$type": "dimension",
+        "$value": "12px",
+        "$description": "A group's outer ends: a capsule at the 24 px control height"
+      },
+      "radius-inner": {
+        "$type": "dimension",
+        "$value": "2px",
+        "$description": "Corners between controls of a group"
+      },
+      "radius-thumb": {
+        "$type": "dimension",
+        "$value": "10px",
+        "$description": "A thumb, concentric in its track (12 − 2)"
+      },
+      "radius-readout": {
+        "$type": "dimension",
+        "$value": "10px",
+        "$description": "Readout panels"
+      },
+      "radius-tip": {
+        "$type": "dimension",
+        "$value": "12px",
+        "$description": "Help tips and the \"+n\" list"
+      },
+      "radius-popover": {
+        "$type": "dimension",
+        "$value": "14px",
+        "$description": "Popovers"
+      },
+      "gap-inner": {
+        "$type": "dimension",
+        "$value": "2px",
+        "$description": "Between controls of a group"
+      },
+      "group-space": {
+        "$type": "dimension",
+        "$value": "13px",
+        "$description": "Between groups in a bar, whatever the bar's own gap"
+      }
+    },
+    "shadow": {
+      "rim": {
+        "$type": "shadow",
+        "$value": [
+          {
+            "color": "{sl.color.rim-top}",
+            "offsetX": "0px",
+            "offsetY": "1px",
+            "blur": "0px",
+            "spread": "0px",
+            "inset": true
+          },
+          {
+            "color": "{sl.color.rim-edge}",
+            "offsetX": "0px",
+            "offsetY": "0px",
+            "blur": "0px",
+            "spread": "1px",
+            "inset": true
+          }
+        ],
+        "$description": "Bar controls' glass rim"
+      },
+      "rim-open": {
+        "$type": "shadow",
+        "$value": [
+          {
+            "color": "{sl.color.rim-open-top}",
+            "offsetX": "0px",
+            "offsetY": "1px",
+            "blur": "0px",
+            "spread": "0px",
+            "inset": true
+          },
+          {
+            "color": "{sl.color.rim-open-edge}",
+            "offsetX": "0px",
+            "offsetY": "0px",
+            "blur": "0px",
+            "spread": "1px",
+            "inset": true
+          }
+        ],
+        "$description": "An open menu's rim"
+      },
+      "popover": {
+        "$type": "shadow",
+        "$value": [
+          {
+            "color": "{sl.color.rim-top}",
+            "offsetX": "0px",
+            "offsetY": "1px",
+            "blur": "0px",
+            "spread": "0px",
+            "inset": true
+          },
+          {
+            "color": "{sl.color.popover-rim-edge}",
+            "offsetX": "0px",
+            "offsetY": "0px",
+            "blur": "0px",
+            "spread": "1px",
+            "inset": true
+          },
+          {
+            "color": "{sl.color.popover-drop}",
+            "offsetX": "0px",
+            "offsetY": "16px",
+            "blur": "40px",
+            "spread": "0px"
+          }
+        ],
+        "$description": "A popover's inner edge and drop"
+      },
+      "thumb": {
+        "$type": "shadow",
+        "$value": [
+          {
+            "color": "{sl.color.thumb-shade}",
+            "offsetX": "0px",
+            "offsetY": "1px",
+            "blur": "2px",
+            "spread": "0px"
+          }
+        ],
+        "$description": "A chosen thumb, raised in its track"
       }
     }
   }
