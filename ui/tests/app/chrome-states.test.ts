@@ -104,3 +104,37 @@ describe("the bars' padding", () => {
     },
   );
 });
+
+describe("the bars' edges and cues", () => {
+  // A control sits in the bar: its edge is a faint highlight along its top only, with no line all
+  // round tracing it against the bar. Bar controls at rest and open, and a popover's track.
+  test.each([
+    ["a menu", "layout-details", false],
+    ["a drag field", "time-group", false],
+    ["a switch", "level-cursors", false],
+    ["an open menu", "layout-details", true],
+    ["a popover's choice", "layout", false],
+  ] as const)("%s has a top highlight and no outline", async (_, id, open) => {
+    await startApp();
+    await settle();
+    if (open) {
+      await userEvent.click(byId(id));
+    }
+    const control = byId(id);
+    const hidden = [control.closest<HTMLElement>(".popover")].filter(
+      (node): node is HTMLElement => node?.hidden === true,
+    );
+    for (const node of hidden) {
+      node.hidden = false;
+    }
+    const shadows = getComputedStyle(control)
+      .boxShadow.split(/,(?![^(]*\))/u)
+      .map((shadow) => shadow.trim());
+    for (const node of hidden) {
+      node.hidden = true;
+    }
+    expect(shadows).toHaveLength(1);
+    // inset, no x offset, 1 px down, no blur, no spread
+    expect(shadows[0]).toMatch(/0px 1px 0px 0px inset$/u);
+  });
+});

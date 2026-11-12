@@ -355,9 +355,11 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 The colours are tokens (`ui/src/tokens.css`, from `docs/ui/tokens/`), checked for contrast and
 colour blindness in `docs/ui/colour.html`.
 
-- Dark theme only: graphite chrome around an inset black screen. The case colour is also the
+- Dark theme only: graphite chrome around an inset black screen, its greys one cool tint (red and
+  green equal, blue a step above), so every surface reads as one material. The case colour is also the
   webview's native background, so nothing flashes while loading.
-- The bars' controls are flat fills with a faint light rim, in groups: 2 px apart with small inner
+- The bars' controls are flat fills with a faint highlight along their top, no outline, so they
+  sit in the bar; in groups: 2 px apart with small inner
   corners, capsule-round at the group's ends. Under the pointer a control lightens a step; a menu
   whose popover is open lightens a step more and turns its chevron up; a switch that is on, and a
   chosen option, take a light fill with dark text. Menus show a chevron, drag fields (Span, Scale,

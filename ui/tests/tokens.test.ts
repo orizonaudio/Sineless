@@ -55,3 +55,31 @@ test.each(Object.entries(json.sl.color))(
     expect(Math.abs(a - da)).toBeLessThanOrEqual(1 / 255);
   },
 );
+
+// The chrome is one material (#409): its greys share one tint, red and green equal and blue the same
+// step above them, so no surface reads warmer or bluer than the one it sits on or opens from.
+const chromeGreys = [
+  "case",
+  "control",
+  "control-hover",
+  "control-open",
+  "popover",
+  "line",
+  "selected",
+  "ink-2",
+  "screen",
+  "grid",
+  "grid-strong",
+  "lane-edge",
+];
+
+test("the chrome's greys share one tint", () => {
+  const tints = chromeGreys.map((name) => {
+    const [r, g, b] = rgba(cssToken(name) ?? "");
+    return { name, redGreen: g - r, blue: b - r };
+  });
+  for (const tint of tints) {
+    expect(tint.redGreen, tint.name).toBe(0);
+    expect(tint.blue, tint.name).toBe(tints[0]?.blue);
+  }
+});

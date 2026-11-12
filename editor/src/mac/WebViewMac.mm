@@ -719,9 +719,9 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     const NSRect bounds = NSMakeRect(0, 0, width, height);
     container = [[NSView alloc] initWithFrame:bounds];
     container.wantsLayer = YES;
-    container.layer.backgroundColor = [NSColor colorWithSRGBRed:0x18 / 255.0
-                                                          green:0x18 / 255.0
-                                                           blue:0x1b / 255.0
+    container.layer.backgroundColor = [NSColor colorWithSRGBRed:0x1b / 255.0
+                                                          green:0x1b / 255.0
+                                                           blue:0x1f / 255.0
                                                           alpha:1.0]
                                           .CGColor;
     notice = [NSTextField wrappingLabelWithString:@""];
