@@ -221,9 +221,44 @@ describe("the focus ring on a switch that is on", () => {
     button.focus();
     expect(button.matches(":focus-visible")).toBe(true);
     const caseRgb = getComputedStyle(document.body).backgroundColor;
-    const shadow = getComputedStyle(button).boxShadow;
+    const style = getComputedStyle(button);
+    const ring = {
+      style: style.outlineStyle,
+      width: parseFloat(style.outlineWidth),
+      offset: parseFloat(style.outlineOffset),
+      colour: style.outlineColor,
+    };
+    // The band: an inset shadow in the bars' colour with no offset or blur, as wide as its spread.
+    const band = style.boxShadow
+      .split(/,(?![^(]*\))/u)
+      .map((shadow) => shadow.trim())
+      .filter(
+        (shadow) => shadow.startsWith(caseRgb) && shadow.endsWith("inset"),
+      )
+      .map((shadow) => {
+        const lengths = shadow
+          .slice(caseRgb.length)
+          .trim()
+          .split(/\s+/u)
+          .slice(0, 4)
+          .map(parseFloat);
+        return lengths[0] === 0 && lengths[1] === 0 && lengths[2] === 0
+          ? (lengths[3] ?? 0)
+          : 0;
+      });
+    const fill = over(style.backgroundColor, caseColour());
     button.blur();
     byId("mode-popover").hidden = true;
-    expect(shadow).toContain(`${caseRgb} 0px 0px 0px 4px inset`);
+    // A ring drawn inside the button,
+    expect(ring.style).toBe("solid");
+    expect(ring.width).toBeGreaterThan(0);
+    expect(ring.offset).toBeLessThanOrEqual(0);
+    // with a band that reaches further in than the ring does, so it parts the ring from the fill,
+    expect(Math.max(0, ...band)).toBeGreaterThan(-ring.offset);
+    // and the ring standing out from the band.
+    const ringRgb = over(ring.colour, fill);
+    expect(contrast(ringRgb, caseColour())).toBeGreaterThanOrEqual(
+      stateContrast,
+    );
   });
 });
