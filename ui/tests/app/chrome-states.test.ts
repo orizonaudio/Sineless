@@ -60,3 +60,47 @@ describe("the bars' controls", () => {
     expect(contrast(on.ink, on.fill)).toBeGreaterThanOrEqual(textContrast);
   });
 });
+
+describe("the bars' padding", () => {
+  // Every bar control is padded alike: a switch inside its group as a menu inside its group, and at
+  // a group's outer end as a menu there, so a group of switches has the rhythm of a group of menus.
+  test.each([
+    [
+      "inside a group",
+      "views-details",
+      "paddingLeft",
+      "time-cursors",
+      "paddingLeft",
+    ],
+    [
+      "at a group's start",
+      "mode-details",
+      "paddingLeft",
+      "meter-toggle",
+      "paddingLeft",
+    ],
+    [
+      "at a group's end",
+      "layout-details",
+      "paddingRight",
+      "hover-toggle",
+      "paddingRight",
+    ],
+    [
+      "at a group's start, toolbar",
+      "mode-details",
+      "paddingLeft",
+      "auto-freeze",
+      "paddingLeft",
+    ],
+  ] as const)(
+    "a switch is padded as a menu %s",
+    async (_, menu, menuSide, toggle, toggleSide) => {
+      await startApp();
+      await settle();
+      expect(getComputedStyle(byId(toggle))[toggleSide]).toBe(
+        getComputedStyle(byId(menu))[menuSide],
+      );
+    },
+  );
+});

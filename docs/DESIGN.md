@@ -240,7 +240,7 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
   its button's left edge, and follow the same rules.
 - The status bar never moves: A4, the Grid field (as wide as "Ticks"), the Meter and the cursor
   buttons keep their width, and the chips have a fixed area, as wide as the bar leaves at the
-  minimum width less 8 px (490 px; it was 520, what the bar left before the Grid field, until the
+  minimum width less 8 px (500 px; it was 520, what the bar left before the Grid field, until the
   grouped controls of #409 took the room and the minimum width was kept instead). Invalid samples, a problem in the audio, comes first, so it always shows. Chips that
   do not fit fold, from the last, into one "+n" chip that lists them on hover or focus; the first
   stays shown.
@@ -361,9 +361,11 @@ colour blindness in `docs/ui/colour.html`.
   corners, capsule-round at the group's ends. Under the pointer a control lightens a step; a menu
   whose popover is open lightens a step more and turns its chevron up; a switch that is on, and a
   chosen option, take a light fill with dark text. Menus show a chevron, drag fields (Span, Scale,
-  A4) an up-down cue. Control text is white; disabled controls are at 35%.
-- Popovers float lighter than the bars, with a dark outer and a faint light inner edge. A choice is
-  a track a step lighter than the popover, the chosen option a raised thumb in it; Channels, which
+  A4) an up-down cue. Control text is white; disabled controls are at 35%, an option that cannot
+  be chosen in the labels' grey.
+- Popovers float lighter than the bars, with a dark outer and a faint light inner edge. A choice,
+  and a number field, is a track a step lighter than the popover with the controls' rim, the chosen
+  option a raised thumb in it; Channels, which
   may have several chosen, joins neighbouring chosen ones into one thumb. Help tips and the "+n"
   list take the popover's edge. The Meter, cursor and hover readouts are drawn in the bars' colour,
   opaque, with a hairline edge: part of the instrument, not menus.
