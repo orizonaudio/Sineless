@@ -8,6 +8,7 @@ import {
   beforeApp,
   byId,
   choice,
+  freezeLabel,
   press,
   setCompare,
   settle,
@@ -264,12 +265,10 @@ describe("a track alone in its group", () => {
     // press Freeze only when the page is not already as this test needs it. The frozen frame can
     // take longer than the matcher's default second in a busy browser.
     const wanted = frozen ? "Frozen" : "Freeze";
-    if (byId("freeze").textContent !== wanted) {
+    if (freezeLabel() !== wanted) {
       await userEvent.click(byId("freeze"));
     }
-    await expect
-      .poll(() => byId("freeze").textContent, { timeout: 5000 })
-      .toBe(wanted);
+    await expect.poll(() => freezeLabel(), { timeout: 5000 }).toBe(wanted);
   }
 
   describe.each(["Stack", "Overlay"])("%s", (layout) => {

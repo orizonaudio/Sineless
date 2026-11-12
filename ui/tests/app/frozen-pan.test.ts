@@ -9,6 +9,7 @@ import {
   byId,
   chips,
   choice,
+  freezeLabel,
   press,
   settle,
   shownChips,
@@ -39,7 +40,7 @@ async function freezeAt100Ms(): Promise<void> {
 
 // The Frozen chip, in the accent, and the button that says so.
 function expectFrozenShown(): void {
-  expect(byId("freeze").textContent.trim()).toBe("Frozen");
+  expect(freezeLabel()).toBe("Frozen");
   const chip = byId("chips").querySelector(".chip");
   expect(chip?.textContent).toBe("Frozen");
   expect(chip?.classList.contains("frozen")).toBe(true);
@@ -91,7 +92,7 @@ describe("a frozen view", () => {
     await expect.poll(chips).toEqual(["Frozen", panChip(0.2)]);
     await userEvent.click(byId("freeze"));
     await expect.poll(chips).not.toContain("Frozen");
-    expect(byId("freeze").textContent.trim()).toBe("Freeze");
+    expect(freezeLabel()).toBe("Freeze");
     await userEvent.click(byId("freeze"));
     await settle();
     await expect.poll(chips).toEqual(["Frozen"]);

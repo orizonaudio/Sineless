@@ -6,7 +6,14 @@ import { userEvent } from "vitest/browser";
 
 import { formatMusicalLength } from "../../src/view/format.ts";
 
-import { byId, inTimeBase, settle, startApp, type Started } from "./harness.ts";
+import {
+  byId,
+  freezeLabel,
+  inTimeBase,
+  settle,
+  startApp,
+  type Started,
+} from "./harness.ts";
 
 async function setPressed(id: string, pressed: boolean): Promise<void> {
   if ((byId(id).getAttribute("aria-pressed") === "true") !== pressed) {
@@ -150,7 +157,7 @@ describe("the cursor readout", () => {
     test("A and B read as the hover does at their lines, frozen", async () => {
       await cursorsAfterZoom();
       await userEvent.click(byId("freeze"));
-      await expect.element(byId("freeze")).toHaveTextContent("Frozen");
+      await expect.poll(freezeLabel).toBe("Frozen");
       await settle();
       expectCursorsReadAsTheHover();
     });
