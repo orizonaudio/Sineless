@@ -4468,7 +4468,8 @@ class DeepZoom : public ::testing::TestWithParam<DeepZoomCase>
 // and the first and last reach just past the view's edges (to them at the span's ends). At the
 // span's ends, where the window holds no neighbours, it may be drawn straight there, and neither
 // shifts nor reads past the window. In every trace: each view, each lane, and Compare's sum. A span
-// of fewer samples than kMinimumViewSamples is not zoomed, and shows the wave all the same.
+// of fewer samples than kMinimumViewSamples is not zoomed; a Trig or frozen one holds no neighbours
+// past its ends, so within a reach of them (all of the shortest, 22 samples) it is drawn straight.
 TEST_P(DeepZoom, DrawsTheWaveBetweenTheSamples)
 {
     const DeepZoomCase c = GetParam();
