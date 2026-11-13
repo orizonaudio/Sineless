@@ -51,12 +51,12 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .peak = header["peak"].get<float>(),
         .rms = header["rms"].get<float>(),
         .cursor = header["cursor"].get<float>(),
-        .cycleStart = header["cycleStart"].get<float>(),
+        .cycleStart = header["cycleStart"].get<double>(),
         .spanQuarterNotes = header["spanQuarterNotes"].get<float>(),
         .barQuarterNotes = header["barQuarterNotes"].get<float>(),
-        .cycleSeconds = header["cycleSeconds"].get<float>(),
-        .viewStart = header["viewStart"].get<float>(),
-        .viewEnd = header["viewEnd"].get<float>(),
+        .cycleSeconds = header["cycleSeconds"].get<double>(),
+        .viewStart = header["viewStart"].get<double>(),
+        .viewEnd = header["viewEnd"].get<double>(),
         .visibleSamples = header["visibleSamples"].get<float>(),
         .laneSet = header["laneSet"].get<std::uint32_t>(),
         .sumGain = header["sumGain"].get<float>(),
@@ -69,6 +69,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .readoutView = static_cast<protocol::ChannelView>(header["readoutView"].get<int>()),
         .triggerView = static_cast<protocol::ChannelView>(header["triggerView"].get<int>()),
         .triggerPosition = floatOf(header["triggerPosition"]),
+        .pointsPerSample = header["pointsPerSample"].get<std::uint32_t>(),
     };
 }
 
@@ -123,6 +124,31 @@ TEST(FrameEncoder, SendsNoValueForReadoutsNotMeasured)
         std::memcpy(&value, output.data() + offset, sizeof value);
         EXPECT_TRUE(std::isnan(value)) << "at byte " << offset;
     }
+}
+
+// A view of kMinimumViewSamples at the end of the longest sweep (2^23 samples), and where a sweep
+// starts late in a song, travel exactly:
+// rounded to a float, its start would be off by a quarter of a sample and its width by about 2%,
+// which the page's times and grid would read.
+TEST(FrameEncoder, CarriesADeepViewExactly)
+{
+    const double span = 8388608.0;
+    const double end = 1.0 - (3.0 / span);
+    const double start = end - (protocol::kMinimumViewSamples / span) + 1e-13;
+    std::vector<std::byte> output;
+    encodeFrame({.cycleStart = 4800.1, .cycleSeconds = 2400.05, .viewStart = start, .viewEnd = end},
+                {}, output);
+    double carried = 0.0;
+    std::memcpy(&carried, output.data() + protocol::FrameHeader::kViewStartOffset, sizeof carried);
+    EXPECT_EQ(carried, start);
+    std::memcpy(&carried, output.data() + protocol::FrameHeader::kViewEndOffset, sizeof carried);
+    EXPECT_EQ(carried, end);
+    // And where the sweep starts, late in a song, which the grid and clock are placed from.
+    std::memcpy(&carried, output.data() + protocol::FrameHeader::kCycleStartOffset, sizeof carried);
+    EXPECT_EQ(carried, 4800.1);
+    std::memcpy(&carried, output.data() + protocol::FrameHeader::kCycleSecondsOffset,
+                sizeof carried);
+    EXPECT_EQ(carried, 2400.05);
 }
 
 } // namespace

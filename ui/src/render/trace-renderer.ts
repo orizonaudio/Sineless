@@ -19,6 +19,8 @@ import {
   barcodeDataBits,
   barcodeTicksPerMillisecond,
   previousCycleAlpha,
+  sampleDotRadius,
+  sampleDotSpacing,
   waitingAlpha,
 } from "../../../protocol/src/limits.ts";
 import { barcodeRow, barcodeStrip } from "./frame-barcode.ts";
@@ -68,8 +70,9 @@ export interface TraceView {
 
 // Shared by the trace shaders, in device pixels from the canvas's bottom left. A block (a view
 // or a lane) holds `count` points of `stride` values (min and max, or one sample). Point i sits at frame index i + offset (columns at their centres, raw points
-// shifted by the frame's start fraction) of `positions`; a frame covers frameStart to
-// frameStart + frameWidth of the span, the screen viewStart to viewStart + viewWidth of it.
+// shifted by the frame's start fraction) of `positions`; the frame starts frameLeft screen widths
+// from the screen's left and is frameScale screen widths wide, both worked out on the CPU in
+// double, as a deep view's start in float would be off by several samples.
 const traceCommon = `#version 300 es
 precision highp float;
 precision highp int;
@@ -77,17 +80,19 @@ uniform int count;
 uniform int stride;
 uniform float offset;
 uniform float positions;
-uniform float frameStart;
-uniform float frameWidth;
-uniform float viewStart;
-uniform float viewWidth;
+uniform float frameLeft;
+uniform float frameScale;
 uniform float center;
 uniform float halfHeight;
 uniform float scale;
 uniform vec2 canvas;
 uniform float lineHalf;
+// A raw frame's samples are marked with a dot of this radius every dotEvery points from point 0;
+// 0 marks none.
+uniform int dotEvery;
+uniform float dotRadius;
 float pixelX(float index) {
-  return (frameStart + index / positions * frameWidth - viewStart) / viewWidth * canvas.x;
+  return (frameLeft + index / positions * frameScale) * canvas.x;
 }
 // A value's height, kept within 1e15 px of its lane by limiting the value before it is divided
 // by the scale: a huge sample over a small scale would otherwise overflow, and GLSL promises
@@ -110,9 +115,10 @@ vec2 clipped(vec2 a, vec2 b, float bottom, float top) {
 }
 `;
 
-// One instance per point: its piece of the trace, from its own point to the next, in up to four
+// One instance per point: its piece of the trace, from its own point to the next, in up to five
 // parts, each a quad of its own shaded only for its own distance: 0 the band between the two
-// points, 1 and 2 the lines joining their maxes and their mins, 3 the point's own vertical line.
+// points, 1 and 2 the lines joining their maxes and their mins, 3 the point's own vertical line,
+// 4 a dot marking a raw frame's sample.
 // That line is drawn only beside a missing point: between two present ones it is the edge the
 // two bands share, inside the trace, so the bands and the lines already give every pixel near it
 // the same coverage. A part that does not apply collapses to a point. Quads reach pad from their
@@ -198,6 +204,10 @@ void main() {
     float high = clamp(hi + pad, 0.0, canvas.y);
     c = vec2(far ? xa + pad : xa - pad, upper ? high : low);
     line = vec4(xa, 0.0, 0.0, 0.0);
+  } else if (part == 4 && present && dotEvery > 0 && i % dotEvery == 0) {
+    float reach = dotRadius + pad;
+    c = vec2(far ? xa + reach : xa - reach, upper ? lo + reach : lo - reach);
+    line = vec4(xa, lo, 0.0, 0.0);
   }
   gl_Position = vec4(c.x / canvas.x * 2.0 - 1.0, c.y / canvas.y * 2.0 - 1.0, 0.0, 1.0);
 }`;
@@ -234,6 +244,8 @@ void main() {
     d = 0.0;
   } else if (part == 3) {
     d = length(vec2(p.x - line.x, p.y - clamp(p.y, here.x, here.y)));
+  } else if (part == 4) {
+    d = max(0.0, length(p - line.xy) - dotRadius);
   } else {
     d = segment(p, line.xy, line.zw);
   }
@@ -687,7 +699,7 @@ export class TraceRenderer implements FrameRenderer {
     const positions = minMax
       ? frame.pointCount
       : frame.visibleSamples > 0
-        ? frame.visibleSamples
+        ? frame.visibleSamples * frame.pointsPerSample
         : frame.pointCount;
     const frameWidth = frame.viewEnd - frame.viewStart;
     const viewWidth = screen.end - screen.start;
@@ -696,20 +708,37 @@ export class TraceRenderer implements FrameRenderer {
     gl.uniform1i(program.uniform("stride"), stride);
     gl.uniform1f(
       program.uniform("offset"),
-      minMax ? 0.5 : -frame.startFraction,
+      minMax ? 0.5 : -frame.startFraction * frame.pointsPerSample,
     );
     gl.uniform1f(program.uniform("positions"), positions);
     gl.uniform1f(program.uniform("scale"), fullScale(view.verticalScaleDb));
-    gl.uniform1f(program.uniform("frameStart"), frame.viewStart);
-    gl.uniform1f(program.uniform("frameWidth"), frameWidth);
-    gl.uniform1f(program.uniform("viewStart"), screen.start);
-    gl.uniform1f(program.uniform("viewWidth"), viewWidth);
+    gl.uniform1f(
+      program.uniform("frameLeft"),
+      (frame.viewStart - screen.start) / viewWidth,
+    );
+    gl.uniform1f(program.uniform("frameScale"), frameWidth / viewWidth);
     gl.uniform2f(
       program.uniform("canvas"),
       this.canvas.width,
       this.canvas.height,
     );
     gl.uniform1f(program.uniform("lineHalf"), lineHalf);
+    // Samples are marked where the wave between them is drawn, once they stand far enough apart
+    // not to merge (limits.ts).
+    const sampleSpacing =
+      minMax || frame.pointsPerSample <= 1 || frame.visibleSamples <= 0
+        ? 0
+        : ((frameWidth / viewWidth) * this.canvas.width) / frame.visibleSamples;
+    gl.uniform1i(
+      program.uniform("dotEvery"),
+      sampleSpacing >= sampleDotSpacing * this.style.lineWidthPixels
+        ? frame.pointsPerSample
+        : 0,
+    );
+    gl.uniform1f(
+      program.uniform("dotRadius"),
+      sampleDotRadius * this.style.lineWidthPixels,
+    );
 
     const blockLanes = lanes(blocks.length, view.layout);
     // A frame holds at most maxLanes traces, which one pass holds.
@@ -761,8 +790,8 @@ export class TraceRenderer implements FrameRenderer {
         stride * 4,
         offset - stride * 4,
       );
-      // Four parts of six vertices each.
-      gl.drawArraysInstanced(gl.TRIANGLES, 0, 24, frame.pointCount);
+      // Five parts of six vertices each.
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, frame.pointCount);
       colors.set(color, index * 4);
     });
     for (const attribute of [here, next, previous]) {

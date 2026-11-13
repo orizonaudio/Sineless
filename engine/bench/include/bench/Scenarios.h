@@ -106,6 +106,35 @@ inline constexpr std::array kScenarios{
         .viewStart = 0.5,
         .viewEnd = 0.5625,
     },
+    // Zoomed in to kMinimumViewSamples, where the wave between the samples is reconstructed:
+    // 32 of the 6,144,000 samples. Measured and reported until its counts are known.
+    Scenario{
+        .name = "multi-15-deepest-zoom",
+        .description = "Multi, 15 tracks, 16 bars at 60 BPM and 96 kHz, zoomed in to 32 samples",
+        .tracks = 15,
+        .beatSpan = protocol::BeatSpan::kSixteenBars,
+        .rate = 96000.0,
+        .tempo = 60.0,
+        .viewStart = 0.5,
+        .viewEnd = 0.5 + (32.0 / 6144000.0),
+        .gated = false,
+    },
+    Scenario{
+        .name = "compare-15-deepest-zoom",
+        .description = "Compare, 15 tracks all checked, Preview fix, 16 bars at 60 BPM and "
+                       "96 kHz, zoomed in to 32 samples",
+        .mode = protocol::DisplayMode::kMulti,
+        .compare = true,
+        .tracks = 15,
+        .beatSpan = protocol::BeatSpan::kSixteenBars,
+        .rate = 96000.0,
+        .tempo = 60.0,
+        .compareAll = true,
+        .previewFix = true,
+        .viewStart = 0.5,
+        .viewEnd = 0.5 + (32.0 / 6144000.0),
+        .gated = false,
+    },
     Scenario{
         .name = "compare-15-frozen-pan",
         .description = "Compare, 15 tracks all checked, frozen over 1 s at 96 kHz, panning",

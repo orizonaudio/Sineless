@@ -361,8 +361,8 @@ TEST(AnalyzerLimits, DrawsShortSweepsWholeThroughATempoRamp)
     }
 }
 
-// A view at the zoom limit can come out a few ulps narrower in the UI's floating point: the engine
-// still takes it.
+// A view as narrow as the UI zooms (kMinimumViewSamples of the span), as its floating point may
+// compute it a few ulps narrower, is taken as asked and shows that many samples.
 TEST(AnalyzerLimits, AcceptsAViewAtTheZoomLimit)
 {
     Tracks tracks(2);
@@ -370,11 +370,18 @@ TEST(AnalyzerLimits, AcceptsAViewAtTheZoomLimit)
     Analyzer analyzer(tracks.own(), tracks.registry);
     analyzer.setColumns(400);
     tracks.play(9600);
-    const double start = 0.3;
-    analyzer.setView(start, start + (protocol::kMinimumViewWidth - 1e-15));
-    const auto frame = produceSome(analyzer);
+    auto frame = produceSome(analyzer);
     ASSERT_TRUE(frame);
-    EXPECT_NEAR(frame->viewEnd - frame->viewStart, protocol::kMinimumViewWidth, 1e-6);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double width = protocol::kMinimumViewSamples / spanSamples * (1.0 - 1e-12);
+    const double start = 0.3;
+    analyzer.setView(start, start + width);
+    tracks.play(256);
+    frame = produceSome(analyzer);
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->viewStart, start);
+    EXPECT_EQ(frame->viewEnd, start + width);
+    EXPECT_NEAR(frame->visibleSamples, protocol::kMinimumViewSamples, 1e-3);
 }
 
 // Frozen in Seconds mode and panned as far back as the frame says it can be, every lane still

@@ -41,8 +41,8 @@ TEST(FrameView, ReadsTheGoldenFramesAsThePageDoes)
         EXPECT_EQ(read->flags, header.at("flags").get<int>());
         EXPECT_EQ(read->pointCount, header.at("pointCount").get<std::uint32_t>());
         EXPECT_EQ(read->startFraction, header.at("startFraction").get<float>());
-        EXPECT_EQ(read->viewStart, header.at("viewStart").get<float>());
-        EXPECT_EQ(read->viewEnd, header.at("viewEnd").get<float>());
+        EXPECT_EQ(read->viewStart, header.at("viewStart").get<double>());
+        EXPECT_EQ(read->viewEnd, header.at("viewEnd").get<double>());
         EXPECT_EQ(read->visibleSamples, header.at("visibleSamples").get<float>());
         EXPECT_EQ(read->cursor, header.at("cursor").get<float>());
         ASSERT_EQ(read->views.size(), 2U);
@@ -61,7 +61,7 @@ TEST(FrameView, ReadsTheGoldenFramesAsThePageDoes)
         EXPECT_EQ(read->mode, protocol::FrameMode::kRaw);
         EXPECT_TRUE(read->compared());
         EXPECT_EQ(read->laneSet, header.at("laneSet").get<std::uint32_t>());
-        EXPECT_EQ(read->cycleStart, header.at("cycleStart").get<float>());
+        EXPECT_EQ(read->cycleStart, header.at("cycleStart").get<double>());
         EXPECT_EQ(read->spanQuarterNotes, header.at("spanQuarterNotes").get<float>());
         EXPECT_EQ(read->barQuarterNotes, header.at("barQuarterNotes").get<float>());
         ASSERT_EQ(read->lanes.size(), 3U);

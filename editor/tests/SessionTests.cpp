@@ -483,8 +483,8 @@ struct FrameFacts
 {
     std::uint32_t pointCount = 0;
     std::uint8_t flags = 0;
-    float viewStart = 0.0f;
-    float viewEnd = 0.0f;
+    double viewStart = 0.0;
+    double viewEnd = 0.0;
     float visibleSamples = 0.0f;
 
     bool operator==(const FrameFacts&) const = default;

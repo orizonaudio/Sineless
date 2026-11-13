@@ -4,6 +4,7 @@
 #include "engine/FrameEncoder.h"
 #include "engine/FreeRunning.h"
 #include "engine/Readouts.h"
+#include "engine/Reconstruction.h"
 #include "engine/Reducer.h"
 #include "engine/Sweep.h"
 
@@ -50,28 +51,20 @@ std::uint64_t frozenLength(const CaptureRing& ring, double sampleRate, bool sync
                                    readable);
 }
 
-// The narrowest view accepted: as far as the UI zooms. The UI computes its views in floating
-// point, so one at the limit can come out a few ulps narrower; those are accepted too.
-constexpr double kMinimumViewWidth = protocol::kMinimumViewWidth * (1.0 - 1e-9);
+// The narrowest view accepted. The UI zooms to `kMinimumViewSamples` of the span it was shown;
+// this only keeps a view's width well above rounding at the longest spans and highest rates.
+constexpr double kMinimumViewWidth = 1e-12;
 
 constexpr std::uint8_t flag(FrameFlag value)
 {
     return static_cast<std::uint8_t>(value);
 }
 
-// The part of a window of `count` samples that the screen shows, as sample indices from its first
-// sample, with one extra point beyond each edge so a raw trace reaches the screen edges. The
-// window starts `fraction` of a sample after its first sample. A window of no samples (a failed
-// read, or a free-running span before its first column of audio) shows none.
-struct Crop
-{
-    std::size_t first = 0;
-    std::size_t end = 0;
-    double startFraction = 0.0;
-    double visibleSamples = 0.0;
-};
-
-Crop cropOf(double count, double fraction, double cropStart, double cropEnd)
+// The part of a window of `count` samples that the screen shows (Crop). The window starts
+// `fraction` of a sample after its first sample. A window of no samples (a failed read, or a
+// free-running span before its first column of audio) shows none. With a `margin`, up to that many
+// more samples each side are read as neighbours for reconstructing the wave between the samples.
+Crop cropOf(double count, double fraction, double cropStart, double cropEnd, std::size_t margin = 0)
 {
     if (count < 1.0) {
         return {};
@@ -82,10 +75,53 @@ Crop cropOf(double count, double fraction, double cropStart, double cropEnd)
         std::clamp(std::floor(visibleFrom), 0.0, std::max(count - 1.0, 0.0)));
     const auto end = static_cast<std::size_t>(
         std::clamp(std::ceil(visibleTo) + 1.0, static_cast<double>(first) + 1.0, count));
-    return {.first = first,
-            .end = end,
-            .startFraction = visibleFrom - static_cast<double>(first),
-            .visibleSamples = (cropEnd - cropStart) * count};
+    const std::size_t lead = std::min(margin, first);
+    const std::size_t trail = std::min(margin, static_cast<std::size_t>(count) - end);
+    return {.first = first - lead,
+            .end = end + trail,
+            .startFraction = visibleFrom - static_cast<double>(first - lead),
+            .visibleSamples = (cropEnd - cropStart) * count,
+            .lead = lead,
+            .trail = trail};
+}
+
+// The samples of a block read with `crop`'s margins that the screen shows.
+std::span<const float> shownPart(std::span<const float> block, const Crop& crop)
+{
+    const std::size_t lead = std::min(crop.lead, block.size());
+    return block.subspan(lead, block.size() - lead - std::min(crop.trail, block.size() - lead));
+}
+
+// Points per sample for a view of `visibleSamples` across `columns`: above 1 only while the
+// samples with their neighbours each side still fit the columns raw.
+std::size_t pointsPerSampleFor(double visibleSamples, std::size_t columns)
+{
+    const std::size_t factor = Reconstruction::pointsPerSample(visibleSamples, columns);
+    return factor > 1 && visibleSamples + static_cast<double>(2 * kReconstructionReach + 2) <=
+                             static_cast<double>(columns)
+               ? factor
+               : 1;
+}
+
+// No join in a block: every point between samples may be reconstructed.
+constexpr std::size_t kNoSeam = std::numeric_limits<std::size_t>::max();
+
+// Where a sweep's playhead, at `position` (0 to 1) of an image of `count` samples, falls in a
+// block read with `crop`: the first sample of the previous pass, or kNoSeam outside the block (or
+// with no playhead, at a negative position).
+std::size_t seamOf(double position, double count, const Crop& crop)
+{
+    if (!(position >= 0.0)) {
+        return kNoSeam;
+    }
+    const auto index = static_cast<std::size_t>(std::llround(position * count));
+    return index > crop.first && index < crop.end ? index - crop.first : kNoSeam;
+}
+
+// The margin each side for a frame of `factor` points per sample.
+std::size_t marginFor(std::size_t factor)
+{
+    return factor > 1 ? kReconstructionReach : 0;
 }
 
 bool contains(const std::vector<std::uint64_t>& ids, std::uint64_t id)
@@ -816,8 +852,12 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             const auto wholeStart = static_cast<double>(end - count);
             const double from = wholeStart + command.viewStart * static_cast<double>(count);
             const double to = wholeStart + command.viewEnd * static_cast<double>(count);
-            const double first = std::max(wholeStart, std::floor(from) - 1.0);
-            const double last = std::min(static_cast<double>(end), std::ceil(to) + 2.0);
+            // Neighbours beyond, for reconstructing the wave between the samples.
+            constexpr auto kReach = static_cast<double>(kReconstructionReach);
+            const double first = std::max(wholeStart, std::floor(from) - 1.0 - kReach);
+            // Past the paced edge too, as far as the capture (or the hold) has the audio.
+            const double last = std::min(static_cast<double>(std::max(end, source->endIndex())),
+                                         std::ceil(to) + 2.0 + kReach);
             sampleCount = static_cast<std::uint64_t>(std::max(0.0, last - first));
             window.start = first;
             if (sampleCount > 0) {
@@ -918,6 +958,31 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     return true;
 }
 
+void Analyzer::reconstruct(FrameHeaderValues& header, std::size_t blocks, const Crop& crop,
+                           std::size_t factor, std::size_t seam)
+{
+    const std::size_t points = header.pointCount;
+    if (header.mode != protocol::FrameMode::kRaw || points == 0 ||
+        (factor <= 1 && crop.lead + crop.trail == 0)) {
+        return;
+    }
+    blocks = std::min(blocks, frameData.size() / points);
+    reconstructed.clear();
+    for (std::size_t block = 0; block < blocks; ++block) {
+        reconstruction.upsample(std::span(frameData).subspan(block * points, points), crop.lead,
+                                crop.trail, factor, upsampled, seam);
+        reconstructed.insert(reconstructed.end(), upsampled.begin(), upsampled.end());
+    }
+    // Data after the blocks (a Compare frame's matches) is kept as it is.
+    reconstructed.insert(reconstructed.end(),
+                         frameData.begin() + static_cast<std::ptrdiff_t>(blocks * points),
+                         frameData.end());
+    std::swap(frameData, reconstructed);
+    header.pointCount = static_cast<std::uint32_t>(upsampled.size());
+    header.startFraction = static_cast<float>(crop.startFraction - static_cast<double>(crop.lead));
+    header.pointsPerSample = static_cast<std::uint32_t>(std::max<std::size_t>(factor, 1));
+}
+
 bool Analyzer::render(const SampleSource& source, const Settings& settings, double sampleRate,
                       const Window& window, std::uint64_t sampleCount, std::size_t columns,
                       std::vector<std::byte>& frame)
@@ -929,8 +994,10 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const auto views = effectiveViews(
         static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)), inputChannels);
 
+    const std::size_t factor = pointsPerSampleFor(
+        (window.cropEnd - window.cropStart) * static_cast<double>(sampleCount), columns);
     const Crop crop = cropOf(static_cast<double>(sampleCount), window.start - first,
-                             window.cropStart, window.cropEnd);
+                             window.cropStart, window.cropEnd, marginFor(factor));
     const double visibleSamples = crop.visibleSamples;
 
     FrameHeaderValues header{
@@ -944,12 +1011,12 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         .views = views,
         .startFraction = static_cast<float>(crop.startFraction),
         .cursor = static_cast<float>(window.cursor),
-        .cycleStart = static_cast<float>(window.cycleStart),
+        .cycleStart = window.cycleStart,
         .spanQuarterNotes = static_cast<float>(window.spanQuarterNotes),
         .barQuarterNotes = static_cast<float>(window.barQuarterNotes),
-        .cycleSeconds = static_cast<float>(window.cycleSeconds),
-        .viewStart = static_cast<float>(window.viewStart),
-        .viewEnd = static_cast<float>(window.viewEnd),
+        .cycleSeconds = window.cycleSeconds,
+        .viewStart = window.viewStart,
+        .viewEnd = window.viewEnd,
         .visibleSamples = static_cast<float>(visibleSamples),
         .panReach = static_cast<float>(window.panReach),
         .sampleRate = static_cast<float>(sampleRate),
@@ -1017,7 +1084,13 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             if (!updated) {
                 return false;
             }
-            header.invalidLanes |= reduction.holdsInvalid() ? 1U : 0U;
+            // Only what the screen shows: neighbours read for the reconstruction are not flagged.
+            header.invalidLanes |=
+                (crop.lead + crop.trail > 0 ? (invalidCheckViews(views) & (1U << index)) != 0 &&
+                                                  holdsInvalid(shownPart(reduction.values(), crop))
+                                            : reduction.holdsInvalid())
+                    ? 1U
+                    : 0U;
             header.mode = reduction.mode();
             pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visibleCount;
             frameData.insert(frameData.end(), reduction.values().begin(), reduction.values().end());
@@ -1040,7 +1113,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         }
         const std::span<const float> visible =
             std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
-        header.invalidLanes |= holdsInvalid(visible) ? 1U : 0U;
+        header.invalidLanes |= holdsInvalid(shownPart(visible, crop)) ? 1U : 0U;
         workDone.samplesReduced += visible.size();
         header.mode = reduceToColumns(visible, columns, reduced);
         pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
@@ -1066,6 +1139,12 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         viewReduction.channels = inputChannels;
     }
     header.pointCount = static_cast<std::uint32_t>(pointCount);
+    // A sweep's playhead joins the newest pass to the previous one: no curve across it.
+    const std::size_t seam =
+        synced ? seamOf(window.subStart + window.cursor * (window.subEnd - window.subStart),
+                        static_cast<double>(sampleCount), crop)
+               : kNoSeam;
+    reconstruct(header, frameData.size(), crop, factor, seam);
 
     // Readouts cover the whole span, whatever part is on screen, at most every 100 ms of audio:
     // a sweep's from its levels per block, a window's from its samples.
@@ -1644,10 +1723,12 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     const SweepWindow& window = *shown;
     const std::uint64_t count = own.image.length();
     const double shownPart = subEnd - subStart;
+    const std::size_t columns = command.columns;
+    const std::size_t factor = pointsPerSampleFor(
+        (command.viewEnd - command.viewStart) * shownPart * static_cast<double>(count), columns);
     const Crop crop =
         cropOf(static_cast<double>(count), 0.0, subStart + command.viewStart * shownPart,
-               subStart + command.viewEnd * shownPart);
-    const std::size_t columns = command.columns;
+               subStart + command.viewEnd * shownPart, marginFor(factor));
     // The rate of the own lane's audio: frozen, the one it was held at.
     const double sampleRate =
         isFrozen && own.hold.held() ? own.hold.sampleRate() : engine.sampleRate();
@@ -1660,12 +1741,12 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         .laneCount = static_cast<std::uint8_t>(laneOrder.size()),
         .startFraction = static_cast<float>(crop.startFraction),
         .cursor = static_cast<float>(window.cursor),
-        .cycleStart = static_cast<float>(window.cycleStart),
+        .cycleStart = window.cycleStart,
         .spanQuarterNotes = static_cast<float>(window.spanQuarterNotes),
         .barQuarterNotes = static_cast<float>(window.barQuarterNotes),
-        .cycleSeconds = static_cast<float>(window.cycleSeconds),
-        .viewStart = static_cast<float>(command.viewStart),
-        .viewEnd = static_cast<float>(command.viewEnd),
+        .cycleSeconds = window.cycleSeconds,
+        .viewStart = command.viewStart,
+        .viewEnd = command.viewEnd,
         .visibleSamples = static_cast<float>(crop.visibleSamples),
         .laneSet = laneSetId,
         .sampleRate = static_cast<float>(sampleRate)};
@@ -1711,7 +1792,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
             updateStats(lane.stats, lane.image, channel, lane.image.channels(),
                         !lane.stats.fits(static_cast<std::size_t>(count), block), block);
             header.invalidLanes |=
-                holdsInvalid(lane.stats, crop.first, crop.end) ? laneBit(laneIndex) : 0U;
+                holdsInvalid(lane.stats, crop.first + crop.lead, crop.end - crop.trail)
+                    ? laneBit(laneIndex)
+                    : 0U;
             partial = partial || !(lane.image.complete() || lane.image.partComplete());
             if (comparing && lane.compared) {
                 frameChanges.insert(frameChanges.end(), lane.image.changes().begin(),
@@ -1745,9 +1828,10 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         const auto playhead = static_cast<std::size_t>(
             std::llround((subStart + window.cursor * shownPart) * static_cast<double>(count)));
         header.invalidLanes |= sumLaneBit(header.invalidLanes);
-        appendComparison(header, crop.first, crop.end, count, columns, command.previewFix, playhead,
-                         sampleRate);
+        appendComparison(header, crop, count, columns, command.previewFix, playhead, sampleRate);
     }
+    reconstruct(header, header.laneCount, crop, factor,
+                seamOf(subStart + window.cursor * shownPart, static_cast<double>(count), crop));
 
     // Readouts measure the own track's lane channel: peak and RMS over the whole span from its
     // levels per block, at most every 100 ms of audio.
@@ -1887,8 +1971,10 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     const auto start = static_cast<std::uint64_t>(std::max(first, 0.0));
     const MusicalStamp ownClock = isFrozen ? frozenStamp : engine.timeline().latest();
     const double startQuarterNotes = Timeline::quarterNotesAt(ownClock, start, sampleRate);
+    const std::size_t factor = pointsPerSampleFor(
+        (window.cropEnd - window.cropStart) * static_cast<double>(sampleCount), columns);
     const Crop crop = cropOf(static_cast<double>(sampleCount), window.start - first,
-                             window.cropStart, window.cropEnd);
+                             window.cropStart, window.cropEnd, marginFor(factor));
     viewSamples.resize(static_cast<std::size_t>(sampleCount));
     scratch.resize(std::max(scratch.size(), viewSamples.size()));
 
@@ -1900,8 +1986,8 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
                                       (window.limited ? flag(FrameFlag::kLimited) : 0U)),
         .laneCount = static_cast<std::uint8_t>(laneOrder.size()),
         .startFraction = static_cast<float>(crop.startFraction),
-        .viewStart = static_cast<float>(window.viewStart),
-        .viewEnd = static_cast<float>(window.viewEnd),
+        .viewStart = window.viewStart,
+        .viewEnd = window.viewEnd,
         .visibleSamples = static_cast<float>(crop.visibleSamples),
         .laneSet = laneSet().id,
         .panReach = static_cast<float>(window.panReach),
@@ -1959,7 +2045,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         for (const std::uint64_t serial : laneOrder) {
             laneSources.push_back(sourceOf(serial));
         }
-        renderCompare(header, window, start, sampleCount, crop.first, crop.end, rolling, sampleRate,
+        renderCompare(header, window, start, sampleCount, crop, factor, rolling, sampleRate,
                       command, frame);
         return true;
     }
@@ -1988,13 +2074,14 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         (void)readSamplesHeld(*source, channels, channel, laneStart, viewSamples, scratch);
         const std::span<const float> visible =
             std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
-        header.invalidLanes |= holdsInvalid(visible) ? laneBit(index) : 0U;
+        header.invalidLanes |= holdsInvalid(shownPart(visible, crop)) ? laneBit(index) : 0U;
         workDone.samplesReduced += visible.size();
         header.mode = reduceToColumns(visible, columns, reduced);
         pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : visible.size();
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
     header.pointCount = static_cast<std::uint32_t>(pointCount);
+    reconstruct(header, laneOrder.size(), crop, factor, kNoSeam);
 
     // Readouts measure this track's lane channel over the whole span, at most every 100 ms of
     // audio.
@@ -2368,10 +2455,16 @@ void Analyzer::collectEnergies(std::span<const Positions> ranges, std::size_t le
 // changes, spread over frames (see kSumRefreshSamples). The sums' levels per block are kept the
 // same way, so the summing gains, measured with the matches or at most every 100 ms of audio,
 // cost a pass over blocks. Matches are searched only when due (see kMatchRefreshSeconds).
-void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, std::size_t end,
-                                std::uint64_t count, std::size_t columns, bool previewFix,
-                                std::size_t playhead, double sampleRate)
+void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std::uint64_t count,
+                                std::size_t columns, bool previewFix, std::size_t playhead,
+                                double sampleRate)
 {
+    // The visible part, which the matches and gains measure; the sum lane is drawn over the crop,
+    // its neighbours for reconstruction included.
+    const std::size_t first = crop.first + crop.lead;
+    const std::size_t end = crop.end - crop.trail;
+    const std::size_t drawFirst = crop.first;
+    const std::size_t drawEnd = crop.end;
     // Waits are measured in the capture's new audio, at its rate now.
     const double liveRate = engine.sampleRate();
     const auto maxOffset =
@@ -2450,14 +2543,14 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     // The sum lane, with its parts as previewed. Its geometry: the span and visible part, and the
     // columns; its key: each part as summed.
     const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
-    sumGeometry.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(first),
-                        static_cast<std::int64_t>(end), static_cast<std::int64_t>(columns)});
+    sumGeometry.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(drawFirst),
+                        static_cast<std::int64_t>(drawEnd), static_cast<std::int64_t>(columns)});
     sumKey.clear();
     for (const SumPart& part : parts) {
         sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
                                      part.sign < 0.0f ? 1 : 0});
     }
-    const std::size_t visibleCount = end - first;
+    const std::size_t visibleCount = drawEnd - drawFirst;
     const bool sumRebuilt =
         sumGeometry != lastSumGeometry || !sumReduction.fits(visibleCount, columns);
 
@@ -2537,7 +2630,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
     // The sum lane's columns.
     const auto readVisibleSum = [&](std::size_t from, std::span<float> into) {
         workDone.samplesReduced += into.size();
-        readSum(parts, length, first + from, into);
+        readSum(parts, length, drawFirst + from, into);
         return true;
     };
     if (sumRebuilt) {
@@ -2556,11 +2649,11 @@ void Analyzer::appendComparison(FrameHeaderValues& header, std::size_t first, st
         const std::size_t reach = previewFix ? maxOffset : 0;
         for (const SweepImage::Range& range : frameChanges) {
             const std::uint64_t from =
-                std::max<std::uint64_t>(range.first > reach ? range.first - reach : 0, first);
-            const std::uint64_t to = std::min<std::uint64_t>(range.end + reach, end);
+                std::max<std::uint64_t>(range.first > reach ? range.first - reach : 0, drawFirst);
+            const std::uint64_t to = std::min<std::uint64_t>(range.end + reach, drawEnd);
             if (from < to) {
-                sumReduction.update(static_cast<std::size_t>(from) - first,
-                                    static_cast<std::size_t>(to) - first, readVisibleSum);
+                sumReduction.update(static_cast<std::size_t>(from) - drawFirst,
+                                    static_cast<std::size_t>(to) - drawFirst, readVisibleSum);
             }
         }
         continueRefresh(sumRefresh, visibleCount, refreshStep(parts.size(), shares),
@@ -2714,10 +2807,15 @@ bool Analyzer::stepSpreadWork(double liveRate)
 // visible part; the summing gains (over the visible part) and the readouts (over the whole
 // window) are measured at most every 100 ms of audio, the gains over frames.
 void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std::uint64_t start,
-                             std::uint64_t sampleCount, std::size_t first, std::size_t end,
+                             std::uint64_t sampleCount, const Crop& crop, std::size_t factor,
                              bool rolling, double sampleRate, const Commands& command,
                              std::vector<std::byte>& frame)
 {
+    // The visible part, which the matches and gains measure; the lanes and the sum are drawn over
+    // the crop, their neighbours for reconstruction included.
+    const std::size_t first = crop.first + crop.lead;
+    const std::size_t end = crop.end - crop.trail;
+    const std::size_t drawCount = crop.end - crop.first;
     // Waits are measured in the capture's new audio, at its rate now.
     const double liveRate = engine.sampleRate();
     const auto maxOffset =
@@ -2877,9 +2975,9 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             continue;
         }
         roll.clear();
-        viewSamples.resize(visibleCount);
-        readLaneWindow(lane, first, viewSamples);
-        header.invalidLanes |= holdsInvalid(viewSamples) ? laneBit(lane) : 0U;
+        viewSamples.resize(drawCount);
+        readLaneWindow(lane, crop.first, viewSamples);
+        header.invalidLanes |= holdsInvalid(shownPart(viewSamples, crop)) ? laneBit(lane) : 0U;
         addVisible(viewSamples);
     }
     header.invalidLanes |= sumLaneBit(header.invalidLanes);
@@ -2915,17 +3013,18 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             }));
     } else {
         sumRoll.clear();
-        sumSamples.resize(visibleCount);
-        readSumWindow(first, sumSamples);
+        sumSamples.resize(drawCount);
+        readSumWindow(crop.first, sumSamples);
         addVisible(sumSamples);
     }
+    header.laneCount = static_cast<std::uint8_t>(laneOrder.size() + 1);
+    header.pointCount = static_cast<std::uint32_t>(pointCount);
+    reconstruct(header, header.laneCount, crop, factor, kNoSeam);
     frameData.insert(frameData.end(), comparisonCache.matches.begin(),
                      comparisonCache.matches.end());
-    header.laneCount = static_cast<std::uint8_t>(laneOrder.size() + 1);
     header.flags = static_cast<std::uint8_t>(header.flags | flag(FrameFlag::kCompared));
     header.sumGain = comparisonCache.sumGain;
     header.fixedGain = comparisonCache.fixedGain;
-    header.pointCount = static_cast<std::uint32_t>(pointCount);
 
     // Readouts measure this track's lane channel over the whole span, at most every 100 ms of
     // audio.

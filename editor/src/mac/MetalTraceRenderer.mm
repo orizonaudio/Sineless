@@ -42,10 +42,8 @@ struct TraceUniforms
     std::int32_t stride = 1;
     float offset = 0.0f;
     float positions = 1.0f;
-    float frameStart = 0.0f;
-    float frameWidth = 1.0f;
-    float viewStart = 0.0f;
-    float viewWidth = 1.0f;
+    float frameLeft = 0.0f;
+    float frameScale = 1.0f;
     float center = 0.0f;
     float halfHeight = 1.0f;
     float scale = 1.0f;
@@ -53,6 +51,10 @@ struct TraceUniforms
     float canvasX = 1.0f;
     float canvasY = 1.0f;
     std::uint32_t first = 0;
+    // A raw frame's samples are marked with a dot of this radius (device pixels) every
+    // `dotEvery` points from point 0; 0 marks none.
+    std::int32_t dotEvery = 0;
+    float dotRadius = 0.0f;
 };
 
 // What is drawn from the audio (the traces and the shading), dimmed, laid out as the shaders' Fade:
@@ -132,10 +134,8 @@ struct TraceUniforms {
   int stride;
   float offset;
   float positions;
-  float frameStart;
-  float frameWidth;
-  float viewStart;
-  float viewWidth;
+  float frameLeft;
+  float frameScale;
   float center;
   float halfHeight;
   float scale;
@@ -143,10 +143,12 @@ struct TraceUniforms {
   float canvasX;
   float canvasY;
   uint first;
+  int dotEvery;
+  float dotRadius;
 };
 
 float pixelX(constant TraceUniforms& u, float index) {
-  return (u.frameStart + index / u.positions * u.frameWidth - u.viewStart) / u.viewWidth * u.canvasX;
+  return (u.frameLeft + index / u.positions * u.frameScale) * u.canvasX;
 }
 float pixelY(constant TraceUniforms& u, float value) {
   float halfPixels = u.halfHeight * 0.5 * u.canvasY;
@@ -239,6 +241,10 @@ vertex TracePiece traceVertex(uint vertexId [[vertex_id]], uint instance [[insta
     float high = clamp(hi + pad, 0.0, u.canvasY);
     c = float2(far ? xa + pad : xa - pad, upper ? high : low);
     out.line = float4(xa, 0.0, 0.0, 0.0);
+  } else if (out.part == 4 && present && u.dotEvery > 0 && i % u.dotEvery == 0) {
+    float reach = u.dotRadius + pad;
+    c = float2(far ? xa + reach : xa - reach, upper ? lo + reach : lo - reach);
+    out.line = float4(xa, lo, 0.0, 0.0);
   }
   out.position = float4(c.x / u.canvasX * 2.0 - 1.0, c.y / u.canvasY * 2.0 - 1.0, 0.0, 1.0);
   return out;
@@ -263,6 +269,8 @@ fragment float4 traceFragment(TracePiece in [[stage_in]], constant TraceUniforms
     d = 0.0;
   } else if (in.part == 3) {
     d = length(float2(p.x - in.line.x, p.y - clamp(p.y, in.here.x, in.here.y)));
+  } else if (in.part == 4) {
+    d = max(0.0, length(p - in.line.xy) - u.dotRadius);
   } else {
     d = segment(p, in.line.xy, in.line.zw);
   }
@@ -693,18 +701,30 @@ private:
         TraceUniforms uniforms;
         uniforms.count = static_cast<std::int32_t>(frame.pointCount);
         uniforms.stride = minMax ? 2 : 1;
-        uniforms.offset = minMax ? 0.5f : -frame.startFraction;
+        const auto perSample = static_cast<float>(frame.pointsPerSample);
+        uniforms.offset = minMax ? 0.5f : -frame.startFraction * perSample;
         uniforms.positions = minMax                        ? static_cast<float>(frame.pointCount)
-                             : frame.visibleSamples > 0.0f ? frame.visibleSamples
+                             : frame.visibleSamples > 0.0f ? frame.visibleSamples * perSample
                                                            : static_cast<float>(frame.pointCount);
-        uniforms.frameStart = frame.viewStart;
-        uniforms.frameWidth = frame.viewEnd - frame.viewStart;
-        uniforms.viewStart = static_cast<float>(view.view.start);
-        uniforms.viewWidth = static_cast<float>(view.view.end - view.view.start);
+        // Where the frame starts on the screen and how wide it is there, in screen widths, worked
+        // out in double: a deep view's start, in float, would be off by several samples.
+        const double viewWidth = view.view.end - view.view.start;
+        uniforms.frameLeft = static_cast<float>((frame.viewStart - view.view.start) / viewWidth);
+        uniforms.frameScale = static_cast<float>((frame.viewEnd - frame.viewStart) / viewWidth);
         uniforms.scale = static_cast<float>(std::pow(10.0, view.verticalScaleDb / 20.0));
         uniforms.lineHalf = static_cast<float>(view.lineWidth / 2.0);
         uniforms.canvasX = static_cast<float>(width);
         uniforms.canvasY = static_cast<float>(height);
+        // Samples are marked where the wave between them is drawn, once they stand far enough
+        // apart not to merge (limits.ts).
+        const double sampleSpacing =
+            minMax || frame.pointsPerSample <= 1 || frame.visibleSamples <= 0.0f
+                ? 0.0
+                : static_cast<double>(uniforms.frameScale) * width / frame.visibleSamples;
+        uniforms.dotEvery = sampleSpacing >= protocol::kSampleDotSpacing * view.lineWidth
+                                ? static_cast<std::int32_t>(frame.pointsPerSample)
+                                : 0;
+        uniforms.dotRadius = static_cast<float>(protocol::kSampleDotRadius * view.lineWidth);
 
         const std::vector<Lane> laneList = lanes(blocks.size(), view.layout);
         CompositeUniforms composite;
@@ -731,10 +751,10 @@ private:
             uniforms.first = firsts[index];
             [encoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:0];
             [encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:0];
-            // Four parts of six vertices each, one instance per point.
+            // Five parts of six vertices each, one instance per point.
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                         vertexStart:0
-                        vertexCount:24
+                        vertexCount:30
                       instanceCount:frame.pointCount];
             const Rgba white{1.0f, 1.0f, 1.0f, 1.0f};
             composite.colours[index] = index < colours.size() ? colours[index] : white;

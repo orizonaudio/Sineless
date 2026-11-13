@@ -40,6 +40,7 @@ function frameOf(mode: FrameMode, pointCount: number): Frame {
     viewStart: 0,
     viewEnd: 1,
     visibleSamples: pointCount,
+    pointsPerSample: 1,
     views: new Map(),
     lanes: [],
     laneSet: 0,

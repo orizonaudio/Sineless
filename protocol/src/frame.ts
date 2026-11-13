@@ -54,8 +54,13 @@
 // 0 to 1 unzoomed), which holds `visibleSamples` samples. Raw point k sits at
 // viewStart + (k - startFraction) / visibleSamples * (viewEnd - viewStart); min/max columns
 // divide the covered part evenly.
+//
+// `pointsPerSample`: a raw frame drawn from more columns than samples carries the band-limited
+// wave between its samples, `pointsPerSample` points per sample (1 for the samples alone). Raw
+// point k then sits k / pointsPerSample samples after the first sample, and every
+// `pointsPerSample`th point, from point 0, is a sample.
 
-export type FieldType = "u8" | "u16" | "u32" | "f32";
+export type FieldType = "u8" | "u16" | "u32" | "f32" | "f64";
 
 export interface FrameField {
   readonly name: string;
@@ -68,20 +73,20 @@ export const frameHeaderFields = [
   { name: "views", type: "u8" },
   { name: "laneCount", type: "u8" },
   { name: "pointCount", type: "u32" },
+  { name: "viewStart", type: "f64" },
+  { name: "viewEnd", type: "f64" },
+  { name: "cycleStart", type: "f64" },
+  { name: "cycleSeconds", type: "f64" },
   { name: "startFraction", type: "f32" },
   { name: "peak", type: "f32" },
   { name: "rms", type: "f32" },
   { name: "cursor", type: "f32" },
-  { name: "cycleStart", type: "f32" },
   { name: "spanQuarterNotes", type: "f32" },
   { name: "barQuarterNotes", type: "f32" },
-  { name: "viewStart", type: "f32" },
-  { name: "viewEnd", type: "f32" },
   { name: "visibleSamples", type: "f32" },
   { name: "laneSet", type: "u32" },
   { name: "sumGain", type: "f32" },
   { name: "fixedGain", type: "f32" },
-  { name: "cycleSeconds", type: "f32" },
   { name: "panReach", type: "f32" },
   { name: "invalidSamples", type: "u32" },
   { name: "invalidLanes", type: "u32" },
@@ -90,6 +95,7 @@ export const frameHeaderFields = [
   { name: "readoutView", type: "u32" },
   { name: "triggerView", type: "u32" },
   { name: "triggerPosition", type: "f32" },
+  { name: "pointsPerSample", type: "u32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];
@@ -116,7 +122,13 @@ export const FrameFlag = {
 // correlation is NaN when the two tracks never sound together, so nothing was measured.
 export const matchValues = 3;
 
-const fieldSizes: Record<FieldType, number> = { u8: 1, u16: 2, u32: 4, f32: 4 };
+const fieldSizes: Record<FieldType, number> = {
+  u8: 1,
+  u16: 2,
+  u32: 4,
+  f32: 4,
+  f64: 8,
+};
 
 export interface FieldLayout {
   readonly name: string;

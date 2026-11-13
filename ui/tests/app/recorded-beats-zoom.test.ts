@@ -51,17 +51,30 @@ describe("a recorded live Beats sweep of one bar", () => {
   });
 
   // The labels are placed again from the zoomed frame when the window is resized, so its view's
-  // width, not the whole span's, times them.
+  // width, not the whole span's, times them. At the narrowest view (a few samples, under a
+  // millisecond) a label or two show: each reads the project time at its place on the screen,
+  // a whole number of sweeps from the frame's clock, within the clock's millisecond and the
+  // screen's width (labels sit a fixed distance from their lines).
   test("clocks the grid at the tempo when zoomed to the narrowest view, and resized", async () => {
     await zoomToNarrowest();
     window.dispatchEvent(new Event("resize"));
     await settle();
     const frame = window.orizonDebug?.lastFrame;
-    const shown = (frame?.viewEnd ?? 1) - (frame?.viewStart ?? 0);
-    await expect
-      .poll(() => atTheTempo(barBeats * secondsPerBeat * shown), {
-        message: JSON.stringify(clocks()),
-      })
-      .toBe(true);
+    const start = frame?.viewStart ?? 0;
+    const shown = (frame?.viewEnd ?? 1) - start;
+    const sweepSeconds = barBeats * secondsPerBeat;
+    const timed = () =>
+      clocks().length > 0 &&
+      clocks().every(({ x, seconds }) => {
+        const atPlace =
+          (frame?.cycleSeconds ?? Number.NaN) +
+          (start + x * shown) * sweepSeconds;
+        const sweeps = (seconds - atPlace) / sweepSeconds;
+        return (
+          Math.abs(sweeps - Math.round(sweeps)) * sweepSeconds <=
+          0.0006 + shown * sweepSeconds
+        );
+      });
+    await expect.poll(timed, { message: JSON.stringify(clocks()) }).toBe(true);
   });
 });

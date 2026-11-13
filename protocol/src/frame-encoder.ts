@@ -32,6 +32,7 @@ export interface FrameContent {
   readonly viewStart?: number;
   readonly viewEnd?: number;
   readonly visibleSamples?: number;
+  readonly pointsPerSample?: number;
   readonly views: ReadonlyMap<ChannelView, ArrayLike<number>>;
   // Multi-track frames: lanes instead of views.
   readonly lanes?: readonly ArrayLike<number>[];
@@ -93,8 +94,8 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setFloat32(offsets.peak, content.peak, true);
   header.setFloat32(offsets.rms, content.rms, true);
   header.setFloat32(offsets.cursor, content.cursor ?? -1, true);
-  header.setFloat32(offsets.cycleStart, content.cycleStart ?? 0, true);
-  header.setFloat32(offsets.cycleSeconds, content.cycleSeconds ?? 0, true);
+  header.setFloat64(offsets.cycleStart, content.cycleStart ?? 0, true);
+  header.setFloat64(offsets.cycleSeconds, content.cycleSeconds ?? 0, true);
   header.setFloat32(offsets.panReach, content.panReach ?? 0, true);
   header.setUint32(offsets.invalidSamples, content.invalidSamples ?? 0, true);
   header.setUint32(offsets.invalidLanes, content.invalidLanes ?? 0, true);
@@ -115,6 +116,7 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     content.triggerPosition ?? Number.NaN,
     true,
   );
+  header.setUint32(offsets.pointsPerSample, content.pointsPerSample ?? 1, true);
   header.setFloat32(
     offsets.spanQuarterNotes,
     content.spanQuarterNotes ?? 0,
@@ -125,8 +127,8 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     content.barQuarterNotes ?? 0,
     true,
   );
-  header.setFloat32(offsets.viewStart, content.viewStart ?? 0, true);
-  header.setFloat32(offsets.viewEnd, content.viewEnd ?? 1, true);
+  header.setFloat64(offsets.viewStart, content.viewStart ?? 0, true);
+  header.setFloat64(offsets.viewEnd, content.viewEnd ?? 1, true);
   header.setFloat32(
     offsets.visibleSamples,
     content.visibleSamples ?? content.pointCount,

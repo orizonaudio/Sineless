@@ -31,12 +31,17 @@ double columnPosition(const FrameView& frame, double column)
                                  static_cast<double>(frame.viewEnd - frame.viewStart);
 }
 
+// Raw point k sits k / pointsPerSample samples after the first sample, which is startFraction
+// of a sample before the covered part's start.
 double pointPosition(const FrameView& frame, double index)
 {
-    const double samples =
-        frame.visibleSamples > 0.0f ? frame.visibleSamples : static_cast<double>(frame.pointCount);
-    return frame.viewStart + (index - frame.startFraction) / samples *
-                                 static_cast<double>(frame.viewEnd - frame.viewStart);
+    const double width = frame.viewEnd - frame.viewStart;
+    if (frame.visibleSamples <= 0.0f) {
+        return frame.viewStart + index / static_cast<double>(frame.pointCount) * width;
+    }
+    return frame.viewStart + (index / static_cast<double>(frame.pointsPerSample) -
+                              static_cast<double>(frame.startFraction)) /
+                                 static_cast<double>(frame.visibleSamples) * width;
 }
 
 double screenX(double position, ViewWindow view)
@@ -128,7 +133,9 @@ std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout
         while (resume < cancelling.size() && !cancelling[resume]) {
             ++resume;
         }
-        if (resume < cancelling.size() && resume - point <= protocol::kCancellationBridgedPoints) {
+        // Of columns, or of samples, whatever the points drawn between them.
+        if (resume < cancelling.size() &&
+            resume - point <= protocol::kCancellationBridgedPoints * frame.pointsPerSample) {
             std::fill(cancelling.begin() + static_cast<std::ptrdiff_t>(point),
                       cancelling.begin() + static_cast<std::ptrdiff_t>(resume), true);
         }

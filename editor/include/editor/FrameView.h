@@ -22,12 +22,14 @@ struct FrameView
     std::uint32_t laneSet = 0;
     float startFraction = 0.0f;
     float cursor = -1.0f;
-    float cycleStart = 0.0f;
+    double cycleStart = 0.0;
     float spanQuarterNotes = 0.0f;
     float barQuarterNotes = 0.0f;
-    float viewStart = 0.0f;
-    float viewEnd = 1.0f;
+    double viewStart = 0.0;
+    double viewEnd = 1.0;
     float visibleSamples = 0.0f;
+    // Points per sample of a raw frame: above 1, the wave between the samples is reconstructed.
+    std::uint32_t pointsPerSample = 1;
     // Views present, in ChannelView order, each with its ChannelView index; empty in lane frames.
     struct View
     {

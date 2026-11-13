@@ -19,6 +19,7 @@ add_library(engine STATIC
     src/PairAnalysis.cpp
     src/Readouts.cpp
     src/Reducer.cpp
+    src/Reconstruction.cpp
     src/SettingJson.cpp
     src/Settings.cpp
     src/State.cpp
@@ -69,6 +70,7 @@ if(BUILD_TESTING)
         tests/PacedSweepTests.cpp
         tests/PairAnalysisTests.cpp
         tests/ReadoutsTests.cpp
+        tests/ReconstructionTests.cpp
         tests/ReducerTests.cpp
         tests/SettingsTests.cpp
         tests/SignalCorpusTests.cpp

@@ -215,12 +215,13 @@ json freeze()
     return {{"type", "freeze"}, {"frozen", true}};
 }
 
-// The narrowest view, at the centre of the span, as the page asks for it after zooming in at the
-// screen's centre until the view stops narrowing (protocol/src/limits.ts, minimumViewWidth): the
-// same in WebKit and Chromium.
-json deepestZoom()
+// The narrowest view of a span of `spanSamples`, at its centre, as the page asks for it after
+// zooming in at the screen's centre until the view stops narrowing: kMinimumViewSamples of it
+// (protocol/src/limits.ts), the same in WebKit and Chromium.
+json deepestZoom(double spanSamples)
 {
-    return {{"type", "view"}, {"start", 0.5 - 0.5 / 256}, {"end", 0.5 + 0.5 / 256}};
+    const double half = protocol::kMinimumViewSamples / spanSamples / 2.0;
+    return {{"type", "view"}, {"start", 0.5 - half}, {"end", 0.5 + half}};
 }
 
 json panBack(double seconds)
@@ -302,17 +303,17 @@ std::vector<Scenario> scenarios()
          .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn}, {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
-        // A live 1.5 s roll, zoomed to the narrowest view: the engine draws at least a sample per
-        // column, so the frame's visible samples are not the samples in view.
+        // A live 1.5 s roll, zoomed to the narrowest view: the frame carries the view's samples and
+        // the wave between them.
         {.name = "Roll1500msDeepestZoom_48k", .tracks = {stereo(sine(100, 0.5))},
          .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kFree},
                       {SettingId::kFreeSpan, 1.5}},
-         .steps = {play(2.0), page(deepestZoom()), play(0.2)}},
+         .steps = {play(2.0), page(deepestZoom(1.5 * 48000.0)), play(0.2)}},
         // A live Beats sweep of one bar, then zoomed to the narrowest view.
         {.name = "BeatsLive_48k", .tracks = {stereo(sine(100, 0.5))},
          .settings = {{SettingId::kDisplayMode, kSingle}, {SettingId::kTimeBase, kBeats},
                       {SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar)}},
-         .steps = {play(3.0), page(deepestZoom()), play(0.2)}},
+         .steps = {play(3.0), page(deepestZoom(2.0 * 48000.0)), play(0.2)}},
         // A 1 s span frozen after 6 s: the page pans back a quarter of the screen, then to as far
         // as the frame says the freeze reaches (the page sends the pan reach it read, a float32).
         {.name = "FrozenPan_48k", .tracks = {stereo(sine(100, 0.5))},
@@ -496,13 +497,17 @@ bool near(double approved, double actual)
     return std::abs(approved - actual) <= allowed;
 }
 
-// The header's integer fields, compared exactly; every other header word is a float32.
+// The header's integer fields, compared exactly, and its float64 fields; every other header word
+// is a float32.
 constexpr std::array kIntegerWords{
     FrameHeader::kPointCountOffset,     FrameHeader::kLaneSetOffset,
     FrameHeader::kInvalidSamplesOffset, FrameHeader::kInvalidLanesOffset,
-    FrameHeader::kReadoutViewOffset,    FrameHeader::kTriggerViewOffset};
+    FrameHeader::kReadoutViewOffset,    FrameHeader::kTriggerViewOffset,
+    FrameHeader::kPointsPerSampleOffset};
+constexpr std::array kDoubleWords{FrameHeader::kViewStartOffset, FrameHeader::kViewEndOffset,
+                                  FrameHeader::kCycleStartOffset, FrameHeader::kCycleSecondsOffset};
 constexpr std::size_t kByteFields = 4; // mode, flags, views, laneCount.
-static_assert(FrameHeader::kSize == 96,
+static_assert(FrameHeader::kSize == 116,
               "the frame header changed: say here which of its fields are integers, which the "
               "comparison must not take for float32");
 
@@ -528,6 +533,17 @@ void compareFrame(std::span<const std::byte> approved, std::span<const std::byte
     for (std::size_t offset = kByteFields; offset < approved.size(); offset += 4) {
         const bool integer = offset < FrameHeader::kSize &&
                              std::ranges::find(kIntegerWords, offset) != kIntegerWords.end();
+        if (std::ranges::find(kDoubleWords, offset) != kDoubleWords.end()) {
+            const auto a = read<double>(approved, offset);
+            const auto b = read<double>(actual, offset);
+            if (!near(a, b)) {
+                std::ostringstream text;
+                text << path << ": header offset " << offset << ": approved " << a << ", now " << b;
+                differences.push_back(text.str());
+            }
+            offset += 4; // Eight bytes.
+            continue;
+        }
         const std::string at = offset < FrameHeader::kSize
                                    ? "header offset " + std::to_string(offset)
                                    : "point " + std::to_string((offset - FrameHeader::kSize) / 4);

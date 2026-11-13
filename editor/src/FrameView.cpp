@@ -29,12 +29,13 @@ std::optional<FrameView> FrameView::read(std::span<const std::byte> bytes)
     frame.laneSet = field<std::uint32_t>(bytes, FrameHeader::kLaneSetOffset);
     frame.startFraction = field<float>(bytes, FrameHeader::kStartFractionOffset);
     frame.cursor = field<float>(bytes, FrameHeader::kCursorOffset);
-    frame.cycleStart = field<float>(bytes, FrameHeader::kCycleStartOffset);
+    frame.cycleStart = field<double>(bytes, FrameHeader::kCycleStartOffset);
     frame.spanQuarterNotes = field<float>(bytes, FrameHeader::kSpanQuarterNotesOffset);
     frame.barQuarterNotes = field<float>(bytes, FrameHeader::kBarQuarterNotesOffset);
-    frame.viewStart = field<float>(bytes, FrameHeader::kViewStartOffset);
-    frame.viewEnd = field<float>(bytes, FrameHeader::kViewEndOffset);
+    frame.viewStart = field<double>(bytes, FrameHeader::kViewStartOffset);
+    frame.viewEnd = field<double>(bytes, FrameHeader::kViewEndOffset);
     frame.visibleSamples = field<float>(bytes, FrameHeader::kVisibleSamplesOffset);
+    frame.pointsPerSample = field<std::uint32_t>(bytes, FrameHeader::kPointsPerSampleOffset);
     const auto viewMask = field<std::uint8_t>(bytes, FrameHeader::kViewsOffset);
     const auto laneCount = field<std::uint8_t>(bytes, FrameHeader::kLaneCountOffset);
 

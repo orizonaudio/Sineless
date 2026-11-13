@@ -111,6 +111,7 @@ import {
 import {
   fullView,
   isZoomed,
+  minimumWidth,
   panBy,
   toFrame,
   toScreen,
@@ -2194,7 +2195,12 @@ export class OscilloscopeApp {
                 );
           const factor = Math.exp(-delta * wheelZoomRate);
           this.setView(
-            zoomAround(this.view, screenPosition(event.clientX), factor),
+            zoomAround(
+              this.view,
+              screenPosition(event.clientX),
+              factor,
+              this.minimumViewWidth(),
+            ),
           );
         } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
           event.preventDefault();
@@ -2214,7 +2220,14 @@ export class OscilloscopeApp {
     this.screen.addEventListener("gesturechange", (event) => {
       event.preventDefault();
       const scale = (event as GestureEvent).scale;
-      this.setView(zoomAround(this.view, gestureAnchor, scale / gestureScale));
+      this.setView(
+        zoomAround(
+          this.view,
+          gestureAnchor,
+          scale / gestureScale,
+          this.minimumViewWidth(),
+        ),
+      );
       gestureScale = scale;
     });
 
@@ -2236,7 +2249,7 @@ export class OscilloscopeApp {
       };
       followDrag(this.screen, event, move, (released) => {
         if (released && !selection.hidden) {
-          this.setView(zoomTo(this.view, from, to));
+          this.setView(zoomTo(this.view, from, to, this.minimumViewWidth()));
         }
         selection.hidden = true;
       });
@@ -2244,6 +2257,17 @@ export class OscilloscopeApp {
     this.screen.addEventListener("dblclick", () => {
       this.setView(fullView);
     });
+  }
+
+  // The narrowest view of the span the last frame showed, which the engine reports in samples.
+  private minimumViewWidth(): number {
+    const frame = this.lastFrame;
+    if (frame === undefined || frame.viewEnd <= frame.viewStart) {
+      return minimumWidth(0);
+    }
+    return minimumWidth(
+      frame.visibleSamples / (frame.viewEnd - frame.viewStart),
+    );
   }
 
   // A horizontal swipe of `screenWidths`: pans the zoomed view, or, frozen and not zoomed, pans

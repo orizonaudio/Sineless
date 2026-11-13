@@ -4,11 +4,13 @@
 #include "engine/Engine.h"
 #include "engine/FramePacing.h"
 #include "engine/Motion.h"
+#include "engine/Reconstruction.h"
 
 #include <array>
 #include <cmath>
 #include <functional>
 #include <gtest/gtest.h>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <vector>
@@ -260,6 +262,42 @@ INSTANTIATE_TEST_SUITE_P(FreeAndAuto, PacedWindows,
                          [](const ::testing::TestParamInfo<PacedCase>& info) {
                              return info.param.name;
                          });
+
+// Zoomed to the newest kMinimumViewSamples of a free-running window, the trace is the wave between
+// the samples right up to the paced edge: the capture holds the audio past it (about a block),
+// which serves as the neighbours the reconstruction needs, so the newest samples are not drawn
+// straight.
+TEST(PacedWindowsDeepZoom, ReconstructUpToTheEdge)
+{
+    PacedHost host(48000.0, 512);
+    host.signal = [](std::uint64_t index) {
+        return static_cast<float>(
+            0.5 * std::sin(2.0 * std::numbers::pi * 5000.0 * static_cast<double>(index) / 48000.0));
+    };
+    constexpr double kSpan = 0.5;
+    host.runFree(kSpan);
+    host.play(3.0, false); // The clock locks.
+    const double width = protocol::kMinimumViewSamples / (kSpan * host.rate);
+    host.analyzer.setView(1.0 - width, 1.0);
+    host.play(0.5);
+    ASSERT_TRUE(host.last);
+    const DecodedFrame& frame = *host.last;
+    ASSERT_EQ(frame.mode, protocol::FrameMode::kRaw);
+    const std::size_t factor = frame.pointsPerSample;
+    ASSERT_GT(factor, 1U);
+    // The newest gaps between samples: each drawn as the wave, not as a line between its ends.
+    const std::size_t samples = ((frame.pointCount - 1) / factor) + 1;
+    std::size_t curved = 0;
+    for (std::size_t n = samples - 1 - (kReconstructionReach / 2); n + 1 < samples; ++n) {
+        const float from = frame.data[n * factor];
+        const float to = frame.data[(n + 1) * factor];
+        const float middle = frame.data[(n * factor) + (factor / 2)];
+        curved += std::abs(middle - ((from + to) / 2.0f)) > 1e-3f ? 1 : 0;
+    }
+    // Near a zero crossing the wave is nearly straight; at the rest it bends away from the line.
+    EXPECT_GE(curved, kReconstructionReach / 4)
+        << "the newest samples are joined by the wave, not lines";
+}
 
 // Spans shorter than pacedSpanMinimumSeconds end at the newest sample: their whole trace is new
 // every frame, and pacing would only show it later. Just above, they are paced. Auto drawing
