@@ -44,7 +44,7 @@ TEST(FrameView, ReadsTheGoldenFramesAsThePageDoes)
         EXPECT_EQ(read->viewStart, header.at("viewStart").get<double>());
         EXPECT_EQ(read->viewEnd, header.at("viewEnd").get<double>());
         EXPECT_EQ(read->visibleSamples, header.at("visibleSamples").get<float>());
-        EXPECT_EQ(read->cursor, header.at("cursor").get<float>());
+        EXPECT_EQ(read->cursor, header.at("cursor").get<double>());
         ASSERT_EQ(read->views.size(), 2U);
         EXPECT_EQ(read->views[0].channelView, static_cast<int>(protocol::ChannelView::kLeft));
         EXPECT_EQ(read->views[1].channelView, static_cast<int>(protocol::ChannelView::kMid));

@@ -70,3 +70,30 @@ describe.each([16, 1200 + 1 / 3, 4800 + 0.1])(
     });
   },
 );
+
+// A sweep's playhead near the end of a long sweep (16 bars at 60 BPM and 96 kHz) arrives where it
+// was sent, to well under a sample: zoomed in to a few samples, it is drawn on the join between
+// the passes.
+test("carries the playhead to the sample", () => {
+  const sweepSamples = 6_144_000;
+  const cursor = 1 - 5 / sweepSamples;
+  const frame = decodeFrame(
+    encodeFrame({
+      mode: FrameMode.raw,
+      triggered: false,
+      frozen: true,
+      freeRunning: false,
+      synced: true,
+      pointCount: 0,
+      startFraction: 0,
+      peak: 0,
+      rms: 0,
+      sampleRate: rate,
+      cursor,
+      views: new Map(),
+    }),
+  );
+  expect(
+    Math.abs((frame.cursor ?? Number.NaN) - cursor) * sweepSamples,
+  ).toBeLessThan(1e-3);
+});
