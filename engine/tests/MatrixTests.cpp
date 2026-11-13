@@ -4896,6 +4896,67 @@ INSTANTIATE_TEST_SUITE_P(Paths, DeepZoomInvalid, ::testing::ValuesIn(invalidCase
                              return nameOf(info.param);
                          });
 
+// A deep view starting a few samples into a Beats sweep, where fewer neighbours than the reach lie
+// before it: a lane holding broken samples on screen is flagged, in Multi and Compare.
+class DeepZoomInvalidAtSweepStart : public ::testing::TestWithParam<Display>
+{
+};
+
+TEST_P(DeepZoomInvalidAtSweepStart, FlagsWhatTheViewShows)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    // Broken every 7 samples: some on screen in any view of a few samples.
+    session.join({.frequency = kOwnTone * kRate, .brokenEvery = 7});
+    session.join({.frequency = kOtherTone * kRate});
+    auto frame = frozenSession(session, {.mode = GetParam(), .timeBase = TimeBase::kBeats});
+    ASSERT_TRUE(frame);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double width = protocol::kMinimumViewSamples / spanSamples;
+    for (const double start : {1.0, 10.0, 31.0}) {
+        SCOPED_TRACE(start);
+        session.analyzer().setView(start / spanSamples, (start / spanSamples) + width);
+        frame = session.produce();
+        ASSERT_TRUE(frame);
+        ASSERT_GT(frame->pointsPerSample, 1U);
+        EXPECT_NE(frame->invalidLanes & 1U, 0U) << "broken samples on screen";
+    }
+}
+
+// A lane flags by its 10 ms blocks of levels: a broken sample in the block before the view's, the
+// reconstruction's neighbours reaching back into it, does not flag the lane. At 120 BPM and
+// 48 kHz the held bar starts at host sample 96,000, so its block of 480 samples from there holds
+// the broken sample at 470, and a view from 500 starts in the next block.
+TEST_P(DeepZoomInvalidAtSweepStart, LeavesThePreviousBlockOut)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.frequency = kOwnTone * kRate, .brokenAt = 96000 + 470});
+    session.join({.frequency = kOtherTone * kRate});
+    auto frame = frozenSession(session, {.mode = GetParam(), .timeBase = TimeBase::kBeats});
+    ASSERT_TRUE(frame);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    ASSERT_EQ(spanSamples, 96000.0) << "a bar";
+    const double width = protocol::kMinimumViewSamples / spanSamples;
+    // Its block, on screen: flagged.
+    session.analyzer().setView(450.0 / spanSamples, (450.0 / spanSamples) + width);
+    frame = session.produce();
+    ASSERT_TRUE(frame);
+    EXPECT_NE(frame->invalidLanes & 1U, 0U) << "the broken sample's block on screen";
+    // The next block only: not.
+    session.analyzer().setView(500.0 / spanSamples, (500.0 / spanSamples) + width);
+    frame = session.produce();
+    ASSERT_TRUE(frame);
+    ASSERT_GT(frame->pointsPerSample, 1U);
+    EXPECT_EQ(frame->invalidLanes & 1U, 0U) << "the block before the view's";
+}
+
+INSTANTIATE_TEST_SUITE_P(Lanes, DeepZoomInvalidAtSweepStart,
+                         ::testing::Values(Display::kMulti, Display::kCompare),
+                         [](const ::testing::TestParamInfo<Display>& info) {
+                             return modeName(info.param);
+                         });
+
 // Frozen, a shorter beat span shows part of the held sweep: zoomed in on it, every display mode
 // draws the wave as Single does, a point per column for the samples the view shows.
 class DeepZoomCroppedFreeze : public ::testing::TestWithParam<Display>
