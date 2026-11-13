@@ -253,6 +253,8 @@ type CancellationShape = "third" | "gaps" | "quiet";
 interface CompareOptions {
   readonly visibleSamples?: number;
   readonly missing?: boolean;
+  // A deep view's points between samples: gaps bridged are that many times longer in points.
+  readonly pointsPerSample?: number;
 }
 
 function compareFrame(
@@ -276,7 +278,8 @@ function compareFrame(
       const level = quiet(point) ? 0.4 * cancellationQuietShare : loud;
       return perPoint === 2 ? (index % 2 === 0 ? -level : level) : sign * level;
     });
-  const bridged = cancellationBridgedPoints - 2 * reach;
+  const bridged =
+    cancellationBridgedPoints * (options.pointsPerSample ?? 1) - 2 * reach;
   const gaps = [
     { from: Math.floor(points * 0.35), length: bridged },
     { from: Math.floor(points * 0.6), length: bridged + 1 },
@@ -313,6 +316,7 @@ function compareFrame(
     viewStart: 0.1,
     viewEnd: 0.9,
     visibleSamples: options.visibleSamples ?? points,
+    pointsPerSample: options.pointsPerSample ?? 1,
     lanes: [first, second, sum],
     comparison: {
       matches: [
@@ -336,7 +340,11 @@ function cancellationCases() {
       ["stacked", "gaps", 300, {}],
       ["overlaid", "third", 48, { visibleSamples: 38.6 }],
       ["overlaid", "third", 48, { missing: true }],
+      ["stacked", "gaps", 400, { pointsPerSample: 8, visibleSamples: 50 }],
     ] as const) {
+      if (mode === FrameMode.minMax && "pointsPerSample" in options) {
+        continue; // Only raw frames carry points between samples.
+      }
       const frame = compareFrame(points, mode, shape, options);
       const view = { start: 0.2, end: 0.8 };
       cases.push({
@@ -347,6 +355,7 @@ function cancellationCases() {
         frameViewStart: frame.viewStart,
         frameViewEnd: frame.viewEnd,
         visibleSamples: frame.visibleSamples,
+        pointsPerSample: frame.pointsPerSample,
         lanes: frame.lanes.map((values) => Array.from(values)),
         related: [false, true],
         compared: [true, true],

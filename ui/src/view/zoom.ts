@@ -1,6 +1,6 @@
 // View zoom: which part of the frame the screen shows, as fractions of the frame's width.
 // Temporary display state only; it never changes a setting.
-import { minimumViewWidth } from "../../../protocol/src/limits.ts";
+import { minimumViewSamples } from "../../../protocol/src/limits.ts";
 
 export interface ViewWindow {
   readonly start: number;
@@ -9,16 +9,21 @@ export interface ViewWindow {
 
 export const fullView: ViewWindow = { start: 0, end: 1 };
 
-// The narrowest view: 256 times magnified, as the engine accepts.
-export const minimumWidth = minimumViewWidth;
+// The narrowest view of a span of `spanSamples` samples: `minimumViewSamples` of them, or the
+// whole span when it is no longer (or not known yet).
+export function minimumWidth(spanSamples: number): number {
+  return spanSamples > minimumViewSamples
+    ? minimumViewSamples / spanSamples
+    : 1;
+}
 
 function width(view: ViewWindow): number {
   return view.end - view.start;
 }
 
 // Clamps a view of `size` starting at `start` into the frame.
-function placed(start: number, size: number): ViewWindow {
-  const clampedSize = Math.min(1, Math.max(minimumWidth, size));
+function placed(start: number, size: number, minimum: number): ViewWindow {
+  const clampedSize = Math.min(1, Math.max(minimum, size));
   const clampedStart = Math.min(1 - clampedSize, Math.max(0, start));
   return { start: clampedStart, end: clampedStart + clampedSize };
 }
@@ -41,26 +46,32 @@ export function toScreen(view: ViewWindow, frame: number): number {
 }
 
 // Magnifies by `factor` (above 1 zooms in), keeping the frame position under `anchor` (a screen
-// position) where it is.
+// position) where it is, no narrower than `minimum`.
 export function zoomAround(
   view: ViewWindow,
   anchor: number,
   factor: number,
+  minimum: number,
 ): ViewWindow {
   const pinned = toFrame(view, anchor);
-  const size = Math.min(1, Math.max(minimumWidth, width(view) / factor));
-  return placed(pinned - anchor * size, size);
+  const size = Math.min(1, Math.max(minimum, width(view) / factor));
+  return placed(pinned - anchor * size, size, minimum);
 }
 
 // Moves the view by `screenDistance` screen widths (positive moves towards the frame's end).
 export function panBy(view: ViewWindow, screenDistance: number): ViewWindow {
-  return placed(view.start + screenDistance * width(view), width(view));
+  return placed(view.start + screenDistance * width(view), width(view), 0);
 }
 
-// Shows exactly the region between two screen positions.
-export function zoomTo(view: ViewWindow, from: number, to: number): ViewWindow {
+// Shows exactly the region between two screen positions, no narrower than `minimum`.
+export function zoomTo(
+  view: ViewWindow,
+  from: number,
+  to: number,
+  minimum: number,
+): ViewWindow {
   const start = toFrame(view, Math.min(from, to));
   const end = toFrame(view, Math.max(from, to));
-  const size = Math.max(minimumWidth, end - start);
-  return placed((start + end) / 2 - size / 2, size);
+  const size = Math.max(minimum, end - start);
+  return placed((start + end) / 2 - size / 2, size, minimum);
 }

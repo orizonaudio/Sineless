@@ -64,6 +64,7 @@ function rawFrame(values: Float32Array, extra: Partial<Frame> = {}): Frame {
     viewStart: 0,
     viewEnd: 1,
     visibleSamples: values.length,
+    pointsPerSample: 1,
     views: new Map(),
     lanes: [],
     laneSet: 0,
@@ -209,6 +210,18 @@ describe("hover readout", () => {
     });
     expect(readPosition(columns, 0.5)).toBeCloseTo(48.5 / 96, 6);
     expect(readPosition(columns, 1.5)).toBeUndefined();
+  });
+
+  test("reads the nearest point of a reconstructed frame, between samples too", () => {
+    // Four points per sample over 10 samples: point 4k is sample k.
+    const values = new Float32Array(
+      Array.from({ length: 37 }, (_, i) => i / 4),
+    );
+    const frame = rawFrame(values, { visibleSamples: 9, pointsPerSample: 4 });
+    expect(readPosition(frame, 2 / 9)).toBeCloseTo(2 / 9, 12);
+    expect(levelAt(frame, values, 2 / 9)).toBe(2);
+    expect(readPosition(frame, 2.26 / 9)).toBeCloseTo(2.25 / 9, 12);
+    expect(levelAt(frame, values, 2.26 / 9)).toBe(2.25);
   });
 
   test("reads out the position from the trigger, level, cycle and note", () => {

@@ -73,8 +73,8 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       peak: f32,
       rms: f32,
       cursor: fc.option(f32, { nil: undefined }),
-      cycleStart: f32,
-      cycleSeconds: f32,
+      cycleStart: fc.double(),
+      cycleSeconds: fc.double(),
       panReach: f32,
       invalidSamples: u32,
       invalidLanes: u32,
@@ -85,9 +85,10 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       triggerPosition: fc.option(f32, { nil: undefined }),
       spanQuarterNotes: f32,
       barQuarterNotes: f32,
-      viewStart: f32,
-      viewEnd: f32,
+      viewStart: fc.double(),
+      viewEnd: fc.double(),
       visibleSamples: f32,
+      pointsPerSample: fc.integer({ min: 1, max: 16 }),
       views: fc
         .tuple(
           ...views.map((view) =>
@@ -165,6 +166,7 @@ function expectedHeader(
     readoutView: content.readoutView ?? ChannelView.mid,
     triggerView: content.triggerView ?? ChannelView.mid,
     triggerPosition: content.triggerPosition ?? Number.NaN,
+    pointsPerSample: content.pointsPerSample ?? 1,
   };
 }
 
@@ -174,6 +176,7 @@ const readField: Record<FieldType, (view: DataView, offset: number) => number> =
     u16: (view, offset) => view.getUint16(offset, true),
     u32: (view, offset) => view.getUint32(offset, true),
     f32: (view, offset) => view.getFloat32(offset, true),
+    f64: (view, offset) => view.getFloat64(offset, true),
   };
 
 function offsetOf(name: FrameHeaderFieldName): number {
@@ -208,8 +211,8 @@ function expectedFrame(content: FrameContent): Frame {
     partial: content.partial === true,
     noTempo: content.noTempo === true,
     cursor: cursor >= 0 ? cursor : undefined,
-    cycleStart: f(header.cycleStart),
-    cycleSeconds: f(header.cycleSeconds),
+    cycleStart: header.cycleStart,
+    cycleSeconds: header.cycleSeconds,
     panReach: f(header.panReach),
     invalidSamples: header.invalidSamples,
     invalidLanes: header.invalidLanes,
@@ -222,9 +225,10 @@ function expectedFrame(content: FrameContent): Frame {
       : triggerPosition,
     spanQuarterNotes: f(header.spanQuarterNotes),
     barQuarterNotes: f(header.barQuarterNotes),
-    viewStart: f(header.viewStart),
-    viewEnd: f(header.viewEnd),
+    viewStart: header.viewStart,
+    viewEnd: header.viewEnd,
     visibleSamples: f(header.visibleSamples),
+    pointsPerSample: header.pointsPerSample,
     views: new Map(
       channelViews
         .filter((view) => content.views.has(view))

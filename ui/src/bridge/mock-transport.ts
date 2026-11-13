@@ -679,13 +679,21 @@ export class MockTransport implements Transport {
     const sampleTime = (sample: number) =>
       timeOf(this.view.start + (sample / sampleCount) * visibleWidth);
     const minMax = sampleCount > this.columns;
-    const pointCount = minMax ? this.columns : sampleCount;
+    // As the engine does (engine/src/Reconstruction.cpp): from two columns a sample, about a
+    // point per column, the wave between the samples (here the signal itself), at most 16.
+    const pointsPerSample =
+      minMax || this.columns < 2 * sampleCount
+        ? 1
+        : Math.min(16, Math.ceil(this.columns / sampleCount));
+    const pointCount = minMax
+      ? this.columns
+      : (sampleCount - 1) * pointsPerSample + 1;
     const samplesPerPoint = sampleCount / pointCount;
     const points = (signalAt: (time: number) => number): Float32Array => {
       const values = new Float32Array(minMax ? pointCount * 2 : pointCount);
       for (let point = 0; point < pointCount; point++) {
         if (!minMax) {
-          values[point] = signalAt(sampleTime(point));
+          values[point] = signalAt(sampleTime(point / pointsPerSample));
           continue;
         }
         let low = Infinity;
@@ -806,6 +814,7 @@ export class MockTransport implements Transport {
         // As the engine places a free-running window (FreeRunning.h), its part on screen is
         // exactly the samples there.
         visibleSamples: sampleCount,
+        pointsPerSample,
         pointCount,
         startFraction: 0,
         peak: readoutSamples > 0 ? peak : Number.NaN,

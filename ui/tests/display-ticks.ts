@@ -87,6 +87,7 @@ export function frame(id: number): Frame {
     viewStart: 0,
     viewEnd: 1,
     visibleSamples: 0,
+    pointsPerSample: 1,
     views: new Map(),
     lanes: [],
     laneSet: 0,

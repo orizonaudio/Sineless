@@ -55,6 +55,7 @@ function frame(
     viewStart: 0,
     viewEnd: 1,
     visibleSamples: 0,
+    pointsPerSample: 1,
     views: new Map(
       views.map(([view, values]) => [view, new Float32Array(values)]),
     ),
@@ -82,6 +83,25 @@ describe("trace placement", () => {
     expect(columnPosition(zoomed, 5)).toBeCloseTo(0.5);
     expect(pointPosition(zoomed, 0.5)).toBeCloseTo(0.25);
     expect(pointPosition(zoomed, 4.5)).toBeCloseTo(0.5);
+  });
+
+  test("places a reconstructed frame's samples on their samples, the wave between them", () => {
+    // Eight points per sample: point 8k is sample k, point 8k + 4 halfway to the next.
+    const deep = {
+      ...frame(FrameMode.raw, [
+        [ChannelView.left, new Array<number>(33).fill(0)],
+      ]),
+      viewStart: 0.25,
+      viewEnd: 0.5,
+      visibleSamples: 4,
+      startFraction: 0.5,
+      pointsPerSample: 8,
+    };
+    const sample = (k: number) => 0.25 + ((k - 0.5) / 4) * 0.25;
+    for (let k = 0; k <= 4; k++) {
+      expect(pointPosition(deep, 8 * k)).toBeCloseTo(sample(k), 12);
+    }
+    expect(pointPosition(deep, 12)).toBeCloseTo(sample(1.5), 12);
   });
 
   test("stacks views in equal lanes from the top, or overlays them", () => {
@@ -383,6 +403,38 @@ describe("cancellation bands", () => {
     expect(Math.min(...xs(bands))).toBeCloseTo(-1 + 2 * pointPosition(raw, 0));
     expect(Math.max(...xs(bands))).toBeCloseTo(-1 + 2 * pointPosition(raw, 8));
   });
+
+  test.each([1, 8, 16])(
+    "bridge a gap of a sample in a cancelling stretch at %i points per sample",
+    (pointsPerSample) => {
+      // Forty samples of two tracks and a sum that cancels but for one sample, each sample's
+      // value held across the points drawn between samples.
+      const samples = 40;
+      const points = (samples - 1) * pointsPerSample + 1;
+      const held = (value: (sample: number) => number) =>
+        new Float32Array(
+          Array.from({ length: points }, (_, i) =>
+            value(Math.floor(i / pointsPerSample)),
+          ),
+        );
+      const sign = (k: number) => (k % 2 ? -1 : 1);
+      const raw = {
+        ...frame(FrameMode.raw, [
+          [ChannelView.left, new Array<number>(points).fill(0)],
+        ]),
+        visibleSamples: samples - 1,
+        pointsPerSample,
+        views: new Map(),
+        lanes: [
+          held((k) => 0.5 * sign(k)),
+          held((k) => -0.4 * sign(k)),
+          held((k) => (k === 20 ? 0.9 : 0.1) * sign(k)),
+        ],
+        comparison: { sumGain: -3, fixedGain: 3, matches: relatedMatches },
+      };
+      expect(quads(cancellationBands(raw, layout, both))).toBe(1);
+    },
+  );
 
   test("shade where the sum falls 3 dB below the louder track", () => {
     // Columns 1 and 2 cancel (0.1 against 0.5); 0 and 3 do not.

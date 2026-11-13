@@ -221,6 +221,48 @@ const scenes: Scene[] = [
     },
     view: { ...baseView, viewStart: 0.1, viewEnd: 0.7 },
   },
+  // Zoomed to a few samples near the end of the longest sweep (2^23 samples): the view's start
+  // in float32 would be off by a quarter sample; the samples marked with dots, the wave between
+  // them reconstructed (8 points a sample).
+  {
+    name: "a deep view at the end of a long span, its samples dotted",
+    width: 240,
+    height: 120,
+    ratio: 2,
+    frame: {
+      ...baseFrame,
+      mode: FrameMode.raw,
+      pointCount: 161,
+      startFraction: 0.3,
+      viewStart: 1 - 24 / 2 ** 23,
+      viewEnd: 1 - 4 / 2 ** 23,
+      visibleSamples: 20,
+      pointsPerSample: 8,
+      views: new Map([[ChannelView.left, samples(161, 3, 0.7, 0.4)]]),
+    },
+    view: {
+      ...baseView,
+      viewStart: 1 - 23.6 / 2 ** 23,
+      viewEnd: 1 - 4.6 / 2 ** 23,
+    },
+  },
+  // Reconstructed but too dense for dots: two points a sample, samples under three line widths
+  // apart.
+  {
+    name: "a reconstructed view too dense to dot its samples",
+    width: 240,
+    height: 120,
+    ratio: 1,
+    frame: {
+      ...baseFrame,
+      mode: FrameMode.raw,
+      pointCount: 199,
+      visibleSamples: 99,
+      pointsPerSample: 2,
+      views: new Map([[ChannelView.left, samples(199, 5, 0.7)]]),
+    },
+    view: baseView,
+  },
   {
     name: "Waiting dims the traces",
     width: 240,

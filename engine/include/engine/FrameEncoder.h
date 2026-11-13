@@ -24,13 +24,13 @@ struct FrameHeaderValues
     float rms = std::numeric_limits<float>::quiet_NaN();
     float cursor = -1.0f; // Sweep playhead position (0 to 1), or -1.
     // Musical context of a synced sweep in quarter notes; 0 otherwise.
-    float cycleStart = 0.0f;
+    double cycleStart = 0.0;
     float spanQuarterNotes = 0.0f;
     float barQuarterNotes = 0.0f;
-    float cycleSeconds = 0.0f; // The left edge's project time.
+    double cycleSeconds = 0.0; // The left edge's project time.
     // The part of the span covered, and its length in samples.
-    float viewStart = 0.0f;
-    float viewEnd = 1.0f;
+    double viewStart = 0.0;
+    double viewEnd = 1.0;
     float visibleSamples = 0.0f;
     // The lanes message that describes this frame's lanes.
     std::uint32_t laneSet = 0;
@@ -54,6 +54,8 @@ struct FrameHeaderValues
     // Where time zero sits across the unpanned span (0 to 1 from the left, the trigger point in
     // Trigger); NaN in Free and Beats.
     float triggerPosition = std::numeric_limits<float>::quiet_NaN();
+    // Points per sample of a raw frame: above 1, the wave between the samples is reconstructed.
+    std::uint32_t pointsPerSample = 1;
 };
 
 // Writes the header and `viewData` (each view's points, in ChannelView order, or each lane's,

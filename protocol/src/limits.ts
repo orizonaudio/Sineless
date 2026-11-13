@@ -67,8 +67,17 @@ export const pacingDelayCapSeconds = 0.125;
 // it later.
 export const pacedSpanMinimumSeconds = 0.02;
 
-// The narrowest part of the span a view can zoom in to.
-export const minimumViewWidth = 1 / 256;
+// The fewest samples a view can zoom in to, at every span and time base: a few cycles of a
+// high-frequency wave on screen (32 samples at 48 kHz is two thirds of a millisecond, about three
+// cycles at 5 kHz).
+export const minimumViewSamples = 32;
+
+// Zoomed in far enough that the wave between the samples is drawn (a raw frame of more than one
+// point per sample), each sample is marked with a dot of sampleDotRadius line widths once samples
+// stand sampleDotSpacing line widths apart on screen: closer, the dots would merge into a thicker
+// line.
+export const sampleDotSpacing = 3;
+export const sampleDotRadius = 1;
 
 // The most tracks the multi-track view shows; with Compare on it shows one fewer, for the sum.
 export const maxLanes = 16;
@@ -172,7 +181,8 @@ export const gridFineBeatLineGap = 8;
 // their powers add to (on 10 to 30% of columns of noise), which would shade unrelated tracks.
 // Against the louder track alone, with 3 dB, unrelated tracks are left unshaded. Stretches quieter
 // than cancellationQuietShare of the loudest moment (about -26 dB) cancel nothing audible; gaps of
-// up to cancellationBridgedPoints inside a cancelling stretch belong to it; raw points, which
+// up to cancellationBridgedPoints (columns, or samples of a raw frame, whatever the points drawn
+// between them) inside a cancelling stretch belong to it; raw points, which
 // cross zero every cycle, are compared over a window of a cancellationReachDivisor-th of the frame
 // either side.
 export const cancellationDb = -3;
@@ -258,7 +268,9 @@ export const limits: readonly {
     value: pacedSpanMinimumSeconds,
     kind: "double",
   },
-  { name: "minimumViewWidth", value: minimumViewWidth, kind: "double" },
+  { name: "minimumViewSamples", value: minimumViewSamples, kind: "double" },
+  { name: "sampleDotSpacing", value: sampleDotSpacing, kind: "double" },
+  { name: "sampleDotRadius", value: sampleDotRadius, kind: "double" },
   { name: "maxLanes", value: maxLanes, kind: "count" },
   {
     name: "readoutIntervalSeconds",

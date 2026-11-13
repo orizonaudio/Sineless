@@ -164,9 +164,10 @@ TEST(TraceGeometry, ShadesCancellationAsThePageDoes)
         frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kCompared);
         frame.pointCount = entry.at("pointCount").get<std::uint32_t>();
         frame.startFraction = entry.at("startFraction").get<float>();
-        frame.viewStart = entry.at("frameViewStart").get<float>();
-        frame.viewEnd = entry.at("frameViewEnd").get<float>();
+        frame.viewStart = entry.at("frameViewStart").get<double>();
+        frame.viewEnd = entry.at("frameViewEnd").get<double>();
         frame.visibleSamples = entry.at("visibleSamples").get<float>();
+        frame.pointsPerSample = entry.at("pointsPerSample").get<std::uint32_t>();
         for (const auto& lane : data) {
             frame.lanes.emplace_back(lane);
         }

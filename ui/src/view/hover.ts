@@ -164,7 +164,10 @@ export function levelAt(
       Math.abs(values[column * 2 + 1] ?? 0),
     );
   }
-  const index = Math.round(frame.startFraction + along * frame.visibleSamples);
+  const index = Math.round(
+    (frame.startFraction + along * frame.visibleSamples) *
+      frame.pointsPerSample,
+  );
   if (index < 0 || index >= frame.pointCount) {
     return undefined;
   }
@@ -189,7 +192,10 @@ export function readPosition(
     }
     return columnPosition(frame, column + 0.5);
   }
-  const index = Math.round(frame.startFraction + along * frame.visibleSamples);
+  const index = Math.round(
+    (frame.startFraction + along * frame.visibleSamples) *
+      frame.pointsPerSample,
+  );
   if (index < 0 || index >= frame.pointCount) {
     return undefined;
   }

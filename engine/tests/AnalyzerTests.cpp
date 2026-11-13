@@ -16,6 +16,13 @@
 namespace orizon::engine {
 namespace {
 
+// These tests check which samples a frame shows and where: zoomed in far, read its samples alone
+// (DeepZoom tests the wave between them).
+DecodedFrame decodeSamples(const std::vector<std::byte>& bytes)
+{
+    return samplesOnly(decode(bytes));
+}
+
 using protocol::ChannelView;
 using protocol::FrameFlag;
 using protocol::FrameHeader;
@@ -120,7 +127,7 @@ protected:
         if (!analyzer.produce(bytes)) {
             return std::nullopt;
         }
-        return decode(bytes);
+        return decodeSamples(bytes);
     }
 
     Engine engine;
@@ -147,7 +154,7 @@ TEST_F(AnalyzerTest, KeepsRollColumnsInStepWithAFreshReduction)
     fresh.setColumns(400);
     std::vector<std::byte> bytes;
     ASSERT_TRUE(fresh.produce(bytes));
-    EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
+    EXPECT_EQ(decodeSamples(bytes).data, frame->data) << "frame by frame equals all at once";
 }
 
 TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
@@ -179,7 +186,7 @@ TEST_F(AnalyzerTest, KeepsSweepColumnsInStepWithAFreshReduction)
     fresh.setColumns(300);
     std::vector<std::byte> bytes;
     ASSERT_TRUE(fresh.produce(bytes));
-    EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
+    EXPECT_EQ(decodeSamples(bytes).data, frame->data) << "frame by frame equals all at once";
 }
 
 // Plays half a second of a tone, then `silence` seconds of silence, in Beats mode at 120 BPM with
@@ -238,7 +245,7 @@ TEST_F(AnalyzerTest, DrawsNoBeatsSweepUntilTheHostReportsATempo)
         };
         std::vector<std::byte> bytes;
         ASSERT_TRUE(view.produce(bytes)) << "it says why nothing is drawn";
-        DecodedFrame frame = decode(bytes);
+        DecodedFrame frame = decodeSamples(bytes);
         EXPECT_TRUE(frame.has(FrameFlag::kSynced));
         EXPECT_TRUE(frame.has(FrameFlag::kNoTempo));
         EXPECT_EQ(frame.pointCount, 0U);
@@ -251,7 +258,7 @@ TEST_F(AnalyzerTest, DrawsNoBeatsSweepUntilTheHostReportsATempo)
 
         play(true, 20);
         ASSERT_TRUE(view.produce(bytes));
-        frame = decode(bytes);
+        frame = decodeSamples(bytes);
         EXPECT_FALSE(frame.has(FrameFlag::kNoTempo));
         EXPECT_GT(frame.pointCount, 0U);
         EXPECT_GT(get<float>(bytes, FrameHeader::kSpanQuarterNotesOffset), 0.0f)
@@ -319,7 +326,7 @@ TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
                                                             : laneChannel;
                 std::vector<std::byte> bytes;
                 ASSERT_TRUE(view.produce(bytes));
-                DecodedFrame frame = decode(bytes);
+                DecodedFrame frame = decodeSamples(bytes);
                 ASSERT_TRUE(frame.has(FrameFlag::kNoTempo));
                 EXPECT_EQ(frame.readoutView, expected) << "no tempo";
                 EXPECT_EQ(frame.triggerView, expected) << "no tempo";
@@ -332,7 +339,7 @@ TEST_F(AnalyzerTest, NamesTheReadoutChannelInEveryFrame)
                         480, kSampleRate);
                 }
                 ASSERT_TRUE(view.produce(bytes));
-                frame = decode(bytes);
+                frame = decodeSamples(bytes);
                 ASSERT_FALSE(frame.has(FrameFlag::kNoTempo));
                 EXPECT_EQ(frame.readoutView, expected) << "placed";
                 EXPECT_EQ(frame.triggerView, expected) << "placed";
@@ -358,16 +365,16 @@ TEST_F(AnalyzerTest, RenamesTheReadoutChannelWithNoTempoWhenTheTrackTurnsMono)
     view.setColumns(300);
     std::vector<std::byte> bytes;
     ASSERT_TRUE(view.produce(bytes));
-    ASSERT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
-    ASSERT_EQ(decode(bytes).readoutView, protocol::ChannelView::kRight);
-    ASSERT_EQ(decode(bytes).triggerView, protocol::ChannelView::kRight);
+    ASSERT_TRUE(decodeSamples(bytes).has(FrameFlag::kNoTempo));
+    ASSERT_EQ(decodeSamples(bytes).readoutView, protocol::ChannelView::kRight);
+    ASSERT_EQ(decodeSamples(bytes).triggerView, protocol::ChannelView::kRight);
     EXPECT_FALSE(view.produce(bytes)) << "nothing changed";
 
     fresh.setInputChannels(1);
     ASSERT_TRUE(view.produce(bytes)) << "the track changed";
-    EXPECT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
-    EXPECT_EQ(decode(bytes).readoutView, protocol::ChannelView::kLeft);
-    EXPECT_EQ(decode(bytes).triggerView, protocol::ChannelView::kLeft);
+    EXPECT_TRUE(decodeSamples(bytes).has(FrameFlag::kNoTempo));
+    EXPECT_EQ(decodeSamples(bytes).readoutView, protocol::ChannelView::kLeft);
+    EXPECT_EQ(decodeSamples(bytes).triggerView, protocol::ChannelView::kLeft);
 }
 
 // Without a host tempo, the frame saying so follows what the user does: frozen and unfrozen, so the
@@ -398,7 +405,7 @@ TEST_F(AnalyzerTest, SaysThereIsNoTempoFrozenAndUnfrozen)
         const auto noTempoFrame = [&](bool frozen) {
             std::vector<std::byte> bytes;
             ASSERT_TRUE(view.produce(bytes));
-            const DecodedFrame frame = decode(bytes);
+            const DecodedFrame frame = decodeSamples(bytes);
             EXPECT_TRUE(frame.has(FrameFlag::kNoTempo));
             EXPECT_EQ(frame.has(FrameFlag::kFrozen), frozen);
             EXPECT_EQ(frame.pointCount, 0U);
@@ -413,8 +420,8 @@ TEST_F(AnalyzerTest, SaysThereIsNoTempoFrozenAndUnfrozen)
         EXPECT_FALSE(view.produce(bytes)) << "the freeze holds no tempo: still nothing placed";
         view.setFrozen(false);
         ASSERT_TRUE(view.produce(bytes)) << "live, the sweep follows the host";
-        EXPECT_FALSE(decode(bytes).has(FrameFlag::kNoTempo));
-        EXPECT_GT(decode(bytes).pointCount, 0U);
+        EXPECT_FALSE(decodeSamples(bytes).has(FrameFlag::kNoTempo));
+        EXPECT_GT(decodeSamples(bytes).pointCount, 0U);
     }
 }
 
@@ -435,14 +442,14 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingToSecondsBeforeATempo)
             view.setColumns(300);
             std::vector<std::byte> bytes;
             ASSERT_TRUE(view.produce(bytes));
-            ASSERT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+            ASSERT_TRUE(decodeSamples(bytes).has(FrameFlag::kNoTempo));
             std::vector<float> silence(24000, 0.0f);
             std::array<const float*, 2> channels{silence.data(), silence.data()};
             fresh.captureRing().write(channels.data(), 2, static_cast<int>(silence.size()));
             fresh.settings().set(SettingId::kTimeBase,
                                  static_cast<double>(protocol::TimeBase::kTrigger));
             ASSERT_TRUE(view.produce(bytes)) << "the switch shows at once";
-            const DecodedFrame frame = decode(bytes);
+            const DecodedFrame frame = decodeSamples(bytes);
             EXPECT_FALSE(frame.has(FrameFlag::kSynced));
             EXPECT_FALSE(frame.has(FrameFlag::kNoTempo));
             EXPECT_FALSE(frame.has(FrameFlag::kTriggered));
@@ -470,7 +477,7 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanOnSwitchingFromBeatsToSeconds)
                                  static_cast<double>(protocol::TimeBase::kTrigger));
             std::vector<std::byte> bytes;
             ASSERT_TRUE(view.produce(bytes)) << "the switch shows at once";
-            const DecodedFrame frame = decode(bytes);
+            const DecodedFrame frame = decodeSamples(bytes);
             EXPECT_FALSE(frame.has(FrameFlag::kSynced));
             EXPECT_FALSE(frame.has(FrameFlag::kTriggered));
             EXPECT_EQ(frame.peak, 0.0f) << "the newest span, silent, not the tone a second ago";
@@ -513,7 +520,7 @@ TEST_F(AnalyzerTest, OpensOnTheNewestHeldAudioWhenFrozenInBeatsThenSeconds)
         ASSERT_TRUE(view.produce(bytes));
         fresh.settings().set(SettingId::kTimeBase, static_cast<double>(timeBaseFor(span)));
         ASSERT_TRUE(view.produce(bytes));
-        const DecodedFrame frame = decode(bytes);
+        const DecodedFrame frame = decodeSamples(bytes);
         EXPECT_TRUE(frame.has(FrameFlag::kFrozen));
         EXPECT_FALSE(frame.has(FrameFlag::kSynced));
         EXPECT_EQ(frame.peak, 0.0f) << "the silence before the freeze, not the tone before it";
@@ -551,16 +558,16 @@ TEST_F(AnalyzerTest, SaysThereIsNoTempoAgainBackFromSeconds)
         view.setColumns(300);
         std::vector<std::byte> bytes;
         ASSERT_TRUE(view.produce(bytes));
-        ASSERT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+        ASSERT_TRUE(decodeSamples(bytes).has(FrameFlag::kNoTempo));
         // A page reloaded after its process crashed asks for a redraw: it is told again.
         view.redraw();
         ASSERT_TRUE(view.produce(bytes)) << "told the reloaded page";
-        EXPECT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
+        EXPECT_TRUE(decodeSamples(bytes).has(FrameFlag::kNoTempo));
         playSecondsTone(fresh, view, 0.5, 0.25); // Seconds, a frame drawn.
         fresh.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
         ASSERT_TRUE(view.produce(bytes)) << "told again";
-        EXPECT_TRUE(decode(bytes).has(FrameFlag::kNoTempo));
-        EXPECT_TRUE(decode(bytes).has(FrameFlag::kSynced));
+        EXPECT_TRUE(decodeSamples(bytes).has(FrameFlag::kNoTempo));
+        EXPECT_TRUE(decodeSamples(bytes).has(FrameFlag::kSynced));
     }
 }
 
@@ -582,7 +589,7 @@ TEST_F(AnalyzerTest, KeepsTheFrozenSecondsViewAcrossATripToBeats)
         view.setFrozen(true);
         std::vector<std::byte> bytes;
         ASSERT_TRUE(view.produce(bytes));
-        const DecodedFrame frozen = decode(bytes);
+        const DecodedFrame frozen = decodeSamples(bytes);
         ASSERT_TRUE(frozen.has(FrameFlag::kTriggered));
 
         fresh.settings().set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kBeats));
@@ -590,7 +597,7 @@ TEST_F(AnalyzerTest, KeepsTheFrozenSecondsViewAcrossATripToBeats)
         fresh.settings().set(SettingId::kTimeBase,
                              static_cast<double>(protocol::TimeBase::kTrigger));
         ASSERT_TRUE(view.produce(bytes));
-        const DecodedFrame back = decode(bytes);
+        const DecodedFrame back = decodeSamples(bytes);
         EXPECT_TRUE(back.has(FrameFlag::kTriggered)) << "still on its trigger point";
         EXPECT_EQ(back.data, frozen.data) << "the same window as when frozen";
     }
@@ -619,7 +626,7 @@ TEST_F(AnalyzerTest, ForgetsTheSecondsWindowShownBeforeASpellInBeats)
         fresh.settings().set(SettingId::kTimeBase,
                              static_cast<double>(protocol::TimeBase::kTrigger));
         ASSERT_TRUE(view.produce(bytes));
-        EXPECT_EQ(decode(bytes).peak, 0.0f) << "the silence before the freeze";
+        EXPECT_EQ(decodeSamples(bytes).peak, 0.0f) << "the silence before the freeze";
     }
 }
 
@@ -793,13 +800,13 @@ TEST(FrozenFreeToTrigger, ShowsTheSecondEndingWhereTheFreeWindowEnded)
         view.setColumns(span + 2);                        // Raw samples at 1 s.
         std::vector<std::byte> bytes;
         ASSERT_TRUE(view.produce(bytes));
-        ASSERT_TRUE(decode(bytes).has(FrameFlag::kFreeRunning));
+        ASSERT_TRUE(decodeSamples(bytes).has(FrameFlag::kFreeRunning));
         view.setFrozen(true);
         ASSERT_TRUE(view.produce(bytes));
 
         showSpan(engine, 1.0);
         ASSERT_TRUE(view.produce(bytes));
-        const DecodedFrame frozen = decode(bytes);
+        const DecodedFrame frozen = decodeSamples(bytes);
         ASSERT_TRUE(frozen.has(FrameFlag::kFrozen));
         ASSERT_FALSE(frozen.has(FrameFlag::kFreeRunning));
         ASSERT_EQ(frozen.mode, FrameMode::kRaw);
@@ -811,7 +818,7 @@ TEST(FrozenFreeToTrigger, ShowsTheSecondEndingWhereTheFreeWindowEnded)
 
         view.setPan(0.2);
         ASSERT_TRUE(view.produce(bytes));
-        const DecodedFrame panned = decode(bytes);
+        const DecodedFrame panned = decodeSamples(bytes);
         EXPECT_NEAR(frozen.data.front() - panned.data.front(), 0.2 * rate, 1.0)
             << "moved back by the time asked";
     }
@@ -842,10 +849,10 @@ TEST_F(AnalyzerTest, ShowsTheNewestSpanAfterAFreeRunningWindow)
         const auto newest = static_cast<float>(engine.captureRing().writeIndex() - 1);
         std::vector<std::byte> bytes;
         ASSERT_TRUE(fresh.produce(bytes));
-        ASSERT_TRUE(decode(bytes).has(FrameFlag::kFreeRunning));
+        ASSERT_TRUE(decodeSamples(bytes).has(FrameFlag::kFreeRunning));
         showSpan(engine, 0.02);
         ASSERT_TRUE(fresh.produce(bytes)) << "Trigger: a frame of its span";
-        const DecodedFrame frame = decode(bytes);
+        const DecodedFrame frame = decodeSamples(bytes);
         EXPECT_FALSE(frame.has(FrameFlag::kFreeRunning));
         EXPECT_FALSE(frame.has(FrameFlag::kTriggered));
         EXPECT_NEAR(frame.spanSeconds, 0.02, 1e-6);
@@ -994,7 +1001,7 @@ TEST_F(AnalyzerTest, DoesNotLimitAWholeFreezeAtARateThatIsNotAWholeNumber)
         ASSERT_TRUE(view.produce(bytes));
         view.setFrozen(true);
         ASSERT_TRUE(view.produce(bytes));
-        const DecodedFrame frozen = decode(bytes);
+        const DecodedFrame frozen = decodeSamples(bytes);
         EXPECT_TRUE(frozen.has(FrameFlag::kFrozen));
         EXPECT_FALSE(frozen.has(FrameFlag::kLimited));
     }
@@ -1840,7 +1847,7 @@ protected:
         if (!analyzer->produce(analyzerBytes)) {
             return std::nullopt;
         }
-        return decode(analyzerBytes);
+        return decodeSamples(analyzerBytes);
     }
 
     static std::vector<float> lane(const DecodedFrame& frame, std::size_t index)
@@ -1895,7 +1902,7 @@ TEST_F(MultiTrackTest, KeepsReducedLanesInStepWithAFreshReduction)
     fresh.setColumns(300);
     std::vector<std::byte> bytes;
     ASSERT_TRUE(fresh.produce(bytes));
-    EXPECT_EQ(decode(bytes).data, frame->data) << "frame by frame equals all at once";
+    EXPECT_EQ(decodeSamples(bytes).data, frame->data) << "frame by frame equals all at once";
 }
 
 // Free-running in Seconds, each lane keeps its columns on the same grid from where its part of the
@@ -1933,7 +1940,7 @@ TEST_F(MultiTrackTest, KeepsFreeRunningLanesInStepWithAFreshReduction)
         fresh.setColumns(1234);
         std::vector<std::byte> bytes;
         ASSERT_TRUE(fresh.produce(bytes));
-        const DecodedFrame expected = decode(bytes);
+        const DecodedFrame expected = decodeSamples(bytes);
         const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;
         ASSERT_EQ(expected.laneCount, frame->laneCount);
         EXPECT_EQ(
@@ -1999,7 +2006,7 @@ TEST_F(MultiTrackTest, KeepsTheOwnTrackWithinTheLaneLimit)
     play(9600);
     std::vector<std::byte> bytes;
     ASSERT_TRUE(lanes.produce(bytes));
-    const DecodedFrame frame = decode(bytes);
+    const DecodedFrame frame = decodeSamples(bytes);
     ASSERT_EQ(frame.laneCount, kMaxLanes);
     EXPECT_EQ(lane(frame, kMaxLanes - 1).front(), 1.0f) << "the own track takes the last lane";
     EXPECT_EQ(lanes.laneSet().hidden, 2u);
@@ -2040,7 +2047,7 @@ TEST_F(MultiTrackTest, ShowsTheOwnTrackAloneWhenNotRegistered)
     play(9600);
     std::vector<std::byte> bytes;
     ASSERT_TRUE(alone.produce(bytes));
-    EXPECT_EQ(decode(bytes).laneCount, 1);
+    EXPECT_EQ(decodeSamples(bytes).laneCount, 1);
     EXPECT_TRUE(alone.laneSet().lanes.front().own);
 }
 
@@ -2159,7 +2166,7 @@ TEST_F(MultiTrackTest, KeepsSweepReadoutsInStepWithAFreshMeasurement)
         fresh.setColumns(8000);
         std::vector<std::byte> bytes;
         ASSERT_TRUE(fresh.produce(bytes));
-        const DecodedFrame expected = decode(bytes);
+        const DecodedFrame expected = decodeSamples(bytes);
         EXPECT_EQ(frame->peak, expected.peak) << "mode " << static_cast<int>(mode);
         EXPECT_EQ(frame->rms, expected.rms) << "mode " << static_cast<int>(mode);
         EXPECT_NEAR(frame->peak, 0.5f, 1e-3f);
@@ -3157,7 +3164,7 @@ TEST_F(CompareTest, KeepsTheSumLaneInStepWithAFreshSum)
         }
         ASSERT_TRUE(frame);
         ASSERT_EQ(frame->mode, FrameMode::kMinMax);
-        const DecodedFrame expected = decode(bytes);
+        const DecodedFrame expected = decodeSamples(bytes);
         const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;
         ASSERT_EQ(expected.laneCount, frame->laneCount);
         EXPECT_EQ(
@@ -3213,7 +3220,7 @@ TEST_F(MultiTrackTest, HidesOneTrackForTheSumOnlyWhileCompareIsOn)
         show(own->settings(), display);
         play(9600);
         ASSERT_TRUE(lanes.produce(bytes));
-        const DecodedFrame frame = decode(bytes);
+        const DecodedFrame frame = decodeSamples(bytes);
         const bool comparing = display == Display::kCompare;
         const std::size_t shown = comparing ? kMaxLanes - 1 : kMaxLanes;
         EXPECT_EQ(frame.laneCount, kMaxLanes) << "the tracks, and with Compare the sum";
@@ -3289,7 +3296,7 @@ TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
         ASSERT_TRUE(frame);
         ASSERT_TRUE(frame->has(FrameFlag::kFreeRunning));
         ASSERT_EQ(frame->mode, FrameMode::kMinMax);
-        const DecodedFrame expected = decode(bytes);
+        const DecodedFrame expected = decodeSamples(bytes);
         const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;
         ASSERT_EQ(expected.laneCount, frame->laneCount);
         EXPECT_EQ(
@@ -3511,7 +3518,7 @@ TEST_F(CompareTest, MeasuresAShiftedTrackAgainWhenItsShiftChanges)
     play(4800);
     ASSERT_TRUE(produce());
     ASSERT_TRUE(fresh.produce(bytes));
-    ASSERT_EQ(match(decode(bytes), 1).offset, 37.0f);
+    ASSERT_EQ(match(decodeSamples(bytes), 1).offset, 37.0f);
     EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kFixedGainOffset),
                 get<float>(bytes, FrameHeader::kFixedGainOffset), 1e-3f);
 }
@@ -3688,7 +3695,7 @@ TEST_F(TriggerPositionTest, PutsTheTriggerPointWhereThePositionSaysAndTheFrameSa
         writeEdge(0.1, 0.1);
         std::vector<std::byte> bytes;
         ASSERT_TRUE(fresh.produce(bytes));
-        const DecodedFrame frame = decode(bytes);
+        const DecodedFrame frame = decodeSamples(bytes);
         ASSERT_TRUE(frame.has(FrameFlag::kTriggered));
         EXPECT_NEAR(frame.triggerPosition, position, 1e-6);
         if (position < 1.0) { // At 100% the crossing's later sample lies past the span.
@@ -3778,7 +3785,7 @@ TEST_F(TriggerPositionTest, SaysWhereAClampedFrozenTriggerIsAndPansAllTheWayBack
     setPosition(0.0);
     std::vector<std::byte> bytes;
     ASSERT_TRUE(analyzer.produce(bytes));
-    const DecodedFrame clamped = decode(bytes);
+    const DecodedFrame clamped = decodeSamples(bytes);
     ASSERT_TRUE(clamped.has(FrameFlag::kFrozen)) << "Single froze on its capture";
     EXPECT_GT(clamped.triggerPosition, 0.9) << "not where the setting asks: too little held";
     EXPECT_NEAR(clamped.triggerPosition, edgePlace(clamped), kPlace) << "where the edge is";
@@ -3860,7 +3867,7 @@ TEST_F(TriggerPositionTest, CountsFromThePositionFrozenFromTheRightEdge)
             SCOPED_TRACE(position);
             setPosition(position);
             ASSERT_TRUE(fresh.produce(bytes));
-            const DecodedFrame frame = decode(bytes);
+            const DecodedFrame frame = decodeSamples(bytes);
             ASSERT_TRUE(frame.has(FrameFlag::kFrozen));
             EXPECT_NEAR(frame.triggerPosition, position, 1e-6);
         }
@@ -3909,17 +3916,17 @@ TEST_F(TriggerPositionTest, AHeldUntriggeredWindowFollowsThePositionAndSpan)
         } else {
             setTriggerMode(protocol::TriggerMode::kAuto);
             ASSERT_TRUE(fresh.produce(bytes));
-            ASSERT_FALSE(decode(bytes).has(FrameFlag::kTriggered));
+            ASSERT_FALSE(decodeSamples(bytes).has(FrameFlag::kTriggered));
             setTriggerMode(protocol::TriggerMode::kNormal);
         }
         (void)fresh.produce(bytes);
         setPosition(0.5);
         ASSERT_TRUE(fresh.produce(bytes));
-        EXPECT_FALSE(decode(bytes).has(FrameFlag::kTriggered));
-        EXPECT_NEAR(decode(bytes).triggerPosition, 0.5, 1e-6);
+        EXPECT_FALSE(decodeSamples(bytes).has(FrameFlag::kTriggered));
+        EXPECT_NEAR(decodeSamples(bytes).triggerPosition, 0.5, 1e-6);
         setSpan(engine, 0.01); // Shorter: a held window holds no audio past its end.
         ASSERT_TRUE(fresh.produce(bytes));
-        EXPECT_NEAR(decode(bytes).triggerPosition, 0.5, 1e-6) << "after a span change";
+        EXPECT_NEAR(decodeSamples(bytes).triggerPosition, 0.5, 1e-6) << "after a span change";
     }
 }
 

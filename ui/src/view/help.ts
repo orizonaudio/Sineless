@@ -15,6 +15,7 @@ import {
   matchReachSeconds,
   matchWindowSeconds,
   maxLanes,
+  minimumViewSamples,
   summingMarginDb,
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
@@ -289,6 +290,7 @@ export function helpTextsFor(mac: boolean) {
         { gesture: "Double-click", effect: "reset" },
       ],
       notes: [
+        `Zoom reaches ${String(minimumViewSamples)} samples at any span; the dots are samples, the curve the wave they make, which can overshoot them at sharp edges.`,
         "In Trig and Free, frozen and not zoomed, swipe to look further back.",
       ],
     },

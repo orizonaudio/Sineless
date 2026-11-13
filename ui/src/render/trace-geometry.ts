@@ -33,12 +33,19 @@ export function columnPosition(frame: Frame, column: number): number {
   );
 }
 
+// Raw point k sits k / pointsPerSample samples after the first sample, which is startFraction
+// of a sample before the covered part's start.
 export function pointPosition(frame: Frame, index: number): number {
-  const samples =
-    frame.visibleSamples > 0 ? frame.visibleSamples : frame.pointCount;
+  if (frame.visibleSamples <= 0) {
+    return (
+      frame.viewStart +
+      (index / frame.pointCount) * (frame.viewEnd - frame.viewStart)
+    );
+  }
   return (
     frame.viewStart +
-    ((index - frame.startFraction) / samples) *
+    ((index / frame.pointsPerSample - frame.startFraction) /
+      frame.visibleSamples) *
       (frame.viewEnd - frame.viewStart)
   );
 }
@@ -199,13 +206,15 @@ export function cancellationBands(
       level > audible &&
       (levelSum[point] ?? 0) < cancellationRatio * level,
   );
-  // Short gaps inside a cancelling stretch belong to it.
+  // Short gaps inside a cancelling stretch belong to it: of columns, or of samples, whatever the
+  // points drawn between them.
+  const bridged = bridgedGap * frame.pointsPerSample;
   for (let point = 1; point < cancelling.length; point++) {
     if (cancelling[point] === true || cancelling[point - 1] !== true) {
       continue;
     }
     const resume = cancelling.indexOf(true, point);
-    if (resume > point && resume - point <= bridgedGap) {
+    if (resume > point && resume - point <= bridged) {
       cancelling.fill(true, point, resume);
     }
   }

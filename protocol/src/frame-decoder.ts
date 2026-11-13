@@ -50,6 +50,8 @@ export interface Frame {
   readonly viewStart: number;
   readonly viewEnd: number;
   readonly visibleSamples: number;
+  // Points per sample of a raw frame: above 1, the wave between the samples is reconstructed.
+  readonly pointsPerSample: number;
   // Points of each view present, keyed by ChannelView; min/max pairs in FrameMode.minMax.
   readonly views: ReadonlyMap<ChannelView, Float32Array>;
   // Multi-track frames: one lane per track instead of views, described by the lanes message
@@ -93,6 +95,8 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     header.getUint32(offsets[name], true);
   const f32 = (name: FrameHeaderFieldName): number =>
     header.getFloat32(offsets[name], true);
+  const f64 = (name: FrameHeaderFieldName): number =>
+    header.getFloat64(offsets[name], true);
 
   const mode = u8("mode") as FrameMode;
   const flags = u8("flags");
@@ -151,8 +155,8 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     partial: (flags & FrameFlag.partial) !== 0,
     noTempo: (flags & FrameFlag.noTempo) !== 0,
     cursor: cursor >= 0 ? cursor : undefined,
-    cycleStart: f32("cycleStart"),
-    cycleSeconds: f32("cycleSeconds"),
+    cycleStart: f64("cycleStart"),
+    cycleSeconds: f64("cycleSeconds"),
     panReach: f32("panReach"),
     invalidSamples: u32("invalidSamples"),
     invalidLanes: u32("invalidLanes"),
@@ -165,9 +169,10 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
       : triggerPosition,
     spanQuarterNotes: f32("spanQuarterNotes"),
     barQuarterNotes: f32("barQuarterNotes"),
-    viewStart: f32("viewStart"),
-    viewEnd: f32("viewEnd"),
+    viewStart: f64("viewStart"),
+    viewEnd: f64("viewEnd"),
     visibleSamples: f32("visibleSamples"),
+    pointsPerSample: u32("pointsPerSample"),
     views,
     lanes,
     laneSet: u32("laneSet"),
