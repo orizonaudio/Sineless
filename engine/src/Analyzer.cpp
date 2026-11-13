@@ -855,9 +855,11 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             // Neighbours beyond, for reconstructing the wave between the samples.
             constexpr auto kReach = static_cast<double>(kReconstructionReach);
             const double first = std::max(wholeStart, std::floor(from) - 1.0 - kReach);
-            // Past the paced edge too, as far as the capture (or the hold) has the audio.
-            const double last = std::min(static_cast<double>(std::max(end, source->endIndex())),
-                                         std::ceil(to) + 2.0 + kReach);
+            // Past the paced edge too, as far as the capture (or the hold) has the audio. In
+            // Multi, other tracks' lanes hold it as well: the edge trails by more than a block
+            // and the reach (DeepZoomLaggingLanes).
+            const std::uint64_t held = std::max(end, source->endIndex());
+            const double last = std::min(static_cast<double>(held), std::ceil(to) + 2.0 + kReach);
             sampleCount = static_cast<std::uint64_t>(std::max(0.0, last - first));
             window.start = first;
             if (sampleCount > 0) {

@@ -2094,7 +2094,7 @@ TEST_F(MultiTrackTest, ZoomsEveryLaneAtFullResolution)
     EXPECT_EQ(frame->pointCount, 1501u) << "the visible quarter, with one point beyond an edge";
     EXPECT_EQ(lane(*frame, 0), lane(*frame, 1));
     EXPECT_EQ(lane(*frame, 0).front(), 7500.0f) << "a quarter into the cycle starting at 6000";
-    EXPECT_FLOAT_EQ(frame->viewStart, 0.25f);
+    EXPECT_DOUBLE_EQ(frame->viewStart, 0.25);
 }
 
 TEST_F(MultiTrackTest, CropsAShorterSpanFromFrozenLanes)
