@@ -162,6 +162,27 @@ TEST(Reconstruction, DrawsLinesWhereNeighboursRunOut)
     EXPECT_FALSE(straight(samples.size() / 2)) << "the middle has all its neighbours";
 }
 
+// The first gap with all its neighbours held (a reach in from the first sample, as at the start of
+// what a window holds) is the wave, not a line: only the gaps before it fall back.
+TEST(Reconstruction, DrawsTheWaveFromTheFirstGapWithAllItsNeighbours)
+{
+    constexpr double kRate = 48000.0;
+    constexpr double kFrequency = 5000.0;
+    const std::vector<float> samples = tone(kFrequency, kRate, 64);
+    Reconstruction reconstruction;
+    std::vector<float> points;
+    constexpr std::size_t kFactor = 4;
+    reconstruction.upsample(samples, 0, 0, kFactor, points);
+    const std::size_t first = kReach - 1; // Reads samples 0 to 2 * kReach - 1.
+    for (std::size_t phase = 1; phase < kFactor; ++phase) {
+        const double position = static_cast<double>(first) + (static_cast<double>(phase) / kFactor);
+        EXPECT_NEAR(points[(first * kFactor) + phase], toneAt(kFrequency, kRate, position), 1e-3)
+            << "phase " << phase;
+    }
+    const float line = samples[first - 1] + ((samples[first] - samples[first - 1]) / 2.0f);
+    EXPECT_NEAR(points[((first - 1) * kFactor) + 2], line, 1e-6f) << "one gap earlier: a line";
+}
+
 // A sample that is not finite (a broken signal upstream) leaves a gap beside it, and the points
 // whose neighbours include it are drawn straight; the rest of the wave is not lost with it.
 TEST(Reconstruction, DrawsAroundABrokenSample)

@@ -88,6 +88,24 @@ describe.each([settings.freeSpan.minimum, settings.freeSpan.maximum])(
       expectFloor();
     });
 
+    // A trackpad pinch, as WebKit reports it, its scale counted from the gesture's start: spread
+    // to twice the size halves the view around the fingers, closed back to the start returns it.
+    test("follows a pinch out and back", async () => {
+      await start();
+      const width = () => {
+        const frame = window.orizonDebug?.lastFrame;
+        return (frame?.viewEnd ?? 1) - (frame?.viewStart ?? 0);
+      };
+      gesture("gesturestart", 1);
+      gesture("gesturechange", 2);
+      await settle();
+      expect(width()).toBeCloseTo(0.5, 6);
+      gesture("gesturechange", 1);
+      gesture("gestureend", 1);
+      await settle();
+      expect(width()).toBeCloseTo(1, 6);
+    });
+
     // A trackpad pinch, as WebKit reports it: one gesture spreading far past the floor.
     test("stops a pinch at the fewest samples", async () => {
       await start();
