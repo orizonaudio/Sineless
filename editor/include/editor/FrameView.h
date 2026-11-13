@@ -21,7 +21,7 @@ struct FrameView
     std::uint32_t pointCount = 0;
     std::uint32_t laneSet = 0;
     float startFraction = 0.0f;
-    float cursor = -1.0f;
+    double cursor = -1.0;
     double cycleStart = 0.0;
     float spanQuarterNotes = 0.0f;
     float barQuarterNotes = 0.0f;

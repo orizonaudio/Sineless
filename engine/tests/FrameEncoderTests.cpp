@@ -50,7 +50,7 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .startFraction = header["startFraction"].get<float>(),
         .peak = header["peak"].get<float>(),
         .rms = header["rms"].get<float>(),
-        .cursor = header["cursor"].get<float>(),
+        .cursor = header["cursor"].get<double>(),
         .cycleStart = header["cycleStart"].get<double>(),
         .spanQuarterNotes = header["spanQuarterNotes"].get<float>(),
         .barQuarterNotes = header["barQuarterNotes"].get<float>(),
@@ -126,8 +126,8 @@ TEST(FrameEncoder, SendsNoValueForReadoutsNotMeasured)
     }
 }
 
-// A view of kMinimumViewSamples at the end of the longest sweep (2^23 samples), and where a sweep
-// starts late in a song, travel exactly:
+// A view of kMinimumViewSamples at the end of the longest sweep (2^23 samples), its playhead, and
+// where a sweep starts late in a song, travel exactly:
 // rounded to a float, its start would be off by a quarter of a sample and its width by about 2%,
 // which the page's times and grid would read.
 TEST(FrameEncoder, CarriesADeepViewExactly)
@@ -136,7 +136,13 @@ TEST(FrameEncoder, CarriesADeepViewExactly)
     const double end = 1.0 - (3.0 / span);
     const double start = end - (protocol::kMinimumViewSamples / span) + 1e-13;
     std::vector<std::byte> output;
-    encodeFrame({.cycleStart = 4800.1, .cycleSeconds = 2400.05, .viewStart = start, .viewEnd = end},
+    // The playhead, on a sample near the end of 16 bars at 60 BPM and 96 kHz.
+    const double cursor = 1.0 - (5.0 / 6144000.0);
+    encodeFrame({.cursor = cursor,
+                 .cycleStart = 4800.1,
+                 .cycleSeconds = 2400.05,
+                 .viewStart = start,
+                 .viewEnd = end},
                 {}, output);
     double carried = 0.0;
     std::memcpy(&carried, output.data() + protocol::FrameHeader::kViewStartOffset, sizeof carried);
@@ -149,6 +155,8 @@ TEST(FrameEncoder, CarriesADeepViewExactly)
     std::memcpy(&carried, output.data() + protocol::FrameHeader::kCycleSecondsOffset,
                 sizeof carried);
     EXPECT_EQ(carried, 2400.05);
+    std::memcpy(&carried, output.data() + protocol::FrameHeader::kCursorOffset, sizeof carried);
+    EXPECT_EQ(carried, cursor);
 }
 
 } // namespace

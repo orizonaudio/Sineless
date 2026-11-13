@@ -1597,6 +1597,33 @@ TEST(BeatGridLate, PlacesTheCycleExactly)
                 session.secondsOffset + ((cycleStart - session.quarterNotesOffset) / 2.0), 1e-9);
 }
 
+// A sweep's playhead stands on a sample (the newest one placed): the frame says where to the
+// sample, so zoomed in to a few samples it is drawn on the join between the passes, where the
+// engine stops drawing the wave across it. Four bars, 384,000 samples, on which a float would put
+// it hundredths of a sample off; live and frozen.
+TEST(BeatPlayhead, StandsOnASample)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.frequency = 1000.0});
+    configure(session.own(), Display::kSingle, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
+    session.play(9.3, protocol::kReadoutIntervalSeconds / 2.0);
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        session.analyzer().setFrozen(frozen);
+        session.play(static_cast<double>(kBlock) / kRate);
+        ASSERT_TRUE(session.produce()) << "no frame";
+        const double count = session.field(FrameHeader::kVisibleSamplesOffset) /
+                             (session.wideField(FrameHeader::kViewEndOffset) -
+                              session.wideField(FrameHeader::kViewStartOffset));
+        ASSERT_EQ(count, 384000.0);
+        const double cursor = session.wideField(FrameHeader::kCursorOffset) * count;
+        EXPECT_GT(cursor, 0.0);
+        EXPECT_NEAR(cursor, std::round(cursor), 1e-6) << "on a sample";
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(EveryRate, BeatGrid, ::testing::ValuesIn(beatCases()), modeTestName);
 
 // A beat span longer than a sweep may hold (16 bars at 120 BPM and 384 kHz) is drawn limited and

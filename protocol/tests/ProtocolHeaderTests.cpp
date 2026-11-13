@@ -35,6 +35,7 @@ TEST(ProtocolHeader, LaysOutTheFrameHeaderWithNaturalAlignment)
     EXPECT_EQ(FrameHeader::kViewEndOffset % 8, 0u);
     EXPECT_EQ(FrameHeader::kCycleStartOffset % 8, 0u);
     EXPECT_EQ(FrameHeader::kCycleSecondsOffset % 8, 0u);
+    EXPECT_EQ(FrameHeader::kCursorOffset % 8, 0u);
     EXPECT_EQ(FrameHeader::kLaneSetOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kFixedGainOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kPanReachOffset % 4, 0u);
@@ -46,7 +47,7 @@ TEST(ProtocolHeader, LaysOutTheFrameHeaderWithNaturalAlignment)
     EXPECT_EQ(FrameHeader::kTriggerViewOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kTriggerPositionOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kPointsPerSampleOffset % 4, 0u);
-    EXPECT_EQ(FrameHeader::kSize, 116u);
+    EXPECT_EQ(FrameHeader::kSize, 120u);
     EXPECT_EQ(kMatchValues, 3u);
 }
 

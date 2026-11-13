@@ -24,7 +24,7 @@ struct DecodedFrame
     float startFraction = 0.0f;
     float peak = 0.0f;
     float rms = 0.0f;
-    float cursor = -1.0f;
+    double cursor = -1.0;
     double viewStart = 0.0;
     double viewEnd = 1.0;
     float visibleSamples = 0.0f;
@@ -66,7 +66,7 @@ inline DecodedFrame decode(const std::vector<std::byte>& bytes)
     frame.startFraction = get<float>(bytes, protocol::FrameHeader::kStartFractionOffset);
     frame.peak = get<float>(bytes, protocol::FrameHeader::kPeakOffset);
     frame.rms = get<float>(bytes, protocol::FrameHeader::kRmsOffset);
-    frame.cursor = get<float>(bytes, protocol::FrameHeader::kCursorOffset);
+    frame.cursor = get<double>(bytes, protocol::FrameHeader::kCursorOffset);
     frame.viewStart = get<double>(bytes, protocol::FrameHeader::kViewStartOffset);
     frame.viewEnd = get<double>(bytes, protocol::FrameHeader::kViewEndOffset);
     frame.visibleSamples = get<float>(bytes, protocol::FrameHeader::kVisibleSamplesOffset);

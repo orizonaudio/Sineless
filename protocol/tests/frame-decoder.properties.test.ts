@@ -72,7 +72,7 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       startFraction: f32,
       peak: f32,
       rms: f32,
-      cursor: fc.option(f32, { nil: undefined }),
+      cursor: fc.option(fc.double(), { nil: undefined }),
       cycleStart: fc.double(),
       cycleSeconds: fc.double(),
       panReach: f32,
@@ -195,7 +195,7 @@ const toFloat32 = (values: ArrayLike<number>): number[] =>
 function expectedFrame(content: FrameContent): Frame {
   const header = expectedHeader(content);
   const f = Math.fround;
-  const cursor = f(header.cursor);
+  const cursor = header.cursor;
   const triggerPosition = f(header.triggerPosition);
   return {
     mode: content.mode,

@@ -139,7 +139,7 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     }
   }
 
-  const cursor = f32("cursor");
+  const cursor = f64("cursor");
   const triggerPosition = f32("triggerPosition");
   return {
     mode,
