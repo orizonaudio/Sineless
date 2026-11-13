@@ -191,6 +191,9 @@ public:
         if (!view) {
             view = std::make_unique<Analyzer>(own(), registry);
             view->setColumns(kColumns);
+            if (paced) {
+                view->setClock([this] { return nanos; });
+            }
         }
         return *view;
     }
@@ -202,20 +205,8 @@ public:
         const auto frameEvery = static_cast<std::uint64_t>(std::llround(frameSeconds * rate));
         std::uint64_t sinceFrame = 0;
         for (std::uint64_t done = 0; done < total; done += kBlock) {
-            for (Track& track : tracks) {
-                fill(track.signal, position);
-                std::array<const float*, 2> channels{left.data(), right.data()};
-                track.engine->captureRing().write(channels.data(), channelCount, kBlock);
-                track.engine->timeline().advance(
-                    {.playing = playing,
-                     .positionValid = true,
-                     .quarterNotes = quarterNotesOffset +
-                                     (static_cast<double>(position) * track.tempo / (60.0 * rate)),
-                     .tempoValid = true,
-                     .tempo = track.tempo,
-                     .secondsValid = true,
-                     .seconds = secondsOffset + (static_cast<double>(position) / rate)},
-                    kBlock, rate);
+            for (std::size_t index = 0; index < tracks.size(); ++index) {
+                writeBlock(index, position);
             }
             position += kBlock;
             sinceFrame += kBlock;
@@ -223,6 +214,61 @@ public:
                 sinceFrame = 0;
                 std::vector<std::byte> frame;
                 (void)analyzer().produce(frame);
+            }
+        }
+    }
+
+    // Plays `seconds` on a simulated clock, as a host and the editor do: a block each time one
+    // falls due, stamped as the audio thread stamps it, the analysis worker's step every 2 ms and
+    // a frame at each 60 Hz draw. The analyzer paces its edge from the stamps (AD-29), so it
+    // trails the newest audio by about a block. The other tracks' blocks of each cycle arrive
+    // `lateMillis` after this track's, as when a host processes them after it; `stopInGap` ends
+    // just after this track's block, before theirs. Blocks are `block` samples (at most kBlock).
+    void playPaced(double seconds, int lateMillis = 0, bool stopInGap = false, int block = kBlock)
+    {
+        const auto blockSamples = static_cast<std::uint64_t>(block);
+        const auto steps = static_cast<int>(std::llround(seconds * 1000.0));
+        std::optional<std::pair<int, std::uint64_t>> pending; // When, and which block.
+        for (int step = 0;; ++step) {
+            nanos += 1'000'000;
+            if (pending && step >= pending->first) {
+                for (std::size_t index = 1; index < tracks.size(); ++index) {
+                    writeBlock(index, pending->second, block);
+                }
+                pending.reset();
+            }
+            while (static_cast<double>(position + blockSamples) / rate <=
+                   static_cast<double>(nanos - kPacedStart) / 1e9) {
+                if (pending) { // Their previous block first: a cycle ends before the next.
+                    for (std::size_t index = 1; index < tracks.size(); ++index) {
+                        writeBlock(index, pending->second, block);
+                    }
+                    pending.reset();
+                }
+                writeBlock(0, position, block);
+                own().blockStamp().publish(
+                    {.index = own().captureRing().endIndex(), .nanos = nanos, .paced = true});
+                if (lateMillis > 0) {
+                    pending = {step + lateMillis, position};
+                } else {
+                    for (std::size_t index = 1; index < tracks.size(); ++index) {
+                        writeBlock(index, position, block);
+                    }
+                }
+                position += blockSamples;
+                if (stopInGap && step >= steps && pending) {
+                    analyzer().advance();
+                    return;
+                }
+            }
+            if (step % 2 == 0) {
+                analyzer().advance();
+            }
+            if (step % 17 == 0) {
+                (void)analyzer().produce(bytes);
+            }
+            if (step >= steps && !stopInGap) {
+                return;
             }
         }
     }
@@ -236,6 +282,29 @@ public:
         std::vector<float> values(static_cast<std::size_t>(samples), 0.5f);
         std::array<const float*, 2> channels{values.data(), values.data()};
         tracks.at(track).engine->captureRing().write(channels.data(), channelCount, samples);
+    }
+
+    // Plays `seconds` on the simulated clock, as a host and the editor do (paced): a block each
+    // time one falls due, the analysis worker's step every 2 ms and a frame at each 60 Hz draw.
+    // The analyzer paces its edge from the blocks' stamps (AD-29), so it trails the newest audio
+    // by about a block.
+    void playPaced(double seconds)
+    {
+        const auto steps = static_cast<int>(std::llround(seconds * 1000.0));
+        const double blockSeconds = static_cast<double>(kBlock) / rate;
+        for (int step = 0; step < steps; ++step) {
+            nanos += 1'000'000;
+            while (static_cast<double>(position + kBlock) / rate <=
+                   static_cast<double>(nanos - kPacedStart) / 1e9) {
+                play(blockSeconds);
+            }
+            if (step % 2 == 0) {
+                analyzer().advance();
+            }
+            if (step % 17 == 0) {
+                (void)analyzer().produce(bytes);
+            }
+        }
     }
 
     // The next frame, if one comes within 64 ticks.
@@ -258,6 +327,10 @@ public:
     bool playing = true;             // The host transport, as play reports it.
     double secondsOffset = 0.0;      // Project time at the start, as after a tempo change earlier.
     double quarterNotesOffset = 0.0; // The song's position at the start, in quarter notes.
+    // Paced on a simulated clock (set before the first analyzer() call; see playPaced).
+    bool paced = false;
+    static constexpr std::uint64_t kPacedStart = 1'000'000'000;
+    std::uint64_t nanos = kPacedStart;
     InstanceRegistry registry;
 
 private:
@@ -268,10 +341,30 @@ private:
         double tempo = 120.0;
     };
 
-    void fill(const Signal& signal, std::uint64_t from)
+    // Writes a block of `count` samples (at most kBlock) of track `index`'s signal from host
+    // sample `at`, with its position.
+    void writeBlock(std::size_t index, std::uint64_t at, int count = kBlock)
+    {
+        Track& track = tracks.at(index);
+        fill(track.signal, at, count);
+        std::array<const float*, 2> channels{left.data(), right.data()};
+        track.engine->captureRing().write(channels.data(), channelCount, count);
+        track.engine->timeline().advance(
+            {.playing = playing,
+             .positionValid = true,
+             .quarterNotes =
+                 quarterNotesOffset + (static_cast<double>(at) * track.tempo / (60.0 * rate)),
+             .tempoValid = true,
+             .tempo = track.tempo,
+             .secondsValid = true,
+             .seconds = secondsOffset + (static_cast<double>(at) / rate)},
+            count, rate);
+    }
+
+    void fill(const Signal& signal, std::uint64_t from, int count = kBlock)
     {
         const double step = 2.0 * std::numbers::pi * signal.frequency / rate;
-        for (int i = 0; i < kBlock; ++i) {
+        for (int i = 0; i < count; ++i) {
             const auto index = static_cast<std::int64_t>(from) + i;
             double value = 0.0;
             switch (signal.kind) {
@@ -4541,21 +4634,101 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, DeepZoomSeam, ::testing::ValuesIn(everyMode(
                              return modeName(info.param);
                          });
 
-// A sample that is not finite just past the view's edge is read only as a neighbour: the trace
-// is drawn around it and the lane is not flagged as holding one, as without the reconstruction;
-// inside the view it is flagged.
-TEST(DeepZoomInvalid, FlagsOnlyWhatTheViewShows)
+// Live in Free, other tracks are sure to hold their audio only up to the paced edge (AD-29): a
+// track whose blocks come a block later than this one's has none past it yet. Zoomed in on the
+// newest samples in Multi and Compare, no lane reads past the edge as silence, so none bends
+// towards zero at its end.
+class DeepZoomLaggingLanes : public ::testing::TestWithParam<Display>
+{
+};
+
+TEST_P(DeepZoomLaggingLanes, DoNotBendTowardsSilence)
 {
     constexpr double kRate = 48000.0;
-    constexpr std::int64_t kBrokenEvery = 997;
+    Session session(kRate, 2);
+    session.paced = true;
+    session.join({.frequency = kOwnTone * kRate});
+    session.join({.frequency = kOtherTone * kRate});
+    configure(session.own(), GetParam(), TimeBase::kFree);
+    setSpan(session.own(), TimeBase::kFree, 0.5);
+    // Small blocks (64 samples, 1.3 ms), the others' a millisecond later in each cycle: the paced
+    // edge trails this track's newest audio by little more than a block.
+    constexpr int kBlockSamples = 64;
+    constexpr int kLateMillis = 1;
+    session.playPaced(3.0, kLateMillis, false, kBlockSamples); // The clock locks.
+    const double width = protocol::kMinimumViewSamples / (0.5 * kRate);
+    session.analyzer().setView(1.0 - width, 1.0);
+    // This track's newest block in, the others' not yet.
+    session.playPaced(0.05, kLateMillis, true, kBlockSamples);
+    const auto frame = session.produce();
+    ASSERT_TRUE(frame);
+    ASSERT_GT(frame->pointsPerSample, 1U);
+    // A lane's Mid rides between 0.1875 and 0.5625 (three quarters of the left channel's 0.5 offset
+    // and 0.25 swing; the sum, of two, twice that): a point far below is silence read in.
+    for (std::size_t index = 0; index < tracesIn(*frame); ++index) {
+        SCOPED_TRACE("lane " + std::to_string(index));
+        const std::span<const float> values = trace(*frame, index);
+        EXPECT_GT(*std::ranges::min_element(values), 0.15f) << "no silence read past the edge";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Lanes, DeepZoomLaggingLanes,
+                         ::testing::Values(Display::kMulti, Display::kCompare),
+                         [](const ::testing::TestParamInfo<Display>& info) {
+                             return modeName(info.param);
+                         });
+
+// Where a deep-zoom test runs: a display mode and a time base, frozen there.
+struct DeepPath
+{
+    Display mode = Display::kSingle;
+    TimeBase timeBase = TimeBase::kFree;
+};
+
+std::string nameOf(const DeepPath& path)
+{
+    return modeName(path.mode) + "_" + timeBaseName(path.timeBase);
+}
+
+// Plays a session of `path` (Beats: one bar; Free: 100 ms) and freezes it.
+std::optional<DecodedFrame> frozenSession(Session& session, const DeepPath& path)
+{
+    configure(session.own(), path.mode, path.timeBase);
+    if (path.timeBase == TimeBase::kBeats) {
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    } else {
+        setSpan(session.own(), path.timeBase, 0.1);
+    }
+    session.play(3.0, protocol::kReadoutIntervalSeconds / 2.0);
+    session.analyzer().setFrozen(true);
+    session.play(static_cast<double>(kBlock) / session.rate);
+    auto frame = session.produce();
+    if (!frame) {
+        session.analyzer().setColumns(kColumns - 1); // Forces a frame.
+        frame = session.produce();
+        session.analyzer().setColumns(kColumns);
+    }
+    return frame;
+}
+
+// A sample that is not finite just past the view's edge is read only as a neighbour: the trace
+// is drawn around it and the track is not flagged as holding one, as without the reconstruction;
+// inside the view it is flagged. On every path that flags: Single's window and sweep, Multi's and
+// Compare's lanes in Free. A Beats lane flags by 10 ms blocks of its levels (a NaN that close to
+// the view flags it already without the reconstruction), so there only the flag inside is checked.
+class DeepZoomInvalid : public ::testing::TestWithParam<DeepPath>
+{
+};
+
+TEST_P(DeepZoomInvalid, FlagsOnlyWhatTheViewShows)
+{
+    const DeepPath path = GetParam();
+    constexpr double kRate = 48000.0;
+    constexpr std::int64_t kBrokenEvery = 251; // One in every 300-sample view, none near another.
     Session session(kRate, 2);
     session.join({.frequency = kOwnTone * kRate, .brokenEvery = kBrokenEvery});
-    configure(session.own(), Display::kSingle, TimeBase::kFree);
-    setSpan(session.own(), TimeBase::kFree, 0.1);
-    session.play(1.0);
-    session.analyzer().setFrozen(true);
-    session.play(static_cast<double>(kBlock) / kRate);
-    auto frame = session.produce();
+    session.join({.frequency = kOtherTone * kRate});
+    auto frame = frozenSession(session, path);
     ASSERT_TRUE(frame);
     const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
     // A raw view of 300 samples in the middle, to find a broken sample in it.
@@ -4576,34 +4749,49 @@ TEST(DeepZoomInvalid, FlagsOnlyWhatTheViewShows)
         return session.produce();
     };
 
-    frame = viewEndingAt(at - 4.0);
-    ASSERT_TRUE(frame);
-    ASSERT_GT(frame->pointsPerSample, 1U);
-    EXPECT_TRUE(std::ranges::none_of(trace(*frame, 0), [](float v) { return std::isnan(v); }));
-    EXPECT_EQ(frame->invalidLanes & 1U, 0U) << "4 samples past the view: not on screen";
+    const bool byBlocks = isMulti(path.mode) && path.timeBase == TimeBase::kBeats;
+    if (!byBlocks) {
+        frame = viewEndingAt(at - 4.0);
+        ASSERT_TRUE(frame);
+        ASSERT_GT(frame->pointsPerSample, 1U);
+        EXPECT_TRUE(std::ranges::none_of(trace(*frame, 0), [](float v) { return std::isnan(v); }));
+        EXPECT_EQ(frame->invalidLanes & 1U, 0U) << "4 samples past the view: not on screen";
+    }
 
     frame = viewEndingAt(at + 4.0);
     ASSERT_TRUE(frame);
+    ASSERT_GT(frame->pointsPerSample, 1U);
     EXPECT_NE(frame->invalidLanes & 1U, 0U) << "on screen";
 }
 
+INSTANTIATE_TEST_SUITE_P(
+    Paths, DeepZoomInvalid,
+    ::testing::Values(DeepPath{.mode = Display::kSingle, .timeBase = TimeBase::kFree},
+                      DeepPath{.mode = Display::kSingle, .timeBase = TimeBase::kBeats},
+                      DeepPath{.mode = Display::kMulti, .timeBase = TimeBase::kFree},
+                      DeepPath{.mode = Display::kCompare, .timeBase = TimeBase::kFree},
+                      DeepPath{.mode = Display::kMulti, .timeBase = TimeBase::kBeats},
+                      DeepPath{.mode = Display::kCompare, .timeBase = TimeBase::kBeats}),
+    [](const ::testing::TestParamInfo<DeepPath>& info) { return nameOf(info.param); });
+
 // Compare's matches and summing gains measure the visible samples: reconstructing the wave
-// between them (columns enough for it) changes neither from a narrow editor's lines.
-TEST(DeepZoomCompare, MeasuresTheSameAsWithoutTheWave)
+// between them (columns enough for it) changes neither from a narrow editor's lines. In Free
+// (renderCompare) and Beats (appendComparison).
+class DeepZoomCompare : public ::testing::TestWithParam<TimeBase>
+{
+};
+
+TEST_P(DeepZoomCompare, MeasuresTheSameAsWithoutTheWave)
 {
     constexpr double kRate = 48000.0;
     const auto measure = [&](std::size_t columns) {
         Session session(kRate, 2);
         session.join({.frequency = kOwnTone * kRate});
         session.join({.frequency = kOtherTone * kRate});
-        configure(session.own(), Display::kCompare, TimeBase::kFree);
         session.analyzer().setColumns(columns);
-        setSpan(session.own(), TimeBase::kFree, 0.1);
-        session.play(1.0);
-        session.analyzer().setFrozen(true);
-        session.play(static_cast<double>(kBlock) / kRate);
-        auto frame = session.produce();
+        auto frame = frozenSession(session, {.mode = Display::kCompare, .timeBase = GetParam()});
         EXPECT_TRUE(frame);
+        session.analyzer().setColumns(columns);
         const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
         const double width = protocol::kMinimumViewSamples / spanSamples;
         session.analyzer().setView(0.5 - (width / 2.0), 0.5 + (width / 2.0));
@@ -4616,7 +4804,7 @@ TEST(DeepZoomCompare, MeasuresTheSameAsWithoutTheWave)
         return frame;
     };
     const auto wave = measure(kColumns);
-    const auto lines = measure(protocol::kMinimumViewSamples + 8);
+    const auto lines = measure(static_cast<std::size_t>(protocol::kMinimumViewSamples) + 8);
     ASSERT_TRUE(wave && lines);
     ASSERT_GT(wave->pointsPerSample, 1U);
     ASSERT_EQ(lines->pointsPerSample, 1U);
@@ -4628,6 +4816,12 @@ TEST(DeepZoomCompare, MeasuresTheSameAsWithoutTheWave)
     EXPECT_TRUE(sameValues(matchesOf(*wave), matchesOf(*lines)));
     EXPECT_TRUE(sameValues({wave->sumGain, wave->fixedGain}, {lines->sumGain, lines->fixedGain}));
 }
+
+INSTANTIATE_TEST_SUITE_P(TimeBases, DeepZoomCompare,
+                         ::testing::Values(TimeBase::kFree, TimeBase::kBeats),
+                         [](const ::testing::TestParamInfo<TimeBase>& info) {
+                             return timeBaseName(info.param);
+                         });
 
 // --- Work per frame -------------------------------------------------------------------------
 //

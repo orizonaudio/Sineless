@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocol/Protocol.h"
+
 #include <cstddef>
 #include <limits>
 #include <span>
@@ -13,8 +15,8 @@ namespace orizon::engine {
 // or a true-peak meter computes it; the samples themselves are kept exactly.
 inline constexpr std::size_t kReconstructionReach = 16;
 
-// The most points per sample: beyond this the curve between two points is already smooth.
-inline constexpr std::size_t kMaxPointsPerSample = 16;
+// The most points per sample (protocol/src/limits.ts says why).
+inline constexpr std::size_t kMaxPointsPerSample = protocol::kMaxPointsPerSample;
 
 class Reconstruction
 {

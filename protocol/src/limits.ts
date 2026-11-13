@@ -72,6 +72,13 @@ export const pacedSpanMinimumSeconds = 0.02;
 // cycles at 5 kHz).
 export const minimumViewSamples = 32;
 
+// From reconstructionColumnsPerSample screen columns a sample, the engine sends the band-limited
+// wave between the samples instead of the samples alone (below, lines and the wave look alike on
+// screen), about a point per column and at most maxPointsPerSample a sample: then a point lies
+// within a thirty-second of a sample of every crest, and the curve between points is smooth.
+export const reconstructionColumnsPerSample = 2;
+export const maxPointsPerSample = 16;
+
 // Zoomed in far enough that the wave between the samples is drawn (a raw frame of more than one
 // point per sample), each sample is marked with a dot of sampleDotRadius line widths once samples
 // stand sampleDotSpacing line widths apart on screen: closer, the dots would merge into a thicker
@@ -269,6 +276,12 @@ export const limits: readonly {
     kind: "double",
   },
   { name: "minimumViewSamples", value: minimumViewSamples, kind: "double" },
+  {
+    name: "reconstructionColumnsPerSample",
+    value: reconstructionColumnsPerSample,
+    kind: "double",
+  },
+  { name: "maxPointsPerSample", value: maxPointsPerSample, kind: "count" },
   { name: "sampleDotSpacing", value: sampleDotSpacing, kind: "double" },
   { name: "sampleDotRadius", value: sampleDotRadius, kind: "double" },
   { name: "maxLanes", value: maxLanes, kind: "count" },

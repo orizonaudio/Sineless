@@ -23,7 +23,12 @@ import {
   isValidSettingValue,
 } from "../../../protocol/src/setting-values.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
-import { frozenHoldSeconds, maxLanes } from "../../../protocol/src/limits.ts";
+import {
+  frozenHoldSeconds,
+  maxLanes,
+  maxPointsPerSample,
+  reconstructionColumnsPerSample,
+} from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
 import { clampPan, viewOrder, type ViewName } from "../view/screen-state.ts";
 import type { ControlMessage, Transport } from "./transport.ts";
@@ -679,12 +684,12 @@ export class MockTransport implements Transport {
     const sampleTime = (sample: number) =>
       timeOf(this.view.start + (sample / sampleCount) * visibleWidth);
     const minMax = sampleCount > this.columns;
-    // As the engine does (engine/src/Reconstruction.cpp): from two columns a sample, about a
-    // point per column, the wave between the samples (here the signal itself), at most 16.
+    // As the engine does (engine/src/Reconstruction.cpp): the wave between the samples (here
+    // the signal itself), about a point per column.
     const pointsPerSample =
-      minMax || this.columns < 2 * sampleCount
+      minMax || this.columns < reconstructionColumnsPerSample * sampleCount
         ? 1
-        : Math.min(16, Math.ceil(this.columns / sampleCount));
+        : Math.min(maxPointsPerSample, Math.ceil(this.columns / sampleCount));
     const pointCount = minMax
       ? this.columns
       : (sampleCount - 1) * pointsPerSample + 1;

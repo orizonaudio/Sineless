@@ -49,7 +49,7 @@ std::size_t Reconstruction::pointsPerSample(double samples, std::size_t columns)
         return 1;
     }
     const double perSample = static_cast<double>(columns) / samples;
-    if (perSample < 2.0) {
+    if (perSample < protocol::kReconstructionColumnsPerSample) {
         return 1;
     }
     return std::min(kMaxPointsPerSample, static_cast<std::size_t>(std::ceil(perSample)));

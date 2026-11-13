@@ -1074,6 +1074,7 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | `pacingDelayCapSeconds` | 0.125 s | Most a paced edge trails the newest audio (4096-sample blocks at 44.1 kHz and a third). |
 | `pacedSpanMinimumSeconds` | 0.02 s | Shorter spans are not paced (their whole trace is new every frame). |
 | `minimumViewSamples` | 32 | Narrowest zoom, in samples at every span: a few cycles of a high tone. |
+| `reconstructionColumnsPerSample`, `maxPointsPerSample` | 2, 16 | The wave between samples from two columns a sample (below, lines and wave look alike), at most 16 points a sample (a point within a thirty-second of a sample of every crest). |
 | `sampleDotSpacing`, `sampleDotRadius` | 3, 1 line widths | Samples are dotted from this spacing (closer, dots merge into a line), dots this large. |
 | `maxLanes` | 16 | Multi lanes; Compare shows one fewer. |
 | `readoutIntervalSeconds` | 0.1 s | Readout refresh. |
