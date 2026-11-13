@@ -3779,12 +3779,12 @@ TEST_P(DelayedCopy, SumsAsACopyOnceFixed)
     show(session.own().settings(), Display::kCompare);
     auto frame = playForReadouts(session, c.mode.timeBase);
     // A block at a time, until the playhead is within the delay of the sweep's edge.
-    const auto distance = static_cast<float>(std::abs(c.delay));
+    const auto distance = static_cast<double>(std::abs(c.delay));
     for (int block = 0; c.stop != Stop::kAnywhere && block < 4000; ++block) {
         ASSERT_TRUE(frame);
-        const float playhead = frame->cursor * frame->visibleSamples;
+        const double playhead = frame->cursor * frame->visibleSamples;
         if (c.stop == Stop::kAfterAWrap
-                ? playhead > 0.0f && playhead < distance
+                ? playhead > 0.0 && playhead < distance
                 : playhead < frame->visibleSamples && playhead > frame->visibleSamples - distance) {
             break;
         }
