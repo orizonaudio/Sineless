@@ -154,6 +154,7 @@ struct Signal
     float broken = std::numeric_limits<float>::quiet_NaN();
     std::int64_t brokenUntil = std::numeric_limits<std::int64_t>::max(); // Then whole again.
     bool brokenRightOnly = false;                                        // Else both channels.
+    bool brokenLeftOnly = false;                                         // Else both channels.
     // A tone's right channel: the same tone this far ahead in phase (radians), at the same
     // amplitude, instead of half the left; none if NaN.
     double rightPhase = std::numeric_limits<double>::quiet_NaN();
@@ -403,7 +404,9 @@ private:
                 if (!signal.brokenRightOnly) {
                     left.at(static_cast<std::size_t>(i)) = signal.broken;
                 }
-                right.at(static_cast<std::size_t>(i)) = signal.broken;
+                if (!signal.brokenLeftOnly) {
+                    right.at(static_cast<std::size_t>(i)) = signal.broken;
+                }
             }
         }
     }
@@ -4711,68 +4714,231 @@ std::optional<DecodedFrame> frozenSession(Session& session, const DeepPath& path
     return frame;
 }
 
-// A sample that is not finite just past the view's edge is read only as a neighbour: the trace
-// is drawn around it and the track is not flagged as holding one, as without the reconstruction;
-// inside the view it is flagged. On every path that flags: Single's window and sweep, Multi's and
-// Compare's lanes in Free. A Beats lane flags by 10 ms blocks of its levels (a NaN that close to
-// the view flags it already without the reconstruction), so there only the flag inside is checked.
-class DeepZoomInvalid : public ::testing::TestWithParam<DeepPath>
+// Which channel of this track holds the broken samples.
+enum class BrokenSide : std::uint8_t
+{
+    kBoth,
+    kLeft,
+    kRight,
+};
+
+struct InvalidCase
+{
+    DeepPath path;
+    BrokenSide channel = BrokenSide::kBoth;
+};
+
+std::string nameOf(const InvalidCase& c)
+{
+    constexpr std::array kChannels{"Both", "Left", "Right"};
+    return nameOf(c.path) + "_" + kChannels.at(static_cast<std::size_t>(c.channel));
+}
+
+// A sample that is not finite just past either edge of the view is read only as a neighbour: the
+// trace is drawn around it and the track is not flagged as holding one, as without the
+// reconstruction; just inside either edge it is flagged. On every path that flags: Single's window
+// and sweep, Multi's and Compare's lanes in Free; in Single, with the sample broken in one drawn
+// view only (L or R) as well as both. A Beats lane flags by 10 ms blocks of its levels (a NaN that
+// close to the view flags it already without the reconstruction), so there only the flag inside
+// is checked.
+class DeepZoomInvalid : public ::testing::TestWithParam<InvalidCase>
 {
 };
 
 TEST_P(DeepZoomInvalid, FlagsOnlyWhatTheViewShows)
 {
-    const DeepPath path = GetParam();
+    const InvalidCase c = GetParam();
+    const DeepPath path = c.path;
     constexpr double kRate = 48000.0;
     constexpr std::int64_t kBrokenEvery = 251; // One in every 300-sample view, none near another.
     Session session(kRate, 2);
-    session.join({.frequency = kOwnTone * kRate, .brokenEvery = kBrokenEvery});
+    session.join({.frequency = kOwnTone * kRate,
+                  .brokenEvery = kBrokenEvery,
+                  .brokenRightOnly = c.channel == BrokenSide::kRight,
+                  .brokenLeftOnly = c.channel == BrokenSide::kLeft});
     session.join({.frequency = kOtherTone * kRate});
     auto frame = frozenSession(session, path);
     ASSERT_TRUE(frame);
     const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
-    // A raw view of 300 samples in the middle, to find a broken sample in it.
+    // A raw view of 300 samples in the middle, to find a broken sample in it, in whichever trace.
     const double wide = 300.0 / spanSamples;
     session.analyzer().setView(0.5 - (wide / 2.0), 0.5 + (wide / 2.0));
     frame = session.produce();
     ASSERT_TRUE(frame);
     ASSERT_EQ(frame->pointsPerSample, 1U);
-    const std::span<const float> values = trace(*frame, 0);
+    const auto hasBroken = [](std::span<const float> values) {
+        return std::ranges::any_of(values, [](float v) { return std::isnan(v); });
+    };
+    std::size_t brokenTrace = 0;
+    while (brokenTrace < tracesIn(*frame) && !hasBroken(trace(*frame, brokenTrace))) {
+        ++brokenTrace;
+    }
+    ASSERT_LT(brokenTrace, tracesIn(*frame));
+    const std::span<const float> values = trace(*frame, brokenTrace);
     const auto broken = std::ranges::find_if(values, [](float v) { return std::isnan(v); });
-    ASSERT_NE(broken, values.end());
     // Its place in the span, in samples.
     const double at = (frame->viewStart * spanSamples) - frame->startFraction +
                       static_cast<double>(broken - values.begin());
-    const auto viewEndingAt = [&](double end) {
-        const double width = protocol::kMinimumViewSamples / spanSamples;
-        session.analyzer().setView((end / spanSamples) - width, end / spanSamples);
-        return session.produce();
+    const double width = protocol::kMinimumViewSamples / spanSamples;
+    const auto viewStartingAt = [&](double start) {
+        session.analyzer().setView(start / spanSamples, (start / spanSamples) + width);
+        auto shown = session.produce();
+        EXPECT_TRUE(shown && shown->pointsPerSample > 1U);
+        return shown;
     };
+    const auto noneBroken = [&](const DecodedFrame& shown) {
+        for (std::size_t index = 0; index < tracesIn(shown); ++index) {
+            if (hasBroken(trace(shown, index))) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const double samples = protocol::kMinimumViewSamples;
 
     const bool byBlocks = isMulti(path.mode) && path.timeBase == TimeBase::kBeats;
     if (!byBlocks) {
-        frame = viewEndingAt(at - 4.0);
+        frame = viewStartingAt(at - samples - 4.0);
         ASSERT_TRUE(frame);
-        ASSERT_GT(frame->pointsPerSample, 1U);
-        EXPECT_TRUE(std::ranges::none_of(trace(*frame, 0), [](float v) { return std::isnan(v); }));
-        EXPECT_EQ(frame->invalidLanes & 1U, 0U) << "4 samples past the view: not on screen";
+        EXPECT_TRUE(noneBroken(*frame));
+        EXPECT_EQ(frame->invalidLanes & 1U, 0U) << "4 samples past the view's right edge";
+        frame = viewStartingAt(at + 4.0);
+        ASSERT_TRUE(frame);
+        EXPECT_TRUE(noneBroken(*frame));
+        EXPECT_EQ(frame->invalidLanes & 1U, 0U) << "4 samples before the view's left edge";
     }
 
-    frame = viewEndingAt(at + 4.0);
+    frame = viewStartingAt(at - samples + 4.0);
     ASSERT_TRUE(frame);
-    ASSERT_GT(frame->pointsPerSample, 1U);
-    EXPECT_NE(frame->invalidLanes & 1U, 0U) << "on screen";
+    EXPECT_NE(frame->invalidLanes & 1U, 0U) << "on screen, at its right edge";
+    frame = viewStartingAt(at - 4.0);
+    ASSERT_TRUE(frame);
+    EXPECT_NE(frame->invalidLanes & 1U, 0U) << "on screen, at its left edge";
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    Paths, DeepZoomInvalid,
-    ::testing::Values(DeepPath{.mode = Display::kSingle, .timeBase = TimeBase::kFree},
-                      DeepPath{.mode = Display::kSingle, .timeBase = TimeBase::kBeats},
-                      DeepPath{.mode = Display::kMulti, .timeBase = TimeBase::kFree},
-                      DeepPath{.mode = Display::kCompare, .timeBase = TimeBase::kFree},
-                      DeepPath{.mode = Display::kMulti, .timeBase = TimeBase::kBeats},
-                      DeepPath{.mode = Display::kCompare, .timeBase = TimeBase::kBeats}),
-    [](const ::testing::TestParamInfo<DeepPath>& info) { return nameOf(info.param); });
+std::vector<InvalidCase> invalidCases()
+{
+    std::vector<InvalidCase> cases;
+    for (const DeepPath path :
+         {DeepPath{.mode = Display::kSingle, .timeBase = TimeBase::kFree},
+          DeepPath{.mode = Display::kSingle, .timeBase = TimeBase::kBeats},
+          DeepPath{.mode = Display::kMulti, .timeBase = TimeBase::kFree},
+          DeepPath{.mode = Display::kCompare, .timeBase = TimeBase::kFree},
+          DeepPath{.mode = Display::kMulti, .timeBase = TimeBase::kBeats},
+          DeepPath{.mode = Display::kCompare, .timeBase = TimeBase::kBeats}}) {
+        cases.push_back({.path = path});
+        if (!isMulti(path.mode)) {
+            cases.push_back({.path = path, .channel = BrokenSide::kLeft});
+            cases.push_back({.path = path, .channel = BrokenSide::kRight});
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(Paths, DeepZoomInvalid, ::testing::ValuesIn(invalidCases()),
+                         [](const ::testing::TestParamInfo<InvalidCase>& info) {
+                             return nameOf(info.param);
+                         });
+
+// Frozen, a shorter beat span shows part of the held sweep: zoomed in on it, every display mode
+// draws the wave as Single does, a point per column for the samples the view shows.
+class DeepZoomCroppedFreeze : public ::testing::TestWithParam<Display>
+{
+};
+
+TEST_P(DeepZoomCroppedFreeze, DrawsTheWaveAsAWholeSweepDoes)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.frequency = kOwnTone * kRate});
+    session.join({.frequency = kOtherTone * kRate});
+    auto frame = frozenSession(session, {.mode = GetParam(), .timeBase = TimeBase::kBeats});
+    ASSERT_TRUE(frame);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+    frame = session.produce();
+    ASSERT_TRUE(frame) << "no frame at the shorter span";
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double width = protocol::kMinimumViewSamples / spanSamples;
+    session.analyzer().setView(0.5 - (width / 2.0), 0.5 + (width / 2.0));
+    frame = session.produce();
+    ASSERT_TRUE(frame);
+    EXPECT_NEAR(frame->visibleSamples, protocol::kMinimumViewSamples, 0.01);
+    EXPECT_EQ(frame->pointsPerSample,
+              Reconstruction::pointsPerSample(frame->visibleSamples, kColumns));
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, DeepZoomCroppedFreeze, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<Display>& info) {
+                             return modeName(info.param);
+                         });
+
+// Compare's sum lane follows the view: panned at the same width, it is the sum of the lanes
+// shown there, point for point, not the place it was drawn before. Frozen, and live with the
+// host stopped (a Beats sweep that no new audio redraws).
+struct SumPannedCase
+{
+    TimeBase timeBase = TimeBase::kFree;
+    bool stopped = false; // Live, the host's transport stopped; else frozen.
+};
+
+class DeepZoomSumPanned : public ::testing::TestWithParam<SumPannedCase>
+{
+};
+
+TEST_P(DeepZoomSumPanned, SumsTheLanesShown)
+{
+    const SumPannedCase c = GetParam();
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.frequency = kOwnTone * kRate});
+    session.join({.frequency = kOtherTone * kRate});
+    std::optional<DecodedFrame> frame;
+    if (c.stopped) {
+        configure(session.own(), Display::kCompare, c.timeBase);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+        session.own().settings().set(SettingId::kAutoFreeze, 0.0);
+        session.play(3.0, protocol::kReadoutIntervalSeconds / 2.0);
+        session.playing = false;
+        session.play(0.1, protocol::kReadoutIntervalSeconds / 2.0);
+        frame = session.produce();
+        if (!frame) {
+            session.analyzer().setColumns(kColumns - 1); // Forces a frame.
+            frame = session.produce();
+            session.analyzer().setColumns(kColumns);
+        }
+    } else {
+        frame = frozenSession(session, {.mode = Display::kCompare, .timeBase = c.timeBase});
+    }
+    ASSERT_TRUE(frame);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double width = protocol::kMinimumViewSamples / spanSamples;
+    // Panned by a whole number of samples, so the part read is as long as before: only where it
+    // is changes. 101, so that neither tone repeats over it (both do over 100).
+    for (const double start : {0.3, 0.3 + (101.0 / spanSamples)}) {
+        SCOPED_TRACE(start);
+        session.analyzer().setView(start, start + width);
+        frame = session.produce();
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->laneCount, 3U);
+        ASSERT_GT(frame->pointsPerSample, 1U);
+        const std::span<const float> own = trace(*frame, 0);
+        const std::span<const float> other = trace(*frame, 1);
+        const std::span<const float> sum = trace(*frame, 2);
+        for (std::size_t k = 0; k < sum.size(); ++k) {
+            ASSERT_NEAR(sum[k], own[k] + other[k], 1e-4) << "point " << k;
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Cases, DeepZoomSumPanned,
+                         ::testing::Values(SumPannedCase{.timeBase = TimeBase::kFree},
+                                           SumPannedCase{.timeBase = TimeBase::kBeats},
+                                           SumPannedCase{.timeBase = TimeBase::kBeats,
+                                                         .stopped = true}),
+                         [](const ::testing::TestParamInfo<SumPannedCase>& info) {
+                             return timeBaseName(info.param.timeBase) +
+                                    (info.param.stopped ? "Stopped" : "Frozen");
+                         });
 
 // Compare's matches and summing gains measure the visible samples: reconstructing the wave
 // between them (columns enough for it) changes neither from a narrow editor's lines. In Free
