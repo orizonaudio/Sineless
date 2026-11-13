@@ -243,8 +243,10 @@ function gridCases() {
 //   longer, which splits it (raw points' levels are smoothed over their neighbours, which widens a
 //   gap by as much each side, so their gaps are that much shorter);
 // - "quiet": over a stretch where the tracks are quieter than cancellationQuietShare of the
-//   loudest, which is not shaded, and over the last sixth, which is.
-type CancellationShape = "third" | "gaps" | "quiet";
+//   loudest, which is not shaded, and over the last sixth, which is;
+// - "tail": from the middle to two points before the frame's end, a gap the page does not bridge,
+//   as nothing cancels after it.
+type CancellationShape = "third" | "gaps" | "quiet" | "tail";
 
 // A Compare frame of `points` columns or raw points: two related tracks and their sum, cancelling
 // as `shape` says. `visibleSamples`: a raw window's own sample count, which a fractional zoom
@@ -298,6 +300,8 @@ function compareFrame(
         );
       case "quiet":
         return quiet(point) || point > (5 * points) / 6;
+      case "tail":
+        return point > points / 2 && point < points - 2;
     }
   };
   const first = track(1);
@@ -341,6 +345,8 @@ function cancellationCases() {
       ["overlaid", "third", 48, { visibleSamples: 38.6 }],
       ["overlaid", "third", 48, { missing: true }],
       ["stacked", "gaps", 400, { pointsPerSample: 8, visibleSamples: 50 }],
+      ["stacked", "tail", 48, {}],
+      ["stacked", "tail", 400, { pointsPerSample: 8, visibleSamples: 50 }],
     ] as const) {
       if (mode === FrameMode.minMax && "pointsPerSample" in options) {
         continue; // Only raw frames carry points between samples.

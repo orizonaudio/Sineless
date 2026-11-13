@@ -4570,22 +4570,39 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, DeepZoom, ::testing::ValuesIn(deepZoomCases(
 // points between samples within a reach of it are drawn straight, so neither side rings into the
 // other, while farther away the trace is the wave. In every trace of every display mode: views,
 // lanes and Compare's sum.
-class DeepZoomSeam : public ::testing::TestWithParam<Display>
+// Live, and frozen on a shorter beat span cropped from the held bar where the playhead is in its
+// second half (the part shown starts part way into the held sweep).
+struct SeamCase
+{
+    Display mode = Display::kSingle;
+    bool croppedFreeze = false;
+};
+
+class DeepZoomSeam : public ::testing::TestWithParam<SeamCase>
 {
 };
 
 TEST_P(DeepZoomSeam, DrawsStraightAcrossThePlayhead)
 {
+    const SeamCase c = GetParam();
     constexpr double kRate = 48000.0;
     Session session(kRate, 2);
     session.join({.frequency = kOwnTone * kRate});
     session.join({.frequency = kOtherTone * kRate});
-    configure(session.own(), GetParam(), TimeBase::kBeats);
+    configure(session.own(), c.mode, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
-    session.play(3.0, protocol::kReadoutIntervalSeconds / 2.0);
+    // Three quarters into the second bar at 120 BPM.
+    session.play(3.5, protocol::kReadoutIntervalSeconds / 2.0);
     session.play(static_cast<double>(kBlock) / kRate);
     auto frame = session.produce();
     ASSERT_TRUE(frame);
+    if (c.croppedFreeze) {
+        session.analyzer().setFrozen(true);
+        ASSERT_TRUE(session.produce());
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+        frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame at the shorter span";
+    }
     ASSERT_GE(frame->cursor, 0.0f);
     const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
     const double width = 4.0 * protocol::kMinimumViewSamples / spanSamples;
@@ -4632,9 +4649,21 @@ TEST_P(DeepZoomSeam, DrawsStraightAcrossThePlayhead)
     }
 }
 
-INSTANTIATE_TEST_SUITE_P(EveryMode, DeepZoomSeam, ::testing::ValuesIn(everyMode()),
-                         [](const ::testing::TestParamInfo<Display>& info) {
-                             return modeName(info.param);
+std::vector<SeamCase> seamCases()
+{
+    std::vector<SeamCase> cases;
+    for (const bool croppedFreeze : {false, true}) {
+        for (const Display mode : everyMode()) {
+            cases.push_back({.mode = mode, .croppedFreeze = croppedFreeze});
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, DeepZoomSeam, ::testing::ValuesIn(seamCases()),
+                         [](const ::testing::TestParamInfo<SeamCase>& info) {
+                             return modeName(info.param.mode) +
+                                    (info.param.croppedFreeze ? "CroppedFreeze" : "Live");
                          });
 
 // Live in Free, other tracks are sure to hold their audio only up to the paced edge (AD-29): a
