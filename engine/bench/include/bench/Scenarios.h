@@ -136,6 +136,22 @@ inline constexpr std::array kScenarios{
         .gated = false,
     },
     Scenario{
+        .name = "compare-15-raw-crossing",
+        .description = "Compare, 15 tracks all checked, Preview fix, 16 bars at 60 BPM and "
+                       "96 kHz, zoomed in to just under a sample a column: the largest raw frames",
+        .mode = protocol::DisplayMode::kMulti,
+        .compare = true,
+        .tracks = 15,
+        .beatSpan = protocol::BeatSpan::kSixteenBars,
+        .rate = 96000.0,
+        .tempo = 60.0,
+        .compareAll = true,
+        .previewFix = true,
+        .viewStart = 0.5,
+        .viewEnd = 0.5 + (2550.0 / 6144000.0),
+        .gated = false,
+    },
+    Scenario{
         .name = "compare-15-frozen-pan",
         .description = "Compare, 15 tracks all checked, frozen over 1 s at 96 kHz, panning",
         .mode = protocol::DisplayMode::kMulti,
