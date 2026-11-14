@@ -160,6 +160,23 @@ export const mockTracks: readonly (Omit<LaneLabel, "compared"> & {
   },
 ];
 
+// A fifth track, for groups of five or more: a far microphone on the hi-hats, whose short hits
+// arrive 7 ms late and so never sound together with the kick's as they are: no correlation, and
+// still a match at that offset.
+const farHatDelay = 0.007;
+const farHat: (typeof mockTracks)[number] = {
+  id: 5,
+  name: "Hat far",
+  colour: 0x58b8a8,
+  own: false,
+  sample: (time) =>
+    0.3 *
+    decaying(time - farHatDelay, beatSeconds / 2, 900) *
+    Math.sin(2 * Math.PI * 7300 * time),
+  match: { correlation: Number.NaN, related: true, inverted: false },
+  delay: farHatDelay,
+};
+
 // A summing gain in dB from the sum's energy and the tracks' energies added, raw as the engine's
 // summingGain sends it: -Infinity when the sum cancels exactly, NaN when the tracks are silent.
 // The gain floor is the formatter's.
@@ -202,17 +219,19 @@ export interface MockOptions {
   // page. A preview version with a vendor's site by default; false sends nothing, as a page that
   // has not heard yet.
   readonly about?: Omit<AboutMessage, "type"> | false;
-  // The tracks in the group: mockTracks, then plain sines, up to maxLanes. mockTracks' four by
-  // default.
+  // The tracks in the group: mockTracks, then the far hi-hat microphone, then plain sines, up to
+  // maxLanes. mockTracks' four by default.
   readonly trackCount?: number;
 }
 
-// The group's tracks: mockTracks, then unnamed sines, one octave step apart, as many as asked.
+// The group's tracks: mockTracks, the far hi-hat, then unnamed sines, one octave step apart, as
+// many as asked.
 function groupOf(count: number): typeof mockTracks {
   return Array.from(
     { length: Math.min(maxLanes, Math.max(1, count)) },
     (_, index) =>
-      mockTracks[index] ?? {
+      mockTracks[index] ??
+      (index === mockTracks.length ? farHat : undefined) ?? {
         id: index + 1,
         name: "",
         colour: null,

@@ -202,7 +202,7 @@ export function helpTextsFor(mac: boolean) {
         },
         {
           name: "—",
-          text: "they never sound together there, or not measured yet",
+          text: "they never sound together as they are, or not measured yet",
         },
       ],
       notes: [

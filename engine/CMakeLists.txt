@@ -8,6 +8,7 @@ add_library(engine STATIC
     src/CaptureRing.cpp
     src/ChannelViews.cpp
     src/EngineRegistry.cpp
+    src/Fft.cpp
     src/FrameEncoder.cpp
     src/FramePacing.cpp
     src/FreeRunning.cpp
@@ -58,6 +59,7 @@ if(BUILD_TESTING)
         tests/CaptureRingTests.cpp
         tests/ChannelViewsTests.cpp
         tests/EngineRegistryTests.cpp
+        tests/FftTests.cpp
         tests/FrameEncoderTests.cpp
         tests/FramePacingTests.cpp
         tests/FreeRunningTests.cpp

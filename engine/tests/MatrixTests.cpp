@@ -5898,8 +5898,8 @@ TEST_P(MatchWork, SpreadsALongSearchOverFrames)
         total += work;
     }
     ASSERT_GT(total, kMatchSearchWork) << "the searches were not long enough to spread";
-    // A frame stops once its budget is spent, finishing the offset it is on: at most one
-    // offset's work (the window's length) beyond it.
+    // A frame stops once its budget is spent, finishing the block of the window it is passing
+    // over: at most a pass over the window beyond it, and never a transform it cannot pay for.
     const auto window = static_cast<std::uint64_t>(kMatchWindowSeconds * kRate);
     EXPECT_LE(most, kMatchSearchWork + window) << "a frame did a whole search's work at once";
 }
@@ -6007,7 +6007,9 @@ TEST(MatchWork, EndsTheSearchAndGainsOfAViewPannedAway)
     const AnalysisWork before = session.analyzer().work();
     ASSERT_TRUE(session.produce());
     const AnalysisWork first = workSince(before, session.analyzer().work());
-    ASSERT_GE(first.searchWork, kMatchSearchWork) << "the search ended in its first frame";
+    // A frame's search stops short of a transform its budget cannot pay for: most of the budget
+    // spent says it is still going.
+    ASSERT_GE(first.searchWork, kMatchSearchWork / 2) << "the search ended in its first frame";
     ASSERT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
         << "the gains were measured in their first frame: nothing to end";
     session.analyzer().setPan(1.0); // Back to before the copies sound.

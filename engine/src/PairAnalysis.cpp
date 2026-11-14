@@ -4,31 +4,47 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 
 namespace orizon::engine {
 
 namespace {
 
-constexpr std::size_t kDecimation = 8;
+// Which of two matches to prefer: a larger shift only if its match is more than 2% stronger. It
+// chooses between the periods of a steady tone, and between a polarity flip and a half-period
+// shift, which match alike.
 constexpr double kPreferSmallerShift = 0.98;
 // The weakest best match that still counts as the same sound arriving twice.
 constexpr double kRelatedMatch = 0.3;
 // Overlap: tracks sound together within 20 dB of each other, and above 60 dB below the loudest.
 constexpr double kTogether = 0.01;
 constexpr double kAudible = 1e-6;
+// The smallest transform of a search: smaller ones spend more of each on the overlap between
+// blocks, which makes a search over a short reach slower, not faster.
+constexpr std::size_t kSmallestTransform = std::size_t{1} << 14U;
 // A track's mean power (RMS squared) at the analysis gate: quieter blocks are never analysed.
 double silentPower()
 {
     return std::pow(10.0, protocol::kAnalysisGateDbfs / 10.0);
 }
 
+// A transform's work, in the dot product's multiply-adds: each of its size / 2 butterflies a pass
+// takes about as long as four of them (measured: 0.09 ms for 16384 points, 7.7 ms for 524288,
+// against 0.2 to 0.4 ns a multiply-add), over log2(size) passes.
+std::size_t transformWork(std::size_t size)
+{
+    return 2 * size * static_cast<std::size_t>(std::countr_zero(size));
+}
+
 // The dot product of a[0, count) and b[0, count). Eight independent float sums, so the compiler
-// can run them as vector lanes; each sums an eighth of the terms, which keeps float rounding far
-// below what a correlation needs.
+// can run them as vector lanes; each sums an eighth of the terms. Over one block of a search
+// (10 ms) their rounding stays far below what a match needs; the blocks' sums are added in
+// double.
 double dot(const float* a, const float* b, std::size_t count)
 {
     constexpr std::size_t kLanes = 8;
@@ -49,29 +65,37 @@ double dot(const float* a, const float* b, std::size_t count)
     return total;
 }
 
-// Normalised cross-correlation of a[i] with b[i + offset], over the samples both have.
-double correlationAt(std::span<const float> a, std::span<const float> b, std::ptrdiff_t offset,
-                     double norm)
+// The lag the correlation `values` points to, of lags -reach to reach (`values` holds 2 * reach
+// + 1 of them, the middle one at no shift). Which peak: from the smallest shift out, a larger
+// shift wins only if its match is clearly (more than 2%) stronger. Then that peak's top: uphill
+// from there, since the first lag within 2% of a broad peak's top lies well short of it (some
+// twenty samples on a bass note).
+std::ptrdiff_t pickPeak(std::span<const float> values)
 {
-    const auto size = static_cast<std::ptrdiff_t>(a.size());
-    const std::ptrdiff_t first = std::max<std::ptrdiff_t>(0, -offset);
-    const std::ptrdiff_t last = std::min(size, size - offset);
-    if (last <= first || norm <= 0.0) {
-        return 0.0;
-    }
-    return dot(a.data() + first, b.data() + first + offset,
-               static_cast<std::size_t>(last - first)) /
-           norm;
-}
-
-void decimate(std::span<const float> values, std::span<float> out)
-{
-    for (std::size_t i = 0; i < out.size(); ++i) {
-        float total = 0.0f;
-        for (std::size_t k = 0; k < kDecimation; ++k) {
-            total += values[i * kDecimation + k];
+    const auto reach = static_cast<std::ptrdiff_t>(values.size() / 2);
+    const auto strength = [&](std::ptrdiff_t lag) {
+        return static_cast<double>(std::abs(values[static_cast<std::size_t>(lag + reach)]));
+    };
+    std::ptrdiff_t best = 0;
+    for (std::ptrdiff_t shift = 1; shift <= reach; ++shift) {
+        for (const std::ptrdiff_t lag : {-shift, shift}) {
+            if (strength(lag) * kPreferSmallerShift > strength(best)) {
+                best = lag;
+            }
         }
-        out[i] = total / static_cast<float>(kDecimation);
+    }
+    while (true) {
+        std::ptrdiff_t higher = best;
+        if (best > -reach && strength(best - 1) > strength(higher)) {
+            higher = best - 1;
+        }
+        if (best < reach && strength(best + 1) > strength(higher)) {
+            higher = best + 1;
+        }
+        if (higher == best) {
+            return best;
+        }
+        best = higher;
     }
 }
 
@@ -113,6 +137,53 @@ std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energi
                           second[index] > silentBlock;
     }
     return together;
+}
+
+// Which blocks of one track are searched, from its energy per block of `block` samples: those
+// above the analysis gate and not more than 60 dB below its loudest. A track is gated on its own
+// for the search, not where both sound: a short hit keeps its samples however late its copy
+// arrives in the other track.
+std::vector<bool> audibleBlocks(std::span<const double> energies, std::size_t block)
+{
+    const double loudest = energies.empty() ? 0.0 : *std::ranges::max_element(energies);
+    const double silentBlock = silentPower() * static_cast<double>(block);
+    std::vector<bool> audible(energies.size());
+    for (std::size_t index = 0; index < energies.size(); ++index) {
+        audible[index] = energies[index] > kAudible * loudest && energies[index] > silentBlock;
+    }
+    return audible;
+}
+
+// Copies `count` samples of `track` from position `from` (which may lie before its start, or the
+// copy run past its end: silence there) into `into`, with silence too in the blocks of `block`
+// samples that `audible` leaves out and for samples that are not finite.
+void copyGated(std::span<const float> track, const std::vector<bool>& audible, std::size_t block,
+               std::ptrdiff_t from, std::size_t count, float* into)
+{
+    const auto length = static_cast<std::ptrdiff_t>(track.size());
+    const auto stop = from + static_cast<std::ptrdiff_t>(count);
+    const std::ptrdiff_t first = std::clamp<std::ptrdiff_t>(from, 0, length);
+    const std::ptrdiff_t last = std::clamp<std::ptrdiff_t>(stop, first, length);
+    std::fill(into, into + (first - from), 0.0f);
+    std::fill(into + (last - from), into + count, 0.0f);
+    std::ptrdiff_t position = first;
+    while (position < last) {
+        const auto index = static_cast<std::size_t>(position) / block;
+        const std::ptrdiff_t blockEnd =
+            std::min(last, static_cast<std::ptrdiff_t>((index + 1) * block));
+        float* const out = into + (position - from);
+        if (!audible[index]) {
+            std::fill(out, out + (blockEnd - position), 0.0f);
+        } else {
+            const float* const in = track.data() + position;
+            for (std::ptrdiff_t i = 0; i < blockEnd - position; ++i) {
+                // Finite, tested without a branch, so the copy runs as vector lanes.
+                const float value = in[i];
+                out[i] = std::abs(value) <= std::numeric_limits<float>::max() ? value : 0.0f;
+            }
+        }
+        position = blockEnd;
+    }
 }
 
 } // namespace
@@ -158,210 +229,285 @@ void PairSearch::start(std::span<const float> a, std::span<const float> b, std::
                        std::size_t block)
 {
     const std::size_t length = std::min(a.size(), b.size());
-    maskedA.assign(a.begin(), a.begin() + static_cast<std::ptrdiff_t>(length));
-    maskedB.assign(b.begin(), b.begin() + static_cast<std::ptrdiff_t>(length));
-    maxReach = maxOffset;
+    trackA.assign(a.begin(), a.begin() + static_cast<std::ptrdiff_t>(length));
+    trackB.assign(b.begin(), b.begin() + static_cast<std::ptrdiff_t>(length));
     blockLength = block == 0 ? std::max<std::size_t>(length, 1) : block;
     const std::size_t blocks = (length + blockLength - 1) / blockLength;
     energiesA.assign(blocks, 0.0);
     energiesB.assign(blocks, 0.0);
-    coarseA.assign(length / kDecimation, 0.0f);
-    coarseB.assign(length / kDecimation, 0.0f);
+    keptA.assign(blockLength, 0.0f);
+    keptB.assign(blockLength, 0.0f);
     cursor = 0;
-    energyA = 0.0;
-    energyB = 0.0;
-    coarseEnergyA = 0.0;
-    coarseEnergyB = 0.0;
-    dotAtNone = 0.0;
     found = {};
+
+    // The offsets searched, and a transform that holds them: `stride` samples of one track a
+    // time against those of the other and the reach either side of them, so that no offset
+    // within the reach wraps round. One block when a transform holds the whole stretch.
+    reach = static_cast<std::ptrdiff_t>(std::min(maxOffset, length / 2));
+    const std::size_t margin = 2 * static_cast<std::size_t>(reach);
+    std::size_t size = std::max(std::bit_ceil(2 * margin), kSmallestTransform);
+    if (length + margin <= size) {
+        size = std::bit_ceil(std::max<std::size_t>(length + margin, 2));
+        stride = std::max<std::size_t>(length, 1);
+    } else {
+        stride = size - margin;
+    }
+    if (fft.size() != size) {
+        fft = Fft(size);
+    }
+    real.assign(size, 0.0f);
+    imaginary.assign(size, 0.0f);
+    crossReal.assign(size, 0.0f);
+    crossImaginary.assign(size, 0.0f);
     stage = Stage::kEnergies;
 }
 
-// Two passes over the stretch, a block at a time: each track's energy per block, then, once it
-// is known where both sound, only there (elsewhere a sample of one meets silence in the other,
-// which would water the correlation down) the samples kept, measured and decimated.
-bool PairSearch::prepare(std::size_t& budget)
+void PairSearch::spend(std::size_t& budget, std::size_t cost)
 {
-    const std::size_t length = maskedA.size();
+    budget -= std::min(budget, cost);
+    done += cost;
+    progressed = true;
+}
+
+// Whether the step goes on to a transform now: always when it has done nothing yet, so that every
+// step makes progress; otherwise only with the budget for it, since a transform cannot stop
+// halfway and one begun on the last of a budget would run far beyond it.
+bool PairSearch::affords(std::size_t budget) const
+{
+    return !progressed || budget >= transformWork(fft.size());
+}
+
+// Each track's energy per block, a block at a time; then which blocks of each the search reads.
+bool PairSearch::measureEnergies(std::size_t& budget)
+{
+    const std::size_t length = trackA.size();
     const std::size_t blocks = energiesA.size();
-    const auto spend = [&](std::size_t cost) {
-        budget -= std::min(budget, cost);
-        done += cost;
-    };
-    while (stage == Stage::kEnergies) {
-        if (cursor == blocks) {
-            const std::array<std::span<const double>, 2> energies{energiesA, energiesB};
-            together = blocks == 0 ? std::vector<bool>{} : togetherBlocks(energies, blockLength);
-            cursor = 0;
-            stage = Stage::kMask;
-            break;
-        }
-        const std::size_t first = cursor * blockLength;
-        const std::size_t size = std::min(blockLength, length - first);
-        energiesA[cursor] = energyOf(std::span(maskedA).subspan(first, size));
-        energiesB[cursor] = energyOf(std::span(maskedB).subspan(first, size));
-        ++cursor;
-        spend(2 * size);
-        if (budget == 0) {
-            return false;
-        }
-    }
     while (cursor < blocks) {
         const std::size_t first = cursor * blockLength;
-        const std::size_t end = std::min(length, first + blockLength);
-        const auto from = static_cast<std::ptrdiff_t>(first);
-        const auto to = static_cast<std::ptrdiff_t>(end);
-        if (!together[cursor]) {
-            std::fill(maskedA.begin() + from, maskedA.begin() + to, 0.0f);
-            std::fill(maskedB.begin() + from, maskedB.begin() + to, 0.0f);
-        } else {
-            // A sample that is not finite (from a broken signal upstream) counts as silence in
-            // both, so the match is measured around it. Block by block, so the copy runs as
-            // vector lanes.
-            for (std::size_t i = first; i < end; ++i) {
-                // Both finite, tested without a branch: their difference is finite then, and NaN
-                // or infinite when either is not (or both are the same infinity); only values
-                // near float's largest, far beyond any audio, would overflow it.
-                const float x = maskedA[i];
-                const float y = maskedB[i];
-                const bool keep = std::abs(x - y) <= std::numeric_limits<float>::max();
-                maskedA[i] = keep ? x : 0.0f;
-                maskedB[i] = keep ? y : 0.0f;
-            }
-            const std::span<const float> keptA = std::span(maskedA).subspan(first, end - first);
-            const std::span<const float> keptB = std::span(maskedB).subspan(first, end - first);
-            energyA += energyOf(keptA);
-            energyB += energyOf(keptB);
-            dotAtNone += dot(keptA.data(), keptB.data(), keptA.size());
-        }
-        // The coarse samples whose eight samples are all kept now: from the one that straddles
-        // this block's start, whose first samples the block before kept, when a block is not a
-        // whole number of them (441 samples, at 44.1 kHz).
-        const std::size_t coarseFirst = first / kDecimation;
-        const std::size_t coarseEnd = std::min(coarseA.size(), end / kDecimation);
-        if (coarseFirst < coarseEnd) {
-            const std::size_t count = coarseEnd - coarseFirst;
-            const auto pieceA = std::span(coarseA).subspan(coarseFirst, count);
-            const auto pieceB = std::span(coarseB).subspan(coarseFirst, count);
-            decimate(std::span(maskedA).subspan(coarseFirst * kDecimation), pieceA);
-            decimate(std::span(maskedB).subspan(coarseFirst * kDecimation), pieceB);
-            coarseEnergyA += energyOf(pieceA);
-            coarseEnergyB += energyOf(pieceB);
-        }
+        const std::size_t size = std::min(blockLength, length - first);
+        energiesA[cursor] = energyOf(std::span(trackA).subspan(first, size));
+        energiesB[cursor] = energyOf(std::span(trackB).subspan(first, size));
         ++cursor;
-        spend(3 * (end - first));
+        spend(budget, 2 * size);
         if (budget == 0 && cursor < blocks) {
             return false;
         }
     }
-
-    norm = std::sqrt(energyA * energyB);
-    if (norm <= 0.0) {
-        stage = Stage::kDone;
-        return true;
-    }
-    found.measured = true;
-    found.correlation = dotAtNone / norm;
-
-    // Coarse search on decimated copies, then a fine one around the coarse match.
-    reach = static_cast<std::ptrdiff_t>(std::min(maxReach, length / 2));
-    const auto coarseReach = reach / static_cast<std::ptrdiff_t>(kDecimation);
-    coarseNorm = std::sqrt(coarseEnergyA * coarseEnergyB);
-    beginScan(scan, -coarseReach, coarseReach);
-    stage = Stage::kCoarse;
+    audibleA = audibleBlocks(energiesA, blockLength);
+    audibleB = audibleBlocks(energiesB, blockLength);
     return true;
 }
 
-void PairSearch::beginScan(Scan& scan, std::ptrdiff_t from, std::ptrdiff_t to)
+void PairSearch::beginMeasure(std::ptrdiff_t offset)
 {
-    scan = {.from = from, .to = to, .nearest = std::clamp<std::ptrdiff_t>(0, from, to)};
+    measured = {.offset = offset};
+    cursor = 0;
+    if (offset == 0) {
+        measured.shifted = energiesB;
+        measured.together = energiesA.empty() ? std::vector<bool>{} : togetherOf(measured.shifted);
+        measured.placed = true;
+    } else {
+        measured.shifted.assign(energiesA.size(), 0.0);
+    }
 }
 
-// The offset in [from, to] with the strongest match. Offsets are visited from the smallest shift
-// out, and a larger shift wins only if its match is clearly (more than 2%) stronger.
-bool PairSearch::advance(std::span<const float> a, std::span<const float> b, double scale,
-                         std::size_t& budget)
+std::vector<bool> PairSearch::togetherOf(const std::vector<double>& shifted) const
 {
-    const auto size = static_cast<std::ptrdiff_t>(a.size());
-    // One offset's cost: the samples both have at it.
-    const auto spend = [&](std::ptrdiff_t offset) {
-        const auto cost =
-            static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, size - std::abs(offset)));
-        budget -= std::min(budget, cost);
-        done += cost;
+    const std::array<std::span<const double>, 2> energies{energiesA, shifted};
+    return togetherBlocks(energies, blockLength);
+}
+
+// How the tracks match with the second shifted by the offset: over the blocks of the first where
+// both then sound (elsewhere a sample of one meets silence in the other, which would water the
+// match down), their energies and their dot product, each block's added in double. Two passes
+// when shifted: the second track's energy per block as shifted, which says where both sound,
+// then the sums.
+bool PairSearch::measure(std::size_t& budget)
+{
+    const auto length = static_cast<std::ptrdiff_t>(trackA.size());
+    const std::size_t blocks = energiesA.size();
+    // The second track's samples that meet block `index` of the first, as [from, to) of it, and
+    // how many positions of the block lie before them.
+    struct Meeting
+    {
+        std::size_t first;
+        std::size_t size;
+        std::ptrdiff_t from;
+        std::ptrdiff_t to;
     };
-    while (true) {
-        if (scan.step == 0) {
-            scan.bestOffset = scan.nearest;
-            scan.bestValue = correlationAt(a, b, scan.nearest, scale);
-            spend(scan.nearest);
-            scan.step = 1;
-        } else {
-            if (scan.nearest - scan.step < scan.from && scan.nearest + scan.step > scan.to) {
-                return true;
-            }
-            const std::ptrdiff_t offset =
-                scan.side == 0 ? scan.nearest - scan.step : scan.nearest + scan.step;
-            if (scan.side == 1) {
-                scan.side = 0;
-                ++scan.step;
-            } else {
-                scan.side = 1;
-            }
-            if (offset < scan.from || offset > scan.to) {
-                continue;
-            }
-            const double value = correlationAt(a, b, offset, scale);
-            spend(offset);
-            if (std::abs(value) * kPreferSmallerShift > std::abs(scan.bestValue)) {
-                scan.bestOffset = offset;
-                scan.bestValue = value;
+    const auto meeting = [&](std::size_t index) {
+        const std::size_t first = index * blockLength;
+        const std::size_t size = std::min(blockLength, static_cast<std::size_t>(length) - first);
+        const std::ptrdiff_t start = static_cast<std::ptrdiff_t>(first) + measured.offset;
+        const std::ptrdiff_t from = std::clamp<std::ptrdiff_t>(start, 0, length);
+        const std::ptrdiff_t to =
+            std::clamp<std::ptrdiff_t>(start + static_cast<std::ptrdiff_t>(size), from, length);
+        return Meeting{.first = first, .size = size, .from = from, .to = to};
+    };
+    if (!measured.placed) {
+        while (cursor < blocks) {
+            const Meeting met = meeting(cursor);
+            measured.shifted[cursor] = energyOf(std::span(trackB).subspan(
+                static_cast<std::size_t>(met.from), static_cast<std::size_t>(met.to - met.from)));
+            ++cursor;
+            spend(budget, met.size);
+            if (budget == 0 && cursor < blocks) {
+                return false;
             }
         }
-        if (budget == 0) {
-            return scan.nearest - scan.step < scan.from && scan.nearest + scan.step > scan.to;
+        measured.together = togetherOf(measured.shifted);
+        measured.placed = true;
+        cursor = 0;
+        if (budget == 0 && blocks > 0) {
+            return false;
         }
     }
+    while (cursor < blocks) {
+        const Meeting met = meeting(cursor);
+        if (measured.together[cursor]) {
+            // The second track's samples where they fall in the block, silence around them.
+            const std::ptrdiff_t start = static_cast<std::ptrdiff_t>(met.first) + measured.offset;
+            std::fill(keptB.begin(), keptB.begin() + static_cast<std::ptrdiff_t>(met.size), 0.0f);
+            std::copy(trackB.begin() + met.from, trackB.begin() + met.to,
+                      keptB.begin() + (met.from - start));
+            // A sample that is not finite (from a broken signal upstream) counts as silence in
+            // both, so the match is measured around it. Both finite, tested without a branch:
+            // their difference is finite then, and NaN or infinite when either is not (or both
+            // are the same infinity); only values near float's largest, far beyond any audio,
+            // would overflow it.
+            for (std::size_t i = 0; i < met.size; ++i) {
+                const float x = trackA[met.first + i];
+                const float y = keptB[i];
+                const bool keep = std::abs(x - y) <= std::numeric_limits<float>::max();
+                keptA[i] = keep ? x : 0.0f;
+                keptB[i] = keep ? y : 0.0f;
+            }
+            measured.energyA += energyOf(std::span(keptA).first(met.size));
+            measured.energyB += energyOf(std::span(keptB).first(met.size));
+            measured.dot += dot(keptA.data(), keptB.data(), met.size);
+        }
+        ++cursor;
+        spend(budget, 3 * met.size);
+        if (budget == 0 && cursor < blocks) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// One block of the cross-correlation: `stride` samples of the first track and the samples of the
+// second around them, the reach either side, as one complex signal, whose transform holds both
+// spectra; the first's conjugate times the second's is added to the running cross-spectrum.
+void PairSearch::correlateBlock(std::size_t& budget)
+{
+    const std::size_t size = fft.size();
+    const std::size_t count = std::min(stride, trackA.size() - cursor);
+    const std::size_t around = count + 2 * static_cast<std::size_t>(reach);
+    const auto first = static_cast<std::ptrdiff_t>(cursor);
+    copyGated(trackA, audibleA, blockLength, first, count, real.data());
+    std::fill(real.begin() + static_cast<std::ptrdiff_t>(count), real.end(), 0.0f);
+    copyGated(trackB, audibleB, blockLength, first - reach, around, imaginary.data());
+    std::fill(imaginary.begin() + static_cast<std::ptrdiff_t>(around), imaginary.end(), 0.0f);
+    fft.forward(real, imaginary);
+    // With z = a + j·b, Z[k] + conj(Z[N - k]) is twice a's spectrum and Z[k] - conj(Z[N - k])
+    // twice j times b's; the product's other half is its mirror image, conjugated.
+    for (std::size_t k = 0; k <= size / 2; ++k) {
+        const std::size_t mirror = (size - k) & (size - 1);
+        const float aRe = real[k] + real[mirror];
+        const float aIm = imaginary[k] - imaginary[mirror];
+        const float bRe = imaginary[k] + imaginary[mirror];
+        const float bIm = real[mirror] - real[k];
+        const float re = aRe * bRe + aIm * bIm;
+        const float im = aRe * bIm - aIm * bRe;
+        crossReal[k] += re;
+        crossImaginary[k] += im;
+        if (mirror != k) {
+            crossReal[mirror] += re;
+            crossImaginary[mirror] -= im;
+        }
+    }
+    cursor += count;
+    spend(budget, transformWork(size) + size);
 }
 
 bool PairSearch::step(std::size_t budget)
 {
-    if (stage == Stage::kEnergies || stage == Stage::kMask) {
-        if (!prepare(budget)) {
+    progressed = false;
+    if (stage == Stage::kEnergies) {
+        if (!measureEnergies(budget)) {
             return false;
         }
-        if (stage == Stage::kDone) {
+        beginMeasure(0);
+        stage = Stage::kNone;
+        if (budget == 0) {
+            return false;
+        }
+    }
+    if (stage == Stage::kNone) {
+        if (!measure(budget)) {
+            return false;
+        }
+        const double norm = std::sqrt(measured.energyA * measured.energyB);
+        if (norm > 0.0) {
+            found.measured = true;
+            found.correlation = measured.dot / norm;
+        }
+        // A track with nothing to search has no match anywhere.
+        if (std::ranges::none_of(audibleA, std::identity{}) ||
+            std::ranges::none_of(audibleB, std::identity{})) {
+            stage = Stage::kDone;
             return true;
         }
+        cursor = 0;
+        stage = Stage::kCorrelate;
         if (budget == 0) {
             return false;
         }
     }
-    if (stage == Stage::kCoarse) {
-        if (!advance(coarseA, coarseB, coarseNorm, budget)) {
+    while (stage == Stage::kCorrelate) {
+        if (!affords(budget)) {
             return false;
         }
-        const auto centre = scan.bestOffset * static_cast<std::ptrdiff_t>(kDecimation);
-        const auto span = static_cast<std::ptrdiff_t>(kDecimation);
-        beginScan(scan, std::max(-reach, centre - span), std::min(reach, centre + span));
-        stage = Stage::kFine;
+        correlateBlock(budget);
+        if (cursor >= trackA.size()) {
+            stage = Stage::kLags;
+        }
         if (budget == 0) {
             return false;
         }
     }
-    if (stage == Stage::kFine) {
-        if (!advance(maskedA, maskedB, norm, budget)) {
+    if (stage == Stage::kLags) {
+        if (!affords(budget)) {
             return false;
         }
-        finish();
+        // The correlation at each offset within the reach: the offset -reach comes out first.
+        fft.inverse(crossReal, crossImaginary);
+        spend(budget, transformWork(fft.size()));
+        const std::ptrdiff_t picked =
+            pickPeak(std::span(crossReal).first(2 * static_cast<std::size_t>(reach) + 1));
+        if (picked == 0) {
+            finish(0, found.correlation);
+            return true;
+        }
+        beginMeasure(picked);
+        stage = Stage::kMatch;
+        if (budget == 0) {
+            return false;
+        }
+    }
+    if (stage == Stage::kMatch) {
+        if (!measure(budget)) {
+            return false;
+        }
+        const double norm = std::sqrt(measured.energyA * measured.energyB);
+        finish(measured.offset, norm > 0.0 ? measured.dot / norm : 0.0);
     }
     return stage == Stage::kDone;
 }
 
-void PairSearch::finish()
+void PairSearch::finish(std::ptrdiff_t offset, double value)
 {
-    double value = scan.bestValue;
-    std::ptrdiff_t offset = scan.bestOffset;
+
     // A shift that is not clearly better than none is not worth suggesting.
     if (std::abs(value) * kPreferSmallerShift <= std::abs(found.correlation)) {
         offset = 0;

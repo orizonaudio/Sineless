@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/Fft.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -24,86 +26,92 @@ struct PairAnalysis
 };
 
 // Analyses `a` and `b` (equal length), searching offsets up to `maxOffset` samples either way.
-// Everything is measured only where both sound, in blocks of `block` samples as overlapGain
-// decides, so a track that plays briefly in a long stretch is judged where it plays. The search
-// runs coarse then fine over the whole stretch, and offsets whose match is within 2% of
-// the best prefer the smaller shift, so that a polarity
-// flip wins over a half-period shift of a steady tone. A best match whose correlation is below 0.3
-// counts as unrelated.
+// The correlation at no offset is measured only where both sound, in blocks of `block` samples as
+// overlapGain decides, so a track that plays briefly in a long stretch is judged where it plays.
+// The offset is searched at the tracks' full rate, over every offset within the reach, each track
+// gated on its own (its blocks above the analysis gate and within 60 dB of its loudest): offsets
+// whose match is within 2% of the best prefer the smaller shift, so that a polarity flip wins over
+// a half-period shift of a steady tone, and the offset is the top of the peak so chosen. The match
+// there is then measured where both sound once shifted; one whose correlation is below 0.3 counts
+// as unrelated, and one not clearly better than none suggests no shift.
 [[nodiscard]] PairAnalysis analysePair(std::span<const float> a, std::span<const float> b,
                                        std::size_t maxOffset, std::size_t block);
 
 // analysePair spread over calls, so that a long stretch's search does not stall one frame: each
-// step does about `budget` multiply-adds of it (at least one block's or one offset's), and the
-// search visits the same offsets in the same order as analysePair, so the result is the same.
-// Preparing the stretch, a few passes over it, is spread the same way, a block at a time.
+// step does about `budget` multiply-adds of it, at least one block of a pass over the stretch or
+// one transform, and whatever the budget the result is the same. The correlation over the reach
+// is taken with Fourier transforms (Fft), a block of the stretch at a time.
 class PairSearch
 {
 public:
     // Starts a search of `a` and `b` (equal length) as analysePair would, ending any search in
-    // progress. It keeps its own copies, so they may change afterwards; the steps prepare them.
+    // progress. It keeps its own copies, so they may change afterwards. It allocates what the
+    // search needs; the steps allocate nothing more but the small lists of blocks.
     void start(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
                std::size_t block);
     // Searches on for about `budget` multiply-adds. True once the result is ready.
     bool step(std::size_t budget);
     // The result, once a step has returned true.
     [[nodiscard]] const PairAnalysis& result() const { return found; }
-    // The multiply-adds done so far, preparing stretches and searching their offsets, over every
-    // search.
+    // The work done so far, in multiply-adds (a transform's counted as what it takes of them),
+    // over every search.
     [[nodiscard]] std::uint64_t work() const { return done; }
 
 private:
     enum class Stage : std::uint8_t
     {
         kIdle,
-        kEnergies, // Each track's energy per block, to find where both sound.
-        kMask,     // Keeping the samples where both sound, measuring and decimating them.
-        kCoarse,
-        kFine,
+        kEnergies,  // Each track's energy per block: where each sounds, and both.
+        kNone,      // The match at no offset.
+        kCorrelate, // The cross-spectrum, a block of the stretch at a time.
+        kLags,      // The correlation at every offset, and the peak it points to.
+        kMatch,     // The match at that offset.
         kDone,
     };
-    // Prepares on for about `budget` multiply-adds. True once the stretch is prepared.
-    bool prepare(std::size_t& budget);
-    // The offsets in [from, to], from the smallest shift out, and the strongest match so far.
-    struct Scan
+    // A match being measured: the second track shifted by `offset`, its energy per block of the
+    // first as shifted (`placed` once known), where both then sound, and the sums there.
+    struct Measure
     {
-        std::ptrdiff_t from = 0;
-        std::ptrdiff_t to = 0;
-        std::ptrdiff_t nearest = 0;
-        std::ptrdiff_t step = 0; // 0: `nearest` itself is next.
-        int side = 0;            // Of nearest - step, then nearest + step.
-        std::ptrdiff_t bestOffset = 0;
-        double bestValue = 0.0;
+        std::ptrdiff_t offset = 0;
+        std::vector<double> shifted{};
+        std::vector<bool> together{};
+        bool placed = false;
+        double energyA = 0.0;
+        double energyB = 0.0;
+        double dot = 0.0;
     };
-    static void beginScan(Scan& scan, std::ptrdiff_t from, std::ptrdiff_t to);
-    // Scans on in `a` and `b`, normalised by `scale`, for about `budget` multiply-adds. True
-    // once every offset was visited.
-    bool advance(std::span<const float> a, std::span<const float> b, double scale,
-                 std::size_t& budget);
-    void finish();
+    void spend(std::size_t& budget, std::size_t cost);
+    [[nodiscard]] bool affords(std::size_t budget) const;
+    // Each goes on for about `budget` multiply-adds; true once done.
+    bool measureEnergies(std::size_t& budget);
+    bool measure(std::size_t& budget);
+    void beginMeasure(std::ptrdiff_t offset);
+    [[nodiscard]] std::vector<bool> togetherOf(const std::vector<double>& shifted) const;
+    void correlateBlock(std::size_t& budget);
+    void finish(std::ptrdiff_t offset, double value);
 
     Stage stage = Stage::kIdle;
-    std::vector<float> maskedA; // The tracks as given, then as kept.
-    std::vector<float> maskedB;
-    std::vector<float> coarseA;
-    std::vector<float> coarseB;
-    std::size_t maxReach = 0;
+    std::vector<float> trackA;
+    std::vector<float> trackB;
     std::size_t blockLength = 0;
-    std::size_t cursor = 0; // The next block to prepare.
+    std::size_t cursor = 0; // The next block of a pass, or the next sample to correlate.
     std::vector<double> energiesA;
     std::vector<double> energiesB;
-    std::vector<bool> together;
-    double energyA = 0.0;
-    double energyB = 0.0;
-    double coarseEnergyA = 0.0;
-    double coarseEnergyB = 0.0;
-    double dotAtNone = 0.0;
+    std::vector<bool> audibleA; // The blocks of each track the search reads.
+    std::vector<bool> audibleB;
+    std::vector<float> keptA; // One block of each, as measured.
+    std::vector<float> keptB;
+    Measure measured;
     std::ptrdiff_t reach = 0;
-    double norm = 0.0;
-    double coarseNorm = 0.0;
-    Scan scan;
+    std::size_t stride = 0; // Samples of the first track a transform takes.
+    Fft fft{2};             // The smallest there is, until start() makes the one a search takes.
+    std::vector<float> real;
+    std::vector<float> imaginary;
+    std::vector<float> crossReal;
+    std::vector<float> crossImaginary;
     PairAnalysis found;
     std::uint64_t done = 0;
+    bool progressed = false; // This step has done some work already.
 };
 
 // The energy of `values`: the sum of their squares.
