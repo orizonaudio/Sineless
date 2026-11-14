@@ -1,6 +1,10 @@
 // The oscilloscope UI: wires the controls, screen and readouts to the backend and
 // the settings store. Controls show only engine-reported values and send requests.
-import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
+import {
+  ChannelView,
+  CompareLane,
+  ViewLayout,
+} from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   leftOutAlpha,
@@ -389,6 +393,8 @@ export class OscilloscopeApp {
   private hiddenTracks = 0;
   private drawnLaneCount = 0;
   private drawnLaneSet = 0;
+  // What the last frame's Compare lane was (the sum or the difference): its label follows it.
+  private drawnCompareLane: CompareLane | undefined;
   private viewSummary: string | undefined;
   // The Views field's names for screen readers, Single's and Multi's: the button carries the
   // current mode's.
@@ -1054,8 +1060,17 @@ export class OscilloscopeApp {
     }
     if (name === "displayMode" || name === "compare") {
       this.updateMultiControls();
-      // Preview fix is Compare's; it resets when Compare leaves the screen.
-      if (!this.compareMode() && this.previewFix) {
+    }
+    if (
+      name === "displayMode" ||
+      name === "compare" ||
+      name === "compareLane"
+    ) {
+      // Preview fix is the sum's; it resets when the sum leaves the screen, with Compare or for
+      // the difference.
+      const sumShown =
+        this.compareMode() && this.store.get("compareLane") !== "difference";
+      if (!sumShown && this.previewFix) {
         this.previewFix = false;
         this.backend.previewFix(false);
       }
@@ -1277,13 +1292,17 @@ export class OscilloscopeApp {
       this.laneSets.get(frame?.laneSet ?? 0) ??
       this.laneSets.get(this.latestLaneSet) ??
       [];
-    // A Compare frame's last lane is the sum of the compared tracks.
+    // A Compare frame's last lane is the sum of the compared tracks, or their difference, as the
+    // frame says.
     if (frame?.comparison !== undefined && styles.length > 0) {
       styles = [
         ...styles,
         {
           id: sumLaneId,
-          name: "Sum",
+          name:
+            frame.comparison.lane === CompareLane.difference
+              ? "Difference"
+              : "Sum",
           colour: sumLaneColour,
           own: false,
           compared: false,
@@ -1321,6 +1340,7 @@ export class OscilloscopeApp {
       styles,
       comparing,
       this.previewFix,
+      frame?.comparison?.lane,
       this.layout(),
       height,
       this.compareMode() && frame !== undefined,
@@ -1361,18 +1381,43 @@ export class OscilloscopeApp {
       node.style.setProperty("--swatch", cssColour(style.colour));
       node.classList.toggle("own", style.own);
       if (style.id === sumLaneId) {
-        const gain = document.createElement("span");
-        gain.className = "lane-readout";
-        gain.dataset["help"] = "sumGain";
-        this.sumNode = gain;
-        const preview = button("Preview fix", "previewFix", () => {
-          this.previewFix = !this.previewFix;
-          this.backend.previewFix(this.previewFix);
-          this.placeLaneLabels();
-        });
-        preview.className = "preview-fix";
-        preview.setAttribute("aria-pressed", String(this.previewFix));
-        node.append(style.name, gain, preview);
+        // What the lane shows, which the frame says: the sum (Σ) or the difference (Δ), each
+        // with its figure; the sum with Preview fix. The pair chooses between them.
+        const difference = frame?.comparison?.lane === CompareLane.difference;
+        const choice = document.createElement("span");
+        choice.className = "compare-lane";
+        choice.setAttribute("role", "group");
+        choice.setAttribute("aria-label", "Compare shows");
+        for (const [value, name] of [
+          ["sum", "Sum"],
+          ["difference", "Difference"],
+        ] as const) {
+          const symbol = choiceLabels.compareLane[value];
+          const pick = button(symbol, "compareLane", () => {
+            this.request("compareLane", value);
+          });
+          pick.setAttribute("aria-label", name);
+          pick.setAttribute(
+            "aria-pressed",
+            String(difference === (value === "difference")),
+          );
+          choice.append(pick);
+        }
+        const figure = document.createElement("span");
+        figure.className = "lane-readout";
+        figure.dataset["help"] = difference ? "nullDepth" : "sumGain";
+        this.sumNode = figure;
+        node.append(style.name, choice, figure);
+        if (!difference) {
+          const preview = button("Preview fix", "previewFix", () => {
+            this.previewFix = !this.previewFix;
+            this.backend.previewFix(this.previewFix);
+            this.placeLaneLabels();
+          });
+          preview.className = "preview-fix";
+          preview.setAttribute("aria-pressed", String(this.previewFix));
+          node.append(preview);
+        }
         return node;
       }
       if (!compareMode) {
@@ -1476,9 +1521,17 @@ export class OscilloscopeApp {
       node.textContent = `${alignment} · ${measured ? signed(match.correlation, 2) : "—"}`;
     });
     if (this.sumNode !== undefined && comparison !== undefined) {
-      const gain = this.previewFix ? comparison.fixedGain : comparison.sumGain;
-      this.sumNode.textContent = formatGain(gain);
-      this.sumNode.className = `lane-readout ${gain < -summingMarginDb ? "cancels" : gain > summingMarginDb ? "reinforces" : ""}`;
+      if (comparison.lane === CompareLane.difference) {
+        // How deep the difference nulls against this track: a level, neither good nor bad.
+        this.sumNode.textContent = formatGain(comparison.nullDepth);
+        this.sumNode.className = "lane-readout";
+      } else {
+        const gain = this.previewFix
+          ? comparison.fixedGain
+          : comparison.sumGain;
+        this.sumNode.textContent = formatGain(gain);
+        this.sumNode.className = `lane-readout ${gain < -summingMarginDb ? "cancels" : gain > summingMarginDb ? "reinforces" : ""}`;
+      }
     }
   }
 
@@ -2461,11 +2514,15 @@ export class OscilloscopeApp {
       if (this.laneCount() !== this.drawnLaneCount) {
         this.drawScreen();
         this.placeCursors();
-      } else if (frame.laneSet !== this.drawnLaneSet) {
+      } else if (
+        frame.laneSet !== this.drawnLaneSet ||
+        frame.comparison?.lane !== this.drawnCompareLane
+      ) {
         this.placeLaneLabels();
         this.placeTriggerMarker();
       }
       this.drawnLaneSet = frame.laneSet;
+      this.drawnCompareLane = frame.comparison?.lane;
       this.statusDue();
     });
     this.backend.on("error", (message) => {

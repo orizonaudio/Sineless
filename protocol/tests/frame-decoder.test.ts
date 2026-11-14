@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { ChannelView, FrameMode } from "../src/enums.ts";
+import { ChannelView, CompareLane, FrameMode } from "../src/enums.ts";
 import { decodeFrame } from "../src/frame-decoder.ts";
 import { frameHeader } from "../src/frame.ts";
 
@@ -68,8 +68,10 @@ describe("frame decoder", () => {
       goldenLanes.lanes,
     );
     expect(frame.comparison).toEqual({
+      lane: CompareLane.sum,
       sumGain: goldenLanes.header.sumGain,
       fixedGain: goldenLanes.header.fixedGain,
+      nullDepth: Number.NaN, // A sum has none.
       matches: goldenLanes.matches,
     });
   });

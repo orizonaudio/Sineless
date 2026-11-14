@@ -1,5 +1,5 @@
 // Decodes a display frame encoded in the layout of frame.ts (little-endian).
-import { ChannelView, FrameMode } from "./enums.ts";
+import { ChannelView, CompareLane, FrameMode } from "./enums.ts";
 import {
   FrameFlag,
   frameHeader,
@@ -63,8 +63,12 @@ export interface Frame {
 }
 
 export interface Comparison {
+  // What the last lane is: the compared tracks' sum, or this track minus the others.
+  readonly lane: CompareLane;
   readonly sumGain: number;
   readonly fixedGain: number;
+  // A difference frame: the difference's level against this track's, in dB; NaN otherwise.
+  readonly nullDepth: number;
   // One per track lane, in lane order; zeros for tracks not compared and for this track.
   readonly matches: readonly Match[];
 }
@@ -177,7 +181,16 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     lanes,
     laneSet: u32("laneSet"),
     comparison: compared
-      ? { sumGain: f32("sumGain"), fixedGain: f32("fixedGain"), matches }
+      ? {
+          lane:
+            u32("compareLane") === CompareLane.difference
+              ? CompareLane.difference
+              : CompareLane.sum,
+          sumGain: f32("sumGain"),
+          fixedGain: f32("fixedGain"),
+          nullDepth: f32("nullDepth"),
+          matches,
+        }
       : undefined,
   };
 }

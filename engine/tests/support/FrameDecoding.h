@@ -38,6 +38,8 @@ struct DecodedFrame
     std::uint32_t pointsPerSample = 1;
     float sumGain = 0.0f;
     float fixedGain = 0.0f;
+    protocol::CompareLane compareLane = protocol::CompareLane::kSum;
+    float nullDepth = 0.0f;
     std::vector<float> data;
 
     [[nodiscard]] bool has(protocol::FrameFlag value) const
@@ -83,6 +85,9 @@ inline DecodedFrame decode(const std::vector<std::byte>& bytes)
         get<std::uint32_t>(bytes, protocol::FrameHeader::kPointsPerSampleOffset);
     frame.sumGain = get<float>(bytes, protocol::FrameHeader::kSumGainOffset);
     frame.fixedGain = get<float>(bytes, protocol::FrameHeader::kFixedGainOffset);
+    frame.compareLane = static_cast<protocol::CompareLane>(
+        get<std::uint32_t>(bytes, protocol::FrameHeader::kCompareLaneOffset));
+    frame.nullDepth = get<float>(bytes, protocol::FrameHeader::kNullDepthOffset);
     frame.data.resize((bytes.size() - protocol::FrameHeader::kSize) / sizeof(float));
     if (!frame.data.empty()) { // A frame of no points: no data to copy from or to.
         std::memcpy(frame.data.data(), bytes.data() + protocol::FrameHeader::kSize,

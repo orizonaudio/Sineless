@@ -2,7 +2,11 @@
 // the vertical scale, and the cancellation shading of Compare frames as clip-space triangles
 // (x, y pairs; 6 per quad). Pure functions, unit-tested without a GPU; the traces themselves are
 // built by the renderer's shaders on the same rules.
-import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
+import {
+  CompareLane,
+  FrameMode,
+  ViewLayout,
+} from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
   cancellationBridgedPoints,
@@ -201,7 +205,15 @@ export function cancellationBands(
     frame.comparison?.matches.some(
       (match, index) => compared[index] === true && match.related,
     ) === true;
-  if (frame.comparison === undefined || !sum || tracks.length < 2 || !related) {
+  // The difference is not a sum: where it falls below a track, the tracks agree, which is the
+  // point of it, not a problem to mark.
+  if (
+    frame.comparison === undefined ||
+    frame.comparison.lane === CompareLane.difference ||
+    !sum ||
+    tracks.length < 2 ||
+    !related
+  ) {
     return new Float32Array();
   }
   const levelSum = cancellationLevels(frame, sum);

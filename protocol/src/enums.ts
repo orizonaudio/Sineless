@@ -89,6 +89,11 @@ export type GridDensity = (typeof GridDensity)[keyof typeof GridDensity];
 export const BeatDivision = { regular: 0, triplets: 1 } as const;
 export type BeatDivision = (typeof BeatDivision)[keyof typeof BeatDivision];
 
+// What the last lane of Compare shows: the sum of the checked tracks, or the difference, this
+// track minus the other checked tracks (FR-15.8).
+export const CompareLane = { sum: 0, difference: 1 } as const;
+export type CompareLane = (typeof CompareLane)[keyof typeof CompareLane];
+
 // Every enumeration, by name, for code generation.
 export const enums = {
   ChannelView,
@@ -104,5 +109,6 @@ export const enums = {
   GridType,
   GridDensity,
   BeatDivision,
+  CompareLane,
 } as const;
 export type EnumName = keyof typeof enums;

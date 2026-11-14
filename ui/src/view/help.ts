@@ -138,9 +138,9 @@ export function helpTextsFor(mac: boolean) {
     },
     compare: {
       title: "Compare",
-      lead: "In Multi, sums the tracks you check and measures how each lines up with this one.",
+      lead: "In Multi, adds the checked tracks' sum or difference and measures each against this one.",
       notes: [
-        `In beta. The sum takes a lane, so Multi then shows at most ${lanesCompare} tracks.`,
+        `In beta. It takes a lane, so Multi then shows at most ${lanesCompare} tracks.`,
         "It stays on or off as you leave Multi and come back, and is saved with the project.",
       ],
     },
@@ -185,6 +185,40 @@ export function helpTextsFor(mac: boolean) {
       ],
       notes: [
         `Measured over the visible part, only where two or more sound together above ${gate} dBFS.`,
+      ],
+    },
+    compareLane: {
+      title: "Compare shows",
+      lead: "What Compare's last lane shows of the checked tracks.",
+      choices: [
+        { name: "Σ", text: "their sum: what they do together in a mix" },
+        {
+          name: "Δ",
+          text: "this track minus the others: what differs, as an effect between two instances adds or takes away",
+        },
+      ],
+      notes: [
+        "Open the instance after the effect to read after minus before.",
+        "Saved with the project.",
+      ],
+    },
+    nullDepth: {
+      title: "Null depth",
+      lead: "How loud the difference is against this track.",
+      choices: [
+        { name: "−∞ dB", text: "the tracks are identical" },
+        { name: "Deep", text: "they differ little" },
+        {
+          name: "Near 0 dB",
+          text: "they are unrelated, or far apart in level or time",
+        },
+        {
+          name: "—",
+          text: "they never sound together, or nothing is measured yet",
+        },
+      ],
+      notes: [
+        `Measured over the visible part, only where this track and another sound together above ${gate} dBFS.`,
       ],
     },
     match: {
@@ -654,6 +688,7 @@ export const choiceHelp: {
   triggerMode: { topic: "trigger" },
   group: { exempt: "letters A to D, which say nothing to explain one by one" },
   compare: { exempt: "an on/off switch, whose topic says what on does" },
+  compareLane: { topic: "compareLane" },
   laneLabels: { exempt: "an on/off switch, whose topic says what on does" },
   autoFreeze: { exempt: "an on/off switch, whose topic says what on does" },
   hoverReadout: { exempt: "an on/off switch, whose topic says what on does" },

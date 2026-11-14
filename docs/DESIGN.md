@@ -125,6 +125,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-15.5 | Each checked lane label shows its offset, polarity (Ø) and correlation ("—" for a correlation not measured, beside an offset when there is one); the sum label shows the summing gain and Preview fix, which redraws the sum as if every checked track were shifted and flipped as suggested, with the new summing gain measured only where every shifted track has audio. Preview fix is temporary. | |
 | FR-15.6 | The sum lane is shaded where its peak is more than 3 dB below the louder compared track's, when at least one checked track is related to this one; very quiet stretches (about 26 dB below the loudest) are not shaded, and gaps of three columns or less are bridged. | `trace-geometry.test.ts` |
 | FR-15.7 | Freeze, zoom, cursors and every time base work as in Multi without Compare. | |
+| FR-15.8 | The difference: the last lane shows either the sum of the checked tracks (Σ) or their difference (Δ), this track minus the other checked tracks, sample by sample; a pair of buttons on the lane's label chooses, saved with the project (`compareLane`), and the frame says which the lane is, which the label follows (its name, "Sum" or "Difference", and its figure). With an instance before an effect and one after it, the difference seen from the one after is what the effect added or took away. Its figure is the null depth: the difference's level against this track's, in dB, over the visible part, counting only 10 ms blocks where this track and another checked track sound together (as the summing gain judges it); −∞ when they cancel exactly, "—" when they never sound together or only this track is checked. The summing gains, the cancelling shading (FR-15.6) and Preview fix are the sum's: they are not measured, drawn or offered while the difference shows, and Preview fix resets when the difference takes the sum's place. Whichever of the two is not on show is not kept up to date, so the difference costs no more than the sum; it is measured afresh over a few frames when it comes back (FR-15.1). The Views field shows Σ either way: there it stands for Compare. | `MatrixTests` (`Difference`, `ReturningSum`), `PairAnalysisTests` (`NullDepth`), `ui/tests/app/compare-difference.test.ts`, `recorded-compare-difference.test.ts` |
 | FR-16 | Hover readout and measuring extras. | `hover.test.ts`, `musical-grid.test.ts` |
 | FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace (stacked, the lane under the pointer; overlaid, the readout channel, 1.2.1) shows beside it the trace's name, the position (bar.beat.sixteenth, the sixteenth shown on whole beats too, and project time in Beats; time from the trigger point when triggered; time back from the right edge when free-running), the peak level there, and the cycle around the pointer: its length and its frequency and note, one row each, a row with no value "—". The readout is placed at whole pixels. Cycles are found from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`), only where a neighbouring cycle lasts within 15% of it (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and marked approximate (≈), its note's cents included. A frequency outside the audible range, 20 Hz to 20 kHz (`lowestAudibleHz`, `highestAudibleHz`), here and at the time cursors, reads "—" and has no note. A dotted line marks the point read and a band the cycle. | |
 | FR-16.2 | Beats-mode grid labels (when the grid type draws labels: Ticks, Grid) carry the project time under bar.beat. | |
@@ -157,6 +158,7 @@ against it and the UI builds its controls from it.
 | Display mode | Single, Multi | Single |
 | Group | A, B, C, D | A |
 | Compare (applies in Multi; kept in Single) | Off, on | Off |
+| Compare shows (the last lane; kept with Compare off and in Single, FR-15.8) | Sum, difference | Sum |
 | Lane labels (Multi; always shown with Compare on) | Off, on | On |
 | Hover readout | Off, on | Off |
 | Meter | Off, on | Off |
@@ -283,7 +285,9 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 - Lane labels at the top of each stacked lane, or as a legend when overlaid: a dot in the lane's
   colour, the name (with its number among its track's instances, FR-14.3), and "this track" on the
   own track. Compare, when on, adds check-box swatches, match
-  readouts, the sum's gain (yellow where tracks cancel), and Preview fix. Labels Off hides them,
+  readouts, and on the last lane's label its name (Sum or Difference), the Σ | Δ pair that
+  chooses between them (FR-15.8), then the sum's gain (yellow where tracks cancel) and Preview
+  fix, or the difference's null depth. Labels Off hides them,
   stacked and overlaid, except with Compare on, whose controls they hold.
 - A trace waiting for a trigger is dimmed.
 
@@ -1033,13 +1037,13 @@ incompatible change.
   stay with their traces although the two travel separately.
 
 **Frames** (binary, little-endian; the reply to `fetch("orizon://ui/frame")`): a fixed header
-(`frameHeaderFields` in `protocol/src/frame.ts`, 120 bytes), then float32 data.
+(`frameHeaderFields` in `protocol/src/frame.ts`, 128 bytes), then float32 data.
 
 | Part | Contents |
 | --- | --- |
-| Header | mode (min/max or raw), flags, views, lane count, point count; view start and end, cycle start (quarter notes), cycle seconds and the sweep cursor as float64, precise at a view of a few samples late in a song or a long sweep; start fraction; peak, RMS; span and bar in quarter notes; visible samples; lane set; summing gain and fixed gain; pan reach; invalid sample count and lane mask; sample rate; span seconds; readout and trigger views; trigger position; points per sample. |
+| Header | mode (min/max or raw), flags, views, lane count, point count; view start and end, cycle start (quarter notes), cycle seconds and the sweep cursor as float64, precise at a view of a few samples late in a song or a long sweep; start fraction; peak, RMS; span and bar in quarter notes; visible samples; lane set; summing gain and fixed gain; pan reach; invalid sample count and lane mask; sample rate; span seconds; readout and trigger views; trigger position; points per sample; what a Compare frame's last lane is (the sum or the difference) and the difference's null depth. |
 | Flags | triggered, frozen, freeRunning, synced, limited, compared, partial (shown as "Filling" live, "Partial" frozen). |
-| Data | Per view (Single) or per lane (Multi, Compare; the sum last): min/max pairs or raw points. A raw frame with more than one point per sample carries the wave between its samples: every `pointsPerSample`th point, from the first, is a sample. Compare frames then carry correlation, offset and polarity for each track. |
+| Data | Per view (Single) or per lane (Multi, Compare; the sum or the difference last): min/max pairs or raw points. A raw frame with more than one point per sample carries the wave between its samples: every `pointsPerSample`th point, from the first, is a sample. Compare frames then carry correlation, offset and polarity for each track. |
 
 For example, a Compare frame with three tracks has four lanes (the sum last): 4 × point count × 2
 floats of min/max pairs, then 3 × 3 match values.
@@ -1064,7 +1068,7 @@ Shared limits (`protocol/src/limits.ts`, generated into the C++ header; the file
 | Name | Value | What it is |
 | --- | --- | --- |
 | `levelFloorDbfs` | −120 dBFS | Level readouts show −∞ at or below. |
-| `gainFloorDb` | −140 dB | Summing gains show −∞ at or below. |
+| `gainFloorDb` | −140 dB | Summing gains, and the difference's null depth, show −∞ at or below. |
 | `analysisGateDbfs` | −90 dBFS | Analysis ignores audio at or below. |
 | `crossingHysteresis` | 0.1 | Of peak-to-peak, for finding cycles. |
 | `periodTolerance` | 0.15 | A cycle under the hover is steady when a neighbouring cycle lasts within this fraction of it. |
@@ -1300,9 +1304,10 @@ not reused.
 | Single | A display mode (one track, its channel views) and, separately, a trigger mode (capture one triggered frame, then freeze). Always qualified. |
 | Span | The time the full screen width shows: seconds, or a beat span. |
 | Span limited | A span shortened to what can be kept: a beat span stepped down, or shortened at 1/8 bar, because its sweep would exceed the cap, or a Free span longer than the capture or the freeze holds. |
-| Sum lane | The lane Compare adds to Multi, with the sample-by-sample sum of the checked tracks. |
+| Sum lane | The lane Compare adds to Multi, with the sample-by-sample sum of the checked tracks. It shows the checked tracks' difference instead when asked (FR-15.8). |
 | Trigger | The time base whose window is placed by the trigger; labelled "Trig" in the UI. Also the toolbar's field for the trigger's settings. |
 | Summing gain | The level of the checked tracks' sum against the level they would give if unrelated, in dB. |
+| Null depth | The level of the difference of the checked tracks (this track minus the others) against this track's, in dB: how completely they cancel. |
 | Sweep | The Beats display: written left to right by a playhead, cycle after cycle. |
 | View (zoom) | The visible part of the span, after zoom and pan. |
 

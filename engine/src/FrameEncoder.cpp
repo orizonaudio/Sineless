@@ -50,6 +50,8 @@ void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewDat
     put(output, Layout::kTriggerViewOffset, static_cast<std::uint32_t>(header.triggerView));
     put(output, Layout::kTriggerPositionOffset, header.triggerPosition);
     put(output, Layout::kPointsPerSampleOffset, header.pointsPerSample);
+    put(output, Layout::kCompareLaneOffset, static_cast<std::uint32_t>(header.compareLane));
+    put(output, Layout::kNullDepthOffset, header.nullDepth);
     if (!viewData.empty()) {
         std::memcpy(output.data() + Layout::kSize, viewData.data(), viewData.size_bytes());
     }

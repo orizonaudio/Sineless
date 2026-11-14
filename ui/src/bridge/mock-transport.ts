@@ -5,6 +5,7 @@ import {
   BeatSpan,
   beatSpanQuarterNotes,
   ChannelView,
+  CompareLane,
   FrameMode,
 } from "../../../protocol/src/enums.ts";
 import type { Match } from "../../../protocol/src/frame-decoder.ts";
@@ -817,7 +818,15 @@ export class MockTransport implements Transport {
             total + (fix ? (track.fixed ?? track.sample) : track.sample)(time),
           0,
         );
-      lanes.push(points(sum(this.previewFix)));
+      // The last lane as the setting asks: the checked tracks' sum, or this track minus the
+      // other checked ones.
+      const showsDifference = this.setting("compareLane") === "difference";
+      const difference = (time: number) =>
+        compared.reduce(
+          (total, track) => total + (track.own ? 1 : -1) * track.sample(time),
+          0,
+        );
+      lanes.push(points(showsDifference ? difference : sum(this.previewFix)));
       // Summing gains over the window, from a few thousand samples.
       const gain = (fix: boolean) => {
         let together = 0;
@@ -833,9 +842,23 @@ export class MockTransport implements Transport {
         }
         return mockSummingGain(together, apart);
       };
+      // The difference's level against this track's, over the window: its null depth.
+      const depth = () => {
+        let left = 0;
+        let own = 0;
+        const stride = Math.max(1, Math.floor(sampleCount / 4096));
+        for (let sample = 0; sample < sampleCount; sample += stride) {
+          const time = sampleTime(sample);
+          left += difference(time) ** 2;
+          own += kick(time) ** 2;
+        }
+        return compared.length < 2 ? Number.NaN : mockSummingGain(left, own);
+      };
       comparison = {
-        sumGain: gain(false),
-        fixedGain: gain(true),
+        lane: showsDifference ? CompareLane.difference : CompareLane.sum,
+        sumGain: showsDifference ? Number.NaN : gain(false),
+        fixedGain: showsDifference ? Number.NaN : gain(true),
+        nullDepth: showsDifference ? depth() : Number.NaN,
         matches: this.groupTracks().map((track) =>
           track.own || !comparedIds.includes(track.id)
             ? noMatch

@@ -36,6 +36,10 @@ std::optional<FrameView> FrameView::read(std::span<const std::byte> bytes)
     frame.viewEnd = field<double>(bytes, FrameHeader::kViewEndOffset);
     frame.visibleSamples = field<float>(bytes, FrameHeader::kVisibleSamplesOffset);
     frame.pointsPerSample = field<std::uint32_t>(bytes, FrameHeader::kPointsPerSampleOffset);
+    frame.compareLane = field<std::uint32_t>(bytes, FrameHeader::kCompareLaneOffset) ==
+                                static_cast<std::uint32_t>(protocol::CompareLane::kDifference)
+                            ? protocol::CompareLane::kDifference
+                            : protocol::CompareLane::kSum;
     const auto viewMask = field<std::uint8_t>(bytes, FrameHeader::kViewsOffset);
     const auto laneCount = field<std::uint8_t>(bytes, FrameHeader::kLaneCountOffset);
 

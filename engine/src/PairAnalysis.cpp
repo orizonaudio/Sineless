@@ -656,6 +656,47 @@ bool GainMeasure::step(std::size_t budget)
     return stage == Stage::kDone;
 }
 
+double GainMeasure::depth(std::size_t reference) const
+{
+    if (tracks.size() < 2 || block == 0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return nullDepthOfBlocks(spansOf(energies), sums, block, reference);
+}
+
+double nullDepthOfBlocks(std::span<const std::span<const double>> tracks,
+                         std::span<const double> sums, std::size_t block, std::size_t reference)
+{
+    if (tracks.size() < 2 || reference >= tracks.size()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    // The loudest of the other tracks per block: with the reference, the two whose sounding
+    // together is judged.
+    const std::span<const double> own = tracks[reference];
+    std::vector<double> others(own.size(), 0.0);
+    for (std::size_t track = 0; track < tracks.size(); ++track) {
+        if (track == reference) {
+            continue;
+        }
+        for (std::size_t index = 0; index < others.size(); ++index) {
+            others[index] = std::max(others[index], tracks[track][index]);
+        }
+    }
+    const std::array<std::span<const double>, 2> pair{own, others};
+    const std::vector<bool> together = togetherBlocks(pair, block);
+    double difference = 0.0;
+    double level = 0.0;
+    for (std::size_t index = 0; index < together.size(); ++index) {
+        if (together[index]) {
+            difference += sums[index];
+            level += own[index];
+        }
+    }
+    // The same ratio as a summing gain's, of the difference to this track alone: raw, with no
+    // floor, so that an exact null is -infinity.
+    return summingGain(difference, level);
+}
+
 double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
                            std::span<const double> sums, std::size_t block)
 {

@@ -37,6 +37,10 @@ struct FrameHeaderValues
     // Compare frames (flag kCompared): the summing gain of the compared tracks, and with the fix.
     float sumGain = 0.0f;
     float fixedGain = 0.0f;
+    // What a Compare frame's last lane is, and, for the difference, how deep it nulls against
+    // this track in dB (NaN when not measured, and in every other frame).
+    protocol::CompareLane compareLane = protocol::CompareLane::kSum;
+    float nullDepth = std::numeric_limits<float>::quiet_NaN();
     // Frozen in Trigger or Free: how far back the view can be panned, in seconds; 0 otherwise.
     float panReach = 0.0f;
     // Samples not finite: how many in what the readouts measure, and a bit per lane holding any.

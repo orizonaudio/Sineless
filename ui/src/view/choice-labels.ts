@@ -3,6 +3,7 @@
 // value names: a value added there is a type error here until it has a label.
 import type {
   BeatDivision,
+  CompareLane,
   DisplayMode,
   GridDensity,
   GridType,
@@ -23,6 +24,8 @@ export const choiceLabels: {
   readonly gridDensity: Labels<typeof GridDensity>;
   readonly beatDivision: Labels<typeof BeatDivision>;
   readonly triggerSlope: Labels<typeof TriggerSlope>;
+  // On the last lane's label, not in a popover: the mathematical signs, as the Views field has Σ.
+  readonly compareLane: Labels<typeof CompareLane>;
 } = {
   displayMode: { single: "Single", multi: "Multi" },
   timeBase: { beats: "Beats", free: "Free", trigger: "Trig" },
@@ -32,4 +35,5 @@ export const choiceLabels: {
   gridDensity: { coarse: "Coarse", medium: "Medium", fine: "Fine" },
   beatDivision: { regular: "Regular", triplets: "Triplets" },
   triggerSlope: { rising: "Rising", falling: "Falling" },
+  compareLane: { sum: "Σ", difference: "Δ" },
 };

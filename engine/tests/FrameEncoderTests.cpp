@@ -61,6 +61,8 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .laneSet = header["laneSet"].get<std::uint32_t>(),
         .sumGain = header["sumGain"].get<float>(),
         .fixedGain = header["fixedGain"].get<float>(),
+        .compareLane = static_cast<protocol::CompareLane>(header["compareLane"].get<int>()),
+        .nullDepth = floatOf(header["nullDepth"]),
         .panReach = header["panReach"].get<float>(),
         .invalidSamples = header["invalidSamples"].get<std::uint32_t>(),
         .invalidLanes = header["invalidLanes"].get<std::uint32_t>(),

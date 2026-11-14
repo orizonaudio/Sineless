@@ -213,6 +213,29 @@ TEST(TraceGeometry, ShadesNothingWithoutARelatedComparedTrack)
     EXPECT_TRUE(cancellationBands(frame, protocol::ViewLayout::kStacked, {true, true}, {}).empty());
 }
 
+// The difference of the compared tracks is not shaded, as on the page: where it is small the
+// tracks agree. The same frame, as a sum, is.
+TEST(TraceGeometry, ShadesNothingInTheDifference)
+{
+    const nlohmann::json& entry = vectors().at("cancellation").at(0);
+    std::vector<std::vector<float>> data;
+    for (const nlohmann::json& lane : entry.at("lanes")) {
+        data.push_back(laneValues(lane));
+    }
+    FrameView frame;
+    frame.mode = protocol::FrameMode::kMinMax;
+    frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kCompared);
+    frame.pointCount = entry.at("pointCount").get<std::uint32_t>();
+    for (const auto& lane : data) {
+        frame.lanes.emplace_back(lane);
+    }
+    frame.related = {false, true};
+    ASSERT_FALSE(
+        cancellationBands(frame, protocol::ViewLayout::kStacked, {true, true}, {}).empty());
+    frame.compareLane = protocol::CompareLane::kDifference;
+    EXPECT_TRUE(cancellationBands(frame, protocol::ViewLayout::kStacked, {true, true}, {}).empty());
+}
+
 // Drawn natively, the playhead moves by fractions of a pixel: at any position its coverage over
 // the pixels it touches adds up to its width, and it sits centred where it should, so neither its
 // brightness nor its place steps with the pixel grid.

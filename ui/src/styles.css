@@ -713,6 +713,34 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-ink-2);
 }
 
+/* The last lane's choice of sum or difference: a pair of switches joined in one control, the one
+   on show filled light; concentric in the chip, as the label's other buttons are. */
+.lane-label .compare-lane {
+  gap: 0;
+  background: var(--sl-control);
+  border-radius: 6px;
+  box-shadow: var(--sl-rim);
+}
+
+.lane-label .compare-lane button {
+  min-width: 20px;
+  font-weight: 600;
+  border: 0;
+}
+
+.lane-label .compare-lane button:hover {
+  background: var(--sl-control-hover);
+}
+
+.lane-label .compare-lane button[aria-pressed="true"] {
+  color: var(--sl-on-selected);
+  background: var(--sl-selected);
+}
+
+.lane-label .compare-lane button[aria-pressed="true"]:focus-visible {
+  box-shadow: inset 0 0 0 4px var(--sl-case);
+}
+
 /* A switch like the bars': a capsule in the control fill and rim, the light fill when on, padded as
    the label's other buttons. */
 .lane-label .preview-fix {

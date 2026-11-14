@@ -135,6 +135,16 @@ private:
 [[nodiscard]] double overlapGainOfBlocks(std::span<const std::span<const double>> tracks,
                                          std::span<const double> sums, std::size_t block);
 
+// How deep a difference nulls, in dB: the level of `sums`, the tracks' sum per block (a difference
+// when the other tracks are negated in it), against that of track `reference`, over the blocks
+// where the reference and at least one other track sound together (the rule overlapGain judges
+// by, between the reference and the loudest other). -infinity when the sum is silent there (it
+// cancels exactly); NaN for fewer than two tracks and when they never sound together: nothing to
+// measure.
+[[nodiscard]] double nullDepthOfBlocks(std::span<const std::span<const double>> tracks,
+                                       std::span<const double> sums, std::size_t block,
+                                       std::size_t reference);
+
 // overlapGain measured in steps, a pass over one track at a time, so that the gain of many long
 // tracks can be spread over frames. The tracks must stay as they are until it ends.
 class GainMeasure
@@ -146,6 +156,10 @@ public:
     bool step(std::size_t budget);
     // The gain, once a step has returned true.
     [[nodiscard]] double result() const { return gain; }
+    // The null depth of the tracks' sum against track `reference` (nullDepthOfBlocks), once a
+    // step has returned true: the tracks given being this track and the others negated, their sum
+    // is the difference.
+    [[nodiscard]] double depth(std::size_t reference) const;
     // The samples passed over so far, over every measurement.
     [[nodiscard]] std::uint64_t work() const { return done; }
 
