@@ -71,6 +71,7 @@ if(BUILD_TESTING)
         tests/PairAnalysisTests.cpp
         tests/ReadoutsTests.cpp
         tests/ReconstructionTests.cpp
+        tests/ColumnWaveTests.cpp
         tests/ReducerTests.cpp
         tests/SettingsTests.cpp
         tests/SignalCorpusTests.cpp

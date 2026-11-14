@@ -34,6 +34,7 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
                        0.0f);
         placedEnd = 0;
         placedSinceBuild = 0;
+        joinPositions.clear();
         changed.clear();
         markChanged(0, count);
     }
@@ -85,6 +86,21 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
     }
     placedEnd = static_cast<std::uint64_t>(end);
     placedSinceBuild += total;
+    // The joins: the run's start where it does not continue the newest pass, the run's end, and
+    // none left inside the run.
+    const auto positionOf = [&](std::int64_t index) {
+        const std::int64_t fromCycle = (index - cycleStart) % signedCount;
+        return static_cast<std::uint64_t>(fromCycle < 0 ? fromCycle + signedCount : fromCycle);
+    };
+    const std::uint64_t runStart = positionOf(first);
+    const bool continues = !joinPositions.empty() && joinPositions.front() == runStart;
+    std::erase_if(joinPositions, [&](std::uint64_t join) {
+        return total >= count || (join + count - runStart) % count < total;
+    });
+    if (!continues && total < count) {
+        joinPositions.push_back(runStart);
+    }
+    joinPositions.insert(joinPositions.begin(), positionOf(end));
     return true;
 }
 
@@ -94,6 +110,7 @@ void SweepImage::clear()
     count = 0;
     placedEnd = 0;
     placedSinceBuild = 0;
+    joinPositions.clear();
     changed.clear();
     samples.clear();
     samples.shrink_to_fit();
