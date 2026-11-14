@@ -3,7 +3,7 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 
-import { ChannelView, FrameMode } from "../src/enums.ts";
+import { ChannelView, CompareLane, FrameMode } from "../src/enums.ts";
 import { decodeFrame, type Frame } from "../src/frame-decoder.ts";
 import { encodeFrame, type FrameContent } from "../src/frame-encoder.ts";
 import {
@@ -100,8 +100,10 @@ const contentArbitrary: fc.Arbitrary<FrameContent> = fc
       laneSet: u32,
       comparison: compared
         ? fc.record({
+            lane: fc.constantFrom(...Object.values(CompareLane)),
             sumGain: f32,
             fixedGain: f32,
+            nullDepth: f32,
             matches: fc.array(
               fc.record({
                 correlation: f32,
@@ -157,6 +159,8 @@ function expectedHeader(
     laneSet: content.laneSet ?? 0,
     sumGain: content.comparison?.sumGain ?? 0,
     fixedGain: content.comparison?.fixedGain ?? 0,
+    compareLane: content.comparison?.lane ?? CompareLane.sum,
+    nullDepth: content.comparison?.nullDepth ?? Number.NaN,
     cycleSeconds: content.cycleSeconds ?? 0,
     panReach: content.panReach ?? 0,
     invalidSamples: content.invalidSamples ?? 0,
@@ -245,8 +249,10 @@ function expectedFrame(content: FrameContent): Frame {
       content.comparison === undefined
         ? undefined
         : {
+            lane: content.comparison.lane ?? CompareLane.sum,
             sumGain: f(content.comparison.sumGain),
             fixedGain: f(content.comparison.fixedGain),
+            nullDepth: f(content.comparison.nullDepth ?? Number.NaN),
             matches: content.comparison.matches.map((match) => ({
               correlation: f(match.correlation),
               related: match.related,

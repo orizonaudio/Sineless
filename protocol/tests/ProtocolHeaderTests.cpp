@@ -47,7 +47,9 @@ TEST(ProtocolHeader, LaysOutTheFrameHeaderWithNaturalAlignment)
     EXPECT_EQ(FrameHeader::kTriggerViewOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kTriggerPositionOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kPointsPerSampleOffset % 4, 0u);
-    EXPECT_EQ(FrameHeader::kSize, 120u);
+    EXPECT_EQ(FrameHeader::kCompareLaneOffset % 4, 0u);
+    EXPECT_EQ(FrameHeader::kNullDepthOffset % 4, 0u);
+    EXPECT_EQ(FrameHeader::kSize, 128u);
     EXPECT_EQ(kMatchValues, 3u);
 }
 

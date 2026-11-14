@@ -263,6 +263,12 @@ void assignNoMatches(std::vector<float>& values, std::size_t lanes)
     }
 }
 
+// A part's gain as a whole number for a sum's key: its bits, so that any change of it is one.
+std::int64_t gainKey(float gain)
+{
+    return std::bit_cast<std::int32_t>(gain);
+}
+
 // How many positions of a sum of `parts` tracks to recompute per frame, as one of `shares`
 // recomputations under way together, which share the frame's kSumRefreshSamples.
 std::size_t refreshStep(std::size_t parts, std::size_t shares)
@@ -2250,6 +2256,7 @@ void Analyzer::buildParts()
 {
     rawParts.clear();
     fixedParts.clear();
+    differenceParts.clear();
     for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
         const std::uint64_t serial = laneOrder[lane];
         if (!lanes.at(serial)->compared) {
@@ -2258,11 +2265,47 @@ void Analyzer::buildParts()
         SumPart fixed{.lane = lane};
         if (const auto found = matchStates.find(serial); found != matchStates.end()) {
             fixed.offset = found->second.analysis.offset;
-            fixed.sign = found->second.analysis.inverted ? -1.0f : 1.0f;
+            fixed.gain = found->second.analysis.inverted ? -1.0f : 1.0f;
         }
         rawParts.push_back({.lane = lane});
         fixedParts.push_back(fixed);
+        differenceParts.push_back({.lane = lane, .gain = serial == ownLane ? 1.0f : -1.0f});
     }
+}
+
+bool Analyzer::differenceShown() const
+{
+    return frameSettings.enumValue<protocol::CompareLane>(SettingId::kCompareLane) ==
+           protocol::CompareLane::kDifference;
+}
+
+const std::vector<Analyzer::SumPart>& Analyzer::shownParts(bool previewFix) const
+{
+    // Preview fix is the sum's: the difference is drawn as it is.
+    return differenceShown() ? differenceParts : previewFix ? fixedParts : rawParts;
+}
+
+std::size_t Analyzer::ownPart(const std::vector<SumPart>& parts) const
+{
+    const auto own = std::ranges::find_if(
+        parts, [&](const SumPart& part) { return laneOrder[part.lane] == ownLane; });
+    return static_cast<std::size_t>(own - parts.begin());
+}
+
+void Analyzer::followLane()
+{
+    const protocol::CompareLane lane =
+        differenceShown() ? protocol::CompareLane::kDifference : protocol::CompareLane::kSum;
+    if (comparisonCache.lane == lane) {
+        return;
+    }
+    // The other lane's figures are not this one's: none until they are measured, at once.
+    comparisonCache.lane = lane;
+    comparisonCache.valid = false;
+    comparisonCache.sumGain = std::numeric_limits<float>::quiet_NaN();
+    comparisonCache.fixedGain = std::numeric_limits<float>::quiet_NaN();
+    comparisonCache.nullDepth = std::numeric_limits<float>::quiet_NaN();
+    gainJob.active = false;
 }
 
 void Analyzer::packMatches()
@@ -2362,7 +2405,7 @@ void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, st
         readLaneImage(part.lane, length, static_cast<std::uint64_t>(from), sumScratch);
         for (std::ptrdiff_t i = begin; i < stop; ++i) {
             into[static_cast<std::size_t>(i)] +=
-                part.sign * sumScratch[static_cast<std::size_t>(i - begin)];
+                part.gain * sumScratch[static_cast<std::size_t>(i - begin)];
         }
     }
 }
@@ -2540,14 +2583,24 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
         spreadStepped ? std::exchange(searchEnded, false) : continueMatchSearch(liveRate);
 
     buildParts();
+    followLane();
+    // The lane on show decides which sums are kept: the sum's as recorded and as fixed, with each
+    // shifted track's levels, or the difference's. The others are left as they are, and redone
+    // when their lane comes back (Kept).
+    const bool difference = differenceShown();
     // What the incremental sums were built from: a change of tracks, shifts or signs starts them
     // afresh.
     rawSumKey.assign({static_cast<std::int64_t>(length)});
     fixedSumKey.assign({static_cast<std::int64_t>(length)});
+    differenceKey.assign({static_cast<std::int64_t>(length)});
+    for (const SumPart& part : differenceParts) {
+        differenceKey.insert(differenceKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]),
+                                                   part.offset, gainKey(part.gain)});
+    }
     for (const SumPart& fixed : fixedParts) {
         const auto serial = static_cast<std::int64_t>(laneOrder[fixed.lane]);
         rawSumKey.push_back(serial);
-        fixedSumKey.insert(fixedSumKey.end(), {serial, fixed.offset, fixed.sign < 0.0f ? 1 : 0});
+        fixedSumKey.insert(fixedSumKey.end(), {serial, fixed.offset, gainKey(fixed.gain)});
     }
     // Each track the fix shifts: its levels per block as shifted, which the fixed gain weighs the
     // fixed sum against. A track it does not shift (or no longer compared) keeps none pending, and
@@ -2562,7 +2615,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
     };
     for (const std::uint64_t serial : laneOrder) {
         Lane& lane = *lanes.at(serial);
-        if (const SumPart* const part = shiftedPart(serial)) {
+        if (const SumPart* const part = difference ? nullptr : shiftedPart(serial)) {
             lane.fixedKey.assign({static_cast<std::int64_t>(length), part->offset});
             if (!lane.fixedStats.fits(length, block) && lane.stats.fits(length, block)) {
                 lane.fixedStats = lane.stats;
@@ -2576,13 +2629,13 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
 
     // The sum lane, with its parts as previewed. Its geometry: the span and visible part, and the
     // columns; its key: each part as summed.
-    const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
+    const std::vector<SumPart>& parts = shownParts(previewFix);
     sumGeometry.assign({static_cast<std::int64_t>(length), static_cast<std::int64_t>(drawFirst),
                         static_cast<std::int64_t>(drawEnd), static_cast<std::int64_t>(columns)});
     sumKey.clear();
     for (const SumPart& part : parts) {
         sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
-                                     part.sign < 0.0f ? 1 : 0});
+                                     gainKey(part.gain)});
     }
     const std::size_t visibleCount = drawEnd - drawFirst;
     const bool sumRebuilt = sumGeometry != lastSumGeometry ||
@@ -2596,7 +2649,9 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
                    ? 1U
                    : 0U;
     };
-    std::size_t shares = pending(rawSumStats, rawSumRefresh, rawSumKey, rawSumKept) +
+    std::size_t shares =
+        difference ? pending(differenceStats, differenceRefresh, differenceKey, differenceKept)
+                   : pending(rawSumStats, rawSumRefresh, rawSumKey, rawSumKept) +
                          pending(fixedSumStats, fixedSumRefresh, fixedSumKey, fixedSumKept);
     for (const std::uint64_t serial : laneOrder) {
         const Lane& lane = *lanes.at(serial);
@@ -2610,10 +2665,15 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
 
     // Measured again beyond this frame's changes: the gains follow, so they settle as the
     // recomputation ends.
-    const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, rawSumKept,
-                                            rawParts, 0, length, block, shares);
-    bool fixedMeasured = updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey, fixedSumKept,
-                                        fixedParts, maxOffset, length, block, shares);
+    const bool differenceMeasured =
+        difference && updateSumStats(differenceStats, differenceRefresh, differenceKey,
+                                     differenceKept, differenceParts, 0, length, block, shares);
+    const bool rawMeasured =
+        !difference && updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, rawSumKept, rawParts,
+                                      0, length, block, shares);
+    bool fixedMeasured =
+        !difference && updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey, fixedSumKept,
+                                      fixedParts, maxOffset, length, block, shares);
     for (const std::uint64_t serial : laneOrder) {
         Lane& lane = *lanes.at(serial);
         if (lane.fixedKey.empty()) {
@@ -2628,7 +2688,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
     // The matches' values and the gains, when due.
     const auto gainInterval =
         static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * liveRate);
-    if (searched || rawMeasured || fixedMeasured || !comparisonCache.valid ||
+    if (searched || rawMeasured || fixedMeasured || differenceMeasured || !comparisonCache.valid ||
         gainsDueByTime(now, gainInterval)) {
         packMatches();
         // The sum as recorded over the visible part; the fix where every shifted track has
@@ -2648,14 +2708,23 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
             fixedRanges[1].first = std::clamp(seamEnd, fixedFirst, fixedEnd);
         }
         const std::array<Positions, 1> visible{Positions{.first = first, .end = end}};
-        collectEnergies(visible, length, block, rawParts, rawSumStats, trackEnergies, energySpans,
-                        sumEnergies);
-        collectEnergies(fixedRanges, length, block, fixedParts, fixedSumStats, fixedTrackEnergies,
-                        fixedEnergySpans, fixedSumEnergies);
-        comparisonCache.sumGain =
-            static_cast<float>(overlapGainOfBlocks(energySpans, sumEnergies, block));
-        comparisonCache.fixedGain =
-            static_cast<float>(overlapGainOfBlocks(fixedEnergySpans, fixedSumEnergies, block));
+        if (difference) {
+            // How deep the difference nulls against this track, over the visible part; the sum's
+            // gains are not measured while it is not shown.
+            collectEnergies(visible, length, block, differenceParts, differenceStats, trackEnergies,
+                            energySpans, sumEnergies);
+            comparisonCache.nullDepth = static_cast<float>(
+                nullDepthOfBlocks(energySpans, sumEnergies, block, ownPart(differenceParts)));
+        } else {
+            collectEnergies(visible, length, block, rawParts, rawSumStats, trackEnergies,
+                            energySpans, sumEnergies);
+            collectEnergies(fixedRanges, length, block, fixedParts, fixedSumStats,
+                            fixedTrackEnergies, fixedEnergySpans, fixedSumEnergies);
+            comparisonCache.sumGain =
+                static_cast<float>(overlapGainOfBlocks(energySpans, sumEnergies, block));
+            comparisonCache.fixedGain =
+                static_cast<float>(overlapGainOfBlocks(fixedEnergySpans, fixedSumEnergies, block));
+        }
         comparisonCache.at = now;
         comparisonCache.valid = true;
     }
@@ -2692,7 +2761,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
             sumRefresh.remaining = visibleCount;
             sumRefresh.cursor = 0;
         }
-        const std::size_t reach = previewFix ? maxOffset : 0;
+        const std::size_t reach = previewFix && !difference ? maxOffset : 0;
         for (const SweepImage::Range& range : frameChanges) {
             const std::uint64_t from =
                 std::max<std::uint64_t>(range.first > reach ? range.first - reach : 0, drawFirst);
@@ -2715,6 +2784,8 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
     header.flags = static_cast<std::uint8_t>(header.flags | flag(FrameFlag::kCompared));
     header.sumGain = comparisonCache.sumGain;
     header.fixedGain = comparisonCache.fixedGain;
+    header.compareLane = comparisonCache.lane;
+    header.nullDepth = comparisonCache.nullDepth;
 }
 
 template <typename Read>
@@ -2734,7 +2805,7 @@ bool Analyzer::addPartFrom(const Read& read, const SumPart& part, std::size_t po
     const bool held = read(part.lane, static_cast<std::uint64_t>(from), sumScratch);
     for (std::ptrdiff_t i = begin; i < stop; ++i) {
         into[static_cast<std::size_t>(i)] +=
-            part.sign * sumScratch[static_cast<std::size_t>(i - begin)];
+            part.gain * sumScratch[static_cast<std::size_t>(i - begin)];
     }
     return held;
 }
@@ -2785,9 +2856,18 @@ bool Analyzer::stepGainJob()
             samples.resize(gainJob.visibleCount);
             readJobWindow(lane, gainJob.first, samples);
             std::vector<float>& fixed = fixedLanes[lane];
-            fixed.assign(gainJob.fixedEnd - gainJob.fixedFirst, 0.0f);
-            addPartFrom(readJobWindow, gainJob.fixed[part], gainJob.fixedFirst, gainJob.count,
-                        fixed);
+            if (gainJob.difference) {
+                // The part as the difference has it (another track negated); nothing as fixed.
+                const float gain = gainJob.raw[part].gain;
+                for (float& sample : samples) {
+                    sample *= gain;
+                }
+                fixed.clear();
+            } else {
+                fixed.assign(gainJob.fixedEnd - gainJob.fixedFirst, 0.0f);
+                addPartFrom(readJobWindow, gainJob.fixed[part], gainJob.fixedFirst, gainJob.count,
+                            fixed);
+            }
             budget -= std::min(budget, samples.size() + fixed.size());
             continue;
         }
@@ -2812,12 +2892,18 @@ bool Analyzer::stepGainJob()
         }
         gainJob.measuring = false;
         const auto gain = static_cast<float>(gainJob.measure.result());
-        if (gainJob.measured == 0) {
+        if (gainJob.measured == 0 && !gainJob.difference) {
             gainJob.sumGain = gain;
             gainJob.measured = 1;
         } else {
-            comparisonCache.sumGain = gainJob.sumGain;
-            comparisonCache.fixedGain = gain;
+            // The difference: its depth against this track, and no gains; the sum: its gains as
+            // recorded and as fixed, and no depth.
+            const float none = std::numeric_limits<float>::quiet_NaN();
+            comparisonCache.sumGain = gainJob.difference ? none : gainJob.sumGain;
+            comparisonCache.fixedGain = gainJob.difference ? none : gain;
+            comparisonCache.nullDepth =
+                gainJob.difference ? static_cast<float>(gainJob.measure.depth(gainJob.reference))
+                                   : none;
             comparisonCache.tracks = gainJob.tracks;
             // A match that ended meanwhile is measured next: due at once, frozen too.
             comparisonCache.valid = !gainJob.stale;
@@ -2931,6 +3017,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         spreadStepped ? std::exchange(searchEnded, false) : continueMatchSearch(liveRate);
 
     buildParts();
+    followLane();
+    const bool difference = differenceShown();
 
     // The matches' values when due, and the summing gains over the visible part: measured over
     // the next frames (kGainReadWork samples read in each), of the window as it was when they
@@ -2958,8 +3046,10 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             gainJob.visibleCount = visibleCount;
             gainJob.fixedFirst = fixedFirst;
             gainJob.fixedEnd = fixedEnd;
-            gainJob.raw = rawParts;
+            gainJob.raw = difference ? differenceParts : rawParts;
             gainJob.fixed = fixedParts;
+            gainJob.difference = difference;
+            gainJob.reference = ownPart(gainJob.raw);
             gainJob.next = 0;
             gainJob.measured = 0;
             gainJob.measuring = false;
@@ -2986,6 +3076,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
                 // labels, the last stays shown.
                 comparisonCache.sumGain = std::numeric_limits<float>::quiet_NaN();
                 comparisonCache.fixedGain = std::numeric_limits<float>::quiet_NaN();
+                comparisonCache.nullDepth = std::numeric_limits<float>::quiet_NaN();
             }
         }
     }
@@ -3032,11 +3123,11 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
 
     // The sum lane, its parts as previewed. Rolling, it keeps its columns too, through a reader
     // that adds the parts, for as long as the parts stay the same.
-    const std::vector<SumPart>& parts = previewFix ? fixedParts : rawParts;
+    const std::vector<SumPart>& parts = shownParts(previewFix);
     sumKey.assign({static_cast<std::int64_t>(count), static_cast<std::int64_t>(columns)});
     for (const SumPart& part : parts) {
         sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
-                                     part.sign < 0.0f ? 1 : 0});
+                                     gainKey(part.gain)});
     }
     // Rolled columns are kept by the audio's own positions, which nothing rewrites: only other
     // parts make them stale, not a frame that left them out.
@@ -3082,6 +3173,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     header.flags = static_cast<std::uint8_t>(header.flags | flag(FrameFlag::kCompared));
     header.sumGain = comparisonCache.sumGain;
     header.fixedGain = comparisonCache.fixedGain;
+    header.compareLane = comparisonCache.lane;
+    header.nullDepth = comparisonCache.nullDepth;
 
     // Readouts measure this track's lane channel over the whole span, at most every 100 ms of
     // audio.

@@ -297,6 +297,16 @@ std::vector<Scenario> scenarios()
          .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn}, {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
+        // Compare showing the difference: the other track is this one at half its level, so the
+        // difference is this track at half, 6 dB below it.
+        {.name = "CompareDifference_48k",
+         .tracks = {stereo(hiss), stereo(engine::scaled(hiss, 0.5))},
+         .names = {"Noise", "Half as loud"},
+         .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn},
+                      {SettingId::kCompareLane,
+                       static_cast<double>(protocol::CompareLane::kDifference)},
+                      {SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.1}},
+         .steps = {play(1.0)}},
         // The other track silent: the two never sound together, so nothing is measured (NaN).
         {.name = "CompareOtherSilent_48k", .tracks = {stereo(hiss), stereo(silence())},
          .names = {"Noise", "Silent"},
@@ -500,15 +510,15 @@ bool near(double approved, double actual)
 // The header's integer fields, compared exactly, and its float64 fields; every other header word
 // is a float32.
 constexpr std::array kIntegerWords{
-    FrameHeader::kPointCountOffset,     FrameHeader::kLaneSetOffset,
-    FrameHeader::kInvalidSamplesOffset, FrameHeader::kInvalidLanesOffset,
-    FrameHeader::kReadoutViewOffset,    FrameHeader::kTriggerViewOffset,
-    FrameHeader::kPointsPerSampleOffset};
+    FrameHeader::kPointCountOffset,      FrameHeader::kLaneSetOffset,
+    FrameHeader::kInvalidSamplesOffset,  FrameHeader::kInvalidLanesOffset,
+    FrameHeader::kReadoutViewOffset,     FrameHeader::kTriggerViewOffset,
+    FrameHeader::kPointsPerSampleOffset, FrameHeader::kCompareLaneOffset};
 constexpr std::array kDoubleWords{FrameHeader::kViewStartOffset, FrameHeader::kViewEndOffset,
                                   FrameHeader::kCycleStartOffset, FrameHeader::kCycleSecondsOffset,
                                   FrameHeader::kCursorOffset};
 constexpr std::size_t kByteFields = 4; // mode, flags, views, laneCount.
-static_assert(FrameHeader::kSize == 120,
+static_assert(FrameHeader::kSize == 128,
               "the frame header changed: say here which of its fields are integers, which the "
               "comparison must not take for float32");
 

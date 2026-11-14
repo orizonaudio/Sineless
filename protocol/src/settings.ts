@@ -4,6 +4,7 @@ import {
   BeatDivision,
   BeatSpan,
   ChannelView,
+  CompareLane,
   DisplayMode,
   GridDensity,
   GridType,
@@ -152,6 +153,14 @@ export const settings = {
   // In Multi, adds the sum of the tracks checked against this one, with their matches and summing
   // gains (Compare, FR-15). Kept while the display mode is Single.
   compare: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
+  // What Compare's last lane shows: the sum of the checked tracks, or this track minus the other
+  // checked tracks, which shows what an effect between two instances changed. Kept while Compare
+  // is off and in Single, as compare is. A project saved before it existed opens on the sum.
+  compareLane: {
+    kind: "enum",
+    values: "CompareLane",
+    defaultValue: CompareLane.sum,
+  },
   // Multi's lane labels: each lane's colour dot and track name, at the top of each stacked lane or
   // as a legend when overlaid. With Compare on they hold its check boxes and readouts, so they
   // always show. On in a new instance and in a project saved before the switch existed.

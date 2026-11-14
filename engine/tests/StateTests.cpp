@@ -143,6 +143,7 @@ constexpr std::array kEveryGoldenStateFile{
     "state-v5-trigger-position.json",
     "state-v5-editor-size.json",
     "state-v6.json",
+    "state-v6-compare-difference.json",
 };
 
 // A project saved before Auto-freeze existed opens with it on, as a new instance does (FR-11):
@@ -407,6 +408,13 @@ constexpr std::array kVersion5TriggerPositionValues{
     GoldenValue{.id = SettingId::kTriggerPosition, .value = 0.35},
 };
 
+// The version 6 state with what Compare's last lane shows, which 0.11 adds: saved by the build
+// that adds it, as the next release saves it.
+constexpr std::array kVersion6CompareDifferenceValues{
+    GoldenValue{.id = SettingId::kCompareLane,
+                .value = asValue(protocol::CompareLane::kDifference)},
+};
+
 // Golden states saved by released builds that added settings without a state version raise,
 // each with the values it holds. A release that adds a setting adds its own file here; the
 // files already here stay as their release saved them.
@@ -427,6 +435,8 @@ constexpr std::array kGoldenStates{
     // The same settings, with the editor's size beside them (written by hand, as 8.4 has it).
     GoldenState{.file = "state-v5-editor-size.json", .values = kVersion5TriggerPositionValues},
     GoldenState{.file = "state-v6.json", .values = kVersion6Values},
+    GoldenState{.file = "state-v6-compare-difference.json",
+                .values = kVersion6CompareDifferenceValues},
 };
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
@@ -445,6 +455,7 @@ constexpr std::array kGoldenValueNames{
     GoldenValueNames{.file = "value-names-0.8.json", .version = 3},
     GoldenValueNames{.file = "value-names-0.9.json", .version = 5},
     GoldenValueNames{.file = "value-names-0.10.json", .version = 6},
+    GoldenValueNames{.file = "value-names-0.11.json", .version = 6},
 };
 
 // Released settings a migration renamed or removed: their saved names are read under the setting

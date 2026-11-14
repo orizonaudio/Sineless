@@ -1,6 +1,6 @@
 // Encodes a display frame in the layout of frame.ts. The engine encodes frames in C++; this
 // encoder serves the UI's mock back end and tests.
-import { ChannelView, type FrameMode } from "./enums.ts";
+import { ChannelView, CompareLane, type FrameMode } from "./enums.ts";
 import { FrameFlag, frameHeader, type FrameHeaderFieldName } from "./frame.ts";
 
 export interface FrameContent {
@@ -39,8 +39,10 @@ export interface FrameContent {
   readonly laneSet?: number;
   // Compare frames: the last lane is the sum, and there is one match per other lane.
   readonly comparison?: {
+    readonly lane?: CompareLane; // The sum unless given.
     readonly sumGain: number;
     readonly fixedGain: number;
+    readonly nullDepth?: number; // NaN unless given.
     readonly matches: readonly {
       readonly correlation: number;
       readonly related: boolean;
@@ -135,6 +137,16 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
     true,
   );
   header.setUint32(offsets.laneSet, content.laneSet ?? 0, true);
+  header.setUint32(
+    offsets.compareLane,
+    content.comparison?.lane ?? CompareLane.sum,
+    true,
+  );
+  header.setFloat32(
+    offsets.nullDepth,
+    content.comparison?.nullDepth ?? Number.NaN,
+    true,
+  );
   header.setFloat32(offsets.sumGain, content.comparison?.sumGain ?? 0, true);
   header.setFloat32(
     offsets.fixedGain,

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   ChannelView,
+  CompareLane,
   DisplayMode,
   FrameMode,
   TimeBase,
@@ -142,6 +143,33 @@ describe("mock back end", () => {
       lanes: [{ name: "Kick", own: true }],
     });
     expect(frames.at(-1)?.lanes).toHaveLength(1);
+  });
+
+  test("shows the difference of the checked tracks when asked, with its null depth and no gains", () => {
+    const { transport, frames } = connect();
+    transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
+    transport.send({ type: "setSetting", name: "compare", value: "on" });
+    transport.requestFrame();
+    const sum = frames.at(-1);
+    expect(sum?.comparison?.lane).toBe(CompareLane.sum);
+    expect(sum?.comparison?.nullDepth).toBeNaN();
+
+    transport.send({
+      type: "setSetting",
+      name: "compareLane",
+      value: "difference",
+    });
+    transport.requestFrame();
+    const difference = frames.at(-1);
+    expect(difference?.comparison?.lane).toBe(CompareLane.difference);
+    expect(difference?.comparison?.sumGain).toBeNaN();
+    expect(difference?.comparison?.fixedGain).toBeNaN();
+    // Kick minus the bass, which is unrelated to it: louder than the kick alone, a number.
+    expect(difference?.comparison?.nullDepth).toBeGreaterThan(0);
+    // The last lane is not the sum's any more.
+    expect(Array.from(difference?.lanes.at(-1) ?? [])).not.toEqual(
+      Array.from(sum?.lanes.at(-1) ?? []),
+    );
   });
 
   test("compares this track with the checked tracks and previews the fix", () => {

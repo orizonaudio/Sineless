@@ -6,12 +6,17 @@
 // Multi-track frames have `laneCount` above 0 and no views: the data holds that many lanes, one
 // per track, in the order of the `lanes` message whose `laneSet` matches the frame's.
 //
-// Compare frames (flag `compared`) hold one lane per track and then the sum of the compared
-// tracks (those whose lanes entry has `compared`), so `laneCount` is the track count plus one.
-// Over the visible part, `sumGain` is the sum's level against the level the same tracks would
-// give if unrelated, in dB (0 harmless, below 0 cancelling, -Infinity cancelling exactly; NaN when
-// they never sound together), and `fixedGain` the same with every compared track corrected as
-// found. Both are raw: the UI's formatter applies the gain floor. After the lane data comes one
+// Compare frames (flag `compared`) hold one lane per track and then one more, which `compareLane`
+// names: the sum of the compared tracks (those whose lanes entry has `compared`), or their
+// difference, this track minus the other compared tracks; so `laneCount` is the track count plus
+// one. In a sum frame, over the visible part, `sumGain` is the sum's level against the level the
+// same tracks would give if unrelated, in dB (0 harmless, below 0 cancelling, -Infinity cancelling
+// exactly; NaN when they never sound together), and `fixedGain` the same with every compared track
+// corrected as found; `nullDepth` is NaN. In a difference frame `nullDepth` is the difference's
+// level against this track's, in dB, over the visible part where this track and another compared
+// one sound together (-Infinity when they cancel exactly, NaN when they never sound together), and
+// the two gains, not measured there, are NaN. All three are raw: the UI's formatter applies the
+// gain floor. After the lane data comes one
 // match per track, in lane order, of three float32 values each: the correlation with this track
 // (-1 to +1), the offset in samples by which the track lags this track (negative: it leads), and
 // its polarity: 1 when it matches this track best as it is, -1 when flipped, 0 when it matches
@@ -97,6 +102,8 @@ export const frameHeaderFields = [
   { name: "triggerView", type: "u32" },
   { name: "triggerPosition", type: "f32" },
   { name: "pointsPerSample", type: "u32" },
+  { name: "compareLane", type: "u32" },
+  { name: "nullDepth", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

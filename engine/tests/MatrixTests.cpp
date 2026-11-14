@@ -6639,11 +6639,21 @@ TEST(CompareGainWork, ReadsARollsTracksOverSeveralFrames)
 
 // ----- A sum that frames left out -----
 
+// What a kept sum sat out: Compare switched off, or its last lane showing the other of the sum and
+// the difference.
+enum class Away : std::uint8_t
+{
+    kCompareOff,
+    kOtherLane,
+};
+
 struct ReturningCase
 {
     double rate = 0.0;
     bool frozen = false;
     TimeBase timeBase = TimeBase::kBeats;
+    protocol::CompareLane lane = protocol::CompareLane::kSum;
+    Away away = Away::kCompareOff;
 };
 
 class ReturningSum : public ::testing::TestWithParam<ReturningCase>
@@ -6667,27 +6677,52 @@ std::optional<DecodedFrame> settled(Analyzer& analyzer)
     return last;
 }
 
-// Compare switched off and on again while the music plays, live or frozen meanwhile: what it
-// shows on coming back is what a session that had it on all along shows, as soon as its sums are
-// redone, not only once the sweep has passed again (which frozen it never does). Here the other
-// track turns into this one inverted while Compare is off: back on, the sum cancels exactly, and
-// did read +2 dB.
+// The same figure: the same number, or no value in both.
+bool sameFigure(float one, float other)
+{
+    return (std::isnan(one) && std::isnan(other)) || one == other;
+}
+
+void showLane(Engine& engine, protocol::CompareLane lane)
+{
+    engine.settings().set(SettingId::kCompareLane, static_cast<double>(lane));
+}
+
+// Compare's last lane left and come back to while the music plays (Compare switched off and on,
+// or the lane showing the difference in place of the sum, or the reverse), live or frozen
+// meanwhile: what it shows on coming back is what a session that showed it all along shows, as
+// soon as its sums are redone, not only once the sweep has passed again (which frozen it never
+// does). Here the other track turns into this one inverted while the lane is away: back, the sum
+// cancels exactly (it did read +2 dB) and the difference is twice this track.
 TEST_P(ReturningSum, MatchesAFreshSum)
 {
     const ReturningCase c = GetParam();
+    const bool difference = c.lane == protocol::CompareLane::kDifference;
+    const protocol::CompareLane other =
+        difference ? protocol::CompareLane::kSum : protocol::CompareLane::kDifference;
     Session session(c.rate, 2);
     session.join({.kind = Signal::Kind::kNoise, .offset = 0.0, .seed = 3});
     session.join({.kind = Signal::Kind::kNoise, .offset = 0.0, .seed = 5});
     configure(session.own(), Display::kCompare, c.timeBase);
+    showLane(session.own(), c.lane);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
     setSpan(session.own(), c.timeBase, 2.0);
     session.analyzer().setCompared(othersOf(session));
     session.play(3.0, 0.05);
     session.play(0.01); // Audio no frame has shown yet, so that one comes.
     ASSERT_TRUE(session.produce());
-    ASSERT_NEAR(session.field(FrameHeader::kSumGainOffset), 0.0, 1.0) << "unrelated: harmless";
+    if (difference) {
+        ASSERT_NEAR(session.field(FrameHeader::kNullDepthOffset), 3.0, 1.0)
+            << "unrelated: the difference is as loud as the two together";
+    } else {
+        ASSERT_NEAR(session.field(FrameHeader::kSumGainOffset), 0.0, 1.0) << "unrelated: harmless";
+    }
 
-    show(session.own().settings(), Display::kMulti);
+    if (c.away == Away::kCompareOff) {
+        show(session.own().settings(), Display::kMulti);
+    } else {
+        showLane(session.own(), other);
+    }
     session.setSignal(1,
                       {.kind = Signal::Kind::kNoise, .amplitude = -0.25, .offset = 0.0, .seed = 3});
     session.play(2.5, 0.05); // More than the bar: every position of the other track is new.
@@ -6698,6 +6733,7 @@ TEST_P(ReturningSum, MatchesAFreshSum)
         session.analyzer().setFrozen(true);
     }
     show(session.own().settings(), Display::kCompare);
+    showLane(session.own(), c.lane);
     // No audio from here on: what follows comes of the sums being redone, not of the sweep
     // passing over them again.
     const std::optional<DecodedFrame> returned = settled(session.analyzer());
@@ -6713,15 +6749,26 @@ TEST_P(ReturningSum, MatchesAFreshSum)
     const std::optional<DecodedFrame> expected = settled(fresh);
     ASSERT_TRUE(expected);
     ASSERT_TRUE(expected->has(FrameFlag::kCompared));
-    ASSERT_EQ(expected->sumGain, -std::numeric_limits<float>::infinity())
-        << "the other track is this one inverted: the sum cancels exactly";
-    EXPECT_EQ(returned->sumGain, expected->sumGain);
-    EXPECT_EQ(returned->fixedGain, expected->fixedGain);
+    ASSERT_EQ(expected->compareLane, c.lane);
+    if (difference) {
+        ASSERT_NEAR(expected->nullDepth, 20.0 * std::log10(2.0), 1e-3)
+            << "the other track is this one inverted: the difference is twice this track";
+    } else {
+        ASSERT_EQ(expected->sumGain, -std::numeric_limits<float>::infinity())
+            << "the other track is this one inverted: the sum cancels exactly";
+    }
+    EXPECT_EQ(returned->compareLane, expected->compareLane);
+    EXPECT_TRUE(sameFigure(returned->sumGain, expected->sumGain))
+        << returned->sumGain << " for " << expected->sumGain;
+    EXPECT_TRUE(sameFigure(returned->fixedGain, expected->fixedGain))
+        << returned->fixedGain << " for " << expected->fixedGain;
+    EXPECT_TRUE(sameFigure(returned->nullDepth, expected->nullDepth))
+        << returned->nullDepth << " for " << expected->nullDepth;
     ASSERT_EQ(tracesIn(*returned), tracesIn(*expected));
     ASSERT_EQ(returned->pointCount, expected->pointCount);
     for (std::size_t index = 0; index < tracesIn(*expected); ++index) {
         EXPECT_TRUE(std::ranges::equal(trace(*returned, index), trace(*expected, index)))
-            << (index + 1 == tracesIn(*expected) ? "the sum's lane" : "a track's lane");
+            << (index + 1 == tracesIn(*expected) ? "the last lane" : "a track's lane");
     }
 }
 
@@ -6730,22 +6777,148 @@ std::vector<ReturningCase> returningCases()
     std::vector<ReturningCase> cases;
     for (const double rate : kSampleRates) {
         for (const bool frozen : {false, true}) {
-            cases.push_back({.rate = rate, .frozen = frozen, .timeBase = TimeBase::kBeats});
+            cases.push_back({.rate = rate, .frozen = frozen});
+            // The sum while the difference shows, and the difference while the sum does.
+            for (const protocol::CompareLane lane :
+                 {protocol::CompareLane::kSum, protocol::CompareLane::kDifference}) {
+                cases.push_back(
+                    {.rate = rate, .frozen = frozen, .lane = lane, .away = Away::kOtherLane});
+            }
         }
     }
     // Free, rolling, keeps its columns by the audio's own positions, which nothing rewrites: the
     // same steps, right before and after.
-    cases.push_back({.rate = 48000.0, .frozen = false, .timeBase = TimeBase::kFree});
-    cases.push_back({.rate = 48000.0, .frozen = true, .timeBase = TimeBase::kFree});
+    for (const bool frozen : {false, true}) {
+        cases.push_back({.rate = 48000.0, .frozen = frozen, .timeBase = TimeBase::kFree});
+        cases.push_back({.rate = 48000.0,
+                         .frozen = frozen,
+                         .timeBase = TimeBase::kFree,
+                         .lane = protocol::CompareLane::kDifference,
+                         .away = Away::kOtherLane});
+    }
     return cases;
 }
 
 INSTANTIATE_TEST_SUITE_P(EveryRate, ReturningSum, ::testing::ValuesIn(returningCases()),
                          [](const ::testing::TestParamInfo<ReturningCase>& info) {
                              const ReturningCase& c = info.param;
+                             const bool difference = c.lane == protocol::CompareLane::kDifference;
                              return rateName(c.rate) + "_" + timeBaseName(c.timeBase) +
+                                    (difference ? "_Difference" : "_Sum") +
+                                    (c.away == Away::kCompareOff ? "_CompareOff" : "_OtherLane") +
                                     (c.frozen ? "_Frozen" : "_Live");
                          });
+
+// ----- The difference -----
+
+struct DifferenceCase
+{
+    double rate = 0.0;
+    int channels = 2;
+    TimeBase timeBase = TimeBase::kBeats;
+    bool frozen = false;
+};
+
+class Difference : public ::testing::TestWithParam<DifferenceCase>
+{
+};
+
+// Compare's last lane showing the difference: this track minus the other checked tracks, sample
+// for sample. Here the others are this track at a half and at a quarter of its level, so the
+// difference is this track at a quarter: its lane is this track's lane, a quarter as tall, and it
+// nulls 12 dB below this track. The frame says the lane is the difference, and carries no summing
+// gains, which are the sum's.
+TEST_P(Difference, IsThisTrackMinusTheOthers)
+{
+    const DifferenceCase c = GetParam();
+    Session session(c.rate, c.channels);
+    session.join({.kind = Signal::Kind::kNoise, .amplitude = 0.5, .offset = 0.0, .seed = 3});
+    session.join({.kind = Signal::Kind::kNoise, .amplitude = 0.25, .offset = 0.0, .seed = 3});
+    session.join({.kind = Signal::Kind::kNoise, .amplitude = 0.125, .offset = 0.0, .seed = 3});
+    configure(session.own(), Display::kCompare, c.timeBase);
+    showLane(session.own(), protocol::CompareLane::kDifference);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    setSpan(session.own(), c.timeBase, c.timeBase == TimeBase::kFree ? 2.0 : 0.05);
+    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setPreviewFix(true); // The sum's, and nothing to the difference.
+    session.play(3.0, 0.05);
+    session.play(0.01);
+    std::optional<DecodedFrame> frame = session.produce();
+    ASSERT_TRUE(frame);
+    if (c.frozen) {
+        session.analyzer().setFrozen(true);
+    }
+    // And whatever follows with no more audio: the depth, where it is measured over frames.
+    if (auto later = settled(session.analyzer())) {
+        frame = std::move(later);
+    }
+    ASSERT_TRUE(frame->has(FrameFlag::kCompared));
+    ASSERT_EQ(frame->laneCount, 4);
+    EXPECT_EQ(frame->compareLane, protocol::CompareLane::kDifference);
+    EXPECT_TRUE(std::isnan(frame->sumGain)) << frame->sumGain;
+    EXPECT_TRUE(std::isnan(frame->fixedGain)) << frame->fixedGain;
+    EXPECT_NEAR(frame->nullDepth, 20.0 * std::log10(0.25), 1e-3);
+    const std::span<const float> own = trace(*frame, 0);
+    const std::span<const float> difference = trace(*frame, 3);
+    ASSERT_FALSE(own.empty());
+    bool sounded = false;
+    for (std::size_t index = 0; index < own.size(); ++index) {
+        ASSERT_EQ(difference[index], 0.25f * own[index]) << "at point " << index;
+        sounded = sounded || own[index] != 0.0f;
+    }
+    EXPECT_TRUE(sounded) << "nothing drawn to compare";
+}
+
+std::vector<DifferenceCase> differenceCases()
+{
+    std::vector<DifferenceCase> cases;
+    for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
+        for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+            for (const bool frozen : {false, true}) {
+                cases.push_back({.rate = kSampleRates.at(rate),
+                                 .channels = (rate + timeBase) % 2 == 0 ? 2 : 1,
+                                 .timeBase = static_cast<TimeBase>(timeBase),
+                                 .frozen = frozen});
+            }
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, Difference, ::testing::ValuesIn(differenceCases()),
+                         [](const ::testing::TestParamInfo<DifferenceCase>& info) {
+                             const DifferenceCase& c = info.param;
+                             return rateName(c.rate) + "_" + timeBaseName(c.timeBase) + "_" +
+                                    channelsName(c.channels) + (c.frozen ? "_Frozen" : "_Live");
+                         });
+
+// The difference costs no more to keep than the sum: with steady audio, a frame adds up no more
+// samples for it, and passes over none for summing gains it does not show.
+TEST(DifferenceWork, SumsNoMoreAFrameThanTheSum)
+{
+    const auto summedPerFrame = [](protocol::CompareLane lane, TimeBase timeBase) {
+        Session session(48000.0, 2);
+        session.join({.kind = Signal::Kind::kNoise, .offset = 0.0, .seed = 3});
+        session.join({.kind = Signal::Kind::kNoise, .offset = 0.0, .seed = 5});
+        configure(session.own(), Display::kCompare, timeBase);
+        showLane(session.own(), lane);
+        setSpan(session.own(), timeBase, 2.0);
+        session.analyzer().setCompared(othersOf(session));
+        session.play(6.0, 0.05);
+        const AnalysisWork before = session.analyzer().work();
+        session.play(2.0, 0.05);
+        return workSince(before, session.analyzer().work());
+    };
+    for (const TimeBase timeBase : {TimeBase::kBeats, TimeBase::kFree}) {
+        SCOPED_TRACE(timeBaseName(timeBase));
+        const AnalysisWork sum = summedPerFrame(protocol::CompareLane::kSum, timeBase);
+        const AnalysisWork difference =
+            summedPerFrame(protocol::CompareLane::kDifference, timeBase);
+        EXPECT_GT(difference.samplesSummed, 0U);
+        EXPECT_LE(difference.samplesSummed, sum.samplesSummed);
+        EXPECT_LE(difference.gainWork, sum.gainWork);
+    }
+}
 
 } // namespace
 } // namespace orizon::engine

@@ -713,6 +713,77 @@ TEST(PairAnalysis, SendsAnExactCancellationAsMinusInfinity)
         << "never together: nothing measured, not a cancellation";
 }
 
+// --- How deep a difference nulls ---------------------------------------------------------------
+
+// The level of this track minus another against this track's, from each one's energy per block
+// and the difference's, as the engine keeps them.
+double nullDepthOf(const std::vector<float>& own, const std::vector<float>& other)
+{
+    const std::size_t blocks = own.size() / kBlock;
+    std::vector<double> ownEnergy(blocks);
+    std::vector<double> otherEnergy(blocks);
+    std::vector<double> differenceEnergy(blocks);
+    for (std::size_t index = 0; index < blocks; ++index) {
+        std::vector<float> difference(kBlock);
+        for (std::size_t i = 0; i < kBlock; ++i) {
+            difference[i] = own[index * kBlock + i] - other[index * kBlock + i];
+        }
+        ownEnergy[index] = energyOf(std::span(own).subspan(index * kBlock, kBlock));
+        otherEnergy[index] = energyOf(std::span(other).subspan(index * kBlock, kBlock));
+        differenceEnergy[index] = energyOf(difference);
+    }
+    const std::array<std::span<const double>, 2> tracks{ownEnergy, otherEnergy};
+    return nullDepthOfBlocks(tracks, differenceEnergy, kBlock, 0);
+}
+
+// An effect that changes nothing nulls completely: minus infinity, a measurement, not "no value".
+TEST(NullDepth, IsMinusInfinityForAnIdenticalTrack)
+{
+    const auto own = noise(60);
+    EXPECT_EQ(nullDepthOf(own, own), -std::numeric_limits<double>::infinity());
+}
+
+// What a level difference leaves: a copy 1 dB louder nulls 18.3 dB below this track,
+// 20·log10|1 - 10^(1/20)|, and one at half the level 6 dB below it.
+TEST(NullDepth, IsTheDifferencesLevelAgainstThisTrack)
+{
+    const auto own = noise(61);
+    const auto scaled = [&](double gain) {
+        std::vector<float> copy(own);
+        for (float& value : copy) {
+            value = static_cast<float>(value * gain);
+        }
+        return copy;
+    };
+    const double louder = std::pow(10.0, 1.0 / 20.0);
+    EXPECT_NEAR(nullDepthOf(own, scaled(louder)), 20.0 * std::log10(louder - 1.0), 1e-3);
+    EXPECT_NEAR(nullDepthOf(own, scaled(0.5)), 20.0 * std::log10(0.5), 1e-3);
+}
+
+// Tracks that never sound together have nothing to null: no value, as with one track alone.
+TEST(NullDepth, IsNoValueWhereTheTracksNeverSoundTogether)
+{
+    const auto own = noise(62);
+    const std::vector<float> silent(kLength, 0.0f);
+    EXPECT_TRUE(std::isnan(nullDepthOf(own, silent)));
+    EXPECT_TRUE(std::isnan(nullDepthOf(silent, own)));
+    const std::vector<double> energy(kLength / kBlock, 1.0);
+    const std::array<std::span<const double>, 1> alone{energy};
+    EXPECT_TRUE(std::isnan(nullDepthOfBlocks(alone, energy, kBlock, 0)));
+}
+
+// It is measured where this track and another sound together: a stretch where this track plays
+// alone, and its difference is itself, does not water a deep null down.
+TEST(NullDepth, CountsOnlyWhereTheTracksSoundTogether)
+{
+    const auto own = noise(63);
+    auto other = own;
+    for (std::size_t i = 0; i < kLength; ++i) {
+        other[i] = i < kLength / 2 ? own[i] * 0.5f : 0.0f; // Then silent: this track alone.
+    }
+    EXPECT_NEAR(nullDepthOf(own, other), 20.0 * std::log10(0.5), 1e-3);
+}
+
 // --- Bright material ---------------------------------------------------------------------------
 
 // Short hits of noise, ten a second: white, or differentiated (`brightness` times), which leaves

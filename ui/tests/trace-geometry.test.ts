@@ -5,6 +5,7 @@ import {
   FrameMode,
   ViewLayout,
 } from "../../protocol/src/enums.ts";
+import { CompareLane } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   cancellationReachDivisor,
@@ -193,6 +194,8 @@ describe("cancellation bands", () => {
   };
   // Each lane's match against this track: this track's own is zeros, never related.
   const own = { correlation: 0, related: false, offset: 0, inverted: false };
+  // The last lane a sum, as Compare shows unless asked for the difference.
+  const asSum = { lane: CompareLane.sum, nullDepth: Number.NaN };
   const alike = { correlation: 0.9, related: true, offset: 0, inverted: false };
   const relatedMatches = [own, alike, alike];
   const unrelatedMatches = [own, own, own];
@@ -204,7 +207,12 @@ describe("cancellation bands", () => {
       new Float32Array([-0.4, 0.4, -0.4, 0.4, -0.4, 0.4, -0.4, 0.4]),
       new Float32Array(sum),
     ],
-    comparison: { sumGain: -3, fixedGain: 3, matches: relatedMatches },
+    comparison: {
+      ...asSum,
+      sumGain: -3,
+      fixedGain: 3,
+      matches: relatedMatches,
+    },
   });
   const both = [true, true];
 
@@ -232,7 +240,12 @@ describe("cancellation bands", () => {
       views: new Map(),
       pointCount: columns,
       lanes: [column(a), column(b), column((t) => a(t) + b(t))],
-      comparison: { sumGain: 0, fixedGain: 0, matches: unrelatedMatches },
+      comparison: {
+        ...asSum,
+        sumGain: 0,
+        fixedGain: 0,
+        matches: unrelatedMatches,
+      },
     };
     expect(cancellationBands(beating, layout, both)).toHaveLength(0);
     const related = {
@@ -240,6 +253,24 @@ describe("cancellation bands", () => {
       comparison: { ...beating.comparison, matches: relatedMatches },
     };
     expect(cancellationBands(related, layout, both).length).toBeGreaterThan(0);
+  });
+
+  // The difference of the compared tracks is small where they agree: that is what it is for,
+  // not a cancellation to mark, so the same frame as a difference is not shaded.
+  test("leave the difference unshaded", () => {
+    const cancelling = compareFrame([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(cancellationBands(cancelling, layout, both).length).toBeGreaterThan(
+      0,
+    );
+    const difference = {
+      ...cancelling,
+      comparison: {
+        ...cancelling.comparison,
+        lane: CompareLane.difference,
+        nullDepth: -60,
+      },
+    };
+    expect(cancellationBands(difference, layout, both)).toHaveLength(0);
   });
 
   test("leave unrelated noise unshaded", () => {
@@ -277,7 +308,12 @@ describe("cancellation bands", () => {
       ...frame(FrameMode.minMax, [[ChannelView.left, a]]),
       views: new Map(),
       lanes: [new Float32Array(a), new Float32Array(b), new Float32Array(sum)],
-      comparison: { sumGain: 0, fixedGain: 0, matches: relatedMatches },
+      comparison: {
+        ...asSum,
+        sumGain: 0,
+        fixedGain: 0,
+        matches: relatedMatches,
+      },
     };
     const shaded = xs(cancellationBands(unrelated, layout, both));
     // Quads span columns: the share of the lane's width they cover.
@@ -297,7 +333,12 @@ describe("cancellation bands", () => {
       ...frame(FrameMode.minMax, [[ChannelView.left, a.flatMap(() => [0, 0])]]),
       views: new Map(),
       lanes: [columns(a), columns(b), columns(sum)],
-      comparison: { sumGain: -3, fixedGain: 3, matches: relatedMatches },
+      comparison: {
+        ...asSum,
+        sumGain: -3,
+        fixedGain: 3,
+        matches: relatedMatches,
+      },
     };
   };
   const quads = (bands: Float32Array) => bands.length / 12;
@@ -400,7 +441,12 @@ describe("cancellation bands", () => {
       ),
       views: new Map(),
       lanes: [alternate(0.5), alternate(-0.4), alternate(0.1)],
-      comparison: { sumGain: -3, fixedGain: 3, matches: relatedMatches },
+      comparison: {
+        ...asSum,
+        sumGain: -3,
+        fixedGain: 3,
+        matches: relatedMatches,
+      },
     };
     const bands = cancellationBands(raw, layout, both);
     expect(quads(bands)).toBe(1);
@@ -434,7 +480,12 @@ describe("cancellation bands", () => {
           held((k) => -0.4 * sign(k)),
           held((k) => (k === 20 ? 0.9 : 0.1) * sign(k)),
         ],
-        comparison: { sumGain: -3, fixedGain: 3, matches: relatedMatches },
+        comparison: {
+          ...asSum,
+          sumGain: -3,
+          fixedGain: 3,
+          matches: relatedMatches,
+        },
       };
       expect(quads(cancellationBands(raw, layout, both))).toBe(1);
     },

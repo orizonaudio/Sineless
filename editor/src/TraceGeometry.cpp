@@ -92,7 +92,9 @@ std::vector<double> cancellationLevels(const FrameView& frame, std::span<const f
 std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout layout,
                                     const std::vector<bool>& compared, ViewWindow view)
 {
-    if (!frame.compared() || frame.lanes.size() < 3 || frame.pointCount == 0) {
+    // The difference is not a sum: nothing in it is a cancellation to mark, as on the page.
+    if (!frame.compared() || frame.compareLane == protocol::CompareLane::kDifference ||
+        frame.lanes.size() < 3 || frame.pointCount == 0) {
         return {};
     }
     std::vector<std::span<const float>> tracks;

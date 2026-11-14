@@ -38,8 +38,10 @@ struct FrameView
     };
     std::vector<View> views;
     std::vector<std::span<const float>> lanes;
-    // Compare frames: per track (lanes but the sum), whether it matches this track clearly.
+    // Compare frames: per track (lanes but the last), whether it matches this track clearly; and
+    // what the last lane is, the tracks' sum or their difference.
     std::vector<bool> related;
+    protocol::CompareLane compareLane = protocol::CompareLane::kSum;
 
     [[nodiscard]] bool has(protocol::FrameFlag flag) const
     {

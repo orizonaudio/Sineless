@@ -566,6 +566,10 @@ private:
         std::vector<std::uint64_t> tracks; // The tracks compared, in lane order.
         std::vector<SumPart> raw;
         std::vector<SumPart> fixed;
+        // The last lane is the difference: `raw` holds its parts, whose sum is measured against
+        // part `reference` (this track) for the null depth, and nothing is measured as fixed.
+        bool difference = false;
+        std::size_t reference = 0;
         std::size_t next = 0;
         int measured = 0;       // Gains measured: as recorded, then as fixed.
         bool measuring = false; // The next gain's measurement has begun.
@@ -582,8 +586,17 @@ private:
     // Steps the search in progress; true when it ended this frame and its match is stored.
     bool continueMatchSearch(double liveRate);
     // The compared tracks as parts of the sum, in rawParts and fixedParts: as recorded, and
-    // shifted and flipped as matched. Both time bases build them here, so they agree.
+    // shifted and flipped as matched; and as parts of the difference. Both time bases build them
+    // here, so they agree.
     void buildParts();
+    // Whether the frame being produced shows the difference in Compare's last lane.
+    [[nodiscard]] bool differenceShown() const;
+    // The last lane's parts: the difference's, or the sum's as recorded or as the fix previews.
+    [[nodiscard]] const std::vector<SumPart>& shownParts(bool previewFix) const;
+    // Which of `parts` is this track.
+    [[nodiscard]] std::size_t ownPart(const std::vector<SumPart>& parts) const;
+    // Starts the gains afresh when the last lane is not the one they were measured for.
+    void followLane();
     // The matches' values, one set per lane, into comparisonCache.matches.
     void packMatches();
     // The earliest (at most 0) and latest (at least 0) shift of `parts`.
@@ -614,13 +627,19 @@ private:
     {
         std::size_t lane = 0;
         std::ptrdiff_t offset = 0;
-        float sign = 1.0f;
+        // What the track is multiplied by: 1 as recorded, -1 flipped by a fix, and -1 for the
+        // other tracks of a difference, which is the sum of this track and the others negated.
+        float gain = 1.0f;
     };
     struct ComparisonCache
     {
         std::vector<float> matches;
         float sumGain = 0.0f;
         float fixedGain = 0.0f;
+        // The difference's null depth, and which the last lane was when all three were measured:
+        // the sum has the gains and no depth, the difference the depth and no gains.
+        float nullDepth = std::numeric_limits<float>::quiet_NaN();
+        protocol::CompareLane lane = protocol::CompareLane::kSum;
         std::vector<std::uint64_t> tracks; // The tracks the gains were measured for.
         std::uint64_t at = 0;
         bool valid = false;
@@ -629,6 +648,8 @@ private:
     ColumnReduction sumReduction;
     std::vector<SumPart> rawParts;   // The compared tracks as recorded...
     std::vector<SumPart> fixedParts; // ...and shifted and flipped as matched.
+    // The difference: this track, and the other compared tracks negated.
+    std::vector<SumPart> differenceParts;
     std::vector<std::int64_t> sumKey;
     Kept sumKept;
     // Lanes frames drawn in Beats, from 1: what the kept sums follow (Kept).
@@ -647,6 +668,12 @@ private:
     Kept fixedSumKept;
     SumRefresh rawSumRefresh;
     SumRefresh fixedSumRefresh;
+    // The difference's levels per block, kept only while it is the lane on show (as the sums'
+    // are only while the sum is), for its null depth.
+    BlockStats differenceStats;
+    std::vector<std::int64_t> differenceKey;
+    Kept differenceKept;
+    SumRefresh differenceRefresh;
     // Whether a sum is still being recomputed: frames go on meanwhile, also while frozen.
     // A track's shifted levels (Lane::fixedRefresh) need no term of their own: a shift that changes
     // them changes the fixed sum's parts too, and the sum, of at least two parts, is redone at
@@ -654,7 +681,7 @@ private:
     [[nodiscard]] bool sumsRefreshing() const
     {
         return sumRefresh.remaining > 0 || rawSumRefresh.remaining > 0 ||
-               fixedSumRefresh.remaining > 0;
+               fixedSumRefresh.remaining > 0 || differenceRefresh.remaining > 0;
     }
     // The match search's copies of the visible part, and the gains' energies.
     std::vector<float> matchOwn;
