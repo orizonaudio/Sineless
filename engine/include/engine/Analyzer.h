@@ -685,7 +685,7 @@ private:
     std::vector<float> scratch;
     std::vector<float> reduced;
     std::vector<float> frameData;
-    // Raw frames zoomed in past two columns a sample: the wave between the samples.
+    // Raw frames: the wave between the samples.
     Reconstruction reconstruction;
     std::vector<float> upsampled;
     std::vector<float> reconstructed;

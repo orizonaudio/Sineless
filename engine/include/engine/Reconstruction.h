@@ -15,14 +15,16 @@ namespace orizon::engine {
 // or a true-peak meter computes it; the samples themselves are kept exactly.
 inline constexpr std::size_t kReconstructionReach = 16;
 
-// The most points per sample (protocol/src/limits.ts says why).
+// The fewest and most points per sample of a raw frame (protocol/src/limits.ts says why).
+inline constexpr std::size_t kMinPointsPerSample = protocol::kMinPointsPerSample;
 inline constexpr std::size_t kMaxPointsPerSample = protocol::kMaxPointsPerSample;
 
 class Reconstruction
 {
 public:
-    // Points per sample for `samples` samples drawn across `columns` columns: 1 (the samples
-    // alone) below two columns per sample, else about one point per column.
+    // Points per sample for a raw frame of `samples` samples drawn across `columns` columns: about
+    // one point per column, at least kMinPointsPerSample (never the samples alone), at most
+    // kMaxPointsPerSample; 1 with no samples known.
     [[nodiscard]] static std::size_t pointsPerSample(double samples, std::size_t columns);
 
     // Writes the wave from samples[lead] to samples[samples.size() - 1 - trail], `factor` points

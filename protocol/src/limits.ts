@@ -72,12 +72,16 @@ export const pacedSpanMinimumSeconds = 0.02;
 // cycles at 5 kHz).
 export const minimumViewSamples = 32;
 
-// From reconstructionColumnsPerSample screen columns a sample, the engine sends the band-limited
-// wave between the samples instead of the samples alone (below, lines and the wave look alike on
-// screen), about a point per column and at most maxPointsPerSample a sample: then a point lies
-// within a thirty-second of a sample of every crest, and the curve between points is smooth.
-export const reconstructionColumnsPerSample = 2;
+// Once a view shows at most a sample a screen column, the engine sends raw frames: the band-limited
+// wave between the samples, not the samples alone, about a point per column and at most
+// maxPointsPerSample a sample, so a point lies within a thirty-second of a sample of every crest
+// and the curve between points is smooth. At least minPointsPerSample a sample, from that first
+// raw zoom: drawn straight between samples, a crest between two would stand up to 2.4 dB (10 kHz
+// at 44.1 kHz) lower than in the min/max columns just wider. At 4 points a sample the lines
+// between points still read a crest up to 20·log10(cos(π f / 4 fs)) low: 0.14 dB at 10 kHz at
+// 44.1 kHz, 0.44 dB at 0.4 of the rate, the step left where zoom crosses from columns to raw.
 export const maxPointsPerSample = 16;
+export const minPointsPerSample = 4;
 
 // Zoomed in far enough that the wave between the samples is drawn (a raw frame of more than one
 // point per sample), each sample is marked with a dot of sampleDotRadius line widths once samples
@@ -276,12 +280,8 @@ export const limits: readonly {
     kind: "double",
   },
   { name: "minimumViewSamples", value: minimumViewSamples, kind: "double" },
-  {
-    name: "reconstructionColumnsPerSample",
-    value: reconstructionColumnsPerSample,
-    kind: "double",
-  },
   { name: "maxPointsPerSample", value: maxPointsPerSample, kind: "count" },
+  { name: "minPointsPerSample", value: minPointsPerSample, kind: "count" },
   { name: "sampleDotSpacing", value: sampleDotSpacing, kind: "double" },
   { name: "sampleDotRadius", value: sampleDotRadius, kind: "double" },
   { name: "maxLanes", value: maxLanes, kind: "count" },

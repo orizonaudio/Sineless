@@ -11,11 +11,14 @@ import { decodeFrame, type Frame } from "../../protocol/src/frame-decoder.ts";
 import {
   defaultTriggerPosition,
   frozenHoldSeconds,
+  maxPointsPerSample,
+  minPointsPerSample,
 } from "../../protocol/src/limits.ts";
 import {
   mockFundamental,
   mockSummingGain,
   MockTransport,
+  rawPointsPerSample,
   viewSample,
   type MockOptions,
 } from "../src/bridge/mock-transport.ts";
@@ -233,6 +236,52 @@ describe("mock back end", () => {
     expect(frame?.visibleSamples).toBe(480);
     expect(frame?.mode).toBe(FrameMode.raw); // 480 samples fit in 800 columns.
   });
+
+  // As the engine does, where zoom crosses from columns to raw samples: a raw frame draws the wave
+  // between its samples (never the samples alone, which would stand a crest lower than the
+  // columns beside the crossing), about a point per column within the limits.
+  test("never sends a raw frame drawn straight between its samples", () => {
+    const { transport, frames } = connect();
+    useTrigger(transport);
+    transport.send({ type: "setSetting", name: "triggerSpan", value: 0.1 });
+    const spanSamples = 4800;
+    const columns = 800;
+    let raw = 0;
+    for (let samples = columns - 40; samples <= columns + 3; samples += 0.73) {
+      transport.send({
+        type: "view",
+        start: 0.2,
+        end: 0.2 + samples / spanSamples,
+      });
+      transport.requestFrame();
+      const frame = frames.at(-1);
+      if (frame?.mode !== FrameMode.raw) {
+        continue;
+      }
+      raw++;
+      expect(frame.pointsPerSample).toBeGreaterThanOrEqual(minPointsPerSample);
+      expect(frame.pointsPerSample).toBeLessThanOrEqual(maxPointsPerSample);
+    }
+    expect(raw).toBeGreaterThan(0);
+  });
+
+  test.each([8, 32, 100, 799.5, 1000])(
+    "gives a raw frame of %s samples a point per column within the limits",
+    (samples) => {
+      let previous = 1;
+      for (let columns = 1; columns < 40000; columns += 7) {
+        const points = rawPointsPerSample(samples, columns);
+        expect(points).toBeGreaterThanOrEqual(minPointsPerSample);
+        expect(points).toBeLessThanOrEqual(maxPointsPerSample);
+        expect(points).toBeGreaterThanOrEqual(
+          Math.min(columns / samples, maxPointsPerSample),
+        );
+        expect(points).toBeGreaterThanOrEqual(previous);
+        previous = points;
+      }
+      expect(rawPointsPerSample(0, 2000)).toBe(1);
+    },
+  );
 
   test("runs the Free time base free and reports freeze", () => {
     const { transport, frames } = connect();
