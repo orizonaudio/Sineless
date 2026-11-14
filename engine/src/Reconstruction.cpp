@@ -97,13 +97,9 @@ bool Reconstruction::reconstructsGap(std::span<const float> samples, std::size_t
 
 void Reconstruction::upsample(std::span<const float> samples, std::size_t lead, std::size_t trail,
                               std::size_t factor, std::vector<float>& output,
-                              std::span<const std::size_t> seams,
-                              std::vector<std::uint8_t>* reconstructed)
+                              std::span<const std::size_t> seams)
 {
     const std::size_t count = samples.size();
-    if (reconstructed != nullptr) {
-        reconstructed->clear();
-    }
     if (factor <= 1 || count <= lead + trail) {
         output.assign(samples.begin() + static_cast<std::ptrdiff_t>(std::min(lead, count)),
                       samples.end() - static_cast<std::ptrdiff_t>(
@@ -124,9 +120,6 @@ void Reconstruction::upsample(std::span<const float> samples, std::size_t lead, 
         const float next = samples[n + 1];
         const bool finite = std::isfinite(here) && std::isfinite(next);
         const bool full = reconstructsGap(samples, n, seams);
-        if (reconstructed != nullptr) {
-            reconstructed->push_back(finite && full ? 1 : 0);
-        }
         for (std::size_t phase = 1; phase < factor; ++phase) {
             float value = kNaN;
             if (finite && full) {
