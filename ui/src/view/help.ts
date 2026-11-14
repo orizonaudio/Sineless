@@ -208,23 +208,20 @@ export function helpTextsFor(mac: boolean) {
       ],
     },
     nullDepth: {
-      title: "Null depth",
-      lead: "How loud the difference is against this track.",
+      title: "Difference",
+      lead: "This track against the others: the lane's colours, and how loud the difference is.",
       choices: [
-        { name: "−∞ dB", text: "the tracks are identical" },
-        { name: "Deep", text: "they differ little" },
+        { name: "Faint", text: "what both cover" },
+        { name: "Green", text: "gained: only the others reach there" },
+        { name: "Red", text: "lost: only this track reaches there" },
         {
-          name: "Near 0 dB",
-          text: "they are unrelated, or far apart in level or time",
+          name: "dB",
+          text: "the difference against this track: −∞ identical, near 0 unrelated or far apart",
         },
-        {
-          name: "—",
-          text: "they never sound together, or nothing is measured yet",
-        },
+        { name: "—", text: "never sounding together, or not measured yet" },
       ],
       notes: [
-        `Measured over the visible part, only where this track and another sound together above ${gate} dBFS.`,
-        "Align's exactness and effects that vary in time limit it.",
+        `Measured over the visible part, where this track and another sound together above ${gate} dBFS.`,
       ],
     },
     matchDifference: {

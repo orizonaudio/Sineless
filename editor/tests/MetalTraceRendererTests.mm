@@ -880,6 +880,36 @@ TEST_F(MetalTraceRendererTest, ReportsRefusedCoverageTargets)
     expectSamePicture(all.front(), *drawn);
 }
 
+// A difference's filled lane is drawn to a target of its own, made when one is first shown. Metal
+// refusing the memory for it then, with the traces' targets already there, is reported like
+// theirs, and nothing is drawn; once it grants it, the difference is drawn as the page draws it.
+TEST_F(MetalTraceRendererTest, ReportsARefusedTargetForADifferencesFilledLane)
+{
+    const std::vector<Scene> all = scenes();
+    const auto shows = [](protocol::CompareLane lane) {
+        return [lane](const Scene& scene) {
+            const FrameView frame = scene.frame();
+            return frame.compared() && frame.compareLane == lane && !scene.barcode;
+        };
+    };
+    const auto difference = std::ranges::find_if(all, shows(protocol::CompareLane::kDifference));
+    ASSERT_NE(difference, all.end()) << "no scene shows a difference";
+    // A sum at the same size first: the traces' own targets are made, and stay.
+    const auto sum = std::ranges::find_if(all, [&](const Scene& scene) {
+        return shows(protocol::CompareLane::kSum)(scene) && scene.width == difference->width &&
+               scene.height == difference->height;
+    });
+    ASSERT_NE(sum, all.end()) << "no sum scene of the difference's size";
+    ASSERT_TRUE(draw(*sum));
+    renderer->refuseCoverageTargetsForTesting(true);
+    EXPECT_TRUE(draw(*sum)) << "the traces' targets were made again";
+    EXPECT_FALSE(draw(*difference));
+    renderer->refuseCoverageTargetsForTesting(false);
+    const auto drawn = draw(*difference);
+    ASSERT_TRUE(drawn);
+    expectSamePicture(*difference, *drawn);
+}
+
 // The frame barcode is drawn on every picture the switch is on for, whatever the renderer takes
 // from the frame: before any frame, the grid alone, and each fixture scene's frame (playhead or
 // none, lanes or views, Compare, nothing to draw). Each strip reads back as the values drawn.

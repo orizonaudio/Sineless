@@ -3,9 +3,16 @@
 // read it. Pixels are read back from a canvas of the test's own (trace-pixels.ts).
 import { afterEach, describe, expect, test } from "vitest";
 
-import { FrameMode, ViewLayout } from "../../../protocol/src/enums.ts";
+import {
+  CompareLane,
+  FrameMode,
+  ViewLayout,
+} from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
-import { maxLanes } from "../../../protocol/src/limits.ts";
+import {
+  differenceSharedStrength,
+  maxLanes,
+} from "../../../protocol/src/limits.ts";
 import {
   columnPosition,
   coverageAttachments,
@@ -21,6 +28,7 @@ import {
   freshSurface,
   frameOf,
   releaseFreshSurfaces,
+  screenColor,
   traceFrame,
   type DrawOptions,
   type Drawing,
@@ -1195,6 +1203,113 @@ describe("lanes layer in order, whatever their channel and target", () => {
     expect(twice.pixel(playhead, height / 2)).toEqual(
       once.pixel(playhead, height / 2),
     );
+  });
+
+  // A difference is read off its lane's colours: this track reaches from -0.5 to 0.5 and the
+  // other from -0.75 to 0.25, so between -0.5 and 0.25 both do (this track's colour, dulled), up
+  // to 0.5 only this track does (lost) and down to -0.75 only the other does (gained). Nothing is
+  // drawn as the difference's own wave, which lies elsewhere here so that it would show.
+  test("a difference's lane is filled with what is shared, lost and gained", () => {
+    const none = { correlation: 0, related: false, offset: 0, inverted: false };
+    const count = 100;
+    const band = (low: number, high: number) =>
+      Array.from({ length: count * 2 }, (_, k) => (k % 2 === 0 ? low : high));
+    const frame = frameOf({
+      mode: FrameMode.minMax,
+      pointCount: count,
+      viewStart: 0,
+      viewEnd: 1,
+      lanes: [band(-0.5, 0.5), band(-0.75, 0.25), band(0.85, 0.95)],
+      comparison: {
+        lane: CompareLane.difference,
+        sumGain: Number.NaN,
+        fixedGain: Number.NaN,
+        matches: [none, none],
+      },
+    });
+    const colors = [0, 1, 2].map((lane) => laneColor(lane));
+    const drawing = draw(frame, {
+      laneColors: colors,
+      comparedLanes: [true, true],
+      layout: ViewLayout.stacked,
+    });
+    expect(drawing.error).toBe(0);
+    const lane = lanes(3, ViewLayout.stacked)[2] ?? {
+      center: 0,
+      halfHeight: 1,
+    };
+    const row = (value: number) =>
+      Math.floor(((lane.center + lane.halfHeight * value + 1) / 2) * height);
+    // Opaque: this track's colour moved toward the screen's, with nothing showing through.
+    const [r, g, b] = colors[0] as Rgba;
+    const toward = (screen: number, colour: number) =>
+      screen + differenceSharedStrength * (colour - screen);
+    const shared: Pixel = [
+      toward(screenColor[0], r),
+      toward(screenColor[1], g),
+      toward(screenColor[2], b),
+      1,
+    ];
+    const places: [number, Pixel][] = [
+      [0, shared],
+      [0.375, [1, 0, 0, 1]],
+      [-0.625, [0, 1, 0, 1]],
+      [0.9, transparent],
+      [-0.9, transparent],
+    ];
+    for (const [value, expected] of places) {
+      expectPixel(drawing, width / 2, row(value), expected, 3);
+    }
+  });
+
+  // Two tracks that all but agree (a compressor's tail, or what lining them up between samples
+  // leaves) differ by far less than a pixel: drawn as a hairline at full strength, that would
+  // outline the whole wave in red and green and read as a change. A gained or lost part covers
+  // of a pixel what it is tall, so a tenth of a pixel is a tenth as strong, and two pixels full.
+  test("a difference thinner than a pixel is drawn that much fainter", () => {
+    const none = { correlation: 0, related: false, offset: 0, inverted: false };
+    const count = 100;
+    const band = (low: number, high: number) =>
+      Array.from({ length: count * 2 }, (_, k) => (k % 2 === 0 ? low : high));
+    const lane = lanes(3, ViewLayout.stacked)[2] ?? {
+      center: 0,
+      halfHeight: 1,
+    };
+    // A level's height in device pixels, in the difference's lane.
+    const pixels = (lane.halfHeight * height) / 2;
+    const greenest = (tallPixels: number) => {
+      const more = tallPixels / pixels;
+      const drawing = draw(
+        frameOf({
+          mode: FrameMode.minMax,
+          pointCount: count,
+          viewStart: 0,
+          viewEnd: 1,
+          lanes: [band(-0.5, 0.5), band(-0.5, 0.5 + more), band(0, more)],
+          comparison: {
+            lane: CompareLane.difference,
+            sumGain: Number.NaN,
+            fixedGain: Number.NaN,
+            matches: [none, none],
+          },
+        }),
+        {
+          laneColors: [0, 1, 2].map((each) => laneColor(each)),
+          comparedLanes: [true, true],
+          layout: ViewLayout.stacked,
+        },
+      );
+      expect(drawing.error).toBe(0);
+      // The gained colour is pure green here: how green the greenest pixel of a column is.
+      let most = 0;
+      for (let y = 0; y < height; y++) {
+        const [r, g] = drawing.pixel(width / 2, y);
+        most = Math.max(most, g - r);
+      }
+      return most;
+    };
+    expect(greenest(0.1)).toBeLessThan(0.2 * 255);
+    expect(greenest(2)).toBeGreaterThan(0.9 * 255);
   });
 
   // The lanes of the frame before, in every channel of every target, must not show through

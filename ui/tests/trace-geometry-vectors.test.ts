@@ -40,7 +40,12 @@ import {
   cancellationQuietShare,
   cancellationReachDivisor,
 } from "../../protocol/src/limits.ts";
-import { cancellationBands, lanes } from "../src/render/trace-geometry.ts";
+import { CompareLane } from "../../protocol/src/enums.ts";
+import {
+  cancellationBands,
+  differenceAreas,
+  lanes,
+} from "../src/render/trace-geometry.ts";
 
 const file = new URL(
   "../../protocol/tests/data/trace-geometry.json",
@@ -388,6 +393,95 @@ function cancellationCases() {
   return cases;
 }
 
+// A Compare frame showing the difference: this track, one or two other tracks and the difference.
+// Along the frame the other track is this one louder (gained), then quieter (lost), then the
+// same for a few points (nothing either way), then flipped (each on its own side of zero).
+// `own`: this track's lane, not always the first; `missing`: a few points not finite.
+interface DifferenceOptions {
+  readonly others?: 1 | 2;
+  readonly own?: number;
+  readonly missing?: boolean;
+}
+
+function differenceFrame(
+  points: number,
+  mode: FrameMode,
+  options: DifferenceOptions = {},
+): { frame: Frame; compared: boolean[]; own: number } {
+  const columns = mode === FrameMode.minMax;
+  const perPoint = columns ? 2 : 1;
+  const others = options.others ?? 1;
+  const own = options.own ?? 0;
+  const value = (point: number) => 0.6 * Math.sin(point / 7);
+  const gain = (point: number) =>
+    point < points / 3
+      ? 1.4
+      : point < points / 2
+        ? 0.6
+        : point < points / 2 + 4
+          ? 1
+          : -0.8;
+  // A column reaches a little either side of its value, so some columns lie across zero.
+  const block = (scale: (point: number) => number) =>
+    Float32Array.from({ length: points * perPoint }, (_, index) => {
+      const point = Math.floor(index / perPoint);
+      const centre = scale(point) * value(point);
+      return columns ? centre + (index % 2 === 0 ? -0.1 : 0.1) : centre;
+    });
+  const mine = block(() => 1);
+  if (options.missing === true) {
+    mine.fill(Number.NaN, 5 * perPoint, 8 * perPoint);
+  }
+  const copies = Array.from({ length: others }, () =>
+    block((point) => gain(point) / others),
+  );
+  const difference = Float32Array.from(mine, (sample, index) =>
+    copies.reduce((left, copy) => left - (copy[index] ?? 0), sample),
+  );
+  const tracks = [...copies];
+  tracks.splice(own, 0, mine);
+  return {
+    frame: {
+      mode,
+      pointCount: points,
+      startFraction: 0.25,
+      viewStart: 0.1,
+      viewEnd: 0.9,
+      visibleSamples: points,
+      pointsPerSample: 1,
+      lanes: [...tracks, difference],
+      comparison: { lane: CompareLane.difference, matches: [] },
+    } as unknown as Frame,
+    compared: tracks.map(() => true),
+    own,
+  };
+}
+
+function differenceCases() {
+  const cases = [];
+  for (const mode of [FrameMode.minMax, FrameMode.raw]) {
+    for (const options of [
+      {},
+      { others: 2 },
+      { own: 1 },
+      { missing: true },
+    ] as const) {
+      const { frame, compared, own } = differenceFrame(60, mode, options);
+      const areas = differenceAreas(frame, compared, own) ?? [];
+      cases.push({
+        mode: mode === FrameMode.minMax ? "minMax" : "raw",
+        pointCount: frame.pointCount,
+        lanes: frame.lanes.map((values) => Array.from(values)),
+        compared,
+        own,
+        // The five blocks one after another; a part absent at a point is null (JSON has no NaN).
+        areas: areas.flatMap((part) => Array.from(part)),
+      });
+    }
+  }
+  return cases;
+}
+
 const vectors = {
   description:
     "Geometry the macOS editor draws natively, computed from the page's helpers (ui/tests/trace-geometry-vectors.test.ts) and read by the editor's C++ tests. Write again with ORIZON_UPDATE_VECTORS=1.",
@@ -397,6 +491,7 @@ const vectors = {
   musical: musicalCases(),
   grid: gridCases(),
   cancellation: cancellationCases(),
+  difference: differenceCases(),
 };
 
 test("the page's geometry still gives the shared cases", () => {

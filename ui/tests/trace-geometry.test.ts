@@ -15,6 +15,8 @@ import {
   cancellationBands,
   cancellationLevels,
   columnPosition,
+  differenceAreas,
+  differenceParts,
   coverageAttachments,
   coverageSlot,
   coverageTargets,
@@ -731,5 +733,148 @@ describe("cancellation levels", () => {
         Array.from(levelsByLoop(columns, values)),
       );
     }
+  });
+});
+
+// A difference's lane is filled, not traced: each wave is the area between it and the zero line,
+// and the lane holds what this track's area and the other's share, what only this track covers
+// (lost) and what only the other covers (gained).
+describe("difference areas", () => {
+  const none = { correlation: 0, related: false, offset: 0, inverted: false };
+  const differenceOf = (
+    mode: FrameMode,
+    mine: number[],
+    other: number[],
+    lane: CompareLane = CompareLane.difference,
+  ) => ({
+    ...frame(mode, [[ChannelView.left, mine]]),
+    views: new Map(),
+    lanes: [
+      new Float32Array(mine),
+      new Float32Array(other),
+      new Float32Array(mine.map((value, index) => value - (other[index] ?? 0))),
+    ],
+    comparison: {
+      lane,
+      sumGain: Number.NaN,
+      fixedGain: Number.NaN,
+      nullDepth: 0,
+      matches: [none, none],
+    },
+  });
+  // A part's (low, high) at a point, or undefined where it is absent.
+  const at = (
+    areas: readonly Float32Array[],
+    part: (typeof differenceParts)[number],
+    point: number,
+  ) => {
+    const block = areas[differenceParts.indexOf(part)];
+    const low = block?.[point * 2] ?? Number.NaN;
+    const high = block?.[point * 2 + 1] ?? Number.NaN;
+    return Number.isNaN(low) ? undefined : [low, high];
+  };
+  const both = [true, true];
+
+  // Zoomed in, a point at a time: this track at 0.5, 0.5, 0.5 and -0.5 against the other at
+  // 0.75 (louder), 0.25 (quieter), 0.5 (the same) and 0.25 (on the other side of zero).
+  const mine = [0.5, 0.5, 0.5, -0.5];
+  const other = [0.75, 0.25, 0.5, 0.25];
+  const raw = differenceAreas(
+    differenceOf(FrameMode.raw, mine, other),
+    both,
+    0,
+  );
+
+  test("fill what both cover, from zero to the nearer of the two", () => {
+    expect(raw).toBeDefined();
+    const areas = raw ?? [];
+    expect(at(areas, "shared", 0)).toEqual([0, 0.5]);
+    expect(at(areas, "shared", 1)).toEqual([0, 0.25]);
+    expect(at(areas, "shared", 2)).toEqual([0, 0.5]);
+    // On opposite sides they share nothing: the zero line.
+    expect(at(areas, "shared", 3)).toEqual([0, 0]);
+  });
+
+  test("mark as gained what only the other covers, and as lost what only this track does", () => {
+    const areas = raw ?? [];
+    expect(at(areas, "gainedAbove", 0)).toEqual([0.5, 0.75]);
+    expect(at(areas, "lostAbove", 1)).toEqual([0.25, 0.5]);
+    // Each on its own side of zero: all of this track's is lost, all of the other's gained.
+    expect(at(areas, "lostBelow", 3)).toEqual([-0.5, 0]);
+    expect(at(areas, "gainedAbove", 3)).toEqual([0, 0.25]);
+  });
+
+  // The lane shows the same difference as its wave did, only placed where it happens.
+  test("make the gained and lost heights add up to the difference at every point", () => {
+    const areas = raw ?? [];
+    const height = (part: (typeof differenceParts)[number], point: number) => {
+      const reach = at(areas, part, point);
+      return reach === undefined ? 0 : (reach[1] ?? 0) - (reach[0] ?? 0);
+    };
+    mine.forEach((value, point) => {
+      const marked = differenceParts
+        .filter((part) => part !== "shared")
+        .reduce((total, part) => total + height(part, point), 0);
+      expect(marked).toBeCloseTo(Math.abs(value - (other[point] ?? 0)), 6);
+    });
+  });
+
+  // A part that stops between two points would leave a gap a point wide at every crossing.
+  test("end a part on the shared edge beside the point where it is last present", () => {
+    const areas = raw ?? [];
+    // Gained above at point 0 only: at point 1 it ends on what is shared there, at no height.
+    expect(at(areas, "gainedAbove", 1)).toEqual([0.25, 0.25]);
+    // Where the tracks agree, with no neighbour that differs above, nothing is there.
+    const agree = differenceAreas(
+      differenceOf(FrameMode.raw, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+      both,
+      0,
+    );
+    expect(at(agree ?? [], "gainedAbove", 1)).toBeUndefined();
+    expect(at(agree ?? [], "lostAbove", 1)).toBeUndefined();
+  });
+
+  // Zoomed out, a column holds each track's lowest and highest sample: the other reaching
+  // further above and less far below.
+  test("compare a column's reach above and below zero", () => {
+    const areas =
+      differenceAreas(
+        differenceOf(FrameMode.minMax, [-0.5, 0.5], [-0.25, 0.75]),
+        both,
+        0,
+      ) ?? [];
+    expect(at(areas, "shared", 0)).toEqual([-0.25, 0.5]);
+    expect(at(areas, "gainedAbove", 0)).toEqual([0.5, 0.75]);
+    expect(at(areas, "lostBelow", 0)).toEqual([-0.5, -0.25]);
+  });
+
+  test("leave a point with a value that is not finite empty", () => {
+    const areas =
+      differenceAreas(
+        differenceOf(FrameMode.raw, [0.5, Number.NaN, 0.5], [0.25, 0.25, 0.25]),
+        both,
+        0,
+      ) ?? [];
+    expect(at(areas, "shared", 1)).toBeUndefined();
+    expect(at(areas, "lostAbove", 1)).toBeUndefined();
+    expect(at(areas, "shared", 2)).toEqual([0, 0.25]);
+  });
+
+  // The sum's lane is a wave like the others, and a difference of this track alone is its wave.
+  test("are none for a sum, or with no other track compared", () => {
+    expect(
+      differenceAreas(
+        differenceOf(FrameMode.raw, mine, other, CompareLane.sum),
+        both,
+        0,
+      ),
+    ).toBeUndefined();
+    expect(
+      differenceAreas(
+        differenceOf(FrameMode.raw, mine, other),
+        [true, false],
+        0,
+      ),
+    ).toBeUndefined();
   });
 });

@@ -89,6 +89,104 @@ std::vector<double> cancellationLevels(const FrameView& frame, std::span<const f
     return smoothed;
 }
 
+std::vector<float> differenceAreas(const FrameView& frame, const std::vector<bool>& compared,
+                                   std::size_t own)
+{
+    if (!frame.compared() || frame.compareLane != protocol::CompareLane::kDifference ||
+        frame.lanes.size() < 2 || own + 1 >= frame.lanes.size() || frame.pointCount == 0) {
+        return {};
+    }
+    const std::span<const float> difference = frame.lanes.back();
+    const std::span<const float> mine = frame.lanes[own];
+    std::vector<std::span<const float>> others;
+    for (std::size_t index = 0; index + 1 < frame.lanes.size(); ++index) {
+        if (index != own && index < compared.size() && compared[index]) {
+            others.push_back(frame.lanes[index]);
+        }
+    }
+    if (others.empty()) {
+        return {};
+    }
+    const std::size_t count = frame.pointCount;
+    const float none = std::numeric_limits<float>::quiet_NaN();
+    std::vector<float> all(kDifferenceParts * count * 2, none);
+    const auto block = [&](std::size_t part) {
+        return std::span(all).subspan(part * count * 2, count * 2);
+    };
+    const std::span<float> shared = block(0);
+    const std::span<float> lostAbove = block(1);
+    const std::span<float> lostBelow = block(2);
+    const std::span<float> gainedAbove = block(3);
+    const std::span<float> gainedBelow = block(4);
+    const bool columns = frame.mode == protocol::FrameMode::kMinMax;
+    for (std::size_t point = 0; point < count; ++point) {
+        // How far each wave reaches from zero at this point: a column's lowest and highest
+        // sample, or a raw point's value. The others' wave is their columns added, or, point by
+        // point, this track's less the difference. Worked out in double and stored as float, as
+        // the page works it out and stores it.
+        double low = 0.0;
+        double high = 0.0;
+        double otherLow = 0.0;
+        double otherHigh = 0.0;
+        if (columns) {
+            low = mine[point * 2];
+            high = mine[point * 2 + 1];
+            for (const std::span<const float> other : others) {
+                otherLow += other[point * 2];
+                otherHigh += other[point * 2 + 1];
+            }
+        } else {
+            low = mine[point];
+            high = low;
+            otherLow = low - difference[point];
+            otherHigh = otherLow;
+        }
+        if (!std::isfinite(low) || !std::isfinite(high) || !std::isfinite(otherLow) ||
+            !std::isfinite(otherHigh)) {
+            continue;
+        }
+        low = std::min(0.0, low);
+        high = std::max(0.0, high);
+        otherLow = std::min(0.0, otherLow);
+        otherHigh = std::max(0.0, otherHigh);
+        const double sharedLow = std::max(low, otherLow);
+        const double sharedHigh = std::min(high, otherHigh);
+        shared[point * 2] = static_cast<float>(sharedLow);
+        shared[point * 2 + 1] = static_cast<float>(sharedHigh);
+        if (otherHigh != high) {
+            const std::span<float> above = otherHigh > high ? gainedAbove : lostAbove;
+            above[point * 2] = static_cast<float>(sharedHigh);
+            above[point * 2 + 1] = static_cast<float>(std::max(high, otherHigh));
+        }
+        if (otherLow != low) {
+            const std::span<float> below = otherLow < low ? gainedBelow : lostBelow;
+            below[point * 2] = static_cast<float>(std::min(low, otherLow));
+            below[point * 2 + 1] = static_cast<float>(sharedLow);
+        }
+    }
+    // The tapers: a part absent at a point with a present neighbour ends on the shared edge.
+    const auto taper = [&](std::span<float> part, std::size_t edge) {
+        const auto present = [&](std::size_t point) {
+            return point < count && std::isfinite(part[point * 2]) &&
+                   part[point * 2] != part[point * 2 + 1];
+        };
+        for (std::size_t point = 0; point < count; ++point) {
+            const float at = shared[point * 2 + edge];
+            // point - 1 wraps past the count at 0, which `present` refuses.
+            if (std::isnan(part[point * 2]) && std::isfinite(at) &&
+                (present(point - 1) || present(point + 1))) {
+                part[point * 2] = at;
+                part[point * 2 + 1] = at;
+            }
+        }
+    };
+    taper(lostAbove, 1);
+    taper(gainedAbove, 1);
+    taper(lostBelow, 0);
+    taper(gainedBelow, 0);
+    return all;
+}
+
 std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout layout,
                                     const std::vector<bool>& compared, ViewWindow view)
 {

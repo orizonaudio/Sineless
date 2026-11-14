@@ -449,6 +449,15 @@ export class OscilloscopeApp {
       },
       comparedLanes: () =>
         this.lanesOf(this.lastFrame).map((lane) => lane.compared),
+      ownLane: () =>
+        Math.max(
+          0,
+          this.lanesOf(this.lastFrame).findIndex((lane) => lane.own),
+        ),
+      differenceColors: () => ({
+        gained: rgba(token("--sl-gained")),
+        lost: rgba(token("--sl-lost")),
+      }),
       sweepColors: () => {
         return { cursor: rgba(token("--sl-ink")) };
       },
@@ -2477,6 +2486,7 @@ export class OscilloscopeApp {
           id: lane.id,
           colour: colour(lane.colour),
           compared: lane.compared,
+          own: lane.own,
         })),
       })),
       fallbackColours: fallbackPalette.map(colour),
@@ -2486,6 +2496,8 @@ export class OscilloscopeApp {
       axis: rgba(token("--sl-grid-strong")),
       cursor: sweep?.cursor ?? white,
       cancellation: style?.cancellationColor() ?? white,
+      gained: style?.differenceColors().gained ?? white,
+      lost: style?.differenceColors().lost ?? white,
       gridChoice: this.gridChoice(),
     };
   }

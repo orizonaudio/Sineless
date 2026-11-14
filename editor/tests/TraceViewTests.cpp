@@ -34,8 +34,12 @@ TEST(TraceViewMessage, ReadsEveryFieldOfThePagesMessage)
     ASSERT_EQ(view->laneSets[0].lanes.size(), 2U);
     EXPECT_EQ(view->laneSets[0].lanes[1].id, 5);
     EXPECT_FALSE(view->laneSets[0].lanes[1].compared);
+    EXPECT_TRUE(view->laneSets[0].lanes[0].own);
+    EXPECT_FALSE(view->laneSets[0].lanes[1].own);
     EXPECT_EQ(view->fallbackColours.size(), message.at("fallbackColours").size());
     EXPECT_EQ(view->cancellation[3], message.at("cancellation")[3].get<float>());
+    EXPECT_EQ(view->gained[1], message.at("gained")[1].get<float>());
+    EXPECT_EQ(view->lost[0], message.at("lost")[0].get<float>());
     EXPECT_EQ(view->gridType, protocol::GridType::kNone);
     EXPECT_EQ(view->gridTime, protocol::GridDensity::kFine);
     EXPECT_EQ(view->gridLevel, protocol::GridDensity::kCoarse);
@@ -115,13 +119,19 @@ TEST(TraceViewMessage, RefusesAMessageWithAnyFieldMalformed)
     refuses([](nlohmann::json& m) { m["fallbackColours"] = nlohmann::json::array(); },
             "no fallback colours");
     refuses([](nlohmann::json& m) { m["laneSets"][0]["lanes"][0]["id"] = 1.5; }, "a lane id");
+    refuses([](nlohmann::json& m) { m["laneSets"][0]["lanes"][0].erase("own"); },
+            "a lane that does not say whether it is this track's");
+    refuses([](nlohmann::json& m) { m.erase("gained"); }, "no colour for what is gained");
+    refuses([](nlohmann::json& m) { m["lost"] = {1, 0, 0}; }, "a lost colour of three channels");
     refuses([](nlohmann::json& m) { m["laneSets"][0]["laneSet"] = -3; }, "a negative lane set");
     refuses(
         [](nlohmann::json& m) {
             m["laneSets"][0]["lanes"] = nlohmann::json::array();
             for (std::size_t lane = 0; lane < protocol::kMaxLanes + 2; ++lane) {
-                m["laneSets"][0]["lanes"].push_back(
-                    {{"id", lane}, {"colour", {0, 0, 0, 1}}, {"compared", false}});
+                m["laneSets"][0]["lanes"].push_back({{"id", lane},
+                                                     {"colour", {0, 0, 0, 1}},
+                                                     {"compared", false},
+                                                     {"own", lane == 0}});
             }
         },
         "more lanes than a frame holds");
@@ -183,6 +193,19 @@ TEST(TraceViewColours, TakesTheNewestOfSeveralLaneSets)
         EXPECT_EQ(view->laneColours(laneFrame(8, 2, false)).at(0), (Rgba{0.1f, 0.2f, 0.3f, 1.0f}))
             << "sets in the order " << sets[0].at("laneSet") << ", " << sets[1].at("laneSet");
     }
+}
+
+// A difference's lane is filled from this track's lane, wherever it is among the lanes: the one
+// the page marks, or the first while the frame's lane set is not held yet.
+TEST(TraceViewColours, FindsThisTracksLane)
+{
+    nlohmann::json message = example();
+    message["laneSets"][0]["lanes"][0]["own"] = false;
+    message["laneSets"][0]["lanes"][1]["own"] = true;
+    const auto view = TraceView::parse(message);
+    ASSERT_TRUE(view);
+    EXPECT_EQ(view->ownLane(laneFrame(7, 3, true)), 1U);
+    EXPECT_EQ(view->ownLane(laneFrame(7, 5, true)), 0U) << "a frame of other lanes";
 }
 
 // In Compare the sum takes its own colour, compared tracks their own, and tracks left out are

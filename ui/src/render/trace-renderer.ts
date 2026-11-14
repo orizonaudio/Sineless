@@ -18,6 +18,8 @@ import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
   barcodeDataBits,
   barcodeTicksPerMillisecond,
+  differenceSharedStrength,
+  filledAreaLineHalf,
   previousCycleAlpha,
   sampleDotRadius,
   sampleDotSpacing,
@@ -28,6 +30,10 @@ import { fullView, type ViewWindow } from "../view/zoom.ts";
 import type { FrameRenderer } from "./render-loop.ts";
 import {
   cancellationBands,
+  differenceAreas,
+  differenceParts,
+  type DifferencePart,
+  type Lane,
   fullScale,
   lanes,
   coverageAttachments,
@@ -46,6 +52,13 @@ export interface TraceStyle {
   // are compared.
   readonly laneColors: () => readonly Rgba[];
   readonly comparedLanes: () => readonly boolean[];
+  // Which lane is this track's, and the colours of a difference's lane: what only the other
+  // tracks cover (gained) and what only this one does (lost).
+  readonly ownLane: () => number;
+  readonly differenceColors: () => {
+    readonly gained: Rgba;
+    readonly lost: Rgba;
+  };
   // A tempo-synced sweep's playhead.
   readonly sweepColors: () => {
     readonly cursor: Rgba;
@@ -91,6 +104,10 @@ uniform float lineHalf;
 // 0 marks none.
 uniform int dotEvery;
 uniform float dotRadius;
+// 1 for a block that is an area, not a wave (a difference's gained and lost parts): where it is
+// thinner than a pixel it covers that share of the pixel, so that a difference far too small to
+// see is not drawn as a hairline at full strength. A wave keeps its line however flat it is.
+uniform int thin;
 float pixelX(float index) {
   return (frameLeft + index / positions * frameScale) * canvas.x;
 }
@@ -250,6 +267,18 @@ void main() {
     d = segment(p, line.xy, line.zw);
   }
   float covered = clamp(lineHalf + 0.5 - d, 0.0, 1.0);
+  if (thin != 0) {
+    // The block's height at this pixel, between its two points.
+    float f = 0.0;
+    if (part == 0) {
+      f = clamp((p.x - line.x) / (line.y - line.x), 0.0, 1.0);
+    } else if (part == 1 || part == 2) {
+      float run = line.z - line.x;
+      f = run != 0.0 ? clamp((p.x - line.x) / run, 0.0, 1.0) : 0.0;
+    }
+    float tall = part == 3 ? here.y - here.x : mix(here.y - here.x, next.y - next.x, f);
+    covered *= clamp(tall, 0.0, 1.0);
+  }
   if (covered <= 0.0) {
     discard;
   }
@@ -625,6 +654,172 @@ export class TraceRenderer implements FrameRenderer {
     return start;
   }
 
+  // One pass of traces: each block's coverage into the channel of its slot (several blocks may
+  // share a slot, and so a colour; slots in rising order), then the slots layered over the screen
+  // in their colours, later over earlier. A block holds the frame's points as `stride` values
+  // each: a low and a high, or one sample.
+  private drawTraces(
+    pass: {
+      readonly frame: Frame;
+      readonly screen: ViewWindow;
+      readonly scale: number;
+      readonly stride: 1 | 2;
+      readonly lineHalf: number;
+    },
+    blocks: readonly {
+      readonly values: Float32Array;
+      readonly lane: Lane;
+      readonly slot: number;
+      // An area thinner than a pixel covers that share of it (the shaders' `thin`).
+      readonly thin?: boolean;
+    }[],
+    slotColors: readonly Rgba[],
+    dimming: Dimming,
+  ): void {
+    const gl = this.gl;
+    const { frame, screen, stride } = pass;
+    if (blocks.length === 0) {
+      return;
+    }
+    const start = this.upload(blocks.map(({ values }) => values));
+    const minMax = frame.mode === FrameMode.minMax;
+    const program = this.trace;
+    this.fitCoverage();
+    gl.useProgram(program.program);
+    const here = program.attribute("hereValues");
+    const next = program.attribute("nextValues");
+    const previous = program.attribute("previousValues");
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.valuesBuffer);
+    for (const attribute of [here, next, previous]) {
+      gl.enableVertexAttribArray(attribute);
+      gl.vertexAttribDivisor(attribute, 1);
+    }
+    const positions = minMax
+      ? frame.pointCount
+      : frame.visibleSamples > 0
+        ? frame.visibleSamples * frame.pointsPerSample
+        : frame.pointCount;
+    const frameWidth = frame.viewEnd - frame.viewStart;
+    const viewWidth = screen.end - screen.start;
+    gl.uniform1i(program.uniform("count"), frame.pointCount);
+    gl.uniform1i(program.uniform("stride"), stride);
+    gl.uniform1f(
+      program.uniform("offset"),
+      minMax ? 0.5 : -frame.startFraction * frame.pointsPerSample,
+    );
+    gl.uniform1f(program.uniform("positions"), positions);
+    gl.uniform1f(program.uniform("scale"), pass.scale);
+    gl.uniform1f(
+      program.uniform("frameLeft"),
+      (frame.viewStart - screen.start) / viewWidth,
+    );
+    gl.uniform1f(program.uniform("frameScale"), frameWidth / viewWidth);
+    gl.uniform2f(
+      program.uniform("canvas"),
+      this.canvas.width,
+      this.canvas.height,
+    );
+    gl.uniform1f(program.uniform("lineHalf"), pass.lineHalf);
+    // Samples are marked where the wave between them is drawn, once they stand far enough apart
+    // not to merge (limits.ts); a block of lows and highs is not a wave through samples.
+    const sampleSpacing =
+      minMax ||
+      stride !== 1 ||
+      frame.pointsPerSample <= 1 ||
+      frame.visibleSamples <= 0
+        ? 0
+        : ((frameWidth / viewWidth) * this.canvas.width) / frame.visibleSamples;
+    gl.uniform1i(
+      program.uniform("dotEvery"),
+      sampleSpacing >= sampleDotSpacing * this.style.lineWidthPixels
+        ? frame.pointsPerSample
+        : 0,
+    );
+    gl.uniform1f(
+      program.uniform("dotRadius"),
+      sampleDotRadius * this.style.lineWidthPixels,
+    );
+
+    const slots = slotColors.length;
+    const targets = coverageTargets(slots);
+    // Each trace's coverage into its channel, the larger kept where its pieces overlap. Writing
+    // only that channel of that target, rather than zeros into all four targets, takes about a
+    // third of the GPU time (16 overlaid lanes on an M1); a framebuffer per target, rather than
+    // one switching its draw buffers, keeps ANGLE from converting between draws.
+    gl.blendEquation(gl.MAX);
+    const colors = new Float32Array(tracesPerPass * 4);
+    slotColors.forEach((color, slot) => {
+      colors.set(color, slot * 4);
+    });
+    let bound = -1;
+    for (const { values, lane, slot, thin } of blocks) {
+      const { attachment, channel } = coverageSlot(slot);
+      if (attachment !== bound) {
+        // A clear honours the colour mask: every channel, then this trace's own.
+        gl.bindFramebuffer(
+          gl.FRAMEBUFFER,
+          this.coverageFramebuffers[attachment] ?? null,
+        );
+        gl.colorMask(true, true, true, true);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        bound = attachment;
+      }
+      gl.colorMask(channel === 0, channel === 1, channel === 2, channel === 3);
+      gl.uniform1f(program.uniform("center"), lane.center);
+      gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
+      gl.uniform1i(program.uniform("thin"), thin === true ? 1 : 0);
+      // One point per instance: its own values, the next point's and the previous point's.
+      const offset = values.byteOffset - start + 8;
+      gl.vertexAttribIPointer(
+        here,
+        stride,
+        gl.UNSIGNED_INT,
+        stride * 4,
+        offset,
+      );
+      gl.vertexAttribIPointer(
+        next,
+        stride,
+        gl.UNSIGNED_INT,
+        stride * 4,
+        offset + stride * 4,
+      );
+      gl.vertexAttribIPointer(
+        previous,
+        stride,
+        gl.UNSIGNED_INT,
+        stride * 4,
+        offset - stride * 4,
+      );
+      // Five parts of six vertices each.
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, frame.pointCount);
+    }
+    for (const attribute of [here, next, previous]) {
+      gl.vertexAttribDivisor(attribute, 0);
+      gl.disableVertexAttribArray(attribute);
+    }
+    gl.colorMask(true, true, true, true);
+    // Then layered over the screen, once.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.blendEquation(gl.FUNC_ADD);
+    const composite = this.composite;
+    gl.useProgram(composite.program);
+    this.coverage.forEach((texture, attachment) => {
+      gl.activeTexture(gl.TEXTURE1 + attachment);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(
+        composite.uniform(`coverage${String(attachment)}`),
+        1 + attachment,
+      );
+    });
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform4fv(composite.uniform("colors"), colors);
+    gl.uniform1i(composite.uniform("traces"), slots);
+    gl.uniform1i(composite.uniform("attachments"), targets);
+    this.setDimming(composite, dimming);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
   draw(frame: Frame, tickTime?: number): void {
     const started = performance.now();
     this.tickTime = tickTime ?? started;
@@ -682,142 +877,65 @@ export class TraceRenderer implements FrameRenderer {
       this.finish(started);
       return;
     }
-    const start = this.upload(blocks.map(([values]) => values));
-    const minMax = frame.mode === FrameMode.minMax;
-    const program = this.trace;
-    this.fitCoverage();
-    gl.useProgram(program.program);
-    const here = program.attribute("hereValues");
-    const next = program.attribute("nextValues");
-    const previous = program.attribute("previousValues");
-    const stride = minMax ? 2 : 1;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.valuesBuffer);
-    for (const attribute of [here, next, previous]) {
-      gl.enableVertexAttribArray(attribute);
-      gl.vertexAttribDivisor(attribute, 1);
-    }
-    const positions = minMax
-      ? frame.pointCount
-      : frame.visibleSamples > 0
-        ? frame.visibleSamples * frame.pointsPerSample
-        : frame.pointCount;
-    const frameWidth = frame.viewEnd - frame.viewStart;
-    const viewWidth = screen.end - screen.start;
-    const lineHalf = this.style.lineWidthPixels / 2;
-    gl.uniform1i(program.uniform("count"), frame.pointCount);
-    gl.uniform1i(program.uniform("stride"), stride);
-    gl.uniform1f(
-      program.uniform("offset"),
-      minMax ? 0.5 : -frame.startFraction * frame.pointsPerSample,
-    );
-    gl.uniform1f(program.uniform("positions"), positions);
-    gl.uniform1f(program.uniform("scale"), fullScale(view.verticalScaleDb));
-    gl.uniform1f(
-      program.uniform("frameLeft"),
-      (frame.viewStart - screen.start) / viewWidth,
-    );
-    gl.uniform1f(program.uniform("frameScale"), frameWidth / viewWidth);
-    gl.uniform2f(
-      program.uniform("canvas"),
-      this.canvas.width,
-      this.canvas.height,
-    );
-    gl.uniform1f(program.uniform("lineHalf"), lineHalf);
-    // Samples are marked where the wave between them is drawn, once they stand far enough apart
-    // not to merge (limits.ts).
-    const sampleSpacing =
-      minMax || frame.pointsPerSample <= 1 || frame.visibleSamples <= 0
-        ? 0
-        : ((frameWidth / viewWidth) * this.canvas.width) / frame.visibleSamples;
-    gl.uniform1i(
-      program.uniform("dotEvery"),
-      sampleSpacing >= sampleDotSpacing * this.style.lineWidthPixels
-        ? frame.pointsPerSample
-        : 0,
-    );
-    gl.uniform1f(
-      program.uniform("dotRadius"),
-      sampleDotRadius * this.style.lineWidthPixels,
-    );
-
     const blockLanes = lanes(blocks.length, view.layout);
-    // A frame holds at most maxLanes traces, which one pass holds.
-    const traces = blocks.slice(0, tracesPerPass);
-    const targets = coverageTargets(traces.length);
-    // Each trace's coverage into its channel, the larger kept where its pieces overlap. Writing
-    // only that channel of that target, rather than zeros into all four targets, takes about a
-    // third of the GPU time (16 overlaid lanes on an M1); a framebuffer per target, rather than
-    // one switching its draw buffers, keeps ANGLE from converting between draws.
-    gl.blendEquation(gl.MAX);
-    const colors = new Float32Array(tracesPerPass * 4);
-    let bound = -1;
-    traces.forEach(([values, color], index) => {
-      const lane = blockLanes[index] ?? { center: 0, halfHeight: 1 };
-      const { attachment, channel } = coverageSlot(index);
-      if (attachment !== bound) {
-        // A clear honours the colour mask: every channel, then this trace's own.
-        gl.bindFramebuffer(
-          gl.FRAMEBUFFER,
-          this.coverageFramebuffers[attachment] ?? null,
-        );
-        gl.colorMask(true, true, true, true);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        bound = attachment;
-      }
-      gl.colorMask(channel === 0, channel === 1, channel === 2, channel === 3);
-      gl.uniform1f(program.uniform("center"), lane.center);
-      gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
-      // One point per instance: its own values, the next point's and the previous point's.
-      const offset = values.byteOffset - start + 8;
-      gl.vertexAttribIPointer(
-        here,
-        stride,
-        gl.UNSIGNED_INT,
-        stride * 4,
-        offset,
+    // A difference's lane is filled, not traced (differenceAreas): what this track and the
+    // others both cover in this track's colour, dulled, so that what only one covers stands out
+    // on a track of any colour. The parts go through the traces' own drawing, in a pass of their
+    // own under the lanes', with soft edges and no line's width added (filledAreaLineHalf).
+    const own = this.style.ownLane();
+    const areas = differenceAreas(frame, this.style.comparedLanes(), own);
+    const pass = { frame, screen, scale: fullScale(view.verticalScaleDb) };
+    if (areas !== undefined) {
+      const lane = blockLanes.at(-1) ?? { center: 0, halfHeight: 1 };
+      // Opaque, in this track's colour moved toward the screen's: the grid does not show
+      // through it.
+      const [r, g, b, a] = blocks[own]?.[1] ?? white;
+      const [sr, sg, sb] = this.style.screenColor();
+      const toward = (screen: number, colour: number) =>
+        screen + differenceSharedStrength * (colour - screen);
+      const shared: Rgba = [toward(sr, r), toward(sg, g), toward(sb, b), a];
+      const { gained, lost } = this.style.differenceColors();
+      const slots: Record<DifferencePart, number> = {
+        shared: 0,
+        lostAbove: 1,
+        lostBelow: 1,
+        gainedAbove: 2,
+        gainedBelow: 2,
+      };
+      this.drawTraces(
+        { ...pass, stride: 2, lineHalf: filledAreaLineHalf },
+        // What is shared keeps a line along zero where it has no height, as a silent lane has;
+        // what is gained or lost fades out where it is thinner than a pixel.
+        areas.map((values, part) => ({
+          values,
+          lane,
+          slot: slots[differenceParts[part] ?? "shared"],
+          thin: differenceParts[part] !== "shared",
+        })),
+        [shared, lost, gained],
+        dimming,
       );
-      gl.vertexAttribIPointer(
-        next,
-        stride,
-        gl.UNSIGNED_INT,
-        stride * 4,
-        offset + stride * 4,
-      );
-      gl.vertexAttribIPointer(
-        previous,
-        stride,
-        gl.UNSIGNED_INT,
-        stride * 4,
-        offset - stride * 4,
-      );
-      // Five parts of six vertices each.
-      gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, frame.pointCount);
-      colors.set(color, index * 4);
-    });
-    for (const attribute of [here, next, previous]) {
-      gl.vertexAttribDivisor(attribute, 0);
-      gl.disableVertexAttribArray(attribute);
     }
-    gl.colorMask(true, true, true, true);
-    // Then layered over the screen, once.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.blendEquation(gl.FUNC_ADD);
-    const composite = this.composite;
-    gl.useProgram(composite.program);
-    this.coverage.forEach((texture, attachment) => {
-      gl.activeTexture(gl.TEXTURE1 + attachment);
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.uniform1i(
-        composite.uniform(`coverage${String(attachment)}`),
-        1 + attachment,
-      );
-    });
-    gl.activeTexture(gl.TEXTURE0);
-    gl.uniform4fv(composite.uniform("colors"), colors);
-    gl.uniform1i(composite.uniform("traces"), traces.length);
-    gl.uniform1i(composite.uniform("attachments"), targets);
-    this.setDimming(composite, dimming);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // A frame holds at most maxLanes traces, which one pass holds.
+    const minMax = frame.mode === FrameMode.minMax;
+    this.drawTraces(
+      {
+        ...pass,
+        stride: minMax ? 2 : 1,
+        lineHalf: this.style.lineWidthPixels / 2,
+      },
+      blocks
+        .slice(0, tracesPerPass)
+        .map(([values], index) => ({
+          values,
+          lane: blockLanes[index] ?? { center: 0, halfHeight: 1 },
+          slot: index,
+        }))
+        // The difference's own wave is not drawn: its lane holds the areas.
+        .filter((_, index) => areas === undefined || index + 1 < blocks.length),
+      blocks.slice(0, tracesPerPass).map(([, color]) => color),
+      dimming,
+    );
     if (sweep !== undefined) {
       this.drawSweep(sweep);
     }

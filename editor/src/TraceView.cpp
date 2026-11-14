@@ -137,14 +137,16 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
         for (const nlohmann::json& lane : *lanes) {
             const auto id = lane.is_object() ? lane.find("id") : lane.end();
             const auto compared = lane.is_object() ? lane.find("compared") : lane.end();
+            const auto own = lane.is_object() ? lane.find("own") : lane.end();
             const auto laneColour = lane.is_object() ? colourField(lane, "colour") : std::nullopt;
             if (id == lane.end() || !id->is_number_integer() || compared == lane.end() ||
-                !compared->is_boolean() || !laneColour) {
+                !compared->is_boolean() || own == lane.end() || !own->is_boolean() || !laneColour) {
                 return std::nullopt;
             }
             parsed.lanes.push_back({.id = id->get<std::int64_t>(),
                                     .colour = *laneColour,
-                                    .compared = compared->get<bool>()});
+                                    .compared = compared->get<bool>(),
+                                    .own = own->get<bool>()});
         }
         view.laneSets.push_back(std::move(parsed));
     }
@@ -162,13 +164,15 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
         view.fallbackColours.push_back(*parsed);
     }
 
-    const std::array<std::pair<const char*, Rgba*>, 6> colours{{
+    const std::array<std::pair<const char*, Rgba*>, 8> colours{{
         {"sumColour", &view.sumColour},
         {"screen", &view.screen},
         {"grid", &view.grid},
         {"axis", &view.axis},
         {"cursor", &view.cursor},
         {"cancellation", &view.cancellation},
+        {"gained", &view.gained},
+        {"lost", &view.lost},
     }};
     for (const auto& [name, into] : colours) {
         const auto parsed = colourField(message, name);
@@ -219,6 +223,7 @@ struct LaneStyle
     Rgba colour{};
     bool compared = false;
     bool sum = false;
+    bool own = false;
 };
 
 std::vector<LaneStyle> stylesFor(const TraceView& view, const FrameView& frame)
@@ -227,7 +232,7 @@ std::vector<LaneStyle> stylesFor(const TraceView& view, const FrameView& frame)
     std::vector<LaneStyle> styles;
     if (const TraceView::LaneSet* set = setFor(view, frame)) {
         for (const auto& lane : set->lanes) {
-            styles.push_back({.colour = lane.colour, .compared = lane.compared});
+            styles.push_back({.colour = lane.colour, .compared = lane.compared, .own = lane.own});
         }
     }
     if (frame.compared() && !styles.empty()) {
@@ -267,6 +272,13 @@ std::vector<bool> TraceView::comparedLanes(const FrameView& frame) const
         out.push_back(style.compared);
     }
     return out;
+}
+
+std::size_t TraceView::ownLane(const FrameView& frame) const
+{
+    const std::vector<LaneStyle> styles = stylesFor(*this, frame);
+    const auto own = std::ranges::find_if(styles, [](const LaneStyle& style) { return style.own; });
+    return own == styles.end() ? 0 : static_cast<std::size_t>(own - styles.begin());
 }
 
 ScreenRect ScreenRect::of(double containerWidth, double containerHeight)

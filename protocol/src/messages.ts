@@ -161,11 +161,12 @@ export interface ResizeMessage {
 export type Rgba = readonly number[];
 
 // One track's colour for a lane set: `id` as in the lanes message (or the Sum lane's), whether it
-// is compared.
+// is compared, and whether it is this track's (a difference's lane is filled from it).
 export interface TraceLaneColour {
   readonly id: number;
   readonly colour: Rgba;
   readonly compared: boolean;
+  readonly own: boolean;
 }
 
 // UI to editor, while the editor draws the traces (snapshot.nativeTraces): what only the page knows
@@ -203,6 +204,9 @@ export interface TraceViewMessage {
   readonly axis: Rgba;
   readonly cursor: Rgba;
   readonly cancellation: Rgba;
+  // A difference's lane: what only the other tracks cover, and what only this track does.
+  readonly gained: Rgba;
+  readonly lost: Rgba;
   // The grid the page draws now (ui/src/view/grid-settings.ts): GridType, GridDensity (Time and
   // Level) and BeatDivision names.
   readonly gridChoice: {

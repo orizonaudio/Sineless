@@ -55,6 +55,9 @@ struct TraceUniforms
     // `dotEvery` points from point 0; 0 marks none.
     std::int32_t dotEvery = 0;
     float dotRadius = 0.0f;
+    // 1 for a block that is an area, not a wave: thinner than a pixel, it covers that share of
+    // the pixel (trace-renderer.ts, `thin`).
+    std::int32_t thin = 0;
 };
 
 // What is drawn from the audio (the traces and the shading), dimmed, laid out as the shaders' Fade:
@@ -145,6 +148,7 @@ struct TraceUniforms {
   uint first;
   int dotEvery;
   float dotRadius;
+  int thin;
 };
 
 float pixelX(constant TraceUniforms& u, float index) {
@@ -275,6 +279,18 @@ fragment float4 traceFragment(TracePiece in [[stage_in]], constant TraceUniforms
     d = segment(p, in.line.xy, in.line.zw);
   }
   float covered = clamp(u.lineHalf + 0.5 - d, 0.0, 1.0);
+  if (u.thin != 0) {
+    float f = 0.0;
+    if (in.part == 0) {
+      f = clamp((p.x - in.line.x) / (in.line.y - in.line.x), 0.0, 1.0);
+    } else if (in.part == 1 || in.part == 2) {
+      float run = in.line.z - in.line.x;
+      f = run != 0.0 ? clamp((p.x - in.line.x) / run, 0.0, 1.0) : 0.0;
+    }
+    float tall = in.part == 3 ? in.here.y - in.here.x
+                              : mix(in.here.y - in.here.x, in.next.y - in.next.x, f);
+    covered *= clamp(tall, 0.0, 1.0);
+  }
   if (covered <= 0.0) {
     discard_fragment();
   }
@@ -491,6 +507,16 @@ public:
         if (blocks.size() > kTracesPerPass) {
             blocks.resize(kTracesPerPass);
         }
+        // A difference's lane is filled, not traced (differenceAreas): its parts are drawn as
+        // traces are, in a pass and a target of their own, under the lanes; its own wave is not
+        // drawn.
+        std::vector<float> areas;
+        if (frame != nullptr && !frame->lanes.empty()) {
+            areas = differenceAreas(*frame, view.comparedLanes(*frame), view.ownLane(*frame));
+        }
+        if (!areas.empty() && !fitAreaCoverage(target.width, target.height)) {
+            return Result::kOutOfMemory;
+        }
 
         // A tempo-synced sweep's playhead, as a fraction of the screen from the left, and the
         // previous cycle to its right, which starts under the line: its traces and shading dim, the
@@ -552,6 +578,7 @@ public:
             for (const auto& block : blocks) {
                 valueCount += block.size();
             }
+            valueCount += areas.size();
         }
         // The next slot, once the GPU is done with it.
         dispatch_semaphore_wait(slotsFree, DISPATCH_TIME_FOREVER);
@@ -578,16 +605,37 @@ public:
                 written += block.size();
             }
         }
+        const auto areasFirst = static_cast<std::uint32_t>(written);
+        if (traces && !areas.empty()) {
+            std::memcpy(values + written * sizeof(float), areas.data(),
+                        areas.size() * sizeof(float));
+        }
         auto* bands = static_cast<BandInstance*>(slot.bands.contents);
         std::ranges::copy(under, bands);
         std::ranges::copy(over, bands + under.size());
 
         CompositeUniforms composite;
+        CompositeUniforms areaComposite;
+        const bool filled = traces && !areas.empty();
         if (traces) {
-            composite =
-                encodeCoverage(buffer, slot, *frame, view, blocks, colours, firsts, width, height);
+            composite = encodeCoverage(buffer, slot, *frame, view, blocks, colours, firsts, width,
+                                       height, filled);
+        }
+        if (filled) {
+            // What both cover in this track's colour moved toward the screen's, opaque, so that
+            // the grid does not show through it; then what only one covers.
+            Rgba shared = colours.at(view.ownLane(*frame));
+            for (std::size_t channel = 0; channel < 3; ++channel) {
+                shared[channel] =
+                    view.screen[channel] + static_cast<float>(protocol::kDifferenceSharedStrength) *
+                                               (shared[channel] - view.screen[channel]);
+            }
+            areaComposite = encodeAreaCoverage(buffer, slot, *frame, view, areasFirst,
+                                               lanes(blocks.size(), view.layout).back(),
+                                               {shared, view.lost, view.gained}, width, height);
         }
         composite.fade = fade;
+        areaComposite.fade = fade;
 
         MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
         pass.colorAttachments[0].texture = target;
@@ -615,6 +663,16 @@ public:
         };
         drawBands(0, gridBands, undimmed);
         drawBands(gridBands, under.size() - gridBands, fade);
+        if (filled) {
+            // A difference's filled parts, from their own target (the composite reads only as
+            // many targets as its uniforms name).
+            [encoder setRenderPipelineState:compositePipeline];
+            [encoder setFragmentBytes:&areaComposite length:sizeof(areaComposite) atIndex:0];
+            for (std::size_t index = 0; index < kCoverageTargets; ++index) {
+                [encoder setFragmentTexture:areaCoverage atIndex:index];
+            }
+            [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+        }
         if (traces) {
             // Then the traces layered over the screen, once.
             [encoder setRenderPipelineState:compositePipeline];
@@ -688,14 +746,27 @@ private:
         return true;
     }
 
-    // Each trace's coverage into its channel of its target, the larger kept where its pieces
-    // overlap; returns the composite's colours and counts.
-    CompositeUniforms encodeCoverage(id<MTLCommandBuffer> buffer, const Slot& slot,
-                                     const FrameView& frame, const TraceView& view,
-                                     const std::vector<std::span<const float>>& blocks,
-                                     const std::vector<Rgba>& colours,
-                                     const std::vector<std::uint32_t>& firsts, double width,
-                                     double height)
+    // The target a difference's filled parts are drawn to, made when one is first shown.
+    bool fitAreaCoverage(NSUInteger width, NSUInteger height)
+    {
+        if (areaCoverage != nil && areaCoverage.width == width && areaCoverage.height == height) {
+            return true;
+        }
+        MTLTextureDescriptor* descriptor =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                               width:width
+                                                              height:height
+                                                           mipmapped:NO];
+        descriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+        descriptor.storageMode = MTLStorageModePrivate;
+        areaCoverage = refuseTargets ? nil : [device newTextureWithDescriptor:descriptor];
+        return areaCoverage != nil;
+    }
+
+    // What every trace of a frame shares: where its points sit across the screen, the scale and
+    // the line.
+    static TraceUniforms traceUniforms(const FrameView& frame, const TraceView& view, double width,
+                                       double height)
     {
         const bool minMax = frame.mode == protocol::FrameMode::kMinMax;
         TraceUniforms uniforms;
@@ -725,7 +796,20 @@ private:
                                 ? static_cast<std::int32_t>(frame.pointsPerSample)
                                 : 0;
         uniforms.dotRadius = static_cast<float>(protocol::kSampleDotRadius * view.lineWidth);
+        return uniforms;
+    }
 
+    // Each trace's coverage into its channel of its target, the larger kept where its pieces
+    // overlap; returns the composite's colours and counts. With `filled`, the last lane (a
+    // difference's) is left out: its filled parts are drawn in its place.
+    CompositeUniforms encodeCoverage(id<MTLCommandBuffer> buffer, const Slot& slot,
+                                     const FrameView& frame, const TraceView& view,
+                                     const std::vector<std::span<const float>>& blocks,
+                                     const std::vector<Rgba>& colours,
+                                     const std::vector<std::uint32_t>& firsts, double width,
+                                     double height, bool filled)
+    {
+        TraceUniforms uniforms = traceUniforms(frame, view, width, height);
         const std::vector<Lane> laneList = lanes(blocks.size(), view.layout);
         CompositeUniforms composite;
         composite.traces = static_cast<std::int32_t>(blocks.size());
@@ -745,6 +829,11 @@ private:
                 [encoder setVertexBuffer:slot.values offset:0 atIndex:1];
                 bound = attachment;
             }
+            const Rgba white{1.0f, 1.0f, 1.0f, 1.0f};
+            composite.colours[index] = index < colours.size() ? colours[index] : white;
+            if (filled && index + 1 == blocks.size()) {
+                continue; // Its target is cleared with the others; nothing of it is drawn.
+            }
             [encoder setRenderPipelineState:tracePipelines[index % 4]];
             uniforms.center = static_cast<float>(laneList[index].center);
             uniforms.halfHeight = static_cast<float>(laneList[index].halfHeight);
@@ -756,10 +845,54 @@ private:
                         vertexStart:0
                         vertexCount:30
                       instanceCount:frame.pointCount];
-            const Rgba white{1.0f, 1.0f, 1.0f, 1.0f};
-            composite.colours[index] = index < colours.size() ? colours[index] : white;
         }
         [encoder endEncoding];
+        return composite;
+    }
+
+    // A difference's filled parts (differenceAreas, from `first` in the slot's values) into the
+    // channels of their own target: what is shared, what is lost, what is gained, in `colours`.
+    // Each part is a low and a high per point, whatever the frame's own mode, drawn with soft
+    // edges and no line's width (limits.ts, filledAreaLineHalf).
+    CompositeUniforms encodeAreaCoverage(id<MTLCommandBuffer> buffer, const Slot& slot,
+                                         const FrameView& frame, const TraceView& view,
+                                         std::uint32_t first, const Lane& lane,
+                                         const std::array<Rgba, 3>& colours, double width,
+                                         double height)
+    {
+        TraceUniforms uniforms = traceUniforms(frame, view, width, height);
+        uniforms.stride = 2;
+        uniforms.lineHalf = static_cast<float>(protocol::kFilledAreaLineHalf);
+        uniforms.dotEvery = 0;
+        uniforms.center = static_cast<float>(lane.center);
+        uniforms.halfHeight = static_cast<float>(lane.halfHeight);
+        MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+        pass.colorAttachments[0].texture = areaCoverage;
+        pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+        pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
+        id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
+        [encoder setVertexBuffer:slot.values offset:0 atIndex:1];
+        // Shared, lost above and below, gained above and below: the channel of each.
+        const std::array<std::size_t, kDifferenceParts> channels{0, 1, 1, 2, 2};
+        for (std::size_t part = 0; part < kDifferenceParts; ++part) {
+            [encoder setRenderPipelineState:tracePipelines[channels[part]]];
+            uniforms.first = first + static_cast<std::uint32_t>(part * frame.pointCount * 2);
+            // What is shared keeps a line along zero where it has no height; what is gained or
+            // lost fades out where it is thinner than a pixel.
+            uniforms.thin = part == 0 ? 0 : 1;
+            [encoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:0];
+            [encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:0];
+            [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                        vertexStart:0
+                        vertexCount:30
+                      instanceCount:frame.pointCount];
+        }
+        [encoder endEncoding];
+        CompositeUniforms composite;
+        composite.traces = static_cast<std::int32_t>(colours.size());
+        composite.attachments = 1;
+        std::ranges::copy(colours, composite.colours.begin());
         return composite;
     }
 
@@ -838,6 +971,7 @@ private:
     id<MTLRenderPipelineState> bandPipeline;
     std::array<id<MTLRenderPipelineState>, 4> tracePipelines;
     std::array<id<MTLTexture>, kCoverageTargets> coverage;
+    id<MTLTexture> areaCoverage = nil;
     std::array<Slot, kSlots> slots;
     std::size_t nextSlot = 0;
     dispatch_semaphore_t slotsFree;

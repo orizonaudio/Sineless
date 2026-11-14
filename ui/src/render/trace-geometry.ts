@@ -277,3 +277,129 @@ export function cancellationBands(
   }
   return new Float32Array(out);
 }
+
+// A Compare frame showing the difference holds this track's lane, the other checked tracks'
+// lanes (lined up by Align when it is on) and the difference itself. Its lane is not drawn as a
+// wave about zero: each wave is taken as the area between it and the zero line, and the lane is
+// filled with what this track's area and the others' share, what only this track's covers (lost)
+// and what only the others' covers (gained), so that the difference shows where the amplitude
+// went. At every point the lost and gained heights add up to the difference there.
+//
+// Each part is a block of the trace renderer's own kind, a low and a high per point (NaN where
+// the part is absent), drawn as the lanes' columns are: what is shared; what is lost above it and
+// below it; what is gained above it and below it. A part absent beside a point where it is
+// present ends on the shared edge there, at no height, so it tapers to its neighbour rather than
+// stopping a point short. The macOS editor draws the same blocks (editor/src/TraceGeometry.cpp).
+export const differenceParts = [
+  "shared",
+  "lostAbove",
+  "lostBelow",
+  "gainedAbove",
+  "gainedBelow",
+] as const;
+export type DifferencePart = (typeof differenceParts)[number];
+
+// The blocks, in differenceParts' order, each of pointCount (low, high) pairs; none for a frame
+// that does not show a difference, or with no other track compared. `compared` marks the compared
+// tracks in lane order; `own` is this track's lane.
+export function differenceAreas(
+  frame: Frame,
+  compared: readonly boolean[],
+  own: number,
+): readonly Float32Array[] | undefined {
+  const difference = frame.lanes.at(-1);
+  const mine = frame.lanes[own];
+  const others = frame.lanes
+    .slice(0, -1)
+    .filter((_, index) => index !== own && compared[index] === true);
+  if (
+    frame.comparison?.lane !== CompareLane.difference ||
+    difference === undefined ||
+    mine === undefined ||
+    others.length === 0
+  ) {
+    return undefined;
+  }
+  const count = frame.pointCount;
+  const all = new Float32Array(differenceParts.length * count * 2).fill(
+    Number.NaN,
+  );
+  const blocks = differenceParts.map((_, part) =>
+    all.subarray(part * count * 2, (part + 1) * count * 2),
+  );
+  const [shared, lostAbove, lostBelow, gainedAbove, gainedBelow] = blocks as [
+    Float32Array,
+    Float32Array,
+    Float32Array,
+    Float32Array,
+    Float32Array,
+  ];
+  const columns = frame.mode === FrameMode.minMax;
+  for (let point = 0; point < count; point++) {
+    // How far each wave reaches from zero at this point: a column's lowest and highest sample,
+    // or a raw point's value. The others' wave is their columns added (at least as far as their
+    // sum reaches), or, point by point, this track's less the difference, exactly.
+    let low: number;
+    let high: number;
+    let otherLow = 0;
+    let otherHigh = 0;
+    if (columns) {
+      low = mine[point * 2] ?? 0;
+      high = mine[point * 2 + 1] ?? 0;
+      for (const other of others) {
+        otherLow += other[point * 2] ?? 0;
+        otherHigh += other[point * 2 + 1] ?? 0;
+      }
+    } else {
+      low = mine[point] ?? 0;
+      high = low;
+      otherLow = low - (difference[point] ?? 0);
+      otherHigh = otherLow;
+    }
+    if (![low, high, otherLow, otherHigh].every(Number.isFinite)) {
+      continue;
+    }
+    low = Math.min(0, low);
+    high = Math.max(0, high);
+    otherLow = Math.min(0, otherLow);
+    otherHigh = Math.max(0, otherHigh);
+    const sharedLow = Math.max(low, otherLow);
+    const sharedHigh = Math.min(high, otherHigh);
+    shared[point * 2] = sharedLow;
+    shared[point * 2 + 1] = sharedHigh;
+    if (otherHigh !== high) {
+      const above = otherHigh > high ? gainedAbove : lostAbove;
+      above[point * 2] = sharedHigh;
+      above[point * 2 + 1] = Math.max(high, otherHigh);
+    }
+    if (otherLow !== low) {
+      const below = otherLow < low ? gainedBelow : lostBelow;
+      below[point * 2] = Math.min(low, otherLow);
+      below[point * 2 + 1] = sharedLow;
+    }
+  }
+  // The tapers: a part absent at a point with a present neighbour ends on the shared edge.
+  const taper = (block: Float32Array, edge: 0 | 1) => {
+    const present = (point: number) =>
+      point >= 0 &&
+      point < count &&
+      Number.isFinite(block[point * 2] ?? Number.NaN) &&
+      block[point * 2] !== block[point * 2 + 1];
+    for (let point = 0; point < count; point++) {
+      const at = shared[point * 2 + edge] ?? Number.NaN;
+      if (
+        Number.isNaN(block[point * 2] ?? Number.NaN) &&
+        Number.isFinite(at) &&
+        (present(point - 1) || present(point + 1))
+      ) {
+        block[point * 2] = at;
+        block[point * 2 + 1] = at;
+      }
+    }
+  };
+  taper(lostAbove, 1);
+  taper(gainedAbove, 1);
+  taper(lostBelow, 0);
+  taper(gainedBelow, 0);
+  return blocks;
+}
