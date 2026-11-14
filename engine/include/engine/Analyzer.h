@@ -256,6 +256,32 @@ private:
         std::size_t remaining = 0;
     };
 
+    // What a structure kept from frame to frame was built from, and the lanes frame it last
+    // followed. A Beats sum (its levels per block, its columns) is brought up to date only where
+    // each frame's audio changed it, so it holds what it is asked for only if it was built from
+    // the same parts and has followed every lanes frame since: one that a frame left out (Compare
+    // off meanwhile) missed the audio placed then, and is redone. The one test for both.
+    struct Kept
+    {
+        std::vector<std::int64_t> key;
+        std::uint64_t frame = 0; // 0: never built.
+
+        // Whether it holds `next` as of the frame before `now`.
+        [[nodiscard]] bool holds(const std::vector<std::int64_t>& next, std::uint64_t now) const
+        {
+            return frame != 0 && frame + 1 >= now && key == next;
+        }
+        // The same, noting that it follows `next` from frame `now` on: the caller redoes it when
+        // it did not hold.
+        bool follows(const std::vector<std::int64_t>& next, std::uint64_t now)
+        {
+            const bool held = holds(next, now);
+            key = next;
+            frame = now;
+            return held;
+        }
+    };
+
     // One track of the multi-track view: its own persistent sweep, and its audio while frozen.
     struct Lane
     {
@@ -283,7 +309,7 @@ private:
         BlockStats fixedStats;
         SumRefresh fixedRefresh;
         std::vector<std::int64_t> fixedKey;
-        std::vector<std::int64_t> lastFixedKey;
+        Kept fixedKept;
     };
     struct SumPart;
     // Screen or window positions [first, end).
@@ -376,12 +402,12 @@ private:
     void readSum(const std::vector<SumPart>& parts, std::size_t length, std::size_t position,
                  std::span<float> into);
     // Keeps `stats`, the levels of the sum of `parts` per block, in step: where compared tracks
-    // changed this frame, widened by `reach`, and when `key` differs from `lastKey`, all of them
-    // again over the next frames, as one of `shares` recomputations under way (see
-    // kSumRefreshSamples); all at once for a new length. True if levels were measured again beyond
-    // this frame's changes.
+    // changed this frame, widened by `reach`, and when they do not hold `key` as of the frame
+    // before (`kept`: other parts, or a frame that left them out), all of them again over the
+    // next frames, as one of `shares` recomputations under way (see kSumRefreshSamples); all at
+    // once for a new length. True if levels were measured again beyond this frame's changes.
     bool updateSumStats(BlockStats& stats, SumRefresh& refresh,
-                        const std::vector<std::int64_t>& key, std::vector<std::int64_t>& lastKey,
+                        const std::vector<std::int64_t>& key, Kept& kept,
                         const std::vector<SumPart>& parts, std::size_t reach, std::size_t length,
                         std::size_t block, std::size_t shares);
     // The energies a summing gain over screen positions `ranges` needs: into `tracks`, each of
@@ -604,7 +630,9 @@ private:
     std::vector<SumPart> rawParts;   // The compared tracks as recorded...
     std::vector<SumPart> fixedParts; // ...and shifted and flipped as matched.
     std::vector<std::int64_t> sumKey;
-    std::vector<std::int64_t> lastSumKey;
+    Kept sumKept;
+    // Lanes frames drawn in Beats, from 1: what the kept sums follow (Kept).
+    std::uint64_t lanesFrame = 0;
     // Tempo-synced: the sum lane's span, visible part and columns, and its pending recomputation.
     std::vector<std::int64_t> sumGeometry;
     std::vector<std::int64_t> lastSumGeometry;
@@ -614,9 +642,9 @@ private:
     BlockStats rawSumStats;
     BlockStats fixedSumStats;
     std::vector<std::int64_t> rawSumKey;
-    std::vector<std::int64_t> lastRawSumKey;
+    Kept rawSumKept;
     std::vector<std::int64_t> fixedSumKey;
-    std::vector<std::int64_t> lastFixedSumKey;
+    Kept fixedSumKept;
     SumRefresh rawSumRefresh;
     SumRefresh fixedSumRefresh;
     // Whether a sum is still being recomputed: frames go on meanwhile, also while frozen.
