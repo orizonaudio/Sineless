@@ -74,6 +74,22 @@ void Reconstruction::design(std::size_t factor)
     }
 }
 
+void Reconstruction::weightsAt(double fraction, std::vector<float>& out) const
+{
+    out.assign(2 * reach, 0.0f);
+    double sum = 0.0;
+    for (std::size_t k = 0; k < 2 * reach; ++k) {
+        const double offset = static_cast<double>(k) - static_cast<double>(reach) + 1.0;
+        const double weight = windowedSinc(fraction - offset, static_cast<double>(reach), beta);
+        out[k] = static_cast<float>(weight);
+        sum += weight;
+    }
+    // Unity gain at DC, as the points per sample have.
+    for (float& weight : out) {
+        weight = static_cast<float>(weight / sum);
+    }
+}
+
 bool Reconstruction::reconstructsGap(std::span<const float> samples, std::size_t n,
                                      std::span<const std::size_t> seams) const
 {

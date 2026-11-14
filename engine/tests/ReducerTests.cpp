@@ -380,6 +380,32 @@ TEST(RollColumns, FillsInColumnsWhoseAudioArrivesLater)
     EXPECT_EQ(std::vector<float>(values.begin(), values.end()), expected);
 }
 
+// The audio held ends within the span, not where a stretch of columns ends (a lane read through a
+// shift ends the shift short of the newest audio): one update draws every column whose audio is
+// held, not only the first stretch that could be read whole, so a view with no frame to follow
+// (frozen, or the transport stopped) is not left part drawn.
+TEST(RollColumns, DrawsEveryColumnHeldInOneUpdate)
+{
+    const auto signal = randomSamples(20000, 12);
+    const std::uint64_t available = 9000 + kColumnReach; // 90 columns and their neighbours.
+    const auto read = [&](std::uint64_t first, std::span<float> destination) {
+        if (first + destination.size() > available) {
+            return false;
+        }
+        std::copy_n(signal.begin() + static_cast<std::ptrdiff_t>(first), destination.size(),
+                    destination.begin());
+        return true;
+    };
+    RollColumns roll;
+    const auto values = roll.update(0, 0, kGrid, read);
+    std::vector<float> expected;
+    reduceToColumns(std::span(signal).first(9000 + kColumnReach), 0, kColumnReach, 90, expected);
+    EXPECT_EQ(std::vector<float>(values.begin(), values.begin() + 180), expected);
+    EXPECT_TRUE(std::all_of(values.begin() + 180, values.end(), [](float value) {
+        return value == 0.0f;
+    })) << "silent where no audio is held";
+}
+
 // A lane whose audio has not reached the span (a track that lags, or has only just been
 // inserted) is drawn silent and unready, even where it showed audio before, and the update
 // returns: every read fails, down to the shortest stretch, and none is tried again. A reader that

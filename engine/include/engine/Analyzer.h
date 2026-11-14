@@ -310,6 +310,26 @@ private:
         SumRefresh fixedRefresh;
         std::vector<std::int64_t> fixedKey;
         Kept fixedKept;
+        // What the lane's columns were last drawn from: nothing for its audio as recorded, or the
+        // alignment it was read through (feedKey). Columns drawn from another feed are drawn
+        // again: a sweep's over the next frames (feedRefresh), rolled ones afresh.
+        std::vector<std::int64_t> reducedFeed;
+        SumRefresh feedRefresh;
+        std::vector<std::int64_t> rolledFeed;
+        // Tempo-synced, lined up between samples: the lane's audio as its alignment's filter
+        // reads it (before its gain), over the positions this frame's new audio reaches. Its own
+        // columns, its levels, and the difference's levels and columns each read that stretch
+        // every frame: filtered once here, in the lanes frame `frame` (0: none).
+        struct Lined
+        {
+            std::uint64_t frame = 0;
+            std::ptrdiff_t offset = 0;
+            float fraction = 0.0f;
+            std::size_t length = 0; // The sweep's.
+            std::size_t first = 0;
+            std::vector<float> values;
+        };
+        Lined lined;
     };
     struct SumPart;
     // Screen or window positions [first, end).
@@ -318,6 +338,15 @@ private:
         std::size_t first = 0;
         std::size_t end = 0;
     };
+    // How far a change of a track's audio reaches in what is drawn from it shifted: positions
+    // before it and after it.
+    struct Reach
+    {
+        std::size_t before = 0;
+        std::size_t after = 0;
+    };
+    // What a change of `parts`' audio reaches (Reach).
+    static Reach reachOf(const std::vector<SumPart>& parts);
 
     Commands takeCommands();
     // readView and readViewHeld (ChannelViews.h), counted in AnalysisWork::samplesRead.
@@ -402,13 +431,14 @@ private:
     void readSum(const std::vector<SumPart>& parts, std::size_t length, std::size_t position,
                  std::span<float> into);
     // Keeps `stats`, the levels of the sum of `parts` per block, in step: where compared tracks
-    // changed this frame, widened by `reach`, and when they do not hold `key` as of the frame
-    // before (`kept`: other parts, or a frame that left them out), all of them again over the
-    // next frames, as one of `shares` recomputations under way (see kSumRefreshSamples); all at
-    // once for a new length. True if levels were measured again beyond this frame's changes.
+    // changed this frame, widened by `reach` (positions before and after), and when they do not
+    // hold `key` as of the frame before (`kept`: other parts, or a frame that left them out), all
+    // of them again over the next frames, as one of `shares` recomputations under way (see
+    // kSumRefreshSamples); all at once for a new length. True if levels were measured again beyond
+    // this frame's changes.
     bool updateSumStats(BlockStats& stats, SumRefresh& refresh,
                         const std::vector<std::int64_t>& key, Kept& kept,
-                        const std::vector<SumPart>& parts, std::size_t reach, std::size_t length,
+                        const std::vector<SumPart>& parts, Reach reach, std::size_t length,
                         std::size_t block, std::size_t shares);
     // The energies a summing gain over screen positions `ranges` needs: into `tracks`, each of
     // `parts` (shifted as it is), and into `sums` their sum, whose levels per block `sumStats`
@@ -526,6 +556,9 @@ private:
         const SampleSource* source = nullptr;
         std::uint64_t start = 0;
         int channels = 1;
+        // Frozen, held at another rate or in another channel: it has none of this window's audio,
+        // at any position.
+        bool none = false;
     };
     std::vector<LaneSource> laneSources;
     RollColumns sumRoll;
@@ -539,6 +572,9 @@ private:
     struct MatchState
     {
         PairAnalysis analysis;
+        // Searched to align the tracks (the difference's kind, over Align's reach), not for a
+        // fix: which of the analysis's fields it filled.
+        bool aligned = false;
         std::uint64_t analysedAt = 0;
         std::uint64_t wait = 0; // Audio to pass after analysedAt before the next search.
         int failedReads = 0;    // Tries since its audio was last read, in this view.
@@ -547,6 +583,8 @@ private:
     // The search in progress, spread over frames (kMatchSearchWork): the track it measures, and the
     // capture end when it started, which its match is dated by.
     PairSearch matchSearch;
+    bool searchAligning = false; // The kind of the search in progress.
+    bool matchAligning = false;  // The kind the matches on show were made due for.
     std::optional<std::uint64_t> searchingSerial;
     std::uint64_t searchStartedAt = 0;
     // Trigger or Free, Compare: the summing gains being measured over frames (kGainReadWork), of
@@ -566,6 +604,9 @@ private:
         std::vector<std::uint64_t> tracks; // The tracks compared, in lane order.
         std::vector<SumPart> raw;
         std::vector<SumPart> fixed;
+        // The positions of the visible part where every aligned part read so far had its audio:
+        // the difference is measured there alone.
+        Positions held;
         // The last lane is the difference: `raw` holds its parts, whose sum is measured against
         // part `reference` (this track) for the null depth, and nothing is measured as fixed.
         bool difference = false;
@@ -585,6 +626,7 @@ private:
     GainJob gainJob;
     // Steps the search in progress; true when it ended this frame and its match is stored.
     bool continueMatchSearch(double liveRate);
+    void adoptAlignment(std::uint64_t serial, const PairAnalysis& match);
     // The compared tracks as parts of the sum, in rawParts and fixedParts: as recorded, and
     // shifted and flipped as matched; and as parts of the difference. Both time bases build them
     // here, so they agree.
@@ -599,8 +641,11 @@ private:
     void followLane();
     // The matches' values, one set per lane, into comparisonCache.matches.
     void packMatches();
-    // The earliest (at most 0) and latest (at least 0) shift of `parts`.
+    // The earliest (at most 0) and latest (at least 0) sample `parts` read, from the position
+    // each is shown at: their shifts, and around an aligned part's the reach of its filter.
     static std::pair<std::ptrdiff_t, std::ptrdiff_t> fixedReach(const std::vector<SumPart>& parts);
+    // The first and last sample `part` reads, from the position it is shown at.
+    static std::pair<std::ptrdiff_t, std::ptrdiff_t> readsOf(const SumPart& part);
     // Steps the gains in progress by a frame's budget; true when they were published.
     bool stepGainJob();
     // The gains are due again for the live audio that arrived since they were measured.
@@ -627,10 +672,72 @@ private:
     {
         std::size_t lane = 0;
         std::ptrdiff_t offset = 0;
-        // What the track is multiplied by: 1 as recorded, -1 flipped by a fix, and -1 for the
-        // other tracks of a difference, which is the sum of this track and the others negated.
+        // What the track is multiplied by: 1 as recorded, -1 flipped by a fix or by Align, and
+        // -1 for the other tracks of a difference, which is the sum of this track and the
+        // others negated (so 1 again for one Align flips).
         float gain = 1.0f;
+        // Lined up by Align: shifted a fraction of a sample further than `offset` (0 for none),
+        // through the filter `taps` (none for a whole shift), and read beyond the window shown
+        // as far as its audio is held, since an effect's latency can exceed a short window.
+        float fraction = 0.0f;
+        std::shared_ptr<const std::vector<float>> taps = nullptr;
+        bool aligned = false;
     };
+    // How Align lines a compared track up with this one: the shift in whole samples and the
+    // fraction beyond, the filter that reads the wave there, and whether it is flipped. Its
+    // level is left as it is: a change of level is part of what an effect did, and belongs in
+    // the difference.
+    struct Alignment
+    {
+        std::ptrdiff_t offset = 0;
+        float fraction = 0.0f;
+        bool flipped = false;
+        std::shared_ptr<const std::vector<float>> taps = nullptr;
+    };
+    // The alignment in use of each compared track, by serial: the last one a search found, kept
+    // until one finds another (a steady routing redoes nothing), and dropped with the matches.
+    std::map<std::uint64_t, Alignment> alignments;
+    // The part a compared track is in the difference, or in its own lane when Align lines it up:
+    // as recorded, or as its alignment has it while Align is on.
+    [[nodiscard]] SumPart alignedPart(std::size_t lane, float sign) const;
+    // Samples either side of a position that an aligned part's filter reads.
+    static constexpr std::size_t kAlignReach = kReconstructionReach;
+    Reconstruction alignFilter{kAlignReach};
+    // What lane `lane`'s own columns are drawn from in the frame being produced: its audio as
+    // recorded, or, compared in the difference with Align on, as its alignment has it.
+    [[nodiscard]] SumPart laneFeed(std::size_t lane) const;
+    // A feed as a key (Lane::reducedFeed): empty for audio as recorded.
+    static void feedKey(const SumPart& feed, std::vector<std::int64_t>& key);
+    std::vector<std::int64_t> feedScratch;
+    // Tempo-synced: empties `into`, read from `position` of a sweep of `length`, where the
+    // aligned `part` has no audio of the moments shown there: where it would read past the
+    // sweep's edges, or across the playhead, beyond which the sweep holds the previous pass.
+    void blankUnheld(const SumPart& part, std::size_t length, std::size_t position,
+                     std::span<float> into) const;
+    // The sweep's playhead as a screen position, in the Beats frame being produced.
+    std::size_t sweepPlayhead = 0;
+    // Where this track's sweep changed in that frame, and where a lane's columns are drawn
+    // again for it.
+    std::vector<SweepImage::Range> ownChanges;
+    std::vector<SweepImage::Range> feedChanges;
+    // Trigger or Free: adds the aligned `part` to `into` over window positions from `position`
+    // (which may lie before the window, as a column's neighbours do), read from `lane`, whose
+    // part of the window starts at `laneStart`, as far beyond the window as it holds audio.
+    // Returns the positions of `into` where it holds every sample read; nothing is added
+    // elsewhere.
+    Positions addAlignedPart(const LaneSource& lane, std::uint64_t laneStart, const SumPart& part,
+                             std::int64_t position, std::span<float> into);
+    std::vector<float> alignScratch;
+    // Fills lane `lane`'s Lined for this frame: where its sweep or this track's changed, widened
+    // by `reach` (what such a change reaches in anything lined up) and `slack` (the whole blocks
+    // and columns around it that are read with it). None for a stretch longer than kLinedSamples
+    // (a frame after a long pause, or a sweep that wrapped), which is then filtered as it is read.
+    void lineUpChanges(std::size_t lane, std::size_t length, Reach reach, std::size_t slack);
+    static constexpr std::size_t kLinedSamples = std::size_t{1} << 17U;
+    // Recomputations of aligned lanes under way in the Beats frame being produced, and of the
+    // sums in the one before: they share a frame's kSumRefreshSamples.
+    std::size_t feedShares = 0;
+    std::size_t sumShares = 0;
     struct ComparisonCache
     {
         std::vector<float> matches;
@@ -640,6 +747,7 @@ private:
         // the sum has the gains and no depth, the difference the depth and no gains.
         float nullDepth = std::numeric_limits<float>::quiet_NaN();
         protocol::CompareLane lane = protocol::CompareLane::kSum;
+        bool aligned = false;              // Whether Align lined the difference's tracks up then.
         std::vector<std::uint64_t> tracks; // The tracks the gains were measured for.
         std::uint64_t at = 0;
         bool valid = false;
@@ -678,11 +786,9 @@ private:
     // A track's shifted levels (Lane::fixedRefresh) need no term of their own: a shift that changes
     // them changes the fixed sum's parts too, and the sum, of at least two parts, is redone at
     // most half as fast, so it is still refreshing until they are done.
-    [[nodiscard]] bool sumsRefreshing() const
-    {
-        return sumRefresh.remaining > 0 || rawSumRefresh.remaining > 0 ||
-               fixedSumRefresh.remaining > 0 || differenceRefresh.remaining > 0;
-    }
+    // The same for a lane drawn from another alignment than the one now in use: a search that
+    // ended in a frame, after its lanes were drawn, is shown by the next.
+    [[nodiscard]] bool sumsRefreshing() const;
     // The match search's copies of the visible part, and the gains' energies.
     std::vector<float> matchOwn;
     std::vector<float> matchTrack;

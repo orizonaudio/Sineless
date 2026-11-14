@@ -22,7 +22,10 @@
 // its polarity: 1 when it matches this track best as it is, -1 when flipped, 0 when it matches
 // nowhere clearly (unrelated sounds; the offset is then NaN). Tracks that are not compared, and
 // this track, have no correlation or offset (NaN) and polarity 0; a correlation not measured yet,
-// or of tracks that never sound together, is NaN too.
+// or of tracks that never sound together, is NaN too. In a sum frame the offset is a whole number
+// of samples within matchReachSeconds, the one a fix would shift by; in a difference frame it is
+// the delay Align takes out (and would, when it is off), to a fraction of a sample and within
+// alignReachSeconds.
 //
 // The visible span starts `startFraction` samples after the first point (sub-sample trigger
 // alignment). `peak`, `rms` and `invalidSamples` measure `readoutView` (a ChannelView): in

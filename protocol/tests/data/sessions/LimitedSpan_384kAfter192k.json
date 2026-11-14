@@ -31,13 +31,14 @@
       "replies": []
     }
   ],
-  "protocolVersion": 19,
+  "protocolVersion": 20,
   "scenario": "LimitedSpan_384kAfter192k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 19,
+    "protocolVersion": 20,
     "sampleRate": 384000.0,
     "settings": {
+      "align": "on",
       "autoFreeze": "on",
       "beatDivision": "regular",
       "beatSpan": "oneBar",

@@ -453,7 +453,10 @@ std::span<const float> RollColumns::update(std::uint64_t origin, std::uint64_t f
             }
         }
         column += available;
-        if (available < wanted || !trailHeld) {
+        // Past the newest audio held, nothing more; a stretch cut short with its neighbours after
+        // it held has more audio beyond (a source read through a shift ends within a stretch,
+        // not at its end): the next, shorter stretch goes on to it.
+        if (!trailHeld) {
             break;
         }
     }

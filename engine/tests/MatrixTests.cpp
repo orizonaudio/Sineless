@@ -140,7 +140,11 @@ struct Signal
     double amplitude = 0.25;
     double offset = 0.5; // DC, so that a hole in a trace stands out.
     std::uint64_t seed = 1;
-    std::int64_t delay = 0;     // Noise: samples by which it lags the host.
+    std::int64_t delay = 0; // Noise: samples by which it lags the host.
+    // Noise: the share of the sample rate it is limited below (0: white, as the host plays it),
+    // and a fraction of a sample more by which it then lags, which only limited noise can.
+    double lowPass = 0.0;
+    double fraction = 0.0;
     std::int64_t startsAt = 0;  // Silent before this host sample.
     std::int64_t endsAt = -1;   // Silent from this host sample, if any.
     std::int64_t brokenAt = -1; // One sample, at this host sample, that is not finite (`broken`).
@@ -159,6 +163,33 @@ struct Signal
     // amplitude, instead of half the left; none if NaN.
     double rightPhase = std::numeric_limits<double>::quiet_NaN();
 };
+
+// The taps that make white noise the noise a Signal asks for, limited below `lowPass` of the
+// sample rate and `fraction` of a sample late: a sinc under a Blackman-Harris window, 92 dB down
+// from the limit on, shifted by the fraction as a whole, so the late noise is the same wave read
+// a fraction of a sample earlier.
+constexpr int kBandTaps = 96;
+std::array<double, kBandTaps> bandTaps(double lowPass, double fraction)
+{
+    // The window's main lobe is 4/kBandTaps of the rate either side of the cutoff.
+    const double cutoff = lowPass - (4.0 / kBandTaps);
+    std::array<double, kBandTaps> taps{};
+    for (int k = 0; k < kBandTaps; ++k) {
+        const double t = static_cast<double>(k + 1) - (kBandTaps / 2.0) - fraction;
+        const double x = (t / kBandTaps) + 0.5;
+        if (x <= 0.0 || x >= 1.0) {
+            continue;
+        }
+        const double turn = 2.0 * std::numbers::pi * x;
+        const double window = 0.35875 - (0.48829 * std::cos(turn)) +
+                              (0.14128 * std::cos(2.0 * turn)) - (0.01168 * std::cos(3.0 * turn));
+        const double sinc = std::abs(t) < 1e-12 ? 2.0 * cutoff
+                                                : std::sin(2.0 * std::numbers::pi * cutoff * t) /
+                                                      (std::numbers::pi * t);
+        taps.at(static_cast<std::size_t>(k)) = window * sinc;
+    }
+    return taps;
+}
 
 // Tracks of group A on one host, each with its own signal and tempo, viewed from the first.
 class Session
@@ -365,6 +396,9 @@ private:
     void fill(const Signal& signal, std::uint64_t from, int count = kBlock)
     {
         const double step = 2.0 * std::numbers::pi * signal.frequency / rate;
+        const bool limited = signal.kind == Signal::Kind::kNoise && signal.lowPass > 0.0;
+        const std::array<double, kBandTaps> taps =
+            limited ? bandTaps(signal.lowPass, signal.fraction) : std::array<double, kBandTaps>{};
         for (int i = 0; i < count; ++i) {
             const auto index = static_cast<std::int64_t>(from) + i;
             double value = 0.0;
@@ -374,6 +408,15 @@ private:
                     signal.offset + signal.amplitude * std::sin(step * static_cast<double>(index));
                 break;
             case Signal::Kind::kNoise:
+                if (limited) {
+                    for (int k = 0; k < kBandTaps; ++k) {
+                        value +=
+                            taps.at(static_cast<std::size_t>(k)) *
+                            noiseAt(index - signal.delay - (k - (kBandTaps / 2) + 1), signal.seed);
+                    }
+                    value *= signal.amplitude * 2.0;
+                    break;
+                }
                 value = signal.amplitude * 2.0 * noiseAt(index - signal.delay, signal.seed);
                 break;
             case Signal::Kind::kSilence:
@@ -6654,6 +6697,7 @@ struct ReturningCase
     TimeBase timeBase = TimeBase::kBeats;
     protocol::CompareLane lane = protocol::CompareLane::kSum;
     Away away = Away::kCompareOff;
+    bool align = false; // The difference with Align on: the other track lined up with this one.
 };
 
 class ReturningSum : public ::testing::TestWithParam<ReturningCase>
@@ -6688,12 +6732,20 @@ void showLane(Engine& engine, protocol::CompareLane lane)
     engine.settings().set(SettingId::kCompareLane, static_cast<double>(lane));
 }
 
+void setAlign(Engine& engine, bool on)
+{
+    engine.settings().set(SettingId::kAlign,
+                          static_cast<double>(on ? protocol::Toggle::kOn : protocol::Toggle::kOff));
+}
+
 // Compare's last lane left and come back to while the music plays (Compare switched off and on,
 // or the lane showing the difference in place of the sum, or the reverse), live or frozen
 // meanwhile: what it shows on coming back is what a session that showed it all along shows, as
 // soon as its sums are redone, not only once the sweep has passed again (which frozen it never
 // does). Here the other track turns into this one inverted while the lane is away: back, the sum
-// cancels exactly (it did read +2 dB) and the difference is twice this track.
+// cancels exactly (it did read +2 dB) and the difference is twice this track; with Align on, the
+// other track is flipped back and taken out of this one, and its own lane is drawn as lined up:
+// a lane kept as recorded beside it would not be a fresh session's.
 TEST_P(ReturningSum, MatchesAFreshSum)
 {
     const ReturningCase c = GetParam();
@@ -6705,6 +6757,7 @@ TEST_P(ReturningSum, MatchesAFreshSum)
     session.join({.kind = Signal::Kind::kNoise, .offset = 0.0, .seed = 5});
     configure(session.own(), Display::kCompare, c.timeBase);
     showLane(session.own(), c.lane);
+    setAlign(session.own(), c.align);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
     setSpan(session.own(), c.timeBase, 2.0);
     session.analyzer().setCompared(othersOf(session));
@@ -6750,7 +6803,10 @@ TEST_P(ReturningSum, MatchesAFreshSum)
     ASSERT_TRUE(expected);
     ASSERT_TRUE(expected->has(FrameFlag::kCompared));
     ASSERT_EQ(expected->compareLane, c.lane);
-    if (difference) {
+    if (difference && c.align) {
+        ASSERT_LE(expected->nullDepth, protocol::kGainFloorDb)
+            << "the other track is this one inverted: lined up, it is taken out of this track";
+    } else if (difference) {
         ASSERT_NEAR(expected->nullDepth, 20.0 * std::log10(2.0), 1e-3)
             << "the other track is this one inverted: the difference is twice this track";
     } else {
@@ -6784,17 +6840,28 @@ std::vector<ReturningCase> returningCases()
                 cases.push_back(
                     {.rate = rate, .frozen = frozen, .lane = lane, .away = Away::kOtherLane});
             }
+            // The difference with Align on, away for the sum and with Compare off.
+            for (const Away away : {Away::kOtherLane, Away::kCompareOff}) {
+                cases.push_back({.rate = rate,
+                                 .frozen = frozen,
+                                 .lane = protocol::CompareLane::kDifference,
+                                 .away = away,
+                                 .align = true});
+            }
         }
     }
     // Free, rolling, keeps its columns by the audio's own positions, which nothing rewrites: the
     // same steps, right before and after.
     for (const bool frozen : {false, true}) {
         cases.push_back({.rate = 48000.0, .frozen = frozen, .timeBase = TimeBase::kFree});
-        cases.push_back({.rate = 48000.0,
-                         .frozen = frozen,
-                         .timeBase = TimeBase::kFree,
-                         .lane = protocol::CompareLane::kDifference,
-                         .away = Away::kOtherLane});
+        for (const bool align : {false, true}) {
+            cases.push_back({.rate = 48000.0,
+                             .frozen = frozen,
+                             .timeBase = TimeBase::kFree,
+                             .lane = protocol::CompareLane::kDifference,
+                             .away = Away::kOtherLane,
+                             .align = align});
+        }
     }
     return cases;
 }
@@ -6805,6 +6872,7 @@ INSTANTIATE_TEST_SUITE_P(EveryRate, ReturningSum, ::testing::ValuesIn(returningC
                              const bool difference = c.lane == protocol::CompareLane::kDifference;
                              return rateName(c.rate) + "_" + timeBaseName(c.timeBase) +
                                     (difference ? "_Difference" : "_Sum") +
+                                    (c.align ? "Aligned" : "") +
                                     (c.away == Away::kCompareOff ? "_CompareOff" : "_OtherLane") +
                                     (c.frozen ? "_Frozen" : "_Live");
                          });
@@ -6823,11 +6891,11 @@ class Difference : public ::testing::TestWithParam<DifferenceCase>
 {
 };
 
-// Compare's last lane showing the difference: this track minus the other checked tracks, sample
-// for sample. Here the others are this track at a half and at a quarter of its level, so the
-// difference is this track at a quarter: its lane is this track's lane, a quarter as tall, and it
-// nulls 12 dB below this track. The frame says the lane is the difference, and carries no summing
-// gains, which are the sum's.
+// Compare's last lane showing the difference, with Align off: this track minus the other checked
+// tracks, sample for sample. Here the others are this track at a half and at a quarter of its
+// level, so the difference is this track at a quarter: its lane is this track's lane, a quarter as
+// tall, and it nulls 12 dB below this track. The frame says the lane is the difference, and carries
+// no summing gains, which are the sum's.
 TEST_P(Difference, IsThisTrackMinusTheOthers)
 {
     const DifferenceCase c = GetParam();
@@ -6837,6 +6905,7 @@ TEST_P(Difference, IsThisTrackMinusTheOthers)
     session.join({.kind = Signal::Kind::kNoise, .amplitude = 0.125, .offset = 0.0, .seed = 3});
     configure(session.own(), Display::kCompare, c.timeBase);
     showLane(session.own(), protocol::CompareLane::kDifference);
+    setAlign(session.own(), false);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
     setSpan(session.own(), c.timeBase, c.timeBase == TimeBase::kFree ? 2.0 : 0.05);
     session.analyzer().setCompared(othersOf(session));
@@ -6917,6 +6986,717 @@ TEST(DifferenceWork, SumsNoMoreAFrameThanTheSum)
         EXPECT_GT(difference.samplesSummed, 0U);
         EXPECT_LE(difference.samplesSummed, sum.samplesSummed);
         EXPECT_LE(difference.gainWork, sum.gainWork);
+    }
+}
+
+// ----- Align -----
+
+// A compared track's match in a frame: its correlation, its delay in samples and its polarity
+// (-1 flipped, 0 not related).
+struct LaneMatch
+{
+    float correlation = 0.0f;
+    float delay = 0.0f;
+    float polarity = 0.0f;
+};
+
+LaneMatch matchOf(const DecodedFrame& frame, std::size_t track)
+{
+    const std::size_t at =
+        std::size_t{frame.laneCount} * traceLength(frame) + track * protocol::kMatchValues;
+    return {.correlation = frame.data.at(at),
+            .delay = frame.data.at(at + 1),
+            .polarity = frame.data.at(at + 2)};
+}
+
+// What an effect did to the copy of a track on another one.
+struct Effect
+{
+    double delaySeconds = 0.046; // Beyond the sum's reach and within Align's.
+    double fraction = 0.0;       // Of a sample, beyond the whole samples of the delay.
+    double gain = 1.0;           // The copy's level against the track's.
+    bool flipped = true;
+    double lowPass = 0.0; // Both tracks' noise, limited (Signal::lowPass).
+    // Viewed from the track after the effect: this track is the late one, and the other, as
+    // recorded before the effect, is what Align moves.
+    bool fromCopy = false;
+
+    [[nodiscard]] std::int64_t delaySamples(double rate) const
+    {
+        return std::llround(delaySeconds * rate);
+    }
+};
+
+// The track before `effect` (noise), and its copy after it.
+Signal beforeEffect(const Effect& effect)
+{
+    return {.kind = Signal::Kind::kNoise,
+            .amplitude = 0.2,
+            .offset = 0.0,
+            .seed = 3,
+            .lowPass = effect.lowPass};
+}
+
+Signal afterEffect(double rate, const Effect& effect)
+{
+    Signal signal = beforeEffect(effect);
+    signal.amplitude *= effect.flipped ? -effect.gain : effect.gain;
+    signal.delay = effect.delaySamples(rate);
+    signal.fraction = effect.fraction;
+    return signal;
+}
+
+// This track and a second one: a track before `effect` and its copy after it.
+void joinCopy(Session& session, double rate, const Effect& effect)
+{
+    session.join(effect.fromCopy ? afterEffect(rate, effect) : beforeEffect(effect));
+    session.join(effect.fromCopy ? beforeEffect(effect) : afterEffect(rate, effect));
+}
+
+struct AlignedCase
+{
+    double rate = 0.0;
+    int channels = 2;
+    TimeBase timeBase = TimeBase::kBeats;
+    bool frozen = false;
+};
+
+// The spans the Align tests use: one bar (2 s) in Beats, 2 s rolling in Free, and a quarter of a
+// second in Trigger, each several times the delay.
+void showDifference(Session& session, TimeBase timeBase)
+{
+    configure(session.own(), Display::kCompare, timeBase);
+    showLane(session.own(), protocol::CompareLane::kDifference);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    setSpan(session.own(), timeBase, timeBase == TimeBase::kFree ? 2.0 : 0.25);
+    session.analyzer().setCompared(othersOf(session));
+}
+
+// Plays long enough for the alignment to be found and drawn, then gives the last frame: live, or
+// frozen and settled.
+std::optional<DecodedFrame> playAndShow(Session& session, bool frozen)
+{
+    session.play(4.0, 0.05);
+    session.play(0.01);
+    std::optional<DecodedFrame> frame = session.produce();
+    if (!frame) {
+        return frame;
+    }
+    if (frozen) {
+        session.analyzer().setFrozen(true);
+    }
+    if (auto later = settled(session.analyzer())) {
+        frame = std::move(later);
+    }
+    return frame;
+}
+
+// How many of a lane's columns are empty (no audio: drawn silent), and how many are neither
+// empty nor `expected`'s within rounding: the edges of an empty stretch, where a column holds
+// both.
+struct LaneFit
+{
+    std::size_t same = 0;
+    std::size_t empty = 0;
+    std::size_t other = 0;
+};
+
+LaneFit fitOf(std::span<const float> lane, std::span<const float> expected)
+{
+    LaneFit fit;
+    for (std::size_t point = 0; point + 1 < lane.size(); point += 2) {
+        const bool same = std::abs(lane[point] - expected[point]) <= 1e-5f &&
+                          std::abs(lane[point + 1] - expected[point + 1]) <= 1e-5f;
+        const bool empty = lane[point] == 0.0f && lane[point + 1] == 0.0f;
+        ++(same ? fit.same : empty ? fit.empty : fit.other);
+    }
+    return fit;
+}
+
+class Aligned : public ::testing::TestWithParam<AlignedCase>
+{
+};
+
+// A track compared with itself after an effect that makes it 46 ms late (more than the sum's
+// reach, as a look-ahead limiter or a linear-phase equaliser does) and flipped: in the difference
+// Align takes both out, so the difference is silent and nulls below what rounding leaves; the
+// other track's lane is drawn lined up, the same as this track's but where its audio has not
+// arrived, which is empty; and the frame says what was taken out, for the label.
+TEST_P(Aligned, NullsALateFlippedCopy)
+{
+    const AlignedCase c = GetParam();
+    const Effect effect;
+    Session session(c.rate, c.channels);
+    joinCopy(session, c.rate, effect);
+    showDifference(session, c.timeBase);
+    const std::optional<DecodedFrame> frame = playAndShow(session, c.frozen);
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(FrameFlag::kCompared));
+    ASSERT_EQ(frame->compareLane, protocol::CompareLane::kDifference);
+
+    const LaneMatch match = matchOf(*frame, 1);
+    EXPECT_EQ(match.delay, static_cast<float>(effect.delaySamples(c.rate)));
+    EXPECT_EQ(match.polarity, -1.0f);
+    EXPECT_LE(frame->nullDepth, protocol::kGainFloorDb);
+
+    ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+    const std::span<const float> own = trace(*frame, 0);
+    const LaneFit lane = fitOf(trace(*frame, 1), own);
+    // Empty over the delay at the newest audio and, in a sweep, at its right edge; a column at
+    // each end of such a stretch holds both.
+    const double spanSeconds = c.timeBase == TimeBase::kTrigger ? 0.25 : 2.0;
+    const auto delayColumns = static_cast<std::size_t>(
+        std::ceil(effect.delaySeconds / spanSeconds * static_cast<double>(kColumns)));
+    EXPECT_GT(lane.same, (own.size() / 2) / 2) << "the lane is not this track's, lined up";
+    EXPECT_LE(lane.empty, 2 * delayColumns);
+    EXPECT_LE(lane.other, 4U);
+    for (const float value : trace(*frame, 2)) {
+        ASSERT_LE(std::abs(value), 1e-5f) << "the difference is not silent";
+    }
+}
+
+// A change of level is not taken out: it is part of what an effect did. A copy 2.3 dB louder,
+// late and flipped is lined up in time and polarity only, so its lane is this track's 2.3 dB
+// taller, and the difference is what the level change left: this track times (1 - g), which
+// nulls 20·log10|1 - g| below it.
+TEST_P(Aligned, LeavesALevelChangeInTheDifference)
+{
+    const AlignedCase c = GetParam();
+    const Effect effect{.gain = std::pow(10.0, 2.3 / 20.0)};
+    Session session(c.rate, c.channels);
+    joinCopy(session, c.rate, effect);
+    showDifference(session, c.timeBase);
+    const std::optional<DecodedFrame> frame = playAndShow(session, c.frozen);
+    ASSERT_TRUE(frame);
+    const LaneMatch match = matchOf(*frame, 1);
+    EXPECT_EQ(match.delay, static_cast<float>(effect.delaySamples(c.rate)));
+    EXPECT_EQ(match.polarity, -1.0f);
+    EXPECT_NEAR(frame->nullDepth, 20.0 * std::log10(effect.gain - 1.0), 0.01);
+
+    ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+    const std::span<const float> own = trace(*frame, 0);
+    std::vector<float> taller(own.begin(), own.end());
+    std::vector<float> left(own.begin(), own.end());
+    for (std::size_t point = 0; point + 1 < own.size(); point += 2) {
+        taller[point] = static_cast<float>(effect.gain) * own[point];
+        taller[point + 1] = static_cast<float>(effect.gain) * own[point + 1];
+        // This track less the louder copy: turned over, so a column's lowest is its highest.
+        left[point] = static_cast<float>(1.0 - effect.gain) * own[point + 1];
+        left[point + 1] = static_cast<float>(1.0 - effect.gain) * own[point];
+    }
+    const LaneFit lane = fitOf(trace(*frame, 1), taller);
+    EXPECT_GT(lane.same, (own.size() / 2) / 2) << "the lane is not the copy at its own level";
+    EXPECT_LE(lane.other, 4U);
+    const LaneFit difference = fitOf(trace(*frame, 2), left);
+    EXPECT_GT(difference.same, (own.size() / 2) / 2) << "the difference is not the level change";
+    EXPECT_LE(difference.other, 4U);
+}
+
+// With Align off the difference is of the tracks as recorded, and the other track's lane is its
+// audio as recorded, as the sum's view draws it; the label still says what Align would take out.
+TEST_P(Aligned, ShowsTheTracksAsRecordedWithAlignOff)
+{
+    const AlignedCase c = GetParam();
+    const Effect effect;
+    const auto show = [&](Session& session, protocol::CompareLane lane) {
+        joinCopy(session, c.rate, effect);
+        showDifference(session, c.timeBase);
+        showLane(session.own(), lane);
+        setAlign(session.own(), false);
+        return playAndShow(session, c.frozen);
+    };
+    Session session(c.rate, c.channels);
+    const std::optional<DecodedFrame> frame = show(session, protocol::CompareLane::kDifference);
+    Session summed(c.rate, c.channels);
+    const std::optional<DecodedFrame> sum = show(summed, protocol::CompareLane::kSum);
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(sum);
+
+    const LaneMatch match = matchOf(*frame, 1);
+    EXPECT_EQ(match.delay, static_cast<float>(effect.delaySamples(c.rate)));
+    EXPECT_EQ(match.polarity, -1.0f);
+    // Noise and its late copy are unrelated as they are: their energies add.
+    EXPECT_NEAR(frame->nullDepth, 10.0 * std::log10(1.0 + effect.gain * effect.gain), 0.5);
+    if (c.timeBase != TimeBase::kTrigger) { // A triggered window is another in each session.
+        EXPECT_TRUE(std::ranges::equal(trace(*frame, 1), trace(*sum, 1)))
+            << "the other track's lane is not its audio as recorded";
+    }
+}
+
+// A track that has nothing to do with this one is not lined up with it: its lane and the
+// difference are of the audio as recorded, and the frame has no delay or gain for it.
+TEST_P(Aligned, LeavesAnUnrelatedTrackAsRecorded)
+{
+    const AlignedCase c = GetParam();
+    const auto show = [&](Session& session, protocol::CompareLane lane) {
+        session.join({.kind = Signal::Kind::kNoise, .amplitude = 0.2, .offset = 0.0, .seed = 3});
+        session.join({.kind = Signal::Kind::kNoise, .amplitude = 0.2, .offset = 0.0, .seed = 5});
+        showDifference(session, c.timeBase);
+        showLane(session.own(), lane);
+        return playAndShow(session, c.frozen);
+    };
+    Session session(c.rate, c.channels);
+    const std::optional<DecodedFrame> frame = show(session, protocol::CompareLane::kDifference);
+    Session summed(c.rate, c.channels);
+    const std::optional<DecodedFrame> sum = show(summed, protocol::CompareLane::kSum);
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(sum);
+
+    const LaneMatch match = matchOf(*frame, 1);
+    EXPECT_EQ(match.polarity, 0.0f);
+    EXPECT_TRUE(std::isnan(match.delay)) << match.delay;
+    EXPECT_NEAR(frame->nullDepth, 10.0 * std::log10(2.0), 0.5);
+    if (c.timeBase != TimeBase::kTrigger) {
+        EXPECT_TRUE(std::ranges::equal(trace(*frame, 1), trace(*sum, 1)))
+            << "the other track's lane is not its audio as recorded";
+    }
+}
+
+std::vector<AlignedCase> alignedCases(double highestRate)
+{
+    std::vector<AlignedCase> cases;
+    for (std::size_t rate = 0; rate < kSampleRates.size(); ++rate) {
+        if (kSampleRates.at(rate) > highestRate) {
+            continue;
+        }
+        for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+            for (const bool frozen : {false, true}) {
+                cases.push_back({.rate = kSampleRates.at(rate),
+                                 .channels = (rate + timeBase) % 2 == 0 ? 2 : 1,
+                                 .timeBase = static_cast<TimeBase>(timeBase),
+                                 .frozen = frozen});
+            }
+        }
+    }
+    return cases;
+}
+
+std::string alignedName(const ::testing::TestParamInfo<AlignedCase>& info)
+{
+    const AlignedCase& c = info.param;
+    return rateName(c.rate) + "_" + timeBaseName(c.timeBase) +
+           (c.channels == 1 ? "_Mono" : "_Stereo") + (c.frozen ? "_Frozen" : "_Live");
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, Aligned, ::testing::ValuesIn(alignedCases(kSampleRates.back())),
+                         alignedName);
+
+class AlignedBetweenSamples : public ::testing::TestWithParam<AlignedCase>
+{
+};
+
+// An effect's delay is seldom a whole number of samples (a filter's, or an oversampled
+// limiter's). Late by 0.37 of a sample beyond the 46 ms, the copy is read between its samples:
+// the frame's delay says so, and the difference still nulls far below anything a whole-sample
+// shift leaves (-9 dB here, a third of a sample off across the band), for audio below a third of
+// the sample rate, which the filter that reads between the samples passes.
+TEST_P(AlignedBetweenSamples, NullsACopyLateByAFractionOfASample)
+{
+    const AlignedCase c = GetParam();
+    const Effect effect{.fraction = 0.37, .lowPass = 1.0 / 3.0};
+    Session session(c.rate, c.channels);
+    joinCopy(session, c.rate, effect);
+    showDifference(session, c.timeBase);
+    const std::optional<DecodedFrame> frame = playAndShow(session, c.frozen);
+    ASSERT_TRUE(frame);
+    const LaneMatch match = matchOf(*frame, 1);
+    EXPECT_NEAR(match.delay, static_cast<double>(effect.delaySamples(c.rate)) + effect.fraction,
+                0.01);
+    EXPECT_EQ(match.polarity, -1.0f);
+    EXPECT_LT(frame->nullDepth, -60.0);
+}
+
+// The delay between samples does not depend on the rate in samples: at the rates up to 96 kHz.
+INSTANTIATE_TEST_SUITE_P(EveryMode, AlignedBetweenSamples,
+                         ::testing::ValuesIn(alignedCases(96000.0)), alignedName);
+
+// What a new analyzer shows of a session's audio and settings as they stand: frozen at the newest
+// audio if so, and with whatever it measures over frames measured.
+std::optional<DecodedFrame> freshView(Session& session, bool frozen)
+{
+    Analyzer fresh(session.own(), session.registry);
+    fresh.setColumns(kColumns);
+    if (frozen) {
+        std::vector<std::byte> live;
+        if (!fresh.produce(live)) {
+            return std::nullopt;
+        }
+        fresh.setFrozen(true);
+    }
+    return settled(fresh);
+}
+
+// The same lanes, value for value, with the same null depth and the same match for track 1.
+void expectSameView(const DecodedFrame& shown, const DecodedFrame& expected)
+{
+    EXPECT_TRUE(sameFigure(shown.nullDepth, expected.nullDepth))
+        << shown.nullDepth << " for " << expected.nullDepth;
+    const LaneMatch match = matchOf(shown, 1);
+    const LaneMatch fresh = matchOf(expected, 1);
+    EXPECT_TRUE(sameFigure(match.delay, fresh.delay)) << match.delay << " for " << fresh.delay;
+    EXPECT_EQ(match.polarity, fresh.polarity);
+    ASSERT_EQ(tracesIn(shown), tracesIn(expected));
+    ASSERT_EQ(shown.pointCount, expected.pointCount);
+    for (std::size_t index = 0; index < tracesIn(expected); ++index) {
+        EXPECT_TRUE(std::ranges::equal(trace(shown, index), trace(expected, index)))
+            << (index + 1 == tracesIn(expected) ? "the difference" : "a track's lane") << " "
+            << index;
+    }
+}
+
+// Whether a trace is silent to within rounding.
+bool silent(std::span<const float> values)
+{
+    return std::ranges::all_of(values, [](float value) { return std::abs(value) <= 1e-5f; });
+}
+
+// Shapes are compared zoomed to a few samples, where the view shows far less than the delay: the
+// alignment is the routing's, found over audio the view does not choose, so it stays, and the few
+// samples shown are this track's in both lanes with nothing left between them. Frozen, the zoom
+// makes no search due.
+TEST(AlignedView, KeepsItsAlignmentZoomedToAFewSamples)
+{
+    constexpr double kRate = 48000.0;
+    const Effect effect;
+    for (std::size_t index = 0; index < protocol::kTimeBaseCount; ++index) {
+        for (const bool frozen : {false, true}) {
+            const auto timeBase = static_cast<TimeBase>(index);
+            SCOPED_TRACE(timeBaseName(timeBase) + (frozen ? " frozen" : " live"));
+            Session session(kRate, 2);
+            joinCopy(session, kRate, effect);
+            showDifference(session, timeBase);
+            ASSERT_TRUE(playAndShow(session, frozen));
+            const double spanSamples = (timeBase == TimeBase::kTrigger ? 0.25 : 2.0) * kRate;
+            const double width = protocol::kMinimumViewSamples / spanSamples * (1.0 - 1e-12);
+            const AnalysisWork before = session.analyzer().work();
+            // A quarter into the span: away from the newest audio, which the late track lacks.
+            session.analyzer().setView(0.25, 0.25 + width);
+            std::optional<DecodedFrame> frame = session.produce();
+            ASSERT_TRUE(frame);
+            if (auto later = settled(session.analyzer())) {
+                frame = std::move(later);
+            }
+            if (frozen) {
+                EXPECT_EQ(workSince(before, session.analyzer().work()).matchSearches, 0U)
+                    << "the zoom made a search due";
+            } else {
+                session.play(1.0, 0.05);
+                session.play(0.01);
+                frame = session.produce();
+                ASSERT_TRUE(frame);
+            }
+            EXPECT_NEAR(frame->visibleSamples, protocol::kMinimumViewSamples, 0.01);
+            const LaneMatch match = matchOf(*frame, 1);
+            EXPECT_EQ(match.delay, static_cast<float>(effect.delaySamples(kRate)));
+            EXPECT_EQ(match.polarity, -1.0f);
+            EXPECT_LE(frame->nullDepth, protocol::kGainFloorDb);
+            ASSERT_EQ(frame->mode, FrameMode::kRaw);
+            const std::span<const float> own = trace(*frame, 0);
+            const std::span<const float> lane = trace(*frame, 1);
+            EXPECT_FALSE(silent(own)) << "nothing drawn to compare";
+            for (std::size_t point = 0; point < own.size(); ++point) {
+                ASSERT_NEAR(lane[point], own[point], 1e-5f) << "at point " << point;
+            }
+            EXPECT_TRUE(silent(trace(*frame, 2))) << "the difference is not silent";
+        }
+    }
+}
+
+// Frozen in Trigger at its shortest span, half a millisecond, and panned back to the oldest audio
+// held: what is shown is seconds from the audio the alignment was found over. It still is the
+// routing's: no search is made due, the tracks stay lined up and the difference silent.
+TEST(AlignedView, KeepsItsAlignmentWhilePanned)
+{
+    constexpr double kRate = 48000.0;
+    const Effect effect;
+    Session session(kRate, 2);
+    joinCopy(session, kRate, effect);
+    showDifference(session, TimeBase::kTrigger);
+    setSpan(session.own(), TimeBase::kTrigger, setting(SettingId::kTriggerSpan).minimum);
+    session.play(protocol::kFrozenHoldSeconds + 0.5, 0.05);
+    session.play(0.01);
+    ASSERT_TRUE(session.produce());
+    session.analyzer().setFrozen(true);
+    ASSERT_TRUE(session.produce());
+    const float reach = session.field(FrameHeader::kPanReachOffset);
+    ASSERT_GT(reach, 1.0f);
+    (void)settled(session.analyzer()); // Whatever the freeze left to measure.
+    const AnalysisWork before = session.analyzer().work();
+    session.analyzer().setPan(reach);
+    std::optional<DecodedFrame> frame = session.produce();
+    ASSERT_TRUE(frame);
+    if (auto later = settled(session.analyzer())) {
+        frame = std::move(later);
+    }
+    EXPECT_EQ(workSince(before, session.analyzer().work()).matchSearches, 0U)
+        << "the pan made a search due";
+    const LaneMatch match = matchOf(*frame, 1);
+    EXPECT_EQ(match.delay, static_cast<float>(effect.delaySamples(kRate)));
+    EXPECT_LE(frame->nullDepth, protocol::kGainFloorDb);
+    ASSERT_EQ(frame->mode, FrameMode::kRaw);
+    const std::span<const float> own = trace(*frame, 0);
+    const std::span<const float> lane = trace(*frame, 1);
+    EXPECT_FALSE(silent(own)) << "nothing drawn to compare";
+    for (std::size_t point = 0; point < own.size(); ++point) {
+        ASSERT_NEAR(lane[point], own[point], 1e-5f) << "at point " << point;
+    }
+    EXPECT_TRUE(silent(trace(*frame, 2))) << "the difference is not silent";
+}
+
+// Align switched off, and on again, with no audio in between: each time the lanes, the
+// difference and its depth are what a session that opened that way shows, once redrawn.
+TEST(AlignedView, TurningAlignOffAndOnMatchesAFreshSession)
+{
+    constexpr double kRate = 48000.0;
+    for (const TimeBase timeBase : {TimeBase::kBeats, TimeBase::kFree}) {
+        for (const bool frozen : {false, true}) {
+            SCOPED_TRACE(timeBaseName(timeBase) + (frozen ? " frozen" : " live"));
+            Session session(kRate, 2);
+            joinCopy(session, kRate, {});
+            showDifference(session, timeBase);
+            const std::optional<DecodedFrame> aligned = playAndShow(session, frozen);
+            ASSERT_TRUE(aligned);
+            ASSERT_LE(aligned->nullDepth, protocol::kGainFloorDb);
+            for (const bool on : {false, true}) {
+                SCOPED_TRACE(on ? "on again" : "off");
+                setAlign(session.own(), on);
+                const std::optional<DecodedFrame> shown = settled(session.analyzer());
+                const std::optional<DecodedFrame> expected = freshView(session, frozen);
+                ASSERT_TRUE(shown);
+                ASSERT_TRUE(expected);
+                if (on) {
+                    ASSERT_LE(expected->nullDepth, protocol::kGainFloorDb);
+                } else {
+                    ASSERT_GT(expected->nullDepth, 0.0f);
+                }
+                expectSameView(*shown, *expected);
+            }
+        }
+    }
+}
+
+// The routing changes while it plays: the effect's latency (another setting of its look-ahead),
+// or its polarity. Once the searches see only the new routing, the track is drawn lined up by it,
+// every column of its lane and of the difference, as a session opened then draws them: none left
+// from the alignment before.
+TEST(AlignedView, DrawsTheLanesAgainWhenTheAlignmentMoves)
+{
+    constexpr double kRate = 48000.0;
+    const Effect first;
+    const std::array<Effect, 2> seconds{Effect{.delaySeconds = 0.031}, Effect{.flipped = false}};
+    for (const TimeBase timeBase : {TimeBase::kBeats, TimeBase::kFree}) {
+        for (const Effect& second : seconds) {
+            SCOPED_TRACE(timeBaseName(timeBase) + (second.flipped == first.flipped
+                                                       ? ", the delay moves"
+                                                       : ", the polarity turns"));
+            Session session(kRate, 2);
+            joinCopy(session, kRate, first);
+            showDifference(session, timeBase);
+            const std::optional<DecodedFrame> before = playAndShow(session, false);
+            ASSERT_TRUE(before);
+            ASSERT_EQ(matchOf(*before, 1).delay, static_cast<float>(first.delaySamples(kRate)));
+            session.setSignal(1, afterEffect(kRate, second));
+            // More than the search's window: its audio is all of the new routing.
+            session.play(kMatchWindowSeconds + 2.0, 0.05);
+            session.play(0.01);
+            std::optional<DecodedFrame> shown = session.produce();
+            if (auto later = settled(session.analyzer())) {
+                shown = std::move(later);
+            }
+            const std::optional<DecodedFrame> expected = freshView(session, false);
+            ASSERT_TRUE(shown);
+            ASSERT_TRUE(expected);
+            const LaneMatch match = matchOf(*expected, 1);
+            ASSERT_EQ(match.delay, static_cast<float>(second.delaySamples(kRate)));
+            ASSERT_EQ(match.polarity, second.flipped ? -1.0f : 1.0f);
+            ASSERT_LE(expected->nullDepth, protocol::kGainFloorDb);
+            expectSameView(*shown, *expected);
+        }
+    }
+}
+
+// An alignment is of the channel it was found on. On another lane channel the track is not
+// lined up by it: its match and its alignment are none until that channel's are found, the frame
+// has no delay for it, and its lane is its audio as recorded meanwhile.
+TEST(AlignedView, DoesNotLineATrackUpByAnotherChannelsAlignment)
+{
+    constexpr double kRate = 96000.0;
+    const Effect effect;
+    Session session(kRate, 2);
+    joinCopy(session, kRate, effect);
+    showDifference(session, TimeBase::kFree);
+    const std::optional<DecodedFrame> aligned = playAndShow(session, false);
+    ASSERT_TRUE(aligned);
+    ASSERT_EQ(matchOf(*aligned, 1).delay, static_cast<float>(effect.delaySamples(kRate)));
+
+    session.own().settings().set(SettingId::kLaneChannel,
+                                 static_cast<double>(protocol::ChannelView::kRight));
+    const std::optional<DecodedFrame> changed = session.produce();
+    ASSERT_TRUE(changed);
+    const LaneMatch none = matchOf(*changed, 1);
+    EXPECT_EQ(none.polarity, 0.0f);
+    EXPECT_TRUE(std::isnan(none.delay)) << none.delay;
+    EXPECT_LT(fitOf(trace(*changed, 1), trace(*changed, 0)).same, kColumns / 4)
+        << "lined up by the other channel's alignment";
+
+    const std::optional<DecodedFrame> found = settled(session.analyzer());
+    ASSERT_TRUE(found);
+    EXPECT_EQ(matchOf(*found, 1).delay, static_cast<float>(effect.delaySamples(kRate)));
+    EXPECT_LE(found->nullDepth, protocol::kGainFloorDb);
+}
+
+// The columns of a lane wholly inside samples [first, end) of a view of `samples` samples.
+std::pair<std::size_t, std::size_t> columnsInside(double first, double end, double samples)
+{
+    const double perColumn = samples / kColumns;
+    const double from = std::ceil(std::max(first, 0.0) / perColumn);
+    const double to = std::floor(std::min(end, samples) / perColumn);
+    return {static_cast<std::size_t>(from), static_cast<std::size_t>(std::max(from, to))};
+}
+
+// Whether the columns [first, end) of a min/max trace are all empty.
+bool emptyOver(std::span<const float> lane, std::pair<std::size_t, std::size_t> columns)
+{
+    return std::ranges::all_of(
+        lane.subspan(2 * columns.first, 2 * (columns.second - columns.first)),
+        [](float value) { return value == 0.0f; });
+}
+
+// Viewed from the track before the effect, the other track's audio of the newest moments has not
+// arrived yet: over the delay before the newest audio its lane is empty and so is the difference,
+// not this track alone, which would read as a large difference; the depth is measured beside it.
+// As the audio arrives the columns fill in.
+TEST(AlignedView, LeavesTheNewestPartEmptyUntilTheLaterTrackArrives)
+{
+    constexpr double kRate = 48000.0;
+    constexpr double kSpan = 2.0;
+    const Effect effect;
+    Session session(kRate, 2);
+    joinCopy(session, kRate, effect);
+    showDifference(session, TimeBase::kFree);
+    session.play(4.0, 0.05);
+    const double samples = kSpan * kRate;
+    const auto delay = static_cast<double>(effect.delaySamples(kRate));
+    // The newest columns but one: the last may still be waiting for its neighbours.
+    const auto newest = columnsInside(samples - delay, samples, samples);
+    ASSERT_GT(newest.second - newest.first, 4U);
+    for (int pass = 0; pass < 2; ++pass) {
+        SCOPED_TRACE(pass == 0 ? "first" : "half a second on");
+        session.play(0.5, 0.05);
+        session.play(0.01);
+        const std::optional<DecodedFrame> frame = session.produce();
+        ASSERT_TRUE(frame);
+        const std::span<const float> own = trace(*frame, 0);
+        EXPECT_FALSE(emptyOver(own, newest)) << "this track has not played there";
+        EXPECT_TRUE(emptyOver(trace(*frame, 1), newest)) << "the late track's lane";
+        EXPECT_TRUE(emptyOver(trace(*frame, 2), newest)) << "the difference";
+        const LaneFit lane = fitOf(trace(*frame, 1), own);
+        EXPECT_GE(lane.same + 2, newest.first) << "the columns before were not filled in";
+        EXPECT_TRUE(silent(trace(*frame, 2)));
+        EXPECT_LE(frame->nullDepth, protocol::kGainFloorDb);
+    }
+}
+
+// A tempo-synced sweep holds one pass of the bar, the newest before the playhead and the previous
+// one from it on. A track lined up 46 ms earlier or later has no audio of the same moments, and
+// is empty with the difference, where the shift reads past the sweep's edge or across the
+// playhead; everywhere else it is this track's.
+TEST(AlignedView, LeavesAnAlignedLaneEmptyWhereTheSweepLacksItsMoments)
+{
+    constexpr double kRate = 48000.0;
+    for (const bool fromCopy : {false, true}) {
+        SCOPED_TRACE(fromCopy ? "viewed from the late track" : "viewed from the early track");
+        const Effect effect{.fromCopy = fromCopy};
+        Session session(kRate, 2);
+        joinCopy(session, kRate, effect);
+        showDifference(session, TimeBase::kBeats);
+        session.play(4.5, 0.05); // A quarter into the bar of 2 s.
+        session.play(0.01);
+        const std::optional<DecodedFrame> frame = session.produce();
+        ASSERT_TRUE(frame);
+        const double samples = 2.0 * kRate;
+        const double playhead = frame->cursor * samples;
+        const auto delay = static_cast<double>(effect.delaySamples(kRate));
+        // The late track's newest audio is missing before the playhead, and its audio after the
+        // bar's end at the right edge; the early track's, read later, the other way round.
+        const auto atPlayhead = fromCopy ? columnsInside(playhead, playhead + delay, samples)
+                                         : columnsInside(playhead - delay, playhead, samples);
+        const auto atEdge = fromCopy ? columnsInside(0.0, delay, samples)
+                                     : columnsInside(samples - delay, samples, samples);
+        const std::span<const float> own = trace(*frame, 0);
+        for (const auto& columns : {atPlayhead, atEdge}) {
+            ASSERT_GT(columns.second - columns.first, 4U);
+            EXPECT_FALSE(emptyOver(own, columns)) << "this track has not played there";
+            EXPECT_TRUE(emptyOver(trace(*frame, 1), columns)) << "the other track's lane";
+            EXPECT_TRUE(emptyOver(trace(*frame, 2), columns)) << "the difference";
+        }
+        const LaneFit lane = fitOf(trace(*frame, 1), own);
+        const std::size_t empty =
+            (atPlayhead.second - atPlayhead.first) + (atEdge.second - atEdge.first);
+        EXPECT_GE(lane.same + empty + 4, kColumns) << "the rest is not this track's, lined up";
+        EXPECT_TRUE(silent(trace(*frame, 2)));
+        EXPECT_LE(frame->nullDepth, protocol::kGainFloorDb);
+    }
+}
+
+// An effect's latency can exceed the window: 220 ms in a Free view of 100 ms, viewed from the
+// track after the effect. The other track's audio of the moments shown lies before the window,
+// where its capture (frozen, its hold) still has it: it is read there, so the lane is this
+// track's all along and the difference silent.
+TEST(AlignedView, ReadsAnAlignedTrackBeyondTheWindowShown)
+{
+    constexpr double kRate = 48000.0;
+    const Effect effect{.delaySeconds = 0.22, .fromCopy = true};
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        Session session(kRate, 2);
+        joinCopy(session, kRate, effect);
+        showDifference(session, TimeBase::kFree);
+        setSpan(session.own(), TimeBase::kFree, 0.1);
+        const std::optional<DecodedFrame> frame = playAndShow(session, frozen);
+        ASSERT_TRUE(frame);
+        const LaneMatch match = matchOf(*frame, 1);
+        EXPECT_EQ(match.delay, -static_cast<float>(effect.delaySamples(kRate)));
+        EXPECT_EQ(match.polarity, -1.0f);
+        EXPECT_LE(frame->nullDepth, protocol::kGainFloorDb);
+        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+        const LaneFit lane = fitOf(trace(*frame, 1), trace(*frame, 0));
+        // All of them; live, but for the newest column, which in this track's lane still waits
+        // for the samples after it (the wave around a peak), and in the other's has them.
+        EXPECT_GE(lane.same + (frozen ? 0U : 1U), kColumns);
+        EXPECT_EQ(lane.empty, 0U);
+        EXPECT_FALSE(silent(trace(*frame, 0))) << "nothing drawn to compare";
+        EXPECT_TRUE(silent(trace(*frame, 2))) << "the difference is not silent";
+    }
+}
+
+// A steady routing is searched again every half second, and each search finds the same
+// alignment. It is not another one: the lanes and the difference keep their columns, and only
+// the new audio is drawn, as with Align off.
+TEST(AlignedWork, DrawsOnlyTheNewAudioWhileTheAlignmentHolds)
+{
+    constexpr double kRate = 48000.0;
+    constexpr double kSeconds = 4.0;
+    for (const TimeBase timeBase : {TimeBase::kBeats, TimeBase::kFree}) {
+        SCOPED_TRACE(timeBaseName(timeBase));
+        const auto reducedWhilePlaying = [&](bool align) {
+            Session session(kRate, 2);
+            // Viewed from the late track, whose lanes wait for no audio.
+            joinCopy(session, kRate, {.fromCopy = true});
+            showDifference(session, timeBase);
+            setAlign(session.own(), align);
+            session.play(6.0, 0.1);
+            const AnalysisWork before = session.analyzer().work();
+            session.play(kSeconds, 0.1);
+            return workSince(before, session.analyzer().work());
+        };
+        const AnalysisWork aligned = reducedWhilePlaying(true);
+        const AnalysisWork recorded = reducedWhilePlaying(false);
+        EXPECT_GE(aligned.matchSearches, 4U) << "no search to find the same alignment";
+        // A lane drawn again at each search would add the whole span each time: several times
+        // what the new audio takes. Lined up, a change reaches as far as the shift, no further.
+        EXPECT_LT(aligned.samplesReduced, 2 * recorded.samplesReduced)
+            << "the lanes were drawn again though the alignment held";
     }
 }
 

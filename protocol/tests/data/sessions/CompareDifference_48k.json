@@ -37,13 +37,14 @@
       ]
     }
   ],
-  "protocolVersion": 19,
+  "protocolVersion": 20,
   "scenario": "CompareDifference_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 19,
+    "protocolVersion": 20,
     "sampleRate": 48000.0,
     "settings": {
+      "align": "off",
       "autoFreeze": "on",
       "beatDivision": "regular",
       "beatSpan": "oneBar",

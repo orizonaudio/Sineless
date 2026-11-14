@@ -408,11 +408,12 @@ constexpr std::array kVersion5TriggerPositionValues{
     GoldenValue{.id = SettingId::kTriggerPosition, .value = 0.35},
 };
 
-// The version 6 state with what Compare's last lane shows, which 0.11 adds: saved by the build
-// that adds it, as the next release saves it.
+// The version 6 state with what Compare's last lane shows and whether Align lines its tracks up,
+// which 0.11 adds: saved by the build that adds them, as the next release saves it.
 constexpr std::array kVersion6CompareDifferenceValues{
     GoldenValue{.id = SettingId::kCompareLane,
                 .value = asValue(protocol::CompareLane::kDifference)},
+    GoldenValue{.id = SettingId::kAlign, .value = asValue(protocol::Toggle::kOff)},
 };
 
 // Golden states saved by released builds that added settings without a state version raise,

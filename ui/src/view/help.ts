@@ -3,6 +3,7 @@
 
 import type { TriggerMode } from "../../../protocol/src/enums.ts";
 import {
+  alignReachSeconds,
   analysisGateDbfs,
   gridColumnsCoarse,
   gridColumnsFine,
@@ -31,6 +32,7 @@ export const isMac =
 const lanesMulti = String(maxLanes);
 const lanesCompare = String(maxLanes - 1);
 const reach = formatSeconds(matchReachSeconds);
+const alignReach = formatSeconds(alignReachSeconds);
 const matchWindow = formatSeconds(matchWindowSeconds);
 const margin = String(summingMarginDb);
 const levelFloor = String(levelFloorDbfs).replace("-", "−");
@@ -202,6 +204,16 @@ export function helpTextsFor(mac: boolean) {
         "Saved with the project.",
       ],
     },
+    align: {
+      title: "Align",
+      lead: "Lines each checked track up with this one before taking the difference.",
+      notes: [
+        `Takes out its delay (within ±${alignReach}, to a fraction of a sample) and a flipped polarity; its level stays.`,
+        "Only what is drawn and measured changes, never the audio.",
+        "Needs audio that does not repeat within its reach; a host that hides an effect's latency leaves no delay to take out.",
+        "Saved with the project.",
+      ],
+    },
     nullDepth: {
       title: "Null depth",
       lead: "How loud the difference is against this track.",
@@ -219,6 +231,26 @@ export function helpTextsFor(mac: boolean) {
       ],
       notes: [
         `Measured over the visible part, only where this track and another sound together above ${gate} dBFS.`,
+        "Align's exactness and effects that vary in time limit it.",
+      ],
+    },
+    matchDifference: {
+      title: "Against this track",
+      lead: "What Align takes out of this track.",
+      choices: [
+        {
+          name: "Delay",
+          text: `how late it is, within ±${alignReach}; negative is early`,
+        },
+        { name: "Ø", text: "its polarity is opposite" },
+        {
+          name: "Unrelated",
+          text: "no shift matches clearly; left as recorded",
+        },
+        { name: "—", text: "not measured yet" },
+      ],
+      notes: [
+        `Over the ${matchWindow} before the playhead or the newest audio, above ${gate} dBFS only.`,
       ],
     },
     match: {
@@ -689,6 +721,7 @@ export const choiceHelp: {
   group: { exempt: "letters A to D, which say nothing to explain one by one" },
   compare: { exempt: "an on/off switch, whose topic says what on does" },
   compareLane: { topic: "compareLane" },
+  align: { exempt: "an on/off switch, whose topic says what on does" },
   laneLabels: { exempt: "an on/off switch, whose topic says what on does" },
   autoFreeze: { exempt: "an on/off switch, whose topic says what on does" },
   hoverReadout: { exempt: "an on/off switch, whose topic says what on does" },

@@ -90,8 +90,8 @@ class Host
 {
 public:
     explicit Host(const bench::Scenario& scenario)
-        : scenario(scenario),
-          signals(static_cast<std::size_t>(scenario.tracks), scenario.rate, scenario.tempo),
+        : scenario(scenario), signals(static_cast<std::size_t>(scenario.tracks), scenario.rate,
+                                      scenario.tempo, scenario.copies),
           left(kBlock), right(kBlock)
     {
         for (int track = 0; track < scenario.tracks; ++track) {
@@ -163,6 +163,9 @@ void configure(engine::Engine& engine, const bench::Scenario& scenario)
                                                                 : SettingId::kTriggerSpan,
                  scenario.span);
     settings.set(SettingId::kViewLayout, static_cast<double>(protocol::ViewLayout::kStacked));
+    settings.set(SettingId::kCompareLane,
+                 static_cast<double>(scenario.difference ? protocol::CompareLane::kDifference
+                                                         : protocol::CompareLane::kSum));
     settings.set(SettingId::kChannelViews, 0b1111); // L, R, Mid and Side, in Single.
 }
 

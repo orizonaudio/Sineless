@@ -66,6 +66,10 @@ public:
         return std::span<const float>(taps).subspan(phase * 2 * reach, 2 * reach);
     }
 
+    // The same weights for a point any `fraction` of a sample (0 to 1) after sample n, into
+    // `out`: a fractional delay, as Compare's Align shifts a track between samples.
+    void weightsAt(double fraction, std::vector<float>& out) const;
+
 private:
     std::size_t reach;
     double beta;

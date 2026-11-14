@@ -103,6 +103,14 @@ export const readoutIntervalSeconds = 0.1;
 export const matchReachSeconds = 0.01;
 export const matchWindowSeconds = 8;
 
+// How far apart two tracks may be for Compare's Align to find their delay (seconds, either way):
+// the latency of an effect between two instances on one track, which reaches tens to hundreds of
+// milliseconds (a spectral denoiser 46 ms, a dereverberator 220 ms), far beyond the distance
+// between two microphones that matchReachSeconds covers. Not longer: within a longer reach
+// repeating material matches a beat away (0.5 s at 120 BPM). Kept apart from matchReachSeconds,
+// which the sum's match and Preview fix keep.
+export const alignReachSeconds = 0.25;
+
 // Tracks cancel when their sum is more than this many dB quieter than the same tracks would sum
 // if unrelated (the summing gain), and reinforce when it is that much louder; within it, summing
 // is harmless.
@@ -294,6 +302,7 @@ export const limits: readonly {
   },
   { name: "matchReachSeconds", value: matchReachSeconds, kind: "double" },
   { name: "matchWindowSeconds", value: matchWindowSeconds, kind: "double" },
+  { name: "alignReachSeconds", value: alignReachSeconds, kind: "double" },
   { name: "summingMarginDb", value: summingMarginDb, kind: "double" },
   { name: "defaultEditorWidth", value: defaultEditorWidth, kind: "pixels" },
   { name: "minimumEditorWidth", value: minimumEditorWidth, kind: "pixels" },

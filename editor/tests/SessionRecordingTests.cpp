@@ -209,6 +209,7 @@ constexpr double kBeats = static_cast<double>(protocol::TimeBase::kBeats);
 constexpr double kSingle = static_cast<double>(protocol::DisplayMode::kSingle);
 constexpr double kMulti = static_cast<double>(protocol::DisplayMode::kMulti);
 constexpr double kOn = 1.0;
+constexpr double kOff = 0.0;
 
 json freeze()
 {
@@ -297,16 +298,28 @@ std::vector<Scenario> scenarios()
          .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn}, {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
-        // Compare showing the difference: the other track is this one at half its level, so the
-        // difference is this track at half, 6 dB below it.
+        // Compare showing the difference with Align off: the other track is this one at half its
+        // level, so the difference is this track at half, 6 dB below it.
         {.name = "CompareDifference_48k",
          .tracks = {stereo(hiss), stereo(engine::scaled(hiss, 0.5))},
          .names = {"Noise", "Half as loud"},
          .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn},
                       {SettingId::kCompareLane,
                        static_cast<double>(protocol::CompareLane::kDifference)},
+                      {SettingId::kAlign, kOff},
                       {SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.1}},
          .steps = {play(1.0)}},
+        // The difference with Align on: this track is the noise after an effect that delays it
+        // by 46 ms (2208 samples), the other the noise before it, flipped and at half its level.
+        // Lined up in time and polarity, the other leaves the half this track has more.
+        {.name = "CompareAligned_48k",
+         .tracks = {stereo(delayed(hiss, 2208)), stereo(engine::scaled(hiss, -0.5))},
+         .names = {"After", "Before"},
+         .settings = {{SettingId::kDisplayMode, kMulti}, {SettingId::kCompare, kOn},
+                      {SettingId::kCompareLane,
+                       static_cast<double>(protocol::CompareLane::kDifference)},
+                      {SettingId::kTimeBase, kTrigger}, {SettingId::kTriggerSpan, 0.1}},
+         .steps = {play(2.0)}},
         // The other track silent: the two never sound together, so nothing is measured (NaN).
         {.name = "CompareOtherSilent_48k", .tracks = {stereo(hiss), stereo(silence())},
          .names = {"Noise", "Silent"},

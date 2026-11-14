@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { generateCppHeader } from "../src/cpp-generator.ts";
 import { beatSpanLengths } from "../src/enums.ts";
-import { frameHeader, layoutFields } from "../src/frame.ts";
+import { frameHeader, layoutFields, matchValues } from "../src/frame.ts";
 
 describe("C++ generator", () => {
   const header = generateCppHeader();
@@ -52,7 +52,9 @@ describe("C++ generator", () => {
     expect(header).toContain(
       "static constexpr std::size_t kViewStartOffset = 8;",
     );
-    expect(header).toContain("inline constexpr std::size_t kMatchValues = 3;");
+    expect(header).toContain(
+      `inline constexpr std::size_t kMatchValues = ${String(matchValues)};`,
+    );
   });
 });
 

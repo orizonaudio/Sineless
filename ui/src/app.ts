@@ -1077,7 +1077,7 @@ export class OscilloscopeApp {
     }
     // Compare's note and controls follow the switch at once: a track alone in its group gets no
     // new lanes from it, so no frame would place them.
-    if (name === "compare" || name === "laneLabels") {
+    if (name === "compare" || name === "laneLabels" || name === "align") {
       this.placeLaneLabels();
     }
     // Level cursors are drawn at their level in each lane.
@@ -1341,6 +1341,7 @@ export class OscilloscopeApp {
       comparing,
       this.previewFix,
       frame?.comparison?.lane,
+      this.store.get("align"),
       this.layout(),
       height,
       this.compareMode() && frame !== undefined,
@@ -1408,7 +1409,17 @@ export class OscilloscopeApp {
         figure.dataset["help"] = difference ? "nullDepth" : "sumGain";
         this.sumNode = figure;
         node.append(style.name, choice, figure);
-        if (!difference) {
+        if (difference) {
+          // The difference's switch, where the sum has Preview fix: whether the checked tracks
+          // are lined up with this one first.
+          const on = this.store.get("align") === "on";
+          const align = button("Align", "align", () => {
+            this.request("align", on ? "off" : "on");
+          });
+          align.className = "align";
+          align.setAttribute("aria-pressed", String(on));
+          node.append(align);
+        } else {
           const preview = button("Preview fix", "previewFix", () => {
             this.previewFix = !this.previewFix;
             this.backend.previewFix(this.previewFix);
@@ -1437,7 +1448,10 @@ export class OscilloscopeApp {
       if (comparing && style.compared && !style.own) {
         const match = document.createElement("span");
         match.className = "lane-readout";
-        match.dataset["help"] = "match";
+        match.dataset["help"] =
+          frame.comparison.lane === CompareLane.difference
+            ? "matchDifference"
+            : "match";
         this.matchNodes[index] = match;
         node.append(match);
       }
@@ -1493,7 +1507,9 @@ export class OscilloscopeApp {
   }
 
   // The Compare view's readouts in the lane labels: each compared track's offset and polarity
-  // (or that it matches nowhere clearly) and correlation against this track, and the sum's gain (with the fix, while it is previewed).
+  // (or that it matches nowhere clearly) and correlation against this track, and the sum's gain
+  // (with the fix, while it is previewed); beside the difference, what Align takes out of each
+  // track (its delay and a flip) and how deep the difference nulls.
   private updateMatches(frame: Frame | undefined): void {
     this.laneNameNodes.forEach((node, index) => {
       node.classList.toggle(
@@ -1515,6 +1531,15 @@ export class OscilloscopeApp {
         return;
       }
       const offsetMs = (match.offset / frame.sampleRate) * 1000;
+      if (comparison?.lane === CompareLane.difference) {
+        // What Align takes out: the delay, and a flip.
+        const parts = [
+          formatOffset(offsetMs),
+          ...(match.inverted ? ["Ø"] : []),
+        ];
+        node.textContent = match.related ? parts.join(" · ") : "unrelated";
+        return;
+      }
       const alignment = match.related
         ? `${formatOffset(offsetMs)}${match.inverted ? " Ø" : ""}`
         : "unrelated";

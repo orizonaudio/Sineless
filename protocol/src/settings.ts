@@ -161,6 +161,12 @@ export const settings = {
     values: "CompareLane",
     defaultValue: CompareLane.sum,
   },
+  // With the difference on show, whether each checked track is first lined up with this one: in
+  // time, to a fraction of a sample, and in polarity (not in level, which is part of what
+  // differs), for its own lane and for the difference alike. On in a new instance and in a
+  // project saved before it existed. It changes nothing in the audio, and nothing while the sum
+  // shows.
+  align: { kind: "enum", values: "Toggle", defaultValue: Toggle.on },
   // Multi's lane labels: each lane's colour dot and track name, at the top of each stacked lane or
   // as a legend when overlaid. With Compare on they hold its check boxes and readouts, so they
   // always show. On in a new instance and in a project saved before the switch existed.

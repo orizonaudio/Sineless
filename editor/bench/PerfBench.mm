@@ -92,6 +92,10 @@ struct Options
     bool compareAll = false;
     bool jitter = false;
     bool previewFix = false;
+    // From a scenario: Compare's last lane shows the difference, and every other track is this
+    // one after an effect (bench::Scenario).
+    bool difference = false;
+    bool copies = false;
     double soakInterval = 0.0;
     int reopen = 0;
     int viewChanges = 0;
@@ -137,6 +141,8 @@ bool applyScenario(const std::string& name, Options& options)
     options.compareAll = scenario->compareAll;
     options.previewFix = scenario->previewFix;
     options.jitter = scenario->jitter;
+    options.difference = scenario->difference;
+    options.copies = scenario->copies;
     options.viewStart = scenario->viewStart;
     options.viewEnd = scenario->viewEnd;
     return true;
@@ -236,10 +242,10 @@ class Host
 {
 public:
     Host(std::vector<std::shared_ptr<engine::Engine>> engines, double rate, double tempo,
-         bool jitter, int channels)
+         bool jitter, int channels, bool copies)
         : engines(std::move(engines)), rate(rate), tempo(tempo), jitter(jitter), channels(channels),
           block(static_cast<int>(std::lround(rate / 100.0))),
-          signals(this->engines.size(), rate, tempo), thread([this] { run(); })
+          signals(this->engines.size(), rate, tempo, copies), thread([this] { run(); })
     {}
     ~Host()
     {
@@ -548,6 +554,7 @@ int run(const Options& options)
         using protocol::SettingId;
         set(own, SettingId::kDisplayMode, options.mode.c_str());
         set(own, SettingId::kCompare, options.compare ? "on" : "off");
+        set(own, SettingId::kCompareLane, options.difference ? "difference" : "sum");
         set(own, SettingId::kTimeBase, options.timeBase.c_str());
         set(own, SettingId::kBeatSpan, options.beatSpan.c_str());
         set(own, SettingId::kViewLayout, options.layout.c_str());
@@ -560,7 +567,7 @@ int run(const Options& options)
         const std::unique_ptr<Host> host =
             options.idle ? nullptr
                          : std::make_unique<Host>(engines, options.rate, options.tempo,
-                                                  options.jitter, options.channels);
+                                                  options.jitter, options.channels, options.copies);
 
         const auto before = webKitTimes();
         NSWindow* window =

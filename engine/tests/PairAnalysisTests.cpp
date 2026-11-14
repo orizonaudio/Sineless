@@ -889,7 +889,8 @@ TEST(PairAnalysis, FindsShortHitsABlockApart)
 
 // Two seconds of material with little above a few hundred hertz, whose match with a late copy is
 // a broad peak: `kind` 0 a 50 Hz note, 1 a bass line of notes from 41 to 62 Hz, 2 noise below
-// 150 Hz, 3 noise below 1 kHz (smoothed twice over the span that leaves that much).
+// 150 Hz, 3 noise below 1 kHz, 4 noise below 20 Hz, 5 noise below 50 Hz (smoothed twice over the
+// span that leaves that much).
 std::vector<float> bass(double rate, int kind)
 {
     const auto length = static_cast<std::size_t>(std::lround(2.0 * rate));
@@ -911,7 +912,10 @@ std::vector<float> bass(double rate, int kind)
     for (float& value : values) {
         value = uniform(random);
     }
-    const auto span = static_cast<std::size_t>(std::lround(rate / (kind == 2 ? 300.0 : 2000.0)));
+    // The span of the moving average, run twice, that leaves little above the kind's limit.
+    const std::array<double, 6> limits{0.0, 0.0, 150.0, 1000.0, 20.0, 50.0};
+    const auto span = static_cast<std::size_t>(
+        std::lround(rate / (2.0 * limits.at(static_cast<std::size_t>(kind)))));
     for (int pass = 0; pass < 2; ++pass) {
         std::vector<float> smoothed(length, 0.0f);
         double sum = 0.0;
@@ -989,6 +993,223 @@ std::string bassName(const ::testing::TestParamInfo<BassCase>& info)
 }
 
 INSTANTIATE_TEST_SUITE_P(Bass, BroadPeak, ::testing::ValuesIn(bassCases()), bassName);
+
+// --- Aligning two tracks ------------------------------------------------------------------------
+
+// `values` delayed by `delay` samples, a whole number or not: the wave between the samples, read
+// with a long windowed sinc in double (silent before it starts).
+std::vector<float> delayedBy(const std::vector<float>& values, double delay)
+{
+    constexpr int kReach = 192;
+    constexpr double kBeta = 12.0;
+    const auto bessel = [](double x) {
+        double sum = 1.0;
+        double term = 1.0;
+        for (int k = 1; k < 60; ++k) {
+            term *= (x * x / 4.0) / (static_cast<double>(k) * k);
+            sum += term;
+        }
+        return sum;
+    };
+    const double whole = std::floor(delay);
+    const double fraction = delay - whole;
+    std::vector<double> taps(2 * std::size_t{kReach});
+    for (int k = 0; k < 2 * kReach; ++k) {
+        // The output at n reads the input at n - whole - fraction: inputs n - whole - kReach + 1 +
+        // k.
+        const double t = static_cast<double>(k - kReach + 1) - (1.0 - fraction);
+        const double sinc =
+            t == 0.0 ? 1.0 : std::sin(std::numbers::pi * t) / (std::numbers::pi * t);
+        const double ratio = t / kReach;
+        taps[static_cast<std::size_t>(k)] =
+            std::abs(ratio) >= 1.0
+                ? 0.0
+                : sinc * bessel(kBeta * std::sqrt(1.0 - ratio * ratio)) / bessel(kBeta);
+    }
+    const auto size = static_cast<std::ptrdiff_t>(values.size());
+    std::vector<float> out(values.size(), 0.0f);
+    if (fraction == 0.0) {
+        return delayed(values, static_cast<std::size_t>(whole));
+    }
+    for (std::ptrdiff_t n = 0; n < size; ++n) {
+        double sum = 0.0;
+        // Input index n - whole - 1 + (k - kReach + 1): the samples either side of the point read.
+        const std::ptrdiff_t first = n - static_cast<std::ptrdiff_t>(whole) - kReach;
+        for (int k = 0; k < 2 * kReach; ++k) {
+            const std::ptrdiff_t index = first + k;
+            if (index >= 0 && index < size) {
+                sum += taps[static_cast<std::size_t>(k)] * values[static_cast<std::size_t>(index)];
+            }
+        }
+        out[static_cast<std::size_t>(n)] = static_cast<float>(sum);
+    }
+    return out;
+}
+
+// Aligned over Align's reach, a quarter of a second either way, in blocks of 10 ms.
+PairAnalysis align(const std::vector<float>& a, const std::vector<float>& b, double rate)
+{
+    return alignPair(a, b,
+                     static_cast<std::size_t>(std::lround(protocol::kAlignReachSeconds * rate)),
+                     static_cast<std::size_t>(std::lround(0.01 * rate)));
+}
+
+struct BetweenCase
+{
+    double rate;
+    double fraction;
+    int brightness; // Of the hits, as BrightMatch; -1: steady white noise.
+};
+
+class BetweenSamples : public ::testing::TestWithParam<BetweenCase>
+{
+};
+
+// An effect whose delay is not a whole number of samples (or a second microphone at any
+// distance): the delay is found between the samples, to a hundredth of one, and the track is not
+// taken for flipped. On bright material no whole number of samples shows it: a copy seven and a
+// half samples late matches six and nine samples away better than seven or eight, with the sign
+// turned.
+TEST_P(BetweenSamples, FindsTheDelay)
+{
+    const BetweenCase& c = GetParam();
+    const auto track = c.brightness < 0 ? noise(71, static_cast<std::size_t>(std::lround(c.rate)))
+                                        : hits(c.rate, c.brightness, 0.05, 1.0);
+    const double delay = 301.0 + c.fraction;
+    const PairAnalysis analysis = align(track, delayedBy(track, delay), c.rate);
+    EXPECT_TRUE(analysis.related);
+    EXPECT_FALSE(analysis.inverted);
+    EXPECT_NEAR(analysis.delay, delay, 0.01);
+}
+
+std::vector<BetweenCase> betweenCases()
+{
+    std::vector<BetweenCase> cases;
+    for (const double rate : {44100.0, 48000.0}) {
+        for (const double fraction : {0.25, 0.37, 0.5, 0.75}) {
+            for (const int brightness : {-1, 1, 2}) {
+                cases.push_back({.rate = rate, .fraction = fraction, .brightness = brightness});
+            }
+        }
+    }
+    return cases;
+}
+
+std::string betweenName(const ::testing::TestParamInfo<BetweenCase>& info)
+{
+    const BetweenCase& c = info.param;
+    const std::array<const char*, 4> kinds{"WhiteNoise", "WhiteHits", "BrightHits", "BrighterHits"};
+    const int kind = c.brightness + 1;
+    return std::string(kinds.at(static_cast<std::size_t>(kind))) + "_Plus" +
+           std::to_string(std::lround(c.fraction * 100.0)) + "Hundredths_" +
+           std::to_string(std::lround(c.rate)) + "Hz";
+}
+
+INSTANTIATE_TEST_SUITE_P(Fractions, BetweenSamples, ::testing::ValuesIn(betweenCases()),
+                         betweenName);
+
+struct WholeCase
+{
+    double rate;
+    int kind; // Of bass(); -1: white noise.
+};
+
+class WholeDelay : public ::testing::TestWithParam<WholeCase>
+{
+};
+
+// A plain latency, as most effects have, is a whole number of samples: it is found as exactly
+// that, so the two tracks null completely, on any material and at any rate. On bass the search
+// alone lands a few samples off (the correlation is all but flat there), which would leave a null
+// of some 45 dB.
+TEST_P(WholeDelay, IsFoundExactlySoTheTracksNull)
+{
+    const WholeCase& c = GetParam();
+    const auto track = c.kind < 0 ? noise(72, static_cast<std::size_t>(std::lround(2.0 * c.rate)))
+                                  : bass(c.rate, c.kind);
+    const auto delay = static_cast<std::size_t>(std::lround(0.0035 * c.rate));
+    const PairAnalysis analysis = align(track, delayed(track, delay), c.rate);
+    EXPECT_TRUE(analysis.related);
+    EXPECT_FALSE(analysis.inverted);
+    EXPECT_EQ(analysis.delay, static_cast<double>(delay));
+}
+
+std::vector<WholeCase> wholeCases()
+{
+    std::vector<WholeCase> cases;
+    for (const double rate : {44100.0, 48000.0, 96000.0, 192000.0, 384000.0}) {
+        for (const int kind : {-1, 1, 2, 3, 4, 5}) {
+            cases.push_back({.rate = rate, .kind = kind});
+        }
+    }
+    return cases;
+}
+
+std::string wholeName(const ::testing::TestParamInfo<WholeCase>& info)
+{
+    const WholeCase& c = info.param;
+    const std::array<const char*, 7> kinds{"WhiteNoise",      "Note50Hz",       "BassLine",
+                                           "NoiseBelow150Hz", "NoiseBelow1kHz", "NoiseBelow20Hz",
+                                           "NoiseBelow50Hz"};
+    const int kind = c.kind + 1;
+    return std::string(kinds.at(static_cast<std::size_t>(kind))) + "_" +
+           std::to_string(std::lround(c.rate)) + "Hz";
+}
+
+INSTANTIATE_TEST_SUITE_P(Material, WholeDelay, ::testing::ValuesIn(wholeCases()), wholeName);
+
+// The latencies real effects report (2047 and 9727 samples at 44.1 kHz), far beyond what a
+// microphone's distance needs.
+TEST(Alignment, FindsAnEffectsLatency)
+{
+    const auto track = noise(73, 88200);
+    for (const std::size_t delay : {std::size_t{2047}, std::size_t{9727}}) {
+        const PairAnalysis analysis = align(track, delayed(track, delay), 44100.0);
+        EXPECT_TRUE(analysis.related) << delay;
+        EXPECT_EQ(analysis.delay, static_cast<double>(delay));
+    }
+}
+
+// Up to its reach and no further: a delay just inside it, between two samples, is found as
+// surely as any (the correlation is taken a little beyond the reach for that); one just outside
+// is not a match.
+TEST(Alignment, FindsADelayUpToItsReachOnly)
+{
+    constexpr double kRate = 48000.0;
+    const auto track = noise(74, 96000);
+    const double reach = protocol::kAlignReachSeconds * kRate;
+    const PairAnalysis inside = align(track, delayedBy(track, reach - 0.63), kRate);
+    EXPECT_TRUE(inside.related);
+    EXPECT_NEAR(inside.delay, reach - 0.63, 0.01);
+    const PairAnalysis outside =
+        align(track, delayed(track, static_cast<std::size_t>(reach) + 40), kRate);
+    EXPECT_FALSE(outside.related);
+}
+
+// A track that leads is found as surely as one that lags, with a negative delay.
+TEST(Alignment, FindsATrackThatLeads)
+{
+    const auto track = noise(75, 96000);
+    const PairAnalysis analysis = align(delayed(track, 2208), track, 48000.0);
+    EXPECT_TRUE(analysis.related);
+    EXPECT_EQ(analysis.delay, -2208.0);
+}
+
+// A copy at another level and flipped is still this track: its delay and its flip are found
+// whatever its level, which is left to the difference.
+TEST(Alignment, FindsALouderFlippedCopy)
+{
+    const auto track = noise(76, 96000);
+    const double louder = std::pow(10.0, 2.3 / 20.0);
+    auto copy = delayed(track, 100);
+    for (float& value : copy) {
+        value = static_cast<float>(-louder * value);
+    }
+    const PairAnalysis analysis = align(track, copy, 48000.0);
+    EXPECT_TRUE(analysis.related);
+    EXPECT_TRUE(analysis.inverted);
+    EXPECT_EQ(analysis.delay, 100.0);
+}
 
 } // namespace
 } // namespace orizon::engine
