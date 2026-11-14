@@ -77,11 +77,21 @@ bool holdsNonFinite(std::span<const float> samples)
 FrameMode reduceToColumns(std::span<const float> samples, std::size_t columns,
                           std::vector<float>& output)
 {
-    const std::size_t count = samples.size();
-    if (count <= columns || columns == 0) {
-        output.assign(samples.begin(), samples.end());
+    return reduceToColumns(samples, 0, 0, columns, output);
+}
+
+FrameMode reduceToColumns(std::span<const float> withNeighbours, std::size_t lead,
+                          std::size_t trail, std::size_t columns, std::vector<float>& output)
+{
+    lead = std::min(lead, withNeighbours.size());
+    trail = std::min(trail, withNeighbours.size() - lead);
+    if (withNeighbours.size() - lead - trail <= columns || columns == 0) {
+        output.assign(withNeighbours.begin(), withNeighbours.end());
         return FrameMode::kRaw;
     }
+    const std::span<const float> samples =
+        withNeighbours.subspan(lead, withNeighbours.size() - lead - trail);
+    const std::size_t count = samples.size();
 
     output.resize(columns * 2);
     for (std::size_t column = 0; column < columns; ++column) {
@@ -95,10 +105,13 @@ FrameMode reduceToColumns(std::span<const float> samples, std::size_t columns,
     return FrameMode::kMinMax;
 }
 
-void ColumnReduction::reset(std::size_t count, std::size_t columns, bool trackInvalid)
+void ColumnReduction::reset(std::size_t count, std::size_t columns, bool trackInvalid,
+                            std::size_t lead, std::size_t trail)
 {
     spanCount = count;
     columnCount = columns;
+    leadCount = std::min(lead, count);
+    trailCount = std::min(trail, count - leadCount);
     output.assign(mode() == FrameMode::kRaw ? count : columns * 2, 0.0f);
     tracking = trackInvalid;
     // Raw samples keep what is not finite in `output`; only min/max columns need flags.
@@ -120,7 +133,7 @@ bool ColumnReduction::holdsInvalid() const
 
 std::size_t ColumnReduction::columnBegin(std::size_t column) const
 {
-    return static_cast<std::size_t>(std::uint64_t{column} * spanCount / columnCount);
+    return leadCount + static_cast<std::size_t>(std::uint64_t{column} * shownCount() / columnCount);
 }
 
 bool ColumnReduction::update(std::size_t first, std::size_t end, const Reader& read)
@@ -135,11 +148,18 @@ bool ColumnReduction::update(std::size_t first, std::size_t end, const Reader& r
         }
         return valid;
     }
-    // Column c holds samples [begin(c), begin(c + 1)); sample s lies in column
-    // ceil((s + 1) * columns / count) - 1.
+    // Only the shown samples are reduced; neighbours read with them are not.
+    first = std::max(first, leadCount);
+    end = std::min(end, spanCount - trailCount);
+    if (first >= end) {
+        return true;
+    }
+    // Column c holds samples [begin(c), begin(c + 1)); shown sample s lies in column
+    // ceil((s + 1) * columns / shown) - 1.
+    const std::size_t shown = shownCount();
     const auto columnOf = [&](std::size_t sample) {
         return static_cast<std::size_t>(
-            (std::uint64_t{sample + 1} * columnCount + spanCount - 1) / spanCount - 1);
+            (std::uint64_t{sample - leadCount + 1} * columnCount + shown - 1) / shown - 1);
     };
     const std::size_t lastColumn = columnOf(end - 1);
     // In stretches of whole columns, so the working space stays small however long the span.

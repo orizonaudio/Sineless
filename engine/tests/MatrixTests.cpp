@@ -4594,6 +4594,102 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, DeepZoom, ::testing::ValuesIn(deepZoomCases(
                              return nameOf(info.param);
                          });
 
+class RawCrossing : public ::testing::TestWithParam<DeepZoomCase>
+{
+};
+
+// Where zoom crosses from min/max columns to raw samples, about a sample a column, a raw frame
+// still draws the wave between its samples: drawn straight, a crest between two samples would
+// stand lower than in the columns either side of the crossing (2.4 dB at 10 kHz at 44.1 kHz).
+// Views from a little wider than the columns to well within them, at the span's start, middle and
+// end, where a view is clamped to the window and can show as many samples as it is wide. A view
+// at least two samples narrower than the columns is raw: it shows at most two samples more.
+TEST_P(RawCrossing, NeverDrawsARawFrameStraight)
+{
+    const DeepZoomCase c = GetParam();
+    Session session(c.rate, c.channels);
+    session.join({.frequency = kOwnTone * c.rate});
+    session.join({.frequency = kOtherTone * c.rate});
+    configure(session.own(), c.mode, c.timeBase);
+    double played = 0.0;
+    if (c.timeBase == TimeBase::kBeats) {
+        const auto span = protocol::kBeatSpanCount - 1;
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(span));
+        played = static_cast<double>(beatSpanSamples(c.rate, 120.0, span)) / c.rate;
+    } else {
+        const protocol::SettingDescriptor& spans = setting(spanSetting(c.timeBase));
+        setSpan(session.own(), c.timeBase, spans.maximum);
+        played = spans.maximum;
+    }
+    session.play(played + 0.5, protocol::kReadoutIntervalSeconds / 2.0);
+    auto frame = session.produce();
+    if (!frame) {
+        session.play(static_cast<double>(kBlock) / c.rate);
+        frame = session.produce();
+    }
+    ASSERT_TRUE(frame) << "no frame";
+    if (c.frozen) {
+        session.analyzer().setFrozen(true);
+        session.play(static_cast<double>(kBlock) / c.rate);
+        frame = session.produce();
+        ASSERT_TRUE(frame) << "no frozen frame";
+    }
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const auto columns = static_cast<double>(kColumns);
+    std::size_t raw = 0;
+    for (int step = 0; step <= 58; ++step) {
+        const double samples = columns - 40.0 + (0.73 * step);
+        SCOPED_TRACE(std::to_string(samples) + " samples");
+        const double width = samples / spanSamples;
+        const double start = c.place == Place::kStart ? 0.0
+                             : c.place == Place::kEnd ? 1.0 - width
+                                                      : 0.5 - (width / 2.0);
+        session.analyzer().setView(start, start + width);
+        if (!c.frozen) {
+            session.play(static_cast<double>(kBlock) / c.rate);
+        }
+        frame = session.produce();
+        ASSERT_TRUE(frame) << "no frame";
+        if (frame->mode == FrameMode::kRaw) {
+            ++raw;
+            EXPECT_GE(frame->pointsPerSample, protocol::kMinPointsPerSample)
+                << "a raw frame draws the wave between its samples";
+        } else {
+            EXPECT_GT(samples, columns - 2.0) << "a view this narrow is raw";
+        }
+    }
+    EXPECT_GT(raw, 0U);
+}
+
+std::vector<DeepZoomCase> rawCrossingCases()
+{
+    std::vector<DeepZoomCase> cases;
+    int alternate = 0;
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        for (const TimeBase timeBase : {TimeBase::kBeats, TimeBase::kTrigger, TimeBase::kFree}) {
+            for (const Display mode : everyMode()) {
+                for (const bool frozen : {false, true}) {
+                    for (const Place place : {Place::kStart, Place::kMiddle, Place::kEnd}) {
+                        cases.push_back({.rate = rate,
+                                         .timeBase = timeBase,
+                                         .mode = mode,
+                                         .frozen = frozen,
+                                         .longest = true,
+                                         .place = place,
+                                         .channels = (alternate++ % 2) == 0 ? 2 : 1});
+                    }
+                }
+            }
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, RawCrossing, ::testing::ValuesIn(rawCrossingCases()),
+                         [](const ::testing::TestParamInfo<DeepZoomCase>& info) {
+                             return nameOf(info.param);
+                         });
+
 // Live in Beats, the playhead joins the newest pass to the previous one: zoomed in on it, the
 // points between samples within a reach of it are drawn straight, so neither side rings into the
 // other, while farther away the trace is the wave. In every trace of every display mode: views,
@@ -4822,7 +4918,7 @@ TEST_P(DeepZoomInvalid, FlagsOnlyWhatTheViewShows)
     session.analyzer().setView(0.5 - (wide / 2.0), 0.5 + (wide / 2.0));
     frame = session.produce();
     ASSERT_TRUE(frame);
-    ASSERT_EQ(frame->pointsPerSample, 1U);
+    ASSERT_EQ(frame->mode, FrameMode::kRaw);
     const auto hasBroken = [](std::span<const float> values) {
         return std::ranges::any_of(values, [](float v) { return std::isnan(v); });
     };
@@ -4831,11 +4927,20 @@ TEST_P(DeepZoomInvalid, FlagsOnlyWhatTheViewShows)
         ++brokenTrace;
     }
     ASSERT_LT(brokenTrace, tracesIn(*frame));
+    // The broken sample: every pointsPerSample-th point is a sample (the points between it and its
+    // neighbours are not finite either).
     const std::span<const float> values = trace(*frame, brokenTrace);
-    const auto broken = std::ranges::find_if(values, [](float v) { return std::isnan(v); });
+    const std::size_t factor = frame->pointsPerSample;
+    std::size_t broken = 0;
+    while (broken < values.size() && !std::isnan(values[broken])) {
+        ++broken;
+    }
+    broken = (broken + factor - 1) / factor * factor;
+    ASSERT_LT(broken, values.size());
+    ASSERT_TRUE(std::isnan(values[broken]));
     // Its place in the span, in samples.
     const double at = (frame->viewStart * spanSamples) - frame->startFraction +
-                      static_cast<double>(broken - values.begin());
+                      (static_cast<double>(broken) / static_cast<double>(factor));
     const double width = protocol::kMinimumViewSamples / spanSamples;
     const auto viewStartingAt = [&](double start) {
         session.analyzer().setView(start / spanSamples, (start / spanSamples) + width);
@@ -5059,8 +5164,8 @@ INSTANTIATE_TEST_SUITE_P(Cases, DeepZoomSumPanned,
                          });
 
 // Compare's matches and summing gains measure the visible samples: reconstructing the wave
-// between them (columns enough for it) changes neither from a narrow editor's lines. In Free
-// (renderCompare) and Beats (appendComparison).
+// between them (columns enough for a raw frame) changes neither from a narrow editor's min/max
+// columns. In Free (renderCompare) and Beats (appendComparison).
 class DeepZoomCompare : public ::testing::TestWithParam<TimeBase>
 {
 };
@@ -5088,10 +5193,10 @@ TEST_P(DeepZoomCompare, MeasuresTheSameAsWithoutTheWave)
         return frame;
     };
     const auto wave = measure(kColumns);
-    const auto lines = measure(static_cast<std::size_t>(protocol::kMinimumViewSamples) + 8);
+    const auto lines = measure(static_cast<std::size_t>(protocol::kMinimumViewSamples) / 2);
     ASSERT_TRUE(wave && lines);
     ASSERT_GT(wave->pointsPerSample, 1U);
-    ASSERT_EQ(lines->pointsPerSample, 1U);
+    ASSERT_EQ(lines->mode, FrameMode::kMinMax);
     const auto matchesOf = [](const DecodedFrame& frame) {
         const std::size_t length = traceLength(frame) * frame.laneCount;
         return std::vector<float>(frame.data.begin() + static_cast<std::ptrdiff_t>(length),

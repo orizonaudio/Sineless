@@ -27,7 +27,7 @@ import {
   frozenHoldSeconds,
   maxLanes,
   maxPointsPerSample,
-  reconstructionColumnsPerSample,
+  minPointsPerSample,
 } from "../../../protocol/src/limits.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
 import { clampPan, viewOrder, type ViewName } from "../view/screen-state.ts";
@@ -46,6 +46,19 @@ function signal(channel: "left" | "right", time: number): number {
   return channel === "left"
     ? 0.6 * Math.sin(phase)
     : 0.3 * Math.sin(phase) + 0.25 * Math.sin(2 * phase + 0.7);
+}
+
+// A raw frame's points per sample for `samples` samples across `columns` columns, as the engine
+// gives it (Reconstruction::pointsPerSample): about a point per column, never fewer than
+// minPointsPerSample (never the samples alone) nor more than maxPointsPerSample.
+export function rawPointsPerSample(samples: number, columns: number): number {
+  if (!(samples > 0)) {
+    return 1;
+  }
+  return Math.max(
+    minPointsPerSample,
+    Math.min(maxPointsPerSample, Math.ceil(columns / samples)),
+  );
 }
 
 // On a mono track R repeats L, as a host feeds a mono track to a stereo insert.
@@ -684,12 +697,9 @@ export class MockTransport implements Transport {
     const sampleTime = (sample: number) =>
       timeOf(this.view.start + (sample / sampleCount) * visibleWidth);
     const minMax = sampleCount > this.columns;
-    // As the engine does (engine/src/Reconstruction.cpp): the wave between the samples (here
-    // the signal itself), about a point per column.
-    const pointsPerSample =
-      minMax || this.columns < reconstructionColumnsPerSample * sampleCount
-        ? 1
-        : Math.min(maxPointsPerSample, Math.ceil(this.columns / sampleCount));
+    const pointsPerSample = minMax
+      ? 1
+      : rawPointsPerSample(sampleCount, this.columns);
     const pointCount = minMax
       ? this.columns
       : (sampleCount - 1) * pointsPerSample + 1;

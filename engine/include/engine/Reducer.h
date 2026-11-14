@@ -21,6 +21,12 @@ namespace orizon::engine {
 // Returns the mode used. `output` is resized but keeps its capacity across calls.
 protocol::FrameMode reduceToColumns(std::span<const float> samples, std::size_t columns,
                                     std::vector<float>& output);
+// The same, of `withNeighbours` whose first `lead` and last `trail` samples are only neighbours,
+// read for the wave between the samples: the mode is decided by the samples shown between them.
+// Raw, the output keeps the neighbours; min/max columns cover the shown samples alone.
+protocol::FrameMode reduceToColumns(std::span<const float> withNeighbours, std::size_t lead,
+                                    std::size_t trail, std::size_t columns,
+                                    std::vector<float>& output);
 
 // reduceToColumns of a span whose samples change only in places, kept up to date by reducing
 // again just the columns that hold changed samples. The result matches reducing the whole span.
@@ -30,12 +36,16 @@ public:
     // Reads samples [first, first + destination.size()) of the span into `destination`.
     using Reader = std::function<bool(std::size_t first, std::span<float> destination)>;
 
-    // Starts over for a span of `count` samples shown in `columns`; everything is stale. With
+    // Starts over for a span of `count` samples in `columns`, its first `lead` and last `trail`
+    // only neighbours read for the wave between the samples; everything is stale. With
     // `trackInvalid`, it also notes which columns hold a sample that is not finite.
-    void reset(std::size_t count, std::size_t columns, bool trackInvalid = false);
-    [[nodiscard]] bool fits(std::size_t count, std::size_t columns) const
+    void reset(std::size_t count, std::size_t columns, bool trackInvalid = false,
+               std::size_t lead = 0, std::size_t trail = 0);
+    [[nodiscard]] bool fits(std::size_t count, std::size_t columns, std::size_t lead = 0,
+                            std::size_t trail = 0) const
     {
-        return valid && count == spanCount && columns == columnCount;
+        return valid && count == spanCount && columns == columnCount && lead == leadCount &&
+               trail == trailCount;
     }
     // Forgets the result, so the next use starts over.
     void invalidate() { valid = false; }
@@ -44,12 +54,13 @@ public:
     // is then invalid.
     bool update(std::size_t first, std::size_t end, const Reader& read);
 
+    // Decided by the samples shown, without the neighbours.
     [[nodiscard]] protocol::FrameMode mode() const
     {
-        return spanCount <= columnCount || columnCount == 0 ? protocol::FrameMode::kRaw
-                                                            : protocol::FrameMode::kMinMax;
+        return shownCount() <= columnCount || columnCount == 0 ? protocol::FrameMode::kRaw
+                                                               : protocol::FrameMode::kMinMax;
     }
-    // Raw samples, or a (min, max) pair per column.
+    // Raw samples with their neighbours, or a (min, max) pair per column.
     [[nodiscard]] std::span<const float> values() const { return output; }
     // Tracking them (reset), whether a column holds a sample that is not finite (NaN or infinite),
     // which min/max columns leave out.
@@ -57,9 +68,12 @@ public:
 
 private:
     [[nodiscard]] std::size_t columnBegin(std::size_t column) const;
+    [[nodiscard]] std::size_t shownCount() const { return spanCount - leadCount - trailCount; }
 
     std::size_t spanCount = 0;
     std::size_t columnCount = 0;
+    std::size_t leadCount = 0;
+    std::size_t trailCount = 0;
     bool valid = false;
     bool tracking = false;
     std::vector<float> output;

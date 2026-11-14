@@ -109,26 +109,23 @@ TEST(Reconstruction, KeepsAConstantFlat)
     }
 }
 
-// Points per sample follow the columns per sample: the samples alone while lines and the wave
-// look alike (fewer than kReconstructionColumnsPerSample columns a sample), then enough points for
-// a point per column, never fewer as the view widens on screen, and never more than the cap.
+// A raw frame's points per sample: never the samples alone, so no raw frame is drawn straight
+// between its samples, whose crests would then stand lower than the columns' beside them at the
+// zoom where frames cross from columns to raw; at least enough for a point per column; never fewer
+// as the view widens on screen, and never more than the cap. Its callers ask only for raw frames,
+// which can show slightly more samples than columns where a view is clamped at a window's end.
 TEST(Reconstruction, AddsAboutAPointPerColumn)
 {
-    const auto threshold = protocol::kReconstructionColumnsPerSample;
-    for (const double samples : {8.0, 32.0, 100.0, 1000.0}) {
+    for (const double samples : {8.0, 32.0, 100.0, 399.5, 1000.0}) {
         SCOPED_TRACE(samples);
         std::size_t previous = 1;
         for (std::size_t columns = 1; columns < 40000; columns += 7) {
             const std::size_t points = Reconstruction::pointsPerSample(samples, columns);
             const double perSample = static_cast<double>(columns) / samples;
-            if (perSample < threshold) {
-                EXPECT_EQ(points, 1U) << columns << " columns";
-            } else {
-                EXPECT_GT(points, 1U) << columns << " columns";
-                EXPECT_GE(static_cast<double>(points),
-                          std::min(perSample, static_cast<double>(kMaxPointsPerSample)))
-                    << "a point per column, " << columns << " columns";
-            }
+            EXPECT_GE(points, protocol::kMinPointsPerSample) << columns << " columns";
+            EXPECT_GE(static_cast<double>(points),
+                      std::min(perSample, static_cast<double>(kMaxPointsPerSample)))
+                << "a point per column, " << columns << " columns";
             EXPECT_LE(points, kMaxPointsPerSample);
             EXPECT_GE(points, previous) << "never fewer as columns grow";
             previous = points;
