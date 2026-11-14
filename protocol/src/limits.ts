@@ -218,6 +218,18 @@ export const cancellationReachDivisor = 128;
 // so the compared tracks and their sum stand out and what is under them shows through.
 export const waitingAlpha = 0.45;
 export const leftOutAlpha = 0.2;
+// In Compare's difference lane, what this track and the others both cover is filled in this
+// track's colour moved this share of the way from the screen's to its own, opaque (as the Waiting
+// dim moves a colour, above): enough to read as the wave's shape, and dull enough that what only
+// one of them covers, in the gained and lost colours, stands out beside it whatever the track's
+// own colour is (a red track against the lost colour). Opaque, not see-through, so that the grid
+// does not show through it and it sits as the gained and lost parts do.
+export const differenceSharedStrength = 0.4;
+// The half line width the difference lane's filled parts are drawn with, in device pixels: the
+// least at which the inside of a filled part is fully covered (the traces' coverage is this plus
+// a half, less the distance from the shape), so a part is its own shape with an edge half a pixel
+// soft, not that shape under a trace's line width.
+export const filledAreaLineHalf = 0.5;
 // In Beats, right of the playhead, the previous cycle's traces and Compare's shading in a colour
 // moved previousCycleAlpha of the way from the screen's to their own, so the old cycle reads as old
 // beside the new one; they keep their coverage, so they cover the grid as live traces do, and the
@@ -348,6 +360,12 @@ export const limits: readonly {
   { name: "barcodeCellPixels", value: barcodeCellPixels, kind: "count" },
   { name: "barcodeCornerMargin", value: barcodeCornerMargin, kind: "pixels" },
   { name: "leftOutAlpha", value: leftOutAlpha, kind: "double" },
+  {
+    name: "differenceSharedStrength",
+    value: differenceSharedStrength,
+    kind: "double",
+  },
+  { name: "filledAreaLineHalf", value: filledAreaLineHalf, kind: "double" },
   { name: "musicalTolerance", value: musicalTolerance, kind: "double" },
   {
     name: "cancellationQuietShare",

@@ -112,6 +112,11 @@ function makeSurface(width: number, height: number): Surface {
         new Map(Object.values(ChannelView).map((v) => [v, style.color])),
       laneColors: () => style.laneColors,
       comparedLanes: () => style.comparedLanes,
+      ownLane: () => 0,
+      differenceColors: () => ({
+        gained: [0, 1, 0, 1],
+        lost: [1, 0, 0, 1],
+      }),
       sweepColors: () => ({ cursor: [1, 1, 1, 1] }),
       screenColor: () => screenColor,
       cancellationColor: () => [1, 0, 0, 0.16],

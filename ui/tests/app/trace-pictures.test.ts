@@ -9,6 +9,7 @@ import { commands, server } from "vitest/browser";
 
 import {
   ChannelView,
+  CompareLane,
   FrameMode,
   ViewLayout,
 } from "../../../protocol/src/enums.ts";
@@ -80,6 +81,8 @@ const baseView: TraceViewMessage = {
   grid: colour(0.3, 0.3, 0.3),
   axis: colour(0.5, 0.5, 0.5),
   cursor: colour(1, 1, 1),
+  gained: colour(0.3, 0.85, 0.5),
+  lost: colour(0.9, 0.3, 0.3),
   cancellation: colour(1, 0.45, 0.2, 0.16),
   gridChoice: {
     type: "grid",
@@ -358,6 +361,7 @@ const scenes: Scene[] = [
             id: lane,
             colour: colour(0.2 + 0.15 * lane, 1 - 0.15 * lane, 0.5),
             compared: false,
+            own: lane === 0,
           })),
         },
       ],
@@ -386,6 +390,7 @@ const scenes: Scene[] = [
             id: lane,
             colour: colour(lane / 15, 1 - lane / 15, 0.6, 0.7),
             compared: false,
+            own: lane === 0,
           })),
         },
       ],
@@ -447,9 +452,77 @@ const scenes: Scene[] = [
         {
           laneSet: 5,
           lanes: [
-            { id: 1, colour: colour(0.4, 0.8, 1), compared: true },
-            { id: 2, colour: colour(1, 0.7, 0.3), compared: true },
-            { id: 3, colour: colour(0.7, 1, 0.4), compared: false },
+            { id: 1, colour: colour(0.4, 0.8, 1), compared: true, own: true },
+            { id: 2, colour: colour(1, 0.7, 0.3), compared: true, own: false },
+            { id: 3, colour: colour(0.7, 1, 0.4), compared: false, own: false },
+          ],
+        },
+      ],
+    },
+  })),
+  // A difference's lane, filled: what this track and the other both cover, what only this one
+  // does (lost) and what only the other does (gained), with the other louder, then quieter, then
+  // flipped. Zoomed out (columns) and zoomed in (points, the others' wave from the difference),
+  // stacked and overlaid, and right of a Beats playhead, where it dims with the traces.
+  ...[
+    { raw: false, layout: "stacked", sweep: false },
+    { raw: true, layout: "stacked", sweep: false },
+    { raw: false, layout: "overlaid", sweep: false },
+    { raw: false, layout: "stacked", sweep: true },
+  ].map(({ raw, layout, sweep }): Scene => ({
+    name: `a difference's lane filled, ${raw ? "raw points" : "columns"}, ${layout}${sweep ? ", a Beats playhead mid-screen" : ""}`,
+    width: 300,
+    height: 200,
+    ratio: 1,
+    frame: (() => {
+      const count = raw ? 120 : 300;
+      const perPoint = raw ? 1 : 2;
+      const mine = raw ? samples(count, 3, 0.6) : columns(count, 3, 0.6);
+      const other = mine.map((value, index) => {
+        const point = Math.floor(index / perPoint);
+        return (
+          value *
+          (point < count / 3 ? 1.4 : point < (2 * count) / 3 ? 0.6 : -0.8)
+        );
+      });
+      const difference = mine.map(
+        (value, index) => value - (other[index] ?? 0),
+      );
+      return {
+        ...baseFrame,
+        ...(raw ? { mode: FrameMode.raw } : {}),
+        ...(sweep
+          ? {
+              synced: true,
+              cursor: 0.5,
+              cycleStart: 0,
+              spanQuarterNotes: 16,
+              barQuarterNotes: 4,
+            }
+          : {}),
+        pointCount: count,
+        laneSet: 6,
+        lanes: [mine, other, difference],
+        comparison: {
+          lane: CompareLane.difference,
+          sumGain: Number.NaN,
+          fixedGain: Number.NaN,
+          matches: [
+            { correlation: 1, related: false, offset: 0, inverted: false },
+            { correlation: 1, related: true, offset: 0, inverted: false },
+          ],
+        },
+      };
+    })(),
+    view: {
+      ...baseView,
+      layout,
+      laneSets: [
+        {
+          laneSet: 6,
+          lanes: [
+            { id: 1, colour: colour(0.5, 0.6, 1), compared: true, own: true },
+            { id: 2, colour: colour(0.7, 0.75, 1), compared: true, own: false },
           ],
         },
       ],
@@ -492,12 +565,14 @@ scenes.push(
 function laneStyle(
   frame: FrameContent,
   view: TraceViewMessage,
-): { colours: StyleRgba[]; compared: boolean[] } {
+): { colours: StyleRgba[]; compared: boolean[]; own: number } {
   const set = view.laneSets.find((each) => each.laneSet === frame.laneSet);
   const comparing = frame.comparison !== undefined;
   const lanes = [
     ...(set?.lanes ?? []),
-    ...(comparing ? [{ id: -1, colour: view.sumColour, compared: false }] : []),
+    ...(comparing
+      ? [{ id: -1, colour: view.sumColour, compared: false, own: false }]
+      : []),
   ];
   return {
     colours: lanes.map((lane, index) => {
@@ -511,6 +586,10 @@ function laneStyle(
       ];
     }),
     compared: lanes.map((lane) => lane.compared),
+    own: Math.max(
+      0,
+      lanes.findIndex((lane) => lane.own),
+    ),
   };
 }
 
@@ -553,6 +632,11 @@ function drawScene(scene: Scene): Uint8Array {
         ),
       laneColors: () => lanes.colours,
       comparedLanes: () => lanes.compared,
+      ownLane: () => lanes.own,
+      differenceColors: () => ({
+        gained: rgba(view.gained),
+        lost: rgba(view.lost),
+      }),
       sweepColors: () => ({
         cursor: rgba(view.cursor),
       }),

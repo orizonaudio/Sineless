@@ -75,6 +75,10 @@
   --sl-accent: #ff5f1f;
   --sl-on-accent: #000000;
   --sl-warn: #ffd23f;
+  /* Compare's difference: where the other track has more than this one, and where it has less.
+     Apart in lightness as well as hue, for eyes that tell red from green poorly. */
+  --sl-gained: #4ade80;
+  --sl-lost: #e5484d;
 
   /* Channel traces in Single */
   --sl-left: #5ab0ff;

@@ -33,6 +33,7 @@ struct TraceView
         std::int64_t id = 0;
         Rgba colour{};
         bool compared = false;
+        bool own = false; // This track's.
     };
     struct LaneSet
     {
@@ -47,6 +48,9 @@ struct TraceView
     Rgba axis{};
     Rgba cursor{};
     Rgba cancellation{};
+    // A difference's lane: what only the other tracks cover, and what only this track does.
+    Rgba gained{};
+    Rgba lost{};
     // The grid the page draws (its gridChoice).
     protocol::GridType gridType = protocol::GridType::kGrid;
     protocol::GridDensity gridTime = protocol::GridDensity::kMedium;
@@ -59,6 +63,8 @@ struct TraceView
     [[nodiscard]] std::vector<Rgba> laneColours(const FrameView& frame) const;
     // Which of a frame's tracks are compared, in lane order (Compare's shading), as picked above.
     [[nodiscard]] std::vector<bool> comparedLanes(const FrameView& frame) const;
+    // Which of a frame's lanes is this track's (the first, when its lane set is not held yet).
+    [[nodiscard]] std::size_t ownLane(const FrameView& frame) const;
 
     // The message parsed, or nullopt when any field is missing, of the wrong type, not finite or
     // out of range: the editor keeps the last good one (QS-7).

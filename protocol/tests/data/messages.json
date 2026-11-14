@@ -80,12 +80,14 @@
           {
             "id": 3,
             "colour": [0.9, 0.5, 0.1, 1],
-            "compared": true
+            "compared": true,
+            "own": true
           },
           {
             "id": 5,
             "colour": [0.2, 0.7, 0.9, 1],
-            "compared": false
+            "compared": false,
+            "own": false
           }
         ]
       }
@@ -100,6 +102,8 @@
     "axis": [0.11, 0.11, 0.13, 1],
     "cursor": [0.96, 0.96, 0.97, 1],
     "cancellation": [1, 0.8, 0.2, 0.16],
+    "gained": [0.29, 0.87, 0.5, 1],
+    "lost": [0.9, 0.28, 0.3, 1],
     "gridChoice": {
       "type": "none",
       "time": "fine",

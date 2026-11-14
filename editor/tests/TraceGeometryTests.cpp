@@ -194,6 +194,45 @@ TEST(TraceGeometry, ShadesCancellationAsThePageDoes)
     }
 }
 
+// A difference's lane is filled with the same parts on the page and here: what this track and the
+// others share, what only this one covers and what only the others cover, point for point.
+TEST(TraceGeometry, FillsADifferencesLaneAsThePageDoes)
+{
+    for (const nlohmann::json& entry : vectors().at("difference")) {
+        std::vector<std::vector<float>> data;
+        for (const nlohmann::json& lane : entry.at("lanes")) {
+            data.push_back(laneValues(lane));
+        }
+        FrameView frame;
+        frame.mode =
+            entry.at("mode") == "minMax" ? protocol::FrameMode::kMinMax : protocol::FrameMode::kRaw;
+        frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kCompared);
+        frame.compareLane = protocol::CompareLane::kDifference;
+        frame.pointCount = entry.at("pointCount").get<std::uint32_t>();
+        for (const auto& lane : data) {
+            frame.lanes.emplace_back(lane);
+        }
+        const std::vector<float> areas =
+            differenceAreas(frame, entry.at("compared").get<std::vector<bool>>(),
+                            entry.at("own").get<std::size_t>());
+        const std::vector<float> expected = laneValues(entry.at("areas"));
+        ASSERT_EQ(areas.size(), kDifferenceParts * frame.pointCount * 2) << entry.dump();
+        ASSERT_EQ(areas.size(), expected.size());
+        for (std::size_t index = 0; index < areas.size(); ++index) {
+            if (std::isnan(expected[index])) {
+                EXPECT_TRUE(std::isnan(areas[index])) << "value " << index;
+            } else {
+                EXPECT_EQ(areas[index], expected[index]) << "value " << index;
+            }
+        }
+        // The same frame showing the sum has no such lane.
+        frame.compareLane = protocol::CompareLane::kSum;
+        EXPECT_TRUE(differenceAreas(frame, entry.at("compared").get<std::vector<bool>>(),
+                                    entry.at("own").get<std::size_t>())
+                        .empty());
+    }
+}
+
 // A track that matches this one nowhere clearly has nothing to fix: no shading, as on the page.
 TEST(TraceGeometry, ShadesNothingWithoutARelatedComparedTrack)
 {

@@ -57,6 +57,17 @@ struct Band
                                                   const std::vector<bool>& compared,
                                                   ViewWindow view);
 
+// A difference's lane, filled (ui/src/render/trace-geometry.ts, differenceAreas): each wave taken
+// as the area between it and the zero line, the lane holds what this track's area and the others'
+// share, what only this track's covers (lost) and what only the others' covers (gained). Five
+// blocks of the traces' own kind, one after another, each of pointCount (low, high) pairs with
+// NaN where the part is absent: shared, lost above, lost below, gained above, gained below.
+// Empty for a frame that shows no difference, or with no other track compared. `compared` marks
+// the compared tracks in lane order; `own` is this track's lane.
+inline constexpr std::size_t kDifferenceParts = 5;
+[[nodiscard]] std::vector<float>
+differenceAreas(const FrameView& frame, const std::vector<bool>& compared, std::size_t own);
+
 // The level steps below a lane's top (0 is the top) that fit a half-lane `halfLane` CSS pixels
 // tall with neighbours `minimumGap` apart.
 [[nodiscard]] std::vector<int> levelSteps(double halfLane, double minimumGap);
