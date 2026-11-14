@@ -3,7 +3,6 @@
 #include "protocol/Protocol.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 #include <span>
 #include <vector>
@@ -41,13 +40,11 @@ public:
     // audio) or include one not finite is drawn straight between its two samples instead; one
     // beside a sample that is not finite is not finite. `seam` is the first sample after a join
     // (a sweep's playhead, between the newest pass and the previous one): a point whose neighbours
-    // reach across it is drawn straight too, so neither side rings into the other.
-    // With `reconstructed`, it also says per gap (from samples[lead]) whether the wave was drawn
-    // there, not a straight line.
+    // reach across it is drawn straight too, so neither side rings into the other; `seams`, the
+    // same for several joins.
     void upsample(std::span<const float> samples, std::size_t lead, std::size_t trail,
                   std::size_t factor, std::vector<float>& output,
-                  std::span<const std::size_t> seams,
-                  std::vector<std::uint8_t>* reconstructed = nullptr);
+                  std::span<const std::size_t> seams);
     void upsample(std::span<const float> samples, std::size_t lead, std::size_t trail,
                   std::size_t factor, std::vector<float>& output,
                   std::size_t seam = std::numeric_limits<std::size_t>::max())
@@ -60,11 +57,6 @@ public:
     // sample after a join). The one rule for the raw view and the min/max columns.
     [[nodiscard]] bool reconstructsGap(std::span<const float> samples, std::size_t n,
                                        std::span<const std::size_t> seams) const;
-    [[nodiscard]] bool reconstructsGap(std::span<const float> samples, std::size_t n,
-                                       std::size_t seam) const
-    {
-        return reconstructsGap(samples, n, std::span(&seam, 1));
-    }
 
     // The weights of the point `phase / factor` of a sample after a sample n, for samples
     // n + 1 - reach … n + reach (designing them for `factor` if needed).
