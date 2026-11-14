@@ -1784,6 +1784,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     std::size_t pointCount = 0;
     bool partial = false;
     frameChanges.clear();
+    ++lanesFrame;
     for (std::size_t laneIndex = 0; laneIndex < laneOrder.size(); ++laneIndex) {
         const std::uint64_t serial = laneOrder[laneIndex];
         Lane& lane = *lanes.at(serial);
@@ -2367,10 +2368,9 @@ void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, st
 }
 
 bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
-                              const std::vector<std::int64_t>& key,
-                              std::vector<std::int64_t>& lastKey, const std::vector<SumPart>& parts,
-                              std::size_t reach, std::size_t length, std::size_t block,
-                              std::size_t shares)
+                              const std::vector<std::int64_t>& key, Kept& kept,
+                              const std::vector<SumPart>& parts, std::size_t reach,
+                              std::size_t length, std::size_t block, std::size_t shares)
 {
     const auto read = [&](std::size_t from, std::span<float> into) {
         readSum(parts, length, from, into);
@@ -2379,15 +2379,14 @@ bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
     if (!stats.fits(length, block)) {
         stats.reset(length, block);
         stats.update(0, length, read);
-        lastKey = key;
+        (void)kept.follows(key, lanesFrame);
         refresh = {};
         return true;
     }
-    if (key != lastKey) {
-        // Other parts: every block again, over the next frames; meanwhile the blocks not redone
-        // yet still hold the previous parts' levels.
+    if (!kept.follows(key, lanesFrame)) {
+        // Other parts, or frames that left these levels out: every block again, over the next
+        // frames; meanwhile the blocks not redone yet still hold the levels they had.
         refresh.remaining = length;
-        lastKey = key;
     }
     for (const SweepImage::Range& range : frameChanges) {
         const auto from = static_cast<std::size_t>(range.first > reach ? range.first - reach : 0);
@@ -2571,7 +2570,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
         } else {
             lane.fixedRefresh = {};
             lane.fixedKey.clear();
-            lane.lastFixedKey.clear();
+            lane.fixedKept = {};
         }
     }
 
@@ -2592,39 +2591,38 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
     // The recomputations under way this frame, which share its kSumRefreshSamples, so that many
     // at once (every match moved) take no longer per frame than one.
     const auto pending = [&](const BlockStats& stats, const SumRefresh& refresh,
-                             const std::vector<std::int64_t>& key,
-                             const std::vector<std::int64_t>& lastKey) {
-        return stats.fits(length, block) && (refresh.remaining > 0 || key != lastKey) ? 1U : 0U;
+                             const std::vector<std::int64_t>& key, const Kept& kept) {
+        return stats.fits(length, block) && (refresh.remaining > 0 || !kept.holds(key, lanesFrame))
+                   ? 1U
+                   : 0U;
     };
-    std::size_t shares = pending(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey) +
-                         pending(fixedSumStats, fixedSumRefresh, fixedSumKey, lastFixedSumKey);
+    std::size_t shares = pending(rawSumStats, rawSumRefresh, rawSumKey, rawSumKept) +
+                         pending(fixedSumStats, fixedSumRefresh, fixedSumKey, fixedSumKept);
     for (const std::uint64_t serial : laneOrder) {
         const Lane& lane = *lanes.at(serial);
         if (!lane.fixedKey.empty()) {
-            shares += pending(lane.fixedStats, lane.fixedRefresh, lane.fixedKey, lane.lastFixedKey);
+            shares += pending(lane.fixedStats, lane.fixedRefresh, lane.fixedKey, lane.fixedKept);
         }
     }
-    if (!sumRebuilt && (sumRefresh.remaining > 0 || sumKey != lastSumKey)) {
+    if (!sumRebuilt && (sumRefresh.remaining > 0 || !sumKept.holds(sumKey, lanesFrame))) {
         ++shares;
     }
 
     // Measured again beyond this frame's changes: the gains follow, so they settle as the
     // recomputation ends.
-    const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, lastRawSumKey,
+    const bool rawMeasured = updateSumStats(rawSumStats, rawSumRefresh, rawSumKey, rawSumKept,
                                             rawParts, 0, length, block, shares);
-    bool fixedMeasured =
-        updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey, lastFixedSumKey, fixedParts,
-                       maxOffset, length, block, shares);
+    bool fixedMeasured = updateSumStats(fixedSumStats, fixedSumRefresh, fixedSumKey, fixedSumKept,
+                                        fixedParts, maxOffset, length, block, shares);
     for (const std::uint64_t serial : laneOrder) {
         Lane& lane = *lanes.at(serial);
         if (lane.fixedKey.empty()) {
             continue;
         }
         onePart.assign(1, *shiftedPart(serial));
-        fixedMeasured =
-            updateSumStats(lane.fixedStats, lane.fixedRefresh, lane.fixedKey, lane.lastFixedKey,
-                           onePart, maxOffset, length, block, shares) ||
-            fixedMeasured;
+        fixedMeasured = updateSumStats(lane.fixedStats, lane.fixedRefresh, lane.fixedKey,
+                                       lane.fixedKept, onePart, maxOffset, length, block, shares) ||
+                        fixedMeasured;
     }
 
     // The matches' values and the gains, when due.
@@ -2685,14 +2683,14 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
         sumReduction.reset(visibleCount, columns, false, crop.lead, crop.trail);
         sumReduction.update(0, visibleCount, readVisibleSum, sumSeams);
         lastSumGeometry = sumGeometry;
-        lastSumKey = sumKey;
+        (void)sumKept.follows(sumKey, lanesFrame);
         sumRefresh = {};
     } else {
-        if (sumKey != lastSumKey) {
-            // Other parts: every column again, over the next frames, from left to right.
+        if (!sumKept.follows(sumKey, lanesFrame)) {
+            // Other parts, or frames that left the sum out: every column again, over the next
+            // frames, from left to right.
             sumRefresh.remaining = visibleCount;
             sumRefresh.cursor = 0;
-            lastSumKey = sumKey;
         }
         const std::size_t reach = previewFix ? maxOffset : 0;
         for (const SweepImage::Range& range : frameChanges) {
@@ -3040,9 +3038,11 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         sumKey.insert(sumKey.end(), {static_cast<std::int64_t>(laneOrder[part.lane]), part.offset,
                                      part.sign < 0.0f ? 1 : 0});
     }
-    if (sumKey != lastSumKey) {
+    // Rolled columns are kept by the audio's own positions, which nothing rewrites: only other
+    // parts make them stale, not a frame that left them out.
+    if (sumKey != sumKept.key) {
         sumRoll.clear();
-        lastSumKey = sumKey;
+        sumKept.key = sumKey;
     }
     // Positions position + i of the window show a part's sample at position + i + offset, and
     // silence beyond the window. False if a part's capture does not hold its samples yet.

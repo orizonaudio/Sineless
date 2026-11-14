@@ -6637,5 +6637,115 @@ TEST(CompareGainWork, ReadsARollsTracksOverSeveralFrames)
     }
 }
 
+// ----- A sum that frames left out -----
+
+struct ReturningCase
+{
+    double rate = 0.0;
+    bool frozen = false;
+    TimeBase timeBase = TimeBase::kBeats;
+};
+
+class ReturningSum : public ::testing::TestWithParam<ReturningCase>
+{
+};
+
+// Every frame of `analyzer` until none comes: the last one, with whatever was being redone done.
+std::optional<DecodedFrame> settled(Analyzer& analyzer)
+{
+    std::optional<DecodedFrame> last;
+    std::vector<std::byte> bytes;
+    int quiet = 0;
+    for (int tick = 0; tick < 4096 && quiet < 64; ++tick) {
+        if (analyzer.produce(bytes)) {
+            last = decode(bytes);
+            quiet = 0;
+        } else {
+            ++quiet;
+        }
+    }
+    return last;
+}
+
+// Compare switched off and on again while the music plays, live or frozen meanwhile: what it
+// shows on coming back is what a session that had it on all along shows, as soon as its sums are
+// redone, not only once the sweep has passed again (which frozen it never does). Here the other
+// track turns into this one inverted while Compare is off: back on, the sum cancels exactly, and
+// did read +2 dB.
+TEST_P(ReturningSum, MatchesAFreshSum)
+{
+    const ReturningCase c = GetParam();
+    Session session(c.rate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .offset = 0.0, .seed = 3});
+    session.join({.kind = Signal::Kind::kNoise, .offset = 0.0, .seed = 5});
+    configure(session.own(), Display::kCompare, c.timeBase);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    setSpan(session.own(), c.timeBase, 2.0);
+    session.analyzer().setCompared(othersOf(session));
+    session.play(3.0, 0.05);
+    session.play(0.01); // Audio no frame has shown yet, so that one comes.
+    ASSERT_TRUE(session.produce());
+    ASSERT_NEAR(session.field(FrameHeader::kSumGainOffset), 0.0, 1.0) << "unrelated: harmless";
+
+    show(session.own().settings(), Display::kMulti);
+    session.setSignal(1,
+                      {.kind = Signal::Kind::kNoise, .amplitude = -0.25, .offset = 0.0, .seed = 3});
+    session.play(2.5, 0.05); // More than the bar: every position of the other track is new.
+    session.play(0.01);
+    if (c.frozen) {
+        // A freeze holds the window last shown: one at the newest audio, here and afresh below.
+        ASSERT_TRUE(session.produce());
+        session.analyzer().setFrozen(true);
+    }
+    show(session.own().settings(), Display::kCompare);
+    // No audio from here on: what follows comes of the sums being redone, not of the sweep
+    // passing over them again.
+    const std::optional<DecodedFrame> returned = settled(session.analyzer());
+    ASSERT_TRUE(returned);
+
+    Analyzer fresh(session.own(), session.registry);
+    fresh.setColumns(kColumns);
+    if (c.frozen) {
+        std::vector<std::byte> live;
+        ASSERT_TRUE(fresh.produce(live));
+        fresh.setFrozen(true);
+    }
+    const std::optional<DecodedFrame> expected = settled(fresh);
+    ASSERT_TRUE(expected);
+    ASSERT_TRUE(expected->has(FrameFlag::kCompared));
+    ASSERT_EQ(expected->sumGain, -std::numeric_limits<float>::infinity())
+        << "the other track is this one inverted: the sum cancels exactly";
+    EXPECT_EQ(returned->sumGain, expected->sumGain);
+    EXPECT_EQ(returned->fixedGain, expected->fixedGain);
+    ASSERT_EQ(tracesIn(*returned), tracesIn(*expected));
+    ASSERT_EQ(returned->pointCount, expected->pointCount);
+    for (std::size_t index = 0; index < tracesIn(*expected); ++index) {
+        EXPECT_TRUE(std::ranges::equal(trace(*returned, index), trace(*expected, index)))
+            << (index + 1 == tracesIn(*expected) ? "the sum's lane" : "a track's lane");
+    }
+}
+
+std::vector<ReturningCase> returningCases()
+{
+    std::vector<ReturningCase> cases;
+    for (const double rate : kSampleRates) {
+        for (const bool frozen : {false, true}) {
+            cases.push_back({.rate = rate, .frozen = frozen, .timeBase = TimeBase::kBeats});
+        }
+    }
+    // Free, rolling, keeps its columns by the audio's own positions, which nothing rewrites: the
+    // same steps, right before and after.
+    cases.push_back({.rate = 48000.0, .frozen = false, .timeBase = TimeBase::kFree});
+    cases.push_back({.rate = 48000.0, .frozen = true, .timeBase = TimeBase::kFree});
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryRate, ReturningSum, ::testing::ValuesIn(returningCases()),
+                         [](const ::testing::TestParamInfo<ReturningCase>& info) {
+                             const ReturningCase& c = info.param;
+                             return rateName(c.rate) + "_" + timeBaseName(c.timeBase) +
+                                    (c.frozen ? "_Frozen" : "_Live");
+                         });
+
 } // namespace
 } // namespace orizon::engine
