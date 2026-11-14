@@ -1433,15 +1433,18 @@ export class OscilloscopeApp {
       if (node === undefined || match === undefined || frame === undefined) {
         return;
       }
-      if (Number.isNaN(match.correlation)) {
-        node.textContent = "—"; // They never sound together: nothing measured.
+      // No correlation: they never sound together as they are. A track can still match at an
+      // offset (a short hit and its late copy); otherwise nothing was measured.
+      const measured = !Number.isNaN(match.correlation);
+      if (!measured && !match.related) {
+        node.textContent = "—";
         return;
       }
       const offsetMs = (match.offset / frame.sampleRate) * 1000;
       const alignment = match.related
         ? `${formatOffset(offsetMs)}${match.inverted ? " Ø" : ""}`
         : "unrelated";
-      node.textContent = `${alignment} · ${signed(match.correlation, 2)}`;
+      node.textContent = `${alignment} · ${measured ? signed(match.correlation, 2) : "—"}`;
     });
     if (this.sumNode !== undefined && comparison !== undefined) {
       const gain = this.previewFix ? comparison.fixedGain : comparison.sumGain;

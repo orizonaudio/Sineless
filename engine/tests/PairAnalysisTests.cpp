@@ -97,14 +97,16 @@ TEST(PairSearch, FindsWhatOneSearchAtOnceFinds)
     }
 }
 
-// Each step stops once its budget is spent, but always makes progress: with a budget below one
-// offset's work, each step searches one offset, at most the whole stretch, and the steps end
-// with the match.
-TEST(PairSearch, DoesAtLeastOneOffsetAndNoMoreThanItsBudgetAllows)
+// Each step stops once its budget is spent, but always makes progress: with the smallest budget
+// each step does one block of a pass over the stretch or one transform, never the search at once,
+// and the steps end with the match.
+TEST(PairSearch, DoesOnePieceAStepOnTheSmallestBudget)
 {
     const auto a = noise(40);
     PairSearch search;
     search.start(a, delayed(a, 100), kMaxOffset, kBlock);
+    std::uint64_t most = 0;
+    int steps = 0;
     bool ended = false;
     while (!ended) {
         const std::uint64_t before = search.work();
@@ -113,27 +115,36 @@ TEST(PairSearch, DoesAtLeastOneOffsetAndNoMoreThanItsBudgetAllows)
         if (!ended) {
             ASSERT_GT(work, 0U) << "a step made no progress";
         }
-        ASSERT_LE(work, kLength) << "a step did more than one offset's work";
-    }
-    EXPECT_EQ(search.result().offset, 100);
-}
-
-// A long search takes several steps of a moderate budget, rather than one.
-TEST(PairSearch, SpreadsALongSearchOverSteps)
-{
-    const auto a = noise(41);
-    PairSearch search;
-    search.start(a, delayed(a, 100), kMaxOffset, kBlock);
-    int steps = 1;
-    while (!search.step(kLength * 8)) {
+        most = std::max(most, work);
         ++steps;
     }
-    EXPECT_GT(steps, 2);
+    EXPECT_GT(steps, static_cast<int>(kLength / kBlock)) << "fewer steps than blocks to pass over";
+    EXPECT_LT(most, search.work() / 2) << "one step did most of the search";
     EXPECT_EQ(search.result().offset, 100);
 }
 
-// Preparing a stretch (finding where both tracks sound, keeping only those samples, decimating
-// them for the coarse scan) passes over all of it, so it is spread over steps like the scan:
+// A long search takes several steps of a moderate budget, rather than one, and a stretch eight
+// times as long takes several times as many: a step's work follows its budget, not the stretch.
+TEST(PairSearch, SpreadsALongSearchOverSteps)
+{
+    const auto stepsFor = [](std::size_t length) {
+        const auto a = noise(41, length);
+        PairSearch search;
+        search.start(a, delayed(a, 100), kMaxOffset, kBlock);
+        int steps = 1;
+        while (!search.step(kLength * 8)) {
+            ++steps;
+        }
+        EXPECT_EQ(search.result().offset, 100) << length << " samples";
+        return steps;
+    };
+    const int steps = stepsFor(kLength);
+    EXPECT_GT(steps, 2);
+    EXPECT_GT(stepsFor(8 * kLength), 4 * steps);
+}
+
+// Preparing a stretch (finding where each track sounds, and both) passes over all of it, so it is
+// spread over steps like the search:
 // starting does none of it, and even tracks that never sound together, which leave no offset to
 // search, take several steps of a moderate budget, each counted as work.
 TEST(PairSearch, PreparesALongStretchOverSteps)
@@ -159,10 +170,8 @@ TEST(PairSearch, PreparesALongStretchOverSteps)
     EXPECT_FALSE(search.result().measured);
 }
 
-// At 44.1 kHz and its multiples a block of 10 ms (441 samples) is not a whole number of the coarse
-// scan's decimated samples; the one that straddles each block edge is decimated from both blocks.
-// Tracks that sound throughout are searched alike in blocks of 441 samples and in one block: a
-// coarse sample left empty at each edge moved the coarse match, and with it the offset found.
+// The blocks only say where tracks sound: tracks that sound throughout are searched alike in
+// blocks of 441 samples (10 ms at 44.1 kHz) and in one block, nothing lost at a block's edge.
 TEST(PairSearch, FindsTheSameMatchWhateverTheBlockLength)
 {
     constexpr std::size_t kRateLength = 44100;
@@ -421,10 +430,9 @@ TEST(PairAnalysis, FindsALateCopyInAShortSpan)
 }
 
 // A shift is suggested only when it matches clearly better than none. Here the fast part of two
-// tracks lines up as they are, while their slow part, the only one the coarse search sees (the
-// fast part cancels in every 8 samples it averages), is 100 samples late in the second, with a
+// tracks lines up as they are, while their slow part is 100 samples late in the second, with a
 // hundredth more energy: shifted, they match a little better, but not clearly, so no shift is
-// suggested, though the coarse search found one far from none.
+// suggested.
 TEST(PairAnalysis, SuggestsNoShiftThatMatchesNoBetterThanNone)
 {
     const auto fastNoise = noise(14);
@@ -464,7 +472,8 @@ TEST(PairAnalysis, SuggestsNoShiftThatMatchesNoBetterThanNone)
 
 // A steady tone matches itself every period, so a late copy could be lined up at several shifts;
 // the nearest is the one suggested: a 200 Hz tone 40 samples late (its period is 240) reads as
-// about 40 samples late, not as leading by a period less that.
+// 40 samples late, not as leading by a period less that, nor as the first shift that matches
+// almost as well.
 TEST(PairAnalysis, LinesUpADelayedToneAtTheNearestShift)
 {
     std::vector<float> a(kLength);
@@ -474,8 +483,7 @@ TEST(PairAnalysis, LinesUpADelayedToneAtTheNearestShift)
     }
     const PairAnalysis result = analyse(a, delayed(a, 40));
     EXPECT_TRUE(result.related);
-    // Within a tenth of the period: shifts that match almost as well may be preferred if smaller.
-    EXPECT_NEAR(static_cast<double>(result.offset), 40.0, 24.0);
+    EXPECT_EQ(result.offset, 40);
     EXPECT_FALSE(result.inverted);
 }
 
@@ -704,6 +712,212 @@ TEST(PairAnalysis, SendsAnExactCancellationAsMinusInfinity)
     EXPECT_TRUE(std::isnan(overlapGainOfBlocks(silent, nothing, kBlock)))
         << "never together: nothing measured, not a cancellation";
 }
+
+// --- Bright material ---------------------------------------------------------------------------
+
+// Short hits of noise, ten a second: white, or differentiated (`brightness` times), which leaves
+// little below a few kilohertz, as a hi-hat or a cymbal has. Each decays by 60 dB in
+// `decaySeconds`.
+std::vector<float> hits(double rate, int brightness, double decaySeconds, double seconds)
+{
+    std::mt19937 random(91); // NOLINT(bugprone-random-generator-seed): reproducible
+    std::uniform_real_distribution<float> uniform(-0.5f, 0.5f);
+    const auto length = static_cast<std::size_t>(std::lround(seconds * rate));
+    const auto spacing = static_cast<std::size_t>(std::lround(0.1 * rate));
+    std::vector<float> values(length);
+    for (float& value : values) {
+        value = uniform(random);
+    }
+    for (int pass = 0; pass < brightness; ++pass) {
+        for (std::size_t i = length - 1; i > 0; --i) {
+            values[i] = 0.5f * (values[i] - values[i - 1]);
+        }
+    }
+    const double perSample = std::pow(10.0, -3.0 / (decaySeconds * rate));
+    double envelope = 0.0;
+    for (std::size_t i = 0; i < length; ++i) {
+        envelope = i % spacing == 0 ? 1.0 : envelope * perSample;
+        values[i] = static_cast<float>(values[i] * envelope);
+    }
+    return values;
+}
+
+struct BrightCase
+{
+    double rate;
+    double delayMs;
+    int brightness;
+    double decaySeconds;
+};
+
+class BrightMatch : public ::testing::TestWithParam<BrightCase>
+{
+};
+
+// Two microphones on a hi-hat, or a bright synth and a delayed copy: the copy's offset is found
+// exactly, at every rate hosts run at, wherever in the reach it lies.
+TEST_P(BrightMatch, FindsALateCopy)
+{
+    const BrightCase& bright = GetParam();
+    const auto track = hits(bright.rate, bright.brightness, bright.decaySeconds, 2.0);
+    // An odd number of samples, as most distances are: no whole number of any coarser step.
+    const auto delay =
+        2 * static_cast<std::size_t>(std::lround(bright.delayMs * 0.0005 * bright.rate)) + 1;
+    const auto reach =
+        static_cast<std::size_t>(std::lround(protocol::kMatchReachSeconds * bright.rate));
+    const auto block = static_cast<std::size_t>(std::lround(0.01 * bright.rate));
+    const PairAnalysis analysis = analysePair(track, delayed(track, delay), reach, block);
+    EXPECT_TRUE(analysis.related);
+    EXPECT_EQ(analysis.offset, static_cast<std::ptrdiff_t>(delay));
+    EXPECT_FALSE(analysis.inverted);
+}
+
+std::vector<BrightCase> brightCases()
+{
+    std::vector<BrightCase> cases;
+    for (const double rate : {44100.0, 48000.0, 96000.0, 192000.0, 384000.0}) {
+        for (const double delayMs : {0.5, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0}) {
+            for (const int brightness : {0, 1, 2}) {
+                for (const double decaySeconds : {0.004, 0.05}) {
+                    cases.push_back({.rate = rate,
+                                     .delayMs = delayMs,
+                                     .brightness = brightness,
+                                     .decaySeconds = decaySeconds});
+                }
+            }
+        }
+    }
+    return cases;
+}
+
+std::string brightName(const ::testing::TestParamInfo<BrightCase>& info)
+{
+    const BrightCase& bright = info.param;
+    const std::array<const char*, 3> kinds{"White", "Bright", "Brighter"};
+    return std::string(kinds.at(static_cast<std::size_t>(bright.brightness))) + "Decaying" +
+           std::to_string(std::lround(bright.decaySeconds * 1000.0)) + "ms_Late" +
+           std::to_string(std::lround(bright.delayMs * 10.0)) + "TenthsMs_" +
+           std::to_string(std::lround(bright.rate)) + "Hz";
+}
+
+INSTANTIATE_TEST_SUITE_P(Hits, BrightMatch, ::testing::ValuesIn(brightCases()), brightName);
+
+// A hit shorter than a block, arriving a block and a half late in the other track, never sounds
+// together with its copy as recorded: nothing is measured at no offset, and the copy is still
+// found where it is.
+TEST(PairAnalysis, FindsShortHitsABlockApart)
+{
+    const auto track = hits(48000.0, 0, 0.004, 2.0);
+    const PairAnalysis analysis = analysePair(track, delayed(track, 721), 960, kBlock);
+    EXPECT_TRUE(analysis.related);
+    EXPECT_EQ(analysis.offset, 721);
+    EXPECT_FALSE(analysis.inverted);
+}
+
+// --- Bass material -----------------------------------------------------------------------------
+
+// Two seconds of material with little above a few hundred hertz, whose match with a late copy is
+// a broad peak: `kind` 0 a 50 Hz note, 1 a bass line of notes from 41 to 62 Hz, 2 noise below
+// 150 Hz, 3 noise below 1 kHz (smoothed twice over the span that leaves that much).
+std::vector<float> bass(double rate, int kind)
+{
+    const auto length = static_cast<std::size_t>(std::lround(2.0 * rate));
+    std::vector<float> values(length);
+    if (kind < 2) {
+        const std::array<double, 4> notes{41.2, 55.0, 49.0, 61.7};
+        double phase = 0.0;
+        for (std::size_t i = 0; i < length; ++i) {
+            const double seconds = static_cast<double>(i) / rate;
+            const double note =
+                kind == 0 ? 50.0 : notes.at(static_cast<std::size_t>(seconds * 4.0) % 4);
+            phase += 2.0 * std::numbers::pi * note / rate;
+            values[i] = static_cast<float>(0.5 * std::sin(phase));
+        }
+        return values;
+    }
+    std::mt19937 random(92); // NOLINT(bugprone-random-generator-seed): reproducible
+    std::uniform_real_distribution<float> uniform(-0.5f, 0.5f);
+    for (float& value : values) {
+        value = uniform(random);
+    }
+    const auto span = static_cast<std::size_t>(std::lround(rate / (kind == 2 ? 300.0 : 2000.0)));
+    for (int pass = 0; pass < 2; ++pass) {
+        std::vector<float> smoothed(length, 0.0f);
+        double sum = 0.0;
+        for (std::size_t i = 0; i < length; ++i) {
+            sum += values[i];
+            if (i >= span) {
+                sum -= values[i - span];
+            }
+            smoothed[i] = static_cast<float>(sum / static_cast<double>(span));
+        }
+        values = smoothed;
+    }
+    return values;
+}
+
+struct BassCase
+{
+    double rate;
+    int kind;
+    double delayMs;
+};
+
+class BroadPeak : public ::testing::TestWithParam<BassCase>
+{
+};
+
+// Two microphones on a bass, a few milliseconds apart: the offset suggested is the one that lines
+// them up, not the first that matches almost as well, which lies up to half a millisecond short
+// and leaves the fix weaker than it reads.
+TEST_P(BroadPeak, FindsTheTopOfTheMatch)
+{
+    const BassCase& bassCase = GetParam();
+    const auto track = bass(bassCase.rate, bassCase.kind);
+    const auto delay =
+        static_cast<std::size_t>(std::lround(bassCase.delayMs * 0.001 * bassCase.rate));
+    const auto reach =
+        static_cast<std::size_t>(std::lround(protocol::kMatchReachSeconds * bassCase.rate));
+    const auto block = static_cast<std::size_t>(std::lround(0.01 * bassCase.rate));
+    const PairAnalysis analysis = analysePair(track, delayed(track, delay), reach, block);
+    EXPECT_TRUE(analysis.related);
+    // Below 150 Hz the match changes by under a hundred-thousandth from one sample to the next at
+    // the highest rates, less than the search's float sums tell apart (and far less than a sum of
+    // the tracks would show): up to 8 microseconds off there.
+    const std::ptrdiff_t indistinct =
+        bassCase.kind < 3 ? static_cast<std::ptrdiff_t>(bassCase.rate / 128000.0) : 0;
+    EXPECT_LE(std::abs(analysis.offset - static_cast<std::ptrdiff_t>(delay)), indistinct)
+        << analysis.offset << " for " << delay;
+    EXPECT_FALSE(analysis.inverted);
+}
+
+std::vector<BassCase> bassCases()
+{
+    std::vector<BassCase> cases;
+    for (const double rate : {44100.0, 48000.0, 96000.0, 192000.0, 384000.0}) {
+        for (const int kind : {0, 1, 2, 3}) {
+            // Far enough for the match to be clearly better than none (a 50 Hz note up to 0.6 ms
+            // late matches within 2% as it is, and no shift is suggested), and under a quarter of
+            // the lowest note's period (beyond it, flipped and less far matches a tone as well).
+            for (const double delayMs : {2.0, 3.5}) {
+                cases.push_back({.rate = rate, .kind = kind, .delayMs = delayMs});
+            }
+        }
+    }
+    return cases;
+}
+
+std::string bassName(const ::testing::TestParamInfo<BassCase>& info)
+{
+    const BassCase& bassCase = info.param;
+    const std::array<const char*, 4> kinds{"Note50Hz", "BassLine", "NoiseBelow150Hz",
+                                           "NoiseBelow1kHz"};
+    return std::string(kinds.at(static_cast<std::size_t>(bassCase.kind))) + "_Late" +
+           std::to_string(std::lround(bassCase.delayMs * 10.0)) + "TenthsMs_" +
+           std::to_string(std::lround(bassCase.rate)) + "Hz";
+}
+
+INSTANTIATE_TEST_SUITE_P(Bass, BroadPeak, ::testing::ValuesIn(bassCases()), bassName);
 
 } // namespace
 } // namespace orizon::engine
