@@ -763,6 +763,33 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-ink);
 }
 
+/* A lane's name with its number among its track's instances, one piece wherever a lane is named
+   (the labels, Compare's check boxes, the hover readout): the number small and lowered. */
+.lane-name,
+.lane-label .lane-name {
+  display: inline;
+}
+
+.lane-name > .instance,
+.lane-label .lane-name > .instance {
+  display: inline;
+  margin-left: 1px;
+  font-size: 0.75em;
+  vertical-align: -0.3em;
+}
+
+/* Said by a screen reader, not shown (WCAG technique C7's rule). */
+.visually-hidden,
+.lane-label .visually-hidden {
+  position: absolute;
+  display: block;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(100%);
+}
+
 .lane-label > .own::after {
   content: "this track";
   margin-left: 8px;

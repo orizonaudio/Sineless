@@ -2013,6 +2013,39 @@ TEST_F(MultiTrackTest, KeepsTheOwnTrackWithinTheLaneLimit)
     EXPECT_TRUE(lanes.laneSet().lanes.back().own);
 }
 
+// A lane is numbered by its place among its track's instances in the group, drawn or not: with
+// more tracks than lanes, an instance whose twin on the track is hidden keeps its number, so the
+// label does not change with what happens to fit.
+TEST_F(MultiTrackTest, NumbersAnInstanceWhoseTwinIsNotDrawn)
+{
+    InstanceRegistry crowded;
+    const auto named = [&](const char* name) {
+        auto engine = std::make_shared<Engine>();
+        engine->setTrackInfo({.name = name, .colour = std::nullopt, .index = std::nullopt});
+        crowded.add(engine);
+        tracks.emplace_back(engine, [](std::uint64_t) { return 0.5f; });
+        return engine;
+    };
+    named("Bass");
+    for (std::size_t track = 1; track < kMaxLanes; ++track) {
+        named(("Track " + std::to_string(track)).c_str());
+    }
+    named("Bass"); // The seventeenth, hidden: the first Bass's twin.
+    own->setTrackInfo({.name = "Lead", .colour = std::nullopt, .index = std::nullopt});
+    crowded.add(own);
+    Analyzer lanes(*own, crowded);
+    lanes.setColumns(8000);
+    play(9600);
+    std::vector<std::byte> bytes;
+    ASSERT_TRUE(lanes.produce(bytes));
+    const LaneSet set = lanes.laneSet();
+    ASSERT_EQ(set.hidden, 2u);
+    ASSERT_EQ(set.lanes.front().name, "Bass");
+    EXPECT_EQ(set.lanes.front().instance, 1u);
+    EXPECT_EQ(set.lanes[1].instance, 0u) << "a track's only instance";
+    EXPECT_EQ(set.lanes.back().instance, 0u) << "this track, alone on its own";
+}
+
 TEST_F(MultiTrackTest, StartsANewLaneSetWhenTracksChange)
 {
     play(9600);

@@ -85,6 +85,7 @@ import {
 import {
   cssColour,
   fallbackPalette,
+  laneName,
   laneStyles,
   sumLaneColour,
   type LaneStyle,
@@ -225,6 +226,31 @@ function rgba(color: string): Rgba {
   const value = (offset: number) =>
     parseInt(hex.slice(offset, offset + 2), 16) / 255;
   return [value(0), value(2), value(4), 1];
+}
+
+// A lane's name as it is shown wherever a lane is named: the name alone, or, for one of several
+// instances on a track, the name with its number small and lowered after it (styled, as the
+// embedded fonts have no subscript digits) and, for a screen reader, the words that say what the
+// number is.
+function laneNameNodes(lane: {
+  readonly name: string;
+  readonly instance: number;
+}): (string | HTMLElement)[] {
+  const { name, number, spoken } = laneName(lane);
+  if (number === undefined || spoken === undefined) {
+    return [name];
+  }
+  const shown = document.createElement("span");
+  shown.className = "instance";
+  shown.setAttribute("aria-hidden", "true");
+  shown.textContent = number;
+  const said = document.createElement("span");
+  said.className = "visually-hidden";
+  said.textContent = spoken;
+  const whole = document.createElement("span");
+  whole.className = "lane-name";
+  whole.append(name, shown, said);
+  return [whole];
 }
 
 function range(name: SettingName): NumberSetting {
@@ -1261,6 +1287,7 @@ export class OscilloscopeApp {
           colour: sumLaneColour,
           own: false,
           compared: false,
+          instance: 0,
         },
       ];
     }
@@ -1274,6 +1301,7 @@ export class OscilloscopeApp {
             colour: null,
             own: false,
             compared: false,
+            instance: 0,
           })),
         );
   }
@@ -1348,13 +1376,14 @@ export class OscilloscopeApp {
         return node;
       }
       if (!compareMode) {
-        node.textContent = style.name;
+        node.append(...laneNameNodes(style));
         return node;
       }
       node.classList.add("checkable");
       const check = button(style.name, "compareTrack", () => {
         this.toggleCompared(style.id);
       });
+      check.replaceChildren(...laneNameNodes(style));
       check.className = "compare-check";
       check.setAttribute("role", "checkbox");
       check.setAttribute("aria-checked", String(style.compared));
@@ -1840,6 +1869,7 @@ export class OscilloscopeApp {
       const styles = this.lanesOf(frame);
       traces = frame.lanes.map((values, index) => ({
         name: styles[index]?.name ?? `Track ${String(index + 1)}`,
+        instance: styles[index]?.instance ?? 0,
         values,
       }));
       overlaid = Math.max(
@@ -1906,7 +1936,9 @@ export class OscilloscopeApp {
       band.hidden = false;
     }
     const title = document.createElement("strong");
-    title.textContent = readout.title;
+    title.append(
+      ...laneNameNodes({ name: readout.title, instance: readout.instance }),
+    );
     node.replaceChildren(
       title,
       ...readout.rows.map(({ label, value }) => {

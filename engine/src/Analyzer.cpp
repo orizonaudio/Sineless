@@ -1282,7 +1282,8 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
                           .name = member.track.name,
                           .colour = member.track.colour,
                           .own = member.serial == ownSerial,
-                          .compared = isCompared(member.serial)});
+                          .compared = isCompared(member.serial),
+                          .instance = member.instance});
     }
     publishLanes(std::move(labels), hidden);
 

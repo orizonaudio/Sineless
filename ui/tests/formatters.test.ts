@@ -271,6 +271,7 @@ describe.each(laneCounts)("%i lanes without host colours", (count) => {
       colour: null,
       own: index === 0,
       compared: true,
+      instance: 0,
     })),
   );
   test("each has its own colour, none the sum lane's", () => {

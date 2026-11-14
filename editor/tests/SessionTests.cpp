@@ -368,6 +368,7 @@ TEST_F(SessionTest, ReportsTheMultiTrackLanes)
     EXPECT_EQ(lanes[0]["lanes"][0]["own"], true);
     EXPECT_EQ(lanes[0]["lanes"][0]["id"], 0) << "an unregistered engine's own lane";
     EXPECT_EQ(lanes[0]["lanes"][0]["compared"], false) << "only the Compare view compares";
+    EXPECT_EQ(lanes[0]["lanes"][0]["instance"], 0) << "its track's only instance";
 
     session.sync();
     EXPECT_EQ(transport.ofType("lanes").size(), 1u) << "nothing new";

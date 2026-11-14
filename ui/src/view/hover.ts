@@ -30,6 +30,8 @@ const gateLevel = 10 ** (analysisGateDbfs / 20);
 
 export interface HoverTrace {
   readonly name: string;
+  // A lane's number among its track's instances (view/lanes.ts); 0 or absent for none.
+  readonly instance?: number;
   readonly values: Float32Array;
 }
 
@@ -258,6 +260,8 @@ export function cycleAt(
 // trace's lane from `top` to `bottom` (the whole screen unless lanes are stacked).
 export interface HoverReadout {
   readonly title: string;
+  // The trace's number among its track's instances, which the title carries; 0 for none.
+  readonly instance: number;
   // A label and a value per line, as the cursor readout's rows.
   readonly rows: ReadoutRow[];
   readonly x: number;
@@ -354,6 +358,7 @@ export function hoverReadout(
   const read = readPosition(frame, position);
   return {
     title: trace.name,
+    instance: trace.instance ?? 0,
     rows,
     x: clip(toScreen(context.view, read ?? position)),
     cycle:
