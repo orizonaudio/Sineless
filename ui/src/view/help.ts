@@ -132,7 +132,7 @@ export function helpTextsFor(mac: boolean) {
       lead: "What the screen shows: this track, or every track of its group.",
       choices: choicesOf(choiceLabels.displayMode, {
         single: "this track's channels",
-        multi: `every track of this instance's group with this plugin, one lane each, showing the channel chosen in the Views popover, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds their sum)`,
+        multi: `every track of this instance's group with this plugin, one lane each, showing the channel chosen in the Views popover, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds a lane)`,
       }),
       notes: [
         "Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.",
@@ -140,10 +140,18 @@ export function helpTextsFor(mac: boolean) {
     },
     compare: {
       title: "Compare",
-      lead: "In Multi, adds the checked tracks' sum or difference and measures each against this one.",
+      lead: "In Multi, adds a lane from the checked tracks and measures each against this one.",
+      choices: [
+        { name: "Sum", text: "their sum: what they do together in a mix" },
+        {
+          name: "Diff",
+          text: "this track minus the others: what an effect between them changed",
+        },
+      ],
       notes: [
         `In beta. It takes a lane, so Multi then shows at most ${lanesCompare} tracks.`,
-        "It stays on or off as you leave Multi and come back, and is saved with the project.",
+        "Open the instance after the effect to read after minus before.",
+        "Saved with the project.",
       ],
     },
     laneLabels: {
@@ -157,7 +165,7 @@ export function helpTextsFor(mac: boolean) {
     },
     compareTrack: {
       title: "Compare",
-      lead: "Check a track to add it to the sum and measure it against this track.",
+      lead: "Check a track to put it in the sum or difference and measure it against yours.",
       notes: [
         "This track is always compared; uncheck another to leave it out.",
       ],
@@ -187,21 +195,6 @@ export function helpTextsFor(mac: boolean) {
       ],
       notes: [
         `Measured over the visible part, only where two or more sound together above ${gate} dBFS.`,
-      ],
-    },
-    compareLane: {
-      title: "Compare shows",
-      lead: "What Compare's last lane shows of the checked tracks.",
-      choices: [
-        { name: "Σ", text: "their sum: what they do together in a mix" },
-        {
-          name: "Δ",
-          text: "this track minus the others: what differs, as an effect between two instances adds or takes away",
-        },
-      ],
-      notes: [
-        "Open the instance after the effect to read after minus before.",
-        "Saved with the project.",
       ],
     },
     align: {
@@ -278,9 +271,9 @@ export function helpTextsFor(mac: boolean) {
     },
     group: {
       title: "Views",
-      lead: "Which group's tracks Multi shows, and with Compare their sum.",
+      lead: "Which group's tracks Multi shows, and with Compare their sum or difference.",
       notes: [
-        "The field names the group, the lane channel, Σ (dimmed with Compare off) and a tag (dimmed while lane labels are hidden).",
+        "The field names the group, the lane channel, Compare's lane (Σ or Δ, dimmed when off) and a tag (dimmed while lane labels are hidden).",
         "Instances in the same group appear together; use groups to keep comparisons apart, such as drums in A and bass in B.",
         "Every instance belongs to a group, whatever its own mode.",
       ],
@@ -719,8 +712,11 @@ export const choiceHelp: {
   triggerSlope: { topic: "triggerSlope" },
   triggerMode: { topic: "trigger" },
   group: { exempt: "letters A to D, which say nothing to explain one by one" },
-  compare: { exempt: "an on/off switch, whose topic says what on does" },
-  compareLane: { topic: "compareLane" },
+  compare: {
+    exempt:
+      "on and off behind Compare's switch, whose topic explains the lanes it offers",
+  },
+  compareLane: { topic: "compare" },
   align: { exempt: "an on/off switch, whose topic says what on does" },
   laneLabels: { exempt: "an on/off switch, whose topic says what on does" },
   autoFreeze: { exempt: "an on/off switch, whose topic says what on does" },
