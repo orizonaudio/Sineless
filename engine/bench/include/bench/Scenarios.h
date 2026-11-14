@@ -28,6 +28,10 @@ struct Scenario
     bool compareAll = false; // Compare: every other track checked, not only the first.
     bool previewFix = false;
     bool jitter = false; // Other tracks 0 to 3 ms late, moving (bench::Signals).
+    // Compare's last lane shows the difference, its tracks lined up with this one (Align).
+    bool difference = false;
+    // Every other track is this one after an effect: late, quieter and flipped (bench::Signals).
+    bool copies = false;
     // The part of the span on screen.
     double viewStart = 0.0;
     double viewEnd = 1.0;
@@ -79,6 +83,27 @@ inline constexpr std::array kScenarios{
              .compare = true,
              .tracks = 7,
              .beatSpan = protocol::BeatSpan::kFourBars},
+    Scenario{.name = "difference-7-four-bars",
+             .description = "Compare's difference, 7 tracks, the first other checked: a copy of "
+                            "this one, lined up between samples; 4 bars at 120 BPM and 48 kHz",
+             .mode = protocol::DisplayMode::kMulti,
+             .compare = true,
+             .tracks = 7,
+             .beatSpan = protocol::BeatSpan::kFourBars,
+             .difference = true,
+             .copies = true},
+    Scenario{.name = "difference-15-worst",
+             .description = "The difference's worst case: 15 tracks all checked, each a copy of "
+                            "this one lined up between samples, 16 bars at 60 BPM and 96 kHz",
+             .mode = protocol::DisplayMode::kMulti,
+             .compare = true,
+             .tracks = 15,
+             .beatSpan = protocol::BeatSpan::kSixteenBars,
+             .rate = 96000.0,
+             .tempo = 60.0,
+             .compareAll = true,
+             .difference = true,
+             .copies = true},
     Scenario{.name = "compare-15-roll",
              .description = "Compare, 15 tracks all checked, rolling 4 s at 96 kHz",
              .mode = protocol::DisplayMode::kMulti,

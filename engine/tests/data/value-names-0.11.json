@@ -1,4 +1,5 @@
 {
+  "align": ["off", "on"],
   "autoFreeze": ["off", "on"],
   "beatDivision": ["regular", "triplets"],
   "beatSpan": [

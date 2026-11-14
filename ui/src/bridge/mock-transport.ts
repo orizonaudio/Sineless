@@ -156,7 +156,11 @@ export const mockTracks: readonly (Omit<LaneLabel, "compared" | "instance"> & {
     own: false,
     sample: (time) => -0.8 * kick(time - kickMicDelay),
     fixed: (time) => 0.8 * kick(time),
-    match: { correlation: -0.93, related: true, inverted: true },
+    match: {
+      correlation: -0.93,
+      related: true,
+      inverted: true,
+    },
     delay: kickMicDelay,
   },
 ];
@@ -174,7 +178,11 @@ const farHat: (typeof mockTracks)[number] = {
     0.3 *
     decaying(time - farHatDelay, beatSeconds / 2, 900) *
     Math.sin(2 * Math.PI * 7300 * time),
-  match: { correlation: Number.NaN, related: true, inverted: false },
+  match: {
+    correlation: Number.NaN,
+    related: true,
+    inverted: false,
+  },
   delay: farHatDelay,
 };
 
@@ -805,9 +813,29 @@ export class MockTransport implements Transport {
     const source = this.drawnChoice("readoutSource", multi);
     let readoutSignal = (time: number) => viewSample(source, time, mono);
     let comparison: FrameContent["comparison"];
+    // The last lane as the settings ask: the checked tracks' sum, or this track minus the other
+    // checked ones, each lined up with this one first while Align is on.
+    const showsDifference =
+      compared.length > 0 && this.setting("compareLane") === "difference";
+    const aligning = showsDifference && this.setting("align") === "on";
+    // A track as Align lines it up, as the engine does: read its delay later, and with its flip
+    // taken out (its level stays); a track with no match stays as recorded.
+    const lanedUp = (track: (typeof mockTracks)[number]) => {
+      const match = track.match;
+      if (
+        !aligning ||
+        match?.related !== true ||
+        !comparedIds.includes(track.id)
+      ) {
+        return track.sample;
+      }
+      const sign = match.inverted ? -1 : 1;
+      const delay = track.delay ?? 0;
+      return (time: number) => sign * track.sample(time + delay);
+    };
     if (multi) {
       for (const track of this.groupTracks()) {
-        lanes.push(points(track.sample));
+        lanes.push(points(lanedUp(track)));
       }
       readoutSignal = kick;
     }
@@ -818,12 +846,9 @@ export class MockTransport implements Transport {
             total + (fix ? (track.fixed ?? track.sample) : track.sample)(time),
           0,
         );
-      // The last lane as the setting asks: the checked tracks' sum, or this track minus the
-      // other checked ones.
-      const showsDifference = this.setting("compareLane") === "difference";
       const difference = (time: number) =>
         compared.reduce(
-          (total, track) => total + (track.own ? 1 : -1) * track.sample(time),
+          (total, track) => total + (track.own ? 1 : -1) * lanedUp(track)(time),
           0,
         );
       lanes.push(points(showsDifference ? difference : sum(this.previewFix)));

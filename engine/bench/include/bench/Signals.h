@@ -19,7 +19,12 @@ namespace orizon::bench {
 class Signals
 {
 public:
-    Signals(std::size_t tracks, double rate, double tempo)
+    // With `copies`, every track but the first is the first after an effect: 5 ms and a sixteenth
+    // of a sample later per track (read between its samples on a straight line), a tenth
+    // quieter per track, and every second one flipped, so that Compare's Align has a delay and a
+    // polarity to take out of each, most of them between samples, and the difference a level
+    // change to show.
+    Signals(std::size_t tracks, double rate, double tempo, bool copies = false)
         : loop(static_cast<std::size_t>(std::llround(kLoopSeconds * rate))),
           lateStep(static_cast<std::uint64_t>(std::llround(rate / 1000.0))),
           jitterPeriod(static_cast<std::uint64_t>(std::llround(kJitterPeriodSeconds * rate)))
@@ -29,6 +34,27 @@ public:
             tables[track].resize(loop);
             for (std::size_t sample = 0; sample < loop; ++sample) {
                 tables[track][sample] = valueOf(track, sample, rate, tempo);
+            }
+        }
+        if (copies && tracks > 0) {
+            // This track: the kick with the hats over it, so that it does not repeat within
+            // Align's reach.
+            for (std::size_t sample = 0; sample < loop; ++sample) {
+                tables[0][sample] =
+                    (0.6f * valueOf(0, sample, rate, tempo)) + valueOf(2, sample, rate, tempo);
+            }
+            for (std::size_t track = 1; track < tracks; ++track) {
+                const double late = static_cast<double>(track) * ((0.005 * rate) + (1.0 / 16.0));
+                const auto whole = static_cast<std::size_t>(late);
+                const auto between = static_cast<float>(late - static_cast<double>(whole));
+                const float gain = static_cast<float>(std::pow(0.9, static_cast<double>(track))) *
+                                   (track % 2 == 0 ? -1.0f : 1.0f);
+                for (std::size_t sample = 0; sample < loop; ++sample) {
+                    const std::size_t at = (sample + loop - (whole % loop)) % loop;
+                    const std::size_t before = (at + loop - 1) % loop;
+                    tables[track][sample] =
+                        gain * (((1.0f - between) * tables[0][at]) + (between * tables[0][before]));
+                }
             }
         }
     }

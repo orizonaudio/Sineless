@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Fft.h"
+#include "engine/Reconstruction.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -23,6 +24,10 @@ struct PairAnalysis
     // `inverted`, `b` lines up best with its polarity flipped. 0 and false when not related.
     std::ptrdiff_t offset = 0;
     bool inverted = false;
+    // From a search made to align the tracks (alignPair), when related: the shift to a fraction of
+    // a sample, whether or not it is clearly better than none (twenty samples on a 50 Hz note
+    // match within 2% of none and still decide how deep the tracks null). 0 otherwise.
+    double delay = 0.0;
 };
 
 // Analyses `a` and `b` (equal length), searching offsets up to `maxOffset` samples either way.
@@ -37,6 +42,18 @@ struct PairAnalysis
 [[nodiscard]] PairAnalysis analysePair(std::span<const float> a, std::span<const float> b,
                                        std::size_t maxOffset, std::size_t block);
 
+// The same for aligning `b` with `a` before taking their difference, which a whole-sample fix
+// does not need: the peak is picked on the correlation between its lags (four points a lag), so
+// that a delay between two samples is found on bright material too; the delay is refined there;
+// then the exact match is measured at the whole lag nearest it and at that lag's neighbours,
+// moving to one that matches better until neither does (the search's float sums are a sample or
+// more off where the correlation is nearly flat, as on bass); and the delay between samples is
+// kept only if `b` read there through Align's filter matches better still. A plain latency thus
+// comes out as its whole number of samples. No level is matched: a level that changed is part of
+// what differs.
+[[nodiscard]] PairAnalysis alignPair(std::span<const float> a, std::span<const float> b,
+                                     std::size_t maxOffset, std::size_t block);
+
 // analysePair spread over calls, so that a long stretch's search does not stall one frame: each
 // step does about `budget` multiply-adds of it, at least one block of a pass over the stretch or
 // one transform, and whatever the budget the result is the same. The correlation over the reach
@@ -47,8 +64,9 @@ public:
     // Starts a search of `a` and `b` (equal length) as analysePair would, ending any search in
     // progress. It keeps its own copies, so they may change afterwards. It allocates what the
     // search needs; the steps allocate nothing more but the small lists of blocks.
+    // `align`: as alignPair, else as analysePair.
     void start(std::span<const float> a, std::span<const float> b, std::size_t maxOffset,
-               std::size_t block);
+               std::size_t block, bool align = false);
     // Searches on for about `budget` multiply-adds. True once the result is ready.
     bool step(std::size_t budget);
     // The result, once a step has returned true.
@@ -66,13 +84,26 @@ private:
         kCorrelate, // The cross-spectrum, a block of the stretch at a time.
         kLags,      // The correlation at every offset, and the peak it points to.
         kMatch,     // The match at that offset.
+        kBetween,   // Aligning: the correlation between its lags, and the delay it points to.
+        kSettle,    // ...the exact match at the whole lags about it.
+        kFraction,  // ...and at the delay between samples.
         kDone,
     };
+    // The correlation is read between its lags four points a lag to pick its peak (with a filter
+    // kBetweenReach lags each side), then thirty-two a lag to place the peak's top (with one
+    // kLagMargin each side, right to a few thousandths of a sample on bright material where a
+    // short one errs by a few hundredths).
+    static constexpr std::size_t kBetween = 4;
+    static constexpr std::size_t kBetweenReach = 64;
+    static constexpr std::size_t kRefine = 32;
+    static constexpr std::size_t kLagMargin = 256;
     // A match being measured: the second track shifted by `offset`, its energy per block of the
     // first as shifted (`placed` once known), where both then sound, and the sums there.
     struct Measure
     {
         std::ptrdiff_t offset = 0;
+        // A shift between samples: the filter that reads the wave that far after sample `offset`.
+        std::vector<float> taps{};
         std::vector<double> shifted{};
         std::vector<bool> together{};
         bool placed = false;
@@ -85,7 +116,14 @@ private:
     // Each goes on for about `budget` multiply-adds; true once done.
     bool measureEnergies(std::size_t& budget);
     bool measure(std::size_t& budget);
-    void beginMeasure(std::ptrdiff_t offset);
+    void beginMeasure(std::ptrdiff_t offset, double fraction = 0.0);
+    void shiftedBlock(std::size_t first, std::size_t size, std::span<float> into);
+    // The match measured: its correlation, 0 where the tracks do not meet.
+    [[nodiscard]] double strength() const;
+    bool interpolateLags(std::size_t& budget);
+    [[nodiscard]] double estimateDelay();
+    void settle();
+    void finishAligned(double delay, double value, double energyB);
     [[nodiscard]] std::vector<bool> togetherOf(const std::vector<double>& shifted) const;
     void correlateBlock(std::size_t& budget);
     void finish(std::ptrdiff_t offset, double value);
@@ -102,6 +140,30 @@ private:
     std::vector<float> keptA; // One block of each, as measured.
     std::vector<float> keptB;
     Measure measured;
+    bool aligning = false;
+    // The whole lag that matches best so far, with its sums, and which neighbours are known to
+    // match less well.
+    struct Settled
+    {
+        std::ptrdiff_t lag = 0;
+        bool any = false;
+        double strength = 0.0;
+        double dot = 0.0;
+        double energyB = 0.0;
+        int direction = 0;
+        bool triedBefore = false;
+        bool triedAfter = false;
+    };
+    Settled settled;
+    double estimateSign = 1.0;     // Of the correlation at the estimate: the polarity it found.
+    double estimate = 0.0;         // The delay the correlation points to, before settling.
+    std::ptrdiff_t computed = 0;   // The lags the correlation is taken for: the reach and a margin.
+    std::vector<float> padded;     // The correlation, kLagMargin lags beyond the reach each side.
+    std::vector<float> fine;       // ...and kBetween points a lag within it.
+    std::vector<float> neighbours; // A block of the second track with a filter's reach around it.
+    Reconstruction between{kBetweenReach};
+    Reconstruction refine{kLagMargin};
+    Reconstruction delayFilter;
     std::ptrdiff_t reach = 0;
     std::size_t stride = 0; // Samples of the first track a transform takes.
     Fft fft{2};             // The smallest there is, until start() makes the one a search takes.

@@ -1,5 +1,6 @@
 {
   "settings": {
+    "align": "off",
     "autoFreeze": "off",
     "beatDivision": "triplets",
     "beatSpan": "thirdBar",

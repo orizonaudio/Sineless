@@ -33,9 +33,10 @@
       "replies": [
         {
           "inputChannels": 2,
-          "protocolVersion": 19,
+          "protocolVersion": 20,
           "sampleRate": 44100.0,
           "settings": {
+            "align": "on",
             "autoFreeze": "on",
             "beatDivision": "regular",
             "beatSpan": "oneBar",
@@ -73,13 +74,14 @@
       ]
     }
   ],
-  "protocolVersion": 19,
+  "protocolVersion": 20,
   "scenario": "FrozenHeldRateBeats_384kThen44k1",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 19,
+    "protocolVersion": 20,
     "sampleRate": 384000.0,
     "settings": {
+      "align": "on",
       "autoFreeze": "on",
       "beatDivision": "regular",
       "beatSpan": "oneBar",
