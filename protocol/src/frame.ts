@@ -55,8 +55,9 @@
 // viewStart + (k - startFraction) / visibleSamples * (viewEnd - viewStart); min/max columns
 // divide the covered part evenly.
 //
-// `pointsPerSample`: a raw frame drawn from more columns than samples carries the band-limited
-// wave between its samples, `pointsPerSample` points per sample (1 for the samples alone). Raw
+// `pointsPerSample`: a raw frame (at most as many samples shown as columns) carries the
+// band-limited wave between its samples, `pointsPerSample` points per sample, at least
+// minPointsPerSample (1 only in a frame of no samples, or a min/max frame). Raw
 // point k then sits k / pointsPerSample samples after the first sample, and every
 // `pointsPerSample`th point, from point 0, is a sample.
 
