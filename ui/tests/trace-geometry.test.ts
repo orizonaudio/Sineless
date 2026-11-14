@@ -6,9 +6,13 @@ import {
   ViewLayout,
 } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
-import { maxLanes } from "../../protocol/src/limits.ts";
+import {
+  cancellationReachDivisor,
+  maxLanes,
+} from "../../protocol/src/limits.ts";
 import {
   cancellationBands,
+  cancellationLevels,
   columnPosition,
   coverageAttachments,
   coverageSlot,
@@ -560,4 +564,121 @@ describe("the coverage channels of a frame's traces", () => {
       expect(coverageTargets(traces)).toBeLessThanOrEqual(coverageAttachments);
     },
   );
+});
+
+// The levels Compare's shading compares, as a loop over each point's window computes them: the
+// largest finite level within the reach either side, NaN where the point is not finite.
+function levelsByLoop(frame: Frame, values: Float32Array): Float32Array {
+  const minMax = frame.mode === FrameMode.minMax;
+  const own = new Float32Array(frame.pointCount);
+  for (let point = 0; point < frame.pointCount; point++) {
+    own[point] = minMax
+      ? Math.max(
+          Math.abs(values[point * 2] ?? 0),
+          Math.abs(values[point * 2 + 1] ?? 0),
+        )
+      : Math.abs(values[point] ?? 0);
+  }
+  const reach = minMax
+    ? 0
+    : Math.max(1, Math.floor(frame.pointCount / cancellationReachDivisor));
+  const out = new Float32Array(own.length);
+  for (let point = 0; point < own.length; point++) {
+    let peak = 0;
+    const last = Math.min(own.length - 1, point + reach);
+    for (let near = Math.max(0, point - reach); near <= last; near++) {
+      const level = own[near] ?? 0;
+      peak = Number.isFinite(level) ? Math.max(peak, level) : peak;
+    }
+    out[point] = Number.isFinite(own[point]) ? peak : Number.NaN;
+  }
+  return out;
+}
+
+// Compare's shading takes each raw point's level in one pass (its cost follows the points, which a
+// raw frame at about a sample a column has four times more of), the same as the loop over each
+// point's window, as the native editor does (TraceGeometryTests): at the point counts where the
+// reach changes, for min/max columns, a trace not finite throughout, runs of equal levels, a level
+// not finite leaving the window, rising and falling levels, and random levels.
+describe("cancellation levels", () => {
+  const divisor = cancellationReachDivisor;
+  let state = 12345;
+  const random = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return (state >>> 8) / (1 << 24);
+  };
+  const traces: [string, Float32Array][] = [];
+  for (const count of [
+    1,
+    2,
+    divisor - 1,
+    divisor,
+    divisor + 1,
+    2 * divisor - 1,
+    2 * divisor,
+    2 * divisor + 1,
+    5 * divisor + 3,
+    12000,
+  ]) {
+    traces.push([
+      `random ${String(count)}`,
+      Float32Array.from({ length: count }, () => {
+        const draw = random();
+        return draw < 0.05
+          ? Number.NaN
+          : draw < 0.07
+            ? Number.POSITIVE_INFINITY
+            : 2 * random() - 1;
+      }),
+    ]);
+    traces.push([
+      `rising ${String(count)}`,
+      Float32Array.from({ length: count }, (_, point) => point),
+    ]);
+    traces.push([
+      `falling ${String(count)}`,
+      Float32Array.from({ length: count }, (_, point) => point - count),
+    ]);
+    traces.push([
+      `runs ${String(count)}`,
+      Float32Array.from(
+        { length: count },
+        (_, point) => Math.floor(point / 7) % 3,
+      ),
+    ]);
+    traces.push([
+      `all NaN ${String(count)}`,
+      new Float32Array(count).fill(Number.NaN),
+    ]);
+  }
+  traces.push([
+    "not finite leaving",
+    Float32Array.from({ length: 3 * divisor }, (_, point) =>
+      point % 5 !== 0
+        ? 0.5
+        : point % 2 === 0
+          ? Number.POSITIVE_INFINITY
+          : Number.NaN,
+    ),
+  ]);
+
+  test.each(traces)("matches the loop: %s", (_, values) => {
+    const raw = {
+      ...frame(FrameMode.raw, []),
+      pointCount: values.length,
+      pointsPerSample: 4,
+    };
+    expect(Array.from(cancellationLevels(raw, values))).toEqual(
+      Array.from(levelsByLoop(raw, values)),
+    );
+    if (values.length % 2 === 0) {
+      const columns = {
+        ...frame(FrameMode.minMax, []),
+        pointCount: values.length / 2,
+      };
+      expect(Array.from(cancellationLevels(columns, values))).toEqual(
+        Array.from(levelsByLoop(columns, values)),
+      );
+    }
+  });
 });

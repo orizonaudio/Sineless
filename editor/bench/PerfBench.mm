@@ -8,7 +8,7 @@
 //              [--beatspan=fourBars] [--span=4] [--rate=48000] [--tempo=120]
 //              [--layout=stacked|overlaid] [--width=1400] [--height=800]
 //              [--warmup=3] [--duration=10] [--idle] [--compare-all] [--jitter]
-//              [--preview-fix]
+//              [--preview-fix] [--view=START,END]
 //              [--soak-interval=SECONDS] [--reopen=COUNT] [--view-changes=COUNT]
 //              [--min-fps=N] [--max-total=PERCENT] [--max-analysis=PERCENT]
 //              [--max-memory-growth=MB] [--max-memory-rate=MB_PER_MINUTE]
@@ -30,7 +30,8 @@
 // is closed and opened COUNT times while the tracks play, then judged on memory growth and on
 // threads left behind. Compare: --compare turns it on in Multi; --compare-all checks every track,
 // as a user may; --jitter delays the other tracks by 0 to 3 ms, changing every 0.7 s, so their
-// matches keep moving, as with real material; --preview-fix draws the sum as fixed. Any limit given
+// matches keep moving, as with real material; --preview-fix draws the sum as fixed. --view zooms in
+// on that part of the span (0 to 1), as the page asks for when the user zooms. Any limit given
 // makes the exit code 1 when it is broken, for automated checks.
 #include "bench/Scenarios.h"
 #include "bench/Signals.h"
@@ -106,18 +107,18 @@ struct Options
     double maxAnalysisMs = -1.0; // CPU ms per drawn frame.
     double maxWebKitMs = -1.0;
     double maxTotalMs = -1.0;
+    double viewStart = 0.0; // The part of the span on screen.
+    double viewEnd = 1.0;
     std::string scenario; // Its name, when one was played.
     std::string json;
 };
 
-// The options a named scenario sets. False if perf_bench cannot play it: it has no zoom or
-// panning of its own, and plays a Trigger scenario free-running, which is not the scenario its
-// name means.
+// The options a named scenario sets. False if perf_bench cannot play it: it has no panning of its
+// own, and plays a Trigger scenario free-running, which is not the scenario its name means.
 bool applyScenario(const std::string& name, Options& options)
 {
     const auto scenario = bench::scenarioNamed(name);
-    if (!scenario || scenario->viewStart != 0.0 || scenario->viewEnd != 1.0 ||
-        scenario->frozenPan || scenario->timeBase == protocol::TimeBase::kTrigger) {
+    if (!scenario || scenario->frozenPan || scenario->timeBase == protocol::TimeBase::kTrigger) {
         return false;
     }
     const auto nameOf = [](const auto& names, auto value) {
@@ -136,6 +137,8 @@ bool applyScenario(const std::string& name, Options& options)
     options.compareAll = scenario->compareAll;
     options.previewFix = scenario->previewFix;
     options.jitter = scenario->jitter;
+    options.viewStart = scenario->viewStart;
+    options.viewEnd = scenario->viewEnd;
     return true;
 }
 
@@ -211,6 +214,13 @@ Options parse(std::span<const char* const> arguments)
             }
         } else if (key == "--max-memory-rate") {
             options.maxMemoryRate = std::stod(value);
+        } else if (key == "--view") {
+            const auto comma = value.find(',');
+            if (comma == std::string::npos) {
+                throw std::invalid_argument("--view takes START,END");
+            }
+            options.viewStart = std::stod(value.substr(0, comma));
+            options.viewEnd = std::stod(value.substr(comma + 1));
         } else if (key == "--view-changes") {
             options.viewChanges = std::stoi(value);
         } else if (key == "--max-view-latency") {
@@ -576,8 +586,9 @@ int run(const Options& options)
             }
         };
         open();
-        if (options.compareAll || options.previewFix) {
-            // Once the page is up, send what its checkboxes and Preview fix button would.
+        const bool zoomed = options.viewStart != 0.0 || options.viewEnd != 1.0;
+        if (options.compareAll || options.previewFix || zoomed) {
+            // Once the page is up, send what its checkboxes, Preview fix button and zoom would.
             const double settle = std::min(1.0, options.warmup);
             pump(settle);
             auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
@@ -598,6 +609,9 @@ int run(const Options& options)
             }
             if (options.previewFix) {
                 post({{"type", "previewFix"}, {"on", true}});
+            }
+            if (zoomed) {
+                post({{"type", "view"}, {"start", options.viewStart}, {"end", options.viewEnd}});
             }
             pump(options.warmup - settle);
         } else {

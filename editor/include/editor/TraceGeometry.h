@@ -4,6 +4,7 @@
 #include "protocol/Protocol.h"
 
 #include <cstddef>
+#include <span>
 #include <vector>
 
 namespace orizon::editor {
@@ -42,6 +43,13 @@ struct Band
     double bottom = -1.0;
     double top = 1.0;
 };
+// The level cancellationBands compares at each point of a trace: a min/max column's peak, or a raw
+// point's largest level within a cancellationReachDivisor-th of the frame either side, since raw
+// points cross zero every cycle; NaN where the point's value is not finite. In one pass, so its
+// cost follows the points, however many a raw frame carries.
+[[nodiscard]] std::vector<double> cancellationLevels(const FrameView& frame,
+                                                     std::span<const float> values);
+
 // Compare's cancellation shading over the sum's lane (protocol/src/limits.ts, cancellationDb).
 // `compared` marks the compared tracks in lane order.
 [[nodiscard]] std::vector<Band> cancellationBands(const FrameView& frame,

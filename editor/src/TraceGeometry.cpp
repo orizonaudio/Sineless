@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <functional>
 #include <initializer_list>
 #include <limits>
@@ -49,10 +50,8 @@ double screenX(double position, ViewWindow view)
     return -1.0 + 2.0 * (position - view.start) / (view.end - view.start);
 }
 
-namespace {
-
 // Each point's peak, NaN where a value is not finite; raw points over a short window.
-std::vector<double> peaks(const FrameView& frame, std::span<const float> values)
+std::vector<double> cancellationLevels(const FrameView& frame, std::span<const float> values)
 {
     const std::size_t count = frame.pointCount;
     const bool minMax = frame.mode == protocol::FrameMode::kMinMax;
@@ -64,23 +63,31 @@ std::vector<double> peaks(const FrameView& frame, std::span<const float> values)
     }
     const std::size_t reach =
         minMax ? 0 : std::max<std::size_t>(1, count / protocol::kCancellationReachDivisor);
+    // The largest finite level within `reach` points each side, in one pass: indices whose
+    // levels fall from the front, so the front is the window's largest (a point not finite counts
+    // as silence, which no level is below).
     std::vector<double> smoothed(count);
+    std::deque<std::size_t> window;
+    const auto level = [&](std::size_t point) {
+        return std::isfinite(out[point]) ? out[point] : 0.0;
+    };
+    std::size_t next = 0; // The next point to enter the window.
     for (std::size_t point = 0; point < count; ++point) {
-        double peak = 0.0;
-        const std::size_t from = point >= reach ? point - reach : 0;
         const std::size_t to = std::min(count - 1, point + reach);
-        for (std::size_t near = from; near <= to; ++near) {
-            if (std::isfinite(out[near])) {
-                peak = std::max(peak, out[near]);
+        for (; next <= to; ++next) {
+            while (!window.empty() && level(window.back()) <= level(next)) {
+                window.pop_back();
             }
+            window.push_back(next);
         }
-        smoothed[point] =
-            std::isfinite(out[point]) ? peak : std::numeric_limits<double>::quiet_NaN();
+        while (window.front() + reach < point) {
+            window.pop_front();
+        }
+        smoothed[point] = std::isfinite(out[point]) ? level(window.front())
+                                                    : std::numeric_limits<double>::quiet_NaN();
     }
     return smoothed;
 }
-
-} // namespace
 
 std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout layout,
                                     const std::vector<bool>& compared, ViewWindow view)
@@ -99,10 +106,10 @@ std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout
     if (tracks.size() < 2 || !related) {
         return {};
     }
-    const std::vector<double> levelSum = peaks(frame, frame.lanes.back());
+    const std::vector<double> levelSum = cancellationLevels(frame, frame.lanes.back());
     std::vector<double> louder(frame.pointCount, 0.0);
     for (const auto& track : tracks) {
-        const std::vector<double> levels = peaks(frame, track);
+        const std::vector<double> levels = cancellationLevels(frame, track);
         for (std::size_t point = 0; point < louder.size(); ++point) {
             // NaN propagates as the page's Math.max does.
             louder[point] = std::isnan(levels[point]) || std::isnan(louder[point])

@@ -1,11 +1,15 @@
 #include "editor/TraceGeometry.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <limits>
 #include <nlohmann/json.hpp>
+#include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace orizon::editor {
@@ -234,6 +238,112 @@ TEST(TraceGeometry, DrawsThePlayheadAtItsExactPositionWithCoverage)
             }
             EXPECT_NEAR(covered, width, 1e-9);
             EXPECT_NEAR(weighted / covered, position * 2000.0, 1e-9);
+        }
+    }
+}
+
+// The levels Compare's shading compares, as a loop over each point's window computes them: the
+// largest finite level within the reach either side, NaN where the point is not finite.
+std::vector<double> levelsByLoop(const FrameView& frame, std::span<const float> values)
+{
+    const std::size_t count = frame.pointCount;
+    const bool minMax = frame.mode == protocol::FrameMode::kMinMax;
+    std::vector<double> own(count);
+    for (std::size_t point = 0; point < count; ++point) {
+        own[point] = minMax ? std::max(std::abs(static_cast<double>(values[point * 2])),
+                                       std::abs(static_cast<double>(values[point * 2 + 1])))
+                            : std::abs(static_cast<double>(values[point]));
+    }
+    const std::size_t reach =
+        minMax ? 0 : std::max<std::size_t>(1, count / protocol::kCancellationReachDivisor);
+    std::vector<double> out(count);
+    for (std::size_t point = 0; point < count; ++point) {
+        double peak = 0.0;
+        for (std::size_t near = point >= reach ? point - reach : 0;
+             near <= std::min(count - 1, point + reach); ++near) {
+            if (std::isfinite(own[near])) {
+                peak = std::max(peak, own[near]);
+            }
+        }
+        out[point] = std::isfinite(own[point]) ? peak : std::numeric_limits<double>::quiet_NaN();
+    }
+    return out;
+}
+
+// Compare's shading takes each raw point's level in one pass (its cost follows the points, which a
+// raw frame at about a sample a column has four times more of), the same as the loop over each
+// point's window: at the point counts where the reach changes, for min/max columns, a trace not
+// finite throughout, runs of equal levels, a level not finite leaving the window, rising and
+// falling levels, and random levels with NaN and infinities.
+TEST(TraceGeometry, TakesCancellationLevelsInOnePassAsTheLoopDoes)
+{
+    constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
+    constexpr float kInfinity = std::numeric_limits<float>::infinity();
+    const auto divisor = static_cast<std::size_t>(protocol::kCancellationReachDivisor);
+    std::vector<std::pair<std::string, std::vector<float>>> traces;
+    std::uint32_t state = 12345;
+    const auto random = [&] {
+        state = state * 1664525U + 1013904223U;
+        return static_cast<float>(state >> 8U) / static_cast<float>(1U << 24U);
+    };
+    for (const std::size_t count :
+         {std::size_t{1}, std::size_t{2}, divisor - 1, divisor, divisor + 1, 2 * divisor - 1,
+          2 * divisor, 2 * divisor + 1, 5 * divisor + 3, std::size_t{12000}}) {
+        std::vector<float> values(count);
+        for (float& value : values) {
+            const float draw = random();
+            value = draw < 0.05f ? kNaN : draw < 0.07f ? kInfinity : 2.0f * random() - 1.0f;
+        }
+        traces.emplace_back("random " + std::to_string(count), values);
+        std::vector<float> rising(count);
+        std::vector<float> falling(count);
+        std::vector<float> runs(count);
+        for (std::size_t point = 0; point < count; ++point) {
+            rising[point] = static_cast<float>(point);
+            falling[point] = -static_cast<float>(count - point);
+            runs[point] = static_cast<float>((point / 7) % 3);
+        }
+        traces.emplace_back("rising " + std::to_string(count), rising);
+        traces.emplace_back("falling " + std::to_string(count), falling);
+        traces.emplace_back("runs " + std::to_string(count), runs);
+        traces.emplace_back("all NaN " + std::to_string(count), std::vector<float>(count, kNaN));
+    }
+    // The largest level not finite, at the front of each window as it leaves.
+    std::vector<float> leaving(3 * divisor, 0.5f);
+    for (std::size_t point = 0; point < leaving.size(); point += 5) {
+        leaving[point] = point % 2 == 0 ? kInfinity : kNaN;
+    }
+    traces.emplace_back("not finite leaving", leaving);
+    for (const auto& [name, values] : traces) {
+        SCOPED_TRACE(name);
+        FrameView raw;
+        raw.mode = protocol::FrameMode::kRaw;
+        raw.pointCount = static_cast<std::uint32_t>(values.size());
+        raw.pointsPerSample = 4;
+        const std::vector<double> expected = levelsByLoop(raw, values);
+        const std::vector<double> got = cancellationLevels(raw, values);
+        ASSERT_EQ(got.size(), expected.size());
+        for (std::size_t point = 0; point < got.size(); ++point) {
+            if (std::isnan(expected[point])) {
+                EXPECT_TRUE(std::isnan(got[point])) << point;
+            } else {
+                EXPECT_EQ(got[point], expected[point]) << point;
+            }
+        }
+        if (values.size() % 2 == 0) { // The same values as min/max pairs.
+            FrameView columns;
+            columns.mode = protocol::FrameMode::kMinMax;
+            columns.pointCount = static_cast<std::uint32_t>(values.size() / 2);
+            const std::vector<double> pairs = levelsByLoop(columns, values);
+            const std::vector<double> gotPairs = cancellationLevels(columns, values);
+            ASSERT_EQ(gotPairs.size(), pairs.size());
+            for (std::size_t point = 0; point < pairs.size(); ++point) {
+                if (std::isnan(pairs[point])) {
+                    EXPECT_TRUE(std::isnan(gotPairs[point])) << point;
+                } else {
+                    EXPECT_EQ(gotPairs[point], pairs[point]) << point;
+                }
+            }
         }
     }
 }

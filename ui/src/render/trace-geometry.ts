@@ -134,7 +134,12 @@ const quietRatio = cancellationQuietShare;
 const bridgedGap = cancellationBridgedPoints;
 
 // Each point's peak, NaN where a value is not finite (from a broken signal upstream).
-function peaks(frame: Frame, values: Float32Array): Float32Array {
+// The level cancellationBands compares at each point of a trace (editor/src/TraceGeometry.cpp,
+// cancellationLevels): in one pass, so its cost follows the points.
+export function cancellationLevels(
+  frame: Frame,
+  values: Float32Array,
+): Float32Array {
   const out = new Float32Array(frame.pointCount);
   for (let point = 0; point < frame.pointCount; point++) {
     out[point] =
@@ -151,17 +156,32 @@ function peaks(frame: Frame, values: Float32Array): Float32Array {
     frame.mode === FrameMode.minMax
       ? 0
       : Math.max(1, Math.floor(frame.pointCount / cancellationReachDivisor));
+  // The largest finite level within `reach` points each side, in one pass: a queue of indices
+  // whose levels fall from its front, so the front is the window's largest (a level that is not
+  // finite counts as silence, which no level is below).
   const smoothed = new Float32Array(out.length);
+  const level = (point: number): number => {
+    const value = out[point] ?? 0;
+    return Number.isFinite(value) ? value : 0;
+  };
+  const window = new Int32Array(out.length);
+  let front = 0;
+  let back = 0; // The queue is window[front, back).
+  let next = 0; // The next point to enter the window.
   for (let point = 0; point < out.length; point++) {
-    let peak = 0;
-    for (
-      let near = Math.max(0, point - reach);
-      near <= Math.min(out.length - 1, point + reach);
-      near++
-    ) {
-      peak = Number.isFinite(out[near]) ? Math.max(peak, out[near] ?? 0) : peak;
+    const to = Math.min(out.length - 1, point + reach);
+    for (; next <= to; next++) {
+      while (back > front && level(window[back - 1] ?? 0) <= level(next)) {
+        back--;
+      }
+      window[back++] = next;
     }
-    smoothed[point] = Number.isFinite(out[point]) ? peak : Number.NaN;
+    while ((window[front] ?? 0) + reach < point) {
+      front++;
+    }
+    smoothed[point] = Number.isFinite(out[point])
+      ? level(window[front] ?? 0)
+      : Number.NaN;
   }
   return smoothed;
 }
@@ -184,10 +204,10 @@ export function cancellationBands(
   if (frame.comparison === undefined || !sum || tracks.length < 2 || !related) {
     return new Float32Array();
   }
-  const levelSum = peaks(frame, sum);
+  const levelSum = cancellationLevels(frame, sum);
   const louder = new Float32Array(frame.pointCount);
   for (const track of tracks) {
-    peaks(frame, track).forEach((level, point) => {
+    cancellationLevels(frame, track).forEach((level, point) => {
       louder[point] = Math.max(louder[point] ?? 0, level);
     });
   }
