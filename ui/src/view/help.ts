@@ -148,6 +148,7 @@ export function helpTextsFor(mac: boolean) {
       title: "Labels",
       lead: "Shows each lane's colour and track name in Multi.",
       notes: [
+        "Several instances on one track are numbered in the order they were added, in shades of its colour.",
         "With Compare on they hold its check boxes and readouts, so they always show.",
         "Saved with the project.",
       ],

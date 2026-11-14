@@ -114,13 +114,16 @@ export interface ViewMessage {
 // One track of the multi-track view. `id` is stable while the track exists; `name` is empty and
 // `colour` null when the host reports none; `own` marks the instance whose window shows the lanes.
 // In the Compare view, `compared` marks the tracks summed and measured against this one (this
-// track included whenever another is).
+// track included whenever another is). `instance` is the lane's number among the group's
+// instances on its host track (the same track position, or with no positions the same name), from
+// 1 in the order they were created and counting those not drawn; 0 for a track's only instance.
 export interface LaneLabel {
   readonly id: number;
   readonly name: string;
   readonly colour: number | null; // 0xRRGGBB
   readonly own: boolean;
   readonly compared: boolean;
+  readonly instance: number;
 }
 
 // Engine to UI. The tracks behind the lanes of frames whose laneSet matches, in lane order, and

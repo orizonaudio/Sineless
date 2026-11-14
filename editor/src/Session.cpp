@@ -243,7 +243,8 @@ void Session::syncLanes()
                           {"name", lane.name},
                           {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
                           {"own", lane.own},
-                          {"compared", lane.compared}});
+                          {"compared", lane.compared},
+                          {"instance", lane.instance}});
     }
     transport.sendMessage({{"type", messageName(MessageType::kLanes)},
                            {"laneSet", lanes.id},

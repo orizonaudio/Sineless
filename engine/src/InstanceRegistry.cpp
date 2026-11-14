@@ -53,7 +53,27 @@ std::vector<GroupMember> InstanceRegistry::members(protocol::Group group) const
         };
         return key(left) < key(right);
     });
+    // Instances on one track follow each other in creation order (the sort above), so each one's
+    // number is one more than the instances of its track before it.
+    for (std::size_t index = 0; index < found.size(); ++index) {
+        const auto onItsTrack = [&](const GroupMember& other) {
+            return sameTrack(found[index].track, other.track);
+        };
+        const auto before = static_cast<std::ptrdiff_t>(index);
+        const auto earlier = std::count_if(found.begin(), found.begin() + before, onItsTrack);
+        const bool alone =
+            earlier == 0 && std::none_of(found.begin() + before + 1, found.end(), onItsTrack);
+        found[index].instance = alone ? 0 : static_cast<std::uint32_t>(earlier + 1);
+    }
     return found;
+}
+
+bool sameTrack(const TrackInfo& first, const TrackInfo& second)
+{
+    if (first.index.has_value() || second.index.has_value()) {
+        return first.index == second.index;
+    }
+    return !first.name.empty() && first.name == second.name;
 }
 
 } // namespace orizon::engine

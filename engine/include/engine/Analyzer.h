@@ -82,6 +82,8 @@ struct LaneLabel
     std::optional<std::uint32_t> colour;
     bool own = false;      // The instance whose editor shows the lanes.
     bool compared = false; // Compare view: summed and measured against this track.
+    // Its number among the group's instances on its track, drawn or not; 0 for the only one.
+    std::uint32_t instance = 0;
 
     bool operator==(const LaneLabel&) const = default;
 };

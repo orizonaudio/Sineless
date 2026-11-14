@@ -113,7 +113,7 @@ const noMatch: Match = {
   offset: Number.NaN,
   inverted: false,
 };
-export const mockTracks: readonly (Omit<LaneLabel, "compared"> & {
+export const mockTracks: readonly (Omit<LaneLabel, "compared" | "instance"> & {
   readonly sample: (time: number) => number;
   readonly fixed?: (time: number) => number;
   // What the Compare view finds against this track; its offset in samples follows from `delay`.
@@ -177,6 +177,19 @@ const farHat: (typeof mockTracks)[number] = {
   delay: farHatDelay,
 };
 
+// A second instance on the bass's track, after an effect there (MockOptions.bassAfter): the host
+// gives it the track's name and colour, and the engine numbers the two.
+const bassAfter: (typeof mockTracks)[number] = {
+  id: 6,
+  name: "Bass",
+  colour: 0x4f8fe6,
+  own: false,
+  sample: (time) =>
+    0.3 *
+    (1 - 0.8 * decaying(time, beatSeconds, 6)) *
+    Math.tanh(3 * Math.sin(2 * Math.PI * 55 * time)),
+};
+
 // A summing gain in dB from the sum's energy and the tracks' energies added, raw as the engine's
 // summingGain sends it: -Infinity when the sum cancels exactly, NaN when the tracks are silent.
 // The gain floor is the formatter's.
@@ -222,6 +235,9 @@ export interface MockOptions {
   // The tracks in the group: mockTracks, then the far hi-hat microphone, then plain sines, up to
   // maxLanes. mockTracks' four by default.
   readonly trackCount?: number;
+  // A second instance on the bass's track, as when one sits before an effect and one after: the
+  // group's last track. Off by default.
+  readonly bassAfter?: boolean;
 }
 
 // The group's tracks: mockTracks, the far hi-hat, then unnamed sines, one octave step apart, as
@@ -295,7 +311,10 @@ export class MockTransport implements Transport {
     this.nativeTraces = options.nativeTraces ?? false;
     this.frameBarcode = options.frameBarcode ?? false;
     this.about = options.about ?? { version: "preview", contact: true };
-    this.tracks = groupOf(options.trackCount ?? mockTracks.length);
+    this.tracks = [
+      ...groupOf(options.trackCount ?? mockTracks.length),
+      ...(options.bassAfter === true ? [bassAfter] : []),
+    ];
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -474,13 +493,24 @@ export class MockTransport implements Transport {
     this.reply({
       type: "lanes",
       laneSet: ++this.laneSet,
-      lanes: this.groupTracks().map(({ id, name, colour, own }) => ({
-        id,
-        name,
-        colour,
-        own,
-        compared: compared.includes(id),
-      })),
+      lanes: this.groupTracks().map(({ id, name, colour, own }, _, tracks) => {
+        // As the engine numbers them: the instances that share a track's name, in order, when
+        // there are several.
+        const onItsTrack = tracks.filter(
+          (track) => name !== "" && track.name === name,
+        );
+        return {
+          id,
+          name,
+          colour,
+          own,
+          compared: compared.includes(id),
+          instance:
+            onItsTrack.length > 1
+              ? onItsTrack.findIndex((track) => track.id === id) + 1
+              : 0,
+        };
+      }),
       hidden: 0,
     });
   }
