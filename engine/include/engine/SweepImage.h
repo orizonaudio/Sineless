@@ -59,6 +59,12 @@ public:
     [[nodiscard]] std::uint64_t length() const { return count; }
     // One past the newest source sample placed: where the next update starts.
     [[nodiscard]] std::uint64_t placedTo() const { return placedEnd; }
+    // The joins on screen, no wave drawn across them: the screen position after the newest sample
+    // placed, where the newest pass meets the one before, and where a run of samples placed after a
+    // transport jump (stop and play, a loop, a relocation) meets what was there. Each is the first
+    // position after its join; one is dropped once samples are placed on both sides of it in one
+    // run.
+    [[nodiscard]] const std::vector<std::uint64_t>& joins() const { return joinPositions; }
     [[nodiscard]] int channels() const { return channelCount; }
     // The view a one-channel image holds, as last asked for; none while it holds nothing drawn.
     [[nodiscard]] std::optional<protocol::ChannelView> view() const { return imageView; }
@@ -85,8 +91,9 @@ private:
     int channelCount;
     std::vector<float> samples; // `channelCount` blocks of `count` samples.
     std::uint64_t count = 0;
-    std::uint64_t placedEnd = 0;        // One past the newest source sample placed.
-    std::uint64_t placedSinceBuild = 0; // Samples placed since the image was (re)built.
+    std::uint64_t placedEnd = 0;              // One past the newest source sample placed.
+    std::uint64_t placedSinceBuild = 0;       // Samples placed since the image was (re)built.
+    std::vector<std::uint64_t> joinPositions; // The newest pass's end first, then jumps.
     std::vector<Range> changed;
     std::vector<float> partSamples; // The part shown, `channelCount` blocks of `partCount`.
     std::uint64_t partFirst = 0;

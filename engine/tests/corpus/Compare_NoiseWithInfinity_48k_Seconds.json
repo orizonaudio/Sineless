@@ -14,17 +14,17 @@
   "lanes": {
     "sum": {
       "max": "Infinity",
-      "min": -0.9998596,
+      "min": -1.504992,
       "nanPoints": 0
     },
     "track0": {
       "max": "Infinity",
-      "min": -0.4999298,
+      "min": -0.752496,
       "nanPoints": 0
     },
     "track1": {
-      "max": 0.4999783,
-      "min": -0.4999298,
+      "max": 0.7476555,
+      "min": -0.752496,
       "nanPoints": 0
     }
   },

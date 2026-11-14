@@ -123,9 +123,9 @@ struct AnalysisWork
 
 // The part of a window that the screen shows, as sample indices from the window's first sample,
 // with one extra point beyond each edge so a raw trace reaches the screen edges, and `lead` and
-// `trail` more each side read only as neighbours for reconstructing the wave between the samples
-// (none for min/max columns); the frame drops them. `startFraction` is where the visible part
-// starts, in samples from `first`.
+// `trail` more each side read only as neighbours for the wave between the samples (the raw view's
+// reach for raw frames, the columns' for min/max columns); the frame drops them. `startFraction`
+// is where the visible part starts, in samples from `first`.
 struct Crop
 {
     std::size_t first = 0;
@@ -399,9 +399,11 @@ private:
                 std::optional<std::uint64_t> holdEnd = std::nullopt);
     // Replaces each of the first `blocks` blocks of a raw frame's points, read with `crop`'s
     // neighbours, by the wave through its samples at `factor` points per sample, with no curve
-    // across `seam` (an index in the block). Data after the blocks is kept.
+    // across any of `seams(block)`, the joins in that block (a view's, a lane's, the sum's), as
+    // indices into it. Data after the blocks is kept.
     void reconstruct(FrameHeaderValues& header, std::size_t blocks, const Crop& crop,
-                     std::size_t factor, std::size_t seam);
+                     std::size_t factor,
+                     const std::function<std::span<const std::size_t>(std::size_t)>& seams);
     bool render(const SampleSource& source, const Settings& settings, double sampleRate,
                 const Window& window, std::uint64_t sampleCount, std::size_t columns,
                 std::vector<std::byte>& frame);
@@ -687,6 +689,14 @@ private:
     std::vector<float> frameData;
     // Raw frames: the wave between the samples.
     Reconstruction reconstruction;
+    // Min/max columns of windows reduced afresh: the wave around their extreme samples.
+    ColumnPeaks columnPeaks;
+    // The joins in a sweep's columns: the views', a lane's, and the Compare sum's (the playhead's
+    // and every lane's).
+    std::vector<std::size_t> viewSeams;
+    std::vector<std::size_t> laneSeams;
+    std::vector<std::vector<std::size_t>> lanesSeams; // Each Multi lane's, in lane order.
+    std::vector<std::size_t> sumSeams;
     std::vector<float> upsampled;
     std::vector<float> reconstructed;
 };

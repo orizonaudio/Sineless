@@ -713,14 +713,28 @@ export class MockTransport implements Transport {
         }
         let low = Infinity;
         let high = -Infinity;
+        let lowAt = 0;
+        let highAt = 0;
         const first = Math.floor(point * samplesPerPoint);
         const last = Math.floor((point + 1) * samplesPerPoint);
         // Long spans: sample each column sparsely, enough for a mock.
         const stride = Math.max(1, Math.floor((last - first) / 64));
         for (let sample = first; sample < last; sample += stride) {
           const value = signalAt(sampleTime(sample));
-          low = Math.min(low, value);
-          high = Math.max(high, value);
+          if (value < low) {
+            low = value;
+            lowAt = sample;
+          }
+          if (value > high) {
+            high = value;
+            highAt = sample;
+          }
+        }
+        // As the engine does (ColumnPeaks): the wave within a sample of the extreme samples,
+        // here the signal itself, 16 points a sample.
+        for (let step = -16; step <= 16; step++) {
+          high = Math.max(high, signalAt(sampleTime(highAt + step / 16)));
+          low = Math.min(low, signalAt(sampleTime(lowAt + step / 16)));
         }
         values[point * 2] = low;
         values[point * 2 + 1] = high;

@@ -507,6 +507,95 @@ TEST(PacedSweep, ShowsASweepShorterThanTheMinimumAtTheNewestAudio)
     }
 }
 
+// Compare's sum in a sweep joins the passes where each lane's image does, and a lane whose blocks
+// come later joins them a block or more before this track's playhead: the sum's columns draw no
+// wave across any lane's join, so no column of the sum rises above or falls below what its parts
+// reach there (the tracks play ramps, whose wave is the ramp itself: across a join it would ring
+// by thousands of samples' worth). Every frame, at 48 kHz with 512-sample blocks and at 384 kHz
+// with 4096.
+TEST(PacedSweep, DrawsNoWaveAcrossALanesOwnJoinInTheSum)
+{
+    for (const auto& [rate, block] :
+         {std::pair{48000.0, std::uint64_t{512}}, std::pair{384000.0, std::uint64_t{4096}}}) {
+        SCOPED_TRACE(rate);
+        BeatsHost host(rate, block, 2, protocol::DisplayMode::kMulti, 777);
+        host.tracks[1].lateSeconds = 0.02;
+        host.tracks.front().engine->settings().set(SettingId::kCompare,
+                                                   static_cast<double>(protocol::Toggle::kOn));
+        host.play(3.0);
+        std::size_t checked = 0;
+        for (const BeatsHost::Drawn& drawn : host.frames) {
+            const DecodedFrame& frame = drawn.frame;
+            if (!frame.has(FrameFlag::kCompared) || frame.mode != protocol::FrameMode::kMinMax) {
+                continue;
+            }
+            ++checked;
+            const auto own = laneColumns(frame, 0);
+            const auto other = laneColumns(frame, 1);
+            const auto sum = laneColumns(frame, 2);
+            // A column may show its neighbours' samples beside its own extremes (a gap past its
+            // own): its parts' reach is over it and the columns either side.
+            const std::size_t columns = sum.size() / 2;
+            for (std::size_t column = 0; column < columns; ++column) {
+                const std::size_t from = column > 0 ? column - 1 : 0;
+                const std::size_t to = std::min(columns - 1, column + 1);
+                float high = 0.0f;
+                float low = 0.0f;
+                float ownHigh = own[from * 2 + 1];
+                float otherHigh = other[from * 2 + 1];
+                float ownLow = own[from * 2];
+                float otherLow = other[from * 2];
+                for (std::size_t near = from; near <= to; ++near) {
+                    ownHigh = std::max(ownHigh, own[near * 2 + 1]);
+                    otherHigh = std::max(otherHigh, other[near * 2 + 1]);
+                    ownLow = std::min(ownLow, own[near * 2]);
+                    otherLow = std::min(otherLow, other[near * 2]);
+                }
+                high = ownHigh + otherHigh;
+                low = ownLow + otherLow;
+                const float slack = 1e-3f * high;
+                ASSERT_LE(sum[column * 2 + 1], high + slack)
+                    << "column " << column << " at " << drawn.seconds;
+                ASSERT_GE(sum[column * 2], low - slack)
+                    << "column " << column << " at " << drawn.seconds;
+            }
+        }
+        EXPECT_GT(checked, 10U);
+
+        // Zoomed in to raw frames, 3000 samples at about a sample a column, over a whole cycle: the
+        // playhead and the other lane's join, 20 ms behind it, pass through the view. Each of the
+        // sum's points is its parts' points added, the ramps' wave being the ramps themselves
+        // wherever it is drawn, straight or not.
+        const DecodedFrame& last = host.frames.back().frame;
+        const double spanSamples =
+            static_cast<double>(last.visibleSamples) / (last.viewEnd - last.viewStart);
+        host.analyzer->setColumns(4000);
+        host.analyzer->setView(0.3, 0.3 + std::min(0.4, 3000.0 / spanSamples));
+        host.frames.clear();
+        host.play(0.6);
+        std::size_t raw = 0;
+        for (const BeatsHost::Drawn& drawn : host.frames) {
+            const DecodedFrame& frame = drawn.frame;
+            if (!frame.has(FrameFlag::kCompared) || frame.mode != protocol::FrameMode::kRaw) {
+                continue;
+            }
+            ++raw;
+            const auto own = laneColumns(frame, 0);
+            const auto other = laneColumns(frame, 1);
+            const auto sum = laneColumns(frame, 2);
+            for (std::size_t point = 0; point < sum.size(); ++point) {
+                if (!std::isfinite(own[point]) || !std::isfinite(other[point])) {
+                    continue;
+                }
+                ASSERT_NEAR(sum[point], own[point] + other[point],
+                            1e-3f * std::abs(own[point] + other[point]) + 1.0f)
+                    << "point " << point << " at " << drawn.seconds;
+            }
+        }
+        EXPECT_GT(raw, 5U);
+    }
+}
+
 // Audio from before the transport jumped stays where it was played: until the playhead reaches
 // the jump, samples are placed by the musical position of their own block, not the newer one. A
 // one-beat sweep at 120 BPM (24000 samples); the transport jumps back a quarter of a beat, so the
@@ -564,6 +653,18 @@ TEST(PacedSweep, PlacesAudioFromBeforeAJumpWhereItWasPlayed)
                 for (std::size_t lane = 1; lane < tracks; ++lane) {
                     ASSERT_NEAR(newestDrawn(drawn.frame, lane), newestDrawn(drawn.frame, 0),
                                 0.001 * c.rate)
+                        << "lane " << lane << " at " << drawn.seconds;
+                }
+            }
+            // No wave across the jump's join, where audio placed after it meets what was drawn
+            // before: drawn across it, the ramp's step would ring above the newest sample played.
+            std::uint64_t newest = 0;
+            for (const BeatsHost::Track& track : host.tracks) {
+                newest = std::max(newest, track.played);
+            }
+            for (const BeatsHost::Drawn& drawn : host.frames) {
+                for (std::size_t lane = 0; lane < tracks; ++lane) {
+                    ASSERT_LE(newestDrawn(drawn.frame, lane), static_cast<float>(newest))
                         << "lane " << lane << " at " << drawn.seconds;
                 }
             }

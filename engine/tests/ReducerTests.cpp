@@ -48,7 +48,9 @@ std::vector<float> bruteForceMinMax(const std::vector<float>& samples, std::size
     return pairs;
 }
 
-TEST(Reducer, MatchesBruteForceAcrossSpansAndWidths)
+// Every sample lands in its column: each column reaches at least its own samples' extremes (and,
+// drawn from the wave between them, may reach beyond: ColumnWaveTests).
+TEST(Reducer, CoversEverySampleAcrossSpansAndWidths)
 {
     unsigned seed = 1;
     for (std::size_t count : {2U, 3U, 101U, 960U, 1000U, 4801U, 48000U}) {
@@ -59,15 +61,20 @@ TEST(Reducer, MatchesBruteForceAcrossSpansAndWidths)
             const auto samples = randomSamples(count, seed++);
             std::vector<float> output;
             ASSERT_EQ(reduceToColumns(samples, columns, output), FrameMode::kMinMax);
-            ASSERT_EQ(output, bruteForceMinMax(samples, columns))
-                << count << " samples, " << columns << " columns";
+            const auto expected = bruteForceMinMax(samples, columns);
+            for (std::size_t column = 0; column < columns; ++column) {
+                ASSERT_LE(output[column * 2], expected[column * 2])
+                    << count << " samples, " << columns << " columns, column " << column;
+                ASSERT_GE(output[column * 2 + 1], expected[column * 2 + 1])
+                    << count << " samples, " << columns << " columns, column " << column;
+            }
         }
     }
 }
 
 // A sample that is not a number (a broken signal upstream) is left out of its column, wherever it
 // falls in it: its first sample, which starts the search, as any other. The rest of the column
-// still shows.
+// still shows, at least as far as its other samples reach.
 TEST(Reducer, LeavesOutSamplesThatAreNotNumbersWhereverTheyFall)
 {
     auto samples = randomSamples(4800, 21);
@@ -77,7 +84,11 @@ TEST(Reducer, LeavesOutSamplesThatAreNotNumbersWhereverTheyFall)
     }
     std::vector<float> output;
     ASSERT_EQ(reduceToColumns(samples, kColumns, output), FrameMode::kMinMax);
-    EXPECT_EQ(output, bruteForceMinMax(samples, kColumns));
+    const auto expected = bruteForceMinMax(samples, kColumns);
+    for (std::size_t column = 0; column < kColumns; ++column) {
+        EXPECT_LE(output[column * 2], expected[column * 2]) << column;
+        EXPECT_GE(output[column * 2 + 1], expected[column * 2 + 1]) << column;
+    }
 }
 
 // A column with no number in it has no level to draw: "no value", not a full-scale bar.
@@ -331,12 +342,15 @@ TEST(RollColumns, MatchesAFullReductionAsTheWindowRolls)
         const auto values =
             roll.update(0, start / kPerColumn,
                         {.spanSamples = kColumns * kPerColumn, .columns = kColumns}, read);
+        // The window with the neighbours its columns read each side.
         std::vector<float> expected;
-        reduceToColumns(std::span(signal).subspan(start, kColumns * kPerColumn), kColumns,
-                        expected);
+        reduceToColumns(std::span(signal).subspan(start - kColumnReach,
+                                                  (kColumns * kPerColumn) + (2 * kColumnReach)),
+                        kColumnReach, kColumnReach, kColumns, expected);
         EXPECT_EQ(std::vector<float>(values.begin(), values.end()), expected) << start;
         if (start != 9600) {
-            EXPECT_LE(reads, 41 * kPerColumn) << "only the new columns are read";
+            EXPECT_LE(reads, (41 * kPerColumn) + (2 * kColumnReach))
+                << "only the new columns are read";
         }
     }
 }

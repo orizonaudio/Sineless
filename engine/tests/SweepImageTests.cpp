@@ -1,6 +1,7 @@
 #include "engine/CaptureRing.h"
 #include "engine/SweepImage.h"
 
+#include <algorithm>
 #include <array>
 #include <gtest/gtest.h>
 #include <vector>
@@ -62,6 +63,53 @@ TEST_F(SweepImageTest, KeepsEarlierDrawingWhenTheClockJumps)
     ASSERT_TRUE(image.update(ring, {.start = 93, .sampleCount = 10, .rotation = 7}, false));
     EXPECT_EQ(screen(), (std::vector<float>{100, 101, 102, 99, 90, 91, 92, 93, 94, 95}))
         << "only the new samples moved in; the rest stayed where it was drawn";
+}
+
+// The joins no wave is drawn across: exactly the positions whose sample does not follow the one
+// before on screen (the ramp holds source time; the left edge follows the right one): the newest
+// pass's end, where the transport jumped, and where audio placed meets what was never drawn;
+// none once a pass has run across them. As the sweep plays on, wraps at the right edge, jumps
+// back, and plays over the jump.
+TEST_F(SweepImageTest, ListsEveryJoinOnScreen)
+{
+    const auto joinsOnScreen = [&] {
+        const std::vector<float> shown = screen();
+        std::vector<std::uint64_t> found;
+        for (std::size_t position = 0; position < shown.size(); ++position) {
+            const float before = shown[(position + shown.size() - 1) % shown.size()];
+            if (shown[position] != before + 1.0f) {
+                found.push_back(position);
+            }
+        }
+        return found;
+    };
+    const auto listed = [&] {
+        std::vector<std::uint64_t> joins = image.joins();
+        std::ranges::sort(joins);
+        joins.erase(std::ranges::unique(joins).begin(), joins.end());
+        return joins;
+    };
+    writeUpTo(100);
+    ASSERT_TRUE(image.update(ring, {.start = 90, .sampleCount = 10, .rotation = 6}, false));
+    EXPECT_EQ(listed(), joinsOnScreen()) << "the first pass";
+    writeUpTo(103);
+    ASSERT_TRUE(image.update(ring, {.start = 93, .sampleCount = 10, .rotation = 6}, false));
+    EXPECT_EQ(listed(), joinsOnScreen()) << "played on, across the right edge";
+    writeUpTo(106);
+    // The transport jumped back: the new samples go where the cycle starts again.
+    ASSERT_TRUE(image.update(ring, {.start = 96, .sampleCount = 10, .rotation = 10}, false));
+    EXPECT_EQ(listed(), joinsOnScreen()) << "after the jump";
+    // Playing on from there: the cycle keeps starting at sample 106 (and every 10 after).
+    for (std::uint64_t end = 108; end <= 130; end += 2) {
+        writeUpTo(end);
+        ASSERT_TRUE(image.update(ring,
+                                 {.start = static_cast<std::int64_t>(end) - 10,
+                                  .sampleCount = 10,
+                                  .rotation = (10 - ((end - 106) % 10)) % 10},
+                                 false));
+        EXPECT_EQ(listed(), joinsOnScreen()) << "playing on, to " << end;
+    }
+    EXPECT_EQ(listed().size(), 1U) << "a pass ran across the jump: only the newest end is left";
 }
 
 TEST_F(SweepImageTest, WrapsNewSamplesAroundTheRightEdge)

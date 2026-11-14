@@ -4690,6 +4690,186 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, RawCrossing, ::testing::ValuesIn(rawCrossing
                              return nameOf(info.param);
                          });
 
+struct FlatToneCase
+{
+    double rate = 44100.0;
+    double cycles = 10000.0 / 44100.0; // The tone, as a share of the rate.
+    TimeBase timeBase = TimeBase::kBeats;
+    Display mode = Display::kSingle;
+    bool frozen = false;
+    int channels = 2;
+    Place place = Place::kMiddle;
+};
+
+std::string nameOf(const FlatToneCase& c)
+{
+    constexpr std::array kPlaces{"Start", "Middle", "End"};
+    return rateName(c.rate) + "_" + std::to_string(std::lround(c.cycles * c.rate)) + "Hz_" +
+           timeBaseName(c.timeBase) + "_" + modeName(c.mode) + "_" +
+           (c.frozen ? "Frozen" : "Live") + "_" + channelsName(c.channels) + "_" +
+           kPlaces.at(static_cast<std::size_t>(c.place));
+}
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const FlatToneCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+class FlatTone : public ::testing::TestWithParam<FlatToneCase>
+{
+};
+
+// A steady tone draws a flat top in every trace (each view, each lane and Compare's sum), in every
+// display mode and time base, live and frozen, mono and stereo, at the span's start, middle and
+// end: its min/max columns take their height from the wave
+// between the samples, so they do not ripple as the samples fall nearer or further from each crest
+// (10 kHz at 44.1 kHz rippled by 2.4 dB, a quarter of the rate at 45 degrees read 3 dB low in every
+// column). Zoomed on to the raw samples, just past the crossing, the crests stand within the lines'
+// own under-read of the columns' height.
+TEST_P(FlatTone, DrawsAFlatTopAtEveryZoom)
+{
+    const FlatToneCase c = GetParam();
+    Session session(c.rate, c.channels);
+    const double frequency = c.cycles * c.rate;
+    session.join({.frequency = frequency});
+    session.join({.frequency = frequency});
+    configure(session.own(), c.mode, c.timeBase);
+    double played = 0.0;
+    if (c.timeBase == TimeBase::kBeats) {
+        session.own().settings().set(SettingId::kBeatSpan, 0.0);
+        played = static_cast<double>(beatSpanSamples(c.rate, 120.0, 0)) / c.rate;
+    } else {
+        setSpan(session.own(), c.timeBase, 0.1);
+        played = 0.1;
+    }
+    session.play(played + 0.5, protocol::kReadoutIntervalSeconds / 2.0);
+    auto frame = session.produce();
+    if (!frame) {
+        session.play(static_cast<double>(kBlock) / c.rate);
+        frame = session.produce();
+    }
+    ASSERT_TRUE(frame) << "no frame";
+    if (c.frozen) {
+        session.analyzer().setFrozen(true);
+        session.play(static_cast<double>(kBlock) / c.rate);
+        frame = session.produce();
+        ASSERT_TRUE(frame) << "no frozen frame";
+    }
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const auto columns = static_cast<double>(kColumns);
+    // The tops of a frame's traces: per trace, the highest and lowest column top away from the
+    // view's ends, or the highest raw point.
+    const auto viewAt = [&](double samples) {
+        const double width = samples / spanSamples;
+        const double start = c.place == Place::kStart ? 0.0
+                             : c.place == Place::kEnd ? 1.0 - width
+                                                      : 0.5 - (width / 2.0);
+        session.analyzer().setView(start, start + width);
+        if (!c.frozen) {
+            session.play(static_cast<double>(kBlock) / c.rate);
+        }
+        auto shown = session.produce();
+        if (!shown && !c.frozen) {
+            session.play(static_cast<double>(kBlock) / c.rate);
+            shown = session.produce();
+        }
+        return shown;
+    };
+    const auto columnFrame = viewAt(8.0 * columns);
+    ASSERT_TRUE(columnFrame);
+    ASSERT_EQ(columnFrame->mode, FrameMode::kMinMax);
+    const auto rawFrame = viewAt(0.9 * columns);
+    ASSERT_TRUE(rawFrame);
+    ASSERT_EQ(rawFrame->mode, FrameMode::kRaw);
+    ASSERT_EQ(tracesIn(*columnFrame), tracesIn(*rawFrame));
+    // The step's own error at this tone and the 4-point lines' (DESIGN.md, AD-32).
+    const double ripple = 1.0 - std::pow(10.0, -0.05 / 20.0);
+    const double lines = 1.0 - std::cos(std::numbers::pi * c.cycles / 4.0);
+    for (std::size_t index = 0; index < tracesIn(*columnFrame); ++index) {
+        SCOPED_TRACE("trace " + std::to_string(index));
+        const std::span<const float> values = trace(*columnFrame, index);
+        double highest = -std::numeric_limits<double>::infinity();
+        double lowest = std::numeric_limits<double>::infinity();
+        double floorHighest = -std::numeric_limits<double>::infinity();
+        // A sweep's playhead joins the newest pass to the one before: no wave across it, so the
+        // columns beside it read their samples (and are held to the bounds below only).
+        const auto count = static_cast<double>(values.size()) / 2.0;
+        const double playhead = columnFrame->cursor >= 0.0f
+                                    ? (columnFrame->cursor - columnFrame->viewStart) /
+                                          (columnFrame->viewEnd - columnFrame->viewStart) * count
+                                    : -100.0;
+        for (std::size_t column = 4; column + 4 < values.size() / 2; ++column) {
+            if (std::abs(static_cast<double>(column) - playhead) < 3.0) {
+                continue;
+            }
+            highest = std::max(highest, static_cast<double>(values[column * 2 + 1]));
+            lowest = std::min(lowest, static_cast<double>(values[column * 2 + 1]));
+            floorHighest = std::max(floorHighest, static_cast<double>(values[column * 2]));
+        }
+        // The tone's swing in this trace, from the columns: top to bottom.
+        double bottom = std::numeric_limits<double>::infinity();
+        for (std::size_t column = 4; column + 4 < values.size() / 2; ++column) {
+            bottom = std::min(bottom, static_cast<double>(values[column * 2]));
+        }
+        const double amplitude = (highest - bottom) / 2.0;
+        if (!(amplitude > 1e-3)) {
+            continue; // A sum that cancels, or a silent lane.
+        }
+        EXPECT_LE(highest - lowest, 2.0 * amplitude * ripple) << "the columns' top ripples";
+        // Every column holds a crest (eight samples, at most 4.4 a cycle): at the view's and the
+        // window's ends too, where neighbours run out and the gaps are straight, a column reads no
+        // higher than the wave and no lower than its nearest sample to a crest.
+        const double straight = 1.0 - std::cos(std::numbers::pi * c.cycles);
+        for (std::size_t column = 0; column < values.size() / 2; ++column) {
+            const double top = values[column * 2 + 1];
+            EXPECT_LE(top, highest + (2.0 * amplitude * ripple)) << "column " << column;
+            EXPECT_GE(top, highest - (amplitude * straight) - (2.0 * amplitude * ripple))
+                << "column " << column;
+        }
+        const std::span<const float> points = trace(*rawFrame, index);
+        double rawTop = -std::numeric_limits<double>::infinity();
+        for (const float point : points) {
+            if (std::isfinite(point)) {
+                rawTop = std::max(rawTop, static_cast<double>(point));
+            }
+        }
+        EXPECT_NEAR(rawTop, highest, amplitude * (lines + 2.0 * ripple))
+            << "raw crests and columns meet at the crossing";
+    }
+}
+
+std::vector<FlatToneCase> flatToneCases()
+{
+    std::vector<FlatToneCase> cases;
+    for (const auto& [rate, cycles] : {std::pair{44100.0, 10000.0 / 44100.0},
+                                       std::pair{48000.0, 0.25}, std::pair{384000.0, 1.0 / 3.0}}) {
+        for (const TimeBase timeBase : {TimeBase::kBeats, TimeBase::kTrigger, TimeBase::kFree}) {
+            for (const Display mode : everyMode()) {
+                for (const bool frozen : {false, true}) {
+                    for (const int channels : {1, 2}) {
+                        for (const Place place : {Place::kStart, Place::kMiddle, Place::kEnd}) {
+                            cases.push_back({.rate = rate,
+                                             .cycles = cycles,
+                                             .timeBase = timeBase,
+                                             .mode = mode,
+                                             .frozen = frozen,
+                                             .channels = channels,
+                                             .place = place});
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(Tones, FlatTone, ::testing::ValuesIn(flatToneCases()),
+                         [](const ::testing::TestParamInfo<FlatToneCase>& info) {
+                             return nameOf(info.param);
+                         });
+
 // Live in Beats, the playhead joins the newest pass to the previous one: zoomed in on it, the
 // points between samples within a reach of it are drawn straight, so neither side rings into the
 // other, while farther away the trace is the wave. In every trace of every display mode: views,

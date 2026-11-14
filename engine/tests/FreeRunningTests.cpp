@@ -92,7 +92,9 @@ TEST_P(FreeWindows, SuccessiveFramesShowTheSameColumnsShifted)
         RollColumns fresh;
         const auto expected = fresh.update(0, window.firstColumn, grid, read);
         ASSERT_TRUE(std::ranges::equal(values, expected)) << edge;
-        // And each column is the min and max of exactly its samples.
+        // And each column covers exactly its samples: their extremes, reached or passed by the
+        // wave between them (ColumnWaveTests), and not the next column's, a quarter of a
+        // column's range away.
         for (std::size_t column : {std::size_t{0}, columns / 2, columns - 1}) {
             const auto from =
                 static_cast<std::ptrdiff_t>(grid.boundary(window.firstColumn + column));
@@ -100,8 +102,11 @@ TEST_P(FreeWindows, SuccessiveFramesShowTheSameColumnsShifted)
                 static_cast<std::ptrdiff_t>(grid.boundary(window.firstColumn + column + 1));
             const auto [low, high] =
                 std::minmax_element(signal.begin() + from, signal.begin() + to);
-            ASSERT_EQ(values[column * 2], *low) << column;
-            ASSERT_EQ(values[column * 2 + 1], *high) << column;
+            const float slack = 0.25f * (*high - *low) + 1e-6f;
+            ASSERT_LE(values[column * 2], *low) << column;
+            ASSERT_GE(values[column * 2], *low - slack) << column;
+            ASSERT_GE(values[column * 2 + 1], *high) << column;
+            ASSERT_LE(values[column * 2 + 1], *high + slack) << column;
         }
     }
 }
