@@ -68,7 +68,7 @@ import {
   type CursorPair,
   type LevelPair,
 } from "./view/cursors.ts";
-import { choiceLabels } from "./view/choice-labels.ts";
+import { choiceLabels, compareLaneSigns } from "./view/choice-labels.ts";
 import { drawGrid, gridColumns } from "./view/grid.ts";
 import {
   drawsLabels,
@@ -381,6 +381,10 @@ export class OscilloscopeApp {
   // The Compare view: the fix preview, and the lane labels' readouts of each compared track (by
   // lane index) and of the sum, updated in place.
   private previewFix = false;
+  // Compare's switch in the Views popover (Off, or the lane it adds), and that lane's sign in the
+  // Views field's summary.
+  private compareChoice: Segmented | undefined;
+  private compareSign: StackedSummary | undefined;
   private matchNodes: (HTMLElement | undefined)[] = [];
   // Each lane's name, marked while the lane shows samples that are not finite.
   private laneNameNodes: HTMLElement[] = [];
@@ -716,10 +720,30 @@ export class OscilloscopeApp {
       "lane-channel",
       viewOrder.map((name) => [name, viewLabels[name]]),
     );
-    segment("compare", "compare", [
-      ["off", "Off"],
-      ["on", "On"],
-    ]);
+    // Compare's switch chooses the lane it adds too: one control over two saved settings, so the
+    // lane last chosen is kept while Compare is off. The lane first, so that the first Compare
+    // frame already shows it.
+    this.compareChoice = new Segmented(
+      element("compare"),
+      [
+        { value: "off", label: "Off" },
+        ...Object.entries(choiceLabels.compareLane).map(([value, label]) => ({
+          value,
+          label,
+        })),
+      ],
+      (value) => {
+        if (value !== "off") {
+          this.request("compareLane", value);
+        }
+        this.request("compare", value === "off" ? "off" : "on");
+      },
+    );
+    this.compareSign = new StackedSummary(
+      element("views-multi").querySelector<HTMLElement>(".sum") ??
+        element("views-multi"),
+      compareLaneSigns,
+    );
     segment("laneLabels", "lane-labels-choice", [
       ["off", "Off"],
       ["on", "On"],
@@ -1040,6 +1064,13 @@ export class OscilloscopeApp {
       this.fields.get(name)?.show(value);
     } else if (typeof value === "string") {
       this.segmented.get(name)?.show(value);
+      if (name === "compare" || name === "compareLane") {
+        const lane = String(this.store.get("compareLane"));
+        this.compareChoice?.show(
+          this.store.get("compare") === "on" ? lane : "off",
+        );
+        this.compareSign?.show(lane);
+      }
       const field = this.choiceSummaries.get(name as ChoiceSetting);
       if (field !== undefined) {
         field.summary.show(value);
@@ -1131,6 +1162,7 @@ export class OscilloscopeApp {
       name === "group" ||
       name === "laneChannel" ||
       name === "compare" ||
+      name === "compareLane" ||
       name === "laneLabels" ||
       name === "displayMode"
     ) {
@@ -1255,9 +1287,10 @@ export class OscilloscopeApp {
   }
 
   // Multi's summary in the Views field (Single's shows the channel views) names the group, the lane
-  // channel and Σ, the sum Compare adds, as "A·M·Σ", then a dot and a tag for the lane labels: Σ dimmed while
-  // Compare is off and the tag while the labels do not show, as Single's dims the views not drawn.
-  // Its name for screen readers says the channel in full, Compare and the labels.
+  // channel and the lane Compare adds, Σ for the sum or Δ for the difference, as "A·M·Σ", then a
+  // dot and a tag for the lane labels: the sign dimmed while Compare is off and the tag while the
+  // labels do not show, as Single's dims the views not drawn. Its name for screen readers says the
+  // channel in full, what Compare adds and the labels.
   private updateGroupSummary(): void {
     const group = String(this.store.get("group")).toUpperCase();
     const channel = this.store.get("laneChannel") as ViewName;
@@ -1267,8 +1300,10 @@ export class OscilloscopeApp {
     element("views-lanes").textContent = `${group}·${viewLabels[channel]}·`;
     summary.querySelector(".sum")?.classList.toggle("on", compare);
     summary.querySelector(".tag")?.classList.toggle("on", labels);
+    const lane =
+      this.store.get("compareLane") === "difference" ? "difference" : "sum";
     this.viewsNames.multi = `Views: group ${group}, ${viewNames[ChannelView[channel]]}${
-      compare ? ", Compare on" : ""
+      compare ? `, Compare ${lane}` : ""
     }${labels ? ", labels on" : ""}`;
     this.nameViews();
   }
@@ -1382,33 +1417,15 @@ export class OscilloscopeApp {
       node.style.setProperty("--swatch", cssColour(style.colour));
       node.classList.toggle("own", style.own);
       if (style.id === sumLaneId) {
-        // What the lane shows, which the frame says: the sum (Σ) or the difference (Δ), each
-        // with its figure; the sum with Preview fix. The pair chooses between them.
+        // What the lane shows, which the frame says: the sum or the difference (Compare's
+        // switch in the Views popover chooses), each with its figure; the sum with Preview fix,
+        // the difference with Align.
         const difference = frame?.comparison?.lane === CompareLane.difference;
-        const choice = document.createElement("span");
-        choice.className = "compare-lane";
-        choice.setAttribute("role", "group");
-        choice.setAttribute("aria-label", "Compare shows");
-        for (const [value, name] of [
-          ["sum", "Sum"],
-          ["difference", "Difference"],
-        ] as const) {
-          const symbol = choiceLabels.compareLane[value];
-          const pick = button(symbol, "compareLane", () => {
-            this.request("compareLane", value);
-          });
-          pick.setAttribute("aria-label", name);
-          pick.setAttribute(
-            "aria-pressed",
-            String(difference === (value === "difference")),
-          );
-          choice.append(pick);
-        }
         const figure = document.createElement("span");
         figure.className = "lane-readout";
         figure.dataset["help"] = difference ? "nullDepth" : "sumGain";
         this.sumNode = figure;
-        node.append(style.name, choice, figure);
+        node.append(style.name, figure);
         if (difference) {
           // The difference's switch, where the sum has Preview fix: whether the checked tracks
           // are lined up with this one first.
@@ -1509,7 +1526,7 @@ export class OscilloscopeApp {
   // The Compare view's readouts in the lane labels: each compared track's offset and polarity
   // (or that it matches nowhere clearly) and correlation against this track, and the sum's gain
   // (with the fix, while it is previewed); beside the difference, what Align takes out of each
-  // track (its delay and a flip) and how deep the difference nulls.
+  // track (its delay, its gain and a flip) and how deep the difference nulls.
   private updateMatches(frame: Frame | undefined): void {
     this.laneNameNodes.forEach((node, index) => {
       node.classList.toggle(

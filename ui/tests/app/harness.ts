@@ -426,8 +426,14 @@ export async function press(button: HTMLElement): Promise<void> {
 }
 
 // Multi's summary in the Views field as it reads ("A·M·Σ·"; its tag is an icon).
+// As read on screen: of values stacked in one place (the lane Compare adds, Σ or Δ), the one
+// showing.
 export function multiSummary(): string {
-  return byId("views-multi").textContent.replace(/\s/g, "");
+  const shown = byId("views-multi").cloneNode(true) as HTMLElement;
+  for (const hidden of shown.querySelectorAll(".choices > span:not(.on)")) {
+    hidden.remove();
+  }
+  return shown.textContent.replace(/\s/g, "");
 }
 
 // Whether the popover row holding a control is hidden: the Views popover hides the rows of the
@@ -439,8 +445,12 @@ export function rowHidden(id: string): boolean {
 }
 
 // Turns Compare on or off in Multi's Views popover, opening the popover if it is closed.
-export async function setCompare(on: boolean): Promise<void> {
-  const button = choice("compare", on ? "On" : "Off");
+// On is the sum, as Compare first was; "Diff" asks for the difference instead.
+export async function setCompare(on: boolean | "Sum" | "Diff"): Promise<void> {
+  const button = choice(
+    "compare",
+    on === false ? "Off" : on === true ? "Sum" : on,
+  );
   await press(button);
   await expect.element(button).toHaveAttribute("aria-pressed", "true");
 }

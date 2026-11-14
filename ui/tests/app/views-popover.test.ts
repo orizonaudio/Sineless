@@ -164,7 +164,7 @@ describe("the Views popover", () => {
     await showDisplay("Multi");
     await openViews();
     for (const [host, label] of [
-      ["compare", "On"],
+      ["compare", "Sum"],
       ["compare", "Off"],
       ["lane-labels-choice", "Off"],
       ["lane-labels-choice", "On"],

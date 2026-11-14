@@ -198,7 +198,7 @@ describe("the Compare switch", () => {
     const sent = started.sent.length;
     await press(choice("display-mode", "Multi"));
     await setCompare(true);
-    await press(choice("compare", "On"));
+    await press(choice("compare", "Sum"));
     started.deliver({
       type: "stateChanged",
       name: "displayMode",

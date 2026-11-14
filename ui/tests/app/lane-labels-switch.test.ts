@@ -184,7 +184,7 @@ describe("the Labels row", () => {
     expect(viewsName()).not.toContain("labels");
     await setCompare(true);
     expect(tagLit()).toBe(true);
-    expect(viewsName()).toMatch(/, Compare on, labels on$/);
+    expect(viewsName()).toMatch(/, Compare sum, labels on$/);
     await setCompare(false);
     expect(tagLit()).toBe(false);
   });

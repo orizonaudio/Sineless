@@ -176,17 +176,17 @@ describe("controls", () => {
     await expect
       .poll(field)
       .toEqual(["A·M·Σ·", false, "Views: group A, Mid, labels on"]);
-    await userEvent.click(choice("compare", "On"));
+    await userEvent.click(choice("compare", "Sum"));
     await expect
-      .element(choice("compare", "On"))
+      .element(choice("compare", "Sum"))
       .toHaveAttribute("aria-pressed", "true");
     await expect
       .poll(field)
-      .toEqual(["A·M·Σ·", true, "Views: group A, Mid, Compare on, labels on"]);
+      .toEqual(["A·M·Σ·", true, "Views: group A, Mid, Compare sum, labels on"]);
     await press(choice("group", "B"));
     await expect
       .poll(field)
-      .toEqual(["B·M·Σ·", true, "Views: group B, Mid, Compare on, labels on"]);
+      .toEqual(["B·M·Σ·", true, "Views: group B, Mid, Compare sum, labels on"]);
     // The host restores it off.
     app.deliver({ type: "stateChanged", name: "compare", value: "off" });
     await expect
@@ -644,12 +644,14 @@ describe("choice field popovers", () => {
     },
   );
 
-  test("Compare offers Off, then On", () => {
+  // Compare's switch chooses the lane it adds too: Off, then each lane the protocol has, by the
+  // label the help explains it under.
+  test("Compare offers Off, then each lane it can add", () => {
     expect(
       [...byId("compare").querySelectorAll("button")].map(
         (button) => button.textContent,
       ),
-    ).toEqual(["Off", "On"]);
+    ).toEqual(["Off", ...Object.values(choiceLabels.compareLane)]);
   });
 });
 

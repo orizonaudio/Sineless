@@ -1,7 +1,7 @@
 // Compare's last lane showing the difference of the checked tracks instead of their sum, through
-// the real page: the pair on the lane's label chooses, the frame says which lane it carries, and
-// the label follows the frame (its name, its figure, and Preview fix, which is the sum's, or
-// Align, which is the difference's).
+// the real page: Compare's switch in the Views popover chooses (Off, Sum or Diff), the frame says
+// which lane it carries, and the label follows the frame (its name, its figure, and Preview fix,
+// which is the sum's, or Align, which is the difference's).
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -30,12 +30,9 @@ function lastLabel(): HTMLElement {
   return labels[labels.length - 1] as HTMLElement;
 }
 
-function pick(name: "Sum" | "Difference"): HTMLButtonElement {
-  const button = lastLabel().querySelector<HTMLButtonElement>(
-    `.compare-lane button[aria-label="${name}"]`,
-  );
-  expect(button, `the ${name} choice`).not.toBeNull();
-  return button as HTMLButtonElement;
+// Compare's switch, by the lane's name on the label.
+function pick(name: "Sum" | "Difference"): HTMLElement {
+  return choice("compare", name === "Sum" ? "Sum" : "Diff");
 }
 
 const figure = () => lastLabel().querySelector<HTMLElement>(".lane-readout");
@@ -81,10 +78,8 @@ async function showCompare(): Promise<void> {
 }
 
 async function show(name: "Sum" | "Difference"): Promise<void> {
-  if (pick(name).getAttribute("aria-pressed") !== "true") {
-    await userEvent.click(pick(name));
-  }
-  await expect.poll(() => pick(name).getAttribute("aria-pressed")).toBe("true");
+  await setCompare(name === "Sum" ? "Sum" : "Diff");
+  await expect.poll(() => lastLabel().textContent.startsWith(name)).toBe(true);
 }
 
 describe("Compare's last lane", () => {
@@ -187,14 +182,36 @@ describe("Compare's last lane", () => {
     await setCompared("Kick 2", false);
   });
 
-  test("leaves the Views field as it is: Σ there stands for Compare", async () => {
+  // The Views field says which lane Compare adds, Σ or Δ, and is as wide with either, so nothing
+  // after it in the toolbar moves; with Compare off the sign of the lane last chosen stays,
+  // dimmed, and Compare comes back on that lane.
+  test("names the lane in the Views field, at one width, and keeps it while off", async () => {
     await showCompare();
     await show("Sum");
-    const summary = multiSummary();
+    expect(multiSummary()).toBe("A·M·Σ·");
     const width = byId("views-summary").getBoundingClientRect().width;
     await show("Difference");
-    expect(multiSummary()).toBe(summary);
+    expect(multiSummary()).toBe("A·M·Δ·");
     expect(byId("views-summary").getBoundingClientRect().width).toBe(width);
+    await setCompare(false);
+    expect(multiSummary()).toBe("A·M·Δ·");
+    expect(pick("Difference").getAttribute("aria-pressed")).toBe("false");
     await show("Sum");
+  });
+
+  // The lane's label holds no choice of its own any more: its name, its figure and one switch.
+  test("has no sum or difference choice on the lane's label", async () => {
+    await showCompare();
+    await show("Difference");
+    const buttons = [...lastLabel().querySelectorAll("button")].map(
+      (button) => button.textContent,
+    );
+    expect(buttons).toEqual(["Align"]);
+    await show("Sum");
+    expect(
+      [...lastLabel().querySelectorAll("button")].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Preview fix"]);
   });
 });

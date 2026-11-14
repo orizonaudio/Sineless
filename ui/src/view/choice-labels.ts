@@ -24,7 +24,7 @@ export const choiceLabels: {
   readonly gridDensity: Labels<typeof GridDensity>;
   readonly beatDivision: Labels<typeof BeatDivision>;
   readonly triggerSlope: Labels<typeof TriggerSlope>;
-  // On the last lane's label, not in a popover: the mathematical signs, as the Views field has Σ.
+  // Compare's switch in the Views popover offers these beside Off: the lane Compare adds.
   readonly compareLane: Labels<typeof CompareLane>;
 } = {
   displayMode: { single: "Single", multi: "Multi" },
@@ -35,5 +35,11 @@ export const choiceLabels: {
   gridDensity: { coarse: "Coarse", medium: "Medium", fine: "Fine" },
   beatDivision: { regular: "Regular", triplets: "Triplets" },
   triggerSlope: { rising: "Rising", falling: "Falling" },
-  compareLane: { sum: "Σ", difference: "Δ" },
+  compareLane: { sum: "Sum", difference: "Diff" },
+};
+
+// The lane Compare adds, as the Views field's summary shows it: the mathematical signs.
+export const compareLaneSigns: Labels<typeof CompareLane> = {
+  sum: "Σ",
+  difference: "Δ",
 };

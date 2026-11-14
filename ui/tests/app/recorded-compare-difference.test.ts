@@ -20,11 +20,6 @@ describe("a recorded Compare showing the difference", () => {
       .poll(() => last()?.querySelector(".lane-readout")?.textContent)
       .toBe("−6.0 dB");
     expect(last()?.textContent.startsWith("Difference")).toBe(true);
-    expect(
-      last()
-        ?.querySelector('.compare-lane button[aria-label="Difference"]')
-        ?.getAttribute("aria-pressed"),
-    ).toBe("true");
     // Preview fix is the sum's.
     expect(last()?.querySelector(".preview-fix")).toBeNull();
   });
