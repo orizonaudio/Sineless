@@ -4,6 +4,11 @@
 // explains itself even while help is off, so it can be found, and says at once that help is on
 // when it turns it on: that tip stays by the switch until a press anywhere, or the pointer leaves
 // the switch.
+//
+// A name cut to fit its place (cut-name.ts) rolls to show the rest; for a user who asked for
+// reduced motion nothing rolls, and resting the pointer on the name, or moving the focus to it,
+// shows the whole name in the tip instead, help on or off.
+import { reducedMotion } from "./cut-name.ts";
 import {
   type HelpText,
   type HelpTopic,
@@ -40,6 +45,14 @@ export class HelpTips {
       this.hide();
       // A move with a button held is a drag, not a rest.
       if (event.buttons === 0 && event.target instanceof Element) {
+        const name = cutNameAt(event.target);
+        if (name !== undefined) {
+          const { clientX, clientY } = event;
+          this.timer = window.setTimeout(() => {
+            this.showName(name, clientX, clientY);
+          }, showDelay);
+          return;
+        }
         const target = event.target.closest<HTMLElement>("[data-help]");
         if (
           target !== null &&
@@ -52,6 +65,16 @@ export class HelpTips {
         }
       }
     });
+    // The keyboard has no place to rest: the name shows at once, below what took the focus.
+    document.addEventListener("focusin", (event) => {
+      const name =
+        event.target instanceof Element ? cutNameAt(event.target) : undefined;
+      if (name !== undefined && event.target instanceof Element) {
+        const box = event.target.getBoundingClientRect();
+        this.showName(name, box.left, box.bottom);
+      }
+    });
+    document.addEventListener("focusout", hide);
     document.addEventListener("pointerdown", hide);
     document.addEventListener("wheel", hide, { passive: true });
     document.documentElement.addEventListener("pointerleave", hide);
@@ -134,12 +157,28 @@ export class HelpTips {
     this.tip.hidden = false;
   }
 
+  // The whole of a name that is cut where the pointer or the focus is.
+  private showName(name: string, x: number, y: number): void {
+    const text = document.createElement("p");
+    text.className = "help-lead";
+    text.textContent = name;
+    this.tip.replaceChildren(text);
+    this.tip.style.left = "0";
+    this.tip.style.top = "0";
+    this.tip.hidden = false;
+    this.place(x, y);
+  }
+
   private show(target: HTMLElement, x: number, y: number): void {
     const topic = target.dataset["help"] ?? "";
     if (!isHelpTopic(topic)) {
       return;
     }
     this.fill(topic);
+    this.place(x, y);
+  }
+
+  private place(x: number, y: number): void {
     // Below and right of the pointer, flipped to the other side where the window ends.
     const { width, height } = this.tip.getBoundingClientRect();
     const right = x + offset + width <= window.innerWidth - edge;
@@ -149,4 +188,17 @@ export class HelpTips {
     this.tip.style.left = `${String(Math.max(edge, left))}px`;
     this.tip.style.top = `${String(Math.max(edge, top))}px`;
   }
+}
+
+// The whole name of the cut name at `target`, or in the row or label it leads, where it shows in
+// a tip: only for a user who asked for reduced motion (for any other it rolls).
+function cutNameAt(target: Element): string | undefined {
+  if (!reducedMotion()) {
+    return undefined;
+  }
+  const holder = target.closest<HTMLElement>("[data-full-name], .names-cut");
+  const name = holder?.matches("[data-full-name]")
+    ? holder
+    : holder?.querySelector<HTMLElement>("[data-full-name]");
+  return name?.dataset["fullName"];
 }

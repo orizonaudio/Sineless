@@ -26,12 +26,14 @@ function names(): { shown: string; said: string }[] {
     (chip) => {
       const named = chip.querySelector(".compare-check") ?? chip;
       const number = named.querySelector(".instance");
-      const hidden = named.querySelector(".visually-hidden");
-      const plain = [...named.childNodes]
-        .concat([...(named.querySelector(".lane-name")?.childNodes ?? [])])
-        .filter((node) => node.nodeType === Node.TEXT_NODE)
-        .map((node) => node.textContent)
-        .join("");
+      const hidden = named.querySelector(".lane-name > .visually-hidden");
+      // A track's name is in its own element (cut when too long); the sum's is plain text.
+      const plain =
+        named.querySelector(".cut-shown")?.textContent ??
+        [...named.childNodes]
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((node) => node.textContent)
+          .join("");
       return {
         shown: `${plain}${number === null ? "" : `[${number.textContent}]`}`,
         said: `${plain}${hidden?.textContent ?? ""}`,

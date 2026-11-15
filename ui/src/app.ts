@@ -32,6 +32,7 @@ import type {
   SettingName,
 } from "../../protocol/src/settings.ts";
 import type { Backend } from "./bridge/backend.ts";
+import { cutName, fitCutNames } from "./components/cut-name.ts";
 import { DragField } from "./components/drag-field.ts";
 import { followDrag } from "./components/follow-drag.ts";
 import { numberFields, type NumberField } from "./view/fields.ts";
@@ -235,12 +236,17 @@ function rgba(color: string): Rgba {
 // A lane's name as it is shown wherever a lane is named: the name alone, or, for one of several
 // instances on a track, the name with its number small and lowered after it (styled, as the
 // embedded fonts have no subscript digits) and, for a screen reader, the words that say what the
-// number is.
-function laneNameNodes(lane: {
-  readonly name: string;
-  readonly instance: number;
-}): (string | HTMLElement)[] {
-  const { name, number, spoken } = laneName(lane);
+// number is. A name too long for its place is cut in the middle (cut-name.ts), whole to a screen
+// reader; `live` where it stays on screen, so it follows its width and rolls under the pointer.
+function laneNameNodes(
+  lane: {
+    readonly name: string;
+    readonly instance: number;
+  },
+  live: boolean,
+): HTMLElement[] {
+  const { name: text, number, spoken } = laneName(lane);
+  const name = cutName(text, { live });
   if (number === undefined || spoken === undefined) {
     return [name];
   }
@@ -1458,14 +1464,14 @@ export class OscilloscopeApp {
         return node;
       }
       if (!compareMode) {
-        node.append(...laneNameNodes(style));
+        node.append(...laneNameNodes(style, true));
         return node;
       }
       node.classList.add("checkable");
       const check = button(style.name, "compareTrack", () => {
         this.toggleCompared(style.id);
       });
-      check.replaceChildren(...laneNameNodes(style));
+      check.replaceChildren(...laneNameNodes(style, true));
       check.className = "compare-check";
       check.setAttribute("role", "checkbox");
       check.setAttribute("aria-checked", String(style.compared));
@@ -2041,7 +2047,10 @@ export class OscilloscopeApp {
     }
     const title = document.createElement("strong");
     title.append(
-      ...laneNameNodes({ name: readout.title, instance: readout.instance }),
+      ...laneNameNodes(
+        { name: readout.title, instance: readout.instance },
+        false,
+      ),
     );
     node.replaceChildren(
       title,
@@ -2057,6 +2066,7 @@ export class OscilloscopeApp {
       }),
     );
     node.hidden = false;
+    fitCutNames(node);
     // Below and right of the pointer, flipped where the screen ends.
     const width = this.screen.clientWidth;
     const height = this.screen.clientHeight;
