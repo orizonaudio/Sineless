@@ -516,6 +516,12 @@ button[aria-pressed="true"]:focus-visible {
   --corner-width: 150px;
 }
 
+:root {
+  /* The width a track's name has in a row of the Views popover's list, which a name on the
+     screen is cut to as well, so one name reads alike in both. */
+  --track-name-width: 154px;
+}
+
 .screen.panning {
   cursor: ew-resize;
 }
@@ -777,6 +783,28 @@ button[aria-pressed="true"]:focus-visible {
   margin-left: 1px;
   font-size: 0.75em;
   vertical-align: -0.3em;
+}
+
+/* A name in a width it may not fit (cut-name.ts): one line, clipped, cut in the middle by the
+   page; on the screen a track's name has the width of a row of the Views popover's list, so the
+   same name is cut alike in both. Rolling, the whole name moves inside the box. */
+.cut-name,
+.lane-label .cut-name {
+  display: inline-block;
+  max-width: var(--track-name-width);
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.cut-name > .cut-shown,
+.lane-label .cut-name > .cut-shown {
+  display: inline-block;
+}
+
+/* The labels pass the pointer to the screen; a cut name takes it, to roll, as their buttons do. */
+.lane-label .cut-name.cut {
+  pointer-events: auto;
 }
 
 /* Said by a screen reader, not shown (WCAG technique C7's rule). */

@@ -250,6 +250,9 @@ export interface MockOptions {
   // How many of the group's other tracks the host lists before this one, as when this track is
   // not the project's first: the engine sends the lanes in the host's order. None by default.
   readonly tracksBefore?: number;
+  // Names the host gives tracks in place of the mock's, by lane id, as for a track with a long
+  // name. None by default.
+  readonly names?: Readonly<Record<number, string>>;
 }
 
 // The group's tracks: mockTracks, the far hi-hat, then unnamed sines, one octave step apart, as
@@ -326,7 +329,10 @@ export class MockTransport implements Transport {
     const group = [
       ...groupOf(options.trackCount ?? mockTracks.length),
       ...(options.bassAfter === true ? [bassAfter] : []),
-    ];
+    ].map((track) => ({
+      ...track,
+      name: options.names?.[track.id] ?? track.name,
+    }));
     const others = group.filter((track) => !track.own);
     const before = options.tracksBefore ?? 0;
     this.tracks = [
