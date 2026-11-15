@@ -89,6 +89,18 @@ describe("a track sending samples that are not finite", () => {
     expect(markedColours()).toEqual([warnColour(), warnColour()]);
   });
 
+  // A Single frame says only that some view holds them, not which: no view's label is singled out.
+  test("marks no view's label in Single, where the frame does not say which view holds them", async () => {
+    await showDisplay("Single");
+    await settle();
+    expect(chipTexts()).toContain("Invalid samples");
+    const labels = byId("lane-labels");
+    await expect
+      .poll(() => labels.querySelectorAll(".lane-label").length)
+      .toBeGreaterThan(0);
+    expect(labels.querySelectorAll(".invalid")).toHaveLength(0);
+  });
+
   // More states than the status bar's area holds. The area takes every state frozen can show, with
   // long values (invalid samples in Multi, frozen with a span longer than the capture kept and
   // not all of it held, panned back and zoomed past ten times), so it is narrowed here, as where
