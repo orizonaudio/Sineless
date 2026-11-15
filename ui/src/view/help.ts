@@ -155,10 +155,10 @@ export function helpTextsFor(mac: boolean) {
     },
     laneLabels: {
       title: "Labels",
-      lead: "Shows each lane's colour and track name in Multi.",
+      lead: "Shows each lane's colour and name: the track's in Multi, the channel's in Single.",
       notes: [
         "Several instances on one track are numbered in the order they were added, in shades of its colour.",
-        "With Compare on they hold its readouts, so they always show.",
+        "Off also hides Compare's readouts beside each track; the sum or difference keeps its label.",
         "Saved with the project.",
       ],
     },
@@ -262,16 +262,16 @@ export function helpTextsFor(mac: boolean) {
       title: "Views",
       lead: "Which tracks Multi shows, and with Compare their sum or difference.",
       notes: [
-        "The field counts the tracks shown, then names the lane channel, a tag (dimmed while labels are hidden) and Compare's lane (Σ or Δ, dimmed when off).",
+        "The field counts the tracks shown of those there are.",
         `Channels lists every track with this plugin: tick up to ${tracksShown}. One added later is not ticked.`,
         "What is ticked is not saved with the project.",
       ],
     },
     laneChannel: {
-      title: "Channel",
-      lead: "Which channel every lane of Multi shows: Left, Right, Mid or Side.",
+      title: "Measure",
+      lead: "Which channel Multi reads, and every lane shows: Left, Right, Mid or Side.",
       notes: [
-        "The trigger, the Meter, snapping and Compare read it too.",
+        "The Meter, the trigger, snapping and Compare read it.",
         "A mono track shows its one channel whatever the choice.",
         "Chosen while frozen, it redraws this track and leaves the others empty until the display resumes.",
       ],
@@ -280,8 +280,8 @@ export function helpTextsFor(mac: boolean) {
       title: "Views",
       lead: "Which channels this track shows, and which one the Meter reads.",
       notes: [
-        "The letter after the dot is the channel the Meter reads.",
-        "In Multi every track shows one channel, chosen in this popover's Channel row, so these apply in Single.",
+        "The field counts the channels shown of the four.",
+        "Tick the channels to show under Channels; one always shows. A mono track has Left alone.",
       ],
     },
     status: {
@@ -448,22 +448,22 @@ export function helpTextsFor(mac: boolean) {
     viewLeft: {
       title: "Left",
       lead: "Shows or hides the left channel.",
-      notes: ["At least one view stays on."],
+      notes: ["One channel always shows."],
     },
     viewRight: {
       title: "Right",
       lead: "Shows or hides the right channel.",
-      notes: ["At least one view stays on."],
+      notes: ["One channel always shows."],
     },
     viewMid: {
       title: "Mid",
       lead: "Shows or hides the mid signal, (L + R) / 2: what both channels share.",
-      notes: ["At least one view stays on."],
+      notes: ["One channel always shows."],
     },
     viewSide: {
       title: "Side",
       lead: "Shows or hides the side signal, (L − R) / 2, which carries the stereo width.",
-      notes: ["At least one view stays on."],
+      notes: ["One channel always shows."],
     },
     layout: {
       title: "Layout",
@@ -472,6 +472,7 @@ export function helpTextsFor(mac: boolean) {
         overlaid: "all views on one screen",
         stacked: "each view in its own lane",
       }),
+      notes: ["Labels, in the same popover, names each lane."],
     },
     trigger: {
       title: "Trigger",
@@ -585,7 +586,7 @@ export function helpTextsFor(mac: boolean) {
       notes: [
         "With the views overlaid, the hover and the cursors' snapping read it too; stacked, each lane reads its own trace.",
         "While the one chosen is hidden, the first view drawn is read.",
-        "A mono track has only Left. Multi reads the channel chosen in the Views popover.",
+        "A mono track has only Left. Multi has a Measure row of its own.",
       ],
     },
     grid: {

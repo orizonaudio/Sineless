@@ -128,7 +128,7 @@ export const highestAudibleHz = 20000;
 // The editor's layout (CSS pixels): its minimum width, which fits the widest toolbar (Trig, the
 // Single trigger mode with Re-arm, frozen, in Single or in Multi with Compare on: one width since
 // Single's and Multi's summaries share one Views field, as wide as Multi's count of tracks at two
-// digits each side, "88/88", #425; it leaves 9 px in Chromium) with at least 8 px to spare for text that renders wider on another
+// digits each side, "88 of 88", #425; it leaves 12.2 px in Chromium) with at least 8 px to spare for text that renders wider on another
 // platform; the status bar fits too, its chip area being what that bar leaves less the same 8 px
 // (ui/src/styles.css, .chips; docs/ui/README.md); its default width,
 // the same, as nothing in the window changes with its width; its minimum height, which fits the
@@ -137,8 +137,8 @@ export const highestAudibleHz = 20000;
 // the minimum height of a stacked lane; and the height of everything around the screen (toolbar
 // and status bar), at most: measured at 82, with room for rounding at other display scales. The
 // editor tests check the page against them.
-export const defaultEditorWidth = 1064;
-export const minimumEditorWidth = 1064;
+export const defaultEditorWidth = 1040;
+export const minimumEditorWidth = 1040;
 export const minimumEditorHeight = 420;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;

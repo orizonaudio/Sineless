@@ -210,10 +210,9 @@ describe.each(widths)("the toolbar at %i px", (width) => {
       const multi = byId("views-multi").getBoundingClientRect();
       expect(multi.left).toBeCloseTo(single.left, 1);
       expect(multi.width).toBeCloseTo(single.width, 1);
-      const tag = byId("views-multi").querySelector(".tag");
-      expect(tag).not.toBeNull();
-      const tagBox = tag?.getBoundingClientRect();
-      expect(tagBox?.right ?? Infinity).toBeLessThanOrEqual(button.right);
+      // The count stays inside the field.
+      const count = byId("views-count").getBoundingClientRect();
+      expect(count.right).toBeLessThanOrEqual(button.right);
       boxes.push({
         left: button.left,
         width: button.width,

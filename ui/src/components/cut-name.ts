@@ -20,8 +20,10 @@ const rollMaxSeconds = 5;
 const fitters = new WeakMap<Element, () => void>();
 
 export interface CutNameOptions {
-  // Whether the name follows its width as it changes and rolls under the pointer and the focus;
-  // otherwise it is fitted when fitCutNames is asked to.
+  // Whether the name stays on screen: it then rolls under the pointer and the focus, and is fitted
+  // again when the fonts have loaded. Every name is fitted when fitCutNames is asked to, once it
+  // is in the page and laid out (its place's width is the page's to know: a name's own observer
+  // would outlive the page that made it).
   readonly live: boolean;
   // The element whose hover and focus roll the name: the name itself unless given (a list row,
   // whose check box takes the focus).
@@ -44,7 +46,6 @@ export function cutName(full: string, options: CutNameOptions): HTMLElement {
   said.textContent = full;
   outer.append(shown);
 
-  let fitted = -1;
   let roll: Animation | undefined;
   const fit = () => {
     if (roll !== undefined) {
@@ -74,23 +75,13 @@ export function cutName(full: string, options: CutNameOptions): HTMLElement {
       delete outer.dataset["fullName"];
       said.remove();
     }
-    fitted = outer.clientWidth;
   };
   fitters.set(outer, fit);
   if (!options.live) {
     return outer;
   }
 
-  // Fitted again when its width changes, but not for the width its own cut gave it; in the next
-  // frame, as a fit changes the width observed (a change inside the observer's own callback is
-  // reported as a loop).
-  new ResizeObserver(() => {
-    requestAnimationFrame(() => {
-      if (outer.clientWidth !== fitted) {
-        fit();
-      }
-    });
-  }).observe(outer);
+  // The fonts decide what fits: fitted again once they have loaded.
   void document.fonts.ready.then(fit);
 
   const stop = () => {
@@ -142,7 +133,8 @@ export function cutName(full: string, options: CutNameOptions): HTMLElement {
   return outer;
 }
 
-// Fits the names under `root` that are not live, once they are in the page.
+// Fits the names under `root`, once they are in the page and laid out: when they are built, and
+// when what holds them comes on show.
 export function fitCutNames(root: ParentNode): void {
   for (const name of root.querySelectorAll(".cut-name")) {
     fitters.get(name)?.();

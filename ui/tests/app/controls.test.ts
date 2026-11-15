@@ -24,6 +24,7 @@ import {
   showViews,
   startApp,
   tickTrack,
+  trackRows,
   startBeforeFrames,
   useReadout,
   type Started,
@@ -31,12 +32,11 @@ import {
   multiSummary,
 } from "./harness.ts";
 
-function viewToggle(label: string): HTMLButtonElement {
-  const button = [...byId("views").querySelectorAll("button")].find(
-    (candidate) => candidate.textContent === label,
-  );
-  expect(button, `view ${label}`).toBeDefined();
-  return button as HTMLButtonElement;
+// A view's row in Single's Channels list, by its name.
+function viewRow(name: string): { row: HTMLElement; box: HTMLInputElement } {
+  const row = trackRows("channels").find((each) => each.name === name);
+  expect(row, `view ${name}`).toBeDefined();
+  return row as { row: HTMLElement; box: HTMLInputElement };
 }
 
 describe("controls", () => {
@@ -93,25 +93,16 @@ describe("controls", () => {
       byId("views-details").getAttribute("aria-label"),
     ];
     await press(choice("display-mode", "Multi"));
-    await expect
-      .poll(field)
-      .toEqual(["4/4·M··Σ", "Views: 4 of 4 tracks, Mid, labels on"]);
+    await expect.poll(field).toEqual(["4 of 4", "Views: 4 of 4 tracks, Mid"]);
     await tickTrack("Bass", false);
-    await expect
-      .poll(field)
-      .toEqual(["3/4·M··Σ", "Views: 3 of 4 tracks, Mid, labels on"]);
+    await expect.poll(field).toEqual(["3 of 4", "Views: 3 of 4 tracks, Mid"]);
     // Another setting leaves it be.
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "single" });
     await expect.poll(() => shownValue("trigger").join("")).toBe("Single");
-    expect(field()).toEqual([
-      "3/4·M··Σ",
-      "Views: 3 of 4 tracks, Mid, labels on",
-    ]);
+    expect(field()).toEqual(["3 of 4", "Views: 3 of 4 tracks, Mid"]);
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "auto" });
     await tickTrack("Bass", true);
-    await expect
-      .poll(field)
-      .toEqual(["4/4·M··Σ", "Views: 4 of 4 tracks, Mid, labels on"]);
+    await expect.poll(field).toEqual(["4 of 4", "Views: 4 of 4 tracks, Mid"]);
     await press(choice("display-mode", "Single"));
   });
 
@@ -135,13 +126,13 @@ describe("controls", () => {
     await expect.poll(pressed).toEqual(["M"]);
     await press(choice("lane-channel", "L"));
     await expect.poll(pressed).toEqual(["L"]);
-    // The field names it after the count.
+    // The field's name says it, for a screen reader.
     await expect
       .poll(() => [
         multiSummary(),
         byId("views-details").getAttribute("aria-label"),
       ])
-      .toEqual(["4/4·L··Σ", "Views: 4 of 4 tracks, Left, labels on"]);
+      .toEqual(["4 of 4", "Views: 4 of 4 tracks, Left"]);
     await press(choice("lane-channel", "S"));
     await expect.poll(pressed).toEqual(["S"]);
 
@@ -158,46 +149,35 @@ describe("controls", () => {
     await press(choice("display-mode", "Single"));
   });
 
-  // Compare is an On | Off choice in Multi's Views popover, not a display mode; the field shows Σ,
-  // dimmed while Compare is off, since the choice is out of sight while the popover is closed.
+  // Compare is a choice in Multi's Views popover, not a display mode; the field's name says it.
   test("offers Compare as an On | Off choice in Multi's Views popover", async () => {
     const modes = [...byId("display-mode").querySelectorAll("button")].map(
       (button) => button.firstChild?.textContent,
     );
     expect(modes).toEqual(["Single", "Multi"]);
-    const sumLit = () =>
-      byId("views-multi").querySelector(".sum")?.classList.contains("on");
+    // The field counts the tracks; its name says what Compare adds, for a screen reader.
     const field = () => [
       multiSummary(),
-      sumLit(),
       byId("views-details").getAttribute("aria-label"),
     ];
     await press(choice("display-mode", "Multi"));
     await expect
       .element(choice("compare", "Off"))
       .toHaveAttribute("aria-pressed", "true");
-    await expect
-      .poll(field)
-      .toEqual(["4/4·M··Σ", false, "Views: 4 of 4 tracks, Mid, labels on"]);
+    await expect.poll(field).toEqual(["4 of 4", "Views: 4 of 4 tracks, Mid"]);
     await press(choice("compare", "Sum"));
     await expect
       .element(choice("compare", "Sum"))
       .toHaveAttribute("aria-pressed", "true");
     await expect
       .poll(field)
-      .toEqual([
-        "4/4·M··Σ",
-        true,
-        "Views: 4 of 4 tracks, Mid, labels on, Compare sum",
-      ]);
+      .toEqual(["4 of 4", "Views: 4 of 4 tracks, Mid, Compare sum"]);
     // The host restores it off.
     app.deliver({ type: "stateChanged", name: "compare", value: "off" });
     await expect
       .element(choice("compare", "Off"))
       .toHaveAttribute("aria-pressed", "true");
-    await expect
-      .poll(field)
-      .toEqual(["4/4·M··Σ", false, "Views: 4 of 4 tracks, Mid, labels on"]);
+    await expect.poll(field).toEqual(["4 of 4", "Views: 4 of 4 tracks, Mid"]);
     await press(choice("display-mode", "Single"));
   });
 
@@ -338,37 +318,47 @@ describe("controls", () => {
     await press(choice("mode", "Auto"));
   });
 
-  test("the view toggles keep at least one view shown", async () => {
+  test("Single's Channels list keeps at least one view shown", async () => {
     await press(choice("display-mode", "Single"));
-    const pressed = (label: string) =>
-      viewToggle(label).getAttribute("aria-pressed") === "true";
-    // L alone.
-    if (!pressed("L")) {
-      await press(viewToggle("L"));
+    if (byId("views-popover").hidden) {
+      await userEvent.click(byId("views-details"));
     }
-    for (const label of ["R", "M", "S"]) {
-      if (pressed(label)) {
-        await press(viewToggle(label));
+    const ticked = (name: string) => viewRow(name).box.checked;
+    const tick = async (name: string, on: boolean) => {
+      if (ticked(name) !== on) {
+        await userEvent.click(viewRow(name).row);
       }
-      await expect.poll(() => pressed(label)).toBe(false);
+      await expect.poll(() => ticked(name)).toBe(on);
+    };
+    // Left alone.
+    await tick("Left", true);
+    for (const name of ["Right", "Mid", "Side"]) {
+      await tick(name, false);
     }
-    await expect.poll(() => pressed("L")).toBe(true);
+    expect(byId("channels").querySelector(".check-count")?.textContent).toBe(
+      "1 of 4 selected",
+    );
 
-    // Hiding the last view shown asks nothing and changes nothing.
+    // The last view shown cannot be hidden: it asks nothing and changes nothing, and says why.
     const before = app.sent.length;
-    await press(viewToggle("L"));
+    expect(viewRow("Left").box.getAttribute("aria-disabled")).toBe("true");
+    expect(viewRow("Left").box.getAttribute("aria-description")).toBe(
+      "One channel always shows",
+    );
+    viewRow("Left").box.click();
     await settle();
-    expect(pressed("L")).toBe(true);
+    expect(ticked("Left")).toBe(true);
     expect(
       app.sent
         .slice(before)
         .filter((message) => message["name"] === "channelViews"),
     ).toEqual([]);
 
-    await press(viewToggle("M"));
-    await expect.poll(() => pressed("M")).toBe(true);
+    await tick("Mid", true);
+    expect(viewRow("Left").box.getAttribute("aria-disabled")).toBeNull();
     await settle();
     expect(window.orizonDebug?.lastFrame?.views.size).toBe(2);
+    await userEvent.click(byId("views-details"));
   });
 
   // Multi, with Compare off and on, shows each track's Mid: the channel views and the trigger
@@ -378,7 +368,7 @@ describe("controls", () => {
     for (const mode of ["Multi", "Compare"] as const) {
       await showDisplay(mode);
       await expect.element(byId("views-group")).toBeVisible();
-      expect(rowHidden("views")).toBe(true);
+      expect(rowHidden("channels")).toBe(true);
       expect(byId("source-row").hidden).toBe(true);
       expect(rowHidden("tracks")).toBe(false);
     }

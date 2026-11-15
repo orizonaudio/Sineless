@@ -15,6 +15,7 @@ import {
   showViews,
   startApp,
   type Started,
+  trackRows,
   useReadout,
 } from "./harness.ts";
 
@@ -24,14 +25,21 @@ describe("a mono track", () => {
   });
 
   test("offers L alone among the views", async () => {
-    const toggles = [...byId("views").querySelectorAll("button")];
-    expect(toggles.map((button) => button.textContent)).toEqual([
-      "L",
-      "R",
-      "M",
-      "S",
+    expect(trackRows("channels").map((row) => row.name)).toEqual([
+      "Left",
+      "Right",
+      "Mid",
+      "Side",
     ]);
-    await expectOnlyLeftEnabled(toggles);
+    expectOnlyLeftTicked();
+    // None and All change nothing: there is one channel.
+    const before = byId("channels").querySelector(".check-count")?.textContent;
+    expect(before).toBe("1 of 4 selected");
+    for (const button of byId("channels").querySelectorAll("button")) {
+      button.click();
+    }
+    await settle();
+    expectOnlyLeftTicked();
   });
 
   test("reads Left, whatever the trigger source", async () => {
@@ -40,7 +48,7 @@ describe("a mono track", () => {
     // The Views field lights L alone, as the frame draws it.
     await expect.poll(drawnLetters).toEqual(["L"]);
     expect(byId("views-details").getAttribute("aria-label")).toBe(
-      "Views: L, measures Left",
+      "Views: 1 of 4 channels, measures Left",
     );
   });
 
@@ -60,14 +68,22 @@ describe("a mono track", () => {
   });
 });
 
-async function expectOnlyLeftEnabled(
-  toggles: HTMLButtonElement[],
-): Promise<void> {
-  const [left, ...others] = toggles;
-  await expect.element(left as HTMLButtonElement).toBeEnabled();
-  for (const button of others) {
-    await expect.element(button).toBeDisabled();
+// Single's Channels list on a mono track: Left alone ticked, and no row to change, each saying
+// why.
+function expectOnlyLeftTicked(): void {
+  const rows = trackRows("channels");
+  expect(rows.map((row) => row.box.checked)).toEqual([
+    true,
+    false,
+    false,
+    false,
+  ]);
+  for (const row of rows) {
+    expect(row.box.getAttribute("aria-disabled"), row.name).toBe("true");
   }
+  expect(rows[1]?.box.getAttribute("aria-description")).toBe(
+    "A mono track has one channel",
+  );
 }
 
 // The host changes the track's channels with the editor open: the frames change at once, and the
@@ -90,11 +106,10 @@ describe("a track that changes channels", () => {
     await expect.poll(lit).toEqual(["L", "R"]);
   });
 
-  // The new count relabels the Views field, the Measure row and the view toggles by itself, with no
+  // The new count relabels the Views field, the Measure row and the Channels list by itself, with no
   // control touched: a mono track draws and measures L alone, so the Measure row lights L and offers
   // nothing else; stereo again, the channel chosen comes back.
-  test("relabels the readouts and the toggles when the snapshot says", async () => {
-    const toggles = [...byId("views").querySelectorAll("button")];
+  test("relabels the readouts and the Channels list when the snapshot says", async () => {
     await press(choice("display-mode", "Single"));
     await inTimeBase("Trig");
     await press(choice("source", "R"));
@@ -112,15 +127,24 @@ describe("a track that changes channels", () => {
     for (const other of ["R", "M", "S"]) {
       await expect.element(choice("readout-source", other)).toBeDisabled();
     }
-    await expectOnlyLeftEnabled(toggles);
+    await expect.poll(() => trackRows("channels")[3]?.box.checked).toBe(false);
+    expectOnlyLeftTicked();
     app.transport.changeChannels(2, true);
     await expect.poll(channelRead).toBe("Side");
     for (const letter of ["L", "S"]) {
       await expect.element(choice("readout-source", letter)).toBeEnabled();
     }
-    for (const button of toggles) {
-      await expect.element(button).toBeEnabled();
-    }
+    // The views asked for before it turned mono are ticked again.
+    await expect
+      .poll(() =>
+        trackRows("channels")
+          .filter((row) => row.box.checked)
+          .map((row) => row.name),
+      )
+      .toEqual(["Left", "Side"]);
+    expect(
+      trackRows("channels")[1]?.box.getAttribute("aria-disabled"),
+    ).toBeNull();
     await userEvent.click(byId("views-details"));
     await showViews(["L", "R"]);
     await press(choice("source", "L"));

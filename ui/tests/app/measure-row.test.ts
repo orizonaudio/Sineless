@@ -33,19 +33,6 @@ function readsRow(): { enabled: string[]; lit: string[] } {
   };
 }
 
-// The read part of the Views field: the letter shown, and how opaque it is on screen, its own
-// opacity times its host's.
-function readLetter(): { text: string; opacity: number } {
-  const host = byId("views-read");
-  const shown = host.querySelector(":scope > .on");
-  const opacity = (element: Element) =>
-    Number(getComputedStyle(element).opacity);
-  return {
-    text: shown?.textContent ?? "",
-    opacity: shown === null ? 0 : opacity(shown) * opacity(host),
-  };
-}
-
 const summaryWidth = () => byId("views-single").getBoundingClientRect().width;
 
 async function openViews(): Promise<void> {
@@ -106,7 +93,6 @@ describe("the Measure row", () => {
     const app = await startBeforeFrames();
     await openViews();
     expect(readsRow()).toEqual({ enabled: [], lit: [] });
-    expect(readLetter().text).toBe("—");
     expect(channelRead()).toBe("—");
     const before = summaryWidth();
     app.holdFrames(false);
@@ -115,23 +101,31 @@ describe("the Measure row", () => {
     expect(summaryWidth()).toBeCloseTo(before, 1);
   });
 
-  // Multi reads this track's lane channel: the Measure row is hidden in the Views popover, and
-  // nothing else offers a channel.
+  // Multi reads this track's lane channel: Single's Measure row is hidden there, and Multi's own,
+  // of the same name and in the same place, chooses the lane channel.
   test.each(displays.filter((display) => display !== "Single"))(
-    "is hidden in %s",
+    "is the lane channel's row in %s",
     async (display) => {
       await startApp();
       await settle();
       await showDisplay(display);
       await settle();
       expect(rowHidden("readout-source")).toBe(true);
+      expect(rowHidden("lane-channel")).toBe(false);
+      await openViews();
+      const rows = [
+        ...byId("views-popover").querySelectorAll<HTMLElement>(".popover-row"),
+      ].filter((row) => !row.hidden);
+      expect(rows[1]?.querySelector("span")?.textContent).toBe("Measure");
+      expect(rows[1]?.contains(byId("lane-channel"))).toBe(true);
     },
   );
 });
 
 describe("the Views field", () => {
-  // The views drawn lit, then a dot and the channel read, lit too; one width whichever is read.
-  test("names the views drawn and the channel read, at one width", async () => {
+  // How many views are drawn of the four, at one width however many; its name for a screen reader
+  // says the channel read too.
+  test("counts the views drawn, at one width, and names the channel read to a screen reader", async () => {
     await startApp();
     await settle();
     await showViews(["L", "R", "M"]);
@@ -140,24 +134,15 @@ describe("the Views field", () => {
       await useReadout(letter);
       await expect.poll(channelRead).toBe(named[letter]);
       expect(drawnLetters()).toEqual(["L", "R", "M"]);
-      expect(byId("views-single").textContent.startsWith("LRMS·")).toBe(true);
-      expect(readLetter()).toEqual({ text: letter, opacity: 1 });
+      expect(byId("views-shown").textContent).toBe("3 of 4");
       expect(byId("views-details").getAttribute("aria-label")).toBe(
-        `Views: L R M, measures ${named[letter]}`,
+        `Views: 3 of 4 channels, measures ${named[letter]}`,
       );
       widths.add(Math.round(summaryWidth() * 100));
     }
-    // A view not drawn stays in its place, dimmed.
-    const side = byId("views-single").querySelector(
-      ":scope > span:nth-child(4)",
-    );
-    expect(side?.textContent).toBe("S");
-    expect(
-      Number(getComputedStyle(side ?? document.body).opacity),
-    ).toBeLessThan(1);
     await showViews(["S"]);
     await expect.poll(channelRead).toBe("Side");
-    expect(readLetter()).toEqual({ text: "S", opacity: 1 });
+    expect(byId("views-shown").textContent).toBe("1 of 4");
     widths.add(Math.round(summaryWidth() * 100));
     expect(widths.size).toBe(1);
   });
@@ -170,7 +155,6 @@ describe("the Views field", () => {
     await settle();
     await expect.poll(channelRead).toBe("Left");
     expect(drawnLetters()).toEqual(["L"]);
-    expect(readLetter()).toEqual({ text: "L", opacity: 1 });
     expect(summaryWidth()).toBeCloseTo(stereo, 1);
   });
 });

@@ -5,15 +5,8 @@
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import {
-  caseColour,
-  contrast,
-  gaps,
-  opaque,
-  over,
-  type Rgb,
-} from "./colour.ts";
-import { byId, choice, press, settle, startApp } from "./harness.ts";
+import { caseColour, contrast, opaque, over, type Rgb } from "./colour.ts";
+import { byId, settle, startApp } from "./harness.ts";
 
 // WCAG 2.2: text 4.5:1 (1.4.3), a state shown by a fill 3:1 (1.4.11).
 const textContrast = 4.5;
@@ -162,10 +155,10 @@ describe("popover choices", () => {
   // An option that cannot be chosen recedes in the row names' grey under its dim, rather than
   // reading as a white option that is merely faint; one that is chosen keeps the thumb's dark label,
   // legible on the light thumb. Every way an option is unavailable: Source's views that are off,
-  // and R, M and S on a mono track. (In Multi the view toggles' row is hidden, not unavailable.)
+  // and Measure's R, M and S on a mono track.
   test.each([
     ["Source, its views off", "trigger-popover", "source", 2],
-    ["the view toggles on a mono track", "views-popover", "views", 1],
+    ["Measure on a mono track", "views-popover", "readout-source", 1],
   ] as const)(
     "%s: unavailable options read as unavailable, a chosen one stays legible",
     async (_, popoverId, groupId, inputChannels) => {
@@ -209,79 +202,6 @@ function ancestorsHidden(element: HTMLElement): HTMLElement[] {
   }
   return hidden;
 }
-
-describe("joined channels", () => {
-  // Channels can have several chosen. Chosen neighbours read as a bar group: apart by a group's inner
-  // gap, their facing corners a group's inner corners, their outer ends a thumb's full radius; and
-  // choosing or dropping a channel moves none of them. Every channel on, and L, R and S on with M
-  // off, so a join and a lone chosen channel both show.
-  test.each([
-    ["every channel on", ["M", "S"]],
-    ["L, R and S on, M off", ["S"]],
-  ] as const)("%s: chosen neighbours read as a bar group", async (_, extra) => {
-    await startApp();
-    await settle();
-    const channels = () => [...byId("views").querySelectorAll("button")];
-    // Each channel's place in its track, wherever the popover sits.
-    const lefts = () =>
-      channels().map(
-        (button) =>
-          button.getBoundingClientRect().left -
-          byId("views").getBoundingClientRect().left,
-      );
-    const popover = byId("views-popover");
-    const hidden = [popover, ...ancestorsHidden(popover)];
-    for (const node of hidden) {
-      node.hidden = false;
-    }
-    const before = lefts();
-    for (const node of hidden) {
-      node.hidden = true;
-    }
-    for (const label of extra) {
-      await press(choice("views", label));
-    }
-    await settle();
-    for (const node of hidden) {
-      node.hidden = false;
-    }
-    const after = lefts();
-    const barGap = gaps([byId("time-base-details"), byId("time-group")])[0];
-    const barInner = getComputedStyle(byId("time-group")).borderTopLeftRadius;
-    const chosen = channels().filter(
-      (button) => button.getAttribute("aria-pressed") === "true",
-    );
-    const looks = chosen.map((button) => ({
-      box: button.getBoundingClientRect(),
-      style: getComputedStyle(button),
-      joinedLeft:
-        button.previousElementSibling?.getAttribute("aria-pressed") === "true",
-      joinedRight:
-        button.nextElementSibling?.getAttribute("aria-pressed") === "true",
-    }));
-    const thumb = getComputedStyle(
-      byId("mode-popover").querySelector('button[aria-pressed="true"]') ??
-        document.body,
-    ).borderTopLeftRadius;
-    for (const node of hidden) {
-      node.hidden = true;
-    }
-    expect(after).toEqual(before);
-    expect(looks.filter((look) => look.joinedRight).length).toBeGreaterThan(0);
-    for (const [i, look] of looks.entries()) {
-      expect(look.style.borderTopLeftRadius).toBe(
-        look.joinedLeft ? barInner : thumb,
-      );
-      expect(look.style.borderTopRightRadius).toBe(
-        look.joinedRight ? barInner : thumb,
-      );
-      const next = looks[i + 1];
-      if (look.joinedRight && next) {
-        expect(next.box.left - look.box.right).toBeCloseTo(barGap ?? NaN, 1);
-      }
-    }
-  });
-});
 
 describe("lane labels", () => {
   // Preview fix, on a Compare sum lane, is a switch like the bars': on reads as on against off.

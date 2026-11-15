@@ -60,7 +60,7 @@ describe("Multi's Channels list", () => {
     // The unnamed hi-hats are named by their place among every track.
     await expect.poll(names).toEqual(["Bass", "Kick", "Track 3", "Kick 2"]);
     expect(tickedTracks()).toEqual(["Kick"]);
-    expect(count()).toBe("1/4 selected");
+    expect(count()).toBe("1 of 4 selected");
     const own = trackRows()[1];
     expect(own?.row.textContent).toContain("this track");
     expect(own?.box.getAttribute("aria-disabled")).toBe("true");
@@ -80,8 +80,8 @@ describe("Multi's Channels list", () => {
     expect(app.sent.at(-1)).toEqual({ type: "showTracks", ids: [4] });
     await tickTrack("Bass", true);
     await expect.poll(laneNames).toEqual(["Kick", "Bass", "Kick 2"]);
-    expect(count()).toBe("3/4 selected");
-    expect(multiSummary().startsWith("3/4·M·")).toBe(true);
+    expect(count()).toBe("3 of 4 selected");
+    expect(multiSummary()).toBe("3 of 4");
     await tickTrack("Kick 2", false);
     await expect.poll(laneNames).toEqual(["Kick", "Bass"]);
     // The popover stays open while tracks are chosen.
@@ -117,11 +117,11 @@ describe("Multi's Channels list", () => {
     await action("None");
     await expect.poll(tickedTracks).toEqual(["Kick"]);
     await expect.poll(laneNames).toEqual(["Kick"]);
-    expect(count()).toBe("1/4 selected");
+    expect(count()).toBe("1 of 4 selected");
     await action("All");
     await expect.poll(tickedTracks).toHaveLength(4);
     await expect.poll(laneNames).toHaveLength(4);
-    expect(count()).toBe("4/4 selected");
+    expect(count()).toBe("4 of 4 selected");
   });
 
   test("ticks with the keyboard, the box keeping the focus as the list changes", async () => {
@@ -152,7 +152,7 @@ describe("Multi's Channels list", () => {
       "This track is always shown",
     );
     expect(byId("views-details").getAttribute("aria-label")).toBe(
-      "Views: 4 of 4 tracks, Mid, labels on",
+      "Views: 4 of 4 tracks, Mid",
     );
   });
 });
@@ -168,7 +168,7 @@ describe("with more tracks than Multi shows", () => {
     await expect.poll(tickedTracks).toHaveLength(maxShownTracks);
     // This track and the first fourteen others, in the host's order.
     expect(tickedTracks()).toEqual(names().slice(0, maxShownTracks));
-    expect(count()).toBe(`${String(maxShownTracks)}/20 selected`);
+    expect(count()).toBe(`${String(maxShownTracks)} of 20 selected`);
     const rest = names().slice(maxShownTracks);
     expect(locked()).toEqual(["Kick", ...rest]);
     const last = trackRows().at(-1);
@@ -198,6 +198,40 @@ describe("with more tracks than Multi shows", () => {
       .poll(() => window.orizonDebug?.lastFrame?.lanes.length)
       .toBe(maxShownTracks + 1);
     expect(tickedTracks()).toHaveLength(maxShownTracks);
+  });
+
+  // The count has one digit or two each side: the field keeps one width and the chevron its
+  // place, a short count centred in it as a short value is in the other fields.
+  test("keeps the Views field at one width whatever the count", async () => {
+    await startApp({ trackCount: 20, othersShown: false });
+    await openList();
+    const field = () => byId("views-details").getBoundingClientRect().width;
+    const chevron = () =>
+      byId("views-details").querySelector(".chevron")?.getBoundingClientRect()
+        .left;
+    expect(multiSummary()).toBe("1 of 20");
+    const width = field();
+    const place = chevron();
+    await action("All");
+    await expect.poll(multiSummary).toBe("15 of 20");
+    expect(field()).toBeCloseTo(width, 1);
+    expect(chevron()).toBeCloseTo(place ?? NaN, 1);
+    const centre = (id: string) => {
+      const box = byId(id).getBoundingClientRect();
+      return box.left + box.width / 2;
+    };
+    await action("None");
+    await expect.poll(multiSummary).toBe("1 of 20");
+    const text = document.createRange();
+    text.selectNodeContents(byId("views-count"));
+    const shown = text.getBoundingClientRect();
+    expect(shown.left + shown.width / 2).toBeCloseTo(centre("views-multi"), 0);
+
+    // Nine tracks, as a small session has: a digit each side, at the same width.
+    await startApp({ trackCount: 9 });
+    await openList();
+    expect(multiSummary()).toBe("9 of 9");
+    expect(field()).toBeCloseTo(width, 1);
   });
 
   test("is four rows tall and scrolls, at one width whatever it lists", async () => {
@@ -232,15 +266,15 @@ describe("instances that come and go", () => {
       .poll(names)
       .toEqual(["Kick", "Bass", "Track 3", "Kick 2", "Vox"]);
     expect(tickedTracks()).not.toContain("Vox");
-    expect(count()).toBe("4/5 selected");
-    expect(multiSummary().startsWith("4/5·")).toBe(true);
+    expect(count()).toBe("4 of 5 selected");
+    expect(multiSummary()).toBe("4 of 5");
     await expect.poll(laneNames).toHaveLength(4);
 
     transport.removeTrack(2);
     // The unnamed track is the host's second now, in the list and on its lane.
     await expect.poll(names).toEqual(["Kick", "Track 2", "Kick 2", "Vox"]);
     await expect.poll(laneNames).toEqual(["Kick", "Track 2", "Kick 2"]);
-    expect(count()).toBe("3/4 selected");
+    expect(count()).toBe("3 of 4 selected");
   });
 
   test("keeps the tracks ticked when the editor is closed and opened, and through Single", async () => {
@@ -259,6 +293,98 @@ describe("instances that come and go", () => {
     expect(reopened.sent.some((message) => message.type === "showTracks")).toBe(
       false,
     );
+  });
+});
+
+// Single's Channels: the same list, with this track's four views, so both modes look and work
+// alike.
+describe("Single's Channels list", () => {
+  const views = () => trackRows("channels");
+  const ticked = () =>
+    views()
+      .filter((row) => row.box.checked)
+      .map((row) => row.name);
+  const header = () =>
+    byId("channels").querySelector(".check-count")?.textContent;
+  const press2 = async (label: "None" | "All") => {
+    const button = [...byId("channels").querySelectorAll("button")].find(
+      (each) => each.textContent === label,
+    );
+    await userEvent.click(button as HTMLElement);
+  };
+
+  test("lists Left, Right, Mid and Side in their traces' colours, those drawn ticked", async () => {
+    const app = await startApp();
+    await userEvent.click(byId("views-details"));
+    await expect.element(byId("channels")).toBeVisible();
+    expect(views().map((row) => row.name)).toEqual([
+      "Left",
+      "Right",
+      "Mid",
+      "Side",
+    ]);
+    expect(ticked()).toEqual(["Left", "Right"]);
+    expect(header()).toBe("2 of 4 selected");
+    expect(byId("views-shown").textContent).toBe("2 of 4");
+    const colourOf = (token: string) => {
+      const probe = document.createElement("span");
+      probe.style.background = `var(${token})`;
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return colour;
+    };
+    expect(
+      views().map(
+        (row) =>
+          getComputedStyle(
+            row.row.querySelector(".check-swatch") as HTMLElement,
+          ).backgroundColor,
+      ),
+    ).toEqual(
+      ["--sl-left", "--sl-right", "--sl-mid", "--sl-side"].map(colourOf),
+    );
+    // Ticking asks the engine for the views, in their order.
+    await userEvent.click(views()[3]?.row as HTMLElement);
+    await expect.poll(ticked).toEqual(["Left", "Right", "Side"]);
+    expect(
+      app.sent.filter((message) => message.type === "setSetting").at(-1),
+    ).toEqual({
+      type: "setSetting",
+      name: "channelViews",
+      value: ["left", "right", "side"],
+    });
+    await expect.poll(() => window.orizonDebug?.lastFrame?.views.size).toBe(3);
+    // The popover stays open while channels are chosen.
+    expect(byId("views-popover").hidden).toBe(false);
+  });
+
+  test("None leaves Left alone, and All ticks all four", async () => {
+    await startApp();
+    await userEvent.click(byId("views-details"));
+    await press2("All");
+    await expect.poll(ticked).toEqual(["Left", "Right", "Mid", "Side"]);
+    expect(header()).toBe("4 of 4 selected");
+    await expect.poll(() => byId("views-shown").textContent).toBe("4 of 4");
+    await press2("None");
+    await expect.poll(ticked).toEqual(["Left"]);
+    expect(header()).toBe("1 of 4 selected");
+    await expect.poll(() => window.orizonDebug?.lastFrame?.views.size).toBe(1);
+  });
+
+  test("is as wide and as tall as Multi's list, in the same place", async () => {
+    await startApp();
+    await userEvent.click(byId("views-details"));
+    const popover = () => byId("views-popover").getBoundingClientRect();
+    const single = byId("channels").getBoundingClientRect();
+    const offset = single.left - popover().left;
+    await press(choice("display-mode", "Multi"));
+    await userEvent.click(byId("views-details"));
+    await expect.element(byId("tracks")).toBeVisible();
+    const multi = byId("tracks").getBoundingClientRect();
+    expect(multi.width).toBe(single.width);
+    expect(multi.height).toBe(single.height);
+    expect(multi.left - popover().left).toBeCloseTo(offset, 1);
   });
 });
 

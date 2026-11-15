@@ -63,35 +63,24 @@
                 <circle cx="10" cy="9" r=".6" /></svg
               ><b id="views-summary" class="choices"
                 ><span id="views-single" class="on"
-                  ><span id="views-read"></span></span
-                ><span id="views-multi"
-                  ><span class="count choices"
-                    ><span id="views-count" class="on"></span
-                    ><span aria-hidden="true">88/88</span></span
-                  >·<span id="views-lanes"></span>·<svg
-                    class="icon tag"
-                    viewBox="0 0 12 12"
-                    aria-hidden="true"
-                  >
-                    <path d="M1.5 2.5h5.75L10.5 6 7.25 9.5H1.5Z" /></svg
-                  >·<span class="sum"></span></span></b
+                  ><span id="views-shown"></span></span
+                ><span id="views-multi" class="choices"
+                  ><span id="views-count" class="on"></span
+                  ><span aria-hidden="true">88 of 88</span></span
+                ></b
               ><svg class="chevron" viewBox="0 0 8 8" aria-hidden="true">
                 <path d="M1.5 3 4 5.5 6.5 3" />
               </svg>
             </button>
             <div class="popover" id="views-popover" hidden>
               <div class="popover-title">Views</div>
-              <div class="popover-row" data-mode="single">
-                <span>Channels</span>
-                <div class="segmented toggles" id="views"></div>
-              </div>
               <div
-                class="popover-row"
+                class="popover-row popover-row-top"
                 data-mode="single"
-                data-help="readoutSource"
+                data-help="channelViews"
               >
-                <span>Measure</span>
-                <div class="segmented" id="readout-source"></div>
+                <span id="channels-label">Channels</span>
+                <div id="channels"></div>
               </div>
               <div
                 class="popover-row popover-row-top"
@@ -104,11 +93,19 @@
               </div>
               <div
                 class="popover-row"
+                data-mode="single"
+                data-help="readoutSource"
+              >
+                <span>Measure</span>
+                <div class="segmented" id="readout-source"></div>
+              </div>
+              <div
+                class="popover-row"
                 data-mode="multi"
                 data-help="laneChannel"
                 hidden
               >
-                <span>Channel</span>
+                <span>Measure</span>
                 <div class="segmented" id="lane-channel"></div>
               </div>
               <div
@@ -119,15 +116,6 @@
               >
                 <span>Compare</span>
                 <div class="segmented" id="compare"></div>
-              </div>
-              <div
-                class="popover-row"
-                data-mode="multi"
-                data-help="laneLabels"
-                hidden
-              >
-                <span>Labels</span>
-                <div class="segmented" id="lane-labels-choice"></div>
               </div>
             </div>
           </div>
@@ -152,6 +140,10 @@
               <div class="popover-row">
                 <span>Traces</span>
                 <div class="segmented" id="layout"></div>
+              </div>
+              <div class="popover-row" data-help="laneLabels">
+                <span>Labels</span>
+                <div class="segmented" id="lane-labels-choice"></div>
               </div>
             </div>
           </div>

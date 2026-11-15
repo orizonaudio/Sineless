@@ -140,10 +140,8 @@ describe("Compare's last lane", () => {
       .element(pick("Difference"))
       .toHaveAttribute("aria-pressed", "true");
     expect(pick("Sum").getAttribute("aria-pressed")).toBe("false");
-    expect(multiSummary()).toBe("2/4·M··Δ");
-    expect(viewsName()).toBe(
-      "Views: 2 of 4 tracks, Mid, labels on, Compare difference",
-    );
+    expect(multiSummary()).toBe("2 of 4");
+    expect(viewsName()).toBe("Views: 2 of 4 tracks, Mid, Compare difference");
     expect(lastFix()).toBe(false);
     await show("Sum");
     expect(previewFix()?.getAttribute("aria-pressed")).toBe("false");
@@ -202,25 +200,21 @@ describe("Compare's last lane", () => {
     await setCompared("Kick 2", false);
   });
 
-  // The Views field says which lane Compare adds, Σ or Δ, and is as wide with either, so nothing
-  // after it in the toolbar moves; with Compare off the sign of the lane last chosen stays,
-  // dimmed, and Compare comes back on that lane.
-  test("names the lane in the Views field, at one width, and keeps it while off", async () => {
+  // The Views field's name says which lane Compare adds, for a screen reader; the field itself
+  // shows the count alone and keeps its width. With Compare off the lane last chosen is kept, and
+  // Compare comes back on it.
+  test("names the lane in the Views field's name, and keeps it while off", async () => {
     await showCompare();
     await show("Sum");
-    expect(multiSummary()).toBe("2/4·M··Σ");
-    expect(viewsName()).toBe(
-      "Views: 2 of 4 tracks, Mid, labels on, Compare sum",
-    );
+    expect(multiSummary()).toBe("2 of 4");
+    expect(viewsName()).toBe("Views: 2 of 4 tracks, Mid, Compare sum");
     const width = byId("views-summary").getBoundingClientRect().width;
     await show("Difference");
-    expect(multiSummary()).toBe("2/4·M··Δ");
-    expect(viewsName()).toBe(
-      "Views: 2 of 4 tracks, Mid, labels on, Compare difference",
-    );
+    expect(multiSummary()).toBe("2 of 4");
+    expect(viewsName()).toBe("Views: 2 of 4 tracks, Mid, Compare difference");
     expect(byId("views-summary").getBoundingClientRect().width).toBe(width);
     await setCompare(false);
-    expect(multiSummary()).toBe("2/4·M··Δ");
+    expect(multiSummary()).toBe("2 of 4");
     expect(pick("Difference").getAttribute("aria-pressed")).toBe("false");
     await show("Sum");
   });
