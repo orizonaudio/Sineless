@@ -441,13 +441,13 @@ void Analyzer::setView(double start, double end)
 }
 
 // The selection is kept with the instance, so that it outlives this analyzer (the editor closed
-// and opened again); it is not saved. This track is always shown and is not part of it.
+// and opened again); it is not saved. This track is always shown, whether or not it is asked
+// for: selectLanes shows it first and counts the others only.
 void Analyzer::setShown(const std::vector<std::uint64_t>& ids)
 {
-    const std::uint64_t own = ownLane;
     std::vector<std::uint64_t> next;
     for (const std::uint64_t id : ids) {
-        if (id != own && !contains(next, id)) {
+        if (!contains(next, id)) {
             next.push_back(id);
         }
     }

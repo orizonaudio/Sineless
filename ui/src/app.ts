@@ -939,7 +939,7 @@ export class OscilloscopeApp {
   }
 
   // Only the controls that apply are shown. Multi shows each track's lane channel: the channel views
-  // and the trigger source do not apply, and the group (with its lane channel and Compare) does
+  // and the trigger source do not apply, and the track list (with its lane channel and Compare) does
   // only there.
   private updateMultiControls(): void {
     const multi = this.multiMode();
@@ -1151,7 +1151,7 @@ export class OscilloscopeApp {
         this.backend.previewFix(false);
       }
     }
-    // Compare's note and controls follow the switch at once: a track alone in its group gets no
+    // Compare's note and controls follow the switch at once: a track shown alone gets no
     // new lanes from it, so no frame would place them.
     if (name === "compare" || name === "laneLabels" || name === "align") {
       this.placeLaneLabels();
