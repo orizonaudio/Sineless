@@ -184,6 +184,28 @@ TEST(State, AStateWithoutLaneLabelsOpensWithThemOn)
     EXPECT_GT(without, 0) << "no golden state predates the Labels switch";
 }
 
+// A project saved before Compare could show the difference opens on the sum, as it showed then,
+// with Align on for when the difference is chosen.
+TEST(State, AStateWithoutCompareLaneAndAlignOpensOnTheSum)
+{
+    int without = 0;
+    for (const char* file : kEveryGoldenStateFile) {
+        const std::string text = readTestFile(file);
+        const nlohmann::json settings = nlohmann::json::parse(text).at("settings");
+        if (settings.contains("compareLane") || settings.contains("align")) {
+            continue;
+        }
+        ++without;
+        const Settings opened = deserializeState(text).settings;
+        EXPECT_EQ(opened.enumValue<protocol::CompareLane>(SettingId::kCompareLane),
+                  protocol::CompareLane::kSum)
+            << file;
+        EXPECT_EQ(opened.enumValue<protocol::Toggle>(SettingId::kAlign), protocol::Toggle::kOn)
+            << file;
+    }
+    EXPECT_GT(without, 0) << "no golden state predates the difference";
+}
+
 // A project saved before the trigger Position was a setting reopens with the trigger point where
 // it was then, 10% from the left.
 TEST(State, AStateWithoutATriggerPositionOpensAtTheOldPlace)
