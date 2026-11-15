@@ -1,9 +1,9 @@
-// Multi's Labels switch (#407), through the real page and the mock back end: Off hides the lane
-// labels, stacked and overlaid, live and frozen, with several tracks or one; Compare's labels hold
-// its readouts, so they show whatever Labels says while Compare is on, and the row
-// is greyed out keeping its choice; Single has no lane labels and no Labels row in reach; the
-// choice is the engine's, so the page reopened shows it. No case waits for new lanes after the
-// switch it tests: a track shown alone gets none.
+// The Labels switch (#407, #425), through the real page and the mock back end: Off hides the lane
+// labels, stacked and overlaid, live and frozen, with several tracks or one, and in Single, whose
+// labels name its views; with Compare on it hides the tracks' labels and their match readouts
+// too, and Compare's own lane keeps its label, which holds its figure and its switch; the choice
+// is the engine's, so the page reopened shows it. No case waits for new lanes after the switch it
+// tests: a track shown alone gets none.
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -16,9 +16,9 @@ import {
   setCompare,
   settle,
   showOnly,
+  showViews,
   startApp,
   type Started,
-  multiSummary,
 } from "./harness.ts";
 
 const layouts = ["Stack", "Overlay"] as const;
@@ -49,13 +49,6 @@ function matchReadouts(): number {
 
 function labelsRow(label: "Off" | "On"): HTMLButtonElement {
   return choice("lane-labels-choice", label);
-}
-
-// Multi's summary in the Views field ends in a tag, lit (.on) while the lane labels show.
-function tagLit(): boolean {
-  const tag = byId("views-multi").querySelector(".tag");
-  expect(tag, "the Views field's tag").not.toBeNull();
-  return tag?.classList.contains("on") ?? false;
 }
 
 function viewsName(): string {
@@ -104,43 +97,54 @@ describe.each(groups)("with %s", (_, group, names) => {
         await expect.poll(shownNames).toEqual(names);
       });
 
-      test("Compare shows them whatever Labels says, and greys out the row keeping Off", async () => {
+      test("with Compare on, Off hides the tracks' labels and readouts and keeps the lane Compare adds", async () => {
         await startApp();
         await multi(group, layout, frozen);
-        await setLabels(false);
-        await expect.poll(labelCount).toBe(0);
-
         await setCompare(true);
-        await expect.poll(labelCount).toBeGreaterThan(0);
         if (names.length > 1) {
           await expect.poll(matchReadouts).toBeGreaterThan(0);
-        } else {
           await expect
-            .poll(
-              () =>
-                byId("lane-labels").querySelector(".compare-note")
-                  ?.textContent ?? "",
-            )
-            .toContain("No other track to compare with");
+            .poll(() => shownNames().at(-1)?.startsWith("Sum"))
+            .toBe(true);
         }
-        expect(labelsRow("Off").disabled).toBe(true);
-        expect(labelsRow("On").disabled).toBe(true);
-        expect(labelsRow("Off").getAttribute("aria-pressed")).toBe("true");
+        // The row is a choice like any other, Compare on or off.
+        expect(labelsRow("Off").disabled).toBe(false);
+        await setLabels(false);
+        if (names.length > 1) {
+          await expect
+            .poll(() => shownNames().map((name) => name.slice(0, 3)))
+            .toEqual(["Sum"]);
+          expect(matchReadouts()).toBe(0);
+          const sum = byId("lane-labels").querySelector(".lane-label > span");
+          expect(sum?.querySelector("[data-help='sumGain']")).not.toBeNull();
+          expect(sum?.querySelector(".preview-fix")).not.toBeNull();
+        } else {
+          // Nothing is compared: no label, and the note that says why stays.
+          await expect.poll(labelCount).toBe(0);
+          expect(
+            byId("lane-labels").querySelector(".compare-note")?.textContent,
+          ).toContain("No other track to compare with");
+        }
+        await setLabels(true);
+        await expect
+          .poll(() => shownNames().slice(0, names.length))
+          .toHaveLength(names.length);
+        if (names.length > 1) {
+          await expect.poll(matchReadouts).toBeGreaterThan(0);
+        }
 
         await setCompare(false);
-        await expect.poll(labelCount).toBe(0);
-        expect(labelsRow("Off").disabled).toBe(false);
-        expect(labelsRow("On").disabled).toBe(false);
+        await expect.poll(shownNames).toEqual(names);
       });
     });
   });
 });
 
 describe("the Labels row", () => {
-  test("is in Multi's Views popover, and asks the engine for the choice", async () => {
+  test("is in the Layout popover, under Traces, and asks the engine for the choice", async () => {
     const app = await startApp();
     await press(choice("display-mode", "Multi"));
-    expect(byId("views-popover").contains(labelsRow("Off"))).toBe(true);
+    expect(byId("layout-popover").contains(labelsRow("Off"))).toBe(true);
     await press(labelsRow("Off"));
     const sent = app.sent.filter((message) => message.type === "setSetting");
     expect(sent.at(-1)).toEqual({
@@ -150,67 +154,69 @@ describe("the Labels row", () => {
     });
   });
 
-  test("is hidden in Single, which shows no lane labels, and applies back in Multi", async () => {
-    const app = await startApp();
-    await multi(true, "Stack", false);
-    await press(choice("display-mode", "Single"));
+  // One setting for both modes: in Single the labels name the views drawn, in their order and
+  // layout, and Off hides them there too, whoever chooses it.
+  test.each(layouts)(
+    "names Single's views, %s, and hides them when Off",
+    async (layout) => {
+      const app = await startApp();
+      await press(choice("display-mode", "Single"));
+      await press(choice("layout", layout));
+      await showViews(["L", "R", "S"]);
+      expect(
+        labelsRow("Off").closest<HTMLElement>(".popover-row")?.hidden,
+      ).toBe(false);
+      await expect.poll(shownNames).toEqual(["Left", "Right", "Side"]);
+      // One label per stacked lane, or one legend.
+      expect(labelCount()).toBe(layout === "Stack" ? 3 : 1);
+      // The views drawn change: the labels follow the frame.
+      await showViews(["L", "M"]);
+      await expect.poll(shownNames).toEqual(["Left", "Mid"]);
+      await setLabels(false);
+      await expect.poll(labelCount).toBe(0);
+      // Chosen by the host (automation, an undo), it shows at once.
+      app.transport.send({
+        type: "setSetting",
+        name: "laneLabels",
+        value: "on",
+      });
+      await expect.poll(shownNames).toEqual(["Left", "Mid"]);
+      // And it is Multi's choice too.
+      await press(choice("display-mode", "Multi"));
+      await expect.poll(labelCount).toBeGreaterThan(0);
+    },
+  );
+
+  test("names a mono track's one view", async () => {
+    await startApp({ inputChannels: 1 });
     await settle();
-    expect(labelsRow("Off").closest<HTMLElement>(".popover-row")?.hidden).toBe(
-      true,
-    );
-    expect(labelCount()).toBe(0);
-    // Chosen while Single shows (a host's automation or undo), it holds once Multi is back.
-    app.transport.send({
-      type: "setSetting",
-      name: "laneLabels",
-      value: "off",
-    });
-    await settle();
-    await press(choice("display-mode", "Multi"));
-    await settle();
-    expect(labelCount()).toBe(0);
-    app.transport.send({ type: "setSetting", name: "laneLabels", value: "on" });
-    await expect.poll(labelCount).toBeGreaterThan(0);
+    await expect.poll(shownNames).toEqual(["Left"]);
   });
 
-  // The Views field's tag, after Σ, is lit while the labels show and dimmed while they do not, and
-  // its name says so: Compare's labels always show, so it is lit with Compare on (#412).
-  test("lights the Views field's tag while the labels show, Compare's included", async () => {
+  // The Layout field shows the layout alone, as every toolbar field shows one value: whether the
+  // labels show is seen on the screen, and chosen in the popover. Neither field moves or says
+  // anything of the labels when they change.
+  test("leaves the Layout and Views fields as they are when Labels changes", async () => {
     await startApp();
     await press(choice("display-mode", "Multi"));
-    await setCompare(false);
+    await press(choice("layout", "Stack"));
+    const fields = () =>
+      ["layout-details", "views-details"].map((id) => {
+        const { left, width } = byId(id).getBoundingClientRect();
+        return {
+          left,
+          width,
+          name: byId(id).getAttribute("aria-label"),
+          text: byId(id).querySelector("b .on")?.textContent,
+        };
+      });
     await setLabels(true);
-    expect(tagLit()).toBe(true);
-    expect(viewsName()).toMatch(/, labels on$/);
-    expect(multiSummary()).toBe("4/4·M··Σ");
-    await setLabels(false);
-    expect(tagLit()).toBe(false);
-    expect(viewsName()).not.toContain("labels");
-    await setCompare(true);
-    expect(tagLit()).toBe(true);
-    expect(viewsName()).toMatch(/, labels on, Compare sum$/);
-    await setCompare(false);
-    expect(tagLit()).toBe(false);
-  });
-
-  test("dims the tag in Multi when the labels were turned off while Single showed", async () => {
-    const app = await startApp();
-    await press(choice("display-mode", "Multi"));
-    await setCompare(false);
-    await setLabels(true);
-    await press(choice("display-mode", "Single"));
-    expect(viewsName()).toMatch(/^Views: L/);
-    // As a host's undo would.
-    app.transport.send({
-      type: "setSetting",
-      name: "laneLabels",
-      value: "off",
-    });
-    await settle();
-    await press(choice("display-mode", "Multi"));
-    await settle();
-    expect(tagLit()).toBe(false);
+    const on = fields();
+    expect(on[0]?.name).toBe("Layout: Stack");
+    expect(on[0]?.text).toBe("Stack");
     expect(viewsName()).toBe("Views: 4 of 4 tracks, Mid");
+    await setLabels(false);
+    expect(fields()).toEqual(on);
   });
 
   test("is the engine's: the page reopened shows the labels off", async () => {

@@ -17,8 +17,8 @@ import {
 // The rows each display's Views popover shows, in order.
 const rows: Readonly<Record<Display, readonly string[]>> = {
   Single: ["Channels", "Measure"],
-  Multi: ["Channels", "Channel", "Compare", "Labels"],
-  Compare: ["Channels", "Channel", "Compare", "Labels"],
+  Multi: ["Channels", "Measure", "Compare"],
+  Compare: ["Channels", "Measure", "Compare"],
 };
 
 function shownRows(): string[] {
@@ -77,10 +77,6 @@ describe.each(displays)("in %s", (display) => {
         expect(row.closest("[hidden]"), row.textContent).not.toBeNull();
       }
     }
-    // With Compare on, Labels shows but cannot be chosen: Compare's labels always show.
-    if (display === "Compare") {
-      expect(choice("lane-labels-choice", "Off").disabled).toBe(true);
-    }
   });
 
   // With help on, the field explains the display's own settings.
@@ -126,15 +122,14 @@ describe("the Views popover", () => {
     },
   );
 
-  test("stays open while Compare and Labels are chosen in it", async () => {
+  test("stays open while Compare is chosen in it", async () => {
     await startApp();
     await showDisplay("Multi");
     await openViews();
     for (const [host, label] of [
       ["compare", "Sum"],
       ["compare", "Off"],
-      ["lane-labels-choice", "Off"],
-      ["lane-labels-choice", "On"],
+      ["compare", "Diff"],
     ] as const) {
       const button = choice(host, label);
       await userEvent.click(button);

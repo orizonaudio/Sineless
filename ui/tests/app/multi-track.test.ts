@@ -180,7 +180,7 @@ describe("the Compare switch", () => {
     expect(window.orizonDebug?.lastFrame?.comparison).toBeUndefined();
     await press(choice("display-mode", "Multi"));
     await expect.poll(hasSumLane).toBe(true);
-    expect(multiSummary()).toBe("4/4·M··Σ");
+    expect(multiSummary()).toBe("4 of 4");
   });
 
   // While Compare stays on screen, Preview fix stays on: pressing the Multi or On already pressed,

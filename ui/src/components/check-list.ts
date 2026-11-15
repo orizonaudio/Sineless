@@ -8,6 +8,8 @@
 // user finds it and hears why (APG, Focusability of disabled controls). The list changes nothing
 // by itself: it asks, and shows what it is then given.
 
+import { fitCutNames } from "./cut-name.ts";
+
 export interface CheckRow {
   readonly id: string;
   // The row's name, built for this row (so a long one can roll under the row's pointer).
@@ -20,6 +22,8 @@ export interface CheckRow {
   readonly locked?: string;
   // A note after the name ("this track").
   readonly tag?: string;
+  // The help topic that explains the row, where it has one of its own.
+  readonly help?: string;
 }
 
 export interface CheckListOptions {
@@ -116,9 +120,13 @@ export class CheckList {
         nodes.name.replaceChildren(...row.name(nodes.row));
       }
       nodes.tag.textContent = row.tag ?? "";
+      if (row.help !== undefined) {
+        nodes.row.dataset["help"] = row.help;
+      }
     });
+    fitCutNames(this.list);
     const ticked = rows.filter((row) => row.checked).length;
-    const text = `${String(ticked)}/${String(rows.length)} selected`;
+    const text = `${String(ticked)} of ${String(rows.length)} selected`;
     if (this.count.textContent !== text) {
       this.count.textContent = text;
     }

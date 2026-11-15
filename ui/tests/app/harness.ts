@@ -425,20 +425,22 @@ export async function press(button: HTMLElement): Promise<void> {
   await userEvent.click(button);
 }
 
-// The rows of Multi's Channels list in the Views popover, each with its track's whole name (and
-// its number among its track's instances, as "Bass 1") and its check box.
-export function trackRows(): {
+// The rows of a Channels list in the Views popover (Multi's tracks unless Single's "channels" is
+// asked for), each with its whole name (a track's with its number among its track's instances, as
+// "Bass 1") and its check box.
+export function trackRows(list: "tracks" | "channels" = "tracks"): {
   name: string;
   row: HTMLElement;
   box: HTMLInputElement;
 }[] {
-  return [...byId("tracks").querySelectorAll<HTMLElement>(".check-row")].map(
+  return [...byId(list).querySelectorAll<HTMLElement>(".check-row")].map(
     (row) => {
       const cut = row.querySelector<HTMLElement>(".cut-name");
       const number = row.querySelector(".instance")?.textContent;
       const name =
         cut?.dataset["fullName"] ??
         cut?.querySelector(".cut-shown")?.textContent ??
+        row.querySelector(".check-name")?.textContent ??
         "";
       return {
         name: number === undefined ? name : `${name} ${number}`,
@@ -480,15 +482,15 @@ export async function showOnly(others: readonly string[]): Promise<void> {
   }
 }
 
-// Multi's summary in the Views field as it reads ("4/4·M··Σ"; its tag is an icon).
+// Multi's summary in the Views field as it reads ("4 of 4"; its tag is an icon).
 // As read on screen: of values stacked in one place (the lane Compare adds, Σ or Δ), the one
 // showing.
 export function multiSummary(): string {
   const shown = byId("views-multi").cloneNode(true) as HTMLElement;
-  for (const hidden of shown.querySelectorAll(".choices > span:not(.on)")) {
+  for (const hidden of shown.querySelectorAll("span:not(.on)")) {
     hidden.remove();
   }
-  return shown.textContent.replace(/\s/g, "");
+  return shown.textContent.trim();
 }
 
 // Whether the popover row holding a control is hidden: the Views popover hides the rows of the
@@ -548,44 +550,54 @@ export async function setPressed(
   await expect.element(button).toHaveAttribute("aria-pressed", String(pressed));
 }
 
-// Shows the views whose toggles are labelled `shown` ("L", "M") and hides the others, then waits
-// for a frame drawing them.
+const viewLetters = ["L", "R", "M", "S"] as const;
+const viewRowNames = ["Left", "Right", "Mid", "Side"] as const;
+
+// Shows the views named by their letters in `shown` ("L", "M") and hides the others, by ticking
+// rows of Single's Channels list, then waits for a frame drawing them.
 export async function showViews(shown: readonly string[]): Promise<void> {
   if (byId("views-popover").hidden) {
     await userEvent.click(byId("views-details"));
   }
-  const toggles = [...byId("views").querySelectorAll("button")];
+  const row = (letter: string) =>
+    trackRows("channels").find(
+      (each) => each.name === viewRowNames[viewLetters.indexOf(letter as "L")],
+    );
+  const tick = async (letter: string, on: boolean) => {
+    if (row(letter)?.box.checked !== on) {
+      await userEvent.click(row(letter)?.row as HTMLElement);
+    }
+    await expect.poll(() => row(letter)?.box.checked).toBe(on);
+  };
   // Shown ones first, so that one view stays shown throughout.
-  for (const button of toggles) {
-    if (shown.includes(button.textContent)) {
-      await setPressed(button, true);
+  for (const letter of viewLetters) {
+    if (shown.includes(letter)) {
+      await tick(letter, true);
     }
   }
-  for (const button of toggles) {
-    if (!shown.includes(button.textContent)) {
-      await setPressed(button, false);
+  for (const letter of viewLetters) {
+    if (!shown.includes(letter)) {
+      await tick(letter, false);
     }
   }
-  // The toggle is named after the views a frame has drawn, so its name changes a frame after the
-  // last toggle: close it once that frame has come, not while the click's locator can go stale.
-  const drawn = toggles
-    .map((button) => button.textContent)
-    .filter((label) => shown.includes(label));
-  await expect.poll(drawnLetters).toEqual(drawn);
+  // Closed once the Views field counts them (from a frame that draws them, or before the first
+  // frame from the settings), not while the click's locator can go stale.
+  await expect
+    .poll(() => byId("views-shown").textContent)
+    .toBe(`${String(shown.length)} of 4`);
   await userEvent.click(byId("views-details"));
 }
 
-// The letters the Views field lights: the views the frame draws, not the channel read after them.
+// The letters of the views the latest frame draws.
 export function drawnLetters(): string[] {
-  return [...byId("views-single").querySelectorAll(":scope > .on")].map(
-    (letter) => letter.textContent,
-  );
+  const views = window.orizonDebug?.lastFrame?.views;
+  return viewLetters.filter((_, view) => views?.has(view as 0) === true);
 }
 
 // The channel the Views field names as read, in full ("Left"; "—" before a frame says), from its
 // label.
 export function channelRead(): string | undefined {
-  return /, measures (.+)$/.exec(
+  return /, measures ([^,]+)/.exec(
     byId("views-details").getAttribute("aria-label") ?? "",
   )?.[1];
 }

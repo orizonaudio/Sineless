@@ -72,7 +72,7 @@ import {
   type CursorPair,
   type LevelPair,
 } from "./view/cursors.ts";
-import { choiceLabels, compareLaneSigns } from "./view/choice-labels.ts";
+import { choiceLabels } from "./view/choice-labels.ts";
 import { drawGrid, gridColumns } from "./view/grid.ts";
 import {
   drawsLabels,
@@ -177,6 +177,11 @@ const wheelZoomRate = 0.01;
 const maxWheelZoomDelta = 25;
 // The Compare view's sum lane: an id no track has, and a neutral colour.
 const sumLaneId = -100;
+// A Single view's label, below any lane's id: this less the view's number.
+const viewLabelId = -200;
+
+// A lane label: a track's lane, or a view of this track, with its swatch's colour as CSS.
+type LabelStyle = LaneStyle & { readonly swatch: string };
 // Cursors snap to a target within this distance (CSS px) unless Option is held.
 const snapRadius = 10;
 // A drag shorter than this (CSS px) is a click, not a zoom selection.
@@ -364,7 +369,6 @@ export class OscilloscopeApp {
   // What the Measure row last showed: the view lit and the views enabled.
   private readoutShown: string | undefined;
   // The Views field's channel read: every channel's letter and "—" in one place, one shown.
-  private readSummary: StackedSummary | undefined;
   // Freeze's label, "Freeze" or "Frozen", both in one place so freezing resizes nothing (AD-26).
   private freezeLabel: StackedSummary | undefined;
   // The grid's popover: a row per choice, each reading and writing its one setting, in force in
@@ -380,7 +384,7 @@ export class OscilloscopeApp {
   private markerView: ViewName | undefined;
   // What the Source row last showed: the view lit and the views enabled.
   private sourceShown = "";
-  private readonly viewToggles = new Map<ViewName, HTMLButtonElement>();
+  private viewList: CheckList | undefined;
   private beatSpanField: DragField | undefined;
   private beatSpanNames: string[] = [];
   private cycleKey = "";
@@ -397,7 +401,6 @@ export class OscilloscopeApp {
   // Compare's switch in the Views popover (Off, or the lane it adds), and that lane's sign in the
   // Views field's summary.
   private compareChoice: Segmented | undefined;
-  private compareSign: StackedSummary | undefined;
   private matchNodes: (HTMLElement | undefined)[] = [];
   // Each lane's name, marked while the lane shows samples that are not finite.
   private laneNameNodes: HTMLElement[] = [];
@@ -412,8 +415,8 @@ export class OscilloscopeApp {
   // the Views popover's Channels list in Multi, and its count in the Views field.
   private tracks: readonly TrackEntry[] = [];
   private trackList: CheckList | undefined;
-  private laneChannelSummary: StackedSummary | undefined;
   private drawnLaneCount = 0;
+  private drawnViewSet = 0;
   private drawnLaneSet = 0;
   // What the last frame's Compare lane was (the sum or the difference): its label follows it.
   private drawnCompareLane: CompareLane | undefined;
@@ -581,7 +584,7 @@ export class OscilloscopeApp {
       : ViewLayout.overlaid;
   }
 
-  // The views asked for, as the toggles show them.
+  // The views asked for, as Single's Channels list ticks them.
   private shownViews(): ViewName[] {
     const value = this.store.get("channelViews");
     const names = Array.isArray(value) ? value : [];
@@ -659,31 +662,26 @@ export class OscilloscopeApp {
       this.numberField(name as SettingName, field);
     }
 
-    const views = element("views");
-    for (const name of viewOrder) {
-      const button = document.createElement("button");
-      button.className = "toggle";
-      button.textContent = viewLabels[name];
-      button.dataset["help"] = viewHelp[name];
-      button.style.setProperty("--color", `var(${viewColorTokens[name]})`);
-      button.setAttribute("aria-pressed", "false");
-      button.addEventListener("click", () => {
+    // Single's Channels: the four views of this track, those ticked drawn. One stays ticked; a
+    // mono track has Left alone, and None and All change nothing there.
+    this.viewList = new CheckList(element("channels"), {
+      labelledBy: "channels-label",
+      onToggle: (id, checked) => {
         const shown = new Set(this.shownViews());
-        if (shown.has(name)) {
-          shown.delete(name);
+        if (checked) {
+          shown.add(id as ViewName);
         } else {
-          shown.add(name);
+          shown.delete(id as ViewName);
         }
-        if (shown.size > 0) {
-          this.request(
-            "channelViews",
-            viewOrder.filter((view) => shown.has(view)),
-          );
-        }
-      });
-      views.append(button);
-      this.viewToggles.set(name, button);
-    }
+        this.showViews(viewOrder.filter((view) => shown.has(view)));
+      },
+      onNone: () => {
+        this.showViews(viewOrder.slice(0, 1));
+      },
+      onAll: () => {
+        this.showViews(viewOrder);
+      },
+    });
 
     const segment = (
       name: SettingName,
@@ -751,10 +749,6 @@ export class OscilloscopeApp {
         );
       },
     });
-    this.laneChannelSummary = new StackedSummary(
-      element("views-lanes"),
-      viewLabels,
-    );
     // One channel for every lane: single choice, unlike Single's views.
     segment(
       "laneChannel",
@@ -779,11 +773,6 @@ export class OscilloscopeApp {
         }
         this.request("compare", value === "off" ? "off" : "on");
       },
-    );
-    this.compareSign = new StackedSummary(
-      element("views-multi").querySelector<HTMLElement>(".sum") ??
-        element("views-multi"),
-      compareLaneSigns,
     );
     segment("laneLabels", "lane-labels-choice", [
       ["off", "Off"],
@@ -815,10 +804,6 @@ export class OscilloscopeApp {
         this.request("readoutSource", value);
       },
     );
-    this.readSummary = new StackedSummary(element("views-read"), {
-      ...viewLabels,
-      none: "—",
-    });
 
     const gridRow = (
       kind: GridSettingKind | "Division",
@@ -874,6 +859,8 @@ export class OscilloscopeApp {
           }
         }
         popover.hidden = !open;
+        // Names in it are cut to the room they have, which they have only on show.
+        fitCutNames(popover);
         details.setAttribute("aria-expanded", String(open));
         this.placePopover(id, group);
       });
@@ -975,10 +962,7 @@ export class OscilloscopeApp {
         : "channelViews";
       this.nameViews();
     }
-    // Compare's labels hold its controls and always show: the Labels row is greyed out meanwhile,
-    // keeping its choice for when Compare is off.
-    this.segmented.get("laneLabels")?.enable(() => !this.compareMode());
-    this.updateViewToggles();
+    this.updateViewList();
     this.updateReadoutChoices();
     this.updateSourceChoices();
     this.updateStatus();
@@ -1022,31 +1006,21 @@ export class OscilloscopeApp {
     this.updateViewSummary();
   }
 
-  // The Views field names the views the frame draws (a mono track's L alone, whatever was asked
-  // for): all four letters, those drawn lit, so the field keeps its width whichever are shown; then
-  // a dot and the channel read, "—" until a Single frame says, in one width whichever it is.
+  // Single's summary in the Views field: how many of the four views the frame draws (a mono
+  // track's one, whatever was asked for), then the channel read, "—" until a Single frame says:
+  // "2/4·L", at one width whatever it says. Its name for screen readers says the same in words.
   private updateViewSummary(): void {
     const drawn = this.drawnViews();
     const read = this.readChannel();
-    const text = `${drawn.map((view) => viewLabels[view]).join(" ")}, measures ${
+    const text = `${String(drawn.length)} of ${String(viewOrder.length)} channels, measures ${
       read === undefined ? "—" : viewNames[ChannelView[read]]
     }`;
     if (text === this.viewSummary) {
       return;
     }
     this.viewSummary = text;
-    const readHost = element("views-read");
-    element("views-single").replaceChildren(
-      ...viewOrder.map((view) => {
-        const letter = document.createElement("span");
-        letter.textContent = viewLabels[view];
-        letter.className = drawn.includes(view) ? "on" : "";
-        return letter;
-      }),
-      "·",
-      readHost,
-    );
-    this.readSummary?.show(read ?? "none");
+    element("views-shown").textContent =
+      `${String(drawn.length)} of ${String(viewOrder.length)}`;
     this.viewsNames.single = `Views: ${text}`;
     this.nameViews();
   }
@@ -1059,18 +1033,47 @@ export class OscilloscopeApp {
     );
   }
 
-  // The view toggles: pressed as asked for; disabled in Multi, which shows each track's lane
-  // channel, and for R, M and S on a mono track, which would only repeat L. The one place that
-  // decides, for every case.
-  private updateViewToggles(): void {
-    const shown = this.shownViews();
-    const multi = this.multiMode();
-    this.updateViewSummary();
-    for (const [view, button] of this.viewToggles) {
-      const state = viewToggleState(view, shown, multi, this.inputChannels);
-      button.setAttribute("aria-pressed", String(state.pressed));
-      button.disabled = state.disabled;
+  // Asks the engine to draw `views`, in Single: at least one, and nothing on a mono track, whose
+  // one channel is Left whatever was asked for before it turned mono.
+  private showViews(views: readonly ViewName[]): void {
+    if (views.length > 0 && this.inputChannels >= 2) {
+      this.request("channelViews", [...views]);
     }
+  }
+
+  // Single's Channels list: each view ticked as asked for, in its trace's colour. The last one
+  // ticked cannot be unticked, and on a mono track Left alone is ticked and nothing can change,
+  // as the other views would only repeat it. The one place that decides, for every case.
+  private updateViewList(): void {
+    const asked = this.shownViews();
+    const states = viewOrder.map((view) => ({
+      view,
+      ...viewToggleState(view, asked, false, this.inputChannels),
+    }));
+    const ticked = states.filter((state) => state.pressed && !state.disabled);
+    this.updateViewSummary();
+    this.viewList?.show(
+      states.map(({ view, pressed, disabled }) => {
+        const checked = pressed && !disabled;
+        const locked = disabled
+          ? "A mono track has one channel"
+          : checked && ticked.length === 1
+            ? "One channel always shows"
+            : this.inputChannels < 2
+              ? "A mono track has one channel"
+              : undefined;
+        const name = viewNames[ChannelView[view]];
+        return {
+          id: view,
+          name: () => [document.createTextNode(name)],
+          nameKey: name,
+          colour: `var(${viewColorTokens[view]})`,
+          checked,
+          help: viewHelp[view],
+          ...(locked === undefined ? {} : { locked }),
+        };
+      }),
+    );
   }
 
   // Only the Trigger time base is triggered: in Beats and Free the trigger controls are hidden,
@@ -1112,7 +1115,6 @@ export class OscilloscopeApp {
         this.compareChoice?.show(
           this.store.get("compare") === "on" ? lane : "off",
         );
-        this.compareSign?.show(lane);
       }
       const field = this.choiceSummaries.get(name as ChoiceSetting);
       if (field !== undefined) {
@@ -1124,7 +1126,7 @@ export class OscilloscopeApp {
       }
     }
     if (name === "channelViews") {
-      this.updateViewToggles();
+      this.updateViewList();
     }
     if (name === "channelViews" || name === "triggerSource") {
       this.updateSourceChoices();
@@ -1209,6 +1211,7 @@ export class OscilloscopeApp {
       name === "displayMode"
     ) {
       this.updateGroupSummary();
+      this.updateViewSummary();
     }
     // Zoom is a temporary view of one span; a new span starts unzoomed.
     if (
@@ -1328,33 +1331,24 @@ export class OscilloscopeApp {
     return this.multiMode() && this.store.get("compare") === "on";
   }
 
-  // Multi's summary in the Views field (Single's shows the channel views): how many of the host's
-  // tracks are shown, the lane channel, a tag for the lane labels and the lane Compare adds, Σ for
-  // the sum or Δ for the difference, as "3/7·M·" the tag "·Σ": the tag dimmed while the labels do
-  // not show and the sign while Compare is off, as Single's dims the views not drawn. Its name for
-  // screen readers says all of it in words.
+  // Multi's summary in the Views field: how many of the host's tracks are shown, as "3 of 7".
+  // Its name for screen readers also says the lane channel and what Compare adds.
   private updateGroupSummary(): void {
     const channel = this.store.get("laneChannel") as ViewName;
     const compare = this.store.get("compare") === "on";
-    const labels = this.labelsShown(true);
-    const summary = element("views-multi");
     // Before the list comes, this track alone of the one there is known to be.
     const total = Math.max(this.tracks.length, 1);
     const shown = Math.max(
       this.tracks.filter((track) => track.shown).length,
       1,
     );
-    element("views-count").textContent = `${String(shown)}/${String(total)}`;
-    this.laneChannelSummary?.show(channel);
-    summary.querySelector(".sum")?.classList.toggle("on", compare);
-    summary.querySelector(".tag")?.classList.toggle("on", labels);
+    const count = `${String(shown)} of ${String(total)}`;
+    element("views-count").textContent = count;
     const lane =
       this.store.get("compareLane") === "difference" ? "difference" : "sum";
     this.viewsNames.multi = `Views: ${String(shown)} of ${String(total)} ${
       total === 1 ? "track" : "tracks"
-    }, ${viewNames[ChannelView[channel]]}${labels ? ", labels on" : ""}${
-      compare ? `, Compare ${lane}` : ""
-    }`;
+    }, ${viewNames[ChannelView[channel]]}${compare ? `, Compare ${lane}` : ""}`;
     this.nameViews();
   }
 
@@ -1403,13 +1397,32 @@ export class OscilloscopeApp {
     }
   }
 
-  // Whether Multi's lane labels show: Labels On, or Compare on, whose controls they hold. `inMulti`
-  // asks as if Multi showed, for the Views field's summary, which says it while Single shows too.
-  private labelsShown(inMulti = false): boolean {
-    const comparing = inMulti
-      ? this.store.get("compare") === "on"
-      : this.compareMode();
-    return comparing || this.store.get("laneLabels") !== "off";
+  // Whether the lane labels show, in Single and in Multi: as Labels says. Compare's own lane
+  // keeps its label whatever it says (placeLaneLabels).
+  private labelsShown(): boolean {
+    return this.store.get("laneLabels") !== "off";
+  }
+
+  // What the lane labels name: a multi-track frame's lanes, or a Single frame's views, each view
+  // by its name in its trace's colour, in the order drawn (the frame's, not the setting's, so the
+  // labels never disagree with the traces).
+  private labelsOf(frame: Frame | undefined): LabelStyle[] {
+    if (frame !== undefined && frame.lanes.length === 0) {
+      return viewOrder
+        .filter((view) => frame.views.has(ChannelView[view]))
+        .map((view) => ({
+          id: viewLabelId - ChannelView[view],
+          name: viewNames[ChannelView[view]],
+          colour: 0,
+          swatch: `var(${viewColorTokens[view]})`,
+          own: false,
+          instance: 0,
+        }));
+    }
+    return this.lanesOf(frame).map((lane) => ({
+      ...lane,
+      swatch: cssColour(lane.colour),
+    }));
   }
 
   // The names and colours of a multi-track frame's lanes: its own lane set, or the latest.
@@ -1458,7 +1471,7 @@ export class OscilloscopeApp {
   private placeLaneLabels(): void {
     const container = element("lane-labels");
     const frame = this.lastFrame;
-    const styles = this.lanesOf(frame);
+    const styles = this.labelsOf(frame);
     const height = this.screen.clientHeight;
     const comparing = frame?.comparison !== undefined;
     const shown = this.labelsShown();
@@ -1479,14 +1492,10 @@ export class OscilloscopeApp {
       return;
     }
     this.laneLabelsKey = key;
-    if (!shown) {
-      // No lane is named, nor marked for samples that are not finite: the status chip reports them.
-      this.matchNodes = [];
-      this.sumNode = undefined;
-      this.laneNameNodes = [];
-      container.replaceChildren();
-      return;
-    }
+    // Labels Off: no track or view is named, nor marked for samples that are not finite (the
+    // status chip reports them), and no match shows. Compare's own lane keeps its label, which
+    // holds its figure and its switch.
+    const labelled = (style: LabelStyle) => shown || style.id === sumLaneId;
     const button = (
       text: string,
       help: HelpTopic,
@@ -1503,10 +1512,10 @@ export class OscilloscopeApp {
     this.matchNodes = [];
     this.sumNode = undefined;
     this.laneNameNodes = [];
-    const name = (style: LaneStyle, index: number) => {
+    const name = (style: LabelStyle, index: number) => {
       const node = document.createElement("span");
       this.laneNameNodes[index] = node;
-      node.style.setProperty("--swatch", cssColour(style.colour));
+      node.style.setProperty("--swatch", style.swatch);
       node.classList.toggle("own", style.own);
       if (style.id === sumLaneId) {
         // What the lane shows, which the frame says: the sum or the difference (Compare's
@@ -1561,23 +1570,30 @@ export class OscilloscopeApp {
     };
     if (this.layout() === ViewLayout.stacked) {
       container.replaceChildren(
-        ...lanes(styles.length, ViewLayout.stacked).map((lane, index) => {
-          const node = document.createElement("div");
+        ...lanes(styles.length, ViewLayout.stacked).flatMap((lane, index) => {
           const style = styles[index];
-          if (style !== undefined) {
-            node.append(name(style, index));
+          if (style === undefined || !labelled(style)) {
+            return [];
           }
-          return place(
-            node,
-            ((1 - (lane.center + lane.halfHeight)) / 2) * height + 3,
-          );
+          const node = document.createElement("div");
+          node.append(name(style, index));
+          return [
+            place(
+              node,
+              ((1 - (lane.center + lane.halfHeight)) / 2) * height + 3,
+            ),
+          ];
         }),
       );
     } else {
       const legend = document.createElement("div");
-      legend.append(...styles.map(name));
+      styles.forEach((style, index) => {
+        if (labelled(style)) {
+          legend.append(name(style, index));
+        }
+      });
       container.replaceChildren(
-        ...(styles.length > 0 ? [place(legend, 3)] : []),
+        ...(legend.childElementCount > 0 ? [place(legend, 3)] : []),
       );
     }
     // The Compare view without another track says why.
@@ -1591,6 +1607,7 @@ export class OscilloscopeApp {
           : `No other track to compare with. Insert ${brand.name} on another track.`;
       container.append(note);
     }
+    fitCutNames(container);
     this.updateMatches(frame);
   }
 
@@ -1602,7 +1619,9 @@ export class OscilloscopeApp {
     this.laneNameNodes.forEach((node, index) => {
       node.classList.toggle(
         "invalid",
-        frame !== undefined && laneHoldsInvalid(frame, index),
+        frame !== undefined &&
+          frame.lanes.length > 0 &&
+          laneHoldsInvalid(frame, index),
       );
     });
     const comparison = frame?.comparison;
@@ -1929,7 +1948,7 @@ export class OscilloscopeApp {
   }
 
   // The Source row lights the view the trigger reads and offers only views drawn: on a mono
-  // track L alone, also while the latest frame draws none (no tempo yet), as the view toggles do.
+  // track L alone, also while the latest frame draws none (no tempo yet), as Single's Channels list does.
   private updateSourceChoices(): void {
     const drawn: readonly ViewName[] =
       this.inputChannels < 2 ? ["left"] : this.drawnViews();
@@ -2627,6 +2646,11 @@ export class OscilloscopeApp {
       this.updateViewSummary();
       this.updateReadoutChoices();
       this.updateSourceChoices();
+      // Which views a Single frame draws, as bits: as many of other views changes their labels.
+      let viewsDrawn = 0;
+      for (const view of frame.views.keys()) {
+        viewsDrawn |= 1 << view;
+      }
       // A track joined or left, or the views drawn changed (a track turned mono): lanes, grid
       // and labels change with it. A new lane set (a track checked, a renamed track) changes the
       // labels.
@@ -2635,11 +2659,13 @@ export class OscilloscopeApp {
         this.placeCursors();
       } else if (
         frame.laneSet !== this.drawnLaneSet ||
-        frame.comparison?.lane !== this.drawnCompareLane
+        frame.comparison?.lane !== this.drawnCompareLane ||
+        viewsDrawn !== this.drawnViewSet
       ) {
         this.placeLaneLabels();
         this.placeTriggerMarker();
       }
+      this.drawnViewSet = viewsDrawn;
       this.drawnLaneSet = frame.laneSet;
       this.drawnCompareLane = frame.comparison?.lane;
       this.statusDue();
@@ -2692,7 +2718,7 @@ export class OscilloscopeApp {
       this.inputChannels = message.inputChannels;
       this.updateReadoutChoices();
       this.updateSourceChoices();
-      this.updateViewToggles();
+      this.updateViewList();
       this.showSetting("channelViews", this.store.get("channelViews"));
       this.drawScreen();
       this.placeTriggerMarker();

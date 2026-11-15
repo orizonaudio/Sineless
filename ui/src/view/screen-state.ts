@@ -1,5 +1,5 @@
 // What the screen shows, decided from the settings and the latest frame: which channel the
-// readouts measure, where the trigger marker sits, the view toggles' states, and how far a frozen
+// readouts measure, where the trigger marker sits, the views' states in Single's Channels list, and how far a frozen
 // view pans.
 import { ChannelView, ViewLayout } from "../../../protocol/src/enums.ts";
 
@@ -61,8 +61,9 @@ export function markerLane(
   return Math.max(0, multiTrack ? ownLane : drawn.indexOf(triggerSource));
 }
 
-// A view toggle: pressed when the view is shown; disabled in the multi-track view, where each lane
-// is a track's lane channel, and, on a mono track, for all but Left.
+// A view in Single's Channels list: pressed (ticked) when the view is shown; disabled in the
+// multi-track view, where each lane is a track's lane channel, and, on a mono track, for all but
+// Left.
 export function viewToggleState(
   view: ViewName,
   shown: readonly ViewName[],

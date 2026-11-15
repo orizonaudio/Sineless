@@ -136,15 +136,6 @@ body {
   background: var(--sl-selected);
 }
 
-/* Channel toggles: each marked by its trace's colour. */
-.segmented .toggle::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color);
-}
-
 .segmented button:disabled {
   opacity: var(--sl-dim-disabled);
   cursor: default;
@@ -287,27 +278,10 @@ body {
 }
 
 /* The Views field holds Single's summary and Multi's in one place (.choices), the current one
-   shown. Single's: every view's letter, those not drawn dimmed, not the channel read after them,
-   whose letters are stacked (.choices). Multi's: how many tracks are shown of those there are
-   (over the room of two digits each side, in digits of one width, so the field is one width up
-   to 99 tracks), the lane channel (stacked), the tag, dimmed while the lane labels do not show,
-   and the sign of the lane Compare adds (Σ or Δ, stacked too) dimmed while Compare is off. */
-#views-multi > .count {
-  font-variant-numeric: tabular-nums;
-}
-
-#views-single > span:not(.on):not(.choices),
-#views-multi > :is(.sum, .tag):not(.on) {
-  opacity: 0.35;
-}
-
-/* The labels' tag, after a dot as Σ is: an outline in the letters' colour and stroke weight, as
-   tall as the capitals, with no hole, too fine at 12 px (a solid shape outweighed the letters);
-   centred on the capitals (it sat 0.75 px high on the text's baseline alignment). */
-#views-multi > .tag {
-  vertical-align: -1.75px;
-  stroke: currentColor;
-}
+   shown, each one value as the other fields have: how many are shown of those there are, "2 of
+   4" views in Single and "3 of 7" tracks in Multi. Multi's count is stacked with the widest it
+   gets up to 99 tracks, two digits each side, in digits of one width: the field is one width,
+   and a shorter count is centred in it, as a shorter value is in every choice field. */
 
 .icon {
   width: 12px;
@@ -433,8 +407,7 @@ button[aria-pressed="true"]:focus-visible {
 
 /* In a popover, a choice is a track a step lighter than the popover with the bars' glass rim, the
    chosen option a raised light thumb concentric in it; options not chosen read in the text colour,
-   the thumb alone marks the choice. Channels may have several chosen: chosen neighbours stand
-   2 px apart with small facing corners, as controls in a bar group. */
+   the thumb alone marks the choice. */
 .popover .segmented {
   background: var(--sl-track);
   border-radius: var(--sl-radius-control);
@@ -451,25 +424,6 @@ button[aria-pressed="true"]:focus-visible {
 
 .popover .segmented button[aria-pressed="true"] {
   box-shadow: var(--sl-thumb-shadow);
-}
-
-.popover
-  .segmented
-  button[aria-pressed="true"]:has(+ button[aria-pressed="true"]) {
-  border-top-right-radius: var(--sl-radius-inner);
-  border-bottom-right-radius: var(--sl-radius-inner);
-}
-
-.popover .segmented button[aria-pressed="true"] + button[aria-pressed="true"] {
-  border-top-left-radius: var(--sl-radius-inner);
-  border-bottom-left-radius: var(--sl-radius-inner);
-}
-
-.popover
-  .segmented
-  button[aria-pressed="true"]
-  + button[aria-pressed="true"]:has(+ button[aria-pressed="true"]) {
-  clip-path: inset(-4px 0);
 }
 
 /* A button in a popover (About's vendor) is not a bar control: it takes the popover's track. */
@@ -522,6 +476,8 @@ button[aria-pressed="true"]:focus-visible {
   padding: 2px;
   background: var(--sl-track);
   border-radius: 6px;
+  /* The glass rim the popover's other controls have on their tracks. */
+  box-shadow: var(--sl-rim);
 }
 
 .check-head {
@@ -559,6 +515,39 @@ button[aria-pressed="true"]:focus-visible {
   /* Four rows, the height of Single's four channels. */
   max-height: calc(4 * 24px + 3 * 1px);
   overflow-y: auto;
+}
+
+/* The list's own scroll bar, in place of the system's, whose track ends square: a rounded thumb
+   on a rounded track, the same in WebKit and WebView2 (both take these rules): a 12 px track and
+   a thumb 8 px wide, as the system's always-shown one on macOS has, at least 25 px long as its
+   is. It shows whenever the list has more than four rows. What the system's did by itself is
+   kept: the thumb lightens under the pointer and more while dragged, and never gets too short to
+   grab. */
+.check-rows::-webkit-scrollbar {
+  width: 12px;
+}
+
+.check-rows::-webkit-scrollbar-track {
+  background: var(--sl-track);
+  border-radius: 6px;
+}
+
+.check-rows::-webkit-scrollbar-thumb {
+  /* At least 25 px to grab, between its insets. */
+  min-height: 29px;
+  background: color-mix(in srgb, var(--sl-ink) 35%, transparent);
+  /* Inset from the track by a transparent border the fill stops at. */
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: padding-box;
+}
+
+.check-rows::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--sl-ink) 55%, transparent);
+}
+
+.check-rows::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--sl-ink) 70%, transparent);
 }
 
 .check-row {
@@ -1160,8 +1149,7 @@ button[aria-pressed="true"]:focus-visible {
      gaps 68 (Help and About at 24 px), of 1016 between the bar's padding, leaving 513.4. Earlier the
      minimum width grew instead (#364, #384); the restyle kept 1040 and narrowed this area from 520.
      A4 has since moved into the Views popover (#412) and then the Grid popover (#425), leaving the
-     left side narrower, and the minimum width grew to 1064 for the Views field's count of tracks
-     (#425): the area kept its width, so the chips fold as before. Fixed, so the chips fold at the same count at every window width. */
+     left side narrower: the area kept its width, so the chips fold as before. Fixed, so the chips fold at the same count at every window width. */
   width: 500px;
 }
 
