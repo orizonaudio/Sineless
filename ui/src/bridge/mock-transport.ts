@@ -247,6 +247,9 @@ export interface MockOptions {
   // A second instance on the bass's track, as when one sits before an effect and one after: the
   // group's last track. Off by default.
   readonly bassAfter?: boolean;
+  // How many of the group's other tracks the host lists before this one, as when this track is
+  // not the project's first: the engine sends the lanes in the host's order. None by default.
+  readonly tracksBefore?: number;
 }
 
 // The group's tracks: mockTracks, the far hi-hat, then unnamed sines, one octave step apart, as
@@ -320,9 +323,16 @@ export class MockTransport implements Transport {
     this.nativeTraces = options.nativeTraces ?? false;
     this.frameBarcode = options.frameBarcode ?? false;
     this.about = options.about ?? { version: "preview", contact: true };
-    this.tracks = [
+    const group = [
       ...groupOf(options.trackCount ?? mockTracks.length),
       ...(options.bassAfter === true ? [bassAfter] : []),
+    ];
+    const others = group.filter((track) => !track.own);
+    const before = options.tracksBefore ?? 0;
+    this.tracks = [
+      ...others.slice(0, before),
+      ...group.filter((track) => track.own),
+      ...others.slice(before),
     ];
   }
 

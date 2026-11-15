@@ -145,6 +145,38 @@ describe("mock back end", () => {
     expect(frames.at(-1)?.lanes).toHaveLength(1);
   });
 
+  // The engine sends the lanes in the host's order, wherever this track is in it: the page must
+  // not take the first for this track's.
+  test("lists this track after the tracks the host lists before it", () => {
+    const { transport, messages, frames } = connect({ tracksBefore: 2 });
+    const lanes = messages.find((message) => message.type === "lanes");
+    expect(lanes).toMatchObject({
+      lanes: [
+        { name: "Bass", own: false },
+        { name: "", own: false },
+        { name: "Kick", own: true },
+        { name: "Kick 2", own: false },
+      ],
+    });
+    // The lanes follow: the bass's is the first, where the kick's is by default.
+    transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
+    transport.requestFrame();
+    const listedLater = frames.at(-1);
+    const first = connect();
+    first.transport.send({
+      type: "setSetting",
+      name: "displayMode",
+      value: "multi",
+    });
+    first.transport.requestFrame();
+    expect(Array.from(listedLater?.lanes[2] ?? [])).toEqual(
+      Array.from(first.frames.at(-1)?.lanes[0] ?? []),
+    );
+    expect(Array.from(listedLater?.lanes[0] ?? [])).toEqual(
+      Array.from(first.frames.at(-1)?.lanes[1] ?? []),
+    );
+  });
+
   test("shows the difference of the checked tracks when asked, with its null depth and no gains", () => {
     const { transport, frames } = connect();
     transport.send({ type: "setSetting", name: "displayMode", value: "multi" });

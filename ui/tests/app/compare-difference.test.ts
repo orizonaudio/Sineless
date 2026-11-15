@@ -35,6 +35,13 @@ function pick(name: "Sum" | "Difference"): HTMLElement {
   return choice("compare", name === "Sum" ? "Sum" : "Diff");
 }
 
+// Whether the page last asked the engine to preview the fix, or to stop.
+const lastFix = () =>
+  started.sent.filter((message) => message.type === "previewFix").at(-1)?.[
+    "on"
+  ];
+// The Views field's name, as a screen reader says it.
+const viewsName = () => byId("views-details").getAttribute("aria-label");
 const figure = () => lastLabel().querySelector<HTMLElement>(".lane-readout");
 const previewFix = () => lastLabel().querySelector<HTMLElement>(".preview-fix");
 const align = () => lastLabel().querySelector<HTMLElement>(".align");
@@ -89,7 +96,7 @@ describe("Compare's last lane", () => {
     expect(pick("Difference").getAttribute("aria-pressed")).toBe("false");
     expect(lastLabel().textContent.startsWith("Sum")).toBe(true);
     expect(figure()?.dataset["help"]).toBe("sumGain");
-    expect(previewFix()).not.toBeNull();
+    expect(previewFix()?.dataset["help"]).toBe("previewFix");
   });
 
   test("shows the difference when asked: its name, how deep it nulls, and no Preview fix", async () => {
@@ -120,11 +127,37 @@ describe("Compare's last lane", () => {
     await expect
       .poll(() => previewFix()?.getAttribute("aria-pressed"))
       .toBe("true");
+    // The engine draws the sum with the fix only once asked.
+    expect(lastFix()).toBe(true);
     await show("Difference");
-    const fixes = started.sent.filter(
-      (message) => message.type === "previewFix",
+    expect(lastFix()).toBe(false);
+    await show("Sum");
+    expect(previewFix()?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  // A project the host restores on the difference changes the lane alone: no change of Compare
+  // follows it, as one does when the page's own switch is pressed.
+  test("follows the host when it changes the lane alone: the switch, the sign, the field's name and Preview fix", async () => {
+    await showCompare();
+    await show("Sum");
+    await userEvent.click(previewFix() as HTMLElement);
+    await expect
+      .poll(() => previewFix()?.getAttribute("aria-pressed"))
+      .toBe("true");
+    started.transport.send({
+      type: "setSetting",
+      name: "compareLane",
+      value: "difference",
+    });
+    await expect
+      .element(pick("Difference"))
+      .toHaveAttribute("aria-pressed", "true");
+    expect(pick("Sum").getAttribute("aria-pressed")).toBe("false");
+    expect(multiSummary()).toBe("A·M·Δ·");
+    expect(viewsName()).toBe(
+      "Views: group A, Mid, Compare difference, labels on",
     );
-    expect(fixes.at(-1)?.["on"]).toBe(false);
+    expect(lastFix()).toBe(false);
     await show("Sum");
     expect(previewFix()?.getAttribute("aria-pressed")).toBe("false");
   });
@@ -189,9 +222,13 @@ describe("Compare's last lane", () => {
     await showCompare();
     await show("Sum");
     expect(multiSummary()).toBe("A·M·Σ·");
+    expect(viewsName()).toBe("Views: group A, Mid, Compare sum, labels on");
     const width = byId("views-summary").getBoundingClientRect().width;
     await show("Difference");
     expect(multiSummary()).toBe("A·M·Δ·");
+    expect(viewsName()).toBe(
+      "Views: group A, Mid, Compare difference, labels on",
+    );
     expect(byId("views-summary").getBoundingClientRect().width).toBe(width);
     await setCompare(false);
     expect(multiSummary()).toBe("A·M·Δ·");

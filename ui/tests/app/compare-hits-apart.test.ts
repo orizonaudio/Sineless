@@ -36,4 +36,12 @@ describe("a compared track that matches only at an offset", () => {
     await userEvent.click(check as HTMLButtonElement);
     await expect.poll(() => laneReadout("Hat far")).toBe("+7.0 ms · —");
   });
+
+  // Beside the difference a track's readout says what Align takes out: for a track that is only
+  // late, its delay and nothing more.
+  test("shows its delay alone beside the difference", async () => {
+    await setCompare("Diff");
+    await expect.poll(() => laneReadout("Hat far")).toBe("+7.0 ms");
+    await setCompare("Sum");
+  });
 });
