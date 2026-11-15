@@ -199,6 +199,8 @@ describe("native traces: what the page sends", () => {
       view?.axis,
       view?.cursor,
       view?.cancellation,
+      view?.gained,
+      view?.lost,
       view?.sumColour,
     ]) {
       expect(colour).toHaveLength(4);
@@ -221,6 +223,9 @@ describe("native traces: what the page sends", () => {
     expect(rgbOf(view?.axis)).toEqual(tokenRgb("--sl-grid-strong"));
     expect(rgbOf(view?.cursor)).toEqual(tokenRgb("--sl-ink"));
     expect(rgbOf(view?.cancellation)).toEqual(tokenRgb("--sl-warn"));
+    // A difference's filled lane: what only the others cover, and what only this track does.
+    expect(rgbOf(view?.gained)).toEqual(tokenRgb("--sl-gained"));
+    expect(rgbOf(view?.lost)).toEqual(tokenRgb("--sl-lost"));
   });
 
   test("frames alone send nothing new", async () => {

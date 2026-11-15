@@ -860,6 +860,29 @@ describe("difference areas", () => {
     expect(at(areas, "shared", 2)).toEqual([0, 0.25]);
   });
 
+  // Audio with an infinite sample reaches the page as a column's lowest or highest value: no
+  // area is drawn out to it, of this track's or of the other's.
+  test.each([
+    ["this track's highest", [-0.5, Infinity, -0.5, 0.5], [-0.25, 0.25]],
+    ["this track's lowest", [-Infinity, 0.5, -0.5, 0.5], [-0.25, 0.25]],
+    ["the other's highest", [-0.5, 0.5, -0.5, 0.5], [-0.25, Infinity]],
+  ])(
+    "leave a column empty when %s sample is not finite",
+    (_, own, otherFirst) => {
+      const areas =
+        differenceAreas(
+          differenceOf(FrameMode.minMax, own, [...otherFirst, -0.25, 0.25]),
+          both,
+          0,
+        ) ?? [];
+      for (const part of differenceParts) {
+        expect(at(areas, part, 0), part).toBeUndefined();
+      }
+      expect(at(areas, "shared", 1)).toEqual([-0.25, 0.25]);
+      expect(at(areas, "lostAbove", 1)).toEqual([0.25, 0.5]);
+    },
+  );
+
   // The sum's lane is a wave like the others, and a difference of this track alone is its wave.
   test("are none for a sum, or with no other track compared", () => {
     expect(

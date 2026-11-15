@@ -1312,6 +1312,108 @@ describe("lanes layer in order, whatever their channel and target", () => {
     expect(greenest(2)).toBeGreaterThan(0.9 * 255);
   });
 
+  // Zoomed in to samples, a track's wave is marked with a dot at each sample. A difference's
+  // filled parts are areas, not waves through samples: no dots along their edges. Here both
+  // tracks sit at 0.5, so the lane is filled from zero up, and a dot would reach below zero.
+  test("a difference's filled lane marks no samples when zoomed in to them", () => {
+    const none = { correlation: 0, related: false, offset: 0, inverted: false };
+    const samples = 10;
+    const pointsPerSample = 8;
+    const count = samples * pointsPerSample + 1;
+    const flat = (level: number) => Array.from({ length: count }, () => level);
+    const lineWidthPixels = 3;
+    const drawing = draw(
+      frameOf({
+        mode: FrameMode.raw,
+        pointCount: count,
+        viewStart: 0,
+        viewEnd: 1,
+        visibleSamples: samples,
+        pointsPerSample,
+        lanes: [flat(0.5), flat(0.5), flat(0)],
+        comparison: {
+          lane: CompareLane.difference,
+          sumGain: Number.NaN,
+          fixedGain: Number.NaN,
+          matches: [none, none],
+        },
+      }),
+      {
+        laneColors: [0, 1, 2].map((lane) => laneColor(lane)),
+        comparedLanes: [true, true],
+        layout: ViewLayout.stacked,
+        lineWidthPixels,
+      },
+    );
+    expect(drawing.error).toBe(0);
+    const [mine, , difference] = lanes(3, ViewLayout.stacked);
+    const row = (lane: typeof mine, value: number) =>
+      Math.floor(
+        (((lane?.center ?? 0) + (lane?.halfHeight ?? 1) * value + 1) / 2) *
+          height,
+      );
+    // Further from a line than its own reach, and within a dot's (a line width).
+    const beside = reachOf(lineWidthPixels) + 0.5;
+    for (let sample = 1; sample < samples; sample++) {
+      const x = Math.round(centreX(drawing, sample * pointsPerSample));
+      // This track's own lane, a wave: dotted at the sample, and not between samples.
+      const above = row(mine, 0.5) + Math.round(beside);
+      expect(drawing.alpha(x, above), "a wave's sample").toBeGreaterThan(0.5);
+      expect(
+        drawing.alpha(x + Math.round(width / samples / 2), above),
+        "a wave between samples",
+      ).toBeLessThan(0.1);
+      // The filled lane: nothing below the zero line it is filled from.
+      expect(
+        drawing.alpha(x, row(difference, 0) - Math.round(beside)),
+        "the filled lane's sample",
+      ).toBeLessThan(0.1);
+    }
+  });
+
+  // Zoomed in, the shading lies under the columns that cancel as the zoom shows them: the first
+  // half of the span cancels, and seen alone it is shaded from edge to edge.
+  test("Compare's shading follows the zoom", () => {
+    const own = { correlation: 0, related: false, offset: 0, inverted: false };
+    const alike = {
+      correlation: 0.9,
+      related: true,
+      offset: 0,
+      inverted: false,
+    };
+    const count = 100;
+    const band = (half: (point: number) => number) =>
+      Array.from({ length: count * 2 }, (_, k) => {
+        const reach = half(Math.floor(k / 2));
+        return k % 2 === 0 ? -reach : reach;
+      });
+    const frame = frameOf({
+      mode: FrameMode.minMax,
+      pointCount: count,
+      viewStart: 0,
+      viewEnd: 1,
+      lanes: [
+        band(() => 0.5),
+        band(() => 0.4),
+        band((point) => (point < count / 2 ? 0 : 0.9)),
+      ],
+      comparison: { sumGain: -3, fixedGain: 3, matches: [own, alike, alike] },
+    });
+    const options: DrawOptions = {
+      laneColors: [0, 1, 2].map((lane) => laneColor(lane)),
+      comparedLanes: [true, true],
+    };
+    const shaded = over(transparent, [1, 0, 0, 0.16]);
+    // Above every trace, where only the shading shows.
+    const y = height - 4;
+    const whole = draw(frame, options);
+    expectPixel(whole, width / 4, y, shaded, 3);
+    expectPixel(whole, (3 * width) / 4, y, transparent, 3);
+    const zoomed = draw(frame, { ...options, view: { start: 0, end: 0.5 } });
+    expectPixel(zoomed, width / 4, y, shaded, 3);
+    expectPixel(zoomed, (3 * width) / 4, y, shaded, 3);
+  });
+
   // The lanes of the frame before, in every channel of every target, must not show through
   // fewer lanes, nor through a target the new frame does not use.
   test.each(counts)(

@@ -125,6 +125,21 @@ describe("the Compare view", () => {
     await expect.poll(() => sum()?.classList.contains("reinforces")).toBe(true);
   });
 
+  // The kick and the bass have nothing in common: together they are as loud as the two apart,
+  // and the sum's gain is marked neither as a loss nor as a lift.
+  test("marks a sum that neither cancels nor reinforces as neither", async () => {
+    await show("Compare");
+    await setCompared("Kick 2", false);
+    await setCompared("Track 3", false);
+    await setCompared("Bass", true);
+    await settle();
+    const sum = () =>
+      byId("lane-labels").querySelector<HTMLElement>("[data-help='sumGain']");
+    await expect.poll(() => sum()?.textContent).toMatch(/dB$/u);
+    expect(sum()?.classList.contains("cancels")).toBe(false);
+    expect(sum()?.classList.contains("reinforces")).toBe(false);
+  });
+
   // The checks are the instance's: the engine keeps them, and the page reopened shows them
   // rather than going back to comparing the first other track.
   test("keeps the checked tracks when the editor reopens", async () => {

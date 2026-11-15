@@ -116,13 +116,15 @@ describe("several instances on one track", () => {
     });
   });
 
-  // Host colours across the range: the palette's own, and a dark, a light and a saturated one.
+  // Host colours across the range: the palette's own, a dark, a light and a saturated one, and
+  // black, which has only lighter shades to take.
   const hostColours = [
     ...fallbackPalette,
     0x1c2a6b,
     0xf2f2ee,
     0xff0000,
     0x4f8fe6,
+    0x000000,
   ];
   describe.each(hostColours.map((colour) => [cssColour(colour), colour]))(
     "shades of %s",
@@ -141,8 +143,75 @@ describe("several instances on one track", () => {
           ).toBeGreaterThanOrEqual(shadeContrast);
         }
       });
+
+      test("are colours the page can draw", () => {
+        for (const shaded of shades) {
+          expect(cssColour(shaded)).toMatch(/^#[0-9a-f]{6}$/);
+        }
+      });
     },
   );
+
+  // A colour's hue and saturation as OKLab's a and b, by the route CSS Color 4 gives (sRGB to
+  // CIE XYZ, then Björn Ottosson's two matrices), so a shade can be checked against the standard
+  // and not against the page's own arithmetic.
+  function hueAndSaturation(colour: number): [number, number] {
+    const [r, g, b] = [colour >> 16, colour >> 8, colour].map((channel) => {
+      const c = (channel & 0xff) / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    const x = 0.4123907993 * r + 0.3575843394 * g + 0.1804807884 * b;
+    const y = 0.2126390059 * r + 0.7151686788 * g + 0.0721923154 * b;
+    const z = 0.0193308187 * r + 0.1191947798 * g + 0.9505321522 * b;
+    const l = Math.cbrt(0.8189330101 * x + 0.3618667424 * y - 0.1288597137 * z);
+    const m = Math.cbrt(0.0329845436 * x + 0.9293118715 * y + 0.0361456387 * z);
+    const s = Math.cbrt(0.0482003018 * x + 0.2643662691 * y + 0.633851707 * z);
+    return [
+      1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+      0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+    ];
+  }
+
+  test("a shade the screen can show in full keeps the track's hue and saturation", () => {
+    let shown = 0;
+    for (const colour of hostColours) {
+      const [a, b] = hueAndSaturation(colour);
+      for (const instance of [2, 3, 4]) {
+        const shaded = shade(colour, instance);
+        const clipped = [shaded >> 16, shaded >> 8, shaded].some(
+          (channel) => (channel & 0xff) === 0 || (channel & 0xff) === 0xff,
+        );
+        if (clipped) {
+          // Past what the screen can show, a shade is clipped to it channel by channel, which
+          // moves its hue and saturation: only shades shown in full are held to the track's.
+          continue;
+        }
+        shown += 1;
+        const [shadedA, shadedB] = hueAndSaturation(shaded);
+        // Within what rounding to 8 bits a channel moves a colour.
+        expect(
+          Math.hypot(shadedA - a, shadedB - b),
+          `${cssColour(colour)} as ${cssColour(shaded)}`,
+        ).toBeLessThan(0.004);
+      }
+    }
+    expect(shown, "most colours have such a shade").toBeGreaterThan(
+      hostColours.length,
+    );
+  });
+
+  // The contrast ratios WCAG's definition gives for colours anyone can check: the bar the shades
+  // are held to means what it says only if the ratio is WCAG's.
+  test.each([
+    ["black on white", 0x000000, 0xffffff, 21],
+    ["blue on black", 0x0000ff, 0x000000, 2.44],
+    ["red on white", 0xff0000, 0xffffff, 4],
+    ["the grey that just passes on white", 0x767676, 0xffffff, 4.54],
+    ["the grey that just fails on white", 0x777777, 0xffffff, 4.48],
+  ])("contrast reads %s as WCAG does", (_, first, second, ratio) => {
+    expect(contrast(first, second)).toBeCloseTo(ratio, 2);
+    expect(contrast(second, first)).toBeCloseTo(ratio, 2);
+  });
 
   test("the screen colour the shades are judged against is the page's", () => {
     const tokens = readFileSync(
