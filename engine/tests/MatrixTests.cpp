@@ -7399,6 +7399,41 @@ bool silent(std::span<const float> values)
     return std::ranges::all_of(values, [](float value) { return std::abs(value) <= 1e-5f; });
 }
 
+// The difference and its depth are this track's wherever its lane is. Opened on a track the host
+// lists after the other one (or on the second of two instances on one track), this track is the
+// second lane. The other is this track at half its level, so the difference is the half left,
+// 6 dB below this track; taken against the other track it would read level with it, 0 dB.
+TEST(DifferenceView, IsThisTracksOnALaterLane)
+{
+    for (std::size_t index = 0; index < protocol::kTimeBaseCount; ++index) {
+        for (const bool align : {false, true}) {
+            const auto timeBase = static_cast<TimeBase>(index);
+            SCOPED_TRACE(timeBaseName(timeBase) + (align ? ", Align on" : ", Align off"));
+            Session session(48000.0, 2);
+            session.join(
+                {.kind = Signal::Kind::kNoise, .amplitude = 0.5, .offset = 0.0, .seed = 3});
+            const auto other = session.join(
+                {.kind = Signal::Kind::kNoise, .amplitude = 0.25, .offset = 0.0, .seed = 3});
+            other->setTrackInfo({.name = "Before", .colour = std::nullopt, .index = 0});
+            session.own().setTrackInfo({.name = "After", .colour = std::nullopt, .index = 1});
+            showDifference(session, timeBase);
+            setAlign(session.own(), align);
+            const std::optional<DecodedFrame> frame = playAndShow(session, false);
+            ASSERT_TRUE(frame);
+            const LaneSet lanes = session.analyzer().laneSet();
+            ASSERT_EQ(lanes.lanes.size(), 2U);
+            ASSERT_TRUE(lanes.lanes[1].own) << "this track is not the second lane";
+            EXPECT_NEAR(frame->nullDepth, 20.0 * std::log10(0.5), 1e-3);
+            const std::span<const float> own = trace(*frame, 1);
+            const std::span<const float> difference = trace(*frame, 2);
+            EXPECT_FALSE(silent(own)) << "nothing drawn to compare";
+            for (std::size_t point = 0; point < own.size(); ++point) {
+                ASSERT_EQ(difference[point], 0.5f * own[point]) << "at point " << point;
+            }
+        }
+    }
+}
+
 // Shapes are compared zoomed to a few samples, where the view shows far less than the delay: the
 // alignment is the routing's, found over audio the view does not choose, so it stays, and the few
 // samples shown are this track's in both lanes with nothing left between them. Frozen, the zoom
