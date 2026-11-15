@@ -7709,6 +7709,75 @@ TEST(AlignedView, NullsInEveryColumnWhileATrackIsLinedUpBetweenSamples)
     }
 }
 
+// Seen from the earlier track, the other track's lane ends where its newest audio is drawn, the
+// delay before the playhead, and is empty from there to the playhead. Zoomed in on that end, far
+// from the playhead itself, the points between its samples within a reach of it are drawn
+// straight, as at any join: the wave does not ring into the empty stretch. Farther back the lane
+// is the wave.
+TEST(AlignedView, DrawsNoWaveAcrossALinedUpLanesNewestAudio)
+{
+    constexpr double kRate = 48000.0;
+    const Effect effect;
+    Session session(kRate, 2);
+    joinCopy(session, kRate, effect);
+    showDifference(session, TimeBase::kBeats);
+    // Three quarters into the second bar at 120 BPM.
+    session.play(3.5, 0.05);
+    session.play(static_cast<double>(kBlock) / kRate);
+    std::optional<DecodedFrame> frame = session.produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(matchOf(*frame, 1).delay, static_cast<float>(effect.delaySamples(kRate)));
+    ASSERT_GE(frame->cursor, 0.0f);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double width = 4.0 * protocol::kMinimumViewSamples / spanSamples;
+    const double end = static_cast<double>(frame->cursor) -
+                       (static_cast<double>(effect.delaySamples(kRate)) / spanSamples);
+    const double start = end - (width / 2.0);
+    ASSERT_GT(start, 0.0);
+    const double cursor = frame->cursor;
+    session.analyzer().setView(start, start + width);
+    frame = session.produce();
+    ASSERT_TRUE(frame);
+    if (auto later = settled(session.analyzer())) {
+        frame = std::move(later);
+    }
+    ASSERT_EQ(frame->mode, FrameMode::kRaw);
+    const std::size_t factor = frame->pointsPerSample;
+    ASSERT_GT(factor, 1U);
+    // Where the lane's newest audio is drawn, in samples from the first point.
+    const double newest = ((cursor - frame->viewStart) / (frame->viewEnd - frame->viewStart) *
+                           frame->visibleSamples) +
+                          frame->startFraction - static_cast<double>(effect.delaySamples(kRate));
+    const std::span<const float> values = trace(*frame, 1);
+    const std::size_t samples = ((values.size() - 1) / factor) + 1;
+    ASSERT_GT(newest, 2.0 * kReconstructionReach) << "the lane's end is in the view";
+    ASSERT_LT(newest, static_cast<double>(samples) - (2.0 * kReconstructionReach));
+    const auto straight = [&](std::size_t n) {
+        const float from = values[n * factor];
+        const float to = values[(n + 1) * factor];
+        for (std::size_t phase = 1; phase < factor; ++phase) {
+            const float line =
+                from + ((to - from) * static_cast<float>(phase) / static_cast<float>(factor));
+            if (std::abs(values[(n * factor) + phase] - line) > 1e-5f) {
+                return false;
+            }
+        }
+        return true;
+    };
+    std::size_t curvedBefore = 0;
+    std::size_t before = 0;
+    for (std::size_t n = 0; n + 1 < samples; ++n) {
+        const double distance = (static_cast<double>(n) + 0.5) - newest;
+        if (std::abs(distance) < static_cast<double>(kReconstructionReach) - 2.0) {
+            EXPECT_TRUE(straight(n)) << "gap " << n << ", " << distance << " from the lane's end";
+        } else if (distance < -static_cast<double>(kReconstructionReach) - 2.0) {
+            ++before;
+            curvedBefore += straight(n) ? 0 : 1;
+        }
+    }
+    EXPECT_GT(curvedBefore, before / 2) << "away from its end, the wave";
+}
+
 // Compare switched off with a lined-up track on show: its lane is drawn as recorded again, every
 // column, as a session opened then draws it. Live, and frozen, where no later frame would finish
 // it.
