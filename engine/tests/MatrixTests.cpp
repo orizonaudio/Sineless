@@ -7153,6 +7153,8 @@ TEST_P(Aligned, NullsALateFlippedCopy)
     for (const float value : trace(*frame, 2)) {
         ASSERT_LE(std::abs(value), 1e-5f) << "the difference is not silent";
     }
+    // And with no more audio the frames stop, lined up as the tracks are.
+    EXPECT_FALSE(session.produce()) << "frames go on with nothing new to draw";
 }
 
 // A change of level is not taken out: it is part of what an effect did. A copy 2.3 dB louder,
@@ -7252,6 +7254,54 @@ TEST_P(Aligned, LeavesAnUnrelatedTrackAsRecorded)
     }
 }
 
+// Instances before, in the middle of and after a chain: this track and two copies of it, each late
+// by its own delay, one of them flipped, at a half and at a quarter of its level. Each is lined up
+// by its own delay, so the difference is the quarter this track has left over, 12 dB below it,
+// and it is empty wherever either copy's audio has not arrived: not this track less one copy
+// alone there, which would read as a large difference. Whichever copy is the later one.
+TEST_P(Aligned, LinesUpEachOfTwoTracksByItsOwnDelay)
+{
+    const AlignedCase c = GetParam();
+    const Effect longer{.gain = 0.5};
+    const Effect shorter{.delaySeconds = 0.012, .gain = 0.25, .flipped = false};
+    for (const bool longerFirst : {true, false}) {
+        SCOPED_TRACE(longerFirst ? "the later copy first" : "the later copy last");
+        const std::array<Effect, 2> effects{longerFirst ? longer : shorter,
+                                            longerFirst ? shorter : longer};
+        Session session(c.rate, c.channels);
+        session.join(beforeEffect({}));
+        session.join(afterEffect(c.rate, effects[0]));
+        session.join(afterEffect(c.rate, effects[1]));
+        showDifference(session, c.timeBase);
+        const std::optional<DecodedFrame> frame = playAndShow(session, c.frozen);
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->laneCount, 4);
+        for (std::size_t track = 1; track <= effects.size(); ++track) {
+            const Effect& effect = effects.at(track - 1);
+            const LaneMatch match = matchOf(*frame, track);
+            EXPECT_EQ(match.delay, static_cast<float>(effect.delaySamples(c.rate)))
+                << "track " << track;
+            EXPECT_EQ(match.polarity, effect.flipped ? -1.0f : 1.0f) << "track " << track;
+        }
+        EXPECT_NEAR(frame->nullDepth, 20.0 * std::log10(0.25), 0.01);
+
+        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+        const std::span<const float> own = trace(*frame, 0);
+        std::vector<float> left(own.begin(), own.end());
+        for (float& value : left) {
+            value *= 0.25f;
+        }
+        const double spanSeconds = c.timeBase == TimeBase::kTrigger ? 0.25 : 2.0;
+        const auto delayColumns = static_cast<std::size_t>(
+            std::ceil(longer.delaySeconds / spanSeconds * static_cast<double>(kColumns)));
+        const LaneFit difference = fitOf(trace(*frame, 3), left);
+        EXPECT_GT(difference.same, (own.size() / 2) / 2)
+            << "the difference is not what the two copies leave";
+        EXPECT_LE(difference.empty, 2 * delayColumns);
+        EXPECT_LE(difference.other, 4U) << "a difference from one copy alone";
+    }
+}
+
 std::vector<AlignedCase> alignedCases(double highestRate)
 {
     std::vector<AlignedCase> cases;
@@ -7306,9 +7356,8 @@ TEST_P(AlignedBetweenSamples, NullsACopyLateByAFractionOfASample)
     EXPECT_LT(frame->nullDepth, -60.0);
 }
 
-// The delay between samples does not depend on the rate in samples: at the rates up to 96 kHz.
 INSTANTIATE_TEST_SUITE_P(EveryMode, AlignedBetweenSamples,
-                         ::testing::ValuesIn(alignedCases(96000.0)), alignedName);
+                         ::testing::ValuesIn(alignedCases(kSampleRates.back())), alignedName);
 
 // What a new analyzer shows of a session's audio and settings as they stand: frozen at the newest
 // audio if so, and with whatever it measures over frames measured.
@@ -7515,6 +7564,41 @@ TEST(AlignedView, DrawsTheLanesAgainWhenTheAlignmentMoves)
     }
 }
 
+// The other track stops being a copy of this one while it plays (another clip on it, or another
+// routing). Once the searches see only the new audio, nothing is left of the alignment: the frame
+// has no delay for the track, and its lane and the difference are of the audio as recorded, as a
+// session opened then draws them, not shifted and flipped by what was found before.
+TEST(AlignedView, DropsTheAlignmentOfATrackNoLongerRelated)
+{
+    constexpr double kRate = 48000.0;
+    for (const TimeBase timeBase : {TimeBase::kBeats, TimeBase::kFree}) {
+        SCOPED_TRACE(timeBaseName(timeBase));
+        Session session(kRate, 2);
+        joinCopy(session, kRate, {});
+        showDifference(session, timeBase);
+        const std::optional<DecodedFrame> before = playAndShow(session, false);
+        ASSERT_TRUE(before);
+        ASSERT_EQ(matchOf(*before, 1).polarity, -1.0f);
+        session.setSignal(
+            1, {.kind = Signal::Kind::kNoise, .amplitude = 0.2, .offset = 0.0, .seed = 5});
+        // More than the search's window: its audio is all of the new track.
+        session.play(kMatchWindowSeconds + 2.0, 0.05);
+        session.play(0.01);
+        std::optional<DecodedFrame> shown = session.produce();
+        if (auto later = settled(session.analyzer())) {
+            shown = std::move(later);
+        }
+        const std::optional<DecodedFrame> expected = freshView(session, false);
+        ASSERT_TRUE(shown);
+        ASSERT_TRUE(expected);
+        const LaneMatch match = matchOf(*shown, 1);
+        EXPECT_EQ(match.polarity, 0.0f);
+        EXPECT_TRUE(std::isnan(match.delay)) << match.delay;
+        ASSERT_GT(expected->nullDepth, 0.0f);
+        expectSameView(*shown, *expected);
+    }
+}
+
 // An alignment is of the channel it was found on. On another lane channel the track is not
 // lined up by it: its match and its alignment are none until that channel's are found, the frame
 // has no delay for it, and its lane is its audio as recorded meanwhile.
@@ -7543,6 +7627,59 @@ TEST(AlignedView, DoesNotLineATrackUpByAnotherChannelsAlignment)
     ASSERT_TRUE(found);
     EXPECT_EQ(matchOf(*found, 1).delay, static_cast<float>(effect.delaySamples(kRate)));
     EXPECT_LE(found->nullDepth, protocol::kGainFloorDb);
+}
+
+// Frozen in Trigger or Free with the difference shown, a compared track's hold has the one
+// channel that was shown when it was taken. When the view then asks for another (the host made
+// the track mono, or the lane channel is changed), the hold has none of that audio: the track's
+// lane is drawn silent, not the other channel's audio lined up by the alignment found before, and
+// no alignment is searched in it.
+TEST(AlignedView, ReadsNoAudioOfAFrozenTrackHeldInAnotherChannel)
+{
+    constexpr double kRate = 48000.0;
+    enum class Change : std::uint8_t
+    {
+        kTrackTurnsMono,
+        kLaneChannel,
+    };
+    // Viewed from the track after the effect: the other is lined up by reading it earlier, which
+    // from the end of a hold is audio it has.
+    const Effect effect{.fromCopy = true};
+    for (const TimeBase timeBase : {TimeBase::kTrigger, TimeBase::kFree}) {
+        for (const Change change : {Change::kTrackTurnsMono, Change::kLaneChannel}) {
+            SCOPED_TRACE(timeBaseName(timeBase) + (change == Change::kTrackTurnsMono
+                                                       ? ", the track turns mono"
+                                                       : ", another lane channel"));
+            Session session(kRate, 2);
+            session.join(afterEffect(kRate, effect));
+            const auto other = session.join(beforeEffect(effect));
+            showDifference(session, timeBase);
+            session.own().settings().set(SettingId::kLaneChannel,
+                                         static_cast<double>(protocol::ChannelView::kRight));
+            const std::optional<DecodedFrame> aligned = playAndShow(session, true);
+            ASSERT_TRUE(aligned);
+            ASSERT_EQ(matchOf(*aligned, 1).delay, -static_cast<float>(effect.delaySamples(kRate)));
+            ASSERT_FALSE(silent(trace(*aligned, 1))) << "nothing drawn before the change";
+
+            const AnalysisWork before = session.analyzer().work();
+            if (change == Change::kTrackTurnsMono) {
+                other->setInputChannels(1);
+                // A frozen view is drawn again when it is zoomed.
+                session.analyzer().setView(0.0, 0.5);
+            } else {
+                session.own().settings().set(SettingId::kLaneChannel,
+                                             static_cast<double>(protocol::ChannelView::kLeft));
+            }
+            std::optional<DecodedFrame> frame = session.produce();
+            ASSERT_TRUE(frame);
+            if (auto later = settled(session.analyzer())) {
+                frame = std::move(later);
+            }
+            EXPECT_TRUE(silent(trace(*frame, 1))) << "the lane draws audio held in another channel";
+            EXPECT_EQ(workSince(before, session.analyzer().work()).matchSearches, 0U)
+                << "an alignment was searched in audio held in another channel";
+        }
+    }
 }
 
 // The columns of a lane wholly inside samples [first, end) of a view of `samples` samples.
