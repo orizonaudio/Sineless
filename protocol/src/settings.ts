@@ -165,9 +165,10 @@ export const settings = {
   // project saved before it existed. It changes nothing in the audio, and nothing while the sum
   // shows.
   align: { kind: "enum", values: "Toggle", defaultValue: Toggle.on },
-  // Multi's lane labels: each lane's colour dot and track name, at the top of each stacked lane or
-  // as a legend when overlaid. With Compare on they hold its check boxes and readouts, so they
-  // always show. On in a new instance and in a project saved before the switch existed.
+  // The lane labels, in Single and in Multi: each lane's colour dot and name, at the top of each
+  // stacked lane or as a legend when overlaid, with Compare's readouts for each track. Off hides
+  // them, all but the label of Compare's sum or difference. On in a new instance and in a project
+  // saved before the switch existed.
   laneLabels: { kind: "enum", values: "Toggle", defaultValue: Toggle.on },
   // The channel every lane of Multi shows, with or without Compare, and what Multi's trigger,
   // readouts, sum, matches and summing gains read: one choice for the whole display. A mono track
