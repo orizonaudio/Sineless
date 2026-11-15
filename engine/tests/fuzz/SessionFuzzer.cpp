@@ -126,8 +126,12 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     editor::Session session(*own, analyzer, transport);
     std::vector<std::byte> frame;
     const auto produce = [&]() {
-        other->settings().set(protocol::SettingId::kGroup,
-                              own->settings().get().value(protocol::SettingId::kGroup));
+        // This track's Multi shows the other whatever the page last asked for.
+        for (const engine::Member& member : registry.members()) {
+            if (member.engine == other) {
+                own->setShown({member.serial});
+            }
+        }
         if (analyzer.produce(frame)) {
             checkFrame(frame);
             const engine::DecodedFrame decoded = engine::decode(frame);

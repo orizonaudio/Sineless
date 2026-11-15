@@ -6,6 +6,7 @@
 
 #include "Display.h"
 #include "FrameDecoding.h"
+#include "ShowTracks.h"
 #include "engine/Analyzer.h"
 #include "engine/InstanceRegistry.h"
 
@@ -104,6 +105,7 @@ public:
         registry.add(engine);
         engines.push_back(engine);
         frequencies.push_back(frequency);
+        showEveryTrack(registry, own());
     }
 
     Engine& own() { return *engines.front(); }

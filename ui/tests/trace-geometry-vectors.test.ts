@@ -369,22 +369,17 @@ function cancellationCases() {
         pointsPerSample: frame.pointsPerSample,
         lanes: frame.lanes.map((values) => Array.from(values)),
         related: [false, true],
-        compared: [true, true],
         viewStart: view.start,
         viewEnd: view.end,
         bands: Array.from(
-          cancellationBands(
-            frame,
-            {
-              widthPixels: 1000,
-              heightPixels: 500,
-              verticalScaleDb: 0,
-              layout: ViewLayout[layout],
-              lineWidthPixels: 3,
-              view,
-            },
-            [true, true],
-          ),
+          cancellationBands(frame, {
+            widthPixels: 1000,
+            heightPixels: 500,
+            verticalScaleDb: 0,
+            layout: ViewLayout[layout],
+            lineWidthPixels: 3,
+            view,
+          }),
           round,
         ),
       });
@@ -407,7 +402,7 @@ function differenceFrame(
   points: number,
   mode: FrameMode,
   options: DifferenceOptions = {},
-): { frame: Frame; compared: boolean[]; own: number } {
+): { frame: Frame; own: number } {
   const columns = mode === FrameMode.minMax;
   const perPoint = columns ? 2 : 1;
   const others = options.others ?? 1;
@@ -452,7 +447,6 @@ function differenceFrame(
       lanes: [...tracks, difference],
       comparison: { lane: CompareLane.difference, matches: [] },
     } as unknown as Frame,
-    compared: tracks.map(() => true),
     own,
   };
 }
@@ -466,13 +460,12 @@ function differenceCases() {
       { own: 1 },
       { missing: true },
     ] as const) {
-      const { frame, compared, own } = differenceFrame(60, mode, options);
-      const areas = differenceAreas(frame, compared, own) ?? [];
+      const { frame, own } = differenceFrame(60, mode, options);
+      const areas = differenceAreas(frame, own) ?? [];
       cases.push({
         mode: mode === FrameMode.minMax ? "minMax" : "raw",
         pointCount: frame.pointCount,
         lanes: frame.lanes.map((values) => Array.from(values)),
-        compared,
         own,
         // The five blocks one after another; a part absent at a point is null (JSON has no NaN).
         areas: areas.flatMap((part) => Array.from(part)),

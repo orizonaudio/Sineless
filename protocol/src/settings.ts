@@ -8,7 +8,6 @@ import {
   DisplayMode,
   GridDensity,
   GridType,
-  Group,
   TimeBase,
   Toggle,
   TriggerMode,
@@ -149,19 +148,18 @@ export const settings = {
     values: "DisplayMode",
     defaultValue: DisplayMode.single,
   },
-  group: { kind: "enum", values: "Group", defaultValue: Group.a },
-  // In Multi, adds the sum of the tracks checked against this one, with their matches and summing
+  // In Multi, adds the sum of the tracks shown, with their matches and summing
   // gains (Compare, FR-15). Kept while the display mode is Single.
   compare: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
-  // What Compare's last lane shows: the sum of the checked tracks, or this track minus the other
-  // checked tracks, which shows what an effect between two instances changed. Kept while Compare
+  // What Compare's last lane shows: the sum of the tracks shown, or this track minus the other
+  // tracks shown, which shows what an effect between two instances changed. Kept while Compare
   // is off and in Single, as compare is. A project saved before it existed opens on the sum.
   compareLane: {
     kind: "enum",
     values: "CompareLane",
     defaultValue: CompareLane.sum,
   },
-  // With the difference on show, whether each checked track is first lined up with this one: in
+  // With the difference on show, whether each other track shown is first lined up with this one: in
   // time, to a fraction of a sample, and in polarity (not in level, which is part of what
   // differs), for its own lane and for the difference alike. On in a new instance and in a
   // project saved before it existed. It changes nothing in the audio, and nothing while the sum

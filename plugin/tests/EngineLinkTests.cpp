@@ -93,12 +93,12 @@ TEST_F(EngineLink, ControllerKeepsTheEngineAliveAfterProcessorTerminates)
     EXPECT_NE(controller->engine(), nullptr);
 }
 
-// Every processor is listed in its group for the multi-track view until it is terminated.
-TEST_F(EngineLink, ProcessorJoinsItsGroupUntilTerminated)
+// Every processor is listed for the multi-track view until it is terminated.
+TEST_F(EngineLink, ProcessorIsListedUntilTerminated)
 {
     const auto listed = [&] {
-        const auto members = engine::InstanceRegistry::shared().members(protocol::Group::kA);
-        return std::ranges::any_of(members, [&](const engine::GroupMember& member) {
+        const auto members = engine::InstanceRegistry::shared().members();
+        return std::ranges::any_of(members, [&](const engine::Member& member) {
             return member.engine == processor->engine();
         });
     };
@@ -106,9 +106,9 @@ TEST_F(EngineLink, ProcessorJoinsItsGroupUntilTerminated)
     EXPECT_TRUE(listed());
     const std::shared_ptr<engine::Engine> engine = processor->engine();
     processor->terminate();
-    EXPECT_FALSE(std::ranges::any_of(
-        engine::InstanceRegistry::shared().members(protocol::Group::kA),
-        [&](const engine::GroupMember& member) { return member.engine == engine; }));
+    EXPECT_FALSE(
+        std::ranges::any_of(engine::InstanceRegistry::shared().members(),
+                            [&](const engine::Member& member) { return member.engine == engine; }));
 }
 
 IPtr<IAttributeList> channelInfo(const char16_t* name, int64 colour, int64 index)

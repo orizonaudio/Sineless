@@ -136,17 +136,14 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
         LaneSet parsed{.laneSet = laneSet->get<std::uint32_t>(), .lanes = {}};
         for (const nlohmann::json& lane : *lanes) {
             const auto id = lane.is_object() ? lane.find("id") : lane.end();
-            const auto compared = lane.is_object() ? lane.find("compared") : lane.end();
             const auto own = lane.is_object() ? lane.find("own") : lane.end();
             const auto laneColour = lane.is_object() ? colourField(lane, "colour") : std::nullopt;
-            if (id == lane.end() || !id->is_number_integer() || compared == lane.end() ||
-                !compared->is_boolean() || own == lane.end() || !own->is_boolean() || !laneColour) {
+            if (id == lane.end() || !id->is_number_integer() || own == lane.end() ||
+                !own->is_boolean() || !laneColour) {
                 return std::nullopt;
             }
-            parsed.lanes.push_back({.id = id->get<std::int64_t>(),
-                                    .colour = *laneColour,
-                                    .compared = compared->get<bool>(),
-                                    .own = own->get<bool>()});
+            parsed.lanes.push_back(
+                {.id = id->get<std::int64_t>(), .colour = *laneColour, .own = own->get<bool>()});
         }
         view.laneSets.push_back(std::move(parsed));
     }
@@ -221,8 +218,6 @@ const TraceView::LaneSet* setFor(const TraceView& view, const FrameView& frame)
 struct LaneStyle
 {
     Rgba colour{};
-    bool compared = false;
-    bool sum = false;
     bool own = false;
 };
 
@@ -232,11 +227,11 @@ std::vector<LaneStyle> stylesFor(const TraceView& view, const FrameView& frame)
     std::vector<LaneStyle> styles;
     if (const TraceView::LaneSet* set = setFor(view, frame)) {
         for (const auto& lane : set->lanes) {
-            styles.push_back({.colour = lane.colour, .compared = lane.compared, .own = lane.own});
+            styles.push_back({.colour = lane.colour, .own = lane.own});
         }
     }
     if (frame.compared() && !styles.empty()) {
-        styles.push_back({.colour = view.sumColour, .sum = true});
+        styles.push_back({.colour = view.sumColour});
     }
     if (styles.size() == count) {
         return styles;
@@ -255,21 +250,7 @@ std::vector<Rgba> TraceView::laneColours(const FrameView& frame) const
 {
     std::vector<Rgba> out;
     for (const LaneStyle& style : stylesFor(*this, frame)) {
-        Rgba colour = style.colour;
-        // Tracks left out of a comparison are drawn faint.
-        if (frame.compared() && !style.compared && !style.sum) {
-            colour[3] *= static_cast<float>(protocol::kLeftOutAlpha);
-        }
-        out.push_back(colour);
-    }
-    return out;
-}
-
-std::vector<bool> TraceView::comparedLanes(const FrameView& frame) const
-{
-    std::vector<bool> out;
-    for (const LaneStyle& style : stylesFor(*this, frame)) {
-        out.push_back(style.compared);
+        out.push_back(style.colour);
     }
     return out;
 }

@@ -26,7 +26,7 @@ import {
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import {
   frozenHoldSeconds,
-  maxLanes,
+  maxShownTracks,
   maxPointsPerSample,
   minPointsPerSample,
 } from "../../../protocol/src/limits.ts";
@@ -82,7 +82,7 @@ export function viewSample(
   }
 }
 
-// Tracks of the simulated multi-track view, all in group A: this instance's kick on every beat,
+// Tracks of the simulated multi-track view: this instance's kick on every beat,
 // a bass line, unnamed hi-hats on the eighths without a host colour, and a second kick mic that
 // is inverted and 1.3 ms late. Each carries what the Compare view would find against the kick,
 // and the signal as the fix would correct it.
@@ -107,14 +107,14 @@ const unrelated: Match = {
   offset: Number.NaN,
   inverted: false,
 };
-// This track's, and a track's not compared: none, as the engine sends.
+// This track's: none, as the engine sends.
 const noMatch: Match = {
   correlation: Number.NaN,
   related: false,
   offset: Number.NaN,
   inverted: false,
 };
-export const mockTracks: readonly (Omit<LaneLabel, "compared" | "instance"> & {
+export const mockTracks: readonly (Omit<LaneLabel, "instance"> & {
   readonly sample: (time: number) => number;
   readonly fixed?: (time: number) => number;
   // What the Compare view finds against this track; its offset in samples follows from `delay`.
@@ -241,25 +241,29 @@ export interface MockOptions {
   // page. A preview version with a vendor's site by default; false sends nothing, as a page that
   // has not heard yet.
   readonly about?: Omit<AboutMessage, "type"> | false;
-  // The tracks in the group: mockTracks, then the far hi-hat microphone, then plain sines, up to
-  // maxLanes. mockTracks' four by default.
+  // The instances in the host: mockTracks, then the far hi-hat microphone, then plain sines.
+  // mockTracks' four by default.
   readonly trackCount?: number;
   // A second instance on the bass's track, as when one sits before an effect and one after: the
-  // group's last track. Off by default.
+  // last track. Off by default.
   readonly bassAfter?: boolean;
-  // How many of the group's other tracks the host lists before this one, as when this track is
+  // How many of the other tracks the host lists before this one, as when this track is
   // not the project's first: the engine sends the lanes in the host's order. None by default.
   readonly tracksBefore?: number;
   // Names the host gives tracks in place of the mock's, by lane id, as for a track with a long
   // name. None by default.
   readonly names?: Readonly<Record<number, string>>;
+  // Whether this instance's Multi shows the other tracks from the start, as when the user ticked
+  // each (the first of them, as many as Multi shows): true by default. False is a new instance,
+  // which shows its own track alone.
+  readonly othersShown?: boolean;
 }
 
-// The group's tracks: mockTracks, the far hi-hat, then unnamed sines, one octave step apart, as
+// The host's tracks: mockTracks, the far hi-hat, then unnamed sines, one octave step apart, as
 // many as asked.
-function groupOf(count: number): typeof mockTracks {
+function tracksOf(count: number): typeof mockTracks {
   return Array.from(
-    { length: Math.min(maxLanes, Math.max(1, count)) },
+    { length: Math.max(1, count) },
     (_, index) =>
       mockTracks[index] ??
       (index === mockTracks.length ? farHat : undefined) ?? {
@@ -285,9 +289,10 @@ export class MockTransport implements Transport {
   private view = { start: 0, end: 1 };
   private laneSet = 0;
   private lanesKey = "";
-  // The Compare view's other tracks, by id (until asked, the first), and whether the sum previews
-  // the fix. The checks outlive the page, as the engine keeps them with the instance.
-  private compared: readonly number[] | undefined;
+  // The other tracks Multi shows, by id, and whether Compare's sum previews the fix. The
+  // selection outlives the page, as the engine keeps it with the instance.
+  private shown: readonly number[] = [];
+  private tracksKey = "";
   private previewFix = false;
   private readonly sampleRate: number;
   private inputChannels: 1 | 2;
@@ -298,7 +303,7 @@ export class MockTransport implements Transport {
   private readonly nativeTraces: boolean;
   private readonly frameBarcode: boolean;
   private readonly about: Omit<AboutMessage, "type"> | false;
-  private readonly tracks: typeof mockTracks;
+  private tracks: typeof mockTracks;
   // How far back the frozen view is panned, within its reach (see frame panReach).
   private panSeconds = 0;
   // The last live Trigger or Free window before a freeze (none when frozen in Beats mode), whether
@@ -327,7 +332,7 @@ export class MockTransport implements Transport {
     this.frameBarcode = options.frameBarcode ?? false;
     this.about = options.about ?? { version: "preview", contact: true };
     const group = [
-      ...groupOf(options.trackCount ?? mockTracks.length),
+      ...tracksOf(options.trackCount ?? mockTracks.length),
       ...(options.bassAfter === true ? [bassAfter] : []),
     ].map((track) => ({
       ...track,
@@ -340,6 +345,37 @@ export class MockTransport implements Transport {
       ...group.filter((track) => track.own),
       ...others.slice(before),
     ];
+    if (options.othersShown !== false) {
+      this.shown = this.tracks
+        .filter((track) => !track.own)
+        .slice(0, maxShownTracks - 1)
+        .map((track) => track.id);
+    }
+  }
+
+  // An instance added to the host, as when the user inserts the plugin on another track: listed
+  // last, and not shown until ticked. Returns its lane id.
+  addTrack(name: string): number {
+    const id = Math.max(...this.tracks.map((track) => track.id)) + 1;
+    this.tracks = [
+      ...this.tracks,
+      {
+        id,
+        name,
+        colour: null,
+        own: false,
+        sample: (time: number) => 0.4 * Math.sin(2 * Math.PI * 330 * time),
+      },
+    ];
+    this.sendLanes();
+    return id;
+  }
+
+  // An instance removed from the host: it leaves the list, and the tracks shown.
+  removeTrack(id: number): void {
+    this.tracks = this.tracks.filter((track) => track.own || track.id !== id);
+    this.shown = this.shown.filter((shown) => shown !== id);
+    this.sendLanes();
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
@@ -391,6 +427,7 @@ export class MockTransport implements Transport {
         this.setViewport(message);
         this.reply(this.lastSnapshot());
         this.lanesKey = "";
+        this.tracksKey = "";
         this.sendLanes();
         break;
       case "setSetting":
@@ -439,10 +476,14 @@ export class MockTransport implements Transport {
         }
         break;
       }
-      case "compare": {
+      case "showTracks": {
         const ids = message["ids"];
         if (Array.isArray(ids)) {
-          this.compared = ids.filter((id) => typeof id === "number");
+          // As the engine keeps them: the other tracks there are, as many as Multi shows.
+          this.shown = this.tracks
+            .filter((track) => !track.own && ids.includes(track.id))
+            .slice(0, maxShownTracks - 1)
+            .map((track) => track.id);
           this.sendLanes();
         }
         break;
@@ -466,7 +507,6 @@ export class MockTransport implements Transport {
     this.sendLanes();
   }
 
-  // The simulated group: every track in group A, only this instance's track in the others.
   // What the engine says of this track's broken samples: how many its readouts measured
   // around, and its lane and, in Compare, the sum's, as holding some; in Single, bit 0.
   private invalidFields(
@@ -476,68 +516,67 @@ export class MockTransport implements Transport {
     if (this.brokenSamples === 0) {
       return { invalidSamples: 0, invalidLanes: 0 };
     }
-    const tracks = this.groupTracks();
+    const tracks = this.shownTracks();
     const own = tracks.findIndex((track) => track.own);
     const lanes = multi ? 2 ** own + (comparing ? 2 ** tracks.length : 0) : 1;
     return { invalidSamples: this.brokenSamples, invalidLanes: lanes };
   }
 
-  private groupTracks(): typeof mockTracks {
-    return this.setting("group") === "a"
-      ? this.tracks
-      : this.tracks.filter((track) => track.own);
+  // The tracks Multi shows, in the host's order: this one and the others ticked.
+  private shownTracks(): typeof mockTracks {
+    return this.tracks.filter(
+      (track) => track.own || this.shown.includes(track.id),
+    );
   }
 
-  // The ids of the tracks compared in the Compare view: this one and the others asked for (until
-  // asked, the group's first other track), or none when the group has no other track.
-  private comparedIds(): number[] {
-    // Compare is on show only in Multi, as the engine decides it.
-    if (
-      this.setting("displayMode") !== "multi" ||
-      this.setting("compare") !== "on"
-    ) {
-      return [];
-    }
-    const others = this.groupTracks().filter((track) => !track.own);
-    const asked = others
-      .filter(
-        (track) => this.compared?.includes(track.id) ?? track === others[0],
-      )
-      .map((track) => track.id);
-    const own = this.tracks.find((track) => track.own)?.id ?? 0;
-    return others.length === 0 ? [] : [own, ...asked];
+  // The tracks Compare takes: every track shown, when it is on show (in Multi, as the engine
+  // decides it) and another track is shown with this one.
+  private comparedTracks(): typeof mockTracks {
+    const shown = this.shownTracks();
+    return this.setting("displayMode") === "multi" &&
+      this.setting("compare") === "on" &&
+      shown.length > 1
+      ? shown
+      : [];
   }
 
+  // The list of every instance, and the lanes of those shown, each sent when it changes.
   private sendLanes(): void {
-    const compared = this.comparedIds();
-    const key = `${String(this.setting("group"))}/${compared.join(",")}`;
+    // As the engine numbers them: the instances that share a track's name, in order, when there
+    // are several, counting those not shown.
+    const labels = this.tracks.map(({ id, name, colour, own }, _, tracks) => {
+      const onItsTrack = tracks.filter(
+        (track) => name !== "" && track.name === name,
+      );
+      return {
+        id,
+        name,
+        colour,
+        own,
+        instance:
+          onItsTrack.length > 1
+            ? onItsTrack.findIndex((track) => track.id === id) + 1
+            : 0,
+      };
+    });
+    const shown = (id: number) =>
+      this.shownTracks().some((track) => track.id === id);
+    const tracks = labels.map((label) => ({
+      ...label,
+      shown: shown(label.id),
+    }));
+    const tracksKey = JSON.stringify(tracks);
+    if (tracksKey !== this.tracksKey) {
+      this.tracksKey = tracksKey;
+      this.reply({ type: "tracks", tracks });
+    }
+    const lanes = labels.filter((label) => shown(label.id));
+    const key = JSON.stringify(lanes);
     if (key === this.lanesKey) {
       return;
     }
     this.lanesKey = key;
-    this.reply({
-      type: "lanes",
-      laneSet: ++this.laneSet,
-      lanes: this.groupTracks().map(({ id, name, colour, own }, _, tracks) => {
-        // As the engine numbers them: the instances that share a track's name, in order, when
-        // there are several.
-        const onItsTrack = tracks.filter(
-          (track) => name !== "" && track.name === name,
-        );
-        return {
-          id,
-          name,
-          colour,
-          own,
-          compared: compared.includes(id),
-          instance:
-            onItsTrack.length > 1
-              ? onItsTrack.findIndex((track) => track.id === id) + 1
-              : 0,
-        };
-      }),
-      hidden: 0,
-    });
+    this.reply({ type: "lanes", laneSet: ++this.laneSet, lanes });
   }
 
   private setViewport(message: ControlMessage): void {
@@ -816,12 +855,9 @@ export class MockTransport implements Transport {
       return values;
     };
 
-    // The multi-track view draws the group's tracks; readouts measure this one. The Compare view
-    // adds the sum of the compared tracks.
-    const comparedIds = this.comparedIds();
-    const compared = this.tracks.filter((track) =>
-      comparedIds.includes(track.id),
-    );
+    // The multi-track view draws the tracks shown; readouts measure this one. The Compare view
+    // adds their sum or difference.
+    const compared = this.comparedTracks();
     const views = new Map<ChannelView, Float32Array>();
     const lanes: Float32Array[] = [];
     // The readouts measure what the engine's do, whatever the trigger source.
@@ -829,8 +865,8 @@ export class MockTransport implements Transport {
     const source = this.drawnChoice("readoutSource", multi);
     let readoutSignal = (time: number) => viewSample(source, time, mono);
     let comparison: FrameContent["comparison"];
-    // The last lane as the settings ask: the checked tracks' sum, or this track minus the other
-    // checked ones, each lined up with this one first while Align is on.
+    // The last lane as the settings ask: the shown tracks' sum, or this track minus the others,
+    // each lined up with this one first while Align is on.
     const showsDifference =
       compared.length > 0 && this.setting("compareLane") === "difference";
     const aligning = showsDifference && this.setting("align") === "on";
@@ -838,11 +874,7 @@ export class MockTransport implements Transport {
     // taken out (its level stays); a track with no match stays as recorded.
     const lanedUp = (track: (typeof mockTracks)[number]) => {
       const match = track.match;
-      if (
-        !aligning ||
-        match?.related !== true ||
-        !comparedIds.includes(track.id)
-      ) {
+      if (!aligning || match?.related !== true) {
         return track.sample;
       }
       const sign = match.inverted ? -1 : 1;
@@ -850,7 +882,7 @@ export class MockTransport implements Transport {
       return (time: number) => sign * track.sample(time + delay);
     };
     if (multi) {
-      for (const track of this.groupTracks()) {
+      for (const track of this.shownTracks()) {
         lanes.push(points(lanedUp(track)));
       }
       readoutSignal = kick;
@@ -900,8 +932,8 @@ export class MockTransport implements Transport {
         sumGain: showsDifference ? Number.NaN : gain(false),
         fixedGain: showsDifference ? Number.NaN : gain(true),
         nullDepth: showsDifference ? depth() : Number.NaN,
-        matches: this.groupTracks().map((track) =>
-          track.own || !comparedIds.includes(track.id)
+        matches: this.shownTracks().map((track) =>
+          track.own
             ? noMatch
             : track.match === undefined
               ? unrelated

@@ -27,9 +27,9 @@ void InstanceRegistry::remove(const Engine& engine)
     });
 }
 
-std::vector<GroupMember> InstanceRegistry::members(protocol::Group group) const
+std::vector<Member> InstanceRegistry::members() const
 {
-    std::vector<GroupMember> found;
+    std::vector<Member> found;
     {
         const std::scoped_lock lock(mutex);
         for (const Entry& entry : entries) {
@@ -38,16 +38,12 @@ std::vector<GroupMember> InstanceRegistry::members(protocol::Group group) const
             }
         }
     }
-    // Settings and track info have their own locks; they are read outside the registry's.
-    std::erase_if(found, [&](const GroupMember& member) {
-        return member.engine->settings().get().enumValue<protocol::Group>(
-                   protocol::SettingId::kGroup) != group;
-    });
-    for (GroupMember& member : found) {
+    // Track info has its own lock; it is read outside the registry's.
+    for (Member& member : found) {
         member.track = member.engine->trackInfo();
     }
-    std::ranges::sort(found, [](const GroupMember& left, const GroupMember& right) {
-        const auto key = [](const GroupMember& member) {
+    std::ranges::sort(found, [](const Member& left, const Member& right) {
+        const auto key = [](const Member& member) {
             return std::tuple(!member.track.index.has_value(), member.track.index.value_or(0),
                               member.serial);
         };
@@ -56,7 +52,7 @@ std::vector<GroupMember> InstanceRegistry::members(protocol::Group group) const
     // Instances on one track follow each other in creation order (the sort above), so each one's
     // number is one more than the instances of its track before it.
     for (std::size_t index = 0; index < found.size(); ++index) {
-        const auto onItsTrack = [&](const GroupMember& other) {
+        const auto onItsTrack = [&](const Member& other) {
             return sameTrack(found[index].track, other.track);
         };
         const auto before = static_cast<std::ptrdiff_t>(index);

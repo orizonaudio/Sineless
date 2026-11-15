@@ -2,7 +2,6 @@
 // comparison is fainter than a compared one, and a trace waiting for a trigger is fainter than
 // the same trace drawn live. The pixels are read straight after each draw.
 import { describe, expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
 
 import { ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
@@ -52,15 +51,6 @@ function laneNames(): string[] {
   return [...byId("lane-labels").querySelectorAll(".lane-label")].map(
     (label) => label.textContent,
   );
-}
-
-function compareCheck(name: string): HTMLButtonElement {
-  const check = [...byId("lane-labels").querySelectorAll("button")].find(
-    (button) =>
-      button.classList.contains("compare-check") && button.textContent === name,
-  );
-  expect(check, `check ${name}`).toBeDefined();
-  return check as HTMLButtonElement;
 }
 
 let app: Started;
@@ -131,7 +121,6 @@ describe("every lane is drawn", () => {
     async (mode) => {
       await press(choice("time-base", "Trig"));
       await showDisplay(mode);
-      await press(choice("group", "A"));
       await press(choice("layout", "Stack"));
       await settle();
       const { frame, laneAlpha } = await nextDraw();
@@ -144,24 +133,19 @@ describe("every lane is drawn", () => {
   );
 });
 
-test("a track left out of the comparison is fainter than a compared one", async () => {
+// Every track shown is part of the comparison: none is drawn fainter than another.
+test("every track of a comparison is drawn at full strength", async () => {
   await showDisplay("Compare");
-  await press(choice("group", "A"));
   await press(choice("layout", "Stack"));
-  if (compareCheck("Kick 2").getAttribute("aria-checked") === "true") {
-    await userEvent.click(compareCheck("Kick 2"));
-  }
-  await expect
-    .poll(() => compareCheck("Kick 2").getAttribute("aria-checked"))
-    .toBe("false");
   await settle();
   const names = laneNames();
   const { laneAlpha } = await nextDraw();
   expect(laneAlpha).toHaveLength(names.length);
-  const left = laneAlpha[names.indexOf("Kick 2")] ?? Number.NaN;
-  const compared = laneAlpha[names.indexOf("Kick")] ?? Number.NaN;
-  expect(left).toBeGreaterThan(0);
-  expect(left).toBeLessThan(compared);
+  const own = laneAlpha[0] ?? Number.NaN;
+  expect(own).toBeGreaterThan(0);
+  for (const alpha of laneAlpha.slice(0, -1)) {
+    expect(alpha).toBe(own);
+  }
 });
 
 // Fainter, but as opaque: it covers the grid under it as a live trace does, not letting it show

@@ -12,12 +12,39 @@
       ],
       "replies": [
         {
-          "hidden": 0,
+          "tracks": [
+            {
+              "colour": null,
+              "id": 1,
+              "instance": 0,
+              "name": "Kick",
+              "own": true,
+              "shown": true
+            },
+            {
+              "colour": null,
+              "id": 2,
+              "instance": 0,
+              "name": "Bass",
+              "own": false,
+              "shown": true
+            },
+            {
+              "colour": null,
+              "id": 3,
+              "instance": 0,
+              "name": "Keys",
+              "own": false,
+              "shown": true
+            }
+          ],
+          "type": "tracks"
+        },
+        {
           "laneSet": 1,
           "lanes": [
             {
               "colour": null,
-              "compared": false,
               "id": 1,
               "instance": 0,
               "name": "Kick",
@@ -25,7 +52,6 @@
             },
             {
               "colour": null,
-              "compared": false,
               "id": 2,
               "instance": 0,
               "name": "Bass",
@@ -33,7 +59,6 @@
             },
             {
               "colour": null,
-              "compared": false,
               "id": 3,
               "instance": 0,
               "name": "Keys",
@@ -45,11 +70,11 @@
       ]
     }
   ],
-  "protocolVersion": 20,
+  "protocolVersion": 21,
   "scenario": "MultiThreeTracks_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 20,
+    "protocolVersion": 21,
     "sampleRate": 48000.0,
     "settings": {
       "align": "on",
@@ -67,7 +92,6 @@
       "freeSpan": 4.0,
       "gridDensity": "medium",
       "gridType": "grid",
-      "group": "a",
       "hoverReadout": "off",
       "laneChannel": "mid",
       "laneLabels": "on",

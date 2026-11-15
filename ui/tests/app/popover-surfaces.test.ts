@@ -13,14 +13,7 @@ import {
   over,
   type Rgb,
 } from "./colour.ts";
-import {
-  byId,
-  choice,
-  press,
-  setCompare,
-  settle,
-  startApp,
-} from "./harness.ts";
+import { byId, choice, press, settle, startApp } from "./harness.ts";
 
 // WCAG 2.2: text 4.5:1 (1.4.3), a state shown by a fill 3:1 (1.4.11).
 const textContrast = 4.5;
@@ -291,38 +284,6 @@ describe("joined channels", () => {
 });
 
 describe("lane labels", () => {
-  // A label's buttons sit concentric in its chip (the chip's corner less its padding is theirs),
-  // as the bars' thumbs in their tracks; Preview fix keeps the lane buttons' side padding, so it is
-  // a capsule of the label's size. Multi with Compare on, where the labels carry buttons.
-  test("a lane label's buttons sit concentric in its chip", async () => {
-    await startApp();
-    await settle();
-    await press(choice("display-mode", "Multi"));
-    await setCompare(true);
-    await settle();
-    const px = (value: string) => parseFloat(value);
-    const chips = [
-      ...byId("lane-labels").querySelectorAll<HTMLElement>(
-        ".lane-label > span",
-      ),
-    ].filter((chip) => chip.querySelector("button:not(.preview-fix)"));
-    expect(chips.length).toBeGreaterThan(0);
-    for (const chip of chips) {
-      const style = getComputedStyle(chip);
-      for (const button of chip.querySelectorAll("button:not(.preview-fix)")) {
-        expect(px(getComputedStyle(button).borderTopLeftRadius)).toBe(
-          px(style.borderTopLeftRadius) - px(style.paddingTop),
-        );
-      }
-    }
-    const fix = byId("lane-labels").querySelector(".preview-fix");
-    const check = byId("lane-labels").querySelector(".compare-check");
-    expect(fix).not.toBeNull();
-    const side = getComputedStyle(check ?? document.body).paddingRight;
-    expect(getComputedStyle(fix ?? document.body).paddingLeft).toBe(side);
-    expect(getComputedStyle(fix ?? document.body).paddingRight).toBe(side);
-  });
-
   // Preview fix, on a Compare sum lane, is a switch like the bars': on reads as on against off.
   test("Preview fix reads as on against off, its label legible in both", async () => {
     await startApp();

@@ -25,11 +25,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 20,
+  "protocolVersion": 21,
   "scenario": "BeatsLive_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 20,
+    "protocolVersion": 21,
     "sampleRate": 48000.0,
     "settings": {
       "align": "on",
@@ -47,7 +47,6 @@
       "freeSpan": 4.0,
       "gridDensity": "medium",
       "gridType": "grid",
-      "group": "a",
       "hoverReadout": "off",
       "laneChannel": "mid",
       "laneLabels": "on",

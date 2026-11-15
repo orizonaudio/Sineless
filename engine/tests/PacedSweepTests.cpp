@@ -1,5 +1,6 @@
 #include "FrameDecoding.h"
 #include "SampleRates.h"
+#include "ShowTracks.h"
 #include "engine/Analyzer.h"
 #include "engine/FramePacing.h"
 #include "engine/InstanceRegistry.h"
@@ -79,6 +80,7 @@ public:
             }
             this->tracks.push_back(track);
         }
+        showEveryTrack(registry, *this->tracks.front().engine);
         analyzer = std::make_unique<Analyzer>(*this->tracks.front().engine, registry);
         analyzer->setClock([this] { return nanos(); });
         analyzer->setColumns(4000);

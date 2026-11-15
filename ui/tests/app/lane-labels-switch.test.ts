@@ -1,9 +1,9 @@
 // Multi's Labels switch (#407), through the real page and the mock back end: Off hides the lane
 // labels, stacked and overlaid, live and frozen, with several tracks or one; Compare's labels hold
-// its check boxes and readouts, so they show whatever Labels says while Compare is on, and the row
+// its readouts, so they show whatever Labels says while Compare is on, and the row
 // is greyed out keeping its choice; Single has no lane labels and no Labels row in reach; the
 // choice is the engine's, so the page reopened shows it. No case waits for new lanes after the
-// switch it tests: a track alone in its group gets none.
+// switch it tests: a track shown alone gets none.
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -15,6 +15,7 @@ import {
   press,
   setCompare,
   settle,
+  showOnly,
   startApp,
   type Started,
   multiSummary,
@@ -25,10 +26,10 @@ const states = [
   ["live", false],
   ["frozen", true],
 ] as const;
-// Group A holds the mock's several tracks; group B this instance's track alone.
+// Every track of the mock ticked, or this instance's track shown alone.
 const groups = [
-  ["several tracks", "A", ["Kick", "Bass", "Track 3", "Kick 2"]],
-  ["one track", "B", ["Kick"]],
+  ["several tracks", true, ["Kick", "Bass", "Track 3", "Kick 2"]],
+  ["one track", false, ["Kick"]],
 ] as const;
 
 // The lane names the labels show, in order: one per stacked lane, or the overlaid legend's.
@@ -42,8 +43,8 @@ function labelCount(): number {
   return byId("lane-labels").querySelectorAll(".lane-label").length;
 }
 
-function compareChecks(): number {
-  return byId("lane-labels").querySelectorAll(".compare-check").length;
+function matchReadouts(): number {
+  return byId("lane-labels").querySelectorAll("[data-help='match']").length;
 }
 
 function labelsRow(label: "Off" | "On"): HTMLButtonElement {
@@ -67,15 +68,18 @@ async function setLabels(on: boolean): Promise<void> {
   await expect.element(button).toHaveAttribute("aria-pressed", "true");
 }
 
-// Multi, Trig, in a group and layout, Compare off, its labels shown; then frozen if asked.
+// Multi, Trig, with every other track shown or none, in a layout, Compare off, its labels shown;
+// then frozen if asked.
 async function multi(
-  group: string,
+  others: boolean,
   layout: string,
   frozen: boolean,
 ): Promise<void> {
   await press(choice("time-base", "Trig"));
   await press(choice("display-mode", "Multi"));
-  await press(choice("group", group));
+  if (!others) {
+    await showOnly([]);
+  }
   await setCompare(false);
   await press(choice("layout", layout));
   await settle();
@@ -109,7 +113,7 @@ describe.each(groups)("with %s", (_, group, names) => {
         await setCompare(true);
         await expect.poll(labelCount).toBeGreaterThan(0);
         if (names.length > 1) {
-          await expect.poll(compareChecks).toBeGreaterThan(0);
+          await expect.poll(matchReadouts).toBeGreaterThan(0);
         } else {
           await expect
             .poll(
@@ -117,7 +121,7 @@ describe.each(groups)("with %s", (_, group, names) => {
                 byId("lane-labels").querySelector(".compare-note")
                   ?.textContent ?? "",
             )
-            .toContain("No other track in group B");
+            .toContain("No other track to compare with");
         }
         expect(labelsRow("Off").disabled).toBe(true);
         expect(labelsRow("On").disabled).toBe(true);
@@ -148,7 +152,7 @@ describe("the Labels row", () => {
 
   test("is hidden in Single, which shows no lane labels, and applies back in Multi", async () => {
     const app = await startApp();
-    await multi("A", "Stack", false);
+    await multi(true, "Stack", false);
     await press(choice("display-mode", "Single"));
     await settle();
     expect(labelsRow("Off").closest<HTMLElement>(".popover-row")?.hidden).toBe(
@@ -178,13 +182,13 @@ describe("the Labels row", () => {
     await setLabels(true);
     expect(tagLit()).toBe(true);
     expect(viewsName()).toMatch(/, labels on$/);
-    expect(multiSummary()).toBe("A·M·Σ·");
+    expect(multiSummary()).toBe("4/4·M··Σ");
     await setLabels(false);
     expect(tagLit()).toBe(false);
     expect(viewsName()).not.toContain("labels");
     await setCompare(true);
     expect(tagLit()).toBe(true);
-    expect(viewsName()).toMatch(/, Compare sum, labels on$/);
+    expect(viewsName()).toMatch(/, labels on, Compare sum$/);
     await setCompare(false);
     expect(tagLit()).toBe(false);
   });
@@ -206,12 +210,12 @@ describe("the Labels row", () => {
     await press(choice("display-mode", "Multi"));
     await settle();
     expect(tagLit()).toBe(false);
-    expect(viewsName()).toBe("Views: group A, Mid");
+    expect(viewsName()).toBe("Views: 4 of 4 tracks, Mid");
   });
 
   test("is the engine's: the page reopened shows the labels off", async () => {
     const first: Started = await startApp();
-    await multi("A", "Stack", false);
+    await multi(true, "Stack", false);
     await setLabels(false);
     await expect.poll(labelCount).toBe(0);
     await startApp({}, first.transport);
@@ -227,7 +231,7 @@ describe("the Labels row", () => {
 describe("a track sending samples that are not finite", () => {
   test("is reported by the chip with Labels Off, and its lane named with Labels On", async () => {
     await startApp({ brokenSamples: 3 });
-    await multi("A", "Stack", false);
+    await multi(true, "Stack", false);
     const marked = () =>
       [
         ...byId("lane-labels").querySelectorAll(".lane-label > span.invalid"),

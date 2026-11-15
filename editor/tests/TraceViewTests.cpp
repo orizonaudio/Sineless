@@ -33,7 +33,6 @@ TEST(TraceViewMessage, ReadsEveryFieldOfThePagesMessage)
     EXPECT_EQ(view->laneSets[0].laneSet, 7U);
     ASSERT_EQ(view->laneSets[0].lanes.size(), 2U);
     EXPECT_EQ(view->laneSets[0].lanes[1].id, 5);
-    EXPECT_FALSE(view->laneSets[0].lanes[1].compared);
     EXPECT_TRUE(view->laneSets[0].lanes[0].own);
     EXPECT_FALSE(view->laneSets[0].lanes[1].own);
     EXPECT_EQ(view->fallbackColours.size(), message.at("fallbackColours").size());
@@ -128,10 +127,8 @@ TEST(TraceViewMessage, RefusesAMessageWithAnyFieldMalformed)
         [](nlohmann::json& m) {
             m["laneSets"][0]["lanes"] = nlohmann::json::array();
             for (std::size_t lane = 0; lane < protocol::kMaxLanes + 2; ++lane) {
-                m["laneSets"][0]["lanes"].push_back({{"id", lane},
-                                                     {"colour", {0, 0, 0, 1}},
-                                                     {"compared", false},
-                                                     {"own", lane == 0}});
+                m["laneSets"][0]["lanes"].push_back(
+                    {{"id", lane}, {"colour", {0, 0, 0, 1}}, {"own", lane == 0}});
             }
         },
         "more lanes than a frame holds");
@@ -208,20 +205,17 @@ TEST(TraceViewColours, FindsThisTracksLane)
     EXPECT_EQ(view->ownLane(laneFrame(7, 5, true)), 0U) << "a frame of other lanes";
 }
 
-// In Compare the sum takes its own colour, compared tracks their own, and tracks left out are
-// faint.
-TEST(TraceViewColours, DrawsTracksLeftOutOfAComparisonFaint)
+// In Compare the sum takes its own colour, and every track its own, at full strength: each is
+// part of the sum.
+TEST(TraceViewColours, DrawsEveryTrackOfAComparisonInItsColour)
 {
     const auto view = TraceView::parse(example());
     ASSERT_TRUE(view);
     const auto colours = view->laneColours(laneFrame(7, 3, true));
     ASSERT_EQ(colours.size(), 3U);
-    EXPECT_EQ(colours[0], view->laneSets[0].lanes[0].colour) << "compared";
-    EXPECT_FLOAT_EQ(colours[1][3], view->laneSets[0].lanes[1].colour[3] *
-                                       static_cast<float>(protocol::kLeftOutAlpha))
-        << "left out";
+    EXPECT_EQ(colours[0], view->laneSets[0].lanes[0].colour);
+    EXPECT_EQ(colours[1], view->laneSets[0].lanes[1].colour);
     EXPECT_EQ(colours[2], view->sumColour) << "the sum";
-    EXPECT_EQ(view->comparedLanes(laneFrame(7, 3, true)), (std::vector<bool>{true, false, false}));
 }
 
 // ----- The screen's rectangle -----

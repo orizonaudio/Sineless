@@ -7,7 +7,7 @@
 //   perf_bench [--lanes=7] [--mode=multi|single] [--compare] [--timebase=beats|free|trigger]
 //              [--beatspan=fourBars] [--span=4] [--rate=48000] [--tempo=120]
 //              [--layout=stacked|overlaid] [--width=1400] [--height=800]
-//              [--warmup=3] [--duration=10] [--idle] [--compare-all] [--jitter]
+//              [--warmup=3] [--duration=10] [--idle] [--jitter]
 //              [--preview-fix] [--view=START,END]
 //              [--soak-interval=SECONDS] [--reopen=COUNT] [--view-changes=COUNT]
 //              [--min-fps=N] [--max-total=PERCENT] [--max-analysis=PERCENT]
@@ -28,11 +28,11 @@
 // rate memory grows at (a least-squares slope over the intervals after the first, so a slow leak
 // shows within minutes) and on the slowest and busiest intervals. Reopen: with --reopen, the editor
 // is closed and opened COUNT times while the tracks play, then judged on memory growth and on
-// threads left behind. Compare: --compare turns it on in Multi; --compare-all checks every track,
-// as a user may; --jitter delays the other tracks by 0 to 3 ms, changing every 0.7 s, so their
-// matches keep moving, as with real material; --preview-fix draws the sum as fixed. --view zooms in
-// on that part of the span (0 to 1), as the page asks for when the user zooms. Any limit given
-// makes the exit code 1 when it is broken, for automated checks.
+// threads left behind. Multi shows every track (--lanes), as when the user ticks each. Compare:
+// --compare turns it on in Multi, over all of them; --jitter delays the other tracks by 0 to 3 ms,
+// changing every 0.7 s, so their matches keep moving, as with real material; --preview-fix draws
+// the sum as fixed. --view zooms in on that part of the span (0 to 1), as the page asks for when
+// the user zooms. Any limit given makes the exit code 1 when it is broken, for automated checks.
 #include "bench/Scenarios.h"
 #include "bench/Signals.h"
 #include "editor/Editor.h"
@@ -89,7 +89,6 @@ struct Options
     double warmup = 3.0;
     double duration = 10.0;
     bool idle = false; // No audio: the page open with nothing to draw.
-    bool compareAll = false;
     bool jitter = false;
     bool previewFix = false;
     // From a scenario: Compare's last lane shows the difference, and every other track is this
@@ -138,7 +137,6 @@ bool applyScenario(const std::string& name, Options& options)
     options.span = scenario->span;
     options.rate = scenario->rate;
     options.tempo = scenario->tempo;
-    options.compareAll = scenario->compareAll;
     options.previewFix = scenario->previewFix;
     options.jitter = scenario->jitter;
     options.difference = scenario->difference;
@@ -184,8 +182,6 @@ Options parse(std::span<const char* const> arguments)
             options.idle = true;
         } else if (key == "--compare") {
             options.compare = true;
-        } else if (key == "--compare-all") {
-            options.compareAll = true;
         } else if (key == "--jitter") {
             options.jitter = true;
         } else if (key == "--preview-fix") {
@@ -551,6 +547,14 @@ int run(const Options& options)
             engines.push_back(engine);
         }
         engine::Engine& own = *engines.front();
+        // This track's Multi shows every track, as when the user ticks each in the Views popover.
+        std::vector<std::uint64_t> others;
+        for (const auto& member : engine::InstanceRegistry::shared().members()) {
+            if (member.engine != engines.front()) {
+                others.push_back(member.serial);
+            }
+        }
+        own.setShown(std::move(others));
         using protocol::SettingId;
         set(own, SettingId::kDisplayMode, options.mode.c_str());
         set(own, SettingId::kCompare, options.compare ? "on" : "off");
@@ -594,8 +598,8 @@ int run(const Options& options)
         };
         open();
         const bool zoomed = options.viewStart != 0.0 || options.viewEnd != 1.0;
-        if (options.compareAll || options.previewFix || zoomed) {
-            // Once the page is up, send what its checkboxes, Preview fix button and zoom would.
+        if (options.previewFix || zoomed) {
+            // Once the page is up, send what its Preview fix button and zoom would.
             const double settle = std::min(1.0, options.warmup);
             pump(settle);
             auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
@@ -604,16 +608,6 @@ int run(const Options& options)
                                            nlohmann::json(message.dump()).dump() + "); ''";
                 evaluate(webView, @(script.c_str()));
             };
-            if (options.compareAll) {
-                nlohmann::json ids = nlohmann::json::array();
-                for (const auto& member : engine::InstanceRegistry::shared().members(
-                         own.settings().get().enumValue<protocol::Group>(SettingId::kGroup))) {
-                    if (member.engine != engines.front()) {
-                        ids.push_back(member.serial);
-                    }
-                }
-                post({{"type", "compare"}, {"ids", ids}});
-            }
             if (options.previewFix) {
                 post({{"type", "previewFix"}, {"on", true}});
             }

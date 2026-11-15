@@ -6,6 +6,7 @@ import { userEvent } from "vitest/browser";
 
 import { defaultSettingValues } from "../../../protocol/src/setting-values.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
+import { laneReadout } from "./compare-readout.ts";
 import {
   mockBarQuarterNotes,
   mockTempo,
@@ -60,25 +61,9 @@ describe("frames of audio held at another rate than the host's", () => {
     await press(choice("time-base", "Trig"));
     await showDisplay("Compare");
     await settle();
-    const check = (name: string) =>
-      [...byId("lane-labels").querySelectorAll(".compare-check")].find(
-        (button) => button.textContent === name,
-      ) as HTMLElement;
-    if (check("Kick 2").getAttribute("aria-checked") !== "true") {
-      await userEvent.click(check("Kick 2"));
-    }
-    await expect
-      .poll(() => check("Kick 2").getAttribute("aria-checked"))
-      .toBe("true");
     await settle();
     // 499 samples at 384 kHz, as in high-sample-rate.test.ts.
-    await expect
-      .poll(
-        () =>
-          check("Kick 2").parentElement?.querySelector(".lane-readout")
-            ?.textContent,
-      )
-      .toBe("+1.3 ms Ø · −0.93");
+    await expect.poll(() => laneReadout("Kick 2")).toBe("+1.3 ms Ø · −0.93");
   });
 
   test("place the Beats grid's clock at the frame's rate", async () => {

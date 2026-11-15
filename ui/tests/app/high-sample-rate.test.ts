@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { parseQuantity } from "../../src/view/format.ts";
+import { laneReadout } from "./compare-readout.ts";
 import {
   beforeApp,
   byId,
@@ -24,25 +25,9 @@ describe("at 384 kHz", () => {
     await press(choice("time-base", "Trig"));
     await showDisplay("Compare");
     await settle();
-    const check = (name: string) =>
-      [...byId("lane-labels").querySelectorAll(".compare-check")].find(
-        (button) => button.textContent === name,
-      ) as HTMLElement;
-    if (check("Kick 2").getAttribute("aria-checked") !== "true") {
-      await userEvent.click(check("Kick 2"));
-    }
-    await expect
-      .poll(() => check("Kick 2").getAttribute("aria-checked"))
-      .toBe("true");
     await settle();
     // 499 samples at 384 kHz.
-    await expect
-      .poll(
-        () =>
-          check("Kick 2").parentElement?.querySelector(".lane-readout")
-            ?.textContent,
-      )
-      .toBe("+1.3 ms Ø · −0.93");
+    await expect.poll(() => laneReadout("Kick 2")).toBe("+1.3 ms Ø · −0.93");
   });
 
   test("counts the samples between time cursors at the reported rate", async () => {

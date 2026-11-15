@@ -31,11 +31,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 20,
+  "protocolVersion": 21,
   "scenario": "LimitedSpan_384kAfter192k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 20,
+    "protocolVersion": 21,
     "sampleRate": 384000.0,
     "settings": {
       "align": "on",
@@ -53,7 +53,6 @@
       "freeSpan": 2.0,
       "gridDensity": "medium",
       "gridType": "grid",
-      "group": "a",
       "hoverReadout": "off",
       "laneChannel": "mid",
       "laneLabels": "on",

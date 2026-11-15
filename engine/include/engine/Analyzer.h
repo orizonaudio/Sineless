@@ -71,8 +71,9 @@ inline constexpr double kStatsBlockSeconds = 0.01;
 inline constexpr std::size_t kSumRefreshSamples = std::size_t{1} << 21U;
 
 // At most this many lanes are drawn in the multi-track view: tracks, and in the Compare view
-// their sum.
+// their sum; and at most this many tracks, so that the sum always has a lane.
 inline constexpr std::size_t kMaxLanes = protocol::kMaxLanes;
+inline constexpr std::size_t kMaxShownTracks = protocol::kMaxShownTracks;
 
 // One track of the multi-track view, as the UI labels it.
 struct LaneLabel
@@ -80,21 +81,35 @@ struct LaneLabel
     std::uint64_t id = 0; // Stable while the track exists; the UI names tracks by it.
     std::string name;
     std::optional<std::uint32_t> colour;
-    bool own = false;      // The instance whose editor shows the lanes.
-    bool compared = false; // Compare view: summed and measured against this track.
-    // Its number among the group's instances on its track, drawn or not; 0 for the only one.
+    bool own = false; // The instance whose editor shows the lanes.
+    // Its number among the instances on its track, shown or not; 0 for the only one.
     std::uint32_t instance = 0;
 
     bool operator==(const LaneLabel&) const = default;
 };
 
-// The tracks behind the lanes of frames whose laneSet is `id`, in lane order, and how many more
-// tracks of the group are not drawn.
+// The tracks behind the lanes of frames whose laneSet is `id`, in lane order.
 struct LaneSet
 {
     std::uint32_t id = 0;
     std::vector<LaneLabel> lanes;
-    std::size_t hidden = 0;
+};
+
+// One instance in the process, as the editor lists it to choose the tracks shown.
+struct TrackEntry
+{
+    LaneLabel label;
+    bool shown = false; // A lane of this instance's multi-track view; always for its own.
+
+    bool operator==(const TrackEntry&) const = default;
+};
+
+// Every instance in the process, in lane order (the host's track order, then creation); `id`
+// changes whenever the list does, from 1.
+struct TrackList
+{
+    std::uint32_t id = 0;
+    std::vector<TrackEntry> tracks;
 };
 
 // The analysis's work since it was created, counted rather than timed, so that tests and
@@ -142,7 +157,7 @@ struct Crop
 // Per-editor-session analysis: turns the capture into display frames. It is
 // created when the editor opens, so the hold buffer is allocated only then.
 //
-// In the multi-track view it reads the other instances of its group from `registry`.
+// In the multi-track view it reads the other instances shown from `registry`.
 //
 // Commands may come from any non-audio thread; produce() runs on the analysis worker.
 class Analyzer
@@ -161,11 +176,11 @@ public:
     // View zoom: the part of the span on screen, as fractions. Out-of-range or reversed
     // values are ignored. Only that part is reduced to screen columns.
     void setView(double start, double end);
-    // Compare view: the other tracks compared with this one, by lane id, and whether the sum
-    // previews the fix. The selection is kept with the instance (Engine::compared), so that it
-    // outlives this analyzer, but is not saved; until first set, the group's first other track is
-    // compared.
-    void setCompared(const std::vector<std::uint64_t>& ids);
+    // The other tracks the multi-track view shows, by lane id: at most kMaxShownTracks with this
+    // one, which is always shown. The selection is kept with the instance (Engine::shown), so that
+    // it outlives this analyzer, but is not saved; a new instance shows its own track alone.
+    void setShown(const std::vector<std::uint64_t>& ids);
+    // Compare view: whether the sum previews the fix.
     void setPreviewFix(bool on);
     // Draws the frame again at the next request, whatever has changed: for a page that has just
     // loaded (or loaded again after its process ended) and has no frame yet.
@@ -183,6 +198,9 @@ public:
 
     // The lanes of the latest multi-track frames; the id changes whenever they do. Any thread.
     [[nodiscard]] LaneSet laneSet() const;
+    // Every instance in the process as of the latest multi-track frame, and which are shown; none
+    // (id 0) before the first. Any thread.
+    [[nodiscard]] TrackList trackList() const;
 
     // The work done so far. On the analysis worker, like produce().
     [[nodiscard]] const AnalysisWork& work() const { return workDone; }
@@ -295,7 +313,9 @@ private:
         std::optional<std::int64_t> indexOffset;
         int offsetDisagreements = 0;
         LaneHold hold;
-        bool compared = false;
+        // Shown while the multi-track view was frozen: none of its audio was held at the freeze,
+        // so its lane is empty until the display resumes (FR-6).
+        bool heldNothing = false;
         // The lane's screen columns, and the part of the sweep they reduce.
         ColumnReduction reduction;
         std::size_t reducedFirst = 0;
@@ -411,7 +431,7 @@ private:
                                              std::size_t end, std::size_t length, std::uint64_t now,
                                              std::uint64_t shownFrom, double viewStart,
                                              double viewEnd);
-    void publishLanes(std::vector<LaneLabel> labels, std::size_t hidden);
+    void publishLanes(std::vector<LaneLabel> labels, std::vector<TrackEntry> tracks);
     [[nodiscard]] bool readoutsDue(std::uint64_t end, protocol::ChannelView view) const;
     // Keeps `values`, measured on `view` up to the capture end `end`, for this and later frames.
     void storeReadouts(const Readouts& values, std::uint64_t end, protocol::ChannelView view);
@@ -817,6 +837,7 @@ private:
     std::uint32_t lastLaneSet = 0;
     mutable std::mutex laneMutex;
     LaneSet published;
+    TrackList publishedTracks;
     // The last readouts of the multi-track view and the capture end they were measured at.
     struct ReadoutCache
     {

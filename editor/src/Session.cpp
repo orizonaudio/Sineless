@@ -107,7 +107,7 @@ void Session::receive(const nlohmann::json& message)
             }
         }
         break;
-    case MessageType::kCompare:
+    case MessageType::kShowTracks:
         if (message.contains("ids") && message["ids"].is_array()) {
             std::vector<std::uint64_t> ids;
             for (const nlohmann::json& id : message["ids"]) {
@@ -115,7 +115,7 @@ void Session::receive(const nlohmann::json& message)
                     ids.push_back(id.get<std::uint64_t>());
                 }
             }
-            analyzer.setCompared(ids);
+            analyzer.setShown(ids);
         }
         break;
     case MessageType::kPreviewFix:
@@ -146,6 +146,7 @@ void Session::hello(const nlohmann::json& message)
     analyzer.redraw(); // The page has no frame yet, whether or not anything changed.
     sendSnapshot();
     lastLaneSet = 0;
+    lastTrackList = 0;
     isStarted = true;
     syncLanes();
 }
@@ -228,8 +229,22 @@ void Session::sync()
             }
         }
     }
+    syncTracks();
     syncLanes();
 }
+
+namespace {
+
+nlohmann::json labelJson(const engine::LaneLabel& lane)
+{
+    return {{"id", lane.id},
+            {"name", lane.name},
+            {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
+            {"own", lane.own},
+            {"instance", lane.instance}};
+}
+
+} // namespace
 
 void Session::syncLanes()
 {
@@ -239,18 +254,29 @@ void Session::syncLanes()
     }
     nlohmann::json labels = nlohmann::json::array();
     for (const engine::LaneLabel& lane : lanes.lanes) {
-        labels.push_back({{"id", lane.id},
-                          {"name", lane.name},
-                          {"colour", lane.colour ? nlohmann::json(*lane.colour) : nlohmann::json()},
-                          {"own", lane.own},
-                          {"compared", lane.compared},
-                          {"instance", lane.instance}});
+        labels.push_back(labelJson(lane));
     }
-    transport.sendMessage({{"type", messageName(MessageType::kLanes)},
-                           {"laneSet", lanes.id},
-                           {"lanes", labels},
-                           {"hidden", lanes.hidden}});
+    transport.sendMessage(
+        {{"type", messageName(MessageType::kLanes)}, {"laneSet", lanes.id}, {"lanes", labels}});
     lastLaneSet = lanes.id;
+}
+
+// Every instance in the process and which are shown, sent whenever the list changes, before the
+// lanes it explains.
+void Session::syncTracks()
+{
+    const engine::TrackList list = analyzer.trackList();
+    if (list.id == 0 || list.id == lastTrackList) {
+        return;
+    }
+    nlohmann::json tracks = nlohmann::json::array();
+    for (const engine::TrackEntry& track : list.tracks) {
+        nlohmann::json entry = labelJson(track.label);
+        entry["shown"] = track.shown;
+        tracks.push_back(std::move(entry));
+    }
+    transport.sendMessage({{"type", messageName(MessageType::kTracks)}, {"tracks", tracks}});
+    lastTrackList = list.id;
 }
 
 void Session::sendState(protocol::SettingId id, double value)

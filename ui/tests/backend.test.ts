@@ -40,7 +40,7 @@ describe("backend", () => {
     backend.pan(0.5);
     backend.arm();
     backend.setViewport(500, 1);
-    backend.compare([3, 5]);
+    backend.showTracks([3, 5]);
     backend.previewFix(true);
     backend.contact();
     expect(transport.sent.map((message) => message.type)).toEqual([
@@ -50,7 +50,7 @@ describe("backend", () => {
       "pan",
       "arm",
       "viewport",
-      "compare",
+      "showTracks",
       "previewFix",
       "contact",
     ]);
@@ -75,6 +75,11 @@ describe("backend", () => {
     backend.on("lanes", (message) =>
       events.push(`lanes:${String(message.laneSet)}`),
     );
+    backend.on("tracks", (message) =>
+      events.push(
+        `tracks:${message.tracks.map((track) => track.name).join(",")}`,
+      ),
+    );
     backend.on("about", (message) =>
       events.push(`about:${message.version}:${String(message.contact)}`),
     );
@@ -92,10 +97,28 @@ describe("backend", () => {
     transport.messageHandler?.({
       type: "lanes",
       laneSet: 3,
-      lanes: [
-        { id: 1, name: "Kick", colour: null, own: true, compared: false },
+      lanes: [{ id: 1, name: "Kick", colour: null, own: true, instance: 0 }],
+    });
+    transport.messageHandler?.({
+      type: "tracks",
+      tracks: [
+        {
+          id: 1,
+          name: "Kick",
+          colour: null,
+          own: true,
+          instance: 0,
+          shown: true,
+        },
+        {
+          id: 2,
+          name: "Bass",
+          colour: null,
+          own: false,
+          instance: 0,
+          shown: false,
+        },
       ],
-      hidden: 0,
     });
     transport.messageHandler?.({
       type: "about",
@@ -111,6 +134,7 @@ describe("backend", () => {
       "state:triggerSpan",
       "error:protocolMismatch",
       "lanes:3",
+      "tracks:Kick,Bass",
       "about:1.2.3:true",
       `frame:${String(golden.header.peak)}`,
     ]);

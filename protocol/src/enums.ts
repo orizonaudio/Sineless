@@ -64,14 +64,10 @@ export function beatSpanQuarterNotes(
 export const Toggle = { off: 0, on: 1 } as const;
 export type Toggle = (typeof Toggle)[keyof typeof Toggle];
 
-// Single shows this track's channels; Multi shows every track of the instance's group, and with
-// the compare setting on, the sum of those checked against this track.
+// Single shows this track's channels; Multi shows the tracks chosen among the Sineless instances
+// in the process, and with the compare setting on, their sum or difference against this track.
 export const DisplayMode = { single: 0, multi: 1 } as const;
 export type DisplayMode = (typeof DisplayMode)[keyof typeof DisplayMode];
-
-// Instances in the same group appear together in the multi-track view.
-export const Group = { a: 0, b: 1, c: 2, d: 3 } as const;
-export type Group = (typeof Group)[keyof typeof Group];
 
 export const FrameMode = { minMax: 0, raw: 1 } as const;
 export type FrameMode = (typeof FrameMode)[keyof typeof FrameMode];
@@ -89,8 +85,8 @@ export type GridDensity = (typeof GridDensity)[keyof typeof GridDensity];
 export const BeatDivision = { regular: 0, triplets: 1 } as const;
 export type BeatDivision = (typeof BeatDivision)[keyof typeof BeatDivision];
 
-// What the last lane of Compare shows: the sum of the checked tracks, or the difference, this
-// track minus the other checked tracks (FR-15.8).
+// What the last lane of Compare shows: the sum of the tracks shown, or the difference, this
+// track minus the other tracks shown (FR-15.8).
 export const CompareLane = { sum: 0, difference: 1 } as const;
 export type CompareLane = (typeof CompareLane)[keyof typeof CompareLane];
 
@@ -104,7 +100,6 @@ export const enums = {
   BeatSpan,
   Toggle,
   DisplayMode,
-  Group,
   FrameMode,
   GridType,
   GridDensity,

@@ -3,6 +3,7 @@
 #include "AudioUnitViewTesting.h"
 #include "Branding.h"
 #include "MacPageTesting.h"
+#include "ShowTracks.h"
 #include "editor/EditorCore.h"
 #include "editor/PointerHold.h"
 #include "editor/WebView.h"
@@ -146,6 +147,7 @@ protected:
             others.push_back(std::make_shared<engine::Engine>());
             engine::InstanceRegistry::shared().add(others.back());
         }
+        engine::showEveryTrack(engine::InstanceRegistry::shared(), *own);
         return others;
     }
     static void removeTracks(const std::vector<std::shared_ptr<engine::Engine>>& others)
@@ -651,17 +653,18 @@ TEST_F(AudioUnitViewTest, GrowsForStackedLanes)
                         static_cast<double>(protocol::DisplayMode::kMulti));
     own->settings().set(protocol::SettingId::kViewLayout,
                         static_cast<double>(protocol::ViewLayout::kStacked));
-    std::vector<std::shared_ptr<engine::Engine>> others; // Fifteen more tracks in its group.
-    for (int track = 1; track < 16; ++track) {
+    std::vector<std::shared_ptr<engine::Engine>> others; // Fourteen more tracks, each shown.
+    for (int track = 1; track < 15; ++track) {
         others.push_back(std::make_shared<engine::Engine>());
         engine::InstanceRegistry::shared().add(others.back());
     }
+    engine::showEveryTrack(engine::InstanceRegistry::shared(), *own);
 
     NSView* view = openView(unit);
     NSWindow* window = windowFor(view);
-    const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
+    const int wanted = EditorCore::kChromeHeight + 15 * EditorCore::kMinimumLaneHeight;
     EXPECT_TRUE(pumpUntil([&] { return view.frame.size.height == wanted; }, kPageTimeout))
-        << "the view grows to the height sixteen lanes need";
+        << "the view grows to the height fifteen lanes need";
     WKWebView* webView = webViewOf(view);
     ASSERT_NE(webView, nil);
     EXPECT_EQ(webView.frame.size.height, wanted) << "the page has the room";
@@ -682,18 +685,18 @@ TEST_F(AudioUnitViewTest, GrowsForStackedLanes)
 // back to the container's height with the lanes squeezed into it.
 TEST_F(AudioUnitViewTest, GrowsForStackedLanesInAHostThatUsesAutoLayout)
 {
-    const auto others = stackTracks(16);
+    const auto others = stackTracks(15);
     NSView* view = openView(unit);
     NSWindow* window = windowFor(view);
     pinWithAutoLayout(view);
-    const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
+    const int wanted = EditorCore::kChromeHeight + 15 * EditorCore::kMinimumLaneHeight;
     EXPECT_TRUE(pumpUntil(
         [&] {
             layOut(view);
             return view.frame.size.height == wanted;
         },
         kPageTimeout))
-        << "the view has the height sixteen lanes need, not " << view.frame.size.height;
+        << "the view has the height fifteen lanes need, not " << view.frame.size.height;
     runQueuedWork();
     layOut(view);
     EXPECT_EQ(view.frame.size.height, wanted) << "and keeps it through the host's layout";
@@ -732,11 +735,11 @@ TEST_F(AudioUnitViewTest, KeepsLanesThatGrewInRoomInAHostThatUsesAutoLayout)
     NSView* view = openView(unit);
     NSWindow* window = openWindowFor(view);
     pinWithAutoLayout(view);
-    const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
+    const int wanted = EditorCore::kChromeHeight + 15 * EditorCore::kMinimumLaneHeight;
     [window setContentSize:NSMakeSize(EditorCore::kDefaultWidth, wanted + 100)];
     layOut(view);
     runQueuedWork();
-    const auto others = stackTracks(16); // Tracks added while the editor is open.
+    const auto others = stackTracks(15); // Tracks added while the editor is open.
     ASSERT_TRUE(pumpUntil(
         [&] {
             layOut(view);
@@ -764,11 +767,11 @@ TEST_F(AudioUnitViewTest, KeepsLanesThatGrewInRoomInAHostThatUsesAutoLayout)
 // filled rather than cut off at the lanes' old height.
 TEST_F(AudioUnitViewTest, FollowsASmallerWindowOnceTheLanesAreGoneInAHostThatUsesAutoLayout)
 {
-    const auto others = stackTracks(16);
+    const auto others = stackTracks(15);
     NSView* view = openView(unit);
     NSWindow* window = openWindowFor(view);
     pinWithAutoLayout(view);
-    const int wanted = EditorCore::kChromeHeight + 16 * EditorCore::kMinimumLaneHeight;
+    const int wanted = EditorCore::kChromeHeight + 15 * EditorCore::kMinimumLaneHeight;
     ASSERT_TRUE(pumpUntil(
         [&] {
             layOut(view);

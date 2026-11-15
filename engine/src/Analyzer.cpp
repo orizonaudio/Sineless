@@ -391,13 +391,21 @@ LaneSet Analyzer::laneSet() const
     return published;
 }
 
-void Analyzer::publishLanes(std::vector<LaneLabel> labels, std::size_t hidden)
+TrackList Analyzer::trackList() const
 {
     const std::scoped_lock lock(laneMutex);
-    if (published.id != 0 && published.lanes == labels && published.hidden == hidden) {
-        return;
+    return publishedTracks;
+}
+
+void Analyzer::publishLanes(std::vector<LaneLabel> labels, std::vector<TrackEntry> tracks)
+{
+    const std::scoped_lock lock(laneMutex);
+    if (published.id == 0 || published.lanes != labels) {
+        published = {.id = published.id + 1, .lanes = std::move(labels)};
     }
-    published = {.id = published.id + 1, .lanes = std::move(labels), .hidden = hidden};
+    if (publishedTracks.id == 0 || publishedTracks.tracks != tracks) {
+        publishedTracks = {.id = publishedTracks.id + 1, .tracks = std::move(tracks)};
+    }
 }
 
 void Analyzer::setColumns(std::size_t columns)
@@ -432,29 +440,18 @@ void Analyzer::setView(double start, double end)
     commands.viewEnd = end;
 }
 
-// The checks are kept with the instance, so that they outlive this analyzer (the editor closed and
-// opened again); they are not saved. A track checked before that is not drawn now (in another
-// group, or beyond the tracks drawn) stays checked.
-void Analyzer::setCompared(const std::vector<std::uint64_t>& ids)
+// The selection is kept with the instance, so that it outlives this analyzer (the editor closed
+// and opened again); it is not saved. This track is always shown and is not part of it.
+void Analyzer::setShown(const std::vector<std::uint64_t>& ids)
 {
-    const LaneSet drawn = laneSet();
+    const std::uint64_t own = ownLane;
     std::vector<std::uint64_t> next;
     for (const std::uint64_t id : ids) {
-        const auto lane = std::ranges::find(drawn.lanes, id, &LaneLabel::id);
-        if ((lane == drawn.lanes.end() || !lane->own) && !contains(next, id)) {
+        if (id != own && !contains(next, id)) {
             next.push_back(id);
         }
     }
-    if (const auto previous = engine.compared()) {
-        for (const std::uint64_t id : *previous) {
-            const bool isDrawn = std::ranges::any_of(
-                drawn.lanes, [&](const LaneLabel& lane) { return lane.id == id; });
-            if (!isDrawn && !contains(next, id)) {
-                next.push_back(id);
-            }
-        }
-    }
-    engine.setCompared(std::move(next));
+    engine.setShown(std::move(next));
 }
 
 void Analyzer::setPreviewFix(bool on)
@@ -651,15 +648,15 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     if (command.columns == 0) {
         return false;
     }
-    // Multi draws lanes of the group's tracks, with Compare on or off.
+    // Multi draws lanes of the tracks shown, with Compare on or off.
     const bool multi = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
                        protocol::DisplayMode::kSingle;
     // A Beats sweep is placed by the host's tempo. Until the host has reported one (an instance
     // it has not played through), the clock's tempo is only a default: no sweep is drawn, and the
     // frame says why, again whenever the inputs change or the page asks for a redraw.
     if (synced && !(isFrozen ? frozenStamp : engine.timeline().latest()).tempoKnown) {
-        // Multi still selects the group's tracks and sends their set, so the page has
-        // their names (and how many are hidden) ready; it names lanes only once a frame carries
+        // Multi still selects the tracks shown and sends their set and the track list, so the
+        // page has their names ready; it names lanes only once a frame carries
         // them, after the host reports a tempo (FR-9.1: nothing is placed until then).
         std::uint32_t laneSetId = 0;
         if (multi) {
@@ -1285,18 +1282,18 @@ bool Analyzer::updateStats(BlockStats& stats, const SweepImage& sweep, ChannelVi
     return measured;
 }
 
-// The tracks of the multi-track view: the group in order, at most kMaxLanes (one fewer in the
-// Compare view, which adds their sum), always including this instance's own. Publishes their
-// labels, keeps each lane's state across frames, and holds each lane's audio while frozen.
+// The tracks of the multi-track view: this instance's own and the others it shows, in the host's
+// order, at most kMaxShownTracks (the Compare view adds one lane, their sum). Publishes their
+// labels and the list of every instance, keeps each lane's state across frames, and holds each
+// lane's audio while frozen.
 // Returns the own lane's serial.
 std::uint64_t Analyzer::selectLanes(const Settings& settings)
 {
     const bool synced =
         settings.enumValue<protocol::TimeBase>(SettingId::kTimeBase) == protocol::TimeBase::kBeats;
-    std::vector<GroupMember> members =
-        registry.members(settings.enumValue<protocol::Group>(SettingId::kGroup));
+    std::vector<Member> members = registry.members();
     auto own = std::ranges::find_if(
-        members, [&](const GroupMember& member) { return member.engine.get() == &engine; });
+        members, [&](const Member& member) { return member.engine.get() == &engine; });
     if (own == members.end()) {
         // Not registered (a host without the registry entry): show this track alone. The
         // analyzer never outlives its engine, so the reference needs no ownership.
@@ -1307,58 +1304,70 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
         own = members.begin();
     }
     const std::uint64_t ownSerial = own->serial;
-    const bool compare = compareShown(settings);
-    const std::size_t maxTracks = compare ? kMaxLanes - 1 : kMaxLanes;
-    std::size_t hidden = 0;
-    if (members.size() > maxTracks) {
-        hidden = members.size() - maxTracks;
-        if (std::cmp_greater_equal(std::distance(members.begin(), own), maxTracks)) {
-            std::rotate(members.begin() + static_cast<std::ptrdiff_t>(maxTracks - 1), own, own + 1);
-        }
-        members.resize(maxTracks);
-    }
 
-    // Compare view: this track, with the others asked for that are drawn (until asked, the first
-    // other track). With no other track checked the sum is this track alone; with no other track
-    // in the group there is nothing to compare.
-    std::vector<std::uint64_t> compared;
-    if (compare) {
-        const auto selection = engine.compared();
-        for (const GroupMember& member : members) {
-            if (member.serial == ownSerial) {
-                continue;
-            }
-            const bool asked = selection ? contains(*selection, member.serial) : compared.empty();
-            if (asked) {
-                compared.push_back(member.serial);
-            }
-        }
+    // The tracks shown: this one, and the others asked for, in the host's order. An instance
+    // that went away leaves the selection, so that one the host brings back (a new instance, with
+    // a new id) is not shown unasked. At most kMaxShownTracks: the editor asks for no more, and a
+    // selection that has more (asked by an older page) is cut to the first ones.
+    std::vector<std::uint64_t> live;
+    live.reserve(members.size());
+    for (const Member& member : members) {
+        live.push_back(member.serial);
     }
-    comparing = compare && members.size() > 1;
-    const auto isCompared = [&](std::uint64_t serial) {
-        return comparing && (serial == ownSerial || contains(compared, serial));
-    };
-
+    engine.keepShown(live);
+    const std::vector<std::uint64_t> asked = engine.shown();
+    std::vector<TrackEntry> tracks;
+    tracks.reserve(members.size());
+    std::size_t others = 0;
+    for (const Member& member : members) {
+        const bool isOwn = member.serial == ownSerial;
+        const bool shown =
+            isOwn || (contains(asked, member.serial) && others < kMaxShownTracks - 1);
+        if (shown && !isOwn) {
+            ++others;
+        }
+        tracks.push_back({.label = {.id = member.serial,
+                                    .name = member.track.name,
+                                    .colour = member.track.colour,
+                                    .own = isOwn,
+                                    .instance = member.instance},
+                          .shown = shown});
+    }
     std::vector<LaneLabel> labels;
-    labels.reserve(members.size());
-    for (const GroupMember& member : members) {
-        labels.push_back({.id = member.serial,
-                          .name = member.track.name,
-                          .colour = member.track.colour,
-                          .own = member.serial == ownSerial,
-                          .compared = isCompared(member.serial),
-                          .instance = member.instance});
+    labels.reserve(others + 1);
+    for (const TrackEntry& track : tracks) {
+        if (track.shown) {
+            labels.push_back(track.label);
+        }
     }
-    publishLanes(std::move(labels), hidden);
+    // Compare takes every track shown, this one as the reference; with no other there is nothing
+    // to compare.
+    comparing = compareShown(settings) && labels.size() > 1;
+    publishLanes(std::move(labels), tracks);
 
+    // Lanes there were before this call (none outside the multi-track view, which frees them):
+    // only then is a new lane a track shown while this view was frozen.
+    const bool hadLanes = !lanes.empty();
     std::map<std::uint64_t, std::unique_ptr<Lane>> next;
     laneOrder.clear();
-    for (GroupMember& member : members) {
+    for (std::size_t index = 0; index < members.size(); ++index) {
+        Member& member = members[index];
+        if (!tracks[index].shown) {
+            continue;
+        }
         const auto found = lanes.find(member.serial);
-        auto lane = found != lanes.end() ? std::move(found->second) : std::make_unique<Lane>();
+        const bool isNew = found == lanes.end();
+        auto lane = isNew ? std::make_unique<Lane>() : std::move(found->second);
         lane->engine = std::move(member.engine);
         const CaptureRing& ring = lane->engine->captureRing();
-        if (isFrozen && !lane->hold.held()) {
+        if (!isFrozen) {
+            lane->heldNothing = false;
+        } else if (isNew && hadLanes && member.serial != ownSerial) {
+            // Shown while frozen: its audio was not held at the freeze, and what it has now is
+            // from later, so its lane stays empty until the display resumes (FR-6).
+            lane->heldNothing = true;
+        }
+        if (isFrozen && !lane->hold.held() && !lane->heldNothing) {
             // This track's sweep holds every channel, so that a channel chosen while frozen is
             // drawn from it (in Trigger and Free its lane reads the HoldBuffer); another track's
             // holds its lane channel alone.
@@ -1379,7 +1388,6 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
         } else if (!isFrozen && lane->hold.held()) {
             lane->hold.release();
         }
-        lane->compared = isCompared(member.serial);
         laneOrder.push_back(member.serial);
         next.insert_or_assign(member.serial, std::move(lane));
     }
@@ -1693,7 +1701,7 @@ void Analyzer::advance()
     }
 }
 
-// The multi-track view in Beats mode: one lane per track of the group, each the track's lane
+// The multi-track view in Beats mode: one lane per track shown, each the track's lane
 // channel as a persistent sweep on its own musical clock, so that lanes line up on bar lines. While
 // frozen the lanes are not updated, so all of them hold the same moment.
 bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
@@ -1953,7 +1961,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                     ? laneBit(laneIndex)
                     : 0U;
             partial = partial || !(lane.image.complete() || lane.image.partComplete());
-            if (comparing && lane.compared) {
+            if (comparing) {
                 frameChanges.insert(frameChanges.end(), lane.image.changes().begin(),
                                     lane.image.changes().end());
             }
@@ -1962,7 +1970,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
             // Emptied, as by a channel chosen while frozen that its hold lacks: its levels go, and
             // the sums that held them are summed again.
             lane.stats = {};
-            if (comparing && lane.compared) {
+            if (comparing) {
                 frameChanges.push_back({.first = 0, .end = count});
             }
         }
@@ -2111,12 +2119,8 @@ bool Analyzer::showFrozenParts(protocol::BeatSpan span, double start, double end
 // of a sample that is not finite is not finite either.
 std::uint32_t Analyzer::sumLaneBit(std::uint32_t laneBits) const
 {
-    for (std::size_t index = 0; index < laneOrder.size(); ++index) {
-        if ((laneBits & laneBit(index)) != 0 && lanes.at(laneOrder[index])->compared) {
-            return laneBit(laneOrder.size());
-        }
-    }
-    return 0U;
+    const std::uint32_t tracks = laneBit(laneOrder.size()) - 1U;
+    return comparing && (laneBits & tracks) != 0 ? laneBit(laneOrder.size()) : 0U;
 }
 
 // The multi-track view in Trigger or Free: every lane shows this track's window (its
@@ -2360,7 +2364,7 @@ std::optional<std::size_t> Analyzer::matchToSearch(std::uint32_t laneSet, std::s
     std::size_t candidates = 0;
     for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
         const std::uint64_t serial = laneOrder[lane];
-        if (serial == ownLane || !lanes.at(serial)->compared) {
+        if (!comparing || serial == ownLane) {
             continue;
         }
         const auto found = matchStates.find(serial);
@@ -2399,11 +2403,12 @@ void Analyzer::buildParts()
     rawParts.clear();
     fixedParts.clear();
     differenceParts.clear();
+    if (!comparing) {
+        return;
+    }
+    // Every lane is a part: Compare takes every track shown.
     for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
         const std::uint64_t serial = laneOrder[lane];
-        if (!lanes.at(serial)->compared) {
-            continue;
-        }
         SumPart fixed{.lane = lane};
         if (const auto found = matchStates.find(serial); found != matchStates.end()) {
             fixed.offset = found->second.analysis.offset;
@@ -2465,8 +2470,8 @@ void Analyzer::packMatches()
     for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
         const std::uint64_t serial = laneOrder[lane];
         const auto found = matchStates.find(serial);
-        if (!lanes.at(serial)->compared || found == matchStates.end()) {
-            continue; // This track, and tracks not compared, have none.
+        if (!comparing || found == matchStates.end()) {
+            continue; // This track has none.
         }
         const PairAnalysis& match = found->second.analysis;
         float* const values = matchValues.data() + lane * protocol::kMatchValues;
@@ -2513,7 +2518,7 @@ Analyzer::Reach Analyzer::reachOf(const std::vector<SumPart>& parts)
 Analyzer::SumPart Analyzer::laneFeed(std::size_t lane) const
 {
     const std::uint64_t serial = laneOrder[lane];
-    if (!comparing || serial == ownLane || !lanes.at(serial)->compared) {
+    if (!comparing || serial == ownLane) {
         return {.lane = lane};
     }
     return alignedPart(lane, 1.0f);
@@ -2840,16 +2845,19 @@ bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
     }
     if (!kept.follows(key, lanesFrame)) {
         // Other parts, or frames that left these levels out: every block again, over the next
-        // frames; meanwhile the blocks not redone yet still hold the levels they had.
+        // frames; meanwhile the blocks not redone yet still hold the levels they had. This
+        // frame's changes are among them, and are not summed now: a track just shown changes its
+        // whole sweep at once, which would be the whole of every part in one frame.
         refresh.remaining = length;
-    }
-    for (const SweepImage::Range& range : frameChanges) {
-        const auto from =
-            static_cast<std::size_t>(range.first > reach.before ? range.first - reach.before : 0);
-        const auto to =
-            static_cast<std::size_t>(std::min<std::uint64_t>(range.end + reach.after, length));
-        if (from < to) {
-            stats.update(from, to, read);
+    } else {
+        for (const SweepImage::Range& range : frameChanges) {
+            const auto from = static_cast<std::size_t>(
+                range.first > reach.before ? range.first - reach.before : 0);
+            const auto to =
+                static_cast<std::size_t>(std::min<std::uint64_t>(range.end + reach.after, length));
+            if (from < to) {
+                stats.update(from, to, read);
+            }
         }
     }
     const bool refreshing = refresh.remaining > 0;
@@ -3182,10 +3190,7 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
         sumSeams.push_back(playhead - drawFirst);
     }
     for (const std::uint64_t serial : laneOrder) {
-        const Lane& lane = *lanes.at(serial);
-        if (lane.compared) { // Only the lanes summed.
-            addJoins(lane.image, crop, sumSeams);
-        }
+        addJoins(lanes.at(serial)->image, crop, sumSeams);
     }
     if (sumRebuilt) {
         sumReduction.reset(visibleCount, columns, false, crop.lead, crop.trail);
@@ -3194,21 +3199,22 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
         (void)sumKept.follows(sumKey, lanesFrame);
         sumRefresh = {};
     } else {
+        const Reach reach = difference ? reachOf(parts) : previewFix ? fixReach : Reach{};
         if (!sumKept.follows(sumKey, lanesFrame)) {
             // Other parts, or frames that left the sum out: every column again, over the next
-            // frames, from left to right.
+            // frames, from left to right; this frame's changes with them (updateSumStats).
             sumRefresh.remaining = visibleCount;
             sumRefresh.cursor = 0;
-        }
-        const Reach reach = difference ? reachOf(parts) : previewFix ? fixReach : Reach{};
-        for (const SweepImage::Range& range : frameChanges) {
-            const std::uint64_t from = std::max<std::uint64_t>(
-                range.first > reach.before ? range.first - reach.before : 0, drawFirst);
-            const std::uint64_t to = std::min<std::uint64_t>(range.end + reach.after, drawEnd);
-            if (from < to) {
-                sumReduction.update(static_cast<std::size_t>(from) - drawFirst,
-                                    static_cast<std::size_t>(to) - drawFirst, readVisibleSum,
-                                    sumSeams);
+        } else {
+            for (const SweepImage::Range& range : frameChanges) {
+                const std::uint64_t from = std::max<std::uint64_t>(
+                    range.first > reach.before ? range.first - reach.before : 0, drawFirst);
+                const std::uint64_t to = std::min<std::uint64_t>(range.end + reach.after, drawEnd);
+                if (from < to) {
+                    sumReduction.update(static_cast<std::size_t>(from) - drawFirst,
+                                        static_cast<std::size_t>(to) - drawFirst, readVisibleSum,
+                                        sumSeams);
+                }
             }
         }
         continueRefresh(sumRefresh, visibleCount, refreshStep(weightOf(parts), shares),

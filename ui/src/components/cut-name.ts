@@ -81,11 +81,15 @@ export function cutName(full: string, options: CutNameOptions): HTMLElement {
     return outer;
   }
 
-  // Fitted again when its width changes, but not for the width its own cut gave it.
+  // Fitted again when its width changes, but not for the width its own cut gave it; in the next
+  // frame, as a fit changes the width observed (a change inside the observer's own callback is
+  // reported as a loop).
   new ResizeObserver(() => {
-    if (outer.clientWidth !== fitted) {
-      fit();
-    }
+    requestAnimationFrame(() => {
+      if (outer.clientWidth !== fitted) {
+        fit();
+      }
+    });
   }).observe(outer);
   void document.fonts.ready.then(fit);
 

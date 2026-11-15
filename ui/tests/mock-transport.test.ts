@@ -13,6 +13,7 @@ import {
   defaultTriggerPosition,
   frozenHoldSeconds,
   maxPointsPerSample,
+  maxShownTracks,
   minPointsPerSample,
 } from "../../protocol/src/limits.ts";
 import {
@@ -123,11 +124,24 @@ describe("mock back end", () => {
     ]);
   });
 
-  test("draws the simulated group's tracks as lanes in Multi mode", () => {
+  test("lists every track and draws the ticked ones as lanes in Multi mode", () => {
     const { transport, messages, frames } = connect();
     const lanes = () => messages.filter((message) => message.type === "lanes");
+    const tracks = () =>
+      messages.filter((message) => message.type === "tracks");
     expect(lanes()).toHaveLength(1);
-    expect(lanes()[0]).toMatchObject({ laneSet: 1, hidden: 0 });
+    expect(lanes()[0]).toMatchObject({ laneSet: 1 });
+    expect(lanes()[0]).not.toHaveProperty("hidden");
+    // Every instance, each shown by default, as when the user ticked them.
+    expect(tracks()).toHaveLength(1);
+    expect(tracks()[0]).toMatchObject({
+      tracks: [
+        { name: "Kick", own: true, shown: true },
+        { name: "Bass", own: false, shown: true },
+        { name: "", shown: true },
+        { name: "Kick 2", shown: true },
+      ],
+    });
     transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
     transport.requestFrame();
     const frame = frames.at(-1);
@@ -135,14 +149,103 @@ describe("mock back end", () => {
     expect(frame?.lanes).toHaveLength(4);
     expect(frame?.laneSet).toBe(1);
 
-    transport.send({ type: "setSetting", name: "group", value: "b" });
+    // Only the bass ticked: this track and the bass, and the list says so.
+    transport.send({ type: "showTracks", ids: [2] });
     transport.requestFrame();
     expect(lanes()).toHaveLength(2);
     expect(lanes()[1]).toMatchObject({
       laneSet: 2,
+      lanes: [
+        { name: "Kick", own: true },
+        { name: "Bass", own: false },
+      ],
+    });
+    expect(tracks()).toHaveLength(2);
+    expect(tracks()[1]).toMatchObject({
+      tracks: [
+        { shown: true },
+        { shown: true },
+        { shown: false },
+        { shown: false },
+      ],
+    });
+    expect(frames.at(-1)?.lanes).toHaveLength(2);
+
+    // None ticked, with this track's own id and one of no track asked for: this track alone.
+    transport.send({ type: "showTracks", ids: [1, 99] });
+    transport.requestFrame();
+    expect(lanes().at(-1)).toMatchObject({
       lanes: [{ name: "Kick", own: true }],
     });
     expect(frames.at(-1)?.lanes).toHaveLength(1);
+  });
+
+  test("a new instance shows its own track alone, and lists the others", () => {
+    const { transport, messages, frames } = connect({ othersShown: false });
+    expect(messages.find((message) => message.type === "tracks")).toMatchObject(
+      {
+        tracks: [
+          { name: "Kick", shown: true },
+          { shown: false },
+          { shown: false },
+          { shown: false },
+        ],
+      },
+    );
+    transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
+    transport.requestFrame();
+    expect(frames.at(-1)?.lanes).toHaveLength(1);
+  });
+
+  test("shows at most the tracks Multi has lanes for, the first in the host's order", () => {
+    const { transport, messages, frames } = connect({ trackCount: 20 });
+    const shown = () =>
+      (
+        messages.filter((message) => message.type === "tracks").at(-1) as
+          { tracks: { shown: boolean }[] } | undefined
+      )?.tracks.map((track) => track.shown) ?? [];
+    expect(shown()).toHaveLength(20);
+    expect(shown().filter(Boolean)).toHaveLength(maxShownTracks);
+    transport.send({
+      type: "showTracks",
+      ids: Array.from({ length: 20 }, (_, index) => index + 1),
+    });
+    expect(shown().filter(Boolean)).toHaveLength(maxShownTracks);
+    expect(shown().slice(maxShownTracks)).toEqual(
+      new Array<boolean>(20 - maxShownTracks).fill(false),
+    );
+    transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
+    transport.send({ type: "setSetting", name: "compare", value: "on" });
+    transport.requestFrame();
+    expect(frames.at(-1)?.lanes).toHaveLength(maxShownTracks + 1);
+  });
+
+  test("lists an instance added to the host unticked, and forgets one removed", () => {
+    const { transport, messages } = connect();
+    const last = () =>
+      messages.filter((message) => message.type === "tracks").at(-1) as
+        { tracks: { id: number; name: string; shown: boolean }[] } | undefined;
+    const id = transport.addTrack("Vox");
+    expect(last()?.tracks.at(-1)).toMatchObject({
+      id,
+      name: "Vox",
+      shown: false,
+    });
+    expect(messages.filter((message) => message.type === "lanes")).toHaveLength(
+      1,
+    );
+    transport.removeTrack(2);
+    expect(last()?.tracks.map((track) => track.name)).toEqual([
+      "Kick",
+      "",
+      "Kick 2",
+      "Vox",
+    ]);
+    expect(
+      messages.filter((message) => message.type === "lanes").at(-1),
+    ).toMatchObject({
+      lanes: [{ name: "Kick" }, { name: "" }, { name: "Kick 2" }],
+    });
   });
 
   // The engine sends the lanes in the host's order, wherever this track is in it: the page must
@@ -177,8 +280,9 @@ describe("mock back end", () => {
     );
   });
 
-  test("shows the difference of the checked tracks when asked, with its null depth and no gains", () => {
+  test("shows the difference of the tracks shown when asked, with its null depth and no gains", () => {
     const { transport, frames } = connect();
+    transport.send({ type: "showTracks", ids: [2] });
     transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
     transport.send({ type: "setSetting", name: "compare", value: "on" });
     transport.requestFrame();
@@ -204,34 +308,30 @@ describe("mock back end", () => {
     );
   });
 
-  test("compares this track with the checked tracks and previews the fix", () => {
-    const { transport, messages, frames } = connect();
+  test("compares this track with every track shown and previews the fix", () => {
+    const { transport, frames } = connect();
     transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
     transport.send({ type: "setSetting", name: "compare", value: "on" });
     transport.requestFrame();
-    const lanes = messages.filter((message) => message.type === "lanes").at(-1);
-    expect(lanes).toMatchObject({
-      lanes: [
-        { name: "Kick", compared: true },
-        { name: "Bass", compared: true },
-        { name: "", compared: false },
-        { name: "Kick 2", compared: false },
-      ],
-    });
     expect(frames.at(-1)?.lanes).toHaveLength(5);
     expect(frames.at(-1)?.comparison?.matches).toHaveLength(4);
-    // This track and those not compared have no match, as the engine sends.
-    for (const index of [0, 2, 3]) {
-      const none = frames.at(-1)?.comparison?.matches[index];
-      expect(none?.correlation).toBeNaN();
-      expect(none?.offset).toBeNaN();
-      expect(none?.related).toBe(false);
+    // This track has no match, as the engine sends; every other track has one.
+    const own = frames.at(-1)?.comparison?.matches[0];
+    expect(own?.correlation).toBeNaN();
+    expect(own?.offset).toBeNaN();
+    expect(own?.related).toBe(false);
+    for (const index of [1, 2, 3]) {
+      expect(
+        frames.at(-1)?.comparison?.matches[index]?.correlation,
+      ).not.toBeNaN();
     }
 
-    transport.send({ type: "compare", ids: [4] });
+    // The kick and its second microphone alone, which is late and inverted.
+    transport.send({ type: "showTracks", ids: [4] });
     transport.requestFrame();
     const cancelling = frames.at(-1);
-    expect(cancelling?.comparison?.matches[3]).toMatchObject({
+    expect(cancelling?.lanes).toHaveLength(3);
+    expect(cancelling?.comparison?.matches[1]).toMatchObject({
       inverted: true,
     });
     expect(cancelling?.comparison?.sumGain).toBeLessThan(-6);
@@ -242,12 +342,13 @@ describe("mock back end", () => {
     const fixed = frames.at(-1);
     const peak = (values: Float32Array | undefined) =>
       Math.max(...Array.from(values ?? [], Math.abs));
-    expect(peak(fixed?.lanes[4])).toBeGreaterThan(peak(cancelling?.lanes[4]));
+    expect(peak(fixed?.lanes[2])).toBeGreaterThan(peak(cancelling?.lanes[2]));
 
-    transport.send({ type: "compare", ids: [] });
+    // This track alone: nothing to compare, so no lane is added.
+    transport.send({ type: "showTracks", ids: [] });
     transport.requestFrame();
-    expect(frames.at(-1)?.lanes).toHaveLength(5); // The sum of this track alone.
-    expect(frames.at(-1)?.comparison?.sumGain).toBeCloseTo(0);
+    expect(frames.at(-1)?.lanes).toHaveLength(1);
+    expect(frames.at(-1)?.comparison).toBeUndefined();
   });
 
   // As the engine decides: Compare is on show only with the switch on in Multi. The app tests run
@@ -613,7 +714,6 @@ describe("mock back end", () => {
     transport.send({ type: "view", start: 0.5, end: 0.6 });
     transport.send({ type: "setSetting", name: "displayMode", value: "multi" });
     transport.send({ type: "setSetting", name: "compare", value: "on" });
-    transport.send({ type: "compare", ids: [4] });
     transport.requestFrame();
     const frame = frames.at(-1);
     expect(frame?.visibleSamples).toBe(960);

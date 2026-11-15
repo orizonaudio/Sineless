@@ -1,7 +1,7 @@
 {
   "scenarios": {
     "multi-7-four-bars": { "warmup": 10, "duration": 10 },
-    "compare-7-four-bars": { "warmup": 10, "duration": 10 },
+    "compare-7-all-four-bars": { "warmup": 10, "duration": 10 },
     "multi-15-sixteen-bars": { "warmup": 70, "duration": 10 },
     "compare-15-worst": { "warmup": 70, "duration": 10 },
     "compare-15-worst-384k": { "warmup": 70, "duration": 10 }
@@ -9,7 +9,7 @@
   "machines": {
     "developer-mac": {
       "description": "The maintainer's M-series MacBook. Scale 1: the window on its 1x display at 100 Hz, where the page holds each frame for two ticks (50 frames/s, a new frame every 20 ms). Scale 2: the window on its built-in Retina display at 60 Hz, a new frame on every tick.",
-      "why": "Scale 1 set on 2026-11-02 from five rounds of every scenario, after the render loop began holding each frame for the same whole number of display ticks (two at 100 Hz): frames/s at least the slowest round less 2; late frames at most 0.45% of a run (why: below); the 99th-percentile frame interval at most one display tick (10 ms) beyond the worst round; CPU per frame (the analysis thread, the main thread, which in a host is its own UI thread, WebKit, and their total) at most 1.5 times the worst round, as it varied by up to a third between rounds. Every round drew 50 frames/s with no late frame and no frame more than 23 ms after the last. Scale 2 set on 2026-10-20 the same way, a display tick there being 17 ms. Late frames: 0.45% passes at most 2 late frames in a 10 s run of 500 to 600, and fails 3 whatever the frame rate. A late frame stays on screen a tick longer, 16.7 ms of hitch at 60 Hz and 10 ms at 100 Hz, so 2 in 10 s is at most about 3.3 ms of hitch per second: under the 5 ms/s Apple counts as a good experience, against 10 or more as critical (WWDC20, Eliminate animation hitches with XCTest). A lone pause of the page's own passes; the stutter of a skipped tick (0.5 to 1.2% of frames) fails.",
+      "why": "Scale 1 set on 2026-11-02 from five rounds of every scenario, after the render loop began holding each frame for the same whole number of display ticks (two at 100 Hz): frames/s at least the slowest round less 2; late frames at most 0.45% of a run (why: below); the 99th-percentile frame interval at most one display tick (10 ms) beyond the worst round; CPU per frame (the analysis thread, the main thread, which in a host is its own UI thread, WebKit, and their total) at most 1.5 times the worst round, as it varied by up to a third between rounds. Every round drew 50 frames/s with no late frame and no frame more than 23 ms after the last. Scale 2 set on 2026-10-20 the same way, a display tick there being 17 ms. Late frames: 0.45% passes at most 2 late frames in a 10 s run of 500 to 600, and fails 3 whatever the frame rate. A late frame stays on screen a tick longer, 16.7 ms of hitch at 60 Hz and 10 ms at 100 Hz, so 2 in 10 s is at most about 3.3 ms of hitch per second: under the 5 ms/s Apple counts as a good experience, against 10 or more as critical (WWDC20, Eliminate animation hitches with XCTest). A lone pause of the page's own passes; the stutter of a skipped tick (0.5 to 1.2% of frames) fails. compare-7-all-four-bars (2026-11-15): Compare takes every track shown since #425, so the scenario sums seven tracks where compare-7-four-bars summed two; its analysis limit was set again from five rounds on a 1x display at 60 Hz (2.35 to 2.51 ms a frame, 14.8% of a core, 60 frames/s, at most 0.34% late): 1.5 times the worst round at scale 2 (3.8), and at scale 1, where a frame at 50 frames/s holds a fifth more audio, 1.5 times that worst round and a fifth (4.5); its total limits rose by as much as its analysis limits. The other parts' limits are those of compare-7-four-bars, which the rounds stayed within.",
       "limits": {
         "1": {
           "multi-7-four-bars": {
@@ -21,14 +21,14 @@
             "main-ms-per-frame": { "max": 2.8 },
             "total-ms-per-frame": { "max": 13.7 }
           },
-          "compare-7-four-bars": {
+          "compare-7-all-four-bars": {
             "frames-per-second": { "min": 47.9 },
             "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 31 },
-            "analysis-ms-per-frame": { "max": 1.3 },
+            "analysis-ms-per-frame": { "max": 4.5 },
             "webkit-ms-per-frame": { "max": 9 },
             "main-ms-per-frame": { "max": 2.7 },
-            "total-ms-per-frame": { "max": 14.6 }
+            "total-ms-per-frame": { "max": 17.8 }
           },
           "multi-15-sixteen-bars": {
             "frames-per-second": { "min": 47.9 },
@@ -68,14 +68,14 @@
             "main-ms-per-frame": { "max": 2.2 },
             "total-ms-per-frame": { "max": 11.7 }
           },
-          "compare-7-four-bars": {
+          "compare-7-all-four-bars": {
             "frames-per-second": { "min": 57.8 },
             "late-frames-percent": { "max": 0.45 },
             "frame-interval-p99-ms": { "max": 36 },
-            "analysis-ms-per-frame": { "max": 1.1 },
+            "analysis-ms-per-frame": { "max": 3.8 },
             "webkit-ms-per-frame": { "max": 7.9 },
             "main-ms-per-frame": { "max": 2.1 },
-            "total-ms-per-frame": { "max": 12.3 }
+            "total-ms-per-frame": { "max": 15 }
           },
           "multi-15-sixteen-bars": {
             "frames-per-second": { "min": 57.9 },

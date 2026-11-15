@@ -1,7 +1,7 @@
 #pragma once
 
-// A host for tests: instances of group A on one host clock at 120 BPM in 4/4, playing
-// deterministic signals in blocks of 10 ms, the first one viewed by an analyzer.
+// A host for tests: instances, each shown in the first one's Multi, on one host clock at 120 BPM in
+// 4/4, playing deterministic signals in blocks of 10 ms, the first one viewed by an analyzer.
 
 #include "FrameDecoding.h"
 #include "Signals.h"
@@ -99,6 +99,16 @@ private:
         engine->prepare(rate);
         engine->setInputChannels(track.channels);
         registry.add(engine);
+        if (!members.empty()) {
+            // The first instance's Multi shows every other, as when the user ticks each.
+            std::vector<std::uint64_t> shown = own().shown();
+            for (const auto& member : registry.members()) {
+                if (member.engine == engine) {
+                    shown.push_back(member.serial);
+                }
+            }
+            own().setShown(std::move(shown));
+        }
         members.push_back({.engine = std::move(engine), .track = track});
     }
 

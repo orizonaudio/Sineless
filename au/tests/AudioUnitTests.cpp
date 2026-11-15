@@ -319,7 +319,7 @@ engine::Settings notDefaults()
     engine::Settings settings;
     settings.set(SettingId::kTimeBase, static_cast<double>(protocol::TimeBase::kTrigger));
     settings.set(SettingId::kDisplayMode, static_cast<double>(protocol::DisplayMode::kMulti));
-    settings.set(SettingId::kGroup, static_cast<double>(protocol::Group::kC));
+    settings.set(SettingId::kCompare, static_cast<double>(protocol::Toggle::kOn));
     return settings;
 }
 
@@ -935,9 +935,7 @@ TEST(AudioUnit, IsFoundOnlyWhileItLives)
                   noErr);
         engine = engine::EngineRegistry::find(token);
         ASSERT_FALSE(engine.expired());
-        const auto group =
-            static_cast<protocol::Group>(engine.lock()->settings().get().value(SettingId::kGroup));
-        const auto members = engine::InstanceRegistry::shared().members(group);
+        const auto members = engine::InstanceRegistry::shared().members();
         EXPECT_TRUE(std::ranges::any_of(
             members, [&](const auto& member) { return member.engine == engine.lock(); }));
     }

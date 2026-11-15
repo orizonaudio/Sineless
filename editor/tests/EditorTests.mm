@@ -1,6 +1,7 @@
 #include "Branding.h"
 #include "FitStates.h"
 #include "MacPageTesting.h"
+#include "ShowTracks.h"
 #include "editor/Editor.h"
 #include "editor/EditorCore.h"
 #include "editor/PointerHold.h"
@@ -616,14 +617,15 @@ TEST_F(EditorTest, GrowsTheMinimumHeightWithStackedLanes)
                             static_cast<double>(protocol::DisplayMode::kMulti));
         own->settings().set(protocol::SettingId::kViewLayout,
                             static_cast<double>(protocol::ViewLayout::kStacked));
-        // Sixteen tracks: more than the default window's height fits.
+        // Fifteen tracks, the most Multi shows: more than the default window's height fits.
         std::vector<std::shared_ptr<engine::Engine>> group{own};
-        for (int track = 1; track < 16; ++track) {
+        for (int track = 1; track < 15; ++track) {
             group.push_back(std::make_shared<engine::Engine>());
         }
         for (const auto& engine : group) {
             engine::InstanceRegistry::shared().add(engine);
         }
+        engine::showEveryTrack(engine::InstanceRegistry::shared(), *own);
         TestFrame frame; // Outlives the editor, which keeps a pointer to it.
         frame.callsOnSize = callsOnSize;
         std::vector<std::string> received;
@@ -633,9 +635,9 @@ TEST_F(EditorTest, GrowsTheMinimumHeightWithStackedLanes)
         NSWindow* window = makeWindow(content);
         ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
 
-        const int wanted = Editor::kChromeHeight + 16 * Editor::kMinimumLaneHeight;
+        const int wanted = Editor::kChromeHeight + 15 * Editor::kMinimumLaneHeight;
         ASSERT_TRUE(pumpUntil([&] { return frame.requests > 0; }, kPageTimeout))
-            << "the editor asks for the height its sixteen lanes need";
+            << "the editor asks for the height its fifteen lanes need";
         EXPECT_EQ(frame.requested.getHeight(), wanted);
         EXPECT_EQ(editor->getRect().getHeight(), wanted) << "granted";
         auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
@@ -745,12 +747,13 @@ TEST_F(EditorTest, KeepsTheLanesHeightWhenTheGripIsDraggedIn)
     own->settings().set(protocol::SettingId::kViewLayout,
                         static_cast<double>(protocol::ViewLayout::kStacked));
     std::vector<std::shared_ptr<engine::Engine>> group{own};
-    for (int track = 1; track < 16; ++track) {
+    for (int track = 1; track < 15; ++track) {
         group.push_back(std::make_shared<engine::Engine>());
     }
     for (const auto& engine : group) {
         engine::InstanceRegistry::shared().add(engine);
     }
+    engine::showEveryTrack(engine::InstanceRegistry::shared(), *own);
     TestFrame frame;
     std::vector<std::string> received;
     auto editor = makeEditor(received, own);
@@ -760,9 +763,9 @@ TEST_F(EditorTest, KeepsTheLanesHeightWhenTheGripIsDraggedIn)
     NSWindow* window = makeWindow(content);
     ASSERT_EQ(editor->attached((__bridge void*)content, kPlatformTypeNSView), kResultTrue);
     auto* webView = (__bridge WKWebView*)editor->webView()->nativeView();
-    const int wanted = Editor::kChromeHeight + 16 * Editor::kMinimumLaneHeight;
+    const int wanted = Editor::kChromeHeight + 15 * Editor::kMinimumLaneHeight;
     ASSERT_TRUE(pumpUntil([&] { return frame.requests == 1; }, kPageTimeout))
-        << "the editor asks for the height its sixteen lanes need";
+        << "the editor asks for the height its fifteen lanes need";
     ASSERT_TRUE(pumpUntil([&] { return hasSnapshot(webView); }, kPageTimeout));
 
     dragGrip(webView, Editor::kMinimumWidth, Editor::kMinimumHeight);
@@ -793,6 +796,7 @@ public:
         for (const auto& engine : group) {
             engine::InstanceRegistry::shared().add(engine);
         }
+        engine::showEveryTrack(engine::InstanceRegistry::shared(), *own);
     }
     ~StackedTracks()
     {
@@ -901,7 +905,7 @@ TEST_F(EditorTest, TheHostsOwnPlacementAsTheEditorOpensIsNotTheSizeChosen)
 // A host that refuses the editor's request leaves the window as it is, and nothing is saved.
 TEST_F(EditorTest, ARefusedResizeSavesNothing)
 {
-    const StackedTracks tracks(16); // More than the default height fits.
+    const StackedTracks tracks(15); // More than the default height fits.
     TestFrame frame;
     frame.refuses = true;
     std::vector<std::string> received;

@@ -129,9 +129,9 @@ function pushQuad(
   out.push(x0, y0, x1, y1, x2, y2, x2, y2, x1, y1, x3, y3);
 }
 
-// Compare frames hold the group's tracks and then the sum of the compared ones. Where the sum's
-// peak falls cancellationDb below the louder compared track's, they cancel strongly: these spans
-// of the sum's lane, as quads. `compared` marks the compared tracks in lane order. The rule and
+// Compare frames hold the tracks shown and then their sum. Where the sum's peak falls
+// cancellationDb below the louder track's, they cancel strongly: these spans of the sum's lane, as
+// quads. Every lane before the sum's is a track summed. The rule and
 // its numbers are in protocol/src/limits.ts; the macOS editor draws the same shading.
 const cancellationRatio = 10 ** (cancellationDb / 20);
 const quietRatio = cancellationQuietShare;
@@ -193,18 +193,13 @@ export function cancellationLevels(
 export function cancellationBands(
   frame: Frame,
   layout: TraceLayout,
-  compared: readonly boolean[],
 ): Float32Array {
   const sum = frame.lanes.at(-1);
-  const tracks = frame.lanes
-    .slice(0, -1)
-    .filter((_, index) => compared[index] === true);
+  const tracks = frame.lanes.slice(0, -1);
   // Tracks that match this one nowhere clearly have no cancellation to fix: their sum only dips
   // and swells as they beat against each other. This track's own match is never related.
   const related =
-    frame.comparison?.matches.some(
-      (match, index) => compared[index] === true && match.related,
-    ) === true;
+    frame.comparison?.matches.some((match) => match.related) === true;
   // The difference is not a sum: where it falls below a track, the tracks agree, which is the
   // point of it, not a problem to mark.
   if (
@@ -300,18 +295,15 @@ export const differenceParts = [
 export type DifferencePart = (typeof differenceParts)[number];
 
 // The blocks, in differenceParts' order, each of pointCount (low, high) pairs; none for a frame
-// that does not show a difference, or with no other track compared. `compared` marks the compared
-// tracks in lane order; `own` is this track's lane.
+// that does not show a difference. Every lane before the difference's is a track compared; `own`
+// is this track's lane.
 export function differenceAreas(
   frame: Frame,
-  compared: readonly boolean[],
   own: number,
 ): readonly Float32Array[] | undefined {
   const difference = frame.lanes.at(-1);
   const mine = frame.lanes[own];
-  const others = frame.lanes
-    .slice(0, -1)
-    .filter((_, index) => index !== own && compared[index] === true);
+  const others = frame.lanes.slice(0, -1).filter((_, index) => index !== own);
   if (
     frame.comparison?.lane !== CompareLane.difference ||
     difference === undefined ||

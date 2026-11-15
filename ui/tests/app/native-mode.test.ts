@@ -269,10 +269,9 @@ describe("native traces: what the page sends", () => {
               name: "Kick",
               colour: 0x336699,
               own: true,
-              compared: false,
+              instance: 0,
             },
           ],
-          hidden: 0,
         });
         await settle();
       },

@@ -1,11 +1,11 @@
-// Compare's last lane showing the difference of the checked tracks instead of their sum, through
+// Compare's last lane showing the difference of the tracks shown instead of their sum, through
 // the real page: Compare's switch in the Views popover chooses (Off, Sum or Diff), the frame says
 // which lane it carries, and the label follows the frame (its name, its figure, and Preview fix,
 // which is the sum's, or Align, which is the difference's).
 import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
-import { laneReadout } from "./compare-readout.ts";
+import { laneChip, laneReadout } from "./compare-readout.ts";
 import {
   beforeApp,
   byId,
@@ -14,8 +14,10 @@ import {
   press,
   setCompare,
   settle,
+  showOnly,
   startApp,
   type Started,
+  tickTrack,
 } from "./harness.ts";
 
 let started: Started;
@@ -46,26 +48,10 @@ const figure = () => lastLabel().querySelector<HTMLElement>(".lane-readout");
 const previewFix = () => lastLabel().querySelector<HTMLElement>(".preview-fix");
 const align = () => lastLabel().querySelector<HTMLElement>(".align");
 const readoutHelp = (name: string) =>
-  [...byId("lane-labels").querySelectorAll(".compare-check")]
-    .find((button) => button.textContent === name)
-    ?.parentElement?.querySelector<HTMLElement>(".lane-readout")?.dataset[
-    "help"
-  ];
-// Checks or unchecks a track for comparison: the engine's new lanes rebuild the labels.
-async function setCompared(name: string, compared: boolean): Promise<void> {
-  const check = () =>
-    [
-      ...byId("lane-labels").querySelectorAll<HTMLButtonElement>(
-        ".compare-check",
-      ),
-    ].find((button) => button.textContent === name);
-  if (check()?.getAttribute("aria-checked") !== String(compared)) {
-    await userEvent.click(check() as HTMLButtonElement);
-  }
-  await expect
-    .poll(() => check()?.getAttribute("aria-checked"))
-    .toBe(String(compared));
-}
+  laneChip(name)?.querySelector<HTMLElement>(".lane-readout")?.dataset["help"];
+// Shows or hides a track in Multi, which Compare then takes or leaves out: by its row in the
+// Views popover's Channels list.
+const setCompared = tickTrack;
 // The last lane's columns as the page drew them last: how tall the tallest is.
 const tallest = () => {
   const frame = window.orizonDebug?.lastFrame;
@@ -78,7 +64,8 @@ const tallest = () => {
 async function showCompare(): Promise<void> {
   await press(choice("time-base", "Trig"));
   await press(choice("display-mode", "Multi"));
-  await press(choice("group", "A"));
+  // The kick and the bass, until a test shows another track.
+  await showOnly(["Bass"]);
   await press(choice("layout", "Stack"));
   await setCompare(true);
   await settle();
@@ -153,9 +140,9 @@ describe("Compare's last lane", () => {
       .element(pick("Difference"))
       .toHaveAttribute("aria-pressed", "true");
     expect(pick("Sum").getAttribute("aria-pressed")).toBe("false");
-    expect(multiSummary()).toBe("A·M·Δ·");
+    expect(multiSummary()).toBe("2/4·M··Δ");
     expect(viewsName()).toBe(
-      "Views: group A, Mid, Compare difference, labels on",
+      "Views: 2 of 4 tracks, Mid, labels on, Compare difference",
     );
     expect(lastFix()).toBe(false);
     await show("Sum");
@@ -221,17 +208,19 @@ describe("Compare's last lane", () => {
   test("names the lane in the Views field, at one width, and keeps it while off", async () => {
     await showCompare();
     await show("Sum");
-    expect(multiSummary()).toBe("A·M·Σ·");
-    expect(viewsName()).toBe("Views: group A, Mid, Compare sum, labels on");
+    expect(multiSummary()).toBe("2/4·M··Σ");
+    expect(viewsName()).toBe(
+      "Views: 2 of 4 tracks, Mid, labels on, Compare sum",
+    );
     const width = byId("views-summary").getBoundingClientRect().width;
     await show("Difference");
-    expect(multiSummary()).toBe("A·M·Δ·");
+    expect(multiSummary()).toBe("2/4·M··Δ");
     expect(viewsName()).toBe(
-      "Views: group A, Mid, Compare difference, labels on",
+      "Views: 2 of 4 tracks, Mid, labels on, Compare difference",
     );
     expect(byId("views-summary").getBoundingClientRect().width).toBe(width);
     await setCompare(false);
-    expect(multiSummary()).toBe("A·M·Δ·");
+    expect(multiSummary()).toBe("2/4·M··Δ");
     expect(pick("Difference").getAttribute("aria-pressed")).toBe("false");
     await show("Sum");
   });

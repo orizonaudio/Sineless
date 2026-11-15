@@ -23,6 +23,7 @@ import {
   showDisplay,
   showViews,
   startApp,
+  tickTrack,
   startBeforeFrames,
   useReadout,
   type Started,
@@ -84,30 +85,33 @@ describe("controls", () => {
     await press(choice("display-mode", "Single"));
   });
 
-  // Multi's Views field names the group shown, whether the user picks it or the host restores it.
-  test("names the current group in its field", async () => {
+  // Multi's Views field counts the tracks shown of those there are, as the engine lists them,
+  // whether the user ticks them or the list changes by itself.
+  test("counts the tracks shown in its field", async () => {
     const field = () => [
       multiSummary(),
       byId("views-details").getAttribute("aria-label"),
     ];
     await press(choice("display-mode", "Multi"));
-    await press(choice("group", "B"));
     await expect
       .poll(field)
-      .toEqual(["B·M·Σ·", "Views: group B, Mid, labels on"]);
-    app.deliver({ type: "stateChanged", name: "group", value: "c" });
+      .toEqual(["4/4·M··Σ", "Views: 4 of 4 tracks, Mid, labels on"]);
+    await tickTrack("Bass", false);
     await expect
       .poll(field)
-      .toEqual(["C·M·Σ·", "Views: group C, Mid, labels on"]);
+      .toEqual(["3/4·M··Σ", "Views: 3 of 4 tracks, Mid, labels on"]);
     // Another setting leaves it be.
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "single" });
     await expect.poll(() => shownValue("trigger").join("")).toBe("Single");
-    expect(field()).toEqual(["C·M·Σ·", "Views: group C, Mid, labels on"]);
+    expect(field()).toEqual([
+      "3/4·M··Σ",
+      "Views: 3 of 4 tracks, Mid, labels on",
+    ]);
     app.deliver({ type: "stateChanged", name: "triggerMode", value: "auto" });
-    await press(choice("group", "A"));
+    await tickTrack("Bass", true);
     await expect
       .poll(field)
-      .toEqual(["A·M·Σ·", "Views: group A, Mid, labels on"]);
+      .toEqual(["4/4·M··Σ", "Views: 4 of 4 tracks, Mid, labels on"]);
     await press(choice("display-mode", "Single"));
   });
 
@@ -131,13 +135,13 @@ describe("controls", () => {
     await expect.poll(pressed).toEqual(["M"]);
     await press(choice("lane-channel", "L"));
     await expect.poll(pressed).toEqual(["L"]);
-    // The field names it between the group and Σ.
+    // The field names it after the count.
     await expect
       .poll(() => [
         multiSummary(),
         byId("views-details").getAttribute("aria-label"),
       ])
-      .toEqual(["A·L·Σ·", "Views: group A, Left, labels on"]);
+      .toEqual(["4/4·L··Σ", "Views: 4 of 4 tracks, Left, labels on"]);
     await press(choice("lane-channel", "S"));
     await expect.poll(pressed).toEqual(["S"]);
 
@@ -169,24 +173,23 @@ describe("controls", () => {
       byId("views-details").getAttribute("aria-label"),
     ];
     await press(choice("display-mode", "Multi"));
-    await press(choice("group", "A"));
     await expect
       .element(choice("compare", "Off"))
       .toHaveAttribute("aria-pressed", "true");
     await expect
       .poll(field)
-      .toEqual(["A·M·Σ·", false, "Views: group A, Mid, labels on"]);
-    await userEvent.click(choice("compare", "Sum"));
+      .toEqual(["4/4·M··Σ", false, "Views: 4 of 4 tracks, Mid, labels on"]);
+    await press(choice("compare", "Sum"));
     await expect
       .element(choice("compare", "Sum"))
       .toHaveAttribute("aria-pressed", "true");
     await expect
       .poll(field)
-      .toEqual(["A·M·Σ·", true, "Views: group A, Mid, Compare sum, labels on"]);
-    await press(choice("group", "B"));
-    await expect
-      .poll(field)
-      .toEqual(["B·M·Σ·", true, "Views: group B, Mid, Compare sum, labels on"]);
+      .toEqual([
+        "4/4·M··Σ",
+        true,
+        "Views: 4 of 4 tracks, Mid, labels on, Compare sum",
+      ]);
     // The host restores it off.
     app.deliver({ type: "stateChanged", name: "compare", value: "off" });
     await expect
@@ -194,8 +197,7 @@ describe("controls", () => {
       .toHaveAttribute("aria-pressed", "true");
     await expect
       .poll(field)
-      .toEqual(["B·M·Σ·", false, "Views: group B, Mid, labels on"]);
-    await press(choice("group", "A"));
+      .toEqual(["4/4·M··Σ", false, "Views: 4 of 4 tracks, Mid, labels on"]);
     await press(choice("display-mode", "Single"));
   });
 
@@ -370,7 +372,7 @@ describe("controls", () => {
   });
 
   // Multi, with Compare off and on, shows each track's Mid: the channel views and the trigger
-  // source don't apply, so they are hidden; the group applies only there. The Views field shows in
+  // source don't apply, so they are hidden; the list of tracks applies only there. The Views field shows in
   // every mode, its rows following it.
   test("the multi-track views hide the channel views and trigger source", async () => {
     for (const mode of ["Multi", "Compare"] as const) {
@@ -378,12 +380,12 @@ describe("controls", () => {
       await expect.element(byId("views-group")).toBeVisible();
       expect(rowHidden("views")).toBe(true);
       expect(byId("source-row").hidden).toBe(true);
-      expect(rowHidden("group")).toBe(false);
+      expect(rowHidden("tracks")).toBe(false);
     }
     await press(choice("display-mode", "Single"));
     await expect.element(byId("views-group")).toBeVisible();
     expect(byId("source-row").hidden).toBe(false);
-    expect(rowHidden("group")).toBe(true);
+    expect(rowHidden("tracks")).toBe(true);
   });
 
   test("Freeze holds the view and says so", async () => {

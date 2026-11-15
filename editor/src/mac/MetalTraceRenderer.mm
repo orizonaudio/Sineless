@@ -512,7 +512,7 @@ public:
         // drawn.
         std::vector<float> areas;
         if (frame != nullptr && !frame->lanes.empty()) {
-            areas = differenceAreas(*frame, view.comparedLanes(*frame), view.ownLane(*frame));
+            areas = differenceAreas(*frame, view.ownLane(*frame));
         }
         if (!areas.empty() && !fitAreaCoverage(target.width, target.height)) {
             return Result::kOutOfMemory;
@@ -546,8 +546,7 @@ public:
         const std::size_t gridBands = under.size();
         if (frame != nullptr) {
             const Rgba& colour = view.cancellation;
-            for (const Band& band :
-                 cancellationBands(*frame, view.layout, view.comparedLanes(*frame), view.view)) {
+            for (const Band& band : cancellationBands(*frame, view.layout, view.view)) {
                 under.push_back({.left = clipToPixels(band.left, width),
                                  .right = clipToPixels(band.right, width),
                                  .bottom = clipToPixels(band.bottom, height),

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { DisplayMode, enums } from "../../protocol/src/enums.ts";
-import { maxLanes } from "../../protocol/src/limits.ts";
+import { maxShownTracks } from "../../protocol/src/limits.ts";
 import { levelLines } from "../src/view/axis-labels.ts";
 import { settings } from "../../protocol/src/settings.ts";
 import { choiceLabels } from "../src/view/choice-labels.ts";
@@ -189,11 +189,17 @@ describe("help texts", () => {
 
     // The switch's own help says where it applies, that it is in beta, and how many tracks it
     // leaves room for beside the sum.
-    test("of the Compare switch say it is in beta and leaves a lane for the sum", () => {
+    test("of the Compare switch say it is in beta and takes the tracks shown", () => {
       const words = helpWords(texts.compare);
       expect(words).toContain("beta");
       expect(words).toContain("Multi");
-      expect(words).toContain(String(maxLanes - 1));
+      expect(words).toContain("Channels");
+    });
+
+    // The most tracks Multi shows is said where they are ticked, from the limit itself.
+    test("of the Views field in Multi say how many tracks can be ticked", () => {
+      expect(helpWords(texts.tracks)).toContain(String(maxShownTracks));
+      expect(helpWords(texts.displayMode)).toContain(String(maxShownTracks));
     });
 
     // The Meter's channel is chosen (and named) in the Views popover's Measure row, so no help says it

@@ -81,7 +81,7 @@ Grouped by how often someone reaches for it.
 - Trigger mode: Auto, Normal, Single; Re-arm (Trig only).
 - Cursors: time (A/B) and level (1/2), with their readouts.
 - Hover readout.
-- Group A–D, the lane Channel (L, R, M or S), the Compare switch and Labels (Multi's rows of the Views popover).
+- The tracks shown (Channels, a list of every instance with a check box each), the lane Channel (L, R, M or S), the Compare switch and Labels (Multi's rows of the Views popover).
 - Compare: which tracks are checked, match per track (offset, polarity, correlation), summing gain, Preview fix.
 
 **Rarely**
@@ -130,15 +130,15 @@ From 2026-10-24 and 2026-10-25.
 6. **Layout:** concept A (Toolbar), as in [layout.html](layout.html).
 7. **Treatment:** Graphite, with the accent on Frozen ([direction.html](direction.html)).
 8. **Colour:** the tokens in [tokens/](tokens/) ([colour.html](colour.html)).
-9. **Sizes:** the design sets them, and `protocol/src/limits.ts` holds the ones the engine shares: `minimumEditorWidth` 1040 (the widest toolbar fits with 11.8 px to spare in WebKit and 12.6 in Chromium since the grouped controls of #409; the status bar's state area takes what that bar leaves, less 8 px) and `chromeHeight` 84 (toolbar and status bar, measured at 82). The native default is 1040 × 580 and the minimum height `minimumEditorHeight`, 420. The size tokens in `tokens/` record the design; `ui/src/tokens.css` holds the colours the page uses.
+9. **Sizes:** the design sets them, and `protocol/src/limits.ts` holds the ones the engine shares: `minimumEditorWidth` 1064 (the widest toolbar fits with 9 px to spare in Chromium since the Views field counts Multi's tracks, #425; the status bar's state area takes what that bar leaves, less 8 px) and `chromeHeight` 84 (toolbar and status bar, measured at 82). The native default is 1064 × 580 and the minimum height `minimumEditorHeight`, 420. The size tokens in `tokens/` record the design; `ui/src/tokens.css` holds the colours the page uses.
 
 ## 9. The layout: concept A, Toolbar
 
 ![Default size with the trigger popover open](images/layout-trigger.png)
 
-- **Toolbar, left to right**, each field an icon and its value: mark and wordmark; Mode (Tracks: Single | Multi in its popover); Views, one field in both modes, its popover's rows following the mode: in Single the channel views and the channel the Meter reads (Measure: L | R | M | S in its popover), reading "LRMS·L", in Multi the group, the lane channel, Compare, Off | On, and Labels, reading "A·M·Σ·" and a tag, Σ dimmed while Compare is off and the tag while the lane labels do not show; Layout (Traces: Overlay | Stack); then, in groups set apart by space alone (#409): Time (Sweep: Beats | Free | Trig), Span, Scale; Trigger (Trig), and Re-arm when the trigger mode is Single; Auto-freeze and Freeze at the right. Only the controls that apply in the current mode are there.
+- **Toolbar, left to right**, each field an icon and its value: mark and wordmark; Mode (Tracks: Single | Multi in its popover); Views, one field in both modes, its popover's rows following the mode: in Single the channel views and the channel the Meter reads (Measure: L | R | M | S in its popover), reading "LRMS·L", in Multi the tracks shown, the lane channel, Compare, Off | Sum | Diff, and Labels, reading "3/7·M·", a tag and "·Σ", the tag dimmed while the lane labels do not show and Σ while Compare is off; Layout (Traces: Overlay | Stack); then, in groups set apart by space alone (#409): Time (Sweep: Beats | Free | Trig), Span, Scale; Trigger (Trig), and Re-arm when the trigger mode is Single; Auto-freeze and Freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
-- **Sizes**, measured on the widest toolbar (Trig with trigger mode Single, so Re-arm shows, and Frozen; Single and Multi alike, since one Views field serves both): default and minimum **1040 × 580** and **1040 × 420** (the height fits the tallest corner panel: Time cursors in Beats, Level cursors and the Meter) (the toolbar leaves 11.8 px in WebKit, 12.6 in Chromium; the status bar's state area is 500 px, what the bar leaves less 8 px). The wordmark always shows.
+- **Sizes**, measured on the widest toolbar (Trig with trigger mode Single, so Re-arm shows, and Frozen; Single and Multi alike, since one Views field serves both): default and minimum **1064 × 580** and **1064 × 420** (the height fits the tallest corner panel: Time cursors in Beats, Level cursors and the Meter) (the toolbar leaves 9 px in Chromium; the status bar's state area is 500 px, what the bar leaves less 8 px). The wordmark always shows.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.
 - **Status bar:** Grid (the grid's type, opening the Grid popover above it), then Meter, Time, Level and Hover, each a group, on the left; the state, Help and About on the right. Peak, RMS and Crest are in the Meter, in the screen's top-right corner, above the cursor readouts. The left group never changes width and the state area has a fixed width, as wide as the bar leaves at the minimum width, so nothing moves.
 - **More states than fit** fold into a "+n" chip that lists them on hover, keeping the order of the state table in DESIGN §1.5.

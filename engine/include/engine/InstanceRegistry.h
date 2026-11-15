@@ -10,14 +10,14 @@
 
 namespace orizon::engine {
 
-// One instance of a group, as the multi-track view sees it.
-struct GroupMember
+// One instance in the process, as the multi-track view sees it.
+struct Member
 {
     std::shared_ptr<Engine> engine; // Kept alive while the member is held.
     TrackInfo track;
     std::uint64_t serial = 0; // Creation order within the process, from 1.
-    // Its number among the group's instances on its track (sameTrack), from 1 in creation order;
-    // 0 for a track's only instance there, which needs none.
+    // Its number among the instances on its track (sameTrack), from 1 in creation order; 0 for a
+    // track's only instance, which needs none.
     std::uint32_t instance = 0;
 };
 
@@ -43,10 +43,9 @@ public:
     void add(const std::shared_ptr<Engine>& engine);
     void remove(const Engine& engine);
 
-    // The live instances whose Group setting is `group`: tracks with a host position first, in
-    // that order, then the others in creation order; each with its number among the instances on
-    // its track.
-    [[nodiscard]] std::vector<GroupMember> members(protocol::Group group) const;
+    // The live instances: tracks with a host position first, in that order, then the others in
+    // creation order; each with its number among the instances on its track.
+    [[nodiscard]] std::vector<Member> members() const;
 
 private:
     struct Entry

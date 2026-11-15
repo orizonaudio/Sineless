@@ -46,6 +46,7 @@ private:
     void sendSnapshot();
     void sendState(protocol::SettingId id, double value);
     void syncLanes();
+    void syncTracks();
 
     engine::Engine& engine;
     engine::Analyzer& analyzer;
@@ -53,6 +54,7 @@ private:
     bool isStarted = false;
     std::optional<engine::Settings> lastSent;
     std::uint32_t lastLaneSet = 0;
+    std::uint32_t lastTrackList = 0;
     double sentSampleRate = 0.0;
     int sentInputChannels = 0;
     bool nativeTraces = false;

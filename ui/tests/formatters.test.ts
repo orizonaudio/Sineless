@@ -270,7 +270,6 @@ describe.each(laneCounts)("%i lanes without host colours", (count) => {
       name: "",
       colour: null,
       own: index === 0,
-      compared: true,
       instance: 0,
     })),
   );

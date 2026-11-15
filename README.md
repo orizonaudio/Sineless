@@ -9,8 +9,8 @@ Sineless™ is an open-source oscilloscope by Orizon Audio, as a VST3 plugin and
 - Three time bases: Beats sweeps in time with the host; Trig holds a repeating signal still from 0.5 ms to 1 s, with Auto, Normal and Single trigger modes; Free scrolls continuously from 100 ms to 4 s.
 - Tempo-synced sweep: a span in beats or bars, up to 16 bars, aligned to the host's bar lines, with a beat grid and playhead.
 - Left, right, mid and side views, overlaid or stacked, on a vertical scale in dB.
-- Multi-track view: every track with Sineless inserted, up to 16 lanes, each in its track colour and lined up in time, or overlaid. Groups A–D keep separate comparisons apart.
-- Compare (beta), a switch in Multi: measure another track's offset, polarity and likeness against this one, see their sum and how loud it is, and preview the fix.
+- Multi-track view: the tracks you tick among those with Sineless inserted, up to 15 lanes, each in its track colour and lined up in time, or overlaid.
+- Compare (beta), a switch in Multi: measure each track shown against this one (its offset, polarity and likeness), see their sum and how loud it is, and preview the fix.
 - Before and after an effect: put one instance before it and one after, and Compare shows what the effect changed: the two lined up in time and polarity, with what was gained and what was lost drawn where it happened, and how deep the difference nulls.
 - Freeze, then pan back through the last 4 seconds in Trig and Free; optionally freeze automatically when the transport stops.
 - Zoom in down to individual samples with ⌘ + scroll (Ctrl on Windows), pinch or drag.
@@ -25,7 +25,7 @@ Sineless™ is an open-source oscilloscope by Orizon Audio, as a VST3 plugin and
 - Or Windows 10 or later, x64, with the Microsoft Edge WebView2 Runtime. On Windows on Arm, use an x64 host (or REAPER's ARM64EC build, which loads x64 plugins).
 - A host that loads VST3 plugins, such as Ableton Live, Cubase, REAPER, Bitwig Studio or Studio One, or on macOS one that loads Audio Units, such as Logic Pro or GarageBand. See [HOSTS.md](HOSTS.md) for the hosts tested so far.
 
-For the multi-track lanes to line up, put Sineless last on each track.
+For the multi-track lanes to line up, put Sineless last on each track. Multi lists the instances that share a process with this one: a host set to run each plugin in its own process (REAPER's "Dedicated process", Bitwig's "Individually") lists this track alone.
 
 ## Install
 

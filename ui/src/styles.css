@@ -288,9 +288,14 @@ body {
 
 /* The Views field holds Single's summary and Multi's in one place (.choices), the current one
    shown. Single's: every view's letter, those not drawn dimmed, not the channel read after them,
-   whose letters are stacked (.choices). Multi's: the sign of the lane Compare adds (Σ or Δ,
-   stacked too, so the field is one width) dimmed while Compare is off, and the tag while the
-   lane labels do not show. */
+   whose letters are stacked (.choices). Multi's: how many tracks are shown of those there are
+   (over the room of two digits each side, in digits of one width, so the field is one width up
+   to 99 tracks), the lane channel (stacked), the tag, dimmed while the lane labels do not show,
+   and the sign of the lane Compare adds (Σ or Δ, stacked too) dimmed while Compare is off. */
+#views-multi > .count {
+  font-variant-numeric: tabular-nums;
+}
+
 #views-single > span:not(.on):not(.choices),
 #views-multi > :is(.sum, .tag):not(.on) {
   opacity: 0.35;
@@ -498,6 +503,153 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-ink-2);
 }
 
+/* The Views popover's Channels (check-list.ts): a panel in the popover's control fill holding a
+   line that counts what is ticked, with None and All, over a list four rows tall that scrolls
+   beyond that. Its width is fixed, so the popover does not grow with long names, which are cut
+   (.cut-name). The row's label sits on the first line, not centred on the panel. */
+.popover-row-top {
+  align-items: start;
+}
+
+.popover-row-top > span {
+  padding-top: 4px;
+  line-height: 16px;
+}
+
+.check-list {
+  box-sizing: border-box;
+  width: 214px;
+  padding: 2px;
+  background: var(--sl-track);
+  border-radius: 6px;
+}
+
+.check-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 6px 3px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--sl-ink-2);
+}
+
+.check-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.check-actions > i {
+  font-style: normal;
+  opacity: 0.4;
+}
+
+.check-actions > button {
+  padding: 0;
+  font: inherit;
+  color: var(--sl-ink);
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.check-rows {
+  display: grid;
+  gap: 1px;
+  /* Four rows, the height of Single's four channels. */
+  max-height: calc(4 * 24px + 3 * 1px);
+  overflow-y: auto;
+}
+
+.check-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 13px 9px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.check-row:hover {
+  background: var(--sl-control-hover);
+}
+
+/* The ring of the row's check box, drawn round the row, for a focus that came from the keyboard. */
+.check-row:has(input:focus-visible) {
+  outline: 2px solid var(--sl-ink);
+  outline-offset: -2px;
+}
+
+.check-row.locked {
+  cursor: default;
+}
+
+.check-box {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 13px;
+  height: 13px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--sl-on-selected);
+  border: 1.5px solid var(--sl-ink-2);
+  border-radius: 3px;
+}
+
+.check-row.on > .check-box {
+  background: var(--sl-selected);
+  border-color: var(--sl-selected);
+}
+
+.check-row.on > .check-box::before {
+  content: "✓";
+}
+
+/* A row that cannot be ticked now: as many tracks are ticked as Multi shows. */
+.check-row.locked:not(.on) {
+  opacity: 0.45;
+}
+
+.check-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.check-name {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.check-row:not(.on) .check-name {
+  color: var(--sl-ink-2);
+}
+
+/* In a row, a name has the room the row gives it: all of it less the note after it. */
+.check-name .cut-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.check-name .lane-name {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.check-tag {
+  font-size: 10px;
+  color: var(--sl-ink-2);
+}
+
 /* ----- Screen ----- */
 
 /* Margin, border and radius from protocol/src/limits.ts (set at start-up): the macOS editor draws its
@@ -622,15 +774,12 @@ button[aria-pressed="true"]:focus-visible {
   border-radius: 8px;
 }
 
-/* A lane showing samples that are not finite (NaN or infinite). In Compare a track's name is its
-   check box's, which sets its own colour. */
-.lane-label > span.invalid,
-.lane-label > span.invalid > .compare-check {
+/* A lane showing samples that are not finite (NaN or infinite). */
+.lane-label > span.invalid {
   color: var(--sl-warn);
 }
 
-/* The lane's colour key: a filled square the size and place of Compare's check box, in a box the
-   size of the check box's button, so turning Compare on or off moves no label. */
+/* The lane's colour key: a filled square. */
 .lane-label > span::before {
   content: "";
   display: inline-block;
@@ -641,13 +790,13 @@ button[aria-pressed="true"]:focus-visible {
   background: var(--swatch);
 }
 
-.lane-label > span:not(.checkable) {
+.lane-label > span {
   padding-right: 4px;
   border: 1px solid transparent;
 }
 
-/* The Compare view's labels: each swatch a check box, then how the track lines up with this one;
-   the sum's gain and the fix preview. */
+/* The Compare view's labels: after each name, how the track lines up with this one; the sum's
+   gain and the fix preview. */
 .lane-label span {
   display: inline-flex;
   align-items: center;
@@ -668,49 +817,6 @@ button[aria-pressed="true"]:focus-visible {
 
 .lane-label button:hover:not(:disabled) {
   background: var(--sl-lane-hover);
-}
-
-.lane-label > .checkable::before {
-  display: none;
-}
-
-.lane-label .compare-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding-left: 0;
-  color: var(--sl-ink-2);
-}
-
-.lane-label .compare-check::before {
-  content: "";
-  display: inline-grid;
-  place-items: center;
-  box-sizing: border-box;
-  width: 10px;
-  height: 10px;
-  font-size: 8px;
-  line-height: 1;
-  color: var(--sl-screen);
-  border: 1.5px solid var(--swatch);
-  border-radius: 2.5px;
-}
-
-.lane-label .compare-check[aria-checked="false"] {
-  opacity: 0.6;
-}
-
-.lane-label .compare-check[aria-checked="true"] {
-  color: var(--sl-ink);
-}
-
-.lane-label .compare-check[aria-checked="true"]::before {
-  content: "✓";
-  background: var(--swatch);
-}
-
-.lane-label .compare-check:disabled {
-  cursor: default;
 }
 
 .lane-label .lane-readout {
@@ -1053,8 +1159,9 @@ button[aria-pressed="true"]:focus-visible {
      controls (#409): the left side 418.6, the gap between the sides 16, the right side's buttons and
      gaps 68 (Help and About at 24 px), of 1016 between the bar's padding, leaving 513.4. Earlier the
      minimum width grew instead (#364, #384); the restyle kept 1040 and narrowed this area from 520.
-     A4 has since moved into the Views popover (#412), leaving the left side narrower: the area kept
-     its width, so the chips fold as before. Fixed, so the chips fold at the same count at every window width. */
+     A4 has since moved into the Views popover (#412) and then the Grid popover (#425), leaving the
+     left side narrower, and the minimum width grew to 1064 for the Views field's count of tracks
+     (#425): the area kept its width, so the chips fold as before. Fixed, so the chips fold at the same count at every window width. */
   width: 500px;
 }
 

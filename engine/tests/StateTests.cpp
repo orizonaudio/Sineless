@@ -144,6 +144,7 @@ constexpr std::array kEveryGoldenStateFile{
     "state-v5-editor-size.json",
     "state-v6.json",
     "state-v6-compare-difference.json",
+    "state-v7.json",
 };
 
 // A project saved before Auto-freeze existed opens with it on, as a new instance does (FR-11):
@@ -254,7 +255,6 @@ TEST(State, LoadsTheVersion2GoldenFile)
     // Settings added after this state was saved take their defaults.
     EXPECT_EQ(settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode),
               protocol::DisplayMode::kSingle);
-    EXPECT_EQ(settings.enumValue<protocol::Group>(SettingId::kGroup), protocol::Group::kA);
 }
 
 // What Sineless 0.5.x saved in state-v2-0.5.json: every setting away from its default then, using
@@ -294,7 +294,6 @@ constexpr std::array kVersion2Release05Values{
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kTrigger)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
-    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
 };
@@ -328,7 +327,6 @@ constexpr std::array kVersion3Values{
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
-    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
 };
@@ -352,7 +350,6 @@ constexpr std::array kVersion4Values{
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kSixteenBars)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
-    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kCompare, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kConcertPitch, .value = 432.0},
@@ -378,7 +375,6 @@ constexpr std::array kVersion5Values{
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kThirdBar)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
-    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kCompare, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kMeter, .value = asValue(protocol::Toggle::kOn)},
@@ -411,7 +407,6 @@ constexpr std::array kVersion6Values{
     GoldenValue{.id = SettingId::kTimeBase, .value = asValue(protocol::TimeBase::kFree)},
     GoldenValue{.id = SettingId::kBeatSpan, .value = asValue(protocol::BeatSpan::kThirdBar)},
     GoldenValue{.id = SettingId::kDisplayMode, .value = asValue(protocol::DisplayMode::kMulti)},
-    GoldenValue{.id = SettingId::kGroup, .value = asValue(protocol::Group::kC)},
     GoldenValue{.id = SettingId::kCompare, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kHoverReadout, .value = asValue(protocol::Toggle::kOn)},
     GoldenValue{.id = SettingId::kMeter, .value = asValue(protocol::Toggle::kOn)},
@@ -460,7 +455,25 @@ constexpr std::array kGoldenStates{
     GoldenState{.file = "state-v6.json", .values = kVersion6Values},
     GoldenState{.file = "state-v6-compare-difference.json",
                 .values = kVersion6CompareDifferenceValues},
+    // Version 7 has no group: the settings of version 6, saved without it.
+    GoldenState{.file = "state-v7.json", .values = kVersion6Values},
 };
+
+// A project saved with groups (until version 6) opens: the group is gone, every other setting is
+// as saved, and saving it again writes no group.
+TEST(State, OpensAProjectSavedWithAGroup)
+{
+    const std::string saved = readTestFile("state-v6.json");
+    ASSERT_TRUE(nlohmann::json::parse(saved)["settings"].contains("group"));
+    const Settings settings = deserializeState(saved).settings;
+    for (const GoldenValue& value : kVersion6Values) {
+        EXPECT_EQ(settings.value(value.id), value.value)
+            << protocol::kSettings[static_cast<std::size_t>(value.id)].name;
+    }
+    const auto again = nlohmann::json::parse(serializeState(settings));
+    EXPECT_EQ(again["version"], 7);
+    EXPECT_FALSE(again["settings"].contains("group"));
+}
 
 // The saved name of every enum and flags value, as each release wrote it. One state can hold
 // only one value of a setting, so the other released names are pinned here.
@@ -483,7 +496,8 @@ constexpr std::array kGoldenValueNames{
 
 // Released settings a migration renamed or removed: their saved names are read under the setting
 // they became, or no longer at all. Version 6 made the grid's Time and Level one Density, which
-// takes Time's value; Level's is dropped (GridDensityFromVersion5 checks both).
+// takes Time's value; Level's is dropped (GridDensityFromVersion5 checks both). Version 7 has no
+// groups: each instance chooses the tracks its Multi shows (OpensAProjectSavedWithAGroup).
 struct MigratedSetting
 {
     std::string_view setting;
@@ -493,6 +507,7 @@ struct MigratedSetting
 constexpr std::array kMigratedSettings{
     MigratedSetting{.setting = "gridTime", .becomes = "gridDensity"},
     MigratedSetting{.setting = "gridLevel", .becomes = ""},
+    MigratedSetting{.setting = "group", .becomes = ""},
 };
 
 const MigratedSetting* migratedSetting(std::string_view setting)

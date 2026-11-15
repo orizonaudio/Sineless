@@ -1,5 +1,7 @@
 // Multi-track lanes: what each lane is called and drawn in. A track without a host name is
-// "Track n" by its lane position; one without a host colour takes the fallback palette.
+// "Track n", and one without a host colour takes the fallback palette's nth colour, n its place
+// among every Sineless instance in the host's order: the same in the Views popover's list of
+// tracks and on the screen, whichever tracks are shown.
 import type { LaneLabel } from "../../../protocol/src/messages.ts";
 
 // The Compare view's sum lane: white, which no track gets from the palette (--sl-mid).
@@ -19,7 +21,6 @@ export interface LaneStyle {
   readonly name: string;
   readonly colour: number; // 0xRRGGBB
   readonly own: boolean;
-  readonly compared: boolean; // Compare view: in the sum, measured against this track.
   // Its number among the instances on its track, as the engine counts them; 0 for the only one.
   readonly instance: number;
 }
@@ -27,18 +28,25 @@ export interface LaneStyle {
 // Several instances on one host track (one before an effect and one after it) carry the track's
 // name and colour: each lane then shows its number after the name, and from the second on a
 // shade of the colour. Lanes without a host colour already differ, by the palette.
-export function laneStyles(labels: readonly LaneLabel[]): LaneStyle[] {
-  return labels.map((label, index) => ({
-    id: label.id,
-    name: label.name === "" ? `Track ${String(index + 1)}` : label.name,
-    colour:
-      label.colour === null
-        ? (fallbackPalette[index % fallbackPalette.length] ?? 0xffffff)
-        : shade(label.colour, label.instance),
-    own: label.own,
-    compared: label.compared,
-    instance: label.instance,
-  }));
+// `places` gives each track's place in the list of every instance, by id; a track not in it (the
+// list has not come yet) takes its place among `labels`.
+export function laneStyles(
+  labels: readonly LaneLabel[],
+  places?: ReadonlyMap<number, number>,
+): LaneStyle[] {
+  return labels.map((label, index) => {
+    const place = places?.get(label.id) ?? index;
+    return {
+      id: label.id,
+      name: label.name === "" ? `Track ${String(place + 1)}` : label.name,
+      colour:
+        label.colour === null
+          ? (fallbackPalette[place % fallbackPalette.length] ?? 0xffffff)
+          : shade(label.colour, label.instance),
+      own: label.own,
+      instance: label.instance,
+    };
+  });
 }
 
 // A lane's name as shown and as said: the track's name, then its number among the track's

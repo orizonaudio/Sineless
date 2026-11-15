@@ -190,7 +190,7 @@ std::string controlMessage(InputReader& input)
                 ids.push_back(id);
             }
         }
-        message = {{"type", "compare"}, {"ids", ids}};
+        message = {{"type", "showTracks"}, {"ids", ids}};
         break;
     }
     case 5:
@@ -368,11 +368,11 @@ public:
             clock += step.nanos;
             break;
         case StepKind::kAdvance:
-            followGroup();
+            showOthers();
             analyzer.advance();
             break;
         case StepKind::kFrame:
-            followGroup();
+            showOthers();
             return analyzer.produce(frame);
         case StepKind::kCount:
             break;
@@ -407,11 +407,17 @@ private:
         }
     }
 
-    // The other track stays in this track's group, so that Multi and Compare have its lane.
-    void followGroup()
+    // This track's Multi shows every other track whatever the page last asked for, so that Multi
+    // and Compare have their lanes.
+    void showOthers()
     {
-        other->settings().set(protocol::SettingId::kGroup,
-                              own->settings().get().value(protocol::SettingId::kGroup));
+        std::vector<std::uint64_t> others;
+        for (const engine::Member& member : registry.members()) {
+            if (member.engine != own) {
+                others.push_back(member.serial);
+            }
+        }
+        own->setShown(std::move(others));
     }
 
     void play(const Step& step)
