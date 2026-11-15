@@ -1,5 +1,6 @@
 #include "SampleRates.h"
 #include "editor/Session.h"
+#include "engine/InstanceRegistry.h"
 
 #include <array>
 #include <cmath>
@@ -8,6 +9,7 @@
 #include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -379,6 +381,48 @@ TEST_F(SessionTest, ReportsTheMultiTrackLanes)
     ASSERT_EQ(lanes.size(), 2u);
     EXPECT_EQ(lanes[1]["lanes"][0]["name"], "Kick 2");
     EXPECT_TRUE(lanes[1]["lanes"][0]["colour"].is_null());
+}
+
+// Two instances on one track, as before and after an effect, reach the page numbered in the order
+// they were added: the page draws each lane's number and its shade of the track's colour from it.
+TEST(SessionLanes, NumbersTheInstancesThatShareATrack)
+{
+    engine::InstanceRegistry registry;
+    const auto onBass = [&] {
+        auto instance = std::make_shared<engine::Engine>();
+        instance->prepare(48000.0);
+        instance->settings().set(SettingId::kTimeBase,
+                                 static_cast<double>(protocol::TimeBase::kBeats));
+        instance->settings().set(SettingId::kBeatSpan,
+                                 static_cast<double>(protocol::BeatSpan::kEighthBar));
+        instance->settings().set(SettingId::kDisplayMode,
+                                 static_cast<double>(protocol::DisplayMode::kMulti));
+        instance->setTrackInfo({.name = "Bass", .colour = std::nullopt, .index = std::nullopt});
+        const std::vector<float> level(48000, 0.5f);
+        std::array<const float*, 2> channels{level.data(), level.data()};
+        instance->captureRing().write(channels.data(), 2, static_cast<int>(level.size()));
+        // The host plays, reporting its tempo: a Beats sweep is placed by it.
+        instance->timeline().advance(
+            {.playing = true, .positionValid = true, .tempoValid = true, .tempo = 120.0}, 48000,
+            48000.0);
+        registry.add(instance);
+        return instance;
+    };
+    const auto before = onBass();
+    const auto own = onBass();
+    engine::Analyzer analyzer(*own, registry);
+    RecordingTransport transport;
+    Session session{*own, analyzer, transport};
+    session.receive(example("hello"));
+    std::vector<std::byte> frame;
+    ASSERT_TRUE(analyzer.produce(frame));
+    session.sync();
+    const auto lanes = transport.ofType("lanes");
+    ASSERT_EQ(lanes.size(), 1u);
+    ASSERT_EQ(lanes[0]["lanes"].size(), 2u);
+    for (const auto& lane : lanes[0]["lanes"]) {
+        EXPECT_EQ(lane["instance"], lane["own"] == true ? 2 : 1) << lane.dump();
+    }
 }
 
 TEST_F(SessionTest, ForwardsViewCommandsToTheAnalyzer)
