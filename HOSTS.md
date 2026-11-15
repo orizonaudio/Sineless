@@ -74,8 +74,9 @@ unless a step says otherwise. Note anything unexpected in the row's notes.
    (`FRAME_BARCODE_DISPLAY=external scripts/frame-barcode/record.sh 60`, then `builtin`): every
    refresh judged is a new picture on time, with no repeats or pictures never shown beyond the
    recorder's own unknowns (the `frame-timing` skill). Unset the variable afterwards.
-6. **Multi.** Insert on five or more tracks in group A and two in group B: lanes show the right
-   names and colours, in order, and line up in time, and the window grows so that every stacked
+6. **Multi.** Insert on seven or more tracks: a new instance shows its own track alone, and the
+   Views popover's Channels list names every track, in order, in its colour. Tick five: their
+   lanes show the right names and colours, in order, and line up in time, and the window grows so that every stacked
    lane fits its label. Rename and recolour a track: its lane follows. In hosts with plugin
    isolation, check both modes and note what Multi shows.
 7. **Compare.** Turn Compare on in Multi's Views popover; check and uncheck tracks, an inverted copy reads Ø and cancels, Preview fix. Close and reopen the editor: the checks remain. Save and reopen the project: Compare is still on, and the first other track is checked again.

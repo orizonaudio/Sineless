@@ -30,9 +30,7 @@ inline std::vector<State> states()
     constexpr auto kSingleMode = static_cast<double>(protocol::TriggerMode::kSingle);
     return {
         {.name = "defaults", .settings = {}, .script = ""},
-        {.name = "Multi, group D",
-         .settings = {{SettingId::kDisplayMode, 1.0}, {SettingId::kGroup, 3.0}},
-         .script = ""},
+        {.name = "Multi", .settings = {{SettingId::kDisplayMode, 1.0}}, .script = ""},
         {.name = "Multi, Compare",
          .settings = {{SettingId::kDisplayMode, 1.0}, {SettingId::kCompare, 1.0}},
          .script = ""},
@@ -74,19 +72,17 @@ inline std::vector<State> states()
                       {SettingId::kChannelViews, 15.0}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
-        // Multi's widest, with and without Compare: its Views (group) in the place of Single's,
+        // Multi's widest, with and without Compare: its Views summary in the place of Single's,
         // with the same trigger and Frozen.
-        {.name = "Multi, group D, Trig, trigger Single, frozen",
+        {.name = "Multi, Trig, trigger Single, frozen",
          .settings = {{SettingId::kDisplayMode, 1.0},
-                      {SettingId::kGroup, 3.0},
                       {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerMode, kSingleMode}},
          .script = "{ const freeze = document.getElementById('freeze');"
                    "  if (freeze.getAttribute('aria-pressed') !== 'true') freeze.click(); } ''"},
-        {.name = "Multi, Compare, group D, Trig, trigger Single, frozen",
+        {.name = "Multi, Compare, Trig, trigger Single, frozen",
          .settings = {{SettingId::kDisplayMode, 1.0},
                       {SettingId::kCompare, 1.0},
-                      {SettingId::kGroup, 3.0},
                       {SettingId::kTimeBase, kTrigger},
                       {SettingId::kTriggerMode, kSingleMode}},
          .script = "{ const freeze = document.getElementById('freeze');"

@@ -21,7 +21,6 @@ import {
 import {
   barcodeDataBits,
   barcodeTicksPerMillisecond,
-  leftOutAlpha,
 } from "../../../protocol/src/limits.ts";
 import {
   barcodeRowCells,
@@ -360,7 +359,6 @@ const scenes: Scene[] = [
           lanes: Array.from({ length: 5 }, (_, lane) => ({
             id: lane,
             colour: colour(0.2 + 0.15 * lane, 1 - 0.15 * lane, 0.5),
-            compared: false,
             own: lane === 0,
           })),
         },
@@ -389,7 +387,6 @@ const scenes: Scene[] = [
           lanes: Array.from({ length: 16 }, (_, lane) => ({
             id: lane,
             colour: colour(lane / 15, 1 - lane / 15, 0.6, 0.7),
-            compared: false,
             own: lane === 0,
           })),
         },
@@ -404,7 +401,7 @@ const scenes: Scene[] = [
     { sweep: false, dim: true },
     { sweep: true, dim: false },
   ].map(({ sweep, dim }): Scene => ({
-    // Two compared tracks cancelling in the middle third, a third left out (faint), and the sum.
+    // Two tracks cancelling in the middle third, a quieter third beside them, and the sum.
     name: `Compare shading where the tracks cancel${dim ? ", while Waiting" : ""}${sweep ? ", a Beats playhead mid-screen" : ""}`,
     width: 300,
     height: 200,
@@ -452,9 +449,9 @@ const scenes: Scene[] = [
         {
           laneSet: 5,
           lanes: [
-            { id: 1, colour: colour(0.4, 0.8, 1), compared: true, own: true },
-            { id: 2, colour: colour(1, 0.7, 0.3), compared: true, own: false },
-            { id: 3, colour: colour(0.7, 1, 0.4), compared: false, own: false },
+            { id: 1, colour: colour(0.4, 0.8, 1), own: true },
+            { id: 2, colour: colour(1, 0.7, 0.3), own: false },
+            { id: 3, colour: colour(0.7, 1, 0.4), own: false },
           ],
         },
       ],
@@ -521,8 +518,8 @@ const scenes: Scene[] = [
         {
           laneSet: 6,
           lanes: [
-            { id: 1, colour: colour(0.5, 0.6, 1), compared: true, own: true },
-            { id: 2, colour: colour(0.7, 0.75, 1), compared: true, own: false },
+            { id: 1, colour: colour(0.5, 0.6, 1), own: true },
+            { id: 2, colour: colour(0.7, 0.75, 1), own: false },
           ],
         },
       ],
@@ -561,31 +558,22 @@ scenes.push(
 );
 
 // The page's lane colours for a frame whose lane set the view holds (app.ts, lanesOf and
-// laneColors): the Sum last in Compare, tracks left out of it faint.
+// laneColors): the Sum last in Compare.
 function laneStyle(
   frame: FrameContent,
   view: TraceViewMessage,
-): { colours: StyleRgba[]; compared: boolean[]; own: number } {
+): { colours: StyleRgba[]; own: number } {
   const set = view.laneSets.find((each) => each.laneSet === frame.laneSet);
   const comparing = frame.comparison !== undefined;
   const lanes = [
     ...(set?.lanes ?? []),
-    ...(comparing
-      ? [{ id: -1, colour: view.sumColour, compared: false, own: false }]
-      : []),
+    ...(comparing ? [{ id: -1, colour: view.sumColour, own: false }] : []),
   ];
   return {
-    colours: lanes.map((lane, index) => {
+    colours: lanes.map((lane) => {
       const [r = 0, g = 0, b = 0, a = 1] = lane.colour;
-      const sum = comparing && index === lanes.length - 1;
-      return [
-        r,
-        g,
-        b,
-        comparing && !lane.compared && !sum ? a * leftOutAlpha : a,
-      ];
+      return [r, g, b, a];
     }),
-    compared: lanes.map((lane) => lane.compared),
     own: Math.max(
       0,
       lanes.findIndex((lane) => lane.own),
@@ -631,7 +619,6 @@ function drawScene(scene: Scene): Uint8Array {
           ]),
         ),
       laneColors: () => lanes.colours,
-      comparedLanes: () => lanes.compared,
       ownLane: () => lanes.own,
       differenceColors: () => ({
         gained: rgba(view.gained),

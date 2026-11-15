@@ -216,7 +216,6 @@ describe("cancellation bands", () => {
       matches: relatedMatches,
     },
   });
-  const both = [true, true];
 
   test("leave tracks that beat unshaded unless they are related", () => {
     // Two steady tones a little apart in pitch: their sum swells and dips at the difference.
@@ -249,21 +248,19 @@ describe("cancellation bands", () => {
         matches: unrelatedMatches,
       },
     };
-    expect(cancellationBands(beating, layout, both)).toHaveLength(0);
+    expect(cancellationBands(beating, layout)).toHaveLength(0);
     const related = {
       ...beating,
       comparison: { ...beating.comparison, matches: relatedMatches },
     };
-    expect(cancellationBands(related, layout, both).length).toBeGreaterThan(0);
+    expect(cancellationBands(related, layout).length).toBeGreaterThan(0);
   });
 
   // The difference of the compared tracks is small where they agree: that is what it is for,
   // not a cancellation to mark, so the same frame as a difference is not shaded.
   test("leave the difference unshaded", () => {
     const cancelling = compareFrame([0, 0, 0, 0, 0, 0, 0, 0]);
-    expect(cancellationBands(cancelling, layout, both).length).toBeGreaterThan(
-      0,
-    );
+    expect(cancellationBands(cancelling, layout).length).toBeGreaterThan(0);
     const difference = {
       ...cancelling,
       comparison: {
@@ -272,7 +269,7 @@ describe("cancellation bands", () => {
         nullDepth: -60,
       },
     };
-    expect(cancellationBands(difference, layout, both)).toHaveLength(0);
+    expect(cancellationBands(difference, layout)).toHaveLength(0);
   });
 
   test("leave unrelated noise unshaded", () => {
@@ -317,7 +314,7 @@ describe("cancellation bands", () => {
         matches: relatedMatches,
       },
     };
-    const shaded = xs(cancellationBands(unrelated, layout, both));
+    const shaded = xs(cancellationBands(unrelated, layout));
     // Quads span columns: the share of the lane's width they cover.
     let covered = 0;
     for (let quad = 0; quad < shaded.length; quad += 6) {
@@ -345,36 +342,17 @@ describe("cancellation bands", () => {
   };
   const quads = (bands: Float32Array) => bands.length / 12;
 
-  test("shade nothing with only one track compared", () => {
-    // The tracks cancel, and the other track is related, but it alone is in the sum: nothing to
-    // cancel against.
-    const cancelling = compareFrame([
-      -0.1, 0.1, -0.1, 0.1, -0.1, 0.1, -0.1, 0.1,
-    ]);
-    expect(cancellationBands(cancelling, layout, [false, true])).toHaveLength(
-      0,
-    );
-  });
-
   test("shade two cancelling stretches far apart as two bands", () => {
     // Columns 0-1 and 10-11 cancel; the eight between do not, far more than a short gap.
     const loud = new Array<number>(12).fill(0.5);
     const sum = loud.map((_, column) =>
       column < 2 || column >= 10 ? 0.05 : 0.9,
     );
-    const bands = cancellationBands(
-      columnsFrame(loud, loud, sum),
-      layout,
-      both,
-    );
+    const bands = cancellationBands(columnsFrame(loud, loud, sum), layout);
     expect(quads(bands)).toBe(2);
     // One stretch at the start, then none to the end: the band stops where cancelling does.
     const first = sum.map((level, column) => (column < 2 ? level : 0.9));
-    const alone = cancellationBands(
-      columnsFrame(loud, loud, first),
-      layout,
-      both,
-    );
+    const alone = cancellationBands(columnsFrame(loud, loud, first), layout);
     expect(quads(alone)).toBe(1);
     expect(Math.max(...xs(alone))).toBeCloseTo(-1 + (2 * 2) / 12);
   });
@@ -390,7 +368,7 @@ describe("cancellation bands", () => {
         new Float32Array([-0.08, 0.08, -0.08, 0.08]),
       ],
     };
-    expect(quads(cancellationBands(cancelling, layout, both))).toBe(1);
+    expect(quads(cancellationBands(cancelling, layout))).toBe(1);
     // And the other way up: to +0.5, but only to −0.1.
     const upwards = new Float32Array([-0.1, 0.5, -0.1, 0.5]);
     expect(
@@ -401,7 +379,6 @@ describe("cancellation bands", () => {
             lanes: [upwards, upwards, cancelling.lanes[2] ?? upwards],
           },
           layout,
-          both,
         ),
       ),
     ).toBe(1);
@@ -412,7 +389,7 @@ describe("cancellation bands", () => {
     const tracks = [0.0025, 0.0025, 0.5, 0.5, 0.5, 0.5, 0.0025, 0.0025];
     const sum = [0.0001, 0.0001, 0.9, 0.9, 0.9, 0.9, 0.0001, 0.0001];
     expect(
-      cancellationBands(columnsFrame(tracks, tracks, sum), layout, both),
+      cancellationBands(columnsFrame(tracks, tracks, sum), layout),
     ).toHaveLength(0);
   });
 
@@ -421,7 +398,6 @@ describe("cancellation bands", () => {
     const bands = cancellationBands(
       compareFrame([-0.9, 0.9, -0.1, 0.1, -0.1, 0.1, -0.9, 0.9]),
       { ...layout, view: { start: 0.25, end: 0.75 } },
-      both,
     );
     expect(quads(bands)).toBe(1);
     expect(Math.min(...xs(bands))).toBeCloseTo(-1);
@@ -450,7 +426,7 @@ describe("cancellation bands", () => {
         matches: relatedMatches,
       },
     };
-    const bands = cancellationBands(raw, layout, both);
+    const bands = cancellationBands(raw, layout);
     expect(quads(bands)).toBe(1);
     expect(Math.min(...xs(bands))).toBeCloseTo(-1 + 2 * pointPosition(raw, 0));
     expect(Math.max(...xs(bands))).toBeCloseTo(-1 + 2 * pointPosition(raw, 8));
@@ -489,7 +465,7 @@ describe("cancellation bands", () => {
           matches: relatedMatches,
         },
       };
-      expect(quads(cancellationBands(raw, layout, both))).toBe(1);
+      expect(quads(cancellationBands(raw, layout))).toBe(1);
     },
   );
 
@@ -498,7 +474,6 @@ describe("cancellation bands", () => {
     const bands = cancellationBands(
       compareFrame([-0.9, 0.9, -0.1, 0.1, -0.1, 0.1, -0.9, 0.9]),
       layout,
-      both,
     );
     expect(bands).toHaveLength(12); // One quad: the two adjacent columns merge.
     const x = xs(bands);
@@ -537,7 +512,6 @@ describe("cancellation bands", () => {
           ],
         },
         layout,
-        both,
       );
       expect(bands).toHaveLength(12); // One quad across the lane.
       expect(Math.min(...xs(bands))).toBeCloseTo(-1);
@@ -558,14 +532,14 @@ describe("cancellation bands", () => {
       ],
     };
     // Column 1 is quiet, but bridges columns 0 and 2 into one stretch with column 3.
-    const bands = cancellationBands(quiet, layout, both);
+    const bands = cancellationBands(quiet, layout);
     expect(bands).toHaveLength(12);
     expect(Math.min(...xs(bands))).toBeCloseTo(-1);
     expect(Math.max(...xs(bands))).toBeCloseTo(1);
   });
 
-  test("measure against the compared tracks only", () => {
-    // The sum (0.6) is well below a loud third track (0.9), which is not compared.
+  test("measure against the loudest of every track", () => {
+    // The sum (0.6) is well below a loud third track (0.9).
     const sum = new Float32Array([-0.6, 0.6, -0.6, 0.6, -0.6, 0.6, -0.6, 0.6]);
     const loud = new Float32Array([-0.9, 0.9, -0.9, 0.9, -0.9, 0.9, -0.9, 0.9]);
     const plain = compareFrame([]);
@@ -574,10 +548,7 @@ describe("cancellation bands", () => {
       ...plain,
       lanes: [first ?? sum, loud, second ?? sum, sum],
     };
-    expect(
-      cancellationBands(threeTracks, layout, [true, false, true]),
-    ).toHaveLength(0);
-    const bands = cancellationBands(threeTracks, layout, [true, true, true]);
+    const bands = cancellationBands(threeTracks, layout);
     expect(bands).toHaveLength(12);
     expect(Math.min(...ys(bands))).toBeCloseTo(-1); // In the bottom of four lanes.
     expect(Math.max(...ys(bands))).toBeCloseTo(-0.5);
@@ -586,7 +557,7 @@ describe("cancellation bands", () => {
   test("shade nothing outside the Compare view", () => {
     const plain = compareFrame([0, 0, 0, 0, 0, 0, 0, 0]);
     expect(
-      cancellationBands({ ...plain, comparison: undefined }, layout, both),
+      cancellationBands({ ...plain, comparison: undefined }, layout),
     ).toHaveLength(0);
   });
 });
@@ -773,17 +744,12 @@ describe("difference areas", () => {
     const high = block?.[point * 2 + 1] ?? Number.NaN;
     return Number.isNaN(low) ? undefined : [low, high];
   };
-  const both = [true, true];
 
   // Zoomed in, a point at a time: this track at 0.5, 0.5, 0.5 and -0.5 against the other at
   // 0.75 (louder), 0.25 (quieter), 0.5 (the same) and 0.25 (on the other side of zero).
   const mine = [0.5, 0.5, 0.5, -0.5];
   const other = [0.75, 0.25, 0.5, 0.25];
-  const raw = differenceAreas(
-    differenceOf(FrameMode.raw, mine, other),
-    both,
-    0,
-  );
+  const raw = differenceAreas(differenceOf(FrameMode.raw, mine, other), 0);
 
   test("fill what both cover, from zero to the nearer of the two", () => {
     expect(raw).toBeDefined();
@@ -827,7 +793,6 @@ describe("difference areas", () => {
     // Where the tracks agree, with no neighbour that differs above, nothing is there.
     const agree = differenceAreas(
       differenceOf(FrameMode.raw, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-      both,
       0,
     );
     expect(at(agree ?? [], "gainedAbove", 1)).toBeUndefined();
@@ -840,7 +805,6 @@ describe("difference areas", () => {
     const areas =
       differenceAreas(
         differenceOf(FrameMode.minMax, [-0.5, 0.5], [-0.25, 0.75]),
-        both,
         0,
       ) ?? [];
     expect(at(areas, "shared", 0)).toEqual([-0.25, 0.5]);
@@ -852,7 +816,6 @@ describe("difference areas", () => {
     const areas =
       differenceAreas(
         differenceOf(FrameMode.raw, [0.5, Number.NaN, 0.5], [0.25, 0.25, 0.25]),
-        both,
         0,
       ) ?? [];
     expect(at(areas, "shared", 1)).toBeUndefined();
@@ -872,7 +835,6 @@ describe("difference areas", () => {
       const areas =
         differenceAreas(
           differenceOf(FrameMode.minMax, own, [...otherFirst, -0.25, 0.25]),
-          both,
           0,
         ) ?? [];
       for (const part of differenceParts) {
@@ -883,19 +845,11 @@ describe("difference areas", () => {
     },
   );
 
-  // The sum's lane is a wave like the others, and a difference of this track alone is its wave.
-  test("are none for a sum, or with no other track compared", () => {
+  // The sum's lane is a wave like the others.
+  test("are none for a sum", () => {
     expect(
       differenceAreas(
         differenceOf(FrameMode.raw, mine, other, CompareLane.sum),
-        both,
-        0,
-      ),
-    ).toBeUndefined();
-    expect(
-      differenceAreas(
-        differenceOf(FrameMode.raw, mine, other),
-        [true, false],
         0,
       ),
     ).toBeUndefined();

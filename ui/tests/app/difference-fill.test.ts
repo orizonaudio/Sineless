@@ -2,7 +2,6 @@
 // track lost and what it gained, and measured against this track's lane wherever the host lists
 // the track. The pixels are read straight after a draw.
 import { describe, expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
 
 import { ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
@@ -15,6 +14,7 @@ import {
   press,
   setCompare,
   settle,
+  showOnly,
   startApp,
 } from "./harness.ts";
 
@@ -106,24 +106,6 @@ async function nextDraw(): Promise<Filled> {
   return drawn as unknown as Filled;
 }
 
-function compareCheck(name: string): HTMLButtonElement {
-  const check = [
-    ...byId("lane-labels").querySelectorAll<HTMLButtonElement>(
-      ".compare-check",
-    ),
-  ].find((button) => button.textContent === name);
-  expect(check, `check ${name}`).toBeDefined();
-  return check as HTMLButtonElement;
-}
-
-async function setCompared(name: string, compared: boolean): Promise<void> {
-  const state = () => compareCheck(name).getAttribute("aria-checked");
-  if (state() !== String(compared)) {
-    await userEvent.click(compareCheck(name));
-  }
-  await expect.poll(state).toBe(String(compared));
-}
-
 function lastLabel(): string {
   const labels = byId("lane-labels").querySelectorAll(".lane-label > span");
   return labels[labels.length - 1]?.textContent ?? "";
@@ -133,16 +115,10 @@ function lastLabel(): string {
 async function showDifference(others: readonly string[]): Promise<void> {
   await press(choice("time-base", "Trig"));
   await press(choice("display-mode", "Multi"));
-  await press(choice("group", "A"));
   await press(choice("layout", "Stack"));
   await setCompare("Diff");
   await expect.poll(() => lastLabel().startsWith("Difference")).toBe(true);
-  // The engine's lanes for the comparison rebuild the labels: the checks are read once they
-  // have.
-  await settle();
-  for (const name of ["Bass", "Kick 2"]) {
-    await setCompared(name, others.includes(name));
-  }
+  await showOnly(others);
   await settle();
 }
 

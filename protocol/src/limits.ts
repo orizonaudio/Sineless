@@ -92,8 +92,12 @@ export const minPointsPerSample = 4;
 export const sampleDotSpacing = 3;
 export const sampleDotRadius = 1;
 
-// The most tracks the multi-track view shows; with Compare on it shows one fewer, for the sum.
+// The most lanes the multi-track view draws: the tracks shown and, with Compare on, the lane it
+// adds.
 export const maxLanes = 16;
+// The most tracks the multi-track view shows, this instance's own included: one fewer than the
+// lanes, so that Compare's lane always has a place and turning Compare on never hides a track.
+export const maxShownTracks = maxLanes - 1;
 
 // How often readouts are measured and refreshed (seconds): legible while frames arrive faster.
 export const readoutIntervalSeconds = 0.1;
@@ -123,8 +127,8 @@ export const highestAudibleHz = 20000;
 
 // The editor's layout (CSS pixels): its minimum width, which fits the widest toolbar (Trig, the
 // Single trigger mode with Re-arm, frozen, in Single or in Multi with Compare on: one width since
-// Single's and Multi's summaries share one Views field; with the grouped controls of #409 it leaves 11.8 px in
-// WebKit and 12.6 in Chromium) with at least 8 px to spare for text that renders wider on another
+// Single's and Multi's summaries share one Views field, as wide as Multi's count of tracks at two
+// digits each side, "88/88", #425; it leaves 9 px in Chromium) with at least 8 px to spare for text that renders wider on another
 // platform; the status bar fits too, its chip area being what that bar leaves less the same 8 px
 // (ui/src/styles.css, .chips; docs/ui/README.md); its default width,
 // the same, as nothing in the window changes with its width; its minimum height, which fits the
@@ -133,8 +137,8 @@ export const highestAudibleHz = 20000;
 // the minimum height of a stacked lane; and the height of everything around the screen (toolbar
 // and status bar), at most: measured at 82, with room for rounding at other display scales. The
 // editor tests check the page against them.
-export const defaultEditorWidth = 1040;
-export const minimumEditorWidth = 1040;
+export const defaultEditorWidth = 1064;
+export const minimumEditorWidth = 1064;
 export const minimumEditorHeight = 420;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;
@@ -214,10 +218,8 @@ export const cancellationReachDivisor = 128;
 // What the page and the macOS editor draw fainter than the live picture: while Normal mode waits
 // for a trigger, the last traces and the shading in a colour moved waitingAlpha of the way from the
 // screen's to their own, so the picture reads as old but stays legible, still covering the grid as
-// live traces do; in Compare, tracks left out of the comparison at leftOutAlpha of their opacity,
-// so the compared tracks and their sum stand out and what is under them shows through.
+// live traces do.
 export const waitingAlpha = 0.45;
-export const leftOutAlpha = 0.2;
 // In Compare's difference lane, what this track and the others both cover is filled in this
 // track's colour moved this share of the way from the screen's to its own, opaque (as the Waiting
 // dim moves a colour, above): enough to read as the wave's shape, and dull enough that what only
@@ -307,6 +309,7 @@ export const limits: readonly {
   { name: "sampleDotSpacing", value: sampleDotSpacing, kind: "double" },
   { name: "sampleDotRadius", value: sampleDotRadius, kind: "double" },
   { name: "maxLanes", value: maxLanes, kind: "count" },
+  { name: "maxShownTracks", value: maxShownTracks, kind: "count" },
   {
     name: "readoutIntervalSeconds",
     value: readoutIntervalSeconds,
@@ -359,7 +362,6 @@ export const limits: readonly {
   },
   { name: "barcodeCellPixels", value: barcodeCellPixels, kind: "count" },
   { name: "barcodeCornerMargin", value: barcodeCornerMargin, kind: "pixels" },
-  { name: "leftOutAlpha", value: leftOutAlpha, kind: "double" },
   {
     name: "differenceSharedStrength",
     value: differenceSharedStrength,

@@ -1,4 +1,5 @@
 #include "SampleRates.h"
+#include "ShowTracks.h"
 #include "editor/Session.h"
 #include "engine/InstanceRegistry.h"
 
@@ -363,13 +364,13 @@ TEST_F(SessionTest, ReportsTheMultiTrackLanes)
     auto lanes = transport.ofType("lanes");
     ASSERT_EQ(lanes.size(), 1u);
     EXPECT_EQ(lanes[0]["laneSet"], analyzer.laneSet().id);
-    EXPECT_EQ(lanes[0]["hidden"], 0);
+    EXPECT_FALSE(lanes[0].contains("hidden")) << "every track shown has a lane";
     ASSERT_EQ(lanes[0]["lanes"].size(), 1u);
     EXPECT_EQ(lanes[0]["lanes"][0]["name"], "Kick");
     EXPECT_EQ(lanes[0]["lanes"][0]["colour"], 0xe03030);
     EXPECT_EQ(lanes[0]["lanes"][0]["own"], true);
     EXPECT_EQ(lanes[0]["lanes"][0]["id"], 0) << "an unregistered engine's own lane";
-    EXPECT_EQ(lanes[0]["lanes"][0]["compared"], false) << "only the Compare view compares";
+    EXPECT_FALSE(lanes[0]["lanes"][0].contains("compared")) << "Compare takes every lane";
     EXPECT_EQ(lanes[0]["lanes"][0]["instance"], 0) << "its track's only instance";
 
     session.sync();
@@ -383,12 +384,12 @@ TEST_F(SessionTest, ReportsTheMultiTrackLanes)
     EXPECT_TRUE(lanes[1]["lanes"][0]["colour"].is_null());
 }
 
-// Two instances on one track, as before and after an effect, reach the page numbered in the order
-// they were added: the page draws each lane's number and its shade of the track's colour from it.
-TEST(SessionLanes, NumbersTheInstancesThatShareATrack)
+// A few instances on one host clock, the last one's editor open: every instance is in Multi and
+// in Beats, playing at a known tempo, so that the first frame draws.
+struct Instances
 {
-    engine::InstanceRegistry registry;
-    const auto onBass = [&] {
+    std::shared_ptr<engine::Engine> add(const char* name)
+    {
         auto instance = std::make_shared<engine::Engine>();
         instance->prepare(48000.0);
         instance->settings().set(SettingId::kTimeBase,
@@ -397,7 +398,7 @@ TEST(SessionLanes, NumbersTheInstancesThatShareATrack)
                                  static_cast<double>(protocol::BeatSpan::kEighthBar));
         instance->settings().set(SettingId::kDisplayMode,
                                  static_cast<double>(protocol::DisplayMode::kMulti));
-        instance->setTrackInfo({.name = "Bass", .colour = std::nullopt, .index = std::nullopt});
+        instance->setTrackInfo({.name = name, .colour = std::nullopt, .index = std::nullopt});
         const std::vector<float> level(48000, 0.5f);
         std::array<const float*, 2> channels{level.data(), level.data()};
         instance->captureRing().write(channels.data(), 2, static_cast<int>(level.size()));
@@ -407,10 +408,31 @@ TEST(SessionLanes, NumbersTheInstancesThatShareATrack)
             48000.0);
         registry.add(instance);
         return instance;
-    };
-    const auto before = onBass();
-    const auto own = onBass();
-    engine::Analyzer analyzer(*own, registry);
+    }
+
+    [[nodiscard]] std::uint64_t idOf(const std::shared_ptr<engine::Engine>& instance) const
+    {
+        for (const auto& member : registry.members()) {
+            if (member.engine == instance) {
+                return member.serial;
+            }
+        }
+        return 0;
+    }
+
+    engine::InstanceRegistry registry;
+};
+
+// Two instances on one track, as before and after an effect, reach the page numbered in the order
+// they were added, in the lanes and in the list of tracks: the page draws each lane's number and
+// its shade of the track's colour from it.
+TEST(SessionLanes, NumbersTheInstancesThatShareATrack)
+{
+    Instances instances;
+    const auto before = instances.add("Bass");
+    const auto own = instances.add("Bass");
+    engine::showEveryTrack(instances.registry, *own);
+    engine::Analyzer analyzer(*own, instances.registry);
     RecordingTransport transport;
     Session session{*own, analyzer, transport};
     session.receive(example("hello"));
@@ -423,6 +445,116 @@ TEST(SessionLanes, NumbersTheInstancesThatShareATrack)
     for (const auto& lane : lanes[0]["lanes"]) {
         EXPECT_EQ(lane["instance"], lane["own"] == true ? 2 : 1) << lane.dump();
     }
+    const auto tracks = transport.ofType("tracks");
+    ASSERT_EQ(tracks.size(), 1u);
+    for (const auto& track : tracks[0]["tracks"]) {
+        EXPECT_EQ(track["instance"], track["own"] == true ? 2 : 1) << track.dump();
+    }
+}
+
+// The page lists every instance in the process to choose the tracks Multi shows: the list reaches
+// it with the first Multi frame, says which are shown, and comes again when it changes and to a
+// page that says hello again (the editor reopened), never when nothing changed.
+TEST(SessionLanes, SendsTheTrackListWhenItChangesAndToAPageThatSaysHello)
+{
+    Instances instances;
+    const auto own = instances.add("Kick");
+    const auto bass = instances.add("Bass");
+    engine::Analyzer analyzer(*own, instances.registry);
+    RecordingTransport transport;
+    Session session{*own, analyzer, transport};
+    session.receive(example("hello"));
+    std::vector<std::byte> frame;
+    ASSERT_TRUE(analyzer.produce(frame));
+    session.sync();
+    auto tracks = transport.ofType("tracks");
+    ASSERT_EQ(tracks.size(), 1u);
+    ASSERT_EQ(tracks[0]["tracks"].size(), 2u);
+    EXPECT_EQ(tracks[0]["tracks"][0]["name"], "Kick");
+    EXPECT_EQ(tracks[0]["tracks"][0]["own"], true);
+    EXPECT_EQ(tracks[0]["tracks"][0]["shown"], true) << "this track is always shown";
+    EXPECT_EQ(tracks[0]["tracks"][1]["name"], "Bass");
+    EXPECT_EQ(tracks[0]["tracks"][1]["id"], instances.idOf(bass));
+    EXPECT_EQ(tracks[0]["tracks"][1]["shown"], false) << "listed, not shown until ticked";
+    ASSERT_EQ(transport.ofType("lanes").back()["lanes"].size(), 1u);
+
+    session.sync();
+    EXPECT_EQ(transport.ofType("tracks").size(), 1u) << "nothing new";
+
+    // Another instance comes: listed, and the lanes are as they were.
+    const auto hat = instances.add("Hat");
+    analyzer.redraw();
+    ASSERT_TRUE(analyzer.produce(frame));
+    session.sync();
+    tracks = transport.ofType("tracks");
+    ASSERT_EQ(tracks.size(), 2u);
+    ASSERT_EQ(tracks[1]["tracks"].size(), 3u);
+    EXPECT_EQ(tracks[1]["tracks"][2]["shown"], false);
+    EXPECT_EQ(transport.ofType("lanes").size(), 1u) << "the lanes did not change";
+
+    // The editor reopened: the page says hello again, and is told the list and the lanes again.
+    session.receive(example("hello"));
+    session.sync();
+    EXPECT_EQ(transport.ofType("tracks").size(), 3u);
+    EXPECT_EQ(transport.ofType("lanes").size(), 2u);
+}
+
+// Ticking tracks in the page shows them: their lanes follow, in the host's order, and the list
+// says so. Ids that are not numbers, this track's own, repeated ones and ones of no instance are
+// ignored; more than Multi shows are cut to the first.
+TEST(SessionLanes, ShowsTheTracksThePageTicks)
+{
+    Instances instances;
+    const auto own = instances.add("Kick");
+    std::vector<std::shared_ptr<engine::Engine>> others;
+    others.reserve(20);
+    for (int index = 0; index < 20; ++index) {
+        others.push_back(instances.add(("Track " + std::to_string(index + 2)).c_str()));
+    }
+    engine::Analyzer analyzer(*own, instances.registry);
+    RecordingTransport transport;
+    Session session{*own, analyzer, transport};
+    session.receive(example("hello"));
+    std::vector<std::byte> frame;
+    ASSERT_TRUE(analyzer.produce(frame));
+    session.sync();
+    const auto lanesNow = [&] {
+        analyzer.redraw();
+        EXPECT_TRUE(analyzer.produce(frame));
+        session.sync();
+        std::vector<std::string> names;
+        const auto sets = transport.ofType("lanes");
+        for (const auto& lane : sets.back()["lanes"]) {
+            names.push_back(lane["name"].get<std::string>());
+        }
+        return names;
+    };
+
+    session.receive({{"type", "showTracks"},
+                     {"ids",
+                      {instances.idOf(others[2]), "4", instances.idOf(own),
+                       instances.idOf(others[0]), instances.idOf(others[2]), 99999, -3, 1.5}}});
+    EXPECT_EQ(lanesNow(), (std::vector<std::string>{"Kick", "Track 2", "Track 4"}));
+    const auto listed = transport.ofType("tracks").back()["tracks"];
+    ASSERT_EQ(listed.size(), 21u);
+    EXPECT_EQ(listed[1]["shown"], true);
+    EXPECT_EQ(listed[2]["shown"], false);
+    EXPECT_EQ(listed[3]["shown"], true);
+
+    nlohmann::json every = nlohmann::json::array();
+    for (const auto& other : others) {
+        every.push_back(instances.idOf(other));
+    }
+    session.receive({{"type", "showTracks"}, {"ids", every}});
+    EXPECT_EQ(lanesNow().size(), protocol::kMaxShownTracks) << "this track and fourteen others";
+
+    session.receive({{"type", "showTracks"}, {"ids", nlohmann::json::array()}});
+    EXPECT_EQ(lanesNow(), (std::vector<std::string>{"Kick"}));
+
+    // Not a list: ignored, the tracks stay as they are.
+    session.receive({{"type", "showTracks"}, {"ids", instances.idOf(others[0])}});
+    session.receive({{"type", "showTracks"}});
+    EXPECT_EQ(lanesNow(), (std::vector<std::string>{"Kick"}));
 }
 
 TEST_F(SessionTest, ForwardsViewCommandsToTheAnalyzer)

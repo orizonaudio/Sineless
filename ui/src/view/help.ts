@@ -15,7 +15,7 @@ import {
   levelFloorDbfs,
   matchReachSeconds,
   matchWindowSeconds,
-  maxLanes,
+  maxShownTracks,
   minimumViewSamples,
   summingMarginDb,
 } from "../../../protocol/src/limits.ts";
@@ -29,8 +29,7 @@ import { beatSpanLabels } from "./musical-grid.ts";
 // WebView2 on Windows, which names them Ctrl and Alt.
 export const isMac =
   typeof navigator !== "undefined" && /Mac/u.test(navigator.platform);
-const lanesMulti = String(maxLanes);
-const lanesCompare = String(maxLanes - 1);
+const tracksShown = String(maxShownTracks);
 const reach = formatSeconds(matchReachSeconds);
 const alignReach = formatSeconds(alignReachSeconds);
 const matchWindow = formatSeconds(matchWindowSeconds);
@@ -129,10 +128,10 @@ export function helpTextsFor(mac: boolean) {
     },
     displayMode: {
       title: "Single or Multi",
-      lead: "What the screen shows: this track, or every track of its group.",
+      lead: "What the screen shows: this track, or the tracks you choose.",
       choices: choicesOf(choiceLabels.displayMode, {
         single: "this track's channels",
-        multi: `every track of this instance's group with this plugin, one lane each, showing the channel chosen in the Views popover, at most ${lanesMulti} (${lanesCompare} with Compare on, which adds a lane)`,
+        multi: `the tracks with this plugin that you tick in the Views popover, one lane each, showing the channel chosen there, at most ${tracksShown}`,
       }),
       notes: [
         "Keep all instances in the same plugin hosting mode, and put this plugin last on each track so lanes line up.",
@@ -140,7 +139,7 @@ export function helpTextsFor(mac: boolean) {
     },
     compare: {
       title: "Compare",
-      lead: "In Multi, adds a lane from the checked tracks and measures each against this one.",
+      lead: "In Multi, adds a lane from the tracks shown and measures each against this one.",
       choices: [
         { name: "Sum", text: "their sum: what they do together in a mix" },
         {
@@ -149,7 +148,7 @@ export function helpTextsFor(mac: boolean) {
         },
       ],
       notes: [
-        `In beta. It takes a lane, so Multi then shows at most ${lanesCompare} tracks.`,
+        "In beta. It takes every track shown: tick the ones to compare under Channels.",
         "Open the instance after the effect to read after minus before.",
         "Saved with the project.",
       ],
@@ -159,20 +158,13 @@ export function helpTextsFor(mac: boolean) {
       lead: "Shows each lane's colour and track name in Multi.",
       notes: [
         "Several instances on one track are numbered in the order they were added, in shades of its colour.",
-        "With Compare on they hold its check boxes and readouts, so they always show.",
+        "With Compare on they hold its readouts, so they always show.",
         "Saved with the project.",
-      ],
-    },
-    compareTrack: {
-      title: "Compare",
-      lead: "Check a track to put it in the sum or difference and measure it against yours.",
-      notes: [
-        "This track is always compared; uncheck another to leave it out.",
       ],
     },
     previewFix: {
       title: "Preview fix",
-      lead: "Redraws the sum as if every checked track were shifted and flipped as suggested.",
+      lead: "Redraws the sum as if every other track were shifted and flipped as suggested.",
       notes: [
         "The summing gain shown is the one that would give.",
         "Apply it in your host, with track delay and a phase or polarity switch.",
@@ -180,13 +172,13 @@ export function helpTextsFor(mac: boolean) {
     },
     sumGain: {
       title: "Summing gain",
-      lead: "How loud the checked tracks are together, against unrelated signals of the same levels.",
+      lead: "How loud the tracks shown are together, against unrelated signals of the same levels.",
       choices: [
         { name: `Within ±${margin} dB`, text: "harmless" },
         { name: "Above", text: "they reinforce" },
         {
           name: "Below",
-          text: "they cancel; strongly, the sum's lane is shaded yellow if a checked track is related to yours",
+          text: "they cancel; strongly, the sum's lane is shaded yellow if another track is related to yours",
         },
         {
           name: "—",
@@ -199,7 +191,7 @@ export function helpTextsFor(mac: boolean) {
     },
     align: {
       title: "Align",
-      lead: "Lines each checked track up with this one before taking the difference.",
+      lead: "Lines each other track up with this one before taking the difference.",
       notes: [
         `Takes out its delay (within ±${alignReach}, to a fraction of a sample) and a flipped polarity; its level stays.`,
         "Only what is drawn and measured changes, never the audio.",
@@ -266,13 +258,13 @@ export function helpTextsFor(mac: boolean) {
         `Over the ${matchWindow} before the playhead (zoomed away, the newest shown), above ${gate} dBFS only.`,
       ],
     },
-    group: {
+    tracks: {
       title: "Views",
-      lead: "Which group's tracks Multi shows, and with Compare their sum or difference.",
+      lead: "Which tracks Multi shows, and with Compare their sum or difference.",
       notes: [
-        "The field names the group, the lane channel, Compare's lane (Σ or Δ, dimmed when off) and a tag (dimmed while lane labels are hidden).",
-        "Instances in the same group appear together; use groups to keep comparisons apart, such as drums in A and bass in B.",
-        "Every instance belongs to a group, whatever its own mode.",
+        "The field counts the tracks shown, then names the lane channel, a tag (dimmed while labels are hidden) and Compare's lane (Σ or Δ, dimmed when off).",
+        `Channels lists every track with this plugin: tick up to ${tracksShown}. One added later is not ticked.`,
+        "What is ticked is not saved with the project.",
       ],
     },
     laneChannel: {
@@ -708,7 +700,6 @@ export const choiceHelp: {
   viewLayout: { topic: "layout" },
   triggerSlope: { topic: "triggerSlope" },
   triggerMode: { topic: "trigger" },
-  group: { exempt: "letters A to D, which say nothing to explain one by one" },
   compare: {
     exempt:
       "on and off behind Compare's switch, whose topic explains the lanes it offers",

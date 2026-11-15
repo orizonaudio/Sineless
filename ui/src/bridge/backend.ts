@@ -12,6 +12,7 @@ import type {
   SnapshotMessage,
   StateChangedMessage,
   TraceViewMessage,
+  TracksMessage,
 } from "../../../protocol/src/messages.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import { protocolVersion } from "../../../protocol/src/version.ts";
@@ -22,6 +23,7 @@ export interface BackendEvents {
   stateChanged(message: StateChangedMessage): void;
   error(message: ErrorMessage): void;
   lanes(message: LanesMessage): void;
+  tracks(message: TracksMessage): void;
   nativeGraphicsLost(): void;
   about(message: AboutMessage): void;
   frame(frame: Frame): void;
@@ -36,6 +38,7 @@ export class Backend {
     stateChanged: [],
     error: [],
     lanes: [],
+    tracks: [],
     nativeGraphicsLost: [],
     about: [],
     frame: [],
@@ -97,9 +100,9 @@ export class Backend {
     this.transport.send({ type: "view", start, end });
   }
 
-  // Compare view: the other tracks to compare with this one, by the ids of their lanes entries.
-  compare(ids: readonly number[]): void {
-    this.transport.send({ type: "compare", ids });
+  // The other tracks Multi shows, by the ids of their tracks entries.
+  showTracks(ids: readonly number[]): void {
+    this.transport.send({ type: "showTracks", ids });
   }
 
   previewFix(on: boolean): void {
@@ -145,6 +148,11 @@ export class Backend {
       case "lanes":
         for (const handler of this.handlers.lanes) {
           handler(message as unknown as LanesMessage);
+        }
+        break;
+      case "tracks":
+        for (const handler of this.handlers.tracks) {
+          handler(message as unknown as TracksMessage);
         }
         break;
       case "nativeGraphicsLost":

@@ -9,8 +9,9 @@ import { byId, setCompare, settle, showDisplay, startApp } from "./harness.ts";
 function names(): { left: number; height: number; text: string }[] {
   return [...byId("lane-labels").querySelectorAll(".lane-label")].map(
     (label) => {
+      // A track's name is in its own element (cut when too long); the sum's is plain text.
       const holder =
-        label.querySelector<HTMLElement>(".compare-check") ??
+        label.querySelector<HTMLElement>(".cut-shown") ??
         (label.firstElementChild as HTMLElement);
       const text = [...holder.childNodes].find(
         (node) => node.nodeType === Node.TEXT_NODE && node.textContent !== "",
@@ -19,7 +20,7 @@ function names(): { left: number; height: number; text: string }[] {
       if (text !== undefined) {
         range.selectNodeContents(text);
       }
-      // The label's own box: with Compare on it holds the check box's button.
+      // The label's own box.
       const box = label.firstElementChild as HTMLElement;
       return {
         left: range.getBoundingClientRect().left,

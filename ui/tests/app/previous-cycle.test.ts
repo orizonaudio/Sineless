@@ -120,7 +120,6 @@ describe("the previous cycle dims its traces only", () => {
       const options: DrawOptions = {
         color: colour(0),
         laneColors: [0, 1, 2].map(colour),
-        comparedLanes: display === "Compare" ? [true, true] : [],
         layout: ViewLayout[layout],
         ...(placement.view === undefined ? {} : { view: placement.view }),
       };
@@ -198,7 +197,6 @@ describe("waiting traces dim their colour, not their coverage", () => {
     const options: DrawOptions = {
       color: colour(0),
       laneColors: [0, 1, 2].map(colour),
-      comparedLanes: display === "Compare" ? [true, true] : [],
       layout: ViewLayout[layout],
     };
     const live = draw(frame, options);

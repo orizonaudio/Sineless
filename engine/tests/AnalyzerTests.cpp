@@ -1776,22 +1776,49 @@ protected:
     static float hostTime(std::uint64_t sample) { return static_cast<float>(sample); }
 
     // A new instance whose audio is `value` everywhere, or the host time when `value` is unset.
-    std::shared_ptr<Engine> join(std::optional<float> value = std::nullopt,
-                                 protocol::Group group = protocol::Group::kA)
+    // This track's Multi shows it, as when the user ticks it, unless `shown` is false.
+    std::shared_ptr<Engine> join(std::optional<float> value = std::nullopt, bool shown = true)
     {
         return joinWith(value ? Signal([level = *value](std::uint64_t) { return level; })
                               : Signal(hostTime),
-                        group);
+                        shown);
     }
 
-    std::shared_ptr<Engine> joinWith(Signal signal, protocol::Group group = protocol::Group::kA)
+    std::shared_ptr<Engine> joinWith(Signal signal, bool shown = true)
     {
         auto engine = std::make_shared<Engine>();
         engine->prepare(kSampleRate);
-        engine->settings().set(SettingId::kGroup, static_cast<double>(group));
         registry.add(engine);
         tracks.emplace_back(engine, std::move(signal));
+        if (own && shown) {
+            std::vector<std::uint64_t> ids = own->shown();
+            ids.push_back(idOf(engine));
+            own->setShown(std::move(ids));
+        }
         return engine;
+    }
+
+    // An instance's lane id in the registry, 0 for one not in it.
+    std::uint64_t idOf(const std::shared_ptr<Engine>& engine) const
+    {
+        for (const Member& member : registry.members()) {
+            if (member.engine == engine) {
+                return member.serial;
+            }
+        }
+        return 0;
+    }
+
+    // Every instance of `from` but this track's, by lane id: what ticking them all asks for.
+    std::vector<std::uint64_t> othersIn(const InstanceRegistry& from) const
+    {
+        std::vector<std::uint64_t> ids;
+        for (const Member& member : from.members()) {
+            if (member.engine != own) {
+                ids.push_back(member.serial);
+            }
+        }
+        return ids;
     }
 
     // A track whose left and right channels differ.
@@ -1803,9 +1830,9 @@ protected:
     }
 
     // A mono track: one channel.
-    std::shared_ptr<Engine> joinMono(Signal signal)
+    std::shared_ptr<Engine> joinMono(Signal signal, bool shown = true)
     {
-        auto engine = joinWith(std::move(signal));
+        auto engine = joinWith(std::move(signal), shown);
         engine->setInputChannels(1);
         return engine;
     }
@@ -1954,16 +1981,35 @@ TEST_F(MultiTrackTest, KeepsFreeRunningLanesInStepWithAFreshReduction)
     }
 }
 
-TEST_F(MultiTrackTest, DrawsOneMidLanePerTrackOfTheGroup)
+// A new instance shows its own track alone, however many other instances the process has: the
+// others are listed, for the user to tick.
+TEST_F(MultiTrackTest, ShowsThisTrackAloneUntilOthersAreTicked)
+{
+    join(2.0f, false);
+    join(3.0f, false);
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 1);
+    EXPECT_EQ(lane(*frame, 0), std::vector<float>(6000, 1.0f));
+    const TrackList list = analyzer->trackList();
+    ASSERT_EQ(list.tracks.size(), 3u) << "every instance is listed";
+    EXPECT_TRUE(list.tracks[0].label.own);
+    EXPECT_TRUE(list.tracks[0].shown) << "this track is always shown";
+    EXPECT_FALSE(list.tracks[1].shown);
+    EXPECT_FALSE(list.tracks[2].shown);
+}
+
+TEST_F(MultiTrackTest, DrawsOneMidLanePerTrackShown)
 {
     join(2.0f);
-    join(9.0f, protocol::Group::kB);
+    join(9.0f, false);
     join(3.0f);
     play(9600);
     const auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->views, 0);
-    ASSERT_EQ(frame->laneCount, 3) << "group B's track is not drawn";
+    ASSERT_EQ(frame->laneCount, 3) << "the track not ticked is not drawn";
     ASSERT_EQ(frame->pointCount, 6000u);
     EXPECT_TRUE(frame->has(FrameFlag::kSynced));
     EXPECT_EQ(lane(*frame, 0), std::vector<float>(6000, 1.0f)) << "creation order";
@@ -1975,7 +2021,116 @@ TEST_F(MultiTrackTest, DrawsOneMidLanePerTrackOfTheGroup)
     ASSERT_EQ(lanes.lanes.size(), 3u);
     EXPECT_TRUE(lanes.lanes[0].own);
     EXPECT_FALSE(lanes.lanes[1].own);
-    EXPECT_EQ(lanes.hidden, 0u);
+    const TrackList list = analyzer->trackList();
+    ASSERT_EQ(list.tracks.size(), 4u);
+    EXPECT_FALSE(list.tracks[2].shown);
+    EXPECT_TRUE(list.tracks[3].shown);
+}
+
+// The lanes follow the host's track order whatever the order the tracks were ticked in, this
+// track's among them where the host has it, not first or last.
+TEST_F(MultiTrackTest, ShowsTickedTracksInHostOrder)
+{
+    const auto third = join(3.0f, false);
+    const auto first = join(2.0f, false);
+    third->setTrackInfo({.name = "Third", .colour = std::nullopt, .index = 3});
+    own->setTrackInfo({.name = "Second", .colour = std::nullopt, .index = 2});
+    first->setTrackInfo({.name = "First", .colour = std::nullopt, .index = 1});
+    analyzer->setShown({idOf(third), idOf(first)});
+    play(9600);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 3);
+    EXPECT_EQ(lane(*frame, 0).front(), 2.0f);
+    EXPECT_EQ(lane(*frame, 1).front(), 1.0f) << "this track, between the others";
+    EXPECT_EQ(lane(*frame, 2).front(), 3.0f);
+    const LaneSet lanes = analyzer->laneSet();
+    EXPECT_EQ(lanes.lanes[0].name, "First");
+    EXPECT_TRUE(lanes.lanes[1].own);
+}
+
+// An instance added to the host later is listed, not shown: the user ticks what Multi shows.
+TEST_F(MultiTrackTest, ListsANewInstanceUnticked)
+{
+    join(2.0f);
+    play(9600);
+    ASSERT_TRUE(produce());
+    const std::uint32_t before = analyzer->trackList().id;
+    const auto later = join(3.0f, false);
+    play(480);
+    const auto frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->laneCount, 2) << "the lanes are as they were";
+    const TrackList list = analyzer->trackList();
+    EXPECT_NE(list.id, before) << "the list changed, so the editor is told";
+    ASSERT_EQ(list.tracks.size(), 3u);
+    EXPECT_EQ(list.tracks[2].label.id, idOf(later));
+    EXPECT_FALSE(list.tracks[2].shown);
+}
+
+// An instance that goes away leaves the list and the selection; if the host brings it back (an
+// undo), it is a new entry, listed and not shown.
+TEST_F(MultiTrackTest, DropsAGoneInstanceFromTheSelection)
+{
+    join(2.0f);
+    const auto away = join(3.0f);
+    play(9600);
+    auto frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 3);
+    const std::uint64_t awayId = idOf(away);
+
+    registry.remove(*away);
+    play(480);
+    frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->laneCount, 2);
+    EXPECT_EQ(analyzer->trackList().tracks.size(), 2u);
+    const std::vector<std::uint64_t> kept = own->shown();
+    EXPECT_EQ(std::ranges::count(kept, awayId), 0) << "gone from the selection";
+
+    registry.add(away);
+    play(480);
+    frame = produce();
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->laneCount, 2) << "back, but not shown unasked";
+    const TrackList list = analyzer->trackList();
+    ASSERT_EQ(list.tracks.size(), 3u);
+    EXPECT_NE(list.tracks[2].label.id, awayId) << "a new entry";
+    EXPECT_FALSE(list.tracks[2].shown);
+}
+
+// The selection is the instance's, not its editor's: closing and reopening the editor (a new
+// analyzer on the same instance) keeps it, as does a look at Single in between.
+TEST_F(MultiTrackTest, KeepsTheTickedTracksWhenTheEditorReopens)
+{
+    const auto first = join(2.0f, false);
+    const auto second = join(3.0f, false);
+    const auto third = join(4.0f, false);
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer->setShown({idOf(second), idOf(third)});
+    ASSERT_TRUE(produce());
+    show(own->settings(), Display::kSingle);
+    play(480);
+    ASSERT_TRUE(produce());
+    show(own->settings(), Display::kMulti);
+
+    analyzer.reset();
+    Analyzer reopened(*own, registry);
+    reopened.setColumns(8000);
+    std::vector<std::byte> bytes;
+    play(480);
+    ASSERT_TRUE(reopened.produce(bytes));
+    const LaneSet lanes = reopened.laneSet();
+    ASSERT_EQ(lanes.lanes.size(), 3u);
+    EXPECT_TRUE(lanes.lanes[0].own);
+    EXPECT_EQ(lanes.lanes[1].id, idOf(second));
+    EXPECT_EQ(lanes.lanes[2].id, idOf(third));
+    const TrackList list = reopened.trackList();
+    ASSERT_EQ(list.tracks.size(), 4u);
+    EXPECT_EQ(list.tracks[1].label.id, idOf(first));
+    EXPECT_FALSE(list.tracks[1].shown);
 }
 
 TEST_F(MultiTrackTest, AlignsTracksThatStartedAtDifferentTimesOnTheClock)
@@ -1991,59 +2146,71 @@ TEST_F(MultiTrackTest, AlignsTracksThatStartedAtDifferentTimesOnTheClock)
     EXPECT_EQ(lane(*frame, 0).front(), 12000.0f) << "the cycle starts on the beat grid";
 }
 
-TEST_F(MultiTrackTest, KeepsTheOwnTrackWithinTheLaneLimit)
+// Multi shows at most fifteen tracks, this one among them, so that Compare's lane always has a
+// place: of twenty instances all asked for, this track and the first fourteen others in the host's
+// order are shown, with Compare off and on, and the list says which.
+TEST_F(MultiTrackTest, ShowsAtMostFifteenTracksSoCompareKeepsItsLane)
 {
     InstanceRegistry crowded;
-    for (std::size_t track = 0; track < kMaxLanes + 1; ++track) {
+    for (std::size_t track = 0; track < 19; ++track) {
         auto engine = std::make_shared<Engine>();
         crowded.add(engine);
         tracks.emplace_back(
             engine, [level = static_cast<float>(track + 10)](std::uint64_t) { return level; });
     }
-    crowded.add(own); // Created last: it would be the tenth lane.
+    crowded.add(own); // Created last: the twentieth in the host's order.
+    own->setShown(othersIn(crowded));
     Analyzer lanes(*own, crowded);
     lanes.setColumns(8000);
-    play(9600);
     std::vector<std::byte> bytes;
-    ASSERT_TRUE(lanes.produce(bytes));
-    const DecodedFrame frame = decodeSamples(bytes);
-    ASSERT_EQ(frame.laneCount, kMaxLanes);
-    EXPECT_EQ(lane(frame, kMaxLanes - 1).front(), 1.0f) << "the own track takes the last lane";
-    EXPECT_EQ(lanes.laneSet().hidden, 2u);
-    EXPECT_TRUE(lanes.laneSet().lanes.back().own);
+    for (const Display display : {Display::kMulti, Display::kCompare, Display::kMulti}) {
+        SCOPED_TRACE(displayName(display));
+        show(own->settings(), display);
+        play(9600);
+        ASSERT_TRUE(lanes.produce(bytes));
+        const DecodedFrame frame = decodeSamples(bytes);
+        const bool comparing = display == Display::kCompare;
+        EXPECT_EQ(frame.laneCount, kMaxShownTracks + (comparing ? 1 : 0))
+            << "the tracks, and with Compare its lane";
+        EXPECT_EQ(frame.has(FrameFlag::kCompared), comparing);
+        const LaneSet set = lanes.laneSet();
+        ASSERT_EQ(set.lanes.size(), kMaxShownTracks) << "Compare hides no track";
+        EXPECT_TRUE(set.lanes.back().own) << "this track is always shown";
+        EXPECT_EQ(lane(frame, kMaxShownTracks - 1).front(), 1.0f) << "its lane draws this track";
+        EXPECT_EQ(lane(frame, kMaxShownTracks - 2).front(), 23.0f) << "the fourteenth other";
+        const TrackList list = lanes.trackList();
+        ASSERT_EQ(list.tracks.size(), 20u);
+        EXPECT_EQ(std::ranges::count_if(list.tracks, &TrackEntry::shown),
+                  static_cast<std::ptrdiff_t>(kMaxShownTracks));
+        EXPECT_FALSE(list.tracks[14].shown) << "the fifteenth other is listed, not shown";
+    }
 }
 
-// A lane is numbered by its place among its track's instances in the group, drawn or not: with
-// more tracks than lanes, an instance whose twin on the track is hidden keeps its number, so the
-// label does not change with what happens to fit.
-TEST_F(MultiTrackTest, NumbersAnInstanceWhoseTwinIsNotDrawn)
+// A lane is numbered by its place among its track's instances in the process, shown or not: an
+// instance whose twin on the track is not ticked keeps its number, so the label does not change
+// with what is shown.
+TEST_F(MultiTrackTest, NumbersAnInstanceWhoseTwinIsNotShown)
 {
-    InstanceRegistry crowded;
-    const auto named = [&](const char* name) {
-        auto engine = std::make_shared<Engine>();
+    const auto named = [&](const char* name, bool shown) {
+        auto engine = join(0.5f, shown);
         engine->setTrackInfo({.name = name, .colour = std::nullopt, .index = std::nullopt});
-        crowded.add(engine);
-        tracks.emplace_back(engine, [](std::uint64_t) { return 0.5f; });
         return engine;
     };
-    named("Bass");
-    for (std::size_t track = 1; track < kMaxLanes; ++track) {
-        named(("Track " + std::to_string(track)).c_str());
-    }
-    named("Bass"); // The seventeenth, hidden: the first Bass's twin.
+    named("Bass", true);
+    named("Drums", true);
+    named("Bass", false); // The first Bass's twin, not ticked.
     own->setTrackInfo({.name = "Lead", .colour = std::nullopt, .index = std::nullopt});
-    crowded.add(own);
-    Analyzer lanes(*own, crowded);
-    lanes.setColumns(8000);
     play(9600);
-    std::vector<std::byte> bytes;
-    ASSERT_TRUE(lanes.produce(bytes));
-    const LaneSet set = lanes.laneSet();
-    ASSERT_EQ(set.hidden, 2u);
-    ASSERT_EQ(set.lanes.front().name, "Bass");
-    EXPECT_EQ(set.lanes.front().instance, 1u);
-    EXPECT_EQ(set.lanes[1].instance, 0u) << "a track's only instance";
-    EXPECT_EQ(set.lanes.back().instance, 0u) << "this track, alone on its own";
+    ASSERT_TRUE(produce());
+    const LaneSet set = analyzer->laneSet();
+    ASSERT_EQ(set.lanes.size(), 3u);
+    EXPECT_EQ(set.lanes[0].instance, 0u) << "this track, alone on its own";
+    ASSERT_EQ(set.lanes[1].name, "Bass");
+    EXPECT_EQ(set.lanes[1].instance, 1u);
+    EXPECT_EQ(set.lanes[2].instance, 0u) << "a track's only instance";
+    const TrackList list = analyzer->trackList();
+    ASSERT_EQ(list.tracks.size(), 4u);
+    EXPECT_EQ(list.tracks[3].label.instance, 2u) << "the twin's number, in the list";
 }
 
 TEST_F(MultiTrackTest, StartsANewLaneSetWhenTracksChange)
@@ -2313,15 +2480,15 @@ protected:
         return 0.0f;
     }
 
-    // What each lane draws on `channel`: the tracks in creation order and, with Compare on, the sum
-    // of this track and the first other one, the two compared until asked.
+    // What each lane draws on `channel`: the tracks in creation order and, with Compare on, their
+    // sum.
     static std::vector<float> expectedLanes(protocol::ChannelView channel, bool compare)
     {
         const float ownValue = channelOf(channel, 0.5f, 0.25f);
         const float stereo = channelOf(channel, 0.25f, 0.75f);
         std::vector<float> values{ownValue, stereo, 0.125f};
         if (compare) {
-            values.push_back(ownValue + stereo);
+            values.push_back(ownValue + stereo + 0.125f);
         }
         return values;
     }
@@ -2578,7 +2745,8 @@ TEST_F(LaneChannelTest, AChannelChosenWhileFrozenRedrawsThisTrackAndEmptiesTheOt
                 EXPECT_EQ(lane(frame, 2), std::vector<float>(frame.pointCount, side[2]))
                     << "the mono track's one channel";
                 if (compare) {
-                    EXPECT_EQ(lane(frame, 3), std::vector<float>(frame.pointCount, side[0]))
+                    EXPECT_EQ(lane(frame, 3),
+                              std::vector<float>(frame.pointCount, side[0] + side[2]))
                         << "the sum of what is drawn";
                 }
             };
@@ -2593,6 +2761,15 @@ TEST_F(LaneChannelTest, AChannelChosenWhileFrozenRedrawsThisTrackAndEmptiesTheOt
             auto frame = produce();
             ASSERT_TRUE(frame);
             expectFrozen(*frame);
+            // With Compare on, a frame follows for each track's match as it is searched, one a
+            // frame, the picture as it was.
+            for (int step = 0; compare && step < 4; ++step) {
+                const auto results = produce();
+                if (!results) {
+                    break;
+                }
+                expectFrozen(*results);
+            }
             EXPECT_FALSE(produce()) << "nothing changed since: no frame drawn again";
             expectHeld();
             if (timeBase == static_cast<std::size_t>(protocol::TimeBase::kBeats)) {
@@ -2721,7 +2898,148 @@ TEST_F(LaneChannelTest, TriggersOnTheLaneChannel)
     }
 }
 
-// The Compare view: the group's tracks, with the sum of the compared ones. Tracks carry
+// A track shown while the display is frozen, in every time base, mono or stereo.
+struct FrozenTick
+{
+    protocol::TimeBase timeBase;
+    bool mono;
+};
+
+class FrozenTickTest : public MultiTrackTest, public ::testing::WithParamInterface<FrozenTick>
+{
+protected:
+    void SetUp() override
+    {
+        MultiTrackTest::SetUp();
+        own->settings().set(SettingId::kTimeBase, static_cast<double>(GetParam().timeBase));
+        own->settings().set(SettingId::kFreeSpan, 0.1);
+        own->settings().set(SettingId::kTriggerSpan, 0.1);
+        tracks.front().second = hostTime;
+    }
+
+    std::shared_ptr<Engine> other(Signal signal, bool shown)
+    {
+        return GetParam().mono ? joinMono(std::move(signal), shown)
+                               : joinWith(std::move(signal), shown);
+    }
+
+    static float loudest(const std::vector<float>& values)
+    {
+        float result = 0.0f;
+        for (const float value : values) {
+            result = std::max(result, std::abs(value));
+        }
+        return result;
+    }
+
+    // The frame after a change that draws one, or after forcing one.
+    DecodedFrame frameNow()
+    {
+        auto frame = produce();
+        if (!frame) {
+            analyzer->setColumns(--columns); // Forces a frame.
+            frame = produce();
+        }
+        EXPECT_TRUE(frame);
+        return frame.value_or(DecodedFrame{});
+    }
+
+    std::size_t columns = 8000;
+};
+
+// A track ticked while Multi is frozen was not held at the freeze: what it has now is later
+// audio, which would read as part of the frozen moment. Its lane is empty until the display
+// resumes, also when it is unticked and ticked again; the lanes held at the freeze stay.
+TEST_P(FrozenTickTest, DrawsATrackTickedWhileFrozenEmptyUntilResumed)
+{
+    join(3.0f);
+    const auto late = other([](std::uint64_t) { return 2.0f; }, false);
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer->setFrozen(true);
+    const DecodedFrame held = frameNow();
+    ASSERT_EQ(held.laneCount, 2);
+    play(2400);
+
+    analyzer->setShown({idOf(tracks[1].first), idOf(late)});
+    DecodedFrame frame = frameNow();
+    ASSERT_TRUE(frame.has(FrameFlag::kFrozen));
+    ASSERT_EQ(frame.laneCount, 3);
+    EXPECT_EQ(lane(frame, 0), lane(held, 0)) << "this track's lane is as held";
+    EXPECT_EQ(lane(frame, 1), lane(held, 1)) << "a lane held at the freeze is as held";
+    EXPECT_EQ(loudest(lane(frame, 2)), 0.0f) << "ticked while frozen: empty";
+
+    analyzer->setShown({idOf(tracks[1].first)});
+    frame = frameNow();
+    ASSERT_EQ(frame.laneCount, 2);
+    analyzer->setShown({idOf(tracks[1].first), idOf(late)});
+    frame = frameNow();
+    ASSERT_EQ(frame.laneCount, 3);
+    EXPECT_EQ(loudest(lane(frame, 2)), 0.0f) << "ticked again while frozen: still empty";
+
+    analyzer->setFrozen(false);
+    play(9600);
+    frame = frameNow();
+    ASSERT_FALSE(frame.has(FrameFlag::kFrozen));
+    ASSERT_EQ(frame.laneCount, 3);
+    EXPECT_EQ(loudest(lane(frame, 2)), 2.0f) << "live again, it is drawn";
+
+    // Frozen again with the track shown, it is held like the others.
+    analyzer->setFrozen(true);
+    frame = frameNow();
+    play(2400);
+    frame = frameNow();
+    ASSERT_EQ(frame.laneCount, 3);
+    EXPECT_EQ(loudest(lane(frame, 2)), 2.0f) << "shown before this freeze: held";
+}
+
+// Frozen in Single, then Multi: every lane is new, but none was ticked while Multi was frozen.
+// This track's lane and the ticked tracks' are drawn from the audio held, not empty.
+TEST_P(FrozenTickTest, KeepsTheFrozenLanesWhenMultiFollowsAFrozenSingle)
+{
+    other(hostTime, true);
+    other(hostTime, true);
+    show(own->settings(), Display::kSingle);
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer->setFrozen(true);
+    (void)frameNow();
+    const auto frozenAt = static_cast<float>(hostSample);
+    play(4800);
+    show(own->settings(), Display::kMulti);
+    const DecodedFrame frame = frameNow();
+    ASSERT_TRUE(frame.has(FrameFlag::kFrozen));
+    ASSERT_EQ(frame.laneCount, 3);
+    EXPECT_GT(loudest(lane(frame, 0)), 0.0f) << "this track's lane is drawn";
+    if (GetParam().timeBase != protocol::TimeBase::kBeats) {
+        // Trigger and Free hold the audio of the freeze; a Beats lane first held now holds its
+        // newest audio, as before this view could be frozen without lanes.
+        EXPECT_LT(loudest(lane(frame, 0)), frozenAt) << "from before the freeze";
+    }
+    EXPECT_EQ(lane(frame, 1), lane(frame, 0)) << "a ticked track shows the same moments";
+    EXPECT_EQ(lane(frame, 2), lane(frame, 0));
+}
+
+std::vector<FrozenTick> frozenTicks()
+{
+    std::vector<FrozenTick> cases;
+    for (std::size_t timeBase = 0; timeBase < protocol::kTimeBaseCount; ++timeBase) {
+        for (const bool mono : {false, true}) {
+            cases.push_back({.timeBase = static_cast<protocol::TimeBase>(timeBase), .mono = mono});
+        }
+    }
+    return cases;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EveryTimeBase, FrozenTickTest, ::testing::ValuesIn(frozenTicks()),
+    [](const ::testing::TestParamInfo<FrozenTick>& info) {
+        return std::string(
+                   protocol::kTimeBaseNames[static_cast<std::size_t>(info.param.timeBase)]) +
+               (info.param.mono ? "Mono" : "Stereo");
+    });
+
+// The Compare view: the tracks shown, with their sum or difference. Tracks carry
 // deterministic noise of the host time, so a track can be this one's signal inverted, delayed, or
 // unrelated.
 float noiseAt(std::uint64_t sample, std::uint64_t seed)
@@ -2741,16 +3059,6 @@ protected:
         MultiTrackTest::SetUp();
         show(own->settings(), Display::kCompare);
         tracks.front().second = [](std::uint64_t sample) { return noiseAt(sample, 1); };
-    }
-
-    std::uint64_t idOf(const std::shared_ptr<Engine>& engine) const
-    {
-        for (const GroupMember& member : registry.members(protocol::Group::kA)) {
-            if (member.engine == engine) {
-                return member.serial;
-            }
-        }
-        return 0;
     }
 
     struct Match
@@ -2784,53 +3092,72 @@ protected:
     }
 };
 
-TEST_F(CompareTest, ComparesThisTrackWithTheFirstOtherTrackUntilAsked)
+// Compare takes every track shown, with no choice of its own: the sum adds them all, the
+// difference takes them all from this track, and each has its match.
+TEST_F(CompareTest, ComparesEveryShownTrack)
 {
     const auto inverted = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     const auto other = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
     play(9600);
-    const auto frame = produce();
+    // One match is searched per frame: a frame each.
+    ASSERT_TRUE(produce());
+    play(480);
+    auto frame = produce();
     ASSERT_TRUE(frame);
     ASSERT_EQ(frame->laneCount, 4) << "the three tracks and the sum";
     ASSERT_EQ(frame->data.size(), std::size_t{4} * frame->pointCount + 3 * protocol::kMatchValues);
     EXPECT_TRUE(frame->has(FrameFlag::kCompared));
-    EXPECT_LT(sumGain(), -60.0f) << "an inverted copy cancels";
-    EXPECT_LT(loudest(lane(*frame, 3)), 1e-6f);
+    const std::vector<float> unrelated = lane(*frame, 2);
+    std::vector<float> sum = lane(*frame, 3);
+    for (std::size_t i = 0; i < sum.size(); ++i) {
+        ASSERT_NEAR(sum[i], unrelated[i], 1e-5f) << "this track and its inverted copy cancel";
+    }
     EXPECT_TRUE(match(*frame, 1).inverted());
     EXPECT_NEAR(match(*frame, 1).correlation, -1.0f, 1e-4f);
-    EXPECT_TRUE(std::isnan(match(*frame, 2).correlation)) << "not compared: no value";
-    EXPECT_TRUE(std::isnan(match(*frame, 2).offset)) << "not compared: no value";
-    EXPECT_EQ(match(*frame, 2).polarity, 0.0f) << "not compared: not related";
+    EXPECT_NEAR(match(*frame, 2).correlation, 0.0f, 0.05f) << "compared too, and unrelated";
+    EXPECT_EQ(match(*frame, 2).polarity, 0.0f);
 
     const LaneSet lanes = analyzer->laneSet();
     ASSERT_EQ(lanes.lanes.size(), 3u);
     EXPECT_TRUE(lanes.lanes[0].own);
-    EXPECT_TRUE(lanes.lanes[0].compared);
     EXPECT_EQ(lanes.lanes[1].id, idOf(inverted));
-    EXPECT_TRUE(lanes.lanes[1].compared);
     EXPECT_EQ(lanes.lanes[2].id, idOf(other));
-    EXPECT_FALSE(lanes.lanes[2].compared);
+
+    // The difference, the tracks as recorded: this track minus both others.
+    own->settings().set(SettingId::kAlign, static_cast<double>(protocol::Toggle::kOff));
+    own->settings().set(SettingId::kCompareLane,
+                        static_cast<double>(protocol::CompareLane::kDifference));
+    play(480);
+    frame = produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->laneCount, 4);
+    const std::vector<float> mine = lane(*frame, 0);
+    const std::vector<float> flipped = lane(*frame, 1);
+    const std::vector<float> third = lane(*frame, 2);
+    const std::vector<float> difference = lane(*frame, 3);
+    for (std::size_t i = 0; i < difference.size(); ++i) {
+        ASSERT_NEAR(difference[i], mine[i] - flipped[i] - third[i], 1e-5f);
+    }
 }
 
-TEST_F(CompareTest, SumsEveryComparedTrack)
+TEST_F(CompareTest, SumsTheTracksShownAndNoOther)
 {
-    const auto copy = joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
+    joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
     const auto unrelated = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
-    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); }, false);
     play(9600);
-    analyzer->setCompared({idOf(copy), idOf(unrelated)});
     // One match is searched per frame: a frame each.
     ASSERT_TRUE(produce());
     play(480);
     const auto frame = produce();
     ASSERT_TRUE(frame);
-    ASSERT_EQ(frame->laneCount, 5);
+    ASSERT_EQ(frame->laneCount, 4);
     const std::vector<float> ownTrack = lane(*frame, 0);
     const std::vector<float> other = lane(*frame, 2);
-    const std::vector<float> sum = lane(*frame, 4);
+    const std::vector<float> sum = lane(*frame, 3);
     for (std::size_t i = 0; i < sum.size(); ++i) {
         ASSERT_NEAR(sum[i], 2.0f * ownTrack[i] + other[i], 1e-5f)
-            << "the inverted track is left out";
+            << "the inverted track, not shown, is left out";
     }
     // Three equal levels, two of them alike: 10 log10(5 / 3).
     EXPECT_NEAR(sumGain(), 2.2f, 0.2f);
@@ -2839,7 +3166,6 @@ TEST_F(CompareTest, SumsEveryComparedTrack)
     EXPECT_NEAR(match(*frame, 2).correlation, 0.0f, 0.05f);
     EXPECT_EQ(match(*frame, 2).polarity, 0.0f) << "unrelated: no clear match";
     EXPECT_TRUE(std::isnan(match(*frame, 2).offset)) << "unrelated: no offset";
-    EXPECT_TRUE(std::isnan(match(*frame, 3).correlation)) << "not compared: no value";
 }
 
 // Compare measures the lane channel: a track equal to this one on the left and inverted on the
@@ -2933,83 +3259,23 @@ TEST_F(CompareTest, LeavesALaneEmptiedWhileFrozenOutOfTheSum)
     EXPECT_TRUE(std::isnan(sumGain())) << "the two never sound together: no value";
 }
 
-TEST_F(CompareTest, SumsThisTrackAloneWhenNothingElseIsChecked)
+// With only this track shown there is nothing to compare, though other instances are listed: no
+// sum lane, and the frame says so, which the page tells the user.
+TEST_F(CompareTest, HasNoComparisonWithOnlyThisTrackShown)
 {
-    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); }, false);
     play(9600);
-    analyzer->setCompared({});
     auto frame = produce();
     ASSERT_TRUE(frame);
-    ASSERT_EQ(frame->laneCount, 3) << "the sum lane stays";
-    EXPECT_TRUE(frame->has(FrameFlag::kCompared));
-    EXPECT_EQ(lane(*frame, 2), lane(*frame, 0)) << "the sum is this track";
-    EXPECT_NEAR(sumGain(), 0.0f, 1e-3f);
-    EXPECT_TRUE(std::isnan(match(*frame, 1).correlation)) << "not compared: no value";
-    const LaneSet lanes = analyzer->laneSet();
-    EXPECT_TRUE(lanes.lanes[0].compared);
-    EXPECT_FALSE(lanes.lanes[1].compared);
+    EXPECT_EQ(frame->laneCount, 1);
+    EXPECT_FALSE(frame->has(FrameFlag::kCompared));
 
-    analyzer->setCompared({12345}); // No such track.
+    analyzer->setShown({12345}); // No such track.
     play(480);
     frame = produce();
     ASSERT_TRUE(frame);
-    EXPECT_EQ(frame->laneCount, 3);
-}
-
-// The checks are the instance's, not its editor's: closing and reopening the editor (a new
-// analyzer on the same instance) keeps them.
-TEST_F(CompareTest, KeepsTheCheckedTracksWhenTheEditorReopens)
-{
-    const auto first = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
-    const auto second = joinWith([](std::uint64_t sample) { return noiseAt(sample, 3); });
-    const auto third = joinWith([](std::uint64_t sample) { return noiseAt(sample, 4); });
-    play(9600);
-    ASSERT_TRUE(produce());
-    analyzer->setCompared({idOf(second), idOf(third)});
-    ASSERT_TRUE(produce());
-
-    analyzer.reset();
-    Analyzer reopened(*own, registry);
-    reopened.setColumns(8000);
-    std::vector<std::byte> bytes;
-    play(480);
-    ASSERT_TRUE(reopened.produce(bytes));
-    const LaneSet lanes = reopened.laneSet();
-    ASSERT_EQ(lanes.lanes.size(), 4u);
-    EXPECT_EQ(lanes.lanes[1].id, idOf(first));
-    EXPECT_FALSE(lanes.lanes[1].compared) << "the first other track, which the default compares";
-    EXPECT_TRUE(lanes.lanes[2].compared);
-    EXPECT_TRUE(lanes.lanes[3].compared);
-}
-
-// A checked track that leaves the group is not compared while away, and is again when it comes
-// back, though checks changed meanwhile: the page only knows the tracks it draws.
-TEST_F(CompareTest, KeepsATrackCheckedWhileItIsInAnotherGroup)
-{
-    const auto first = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
-    const auto away = joinWith([](std::uint64_t sample) { return noiseAt(sample, 3); });
-    play(9600);
-    ASSERT_TRUE(produce());
-    analyzer->setCompared({idOf(first), idOf(away)});
-    ASSERT_TRUE(produce());
-
-    away->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kB));
-    play(480);
-    ASSERT_TRUE(produce());
-    ASSERT_EQ(analyzer->laneSet().lanes.size(), 2u);
-    analyzer->setCompared({}); // First unchecked while the other is away.
-    play(480);
-    ASSERT_TRUE(produce());
-    EXPECT_FALSE(analyzer->laneSet().lanes[1].compared);
-
-    away->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kA));
-    play(480);
-    ASSERT_TRUE(produce());
-    const LaneSet lanes = analyzer->laneSet();
-    ASSERT_EQ(lanes.lanes.size(), 3u);
-    EXPECT_FALSE(lanes.lanes[1].compared);
-    EXPECT_EQ(lanes.lanes[2].id, idOf(away));
-    EXPECT_TRUE(lanes.lanes[2].compared);
+    EXPECT_EQ(frame->laneCount, 1);
+    EXPECT_FALSE(frame->has(FrameFlag::kCompared));
 }
 
 // Sixteen bars at 120 BPM are a 32 s sweep. The other track is this one inverted for the first
@@ -3046,9 +3312,8 @@ TEST_F(CompareTest, SearchesTheMatchOverTheNewestPartOfTheView)
 // frame, it stays on show.
 TEST_F(CompareTest, KeepsMatchesOnShowWhileTheViewChanges)
 {
-    const auto copy = joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
+    joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
     const auto inverted = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
-    analyzer->setCompared({idOf(copy), idOf(inverted)});
     play(9600);
     for (int step = 0; step < 3; ++step) {
         play(480);
@@ -3070,8 +3335,6 @@ TEST_F(CompareTest, KeepsGainsInStepWithAFreshMeasurement)
     const auto copy = joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
     const auto quiet = joinWith([](std::uint64_t sample) { return 0.5f * noiseAt(sample, 2); });
     const auto inverted = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
-    const std::vector<std::uint64_t> compared{idOf(copy), idOf(quiet), idOf(inverted)};
-    analyzer->setCompared(compared);
     analyzer->setView(0.3, 0.6);
     // Frames start before the sweep is fully captured, and a match searched on a sweep still
     // filling is searched again half a second later: play past that, then 100 ms more, so the
@@ -3084,7 +3347,6 @@ TEST_F(CompareTest, KeepsGainsInStepWithAFreshMeasurement)
     // then both measure the gains again after 100 ms more.
     Analyzer fresh(*own, registry);
     fresh.setColumns(8000);
-    fresh.setCompared(compared);
     fresh.setView(0.3, 0.6);
     std::vector<std::byte> bytes;
     for (int step = 0; step < 4; ++step) {
@@ -3139,7 +3401,6 @@ TEST_F(CompareTest, GoesIdleWhenFrozenTracksHoldTooLittleToMatch)
     joinWith([](std::uint64_t sample) { return noiseAt(sample, 1); });
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     play(960); // 20 ms: less than the 0.1 s span the match is searched over.
-    analyzer->setCompared({idOf(own), idOf(tracks[1].first), idOf(tracks[2].first)});
     analyzer->setFrozen(true);
     for (int step = 0; step < 5; ++step) {
         (void)produce(); // The freeze, and a failed search of each track.
@@ -3172,10 +3433,9 @@ TEST_F(CompareTest, RefreshesAMatchWhilePlaying)
 TEST_F(CompareTest, KeepsTheSumLaneInStepWithAFreshSum)
 {
     joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
-    const auto other = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     analyzer->setColumns(300); // Min/max columns, as on a real screen.
     for (const bool preview : {false, true}) {
-        analyzer->setCompared({idOf(tracks[1].first), idOf(other)});
         analyzer->setPreviewFix(preview);
         // Frames start before the sweep is captured whole, and a match found then is searched
         // again half a second later: play past that. A fresh analyzer searches one match per
@@ -3186,7 +3446,6 @@ TEST_F(CompareTest, KeepsTheSumLaneInStepWithAFreshSum)
         }
         Analyzer fresh(*own, registry);
         fresh.setColumns(300);
-        fresh.setCompared({idOf(tracks[1].first), idOf(other)});
         fresh.setPreviewFix(preview);
         std::optional<DecodedFrame> frame;
         std::vector<std::byte> bytes;
@@ -3228,75 +3487,7 @@ TEST_F(CompareTest, LeavesALaneForTheSum)
     ASSERT_TRUE(frame);
     EXPECT_EQ(frame->laneCount, kMaxLanes);
     const LaneSet lanes = analyzer->laneSet();
-    EXPECT_EQ(lanes.lanes.size(), kMaxLanes - 1);
-    EXPECT_EQ(lanes.hidden, 2u);
-}
-
-// Sixteen tracks fill Multi's lanes; turning Compare on gives the sum a lane, hiding one track, and
-// turning it off shows every track again. This track, created last, is the one Compare would push
-// out: it takes the last track lane instead.
-TEST_F(MultiTrackTest, HidesOneTrackForTheSumOnlyWhileCompareIsOn)
-{
-    InstanceRegistry crowded;
-    for (std::size_t track = 0; track + 1 < kMaxLanes; ++track) {
-        auto engine = std::make_shared<Engine>();
-        crowded.add(engine);
-        tracks.emplace_back(
-            engine, [level = static_cast<float>(track + 10)](std::uint64_t) { return level; });
-    }
-    crowded.add(own);
-    Analyzer lanes(*own, crowded);
-    lanes.setColumns(8000);
-    std::vector<std::byte> bytes;
-    for (const Display display : {Display::kCompare, Display::kMulti, Display::kCompare}) {
-        SCOPED_TRACE(displayName(display));
-        show(own->settings(), display);
-        play(9600);
-        ASSERT_TRUE(lanes.produce(bytes));
-        const DecodedFrame frame = decodeSamples(bytes);
-        const bool comparing = display == Display::kCompare;
-        const std::size_t shown = comparing ? kMaxLanes - 1 : kMaxLanes;
-        EXPECT_EQ(frame.laneCount, kMaxLanes) << "the tracks, and with Compare the sum";
-        EXPECT_EQ(frame.has(FrameFlag::kCompared), comparing);
-        const LaneSet set = lanes.laneSet();
-        ASSERT_EQ(set.lanes.size(), shown);
-        EXPECT_EQ(set.hidden, comparing ? 1u : 0u);
-        EXPECT_TRUE(set.lanes.back().own) << "this track is never the one hidden";
-        EXPECT_EQ(lane(frame, shown - 1).front(), 1.0f) << "its lane draws this track";
-    }
-}
-
-// Turning Compare off leaves no checks on show and measures nothing; turning it on again shows the
-// tracks checked before (FR-15.2).
-TEST_F(CompareTest, KeepsTheCheckedTracksWhileCompareIsOff)
-{
-    const auto first = joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
-    const auto second = joinWith([](std::uint64_t sample) { return noiseAt(sample, 3); });
-    play(9600);
-    ASSERT_TRUE(produce());
-    analyzer->setCompared({idOf(second)});
-    ASSERT_TRUE(produce());
-
-    show(own->settings(), Display::kMulti);
-    play(480);
-    const auto off = produce();
-    ASSERT_TRUE(off);
-    EXPECT_FALSE(off->has(FrameFlag::kCompared));
-    EXPECT_EQ(off->laneCount, 3) << "the tracks, and no sum";
-    for (const LaneLabel& lane : analyzer->laneSet().lanes) {
-        EXPECT_FALSE(lane.compared) << lane.name;
-    }
-
-    show(own->settings(), Display::kCompare);
-    play(480);
-    const auto on = produce();
-    ASSERT_TRUE(on);
-    EXPECT_TRUE(on->has(FrameFlag::kCompared));
-    const LaneSet lanes = analyzer->laneSet();
-    ASSERT_EQ(lanes.lanes.size(), 3u);
-    EXPECT_EQ(lanes.lanes[1].id, idOf(first));
-    EXPECT_FALSE(lanes.lanes[1].compared);
-    EXPECT_TRUE(lanes.lanes[2].compared) << "checked before Compare went off";
+    EXPECT_EQ(lanes.lanes.size(), kMaxShownTracks);
 }
 
 // Rolling in Seconds mode, the Compare frame keeps each lane's and the sum's columns and reduces
@@ -3306,10 +3497,9 @@ TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
 {
     runFree(*own, 2.0); // 96000 samples: 320 per column.
     joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
-    const auto other = joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
     analyzer->setColumns(300);
     for (const bool preview : {false, true}) {
-        analyzer->setCompared({idOf(tracks[1].first), idOf(other)});
         analyzer->setPreviewFix(preview);
         for (int step = 0; step < 70; ++step) {
             play(480);
@@ -3317,7 +3507,6 @@ TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
         }
         Analyzer fresh(*own, registry);
         fresh.setColumns(300);
-        fresh.setCompared({idOf(tracks[1].first), idOf(other)});
         fresh.setPreviewFix(preview);
         std::optional<DecodedFrame> frame;
         std::vector<std::byte> bytes;
@@ -3341,6 +3530,88 @@ TEST_F(CompareTest, KeepsTheSecondsSumLaneInStepWithAFreshSum)
         EXPECT_EQ(match(*frame, 2).polarity, -1.0f) << "the inverted track";
     }
 }
+
+// A track ticked while the audio plays joins a sum that is kept from frame to frame: its sweep
+// comes all at once, and the sum is summed again over the next frames, not in that one (see
+// MatrixTests, CompareSumWork). Once it has, with audio arriving meanwhile, the lanes, the sum's
+// columns and its gain are those of a fresh analyzer on the same audio, in Beats and rolling, with
+// and without the fix previewed.
+class TickedWhilePlaying : public CompareTest, public ::testing::WithParamInterface<bool>
+{
+};
+
+TEST_P(TickedWhilePlaying, SumsTheNewTrackAsAFreshAnalyzerDoes)
+{
+    const bool rolling = GetParam();
+    if (rolling) {
+        runFree(*own, 2.0); // 96000 samples: 320 per column.
+    } else {
+        // Eight bars of 4/4 at 120 BPM: a 16 s sweep, the longest the capture holds whole at this
+        // rate (so a fresh analyzer draws all of it), 768 000 samples of each of three tracks and
+        // of two sums: more than one frame sums again.
+        numerator = 4;
+        own->settings().set(SettingId::kBeatSpan,
+                            static_cast<double>(protocol::BeatSpan::kEightBars));
+    }
+    joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
+    const auto ticked =
+        joinWith([](std::uint64_t sample) { return -0.5f * noiseAt(sample, 1); }, false);
+    analyzer->setColumns(300);       // Min/max columns, as on a real screen.
+    play(std::uint64_t{17} * 48000); // The sweep, full.
+    for (const bool preview : {false, true}) {
+        analyzer->setShown({idOf(tracks[1].first)});
+        analyzer->setPreviewFix(preview);
+        for (int step = 0; step < 70; ++step) {
+            play(480);
+            produce();
+        }
+        ASSERT_EQ(decodeSamples(analyzerBytes).laneCount, 3) << "two tracks and their sum";
+        // Ticked now, while frames go on with new audio in each.
+        analyzer->setShown({idOf(tracks[1].first), idOf(ticked)});
+        for (int step = 0; step < 70; ++step) {
+            play(480);
+            produce();
+        }
+        Analyzer fresh(*own, registry);
+        fresh.setColumns(300);
+        fresh.setPreviewFix(preview);
+        std::optional<DecodedFrame> frame;
+        std::vector<std::byte> bytes;
+        // A fresh analyzer searches each track's match over a few frames (the window is 8 s):
+        // it gets them, on the same audio.
+        for (int step = 0; step < 60; ++step) {
+            play(480);
+            frame = produce();
+            ASSERT_TRUE(fresh.produce(bytes));
+        }
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->laneCount, 4) << "three tracks and their sum";
+        ASSERT_EQ(frame->mode, FrameMode::kMinMax);
+        const DecodedFrame expected = decodeSamples(bytes);
+        const std::size_t laneValues = std::size_t{frame->laneCount} * frame->pointCount * 2;
+        ASSERT_EQ(expected.laneCount, frame->laneCount);
+        EXPECT_EQ(
+            std::vector<float>(frame->data.begin(),
+                               frame->data.begin() + static_cast<std::ptrdiff_t>(laneValues)),
+            std::vector<float>(expected.data.begin(),
+                               expected.data.begin() + static_cast<std::ptrdiff_t>(laneValues)))
+            << "lanes and sum equal a fresh analyzer's; preview " << preview;
+        // The gains are measured every 100 ms: after as much again, both have measured this audio.
+        play(4800);
+        ASSERT_TRUE(produce());
+        ASSERT_TRUE(fresh.produce(bytes));
+        EXPECT_NEAR(sumGain(), get<float>(bytes, FrameHeader::kSumGainOffset), 1e-3f)
+            << "preview " << preview;
+        EXPECT_NEAR(get<float>(analyzerBytes, FrameHeader::kFixedGainOffset),
+                    get<float>(bytes, FrameHeader::kFixedGainOffset), 1e-3f)
+            << "preview " << preview;
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(BeatsAndRolling, TickedWhilePlaying, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                             return info.param ? "Rolling" : "Beats";
+                         });
 
 // A late track's match comes out alike in both time bases, live and frozen: its offset, its
 // polarity and a measured correlation (at no offset, so near 0 for noise this late), as Beats and
@@ -3372,12 +3643,12 @@ TEST_F(CompareTest, MeasuresALateTrackAlikeInBothTimeBases)
     }
 }
 
-// This track, and a track not compared, have no match in either time base, live and frozen: no
-// correlation or offset (NaN) and polarity 0, never a correlation or offset of 0.
-TEST_F(CompareTest, SendsNoMatchForThisTrackAndTracksNotCompared)
+// This track has no match in either time base, live and frozen: no correlation or offset (NaN) and
+// polarity 0, never a correlation or offset of 0.
+TEST_F(CompareTest, SendsNoMatchForThisTrack)
 {
-    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); }); // Compared.
-    joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });  // Not compared.
+    joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
+    joinWith([](std::uint64_t sample) { return noiseAt(sample, 2); });
     own->settings().set(SettingId::kFreeSpan, 0.1);
     for (const auto timeBase : {protocol::TimeBase::kBeats, protocol::TimeBase::kFree}) {
         for (const bool frozen : {false, true}) {
@@ -3394,7 +3665,7 @@ TEST_F(CompareTest, SendsNoMatchForThisTrackAndTracksNotCompared)
             ASSERT_TRUE(frame);
             ASSERT_EQ(frame->laneCount, 4);
             EXPECT_TRUE(match(*frame, 1).inverted()) << "the compared track is matched";
-            for (const std::size_t track : {std::size_t{0}, std::size_t{2}}) {
+            for (const std::size_t track : {std::size_t{0}}) {
                 EXPECT_TRUE(std::isnan(match(*frame, track).correlation)) << "track " << track;
                 EXPECT_TRUE(std::isnan(match(*frame, track).offset)) << "track " << track;
                 EXPECT_EQ(match(*frame, track).polarity, 0.0f) << "track " << track;
@@ -3508,8 +3779,6 @@ TEST_F(CompareTest, MeasuresAShiftedTrackAgainWhenItsShiftChanges)
     };
     tracks.front().second = burst;
     joinWith([&](std::uint64_t sample) { return sample < delay ? 0.0f : burst(sample - delay); });
-    const std::vector<std::uint64_t> compared{idOf(tracks[1].first)};
-    analyzer->setCompared(compared);
     analyzer->setPreviewFix(true);
     // A frame every 100 ms: one sweep is 8 s.
     const auto playFor = [&](double seconds) {
@@ -3540,7 +3809,6 @@ TEST_F(CompareTest, MeasuresAShiftedTrackAgainWhenItsShiftChanges)
     // then both measure the gains again after 100 ms more.
     Analyzer fresh(*own, registry);
     fresh.setColumns(8000);
-    fresh.setCompared(compared);
     fresh.setPreviewFix(true);
     std::vector<std::byte> bytes;
     for (int step = 0; step < 4; ++step) {
@@ -3556,7 +3824,7 @@ TEST_F(CompareTest, MeasuresAShiftedTrackAgainWhenItsShiftChanges)
                 get<float>(bytes, FrameHeader::kFixedGainOffset), 1e-3f);
 }
 
-TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
+TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheTracksShownChange)
 {
     runFree(*own, 0.1);
     joinWith([](std::uint64_t sample) { return -noiseAt(sample, 1); });
@@ -3570,11 +3838,12 @@ TEST_F(CompareTest, RedrawsAFrozenSecondsFrameWhenTheComparisonChanges)
 
     analyzer->setPreviewFix(true);
     ASSERT_TRUE(produce());
-    analyzer->setCompared({});
+    analyzer->setShown({});
     const auto frame = produce();
     ASSERT_TRUE(frame);
     EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
-    EXPECT_NEAR(sumGain(), 0.0f, 1e-3f) << "this track alone";
+    EXPECT_EQ(frame->laneCount, 1) << "this track alone";
+    EXPECT_FALSE(frame->has(FrameFlag::kCompared)) << "with nothing to compare";
 }
 
 // Just after the playhead wraps to the left edge, the match search continues at the right edge,
@@ -3588,8 +3857,7 @@ TEST_F(CompareTest, KeepsAMatchThroughTheCycleStart)
         return (beat == 1 || beat == 3) && sample % 24000 < 4800 ? noiseAt(sample, 1) : 0.0f;
     };
     tracks.front().second = snare;
-    const auto copy = joinWith(snare);
-    analyzer->setCompared({idOf(copy)});
+    joinWith(snare);
     own->settings().set(SettingId::kBeatSpan, static_cast<double>(protocol::BeatSpan::kOneBar));
     analyzer->setColumns(1000);
     play(std::uint64_t{4} * 48000);

@@ -39,8 +39,6 @@ export interface DrawOptions {
   readonly lineWidthPixels?: number;
   readonly color?: Rgba;
   readonly laneColors?: readonly Rgba[];
-  // A Compare frame's compared lanes, which shade where they cancel.
-  readonly comparedLanes?: readonly boolean[];
   readonly layout?: ViewLayout;
   readonly dim?: boolean;
   readonly view?: ViewWindow;
@@ -57,15 +55,11 @@ export interface Surface {
 }
 const surfaces = new Map<string, Surface>();
 let style: Required<
-  Pick<
-    DrawOptions,
-    "lineWidthPixels" | "color" | "laneColors" | "comparedLanes"
-  >
+  Pick<DrawOptions, "lineWidthPixels" | "color" | "laneColors">
 > = {
   lineWidthPixels: 3,
   color: [1, 1, 1, 1],
   laneColors: [],
-  comparedLanes: [],
 };
 let view: TraceView = { verticalScaleDb: 0, layout: ViewLayout.overlaid };
 
@@ -111,7 +105,6 @@ function makeSurface(width: number, height: number): Surface {
       colors: () =>
         new Map(Object.values(ChannelView).map((v) => [v, style.color])),
       laneColors: () => style.laneColors,
-      comparedLanes: () => style.comparedLanes,
       ownLane: () => 0,
       differenceColors: () => ({
         gained: [0, 1, 0, 1],
@@ -181,7 +174,6 @@ export function drawOn(
     lineWidthPixels: options.lineWidthPixels ?? 3,
     color: options.color ?? [1, 1, 1, 1],
     laneColors: options.laneColors ?? [],
-    comparedLanes: options.comparedLanes ?? [],
   };
   view = {
     verticalScaleDb: options.verticalScaleDb ?? 0,

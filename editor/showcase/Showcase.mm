@@ -775,22 +775,22 @@ int run(const Options& options)
 
         // The tracks, in the set's order, in their colours. Kick Off is the kick a second
         // microphone hears: the set moves its clip 0.0117 beats (281 samples) later and mutes it,
-        // so it is made here from the kick. Group B keeps a track out of the view until needed.
+        // so it is made here from the kick. A track not shown stays out of Multi until needed.
         struct Member
         {
             const char* name;
             std::uint32_t colour;
-            const char* group;
+            bool shown;
         };
         const std::vector<Member> members = {
-            {.name = "Kick", .colour = 0xF2453D, .group = "a"},
-            {.name = "Kick Off", .colour = 0xB06EE6, .group = "b"},
-            {.name = "Bass", .colour = 0x5468F0, .group = "a"},
-            {.name = "Sub", .colour = 0x2EA8F2, .group = "a"},
-            {.name = "Clap", .colour = 0xF2792E, .group = "a"},
-            {.name = "Hat", .colour = 0xF5DE47, .group = "a"},
-            {.name = "Pluck", .colour = 0xEE4FD3, .group = "a"},
-            {.name = "Sweep Up", .colour = 0xA8ADB8, .group = "b"},
+            {.name = "Kick", .colour = 0xF2453D, .shown = true},
+            {.name = "Kick Off", .colour = 0xB06EE6, .shown = false},
+            {.name = "Bass", .colour = 0x5468F0, .shown = true},
+            {.name = "Sub", .colour = 0x2EA8F2, .shown = true},
+            {.name = "Clap", .colour = 0xF2792E, .shown = true},
+            {.name = "Hat", .colour = 0xF5DE47, .shown = true},
+            {.name = "Pluck", .colour = 0xEE4FD3, .shown = true},
+            {.name = "Sweep Up", .colour = 0xA8ADB8, .shown = false},
         };
         const std::string base = options.stems + "/" + options.prefix;
         std::vector<Stereo> tracks;
@@ -818,11 +818,28 @@ int run(const Options& options)
             engine->setTrackInfo({.name = members[i].name,
                                   .colour = members[i].colour,
                                   .index = static_cast<int>(i)});
-            set(*engine, protocol::SettingId::kGroup, members[i].group);
             engine::InstanceRegistry::shared().add(engine);
             engines.push_back(engine);
         }
         engine::Engine& own = *engines.front();
+        // The first track's Multi shows the tracks marked shown, as ticked in its Views popover.
+        std::vector<bool> ticked;
+        ticked.reserve(members.size());
+        for (const Member& member : members) {
+            ticked.push_back(member.shown);
+        }
+        const auto showTracks = [&] {
+            std::vector<std::uint64_t> ids;
+            for (const auto& member : engine::InstanceRegistry::shared().members()) {
+                for (std::size_t i = 1; i < engines.size(); ++i) {
+                    if (member.engine == engines[i] && ticked[i]) {
+                        ids.push_back(member.serial);
+                    }
+                }
+            }
+            own.setShown(std::move(ids));
+        };
+        showTracks();
         using protocol::SettingId;
         set(own, SettingId::kDisplayMode, "single");
         set(own, SettingId::kTimeBase, "beats");
@@ -917,12 +934,13 @@ int run(const Options& options)
             focus.move(now, point, duration);
         };
         const Point middle{.x = kEditorWidth / 2, .y = kEditorHeight / 2};
-        const auto group = [&](const char* name, const char* value) {
+        const auto show = [&](const char* name, bool value) {
             for (std::size_t i = 0; i < members.size(); ++i) {
                 if (std::string(members[i].name) == name) {
-                    set(*engines[i], SettingId::kGroup, value);
+                    ticked[i] = value;
                 }
             }
+            showTracks();
         };
         const auto grab = [&](const std::string& selector) {
             pageCall("grab(" + quote(selector) + "," + at(cursor.at(now)) + ")");
@@ -1066,9 +1084,9 @@ int run(const Options& options)
                      pageCall("click('#freeze')");
                      live = true;
                      for (const char* name : {"Bass", "Sub", "Clap", "Hat", "Pluck"}) {
-                         group(name, "b");
+                         show(name, false);
                      }
-                     group("Kick Off", "a");
+                     show("Kick Off", true);
                      look(1.0, middle, 1.0);
                  }},
             // Compare: the switch in Multi's Views popover, then the popover closes.

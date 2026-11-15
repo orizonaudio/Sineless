@@ -13,11 +13,11 @@
       "replies": []
     }
   ],
-  "protocolVersion": 20,
+  "protocolVersion": 21,
   "scenario": "MonoSine400_48k",
   "snapshot": {
     "inputChannels": 1,
-    "protocolVersion": 20,
+    "protocolVersion": 21,
     "sampleRate": 48000.0,
     "settings": {
       "align": "on",
@@ -35,7 +35,6 @@
       "freeSpan": 4.0,
       "gridDensity": "medium",
       "gridType": "grid",
-      "group": "a",
       "hoverReadout": "off",
       "laneChannel": "mid",
       "laneLabels": "on",

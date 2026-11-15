@@ -228,8 +228,7 @@ std::vector<bool> movingEdgeColumns(const Scene& scene)
     };
     const FrameView frame = scene.frame();
     const auto width = static_cast<double>(scene.width);
-    for (const Band& band : cancellationBands(frame, scene.view.layout,
-                                              scene.view.comparedLanes(frame), scene.view.view)) {
+    for (const Band& band : cancellationBands(frame, scene.view.layout, scene.view.view)) {
         for (const double edge : {band.left, band.right}) {
             const double pixels = (edge + 1.0) / 2.0 * width;
             mark(pixels, pixels + 1.0);

@@ -1178,7 +1178,6 @@ describe("lanes layer in order, whatever their channel and target", () => {
     const colors = [0, 1, 2].map((lane) => laneColor(lane, 0.5));
     const options: DrawOptions = {
       laneColors: colors,
-      comparedLanes: [true, true],
     };
     const shade: Rgba = [1, 0, 0, 0.16];
     const shaded = over(transparent, shade);
@@ -1230,7 +1229,6 @@ describe("lanes layer in order, whatever their channel and target", () => {
     const colors = [0, 1, 2].map((lane) => laneColor(lane));
     const drawing = draw(frame, {
       laneColors: colors,
-      comparedLanes: [true, true],
       layout: ViewLayout.stacked,
     });
     expect(drawing.error).toBe(0);
@@ -1295,7 +1293,6 @@ describe("lanes layer in order, whatever their channel and target", () => {
         }),
         {
           laneColors: [0, 1, 2].map((each) => laneColor(each)),
-          comparedLanes: [true, true],
           layout: ViewLayout.stacked,
         },
       );
@@ -1340,7 +1337,6 @@ describe("lanes layer in order, whatever their channel and target", () => {
       }),
       {
         laneColors: [0, 1, 2].map((lane) => laneColor(lane)),
-        comparedLanes: [true, true],
         layout: ViewLayout.stacked,
         lineWidthPixels,
       },
@@ -1401,7 +1397,6 @@ describe("lanes layer in order, whatever their channel and target", () => {
     });
     const options: DrawOptions = {
       laneColors: [0, 1, 2].map((lane) => laneColor(lane)),
-      comparedLanes: [true, true],
     };
     const shaded = over(transparent, [1, 0, 0, 0.16]);
     // Above every trace, where only the shading shows.
@@ -1469,7 +1464,6 @@ describe("lanes layer in order, whatever their channel and target", () => {
         });
       const options: DrawOptions = {
         laneColors: Array.from({ length: count }, (_, lane) => laneColor(lane)),
-        comparedLanes: tracks.map(() => true),
         layout: ViewLayout.stacked,
       };
       const surface = freshSurface(width, height);

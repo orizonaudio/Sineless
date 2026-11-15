@@ -1,6 +1,6 @@
 // The editor's minimum height, across every display mode with Compare off and on, and every layout
 // (from the protocol), every
-// set of views on a mono or stereo track, and one to the most tracks, compared or not: each
+// set of views on a mono or stereo track, and one to the most tracks Multi shows: each
 // stacked trace drawn gets at least kMinimumLaneHeight above the chrome, and no more height is
 // asked for than that.
 
@@ -29,7 +29,6 @@ struct Case
     int views = 0b0011; // Asked for.
     int channels = 2;
     int tracks = 1;
-    bool compared = false; // Another track is checked in Compare.
 };
 
 std::vector<Case> everyCase()
@@ -49,16 +48,10 @@ std::vector<Case> everyCase()
                 }
                 continue;
             }
-            for (int tracks = 1; std::cmp_less_equal(tracks, protocol::kMaxLanes); ++tracks) {
-                for (const bool compared : {false, true}) {
-                    if (compared && tracks < 2) {
-                        continue; // Nothing else to compare with.
-                    }
-                    Case c = base;
-                    c.tracks = tracks;
-                    c.compared = compared;
-                    cases.push_back(c);
-                }
+            for (int tracks = 1; std::cmp_less_equal(tracks, protocol::kMaxShownTracks); ++tracks) {
+                Case c = base;
+                c.tracks = tracks;
+                cases.push_back(c);
             }
         }
     }
@@ -70,14 +63,13 @@ void PrintTo(const Case& c, std::ostream* out)
 {
     *out << engine::displayName(c.mode) << " "
          << protocol::kViewLayoutNames.at(static_cast<std::size_t>(c.layout)) << " views "
-         << c.views << " channels " << c.channels << " tracks " << c.tracks
-         << (c.compared ? " compared" : "");
+         << c.views << " channels " << c.channels << " tracks " << c.tracks;
 }
 
 // The traces the page draws for a case, as the analyzer draws them: one per view on show (a mono
-// track shows one, also with the Compare switch on), one per track, and with Compare on the sum
-// lane, which stays even with nothing else checked (see the analyzer test
-// SumsThisTrackAloneWhenNothingElseIsChecked).
+// track shows one, also with the Compare switch on), one per track shown, and with Compare on the
+// lane it adds once another track is shown with this one (see the analyzer test
+// HasNoComparisonWithOnlyThisTrackShown).
 int tracesDrawn(const Case& c)
 {
     switch (c.mode) {
@@ -87,7 +79,7 @@ int tracesDrawn(const Case& c)
     case Display::kMulti:
         return c.tracks;
     case Display::kCompare:
-        return c.tracks + 1;
+        return c.tracks + (c.tracks > 1 ? 1 : 0);
     }
     return 0;
 }
@@ -108,8 +100,7 @@ TEST_P(MinimumHeight, GivesEveryStackedTraceItsRoomAndNoMore)
         lanes.lanes.push_back({.id = static_cast<std::uint64_t>(track + 1),
                                .name = "",
                                .colour = std::nullopt,
-                               .own = track == 0,
-                               .compared = track == 0 || c.compared});
+                               .own = track == 0});
     }
     const int height = Editor::minimumHeightFor(settings, c.channels, lanes);
     EXPECT_GE(height, Editor::kMinimumHeight);

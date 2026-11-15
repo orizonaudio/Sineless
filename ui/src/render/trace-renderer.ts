@@ -48,10 +48,8 @@ export type Rgba = readonly [number, number, number, number];
 export interface TraceStyle {
   // Resolved at draw time, so colours can come from a stylesheet that loads after start-up.
   readonly colors: () => ReadonlyMap<ChannelView, Rgba>;
-  // Multi-track frames: one colour per lane, in lane order, and in a Compare frame which tracks
-  // are compared.
+  // Multi-track frames: one colour per lane, in lane order.
   readonly laneColors: () => readonly Rgba[];
-  readonly comparedLanes: () => readonly boolean[];
   // Which lane is this track's, and the colours of a difference's lane: what only the other
   // tracks cover (gained) and what only this one does (lost).
   readonly ownLane: () => number;
@@ -870,11 +868,7 @@ export class TraceRenderer implements FrameRenderer {
         : undefined;
     const dimming = this.dimmingAt(sweep, view.dim === true);
 
-    const shading = cancellationBands(
-      frame,
-      layout,
-      this.style.comparedLanes(),
-    );
+    const shading = cancellationBands(frame, layout);
     if (shading.length > 0) {
       this.drawTriangles(shading, this.style.cancellationColor(), dimming);
     }
@@ -891,7 +885,7 @@ export class TraceRenderer implements FrameRenderer {
     // on a track of any colour. The parts go through the traces' own drawing, in a pass of their
     // own under the lanes', with soft edges and no line's width added (filledAreaLineHalf).
     const own = this.style.ownLane();
-    const areas = differenceAreas(frame, this.style.comparedLanes(), own);
+    const areas = differenceAreas(frame, own);
     const pass = { frame, screen, scale: fullScale(view.verticalScaleDb) };
     if (areas !== undefined) {
       const lane = blockLanes.at(-1) ?? { center: 0, halfHeight: 1 };

@@ -33,7 +33,7 @@
       "replies": [
         {
           "inputChannels": 2,
-          "protocolVersion": 20,
+          "protocolVersion": 21,
           "sampleRate": 44100.0,
           "settings": {
             "align": "on",
@@ -51,7 +51,6 @@
             "freeSpan": 4.0,
             "gridDensity": "medium",
             "gridType": "grid",
-            "group": "a",
             "hoverReadout": "off",
             "laneChannel": "mid",
             "laneLabels": "on",
@@ -74,11 +73,11 @@
       ]
     }
   ],
-  "protocolVersion": 20,
+  "protocolVersion": 21,
   "scenario": "FrozenHeldRateBeats_384kThen44k1",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 20,
+    "protocolVersion": 21,
     "sampleRate": 384000.0,
     "settings": {
       "align": "on",
@@ -96,7 +95,6 @@
       "freeSpan": 4.0,
       "gridDensity": "medium",
       "gridType": "grid",
-      "group": "a",
       "hoverReadout": "off",
       "laneChannel": "mid",
       "laneLabels": "on",

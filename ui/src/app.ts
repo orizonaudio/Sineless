@@ -7,7 +7,7 @@ import {
 } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import {
-  leftOutAlpha,
+  maxShownTracks,
   minimumEditorWidth,
   readoutIntervalSeconds,
   screenBorder,
@@ -19,8 +19,10 @@ import {
 } from "../../protocol/src/limits.ts";
 import type {
   ErrorMessage,
+  LaneLabel,
   SettingValue,
   TraceViewMessage,
+  TrackEntry,
 } from "../../protocol/src/messages.ts";
 import {
   settingNames,
@@ -32,6 +34,7 @@ import type {
   SettingName,
 } from "../../protocol/src/settings.ts";
 import type { Backend } from "./bridge/backend.ts";
+import { CheckList } from "./components/check-list.ts";
 import { cutName, fitCutNames } from "./components/cut-name.ts";
 import { DragField } from "./components/drag-field.ts";
 import { followDrag } from "./components/follow-drag.ts";
@@ -244,9 +247,13 @@ function laneNameNodes(
     readonly instance: number;
   },
   live: boolean,
+  trigger?: HTMLElement,
 ): HTMLElement[] {
   const { name: text, number, spoken } = laneName(lane);
-  const name = cutName(text, { live });
+  const name = cutName(
+    text,
+    trigger === undefined ? { live } : { live, trigger },
+  );
   if (number === undefined || spoken === undefined) {
     return [name];
   }
@@ -396,11 +403,16 @@ export class OscilloscopeApp {
   private laneNameNodes: HTMLElement[] = [];
   private sumNode: HTMLElement | undefined;
   private laneLabelsKey = "";
-  // Multi-track lanes by lane set, as the lanes messages describe them; a few are kept, so a
-  // frame drawn just before or after a change finds its own.
+  // Multi-track lanes by lane set, as the lanes messages describe them, and as they are named
+  // and coloured; a few are kept, so a frame drawn just before or after a change finds its own.
+  private readonly laneLabelSets = new Map<number, readonly LaneLabel[]>();
   private readonly laneSets = new Map<number, LaneStyle[]>();
   private latestLaneSet = 0;
-  private hiddenTracks = 0;
+  // Every Sineless instance in the host, as the tracks message lists them, and which Multi shows:
+  // the Views popover's Channels list in Multi, and its count in the Views field.
+  private tracks: readonly TrackEntry[] = [];
+  private trackList: CheckList | undefined;
+  private laneChannelSummary: StackedSummary | undefined;
   private drawnLaneCount = 0;
   private drawnLaneSet = 0;
   // What the last frame's Compare lane was (the sum or the difference): its label follows it.
@@ -444,17 +456,10 @@ export class OscilloscopeApp {
     };
     const style: TraceStyle = {
       colors: resolveColors,
-      // Tracks left out of a comparison are drawn faint.
-      laneColors: () => {
-        const comparing = this.lastFrame?.comparison !== undefined;
-        return this.lanesOf(this.lastFrame).map((lane) => {
-          const [r, g, b, a] = rgba(cssColour(lane.colour));
-          const faint = comparing && !lane.compared && lane.id !== sumLaneId;
-          return [r, g, b, faint ? a * leftOutAlpha : a] as const;
-        });
-      },
-      comparedLanes: () =>
-        this.lanesOf(this.lastFrame).map((lane) => lane.compared),
+      laneColors: () =>
+        this.lanesOf(this.lastFrame).map((lane) =>
+          rgba(cssColour(lane.colour)),
+        ),
       ownLane: () =>
         Math.max(
           0,
@@ -723,12 +728,33 @@ export class OscilloscopeApp {
       });
     };
     choiceField("displayMode", "mode", "display-mode", "Mode");
-    segment("group", "group", [
-      ["a", "A"],
-      ["b", "B"],
-      ["c", "C"],
-      ["d", "D"],
-    ]);
+    // Multi's Channels: every Sineless instance in the host, those ticked shown as lanes. The
+    // list shows what the engine says is shown, and asks it for any change.
+    this.trackList = new CheckList(element("tracks"), {
+      labelledBy: "tracks-label",
+      onToggle: (id, checked) => {
+        const asked = Number(id);
+        this.showTracks(
+          this.tracks
+            .filter((track) =>
+              track.id === asked ? checked : track.shown && !track.own,
+            )
+            .map((track) => track.id),
+        );
+      },
+      onNone: () => {
+        this.showTracks([]);
+      },
+      onAll: () => {
+        this.showTracks(
+          this.tracks.filter((track) => !track.own).map((track) => track.id),
+        );
+      },
+    });
+    this.laneChannelSummary = new StackedSummary(
+      element("views-lanes"),
+      viewLabels,
+    );
     // One channel for every lane: single choice, unlike Single's views.
     segment(
       "laneChannel",
@@ -944,7 +970,9 @@ export class OscilloscopeApp {
       }
       element("views-single").classList.toggle("on", !multi);
       element("views-multi").classList.toggle("on", multi);
-      element("views-group").dataset["help"] = multi ? "group" : "channelViews";
+      element("views-group").dataset["help"] = multi
+        ? "tracks"
+        : "channelViews";
       this.nameViews();
     }
     // Compare's labels hold its controls and always show: the Labels row is greyed out meanwhile,
@@ -1174,7 +1202,6 @@ export class OscilloscopeApp {
       this.updateCursorReadout();
     }
     if (
-      name === "group" ||
       name === "laneChannel" ||
       name === "compare" ||
       name === "compareLane" ||
@@ -1291,7 +1318,7 @@ export class OscilloscopeApp {
       : 1;
   }
 
-  // Multi shows lanes of the group's tracks, with or without Compare.
+  // Multi shows lanes of the tracks ticked, with or without Compare.
   private multiMode(): boolean {
     return this.store.get("displayMode") !== "single";
   }
@@ -1301,26 +1328,79 @@ export class OscilloscopeApp {
     return this.multiMode() && this.store.get("compare") === "on";
   }
 
-  // Multi's summary in the Views field (Single's shows the channel views) names the group, the lane
-  // channel and the lane Compare adds, Σ for the sum or Δ for the difference, as "A·M·Σ", then a
-  // dot and a tag for the lane labels: the sign dimmed while Compare is off and the tag while the
-  // labels do not show, as Single's dims the views not drawn. Its name for screen readers says the
-  // channel in full, what Compare adds and the labels.
+  // Multi's summary in the Views field (Single's shows the channel views): how many of the host's
+  // tracks are shown, the lane channel, a tag for the lane labels and the lane Compare adds, Σ for
+  // the sum or Δ for the difference, as "3/7·M·" the tag "·Σ": the tag dimmed while the labels do
+  // not show and the sign while Compare is off, as Single's dims the views not drawn. Its name for
+  // screen readers says all of it in words.
   private updateGroupSummary(): void {
-    const group = String(this.store.get("group")).toUpperCase();
     const channel = this.store.get("laneChannel") as ViewName;
     const compare = this.store.get("compare") === "on";
     const labels = this.labelsShown(true);
     const summary = element("views-multi");
-    element("views-lanes").textContent = `${group}·${viewLabels[channel]}·`;
+    // Before the list comes, this track alone of the one there is known to be.
+    const total = Math.max(this.tracks.length, 1);
+    const shown = Math.max(
+      this.tracks.filter((track) => track.shown).length,
+      1,
+    );
+    element("views-count").textContent = `${String(shown)}/${String(total)}`;
+    this.laneChannelSummary?.show(channel);
     summary.querySelector(".sum")?.classList.toggle("on", compare);
     summary.querySelector(".tag")?.classList.toggle("on", labels);
     const lane =
       this.store.get("compareLane") === "difference" ? "difference" : "sum";
-    this.viewsNames.multi = `Views: group ${group}, ${viewNames[ChannelView[channel]]}${
+    this.viewsNames.multi = `Views: ${String(shown)} of ${String(total)} ${
+      total === 1 ? "track" : "tracks"
+    }, ${viewNames[ChannelView[channel]]}${labels ? ", labels on" : ""}${
       compare ? `, Compare ${lane}` : ""
-    }${labels ? ", labels on" : ""}`;
+    }`;
     this.nameViews();
+  }
+
+  // Asks the engine to show `ids`, the other tracks, in Multi: at most as many as it shows with
+  // this one, the first in the host's order.
+  private showTracks(ids: readonly number[]): void {
+    this.backend.showTracks(ids.slice(0, maxShownTracks - 1));
+  }
+
+  // The Channels list in Multi, as the tracks message has it: each instance with its lane's
+  // colour and name, this track's marked and always ticked, and, once as many are ticked as Multi
+  // shows, the others not to be ticked.
+  private updateTrackList(): void {
+    const styles = laneStyles(this.tracks);
+    const full =
+      this.tracks.filter((track) => track.shown).length >= maxShownTracks;
+    this.trackList?.show(
+      this.tracks.map((track, index) => {
+        const style = styles[index] ?? { name: "", colour: 0, instance: 0 };
+        const locked = track.own
+          ? "This track is always shown"
+          : !track.shown && full
+            ? `At most ${String(maxShownTracks)} tracks are shown`
+            : undefined;
+        return {
+          id: String(track.id),
+          name: (row: HTMLElement) => laneNameNodes(style, true, row),
+          nameKey: `${style.name}/${String(style.instance)}`,
+          colour: cssColour(style.colour),
+          checked: track.shown,
+          ...(locked === undefined ? {} : { locked }),
+          ...(track.own ? { tag: "this track" } : {}),
+        };
+      }),
+    );
+  }
+
+  // Names and colours every kept lane set again: a lane with no host name or colour takes those
+  // of its place in the list of tracks, which a new list may have moved.
+  private styleLanes(): void {
+    const places = new Map(
+      this.tracks.map((track, index) => [track.id, index]),
+    );
+    for (const [laneSet, labels] of this.laneLabelSets) {
+      this.laneSets.set(laneSet, laneStyles(labels, places));
+    }
   }
 
   // Whether Multi's lane labels show: Labels On, or Compare on, whose controls they hold. `inMulti`
@@ -1355,7 +1435,6 @@ export class OscilloscopeApp {
               : "Sum",
           colour: sumLaneColour,
           own: false,
-          compared: false,
           instance: 0,
         },
       ];
@@ -1369,7 +1448,6 @@ export class OscilloscopeApp {
             name: "",
             colour: null,
             own: false,
-            compared: false,
             instance: 0,
           })),
         );
@@ -1395,7 +1473,7 @@ export class OscilloscopeApp {
       this.layout(),
       height,
       this.compareMode() && frame !== undefined,
-      this.store.get("group"),
+      this.tracks.length > 1,
     ]);
     if (key === this.laneLabelsKey) {
       return;
@@ -1420,9 +1498,8 @@ export class OscilloscopeApp {
       node.addEventListener("click", onClick);
       return node;
     };
-    // In the Compare view, each track's swatch is its check box, followed by how it lines up with
-    // this track when compared; the sum shows its gain and the fix preview.
-    const compareMode = this.compareMode();
+    // With Compare on, each other track's name is followed by how it lines up with this track;
+    // the sum shows its gain and the fix preview.
     this.matchNodes = [];
     this.sumNode = undefined;
     this.laneNameNodes = [];
@@ -1463,21 +1540,8 @@ export class OscilloscopeApp {
         }
         return node;
       }
-      if (!compareMode) {
-        node.append(...laneNameNodes(style, true));
-        return node;
-      }
-      node.classList.add("checkable");
-      const check = button(style.name, "compareTrack", () => {
-        this.toggleCompared(style.id);
-      });
-      check.replaceChildren(...laneNameNodes(style, true));
-      check.className = "compare-check";
-      check.setAttribute("role", "checkbox");
-      check.setAttribute("aria-checked", String(style.compared));
-      check.disabled = style.own;
-      node.append(check);
-      if (comparing && style.compared && !style.own) {
+      node.append(...laneNameNodes(style, true));
+      if (comparing && !style.own) {
         const match = document.createElement("span");
         match.className = "lane-readout";
         match.dataset["help"] =
@@ -1520,22 +1584,14 @@ export class OscilloscopeApp {
     if (this.compareMode() && frame?.lanes.length === 1) {
       const note = document.createElement("div");
       note.className = "compare-note";
-      note.textContent = `No other track in group ${String(this.store.get("group")).toUpperCase()} to compare with. Insert ${brand.name} on another track.`;
+      // Other instances there may be, not shown: the Channels list is where they are ticked.
+      note.textContent =
+        this.tracks.length > 1
+          ? "No other track to compare with. Tick one under Channels, in Views."
+          : `No other track to compare with. Insert ${brand.name} on another track.`;
       container.append(note);
     }
     this.updateMatches(frame);
-  }
-
-  // Adds a track to the comparison, or takes it out.
-  private toggleCompared(id: number): void {
-    const others = (this.laneSets.get(this.latestLaneSet) ?? []).filter(
-      (style) => !style.own,
-    );
-    this.backend.compare(
-      others
-        .filter((style) => style.compared !== (style.id === id))
-        .map((style) => style.id),
-    );
   }
 
   // The Compare view's readouts in the lane labels: each compared track's offset and polarity
@@ -2495,7 +2551,6 @@ export class OscilloscopeApp {
         lanes: lanes.map((lane) => ({
           id: lane.id,
           colour: colour(lane.colour),
-          compared: lane.compared,
           own: lane.own,
         })),
       })),
@@ -2592,15 +2647,25 @@ export class OscilloscopeApp {
     this.backend.on("error", (message) => {
       this.showError(message);
     });
+    this.backend.on("tracks", (message) => {
+      this.tracks = message.tracks;
+      this.styleLanes();
+      this.updateTrackList();
+      this.updateGroupSummary();
+      this.drawScreen();
+      this.loop.invalidate();
+      this.queueTraceView();
+    });
     this.backend.on("lanes", (message) => {
-      this.laneSets.set(message.laneSet, laneStyles(message.lanes));
-      for (const old of [...this.laneSets.keys()]) {
+      this.laneLabelSets.set(message.laneSet, message.lanes);
+      for (const old of [...this.laneLabelSets.keys()]) {
         if (old < message.laneSet - 3) {
+          this.laneLabelSets.delete(old);
           this.laneSets.delete(old);
         }
       }
+      this.styleLanes();
       this.latestLaneSet = message.laneSet;
-      this.hiddenTracks = message.hidden;
       this.drawScreen();
       this.loop.invalidate();
       this.queueTraceView();
@@ -2686,12 +2751,6 @@ export class OscilloscopeApp {
       this.waiting = waiting;
       this.loop.invalidate();
       this.queueTraceView();
-    }
-    if (this.multiMode() && this.hiddenTracks > 0) {
-      chips.push({
-        text: `+${String(this.hiddenTracks)} hidden`,
-        tone: "warn",
-      });
     }
     if (isZoomed(this.view)) {
       chips.push({

@@ -112,12 +112,19 @@ void migrateToVersion6(nlohmann::json& settings)
     settings.erase("gridLevel");
 }
 
+// Version 7 has no groups: each instance chooses the tracks its Multi shows, which is not saved,
+// so a project saved with groups opens with each instance showing its own track.
+void migrateToVersion7(nlohmann::json& settings)
+{
+    settings.erase("group");
+}
+
 // kMigrations[n - 1] upgrades the settings object of state version n to version n + 1.
 // Add an entry, and a golden state file, whenever kStateVersion is raised. A release that adds
 // settings or values without raising it gets a golden state file too (state-v2-0.5.json).
 constexpr std::array<Migration, kStateVersion - 1> kMigrations{
-    &migrateToVersion2, &migrateToVersion3, &migrateToVersion4, &migrateToVersion5,
-    &migrateToVersion6};
+    &migrateToVersion2, &migrateToVersion3, &migrateToVersion4,
+    &migrateToVersion5, &migrateToVersion6, &migrateToVersion7};
 
 // The editor's size in a state, or none: both a width and a height that are numbers (JSON's are
 // finite: a number too large for a double makes the whole state unreadable). Their range is the

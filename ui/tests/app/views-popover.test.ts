@@ -17,8 +17,8 @@ import {
 // The rows each display's Views popover shows, in order.
 const rows: Readonly<Record<Display, readonly string[]>> = {
   Single: ["Channels", "Measure"],
-  Multi: ["Group", "Channel", "Compare", "Labels"],
-  Compare: ["Group", "Channel", "Compare", "Labels"],
+  Multi: ["Channels", "Channel", "Compare", "Labels"],
+  Compare: ["Channels", "Channel", "Compare", "Labels"],
 };
 
 function shownRows(): string[] {
@@ -100,7 +100,7 @@ describe.each(displays)("in %s", (display) => {
     };
     await explains(
       "views-details",
-      helpTexts[display === "Single" ? "channelViews" : "group"].lead,
+      helpTexts[display === "Single" ? "channelViews" : "tracks"].lead,
     );
   });
 });

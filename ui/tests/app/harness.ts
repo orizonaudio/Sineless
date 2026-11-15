@@ -425,7 +425,62 @@ export async function press(button: HTMLElement): Promise<void> {
   await userEvent.click(button);
 }
 
-// Multi's summary in the Views field as it reads ("A·M·Σ·"; its tag is an icon).
+// The rows of Multi's Channels list in the Views popover, each with its track's whole name (and
+// its number among its track's instances, as "Bass 1") and its check box.
+export function trackRows(): {
+  name: string;
+  row: HTMLElement;
+  box: HTMLInputElement;
+}[] {
+  return [...byId("tracks").querySelectorAll<HTMLElement>(".check-row")].map(
+    (row) => {
+      const cut = row.querySelector<HTMLElement>(".cut-name");
+      const number = row.querySelector(".instance")?.textContent;
+      const name =
+        cut?.dataset["fullName"] ??
+        cut?.querySelector(".cut-shown")?.textContent ??
+        "";
+      return {
+        name: number === undefined ? name : `${name} ${number}`,
+        row,
+        box: row.querySelector("input") as HTMLInputElement,
+      };
+    },
+  );
+}
+
+// The names of the tracks ticked in Multi's Channels list, in its order.
+export function tickedTracks(): string[] {
+  return trackRows()
+    .filter(({ box }) => box.checked)
+    .map(({ name }) => name);
+}
+
+// Ticks or unticks a track in Multi's Channels list, as a user does: by its row, with the Views
+// popover open. The engine answers each click with the list as it then is.
+export async function tickTrack(name: string, shown: boolean): Promise<void> {
+  const box = () => trackRows().find((row) => row.name === name);
+  expect(box(), `the row of ${name}`).toBeDefined();
+  if (byId("views-popover").hidden) {
+    await userEvent.click(byId("views-details"));
+  }
+  if (box()?.box.checked !== shown) {
+    await userEvent.click(box()?.row as HTMLElement);
+  }
+  await expect.poll(() => box()?.box.checked, { message: name }).toBe(shown);
+}
+
+// Has Multi show this track and `others` alone, by ticking and unticking rows of the list.
+export async function showOnly(others: readonly string[]): Promise<void> {
+  for (const { name, box } of trackRows()) {
+    if (box.getAttribute("aria-disabled") === "true" && box.checked) {
+      continue; // This track: always shown.
+    }
+    await tickTrack(name, others.includes(name));
+  }
+}
+
+// Multi's summary in the Views field as it reads ("4/4·M··Σ"; its tag is an icon).
 // As read on screen: of values stacked in one place (the lane Compare adds, Σ or Δ), the one
 // showing.
 export function multiSummary(): string {

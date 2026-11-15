@@ -15,7 +15,8 @@ export const MessageType = {
   arm: "arm",
   view: "view",
   lanes: "lanes",
-  compare: "compare",
+  tracks: "tracks",
+  showTracks: "showTracks",
   previewFix: "previewFix",
   resize: "resize",
   traceView: "traceView",
@@ -113,32 +114,45 @@ export interface ViewMessage {
 
 // One track of the multi-track view. `id` is stable while the track exists; `name` is empty and
 // `colour` null when the host reports none; `own` marks the instance whose window shows the lanes.
-// In the Compare view, `compared` marks the tracks summed and measured against this one (this
-// track included whenever another is). `instance` is the lane's number among the group's
-// instances on its host track (the same track position, or with no positions the same name), from
-// 1 in the order they were created and counting those not drawn; 0 for a track's only instance.
+// With Compare on, every lane is summed and measured against this track's. `instance` is the
+// lane's number among the instances in the process on its host track (the same track position, or
+// with no positions the same name), from 1 in the order they were created and counting those not
+// shown; 0 for a track's only instance.
 export interface LaneLabel {
   readonly id: number;
   readonly name: string;
   readonly colour: number | null; // 0xRRGGBB
   readonly own: boolean;
-  readonly compared: boolean;
   readonly instance: number;
 }
 
-// Engine to UI. The tracks behind the lanes of frames whose laneSet matches, in lane order, and
-// how many more tracks of the group are not drawn. Sent when the set changes.
+// Engine to UI. The tracks behind the lanes of frames whose laneSet matches, in lane order. Sent
+// when the set changes.
 export interface LanesMessage {
   readonly type: "lanes";
   readonly laneSet: number;
   readonly lanes: readonly LaneLabel[];
-  readonly hidden: number;
 }
 
-// UI to engine. Compare view: the other tracks to compare with this one, by the ids of their
-// lanes entries. Temporary, not a setting.
-export interface CompareMessage {
-  readonly type: "compare";
+// One Sineless instance in the process, as the multi-track view can show it: a lane's label
+// fields, and whether this instance's Multi shows it (`shown`; always for its `own`).
+export interface TrackEntry extends LaneLabel {
+  readonly shown: boolean;
+}
+
+// Engine to UI. Every Sineless instance in the process, in the host's track order, then creation
+// (the order of the lanes). Sent in Multi when the list changes: an instance added or gone, a
+// name, a colour, the order, or the tracks shown.
+export interface TracksMessage {
+  readonly type: "tracks";
+  readonly tracks: readonly TrackEntry[];
+}
+
+// UI to engine. The other tracks this instance's Multi shows, by the ids of their tracks entries,
+// at most maxShownTracks - 1 (this instance's own is always shown). Kept while the plugin is
+// loaded, not saved.
+export interface ShowTracksMessage {
+  readonly type: "showTracks";
   readonly ids: readonly number[];
 }
 
@@ -160,12 +174,11 @@ export interface ResizeMessage {
 // A colour as red, green, blue and alpha, each 0 to 1 (sRGB, not premultiplied).
 export type Rgba = readonly number[];
 
-// One track's colour for a lane set: `id` as in the lanes message (or the Sum lane's), whether it
-// is compared, and whether it is this track's (a difference's lane is filled from it).
+// One track's colour for a lane set: `id` as in the lanes message (or the Sum lane's), and whether
+// it is this track's (a difference's lane is filled from it).
 export interface TraceLaneColour {
   readonly id: number;
   readonly colour: Rgba;
-  readonly compared: boolean;
   readonly own: boolean;
 }
 
@@ -246,7 +259,7 @@ export type UiToEngineMessage =
   | PanMessage
   | ArmMessage
   | ViewMessage
-  | CompareMessage
+  | ShowTracksMessage
   | PreviewFixMessage
   | ResizeMessage
   | TraceViewMessage
@@ -257,5 +270,6 @@ export type EngineToUiMessage =
   | StateChangedMessage
   | ErrorMessage
   | LanesMessage
+  | TracksMessage
   | NativeGraphicsLostMessage
   | AboutMessage;

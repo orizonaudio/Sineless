@@ -24,7 +24,7 @@ beforeApp(async () => {
 function names(): { shown: string; said: string }[] {
   return [...byId("lane-labels").querySelectorAll(".lane-label > span")].map(
     (chip) => {
-      const named = chip.querySelector(".compare-check") ?? chip;
+      const named = chip;
       const number = named.querySelector(".instance");
       const hidden = named.querySelector(".lane-name > .visually-hidden");
       // A track's name is in its own element (cut when too long); the sum's is plain text.
@@ -45,7 +45,6 @@ function names(): { shown: string; said: string }[] {
 async function showMulti(): Promise<void> {
   await press(choice("time-base", "Trig"));
   await press(choice("display-mode", "Multi"));
-  await press(choice("group", "A"));
   await press(choice("layout", "Stack"));
   await settle();
 }
@@ -67,7 +66,7 @@ describe("two instances on one track", () => {
     }
   });
 
-  test("keep their numbers on Compare's check boxes", async () => {
+  test("keep their numbers with Compare on", async () => {
     await showMulti();
     await setCompare(true);
     await settle();

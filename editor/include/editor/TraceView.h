@@ -32,7 +32,6 @@ struct TraceView
     {
         std::int64_t id = 0;
         Rgba colour{};
-        bool compared = false;
         bool own = false; // This track's.
     };
     struct LaneSet
@@ -59,10 +58,8 @@ struct TraceView
 
     // A frame's lane colours, as the page picks them: its lane set's (the newest held when the
     // frame's is not), the Sum's last in Compare; by position from the fallback palette when the
-    // count does not match; tracks left out of a comparison faint.
+    // count does not match.
     [[nodiscard]] std::vector<Rgba> laneColours(const FrameView& frame) const;
-    // Which of a frame's tracks are compared, in lane order (Compare's shading), as picked above.
-    [[nodiscard]] std::vector<bool> comparedLanes(const FrameView& frame) const;
     // Which of a frame's lanes is this track's (the first, when its lane set is not held yet).
     [[nodiscard]] std::size_t ownLane(const FrameView& frame) const;
 

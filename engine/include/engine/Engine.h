@@ -7,6 +7,7 @@
 #include "engine/State.h"
 #include "engine/Timeline.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <mutex>
@@ -97,19 +98,27 @@ public:
         return track;
     }
 
-    // The Compare view's other tracks, by lane id (GroupMember::serial); none until the editor
-    // first sets them, when the group's first other track is compared. Kept with the instance, not
-    // its editor, so that closing and opening the editor keeps them; like zoom, they are not saved,
-    // so lane ids, valid only while the plugin is loaded, are enough. Non-audio threads only.
-    void setCompared(std::optional<std::vector<std::uint64_t>> ids)
+    // The other tracks this instance's multi-track view shows, by lane id (Member::serial); none
+    // in a new instance, which shows its own track alone. Kept with the instance, not its editor,
+    // so that closing and opening the editor keeps them; like zoom, they are not saved, so lane
+    // ids, valid only while the plugin is loaded, are enough. Non-audio threads only.
+    void setShown(std::vector<std::uint64_t> ids)
     {
         const std::scoped_lock lock(trackMutex);
-        comparedIds = std::move(ids);
+        shownIds = std::move(ids);
     }
-    [[nodiscard]] std::optional<std::vector<std::uint64_t>> compared() const
+    [[nodiscard]] std::vector<std::uint64_t> shown() const
     {
         const std::scoped_lock lock(trackMutex);
-        return comparedIds;
+        return shownIds;
+    }
+    // Forgets the shown tracks that are not among `live`, the instances there are: an instance
+    // that went away leaves the selection, in one step with the editor's changes to it.
+    void keepShown(const std::vector<std::uint64_t>& live)
+    {
+        const std::scoped_lock lock(trackMutex);
+        std::erase_if(shownIds,
+                      [&](std::uint64_t id) { return std::ranges::find(live, id) == live.end(); });
     }
 
     // The editor's size as the user chose it (EditorCore's ChosenSize), or none: the default.
@@ -153,7 +162,7 @@ private:
     std::vector<EdgeRecord> edgeLog;
     mutable std::mutex trackMutex;
     TrackInfo track;
-    std::optional<std::vector<std::uint64_t>> comparedIds;
+    std::vector<std::uint64_t> shownIds;
     std::optional<EditorSize> editorSizeValue;
 };
 

@@ -177,7 +177,6 @@ TEST(TraceGeometry, ShadesCancellationAsThePageDoes)
         }
         frame.related = entry.at("related").get<std::vector<bool>>();
         const auto bands = cancellationBands(frame, layoutNamed(entry.at("layout")),
-                                             entry.at("compared").get<std::vector<bool>>(),
                                              {.start = entry.at("viewStart").get<double>(),
                                               .end = entry.at("viewEnd").get<double>()});
         const auto expected = entry.at("bands").get<std::vector<double>>();
@@ -212,9 +211,7 @@ TEST(TraceGeometry, FillsADifferencesLaneAsThePageDoes)
         for (const auto& lane : data) {
             frame.lanes.emplace_back(lane);
         }
-        const std::vector<float> areas =
-            differenceAreas(frame, entry.at("compared").get<std::vector<bool>>(),
-                            entry.at("own").get<std::size_t>());
+        const std::vector<float> areas = differenceAreas(frame, entry.at("own").get<std::size_t>());
         const std::vector<float> expected = laneValues(entry.at("areas"));
         ASSERT_EQ(areas.size(), kDifferenceParts * frame.pointCount * 2) << entry.dump();
         ASSERT_EQ(areas.size(), expected.size());
@@ -225,15 +222,9 @@ TEST(TraceGeometry, FillsADifferencesLaneAsThePageDoes)
                 EXPECT_EQ(areas[index], expected[index]) << "value " << index;
             }
         }
-        // With no other track ticked there is nothing to take the difference against: the lane
-        // is drawn as a plain trace, as on the page, not as all lost.
-        const std::vector<bool> unticked(entry.at("compared").size(), false);
-        EXPECT_TRUE(differenceAreas(frame, unticked, entry.at("own").get<std::size_t>()).empty());
         // The same frame showing the sum has no such lane.
         frame.compareLane = protocol::CompareLane::kSum;
-        EXPECT_TRUE(differenceAreas(frame, entry.at("compared").get<std::vector<bool>>(),
-                                    entry.at("own").get<std::size_t>())
-                        .empty());
+        EXPECT_TRUE(differenceAreas(frame, entry.at("own").get<std::size_t>()).empty());
     }
 }
 
@@ -253,7 +244,7 @@ TEST(TraceGeometry, ShadesNothingWithoutARelatedComparedTrack)
         frame.lanes.emplace_back(lane);
     }
     frame.related = {false, false};
-    EXPECT_TRUE(cancellationBands(frame, protocol::ViewLayout::kStacked, {true, true}, {}).empty());
+    EXPECT_TRUE(cancellationBands(frame, protocol::ViewLayout::kStacked, {}).empty());
 }
 
 // The difference of the compared tracks is not shaded, as on the page: where it is small the
@@ -273,10 +264,9 @@ TEST(TraceGeometry, ShadesNothingInTheDifference)
         frame.lanes.emplace_back(lane);
     }
     frame.related = {false, true};
-    ASSERT_FALSE(
-        cancellationBands(frame, protocol::ViewLayout::kStacked, {true, true}, {}).empty());
+    ASSERT_FALSE(cancellationBands(frame, protocol::ViewLayout::kStacked, {}).empty());
     frame.compareLane = protocol::CompareLane::kDifference;
-    EXPECT_TRUE(cancellationBands(frame, protocol::ViewLayout::kStacked, {true, true}, {}).empty());
+    EXPECT_TRUE(cancellationBands(frame, protocol::ViewLayout::kStacked, {}).empty());
 }
 
 // Drawn natively, the playhead moves by fractions of a pixel: at any position its coverage over

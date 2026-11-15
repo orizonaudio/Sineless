@@ -73,7 +73,8 @@ if(BUILD_TESTING)
     # host.
     add_executable(au_view_tests MACOSX_BUNDLE tests/AudioUnitViewTests.mm)
     target_include_directories(au_view_tests
-        PRIVATE ${PROJECT_SOURCE_DIR}/editor/tests ${PROJECT_SOURCE_DIR}/editor/src)
+        PRIVATE ${PROJECT_SOURCE_DIR}/editor/tests ${PROJECT_SOURCE_DIR}/editor/src
+                ${PROJECT_SOURCE_DIR}/engine/tests/support)
     target_link_libraries(au_view_tests
         PRIVATE au orizon_warnings GTest::gtest_main "-framework Cocoa" "-framework WebKit")
     set_source_files_properties(tests/AudioUnitViewTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)

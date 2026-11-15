@@ -205,17 +205,15 @@ int run(const bench::Scenario& scenario, const Options& options)
     engine::Analyzer analyzer(host.own(), host.registry);
     analyzer.setColumns(options.columns);
     analyzer.setView(scenario.viewStart, scenario.viewEnd);
-    if (scenario.compare) {
-        std::vector<std::uint64_t> others;
-        for (const engine::GroupMember& member : host.registry.members(protocol::Group::kA)) {
-            if (member.engine.get() != &host.own()) {
-                others.push_back(member.serial);
-                if (!scenario.compareAll) {
-                    break;
-                }
-            }
+    // This track's Multi shows every track of the scenario, which Compare then takes.
+    std::vector<std::uint64_t> others;
+    for (const engine::Member& member : host.registry.members()) {
+        if (member.engine.get() != &host.own()) {
+            others.push_back(member.serial);
         }
-        analyzer.setCompared(others);
+    }
+    analyzer.setShown(others);
+    if (scenario.compare) {
         analyzer.setPreviewFix(scenario.previewFix);
     }
 

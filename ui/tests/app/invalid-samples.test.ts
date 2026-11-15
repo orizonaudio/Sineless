@@ -4,7 +4,6 @@ import { describe, expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { FrameFlag, frameHeader } from "../../../protocol/src/frame.ts";
-import type { ControlMessage } from "../../src/bridge/transport.ts";
 import { MockTransport } from "../../src/bridge/mock-transport.ts";
 import {
   beforeApp,
@@ -19,15 +18,9 @@ import {
   typeInto,
 } from "./harness.ts";
 
-// A crowded state the mock does not make by itself, as the engine sends it: a group of 30 tracks,
-// more than the lanes show (the lanes message says how many are hidden), and, frozen, held audio
+// A crowded state the mock does not make by itself, as the engine sends it: frozen, held audio
 // that does not cover the span (the frame's partial flag).
 class Crowded extends MockTransport {
-  override onMessage(handler: (message: ControlMessage) => void): void {
-    super.onMessage((message) => {
-      handler(message.type === "lanes" ? { ...message, hidden: 14 } : message);
-    });
-  }
   override onFrame(handler: (frame: ArrayBuffer) => void): void {
     super.onFrame((frame) => {
       const flags = new DataView(frame).getUint8(flagsOffset);
@@ -50,11 +43,10 @@ const markedLanes = () =>
     .filter((name) => name.classList.contains("invalid"))
     .map((name) => name.textContent);
 
-// The colour each marked lane's name is drawn in: in Compare, a track's name is its check box's.
+// The colour each marked lane's name is drawn in.
 const markedColours = () =>
   [...byId("lane-labels").querySelectorAll(".lane-label > span.invalid")].map(
-    (name) =>
-      getComputedStyle(name.querySelector(".compare-check") ?? name).color,
+    (name) => getComputedStyle(name).color,
   );
 
 // The warning colour, as the page computes it.
@@ -97,13 +89,15 @@ describe("a track sending samples that are not finite", () => {
     expect(markedColours()).toEqual([warnColour(), warnColour()]);
   });
 
-  // More states than the status bar's fixed area holds, which takes every state frozen can show,
-  // with long values: invalid samples in Multi with 14 tracks hidden, frozen with a span longer than
-  // the capture kept and not all of it held, panned back and zoomed past ten times. The first, the
-  // problem, stays shown in yellow; the rest fold into one "+n" chip that still lists them, and
-  // nothing runs outside the area, so nothing beside it moves.
+  // More states than the status bar's area holds. The area takes every state frozen can show, with
+  // long values (invalid samples in Multi, frozen with a span longer than the capture kept and
+  // not all of it held, panned back and zoomed past ten times), so it is narrowed here, as where
+  // text renders wider than on the platforms measured. The first, the problem, stays shown in
+  // yellow; the rest fold into one "+n" chip that still lists them, and nothing runs outside the
+  // area, so nothing beside it moves.
   test("folds the states that don't fit into one chip that lists them", async () => {
     await startApp({}, new Crowded({ brokenSamples: 3, keptSeconds: 1 }));
+    byId("chips").style.width = "300px";
     await press(choice("display-mode", "Multi"));
     await press(choice("time-base", "Free"));
     await typeInto("free-span-field", "4 s");
@@ -129,7 +123,7 @@ describe("a track sending samples that are not finite", () => {
       );
     }
     await settle();
-    await expect.poll(() => chips().length).toBe(7);
+    await expect.poll(() => chips().length).toBe(6);
     await expect.poll(chips).toContain("Invalid samples");
     const states = chips();
     expect(states[0]).toBe("Invalid samples");

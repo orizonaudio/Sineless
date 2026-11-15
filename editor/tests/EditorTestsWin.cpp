@@ -1,5 +1,6 @@
 #include "Branding.h"
 #include "FitStates.h"
+#include "ShowTracks.h"
 #include "editor/DisplayScale.h"
 #include "editor/Editor.h"
 #include "editor/Transport.h"
@@ -409,13 +410,15 @@ TEST_F(EditorTest, ReturnsToTheSizeChosenWhenTheLanesGoAtAnyDisplayScale)
     own->settings().set(protocol::SettingId::kViewLayout,
                         static_cast<double>(protocol::ViewLayout::kStacked));
     own->setEditorSize(engine::EditorSize{.width = 1200, .height = 500});
-    std::vector<std::shared_ptr<engine::Engine>> group{own}; // Sixteen tracks.
-    for (int track = 1; track < 16; ++track) {
+    std::vector<std::shared_ptr<engine::Engine>> group{
+        own}; // Fifteen tracks, the most Multi shows.
+    for (int track = 1; track < 15; ++track) {
         group.push_back(std::make_shared<engine::Engine>());
     }
     for (const auto& engine : group) {
         engine::InstanceRegistry::shared().add(engine);
     }
+    engine::showEveryTrack(engine::InstanceRegistry::shared(), *own);
     HWND window = makeWindow();
     TestFrame frame; // Outlives the editor, which keeps a pointer to it.
     std::vector<std::string> received;
@@ -427,7 +430,7 @@ TEST_F(EditorTest, ReturnsToTheSizeChosenWhenTheLanesGoAtAnyDisplayScale)
     const auto units = [scale](double css) {
         return static_cast<int>(std::ceil(css * scale - 1e-6));
     };
-    const int wanted = Editor::kChromeHeight + 16 * Editor::kMinimumLaneHeight;
+    const int wanted = Editor::kChromeHeight + 15 * Editor::kMinimumLaneHeight;
     ASSERT_TRUE(
         pumpUntil([&] { return editor->getRect().getHeight() == units(wanted); }, kPageTimeout))
         << "grown for the lanes";

@@ -43976,7 +43976,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -44098,7 +44097,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -44220,7 +44218,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -44344,7 +44341,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -44970,7 +44966,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -45094,7 +45089,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -45344,7 +45338,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -45466,7 +45459,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -45540,7 +45532,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -45614,7 +45605,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -45688,7 +45678,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -45764,7 +45753,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -46090,7 +46078,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -46164,7 +46151,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -46302,7 +46288,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -46728,7 +46713,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -46804,7 +46788,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -47230,7 +47213,6 @@
         ]
       ],
       "related": [false, true],
-      "compared": [true, true],
       "viewStart": 0.2,
       "viewEnd": 0.8,
       "bands": [
@@ -47369,7 +47351,6 @@
           0.9065685272216797
         ]
       ],
-      "compared": [true, true],
       "own": 0,
       "areas": [
         -0.10000000149011612,
@@ -48147,7 +48128,6 @@
           0.8809014558792114, 1.0065685510635376, 0.8065685629844666
         ]
       ],
-      "compared": [true, true, true],
       "own": 0,
       "areas": [
         -0.10000000149011612,
@@ -48881,7 +48861,6 @@
           0.9065685272216797
         ]
       ],
-      "compared": [true, true],
       "own": 1,
       "areas": [
         -0.10000000149011612,
@@ -49777,7 +49756,6 @@
           0.9065685272216797
         ]
       ],
-      "compared": [true, true],
       "own": 0,
       "areas": [
         -0.10000000149011612,
@@ -50452,7 +50430,6 @@
           0.9809014797210693, 0.9065685272216797
         ]
       ],
-      "compared": [true, true],
       "own": 0,
       "areas": [
         0,
@@ -51149,7 +51126,6 @@
           0.9809014797210693, 0.9065685272216797
         ]
       ],
-      "compared": [true, true, true],
       "own": 0,
       "areas": [
         0,
@@ -51824,7 +51800,6 @@
           0.9809014797210693, 0.9065685272216797
         ]
       ],
-      "compared": [true, true],
       "own": 1,
       "areas": [
         0,
@@ -52580,7 +52555,6 @@
           0.9065685272216797
         ]
       ],
-      "compared": [true, true],
       "own": 0,
       "areas": [
         0,

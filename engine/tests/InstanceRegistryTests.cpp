@@ -11,63 +11,53 @@
 namespace orizon::engine {
 namespace {
 
-using protocol::Group;
+using protocol::DisplayMode;
 using protocol::SettingId;
 
-std::shared_ptr<Engine> engineIn(Group group, TrackInfo track = {})
+std::shared_ptr<Engine> engineOn(TrackInfo track = {})
 {
     auto engine = std::make_shared<Engine>();
-    engine->settings().set(SettingId::kGroup, static_cast<double>(group));
     engine->setTrackInfo(std::move(track));
     return engine;
 }
 
-std::vector<Engine*> enginesOf(const std::vector<GroupMember>& members)
+std::vector<Engine*> enginesOf(const std::vector<Member>& members)
 {
     std::vector<Engine*> engines;
     engines.reserve(members.size());
-    for (const GroupMember& member : members) {
+    for (const Member& member : members) {
         engines.push_back(member.engine.get());
     }
     return engines;
 }
 
-TEST(InstanceRegistry, ListsTheInstancesOfAGroup)
+// Every instance in the process can be shown in any other's Multi, whatever its own display mode
+// and settings: nothing an instance is set to keeps it off the list.
+TEST(InstanceRegistry, ListsEveryInstanceWhateverItsSettings)
 {
     InstanceRegistry registry;
-    const auto first = engineIn(Group::kA);
-    const auto other = engineIn(Group::kB);
-    const auto second = engineIn(Group::kA);
+    const auto first = engineOn();
+    const auto inMulti = engineOn();
+    inMulti->settings().set(SettingId::kDisplayMode, static_cast<double>(DisplayMode::kMulti));
+    const auto second = engineOn();
     registry.add(first);
-    registry.add(other);
+    registry.add(inMulti);
     registry.add(second);
-    EXPECT_EQ(enginesOf(registry.members(Group::kA)),
-              (std::vector<Engine*>{first.get(), second.get()}));
-    EXPECT_EQ(enginesOf(registry.members(Group::kB)), (std::vector<Engine*>{other.get()}));
-    EXPECT_TRUE(registry.members(Group::kD).empty());
-}
-
-TEST(InstanceRegistry, FollowsGroupChanges)
-{
-    InstanceRegistry registry;
-    const auto engine = engineIn(Group::kA);
-    registry.add(engine);
-    engine->settings().set(SettingId::kGroup, static_cast<double>(Group::kC));
-    EXPECT_TRUE(registry.members(Group::kA).empty());
-    EXPECT_EQ(registry.members(Group::kC).size(), 1u);
+    EXPECT_EQ(enginesOf(registry.members()),
+              (std::vector<Engine*>{first.get(), inMulti.get(), second.get()}));
 }
 
 TEST(InstanceRegistry, OrdersByTrackPositionThenCreation)
 {
     InstanceRegistry registry;
-    const auto unplacedFirst = engineIn(Group::kA);
-    const auto third = engineIn(Group::kA, {.name = "Bass", .colour = std::nullopt, .index = 3});
-    const auto unplacedSecond = engineIn(Group::kA);
-    const auto first = engineIn(Group::kA, {.name = "Kick", .colour = 0xff0000, .index = 1});
+    const auto unplacedFirst = engineOn();
+    const auto third = engineOn({.name = "Bass", .colour = std::nullopt, .index = 3});
+    const auto unplacedSecond = engineOn();
+    const auto first = engineOn({.name = "Kick", .colour = 0xff0000, .index = 1});
     for (const auto& engine : {unplacedFirst, third, unplacedSecond, first}) {
         registry.add(engine);
     }
-    const auto members = registry.members(Group::kA);
+    const auto members = registry.members();
     EXPECT_EQ(enginesOf(members),
               (std::vector<Engine*>{first.get(), third.get(), unplacedFirst.get(),
                                     unplacedSecond.get()}));
@@ -76,11 +66,11 @@ TEST(InstanceRegistry, OrdersByTrackPositionThenCreation)
     EXPECT_LT(members[2].serial, members[3].serial);
 }
 
-std::vector<std::uint32_t> instancesOf(const std::vector<GroupMember>& members)
+std::vector<std::uint32_t> instancesOf(const std::vector<Member>& members)
 {
     std::vector<std::uint32_t> instances;
     instances.reserve(members.size());
-    for (const GroupMember& member : members) {
+    for (const Member& member : members) {
         instances.push_back(member.instance);
     }
     return instances;
@@ -92,13 +82,13 @@ std::vector<std::uint32_t> instancesOf(const std::vector<GroupMember>& members)
 TEST(InstanceRegistry, NumbersInstancesOnOneTrackByCreation)
 {
     InstanceRegistry registry;
-    const auto before = engineIn(Group::kA, {.name = "Bass", .colour = 0x3060e0, .index = 3});
-    const auto kick = engineIn(Group::kA, {.name = "Kick", .colour = 0xff0000, .index = 1});
-    const auto after = engineIn(Group::kA, {.name = "Bass", .colour = 0x3060e0, .index = 3});
+    const auto before = engineOn({.name = "Bass", .colour = 0x3060e0, .index = 3});
+    const auto kick = engineOn({.name = "Kick", .colour = 0xff0000, .index = 1});
+    const auto after = engineOn({.name = "Bass", .colour = 0x3060e0, .index = 3});
     for (const auto& engine : {before, kick, after}) {
         registry.add(engine);
     }
-    const auto members = registry.members(Group::kA);
+    const auto members = registry.members();
     ASSERT_EQ(enginesOf(members), (std::vector<Engine*>{kick.get(), before.get(), after.get()}));
     EXPECT_EQ(instancesOf(members), (std::vector<std::uint32_t>{0, 1, 2}))
         << "a track's only instance has no number";
@@ -109,31 +99,28 @@ TEST(InstanceRegistry, NumbersInstancesOnOneTrackByCreation)
 TEST(InstanceRegistry, NumbersByNameWhereTheHostGivesNoPosition)
 {
     InstanceRegistry registry;
-    const auto before =
-        engineIn(Group::kA, {.name = "Bass", .colour = std::nullopt, .index = std::nullopt});
-    const auto unnamed = engineIn(Group::kA);
-    const auto after =
-        engineIn(Group::kA, {.name = "Bass", .colour = std::nullopt, .index = std::nullopt});
-    const auto alsoUnnamed = engineIn(Group::kA);
+    const auto before = engineOn({.name = "Bass", .colour = std::nullopt, .index = std::nullopt});
+    const auto unnamed = engineOn();
+    const auto after = engineOn({.name = "Bass", .colour = std::nullopt, .index = std::nullopt});
+    const auto alsoUnnamed = engineOn();
     for (const auto& engine : {before, unnamed, after, alsoUnnamed}) {
         registry.add(engine);
     }
-    EXPECT_EQ(instancesOf(registry.members(Group::kA)), (std::vector<std::uint32_t>{1, 0, 2, 0}));
+    EXPECT_EQ(instancesOf(registry.members()), (std::vector<std::uint32_t>{1, 0, 2, 0}));
 }
 
-// The numbers are of the instances in the group now: when one of a track's two leaves the group,
-// the other is the track's only instance there, and plain again.
-TEST(InstanceRegistry, NumbersAgainWhenAnInstanceLeavesTheGroup)
+// The numbers are of the instances there are now: when one of a track's two goes away, the other
+// is the track's only instance, and plain again.
+TEST(InstanceRegistry, NumbersAgainWhenAnInstanceGoesAway)
 {
     InstanceRegistry registry;
-    const auto before = engineIn(Group::kA, {.name = "Bass", .colour = std::nullopt, .index = 3});
-    const auto after = engineIn(Group::kA, {.name = "Bass", .colour = std::nullopt, .index = 3});
+    const auto before = engineOn({.name = "Bass", .colour = std::nullopt, .index = 3});
+    const auto after = engineOn({.name = "Bass", .colour = std::nullopt, .index = 3});
     registry.add(before);
     registry.add(after);
-    ASSERT_EQ(instancesOf(registry.members(Group::kA)), (std::vector<std::uint32_t>{1, 2}));
-    before->settings().set(SettingId::kGroup, static_cast<double>(Group::kB));
-    EXPECT_EQ(instancesOf(registry.members(Group::kA)), (std::vector<std::uint32_t>{0}));
-    EXPECT_EQ(instancesOf(registry.members(Group::kB)), (std::vector<std::uint32_t>{0}));
+    ASSERT_EQ(instancesOf(registry.members()), (std::vector<std::uint32_t>{1, 2}));
+    registry.remove(*before);
+    EXPECT_EQ(instancesOf(registry.members()), (std::vector<std::uint32_t>{0}));
 }
 
 struct TrackPair
@@ -181,28 +168,28 @@ INSTANTIATE_TEST_SUITE_P(
 TEST(InstanceRegistry, ForgetsRemovedAndEndedInstances)
 {
     InstanceRegistry registry;
-    const auto kept = engineIn(Group::kA);
-    const auto removed = engineIn(Group::kA);
-    auto ended = engineIn(Group::kA);
+    const auto kept = engineOn();
+    const auto removed = engineOn();
+    auto ended = engineOn();
     registry.add(kept);
     registry.add(removed);
     registry.add(ended);
     registry.remove(*removed);
     ended.reset(); // Never removed: the weak reference lapses on its own.
-    EXPECT_EQ(enginesOf(registry.members(Group::kA)), (std::vector<Engine*>{kept.get()}));
+    EXPECT_EQ(enginesOf(registry.members()), (std::vector<Engine*>{kept.get()}));
 }
 
 TEST(InstanceRegistry, KeepsAHeldMemberAliveAfterItsInstanceEnds)
 {
     InstanceRegistry registry;
-    auto engine = engineIn(Group::kA);
+    auto engine = engineOn();
     const std::weak_ptr<Engine> watch = engine;
     registry.add(engine);
-    const auto members = registry.members(Group::kA);
+    const auto members = registry.members();
     registry.remove(*engine);
     engine.reset();
     EXPECT_FALSE(watch.expired()) << "the reader still holds the engine";
-    EXPECT_TRUE(registry.members(Group::kA).empty());
+    EXPECT_TRUE(registry.members().empty());
 }
 
 TEST(InstanceRegistry, SupportsConcurrentChangesAndReads)
@@ -211,22 +198,21 @@ TEST(InstanceRegistry, SupportsConcurrentChangesAndReads)
     std::atomic<bool> done{false};
     std::thread reader([&] {
         while (!done.load()) {
-            for (const GroupMember& member : registry.members(Group::kA)) {
+            for (const Member& member : registry.members()) {
                 EXPECT_NE(member.engine, nullptr);
             }
         }
     });
     for (int round = 0; round < 200; ++round) {
         const auto engine =
-            engineIn(Group::kA, {.name = "Track", .colour = std::nullopt, .index = std::nullopt});
+            engineOn({.name = "Track", .colour = std::nullopt, .index = std::nullopt});
         registry.add(engine);
         engine->setTrackInfo({.name = "Renamed", .colour = std::nullopt, .index = round});
-        engine->settings().set(SettingId::kGroup, static_cast<double>(Group::kB));
         registry.remove(*engine);
     }
     done.store(true);
     reader.join();
-    EXPECT_TRUE(registry.members(Group::kA).empty());
+    EXPECT_TRUE(registry.members().empty());
 }
 
 } // namespace

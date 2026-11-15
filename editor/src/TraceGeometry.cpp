@@ -89,8 +89,7 @@ std::vector<double> cancellationLevels(const FrameView& frame, std::span<const f
     return smoothed;
 }
 
-std::vector<float> differenceAreas(const FrameView& frame, const std::vector<bool>& compared,
-                                   std::size_t own)
+std::vector<float> differenceAreas(const FrameView& frame, std::size_t own)
 {
     if (!frame.compared() || frame.compareLane != protocol::CompareLane::kDifference ||
         frame.lanes.size() < 2 || own + 1 >= frame.lanes.size() || frame.pointCount == 0) {
@@ -100,7 +99,7 @@ std::vector<float> differenceAreas(const FrameView& frame, const std::vector<boo
     const std::span<const float> mine = frame.lanes[own];
     std::vector<std::span<const float>> others;
     for (std::size_t index = 0; index + 1 < frame.lanes.size(); ++index) {
-        if (index != own && index < compared.size() && compared[index]) {
+        if (index != own) {
             others.push_back(frame.lanes[index]);
         }
     }
@@ -188,7 +187,7 @@ std::vector<float> differenceAreas(const FrameView& frame, const std::vector<boo
 }
 
 std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout layout,
-                                    const std::vector<bool>& compared, ViewWindow view)
+                                    ViewWindow view)
 {
     // The difference is not a sum: nothing in it is a cancellation to mark, as on the page.
     if (!frame.compared() || frame.compareLane == protocol::CompareLane::kDifference ||
@@ -198,10 +197,8 @@ std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout
     std::vector<std::span<const float>> tracks;
     bool related = false;
     for (std::size_t index = 0; index + 1 < frame.lanes.size(); ++index) {
-        if (index < compared.size() && compared[index]) {
-            tracks.push_back(frame.lanes[index]);
-            related = related || (index < frame.related.size() && frame.related[index]);
-        }
+        tracks.push_back(frame.lanes[index]);
+        related = related || (index < frame.related.size() && frame.related[index]);
     }
     if (tracks.size() < 2 || !related) {
         return {};

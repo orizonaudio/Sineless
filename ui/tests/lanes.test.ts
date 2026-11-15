@@ -21,20 +21,18 @@ describe("lane styles", () => {
       name: "Kick",
       colour: 0xe0533d,
       own: true,
-      compared: true,
       instance: 0,
     };
     expect(laneStyles([kick])).toEqual([kick]);
   });
 
-  test("fall back to Track n and the palette by lane position", () => {
+  test("fall back to Track n and the palette by lane position, before the list of tracks comes", () => {
     const styles = laneStyles([
       {
         id: 1,
         name: "Kick",
         colour: 0xe0533d,
         own: false,
-        compared: false,
         instance: 0,
       },
       {
@@ -42,7 +40,6 @@ describe("lane styles", () => {
         name: "",
         colour: null,
         own: true,
-        compared: false,
         instance: 0,
       },
     ]);
@@ -51,9 +48,42 @@ describe("lane styles", () => {
       name: "Track 2",
       colour: fallbackPalette[1],
       own: true,
-      compared: false,
       instance: 0,
     });
+  });
+
+  // The same track reads alike in the Views popover's list and on the screen, whichever tracks
+  // are shown: a track the host gave no name or colour takes those of its place in the list.
+  test("name and colour an unnamed track by its place among every track, not among those shown", () => {
+    const unnamed = {
+      id: 7,
+      name: "",
+      colour: null,
+      own: false,
+      instance: 0,
+    };
+    const places = new Map([
+      [1, 0],
+      [4, 1],
+      [7, 2],
+    ]);
+    // Shown with this track alone, it is still the host's third track.
+    const [, shown] = laneStyles(
+      [{ ...unnamed, id: 1, name: "Kick", own: true }, unnamed],
+      places,
+    );
+    expect(shown?.name).toBe("Track 3");
+    expect(shown?.colour).toBe(fallbackPalette[2]);
+    // The list itself: every track, each at its place.
+    const listed = laneStyles(
+      [
+        { ...unnamed, id: 1, name: "Kick", own: true },
+        { ...unnamed, id: 4 },
+        unnamed,
+      ],
+      places,
+    );
+    expect(listed[2]).toEqual(shown);
   });
 
   test("write colours for CSS", () => {
@@ -75,7 +105,6 @@ describe("several instances on one track", () => {
     name: "Bass 2",
     colour,
     own: false,
-    compared: false,
     instance,
   });
 

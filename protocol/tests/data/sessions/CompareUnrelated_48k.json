@@ -12,12 +12,31 @@
       ],
       "replies": [
         {
-          "hidden": 0,
+          "tracks": [
+            {
+              "colour": null,
+              "id": 1,
+              "instance": 0,
+              "name": "Noise",
+              "own": true,
+              "shown": true
+            },
+            {
+              "colour": null,
+              "id": 2,
+              "instance": 0,
+              "name": "Other noise",
+              "own": false,
+              "shown": true
+            }
+          ],
+          "type": "tracks"
+        },
+        {
           "laneSet": 1,
           "lanes": [
             {
               "colour": null,
-              "compared": true,
               "id": 1,
               "instance": 0,
               "name": "Noise",
@@ -25,7 +44,6 @@
             },
             {
               "colour": null,
-              "compared": true,
               "id": 2,
               "instance": 0,
               "name": "Other noise",
@@ -37,11 +55,11 @@
       ]
     }
   ],
-  "protocolVersion": 20,
+  "protocolVersion": 21,
   "scenario": "CompareUnrelated_48k",
   "snapshot": {
     "inputChannels": 2,
-    "protocolVersion": 20,
+    "protocolVersion": 21,
     "sampleRate": 48000.0,
     "settings": {
       "align": "on",
@@ -59,7 +77,6 @@
       "freeSpan": 4.0,
       "gridDensity": "medium",
       "gridType": "grid",
-      "group": "a",
       "hoverReadout": "off",
       "laneChannel": "mid",
       "laneLabels": "on",

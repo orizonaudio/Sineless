@@ -204,8 +204,22 @@ public:
         engine->setInputChannels(channelCount);
         registry.add(engine);
         tracks.push_back({.engine = engine, .signal = signal, .tempo = tempo});
+        if (tracks.size() > 1 && shownAsJoined) {
+            // This track's Multi shows every other track, as when the user ticks each.
+            std::vector<std::uint64_t> shown = own().shown();
+            for (const Member& member : registry.members()) {
+                if (member.engine == engine) {
+                    shown.push_back(member.serial);
+                }
+            }
+            own().setShown(std::move(shown));
+        }
         return engine;
     }
+
+    // Whether a track that joins is shown in this track's Multi at once (the default), or only
+    // listed, as an instance added to the host is until the user ticks it.
+    bool shownAsJoined = true;
 
     Engine& own() { return *tracks.front().engine; }
 
@@ -3199,15 +3213,14 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenChannel, ::testing::ValuesIn(singleSte
                              return nameOf(info.param);
                          });
 
-// Another track broken, the third: its own lane is flagged, never this track's. In Compare it is
-// not compared (until set, only the first other track is), so the sum, which leaves it out, is not
-// flagged either. In Multi and Compare, each time base and Free at a 2 s span, at the lowest and
-// highest rates.
+// Another track broken, the third: its own lane is flagged, never this track's. In Compare the sum,
+// which takes every track shown, is flagged with it. In Multi and Compare, each time base and Free
+// at a 2 s span, at the lowest and highest rates.
 class BrokenOtherTrack : public ::testing::TestWithParam<BrokenCase>
 {
 };
 
-TEST_P(BrokenOtherTrack, FlagsItsLaneOnly)
+TEST_P(BrokenOtherTrack, FlagsItsLaneAndTheSumItIsPartOf)
 {
     const BrokenCase c = GetParam();
     Session session(c.mode.rate, c.mode.channels);
@@ -3223,7 +3236,8 @@ TEST_P(BrokenOtherTrack, FlagsItsLaneOnly)
     session.play(c.longSpan ? 3.0 : 1.5);
     const auto frame = session.produce();
     ASSERT_TRUE(frame);
-    EXPECT_EQ(frame->invalidLanes, 0b100U) << "the third track's lane only";
+    EXPECT_EQ(frame->invalidLanes, c.mode.mode == Display::kCompare ? 0b1100U : 0b100U)
+        << "the third track's lane, and in Compare the sum's";
     EXPECT_EQ(frame->invalidSamples, 0U) << "this track's readouts hold none";
 }
 
@@ -3471,12 +3485,12 @@ protected:
         session->own().settings().set(SettingId::kBeatSpan,
                                       static_cast<double>(BeatSpan::kQuarterBar));
         std::vector<std::uint64_t> others;
-        for (const GroupMember& member : session->registry.members(protocol::Group::kA)) {
+        for (const Member& member : session->registry.members()) {
             if (member.engine.get() != &session->own()) {
                 others.push_back(member.serial);
             }
         }
-        session->analyzer().setCompared(others);
+        session->analyzer().setShown(others);
     }
 
     // The frames that follow with no more audio, the last of them; they stop once every match is
@@ -3733,21 +3747,21 @@ TEST_P(FrozenComparison, MeasuresTheTracksNowChecked)
     session.join({.kind = Signal::Kind::kNoise, .amplitude = -0.25});
     show(session.own().settings(), Display::kCompare);
     std::vector<std::uint64_t> others;
-    for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+    for (const Member& member : session.registry.members()) {
         if (member.engine.get() != &session.own()) {
             others.push_back(member.serial);
         }
     }
     ASSERT_EQ(others.size(), 2U);
-    session.analyzer().setCompared(others);
+    session.analyzer().setShown(others);
     ASSERT_TRUE(playForReadouts(session, c.timeBase)) << "no live frame";
     session.analyzer().setFrozen(true);
     session.play(static_cast<double>(kBlock) / c.rate);
     ASSERT_TRUE(session.produce()) << "no frozen frame";
     const float both = session.field(FrameHeader::kSumGainOffset);
     ASSERT_LT(both, identical - 1.0) << "the copies cancel each other";
-    // Unchecked: the inverted copy, the second other track by creation order.
-    session.analyzer().setCompared({others.front()});
+    // No longer shown: the inverted copy, the second other track by creation order.
+    session.analyzer().setShown({others.front()});
     std::optional<DecodedFrame> frame;
     for (int step = 0; step < 8; ++step) { // Frames go on while the sum is measured again.
         if (auto produced = session.produce()) {
@@ -3994,12 +4008,12 @@ TEST_P(SecondsIdle, DrawsNothingNewWithoutNewAudio)
     session.own().settings().set(SettingId::kTriggerMode, static_cast<double>(c.trigger));
     setSpan(session.own(), c.timeBase, c.span);
     std::vector<std::uint64_t> others;
-    for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+    for (const Member& member : session.registry.members()) {
         if (member.engine.get() != &session.own()) {
             others.push_back(member.serial);
         }
     }
-    session.analyzer().setCompared(others);
+    session.analyzer().setShown(others);
     session.play(3.0, 0.05);
     (void)session.produce(); // The last of the audio played.
 
@@ -4024,7 +4038,7 @@ TEST_P(SecondsIdle, DrawsNothingNewWithoutNewAudio)
     }
     // A track that turns mono shows other views, here or in its lane, with no new audio.
     std::shared_ptr<Engine> other;
-    for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+    for (const Member& member : session.registry.members()) {
         if (member.engine.get() != &session.own()) {
             other = member.engine;
         }
@@ -4122,7 +4136,7 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
     EXPECT_TRUE(session.produce()) << "this track turned mono";
     EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
     if (isMulti(c.mode)) {
-        for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+        for (const Member& member : session.registry.members()) {
             if (member.engine.get() != &session.own()) {
                 member.engine->setInputChannels(1);
             }
@@ -4146,7 +4160,7 @@ TEST_P(FormatChange, DrawsAFrameForANewFormatWithoutNewAudio)
         << "the page times it at the new rate";
     EXPECT_FALSE(session.analyzer().produce(bytes)) << "and nothing since";
     if (isMulti(c.mode)) {
-        for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+        for (const Member& member : session.registry.members()) {
             if (member.engine.get() != &session.own()) {
                 member.engine->setSampleRate(otherRate);
             }
@@ -4218,7 +4232,7 @@ TEST_P(FrozenRateChange, KeepsTheHeldPictureAndItsTimes)
         if (prepared) {
             session.prepare(otherRate);
         } else {
-            for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+            for (const Member& member : session.registry.members()) {
                 member.engine->setSampleRate(otherRate);
             }
         }
@@ -4269,7 +4283,7 @@ TEST_P(FrozenRateChange, KeepsTheHeldPictureThroughOtherSpans)
         if (change == Change::kPreparedAgain) {
             session.prepare(otherRate);
         } else if (change == Change::kSameCaptureSize) {
-            for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+            for (const Member& member : session.registry.members()) {
                 member.engine->setSampleRate(otherRate);
             }
         }
@@ -4300,10 +4314,11 @@ TEST_P(FrozenRateChange, KeepsTheHeldPictureThroughOtherSpans)
 INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenRateChange, ::testing::ValuesIn(formatChangeCases()),
                          modeTestName);
 
-// Frozen in Multi and Compare, a track whose lane is first held after the host changed the rate
-// (here one that comes into the group then) holds audio at the new rate, while the view shows this
-// track's at the rate it was held at: the lane draws none of it, in every time base, rather than a
-// stretch of other length or place. With no rate change, the same lane draws its audio.
+// Frozen in Single, then Multi or Compare: the lanes are first held when Multi comes on. A track
+// whose lane is first held after the host changed the rate holds audio at the new rate, while the
+// view shows this track's at the rate it was held at: the lane draws none of it, in every time
+// base, rather than a stretch of other length or place. With no rate change, the same lane draws
+// its audio.
 class FrozenLaneAtAnotherRate : public ::testing::TestWithParam<ModeCase>
 {
 };
@@ -4313,33 +4328,29 @@ TEST_P(FrozenLaneAtAnotherRate, DrawsNoAudio)
     const ModeCase c = GetParam();
     const double otherRate = c.rate == kSampleRates.front() ? kSampleRates.back() : 48000.0;
     const bool beats = c.timeBase == TimeBase::kBeats;
-    // The lane of the track that came into the group, in the frame drawn after it did.
+    // The lane of the last track, in the frame drawn once Multi shows it.
     const auto lateLane = [&](bool rateChanged) {
         Session session(c.rate, c.channels);
         session.join({.frequency = 1000.0}); // This track.
         session.join({.frequency = 1500.0});
         const auto late = session.join({.frequency = 2000.0});
-        late->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kB));
-        configure(session.own(), c.mode, c.timeBase);
+        configure(session.own(), Display::kSingle, c.timeBase);
         session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
         session.play(3.9);
         session.play(0.1, 0.05);
         session.analyzer().setFrozen(true);
         (void)session.produce();
         if (rateChanged) {
-            for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
-                member.engine->setSampleRate(otherRate);
-            }
             late->setSampleRate(otherRate);
         }
-        late->settings().set(SettingId::kGroup, static_cast<double>(protocol::Group::kA));
+        show(session.own().settings(), c.mode);
         if (beats) {
             // A lane comes into a frozen sweep when it is rebuilt from the held audio.
             session.own().settings().set(SettingId::kBeatSpan,
                                          static_cast<double>(BeatSpan::kTwoBars));
         }
         const auto frame = session.produce();
-        EXPECT_TRUE(frame) << "no frame with the track in the group";
+        EXPECT_TRUE(frame) << "no frame with the track shown";
         EXPECT_TRUE(frame && frame->laneCount >= 3) << "the track has no lane";
         return frame && frame->laneCount >= 3
                    ? std::vector<float>(trace(*frame, 2).begin(), trace(*frame, 2).end())
@@ -5448,7 +5459,7 @@ INSTANTIATE_TEST_SUITE_P(TimeBases, DeepZoomCompare,
 std::vector<std::uint64_t> othersOf(Session& session)
 {
     std::vector<std::uint64_t> others;
-    for (const GroupMember& member : session.registry.members(protocol::Group::kA)) {
+    for (const Member& member : session.registry.members()) {
         if (member.engine.get() != &session.own()) {
             others.push_back(member.serial);
         }
@@ -5466,7 +5477,7 @@ std::unique_ptr<Session> workSession(const ModeCase& c)
     }
     configure(session->own(), c.mode, c.timeBase);
     if (c.mode == Display::kCompare) {
-        session->analyzer().setCompared(othersOf(*session));
+        session->analyzer().setShown(othersOf(*session));
     }
     return session;
 }
@@ -5648,14 +5659,14 @@ TEST(CompareSumWork, IsRedoneOverSeveralFramesWhenATrackIsChecked)
     configure(session.own(), Display::kCompare, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kSixteenBars));
     const std::vector<std::uint64_t> others = othersOf(session);
-    session.analyzer().setCompared({others.front()});
+    session.analyzer().setShown({others.front()});
     const double sweepSeconds = beatSpanQuarterNotes(BeatSpan::kSixteenBars, 4.0) * 60.0 / kTempo;
     session.play(sweepSeconds + 1.0, 1.0);
     for (int frame = 0; frame < 64 && session.produce(); ++frame) {
     }
 
     // Both others checked: this track and two more, each over the whole sweep.
-    session.analyzer().setCompared(others);
+    session.analyzer().setShown(others);
     const auto whole = 3 * static_cast<std::uint64_t>(std::llround(sweepSeconds * kRate));
     std::uint64_t most = 0;
     std::uint64_t total = 0;
@@ -5737,7 +5748,7 @@ TEST_P(CompareTrackWork, SumsEachTracksNewAudioOnce)
         configure(session.own(), Display::kCompare, c.timeBase);
         session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
         setSpan(session.own(), c.timeBase, 0.5);
-        session.analyzer().setCompared(othersOf(session));
+        session.analyzer().setShown(othersOf(session));
         return workPerSecond(session, 3.0).summed / static_cast<double>(tracks);
     };
     const double few = summedPerTrack(2);
@@ -5783,7 +5794,7 @@ TEST_P(MovingMatchWork, RedoesTheSumsWithinOneFramesShare)
     }
     configure(session.own(), Display::kCompare, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.analyzer().setPreviewFix(true);
     const double sweepSeconds = beatSpanQuarterNotes(BeatSpan::kFourBars, 4.0) * 60.0 / 120.0;
     // The sweep filled, every match found and every sum measured with it.
@@ -5842,7 +5853,7 @@ TEST_P(FirstShiftWork, MeasuresTheShiftedTrackOverFrames)
     session.join({.kind = Signal::Kind::kNoise, .seed = 1}, kFirstShiftTempo);
     configure(session.own(), Display::kCompare, TimeBase::kBeats);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.analyzer().setPreviewFix(true);
     const double sweepSeconds = firstShiftSweepSeconds();
     ASSERT_GT(sweepSeconds * rate, static_cast<double>(kSumRefreshSamples))
@@ -5881,7 +5892,7 @@ TEST_P(MatchWork, SearchesOneComparedTrackPerFrame)
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
     session.own().settings().set(SettingId::kFreeSpan, 0.5);
     const std::vector<std::uint64_t> others = othersOf(session);
-    session.analyzer().setCompared(others);
+    session.analyzer().setShown(others);
     std::uint64_t most = 0;
     std::uint64_t total = 0;
     // Three seconds of audio, a block and a frame at a time.
@@ -5927,7 +5938,7 @@ TEST_P(MatchWork, SpreadsALongSearchOverFrames)
     configure(session.own(), Display::kCompare, c.timeBase);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kEightBars));
     setSpan(session.own(), c.timeBase, setting(spanSetting(c.timeBase)).maximum);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.play(17.0, 1.0);
     std::uint64_t most = 0;
     std::uint64_t total = 0;
@@ -5962,7 +5973,7 @@ TEST_P(MatchWork, ShowsAMatchSearchedOverFramesOnAnotherLaneChannel)
     setSpan(session.own(), c.timeBase, setting(spanSetting(c.timeBase)).maximum);
     session.own().settings().set(SettingId::kLaneChannel,
                                  static_cast<double>(protocol::ChannelView::kLeft));
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.play(17.0);
     const auto correlationOf = [](const DecodedFrame& frame) {
         return frame.data.at(std::size_t{frame.laneCount} * traceLength(frame) +
@@ -6000,7 +6011,7 @@ TEST_P(MatchWork, LeavesAFrozenViewAloneOnceItsMatchesAreFound)
     configure(session.own(), Display::kCompare, c.timeBase);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
     setSpan(session.own(), c.timeBase, setting(spanSetting(c.timeBase)).maximum);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     // The view filled: four bars at 120 beats a minute (8 s), or the longest span of the time base.
     session.play(c.timeBase == TimeBase::kBeats ? 9.0 : 5.0, 1.0);
     session.analyzer().setFrozen(true);
@@ -6044,7 +6055,7 @@ TEST(MatchWork, EndsTheSearchAndGainsOfAViewPannedAway)
     }
     configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, 1.0);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.play(2.5);
     session.analyzer().setFrozen(true);
     const AnalysisWork before = session.analyzer().work();
@@ -6094,7 +6105,7 @@ TEST(MatchWork, FollowsAZoomedRollPannedWithTheTransportStopped)
     session.join({.kind = Signal::Kind::kNoise, .seed = 5, .startsAt = sounds});
     configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, 4.0);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.playing = false;
     session.play(4.0);
     const auto settle = [&] {
@@ -6141,7 +6152,7 @@ TEST(MatchWork, RefreshesTheOthersWhileATrackCannotBeRead)
     session.own().settings().set(SettingId::kFreeSpan, setting(SettingId::kFreeSpan).maximum);
     session.play(5.0, 1.0 / 60.0);
     session.join({.kind = Signal::Kind::kNoise, .seed = 7}); // Holds nothing of the view yet.
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.setSignal(1, {.kind = Signal::Kind::kNoise, .seed = 6, .delay = 30});
     double offset = 0.0;
     for (int frame = 0; frame < 120; ++frame) {
@@ -6175,7 +6186,7 @@ TEST_P(MatchWork, BuildsAFrozenFrameOnlyWhenItsWorkEnds)
     configure(session.own(), Display::kCompare, c.timeBase);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kFourBars));
     setSpan(session.own(), c.timeBase, setting(spanSetting(c.timeBase)).maximum);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.play(c.timeBase == TimeBase::kBeats ? 9.0 : 5.0, 1.0);
     session.analyzer().setFrozen(true);
     session.analyzer().setView(0.5, 1.0);
@@ -6231,7 +6242,7 @@ TEST(MatchWork, TriesAFailedReadAgainWhileFrozen)
         for (int track = 0; track < late; ++track) { // Holding nothing of the view yet.
             session.join({.kind = Signal::Kind::kNoise, .seed = 9U + static_cast<unsigned>(track)});
         }
-        session.analyzer().setCompared(othersOf(session));
+        session.analyzer().setShown(othersOf(session));
         session.play(0.2);
         const AnalysisWork before = session.analyzer().work();
         session.analyzer().setFrozen(true);
@@ -6270,7 +6281,7 @@ TEST(MatchWork, WaitsForAFrozenViewToStopBeingDragged)
     }
     configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, 1.0);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.play(5.0, 1.0);
     session.analyzer().setFrozen(true);
     for (int frame = 0; frame < 400 && session.produce(); ++frame) {
@@ -6307,7 +6318,7 @@ TEST(CompareGainWork, MeasuresALongRollsGainsOverFramesAsAtOnce)
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
     session.play(span + 0.5); // No frames yet.
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     ASSERT_TRUE(session.produce());
     EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
         << "a gain before it was measured";
@@ -6344,7 +6355,6 @@ TEST(CompareGainWork, ReadsALongerViewThanAnyBefore)
     session.join({.kind = Signal::Kind::kNoise, .seed = 22});
     configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, 2.0);
-    session.analyzer().setCompared({});
     session.play(5.0, 1.0 / 60.0);
     session.own().settings().set(SettingId::kFreeSpan, setting(SettingId::kFreeSpan).maximum);
     session.play(0.5, 1.0 / 60.0);
@@ -6365,7 +6375,7 @@ TEST(CompareGainWork, MeasuresAFrozenRollsGainsOnce)
     configure(session.own(), Display::kCompare, TimeBase::kFree);
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.play(span + 0.5);
     session.analyzer().setFrozen(true);
     std::vector<std::byte> bytes;
@@ -6403,7 +6413,7 @@ TEST(CompareGainWork, KeepsALongRollsGainsWhilePlaying)
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
     session.play(span + 0.5); // No frames yet.
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     int fixedFrames = 0;
     int wrong = 0;
     for (int frame = 0; frame < 300; ++frame) {
@@ -6444,7 +6454,7 @@ TEST(CompareGainWork, MeasuresAfreshAfterThePageWasHidden)
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
     session.play(span + 0.5);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     const double block = static_cast<double>(kBlock) / kRate;
     // Until the gains are measured with the matches found.
     bool fixed = false;
@@ -6501,7 +6511,7 @@ TEST(CompareGainWork, FixesTheGainWithEveryMatchFoundWhileMeasuring)
     session.own().settings().set(SettingId::kFreeSpan, kSpan);
     // No frame until frozen, so every match is first found while frozen.
     session.play(kSpan + 1.0);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.analyzer().setFrozen(true);
     for (int frame = 0; frame < 300 && session.produce(); ++frame) {
     }
@@ -6531,7 +6541,7 @@ TEST(CompareGainWork, MeasuresAZoomedTriggeredViewsGains)
         session.own().settings().set(SettingId::kTriggerMode,
                                      static_cast<double>(protocol::TriggerMode::kNormal));
         session.own().settings().set(SettingId::kTriggerSpan, span);
-        session.analyzer().setCompared(othersOf(session));
+        session.analyzer().setShown(othersOf(session));
         const double start = (std::floor(0.3 * count) + 0.25 + (0.5 * halfSamples)) / count;
         session.analyzer().setView(start, 0.9);
         session.play(span + 0.5);
@@ -6558,14 +6568,14 @@ TEST(CompareGainWork, ShowsNoGainsForOtherTracksUntilMeasured)
     configure(session.own(), Display::kCompare, TimeBase::kFree);
     session.own().settings().set(SettingId::kFreeSpan, setting(SettingId::kFreeSpan).maximum);
     std::vector<std::uint64_t> others = othersOf(session);
-    session.analyzer().setCompared(others);
+    session.analyzer().setShown(others);
     session.play(5.0);
     session.analyzer().setFrozen(true);
     for (int frame = 0; frame < 400 && session.produce(); ++frame) {
     }
     ASSERT_TRUE(std::isfinite(session.field(FrameHeader::kSumGainOffset)));
     others.pop_back();
-    session.analyzer().setCompared(others);
+    session.analyzer().setShown(others);
     ASSERT_TRUE(session.produce()) << "no frame for the change";
     EXPECT_TRUE(std::isnan(session.field(FrameHeader::kSumGainOffset)))
         << "the last tracks' gain shown for other tracks";
@@ -6591,7 +6601,7 @@ TEST(CompareGainWork, KeepsTheLastGainsOnShowWhileAViewIsMeasured)
         configure(session.own(), Display::kCompare, TimeBase::kFree);
         const double span = setting(SettingId::kFreeSpan).maximum;
         session.own().settings().set(SettingId::kFreeSpan, span);
-        session.analyzer().setCompared(othersOf(session));
+        session.analyzer().setShown(othersOf(session));
         session.play(span + 1.0);
         session.analyzer().setFrozen(frozen);
         for (int frame = 0; frame < 200 && session.produce(); ++frame) {
@@ -6622,7 +6632,7 @@ TEST(CompareGainWork, LeavesNothingToRedrawInSingle)
         configure(session.own(), Display::kCompare, TimeBase::kFree);
         const double span = setting(SettingId::kFreeSpan).maximum;
         session.own().settings().set(SettingId::kFreeSpan, span);
-        session.analyzer().setCompared(othersOf(session));
+        session.analyzer().setShown(othersOf(session));
         session.play(span + 1.0);
         session.analyzer().setFrozen(frozen);
         ASSERT_TRUE(session.produce());
@@ -6649,7 +6659,7 @@ TEST(CompareGainWork, ReadsARollsTracksOverSeveralFrames)
         configure(session.own(), Display::kCompare, TimeBase::kFree);
         const double span = setting(SettingId::kFreeSpan).maximum;
         session.own().settings().set(SettingId::kFreeSpan, span);
-        session.analyzer().setCompared(othersOf(session));
+        session.analyzer().setShown(othersOf(session));
         session.play(span + 1.0);
         (void)session.produce(); // The roll drawn whole, once, as on opening the view.
         std::uint64_t mostRead = 0;
@@ -6760,7 +6770,7 @@ TEST_P(ReturningSum, MatchesAFreshSum)
     setAlign(session.own(), c.align);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
     setSpan(session.own(), c.timeBase, 2.0);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.play(3.0, 0.05);
     session.play(0.01); // Audio no frame has shown yet, so that one comes.
     ASSERT_TRUE(session.produce());
@@ -6908,7 +6918,7 @@ TEST_P(Difference, IsThisTrackMinusTheOthers)
     setAlign(session.own(), false);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
     setSpan(session.own(), c.timeBase, c.timeBase == TimeBase::kFree ? 2.0 : 0.05);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     session.analyzer().setPreviewFix(true); // The sum's, and nothing to the difference.
     session.play(3.0, 0.05);
     session.play(0.01);
@@ -6972,7 +6982,7 @@ TEST(DifferenceWork, SumsNoMoreAFrameThanTheSum)
         configure(session.own(), Display::kCompare, timeBase);
         showLane(session.own(), lane);
         setSpan(session.own(), timeBase, 2.0);
-        session.analyzer().setCompared(othersOf(session));
+        session.analyzer().setShown(othersOf(session));
         session.play(6.0, 0.05);
         const AnalysisWork before = session.analyzer().work();
         session.play(2.0, 0.05);
@@ -7007,7 +7017,7 @@ TEST(DifferenceWork, ShowsNoDepthUntilItIsMeasuredOverAZoomedRoll)
     setAlign(session.own(), false);
     const double span = setting(SettingId::kFreeSpan).maximum;
     session.own().settings().set(SettingId::kFreeSpan, span);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
     // Long enough for the captures to be full: from here on each block replaces their oldest.
     session.play((3.0 * span) + 1.0);
     ASSERT_TRUE(session.produce());
@@ -7111,7 +7121,7 @@ void showDifference(Session& session, TimeBase timeBase)
     showLane(session.own(), protocol::CompareLane::kDifference);
     session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
     setSpan(session.own(), timeBase, timeBase == TimeBase::kFree ? 2.0 : 0.25);
-    session.analyzer().setCompared(othersOf(session));
+    session.analyzer().setShown(othersOf(session));
 }
 
 // Plays long enough for the alignment to be found and drawn, then gives the last frame: live, or
