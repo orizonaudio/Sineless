@@ -2,7 +2,7 @@
 // ticked shown as lanes. Through the real page on the mock engine: the list as the engine sends
 // it, ticking, None and All, the most tracks Multi shows, instances that come and go, and the
 // count in the Views field.
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { maxShownTracks } from "../../../protocol/src/limits.ts";
@@ -187,6 +187,16 @@ describe("with more tracks than Multi shows", () => {
     expect(locked()).toEqual(["Kick"]);
     await tickTrack(names().at(-1) ?? "", true);
     await expect.poll(tickedTracks).toHaveLength(maxShownTracks);
+
+    // Full again, with an unticked row before a ticked one: a click on it changes nothing, where
+    // taking it would push the last track shown off the screen.
+    const before = tickedTracks();
+    expect(locked()).toContain("Bass");
+    trackRows()
+      .find((row) => row.name === "Bass")
+      ?.box.click();
+    await settle();
+    expect(tickedTracks()).toEqual(before);
   });
 
   test("keeps every track on screen when Compare comes on, in its own sixteenth lane", async () => {
@@ -419,5 +429,57 @@ describe("a long name in the list", () => {
     await expect.poll(() => name?.classList.contains("rolling")).toBe(true);
     row()?.box.blur();
     await expect.poll(() => name?.classList.contains("rolling")).toBe(false);
+  });
+
+  test("stays still for a user who asked for reduced motion, and shows whole in a tip from the keyboard and anywhere on its row", async () => {
+    const reduce = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation((query) => ({
+        matches: query.includes("prefers-reduced-motion"),
+        media: query,
+        onchange: null,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        dispatchEvent: () => false,
+      }));
+    try {
+      await startApp({ names: { 2: long } });
+      await openList();
+      const row = () => trackRows().find((each) => each.name === long);
+      await expect
+        .poll(() => row()?.row.querySelector(".cut-name.cut"))
+        .not.toBeNull();
+      const name = row()?.row.querySelector<HTMLElement>(".cut-name");
+      const tipShowsTheName = () =>
+        vi.waitFor(
+          () => {
+            expect(byId("help-tip").hidden).toBe(false);
+            expect(byId("help-tip").textContent).toBe(long);
+          },
+          { timeout: 5000 },
+        );
+      row()?.box.focus();
+      await tipShowsTheName();
+      expect(name?.classList.contains("rolling")).toBe(false);
+      row()?.box.blur();
+      await expect.poll(() => byId("help-tip").hidden).toBe(true);
+      // The pointer on the row's check box, not on the name.
+      const mark = row()?.row.querySelector(".check-box") as Element;
+      const box = mark.getBoundingClientRect();
+      mark.dispatchEvent(
+        new PointerEvent("pointermove", {
+          pointerId: 1,
+          bubbles: true,
+          clientX: box.left + box.width / 2,
+          clientY: box.top + box.height / 2,
+        }),
+      );
+      await tipShowsTheName();
+      expect(name?.classList.contains("rolling")).toBe(false);
+    } finally {
+      reduce.mockRestore();
+    }
   });
 });
