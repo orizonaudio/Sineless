@@ -367,6 +367,11 @@ TEST(PairAnalysis, FindsHowLateATrackArrives)
 
     const PairAnalysis early = analyse(b, a);
     EXPECT_EQ(early.offset, -37) << "a track that leads has a negative offset";
+
+    // Up to the whole reach either way: the last offsets searched.
+    const auto farthest = delayed(a, kMaxOffset);
+    EXPECT_EQ(analyse(a, farthest).offset, static_cast<std::ptrdiff_t>(kMaxOffset));
+    EXPECT_EQ(analyse(farthest, a).offset, -static_cast<std::ptrdiff_t>(kMaxOffset));
 }
 
 // The audio searched has whatever length the view leaves, not only whole blocks: one sample short
@@ -473,18 +478,28 @@ TEST(PairAnalysis, SuggestsNoShiftThatMatchesNoBetterThanNone)
 // A steady tone matches itself every period, so a late copy could be lined up at several shifts;
 // the nearest is the one suggested: a 200 Hz tone 40 samples late (its period is 240) reads as
 // 40 samples late, not as leading by a period less that, nor as the first shift that matches
-// almost as well.
+// almost as well. And an 800 Hz tone 12 samples late (its period is 60) reads as 12 samples
+// late, not as flipped and half a period later still, which matches as well.
 TEST(PairAnalysis, LinesUpADelayedToneAtTheNearestShift)
 {
-    std::vector<float> a(kLength);
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        a[i] = 0.5f * static_cast<float>(std::sin(2.0 * std::numbers::pi * 200.0 *
-                                                  static_cast<double>(i) / 48000.0));
+    struct Tone
+    {
+        double frequency;
+        std::size_t late;
+    };
+    for (const Tone& tone :
+         {Tone{.frequency = 200.0, .late = 40}, Tone{.frequency = 800.0, .late = 12}}) {
+        SCOPED_TRACE(testing::Message() << tone.frequency << " Hz");
+        std::vector<float> a(kLength);
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            a[i] = 0.5f * static_cast<float>(std::sin(2.0 * std::numbers::pi * tone.frequency *
+                                                      static_cast<double>(i) / 48000.0));
+        }
+        const PairAnalysis result = analyse(a, delayed(a, tone.late));
+        EXPECT_TRUE(result.related);
+        EXPECT_EQ(result.offset, static_cast<std::ptrdiff_t>(tone.late));
+        EXPECT_FALSE(result.inverted);
     }
-    const PairAnalysis result = analyse(a, delayed(a, 40));
-    EXPECT_TRUE(result.related);
-    EXPECT_EQ(result.offset, 40);
-    EXPECT_FALSE(result.inverted);
 }
 
 // Tracks count as sounding together only where the quieter is within 20 dB of the louder: a track
@@ -964,6 +979,12 @@ TEST_P(BroadPeak, FindsTheTopOfTheMatch)
     EXPECT_LE(std::abs(analysis.offset - static_cast<std::ptrdiff_t>(delay)), indistinct)
         << analysis.offset << " for " << delay;
     EXPECT_FALSE(analysis.inverted);
+    // Seen from the later microphone, the other leads by as much.
+    const PairAnalysis leading = analysePair(delayed(track, delay), track, reach, block);
+    EXPECT_TRUE(leading.related);
+    EXPECT_LE(std::abs(leading.offset + static_cast<std::ptrdiff_t>(delay)), indistinct)
+        << leading.offset << " for -" << delay;
+    EXPECT_FALSE(leading.inverted);
 }
 
 std::vector<BassCase> bassCases()
@@ -1080,13 +1101,16 @@ TEST_P(BetweenSamples, FindsTheDelay)
     EXPECT_TRUE(analysis.related);
     EXPECT_FALSE(analysis.inverted);
     EXPECT_NEAR(analysis.delay, delay, 0.01);
+    // And as whole samples, which a fix of the sum shifts by: the nearest.
+    EXPECT_EQ(analysis.offset, std::lround(analysis.delay));
 }
 
 std::vector<BetweenCase> betweenCases()
 {
     std::vector<BetweenCase> cases;
     for (const double rate : {44100.0, 48000.0}) {
-        for (const double fraction : {0.25, 0.37, 0.5, 0.75}) {
+        // At the quarters of a sample the correlation is read at, and between them.
+        for (const double fraction : {0.2, 0.25, 0.37, 0.45, 0.5, 0.75}) {
             for (const int brightness : {-1, 1, 2}) {
                 cases.push_back({.rate = rate, .fraction = fraction, .brightness = brightness});
             }
@@ -1184,6 +1208,29 @@ TEST(Alignment, FindsADelayUpToItsReachOnly)
     const PairAnalysis outside =
         align(track, delayed(track, static_cast<std::size_t>(reach) + 40), kRate);
     EXPECT_FALSE(outside.related);
+    // The same for a track that leads.
+    const PairAnalysis leading = align(delayedBy(track, reach - 0.63), track, kRate);
+    EXPECT_TRUE(leading.related);
+    EXPECT_NEAR(leading.delay, 0.63 - reach, 0.01);
+    // And a latency of the reach itself is found exactly, on the lowest bass too (noise below
+    // 20 Hz), where the correlation alone points short of it.
+    const auto low = bass(kRate, 4);
+    const PairAnalysis atReach = align(low, delayed(low, static_cast<std::size_t>(reach)), kRate);
+    EXPECT_TRUE(atReach.related);
+    EXPECT_EQ(atReach.delay, reach);
+}
+
+// Align lines up any tracks that sound above the analysis gate, however quiet, as the sum's
+// match does: the delay of a copy 3 dB to 60 dB above the gate is found.
+TEST(Alignment, FindsTheDelayOfQuietTracksAboveTheGate)
+{
+    for (const double above : {3.0, 10.0, 30.0, 60.0}) {
+        SCOPED_TRACE(testing::Message() << above << " dB above the gate");
+        const auto track = atLevel(noise(77, 48000), protocol::kAnalysisGateDbfs + above);
+        const PairAnalysis analysis = align(track, delayed(track, 2208), 48000.0);
+        EXPECT_TRUE(analysis.related);
+        EXPECT_EQ(analysis.delay, 2208.0);
+    }
 }
 
 // A track that leads is found as surely as one that lags, with a negative delay.
