@@ -225,6 +225,10 @@ TEST(TraceGeometry, FillsADifferencesLaneAsThePageDoes)
                 EXPECT_EQ(areas[index], expected[index]) << "value " << index;
             }
         }
+        // With no other track ticked there is nothing to take the difference against: the lane
+        // is drawn as a plain trace, as on the page, not as all lost.
+        const std::vector<bool> unticked(entry.at("compared").size(), false);
+        EXPECT_TRUE(differenceAreas(frame, unticked, entry.at("own").get<std::size_t>()).empty());
         // The same frame showing the sum has no such lane.
         frame.compareLane = protocol::CompareLane::kSum;
         EXPECT_TRUE(differenceAreas(frame, entry.at("compared").get<std::vector<bool>>(),
