@@ -66,7 +66,6 @@ describe("the Measure row", () => {
     expect(rows.map((row) => row.querySelector("span")?.textContent)).toEqual([
       "Channels",
       "Measure",
-      "A4",
     ]);
     expect(rows[1]?.contains(byId("readout-source"))).toBe(true);
     expect(document.querySelector(".statusbar #readout-source")).toBeNull();

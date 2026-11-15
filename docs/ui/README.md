@@ -87,7 +87,7 @@ Grouped by how often someone reaches for it.
 **Rarely**
 
 - Trigger source, slope, level, hysteresis, hold-off.
-- Concert pitch (A4, 400–500 Hz), the Views popover's last row.
+- Concert pitch (A4, 400–500 Hz), the Grid popover's last row.
 - Help.
 
 **Gestures** (keep, but make findable): zoom with ⌘/Ctrl + scroll or pinch, drag to zoom a region, horizontal scroll to pan, double-click to reset, ⌥/Alt to place cursors without snapping.
@@ -136,7 +136,7 @@ From 2026-10-24 and 2026-10-25.
 
 ![Default size with the trigger popover open](images/layout-trigger.png)
 
-- **Toolbar, left to right**, each field an icon and its value: mark and wordmark; Mode (Tracks: Single | Multi in its popover); Views, one field in both modes, its popover's rows following the mode and ending with A4: in Single the channel views and the channel the Meter reads (Measure: L | R | M | S in its popover), reading "LRMS·L", in Multi the group, the lane channel, Compare, Off | On, and Labels, reading "A·M·Σ·" and a tag, Σ dimmed while Compare is off and the tag while the lane labels do not show; Layout (Traces: Overlay | Stack); then, in groups set apart by space alone (#409): Time (Sweep: Beats | Free | Trig), Span, Scale; Trigger (Trig), and Re-arm when the trigger mode is Single; Auto-freeze and Freeze at the right. Only the controls that apply in the current mode are there.
+- **Toolbar, left to right**, each field an icon and its value: mark and wordmark; Mode (Tracks: Single | Multi in its popover); Views, one field in both modes, its popover's rows following the mode: in Single the channel views and the channel the Meter reads (Measure: L | R | M | S in its popover), reading "LRMS·L", in Multi the group, the lane channel, Compare, Off | On, and Labels, reading "A·M·Σ·" and a tag, Σ dimmed while Compare is off and the tag while the lane labels do not show; Layout (Traces: Overlay | Stack); then, in groups set apart by space alone (#409): Time (Sweep: Beats | Free | Trig), Span, Scale; Trigger (Trig), and Re-arm when the trigger mode is Single; Auto-freeze and Freeze at the right. Only the controls that apply in the current mode are there.
 - **No ⋯ menu.** The window can't get narrower than the widest toolbar, so every control always fits. Span, Scale, Views and Trigger show icons instead of labels at every width; their popovers carry the labels.
 - **Sizes**, measured on the widest toolbar (Trig with trigger mode Single, so Re-arm shows, and Frozen; Single and Multi alike, since one Views field serves both): default and minimum **1040 × 580** and **1040 × 420** (the height fits the tallest corner panel: Time cursors in Beats, Level cursors and the Meter) (the toolbar leaves 11.8 px in WebKit, 12.6 in Chromium; the status bar's state area is 500 px, what the bar leaves less 8 px). The wordmark always shows.
 - **Trigger popover:** mode, source, slope, level, hysteresis and hold-off.

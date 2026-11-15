@@ -108,7 +108,7 @@ describe.each([minimumEditorWidth, defaultEditorWidth])(
 // The grid shapes what the screen draws, so it comes first, by the screen's left edge; the Meter,
 // the cursors and Hover, which read it, come after it (#380). Each is a group of its own, set
 // apart by space alone, as far apart as the toolbar's groups (#409). Concert pitch is chosen in
-// the Views popover, not here (#412).
+// the Grid popover, not in the bar itself (#425).
 test("puts Grid first, then the Meter, the cursors and Hover, in two groups", async () => {
   await startApp();
   await settle();
@@ -124,7 +124,9 @@ test("puts Grid first, then the Meter, the cursors and Hover, in two groups", as
     ["meter-toggle", "time-cursors", "level-cursors", "hover-toggle"],
   ]);
   expect(document.querySelector(".status-left > .divider")).toBeNull();
-  expect(document.querySelector(".statusbar #concert-pitch-field")).toBeNull();
+  expect(
+    document.querySelector("#concert-pitch-field")?.closest(".popover")?.id,
+  ).toBe("grid-popover");
   const inside = gaps(groups.at(-1) ?? []);
   const apart = gaps(
     groups

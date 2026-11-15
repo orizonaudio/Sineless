@@ -1,8 +1,10 @@
 // The Grid field in the status bar and its popover (#364, #384): each row chooses its one setting,
 // in force in every time base, the field names the type drawn and keeps its width, and the rows
 // that do not apply are disabled: Density and Beat division with None, Beat division outside
-// Beats.
-import { describe, expect, test } from "vitest";
+// Beats. Its last row is A4 (#425), the concert pitch that tunes the note names the readouts
+// show: it applies whatever the grid, so it is never disabled.
+import { describe, expect, test, vi } from "vitest";
+import { userEvent } from "vitest/browser";
 
 import {
   BeatDivision,
@@ -11,6 +13,7 @@ import {
   TimeBase,
 } from "../../../protocol/src/enums.ts";
 import { choiceLabels } from "../../src/view/choice-labels.ts";
+import { helpTexts } from "../../src/view/help.ts";
 import type {
   GridTypeName,
   TimeBaseName,
@@ -18,10 +21,14 @@ import type {
 import {
   byId,
   choice,
+  cursorRow,
   inTimeBase,
   press,
+  setPressed,
   settle,
+  showDisplay,
   startApp,
+  typeInto,
 } from "./harness.ts";
 
 const timeBaseLabel: Readonly<Record<TimeBaseName, string>> = {
@@ -152,5 +159,83 @@ describe("the Grid popover", () => {
       await settle();
       expect(box(), label).toEqual(first);
     }
+  });
+});
+
+async function openGrid(): Promise<void> {
+  if (byId("grid-popover").hidden) {
+    await userEvent.click(byId("grid-details"));
+  }
+  await expect.element(byId("grid-popover")).toBeVisible();
+}
+
+describe("A4 in the Grid popover", () => {
+  test("is the last row, after Beat division", async () => {
+    await startApp();
+    await openGrid();
+    const rows = [
+      ...byId("grid-popover").querySelectorAll<HTMLElement>(".popover-row"),
+    ].map((row) => row.querySelector("span")?.textContent ?? "");
+    expect(rows).toEqual(["Type", "Density", "Beat division", "A4"]);
+    expect(byId("grid-popover").contains(byId("concert-pitch-field"))).toBe(
+      true,
+    );
+  });
+
+  // Note names are read from the cursors and the Meter with no grid drawn too.
+  test.each(types)("can be set with the grid type %s", async (type) => {
+    const app = await startApp();
+    await press(choice("grid-type", choiceLabels.gridType[type]));
+    await settle();
+    await typeInto("concert-pitch-field", "432");
+    expect(
+      app.sent.filter((message) => message.type === "setSetting").at(-1),
+    ).toEqual({ type: "setSetting", name: "concertPitch", value: 432 });
+  });
+
+  test.each(["Single", "Multi"] as const)(
+    "tunes the time cursors' note name in %s",
+    async (mode) => {
+      await startApp();
+      await showDisplay(mode);
+      // A 10 ms span in Trig puts the time cursors a third of it apart, at 300 Hz: audible, so
+      // named.
+      await inTimeBase("Trig");
+      await typeInto("span-field", "10 ms");
+      await settle();
+      await setPressed(byId("time-cursors"), true);
+      await expect.poll(() => cursorRow("Note")).not.toBe("");
+      const at440 = cursorRow("Note");
+      await openGrid();
+      await typeInto("concert-pitch-field", "432");
+      // A lower A4 names the same frequency sharper.
+      await expect.poll(() => cursorRow("Note")).not.toBe(at440);
+      await typeInto("concert-pitch-field", "440");
+      await expect.poll(() => cursorRow("Note")).toBe(at440);
+    },
+  );
+
+  test("is explained by concert pitch's help", async () => {
+    await startApp();
+    await userEvent.click(byId("help"));
+    await expect.element(byId("help")).toHaveAttribute("aria-pressed", "true");
+    await openGrid();
+    const box = byId("concert-pitch-field").getBoundingClientRect();
+    byId("concert-pitch-field").dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        bubbles: true,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2,
+      }),
+    );
+    await vi.waitFor(
+      () => {
+        expect(byId("help-tip").textContent).toContain(
+          helpTexts.concertPitch.lead,
+        );
+      },
+      { timeout: 5000 },
+    );
   });
 });

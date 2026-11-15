@@ -130,7 +130,7 @@ last eighth while a freeze copies (5.2, CaptureRing).
 | FR-16 | Hover readout and measuring extras. | `hover.test.ts`, `musical-grid.test.ts` |
 | FR-16.1 | With the Hover toggle on (saved, off by default), resting the pointer on a trace (stacked, the lane under the pointer; overlaid, the readout channel, 1.2.1) shows beside it the trace's name, the position (bar.beat.sixteenth, the sixteenth shown on whole beats too, and project time in Beats; time from the trigger point when triggered; time back from the right edge when free-running), the peak level there, and the cycle around the pointer: its length and its frequency and note, one row each, a row with no value "—". The readout is placed at whole pixels. Cycles are found from the rising crossings of the mean level, with hysteresis of 10% of the peak-to-peak range (`crossingHysteresis`), only where a neighbouring cycle lasts within 15% of it (`periodTolerance`) and the level is above −90 dBFS (`analysisGateDbfs`); exact from raw samples, and from min/max columns only with at least 24 columns per cycle, rounded and marked approximate (≈), its note's cents included. A frequency outside the audible range, 20 Hz to 20 kHz (`lowestAudibleHz`, `highestAudibleHz`), here and at the time cursors, reads "—" and has no note. A dotted line marks the point read and a band the cycle. | |
 | FR-16.2 | Beats-mode grid labels (when the grid type draws labels: Ticks, Grid) carry the project time under bar.beat. | |
-| FR-16.3 | A concert pitch setting (A4, 400–500 Hz, default 440), the last row of the Views popover in every display mode, tunes every note name. Nothing else shows it: with nothing shown, 440 Hz is what people assume. | |
+| FR-16.3 | A concert pitch setting (A4, 400–500 Hz, default 440), the last row of the Grid popover, enabled whatever the grid type, tunes every note name. Nothing else shows it: with nothing shown, 440 Hz is what people assume. | |
 
 #### 1.2.3 Settings
 
@@ -223,11 +223,11 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 | Mode popover | Single \| Multi |
 | Time base popover | Beats \| Free \| Trig |
 | Layout popover | Overlay \| Stack |
-| Views popover | Its rows follow the display mode, those of the other hidden. Single: Channels: L, R, M, S toggles, each with its trace's colour · Measure: L \| R \| M \| S, the readout source (1.2.1), the views not drawn disabled (R, M and S on a mono track), the channel read lit; nothing before a Single frame says what is read. Multi: Group (A \| B \| C \| D) · Channel (L \| R \| M \| S) · Compare (Off \| On) · Labels (Off \| On; disabled, keeping its choice, while Compare is on). Both, last: A4 (concert pitch, FR-16.3) |
+| Views popover | Its rows follow the display mode, those of the other hidden. Single: Channels: L, R, M, S toggles, each with its trace's colour · Measure: L \| R \| M \| S, the readout source (1.2.1), the views not drawn disabled (R, M and S on a mono track), the channel read lit; nothing before a Single frame says what is read. Multi: Group (A \| B \| C \| D) · Channel (L \| R \| M \| S) · Compare (Off \| On) · Labels (Off \| On; disabled, keeping its choice, while Compare is on). |
 | Trigger popover | Mode (Auto \| Normal \| Single), Source (Single; the views not drawn disabled, the view the trigger reads lit), Slope, Level, Hysteresis, Hold-off, Position |
 | Screen, top right | The Meter and the cursor readouts, in that order; the frame barcode instead while the diagnostic switch is on (§8.3) |
 | Status bar | Left: Grid (the type drawn) ‖ Meter, Time, Level, Hover, groups set apart as the toolbar's. Right: the state chips, in a fixed width · Help switch · About |
-| Grid popover | Type (None \| Ticks \| Grid) · Density (Coarse \| Medium \| Fine) · Beat division (Regular \| Triplets, Beats only); with None, all but Type disabled |
+| Grid popover | Type (None \| Ticks \| Grid) · Density (Coarse \| Medium \| Fine) · Beat division (Regular \| Triplets, Beats only); with None, Density and Beat division disabled · A4 (concert pitch, FR-16.3), never disabled |
 
 - Every toolbar field shows an icon, not a word, then its value: Mode, Views (a track list), Layout,
   Time, Span, Scale, Trigger. The Views field shows all four letters, those the frame
