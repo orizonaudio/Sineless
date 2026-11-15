@@ -1432,6 +1432,56 @@ describe("lanes layer in order, whatever their channel and target", () => {
       );
     },
   );
+
+  // Compare switched from the sum to the difference: the last lane held the sum's wave and now
+  // holds the difference's filled parts, whose own wave is not drawn. Nothing of the sum is
+  // left in it, whichever channel and target the last lane has.
+  test.each(counts.filter((count) => count >= 3))(
+    "a difference after a sum of %i lanes draws as a renderer made for it",
+    (count) => {
+      const points = 100;
+      const band = (half: number) =>
+        Array.from({ length: points * 2 }, (_, k) =>
+          k % 2 === 0 ? -half : half,
+        );
+      const none = {
+        correlation: 0,
+        related: false,
+        offset: 0,
+        inverted: false,
+      };
+      const tracks = Array.from({ length: count - 1 }, (_, lane) =>
+        band(0.2 + 0.02 * lane),
+      );
+      const compared = (lane: CompareLane, last: number[]) =>
+        frameOf({
+          mode: FrameMode.minMax,
+          pointCount: points,
+          viewStart: 0,
+          viewEnd: 1,
+          lanes: [...tracks, last],
+          comparison: {
+            lane,
+            sumGain: Number.NaN,
+            fixedGain: Number.NaN,
+            matches: tracks.map(() => none),
+          },
+        });
+      const options: DrawOptions = {
+        laneColors: Array.from({ length: count }, (_, lane) => laneColor(lane)),
+        comparedLanes: tracks.map(() => true),
+        layout: ViewLayout.stacked,
+      };
+      const surface = freshSurface(width, height);
+      // The sum reaches far beyond anything the difference's lane then holds.
+      drawOn(surface, compared(CompareLane.sum, band(0.9)), options);
+      const difference = compared(CompareLane.difference, band(0.1));
+      expectSame(
+        drawOn(surface, difference, options),
+        draw(difference, options),
+      );
+    },
+  );
 });
 
 describe("the coverage targets follow the canvas size", () => {

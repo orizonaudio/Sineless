@@ -752,18 +752,25 @@ export class TraceRenderer implements FrameRenderer {
       colors.set(color, slot * 4);
     });
     let bound = -1;
-    for (const { values, lane, slot, thin } of blocks) {
-      const { attachment, channel } = coverageSlot(slot);
-      if (attachment !== bound) {
-        // A clear honours the colour mask: every channel, then this trace's own.
+    // Binds each target up to `attachment` in turn and clears it, leaving that one bound (the
+    // blocks come in slot order). Every target the composite reads is cleared, drawn into or
+    // not: a slot with no block (the difference's own wave, in a target of its own) would
+    // otherwise show what an earlier frame drew there.
+    const clearTo = (attachment: number) => {
+      while (bound < attachment) {
+        bound++;
         gl.bindFramebuffer(
           gl.FRAMEBUFFER,
-          this.coverageFramebuffers[attachment] ?? null,
+          this.coverageFramebuffers[bound] ?? null,
         );
+        // A clear honours the colour mask: every channel, then each trace's own.
         gl.colorMask(true, true, true, true);
         gl.clear(gl.COLOR_BUFFER_BIT);
-        bound = attachment;
       }
+    };
+    for (const { values, lane, slot, thin } of blocks) {
+      const { attachment, channel } = coverageSlot(slot);
+      clearTo(attachment);
       gl.colorMask(channel === 0, channel === 1, channel === 2, channel === 3);
       gl.uniform1f(program.uniform("center"), lane.center);
       gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
@@ -794,6 +801,7 @@ export class TraceRenderer implements FrameRenderer {
       // Five parts of six vertices each.
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, frame.pointCount);
     }
+    clearTo(targets - 1);
     for (const attribute of [here, next, previous]) {
       gl.vertexAttribDivisor(attribute, 0);
       gl.disableVertexAttribArray(attribute);
