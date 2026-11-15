@@ -7646,10 +7646,18 @@ TEST(AlignedView, DrawsTheLanesAgainWhenTheAlignmentMoves)
 // lined-up track's: its lane is this track's or empty, and the difference stays 40 dB or more
 // below the tracks in every column, seen from either track. None is this track alone (which
 // reads as a large difference), nor audio from beside what was filtered: neither once the lanes
-// have been drawn again after Align comes on while it plays, nor in any frame after.
+// have been drawn again after Align comes on while it plays, nor in any frame after. And while
+// they are drawn again, over several frames, the lane is on screen in every one of them. Align
+// comes on mid-bar at 48 kHz and, at 96 kHz, where a bar is more than a frame filters at once,
+// in the frame before the sweep starts over, so that it does while the lanes are being drawn
+// again far ahead of the playhead.
 TEST(AlignedView, NullsInEveryColumnWhileATrackIsLinedUpBetweenSamples)
 {
-    constexpr double kRate = 48000.0;
+    struct Case
+    {
+        double rate;
+        double alignOnAt; // Seconds played, of 2 s bars.
+    };
     constexpr float kLeft = 0.002f; // 40 dB below the noise's 0.2.
     const auto expectNulled = [&](const DecodedFrame& frame) {
         ASSERT_EQ(frame.mode, FrameMode::kMinMax);
@@ -7668,43 +7676,94 @@ TEST(AlignedView, NullsInEveryColumnWhileATrackIsLinedUpBetweenSamples)
             ASSERT_LE(std::abs(value), kLeft) << "not nulled";
         }
     };
-    for (const bool fromCopy : {false, true}) {
-        SCOPED_TRACE(fromCopy ? "from the late track" : "from the early track");
-        const Effect effect{.fraction = 0.37, .lowPass = 1.0 / 3.0, .fromCopy = fromCopy};
-        Session session(kRate, 2);
-        joinCopy(session, kRate, effect);
-        showDifference(session, TimeBase::kBeats);
-        // Align comes on while it plays, with a bar of both tracks on screen as recorded: the
-        // lanes are drawn again over the next frames, beside each frame's new audio; then the
-        // rest of them, with no more audio.
-        setAlign(session.own(), false);
-        session.play(3.0, 0.05);
-        setAlign(session.own(), true);
-        std::optional<DecodedFrame> redrawn;
-        for (int frames = 0; frames < 10; ++frames) {
-            session.play(0.05);
-            redrawn = session.produce();
-            ASSERT_TRUE(redrawn);
-        }
-        if (auto later = settled(session.analyzer())) {
-            redrawn = std::move(later);
-        }
-        ASSERT_TRUE(redrawn);
-        {
-            SCOPED_TRACE("drawn again after Align came on");
-            expectNulled(*redrawn);
-        }
-        // On through a pass of the bar, a frame every few blocks: each drawn from what the
-        // frames before it left.
-        for (int frames = 0; frames < 60; ++frames) {
-            SCOPED_TRACE(testing::Message() << "frame " << frames);
-            session.play(0.05);
-            const std::optional<DecodedFrame> frame = session.produce();
-            ASSERT_TRUE(frame);
-            expectNulled(*frame);
-            if (::testing::Test::HasFatalFailure()) {
-                return;
+    for (const Case& c :
+         {Case{.rate = 48000.0, .alignOnAt = 3.0}, Case{.rate = 96000.0, .alignOnAt = 1.96}}) {
+        for (const bool fromCopy : {false, true}) {
+            SCOPED_TRACE(rateName(c.rate) +
+                         (fromCopy ? " from the late track" : " from the early track"));
+            const Effect effect{.fraction = 0.37, .lowPass = 1.0 / 3.0, .fromCopy = fromCopy};
+            Session session(c.rate, 2);
+            joinCopy(session, c.rate, effect);
+            showDifference(session, TimeBase::kBeats);
+            // Align comes on while it plays, with both tracks on screen as recorded: the lanes
+            // are drawn again over the next frames, beside each frame's new audio; then the rest
+            // of them, with no more audio.
+            setAlign(session.own(), false);
+            session.play(c.alignOnAt, 0.05);
+            setAlign(session.own(), true);
+            std::optional<DecodedFrame> redrawn;
+            for (int frames = 0; frames < 10; ++frames) {
+                session.play(0.05);
+                redrawn = session.produce();
+                ASSERT_TRUE(redrawn);
+                ASSERT_FALSE(silent(trace(*redrawn, 1)))
+                    << "the lane went empty while it was drawn again, frame " << frames;
             }
+            if (auto later = settled(session.analyzer())) {
+                redrawn = std::move(later);
+            }
+            ASSERT_TRUE(redrawn);
+            {
+                SCOPED_TRACE("drawn again after Align came on");
+                expectNulled(*redrawn);
+            }
+            // On through a pass of the bar, a frame every few blocks: each drawn from what the
+            // frames before it left.
+            for (int frames = 0; frames < 60; ++frames) {
+                SCOPED_TRACE(testing::Message() << "frame " << frames);
+                session.play(0.05);
+                const std::optional<DecodedFrame> frame = session.produce();
+                ASSERT_TRUE(frame);
+                expectNulled(*frame);
+                if (::testing::Test::HasFatalFailure()) {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// The effect's delay moves by less than a sample (another setting of its oversampling), the whole
+// samples and the polarity staying: the lanes and the difference are drawn again by the new
+// delay, every column, as a session opened then draws them. Over sixteen bars, where what was
+// drawn before the new delay was found is still on screen once it has been: none is left as
+// filtered for the old one, which would stand out of the null.
+TEST(AlignedView, DrawsTheLanesAgainWhenTheDelayMovesByLessThanASample)
+{
+    constexpr double kRate = 48000.0;
+    constexpr float kLeft = 0.002f; // 40 dB below the noise's 0.2.
+    const Effect first{.fraction = 0.2, .lowPass = 1.0 / 3.0};
+    const Effect second{.fraction = 0.6, .lowPass = 1.0 / 3.0};
+    Session session(kRate, 2);
+    joinCopy(session, kRate, first);
+    showDifference(session, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kSixteenBars));
+    const std::optional<DecodedFrame> before = playAndShow(session, false);
+    ASSERT_TRUE(before);
+    ASSERT_NEAR(matchOf(*before, 1).delay,
+                static_cast<double>(first.delaySamples(kRate)) + first.fraction, 0.01);
+    session.setSignal(1, afterEffect(kRate, second));
+    // More than the search's window: its audio is all of the new routing.
+    session.play(kMatchWindowSeconds + 2.0, 0.05);
+    session.play(0.01);
+    std::optional<DecodedFrame> shown = session.produce();
+    if (auto later = settled(session.analyzer())) {
+        shown = std::move(later);
+    }
+    const std::optional<DecodedFrame> expected = freshView(session, false);
+    ASSERT_TRUE(shown);
+    ASSERT_TRUE(expected);
+    const double moved = static_cast<double>(second.delaySamples(kRate)) + second.fraction;
+    ASSERT_NEAR(matchOf(*expected, 1).delay, moved, 0.01);
+    EXPECT_NEAR(matchOf(*shown, 1).delay, moved, 0.01);
+    ASSERT_EQ(tracesIn(*shown), tracesIn(*expected));
+    ASSERT_EQ(shown->pointCount, expected->pointCount);
+    for (std::size_t index = 1; index < tracesIn(*expected); ++index) {
+        const std::span<const float> drawn = trace(*shown, index);
+        const std::span<const float> fresh = trace(*expected, index);
+        for (std::size_t point = 0; point < fresh.size(); ++point) {
+            ASSERT_NEAR(drawn[point], fresh[point], kLeft)
+                << (index == 1 ? "the track's lane" : "the difference") << ", point " << point;
         }
     }
 }
