@@ -136,12 +136,16 @@ std::size_t seamOf(double position, double count, const Crop& crop)
     return index > crop.first && index < crop.end ? index - crop.first : kNoSeam;
 }
 
-// Adds to `seams` an image's joins (SweepImage::joins) that fall in `crop`, as indices into it.
-void addJoins(const SweepImage& image, const Crop& crop, std::vector<std::size_t>& seams)
+// Adds to `seams` an image's joins (SweepImage::joins) that lie in `crop`, as indices into it. For
+// a lane drawn lined up, each lies `shift` samples before where the image has it: moved first, so
+// that one shifted into the crop from outside it is marked, and one shifted out of it is not.
+void addJoins(const SweepImage& image, const Crop& crop, std::vector<std::size_t>& seams,
+              std::ptrdiff_t shift = 0)
 {
     for (const std::uint64_t join : image.joins()) {
-        if (join > crop.first && join < crop.end) {
-            seams.push_back(static_cast<std::size_t>(join - crop.first));
+        const std::int64_t moved = static_cast<std::int64_t>(join) - shift;
+        if (std::cmp_greater(moved, crop.first) && std::cmp_less(moved, crop.end)) {
+            seams.push_back(static_cast<std::size_t>(moved) - crop.first);
         }
     }
 }
@@ -1900,17 +1904,7 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         // can lie a block from this track's playhead, and has its own transport jumps: no wave
         // across any of them. Aligned, they lie where the shift puts them.
         laneSeams.clear();
-        addJoins(lane.image, crop, laneSeams);
-        if (feed.aligned && feed.offset != 0) {
-            std::size_t kept = 0;
-            for (const std::size_t seam : laneSeams) {
-                const std::ptrdiff_t moved = static_cast<std::ptrdiff_t>(seam) - feed.offset;
-                if (moved > 0 && std::cmp_less(moved, visibleCount)) {
-                    laneSeams[kept++] = static_cast<std::size_t>(moved);
-                }
-            }
-            laneSeams.resize(kept);
-        }
+        addJoins(lane.image, crop, laneSeams, feed.aligned ? feed.offset : 0);
         lanesSeams[laneIndex].assign(laneSeams.begin(), laneSeams.end());
         bool updated = false;
         if (lane.image.length() == count) {
