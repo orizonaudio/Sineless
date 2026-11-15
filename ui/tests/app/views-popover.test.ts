@@ -1,6 +1,6 @@
 // One Views field and popover for every display (#412): its rows follow the mode, those that do
-// not apply hidden, with A4 last in each; A4 there tunes the note names the readouts show; the
-// field's help follows the mode; a mode change closes the popover, a choice made in it does not.
+// not apply hidden; the field's help follows the mode; a mode change closes the popover, a choice
+// made in it does not. A4 is chosen in the Grid popover (#425, grid-popover.test.ts).
 import { describe, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -8,22 +8,17 @@ import { helpTexts } from "../../src/view/help.ts";
 import {
   byId,
   choice,
-  cursorRow,
   displays,
-  inTimeBase,
-  setPressed,
-  settle,
   showDisplay,
   startApp,
-  typeInto,
   type Display,
 } from "./harness.ts";
 
 // The rows each display's Views popover shows, in order.
 const rows: Readonly<Record<Display, readonly string[]>> = {
-  Single: ["Channels", "Measure", "A4"],
-  Multi: ["Group", "Channel", "Compare", "Labels", "A4"],
-  Compare: ["Group", "Channel", "Compare", "Labels", "A4"],
+  Single: ["Channels", "Measure"],
+  Multi: ["Group", "Channel", "Compare", "Labels"],
+  Compare: ["Group", "Channel", "Compare", "Labels"],
 };
 
 function shownRows(): string[] {
@@ -69,7 +64,7 @@ describe.each(displays)("in %s", (display) => {
     );
   });
 
-  test("the Views popover shows the display's rows, then A4, and hides the others", async () => {
+  test("the Views popover shows the display's rows and hides the others", async () => {
     await startApp();
     await showDisplay(display);
     await openViews();
@@ -88,8 +83,8 @@ describe.each(displays)("in %s", (display) => {
     }
   });
 
-  // With help on, the field explains the display's own settings, and the A4 row concert pitch.
-  test("explains the Views field and its A4 row with the display's help", async () => {
+  // With help on, the field explains the display's own settings.
+  test("explains the Views field with the display's help", async () => {
     await startApp();
     await showDisplay(display);
     await userEvent.click(byId("help"));
@@ -107,34 +102,6 @@ describe.each(displays)("in %s", (display) => {
       "views-details",
       helpTexts[display === "Single" ? "channelViews" : "group"].lead,
     );
-    await openViews();
-    await explains("concert-pitch-field", helpTexts.concertPitch.lead);
-  });
-});
-
-describe.each(["Single", "Multi"] as const)("A4 in %s", (mode) => {
-  test("is chosen in the Views popover and tunes the time cursors' note name", async () => {
-    const app = await startApp();
-    await showDisplay(mode);
-    // A 10 ms span in Trig puts the time cursors a third of it apart, at 300 Hz: audible, so named.
-    await inTimeBase("Trig");
-    await typeInto("span-field", "10 ms");
-    await settle();
-    await setPressed(byId("time-cursors"), true);
-    await expect.poll(() => cursorRow("Note")).not.toBe("");
-    const at440 = cursorRow("Note");
-    await openViews();
-    expect(byId("views-popover").contains(byId("concert-pitch-field"))).toBe(
-      true,
-    );
-    await typeInto("concert-pitch-field", "432");
-    expect(
-      app.sent.filter((message) => message.type === "setSetting").at(-1),
-    ).toEqual({ type: "setSetting", name: "concertPitch", value: 432 });
-    // A lower A4 names the same frequency sharper.
-    await expect.poll(() => cursorRow("Note")).not.toBe(at440);
-    await typeInto("concert-pitch-field", "440");
-    await expect.poll(() => cursorRow("Note")).toBe(at440);
   });
 });
 
