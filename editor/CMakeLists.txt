@@ -102,6 +102,31 @@ if(BUILD_TESTING)
         set_source_files_properties(tests/DisplayWaitTests.mm tests/EditorTests.mm tests/MetalTraceRendererTests.mm
                                     tests/NativeTracesTests.mm tests/TraceLayerTests.mm
                                     PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+        # The layout probe, built twice from one source (tests/layout/LayoutProbe.mm): against the
+        # build's SDK, and linked as macOS 11.0, the SDK REAPER 7.83 is built with. WebKit keeps
+        # some layout for apps built against older SDKs, keyed to the main executable's (#424);
+        # LayoutAcrossSdksTest compares the two. The probe links only Cocoa and WebKit, and reads
+        # the editor's sizes from headers, so its link can name any SDK.
+        foreach(probe layout_probe layout_probe_old_sdk)
+            add_executable(${probe} tests/layout/LayoutProbe.mm)
+            target_include_directories(${probe} PRIVATE
+                include $<TARGET_PROPERTY:engine,INTERFACE_INCLUDE_DIRECTORIES>)
+            target_link_libraries(${probe} PRIVATE protocol orizon_warnings "-framework Cocoa"
+                                                   "-framework WebKit")
+            set_source_files_properties(tests/layout/LayoutProbe.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+            # The page it loads is the editor's, built with editor_core.
+            add_dependencies(${probe} editor_core)
+        endforeach()
+        target_link_options(layout_probe_old_sdk PRIVATE
+            "LINKER:-platform_version,macos,${CMAKE_OSX_DEPLOYMENT_TARGET},11.0")
+        target_sources(editor_tests PRIVATE tests/LayoutAcrossSdksTests.mm)
+        set_source_files_properties(tests/LayoutAcrossSdksTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+        target_compile_definitions(editor_tests PRIVATE
+            ORIZON_LAYOUT_PROBE="$<TARGET_FILE:layout_probe>"
+            ORIZON_LAYOUT_PROBE_OLD_SDK="$<TARGET_FILE:layout_probe_old_sdk>"
+            ORIZON_LAYOUT_WALK="${CMAKE_CURRENT_SOURCE_DIR}/tests/layout/walk.js"
+            ORIZON_UI_DIST="${uiOutputDir}")
+        add_dependencies(editor_tests layout_probe layout_probe_old_sdk)
     elseif(WIN32)
         target_sources(editor_tests PRIVATE tests/EditorTestsWin.cpp)
     else()

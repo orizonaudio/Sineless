@@ -22,6 +22,23 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Form controls take nothing from the browser's own stylesheet, which differs with the host:
+   WebKit gives buttons and inputs a legacy margin in hosts built against macOS SDKs before 13.3
+   (REAPER 7.83 is built with 11.0), which set the bars' controls further apart than designed
+   (#424). Every control here is styled by the page. Text alignment is left to the browser, which
+   centres a button's label: the fields rely on it. */
+:where(button, input, select, textarea) {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  appearance: none;
+}
+
 /* The toolbar, the screen inset in the case, and the status bar. */
 .app {
   display: grid;
