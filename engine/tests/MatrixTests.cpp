@@ -1955,6 +1955,91 @@ TEST_P(SweepEdge, IsMeasuredToTheSample)
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, SweepEdge, ::testing::ValuesIn(sweepCases()), modeTestName);
 
+// A host changes a track's channels while its sweep plays (a mono track made stereo, and back).
+// The sweep kept of this track is then drawn again with the channels the track now has, so the
+// Meter's Loudness and Correlation read Left and Right once it is stereo, as on a track stereo
+// all along, and its one channel once it is mono; a sweep kept with one channel would go on
+// reading Left alone, with no correlation. In Beats, in Single, Multi and Compare, at the lowest
+// and highest rates, against sessions that never saw the change.
+class SweepChannels : public ::testing::TestWithParam<ModeCase>
+{
+protected:
+    static void expectSameRows(const DecodedFrame& frame, const DecodedFrame& expected)
+    {
+        EXPECT_FLOAT_EQ(frame.peak, expected.peak);
+        EXPECT_FLOAT_EQ(frame.rms, expected.rms);
+        EXPECT_EQ(frame.invalidSamples, expected.invalidSamples);
+        EXPECT_NEAR(frame.truePeak, expected.truePeak, 1e-6);
+        EXPECT_NEAR(frame.dcOffset, expected.dcOffset, 1e-6);
+        EXPECT_NEAR(frame.loudness, expected.loudness, 1e-3);
+        if (std::isnan(expected.correlation)) {
+            EXPECT_TRUE(std::isnan(frame.correlation)) << "correlation " << frame.correlation;
+        } else {
+            EXPECT_NEAR(frame.correlation, expected.correlation, 1e-5);
+        }
+    }
+};
+
+TEST_P(SweepChannels, AreThoseTheMeterReadsOnceTheTrackChanges)
+{
+    const ModeCase c = GetParam();
+    // The same audio in three sessions, Right out of phase with Left (a correlation under 1): one
+    // whose track changes, one stereo and one mono throughout.
+    const auto start = [&](Session& session, int channels) {
+        session.join({.frequency = 1000.0, .rightPhase = std::numbers::pi / 3.0});
+        session.join({.frequency = 1500.0});
+        session.own().setInputChannels(channels);
+        configure(session.own(), c.mode, TimeBase::kBeats);
+        setMeter(session.own(), true);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+    };
+    Session changed(c.rate, 2);
+    Session stereo(c.rate, 2);
+    Session mono(c.rate, 2);
+    start(changed, 1);
+    start(stereo, 2);
+    start(mono, 1);
+    // More than two sweeps of a second each: all of the sweep shown is from after a change.
+    const auto playAll = [&] {
+        for (Session* session : {&changed, &stereo, &mono}) {
+            session->play(2.5, protocol::kReadoutIntervalSeconds);
+        }
+    };
+    const auto expectAs = [&](Session& reference, bool correlated) {
+        const auto frame = changed.produce();
+        const auto expected = reference.produce();
+        ASSERT_TRUE(frame);
+        ASSERT_TRUE(expected);
+        // Right is not Left: a stereo track's correlation is a value under 1, a mono track's none.
+        ASSERT_EQ(std::isfinite(expected->correlation), correlated);
+        ASSERT_FALSE(expected->correlation > 0.99F);
+        expectSameRows(*frame, *expected);
+        if (c.mode != Display::kCompare) {
+            // (In Compare the matches of the two sessions need not arrive in the same frame.)
+            EXPECT_TRUE(sameValues(frame->data, expected->data)) << "the picture differs";
+        }
+    };
+    playAll();
+    {
+        SCOPED_TRACE("mono from the start");
+        expectAs(mono, false);
+    }
+    changed.own().setInputChannels(2);
+    playAll();
+    {
+        SCOPED_TRACE("made stereo");
+        expectAs(stereo, true);
+    }
+    changed.own().setInputChannels(1);
+    playAll();
+    {
+        SCOPED_TRACE("made mono again");
+        expectAs(mono, false);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, SweepChannels, ::testing::ValuesIn(sweepCases()), modeTestName);
+
 // The Trigger and Free cases of zoomCases().
 std::vector<ModeCase> windowCases()
 {
