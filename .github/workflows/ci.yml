@@ -199,7 +199,7 @@ jobs:
       # starts with this one, so "linux" would also restore linux-tsan's. The shards build the
       # same, so one saves it.
       - if: env.RUN == 'true'
-        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES == 'true' && matrix.shard == 1 }}
           key: linux-asan # Shared with the lint, which uses the same configuration.
@@ -257,7 +257,7 @@ jobs:
       - if: env.CODE == 'true'
         run: npm ci
       - if: env.CODE == 'true'
-        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES }}
           # The lint uses the AddressSanitizer build's configuration, as the linux job does (it
@@ -282,7 +282,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+      - uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES }}
           key: fuzz
@@ -334,7 +334,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+      - uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES }}
           key: macos-main # Not "macos", which would also restore macos-glue's (see the linux job).
@@ -369,7 +369,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+      - uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES }}
           key: macos-glue
@@ -399,7 +399,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+      - uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES }}
           key: macos-unbranded
@@ -576,7 +576,7 @@ jobs:
           cache: npm
       - run: npm ci # The editor embeds the page, built with Vite.
       - run: sudo tools/mutation/install-mull.sh
-      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+      - uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES }}
           key: mutation-cpp
@@ -728,7 +728,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+      - uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES }}
           key: mutation-au
@@ -798,7 +798,7 @@ jobs:
         with:
           node-version-file: .nvmrc
       - if: steps.bench.outputs.present == 'true'
-        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
         with:
           save: ${{ env.SAVE_CACHES }}
           key: engine-work
