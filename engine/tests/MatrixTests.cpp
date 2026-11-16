@@ -4042,8 +4042,9 @@ INSTANTIATE_TEST_SUITE_P(EveryMode, InvalidOnScreen, ::testing::ValuesIn(everyMo
                          });
 
 // Every sample of this track not finite: nothing to measure, so its readouts have no value (NaN),
-// never the level of silence, and every sample measured is counted. In every mode and time base,
-// and in Free at a 2 s span, at the lowest and highest rates.
+// never the level of silence, and every sample measured is counted; with the Meter on too, whose
+// rows would else read a level, a DC offset or a loudness of audio that has none. In every mode
+// and time base, and in Free at a 2 s span, at the lowest and highest rates.
 class AllBroken : public ::testing::TestWithParam<BrokenCase>
 {
 };
@@ -4079,6 +4080,20 @@ TEST_P(AllBroken, HasNoReadouts)
         EXPECT_TRUE(std::isnan(session.field(FrameHeader::kFixedGainOffset)))
             << "fixed gain " << session.field(FrameHeader::kFixedGainOffset);
     }
+
+    setMeter(session.own(), true);
+    session.play(0.005);
+    const auto metered = session.produce();
+    ASSERT_TRUE(metered);
+    EXPECT_TRUE(std::isnan(metered->peak)) << "Peak " << metered->peak;
+    EXPECT_TRUE(std::isnan(metered->rms)) << "RMS " << metered->rms;
+    EXPECT_TRUE(std::isnan(metered->truePeak)) << "True peak " << metered->truePeak;
+    EXPECT_TRUE(std::isnan(metered->dcOffset)) << "DC " << metered->dcOffset;
+    EXPECT_TRUE(std::isnan(metered->loudness)) << "Loudness " << metered->loudness;
+    EXPECT_TRUE(std::isnan(metered->correlation)) << "Correlation " << metered->correlation;
+    // The Meter measures the visible part to the sample.
+    EXPECT_GE(metered->invalidSamples + block, spanSamples);
+    EXPECT_LE(metered->invalidSamples, spanSamples + 2 * block);
 }
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, AllBroken, ::testing::ValuesIn(brokenCases()),

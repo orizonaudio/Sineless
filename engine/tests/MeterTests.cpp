@@ -704,6 +704,44 @@ TEST(MeterBlocksTest, MeasuresNothingWhenALoudnessEdgeCannotBeRead)
     EXPECT_NEAR(again->loudness, whole->loudness, 1.0);
 }
 
+// A view with no finite sample has nothing to measure: every value is none (NaN), never the 0 of
+// silence, a DC offset or a loudness, and every position is counted; from whole blocks and from
+// the samples of a view's edges alike, whichever channels are not finite.
+TEST(MeterBlocksTest, AViewWithNothingFiniteHasNoValues)
+{
+    const double rate = 48000.0;
+    const std::size_t block = blockOf(rate);
+    const std::size_t count = block * 60;
+    const std::vector<float> none(count, std::numeric_limits<float>::quiet_NaN());
+    const std::vector<float> endless(count, std::numeric_limits<float>::infinity());
+    const std::vector<float> sound = tone(1000.0, 0.6, 0.5, rate);
+    for (const Track& track : {Track{.left = none, .right = endless}, Track{.left = endless},
+                               Track{.left = sound, .right = sound, .view = none}}) {
+        const bool viewAlone = !track.view.empty();
+        SCOPED_TRACE(viewAlone             ? "the readout channel alone"
+                     : track.right.empty() ? "mono"
+                                           : "stereo");
+        for (const auto& [first, end] :
+             {std::pair<std::size_t, std::size_t>{0, count}, {block + 7, count - (block / 3)}}) {
+            SCOPED_TRACE(first);
+            const Readouts readouts = measured(track, rate, first, end);
+            EXPECT_TRUE(std::isnan(readouts.peak)) << readouts.peak;
+            EXPECT_TRUE(std::isnan(readouts.rms)) << readouts.rms;
+            EXPECT_TRUE(std::isnan(readouts.truePeak)) << readouts.truePeak;
+            EXPECT_TRUE(std::isnan(readouts.dcOffset)) << readouts.dcOffset;
+            EXPECT_EQ(readouts.invalid, end - first);
+            if (viewAlone) {
+                // Left and Right sound: their loudness and correlation are measured.
+                EXPECT_FALSE(std::isnan(readouts.loudness));
+                EXPECT_NEAR(readouts.correlation, 1.0, 1e-6);
+            } else {
+                EXPECT_TRUE(std::isnan(readouts.loudness)) << readouts.loudness;
+                EXPECT_TRUE(std::isnan(readouts.correlation)) << readouts.correlation;
+            }
+        }
+    }
+}
+
 // Cleared, as while the Meter is off, the statistics fit nothing and measure nothing, so that a
 // Meter switched on again measures afresh, not from the blocks it had before.
 TEST(MeterBlocksTest, FitNothingOnceCleared)
