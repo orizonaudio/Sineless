@@ -2,7 +2,7 @@
 // time base, layout or trigger mode moves and resizes nothing that shows before and after, the
 // changed control included, and the controls keep one order (#355), in groups set apart by space
 // (#409).
-import { afterAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { page } from "vitest/browser";
 
 import {
@@ -15,6 +15,7 @@ import { numberFields } from "../../src/view/fields.ts";
 import { beatSpanLabels } from "../../src/view/musical-grid.ts";
 import { gaps } from "./colour.ts";
 import { byId, settle, startApp, type Started } from "./harness.ts";
+import { emulateOldHostMargins, shownBox, surface, token } from "./spacing.ts";
 
 afterAll(async () => {
   await page.viewport(1200, 720);
@@ -290,24 +291,6 @@ const groups = [
   ["auto-freeze", "freeze"],
 ];
 
-const shownBox = (element: Element): DOMRect | undefined => {
-  const box = element.getBoundingClientRect();
-  return box.width > 0 && getComputedStyle(element).visibility !== "hidden"
-    ? box
-    : undefined;
-};
-
-// The element that draws a control's shape: the control itself, or its shown button.
-function surface(control: Element): HTMLElement {
-  if (control.matches("button, .icon-field")) {
-    return control as HTMLElement;
-  }
-  const button = [
-    ...control.querySelectorAll<HTMLElement>(":scope .field-button"),
-  ].find((candidate) => shownBox(candidate) !== undefined);
-  return button ?? (control as HTMLElement);
-}
-
 const corner = (element: HTMLElement, side: "left" | "right") => {
   const style = getComputedStyle(element);
   return parseFloat(
@@ -325,9 +308,19 @@ const toolbarStates = ["single", "multi"].flatMap((displayMode) =>
   ),
 );
 
+// The groups' spacing holds in a host built against an older macOS SDK too, whose browser gives
+// form controls a margin of their own (#424): emulated here, as Playwright lays out as a current
+// host does.
 describe.each(widths)("the toolbar's groups at %i px", (width) => {
+  let removeOldHost: () => void = () => undefined;
+  beforeAll(() => {
+    removeOldHost = emulateOldHostMargins();
+  });
+  afterAll(() => {
+    removeOldHost();
+  });
   test.each(toolbarStates)(
-    "in $displayMode, $timeBase, $triggerMode: in order, apart, capped at their ends",
+    "in $displayMode, $timeBase, $triggerMode: in order, the designed space apart, capped at their ends",
     async (state) => {
       await page.viewport(width, 600);
       const started = await startApp();
@@ -346,23 +339,28 @@ describe.each(widths)("the toolbar's groups at %i px", (width) => {
           .map((ids) => ids.filter((id) => shownBox(byId(id)) !== undefined))
           .filter((ids) => ids.length > 0),
       );
-      // Controls in a group are closer than the groups before the spacer are to each other.
-      const inside = shown.flatMap((controls) => gaps(controls));
+      // What the controls draw stands --sl-gap-inner apart in a group, and --sl-group-space
+      // between the groups before the spacer (#409); the wordmark's space and the spacer's are
+      // not a group's. Auto-freeze and Freeze are one group.
+      const inside = shown.flatMap((controls) => gaps(controls.map(surface)));
       const apart = shown
         .slice(0, -1)
         .flatMap((controls, i, left) =>
           i === 0
             ? []
             : gaps(
-                [left[i - 1]?.at(-1), controls[0]].filter(
-                  (c) => c !== undefined,
-                ),
+                [left[i - 1]?.at(-1), controls[0]]
+                  .filter((c) => c !== undefined)
+                  .map(surface),
               ),
         );
+      expect(inside.length).toBeGreaterThan(0);
       expect(apart.length).toBeGreaterThan(0);
-      expect(Math.max(...inside)).toBeLessThan(Math.min(...apart));
+      for (const gap of inside) {
+        expect(gap).toBeCloseTo(token("--sl-gap-inner"), 1);
+      }
       for (const gap of apart) {
-        expect(gap).toBeCloseTo(apart[0] ?? NaN, 0);
+        expect(gap).toBeCloseTo(token("--sl-group-space"), 1);
       }
       // A group is rounded at its outer ends only; a control alone in its group, on both sides.
       const innerCorner = corner(surface(byId("views-group")), "left");
