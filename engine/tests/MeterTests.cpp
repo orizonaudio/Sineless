@@ -629,6 +629,31 @@ TEST(MeterBlocksTest, FollowNothingOnceEveryBlockIsDropped)
     EXPECT_FALSE(blocks.fits(block * 4, block, rate, 2));
 }
 
+// Blocks over a span with audio before it (a held trace's view, measured on its own once it is
+// older than the blocks that follow the audio keep): the points after the span's first samples
+// read the samples before the span, which the reader has, so a crest there is read as anywhere
+// else. A tone that crests halfway between two samples, the span stepped a sample at a time
+// across a cycle, against a direct measurement.
+TEST(MeterBlocksTest, TruePeakReadsThePointsAfterASpansFirstSamples)
+{
+    const double rate = 48000.0;
+    const Track track{.left = tone(rate / 90.0, 0.1, 0.5, rate)};
+    const std::size_t count = 34;
+    constexpr std::ptrdiff_t kBefore = 50;
+    for (std::size_t first = 200; first < 290; ++first) {
+        MeterBlocks blocks;
+        blocks.reset(count, blockOf(rate), rate, 1, -kBefore,
+                     static_cast<std::ptrdiff_t>(count + TruePeak::kAfter + 1));
+        const MeterBlocks::Reader read = readerOf(track, static_cast<std::ptrdiff_t>(first));
+        ASSERT_TRUE(blocks.prime(static_cast<std::size_t>(kBefore), read));
+        ASSERT_TRUE(blocks.update(0, count, {}, read));
+        const auto readouts = blocks.measure(0, count, {}, read);
+        ASSERT_TRUE(readouts);
+        EXPECT_NEAR(readouts->truePeak, direct(track, rate, first, first + count).truePeak, 1e-6)
+            << "a span from sample " << first;
+    }
+}
+
 // A read that fails while the blocks follow (the capture overwritten under it, or resized) leaves
 // nothing half-measured to read from: the statistics fit nothing and measure nothing, so that
 // their owner builds them afresh, as it does when a read fails in a sweep.
