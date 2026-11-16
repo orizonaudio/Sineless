@@ -56,6 +56,8 @@ if(NOT ORIZON_FUZZ)
     add_test(NAME fuzz.host_fuzzer.readouts
              COMMAND host_fuzzer --require-oracle=readouts-unmeasured
                      ${seedDir}/host/nonfinite-free)
+    add_test(NAME fuzz.host_fuzzer.metered
+             COMMAND host_fuzzer --require-oracle=readouts-metered ${seedDir}/host/meter-on)
 endif()
 
 if(NOT ORIZON_FUZZ)

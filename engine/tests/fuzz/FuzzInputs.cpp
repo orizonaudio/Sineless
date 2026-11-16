@@ -309,7 +309,8 @@ bool writeHostSeeds(const std::filesystem::path& directory)
 
     // One seed per oracle, each reaching it (engine/tests/fuzz/CMakeLists.txt requires it): a
     // frozen frame drawn again after a rate change, in Single and Multi in both time bases; two
-    // lanes that mirror each other; and readouts of audio with no finite sample.
+    // lanes that mirror each other; readouts of audio with no finite sample; and the readouts the
+    // engine measures only while the Meter is on.
     const auto frozenAfterRateChange = [&](const std::string& name, std::uint8_t mode,
                                            std::uint8_t base) {
         HostSeed seed;
@@ -349,6 +350,21 @@ bool writeHostSeeds(const std::filesystem::path& directory)
         .play(SignalKind::kNonFinite, 1)
         .frame();
     write("nonfinite-free", nonFinite);
+    // The Meter on, which the engine measures the true peak, DC offset, loudness and correlation
+    // for: in Free, and in Multi in Beats, whose lane keeps them per block.
+    const auto on = static_cast<std::uint8_t>(protocol::Toggle::kOn);
+    HostSeed metered;
+    metered.setting(protocol::SettingId::kMeter, on)
+        .setting(protocol::SettingId::kTimeBase, free)
+        .setting(protocol::SettingId::kFreeSpan, 0)
+        .play(SignalKind::kSine, 441)
+        .play(SignalKind::kSine, 441)
+        .frame()
+        .setting(protocol::SettingId::kDisplayMode, multi)
+        .setting(protocol::SettingId::kTimeBase, beats)
+        .play(SignalKind::kSquare, 441)
+        .frame();
+    write("meter-on", metered);
     return ok;
 }
 

@@ -30,6 +30,10 @@ void encodeFrame(const FrameHeaderValues& header, std::span<const float> viewDat
     put(output, Layout::kStartFractionOffset, header.startFraction);
     put(output, Layout::kPeakOffset, header.peak);
     put(output, Layout::kRmsOffset, header.rms);
+    put(output, Layout::kTruePeakOffset, header.truePeak);
+    put(output, Layout::kDcOffsetOffset, header.dcOffset);
+    put(output, Layout::kLoudnessOffset, header.loudness);
+    put(output, Layout::kCorrelationOffset, header.correlation);
     put(output, Layout::kCursorOffset, header.cursor);
     put(output, Layout::kCycleStartOffset, header.cycleStart);
     put(output, Layout::kSpanQuarterNotesOffset, header.spanQuarterNotes);

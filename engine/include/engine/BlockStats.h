@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -11,9 +12,9 @@ namespace orizon::engine {
 // Level statistics of a span whose samples change only in places, kept per block of
 // `blockSamples` samples: each block's peak (largest absolute value) and sum of squares, of its
 // finite samples, and how many are not finite (NaN or infinite, from a broken signal upstream).
-// Readouts over the whole span, and the block energies the Compare view's summing gains need, then
-// cost a pass over the blocks instead of over the samples, and after a change only the blocks
-// holding changed samples are measured again.
+// The Meter's levels over the part on screen (while it is off: measure), and the block energies
+// the Compare view's summing gains need, then cost a pass over the blocks instead of over the
+// samples, and after a change only the blocks holding changed samples are measured again.
 class BlockStats
 {
 public:
@@ -39,11 +40,17 @@ public:
     // statistics are then invalid until the next reset.
     bool update(std::size_t first, std::size_t end, const Reader& read);
 
+    // The levels of samples [first, end), as measured: from the blocks inside them, and from the
+    // samples of the blocks their edges fall inside, read again. None if the statistics are
+    // invalid or a read fails.
+    [[nodiscard]] std::optional<Block> measure(std::size_t first, std::size_t end,
+                                               const Reader& read);
+
     [[nodiscard]] std::size_t sampleCount() const { return spanCount; }
     [[nodiscard]] std::size_t blockSamples() const { return blockLength; }
     [[nodiscard]] std::span<const Block> blocks() const { return values; }
 
-    // Over the whole span.
+    // Over the whole span, as the summing gains read them.
     [[nodiscard]] float peak() const;
     [[nodiscard]] double sumSquares() const;
 

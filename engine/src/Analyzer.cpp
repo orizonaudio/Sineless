@@ -3,7 +3,6 @@
 #include "engine/ChannelViews.h"
 #include "engine/FrameEncoder.h"
 #include "engine/FreeRunning.h"
-#include "engine/Readouts.h"
 #include "engine/Reconstruction.h"
 #include "engine/Reducer.h"
 #include "engine/Sweep.h"
@@ -179,32 +178,32 @@ std::size_t statsBlock(double sampleRate)
         1, static_cast<std::size_t>(std::lround(kStatsBlockSeconds * sampleRate)));
 }
 
-// Peak and RMS over samples [first, end) of a span, from its levels per block: those of the
-// blocks holding them.
-Readouts levelsOf(const BlockStats& stats, std::size_t first, std::size_t end)
+// The samples of a block read with `crop` that the Meter measures: those whose positions lie in the
+// visible part [visibleFrom, visibleTo), so that two views side by side count each sample once.
+// Positions from the block's first sample (crop.first's own start), within [0, count).
+std::pair<std::size_t, std::size_t> meterRange(const Crop& crop, std::size_t count)
 {
-    Readouts readouts;
-    const std::size_t block = stats.blockSamples();
-    const std::span<const BlockStats::Block> blocks = stats.blocks();
-    const std::size_t firstBlock = std::min(first / block, blocks.size());
-    const std::size_t endBlock = std::min((end + block - 1) / block, blocks.size());
-    float peak = 0.0f;
-    double sumSquares = 0.0;
-    std::size_t invalid = 0;
-    for (std::size_t index = firstBlock; index < endBlock; ++index) {
-        peak = std::max(peak, blocks[index].peak);
-        sumSquares += blocks[index].sumSquares;
-        invalid += blocks[index].invalid;
-    }
-    readouts.invalid = static_cast<std::uint32_t>(invalid);
-    const std::size_t samples = std::min(endBlock * block, stats.sampleCount()) -
-                                std::min(firstBlock * block, stats.sampleCount()) - invalid;
-    if (samples > 0) {
-        readouts.peak = peak;
-        readouts.rms = static_cast<float>(std::sqrt(sumSquares / static_cast<double>(samples)));
-    }
-    return readouts;
+    const double from = static_cast<double>(crop.first) + crop.startFraction;
+    const double to = from + crop.visibleSamples;
+    const auto clamp = [count](double position) {
+        return static_cast<std::size_t>(
+            std::clamp(std::ceil(position), 0.0, static_cast<double>(count)));
+    };
+    const std::size_t first = clamp(from);
+    return {first, std::max(first, clamp(to))};
 }
+
+// The seconds of audio before a window's visible part the Meter's filters settle on.
+constexpr double kMeterSettleSeconds =
+    static_cast<double>(MeterBlocks::kSettleBlocks) * kStatsBlockSeconds;
+
+// The seconds of this track's audio the Meter's blocks keep in Trigger and Free: what a freeze
+// there holds (HoldBuffer::kHoldSeconds). It is the same quantity, the audio a view can show or
+// be panned back to: a live window ends at most a paced delay before the newest audio and is at
+// most frozenHoldSeconds long, and a freeze then holds what the blocks already cover, so freezing
+// measures nothing again. The capture holds it at every supported rate, as the hold relies on
+// (CaptureRing::capacityFor); the blocks go by whole blocks, so they keep up to one more.
+constexpr double kMeterKeepSeconds = HoldBuffer::kHoldSeconds;
 
 // Goes on with a sum's pending recomputation (an Analyzer::SumRefresh): up to `step` positions of
 // a span of `length`, from where it stopped, wrapping at the end.
@@ -247,6 +246,13 @@ static_assert(kMaxLanes < 32, "every lane and the sum have a bit");
 std::uint32_t laneBit(std::size_t index)
 {
     return std::uint32_t{1} << index;
+}
+
+// The channel count a lane's image is read with: one view of the captured channels (another
+// track's lane channel), or this track's captured channels.
+int imageChannels(const SweepImage& image, int inputChannels)
+{
+    return image.channels() == 1 ? 1 : inputChannels;
 }
 
 // Whether any of `samples` is not finite (NaN or infinite, from a broken signal upstream).
@@ -473,20 +479,23 @@ void Analyzer::arm()
 }
 
 // Readouts are shown at most every 100 ms, so live they are measured no more often than every
-// 100 ms of audio, unless the settings or the view to measure (`view`, which a track turned mono
-// changes) changed. Frozen frames come only when something changed (such as a pan), so they always
-// measure. `end` is this track's capture end.
-bool Analyzer::readoutsDue(std::uint64_t end, ChannelView view) const
+// 100 ms of audio, unless the settings, the view to measure (`view`, which a track turned mono
+// changes) or the zoom (`shown`) changed. Frozen frames come only when something changed (such as a
+// pan), so they always measure. `end` is this track's capture end.
+bool Analyzer::readoutsDue(std::uint64_t end, ChannelView view, const ReadoutView& shown) const
 {
     const auto interval =
         static_cast<std::uint64_t>(protocol::kReadoutIntervalSeconds * engine.sampleRate());
     return isFrozen || !readoutCache.valid || readoutCache.view != view ||
            readoutCache.settings != frameSettings || readoutCache.frozen != isFrozen ||
-           end < readoutCache.end || end - readoutCache.end >= interval;
+           readoutCache.shown != shown || end < readoutCache.end ||
+           end - readoutCache.end >= interval;
 }
 
-void Analyzer::storeReadouts(const Readouts& values, std::uint64_t end, ChannelView view)
+void Analyzer::storeReadouts(const Readouts& values, std::uint64_t end, ChannelView view,
+                             const ReadoutView& shown)
 {
+    readoutCache.shown = shown;
     readoutCache.values = values;
     readoutCache.end = end;
     readoutCache.view = view;
@@ -504,6 +513,10 @@ void Analyzer::applyReadouts(FrameHeaderValues& header)
     header.invalidSamples = readoutCache.values.invalid;
     header.peak = readoutCache.values.peak;
     header.rms = readoutCache.values.rms;
+    header.truePeak = readoutCache.values.truePeak;
+    header.dcOffset = readoutCache.values.dcOffset;
+    header.loudness = readoutCache.values.loudness;
+    header.correlation = readoutCache.values.correlation;
 }
 
 Analyzer::Commands Analyzer::takeCommands()
@@ -911,13 +924,10 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
     } else if (freeRunning) {
         const std::uint64_t end = edge;
         const auto spanSamples = static_cast<std::uint64_t>(std::llround(span));
-        const FreeWindow whole = freeWindow(end, spanSamples, command.columns);
         const auto visibleSamples = std::max<std::uint64_t>(
             1,
             static_cast<std::uint64_t>(std::llround((command.viewEnd - command.viewStart) * span)));
         window.edge = static_cast<double>(end);
-        window.readoutStart = whole.start;
-        window.readoutCount = whole.sampleCount;
         if (visibleSamples <= command.columns) {
             // Raw samples: the view of the whole span, as a triggered window crops it, read with
             // a sample beyond each edge so the trace reaches past the screen's edges. Only those
@@ -1209,14 +1219,24 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     }
     if (synced) {
-        // The readout view's levels per block, kept in step with the sweep on every frame, and
-        // measured afresh from the whole sweep when the readout view changes.
+        // The levels per block, kept in step with the sweep on every frame, and measured afresh
+        // from the whole sweep when the readout view changes. With the Meter on, its statistics
+        // too; off, they are not kept.
         const std::size_t block = statsBlock(sampleRate);
         const bool fresh = !sweepStats.fits(static_cast<std::size_t>(sampleCount), block) ||
                            sweepStatsChannels != inputChannels || sweepStatsView != readoutView;
         sweepStatsChannels = inputChannels;
         sweepStatsView = readoutView;
         if (!updateStats(sweepStats, image, readoutView, inputChannels, fresh, block)) {
+            return false;
+        }
+        if (!metered()) {
+            sweepMeter.clear();
+        } else if (!updateMeter(sweepMeter, image, readoutView, inputChannels,
+                                fresh ||
+                                    !sweepMeter.fits(static_cast<std::size_t>(sampleCount), block,
+                                                     sampleRate, std::min(inputChannels, 2)),
+                                block, sampleRate)) {
             return false;
         }
         image.clearChanges();
@@ -1231,28 +1251,26 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     reconstruct(header, frameData.size(), crop, factor,
                 [&](std::size_t) { return std::span<const std::size_t>(viewSeams); });
 
-    // Readouts cover the whole span, whatever part is on screen, at most every 100 ms of audio:
-    // a sweep's from its levels per block, a window's from its samples.
+    // Readouts cover the visible part, at most every 100 ms of audio and whenever the zoom
+    // changes: a sweep's from its statistics per block, a window's from its samples.
     const std::uint64_t end = engine.captureRing().endIndex();
-    if (readoutsDue(end, readoutView)) {
-        if (synced) {
-            const auto shown = static_cast<double>(sampleCount);
-            storeReadouts(levelsOf(sweepStats,
-                                   static_cast<std::size_t>(std::llround(window.subStart * shown)),
-                                   static_cast<std::size_t>(std::llround(window.subEnd * shown))),
-                          end, readoutView);
+    const ReadoutView shown{.viewStart = window.viewStart, .viewEnd = window.viewEnd};
+    if (readoutsDue(end, readoutView, shown)) {
+        const auto [first, last] = meterRange(crop, static_cast<std::size_t>(sampleCount));
+        if (synced && metered()) {
+            meterJoins.assign(image.joins().begin(), image.joins().end());
+            std::ranges::sort(meterJoins);
+            storeReadouts(sweepMeter.measure(first, last, meterJoins,
+                                             meterReader(image, inputChannels, readoutView, 0)),
+                          end, readoutView, shown);
+        } else if (synced) {
+            storeReadouts(
+                levelsOf(sweepStats, first, last, statsReader(image, inputChannels, readoutView)),
+                end, readoutView, shown);
         } else {
-            const std::uint64_t readoutStart =
-                window.readoutCount > 0 ? window.readoutStart : start;
-            const std::uint64_t readoutCount =
-                window.readoutCount > 0 ? window.readoutCount : sampleCount;
-            viewSamples.resize(static_cast<std::size_t>(readoutCount));
-            scratch.resize(std::max(scratch.size(), viewSamples.size()));
-            if (!readSamples(source, inputChannels, readoutView, readoutStart, viewSamples,
-                             scratch)) {
-                return false;
-            }
-            storeReadouts(computeReadouts(viewSamples), end, readoutView);
+            storeReadouts(measureWindow(source, inputChannels, readoutView, start + first,
+                                        start + last, sampleRate),
+                          end, readoutView, shown);
         }
     }
     applyReadouts(header);
@@ -1264,10 +1282,7 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
 bool Analyzer::updateStats(BlockStats& stats, const SweepImage& sweep, ChannelView view,
                            int channels, bool fresh, std::size_t block)
 {
-    const auto read = [&](std::size_t first, std::span<float> destination) {
-        readScratch.resize(std::max(readScratch.size(), destination.size()));
-        return readSamples(sweep, channels, view, first, destination, readScratch);
-    };
+    const BlockStats::Reader read = statsReader(sweep, channels, view);
     const auto length = static_cast<std::size_t>(sweep.length());
     if (fresh) {
         stats.reset(length, block);
@@ -1280,6 +1295,187 @@ bool Analyzer::updateStats(BlockStats& stats, const SweepImage& sweep, ChannelVi
                    measured;
     }
     return measured;
+}
+
+BlockStats::Reader Analyzer::statsReader(const SampleSource& source, int channels, ChannelView view)
+{
+    return [this, &source, channels, view](std::size_t first, std::span<float> destination) {
+        readScratch.resize(std::max(readScratch.size(), destination.size()));
+        return readSamples(source, channels, view, first, destination, readScratch);
+    };
+}
+
+// The Peak, RMS and invalid count of samples [first, end) of a span, from its levels per block and
+// the samples of the blocks at the edges: what the engine measures of the Meter while it is off.
+Readouts Analyzer::levelsOf(BlockStats& stats, std::size_t first, std::size_t end,
+                            const BlockStats::Reader& read)
+{
+    Readouts readouts;
+    const auto levels = first < end ? stats.measure(first, end, read) : std::nullopt;
+    if (!levels) {
+        return readouts;
+    }
+    readouts.invalid = levels->invalid;
+    const std::size_t finite = end - first - levels->invalid;
+    if (finite > 0) {
+        readouts.peak = levels->peak;
+        readouts.rms =
+            static_cast<float>(std::sqrt(levels->sumSquares / static_cast<double>(finite)));
+    }
+    return readouts;
+}
+
+// Whether the Meter shows: the engine then measures its true peak, DC offset, loudness and
+// correlation, which nothing else reads; else its levels alone, for the Invalid samples chip and
+// for the Meter as it is switched on (FR-7).
+bool Analyzer::metered() const
+{
+    return frameSettings.enumValue<protocol::Toggle>(SettingId::kMeter) == protocol::Toggle::kOn;
+}
+
+bool Analyzer::updateMeter(MeterBlocks& meter, const SweepImage& sweep, ChannelView view,
+                           int channels, bool fresh, std::size_t block, double sampleRate)
+{
+    const MeterBlocks::Reader read = meterReader(sweep, channels, view, 0);
+    const auto length = static_cast<std::size_t>(sweep.length());
+    meterJoins.assign(sweep.joins().begin(), sweep.joins().end());
+    std::ranges::sort(meterJoins);
+    if (fresh) {
+        meter.reset(length, block, sampleRate, std::min(channels, 2), 0,
+                    static_cast<std::ptrdiff_t>(length));
+        return meter.update(0, length, meterJoins, read);
+    }
+    bool measured = true;
+    for (const SweepImage::Range& range : sweep.changes()) {
+        measured = meter.update(static_cast<std::size_t>(range.first),
+                                static_cast<std::size_t>(range.end), meterJoins, read) &&
+                   measured;
+    }
+    return measured;
+}
+
+MeterBlocks::Reader Analyzer::meterReader(const SampleSource& source, int channels,
+                                          ChannelView view, std::int64_t origin)
+{
+    return [this, &source, channels, view, origin](std::ptrdiff_t first, std::span<float> into,
+                                                   std::span<float> left, std::span<float> right) {
+        const std::int64_t at = origin + first;
+        if (at < 0) {
+            return false;
+        }
+        const auto from = static_cast<std::uint64_t>(at);
+        readScratch.resize(std::max({readScratch.size(), into.size(), left.size()}));
+        // Each as asked for: the readout channel alone while the levels alone are measured, Left
+        // and Right alone where only the K-weighting is.
+        return (into.empty() || readSamples(source, channels, view, from, into, readScratch)) &&
+               (left.empty() ||
+                readSamples(source, channels, ChannelView::kLeft, from, left, readScratch)) &&
+               (right.empty() ||
+                readSamples(source, channels, ChannelView::kRight, from, right, readScratch));
+    };
+}
+
+Readouts Analyzer::measureWindow(const SampleSource& source, int channels, ChannelView view,
+                                 std::uint64_t first, std::uint64_t end, double sampleRate)
+{
+    const std::uint64_t newest = source.endIndex();
+    if (first >= end || end > newest) {
+        return {};
+    }
+    const auto count = static_cast<std::size_t>(end - first);
+    if (!metered()) {
+        // The Meter is off: the visible part's levels, from its own samples.
+        streamMeter.clear();
+        spotMeter.clear();
+        meterView.resize(count);
+        readScratch.resize(std::max(readScratch.size(), count));
+        if (!readSamples(source, channels, view, first, meterView, readScratch)) {
+            return {};
+        }
+        const BlockStats::Block levels = measureBlock(meterView);
+        Readouts readouts;
+        readouts.invalid = levels.invalid;
+        if (count > levels.invalid) {
+            readouts.peak = levels.peak;
+            readouts.rms = static_cast<float>(
+                std::sqrt(levels.sumSquares / static_cast<double>(count - levels.invalid)));
+        }
+        return readouts;
+    }
+    // The Meter is on: its statistics per block of this track's audio, which follow it, so that a
+    // readout measures the audio since the last one and the samples at the view's edges.
+    const std::size_t block = statsBlock(sampleRate);
+    const int measuredChannels = channels > 1 ? 2 : 1;
+    const std::uint64_t held = source.beginIndex();
+    const auto settle = static_cast<std::uint64_t>(std::llround(kMeterSettleSeconds * sampleRate));
+    const auto keep = static_cast<std::uint64_t>(std::llround(kMeterKeepSeconds * sampleRate));
+    const auto slack =
+        static_cast<std::uint64_t>(std::llround(protocol::kPacingDelayCapSeconds * sampleRate));
+    const std::uint64_t reach = newest - first;
+    if (reach > keep + slack) {
+        // A trace held from before what the blocks keep (Normal's, while no trigger comes): from
+        // statistics of its own, over it alone, the filters settled on the audio before it.
+        const std::uint64_t readable = first > held ? std::min(first - held, settle) : 0;
+        const std::uint64_t after = std::min<std::uint64_t>(newest - end, TruePeak::kAfter + 1);
+        const MeterBlocks::Reader read =
+            meterReader(source, channels, view, static_cast<std::int64_t>(first));
+        spotMeter.reset(count, block, sampleRate, measuredChannels,
+                        -static_cast<std::ptrdiff_t>(readable),
+                        static_cast<std::ptrdiff_t>(count + after));
+        if (!spotMeter.prime(static_cast<std::size_t>(readable), read) ||
+            !spotMeter.update(0, count, {}, read)) {
+            return {};
+        }
+        return spotMeter.measure(0, count, {}, read);
+    }
+    // The oldest audio kept: what a view can show or be panned back to, and the start of a window
+    // placed a moment ago, since when the audio thread wrote on.
+    const std::uint64_t wanted = std::max(keep, reach);
+    const std::uint64_t oldest = std::max(held, newest > wanted ? newest - wanted : 0);
+    const auto readableBefore = [&](std::uint64_t origin, std::uint64_t most) {
+        return -static_cast<std::ptrdiff_t>(std::min<std::uint64_t>(origin - held, most));
+    };
+    bool followed = false;
+    if (streamMeter.fits(streamMeter.sampleCount(), block, sampleRate, measuredChannels) &&
+        streamView == view && streamChannels == channels &&
+        oldest < streamOrigin + streamMeter.sampleCount()) {
+        // Whole blocks before the oldest audio kept go; one more where the first would start
+        // before what the source holds, whose samples could not be read.
+        std::uint64_t dropped = oldest > streamOrigin ? (oldest - streamOrigin) / block : 0;
+        if (streamOrigin + (dropped * block) < held) {
+            ++dropped;
+        }
+        const std::uint64_t origin = streamOrigin + (dropped * block);
+        if (origin <= first && origin < streamOrigin + streamMeter.sampleCount()) {
+            const auto readableEnd = static_cast<std::ptrdiff_t>(newest - origin);
+            followed = streamMeter.follow(
+                static_cast<std::size_t>(dropped), static_cast<std::size_t>(newest - origin),
+                readableBefore(origin, TruePeak::kBefore), readableEnd,
+                meterReader(source, channels, view, static_cast<std::int64_t>(origin)));
+            streamOrigin = origin;
+        }
+    }
+    if (!followed) {
+        // Built afresh from the oldest audio kept, the filters settled on the audio before it.
+        const auto length = static_cast<std::size_t>(newest - oldest);
+        const std::ptrdiff_t before = readableBefore(oldest, settle);
+        const MeterBlocks::Reader read =
+            meterReader(source, channels, view, static_cast<std::int64_t>(oldest));
+        streamMeter.reset(length, block, sampleRate, measuredChannels, before,
+                          static_cast<std::ptrdiff_t>(length));
+        streamOrigin = oldest;
+        streamView = view;
+        streamChannels = channels;
+        if (!streamMeter.prime(static_cast<std::size_t>(-before), read) ||
+            !streamMeter.update(0, length, {}, read)) {
+            streamMeter.clear();
+            return {};
+        }
+    }
+    return streamMeter.measure(
+        static_cast<std::size_t>(first - streamOrigin),
+        static_cast<std::size_t>(end - streamOrigin), {},
+        meterReader(source, channels, view, static_cast<std::int64_t>(streamOrigin)));
 }
 
 // The tracks of the multi-track view: this instance's own and the others it shows, in the host's
@@ -1356,8 +1552,18 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
             continue;
         }
         const auto found = lanes.find(member.serial);
-        const bool isNew = found == lanes.end();
-        auto lane = isNew ? std::make_unique<Lane>() : std::move(found->second);
+        // This track's image holds its captured channels, which the Meter reads Left and Right
+        // from: both of a stereo track, whether or not the Meter shows, so that switching it on
+        // reads the sweep as drawn (an image built for it then would hold only what the capture
+        // still has); a mono track's one, as its held audio has no other. A lane whose image
+        // holds another count (the track's channels changed) starts over, once live: frozen, it
+        // keeps showing the audio held.
+        const int ownChannels = member.serial == ownSerial && member.engine->inputChannels() > 1
+                                    ? CaptureRing::kMaxChannels
+                                    : 1;
+        const bool isNew =
+            found == lanes.end() || (!isFrozen && found->second->image.channels() != ownChannels);
+        auto lane = isNew ? std::make_unique<Lane>(ownChannels) : std::move(found->second);
         lane->engine = std::move(member.engine);
         const CaptureRing& ring = lane->engine->captureRing();
         if (!isFrozen) {
@@ -1368,10 +1574,12 @@ std::uint64_t Analyzer::selectLanes(const Settings& settings)
             lane->heldNothing = true;
         }
         if (isFrozen && !lane->hold.held() && !lane->heldNothing) {
-            // This track's sweep holds every channel, so that a channel chosen while frozen is
-            // drawn from it (in Trigger and Free its lane reads the HoldBuffer); another track's
-            // holds its lane channel alone.
-            const bool allChannels = synced && member.serial == ownSerial;
+            // This track's holds every channel, so that a channel chosen while frozen is drawn
+            // from it, and its lane's image, which holds both channels of a stereo track, can be
+            // built from it: in Beats, and in Trigger and Free too (where its lane reads the
+            // HoldBuffer), for Beats chosen while frozen. Another track's holds its lane channel
+            // alone.
+            const bool allChannels = member.serial == ownSerial;
             // A live Beats lane is held where it was placed at the paced playhead (each step
             // places it), as Single's sweep is (freeze); not paced, to its newest audio.
             const std::optional<std::uint64_t> placed = synced && lane->window && pacedEdge.paced()
@@ -1896,8 +2104,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         Lane& lane = *lanes.at(serial);
         ColumnReduction& reduction = lane.reduction;
         const SumPart feed = laneFeed(laneIndex);
-        // The image holds the lane channel alone: read as is, with no working space; aligned,
-        // through its alignment, as the difference reads it.
+        // The lane channel, read from the image (another track's holds it alone; this track's
+        // may hold both captured channels); aligned, through its alignment, as the difference
+        // reads it.
         const auto read = [&](std::size_t first, std::span<float> destination) {
             workDone.samplesReduced += destination.size();
             if (feed.aligned) {
@@ -1905,8 +2114,9 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                 readSum(onePart, static_cast<std::size_t>(count), crop.first + first, destination);
                 return true;
             }
-            return readSamples(lane.image, lane.image.channels(), channel, crop.first + first,
-                               destination, {});
+            laneScratch.resize(std::max(laneScratch.size(), destination.size()));
+            return readSamples(lane.image, imageChannels(lane.image, lane.engine->inputChannels()),
+                               channel, crop.first + first, destination, laneScratch);
         };
         // Each lane's image joins its newest pass to the one before at its own newest sample, which
         // can lie a block from this track's playhead, and has its own transport jumps: no wave
@@ -1953,9 +2163,22 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                                         reduction.update(from, to, read, laneSeams) && updated;
                                 });
             }
-            // The lane's levels per block, for readouts and summing gains.
-            updateStats(lane.stats, lane.image, channel, lane.image.channels(),
+            // The lane's levels per block, for summing gains; this track's, the Meter's statistics.
+            updateStats(lane.stats, lane.image, channel,
+                        imageChannels(lane.image, lane.engine->inputChannels()),
                         !lane.stats.fits(static_cast<std::size_t>(count), block), block);
+            if (&lane != &own) {
+                // Another track's lane has no Meter.
+            } else if (!metered()) {
+                lane.meter.clear();
+            } else {
+                const int captured = imageChannels(lane.image, lane.engine->inputChannels());
+                const int channels = std::min(captured, 2);
+                (void)updateMeter(
+                    lane.meter, lane.image, channel, captured,
+                    !lane.meter.fits(static_cast<std::size_t>(count), block, sampleRate, channels),
+                    block, sampleRate);
+            }
             header.invalidLanes |=
                 holdsInvalid(lane.stats, crop.first + crop.lead, crop.end - crop.trail)
                     ? laneBit(laneIndex)
@@ -2001,16 +2224,31 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                                          : std::span<const std::size_t>(sumSeams);
     });
 
-    // Readouts measure the own track's lane channel: peak and RMS over the whole span from its
-    // levels per block, at most every 100 ms of audio.
+    // Readouts measure the own track's lane channel over the visible part, at most every 100 ms
+    // of audio and whenever the zoom changes: from the Meter's statistics per block while it is
+    // on, else from the lane's levels per block, which the summing gains read too.
     const std::uint64_t ownEnd = own.engine->captureRing().endIndex();
     const ChannelView ownView = ownLaneView(settings);
-    if (readoutsDue(ownEnd, ownView) && own.stats.fits(static_cast<std::size_t>(count), block)) {
+    const ReadoutView zoom{.viewStart = command.viewStart, .viewEnd = command.viewEnd};
+    const int ownCaptured = imageChannels(own.image, own.engine->inputChannels());
+    const auto [first, last] = meterRange(crop, static_cast<std::size_t>(count));
+    if (!readoutsDue(ownEnd, ownView, zoom)) {
+        // Measured within the last 100 ms of audio, on this view.
+    } else if (!metered()) {
+        // The own lane's levels, read through the lanes they are kept in.
+        BlockStats& stats = lanes.at(ownSerial)->stats;
+        if (stats.fits(static_cast<std::size_t>(count), block)) {
+            storeReadouts(
+                levelsOf(stats, first, last, statsReader(own.image, ownCaptured, ownView)), ownEnd,
+                ownView, zoom);
+        }
+    } else if (MeterBlocks& meter = lanes.at(ownSerial)->meter; meter.fits(
+                   static_cast<std::size_t>(count), block, sampleRate, std::min(ownCaptured, 2))) {
+        meterJoins.assign(own.image.joins().begin(), own.image.joins().end());
+        std::ranges::sort(meterJoins);
         storeReadouts(
-            levelsOf(own.stats,
-                     static_cast<std::size_t>(std::llround(subStart * static_cast<double>(count))),
-                     static_cast<std::size_t>(std::llround(subEnd * static_cast<double>(count)))),
-            ownEnd, ownView);
+            meter.measure(first, last, meterJoins, meterReader(own.image, ownCaptured, ownView, 0)),
+            ownEnd, ownView, zoom);
     }
     applyReadouts(header);
 
@@ -2258,20 +2496,16 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     reconstruct(header, laneOrder.size(), crop, factor,
                 [](std::size_t) { return std::span<const std::size_t>(); });
 
-    // Readouts measure this track's lane channel over the whole span, at most every 100 ms of
-    // audio.
+    // Readouts measure this track's lane channel over the visible part, at most every 100 ms of
+    // audio and whenever the zoom changes.
     const std::uint64_t ownEnd = engine.captureRing().endIndex();
     const ChannelView ownView = ownLaneView(frameSettings);
-    if (readoutsDue(ownEnd, ownView)) {
-        const std::uint64_t readoutStart = window.readoutCount > 0 ? window.readoutStart : start;
-        const std::uint64_t readoutCount =
-            window.readoutCount > 0 ? window.readoutCount : sampleCount;
-        viewSamples.resize(static_cast<std::size_t>(readoutCount));
-        scratch.resize(std::max(scratch.size(), viewSamples.size()));
-        if (readSamples(ownSource, engine.inputChannels(), ownView, readoutStart, viewSamples,
-                        scratch)) {
-            storeReadouts(computeReadouts(viewSamples), ownEnd, ownView);
-        }
+    const ReadoutView shown{.viewStart = window.viewStart, .viewEnd = window.viewEnd};
+    if (readoutsDue(ownEnd, ownView, shown)) {
+        const auto [first, last] = meterRange(crop, static_cast<std::size_t>(sampleCount));
+        storeReadouts(measureWindow(ownSource, engine.inputChannels(), ownView, start + first,
+                                    start + last, sampleRate),
+                      ownEnd, ownView, shown);
     }
     applyReadouts(header);
 
@@ -2760,9 +2994,11 @@ void Analyzer::readLaneImage(std::size_t index, std::size_t length, std::uint64_
                              std::span<float> into)
 {
     const Lane& lane = *lanes.at(laneOrder[index]);
-    // The image holds the lane channel alone: read as is, with no working space.
-    if (lane.image.length() != length || !readSamples(lane.image, lane.image.channels(),
-                                                      laneChannel(frameSettings), from, into, {})) {
+    // Another track's image holds the lane channel alone; this track's, its captured channels.
+    laneScratch.resize(std::max(laneScratch.size(), into.size()));
+    if (lane.image.length() != length ||
+        !readSamples(lane.image, imageChannels(lane.image, lane.engine->inputChannels()),
+                     laneView(lane, laneChannel(frameSettings)), from, into, laneScratch)) {
         std::ranges::fill(into, 0.0f);
     }
 }
@@ -3714,20 +3950,17 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
     header.compareLane = comparisonCache.lane;
     header.nullDepth = comparisonCache.nullDepth;
 
-    // Readouts measure this track's lane channel over the whole span, at most every 100 ms of
-    // audio.
+    // Readouts measure this track's lane channel over the visible part, at most every 100 ms of
+    // audio and whenever the zoom changes.
     const std::uint64_t ownEnd = engine.captureRing().endIndex();
     const ChannelView ownView = ownLaneView(frameSettings);
-    if (readoutsDue(ownEnd, ownView)) {
-        const std::uint64_t readoutStart = window.readoutCount > 0 ? window.readoutStart : start;
-        const std::uint64_t readoutCount =
-            window.readoutCount > 0 ? window.readoutCount : sampleCount;
-        viewSamples.resize(static_cast<std::size_t>(readoutCount));
-        scratch.resize(std::max(scratch.size(), viewSamples.size()));
-        if (readSamples(*laneSources[ownIndex].source, laneSources[ownIndex].channels, ownView,
-                        readoutStart, viewSamples, scratch)) {
-            storeReadouts(computeReadouts(viewSamples), ownEnd, ownView);
-        }
+    const ReadoutView shown{.viewStart = window.viewStart, .viewEnd = window.viewEnd};
+    if (readoutsDue(ownEnd, ownView, shown)) {
+        const auto [visibleFirst, visibleEnd] =
+            meterRange(crop, static_cast<std::size_t>(sampleCount));
+        storeReadouts(measureWindow(*laneSources[ownIndex].source, laneSources[ownIndex].channels,
+                                    ownView, start + visibleFirst, start + visibleEnd, sampleRate),
+                      ownEnd, ownView, shown);
     }
     applyReadouts(header);
 

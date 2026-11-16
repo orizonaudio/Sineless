@@ -1,5 +1,5 @@
 {
-  "description": "A frame encoded by Python's struct module, independently of both implementations. Mode 0 is minMax; flags 3 is triggered and frozen; views 5 is left + mid; cursor -1 and zero musical fields mean no tempo-synced sweep; the view fields, float64, say the frame covers a quarter of the span from 0.1, which a float32 would not hold exactly; pointsPerSample 1 is the samples alone; frozen in Seconds mode, it can be panned back 1.5 s. Three samples this track's readouts measure are not finite (invalidSamples 3). The audio shown was held at 44.1 kHz (sampleRate 44100). It shows 0.5 s across the whole screen (spanSeconds). Its trigger point sits halfway across the unpanned span (triggerPosition 0.5).",
+  "description": "A frame encoded by Python's struct module, independently of both implementations. Mode 0 is minMax; flags 3 is triggered and frozen; views 5 is left + mid; cursor -1 and zero musical fields mean no tempo-synced sweep; the view fields, float64, say the frame covers a quarter of the span from 0.1, which a float32 would not hold exactly; pointsPerSample 1 is the samples alone; frozen in Seconds mode, it can be panned back 1.5 s. Three samples this track's readouts measure are not finite (invalidSamples 3). The audio shown was held at 44.1 kHz (sampleRate 44100). It shows 0.5 s across the whole screen (spanSeconds). Its trigger point sits halfway across the unpanned span (triggerPosition 0.5). Its readouts' true peak is 0.875, its DC offset −0.125, its loudness −14.5 LUFS and its Left/Right correlation 0.5.",
   "header": {
     "mode": 0,
     "flags": 3,
@@ -30,11 +30,15 @@
     "triggerPosition": 0.5,
     "pointsPerSample": 1,
     "compareLane": 0,
-    "nullDepth": "NaN"
+    "nullDepth": "NaN",
+    "truePeak": 0.875,
+    "dcOffset": -0.125,
+    "loudness": -14.5,
+    "correlation": 0.5
   },
   "views": {
     "left": [-0.5, 0.5, -0.25, 0.75],
     "mid": [0.0, 0.125, -1.0, 1.0]
   },
-  "hex": "00030500020000009a9999999999b93f666666666666d63f00000000000000000000000000000000000000000000f0bf0000803e0000403f0000003f0000000000000000000040400000000000000000000000000000c03f030000000000000000442c470000003f01000000030000000000003f01000000000000000000c07f000000bf0000003f000080be0000403f000000000000003e000080bf0000803f"
+  "hex": "00030500020000009a9999999999b93f666666666666d63f00000000000000000000000000000000000000000000f0bf0000803e0000403f0000003f0000000000000000000040400000000000000000000000000000c03f030000000000000000442c470000003f01000000030000000000003f01000000000000000000c07f0000603f000000be000068c10000003f000000bf0000003f000080be0000403f000000000000003e000080bf0000803f"
 }

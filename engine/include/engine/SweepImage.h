@@ -29,10 +29,13 @@ public:
 
     // Places the samples of `window` from `source` that are not on screen yet, as far as the
     // source still holds them: all of them when the length changed (beyond what a tempo change
-    // moves it, see sweepLengthsSimilar), `rebuild` is set, or a one-channel image is asked for
-    // another view than it holds. A one-channel image holds `view` of `inputChannels` source
+    // moves it, see sweepLengthsSimilar), `rebuild` is set, or the image is asked for another view
+    // than it was placed for. A one-channel image holds `view` of `inputChannels` source
     // channels: the caller names the view as read (L for a mono track), so that a view that reads
-    // the same samples keeps the image. A rebuilt image holds `length`
+    // the same samples keeps the image. An image of the captured channels holds every view, and
+    // is placed again for another one all the same, so that its changes name the whole sweep to
+    // whoever keeps columns or levels of the view shown (this track's lane; Single's sweep is
+    // always asked for the same one). A rebuilt image holds `length`
     // samples, the window's own count unless given (it must be similar to it). False if the source
     // overwrote samples during the copy; the image is then rebuilt on the next update.
     bool update(const SampleSource& source, const SweepWindow& window, bool rebuild,

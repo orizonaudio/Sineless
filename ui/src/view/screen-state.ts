@@ -23,19 +23,18 @@ export function readoutView(frame: {
   return frame.readoutView;
 }
 
-// The Meter's title, naming the channel its levels come from, as the frame that carried them says:
-// the readout channel in Single; this track in Multi, whose frames carry a lane set; plain before
-// any frame.
-export function meterTitle(
+// The Meter's Source row: the channel its level rows (Peak, True peak, RMS, Crest and DC) read, as
+// the frame that carried them says: the readout channel in Single; this track's lane channel in
+// Multi, whose frames carry a lane set; no value before any frame.
+export function meterSource(
   frame:
     { readonly laneSet: number; readonly readoutView: ChannelView } | undefined,
 ): string {
   if (frame === undefined) {
-    return "Meter";
+    return "—";
   }
-  return frame.laneSet !== 0
-    ? "Meter (This track)"
-    : `Meter (${viewNames[readoutView(frame)]})`;
+  const name = viewNames[readoutView(frame)];
+  return frame.laneSet !== 0 ? `This track (${name})` : name;
 }
 
 // How far back a frozen Seconds view is panned: from the freeze (0) to as far as the engine holds

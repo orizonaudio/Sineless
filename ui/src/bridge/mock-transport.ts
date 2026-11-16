@@ -25,7 +25,10 @@ import {
 } from "../../../protocol/src/setting-values.ts";
 import type { SettingName } from "../../../protocol/src/settings.ts";
 import {
+  dcOffsetMinimumSeconds,
   frozenHoldSeconds,
+  loudnessBlockSeconds,
+  loudnessOffsetLufs,
   maxShownTracks,
   maxPointsPerSample,
   minPointsPerSample,
@@ -755,6 +758,10 @@ export class MockTransport implements Transport {
           startFraction: 0,
           peak: Number.NaN,
           rms: Number.NaN,
+          truePeak: Number.NaN,
+          dcOffset: Number.NaN,
+          loudness: Number.NaN,
+          correlation: Number.NaN,
           sampleRate: this.sampleRate,
           views: new Map(),
           laneSet: multi ? this.laneSet : 0,
@@ -955,16 +962,48 @@ export class MockTransport implements Transport {
       }
     }
 
+    // The Meter's readouts over the visible samples, a few thousand of them: plain computations,
+    // enough for the page. The true peak reads the signal between samples too, so it differs from
+    // the peak as the engine's does; the loudness has no K-weighting; Left and Right are this
+    // track's (in Multi, its lane signal in both).
     let sumOfSquares = 0;
+    let sum = 0;
     let peak = 0;
+    let truePeak = 0;
+    let leftSquares = 0;
+    let rightSquares = 0;
+    let products = 0;
     const readoutStride = Math.max(1, Math.floor(sampleCount / 4096));
     let readoutSamples = 0;
+    const leftOf = multi
+      ? readoutSignal
+      : (time: number) => viewSample(ChannelView.left, time, mono);
+    const rightOf = multi
+      ? readoutSignal
+      : (time: number) => viewSample(ChannelView.right, time, mono);
     for (let sample = 0; sample < sampleCount; sample += readoutStride) {
       const value = readoutSignal(sampleTime(sample));
       sumOfSquares += value * value;
+      sum += value;
       peak = Math.max(peak, Math.abs(value));
+      // Between this point and the next the peak reads, at eight more.
+      for (let point = 1; point < 8; point++) {
+        const between = readoutSignal(
+          sampleTime(sample + (point * readoutStride) / 8),
+        );
+        truePeak = Math.max(truePeak, Math.abs(between));
+      }
+      const left = leftOf(sampleTime(sample));
+      const right = rightOf(sampleTime(sample));
+      leftSquares += left * left;
+      rightSquares += right * right;
+      products += left * right;
       readoutSamples++;
     }
+    const measured = readoutSamples > 0;
+    const metered = measured && this.setting("meter") === "on";
+    const seconds = sampleCount / this.sampleRate;
+    const power = (leftSquares + (mono ? 0 : rightSquares)) / readoutSamples;
 
     this.frameHandler?.(
       encodeFrame({
@@ -991,10 +1030,21 @@ export class MockTransport implements Transport {
         pointsPerSample,
         pointCount,
         startFraction: 0,
-        peak: readoutSamples > 0 ? peak : Number.NaN,
-        rms:
-          readoutSamples > 0
-            ? Math.sqrt(sumOfSquares / readoutSamples)
+        peak: measured ? peak : Number.NaN,
+        rms: measured ? Math.sqrt(sumOfSquares / readoutSamples) : Number.NaN,
+        // As the engine: the four below only while the Meter is on, when the page shows them.
+        truePeak: metered ? Math.max(peak, truePeak) : Number.NaN,
+        dcOffset:
+          metered && seconds >= dcOffsetMinimumSeconds
+            ? sum / readoutSamples
+            : Number.NaN,
+        loudness:
+          metered && seconds >= loudnessBlockSeconds && power > 0
+            ? loudnessOffsetLufs + 10 * Math.log10(power)
+            : Number.NaN,
+        correlation:
+          metered && !mono && leftSquares > 0 && rightSquares > 0
+            ? products / Math.sqrt(leftSquares * rightSquares)
             : Number.NaN,
         views,
         lanes,

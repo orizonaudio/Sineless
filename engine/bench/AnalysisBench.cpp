@@ -167,6 +167,8 @@ void configure(engine::Engine& engine, const bench::Scenario& scenario)
                  static_cast<double>(scenario.difference ? protocol::CompareLane::kDifference
                                                          : protocol::CompareLane::kSum));
     settings.set(SettingId::kChannelViews, 0b1111); // L, R, Mid and Side, in Single.
+    settings.set(SettingId::kMeter, static_cast<double>(scenario.meter ? protocol::Toggle::kOn
+                                                                       : protocol::Toggle::kOff));
 }
 
 // The seconds the scenario's sweep or window covers.

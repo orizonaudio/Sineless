@@ -4,31 +4,34 @@ import { ChannelView, ViewLayout } from "../../protocol/src/enums.ts";
 import {
   clampPan,
   markerLane,
-  meterTitle,
+  meterSource,
   viewNames,
   viewOrder,
   viewToggleState,
 } from "../src/view/screen-state.ts";
 
-// The Meter's title names the channel the frame's readouts measured (#393).
-describe("meterTitle", () => {
+// The Meter's Source names the channel the frame's levels were measured on (#393, #420).
+describe("meterSource", () => {
   test.each(Object.values(ChannelView))(
     "names channel view %i in Single",
     (view) => {
-      expect(meterTitle({ laneSet: 0, readoutView: view })).toBe(
-        `Meter (${viewNames[view]})`,
+      expect(meterSource({ laneSet: 0, readoutView: view })).toBe(
+        viewNames[view],
       );
     },
   );
 
-  test("says This track for a frame with lanes, whatever view it names", () => {
-    expect(meterTitle({ laneSet: 3, readoutView: ChannelView.side })).toBe(
-      "Meter (This track)",
-    );
-  });
+  test.each(Object.values(ChannelView))(
+    "names this track and its lane channel %i for a frame with lanes",
+    (view) => {
+      expect(meterSource({ laneSet: 3, readoutView: view })).toBe(
+        `This track (${viewNames[view]})`,
+      );
+    },
+  );
 
-  test("is plain before any frame", () => {
-    expect(meterTitle(undefined)).toBe("Meter");
+  test("has no value before any frame", () => {
+    expect(meterSource(undefined)).toBe("—");
   });
 });
 

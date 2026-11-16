@@ -119,6 +119,57 @@ describe("formatDbDifference", () => {
   });
 });
 
+// The Meter's loudness, DC offset and correlation: signs as a minus sign or a plus, no negative
+// zero, a dash for none, and the decimals each shows.
+const meterFormatters: readonly {
+  readonly name: string;
+  readonly formatter: (value: number) => string;
+  readonly cases: readonly (readonly [number, string])[];
+}[] = [
+  {
+    name: "formatLufs",
+    formatter: format.formatLufs,
+    cases: [
+      [-14.24, "−14.2 LUFS"],
+      [-0.04, "0.0 LUFS"],
+      [-70, "−70.0 LUFS"],
+      [2.5, "2.5 LUFS"],
+    ],
+  },
+  {
+    name: "formatDcOffset",
+    formatter: format.formatDcOffset,
+    cases: [
+      [0.0012, "+0.12 %"],
+      [-0.0012, "−0.12 %"],
+      [-0.00001, "0.00 %"],
+      [0, "0.00 %"],
+      [0.5, "+50.00 %"],
+    ],
+  },
+  {
+    name: "formatCorrelation",
+    formatter: format.formatCorrelation,
+    cases: [
+      [1, "+1.00"],
+      [-1, "−1.00"],
+      [0.853, "+0.85"],
+      [-0.004, "0.00"],
+      [0, "0.00"],
+    ],
+  },
+];
+
+describe.each(meterFormatters)("$name", ({ formatter, cases }) => {
+  test.each(cases)("reads %s as %s", (value, text) => {
+    expect(formatter(value)).toBe(text);
+    expectReadable(formatter(value));
+  });
+  test.each(notNumbers)("reads %s as a dash", (value) => {
+    expect(formatter(value)).toBe("—");
+  });
+});
+
 describe("formatGain", () => {
   test.each([
     -Infinity,

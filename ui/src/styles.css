@@ -653,8 +653,9 @@ button[aria-pressed="true"]:focus-visible {
   min-height: 0;
   /* Drags here select, zoom and move cursors: a touch the browser took for a pan would cancel them. */
   touch-action: none;
-  /* Room kept clear at the top right for the cursor readout. */
-  --corner-width: 150px;
+  /* Room kept clear at the top right for the cursor readout: its widest rows, the Meter's Source
+     in Multi, "This track (Right)", and its "Loudness (L+R)" at "−14.2 LUFS", 24 characters each. */
+  --corner-width: 196px;
 }
 
 :root {

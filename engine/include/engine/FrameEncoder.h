@@ -22,6 +22,10 @@ struct FrameHeaderValues
     // Readouts; NaN when not measured.
     float peak = std::numeric_limits<float>::quiet_NaN();
     float rms = std::numeric_limits<float>::quiet_NaN();
+    float truePeak = std::numeric_limits<float>::quiet_NaN();
+    float dcOffset = std::numeric_limits<float>::quiet_NaN();
+    float loudness = std::numeric_limits<float>::quiet_NaN(); // LUFS.
+    float correlation = std::numeric_limits<float>::quiet_NaN();
     double cursor = -1.0; // Sweep playhead position (0 to 1), or -1.
     // Musical context of a synced sweep in quarter notes; 0 otherwise.
     double cycleStart = 0.0;

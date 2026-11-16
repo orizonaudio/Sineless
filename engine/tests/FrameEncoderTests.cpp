@@ -50,6 +50,10 @@ FrameHeaderValues headerValues(const nlohmann::json& header)
         .startFraction = header["startFraction"].get<float>(),
         .peak = header["peak"].get<float>(),
         .rms = header["rms"].get<float>(),
+        .truePeak = floatOf(header["truePeak"]),
+        .dcOffset = floatOf(header["dcOffset"]),
+        .loudness = floatOf(header["loudness"]),
+        .correlation = floatOf(header["correlation"]),
         .cursor = header["cursor"].get<double>(),
         .cycleStart = header["cycleStart"].get<double>(),
         .spanQuarterNotes = header["spanQuarterNotes"].get<float>(),
@@ -121,7 +125,9 @@ TEST(FrameEncoder, SendsNoValueForReadoutsNotMeasured)
     std::vector<std::byte> output;
     encodeFrame({}, {}, output);
     for (const std::size_t offset :
-         {protocol::FrameHeader::kPeakOffset, protocol::FrameHeader::kRmsOffset}) {
+         {protocol::FrameHeader::kPeakOffset, protocol::FrameHeader::kRmsOffset,
+          protocol::FrameHeader::kTruePeakOffset, protocol::FrameHeader::kDcOffsetOffset,
+          protocol::FrameHeader::kLoudnessOffset, protocol::FrameHeader::kCorrelationOffset}) {
         float value = 0.0f;
         std::memcpy(&value, output.data() + offset, sizeof value);
         EXPECT_TRUE(std::isnan(value)) << "at byte " << offset;

@@ -1,8 +1,10 @@
 // The Meter in the screen's corner, through the real page: off until its button is pressed, then
-// Peak, RMS and Crest under the cursor readouts. It measures the channel chosen in the readout
-// popover when it is drawn, the first view drawn when it is not, whatever the trigger source, and
-// this track in Multi; it shows the frame's levels with the shared formatters, at once when
-// switched on, also frozen; and the tallest corner panel fits the screen at the minimum size.
+// its rows above the cursor readouts, the first naming the Source, the channel its levels read.
+// It measures the channel chosen in the readout popover when it is drawn, the first view drawn
+// when it is not, whatever the trigger source, and this track's lane channel in Multi; it shows
+// the frame's readouts with the shared formatters, the levels at once when switched on, also
+// frozen, and the rest from the next frame; and the tallest corner panel fits the screen at the
+// minimum size.
 import { describe, expect, test } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -17,7 +19,7 @@ import {
   mockFundamental,
   viewSample,
 } from "../../src/bridge/mock-transport.ts";
-import { viewOrder } from "../../src/view/screen-state.ts";
+import { meterSource, viewOrder } from "../../src/view/screen-state.ts";
 import {
   beforeApp,
   byId,
@@ -64,34 +66,52 @@ const tagOf: Record<ChannelView, string> = {
   [ChannelView.side]: "Side",
 };
 
-// The titles of the corner panel's sections, in order, without the channel the Meter's names.
+// The titles of the corner panel's sections, in order: the Meter's is its name alone, the channel
+// it reads being its Source row's.
 function sections(): string[] {
-  return titles().map((title) => title.replace(/ \(.*\)$/u, ""));
-}
-
-function titles(): string[] {
   return [...byId("cursor-readout").querySelectorAll(".cursor-title")].map(
     (title) => title.textContent,
   );
 }
 
-// The Meter's title, which names the channel it reads (#393).
-function meterTitle(): string | undefined {
-  return titles().find((title) => title.startsWith("Meter"));
-}
+// The Meter's rows in order: the Source, the levels it reads there, then what Left and Right read
+// whatever the Source, as their labels say.
+const meterLabels = [
+  "Source",
+  "Peak",
+  "True peak",
+  "RMS",
+  "Crest",
+  "DC",
+  "Loudness (L+R)",
+  "Correlation (L/R)",
+];
 
-// The Meter's rows as shown, label and value.
+// The Meter's rows as shown, label and value: the section's first rows, in the page's order.
 function meterShown(): { label: string; value: string }[] {
-  return ["Peak", "RMS", "Crest"].map((label) => ({
-    label,
-    value: cursorRow(label),
-  }));
+  return [...byId("cursor-readout").querySelectorAll(".cursor-row")]
+    .slice(0, meterLabels.length)
+    .map((row) => ({
+      label: row.querySelector("span")?.textContent ?? "",
+      value: row.querySelector("b")?.textContent ?? "",
+    }));
 }
 
-// The Meter's rows for the frame on screen, from its peak and RMS.
+// The Meter's rows for the frame on screen, from its readouts.
 function meterOfFrame(): { label: string; value: string }[] {
   const frame = window.orizonDebug?.lastFrame;
-  return meterReadout(frame?.peak ?? Number.NaN, frame?.rms ?? Number.NaN);
+  const none = Number.NaN;
+  return meterReadout(
+    {
+      peak: frame?.peak ?? none,
+      truePeak: frame?.truePeak ?? none,
+      rms: frame?.rms ?? none,
+      dcOffset: frame?.dcOffset ?? none,
+      loudness: frame?.loudness ?? none,
+      correlation: frame?.correlation ?? none,
+    },
+    meterSource(frame),
+  );
 }
 
 async function useSource(label: string): Promise<void> {
@@ -103,7 +123,7 @@ async function useSource(label: string): Promise<void> {
 
 async function expectMeterOf(view: ChannelView): Promise<void> {
   await expect.poll(channelRead).toBe(tagOf[view]);
-  await expect.poll(meterTitle).toBe(`Meter (${tagOf[view]})`);
+  await expect.poll(() => cursorRow("Source")).toBe(tagOf[view]);
   const { peak, rms } = levelsOf(view);
   await expect.poll(() => cursorRow("Peak")).toBe(`${formatDbfs(peak)} dBFS`);
   await expect.poll(() => cursorRow("RMS")).toBe(`${formatDbfs(rms)} dBFS`);
@@ -220,24 +240,49 @@ describe("the Meter", () => {
     await showDisplay(display);
     await settle();
     await expect.poll(meterShown).toEqual(meterOfFrame());
+    expect(meterShown().map((row) => row.label)).toEqual(meterLabels);
+    expect(sections()).toEqual(["Meter"]);
     if (display === "Single") {
       expect(cursorRow("Crest")).toBe("3.0 dB");
-      expect(meterTitle()).toBe("Meter (Left)");
+      expect(cursorRow("Source")).toBe("Left");
     } else {
-      // The longest title keeps to the corner's width.
-      expect(meterTitle()).toBe("Meter (This track)");
+      // The longest rows keep to the corner's width: the Loudness with a value of ten characters,
+      // and the Source of a lane, which is as long with Right.
+      expect(cursorRow("Source")).toBe("This track (Mid)");
+      expect(cursorRow("Loudness (L+R)")).toMatch(/^−\d\d\.\d LUFS$/u);
+      await press(choice("lane-channel", "R"));
+      await expect.poll(() => cursorRow("Source")).toBe("This track (Right)");
       const corner = Number.parseFloat(
         getComputedStyle(byId("screen")).getPropertyValue("--corner-width"),
       );
       expect(
         byId("cursor-readout").getBoundingClientRect().width,
       ).toBeLessThanOrEqual(corner);
+      await press(choice("lane-channel", "M"));
     }
     await showDisplay("Single");
   });
 
+  // In Multi the Source names this track and the channel its lane shows, each of the four.
+  test.each(viewOrder)(
+    "names this track's lane channel as its Source in Multi: %s",
+    async (view) => {
+      await setPressed(byId("meter-toggle"), true);
+      await showDisplay("Multi");
+      await press(choice("lane-channel", labelOf(view)));
+      await settle();
+      await expect
+        .poll(() => cursorRow("Source"))
+        .toBe(`This track (${tagOf[ChannelView[view]]})`);
+      await expect.poll(meterShown).toEqual(meterOfFrame());
+      await press(choice("lane-channel", "M"));
+      await showDisplay("Single");
+    },
+  );
+
   // Switched on, it shows the levels the page last took, not dashes until the next refresh: live,
-  // and frozen, when no frame comes to refresh them.
+  // and frozen, when no frame comes to refresh them. Its other rows, which the engine measures
+  // only while the Meter is on, fill from the frame the switch brings.
   test.each([false, true])(
     "shows the levels at once when switched on, frozen %s",
     async (frozen) => {
@@ -248,13 +293,27 @@ describe("the Meter", () => {
         await settle();
       }
       await setPressed(byId("meter-toggle"), false);
+      // The frames that come with the Meter off carry its levels alone.
+      await expect
+        .poll(() => Number.isNaN(window.orizonDebug?.lastFrame?.truePeak))
+        .toBe(true);
       await userEvent.click(byId("meter-toggle"));
       await expect
         .element(byId("meter-toggle"))
         .toHaveAttribute("aria-pressed", "true");
       expect(cursorRow("Peak")).not.toBe("—");
-      expect(meterShown()).toEqual(meterOfFrame());
-      expect(meterTitle()).toBe(`Meter (${channelRead() ?? ""})`);
+      expect(cursorRow("RMS")).not.toBe("—");
+      expect(cursorRow("Source")).toBe(channelRead());
+      await expect.poll(() => cursorRow("True peak")).toMatch(/ dBTP$/u);
+      await expect.poll(() => cursorRow("DC")).toMatch(/ %$/u);
+      await expect.poll(() => cursorRow("Loudness (L+R)")).toMatch(/ LUFS$/u);
+      await expect.poll(() => cursorRow("Correlation (L/R)")).not.toBe("—");
+      // Frame and rows both move on: compared at the same moment, until they agree.
+      await expect
+        .poll(
+          () => JSON.stringify(meterShown()) === JSON.stringify(meterOfFrame()),
+        )
+        .toBe(true);
       await setPressed(byId("freeze"), false);
     },
   );
@@ -275,6 +334,14 @@ describe("the Meter on a mono track", () => {
     await setPressed(byId("meter-toggle"), true);
     await settle();
     await expectMeterOf(ChannelView.left);
+  });
+
+  test("has no Left/Right correlation", async () => {
+    await setPressed(byId("meter-toggle"), true);
+    await settle();
+    expect(cursorRow("Source")).toBe("Left");
+    expect(cursorRow("Correlation (L/R)")).toBe("—");
+    expect(cursorRow("Loudness (L+R)")).toMatch(/^−\d+\.\d LUFS$/u);
   });
 });
 

@@ -12,6 +12,11 @@ export interface FrameContent {
   readonly startFraction: number;
   readonly peak: number;
   readonly rms: number;
+  // The Meter's other readouts; none (NaN) unless given.
+  readonly truePeak?: number;
+  readonly dcOffset?: number;
+  readonly loudness?: number;
+  readonly correlation?: number;
   readonly synced?: boolean;
   readonly limited?: boolean;
   readonly partial?: boolean;
@@ -95,6 +100,14 @@ export function encodeFrame(content: FrameContent): ArrayBuffer {
   header.setFloat32(offsets.startFraction, content.startFraction, true);
   header.setFloat32(offsets.peak, content.peak, true);
   header.setFloat32(offsets.rms, content.rms, true);
+  header.setFloat32(offsets.truePeak, content.truePeak ?? Number.NaN, true);
+  header.setFloat32(offsets.dcOffset, content.dcOffset ?? Number.NaN, true);
+  header.setFloat32(offsets.loudness, content.loudness ?? Number.NaN, true);
+  header.setFloat32(
+    offsets.correlation,
+    content.correlation ?? Number.NaN,
+    true,
+  );
   header.setFloat64(offsets.cursor, content.cursor ?? -1, true);
   header.setFloat64(offsets.cycleStart, content.cycleStart ?? 0, true);
   header.setFloat64(offsets.cycleSeconds, content.cycleSeconds ?? 0, true);

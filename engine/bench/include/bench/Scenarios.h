@@ -35,6 +35,9 @@ struct Scenario
     double viewStart = 0.0;
     double viewEnd = 1.0;
     bool frozenPan = false; // Frozen, panning back and forth through the held audio.
+    // The Meter on: the engine then measures the true peak, DC offset, loudness and correlation
+    // too, which it leaves out while nothing shows them (FR-7).
+    bool meter = false;
     // Judged by CI's engine-work check (every scenario today); one set to false is measured and
     // reported only, as for a scenario whose counts are not yet known to be steady.
     bool gated = true;
@@ -184,6 +187,37 @@ inline constexpr std::array kScenarios{
         .description = "Single on a mono track, 1 bar at 120 BPM and 48 kHz",
         .mode = protocol::DisplayMode::kSingle,
         .channels = 1,
+    },
+    // The Meter on: in a sweep and in a rolling window (its statistics kept per block as the
+    // audio arrives), and frozen and panned (the blocks kept, the view's edges read).
+    Scenario{
+        .name = "single-one-bar-meter",
+        .description = "Single, all four views, 1 bar at 120 BPM and 48 kHz, the Meter on",
+        .mode = protocol::DisplayMode::kSingle,
+        .meter = true,
+    },
+    Scenario{
+        .name = "compare-15-frozen-pan-meter",
+        .description = "Compare, 15 tracks, frozen over 1 s at 96 kHz, panning, the Meter on",
+        .mode = protocol::DisplayMode::kMulti,
+        .compare = true,
+        .tracks = 15,
+        .timeBase = protocol::TimeBase::kTrigger,
+        .span = 1.0,
+        .rate = 96000.0,
+        .frozenPan = true,
+        .meter = true,
+    },
+    Scenario{
+        .name = "compare-15-roll-meter",
+        .description = "Compare, 15 tracks, rolling 4 s at 96 kHz, the Meter on",
+        .mode = protocol::DisplayMode::kMulti,
+        .compare = true,
+        .tracks = 15,
+        .timeBase = protocol::TimeBase::kFree,
+        .span = 4.0,
+        .rate = 96000.0,
+        .meter = true,
     },
 };
 

@@ -251,6 +251,11 @@ TEST_F(AnalyzerTest, DrawsNoBeatsSweepUntilTheHostReportsATempo)
         EXPECT_EQ(frame.pointCount, 0U);
         EXPECT_EQ(get<float>(bytes, FrameHeader::kSpanQuarterNotesOffset), 0.0f)
             << "no bars made up";
+        // Nothing measured yet: every readout travels as no value, never 0.
+        for (const float readout : {frame.peak, frame.rms, frame.truePeak, frame.dcOffset,
+                                    frame.loudness, frame.correlation}) {
+            EXPECT_TRUE(std::isnan(readout)) << "no readouts yet";
+        }
         EXPECT_FALSE(view.produce(bytes)) << "once";
 
         play(false, 20);

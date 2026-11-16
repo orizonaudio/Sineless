@@ -24,6 +24,10 @@ struct DecodedFrame
     float startFraction = 0.0f;
     float peak = 0.0f;
     float rms = 0.0f;
+    float truePeak = 0.0f;
+    float dcOffset = 0.0f;
+    float loudness = 0.0f;
+    float correlation = 0.0f;
     double cursor = -1.0;
     double viewStart = 0.0;
     double viewEnd = 1.0;
@@ -68,6 +72,10 @@ inline DecodedFrame decode(const std::vector<std::byte>& bytes)
     frame.startFraction = get<float>(bytes, protocol::FrameHeader::kStartFractionOffset);
     frame.peak = get<float>(bytes, protocol::FrameHeader::kPeakOffset);
     frame.rms = get<float>(bytes, protocol::FrameHeader::kRmsOffset);
+    frame.truePeak = get<float>(bytes, protocol::FrameHeader::kTruePeakOffset);
+    frame.dcOffset = get<float>(bytes, protocol::FrameHeader::kDcOffsetOffset);
+    frame.loudness = get<float>(bytes, protocol::FrameHeader::kLoudnessOffset);
+    frame.correlation = get<float>(bytes, protocol::FrameHeader::kCorrelationOffset);
     frame.cursor = get<double>(bytes, protocol::FrameHeader::kCursorOffset);
     frame.viewStart = get<double>(bytes, protocol::FrameHeader::kViewStartOffset);
     frame.viewEnd = get<double>(bytes, protocol::FrameHeader::kViewEndOffset);

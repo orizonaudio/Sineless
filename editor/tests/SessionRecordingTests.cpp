@@ -531,7 +531,7 @@ constexpr std::array kDoubleWords{FrameHeader::kViewStartOffset, FrameHeader::kV
                                   FrameHeader::kCycleStartOffset, FrameHeader::kCycleSecondsOffset,
                                   FrameHeader::kCursorOffset};
 constexpr std::size_t kByteFields = 4; // mode, flags, views, laneCount.
-static_assert(FrameHeader::kSize == 128,
+static_assert(FrameHeader::kSize == 144,
               "the frame header changed: say here which of its fields are integers, which the "
               "comparison must not take for float32");
 

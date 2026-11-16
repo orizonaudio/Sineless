@@ -137,6 +137,34 @@ export function crestFactorDb(peak: number, rms: number): number {
     : peakDb - rmsDb;
 }
 
+// A loudness in LUFS with one decimal: "−14.2 LUFS"; "—" for none (a view under 400 ms, or
+// silence the gates leave out).
+export function formatLufs(lufs: number): string {
+  if (!Number.isFinite(lufs)) {
+    return none;
+  }
+  const shown = rounded(lufs, 1); // −0.04 reads 0.0, not −0.0.
+  return `${shown < 0 ? `${minus}${Math.abs(shown).toFixed(1)}` : shown.toFixed(1)} LUFS`;
+}
+
+// A DC offset, linear, as a signed percentage of full scale to two decimals: "+0.12 %"; 0.01 % is
+// −80 dBFS. "—" for none (a view shorter than the minimum).
+export function formatDcOffset(linear: number): string {
+  if (!Number.isFinite(linear)) {
+    return none;
+  }
+  return `${signed(linear * 100, 2)} %`;
+}
+
+// A correlation, −1 to +1, signed to two decimals: "+0.85", as Compare's lane labels show theirs;
+// "—" for none (a mono track, or channels that never sound together).
+export function formatCorrelation(correlation: number): string {
+  if (!Number.isFinite(correlation)) {
+    return none;
+  }
+  return signed(correlation, 2);
+}
+
 // A level in dB without the unit: "0", "+3", "−7.5".
 export function formatDbValue(db: number): string {
   if (!Number.isFinite(db)) {

@@ -12,12 +12,13 @@ import {
   gridFineBeatLineGap,
   gridFineLevelSubdivisions,
   gridLevelStepDb,
-  levelFloorDbfs,
   matchReachSeconds,
   matchWindowSeconds,
   maxShownTracks,
   minimumViewSamples,
   summingMarginDb,
+  dcOffsetMinimumSeconds,
+  loudnessBlockSeconds,
 } from "../../../protocol/src/limits.ts";
 import { settings } from "../../../protocol/src/settings.ts";
 import { choiceLabels } from "./choice-labels.ts";
@@ -34,7 +35,8 @@ const reach = formatSeconds(matchReachSeconds);
 const alignReach = formatSeconds(alignReachSeconds);
 const matchWindow = formatSeconds(matchWindowSeconds);
 const margin = String(summingMarginDb);
-const levelFloor = String(levelFloorDbfs).replace("-", "−");
+const dcMinimum = formatSeconds(dcOffsetMinimumSeconds);
+const loudnessBlock = formatSeconds(loudnessBlockSeconds);
 const gate = String(analysisGateDbfs).replace("-", "−");
 const positionDefault = formatPercent(settings.triggerPosition.defaultValue);
 const positionLowest = formatPercent(settings.triggerPosition.minimum);
@@ -309,21 +311,22 @@ export function helpTextsFor(mac: boolean) {
     },
     meter: {
       title: "Meter",
-      lead: "When on, shows levels over the whole span of the channel chosen under Measure.",
+      lead: "When on, shows the levels on screen.",
       choices: [
-        { name: "Peak", text: "the highest sample level, in dBFS" },
+        { name: "Source", text: "the levels' channel, chosen in Measure" },
+        { name: "Peak", text: "the highest sample" },
+        { name: "True peak", text: "between samples too (BS.1770)" },
+        { name: "Crest", text: "true peak over RMS" },
+        { name: "DC", text: `the mean; needs ${dcMinimum}` },
         {
-          name: "RMS",
-          text: "the average power, in dBFS; a full-scale sine reads −3 dB",
+          name: "Loudness (L+R)",
+          text: `gated, BS.1770; needs ${loudnessBlock}`,
         },
-        {
-          name: "Crest",
-          text: "how far peak stands above RMS: 3 dB for a sine, more if spikier",
-        },
+        { name: "Correlation (L/R)", text: "+1 mono-safe, −1 cancels" },
       ],
       notes: [
-        `Below ${levelFloor} dBFS a level reads −∞, and Crest a dash.`,
-        "In Multi it reads this track. Indicative, not a standards-compliant meter.",
+        "Zoom in to read a passage; deeply zoomed, levels change as you pan.",
+        "Loudness and Correlation read both channels, whatever the Source.",
       ],
     },
     screen: {

@@ -4,6 +4,9 @@
 // Temporary display state only; they are never saved.
 import {
   crestFactorDb,
+  formatCorrelation,
+  formatDcOffset,
+  formatLufs,
   formatMusicalLength,
   formatDbDifference,
   formatDbfs,
@@ -146,15 +149,56 @@ export function initialLevels(fullScale: number): LevelPair {
   return { first: fullScale / 2, second: fullScale / 4 };
 }
 
-// The Meter's rows, from the frame's peak and RMS (linear): each in dBFS, and the crest factor
-// between them in dB; "—" without a unit for a value the frame does not have.
-export function meterReadout(peak: number, rms: number): ReadoutRow[] {
-  const level = (linear: number) =>
-    Number.isFinite(linear) ? `${formatDbfs(linear)} dBFS` : formatDbfs(linear);
+// What the Meter shows, as a frame carries it: levels linear, loudness in LUFS, NaN for none.
+export interface MeterValues {
+  readonly peak: number;
+  readonly truePeak: number;
+  readonly rms: number;
+  readonly dcOffset: number;
+  readonly loudness: number;
+  readonly correlation: number;
+}
+
+// What the Meter shows of a frame: its readouts, each in its place.
+export function meterValuesOf(frame: MeterValues): MeterValues {
+  return {
+    peak: frame.peak,
+    truePeak: frame.truePeak,
+    rms: frame.rms,
+    dcOffset: frame.dcOffset,
+    loudness: frame.loudness,
+    correlation: frame.correlation,
+  };
+}
+
+// The Meter's rows: the Source, the channel the level rows read (`source`, as meterSource names
+// it); of that channel, Peak, True peak and RMS in dBFS (dBTP for the true peak), the crest factor
+// of the true peak over the RMS in dB, and the DC offset; of Left and Right whatever the Source,
+// as their labels say, the loudness and the correlation. "—" without a unit for a value the frame
+// does not have.
+export function meterReadout(
+  values: MeterValues,
+  source: string,
+): ReadoutRow[] {
+  const level = (linear: number, unit: string) =>
+    Number.isFinite(linear)
+      ? `${formatDbfs(linear)} ${unit}`
+      : formatDbfs(linear);
   return [
-    { label: "Peak", value: level(peak) },
-    { label: "RMS", value: level(rms) },
-    { label: "Crest", value: formatDbDifference(crestFactorDb(peak, rms)) },
+    { label: "Source", value: source },
+    { label: "Peak", value: level(values.peak, "dBFS") },
+    { label: "True peak", value: level(values.truePeak, "dBTP") },
+    { label: "RMS", value: level(values.rms, "dBFS") },
+    {
+      label: "Crest",
+      value: formatDbDifference(crestFactorDb(values.truePeak, values.rms)),
+    },
+    { label: "DC", value: formatDcOffset(values.dcOffset) },
+    { label: "Loudness (L+R)", value: formatLufs(values.loudness) },
+    {
+      label: "Correlation (L/R)",
+      value: formatCorrelation(values.correlation),
+    },
   ];
 }
 

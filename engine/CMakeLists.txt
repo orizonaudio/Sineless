@@ -15,10 +15,10 @@ add_library(engine STATIC
     src/HoldBuffer.cpp
     src/InstanceRegistry.cpp
     src/LaneHold.cpp
+    src/Meter.cpp
     src/MonotonicClock.cpp
     src/Motion.cpp
     src/PairAnalysis.cpp
-    src/Readouts.cpp
     src/Reducer.cpp
     src/Reconstruction.cpp
     src/SettingJson.cpp
@@ -67,11 +67,11 @@ if(BUILD_TESTING)
         tests/InstanceRegistryTests.cpp
         tests/LaneHoldTests.cpp
         tests/MatrixTests.cpp
+        tests/MeterTests.cpp
         tests/MotionTests.cpp
         tests/PacedAnalyzerTests.cpp
         tests/PacedSweepTests.cpp
         tests/PairAnalysisTests.cpp
-        tests/ReadoutsTests.cpp
         tests/ReconstructionTests.cpp
         tests/ColumnWaveTests.cpp
         tests/ReducerTests.cpp
