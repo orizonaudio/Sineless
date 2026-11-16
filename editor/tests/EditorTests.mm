@@ -53,6 +53,26 @@
 }
 @end
 
+// Stands in for a host's view that the editor is opened in, and counts the mouse moves that reach
+// it: REAPER's sets the arrow on each, over whatever cursor the page shows.
+@interface OrizonTestMoveCounter : NSView {
+    int moves;
+}
+- (int)moveCount;
+@end
+
+@implementation OrizonTestMoveCounter
+- (void)mouseMoved:(NSEvent*)event
+{
+    (void)event;
+    ++moves;
+}
+- (int)moveCount
+{
+    return moves;
+}
+@end
+
 // Counts the times one view's cursor rectangles are invalidated, which AppKit then asks for anew.
 @interface OrizonTestCursorWindow : NSWindow {
     int invalidations;
@@ -389,6 +409,54 @@ TEST_F(EditorTest, ShowsThePagesCursorForWhatIsUnderThePointer)
     core.detach();
     [window close];
 }
+
+// A mouse move over the editor stops at the editor's own view: the host's views never get it.
+// REAPER hands each move to the view under the pointer, WKWebView passes it up to its next
+// responder, and REAPER's view then sets the arrow, which WebKit replaces with the page's hand a
+// few milliseconds later: the pointer flickered between the two on every move. Both cursor options:
+// the Audio Unit's view (its cursors shown by the view) has the same chain.
+class EditorMouseMoveTest : public EditorTest,
+                            public ::testing::WithParamInterface<WebView::Cursors>
+{
+};
+
+TEST_P(EditorMouseMoveTest, NeverReachesTheHostsViews)
+{
+    OrizonTestMoveCounter* parent = [[OrizonTestMoveCounter alloc] init];
+    NSWindow* window = makeWindow(parent);
+    EditorCore core(nullptr);
+    core.setCursors(GetParam());
+    core.attach((__bridge void*)parent);
+    auto* webView = (__bridge WKWebView*)core.webView()->nativeView();
+    ASSERT_TRUE(pumpUntil(
+        [&] { return evaluate(webView, @"String(window.orizonDebug !== undefined)") == "true"; },
+        kPageTimeout));
+    NSView* container = webView.superview;
+    ASSERT_NE(container, parent) << "the editor adds a view of its own";
+    for (NSView* receiver : {static_cast<NSView*>(webView), container}) {
+        [receiver mouseMoved:[NSEvent mouseEventWithType:NSEventTypeMouseMoved
+                                                location:NSMakePoint(100, 100)
+                                           modifierFlags:0
+                                               timestamp:0
+                                            windowNumber:window.windowNumber
+                                                 context:nil
+                                             eventNumber:0
+                                              clickCount:0
+                                                pressure:0]];
+    }
+    EXPECT_EQ([parent moveCount], 0) << "a move reached the host's view";
+    core.detach();
+    [window close];
+}
+
+INSTANTIATE_TEST_SUITE_P(Cursors, EditorMouseMoveTest,
+                         ::testing::Values(WebView::Cursors::kShownByWebKit,
+                                           WebView::Cursors::kShownByView),
+                         [](const ::testing::TestParamInfo<WebView::Cursors>& info) {
+                             return std::string(info.param == WebView::Cursors::kShownByView
+                                                    ? "ShownByView"
+                                                    : "ShownByWebKit");
+                         });
 
 // Every cursor the page's stylesheet uses has a macOS cursor the view can show: one without would
 // leave the previous cursor showing over that control where WebKit shows none.

@@ -664,6 +664,25 @@ Class webViewClass(WebView::Cursors cursors)
     return cursors == WebView::Cursors::kShownByView ? shownByView : shownByWebKit;
 }
 
+void keepMouseMove(id /*self*/, SEL /*cmd*/, NSEvent* /*event*/) {}
+
+// The editor's own view, which holds the page: a mouse move its views pass up (WKWebView passes
+// on every move it has handled) ends here. Passed on, it reaches the host's views, and REAPER's
+// set the arrow on each, over the cursor WebKit then shows: the pointer flickered between the two.
+// Plugin frameworks' views keep their moves as well (JUCE's NSViewComponentPeer, iPlug2's view).
+Class containerClass()
+{
+    static Class made = [] {
+        Class superclass = [NSView class];
+        Class created = objc_allocateClassPair(superclass, uniqueClassName("Editor").c_str(), 0);
+        class_addMethod(created, @selector(mouseMoved:), reinterpret_cast<IMP>(&keepMouseMove),
+                        superclassMethodTypes(superclass, @selector(mouseMoved:)));
+        objc_registerClassPair(created);
+        return created;
+    }();
+    return made;
+}
+
 // ----- WebViewMac -----
 
 WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onMessage,
@@ -717,7 +736,7 @@ WebViewMac::WebViewMac(NSView* parent, int width, int height, MessageHandler onM
     // shows white, or another colour, while it loads;
     // the page is shown once loaded, and a message in its place if it cannot be.
     const NSRect bounds = NSMakeRect(0, 0, width, height);
-    container = [[NSView alloc] initWithFrame:bounds];
+    container = [[containerClass() alloc] initWithFrame:bounds];
     container.wantsLayer = YES;
     container.layer.backgroundColor = [NSColor colorWithSRGBRed:0x1c / 255.0
                                                           green:0x1c / 255.0
