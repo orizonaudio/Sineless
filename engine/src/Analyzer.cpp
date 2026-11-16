@@ -1256,20 +1256,20 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const std::uint64_t end = engine.captureRing().endIndex();
     const ReadoutView shown{.viewStart = window.viewStart, .viewEnd = window.viewEnd};
     if (readoutsDue(end, readoutView, shown)) {
-        const auto [first, last] = meterRange(crop, static_cast<std::size_t>(sampleCount));
+        const auto [shownFirst, shownEnd] = meterRange(crop, static_cast<std::size_t>(sampleCount));
         if (synced && metered()) {
             meterJoins.assign(image.joins().begin(), image.joins().end());
             std::ranges::sort(meterJoins);
-            storeReadouts(sweepMeter.measure(first, last, meterJoins,
+            storeReadouts(sweepMeter.measure(shownFirst, shownEnd, meterJoins,
                                              meterReader(image, inputChannels, readoutView, 0)),
                           end, readoutView, shown);
         } else if (synced) {
-            storeReadouts(
-                levelsOf(sweepStats, first, last, statsReader(image, inputChannels, readoutView)),
-                end, readoutView, shown);
+            storeReadouts(levelsOf(sweepStats, shownFirst, shownEnd,
+                                   statsReader(image, inputChannels, readoutView)),
+                          end, readoutView, shown);
         } else {
-            storeReadouts(measureWindow(source, inputChannels, readoutView, start + first,
-                                        start + last, sampleRate),
+            storeReadouts(measureWindow(source, inputChannels, readoutView, start + shownFirst,
+                                        start + shownEnd, sampleRate),
                           end, readoutView, shown);
         }
     }
@@ -2502,9 +2502,9 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     const ChannelView ownView = ownLaneView(frameSettings);
     const ReadoutView shown{.viewStart = window.viewStart, .viewEnd = window.viewEnd};
     if (readoutsDue(ownEnd, ownView, shown)) {
-        const auto [first, last] = meterRange(crop, static_cast<std::size_t>(sampleCount));
-        storeReadouts(measureWindow(ownSource, engine.inputChannels(), ownView, start + first,
-                                    start + last, sampleRate),
+        const auto [shownFirst, shownEnd] = meterRange(crop, static_cast<std::size_t>(sampleCount));
+        storeReadouts(measureWindow(ownSource, engine.inputChannels(), ownView, start + shownFirst,
+                                    start + shownEnd, sampleRate),
                       ownEnd, ownView, shown);
     }
     applyReadouts(header);
