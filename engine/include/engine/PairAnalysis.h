@@ -176,6 +176,13 @@ private:
     bool progressed = false; // This step has done some work already.
 };
 
+// Where audio sounds, for Compare's analysis and the Meter's correlation, by its mean power (RMS
+// squared) per 10 ms block: above the analysis gate (`silentPower`, protocol analysisGateDbfs), and
+// not more than 60 dB below the loudest block it is measured against (`kAudiblePower`, a power
+// ratio), so that a tail fading under a loud passage does not weigh on what is measured of it.
+inline constexpr double kAudiblePower = 1e-6;
+[[nodiscard]] double silentPower();
+
 // The energy of `values`: the sum of their squares.
 [[nodiscard]] double energyOf(std::span<const float> values);
 

@@ -21,18 +21,11 @@ namespace {
 constexpr double kPreferSmallerShift = 0.98;
 // The weakest best match that still counts as the same sound arriving twice.
 constexpr double kRelatedMatch = 0.3;
-// Overlap: tracks sound together within 20 dB of each other, and above 60 dB below the loudest.
+// Overlap: tracks sound together within 20 dB of each other (and each sounds, kAudiblePower).
 constexpr double kTogether = 0.01;
-constexpr double kAudible = 1e-6;
 // The smallest transform of a search: smaller ones spend more of each on the overlap between
 // blocks, which makes a search over a short reach slower, not faster.
 constexpr std::size_t kSmallestTransform = std::size_t{1} << 14U;
-// A track's mean power (RMS squared) at the analysis gate: quieter blocks are never analysed.
-double silentPower()
-{
-    return std::pow(10.0, protocol::kAnalysisGateDbfs / 10.0);
-}
-
 // A transform's work, in the dot product's multiply-adds: each of its size / 2 butterflies a pass
 // takes about as long as four of them (measured: 0.09 ms for 16384 points, 7.7 ms for 524288,
 // against 0.2 to 0.4 ns a multiply-add), over log2(size) passes.
@@ -155,7 +148,7 @@ std::vector<bool> togetherBlocks(std::span<const std::span<const double>> energi
     const double silentBlock = silentPower() * static_cast<double>(block);
     std::vector<bool> together(blocks);
     for (std::size_t index = 0; index < blocks; ++index) {
-        together[index] = loudest[index] > kAudible * loudestBlock &&
+        together[index] = loudest[index] > kAudiblePower * loudestBlock &&
                           second[index] >= kTogether * loudest[index] &&
                           second[index] > silentBlock;
     }
@@ -172,7 +165,7 @@ std::vector<bool> audibleBlocks(std::span<const double> energies, std::size_t bl
     const double silentBlock = silentPower() * static_cast<double>(block);
     std::vector<bool> audible(energies.size());
     for (std::size_t index = 0; index < energies.size(); ++index) {
-        audible[index] = energies[index] > kAudible * loudest && energies[index] > silentBlock;
+        audible[index] = energies[index] > kAudiblePower * loudest && energies[index] > silentBlock;
     }
     return audible;
 }
@@ -210,6 +203,11 @@ void copyGated(std::span<const float> track, const std::vector<bool>& audible, s
 }
 
 } // namespace
+
+double silentPower()
+{
+    return std::pow(10.0, protocol::kAnalysisGateDbfs / 10.0);
+}
 
 // Of the finite values: one that is not (from a broken signal upstream) is measured around.
 // Eight independent sums, with no branch, so the compiler can run them as vector lanes: a match
