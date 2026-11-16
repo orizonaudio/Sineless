@@ -1969,8 +1969,8 @@ std::vector<ModeCase> windowCases()
 // samples through the true-peak and K-weighting filters ten times a second, and on every frame of
 // a frozen pan). What it reads stays what an analyzer measuring afresh reads: playing on in uneven
 // steps, zoomed, frozen and panned back to the oldest audio held, resumed after a short freeze and
-// after a long one, and after the readout channel, the track's channels or the sample rate
-// change. In Single, Multi and Compare, at the lowest and highest rates.
+// after a long one, and after the readout channel or the track's channels change. In Single,
+// Multi and Compare, at the lowest and highest rates.
 class MeterStream : public ::testing::TestWithParam<ModeCase>
 {
 protected:
