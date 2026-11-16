@@ -61,6 +61,38 @@ bool BlockStats::update(std::size_t first, std::size_t end, const Reader& read)
     return true;
 }
 
+std::optional<BlockStats::Block> BlockStats::measure(std::size_t first, std::size_t end,
+                                                     const Reader& read)
+{
+    end = std::min(end, spanCount);
+    if (!valid) {
+        return std::nullopt;
+    }
+    Block levels;
+    const auto add = [&](const Block& part) {
+        levels.peak = std::max(levels.peak, part.peak);
+        levels.sumSquares += part.sumSquares;
+        levels.invalid += part.invalid;
+    };
+    for (std::size_t position = first; position < end;) {
+        const std::size_t block = position / blockLength;
+        const std::size_t blockEnd = std::min((block + 1) * blockLength, spanCount);
+        const std::size_t to = std::min(end, blockEnd);
+        if (position == block * blockLength && to == blockEnd) {
+            add(values[block]);
+        } else {
+            // A block an edge falls inside: its samples on this side of the edge.
+            scratch.resize(to - position);
+            if (!read(position, scratch)) {
+                return std::nullopt;
+            }
+            add(measureBlock(scratch));
+        }
+        position = to;
+    }
+    return levels;
+}
+
 float BlockStats::peak() const
 {
     float peak = 0.0f;

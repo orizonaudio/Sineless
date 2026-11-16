@@ -16,6 +16,10 @@ export interface Frame {
   readonly startFraction: number;
   readonly peak: number;
   readonly rms: number;
+  readonly truePeak: number;
+  readonly dcOffset: number;
+  readonly loudness: number;
+  readonly correlation: number;
   readonly synced: boolean;
   readonly limited: boolean;
   readonly partial: boolean; // The sweep's first pass is still filling in.
@@ -154,6 +158,10 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     startFraction: f32("startFraction"),
     peak: f32("peak"),
     rms: f32("rms"),
+    truePeak: f32("truePeak"),
+    dcOffset: f32("dcOffset"),
+    loudness: f32("loudness"),
+    correlation: f32("correlation"),
     synced: (flags & FrameFlag.synced) !== 0,
     limited: (flags & FrameFlag.limited) !== 0,
     partial: (flags & FrameFlag.partial) !== 0,

@@ -25,8 +25,10 @@ bool SweepImage::update(const SampleSource& source, const SweepWindow& window, b
     // An image already at the length asked for keeps it, even where that length is not similar
     // enough to the window's for an image to keep its own (a lane on this track's length).
     const bool atLength = length != 0 && count == length;
-    // A one-channel image holds one view: another one is drawn afresh.
-    const bool otherView = channelCount == 1 && view != imageView;
+    // A one-channel image holds one view: another one is drawn afresh. So is an image of the
+    // captured channels shown as another view (this track's lane), so that everything kept from
+    // it (columns, levels, matches) is taken again from its changes, as from a one-channel one.
+    const bool otherView = view != imageView;
     if (rebuild || otherView || (!atLength && !sweepLengthsSimilar(window.sampleCount, count))) {
         imageView = view;
         count = length != 0 ? length : window.sampleCount;

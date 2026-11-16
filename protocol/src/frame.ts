@@ -28,7 +28,8 @@
 // alignReachSeconds.
 //
 // The visible span starts `startFraction` samples after the first point (sub-sample trigger
-// alignment). `peak`, `rms` and `invalidSamples` measure `readoutView` (a ChannelView): in
+// alignment). `peak`, `rms` and `invalidSamples` measure the visible part of `readoutView` (a
+// ChannelView): in
 // Single the readout source when it is drawn, else the first view drawn; in Multi the lane channel
 // (Left on a mono track). `peak` and `rms` are NaN when there is nothing to measure. `triggerView` is the view the trigger reads under the
 // current settings: in Single the trigger source when it is drawn, else the first view drawn; in
@@ -107,6 +108,10 @@ export const frameHeaderFields = [
   { name: "pointsPerSample", type: "u32" },
   { name: "compareLane", type: "u32" },
   { name: "nullDepth", type: "f32" },
+  { name: "truePeak", type: "f32" },
+  { name: "dcOffset", type: "f32" },
+  { name: "loudness", type: "f32" },
+  { name: "correlation", type: "f32" },
 ] as const satisfies readonly FrameField[];
 
 export type FrameHeaderFieldName = (typeof frameHeaderFields)[number]["name"];

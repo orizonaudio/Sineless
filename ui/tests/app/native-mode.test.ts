@@ -11,6 +11,7 @@ import {
 } from "../../../protocol/src/enums.ts";
 import {
   defaultEditorWidth,
+  minimumEditorHeight,
   minimumEditorWidth,
   screenBorder,
   screenMargin,
@@ -152,7 +153,7 @@ describe("native traces: the page under the editor's traces", () => {
   // limits.ts (editor/src/TraceView.cpp, ScreenRect); the page lays its screen out from the same
   // numbers, so the traces drawn natively sit exactly in it.
   test.each([
-    { width: minimumEditorWidth, height: 420 },
+    { width: minimumEditorWidth, height: minimumEditorHeight },
     { width: defaultEditorWidth, height: 580 },
     { width: 1500, height: 900 },
     // Narrower than the minimum: the page keeps its minimum width and is clipped.

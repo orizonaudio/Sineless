@@ -7,8 +7,8 @@
 #include "engine/HoldBuffer.h"
 #include "engine/InstanceRegistry.h"
 #include "engine/LaneHold.h"
+#include "engine/Meter.h"
 #include "engine/PairAnalysis.h"
-#include "engine/Readouts.h"
 #include "engine/Reconstruction.h"
 #include "engine/Reducer.h"
 #include "engine/Settings.h"
@@ -262,9 +262,6 @@ private:
         // Frozen in Trigger or Free: how far back the view can be panned (seconds), to the start of
         // the held audio.
         double panReach = 0.0;
-        // Readouts always cover the whole span; 0 means the window itself.
-        std::uint64_t readoutStart = 0;
-        std::uint64_t readoutCount = 0;
     };
 
     // A sum's recomputation spread over frames: `remaining` positions from `cursor`, wrapping.
@@ -303,8 +300,11 @@ private:
     // One track of the multi-track view: its own persistent sweep, and its audio while frozen.
     struct Lane
     {
+        // Another track's image holds its lane channel alone; this track's, its captured channels
+        // (both of a stereo track), which the Meter reads Left and Right from.
+        explicit Lane(int imageChannels = 1) : image(imageChannels) {}
         std::shared_ptr<Engine> engine;
-        SweepImage image{1}; // The track's lane channel.
+        SweepImage image;
         std::optional<SweepWindow> window;
         std::uint64_t end = 0; // Where the last update placed the sweep to.
         // Beats, live: this lane's capture index of the audio played with this track's index i
@@ -321,8 +321,10 @@ private:
         std::size_t reducedFirst = 0;
         // Trigger or Free, rolling: the lane's columns, kept as they scroll.
         RollColumns roll;
-        // The lane's levels per block of its sweep, for readouts and summing gains.
+        // The lane's levels per block of its sweep, for summing gains.
         BlockStats stats;
+        // This track's lane: the Meter's statistics per block of its sweep.
+        MeterBlocks meter;
         // Tempo-synced Compare, while the fix shifts this track: its levels per block as shifted,
         // for the fixed summing gain, the shift they were measured for and their pending
         // recomputation (see updateSumStats).
@@ -432,9 +434,39 @@ private:
                                              std::uint64_t shownFrom, double viewStart,
                                              double viewEnd);
     void publishLanes(std::vector<LaneLabel> labels, std::vector<TrackEntry> tracks);
-    [[nodiscard]] bool readoutsDue(std::uint64_t end, protocol::ChannelView view) const;
+    // What the Meter's readouts were measured over: the zoom, which changes the visible part
+    // without new audio (a pan does so only while frozen, when they are always measured).
+    struct ReadoutView
+    {
+        double viewStart = 0.0;
+        double viewEnd = 1.0;
+        bool operator==(const ReadoutView&) const = default;
+    };
+    [[nodiscard]] bool readoutsDue(std::uint64_t end, protocol::ChannelView view,
+                                   const ReadoutView& shown) const;
     // Keeps `values`, measured on `view` up to the capture end `end`, for this and later frames.
-    void storeReadouts(const Readouts& values, std::uint64_t end, protocol::ChannelView view);
+    void storeReadouts(const Readouts& values, std::uint64_t end, protocol::ChannelView view,
+                       const ReadoutView& shown);
+    // The Meter's readouts over samples [first, end) of `source` (a window's visible part, of this
+    // track's capture or its hold, by capture index): the readout channel `view`, and Left and
+    // Right, of `channels` captured channels, at `sampleRate`. With the Meter on, from statistics
+    // per block that follow the audio; off, the levels alone, from the samples.
+    [[nodiscard]] Readouts measureWindow(const SampleSource& source, int channels,
+                                         protocol::ChannelView view, std::uint64_t first,
+                                         std::uint64_t end, double sampleRate);
+    [[nodiscard]] bool metered() const;
+    // Reads `view` of `source` for a span's levels per block.
+    BlockStats::Reader statsReader(const SampleSource& source, int channels,
+                                   protocol::ChannelView view);
+    [[nodiscard]] static Readouts levelsOf(BlockStats& stats, std::size_t first, std::size_t end,
+                                           const BlockStats::Reader& read);
+    // Keeps `meter`, the Meter's statistics of `image` per block, in step with the samples placed
+    // since the last frame; all of them when `fresh`. False if the image could not be read.
+    bool updateMeter(MeterBlocks& meter, const SweepImage& image, protocol::ChannelView view,
+                     int channels, bool fresh, std::size_t block, double sampleRate);
+    // The Meter's reader of `image` (or a window's `source` from `origin`), as MeterBlocks reads.
+    MeterBlocks::Reader meterReader(const SampleSource& source, int channels,
+                                    protocol::ChannelView view, std::int64_t origin);
     // Puts the latest readouts, and the view they measured, in `header`, and notes what they were
     // measured under.
     void applyReadouts(FrameHeaderValues& header);
@@ -845,6 +877,7 @@ private:
         std::uint64_t end = 0;
         protocol::ChannelView view = protocol::ChannelView::kMid;
         bool valid = false;
+        ReadoutView shown;
         // What they were measured under: frames with other settings or freezing measure again.
         std::optional<Settings> settings;
         bool frozen = false;
@@ -860,11 +893,27 @@ private:
         std::uint8_t views = 0;
     };
     ViewReduction viewReduction;
-    // Single mode: the readout view's levels per block of the tempo-synced sweep, for readouts,
-    // and the channel count and view they were measured for.
+    // Single mode: the levels per block of the tempo-synced sweep, and the channel count and
+    // view they were measured for; with the Meter on, its statistics per block too.
     BlockStats sweepStats;
     int sweepStatsChannels = 0;
     protocol::ChannelView sweepStatsView = protocol::ChannelView::kMid;
+    MeterBlocks sweepMeter;
+    // Trigger and Free, with the Meter on: its statistics per block of this track's audio, which
+    // follow it (position 0 is capture index `streamOrigin`), and the readout view and channel
+    // count they were measured for; and those of a trace held from before what they keep,
+    // measured afresh on the readout schedule.
+    MeterBlocks streamMeter;
+    std::uint64_t streamOrigin = 0;
+    protocol::ChannelView streamView = protocol::ChannelView::kMid;
+    int streamChannels = 0;
+    MeterBlocks spotMeter;
+    std::vector<float> meterView;
+    std::vector<float> meterLeft;
+    std::vector<float> meterRight;
+    std::vector<std::size_t> meterJoins;
+    // Reading a lane's image of two channels as its lane channel, which may be Mid or Side.
+    std::vector<float> laneScratch;
     Settings frameSettings; // The settings of the frame being produced.
     std::vector<float> readScratch;
     std::vector<float> triggerSamples;

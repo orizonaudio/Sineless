@@ -102,6 +102,28 @@ export const maxShownTracks = maxLanes - 1;
 // How often readouts are measured and refreshed (seconds): legible while frames arrive faster.
 export const readoutIntervalSeconds = 0.1;
 
+// The Meter's loudness, to ITU-R BS.1770: gated loudness of the visible part, from 400 ms blocks
+// (loudnessBlockSeconds) starting every 100 ms (loudnessStepSeconds, a 75% overlap) from the
+// visible part's start; a view shorter than one block has none. A block's loudness is
+// loudnessOffsetLufs + 10·log10 of its K-weighted mean square, Left and Right added (the offset
+// makes a 997 Hz sine at 0 dBFS in one channel read −3.01 LUFS). Blocks count only when above the
+// absolute gate (loudnessAbsoluteGateLufs) and above the relative gate, loudnessRelativeGateLu
+// below the loudness of the blocks above the absolute gate: so silence and quiet stretches do not
+// pull a passage's loudness down. All four are the standard's.
+export const loudnessBlockSeconds = 0.4;
+export const loudnessStepSeconds = 0.1;
+export const loudnessOffsetLufs = -0.691;
+export const loudnessAbsoluteGateLufs = -70;
+export const loudnessRelativeGateLu = -10;
+
+// The Meter's True peak, to ITU-R BS.1770 Annex 2, reads the wave between samples with the
+// standard's 4-phase interpolator below truePeakHalfRateHz, with two of its phases (half a sample
+// apart) from there, and reads the samples alone from truePeakSampleRateHz: higher rates "require
+// proportionately less over-sampling" (the standard), and 192 kHz is the rate its dB TP label asks
+// for. The cost per second of audio stays about the same at every rate.
+export const truePeakHalfRateHz = 96000;
+export const truePeakSampleRateHz = 192000;
+
 // How far apart two tracks may be for Compare to find their offset (seconds, either way), and how
 // much audio before the playhead it compares them over.
 export const matchReachSeconds = 0.01;
@@ -125,6 +147,12 @@ export const summingMarginDb = 1;
 export const lowestAudibleHz = 20;
 export const highestAudibleHz = 20000;
 
+// The shortest visible part the Meter measures a DC offset over (seconds): four periods of the
+// lowest audible frequency. A mean over part of a cycle reads part of the wave as offset: over
+// four periods of a 20 Hz tone of amplitude A, at most A / (4π), 22 dB below its peak, and less
+// for higher notes and longer views. Shorter views show "—".
+export const dcOffsetMinimumSeconds = 4 / lowestAudibleHz;
+
 // The editor's layout (CSS pixels): its minimum width, which fits the widest toolbar (Trig, the
 // Single trigger mode with Re-arm, frozen, in Single or in Multi with Compare on: one width since
 // Single's and Multi's summaries share one Views field, as wide as Multi's count of tracks at two
@@ -132,14 +160,15 @@ export const highestAudibleHz = 20000;
 // platform; the status bar fits too, its chip area being what that bar leaves less the same 8 px
 // (ui/src/styles.css, .chips; docs/ui/README.md); its default width,
 // the same, as nothing in the window changes with its width; its minimum height, which fits the
-// tallest panel in the screen's corner (Time cursors in Beats, Level cursors and the Meter, measured
-// at 315 px from 9 px below the screen's top) with at least 8 px to spare, rounded up to 10;
+// tallest panel in the screen's corner (Time cursors in Beats, Level cursors and the Meter's eight
+// rows, measured at 399 px from 9 px below the screen's top) with at least 8 px to spare, rounded up
+// to 10;
 // the minimum height of a stacked lane; and the height of everything around the screen (toolbar
 // and status bar), at most: measured at 82, with room for rounding at other display scales. The
 // editor tests check the page against them.
 export const defaultEditorWidth = 1040;
 export const minimumEditorWidth = 1040;
-export const minimumEditorHeight = 420;
+export const minimumEditorHeight = 500;
 export const minimumLaneHeight = 40;
 export const chromeHeight = 84;
 
@@ -319,6 +348,30 @@ export const limits: readonly {
   { name: "matchWindowSeconds", value: matchWindowSeconds, kind: "double" },
   { name: "alignReachSeconds", value: alignReachSeconds, kind: "double" },
   { name: "summingMarginDb", value: summingMarginDb, kind: "double" },
+  { name: "loudnessBlockSeconds", value: loudnessBlockSeconds, kind: "double" },
+  { name: "loudnessStepSeconds", value: loudnessStepSeconds, kind: "double" },
+  { name: "loudnessOffsetLufs", value: loudnessOffsetLufs, kind: "double" },
+  {
+    name: "loudnessAbsoluteGateLufs",
+    value: loudnessAbsoluteGateLufs,
+    kind: "double",
+  },
+  {
+    name: "loudnessRelativeGateLu",
+    value: loudnessRelativeGateLu,
+    kind: "double",
+  },
+  {
+    name: "dcOffsetMinimumSeconds",
+    value: dcOffsetMinimumSeconds,
+    kind: "double",
+  },
+  { name: "truePeakHalfRateHz", value: truePeakHalfRateHz, kind: "double" },
+  {
+    name: "truePeakSampleRateHz",
+    value: truePeakSampleRateHz,
+    kind: "double",
+  },
   { name: "defaultEditorWidth", value: defaultEditorWidth, kind: "pixels" },
   { name: "minimumEditorWidth", value: minimumEditorWidth, kind: "pixels" },
   { name: "minimumEditorHeight", value: minimumEditorHeight, kind: "pixels" },

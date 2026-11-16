@@ -853,7 +853,9 @@ TEST_F(AudioUnitViewTest, HoldsTheGripsSizeWhileAnAutoLayoutHostCatchesUp)
     ASSERT_TRUE(pumpUntil([&] { return testing::hasSnapshot(webView); }, kPageTimeout));
     const NSSize larger =
         NSMakeSize(EditorCore::kDefaultWidth + 300, EditorCore::kDefaultHeight + 200);
-    const NSSize smaller = NSMakeSize(EditorCore::kDefaultWidth, EditorCore::kDefaultHeight - 100);
+    // Between the minimum and the default: a size the grip can reach.
+    const NSSize smaller = NSMakeSize(
+        EditorCore::kDefaultWidth, (EditorCore::kMinimumHeight + EditorCore::kDefaultHeight) / 2.0);
     for (const NSSize dragged : {larger, smaller}) {
         SCOPED_TRACE(dragged.height);
         dragGrip(webView, dragged);

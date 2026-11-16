@@ -56,10 +56,10 @@ import {
 import type { SettingsStore } from "./store/settings-store.ts";
 import { amplitudeLabels, timeLabels } from "./view/axis-labels.ts";
 import {
+  formatCorrelation,
   formatGain,
   formatOffset,
   parseQuantity,
-  signed,
 } from "./view/format.ts";
 import {
   cursorReadout,
@@ -67,6 +67,8 @@ import {
   initialLevels,
   levelReadout,
   meterReadout,
+  meterValuesOf,
+  type MeterValues,
   type ReadoutRow,
   measure,
   type CursorPair,
@@ -132,7 +134,7 @@ import {
 import {
   clampPan,
   markerLane,
-  meterTitle,
+  meterSource,
   readoutView,
   viewNames,
   viewOrder,
@@ -355,13 +357,19 @@ export class OscilloscopeApp {
   // The fields whose button names the value chosen in their popover.
   private readonly choiceSummaries = new Map<ChoiceSetting, ChoiceSummary>();
   private triggerSummary: StackedSummary | undefined;
-  // What the Meter shows: the frame's peak and RMS as last taken on the readout schedule, so a
-  // cursor drag between two refreshes redraws the corner without refreshing them, and its title,
-  // naming the channel they were measured on, from the same frame.
-  private meterValues = {
-    peak: Number.NaN,
-    rms: Number.NaN,
-    title: meterTitle(undefined),
+  // What the Meter shows: the frame's readouts as last taken on the readout schedule, so a
+  // cursor drag between two refreshes redraws the corner without refreshing them, and its Source,
+  // naming the channel the levels were measured on, from the same frame.
+  private meterValues: { values: MeterValues; source: string } = {
+    values: {
+      peak: Number.NaN,
+      truePeak: Number.NaN,
+      rms: Number.NaN,
+      dcOffset: Number.NaN,
+      loudness: Number.NaN,
+      correlation: Number.NaN,
+    },
+    source: meterSource(undefined),
   };
   // The readouts' channel, the Views popover's Measure row: lit as the frame measured it, not as the
   // setting asks.
@@ -1650,7 +1658,7 @@ export class OscilloscopeApp {
       const alignment = match.related
         ? `${formatOffset(offsetMs)}${match.inverted ? " Ø" : ""}`
         : "unrelated";
-      node.textContent = `${alignment} · ${measured ? signed(match.correlation, 2) : "—"}`;
+      node.textContent = `${alignment} · ${formatCorrelation(match.correlation)}`;
     });
     if (this.sumNode !== undefined && comparison !== undefined) {
       if (comparison.lane === CompareLane.difference) {
@@ -2173,8 +2181,8 @@ export class OscilloscopeApp {
     const sections: { title: string; rows: ReadoutRow[] }[] = [];
     if (this.store.get("meter") === "on") {
       sections.push({
-        title: this.meterValues.title,
-        rows: meterReadout(this.meterValues.peak, this.meterValues.rms),
+        title: "Meter",
+        rows: meterReadout(this.meterValues.values, this.meterValues.source),
       });
     }
     if (
@@ -2791,11 +2799,11 @@ export class OscilloscopeApp {
     }
     const frame = this.lastFrame;
     if (frame !== undefined) {
-      // Taken on the readout schedule whether or not the Meter shows, so it shows them at once.
+      // Taken on the readout schedule whether or not the Meter shows, so it shows the levels at
+      // once; the engine measures its other rows from the frame after it is switched on.
       this.meterValues = {
-        peak: frame.peak,
-        rms: frame.rms,
-        title: meterTitle(frame),
+        values: meterValuesOf(frame),
+        source: meterSource(frame),
       };
     }
     this.updateCursorReadout();

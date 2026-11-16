@@ -49,7 +49,11 @@ TEST(ProtocolHeader, LaysOutTheFrameHeaderWithNaturalAlignment)
     EXPECT_EQ(FrameHeader::kPointsPerSampleOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kCompareLaneOffset % 4, 0u);
     EXPECT_EQ(FrameHeader::kNullDepthOffset % 4, 0u);
-    EXPECT_EQ(FrameHeader::kSize, 128u);
+    EXPECT_EQ(FrameHeader::kTruePeakOffset % 4, 0u);
+    EXPECT_EQ(FrameHeader::kDcOffsetOffset % 4, 0u);
+    EXPECT_EQ(FrameHeader::kLoudnessOffset % 4, 0u);
+    EXPECT_EQ(FrameHeader::kCorrelationOffset % 4, 0u);
+    EXPECT_EQ(FrameHeader::kSize, 144u);
     EXPECT_EQ(kMatchValues, 3u);
 }
 

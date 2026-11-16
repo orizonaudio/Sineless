@@ -182,7 +182,7 @@ export const settings = {
   },
   // The readout beside the pointer over the traces.
   hoverReadout: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
-  // The Meter in the screen's corner: Peak, RMS and their crest factor, over the whole span.
+  // The Meter in the screen's corner: the levels, loudness and correlation of the visible part.
   meter: { kind: "enum", values: "Toggle", defaultValue: Toggle.off },
   // The pitch of A4 that note names refer to, in Hz.
   concertPitch: {

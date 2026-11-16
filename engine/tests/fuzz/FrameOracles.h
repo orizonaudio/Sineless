@@ -37,18 +37,42 @@ inline void checkFrame(const std::vector<std::byte>& frame)
 }
 
 // Peak and RMS are both NaN (nothing measured), or both finite with 0 <= RMS <= peak: the root of
-// a mean of squares is never above the largest of them, up to the rounding of a float.
+// a mean of squares is never above the largest of them, up to the rounding of a float. The true
+// peak, the DC offset, the loudness and the correlation are measured only while the Meter is on,
+// and never without the levels: the true peak then counts the samples too, so it is finite and
+// not below the peak wherever the levels are; without it (the Meter off) none of the other three
+// is measured. A DC offset, a mean, is never further from 0 than the peak; a correlation lies in
+// [-1, 1]; a loudness is finite. Each is NaN when not measured, never 0 for none.
 inline void checkReadouts(const engine::DecodedFrame& frame)
 {
     if (std::isnan(frame.peak) || std::isnan(frame.rms)) {
         require(std::isnan(frame.peak) && std::isnan(frame.rms),
                 "peak and RMS are measured together or not at all");
+        require(std::isnan(frame.truePeak), "no true peak without a peak");
+        require(std::isnan(frame.dcOffset), "no DC offset without a peak");
         counted("readouts-unmeasured");
     } else {
         require(std::isfinite(frame.peak) && std::isfinite(frame.rms) && frame.rms >= 0.0f &&
                     frame.rms <= frame.peak * (1.0f + 0x1p-20f),
                 "the RMS is between 0 and the peak");
+        if (std::isnan(frame.truePeak)) {
+            require(std::isnan(frame.dcOffset) && std::isnan(frame.loudness) &&
+                        std::isnan(frame.correlation),
+                    "with the Meter off, the levels alone are measured");
+        } else {
+            require(std::isfinite(frame.truePeak) && frame.truePeak >= frame.peak,
+                    "the true peak is never below the peak");
+            require(std::isnan(frame.dcOffset) ||
+                        std::abs(frame.dcOffset) <= frame.peak * (1.0f + 0x1p-20f),
+                    "the DC offset is within the peak");
+            counted("readouts-metered");
+        }
     }
+    require(std::isnan(frame.correlation) ||
+                (frame.correlation >= -1.0f && frame.correlation <= 1.0f),
+            "a correlation lies between -1 and 1");
+    require(std::isnan(frame.loudness) || std::isfinite(frame.loudness),
+            "a loudness is finite or none");
     counted("readouts");
 }
 

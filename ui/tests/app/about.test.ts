@@ -7,6 +7,7 @@ import { brand } from "@brand/brand.ts";
 
 import {
   defaultEditorWidth,
+  minimumEditorHeight,
   minimumEditorWidth,
 } from "../../../protocol/src/limits.ts";
 import { helpTexts } from "../../src/view/help.ts";
@@ -158,7 +159,7 @@ describe("about", () => {
   });
 
   test.each([
-    { width: minimumEditorWidth, height: 420 },
+    { width: minimumEditorWidth, height: minimumEditorHeight },
     { width: defaultEditorWidth, height: 580 },
   ])(
     "lies inside the window at $width × $height",

@@ -484,6 +484,13 @@ void configure(Engine& engine, Display mode, TimeBase timeBase)
     engine.settings().set(SettingId::kChannelViews, 0b0011); // L and R asked for.
 }
 
+// Switches the Meter, which shows the readouts: off, the engine measures the levels alone.
+void setMeter(Engine& engine, bool on)
+{
+    engine.settings().set(SettingId::kMeter,
+                          static_cast<double>(on ? protocol::Toggle::kOn : protocol::Toggle::kOff));
+}
+
 // The span setting in seconds of `timeBase`: Free's in Free, Trigger's otherwise (Beats uses
 // neither).
 SettingId spanSetting(TimeBase timeBase)
@@ -1314,8 +1321,8 @@ std::vector<ModeCase> beatCases()
 // Frozen, a shorter beat span shows part of the held sweep, and its readouts describe that part:
 // Peak and RMS of what is shown. A tone alternates every two beats between loud and quiet; frozen
 // at the end of a 1-bar cycle that holds a loud half and then a quiet half, the newest two beats
-// shown are the quiet half, read as such: its level, not the loud bar's. In every mode, at every
-// rate.
+// shown are the quiet half, read as such: its level, not the loud bar's; and with the Meter then
+// switched on, by its other rows too. In every mode, at every rate.
 class FrozenShorterSpan : public ::testing::TestWithParam<ModeCase>
 {
 };
@@ -1344,6 +1351,26 @@ TEST_P(FrozenShorterSpan, ReadsThePartShown)
     const double quiet = 0.25 * kAmplitude * (c.channels == 2 && isMulti(c.mode) ? 0.75 : 1.0);
     EXPECT_NEAR(frame->peak, quiet, 0.02 * quiet) << "the quiet half's peak, not the bar's";
     EXPECT_NEAR(frame->rms, quiet / std::numbers::sqrt2, 0.02 * quiet);
+
+    // The Meter switched on while frozen reads that part too, Left and Right with it: in Multi
+    // this track's lane is built again from the held audio with both channels, and shows what it
+    // showed.
+    setMeter(session.own(), true);
+    const auto metered = session.produce();
+    ASSERT_TRUE(metered) << "no frame with the Meter switched on";
+    if (c.mode != Display::kCompare) {
+        // Compare's matches, searched again at the freeze, may still arrive between two frames.
+        EXPECT_TRUE(sameValues(metered->data, frame->data)) << "the picture changed";
+    }
+    EXPECT_NEAR(metered->peak, quiet, 0.02 * quiet);
+    EXPECT_NEAR(metered->rms, quiet / std::numbers::sqrt2, 0.02 * quiet);
+    EXPECT_GE(metered->truePeak, metered->peak);
+    EXPECT_TRUE(std::isfinite(metered->loudness)) << "a second of a tone has a loudness";
+    if (c.channels == 2) {
+        EXPECT_NEAR(metered->correlation, 1.0, 1e-3) << "Right is Left at half its level";
+    } else {
+        EXPECT_TRUE(std::isnan(metered->correlation)) << "a mono track has none";
+    }
 }
 
 class BeatSpans : public ::testing::TestWithParam<ModeCase>
@@ -1571,6 +1598,624 @@ std::vector<ModeCase> gridZoomCases()
 
 INSTANTIATE_TEST_SUITE_P(EdgeRates, ZoomedHalves, ::testing::ValuesIn(gridZoomCases()),
                          modeTestName);
+
+// The Meter measures the visible part: a span with one sample that is not finite every 100 ms,
+// zoomed onto either half, counts what each half shows, the two adding up to the whole, and reads
+// each half's peak and RMS, of which the whole's are the larger peak and the power between them.
+// Frozen, so each view shows the same audio. Live, a zoom is measured in the next frame, without
+// waiting for 100 ms of audio: as an analyzer measuring afresh reads it. In every mode and time
+// base, at the lowest and highest rates.
+class MeterView : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(MeterView, MeasuresTheVisiblePart)
+{
+    const ModeCase c = GetParam();
+    // With the Meter off, from the levels per block; on, from the Meter's own statistics.
+    for (const bool meter : {false, true}) {
+        SCOPED_TRACE(meter ? "Meter on" : "Meter off");
+        Session session(c.rate, c.channels);
+        session.join({.kind = Signal::Kind::kNoise,
+                      .seed = 3,
+                      .quieterEvery = std::llround(c.rate * 0.07),
+                      .brokenEvery = std::llround(c.rate / 10.0)});
+        session.join({.frequency = 1500.0});
+        configure(session.own(), c.mode, c.timeBase);
+        setMeter(session.own(), meter);
+        setSpan(session.own(), c.timeBase, 1.0);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+        session.play(c.timeBase == TimeBase::kBeats ? 2.5 : 1.5, protocol::kReadoutIntervalSeconds);
+
+        // Live: zoomed onto the second half, the next frame measures it.
+        session.analyzer().setView(0.5, 1.0);
+        session.play(0.005);
+        const auto live = session.produce();
+        ASSERT_TRUE(live);
+        Analyzer fresh(session.own(), session.registry);
+        fresh.setColumns(kColumns);
+        fresh.setView(0.5, 1.0);
+        std::vector<std::byte> bytes;
+        ASSERT_TRUE(fresh.produce(bytes));
+        const DecodedFrame expected = decode(bytes);
+        EXPECT_EQ(live->invalidSamples, expected.invalidSamples) << "live zoom measured at once";
+        EXPECT_FLOAT_EQ(live->peak, expected.peak) << "live zoom measured at once";
+
+        // Frozen: the whole, then each half, of the same audio.
+        session.analyzer().setView(0.0, 1.0);
+        session.analyzer().setFrozen(true);
+        const auto whole = session.produce();
+        ASSERT_TRUE(whole);
+        session.analyzer().setView(0.0, 0.5);
+        const auto first = session.produce();
+        ASSERT_TRUE(first);
+        session.analyzer().setView(0.5, 1.0);
+        const auto second = session.produce();
+        ASSERT_TRUE(second);
+        EXPECT_GE(whole->invalidSamples, 4U);
+        EXPECT_LT(first->invalidSamples, whole->invalidSamples) << "the first half shows fewer";
+        EXPECT_LT(second->invalidSamples, whole->invalidSamples) << "the second half shows fewer";
+        EXPECT_EQ(first->invalidSamples + second->invalidSamples, whole->invalidSamples)
+            << "each counted once";
+        EXPECT_FLOAT_EQ(whole->peak, std::max(first->peak, second->peak));
+        const double halves = ((first->rms * first->rms) + (second->rms * second->rms)) / 2.0;
+        EXPECT_NEAR(whole->rms * whole->rms, halves, 2e-3 * halves);
+        EXPECT_NE(first->rms, second->rms) << "the halves read their own audio";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, MeterView, ::testing::ValuesIn(zoomCases()), modeTestName);
+
+// The Meter's other rows through the analyzer: a 1 kHz tone of amplitude 0.25 over a DC offset of
+// 0.5, its right channel the left's tone inverted over the same offset. True peak at or above
+// Peak; DC the offset; Loudness the tone's in both channels (the K-weighting's high-pass takes the
+// offset out): 10·log10(2 · 0.25² / 2) − 0.691 + the filter's +0.691 dB at 1 kHz, −12.04 LUFS;
+// Correlation at zero offset, which counts the offset common to both: (0.5² − 0.25²/2) / (0.5² +
+// 0.25²/2) = 0.778, read from Left and Right whatever channel the levels are measured on (Left
+// here, Mid in Multi's lanes). A mono
+// track has no correlation and its one channel's loudness, 3 dB lower. With the Meter on, in every
+// mode and time base, live and frozen, at the lowest and highest rates.
+class MeterRows : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(MeterRows, ReadLeftAndRightAndTheLevelsChannel)
+{
+    const ModeCase c = GetParam();
+    Session session(c.rate, c.channels);
+    session.join({.frequency = 1000.0, .rightPhase = std::numbers::pi});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), c.mode, c.timeBase);
+    setMeter(session.own(), true);
+    session.own().settings().set(SettingId::kReadoutSource,
+                                 static_cast<double>(protocol::ChannelView::kLeft));
+    setSpan(session.own(), c.timeBase, 1.0);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+    session.play(c.timeBase == TimeBase::kBeats ? 2.5 : 1.5, protocol::kReadoutIntervalSeconds);
+    for (const bool frozen : {false, true}) {
+        SCOPED_TRACE(frozen ? "frozen" : "live");
+        if (frozen) {
+            session.analyzer().setFrozen(true);
+        } else {
+            session.play(0.2, protocol::kReadoutIntervalSeconds);
+        }
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame);
+        EXPECT_GE(frame->truePeak, frame->peak);
+        EXPECT_NEAR(frame->dcOffset, 0.5, 0.01);
+        if (c.channels == 2) {
+            EXPECT_NEAR(frame->correlation, 0.7778, 1e-3);
+            EXPECT_NEAR(frame->loudness, -12.04, 0.15);
+        } else {
+            EXPECT_TRUE(std::isnan(frame->correlation)) << "a mono track has none";
+            EXPECT_NEAR(frame->loudness, -15.05, 0.15);
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, MeterRows, ::testing::ValuesIn(zoomCases()), modeTestName);
+
+// With the Meter off nothing shows True peak, DC, Loudness or Correlation, and the engine does not
+// measure them: the frame carries no value for the four, the Peak, RMS and invalid count it would
+// with the Meter on, and in a sweep reads less audio (Left and Right are not read). Switched on,
+// the next frame carries all four, as an engine that had the Meter on throughout measures them,
+// without waiting for 100 ms of audio; switched off, none again. Live, then frozen, in every mode
+// and time base, at the lowest and highest rates.
+class MeterOff : public ::testing::TestWithParam<ModeCase>
+{
+protected:
+    static void expectLevelsAlone(const DecodedFrame& frame)
+    {
+        EXPECT_TRUE(std::isnan(frame.truePeak)) << "True peak measured with the Meter off";
+        EXPECT_TRUE(std::isnan(frame.dcOffset)) << "DC measured with the Meter off";
+        EXPECT_TRUE(std::isnan(frame.loudness)) << "Loudness measured with the Meter off";
+        EXPECT_TRUE(std::isnan(frame.correlation)) << "Correlation measured with the Meter off";
+        EXPECT_TRUE(std::isfinite(frame.peak) && std::isfinite(frame.rms)) << "the levels stay";
+    }
+
+    static void expectSameRows(const DecodedFrame& frame, const DecodedFrame& expected,
+                               int channels)
+    {
+        EXPECT_FLOAT_EQ(frame.peak, expected.peak);
+        EXPECT_FLOAT_EQ(frame.rms, expected.rms);
+        EXPECT_EQ(frame.invalidSamples, expected.invalidSamples);
+        EXPECT_NEAR(frame.truePeak, expected.truePeak, 1e-6);
+        EXPECT_NEAR(frame.dcOffset, expected.dcOffset, 1e-6);
+        EXPECT_NEAR(frame.loudness, expected.loudness, 1e-3);
+        if (channels == 2) {
+            EXPECT_NEAR(frame.correlation, expected.correlation, 1e-6);
+        } else {
+            EXPECT_TRUE(std::isnan(frame.correlation)) << "a mono track has none";
+        }
+    }
+};
+
+TEST_P(MeterOff, MeasuresTheLevelsAloneUntilSwitchedOn)
+{
+    const ModeCase c = GetParam();
+    // The same audio, broken on every channel every 100 ms, in two sessions: the Meter off in
+    // one, on in the other.
+    const auto start = [&](Session& session, bool meter) {
+        session.join({.frequency = 1000.0,
+                      .brokenEvery = std::llround(c.rate / 10.0),
+                      .rightPhase = std::numbers::pi});
+        session.join({.frequency = 1500.0});
+        configure(session.own(), c.mode, c.timeBase);
+        setMeter(session.own(), meter);
+        setSpan(session.own(), c.timeBase, 1.0);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+        session.play(c.timeBase == TimeBase::kBeats ? 2.5 : 1.5, protocol::kReadoutIntervalSeconds);
+    };
+    Session off(c.rate, c.channels);
+    Session on(c.rate, c.channels);
+    start(off, false);
+    start(on, true);
+    // Zoomed onto a part whose edges fall inside the blocks the levels are kept in, so that both
+    // read the samples at the edges.
+    off.analyzer().setView(0.2137, 0.8311);
+    on.analyzer().setView(0.2137, 0.8311);
+
+    const std::uint64_t offBefore = off.analyzer().work().samplesRead;
+    const std::uint64_t onBefore = on.analyzer().work().samplesRead;
+    off.play(0.2, protocol::kReadoutIntervalSeconds);
+    on.play(0.2, protocol::kReadoutIntervalSeconds);
+    const auto levels = off.produce();
+    const auto all = on.produce();
+    ASSERT_TRUE(levels);
+    ASSERT_TRUE(all);
+    expectLevelsAlone(*levels);
+    EXPECT_FLOAT_EQ(levels->peak, all->peak);
+    EXPECT_FLOAT_EQ(levels->rms, all->rms);
+    EXPECT_GT(levels->invalidSamples, 0U);
+    EXPECT_EQ(levels->invalidSamples, all->invalidSamples);
+    EXPECT_TRUE(std::isfinite(all->loudness)) << "measured with the Meter on";
+    if (c.timeBase == TimeBase::kBeats) {
+        // In a sweep both measure the new audio: the Meter on reads Left and Right of it too.
+        // (A window's levels, with the Meter off, come from the visible part read again, where
+        // the Meter on follows the new audio: MeterStream.)
+        EXPECT_LT(off.analyzer().work().samplesRead - offBefore,
+                  on.analyzer().work().samplesRead - onBefore)
+            << "Left and Right read with the Meter off";
+    }
+
+    {
+        SCOPED_TRACE("switched on, live");
+        setMeter(off.own(), true);
+        off.play(0.005);
+        on.play(0.005);
+        const auto switched = off.produce();
+        const auto kept = on.produce();
+        ASSERT_TRUE(switched);
+        ASSERT_TRUE(kept);
+        expectSameRows(*switched, *kept, c.channels);
+    }
+    {
+        SCOPED_TRACE("switched off, live");
+        setMeter(off.own(), false);
+        off.play(0.005);
+        // The same audio and the same last frame in both, so that their frozen windows are the
+        // same.
+        on.play(0.005);
+        ASSERT_TRUE(on.produce());
+        const auto again = off.produce();
+        ASSERT_TRUE(again);
+        expectLevelsAlone(*again);
+    }
+    {
+        SCOPED_TRACE("frozen");
+        off.analyzer().setFrozen(true);
+        on.analyzer().setFrozen(true);
+        const auto held = off.produce();
+        const auto kept = on.produce();
+        ASSERT_TRUE(held);
+        ASSERT_TRUE(kept);
+        expectLevelsAlone(*held);
+        setMeter(off.own(), true);
+        const auto switched = off.produce();
+        ASSERT_TRUE(switched);
+        // The levels are those read with the Meter off, of the same view.
+        EXPECT_FLOAT_EQ(switched->peak, held->peak);
+        EXPECT_NEAR(switched->rms, held->rms, 1e-6 * held->rms) << "switched on against off";
+        EXPECT_NEAR(kept->rms, held->rms, 1e-6 * held->rms) << "on throughout against off";
+        expectSameRows(*switched, *kept, c.channels);
+        // And off again, still frozen: the levels alone, of the same picture.
+        setMeter(off.own(), false);
+        const auto again = off.produce();
+        ASSERT_TRUE(again);
+        expectLevelsAlone(*again);
+        EXPECT_FLOAT_EQ(again->peak, held->peak);
+        EXPECT_FLOAT_EQ(again->rms, held->rms);
+        EXPECT_EQ(again->invalidSamples, held->invalidSamples);
+        if (c.mode != Display::kCompare) {
+            // Compare's matches, searched again at the freeze, may still arrive between frames.
+            EXPECT_TRUE(sameValues(again->data, switched->data)) << "the picture changed";
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, MeterOff, ::testing::ValuesIn(zoomCases()), modeTestName);
+
+// Beats chosen while frozen in Trigger or Free draws the sweep of the audio held, in Multi and
+// Compare too, on a stereo track as on a mono one: this track's lane, which holds both channels
+// of a stereo track for the Meter, is built from audio held in both.
+std::vector<ModeCase> windowCases();
+
+class FrozenIntoBeats : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(FrozenIntoBeats, DrawsTheSweepOfTheAudioHeld)
+{
+    const ModeCase c = GetParam();
+    for (const int channels : {1, 2}) {
+        for (const bool meter : {false, true}) {
+            SCOPED_TRACE(testing::Message()
+                         << channels << " channels, the Meter " << (meter ? "on" : "off"));
+            Session session(c.rate, channels);
+            session.join({.frequency = 1000.0});
+            session.join({.frequency = 1500.0});
+            configure(session.own(), c.mode, c.timeBase);
+            setMeter(session.own(), meter);
+            session.own().settings().set(SettingId::kBeatSpan,
+                                         static_cast<double>(BeatSpan::kHalfBar));
+            session.play(3.0, protocol::kReadoutIntervalSeconds);
+            session.analyzer().setFrozen(true);
+            ASSERT_TRUE(session.produce()) << "no frozen frame";
+            session.own().settings().set(SettingId::kTimeBase,
+                                         static_cast<double>(TimeBase::kBeats));
+            const auto frame = session.produce();
+            ASSERT_TRUE(frame) << "no frame once Beats is chosen";
+            EXPECT_TRUE(frame->has(FrameFlag::kFrozen));
+            EXPECT_GT(frame->pointCount, 0U);
+            EXPECT_NEAR(frame->peak, isMulti(c.mode) && channels == 2 ? 0.5625 : 0.75, 0.01)
+                << "the Meter reads the held tone";
+            EXPECT_EQ(std::isfinite(frame->loudness), meter);
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, FrozenIntoBeats, ::testing::ValuesIn(windowCases()),
+                         modeTestName);
+
+// The Beats cases of zoomCases().
+std::vector<ModeCase> sweepCases()
+{
+    std::vector<ModeCase> cases = zoomCases();
+    std::erase_if(cases, [](const ModeCase& c) { return c.timeBase != TimeBase::kBeats; });
+    return cases;
+}
+
+// The Meter of a sweep reads its visible part to the sample, not to the 10 ms blocks its
+// statistics are kept in (as it did: a view's readouts took in up to a block of audio either side
+// that was not on screen). One sample in every hundred is not finite, and a view whose edges fall
+// inside blocks counts those on screen, at positions from viewStart to viewEnd of the sweep's
+// length, and no other. Live and frozen, with the Meter off (from the levels per block) and on
+// (from the Meter's own), in Single, Multi and Compare, at the lowest and highest rates.
+class SweepEdge : public ::testing::TestWithParam<ModeCase>
+{
+};
+
+TEST_P(SweepEdge, IsMeasuredToTheSample)
+{
+    const ModeCase c = GetParam();
+    constexpr std::int64_t kEvery = 100;
+    constexpr double kViewStart = 0.2137;
+    constexpr double kViewEnd = 0.8311;
+    // A half bar at 120 BPM: a second, a whole number of the hundreds.
+    const double length = c.rate;
+    ASSERT_EQ(std::llround(length) % kEvery, 0);
+    const auto first = static_cast<std::int64_t>(std::ceil(kViewStart * length));
+    const auto end = static_cast<std::int64_t>(std::ceil(kViewEnd * length));
+    ASSERT_NE(first % std::llround(c.rate / 100.0), 0) << "the view starts on a block's edge";
+    ASSERT_NE(end % std::llround(c.rate / 100.0), 0) << "the view ends on a block's edge";
+    // The multiples of a hundred from `first` up to, not including, `end`.
+    const std::int64_t onScreen = ((end + kEvery - 1) / kEvery) - ((first + kEvery - 1) / kEvery);
+    for (const bool meter : {false, true}) {
+        Session session(c.rate, c.channels);
+        session.join({.frequency = 1000.0, .brokenEvery = kEvery});
+        session.join({.frequency = 1500.0});
+        configure(session.own(), c.mode, TimeBase::kBeats);
+        setMeter(session.own(), meter);
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+        session.play(2.5, protocol::kReadoutIntervalSeconds);
+        session.analyzer().setView(kViewStart, kViewEnd);
+        session.play(0.005);
+        for (const bool frozen : {false, true}) {
+            SCOPED_TRACE(testing::Message()
+                         << (meter ? "Meter on" : "Meter off") << (frozen ? ", frozen" : ", live"));
+            if (frozen) {
+                session.analyzer().setFrozen(true);
+            }
+            const auto frame = session.produce();
+            ASSERT_TRUE(frame);
+            EXPECT_EQ(frame->invalidSamples, static_cast<std::uint32_t>(onScreen));
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, SweepEdge, ::testing::ValuesIn(sweepCases()), modeTestName);
+
+// The Trigger and Free cases of zoomCases().
+std::vector<ModeCase> windowCases()
+{
+    std::vector<ModeCase> cases = zoomCases();
+    std::erase_if(cases, [](const ModeCase& c) { return c.timeBase == TimeBase::kBeats; });
+    return cases;
+}
+
+// In Trigger and Free, with the Meter on, the engine keeps the Meter's statistics per block of
+// this track's captured audio and follows it, as a sweep's in Beats: a readout measures the audio
+// that arrived since the last one, not the whole view again (a 4 s view at 96 kHz was 384,000
+// samples through the true-peak and K-weighting filters ten times a second, and on every frame of
+// a frozen pan). What it reads stays what an analyzer measuring afresh reads: playing on in uneven
+// steps, zoomed, frozen and panned back to the oldest audio held, resumed after a short freeze and
+// after a long one, and after the readout channel, the track's channels or the sample rate
+// change. In Single, Multi and Compare, at the lowest and highest rates.
+class MeterStream : public ::testing::TestWithParam<ModeCase>
+{
+protected:
+    static void expectSameRows(const DecodedFrame& frame, const DecodedFrame& expected)
+    {
+        EXPECT_FLOAT_EQ(frame.peak, expected.peak);
+        EXPECT_FLOAT_EQ(frame.rms, expected.rms);
+        EXPECT_EQ(frame.invalidSamples, expected.invalidSamples);
+        const auto same = [](float value, float wanted, double tolerance, const char* name) {
+            if (std::isnan(wanted)) {
+                EXPECT_TRUE(std::isnan(value)) << name;
+            } else {
+                EXPECT_NEAR(value, wanted, tolerance) << name;
+            }
+        };
+        same(frame.truePeak, expected.truePeak, 1e-6, "true peak");
+        same(frame.dcOffset, expected.dcOffset, 1e-6, "DC");
+        same(frame.loudness, expected.loudness, 1e-3, "loudness");
+        same(frame.correlation, expected.correlation, 1e-5, "correlation");
+    }
+
+    // What an analyzer new to the session, measuring afresh, reads of the view.
+    static DecodedFrame afresh(Session& session, double viewStart, double viewEnd)
+    {
+        Analyzer fresh(session.own(), session.registry);
+        fresh.setColumns(kColumns);
+        fresh.setView(viewStart, viewEnd);
+        std::vector<std::byte> bytes;
+        EXPECT_TRUE(fresh.produce(bytes));
+        return decode(bytes);
+    }
+};
+
+TEST_P(MeterStream, MeasuresTheNewAudioAloneAndReadsAsAfresh)
+{
+    const ModeCase c = GetParam();
+    const double span = c.timeBase == TimeBase::kFree ? 4.0 : 1.0;
+    // The same audio and the same steps in two sessions, the Meter on in one alone: what the
+    // Meter reads of the audio is the difference between them.
+    const auto start = [&](Session& session, bool meter) {
+        session.join({.kind = Signal::Kind::kNoise,
+                      .seed = 3,
+                      .quieterEvery = std::llround(c.rate * 0.37),
+                      .brokenEvery = std::llround(c.rate * 0.53)});
+        session.join({.frequency = 1500.0});
+        configure(session.own(), c.mode, c.timeBase);
+        setMeter(session.own(), meter);
+        setSpan(session.own(), c.timeBase, span);
+        session.play(5.0, protocol::kReadoutIntervalSeconds);
+    };
+    Session on(c.rate, c.channels);
+    Session off(c.rate, c.channels);
+    start(on, true);
+    start(off, false);
+    // A build over the view reads it once for each channel the Meter reads: the bound is far
+    // under that, and over what following reads (the new audio three times, and part of a block
+    // per 100 ms of the view in two channels).
+    const auto bound = static_cast<std::uint64_t>((0.4 + (0.4 * span)) * c.rate);
+    const auto meterRead = [&](const auto& step) {
+        const std::uint64_t onBefore = on.analyzer().work().samplesRead;
+        const std::uint64_t offBefore = off.analyzer().work().samplesRead;
+        step();
+        const std::uint64_t with = on.analyzer().work().samplesRead - onBefore;
+        const std::uint64_t without = off.analyzer().work().samplesRead - offBefore;
+        return with > without ? with - without : 0;
+    };
+
+    double viewStart = 0.0;
+    double viewEnd = 1.0;
+    std::optional<DecodedFrame> frame;
+    const auto playBoth = [&](double seconds) {
+        on.play(seconds);
+        off.play(seconds);
+        frame = on.produce();
+        (void)off.produce();
+    };
+    for (int round = 0; round < 6; ++round) {
+        SCOPED_TRACE(testing::Message() << "live, round " << round);
+        if (round == 2) {
+            viewStart = 0.21;
+            viewEnd = 0.83;
+        } else if (round == 4) {
+            viewStart = 0.0;
+            viewEnd = 1.0;
+        }
+        on.analyzer().setView(viewStart, viewEnd);
+        off.analyzer().setView(viewStart, viewEnd);
+        const std::uint64_t read = meterRead([&] { playBoth(0.113 + (0.019 * round)); });
+        ASSERT_TRUE(frame);
+        EXPECT_TRUE(std::isfinite(frame->truePeak)) << "the Meter is on";
+        expectSameRows(*frame, afresh(on, viewStart, viewEnd));
+        EXPECT_LT(read, bound) << "the Meter read the view again, not the new audio";
+    }
+
+    // Frozen at a moment inside a block: panned back through the audio held and zoomed, each
+    // frame reads as a session whose Meter is switched on for it, and reads the edges alone.
+    on.analyzer().setFrozen(true);
+    off.analyzer().setFrozen(true);
+    (void)on.produce();
+    (void)off.produce();
+    const double reach = c.timeBase == TimeBase::kFree ? 0.0 : 3.0;
+    for (int step = 0; step < 5; ++step) {
+        SCOPED_TRACE(testing::Message() << "frozen, step " << step);
+        const double pan = reach * step / 4.0;
+        const double zoomStart = step % 2 == 1 ? 0.3 : 0.0;
+        const double zoomEnd = step % 2 == 1 ? 0.9 : 1.0;
+        const std::uint64_t read = meterRead([&] {
+            for (Session* session : {&on, &off}) {
+                session->analyzer().setPan(pan);
+                session->analyzer().setView(zoomStart, zoomEnd);
+            }
+            frame = on.produce();
+            (void)off.produce();
+        });
+        if (!frame) {
+            continue; // Nothing moved: a view already there.
+        }
+        setMeter(off.own(), true);
+        const auto fresh = off.produce();
+        ASSERT_TRUE(fresh);
+        expectSameRows(*frame, *fresh);
+        setMeter(off.own(), false);
+        (void)off.produce();
+        EXPECT_LT(read, bound) << "a frozen view measured again in full";
+    }
+    for (Session* session : {&on, &off}) {
+        session->analyzer().setPan(0.0);
+        session->analyzer().setView(0.0, 1.0);
+        session->analyzer().setFrozen(false);
+    }
+
+    {
+        SCOPED_TRACE("resumed after a short freeze");
+        const std::uint64_t read = meterRead([&] { playBoth(0.2); });
+        ASSERT_TRUE(frame);
+        expectSameRows(*frame, afresh(on, 0.0, 1.0));
+        EXPECT_LT(read, bound) << "the blocks did not follow through the freeze";
+    }
+    {
+        SCOPED_TRACE("resumed after the audio played on past what is kept");
+        for (Session* session : {&on, &off}) {
+            session->analyzer().setFrozen(true);
+            (void)session->produce();
+            session->play(5.0);
+            session->analyzer().setFrozen(false);
+        }
+        playBoth(0.15);
+        ASSERT_TRUE(frame);
+        expectSameRows(*frame, afresh(on, 0.0, 1.0));
+    }
+    {
+        SCOPED_TRACE("another readout channel");
+        for (Session* session : {&on, &off}) {
+            const SettingId setting =
+                isMulti(c.mode) ? SettingId::kLaneChannel : SettingId::kReadoutSource;
+            session->own().settings().set(setting,
+                                          static_cast<double>(protocol::ChannelView::kRight));
+        }
+        playBoth(0.15);
+        ASSERT_TRUE(frame);
+        expectSameRows(*frame, afresh(on, 0.0, 1.0));
+    }
+    {
+        // Against the twin session, its Meter switched on for the frame: an analyzer new to the
+        // session need not show the window one that lived through the change shows.
+        SCOPED_TRACE("the track's channels changed");
+        for (Session* session : {&on, &off}) {
+            session->own().setInputChannels(c.channels == 2 ? 1 : 2);
+        }
+        playBoth(0.15);
+        ASSERT_TRUE(frame);
+        setMeter(off.own(), true);
+        const auto fresh = off.produce();
+        ASSERT_TRUE(fresh);
+        expectSameRows(*frame, *fresh);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EdgeRates, MeterStream, ::testing::ValuesIn(windowCases()), modeTestName);
+
+// A trace Normal holds while no trigger comes stays measured as it stands, also once it is older
+// than the audio the Meter's blocks keep: a tone that stops, its last trace held, read zoomed while
+// the blocks still cover it and again after the audio has played on past them (longer than a
+// freeze holds): the same readouts, of the tone, not of the silence since.
+TEST(MeterStreamHeld, MeasuresATraceOlderThanTheBlocksKeep)
+{
+    const double rate = 48000.0;
+    Session session(rate, 2);
+    session.join({.frequency = 1000.0,
+                  .amplitude = 0.25,
+                  .offset = 0.0,
+                  .endsAt = std::llround(2.0 * rate)});
+    configure(session.own(), Display::kSingle, TimeBase::kTrigger);
+    setMeter(session.own(), true);
+    session.own().settings().set(SettingId::kTriggerMode,
+                                 static_cast<double>(protocol::TriggerMode::kNormal));
+    setSpan(session.own(), TimeBase::kTrigger, 1.0);
+    // The tone, then silence: the last trace is held from here on, the tone's end in its first
+    // tenth (before the trigger point) and silence after it.
+    session.play(3.5, protocol::kReadoutIntervalSeconds);
+    session.analyzer().setView(0.0, 0.6);
+    const auto covered = session.produce();
+    ASSERT_TRUE(covered);
+    ASSERT_NEAR(covered->peak, 0.25, 0.01) << "the held trace is not the tone";
+    ASSERT_TRUE(std::isfinite(covered->loudness));
+    session.analyzer().setView(0.0, 1.0);
+    ASSERT_TRUE(session.produce());
+    session.play(6.0, protocol::kReadoutIntervalSeconds);
+    session.analyzer().setView(0.0, 0.6);
+    const auto held = session.produce();
+    ASSERT_TRUE(held);
+    EXPECT_FLOAT_EQ(held->peak, covered->peak);
+    EXPECT_FLOAT_EQ(held->rms, covered->rms);
+    EXPECT_NEAR(held->truePeak, covered->truePeak, 1e-6);
+    EXPECT_NEAR(held->dcOffset, covered->dcOffset, 1e-6);
+    EXPECT_NEAR(held->loudness, covered->loudness, 1e-3);
+    EXPECT_NEAR(held->correlation, covered->correlation, 1e-5);
+}
+
+// Switching the Meter leaves the picture alone, also over a sweep longer than the capture holds
+// (sixteen bars at 120 BPM are 32 s; the capture holds under 24 s at 44.1 kHz): this track's lane
+// in Multi stays as drawn, where a lane built again for the switch would come back blank in the
+// part the capture no longer has. Live, on and then off, with no new audio between the frames.
+TEST(MeterSwitch, KeepsALongSweepAsDrawn)
+{
+    const double rate = 44100.0;
+    Session session(rate, 2);
+    session.join({.frequency = 1000.0, .rightPhase = std::numbers::pi / 2.0});
+    session.join({.frequency = 1500.0});
+    configure(session.own(), Display::kMulti, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kSixteenBars));
+    session.play(33.0, 1.0);
+    ASSERT_GT(33.0 * rate, static_cast<double>(session.own().captureRing().capacity()))
+        << "the sweep must be longer than the capture";
+    const auto drawn = session.produce();
+    ASSERT_TRUE(drawn);
+    for (const bool meter : {true, false}) {
+        SCOPED_TRACE(meter ? "switched on" : "switched off");
+        setMeter(session.own(), meter);
+        const auto frame = session.produce();
+        ASSERT_TRUE(frame);
+        EXPECT_TRUE(sameValues(frame->data, drawn->data)) << "the picture changed";
+        EXPECT_EQ(std::isfinite(frame->loudness), meter);
+    }
+}
 
 // A tempo-synced frame says where its cycle starts in the song, in quarter notes and in the
 // host's project time, and how long its span and the host's bar are, which the page draws the beat
@@ -3149,9 +3794,10 @@ INSTANTIATE_TEST_SUITE_P(EdgeRates, BrokenSamples, ::testing::ValuesIn(brokenCas
 // Single has no lanes: bit 0 of `invalidLanes` says a trace drawn holds samples that are not
 // finite, whichever channel they are on. A stereo track broken on its right channel only, the
 // trigger on its left, with every set of views drawn: bit 0 is set exactly when R, M or S (each
-// holding the right channel) is drawn, and the readouts, on the first view drawn, count the
-// samples only when they measure one of those, measuring around them. In each time base, and in
-// Free at a 2 s span, at the lowest and highest rates.
+// holding the right channel) is drawn. The readouts, with the Meter on, read Left and Right
+// whatever view they measure the levels on: they count the samples and measure around them. With
+// the Meter off they read the levels' channel alone, Left here, which holds none. In each time
+// base, and in Free at a 2 s span, at the lowest and highest rates.
 class BrokenChannel : public ::testing::TestWithParam<BrokenCase>
 {
 };
@@ -3162,36 +3808,44 @@ TEST_P(BrokenChannel, IsFlaggedWhenDrawn)
     const unsigned holdingRight = viewBit(protocol::ChannelView::kRight) |
                                   viewBit(protocol::ChannelView::kMid) |
                                   viewBit(protocol::ChannelView::kSide);
-    for (unsigned drawn = 1; drawn < (1U << protocol::kChannelViewCount); ++drawn) {
-        SCOPED_TRACE(drawn);
-        Session session(c.mode.rate, 2);
-        session.join({.frequency = 1000.0,
-                      .brokenEvery = std::llround(c.mode.rate / 10.0),
-                      .broken = c.infinite ? std::numeric_limits<float>::infinity()
-                                           : std::numeric_limits<float>::quiet_NaN(),
-                      .brokenRightOnly = true});
-        configure(session.own(), c.mode.mode, c.mode.timeBase);
-        session.own().settings().set(SettingId::kTriggerSource,
-                                     static_cast<double>(protocol::ChannelView::kLeft));
-        session.own().settings().set(SettingId::kReadoutSource,
-                                     static_cast<double>(protocol::ChannelView::kLeft));
-        session.own().settings().set(SettingId::kChannelViews, static_cast<double>(drawn));
-        setSpan(session.own(), c.mode.timeBase, brokenSpan(c));
-        session.own().settings().set(SettingId::kBeatSpan,
-                                     static_cast<double>(BeatSpan::kQuarterBar));
-        session.play(c.longSpan ? 3.0 : 1.5);
-        const auto frame = session.produce();
-        ASSERT_TRUE(frame);
-        EXPECT_EQ(frame->invalidLanes, (drawn & holdingRight) != 0 ? 1U : 0U)
-            << "set when a trace drawn holds some";
-        const auto measured = static_cast<protocol::ChannelView>(std::countr_zero(drawn));
-        if ((viewBit(measured) & holdingRight) != 0) {
-            EXPECT_GT(frame->invalidSamples, 0U) << "the channel measured holds some";
-        } else {
-            EXPECT_EQ(frame->invalidSamples, 0U) << "L, measured, holds none";
+    for (const bool meter : {false, true}) {
+        for (unsigned drawn = 1; drawn < (1U << protocol::kChannelViewCount); ++drawn) {
+            SCOPED_TRACE(meter ? "Meter on" : "Meter off");
+            SCOPED_TRACE(drawn);
+            Session session(c.mode.rate, 2);
+            session.join({.frequency = 1000.0,
+                          .brokenEvery = std::llround(c.mode.rate / 10.0),
+                          .broken = c.infinite ? std::numeric_limits<float>::infinity()
+                                               : std::numeric_limits<float>::quiet_NaN(),
+                          .brokenRightOnly = true});
+            configure(session.own(), c.mode.mode, c.mode.timeBase);
+            setMeter(session.own(), meter);
+            session.own().settings().set(SettingId::kTriggerSource,
+                                         static_cast<double>(protocol::ChannelView::kLeft));
+            session.own().settings().set(SettingId::kReadoutSource,
+                                         static_cast<double>(protocol::ChannelView::kLeft));
+            session.own().settings().set(SettingId::kChannelViews, static_cast<double>(drawn));
+            setSpan(session.own(), c.mode.timeBase, brokenSpan(c));
+            session.own().settings().set(SettingId::kBeatSpan,
+                                         static_cast<double>(BeatSpan::kQuarterBar));
+            session.play(c.longSpan ? 3.0 : 1.5);
+            const auto frame = session.produce();
+            ASSERT_TRUE(frame);
+            EXPECT_EQ(frame->invalidLanes, (drawn & holdingRight) != 0 ? 1U : 0U)
+                << "set when a trace drawn holds some";
+            EXPECT_TRUE(std::isfinite(frame->peak) && std::isfinite(frame->rms))
+                << "measured around them";
+            if (meter) {
+                // The Meter reads Left and Right too, for Loudness and Correlation, whatever it
+                // measures its levels on: the samples are counted whichever view that is.
+                EXPECT_GT(frame->invalidSamples, 0U) << "Right, read by the Meter, holds some";
+                EXPECT_FALSE(std::isnan(frame->correlation)) << "measured around them";
+            } else {
+                const bool readsLeft = (drawn & viewBit(protocol::ChannelView::kLeft)) != 0;
+                EXPECT_EQ(frame->invalidSamples > 0U, !readsLeft)
+                    << "counted on the levels' channel alone";
+            }
         }
-        EXPECT_TRUE(std::isfinite(frame->peak) && std::isfinite(frame->rms))
-            << "measured around them";
     }
 }
 

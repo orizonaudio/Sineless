@@ -5,6 +5,7 @@ import { page, userEvent } from "vitest/browser";
 
 import {
   defaultEditorWidth,
+  minimumEditorHeight as sharedMinimumHeight,
   minimumEditorWidth,
 } from "../../../protocol/src/limits.ts";
 import { edge, HelpTips, offset } from "../../src/components/help-tips.ts";
@@ -79,7 +80,7 @@ describe("turning help on", () => {
   }
 
   test.each([
-    { width: minimumEditorWidth, height: 420 },
+    { width: minimumEditorWidth, height: sharedMinimumHeight },
     { width: defaultEditorWidth, height: 580 },
   ])(
     "explains it at once, above the switch and inside the window, at $width × $height",
@@ -363,7 +364,7 @@ describe("a help tip's parts", () => {
 // A tip larger than the editor at its smallest would be cut off by the window.
 describe("a help tip's size", () => {
   // The editor's minimum height, `kMinimumHeight` in editor/include/editor/EditorCore.h (not a
-  // shared limit). The "Help is on" tests above use 420 px for their own case.
+  // shared limit). The "Help is on" tests above use the shared minimum height.
   const minimumEditorHeight = 400;
 
   beforeApp(async () => {
