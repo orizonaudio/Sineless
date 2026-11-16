@@ -1,5 +1,6 @@
 #include "engine/Meter.h"
 
+#include "engine/PairAnalysis.h"
 #include "protocol/Protocol.h"
 
 #include <algorithm>
@@ -452,8 +453,7 @@ Readouts MeterBlocks::measure(std::size_t first, std::size_t end,
     // Correlation over the parts where both channels sound: each above the analysis gate and not
     // more than 60 dB below that channel's loudest part.
     if (channelCount == 2) {
-        constexpr double kAudible = 1e-6; // 60 dB, in power.
-        const double gate = std::pow(10.0, protocol::kAnalysisGateDbfs / 10.0);
+        const double gate = silentPower();
         double loudestLeft = 0.0;
         double loudestRight = 0.0;
         for (const Part& part : parts) {
@@ -468,8 +468,8 @@ Readouts MeterBlocks::measure(std::size_t first, std::size_t end,
             const auto length = static_cast<double>(part.length);
             const double leftPower = part.left / length;
             const double rightPower = part.right / length;
-            if (leftPower > gate && rightPower > gate && leftPower > kAudible * loudestLeft &&
-                rightPower > kAudible * loudestRight) {
+            if (leftPower > gate && rightPower > gate && leftPower > kAudiblePower * loudestLeft &&
+                rightPower > kAudiblePower * loudestRight) {
                 left += part.left;
                 right += part.right;
                 products += part.products;
