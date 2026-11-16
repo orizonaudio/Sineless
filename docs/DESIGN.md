@@ -1039,11 +1039,11 @@ incompatible change.
   stay with their traces although the two travel separately.
 
 **Frames** (binary, little-endian; the reply to `fetch("orizon://ui/frame")`): a fixed header
-(`frameHeaderFields` in `protocol/src/frame.ts`, 128 bytes), then float32 data.
+(`frameHeaderFields` in `protocol/src/frame.ts`, 144 bytes), then float32 data.
 
 | Part | Contents |
 | --- | --- |
-| Header | mode (min/max or raw), flags, views, lane count, point count; view start and end, cycle start (quarter notes), cycle seconds and the sweep cursor as float64, precise at a view of a few samples late in a song or a long sweep; start fraction; peak, RMS; span and bar in quarter notes; visible samples; lane set; summing gain and fixed gain; pan reach; invalid sample count and lane mask; sample rate; span seconds; readout and trigger views; trigger position; points per sample; what a Compare frame's last lane is (the sum or the difference) and the difference's null depth. |
+| Header | mode (min/max or raw), flags, views, lane count, point count; view start and end, cycle start (quarter notes), cycle seconds and the sweep cursor as float64, precise at a view of a few samples late in a song or a long sweep; start fraction; peak, RMS; true peak, DC offset, loudness and correlation (NaN while the Meter is off); span and bar in quarter notes; visible samples; lane set; summing gain and fixed gain; pan reach; invalid sample count and lane mask; sample rate; span seconds; readout and trigger views; trigger position; points per sample; what a Compare frame's last lane is (the sum or the difference) and the difference's null depth. |
 | Flags | triggered, frozen, freeRunning, synced, limited, compared, partial (shown as "Filling" live, "Partial" frozen). |
 | Data | Per view (Single) or per lane (Multi, Compare; the sum or the difference last): min/max pairs or raw points. A raw frame with more than one point per sample carries the wave between its samples: every `pointsPerSample`th point, from the first, is a sample. Compare frames then carry three values for each track: its correlation, its offset in samples (in the difference, the delay Align takes out, to a fraction of a sample) and its polarity. |
 
