@@ -162,6 +162,27 @@ TEST_P(MeterAtRate, TruePeakReadsACrestBetweenTheSamples)
     }
 }
 
+// A crest between a 10 ms block's last sample and the next block's first is read like any other:
+// the Meter keeps its statistics per block, and a transient whose over falls on a block's edge
+// would else read its sample peak. Two equal samples either side of the edge, silence around:
+// the wave between them rises a quarter above them.
+TEST_P(MeterAtRate, TruePeakReadsACrestBetweenTwoBlocks)
+{
+    const double rate = GetParam();
+    const std::size_t block = blockOf(rate);
+    std::vector<float> left(block * 4, 0.0f);
+    left[(block * 2) - 1] = 0.5f;
+    left[block * 2] = 0.5f;
+    const Readouts readouts = measuredWhole({.left = left}, rate);
+    EXPECT_FLOAT_EQ(readouts.peak, 0.5f);
+    if (rate < protocol::kTruePeakSampleRateHz) {
+        EXPECT_GT(readouts.truePeak, 0.6f) << "the crest between the blocks";
+        EXPECT_LT(readouts.truePeak, 0.65f);
+    } else {
+        EXPECT_FLOAT_EQ(readouts.truePeak, 0.5f) << "the samples alone at this rate";
+    }
+}
+
 // A 1 kHz sine at −23 dBFS in both channels reads −23 LUFS: BS.1770's calibration (a full-scale
 // sine in one channel reads −3.01, each channel adding its power).
 TEST_P(MeterAtRate, LoudnessOfASineInBothChannels)
@@ -305,6 +326,22 @@ TEST_P(MeterAtRate, CorrelationOfLeftAndRight)
     EXPECT_TRUE(std::isnan(measuredWhole({.left = signal}, rate).correlation));
     const std::vector<float> silent(signal.size(), 0.0f);
     EXPECT_TRUE(std::isnan(measuredWhole({.left = signal, .right = silent}, rate).correlation));
+}
+
+// "Not more than 60 dB below the loudest" is of each channel's own loudest part, not of full
+// scale: a quiet passage, 50 dB under full scale in both channels and far above the analysis
+// gate, reads its correlation as a loud one does; so does a quiet channel against a loud one.
+TEST_P(MeterAtRate, CorrelationOfAQuietPassage)
+{
+    const double rate = GetParam();
+    const std::vector<float> quiet = tone(440.0, 0.5, std::pow(10.0, -50.0 / 20.0), rate);
+    const std::vector<float> loud = tone(440.0, 0.5, 0.5, rate);
+    std::vector<float> flipped(quiet);
+    std::ranges::for_each(flipped, [](float& sample) { sample = -sample; });
+    EXPECT_NEAR(measuredWhole({.left = quiet, .right = quiet}, rate).correlation, 1.0, 1e-6);
+    EXPECT_NEAR(measuredWhole({.left = quiet, .right = flipped}, rate).correlation, -1.0, 1e-6);
+    EXPECT_NEAR(measuredWhole({.left = quiet, .right = loud}, rate).correlation, 1.0, 1e-6);
+    EXPECT_NEAR(measuredWhole({.left = loud, .right = quiet}, rate).correlation, 1.0, 1e-6);
 }
 
 // Correlation counts only where both channels sound: Left alone for a while, then both alike,
