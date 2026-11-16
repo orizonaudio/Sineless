@@ -344,32 +344,41 @@ TEST_P(MeterAtRate, CorrelationOfAQuietPassage)
     EXPECT_NEAR(measuredWhole({.left = loud, .right = quiet}, rate).correlation, 1.0, 1e-6);
 }
 
-// Correlation counts only where both channels sound: Left alone for a while, then both alike,
-// still reads +1.
+// Correlation counts only where both channels sound: one alone for a while, then both alike, still
+// reads +1, whichever of Left and Right is the one that rests.
 TEST_P(MeterAtRate, CorrelationWhereBothSound)
 {
     const double rate = GetParam();
-    std::vector<float> left = tone(440.0, 0.5, 0.5, rate);
-    std::vector<float> right(left.size(), 0.0f);
+    std::vector<float> sounding = tone(440.0, 0.5, 0.5, rate);
+    std::vector<float> resting(sounding.size(), 0.0f);
     const std::vector<float> both = tone(440.0, 0.5, 0.5, rate);
-    left.insert(left.end(), both.begin(), both.end());
-    right.insert(right.end(), both.begin(), both.end());
-    EXPECT_NEAR(measuredWhole({.left = left, .right = right}, rate).correlation, 1.0, 1e-6);
-    // The channel that rests need not be digitally silent: another tone under the analysis gate
-    // (−100 dBFS), or audible but more than 60 dB under that channel's loudest part (−75 dBFS
-    // against −6), does not sound with Left either, and its part still does not count (it would
-    // read 0.71).
-    for (const double resting : {-100.0, -75.0}) {
-        SCOPED_TRACE(resting);
-        const std::vector<float> quiet = tone(660.0, 0.5, std::pow(10.0, resting / 20.0), rate);
-        std::ranges::copy(quiet, right.begin());
-        EXPECT_NEAR(measuredWhole({.left = left, .right = right}, rate).correlation, 1.0, 1e-3);
-    }
-    // A channel that never rises above the analysis gate in the view (dither alone) does not
-    // sound with the other anywhere: no correlation, where its level relative to its own loudest
-    // part would count all of it.
+    sounding.insert(sounding.end(), both.begin(), both.end());
+    resting.insert(resting.end(), both.begin(), both.end());
+    // A channel that never rises above the analysis gate in the view (dither alone).
     const std::vector<float> dither = tone(440.0, 1.0, std::pow(10.0, -100.0 / 20.0), rate);
-    EXPECT_TRUE(std::isnan(measuredWhole({.left = left, .right = dither}, rate).correlation));
+    for (const bool leftRests : {false, true}) {
+        SCOPED_TRACE(leftRests ? "Left rests" : "Right rests");
+        const auto correlation = [&](const std::vector<float>& rests) {
+            return measuredWhole(leftRests ? Track{.left = rests, .right = sounding}
+                                           : Track{.left = sounding, .right = rests},
+                                 rate)
+                .correlation;
+        };
+        EXPECT_NEAR(correlation(resting), 1.0, 1e-6);
+        // The channel that rests need not be digitally silent: another tone under the analysis
+        // gate (−100 dBFS), or audible but more than 60 dB under that channel's loudest part
+        // (−75 dBFS against −6), does not sound with the other either, and its part still does not
+        // count (it would read 0.71).
+        for (const double level : {-100.0, -75.0}) {
+            SCOPED_TRACE(level);
+            std::vector<float> quiet(resting);
+            std::ranges::copy(tone(660.0, 0.5, std::pow(10.0, level / 20.0), rate), quiet.begin());
+            EXPECT_NEAR(correlation(quiet), 1.0, 1e-3);
+        }
+        // Dither alone does not sound with the other channel anywhere: no correlation, where its
+        // level relative to its own loudest part would count all of it.
+        EXPECT_TRUE(std::isnan(correlation(dither)));
+    }
 }
 
 // The readouts of positions [first, end), measured directly from the samples, one at a time: the
