@@ -445,21 +445,25 @@ private:
     [[nodiscard]] bool readoutsDue(std::uint64_t end, protocol::ChannelView view,
                                    const ReadoutView& shown) const;
     // Keeps `values`, measured on `view` up to the capture end `end`, for this and later frames.
-    void storeReadouts(const Readouts& values, std::uint64_t end, protocol::ChannelView view,
-                       const ReadoutView& shown);
+    // Nothing where a read failed: the readouts stay as they were, and the next frame measures
+    // again.
+    void storeReadouts(const std::optional<Readouts>& values, std::uint64_t end,
+                       protocol::ChannelView view, const ReadoutView& shown);
     // The Meter's readouts over samples [first, end) of `source` (a window's visible part, of this
     // track's capture or its hold, by capture index): the readout channel `view`, and Left and
     // Right, of `channels` captured channels, at `sampleRate`. With the Meter on, from statistics
-    // per block that follow the audio; off, the levels alone, from the samples.
-    [[nodiscard]] Readouts measureWindow(const SampleSource& source, int channels,
-                                         protocol::ChannelView view, std::uint64_t first,
-                                         std::uint64_t end, double sampleRate);
+    // per block that follow the audio; off, the levels alone, from the samples. Nothing if the
+    // source does not hold the samples or a read fails.
+    [[nodiscard]] std::optional<Readouts> measureWindow(const SampleSource& source, int channels,
+                                                        protocol::ChannelView view,
+                                                        std::uint64_t first, std::uint64_t end,
+                                                        double sampleRate);
     [[nodiscard]] bool metered() const;
     // Reads `view` of `source` for a span's levels per block.
     BlockStats::Reader statsReader(const SampleSource& source, int channels,
                                    protocol::ChannelView view);
-    [[nodiscard]] static Readouts levelsOf(BlockStats& stats, std::size_t first, std::size_t end,
-                                           const BlockStats::Reader& read);
+    [[nodiscard]] static std::optional<Readouts>
+    levelsOf(BlockStats& stats, std::size_t first, std::size_t end, const BlockStats::Reader& read);
     // Keeps `meter`, the Meter's statistics of `image` per block, in step with the samples placed
     // since the last frame; all of them when `fresh`. False if the image could not be read.
     bool updateMeter(MeterBlocks& meter, const SweepImage& image, protocol::ChannelView view,

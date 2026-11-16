@@ -381,12 +381,15 @@ bool MeterBlocks::weightedBefore(std::size_t position, const Reader& read, doubl
     return true;
 }
 
-Readouts MeterBlocks::measure(std::size_t first, std::size_t end,
-                              std::span<const std::size_t> joins, const Reader& read)
+std::optional<Readouts> MeterBlocks::measure(std::size_t first, std::size_t end,
+                                             std::span<const std::size_t> joins, const Reader& read)
 {
+    if (!valid) {
+        return std::nullopt;
+    }
     Readouts readouts;
     end = std::min(end, spanCount);
-    if (!valid || first >= end) {
+    if (first >= end) {
         return readouts;
     }
     const std::size_t firstBlock = first / blockLength;
@@ -420,7 +423,7 @@ Readouts MeterBlocks::measure(std::size_t first, std::size_t end,
             KWeighting::State left = values[block].leftState;
             KWeighting::State right = values[block].rightState;
             if (!measureRange(blockStart, from, to, joins, read, part, left, right)) {
-                return {};
+                return std::nullopt;
             }
         }
         peak = std::max(peak, part.peak);
@@ -525,7 +528,7 @@ Readouts MeterBlocks::measure(std::size_t first, std::size_t end,
             double before = 0.0;
             double after = 0.0;
             if (!energyAt(start, before) || !energyAt(stop, after)) {
-                return {};
+                return std::nullopt;
             }
             blockPowers.push_back(std::max(after - before, 0.0) / static_cast<double>(blockSize));
         }

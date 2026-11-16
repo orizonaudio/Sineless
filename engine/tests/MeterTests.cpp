@@ -53,6 +53,13 @@ std::size_t blockOf(double sampleRate)
     return static_cast<std::size_t>(std::lround(0.01 * sampleRate));
 }
 
+// What `blocks` measure over positions [first, end); no value (NaN) where they measure nothing.
+Readouts measureOf(MeterBlocks& blocks, std::size_t first, std::size_t end,
+                   std::span<const std::size_t> joins, const MeterBlocks::Reader& read)
+{
+    return blocks.measure(first, end, joins, read).value_or(Readouts{});
+}
+
 // The readouts of positions [first, end) of a whole track, its blocks measured from its start.
 Readouts measured(const Track& track, double sampleRate, std::size_t first, std::size_t end,
                   std::span<const std::size_t> joins = {})
@@ -63,7 +70,7 @@ Readouts measured(const Track& track, double sampleRate, std::size_t first, std:
                  static_cast<std::ptrdiff_t>(count));
     const MeterBlocks::Reader read = readerOf(track);
     EXPECT_TRUE(blocks.update(0, count, joins, read));
-    return blocks.measure(first, end, joins, read);
+    return measureOf(blocks, first, end, joins, read);
 }
 
 Readouts measuredWhole(const Track& track, double sampleRate)
@@ -467,7 +474,7 @@ TEST_P(MeterAtRate, VisiblePartFromBlocksMatchesADirectMeasurement)
     ASSERT_TRUE(blocks.update(0, count, {}, read));
     for (const auto& [first, end] : parts) {
         SCOPED_TRACE(testing::Message() << first << " to " << end);
-        expectSame(blocks.measure(first, end, {}, read), direct(track, rate, first, end));
+        expectSame(measureOf(blocks, first, end, {}, read), direct(track, rate, first, end));
     }
 }
 
@@ -589,8 +596,8 @@ TEST_P(MeterAtRate, BlocksThatFollowTheAudioReadAsBlocksBuiltAfresh)
         }
         for (const auto& [first, last] : parts) {
             SCOPED_TRACE(testing::Message() << first << " to " << last);
-            const Readouts kept = followed.measure(first, last, {}, read);
-            const Readouts expected = fresh.measure(first, last, {}, read);
+            const Readouts kept = measureOf(followed, first, last, {}, read);
+            const Readouts expected = measureOf(fresh, first, last, {}, read);
             expectSame(kept, expected);
             if (std::isnan(expected.correlation)) {
                 EXPECT_TRUE(std::isnan(kept.correlation));
@@ -642,8 +649,59 @@ TEST(MeterBlocksTest, FollowLeavesNothingToReadWhenAReadFails)
                                static_cast<std::ptrdiff_t>(grown - (block * 4)), failing));
     EXPECT_FALSE(blocks.measuring());
     EXPECT_FALSE(blocks.fits(grown - (block * 4), block, rate, 2));
-    EXPECT_TRUE(std::isnan(blocks.measure(0, block * 8, {}, read).peak));
-    EXPECT_TRUE(std::isnan(blocks.measure(0, block * 8, {}, read).loudness));
+    EXPECT_FALSE(blocks.measure(0, block * 8, {}, read)) << "a reading from blocks half measured";
+}
+
+// A view whose edge falls inside a block reads that block's samples. If the read fails there is no
+// reading: not one of no level, which the Meter would show as a dash until the next readout is due
+// instead of measuring again in the next frame.
+TEST(MeterBlocksTest, MeasuresNothingWhenAnEdgeCannotBeRead)
+{
+    const double rate = 48000.0;
+    const Track track = musicLike(rate, 0.6, 8);
+    const std::size_t block = blockOf(rate);
+    const std::size_t count = block * 20;
+    const MeterBlocks::Reader read = readerOf(track);
+    MeterBlocks blocks;
+    blocks.reset(count, block, rate, 2, 0, static_cast<std::ptrdiff_t>(count));
+    ASSERT_TRUE(blocks.update(0, count, {}, read));
+    const MeterBlocks::Reader failing = [](std::ptrdiff_t, std::span<float>, std::span<float>,
+                                           std::span<float>) { return false; };
+    EXPECT_FALSE(blocks.measure(block / 2, count - (block / 2), {}, failing));
+    const auto again = blocks.measure(block / 2, count - (block / 2), {}, read);
+    ASSERT_TRUE(again) << "the blocks stay as measured for the next try";
+    EXPECT_FALSE(std::isnan(again->peak));
+    const auto empty = blocks.measure(block, block, {}, failing);
+    ASSERT_TRUE(empty) << "an empty part is measured: it has no value";
+    EXPECT_TRUE(std::isnan(empty->peak));
+}
+
+// The loudness reads again the samples before each gating block's edge that falls inside a 10 ms
+// block (the K-weighted energy alone, so the reader is asked for no readout channel). If that read
+// fails there is no reading, as for a view's edge: never a loudness from blocks half read.
+TEST(MeterBlocksTest, MeasuresNothingWhenALoudnessEdgeCannotBeRead)
+{
+    const double rate = 48000.0;
+    const Track track = musicLike(rate, 1.0, 9);
+    const std::size_t block = blockOf(rate);
+    const std::size_t count = block * 90;
+    const MeterBlocks::Reader read = readerOf(track);
+    MeterBlocks blocks;
+    blocks.reset(count, block, rate, 2, 0, static_cast<std::ptrdiff_t>(count));
+    ASSERT_TRUE(blocks.update(0, count, {}, read));
+    const MeterBlocks::Reader weightingFails = [&](std::ptrdiff_t first, std::span<float> view,
+                                                   std::span<float> left, std::span<float> right) {
+        return !view.empty() && read(first, view, left, right);
+    };
+    // Gating blocks from whole 10 ms blocks need no samples: the blocks' own sums.
+    const auto whole = blocks.measure(block * 10, block * 80, {}, weightingFails);
+    ASSERT_TRUE(whole);
+    EXPECT_FALSE(std::isnan(whole->loudness));
+    // From the middle of a block, each gating block's edges fall inside one.
+    EXPECT_FALSE(blocks.measure((block * 10) + (block / 2), block * 80, {}, weightingFails));
+    const auto again = blocks.measure((block * 10) + (block / 2), block * 80, {}, read);
+    ASSERT_TRUE(again);
+    EXPECT_NEAR(again->loudness, whole->loudness, 1.0);
 }
 
 // Cleared, as while the Meter is off, the statistics fit nothing and measure nothing, so that a
@@ -659,10 +717,10 @@ TEST(MeterBlocksTest, FitNothingOnceCleared)
     blocks.reset(count, block, rate, 2, 0, static_cast<std::ptrdiff_t>(count));
     ASSERT_TRUE(blocks.update(0, count, {}, read));
     ASSERT_TRUE(blocks.fits(count, block, rate, 2));
-    ASSERT_FALSE(std::isnan(blocks.measure(0, count, {}, read).peak));
+    ASSERT_FALSE(std::isnan(measureOf(blocks, 0, count, {}, read).peak));
     blocks.clear();
     EXPECT_FALSE(blocks.fits(count, block, rate, 2));
-    EXPECT_TRUE(std::isnan(blocks.measure(0, count, {}, read).peak));
+    EXPECT_FALSE(blocks.measure(0, count, {}, read));
     EXPECT_TRUE(blocks.blocks().empty());
 }
 
@@ -688,7 +746,7 @@ TEST_P(MeterAtRate, LoudnessSettlesOnTheAudioBeforeTheView)
         const MeterBlocks::Reader read = readerOf(track, static_cast<std::ptrdiff_t>(toneEnd));
         ASSERT_TRUE(blocks.prime(static_cast<std::size_t>(0.1 * rate), read));
         ASSERT_TRUE(blocks.update(0, count, {}, read));
-        EXPECT_FALSE(std::isnan(blocks.measure(0, count, {}, read).loudness)) << held;
+        EXPECT_FALSE(std::isnan(measureOf(blocks, 0, count, {}, read).loudness)) << held;
     }
 }
 
@@ -762,7 +820,7 @@ TEST_P(MeterAtRate, UpdatedBlocksMatchFreshOnesAcrossAMovingJoin)
         EXPECT_FLOAT_EQ(kept.blocks()[index].truePeak, fresh.blocks()[index].truePeak)
             << "block " << index;
     }
-    expectSame(kept.measure(0, count, joins, read), fresh.measure(0, count, joins, read));
+    expectSame(measureOf(kept, 0, count, joins, read), measureOf(fresh, 0, count, joins, read));
 }
 
 INSTANTIATE_TEST_SUITE_P(Rates, MeterAtRate, testing::ValuesIn(kSampleRates), rateName);

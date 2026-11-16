@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -174,10 +175,12 @@ public:
                 const Reader& read);
 
     // The readouts over positions [first, end) of the span, as measured: from the blocks inside it
-    // and from the samples of the blocks at its edges. Readouts with nothing measured (NaN values)
-    // if a read fails.
-    [[nodiscard]] Readouts measure(std::size_t first, std::size_t end,
-                                   std::span<const std::size_t> joins, const Reader& read);
+    // and from the samples of the blocks at its edges; readouts with no value (NaN) for an empty
+    // part. Nothing if no statistics are kept or a read fails: there is then no reading to show or
+    // to keep, and the caller measures again.
+    [[nodiscard]] std::optional<Readouts> measure(std::size_t first, std::size_t end,
+                                                  std::span<const std::size_t> joins,
+                                                  const Reader& read);
 
     [[nodiscard]] std::size_t sampleCount() const { return spanCount; }
     [[nodiscard]] std::size_t blockSamples() const { return blockLength; }

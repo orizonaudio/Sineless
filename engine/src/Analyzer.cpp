@@ -492,11 +492,14 @@ bool Analyzer::readoutsDue(std::uint64_t end, ChannelView view, const ReadoutVie
            end - readoutCache.end >= interval;
 }
 
-void Analyzer::storeReadouts(const Readouts& values, std::uint64_t end, ChannelView view,
-                             const ReadoutView& shown)
+void Analyzer::storeReadouts(const std::optional<Readouts>& values, std::uint64_t end,
+                             ChannelView view, const ReadoutView& shown)
 {
+    if (!values) {
+        return;
+    }
     readoutCache.shown = shown;
-    readoutCache.values = values;
+    readoutCache.values = *values;
     readoutCache.end = end;
     readoutCache.view = view;
     readoutCache.valid = true;
@@ -1307,13 +1310,17 @@ BlockStats::Reader Analyzer::statsReader(const SampleSource& source, int channel
 
 // The Peak, RMS and invalid count of samples [first, end) of a span, from its levels per block and
 // the samples of the blocks at the edges: what the engine measures of the Meter while it is off.
-Readouts Analyzer::levelsOf(BlockStats& stats, std::size_t first, std::size_t end,
-                            const BlockStats::Reader& read)
+// No value for an empty part; nothing if a read fails.
+std::optional<Readouts> Analyzer::levelsOf(BlockStats& stats, std::size_t first, std::size_t end,
+                                           const BlockStats::Reader& read)
 {
     Readouts readouts;
-    const auto levels = first < end ? stats.measure(first, end, read) : std::nullopt;
-    if (!levels) {
+    if (first >= end) {
         return readouts;
+    }
+    const auto levels = stats.measure(first, end, read);
+    if (!levels) {
+        return std::nullopt;
     }
     readouts.invalid = levels->invalid;
     const std::size_t finite = end - first - levels->invalid;
@@ -1375,12 +1382,16 @@ MeterBlocks::Reader Analyzer::meterReader(const SampleSource& source, int channe
     };
 }
 
-Readouts Analyzer::measureWindow(const SampleSource& source, int channels, ChannelView view,
-                                 std::uint64_t first, std::uint64_t end, double sampleRate)
+std::optional<Readouts> Analyzer::measureWindow(const SampleSource& source, int channels,
+                                                ChannelView view, std::uint64_t first,
+                                                std::uint64_t end, double sampleRate)
 {
     const std::uint64_t newest = source.endIndex();
-    if (first >= end || end > newest) {
-        return {};
+    if (first >= end) {
+        return Readouts{};
+    }
+    if (end > newest) {
+        return std::nullopt;
     }
     const auto count = static_cast<std::size_t>(end - first);
     if (!metered()) {
@@ -1390,7 +1401,7 @@ Readouts Analyzer::measureWindow(const SampleSource& source, int channels, Chann
         meterView.resize(count);
         readScratch.resize(std::max(readScratch.size(), count));
         if (!readSamples(source, channels, view, first, meterView, readScratch)) {
-            return {};
+            return std::nullopt;
         }
         const BlockStats::Block levels = measureBlock(meterView);
         Readouts readouts;
@@ -1424,7 +1435,7 @@ Readouts Analyzer::measureWindow(const SampleSource& source, int channels, Chann
                         static_cast<std::ptrdiff_t>(count + after));
         if (!spotMeter.prime(static_cast<std::size_t>(readable), read) ||
             !spotMeter.update(0, count, {}, read)) {
-            return {};
+            return std::nullopt;
         }
         return spotMeter.measure(0, count, {}, read);
     }
@@ -1469,7 +1480,7 @@ Readouts Analyzer::measureWindow(const SampleSource& source, int channels, Chann
         if (!streamMeter.prime(static_cast<std::size_t>(-before), read) ||
             !streamMeter.update(0, length, {}, read)) {
             streamMeter.clear();
-            return {};
+            return std::nullopt;
         }
     }
     return streamMeter.measure(
