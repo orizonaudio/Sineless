@@ -2190,6 +2190,56 @@ TEST(MeterStreamHeld, MeasuresATraceOlderThanTheBlocksKeep)
     EXPECT_NEAR(held->correlation, covered->correlation, 1e-5);
 }
 
+// A held trace older than the blocks keep is measured to its last sample: a view that ends just
+// after a crest between two samples reads that crest as true peak, as it did while the blocks
+// covered the trace, not the sample peak below it. A tone of 90 samples a cycle crests halfway
+// between two samples; views narrower than half a cycle hold one crest at most, and stepped a
+// sample at a time across a cycle they end one to six samples after it in turn.
+TEST(MeterStreamHeld, ReadsACrestInTheLastSamplesOfTheView)
+{
+    const double rate = 48000.0;
+    const double span = 0.1;
+    Session session(rate, 2);
+    session.join({.frequency = rate / 90.0,
+                  .amplitude = 0.5,
+                  .offset = 0.0,
+                  .endsAt = std::llround(2.0 * rate)});
+    configure(session.own(), Display::kSingle, TimeBase::kTrigger);
+    setMeter(session.own(), true);
+    session.own().settings().set(SettingId::kTriggerMode,
+                                 static_cast<double>(protocol::TriggerMode::kNormal));
+    setSpan(session.own(), TimeBase::kTrigger, span);
+    session.play(3.5, protocol::kReadoutIntervalSeconds);
+    // Views of 34 samples inside the tone before the trigger point, a tenth into the trace.
+    const double samples = span * rate;
+    const auto viewAt = [&](int step) {
+        const double first = 200.0 + step;
+        session.analyzer().setView(first / samples, (first + 34.0) / samples);
+        return session.produce();
+    };
+    constexpr int kSteps = 90;
+    std::vector<DecodedFrame> covered;
+    int crests = 0;
+    for (int step = 0; step < kSteps; ++step) {
+        const auto frame = viewAt(step);
+        ASSERT_TRUE(frame);
+        ASSERT_GT(frame->peak, 0.1f) << "the view is not on the tone";
+        crests += frame->truePeak > frame->peak * 1.0001f ? 1 : 0;
+        covered.push_back(*frame);
+    }
+    ASSERT_GT(crests, kSteps / 3) << "views with a crest between their samples";
+    session.analyzer().setView(0.0, 1.0);
+    ASSERT_TRUE(session.produce());
+    session.play(6.0, protocol::kReadoutIntervalSeconds);
+    for (int step = 0; step < kSteps; ++step) {
+        SCOPED_TRACE(step);
+        const auto held = viewAt(step);
+        ASSERT_TRUE(held);
+        EXPECT_FLOAT_EQ(held->peak, covered[static_cast<std::size_t>(step)].peak);
+        EXPECT_NEAR(held->truePeak, covered[static_cast<std::size_t>(step)].truePeak, 1e-6);
+    }
+}
+
 // Switching the Meter leaves the picture alone, also over a sweep longer than the capture holds
 // (sixteen bars at 120 BPM are 32 s; the capture holds under 24 s at 44.1 kHz): this track's lane
 // in Multi stays as drawn, where a lane built again for the switch would come back blank in the

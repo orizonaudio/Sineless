@@ -295,14 +295,19 @@ bool MeterBlocks::measureRange(std::size_t blockStart, std::size_t from, std::si
             into.rightSquares += static_cast<double>(rightSample) * rightSample;
             into.products += static_cast<double>(leftSample) * rightSample;
         }
-        // The points between this sample and the next.
-        if (interpolates && position >= TruePeak::kBefore &&
-            std::cmp_greater_equal(position - TruePeak::kBefore, readFrom) &&
-            std::cmp_less(position + TruePeak::kAfter, readTo) &&
-            (!checkJoins ||
-             !crossesJoin(joins, position - TruePeak::kBefore, position + TruePeak::kAfter))) {
+        // The points between this sample and the next. Their first neighbour may lie before the
+        // span (a window with audio before it): read like any other where the reader has it.
+        const std::ptrdiff_t before =
+            static_cast<std::ptrdiff_t>(position) - static_cast<std::ptrdiff_t>(TruePeak::kBefore);
+        const std::size_t after = position + TruePeak::kAfter;
+        const auto joined = [&] {
+            return before < 0 ? !joins.empty() && joins.front() <= after
+                              : crossesJoin(joins, static_cast<std::size_t>(before), after);
+        };
+        if (interpolates && before >= readFrom && std::cmp_less(after, readTo) &&
+            !(checkJoins && joined())) {
             const std::span<const float, TruePeak::kTaps> around(
-                viewScratch.data() + at(position - TruePeak::kBefore), TruePeak::kTaps);
+                viewScratch.data() + (before - readFrom), TruePeak::kTaps);
             if (allFinite ||
                 std::ranges::all_of(around, [](float value) { return std::isfinite(value); })) {
                 const auto point = static_cast<float>(interpolator.between(around));
