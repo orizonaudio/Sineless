@@ -299,6 +299,35 @@ describe("hover readout", () => {
     expect(readout?.bottom).toBeCloseTo(2 / 3, 6);
   });
 
+  // Overlay with Compare off keeps one lane, whatever the number of tracks: both halves read
+  // the overlaid trace (this track), not a trace of their own.
+  test("reads the overlaid trace in both halves of an overlaid screen without Compare", () => {
+    const values = sine(480, 4);
+    const at = (y: number) =>
+      hoverReadout(
+        {
+          frame: rawFrame(values),
+          traces: [
+            { name: "Kick", values },
+            { name: "Bass", values },
+          ],
+          overlaid: 1,
+          layout: ViewLayout.overlaid,
+          view: fullView,
+          a4: 440,
+          freeRunning: false,
+        },
+        0.5,
+        y,
+      );
+    for (const y of [0.25, 0.75]) {
+      const readout = at(y);
+      expect(readout?.title).toBe("Bass");
+      expect(readout?.top).toBe(0);
+      expect(readout?.bottom).toBe(1);
+    }
+  });
+
   test("times the frame at the rate it carries, not the host's", () => {
     // The same 480 samples as above, held at 96 kHz: 5 ms of 4 cycles, 800 Hz.
     const values = sine(480, 4);
