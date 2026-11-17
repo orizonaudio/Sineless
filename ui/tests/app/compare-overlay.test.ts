@@ -22,6 +22,7 @@ import {
   choice,
   setCompare,
   settle,
+  showOnly,
   startApp,
   type Started,
 } from "./harness.ts";
@@ -76,6 +77,44 @@ async function setPressed(id: string, pressed: boolean): Promise<void> {
   }
 }
 
+// Drags time cursor `cursor` a little beside a target (crossing or extreme) of `wanted`, at
+// height `y`, and expects it to land on that target: one that `rival` has not, and the nearest of
+// `wanted`'s to where it is dropped. Snapping to `rival` instead would land on one of its targets,
+// or stay where it was dropped.
+function expectSnapsTo(
+  cursor: HTMLElement,
+  shown: Frame,
+  wanted: Float32Array | undefined,
+  rival: Float32Array | undefined,
+  y: number,
+): void {
+  const targets = (values: Float32Array | undefined) =>
+    values === undefined
+      ? []
+      : [...zeroCrossings(shown, values), ...extremePositions(shown, values)];
+  const ours = targets(wanted);
+  const theirs = targets(rival);
+  const pixel = 1 / trace().width;
+  const offset = 2 * pixel;
+  const target = ours.find(
+    (position) =>
+      position > 0.1 &&
+      position < 0.9 &&
+      theirs.every((other) => Math.abs(other - position) > pixel) &&
+      ours.every(
+        (other) =>
+          other === position ||
+          Math.abs(other - (position + offset)) > offset + pixel / 2,
+      ),
+  );
+  expect(target, "a target of the wanted trace alone").toBeDefined();
+  dragTo(cursor, (target ?? 0) + offset, y);
+  expect(Number.parseFloat(cursor.style.left) / 100).toBeCloseTo(
+    target ?? Number.NaN,
+    6,
+  );
+}
+
 const laneLabels = () => [
   ...byId("lane-labels").querySelectorAll<HTMLElement>(".lane-label"),
 ];
@@ -90,16 +129,14 @@ const placedTop = (element: HTMLElement) =>
   Number.parseFloat(element.style.top);
 const minusInfinity = "−∞";
 
-// Compare's switch, the time base and live or frozen: every combination.
-const cases = (["Sum", "Diff"] as const).flatMap((shows) =>
-  (["live", "frozen"] as const).flatMap((state) =>
-    (["Beats", "Trig"] as const).map((timeBase) => ({
-      shows,
-      state,
-      timeBase,
-    })),
-  ),
-);
+// Compare's switch, live or frozen, and the time base: each pair of them once, in four sessions
+// rather than all eight; Seconds is Trig, where the trigger marker shows.
+const cases = [
+  { shows: "Sum", state: "live", timeBase: "Beats" },
+  { shows: "Sum", state: "frozen", timeBase: "Trig" },
+  { shows: "Diff", state: "live", timeBase: "Trig" },
+  { shows: "Diff", state: "frozen", timeBase: "Beats" },
+] as const;
 
 describe.each(cases)(
   "overlaid with Compare on ($shows), $state, in $timeBase",
@@ -176,37 +213,7 @@ describe.each(cases)(
       const cursor = byId("cursor-a");
       // Read and dragged in one task: no frame arrives between.
       const shown = frame();
-      const targets = (values: Float32Array | undefined) =>
-        values === undefined
-          ? []
-          : [
-              ...zeroCrossings(shown, values),
-              ...extremePositions(shown, values),
-            ];
-      const compared = targets(shown.lanes.at(-1));
-      const own = targets(shown.lanes[0]);
-      const pixel = 1 / trace().width;
-      // A target of Compare's lane that is none of this track's, and the nearest of Compare's to a
-      // point a few pixels beside it: a drag there lands on it only if it snaps to Compare's lane
-      // (snapping to this track would land on one of its targets, or stay where it was dropped).
-      const offset = 2 * pixel;
-      const target = compared.find(
-        (position) =>
-          position > 0.1 &&
-          position < 0.9 &&
-          own.every((other) => Math.abs(other - position) > pixel) &&
-          compared.every(
-            (other) =>
-              other === position ||
-              Math.abs(other - (position + offset)) > offset + pixel / 2,
-          ),
-      );
-      expect(target, "a target of Compare's lane alone").toBeDefined();
-      dragTo(cursor, (target ?? 0) + offset, 0.75);
-      expect(Number.parseFloat(cursor.style.left) / 100).toBeCloseTo(
-        target ?? Number.NaN,
-        6,
-      );
+      expectSnapsTo(cursor, shown, shown.lanes.at(-1), shown.lanes[0], 0.75);
       await setPressed("time-cursors", false);
     });
 
@@ -281,3 +288,27 @@ describe.each(cases)(
     });
   },
 );
+
+// Overlaid without Compare, every track shares the one lane, and the cursors snap to this track,
+// the one the readouts measure, wherever the host lists it: here second, after the bass.
+describe("overlaid without Compare, with this track listed second", () => {
+  beforeApp(async () => {
+    await startApp({ tracksBefore: 1 });
+    await inTimeBase("Trig");
+    await press(choice("display-mode", "Multi"));
+    await press(choice("layout", "Overlay"));
+    await showOnly(["Bass"]);
+    await expect
+      .poll(() => window.orizonDebug?.lastFrame?.lanes.length)
+      .toBe(2);
+    await settle();
+    expect(frame().comparison).toBeUndefined();
+  });
+
+  test("a time cursor snaps to this track, not the first lane's", async () => {
+    await setPressed("time-cursors", true);
+    const shown = frame();
+    expectSnapsTo(byId("cursor-a"), shown, shown.lanes[1], shown.lanes[0], 0.5);
+    await setPressed("time-cursors", false);
+  });
+});
