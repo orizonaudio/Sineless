@@ -121,6 +121,22 @@ describe("hover readout", () => {
     expect(traceAt(3, ViewLayout.overlaid, false, 0.9, 1)).toBe(1);
   });
 
+  // Overlaid with Compare on: the tracks' upper half reads this track, Compare's lower half reads
+  // Compare's lane; a pointer past the screen's top or bottom reads the half it is nearest.
+  test("reads this track in the tracks' half and Compare's lane in its own, past the edges too", () => {
+    for (const [y, trace] of [
+      [-0.2, 1],
+      [0.25, 1],
+      [0.75, 3],
+      [1.2, 3],
+    ] as const) {
+      expect(
+        traceAt(4, ViewLayout.overlaid, true, y, 1),
+        `at ${String(y)}`,
+      ).toBe(trace);
+    }
+  });
+
   test("finds cycles around a DC offset, and none in noise or silence", () => {
     const offset = sine(480, 4).map((value) => value + 0.3);
     expect(cycleAt(rawFrame(offset), offset, 0.4)).toBeCloseTo(0.25, 3);

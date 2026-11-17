@@ -476,7 +476,7 @@ export function helpTextsFor(mac: boolean) {
         stacked: "each view in its own lane",
       }),
       notes: [
-        "With Compare on, Overlay gives the tracks the upper half and the sum or difference the lower.",
+        "In Multi with Compare on, Overlay gives the tracks the upper half and the sum or difference the lower.",
         "Labels, in the same popover, names each lane.",
       ],
     },
@@ -590,7 +590,7 @@ export function helpTextsFor(mac: boolean) {
       lead: "The channel the Meter reads: Left, Right, Mid or Side.",
       actions: [{ gesture: "Click", effect: "choose among the views drawn" }],
       notes: [
-        "With the views overlaid, the hover and the cursors' snapping read it too; stacked, each lane reads its own trace, as Compare's own lane does.",
+        "With the views overlaid, the hover and the cursors' snapping read it too; stacked, each lane reads its own trace.",
         "While the one chosen is hidden, the first view drawn is read.",
         "A mono track has only Left. Multi has a Measure row of its own.",
       ],
