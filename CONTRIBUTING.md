@@ -12,7 +12,7 @@ You contribute under the project's licence: GPL-3.0-only, with the additional pe
 
 Every change:
 
-- [ ] `scripts/check.sh` passes locally. CI runs its parts as jobs of their own (TypeScript, the app tests on macOS, the macOS main and glue jobs, the Linux checks), and `scripts\check.ps1`'s on Windows x64 (main and glue), on every pull request that changes more than documentation (Markdown, or files under `docs/`; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all except the performance and fuzz jobs, and the engine-work jobs until their counts have matched exactly for a week. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
+- [ ] `scripts/check.sh` passes locally. CI runs its parts as jobs of their own (TypeScript, the app tests on macOS (skipped for now: they run locally before each pull request until #436), the macOS main and glue jobs, the Linux checks), and `scripts\check.ps1`'s on Windows x64 (main and glue), on every pull request that changes more than documentation (Markdown, or files under `docs/`; see `scripts/changed-code.ts`), and the ruleset on `main` requires them all except the performance and fuzz jobs, and the engine-work jobs until their counts have matched exactly for a week. A change to Windows code, or to anything built on Windows, also passes `scripts\check.ps1` on Windows.
 - [ ] New or changed behaviour is covered by tests.
 - [ ] Code follows the naming conventions and is formatted and linted.
 - [ ] Nothing new runs on the audio thread that could allocate, lock or block.
@@ -48,7 +48,7 @@ CI marks where each will run.
 | Unit | One module at a time | `engine/tests`, `protocol/tests`, `ui/tests` | Every PR |
 | Component | The plugin through the VST3 API; the editor's session, frame flow and sizing | `plugin/tests`, `editor/tests` | Every PR |
 | Integration | The editor with its page in a real WKWebView or WebView2 | `editor/tests/EditorTests.mm`, `editor/tests/EditorTestsWin.cpp` | Every PR |
-| App | The real page against the mock back end, in WebKit and Chromium: controls, readouts, lanes, pan limits. A browser whose page makes no progress for four times the test timeout fails the run, saying where it stopped (`ui/tests/app/stall-watchdog.ts`; `ORIZON_APP_STALL_SECONDS` sets another limit, for a slow machine) | `ui/tests/app`, `npm run test:app` | Every PR |
+| App | The real page against the mock back end, in WebKit and Chromium: controls, readouts, lanes, pan limits. A browser whose page makes no progress for four times the test timeout fails the run, saying where it stopped (`ui/tests/app/stall-watchdog.ts`; `ORIZON_APP_STALL_SECONDS` sets another limit, for a slow machine) | `ui/tests/app`, `npm run test:app` | Every PR (locally, while CI's app job is skipped: #436) |
 | Recorded sessions | The real page on what the real engine and session sent, in the states only the engine decides: a zoomed roll, a limited span, rates held while frozen, mono, lanes, Compare matches, no tempo | `editor/tests/SessionRecordingTests.cpp` records them in `protocol/tests/data/sessions`; `ui/tests/app/recorded-*.test.ts` replay them | Every PR |
 | Contract | C++ and TypeScript agree on frames, messages and saved state | `protocol/tests/data`, `engine/tests/data` | Every PR |
 | Conformance | The VST3 and Audio Unit rules hosts rely on | VST3 validator, pluginval at strictness 10; for the Audio Unit, Apple's auval (strict, in and out of process) and pluginval on a copy installed for the user | Every PR |
