@@ -181,17 +181,20 @@ describe("lanes", () => {
     ({ layout, compared, count }) => {
       const screen = screenLanes(count, ViewLayout[layout], compared);
       const traces = traceLanes(count, ViewLayout[layout], compared);
-      const read = 0; // This track's lane, among the tracks overlaid.
-      screen.forEach((lane, index) => {
-        const holding = traces.flatMap((trace, at) =>
-          trace.center === lane.center && trace.halfHeight === lane.halfHeight
-            ? [at]
-            : [],
-        );
-        expect(
-          traceInScreenLane(count, ViewLayout[layout], compared, index, read),
-        ).toBe(holding.length === 1 ? holding[0] : read);
-      });
+      // This track's lane, wherever it is among the tracks (never Compare's, which is last).
+      const tracks = compared && count > 1 ? count - 1 : count;
+      for (let read = 0; read < tracks; read++) {
+        screen.forEach((lane, index) => {
+          const holding = traces.flatMap((trace, at) =>
+            trace.center === lane.center && trace.halfHeight === lane.halfHeight
+              ? [at]
+              : [],
+          );
+          expect(
+            traceInScreenLane(count, ViewLayout[layout], compared, index, read),
+          ).toBe(holding.length === 1 ? holding[0] : read);
+        });
+      }
     },
   );
 });
