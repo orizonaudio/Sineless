@@ -6,13 +6,16 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   CompareLane,
   FrameMode,
+  TraceShape,
   ViewLayout,
 } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
   differenceSharedStrength,
+  filledAreaLineHalf,
   maxLanes,
   overlaidTraceAlpha,
+  waitingAlpha,
 } from "../../../protocol/src/limits.ts";
 import {
   columnPosition,
@@ -1785,8 +1788,13 @@ describe("every pixel's coverage follows its distance to the trace", () => {
 describe("a trace stays within its lane", () => {
   const none = { correlation: 0, related: false, offset: 0, inverted: false };
   const lineWidthPixels = 3;
-  // The lane's edge widened by the line's half width and a pixel (trace-renderer.ts).
-  const margin = lineWidthPixels / 2 + 1;
+  // A trace's half width: its line's, or a filled trace's edge (filledAreaLineHalf).
+  const halfOf = (shape: TraceShape) =>
+    shape === TraceShape.filled ? filledAreaLineHalf : lineWidthPixels / 2;
+  const shapes = [
+    { shape: TraceShape.line, shapeName: "line" },
+    { shape: TraceShape.filled, shapeName: "filled" },
+  ];
   // Lane edges on whole pixels and between them (203 px into three lanes).
   const heights = [200, 203];
   const red: Rgba = [1, 0, 0, 1];
@@ -1802,16 +1810,19 @@ describe("a trace stays within its lane", () => {
       compared: true,
     },
   ];
-  const cases = layouts.flatMap((layout) =>
-    [FrameMode.raw, FrameMode.minMax].flatMap((mode) =>
-      heights.flatMap((h) =>
-        [0, 2].map((loud) => ({
-          ...layout,
-          mode,
-          modeName: mode === FrameMode.raw ? "raw" : "min/max",
-          h,
-          loud,
-        })),
+  const cases = shapes.flatMap((shape) =>
+    layouts.flatMap((layout) =>
+      [FrameMode.raw, FrameMode.minMax].flatMap((mode) =>
+        heights.flatMap((h) =>
+          [0, 2].map((loud) => ({
+            ...shape,
+            ...layout,
+            mode,
+            modeName: mode === FrameMode.raw ? "raw" : "min/max",
+            h,
+            loud,
+          })),
+        ),
       ),
     ),
   );
@@ -1850,11 +1861,14 @@ describe("a trace stays within its lane", () => {
   }
 
   test.each(cases)(
-    "$name, $modeName, lane $loud past its lane, $h px: nothing beyond its margin",
-    ({ layout, compared, mode, h, loud }) => {
+    "$shapeName, $name, $modeName, lane $loud past its lane, $h px: nothing beyond its margin",
+    ({ shape, layout, compared, mode, h, loud }) => {
+      // The lane's edge widened by the trace's half width and a pixel (trace-renderer.ts).
+      const margin = halfOf(shape) + 1;
       const drawing = draw(frameFor(mode, loud, compared), {
         height: h,
         layout,
+        traceShape: shape,
         lineWidthPixels,
         verticalScaleDb: -20,
         laneColors: [0, 1, 2].map((lane) =>
@@ -1891,17 +1905,19 @@ describe("a trace stays within its lane", () => {
   // A full-scale value lies on the lane's edge: its line, and at a deep zoom its sample's dot, are
   // drawn whole, each pixel past the edge covered as by the same line on a lane of its own.
   test.each(
-    [FrameMode.minMax, FrameMode.raw].flatMap((mode) =>
-      heights.map((h) => ({
-        mode,
-        modeName:
-          mode === FrameMode.raw ? "raw, its samples dotted" : "min/max",
-        h,
-      })),
-    ),
+    [FrameMode.minMax, FrameMode.raw]
+      .flatMap((mode) =>
+        heights.map((h) => ({
+          mode,
+          modeName:
+            mode === FrameMode.raw ? "raw, its samples dotted" : "min/max",
+          h,
+        })),
+      )
+      .flatMap((each) => shapes.map((shape) => ({ ...each, ...shape }))),
   )(
-    "$modeName, $h px: a wave on the lane's edge keeps its whole line",
-    ({ mode, h }) => {
+    "$shapeName, $modeName, $h px: a wave on the lane's edge keeps its whole line",
+    ({ shape, mode, h }) => {
       const samples = 8;
       const pointsPerSample = 16;
       const count =
@@ -1925,6 +1941,7 @@ describe("a trace stays within its lane", () => {
       const drawing = draw(frame, {
         height: h,
         layout: ViewLayout.stacked,
+        traceShape: shape,
         lineWidthPixels,
         laneColors: [quiet[0] ?? red, red, quiet[1] ?? red],
       });
@@ -1934,9 +1951,13 @@ describe("a trace stays within its lane", () => {
         halfHeight: 1,
       };
       const edge = ((lane.center + lane.halfHeight + 1) / 2) * h;
-      const half = lineWidthPixels / 2;
-      // Coverage of a line at `edge` at a pixel centre `d` away.
-      const covered = (d: number) => Math.min(Math.max(half + 0.5 - d, 0), 1);
+      const half = halfOf(shape);
+      // Coverage of a line at `edge` at a pixel centre `d` past it; a filled trace covers all of
+      // its lane below.
+      const covered = (d: number) =>
+        shape === TraceShape.filled && d < 0
+          ? 1
+          : Math.min(Math.max(half + 0.5 - Math.abs(d), 0), 1);
       const columns =
         mode === FrameMode.raw
           ? Array.from({ length: samples - 1 }, (_, sample) => ({
@@ -1949,7 +1970,7 @@ describe("a trace stays within its lane", () => {
         const between =
           mode === FrameMode.raw ? x + Math.floor(width / samples / 2) : x;
         for (let y = Math.floor(edge); y < Math.ceil(edge + half + 1); y++) {
-          const d = Math.abs(y + 0.5 - edge);
+          const d = y + 0.5 - edge;
           expect(
             Math.abs(drawing.pixel(between, y)[0] - covered(d) * 255),
             `${String(between)}, ${String(y)}, ${String(d)} past the edge`,
@@ -2094,6 +2115,370 @@ describe("overlaid traces are translucent, stacked ones opaque", () => {
       width / 2,
       laneRowOf(sum, 0.5),
       over(transparent, atAlpha(red, overlaidTraceAlpha)),
+      3,
+    );
+  });
+});
+
+// Filled: each trace is the area between its wave and the zero line, with an edge as soft as the
+// difference lane's (filledAreaLineHalf) and no line along it.
+describe("a filled trace", () => {
+  const filled: DrawOptions = { traceShape: TraceShape.filled };
+  const red: Rgba = [1, 0, 0, 1];
+  const yPixel = (value: number, h = height) => ((value + 1) / 2) * h;
+  // A flat trace across the screen: min/max bands from `low` to `high`, or raw points at `low`.
+  const flatFrame = (mode: FrameMode, low: number, high: number): Frame =>
+    traceFrame(
+      mode,
+      mode === FrameMode.minMax
+        ? Array.from({ length: 200 }, (_, k) => (k % 2 === 0 ? low : high))
+        : Array.from({ length: 100 }, () => low),
+      { viewStart: 0, viewEnd: 1 },
+    );
+  const sides = [
+    { mode: FrameMode.minMax, name: "min/max above zero", low: 0.3, high: 0.6 },
+    {
+      mode: FrameMode.minMax,
+      name: "min/max below zero",
+      low: -0.6,
+      high: -0.3,
+    },
+    {
+      mode: FrameMode.minMax,
+      name: "min/max across zero",
+      low: -0.4,
+      high: 0.5,
+    },
+    { mode: FrameMode.raw, name: "raw above zero", low: 0.5, high: 0.5 },
+    { mode: FrameMode.raw, name: "raw below zero", low: -0.5, high: -0.5 },
+  ];
+
+  test.each(sides)(
+    "$name: fills between the wave and zero, and nothing beyond either",
+    ({ mode, low, high }) => {
+      const drawing = draw(flatFrame(mode, low, high), filled);
+      expect(drawing.error).toBe(0);
+      const x = width / 2;
+      const far = Math.abs(high) > Math.abs(low) ? high : low;
+      // Halfway between zero and the wave's far side, and between zero and its near side.
+      expect(drawing.alpha(x, Math.floor(yPixel(far / 2)))).toBeGreaterThan(
+        0.99,
+      );
+      const near = Math.sign(far) * Math.min(Math.abs(low), Math.abs(high));
+      if (Math.sign(low) === Math.sign(high)) {
+        expect(drawing.alpha(x, Math.floor(yPixel(near / 2)))).toBeGreaterThan(
+          0.99,
+        );
+      }
+      // Two pixels past the wave, and past zero on the far side (when the wave does not cross).
+      const outward = Math.sign(far);
+      expect(drawing.alpha(x, Math.floor(yPixel(far) + outward * 2.5))).toBe(0);
+      if (Math.sign(low) === Math.sign(high)) {
+        expect(drawing.alpha(x, Math.floor(yPixel(0) - outward * 2.5))).toBe(0);
+      }
+    },
+  );
+
+  // Clamped to zero at each pixel, not at each point: points at +0.8 and −0.8 clamped first would
+  // fill a diamond from −0.4 to 0.4 about the crossing, where the wave is 0.
+  test("a raw wave crossing zero between two samples fills only up to the wave", () => {
+    const spacing = 40;
+    const frame = spaced(FrameMode.raw, 9, spacing, (point) =>
+      point % 2 === 0 ? 0.8 : -0.8,
+    );
+    const drawing = draw(frame, filled);
+    expect(drawing.error).toBe(0);
+    const zero = yPixel(0);
+    for (let point = 1; point < 7; point++) {
+      const crossing = Math.round(
+        (centreX(drawing, point) + centreX(drawing, point + 1)) / 2,
+      );
+      for (let y = 0; y < height; y++) {
+        if (Math.abs(y + 0.5 - zero) > 8) {
+          expect(
+            drawing.alpha(crossing, y),
+            `${String(crossing)}, ${String(y)}`,
+          ).toBe(0);
+        }
+      }
+      // Halfway from the sample to the crossing, between the wave and zero, it is filled.
+      const quarter = Math.round(
+        (3 * centreX(drawing, point) + centreX(drawing, point + 1)) / 4,
+      );
+      const wave = point % 2 === 0 ? 0.4 : -0.4;
+      expect(
+        drawing.alpha(quarter, Math.floor(yPixel(wave / 2))),
+      ).toBeGreaterThan(0.99);
+    }
+  });
+
+  test("its edges are soft: many coverage levels across a sloped edge, and none hard at zero", () => {
+    const frame = spaced(FrameMode.raw, 90, 4, (_, x) =>
+      valueAt(height * 0.75 + 0.3 * (x - width / 2)),
+    );
+    const drawing = draw(frame, filled);
+    const levels = new Set<number>();
+    for (let x = 0; x < width; x++) {
+      for (let y = Math.ceil(yPixel(0) + 2); y < height; y++) {
+        const a = drawing.pixel(x, y)[3];
+        if (a > 0 && a < 255) {
+          levels.add(a);
+        }
+      }
+    }
+    expect(levels.size).toBeGreaterThanOrEqual(8);
+    // Zero lies on a pixel boundary here: the pixel just outside it is half covered.
+    const band = draw(flatFrame(FrameMode.minMax, 0.3, 0.6), filled);
+    const outside = band.alpha(width / 2, Math.floor(yPixel(0)) - 1);
+    expect(outside).toBeGreaterThan(0.2);
+    expect(outside).toBeLessThan(0.8);
+  });
+
+  test("a silent trace draws a line along zero as thin as the filled edge", () => {
+    const drawing = draw(flatFrame(FrameMode.minMax, 0, 0), filled);
+    const thickness = columnCoverage(drawing, width / 2);
+    expect(thickness).toBeGreaterThan(2 * filledAreaLineHalf - 0.2);
+    expect(thickness).toBeLessThan(2 * filledAreaLineHalf + 0.2);
+  });
+
+  test("beside a gap the area ends in an edge from zero to the wave, and the gap stays empty", () => {
+    const count = 100;
+    const frame = spaced(FrameMode.raw, count, 4, (point) =>
+      point >= 40 && point < 60 ? Number.NaN : 0.5,
+    );
+    const drawing = draw(frame, filled);
+    expect(drawing.error).toBe(0);
+    // The edge is as soft as the area's, centred on the point: the column on it is half covered
+    // from zero up to the wave (a line would cover it only near the wave), the one inside whole.
+    const last = Math.floor(centreX(drawing, 39));
+    const first = Math.floor(centreX(drawing, 60));
+    for (const [x, inside] of [
+      [last, last - 1],
+      [first, first + 1],
+    ] as const) {
+      for (const value of [0.1, 0.25, 0.4]) {
+        const y = Math.floor(yPixel(value));
+        expect(
+          drawing.alpha(x, y),
+          `on the edge at ${String(value)}`,
+        ).toBeGreaterThan(0.4);
+        expect(
+          drawing.alpha(inside, y),
+          `inside at ${String(value)}`,
+        ).toBeGreaterThan(0.99);
+      }
+    }
+    const middle = Math.floor(centreX(drawing, 50));
+    for (let y = 0; y < height; y++) {
+      expect(drawing.alpha(middle, y)).toBe(0);
+    }
+  });
+
+  // Zoomed in to the samples, each is marked with a dot on the area's edge (FR-1.3's dots).
+  test("zoomed in, the area is filled and a dot marks each sample on its edge", () => {
+    const samples = 10;
+    const pointsPerSample = 8;
+    const count = samples * pointsPerSample + 1;
+    const lineWidthPixels = 3;
+    const drawing = draw(
+      traceFrame(
+        FrameMode.raw,
+        Array.from({ length: count }, () => 0.5),
+        { viewStart: 0, viewEnd: 1, visibleSamples: samples, pointsPerSample },
+      ),
+      { ...filled, lineWidthPixels },
+    );
+    expect(drawing.error).toBe(0);
+    // Past the edge's own reach, within a dot's (a line width).
+    const above = Math.floor(yPixel(0.5) + filledAreaLineHalf + 1.5);
+    for (let sample = 1; sample < samples; sample++) {
+      const x = Math.round(centreX(drawing, sample * pointsPerSample));
+      const between = x + Math.round(width / samples / 2);
+      expect(drawing.alpha(x, Math.floor(yPixel(0.25)))).toBeGreaterThan(0.99);
+      expect(drawing.alpha(between, Math.floor(yPixel(0.25)))).toBeGreaterThan(
+        0.99,
+      );
+      expect(drawing.alpha(x, above), "at the sample").toBeGreaterThan(0.5);
+      expect(drawing.alpha(between, above), "between samples").toBeLessThan(
+        0.1,
+      );
+    }
+  });
+
+  test.each(
+    (Object.keys(ViewLayout) as (keyof typeof ViewLayout)[]).map((name) => ({
+      name,
+      layout: ViewLayout[name],
+      alpha: ViewLayout[name] === ViewLayout.overlaid ? overlaidTraceAlpha : 1,
+    })),
+  )(
+    "$name: one filled trace is translucent overlaid and opaque stacked",
+    ({ layout, alpha }) => {
+      const drawing = draw(flatLanes([0.4]), {
+        ...filled,
+        laneColors: [red],
+        layout,
+      });
+      expectPixel(
+        drawing,
+        width / 2,
+        rowOf(0.2),
+        over(transparent, [red[0], red[1], red[2], red[3] * alpha]),
+        3,
+      );
+    },
+  );
+
+  test("overlaid, two filled traces: the earlier shows through the later", () => {
+    const green: Rgba = [0, 1, 0, 1];
+    const drawing = draw(flatLanes([0.4, 0.6]), {
+      ...filled,
+      laneColors: [red, green],
+      layout: ViewLayout.overlaid,
+    });
+    expectPixel(
+      drawing,
+      width / 2,
+      rowOf(0.2),
+      over(over(transparent, overlaid(red)), overlaid(green)),
+      3,
+    );
+    // Above the first, the second alone.
+    expectPixel(
+      drawing,
+      width / 2,
+      rowOf(0.5),
+      over(transparent, overlaid(green)),
+      3,
+    );
+  });
+
+  // Columns a fraction of a pixel apart, their bands overlapping: still one layer.
+  test("overlaid, a filled trace's own overlapping pieces are no denser", () => {
+    const frame = spaced(FrameMode.minMax, 600, 0.5, (point) => [
+      0.5 + 0.2 * Math.sin(point / 13),
+      0.6 + 0.2 * Math.sin(point / 13),
+    ]);
+    const drawing = draw(frame, {
+      ...filled,
+      layout: ViewLayout.overlaid,
+      color: red,
+    });
+    for (const x of interior(drawing, 4)) {
+      for (let y = Math.ceil(yPixel(0) + 2); y < yPixel(0.25); y++) {
+        expect(
+          Math.abs(drawing.alpha(x, y) - overlaidTraceAlpha),
+          `${String(x)}, ${String(y)}`,
+        ).toBeLessThanOrEqual(1.5 / 255);
+      }
+    }
+  });
+
+  test.each(Object.keys(ViewLayout) as (keyof typeof ViewLayout)[])(
+    "%s: the difference's lane is drawn the same as with lines",
+    (name) => {
+      const none = {
+        correlation: 0,
+        related: false,
+        offset: 0,
+        inverted: false,
+      };
+      const count = 100;
+      const band = (low: number, high: number) =>
+        Array.from({ length: count * 2 }, (_, k) => (k % 2 === 0 ? low : high));
+      const frame = frameOf({
+        mode: FrameMode.minMax,
+        pointCount: count,
+        viewStart: 0,
+        viewEnd: 1,
+        lanes: [band(-0.5, 0.5), band(-0.75, 0.25), band(0.85, 0.95)],
+        comparison: {
+          lane: CompareLane.difference,
+          sumGain: Number.NaN,
+          fixedGain: Number.NaN,
+          matches: [none, none],
+        },
+      });
+      const options: DrawOptions = {
+        laneColors: [0, 1, 2].map((lane) => laneColor(lane)),
+        layout: ViewLayout[name],
+      };
+      const lines = draw(frame, options);
+      const lineRows = Array.from({ length: height }, (_, y) =>
+        Array.from({ length: width }, (_, x) => lines.pixel(x, y).join()),
+      );
+      const fills = draw(frame, { ...options, ...filled });
+      const lane = traceLanes(3, ViewLayout[name], true)[2] ?? {
+        center: 0,
+        halfHeight: 1,
+      };
+      const bottom = Math.ceil(
+        ((lane.center - lane.halfHeight + 1) / 2) * height,
+      );
+      const top = Math.floor(
+        ((lane.center + lane.halfHeight + 1) / 2) * height,
+      );
+      for (let y = bottom + 3; y < top - 3; y++) {
+        for (let x = 0; x < width; x += 5) {
+          expect(fills.pixel(x, y).join(), `${String(x)}, ${String(y)}`).toBe(
+            lineRows[y]?.[x],
+          );
+        }
+      }
+    },
+  );
+
+  test("Compare's sum is filled like a track", () => {
+    const none = { correlation: 0, related: false, offset: 0, inverted: false };
+    const count = 100;
+    const band = (low: number, high: number) =>
+      Array.from({ length: count * 2 }, (_, k) => (k % 2 === 0 ? low : high));
+    const drawing = draw(
+      frameOf({
+        mode: FrameMode.minMax,
+        pointCount: count,
+        viewStart: 0,
+        viewEnd: 1,
+        lanes: [band(0.2, 0.3), band(0.2, 0.3), band(0.4, 0.6)],
+        comparison: {
+          lane: CompareLane.sum,
+          sumGain: 1,
+          fixedGain: Number.NaN,
+          matches: [none, none],
+        },
+      }),
+      {
+        ...filled,
+        laneColors: [0, 1, 2].map((lane) => laneColor(lane)),
+        layout: ViewLayout.stacked,
+      },
+    );
+    const sum = traceLanes(3, ViewLayout.stacked, true)[2];
+    expectPixel(
+      drawing,
+      width / 2,
+      laneRowOf(sum, 0.2),
+      over(transparent, laneColor(2)),
+      3,
+    );
+  });
+
+  test("Waiting dims a filled overlaid trace on top of its translucency", () => {
+    const drawing = draw(flatLanes([0.5]), {
+      ...filled,
+      laneColors: [red],
+      layout: ViewLayout.overlaid,
+      dim: true,
+    });
+    const a = overlaidTraceAlpha;
+    const dimmed = (channel: number) =>
+      (screenColor[channel] ?? 0) +
+      waitingAlpha * ((red[channel] ?? 0) - (screenColor[channel] ?? 0));
+    expectPixel(
+      drawing,
+      width / 2,
+      rowOf(0.25),
+      [dimmed(0) * a, dimmed(1) * a, dimmed(2) * a, a],
       3,
     );
   });

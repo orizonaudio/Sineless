@@ -4,6 +4,7 @@
 import {
   ChannelView,
   FrameMode,
+  TraceShape,
   ViewLayout,
 } from "../../../protocol/src/enums.ts";
 import {
@@ -40,6 +41,7 @@ export interface DrawOptions {
   readonly color?: Rgba;
   readonly laneColors?: readonly Rgba[];
   readonly layout?: ViewLayout;
+  readonly traceShape?: TraceShape;
   readonly dim?: boolean;
   readonly view?: ViewWindow;
   readonly verticalScaleDb?: number;
@@ -61,7 +63,11 @@ let style: Required<
   color: [1, 1, 1, 1],
   laneColors: [],
 };
-let view: TraceView = { verticalScaleDb: 0, layout: ViewLayout.stacked };
+let view: TraceView = {
+  verticalScaleDb: 0,
+  layout: ViewLayout.stacked,
+  traceShape: TraceShape.line,
+};
 
 function surface(width: number, height: number): Surface {
   const key = `${String(width)}x${String(height)}`;
@@ -180,6 +186,7 @@ export function drawOn(
     // Stacked unless asked: one trace lays out as overlaid, and is drawn opaque, as a test of its
     // shape wants; a test of overlapping traces asks for Overlay.
     layout: options.layout ?? ViewLayout.stacked,
+    traceShape: options.traceShape ?? TraceShape.line,
     ...(options.dim === undefined ? {} : { dim: options.dim }),
     ...(options.view === undefined ? {} : { view: options.view }),
   };

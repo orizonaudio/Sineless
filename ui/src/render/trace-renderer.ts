@@ -11,6 +11,7 @@
 // size.
 import {
   FrameMode,
+  TraceShape,
   type ChannelView,
   ViewLayout,
 } from "../../../protocol/src/enums.ts";
@@ -74,6 +75,8 @@ export interface TraceStyle {
 export interface TraceView {
   readonly verticalScaleDb: number;
   readonly layout: ViewLayout;
+  // Each trace's wave as a line, or the area between it and zero.
+  readonly traceShape: TraceShape;
   // Shows the trace as stale, e.g. while Normal mode waits for a trigger.
   readonly dim?: boolean;
   // The part of the frame on screen.
@@ -107,6 +110,10 @@ uniform float dotRadius;
 // thinner than a pixel it covers that share of the pixel, so that a difference far too small to
 // see is not drawn as a hairline at full strength. A wave keeps its line however flat it is.
 uniform int thin;
+// 1 for a trace drawn filled: the area between its wave and zero, clamped to zero at each pixel
+// (a wave crossing zero between two points fills only up to the wave), with an edge as soft as
+// lineHalf makes it and no line along it.
+uniform int fill;
 float pixelX(float index) {
   return (frameLeft + index / positions * frameScale) * canvas.x;
 }
@@ -209,9 +216,11 @@ void main() {
   float xb = joined ? pixelX(float(i + 1) + offset) : xa;
   vec2 c = vec2(0.0);
   if (part == 0 && present && joined) {
-    // Half a pixel wider each side, so a pixel centre on a point lies inside the quad.
-    float low = inLane(min(lo, lo2));
-    float high = inLane(max(hi, hi2));
+    // Half a pixel wider each side, so a pixel centre on a point lies inside the quad; filled, it
+    // reaches to zero, and as far past the area as its soft edge.
+    float zero = pixelY(0.0);
+    float low = inLane(fill != 0 ? min(min(lo, lo2), zero) - pad : min(lo, lo2));
+    float high = inLane(fill != 0 ? max(max(hi, hi2), zero) + pad : max(hi, hi2));
     c = vec2(far ? xb + 0.5 : xa - 0.5, upper ? high : low);
     line = vec4(xa, xb, 0.0, 0.0);
   } else if ((part == 1 || part == 2) && present && joined) {
@@ -232,8 +241,12 @@ void main() {
       line = vec4(a2, b2);
     }
   } else if (part == 3 && present && !(before && joined)) {
-    float low = inLane(lo - pad);
-    float high = inLane(hi + pad);
+    // Filled, beside a gap the area ends in an edge from zero to the wave.
+    if (fill != 0) {
+      here = vec2(min(lo, pixelY(0.0)), max(hi, pixelY(0.0)));
+    }
+    float low = inLane(here.x - pad);
+    float high = inLane(here.y + pad);
     c = vec2(far ? xa + pad : xa - pad, upper ? high : low);
     line = vec4(xa, 0.0, 0.0, 0.0);
   } else if (part == 4 && present && dotEvery > 0 && i % dotEvery == 0) {
@@ -270,10 +283,21 @@ void main() {
     // has f within 0 and 1 exactly, and neighbouring bands meet with no gap and no overlap past
     // their points.
     float f = (p.x - line.x) / (line.y - line.x);
-    if (!(f >= 0.0 && f <= 1.0 && p.y >= mix(here.x, next.x, f) && p.y <= mix(here.y, next.y, f))) {
+    if (!(f >= 0.0 && f <= 1.0)) {
       discard;
     }
-    d = 0.0;
+    float bottom = mix(here.x, next.x, f);
+    float top = mix(here.y, next.y, f);
+    if (fill != 0) {
+      // The area between the wave at this pixel and zero; outside it, the distance to it.
+      float zero = pixelY(0.0);
+      d = max(0.0, max(p.y - max(top, zero), min(bottom, zero) - p.y));
+    } else {
+      if (!(p.y >= bottom && p.y <= top)) {
+        discard;
+      }
+      d = 0.0;
+    }
   } else if (part == 3) {
     d = length(vec2(p.x - line.x, p.y - clamp(p.y, here.x, here.y)));
   } else if (part == 4) {
@@ -683,6 +707,8 @@ export class TraceRenderer implements FrameRenderer {
       readonly scale: number;
       readonly stride: 1 | 2;
       readonly lineHalf: number;
+      // Each block drawn filled (the shaders' `fill`).
+      readonly fill?: boolean;
     },
     blocks: readonly {
       readonly values: Float32Array;
@@ -793,6 +819,7 @@ export class TraceRenderer implements FrameRenderer {
       gl.uniform1f(program.uniform("center"), lane.center);
       gl.uniform1f(program.uniform("halfHeight"), lane.halfHeight);
       gl.uniform1i(program.uniform("thin"), thin === true ? 1 : 0);
+      gl.uniform1i(program.uniform("fill"), pass.fill === true ? 1 : 0);
       // One point per instance: its own values, the next point's and the previous point's.
       const offset = values.byteOffset - start + 8;
       gl.vertexAttribIPointer(
@@ -948,7 +975,10 @@ export class TraceRenderer implements FrameRenderer {
       {
         ...pass,
         stride: minMax ? 2 : 1,
-        lineHalf: this.style.lineWidthPixels / 2,
+        // Filled, each trace is an area with the difference lane's soft edge and no line.
+        ...(view.traceShape === TraceShape.filled
+          ? { lineHalf: filledAreaLineHalf, fill: true }
+          : { lineHalf: this.style.lineWidthPixels / 2 }),
       },
       blocks
         .slice(0, tracesPerPass)

@@ -3,6 +3,7 @@
 import {
   ChannelView,
   CompareLane,
+  TraceShape,
   ViewLayout,
 } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
@@ -506,6 +507,7 @@ export class OscilloscopeApp {
     const traceView = (): TraceView => ({
       verticalScaleDb: store.number("verticalScale"),
       layout: this.layout(),
+      traceShape: this.traceShape(),
       dim: this.waiting,
       view: this.view,
     });
@@ -597,6 +599,12 @@ export class OscilloscopeApp {
     return this.store.get("viewLayout") === "stacked"
       ? ViewLayout.stacked
       : ViewLayout.overlaid;
+  }
+
+  private traceShape(): TraceShape {
+    return this.store.get("traceShape") === "filled"
+      ? TraceShape.filled
+      : TraceShape.line;
   }
 
   // The views asked for, as Single's Channels list ticks them.
@@ -788,6 +796,11 @@ export class OscilloscopeApp {
         }
         this.request("compare", value === "off" ? "off" : "on");
       },
+    );
+    segment(
+      "traceShape",
+      "trace-shape-choice",
+      Object.entries(choiceLabels.traceShape),
     );
     segment("laneLabels", "lane-labels-choice", [
       ["off", "Off"],
@@ -1242,6 +1255,8 @@ export class OscilloscopeApp {
     const screenSettings: SettingName[] = [
       "verticalScale",
       "viewLayout",
+      // Redraws the traces at once, whatever the next frame brings.
+      "traceShape",
       "channelViews",
       "triggerSpan",
       "freeSpan",
@@ -2598,6 +2613,10 @@ export class OscilloscopeApp {
         (Object.keys(ViewLayout) as (keyof typeof ViewLayout)[]).find(
           (name) => ViewLayout[name] === layout,
         ) ?? "overlaid",
+      traceShape:
+        (Object.keys(TraceShape) as (keyof typeof TraceShape)[]).find(
+          (name) => TraceShape[name] === this.traceShape(),
+        ) ?? "line",
       verticalScaleDb: this.store.number("verticalScale"),
       dim: this.waiting,
       lineWidth: style?.lineWidthPixels ?? 1,

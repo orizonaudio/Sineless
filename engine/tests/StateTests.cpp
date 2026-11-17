@@ -145,6 +145,7 @@ constexpr std::array kEveryGoldenStateFile{
     "state-v6.json",
     "state-v6-compare-difference.json",
     "state-v7.json",
+    "state-v7-trace-shape.json",
 };
 
 // A project saved before Auto-freeze existed opens with it on, as a new instance does (FR-11):
@@ -433,6 +434,12 @@ constexpr std::array kVersion6CompareDifferenceValues{
     GoldenValue{.id = SettingId::kAlign, .value = asValue(protocol::Toggle::kOff)},
 };
 
+// The version 7 state with how each trace is drawn (the Layout popover's Style), which 0.11 adds:
+// saved by the build that adds it, as the next release saves it.
+constexpr std::array kVersion7TraceShapeValues{
+    GoldenValue{.id = SettingId::kTraceShape, .value = asValue(protocol::TraceShape::kFilled)},
+};
+
 // Golden states saved by released builds that added settings without a state version raise,
 // each with the values it holds. A release that adds a setting adds its own file here; the
 // files already here stay as their release saved them.
@@ -457,6 +464,7 @@ constexpr std::array kGoldenStates{
                 .values = kVersion6CompareDifferenceValues},
     // Version 7 has no group: the settings of version 6, saved without it.
     GoldenState{.file = "state-v7.json", .values = kVersion6Values},
+    GoldenState{.file = "state-v7-trace-shape.json", .values = kVersion7TraceShapeValues},
 };
 
 // A project saved with groups (until version 6) opens: the group is gone, every other setting is

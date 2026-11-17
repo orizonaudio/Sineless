@@ -24,6 +24,7 @@ TEST(TraceViewMessage, ReadsEveryFieldOfThePagesMessage)
     EXPECT_EQ(view->view.start, message.at("viewStart").get<double>());
     EXPECT_EQ(view->view.end, message.at("viewEnd").get<double>());
     EXPECT_EQ(view->layout, protocol::ViewLayout::kStacked);
+    EXPECT_EQ(view->traceShape, protocol::TraceShape::kFilled);
     EXPECT_EQ(view->verticalScaleDb, message.at("verticalScaleDb").get<double>());
     EXPECT_EQ(view->dim, message.at("dim").get<bool>());
     EXPECT_EQ(view->lineWidth, message.at("lineWidth").get<double>());
@@ -54,6 +55,19 @@ TEST(TraceViewMessage, ReadsEveryGridType)
         const auto view = TraceView::parse(message);
         ASSERT_TRUE(view) << protocol::kGridTypeNames[index];
         EXPECT_EQ(view->gridType, static_cast<protocol::GridType>(index));
+    }
+}
+
+// Every trace shape the page can choose reaches the editor as chosen, so it draws the traces as
+// the page does: lines, or filled to zero.
+TEST(TraceViewMessage, ReadsEveryTraceShape)
+{
+    for (std::size_t index = 0; index < protocol::kTraceShapeNames.size(); ++index) {
+        nlohmann::json message = example();
+        message["traceShape"] = protocol::kTraceShapeNames[index];
+        const auto view = TraceView::parse(message);
+        ASSERT_TRUE(view) << protocol::kTraceShapeNames[index];
+        EXPECT_EQ(view->traceShape, static_cast<protocol::TraceShape>(index));
     }
 }
 
@@ -109,6 +123,7 @@ TEST(TraceViewMessage, RefusesAMessageWithAnyFieldMalformed)
     refuses([](nlohmann::json& m) { m["viewEnd"] = 1.5; }, "a view past the span");
     refuses([](nlohmann::json& m) { m["viewStart"] = -0.1; }, "a view before the span");
     refuses([](nlohmann::json& m) { m["layout"] = "sideways"; }, "an unknown layout");
+    refuses([](nlohmann::json& m) { m["traceShape"] = "dotted"; }, "an unknown trace shape");
     refuses([](nlohmann::json& m) { m["lineWidth"] = 0; }, "no line width");
     refuses([](nlohmann::json& m) { m["lineWidth"] = 1000; }, "a line far too wide");
     refuses([](nlohmann::json& m) { m["screen"][1] = 1.5; }, "a colour channel above 1");

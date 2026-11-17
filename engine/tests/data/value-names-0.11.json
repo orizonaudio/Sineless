@@ -29,6 +29,7 @@
   "meter": ["off", "on"],
   "readoutSource": ["left", "right", "mid", "side"],
   "timeBase": ["trigger", "beats", "free"],
+  "traceShape": ["line", "filled"],
   "triggerMode": ["auto", "normal", "single"],
   "triggerSlope": ["rising", "falling"],
   "triggerSource": ["left", "right", "mid", "side"],

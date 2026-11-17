@@ -59,6 +59,8 @@ struct TraceUniforms
     // 1 for a block that is an area, not a wave: thinner than a pixel, it covers that share of
     // the pixel (trace-renderer.ts, `thin`).
     std::int32_t thin = 0;
+    // 1 for a trace drawn filled: the area between its wave and zero (trace-renderer.ts, `fill`).
+    std::int32_t fill = 0;
 };
 
 // What is drawn from the audio (the traces and the shading), dimmed, laid out as the shaders' Fade:
@@ -150,6 +152,7 @@ struct TraceUniforms {
   int dotEvery;
   float dotRadius;
   int thin;
+  int fill;
 };
 
 float pixelX(constant TraceUniforms& u, float index) {
@@ -231,8 +234,9 @@ vertex TracePiece traceVertex(uint vertexId [[vertex_id]], uint instance [[insta
   float xb = joined ? pixelX(u, float(i + 1) + u.offset) : xa;
   float2 c = float2(0.0);
   if (out.part == 0 && present && joined) {
-    float low = inLane(u, min(lo, lo2));
-    float high = inLane(u, max(hi, hi2));
+    float zero = pixelY(u, 0.0);
+    float low = inLane(u, u.fill != 0 ? min(min(lo, lo2), zero) - pad : min(lo, lo2));
+    float high = inLane(u, u.fill != 0 ? max(max(hi, hi2), zero) + pad : max(hi, hi2));
     c = float2(far ? xb + 0.5 : xa - 0.5, upper ? high : low);
     out.line = float4(xa, xb, 0.0, 0.0);
   } else if ((out.part == 1 || out.part == 2) && present && joined) {
@@ -251,8 +255,11 @@ vertex TracePiece traceVertex(uint vertexId [[vertex_id]], uint instance [[insta
       out.line = float4(a2, b2);
     }
   } else if (out.part == 3 && present && !(before && joined)) {
-    float low = inLane(u, lo - pad);
-    float high = inLane(u, hi + pad);
+    if (u.fill != 0) {
+      out.here = float2(min(lo, pixelY(u, 0.0)), max(hi, pixelY(u, 0.0)));
+    }
+    float low = inLane(u, out.here.x - pad);
+    float high = inLane(u, out.here.y + pad);
     c = float2(far ? xa + pad : xa - pad, upper ? high : low);
     out.line = float4(xa, 0.0, 0.0, 0.0);
   } else if (out.part == 4 && present && u.dotEvery > 0 && i % u.dotEvery == 0) {
@@ -276,11 +283,20 @@ fragment float4 traceFragment(TracePiece in [[stage_in]], constant TraceUniforms
   float d;
   if (in.part == 0) {
     float f = (p.x - in.line.x) / (in.line.y - in.line.x);
-    if (!(f >= 0.0 && f <= 1.0 && p.y >= mix(in.here.x, in.next.x, f) &&
-          p.y <= mix(in.here.y, in.next.y, f))) {
+    if (!(f >= 0.0 && f <= 1.0)) {
       discard_fragment();
     }
-    d = 0.0;
+    float bottom = mix(in.here.x, in.next.x, f);
+    float top = mix(in.here.y, in.next.y, f);
+    if (u.fill != 0) {
+      float zero = pixelY(u, 0.0);
+      d = max(0.0, max(p.y - max(top, zero), min(bottom, zero) - p.y));
+    } else {
+      if (!(p.y >= bottom && p.y <= top)) {
+        discard_fragment();
+      }
+      d = 0.0;
+    }
   } else if (in.part == 3) {
     d = length(float2(p.x - in.line.x, p.y - clamp(p.y, in.here.x, in.here.y)));
   } else if (in.part == 4) {
@@ -795,7 +811,11 @@ private:
         uniforms.frameLeft = static_cast<float>((frame.viewStart - view.view.start) / viewWidth);
         uniforms.frameScale = static_cast<float>((frame.viewEnd - frame.viewStart) / viewWidth);
         uniforms.scale = static_cast<float>(std::pow(10.0, view.verticalScaleDb / 20.0));
-        uniforms.lineHalf = static_cast<float>(view.lineWidth / 2.0);
+        // Filled, each trace is an area with the difference lane's soft edge and no line.
+        const bool filledShape = view.traceShape == protocol::TraceShape::kFilled;
+        uniforms.fill = filledShape ? 1 : 0;
+        uniforms.lineHalf = filledShape ? static_cast<float>(protocol::kFilledAreaLineHalf)
+                                        : static_cast<float>(view.lineWidth / 2.0);
         uniforms.canvasX = static_cast<float>(width);
         uniforms.canvasY = static_cast<float>(height);
         // Samples are marked where the wave between them is drawn, once they stand far enough
@@ -880,6 +900,8 @@ private:
         uniforms.stride = 2;
         uniforms.lineHalf = static_cast<float>(protocol::kFilledAreaLineHalf);
         uniforms.dotEvery = 0;
+        // The difference's parts are areas of their own, not traces filled to zero.
+        uniforms.fill = 0;
         uniforms.center = static_cast<float>(lane.center);
         uniforms.halfHeight = static_cast<float>(lane.halfHeight);
         MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];

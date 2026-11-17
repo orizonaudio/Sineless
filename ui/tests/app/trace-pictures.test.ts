@@ -11,6 +11,7 @@ import {
   ChannelView,
   CompareLane,
   FrameMode,
+  TraceShape,
   ViewLayout,
 } from "../../../protocol/src/enums.ts";
 import { decodeFrame } from "../../../protocol/src/frame-decoder.ts";
@@ -62,6 +63,7 @@ const baseView: TraceViewMessage = {
   viewStart: 0,
   viewEnd: 1,
   layout: "overlaid",
+  traceShape: "line",
   verticalScaleDb: 0,
   dim: false,
   lineWidth: 1.5,
@@ -609,6 +611,56 @@ const scenes: Scene[] = [
   })),
 ];
 
+// Some of them again with each trace filled to zero (the Layout popover's Style): raw points
+// crossing zero between samples, columns stacked and overlaid, a gap and values past the screen,
+// dotted samples on the area's edge, every coverage target with a Beats playhead dimming them,
+// traces past their lanes, and Compare's sum (filled, as a track) and difference (drawn as with
+// lines, its parts never filled to zero).
+const filledCopy = (name: string, change: Partial<Scene> = {}): Scene => {
+  const scene = scenes.find((each) => each.name === name);
+  if (scene === undefined) {
+    throw new Error(`No scene ${name}`);
+  }
+  return {
+    ...scene,
+    ...change,
+    name: `${change.name ?? scene.name}, filled`,
+    view: { ...scene.view, ...change.view, traceShape: "filled" },
+  };
+};
+const sixteen = scenes.find((each) => each.name === "sixteen tracks overlaid");
+scenes.push(
+  ...[
+    "raw mono, a fractional start",
+    "min/max stereo overlaid",
+    "min/max mid and side stacked at twice the scale",
+    "raw with missing points and values past the screen",
+    "a deep view at the end of a long span, its samples dotted",
+    "tracks past their lanes, stacked",
+    "Compare's sum and the tracks past their lanes, overlaid",
+    "Compare's difference and the tracks past their lanes, overlaid",
+    "Compare shading where the tracks cancel",
+    "Compare shading where the tracks cancel, overlaid",
+    "a difference's lane filled, columns, stacked",
+    "a difference's lane filled, columns, overlaid",
+  ].map((name) => filledCopy(name)),
+  filledCopy("sixteen tracks overlaid", {
+    name: "sixteen tracks overlaid, a Beats playhead mid-screen",
+    ...(sixteen === undefined
+      ? {}
+      : {
+          frame: {
+            ...sixteen.frame,
+            synced: true,
+            cursor: 0.5,
+            cycleStart: 0,
+            spanQuarterNotes: 16,
+            barQuarterNotes: 4,
+          },
+        }),
+  }),
+);
+
 // Some of them again with the frame barcode, by the branches the renderers take: no playhead, a
 // Beats playhead at twice the ratio, Compare, a frame with nothing to draw, and a wide screen.
 const withBarcode = (
@@ -718,6 +770,8 @@ function drawScene(scene: Scene): Uint8Array {
       verticalScaleDb: view.verticalScaleDb,
       layout:
         view.layout === "stacked" ? ViewLayout.stacked : ViewLayout.overlaid,
+      traceShape:
+        view.traceShape === "filled" ? TraceShape.filled : TraceShape.line,
       dim: view.dim,
       view: { start: view.viewStart, end: view.viewEnd },
     }),

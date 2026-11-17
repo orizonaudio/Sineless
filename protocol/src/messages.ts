@@ -193,6 +193,8 @@ export interface TraceViewMessage {
   readonly viewEnd: number;
   // A ViewLayout name.
   readonly layout: string;
+  // A TraceShape name: each trace's wave as a line, or the area between it and zero.
+  readonly traceShape: string;
   readonly verticalScaleDb: number;
   // The traces are stale (Waiting): drawn faint.
   readonly dim: boolean;

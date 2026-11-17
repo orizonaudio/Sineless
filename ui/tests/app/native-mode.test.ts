@@ -259,6 +259,19 @@ describe("native traces: what the page sends", () => {
       },
     },
     {
+      field: "the trace style",
+      act: async () => {
+        const filled =
+          choice("trace-shape-choice", "Filled").getAttribute(
+            "aria-pressed",
+          ) === "true";
+        await press(choice("trace-shape-choice", filled ? "Line" : "Filled"));
+      },
+      check: (view: TraceViewMessage, before: TraceViewMessage) => {
+        expect(view.traceShape).not.toBe(before.traceShape);
+      },
+    },
+    {
       field: "a new lane set",
       act: async (started: Started) => {
         started.deliver({
