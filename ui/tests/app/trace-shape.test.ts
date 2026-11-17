@@ -12,6 +12,7 @@ import {
 } from "../../src/render/trace-renderer.ts";
 import {
   byId,
+  chips,
   choice,
   press,
   settle,
@@ -53,12 +54,12 @@ async function nextShape(): Promise<TraceShape | undefined> {
   return drawnShape;
 }
 
-function styleRow(label: "Line" | "Filled"): HTMLButtonElement {
+function tracesRow(label: "Line" | "Filled"): HTMLButtonElement {
   return choice("trace-shape-choice", label);
 }
 
-async function setStyle(label: "Line" | "Filled"): Promise<void> {
-  const button = styleRow(label);
+async function setTraces(label: "Line" | "Filled"): Promise<void> {
+  const button = tracesRow(label);
   await press(button);
   await expect.element(button).toHaveAttribute("aria-pressed", "true");
 }
@@ -67,17 +68,17 @@ describe("the Traces row", () => {
   test("is in the Layout popover under Traces, Line in a new instance, and asks the engine for the choice", async () => {
     const app = await startApp();
     const popover = byId("layout-popover");
-    expect(popover.contains(styleRow("Line"))).toBe(true);
+    expect(popover.contains(tracesRow("Line"))).toBe(true);
     const rows = [...popover.querySelectorAll(".popover-row")];
     expect(
-      rows.indexOf(styleRow("Line").closest(".popover-row") as Element),
+      rows.indexOf(tracesRow("Line").closest(".popover-row") as Element),
     ).toBe(
       rows.indexOf(
         choice("layout", "Stack").closest(".popover-row") as Element,
       ) + 1,
     );
-    expect(styleRow("Line").getAttribute("aria-pressed")).toBe("true");
-    await press(styleRow("Filled"));
+    expect(tracesRow("Line").getAttribute("aria-pressed")).toBe("true");
+    await press(tracesRow("Filled"));
     const sent = app.sent.filter((message) => message.type === "setSetting");
     expect(sent.at(-1)).toEqual({
       type: "setSetting",
@@ -96,12 +97,12 @@ describe("the Traces row", () => {
     await press(choice("time-base", "Trig"));
     await press(choice("display-mode", mode));
     await press(choice("layout", layout));
-    expect(styleRow("Filled").disabled).toBe(false);
+    expect(tracesRow("Filled").disabled).toBe(false);
     await settle();
     await expect.poll(nextShape).toBe(TraceShape.line);
-    await setStyle("Filled");
+    await setTraces("Filled");
     await expect.poll(nextShape).toBe(TraceShape.filled);
-    await setStyle("Line");
+    await setTraces("Line");
     await expect.poll(nextShape).toBe(TraceShape.line);
   });
 
@@ -117,16 +118,36 @@ describe("the Traces row", () => {
       value: "filled",
     });
     await expect
-      .element(styleRow("Filled"))
+      .element(tracesRow("Filled"))
       .toHaveAttribute("aria-pressed", "true");
     await expect.poll(nextShape).toBe(TraceShape.filled);
   });
 
+  // While Normal waits for a trigger no frame comes, maybe for good: the choice redraws the
+  // traces at once, so the screen never shows a style other than the one lit.
+  test("redraws the traces in the style chosen while no frame comes", async () => {
+    const app = await startApp();
+    await press(choice("time-base", "Trig"));
+    await press(choice("mode", "Normal"));
+    await settle();
+    await expect.poll(nextShape).toBe(TraceShape.line);
+    app.holdFrames(true);
+    try {
+      await expect.poll(chips, { timeout: 3000 }).toContain("Waiting");
+      await setTraces("Filled");
+      await expect.poll(nextShape).toBe(TraceShape.filled);
+      await setTraces("Line");
+      await expect.poll(nextShape).toBe(TraceShape.line);
+    } finally {
+      app.holdFrames(false);
+    }
+  });
+
   test("is the engine's: the page reopened shows Filled", async () => {
     const first: Started = await startApp();
-    await setStyle("Filled");
+    await setTraces("Filled");
     await startApp({}, first.transport);
     await settle();
-    expect(styleRow("Filled").getAttribute("aria-pressed")).toBe("true");
+    expect(tracesRow("Filled").getAttribute("aria-pressed")).toBe("true");
   });
 });
