@@ -12,7 +12,7 @@
 import {
   FrameMode,
   type ChannelView,
-  type ViewLayout,
+  ViewLayout,
 } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
@@ -20,6 +20,7 @@ import {
   barcodeTicksPerMillisecond,
   differenceSharedStrength,
   filledAreaLineHalf,
+  overlaidTraceAlpha,
   previousCycleAlpha,
   sampleDotRadius,
   sampleDotSpacing,
@@ -958,7 +959,15 @@ export class TraceRenderer implements FrameRenderer {
         }))
         // The difference's own wave is not drawn: its lane holds the areas.
         .filter((_, index) => areas === undefined || index + 1 < blocks.length),
-      blocks.slice(0, tracesPerPass).map(([, color]) => color),
+      // In Overlay each trace is translucent as a whole, so the one behind shows through where
+      // they overlap: its colour's alpha, which the composite layers its coverage with.
+      blocks
+        .slice(0, tracesPerPass)
+        .map(([, [r, g, b, a]]): Rgba =>
+          view.layout === ViewLayout.overlaid
+            ? [r, g, b, a * overlaidTraceAlpha]
+            : [r, g, b, a],
+        ),
       dimming,
     );
     if (sweep !== undefined) {
