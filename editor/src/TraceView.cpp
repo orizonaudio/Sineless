@@ -108,6 +108,29 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
         return std::nullopt;
     }
     view.traceShape = *traceShape;
+    // Null, or exactly one of a view's name and a lane's track id.
+    const auto highlight = message.find("highlight");
+    if (highlight == message.end() || !(highlight->is_null() || highlight->is_object())) {
+        return std::nullopt;
+    }
+    if (highlight->is_object()) {
+        if (highlight->size() != 1) {
+            return std::nullopt;
+        }
+        if (highlight->contains("view")) {
+            const auto channelView =
+                named<protocol::ChannelView>(*highlight, "view", protocol::kChannelViewNames);
+            if (!channelView) {
+                return std::nullopt;
+            }
+            view.highlight = *channelView;
+        } else if (const auto lane = highlight->find("lane");
+                   lane != highlight->end() && lane->is_number_integer()) {
+            view.highlight = lane->get<std::int64_t>();
+        } else {
+            return std::nullopt;
+        }
+    }
     const auto emptyFrameLanes = message.find("emptyFrameLanes");
     if (emptyFrameLanes == message.end() || !emptyFrameLanes->is_number_unsigned() ||
         *emptyFrameLanes < 1U || *emptyFrameLanes > protocol::kChannelViewCount) {
@@ -225,6 +248,8 @@ struct LaneStyle
 {
     Rgba colour{};
     bool own = false;
+    // The lane's track id; none for Compare's lane and for colours by position.
+    std::optional<std::int64_t> id;
 };
 
 std::vector<LaneStyle> stylesFor(const TraceView& view, const FrameView& frame)
@@ -233,11 +258,11 @@ std::vector<LaneStyle> stylesFor(const TraceView& view, const FrameView& frame)
     std::vector<LaneStyle> styles;
     if (const TraceView::LaneSet* set = setFor(view, frame)) {
         for (const auto& lane : set->lanes) {
-            styles.push_back({.colour = lane.colour, .own = lane.own});
+            styles.push_back({.colour = lane.colour, .own = lane.own, .id = lane.id});
         }
     }
     if (frame.compared() && !styles.empty()) {
-        styles.push_back({.colour = view.sumColour});
+        styles.push_back({.colour = view.sumColour, .own = false, .id = std::nullopt});
     }
     if (styles.size() == count) {
         return styles;
@@ -245,7 +270,9 @@ std::vector<LaneStyle> stylesFor(const TraceView& view, const FrameView& frame)
     // A set that does not match the frame's lanes yet: colours by position.
     styles.clear();
     for (std::size_t index = 0; index < count; ++index) {
-        styles.push_back({.colour = view.fallbackColours[index % view.fallbackColours.size()]});
+        styles.push_back({.colour = view.fallbackColours[index % view.fallbackColours.size()],
+                          .own = false,
+                          .id = std::nullopt});
     }
     return styles;
 }
@@ -266,6 +293,28 @@ std::size_t TraceView::ownLane(const FrameView& frame) const
     const std::vector<LaneStyle> styles = stylesFor(*this, frame);
     const auto own = std::ranges::find_if(styles, [](const LaneStyle& style) { return style.own; });
     return own == styles.end() ? 0 : static_cast<std::size_t>(own - styles.begin());
+}
+
+std::optional<std::size_t> TraceView::highlightedTrace(const FrameView& frame) const
+{
+    if (!highlight) {
+        return std::nullopt;
+    }
+    if (const auto* channelView = std::get_if<protocol::ChannelView>(&*highlight)) {
+        const auto found = std::ranges::find_if(frame.views, [&](const FrameView::View& each) {
+            return each.channelView == static_cast<int>(*channelView);
+        });
+        return found == frame.views.end() ? std::nullopt
+                                          : std::optional<std::size_t>(static_cast<std::size_t>(
+                                                found - frame.views.begin()));
+    }
+    const std::int64_t id = std::get<std::int64_t>(*highlight);
+    const std::vector<LaneStyle> styles = stylesFor(*this, frame);
+    const auto found =
+        std::ranges::find_if(styles, [&](const LaneStyle& style) { return style.id == id; });
+    return found == styles.end()
+               ? std::nullopt
+               : std::optional<std::size_t>(static_cast<std::size_t>(found - styles.begin()));
 }
 
 ScreenRect ScreenRect::of(double containerWidth, double containerHeight)

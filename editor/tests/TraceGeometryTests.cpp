@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <limits>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -52,6 +53,21 @@ TEST(TraceGeometry, PlacesLanesAsThePageDoes)
         const bool compared = entry.at("compared").get<bool>();
         expectLanes(screenLanes(count, layout, compared), entry.at("screen"), entry);
         expectLanes(traceLanes(count, layout, compared), entry.at("lanes"), entry);
+    }
+}
+
+// Which overlaid trace is drawn in front and which are dimmed while one is highlighted, so the
+// native picture highlights the trace the page would.
+TEST(TraceGeometry, HighlightsTheTraceThePageDoes)
+{
+    for (const nlohmann::json& entry : vectors().at("highlight")) {
+        const auto count = entry.at("count").get<std::size_t>();
+        const auto trace = entry.at("trace").get<std::int64_t>();
+        const HighlightOrder result = highlightOrder(
+            count, layoutNamed(entry.at("layout")), entry.at("compared").get<bool>(),
+            trace < 0 ? std::nullopt : std::optional<std::size_t>(static_cast<std::size_t>(trace)));
+        EXPECT_EQ(result.order, entry.at("order").get<std::vector<std::size_t>>()) << entry.dump();
+        EXPECT_EQ(result.dimmed, entry.at("dimmed").get<std::vector<bool>>()) << entry.dump();
     }
 }
 

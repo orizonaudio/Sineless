@@ -44,6 +44,24 @@ TEST(TraceViewMessage, ReadsEveryFieldOfThePagesMessage)
     EXPECT_EQ(view->gridTime, protocol::GridDensity::kFine);
     EXPECT_EQ(view->gridLevel, protocol::GridDensity::kCoarse);
     EXPECT_EQ(view->beatDivision, protocol::BeatDivision::kTriplets);
+    EXPECT_EQ(view->highlight, (decltype(view->highlight){std::int64_t{5}}));
+}
+
+// Every view the page can highlight in Single reaches the editor as highlighted, and none.
+TEST(TraceViewMessage, ReadsEveryHighlightedView)
+{
+    nlohmann::json message = example();
+    for (std::size_t index = 0; index < protocol::kChannelViewNames.size(); ++index) {
+        message["highlight"] = {{"view", protocol::kChannelViewNames[index]}};
+        const auto view = TraceView::parse(message);
+        ASSERT_TRUE(view) << protocol::kChannelViewNames[index];
+        EXPECT_EQ(view->highlight,
+                  (decltype(view->highlight){static_cast<protocol::ChannelView>(index)}));
+    }
+    message["highlight"] = nullptr;
+    const auto none = TraceView::parse(message);
+    ASSERT_TRUE(none);
+    EXPECT_FALSE(none->highlight);
 }
 
 // Every grid type the page can choose reaches the editor as chosen, so it draws the same lines.
@@ -124,6 +142,14 @@ TEST(TraceViewMessage, RefusesAMessageWithAnyFieldMalformed)
     refuses([](nlohmann::json& m) { m["viewStart"] = -0.1; }, "a view before the span");
     refuses([](nlohmann::json& m) { m["layout"] = "sideways"; }, "an unknown layout");
     refuses([](nlohmann::json& m) { m["traceShape"] = "dotted"; }, "an unknown trace shape");
+    refuses([](nlohmann::json& m) { m["highlight"] = {{"view", "centre"}}; },
+            "an unknown view highlighted");
+    refuses([](nlohmann::json& m) { m["highlight"] = {{"lane", 1.5}}; }, "a lane id not whole");
+    refuses([](nlohmann::json& m) { m["highlight"] = {{"lane", 5}, {"view", "left"}}; },
+            "a view and a lane highlighted");
+    refuses([](nlohmann::json& m) { m["highlight"] = nlohmann::json::object(); },
+            "a highlight naming nothing");
+    refuses([](nlohmann::json& m) { m["highlight"] = 5; }, "a highlight that is not an object");
     refuses([](nlohmann::json& m) { m["lineWidth"] = 0; }, "no line width");
     refuses([](nlohmann::json& m) { m["lineWidth"] = 1000; }, "a line far too wide");
     refuses([](nlohmann::json& m) { m["screen"][1] = 1.5; }, "a colour channel above 1");
@@ -231,6 +257,51 @@ TEST(TraceViewColours, DrawsEveryTrackOfAComparisonInItsColour)
     EXPECT_EQ(colours[0], view->laneSets[0].lanes[0].colour);
     EXPECT_EQ(colours[1], view->laneSets[0].lanes[1].colour);
     EXPECT_EQ(colours[2], view->sumColour) << "the sum";
+}
+
+// The highlighted lane is found by its track's id in the lanes the colours come from, so the editor
+// highlights the trace the page does, wherever the track is listed.
+TEST(TraceViewHighlight, FindsTheHighlightedLaneByItsTrack)
+{
+    nlohmann::json message = example();
+    // Track 5 is listed second.
+    auto view = TraceView::parse(message);
+    ASSERT_TRUE(view);
+    EXPECT_EQ(view->highlightedTrace(laneFrame(7, 2, false)), 1U);
+    EXPECT_EQ(view->highlightedTrace(laneFrame(7, 3, true)), 1U) << "in a Compare frame";
+    // A frame of a set not held yet: the newest held, as its colours.
+    EXPECT_EQ(view->highlightedTrace(laneFrame(8, 2, false)), 1U);
+    // Lanes the set does not match: colours by position, no track to find.
+    EXPECT_FALSE(view->highlightedTrace(laneFrame(7, 3, false)));
+    message["highlight"] = {{"lane", 99}};
+    view = TraceView::parse(message);
+    ASSERT_TRUE(view);
+    EXPECT_FALSE(view->highlightedTrace(laneFrame(7, 2, false))) << "a track not in the frame";
+    message["highlight"] = nullptr;
+    view = TraceView::parse(message);
+    ASSERT_TRUE(view);
+    EXPECT_FALSE(view->highlightedTrace(laneFrame(7, 2, false))) << "nothing highlighted";
+}
+
+// In Single the highlighted view is found among the views the frame holds, in its order.
+TEST(TraceViewHighlight, FindsTheHighlightedViewAmongTheFramesViews)
+{
+    static const std::vector<float> kValues(4, 0.0f);
+    FrameView frame;
+    frame.pointCount = 2;
+    for (const protocol::ChannelView channelView :
+         {protocol::ChannelView::kLeft, protocol::ChannelView::kMid}) {
+        frame.views.push_back({.channelView = static_cast<int>(channelView), .values = kValues});
+    }
+    nlohmann::json message = example();
+    message["highlight"] = {{"view", "mid"}};
+    auto view = TraceView::parse(message);
+    ASSERT_TRUE(view);
+    EXPECT_EQ(view->highlightedTrace(frame), 1U);
+    message["highlight"] = {{"view", "side"}};
+    view = TraceView::parse(message);
+    ASSERT_TRUE(view);
+    EXPECT_FALSE(view->highlightedTrace(frame)) << "a view the frame does not hold";
 }
 
 // ----- The screen's rectangle -----

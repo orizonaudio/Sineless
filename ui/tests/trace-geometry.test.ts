@@ -21,8 +21,10 @@ import {
   coverageSlot,
   coverageTargets,
   fullScale,
+  highlightOrder,
   playheadEdges,
   pointPosition,
+  screenLaneOf,
   screenLanes,
   traceInScreenLane,
   traceLanes,
@@ -924,5 +926,74 @@ describe("difference areas", () => {
         0,
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("highlighting one overlaid trace", () => {
+  const counts = Array.from({ length: 16 }, (_, index) => index + 1);
+  const identity = (count: number) =>
+    Array.from({ length: count }, (_, index) => index);
+  const cases = (["overlaid", "stacked"] as const).flatMap((layout) =>
+    [false, true].flatMap((compared) =>
+      counts.map((count) => ({ layout, compared, count })),
+    ),
+  );
+
+  test.each(cases)(
+    "with nothing highlighted, $layout, compared $compared, $count traces draw in order, none dimmed",
+    ({ layout, compared, count }) => {
+      expect(
+        highlightOrder(count, ViewLayout[layout], compared, undefined),
+      ).toEqual({
+        order: identity(count),
+        dimmed: identity(count).map(() => false),
+      });
+    },
+  );
+
+  test.each(cases)(
+    "a highlighted trace, $layout, compared $compared, $count traces: in front with the others of its lane dimmed, only where it shares a lane",
+    ({ layout, compared, count }) => {
+      const viewLayout = ViewLayout[layout];
+      for (const trace of [...identity(count), -1, count, Number.NaN]) {
+        const result = highlightOrder(count, viewLayout, compared, trace);
+        const inRange = Number.isInteger(trace) && trace >= 0 && trace < count;
+        const lane = inRange
+          ? screenLaneOf(count, viewLayout, compared, trace)
+          : -1;
+        const sharing = identity(count).filter(
+          (index) => screenLaneOf(count, viewLayout, compared, index) === lane,
+        );
+        const shared = layout === "overlaid" && sharing.length > 1;
+        if (!shared) {
+          expect(result).toEqual({
+            order: identity(count),
+            dimmed: identity(count).map(() => false),
+          });
+          continue;
+        }
+        // Drawn last, in front; every other trace once, in its own order.
+        expect(result.order.at(-1)).toBe(trace);
+        expect(result.order.slice(0, -1)).toEqual(
+          identity(count).filter((index) => index !== trace),
+        );
+        expect(result.dimmed).toEqual(
+          identity(count).map(
+            (index) => index !== trace && sharing.includes(index),
+          ),
+        );
+      }
+    },
+  );
+
+  test("Compare's lane is never highlighted, nor dimmed while a track is", () => {
+    for (const count of counts.filter((each) => each > 2)) {
+      expect(
+        highlightOrder(count, ViewLayout.overlaid, true, count - 1).dimmed,
+      ).not.toContain(true);
+      expect(
+        highlightOrder(count, ViewLayout.overlaid, true, 0).dimmed.at(-1),
+      ).toBe(false);
+    }
   });
 });

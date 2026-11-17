@@ -45,6 +45,8 @@ export interface DrawOptions {
   readonly dim?: boolean;
   readonly view?: ViewWindow;
   readonly verticalScaleDb?: number;
+  // The overlaid trace highlighted, an index into the frame's lanes or views.
+  readonly highlight?: number;
 }
 
 // The screen's colour, which dimmed traces move toward: distinct, so the move shows.
@@ -189,6 +191,9 @@ export function drawOn(
     traceShape: options.traceShape ?? TraceShape.line,
     ...(options.dim === undefined ? {} : { dim: options.dim }),
     ...(options.view === undefined ? {} : { view: options.view }),
+    ...(options.highlight === undefined
+      ? {}
+      : { highlight: options.highlight }),
   };
   renderer.draw(frame);
   const gl = canvas.getContext("webgl2");

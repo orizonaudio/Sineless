@@ -153,6 +153,41 @@ export function traceInScreenLane(
     : Math.min(Math.max(overlaid, 0), Math.max(count - 1, 0));
 }
 
+// The order the `count` traces are layered in, later over earlier, and which are dimmed, with
+// `trace` highlighted (FR-16.4): only overlaid, and only a trace in a lane it shares with another,
+// so never Compare's lane, which holds Compare's alone. The highlighted trace is drawn last, in
+// front; the others of its lane are dimmed (highlightOthersAlpha); Compare's lane is left as is.
+// Otherwise every trace in order, none dimmed.
+export function highlightOrder(
+  count: number,
+  layout: ViewLayout,
+  compared: boolean,
+  trace: number | undefined,
+): { order: number[]; dimmed: boolean[] } {
+  const indices = Array.from({ length: count }, (_, index) => index);
+  const plain = { order: indices, dimmed: indices.map(() => false) };
+  if (
+    layout !== ViewLayout.overlaid ||
+    trace === undefined ||
+    !Number.isInteger(trace) ||
+    trace < 0 ||
+    trace >= count
+  ) {
+    return plain;
+  }
+  const lane = screenLaneOf(count, layout, compared, trace);
+  const sharing = indices.map(
+    (index) => screenLaneOf(count, layout, compared, index) === lane,
+  );
+  if (sharing.filter(Boolean).length < 2) {
+    return plain;
+  }
+  return {
+    order: [...indices.filter((index) => index !== trace), trace],
+    dimmed: indices.map((index) => index !== trace && sharing[index] === true),
+  };
+}
+
 export function fullScale(verticalScaleDb: number): number {
   return 10 ** (verticalScaleDb / 20);
 }

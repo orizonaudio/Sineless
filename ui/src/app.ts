@@ -2619,6 +2619,7 @@ export class OscilloscopeApp {
         ) ?? "line",
       verticalScaleDb: this.store.number("verticalScale"),
       dim: this.waiting,
+      highlight: null,
       lineWidth: style?.lineWidthPixels ?? 1,
       emptyFrameLanes: this.emptyFrameLanes(),
       viewColours: viewOrder.map(

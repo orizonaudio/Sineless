@@ -66,6 +66,7 @@ const baseView: TraceViewMessage = {
   traceShape: "line",
   verticalScaleDb: 0,
   dim: false,
+  highlight: null,
   lineWidth: 1.5,
   emptyFrameLanes: 1,
   viewColours: [
@@ -661,6 +662,125 @@ scenes.push(
   }),
 );
 
+// One overlaid trace highlighted (FR-16.4): drawn last, in front, the others of its lane dimmed.
+// Tracks are found by their ids, which are not their places in the frame here. Sixteen tracks (every
+// coverage target), and filled right of a Beats playhead; Single's views; Compare's sum with a
+// track highlighted, its own lane left as is; and Compare's difference with this track highlighted,
+// which moves the difference's own, undrawn wave out of the last slot, raw and in columns, in
+// lines and filled, and with a third track highlighted in the middle.
+const highlighted = (
+  name: string,
+  highlight: TraceViewMessage["highlight"],
+  what: string,
+  change: (scene: Scene) => Partial<Scene> = () => ({}),
+): Scene => {
+  const scene = scenes.find((each) => each.name === name);
+  if (scene === undefined) {
+    throw new Error(`No scene ${name}`);
+  }
+  const changed = change(scene);
+  return {
+    ...scene,
+    ...changed,
+    name: `${changed.name ?? scene.name}, ${what} highlighted`,
+    view: { ...scene.view, ...changed.view, highlight },
+  };
+};
+// The sixteen tracks' ids in reverse, so a track's id is not its place.
+const reversedIds = (scene: Scene): Partial<Scene> => ({
+  view: {
+    ...scene.view,
+    laneSets: scene.view.laneSets.map((set) => ({
+      ...set,
+      lanes: set.lanes.map((lane) => ({ ...lane, id: 100 - lane.id })),
+    })),
+  },
+});
+// A third track, between the other and Compare's lane, listed as id 2 (the others are 1 and 3).
+const thirdTrack = (scene: Scene): Partial<Scene> => {
+  const lanes = scene.frame.lanes ?? [];
+  const other = lanes[1] ?? [];
+  const comparison = scene.frame.comparison;
+  return {
+    name: `${scene.name}, three tracks`,
+    frame: {
+      ...scene.frame,
+      lanes: [
+        lanes[0] ?? [],
+        other,
+        Array.from(other, (value) => value * -0.5),
+        lanes[2] ?? [],
+      ],
+      ...(comparison === undefined
+        ? {}
+        : {
+            comparison: {
+              ...comparison,
+              matches: [...comparison.matches, ...comparison.matches.slice(1)],
+            },
+          }),
+    },
+    view: {
+      ...scene.view,
+      laneSets: scene.view.laneSets.map((set) => ({
+        ...set,
+        lanes: [
+          {
+            ...(set.lanes[0] ?? { colour: colour(1, 1, 1), own: true }),
+            id: 1,
+          },
+          {
+            ...(set.lanes[1] ?? { colour: colour(1, 1, 1), own: false }),
+            id: 3,
+          },
+          { id: 2, colour: colour(1, 0.6, 0.8), own: false },
+        ],
+      })),
+    },
+  };
+};
+scenes.push(
+  highlighted(
+    "sixteen tracks overlaid",
+    { lane: 95 },
+    "the sixth",
+    reversedIds,
+  ),
+  highlighted(
+    "sixteen tracks overlaid, a Beats playhead mid-screen, filled",
+    { lane: 100 },
+    "the first",
+    reversedIds,
+  ),
+  highlighted("min/max stereo overlaid", { view: "left" }, "the left view"),
+  highlighted(
+    "Compare's sum and the tracks past their lanes, overlaid",
+    { lane: 0 },
+    "this track",
+  ),
+  highlighted(
+    "Compare's sum and the tracks past their lanes, overlaid, filled",
+    { lane: 0 },
+    "this track",
+  ),
+  ...[
+    "a difference's lane filled, columns, overlaid",
+    "a difference's lane filled, columns, overlaid, filled",
+  ].flatMap((name) => [
+    highlighted(name, { lane: 1 }, "this track"),
+    highlighted(name, { lane: 2 }, "the middle track", thirdTrack),
+  ]),
+  highlighted(
+    "a difference's lane filled, raw points, stacked",
+    { lane: 1 },
+    "this track",
+    (scene) => ({
+      name: "a difference's lane filled, raw points, overlaid",
+      view: { ...scene.view, layout: "overlaid" },
+    }),
+  ),
+);
+
 // Some of them again with the frame barcode, by the branches the renderers take: no playhead, a
 // Beats playhead at twice the ratio, Compare, a frame with nothing to draw, and a wide screen.
 const withBarcode = (
@@ -696,7 +816,7 @@ scenes.push(
 function laneStyle(
   frame: FrameContent,
   view: TraceViewMessage,
-): { colours: StyleRgba[]; own: number } {
+): { colours: StyleRgba[]; own: number; ids: number[] } {
   const set = view.laneSets.find((each) => each.laneSet === frame.laneSet);
   const comparing = frame.comparison !== undefined;
   const lanes = [
@@ -712,7 +832,29 @@ function laneStyle(
       0,
       lanes.findIndex((lane) => lane.own),
     ),
+    // Compare's lane has no track id the page sends.
+    ids: lanes.map((lane) => lane.id),
   };
+}
+
+// The trace the view highlights, found in the frame as the editor finds it (TraceView.cpp,
+// highlightedTrace): a view among the frame's views, or a lane by its track's id.
+function highlightedTrace(
+  frame: FrameContent,
+  view: TraceViewMessage,
+  ids: readonly number[],
+): number | undefined {
+  const { highlight } = view;
+  if (highlight === null) {
+    return undefined;
+  }
+  const found =
+    "view" in highlight
+      ? [...frame.views.keys()].indexOf(
+          ChannelView[highlight.view as keyof typeof ChannelView],
+        )
+      : ids.indexOf(highlight.lane);
+  return found < 0 ? undefined : found;
 }
 
 const rgba = (value: Rgba): StyleRgba => [
@@ -742,6 +884,7 @@ function drawScene(scene: Scene): Uint8Array {
   canvas.height = scene.height;
   const { view } = scene;
   const lanes = laneStyle(scene.frame, view);
+  const highlight = highlightedTrace(scene.frame, view, lanes.ids);
   const renderer = new TraceRenderer(
     canvas,
     {
@@ -774,6 +917,7 @@ function drawScene(scene: Scene): Uint8Array {
         view.traceShape === "filled" ? TraceShape.filled : TraceShape.line,
       dim: view.dim,
       view: { start: view.viewStart, end: view.viewEnd },
+      ...(highlight === undefined ? {} : { highlight }),
     }),
   );
   renderer.draw(decodeFrame(encodeFrame(scene.frame)), scene.barcodeTime);
