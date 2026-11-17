@@ -127,19 +127,19 @@ jobs:
       - run: npm test
       - run: npm run build
 
-  # The app tests run the real page in WebKit, as WKWebView does on macOS, and Chromium, as
-  # WebView2 does on Windows. On macOS, whose runner has a GPU both browsers draw the page on, as
-  # the product does; Linux's runner has none, and drawing in software there made the tests' pace
-  # the runner's CPU's. The other TypeScript checks are the typescript job's.
+  # The app tests (skipped for now, below) run the real page in WebKit, as WKWebView does on
+  # macOS, and Chromium, as WebView2 does on Windows. On macOS, whose runner has a GPU both browsers
+  # draw the page on, as the product does; Linux's runner has none, and drawing in software there
+  # made the tests' pace the runner's CPU's. The other TypeScript checks are the typescript job's.
   app:
     name: app
     needs: changes
     # Skipped for now (#436): the job reached the 60 minutes below, so a pull request adding app
-    # tests could not merge. The suite runs locally before each pull request until the tests are
-    # faster. A job skipped by its condition passes the merge queue's required check; removing the
-    # job would leave the queue waiting for a check that never reports. To turn it back on, restore:
-    # if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.tested != 'true' }}
-    if: false
+    # tests could not merge, and until the tests are faster CI runs no app tests: they run locally
+    # before each pull request. A job skipped by its condition passes the merge queue's required
+    # check; removing the job would leave the queue waiting for a check that never reports. To turn
+    # it back on, take `false &&` out of the condition.
+    if: ${{ false && !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.tested != 'true' }}
     runs-on: macos-15
     # The job grows with the app tests, and its pace varies with the runner: 15 to 18 min in early
     # November 2026, 33 to 41 min two weeks later and about 50 on a slow runner. 60 min is what the
