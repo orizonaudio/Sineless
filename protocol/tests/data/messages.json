@@ -63,6 +63,7 @@
     "viewStart": 0.25,
     "viewEnd": 0.75,
     "layout": "stacked",
+    "traceShape": "filled",
     "verticalScaleDb": -6,
     "dim": false,
     "lineWidth": 3,

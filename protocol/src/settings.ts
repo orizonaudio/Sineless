@@ -11,6 +11,7 @@ import {
   TimeBase,
   Toggle,
   TriggerMode,
+  TraceShape,
   TriggerSlope,
   ViewLayout,
   type EnumName,
@@ -80,6 +81,15 @@ export const settings = {
     kind: "enum",
     values: "ViewLayout",
     defaultValue: ViewLayout.stacked,
+  },
+  // How each trace is drawn, in Single and Multi, overlaid and stacked (the Layout popover's
+  // Style): the wave as a line, or the area between the wave and zero. Compare's difference lane is
+  // filled either way; its sum follows the choice. Line in a new instance and in a project saved
+  // before the choice existed.
+  traceShape: {
+    kind: "enum",
+    values: "TraceShape",
+    defaultValue: TraceShape.line,
   },
   triggerMode: {
     kind: "enum",

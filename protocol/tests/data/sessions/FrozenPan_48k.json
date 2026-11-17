@@ -74,6 +74,7 @@
       "meter": "off",
       "readoutSource": "mid",
       "timeBase": "trigger",
+      "traceShape": "line",
       "triggerHoldOff": 0.0,
       "triggerHysteresis": 0.01,
       "triggerLevel": 0.0,

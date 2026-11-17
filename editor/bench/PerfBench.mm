@@ -6,7 +6,7 @@
 //
 //   perf_bench [--lanes=7] [--mode=multi|single] [--compare] [--timebase=beats|free|trigger]
 //              [--beatspan=fourBars] [--span=4] [--rate=48000] [--tempo=120]
-//              [--layout=stacked|overlaid] [--width=1400] [--height=800]
+//              [--layout=stacked|overlaid] [--shape=line|filled] [--width=1400] [--height=800]
 //              [--warmup=3] [--duration=10] [--idle] [--jitter]
 //              [--preview-fix] [--view=START,END]
 //              [--soak-interval=SECONDS] [--reopen=COUNT] [--view-changes=COUNT]
@@ -83,6 +83,7 @@ struct Options
     double rate = 48000.0; // The host's sample rate.
     double tempo = 120.0;  // Beats per minute.
     std::string layout = "stacked";
+    std::string shape = "line"; // Each trace a line, or filled to zero.
     int channels = 2;
     int width = 1400;
     int height = 800;
@@ -170,6 +171,8 @@ Options parse(std::span<const char* const> arguments)
             options.tempo = std::stod(value);
         } else if (key == "--layout") {
             options.layout = value;
+        } else if (key == "--shape") {
+            options.shape = value;
         } else if (key == "--width") {
             options.width = std::stoi(value);
         } else if (key == "--height") {
@@ -562,6 +565,7 @@ int run(const Options& options)
         set(own, SettingId::kTimeBase, options.timeBase.c_str());
         set(own, SettingId::kBeatSpan, options.beatSpan.c_str());
         set(own, SettingId::kViewLayout, options.layout.c_str());
+        set(own, SettingId::kTraceShape, options.shape.c_str());
         own.settings().set(options.timeBase == "free" ? SettingId::kFreeSpan
                                                       : SettingId::kTriggerSpan,
                            options.span);
@@ -679,17 +683,18 @@ int run(const Options& options)
             return interval;
         };
 
-        std::printf("config: %s%s, %d track(s), %s, %s, %s, %dx%d, %.0f Hz, %.0f BPM, Debug=%d\n",
-                    options.mode.c_str(), options.compare ? " with Compare" : "", tracks,
-                    options.timeBase.c_str(),
-                    options.timeBase == "beats" ? options.beatSpan.c_str()
-                                                : (std::to_string(options.span) + " s").c_str(),
-                    options.layout.c_str(), options.width, options.height, options.rate,
-                    options.tempo,
+        std::printf(
+            "config: %s%s, %d track(s), %s, %s, %s, %s, %dx%d, %.0f Hz, %.0f BPM, Debug=%d\n",
+            options.mode.c_str(), options.compare ? " with Compare" : "", tracks,
+            options.timeBase.c_str(),
+            options.timeBase == "beats" ? options.beatSpan.c_str()
+                                        : (std::to_string(options.span) + " s").c_str(),
+            options.layout.c_str(), options.shape.c_str(), options.width, options.height,
+            options.rate, options.tempo,
 #ifdef NDEBUG
-                    0
+            0
 #else
-                    1
+            1
 #endif
         );
 

@@ -8,6 +8,7 @@ import type {
   GridDensity,
   GridType,
   TimeBase,
+  TraceShape,
   TriggerMode,
   TriggerSlope,
   ViewLayout,
@@ -19,6 +20,7 @@ export const choiceLabels: {
   readonly displayMode: Labels<typeof DisplayMode>;
   readonly timeBase: Labels<typeof TimeBase>;
   readonly viewLayout: Labels<typeof ViewLayout>;
+  readonly traceShape: Labels<typeof TraceShape>;
   readonly triggerMode: Labels<typeof TriggerMode>;
   readonly gridType: Labels<typeof GridType>;
   readonly gridDensity: Labels<typeof GridDensity>;
@@ -30,6 +32,7 @@ export const choiceLabels: {
   displayMode: { single: "Single", multi: "Multi" },
   timeBase: { beats: "Beats", free: "Free", trigger: "Trig" },
   viewLayout: { overlaid: "Overlay", stacked: "Stack" },
+  traceShape: { line: "Line", filled: "Filled" },
   triggerMode: { auto: "Auto", normal: "Normal", single: "Single" },
   gridType: { none: "None", ticks: "Ticks", grid: "Grid" },
   gridDensity: { coarse: "Coarse", medium: "Medium", fine: "Fine" },

@@ -102,6 +102,12 @@ std::optional<TraceView> TraceView::parse(const nlohmann::json& message)
         return std::nullopt;
     }
     view.dim = dim->get<bool>();
+    const auto traceShape =
+        named<protocol::TraceShape>(message, "traceShape", protocol::kTraceShapeNames);
+    if (!traceShape) {
+        return std::nullopt;
+    }
+    view.traceShape = *traceShape;
     const auto emptyFrameLanes = message.find("emptyFrameLanes");
     if (emptyFrameLanes == message.end() || !emptyFrameLanes->is_number_unsigned() ||
         *emptyFrameLanes < 1U || *emptyFrameLanes > protocol::kChannelViewCount) {

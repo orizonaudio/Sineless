@@ -16,12 +16,15 @@ namespace orizon::editor {
 using Rgba = std::array<float, 4>;
 
 // What only the page knows about drawing the traces, from its traceView message
-// (protocol/src/messages.ts, TraceViewMessage): the view window on screen, the layout, the vertical
-// scale, the Waiting dim, the line width, the colours and the grid the page draws.
+// (protocol/src/messages.ts, TraceViewMessage): the view window on screen, the layout, the trace
+// shape, the vertical scale, the Waiting dim, the line width, the colours and the grid the page
+// draws.
 struct TraceView
 {
     ViewWindow view;
     protocol::ViewLayout layout = protocol::ViewLayout::kOverlaid;
+    // Each trace's wave as a line, or the area between it and zero.
+    protocol::TraceShape traceShape = protocol::TraceShape::kLine;
     double verticalScaleDb = 0.0;
     bool dim = false;
     double lineWidth = 1.0;

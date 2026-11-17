@@ -155,6 +155,19 @@ export function helpTextsFor(mac: boolean) {
         "Saved with the project.",
       ],
     },
+    traceShape: {
+      title: "Traces",
+      lead: "How each trace is drawn.",
+      choices: choicesOf(choiceLabels.traceShape, {
+        line: "the wave as a line",
+        filled:
+          "the area between the wave and zero, which shows at a glance how far a track reaches and to which side",
+      }),
+      notes: [
+        "Compare's difference is filled either way; its sum follows the style.",
+        "Saved with the project.",
+      ],
+    },
     laneLabels: {
       title: "Labels",
       lead: "Shows each lane's colour and name: the track's in Multi, the channel's in Single.",
@@ -706,6 +719,7 @@ export const choiceHelp: {
   displayMode: { topic: "displayMode" },
   timeBase: { topic: "timeBase" },
   viewLayout: { topic: "layout" },
+  traceShape: { topic: "traceShape" },
   triggerSlope: { topic: "triggerSlope" },
   triggerMode: { topic: "trigger" },
   compare: {
