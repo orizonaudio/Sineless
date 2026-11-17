@@ -117,6 +117,22 @@ float pixelY(float value) {
   float limit = scale * 1e15 / halfPixels;
   return (center + 1.0) * 0.5 * canvas.y + clamp(value, -limit, limit) / scale * halfPixels;
 }
+// The rows a block may cover: its lane, widened by what a value on the lane's edge draws past it
+// (its line's reach, lineHalf + 0.5, and a dot's radius where samples are dotted) and half a pixel
+// more, since the cut below is a pixel's overlap with these rows, not a test on its centre. So a
+// wave on the edge keeps its whole line, and a loud trace with the scale raised does not paint over
+// the lanes beside it.
+vec2 laneRows() {
+  float margin = lineHalf + 1.0 + (dotEvery > 0 ? dotRadius : 0.0);
+  return vec2((center - halfHeight + 1.0) * 0.5 * canvas.y - margin,
+              (center + halfHeight + 1.0) * 0.5 * canvas.y + margin);
+}
+// A quad's height kept to the canvas and to the rows its pixels may cover partly, half a pixel past
+// laneRows, so an area far past its lane costs nothing there.
+float inLane(float y) {
+  vec2 rows = laneRows();
+  return clamp(y, max(rows.x - 0.5, 0.0), min(rows.y + 0.5, canvas.y));
+}
 // An end beyond the band moved back along the segment to the band's edge: the edge is its height
 // exactly and only x is worked out, so the slope is kept.
 vec2 clipped(vec2 a, vec2 b, float bottom, float top) {
@@ -193,8 +209,8 @@ void main() {
   vec2 c = vec2(0.0);
   if (part == 0 && present && joined) {
     // Half a pixel wider each side, so a pixel centre on a point lies inside the quad.
-    float low = clamp(min(lo, lo2), 0.0, canvas.y);
-    float high = clamp(max(hi, hi2), 0.0, canvas.y);
+    float low = inLane(min(lo, lo2));
+    float high = inLane(max(hi, hi2));
     c = vec2(far ? xb + 0.5 : xa - 0.5, upper ? high : low);
     line = vec4(xa, xb, 0.0, 0.0);
   } else if ((part == 1 || part == 2) && present && joined) {
@@ -215,8 +231,8 @@ void main() {
       line = vec4(a2, b2);
     }
   } else if (part == 3 && present && !(before && joined)) {
-    float low = clamp(lo - pad, 0.0, canvas.y);
-    float high = clamp(hi + pad, 0.0, canvas.y);
+    float low = inLane(lo - pad);
+    float high = inLane(hi + pad);
     c = vec2(far ? xa + pad : xa - pad, upper ? high : low);
     line = vec4(xa, 0.0, 0.0, 0.0);
   } else if (part == 4 && present && dotEvery > 0 && i % dotEvery == 0) {
@@ -277,6 +293,9 @@ void main() {
     float tall = part == 3 ? here.y - here.x : mix(here.y - here.x, next.y - next.x, f);
     covered *= clamp(tall, 0.0, 1.0);
   }
+  // Kept to the lane's rows: the share of the pixel inside them.
+  vec2 rows = laneRows();
+  covered *= clamp(min(p.y + 0.5, rows.y) - max(p.y - 0.5, rows.x), 0.0, 1.0);
   if (covered <= 0.0) {
     discard;
   }

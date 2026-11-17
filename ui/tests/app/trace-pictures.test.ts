@@ -393,6 +393,86 @@ const scenes: Scene[] = [
       ],
     },
   },
+  // Each trace kept within its lane, with the scale raised so that the loud ones reach far past
+  // it: three stacked tracks, and overlaid with Compare the tracks' lane and the sum's or the
+  // difference's below it (FR-15.1), on a height that does not divide evenly into lanes.
+  {
+    name: "tracks past their lanes, stacked",
+    width: 240,
+    height: 203,
+    ratio: 1,
+    frame: {
+      ...baseFrame,
+      pointCount: 240,
+      laneSet: 4,
+      lanes: [
+        columns(240, 2, 0.1),
+        columns(240, 3, 0.9),
+        columns(240, 5, 0.6, 1),
+      ],
+    },
+    view: {
+      ...baseView,
+      layout: "stacked",
+      verticalScaleDb: -12,
+      laneSets: [
+        {
+          laneSet: 4,
+          lanes: [0, 1, 2].map((lane) => ({
+            id: lane,
+            colour: colour(0.3 + 0.3 * lane, 1 - 0.3 * lane, 0.5),
+            own: lane === 0,
+          })),
+        },
+      ],
+    },
+  },
+  ...[CompareLane.sum, CompareLane.difference].map((lane): Scene => ({
+    name: `Compare's ${lane === CompareLane.sum ? "sum" : "difference"} and the tracks past their lanes, overlaid`,
+    width: 240,
+    height: 203,
+    ratio: 1,
+    frame: (() => {
+      const count = 240;
+      const mine = columns(count, 3, 0.8);
+      const other = columns(count, 2, 0.5, 1);
+      return {
+        ...baseFrame,
+        pointCount: count,
+        laneSet: 7,
+        lanes: [
+          mine,
+          other,
+          mine.map(
+            (value, index) =>
+              value + (lane === CompareLane.sum ? 1 : -1) * (other[index] ?? 0),
+          ),
+        ],
+        comparison: {
+          lane,
+          sumGain: lane === CompareLane.sum ? 1 : Number.NaN,
+          fixedGain: Number.NaN,
+          matches: [
+            { correlation: 1, related: false, offset: 0, inverted: false },
+            { correlation: 0, related: false, offset: 0, inverted: false },
+          ],
+        },
+      };
+    })(),
+    view: {
+      ...baseView,
+      verticalScaleDb: -12,
+      laneSets: [
+        {
+          laneSet: 7,
+          lanes: [
+            { id: 1, colour: colour(0.4, 0.8, 1), own: true },
+            { id: 2, colour: colour(1, 0.7, 0.3), own: false },
+          ],
+        },
+      ],
+    },
+  })),
   // Waiting dims the shading with the traces, as everything drawn from the stale frame. In Beats,
   // the previous cycle right of the playhead dims them too, and not the screen under them. Beats
   // never waits for a trigger, so the two never meet. Overlaid, the sum and its shading have the
