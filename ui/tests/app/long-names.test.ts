@@ -103,12 +103,15 @@ describe("a long track name on a lane label", () => {
     expect(shown(name)).toBe(atRest);
   });
 
-  test("lets the pointer through to the screen beside the name", async () => {
+  // Beside the names the label lets the pointer through to the screen; each name's chip takes it,
+  // cut or not, so that resting on it highlights its trace (FR-16.4).
+  test("lets the pointer through to the screen beside the names, and each name takes it", async () => {
     await startWithLongNames();
     const label = nameOf(long).closest<HTMLElement>(".lane-label");
     expect(label).not.toBeNull();
     expect(getComputedStyle(label as HTMLElement).pointerEvents).toBe("none");
-    expect(getComputedStyle(nameOf("Kick")).pointerEvents).toBe("none");
+    expect(getComputedStyle(nameOf("Kick")).pointerEvents).toBe("auto");
+    expect(getComputedStyle(nameOf(long)).pointerEvents).toBe("auto");
   });
 
   test("does not move for a user who asked for reduced motion, and shows whole in a tip", async () => {
