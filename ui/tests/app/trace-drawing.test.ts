@@ -12,6 +12,7 @@ import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
   differenceSharedStrength,
   maxLanes,
+  overlaidTraceAlpha,
 } from "../../../protocol/src/limits.ts";
 import {
   columnPosition,
@@ -314,13 +315,16 @@ describe("lanes are drawn apart", () => {
       viewStart: (1 - frameWidth) / 2,
       viewEnd: (1 + frameWidth) / 2,
     });
-    const drawing = draw(frame, { laneColors: colors });
+    const drawing = draw(frame, {
+      laneColors: colors,
+      layout: ViewLayout.overlaid,
+    });
     expect(drawing.error).toBe(0);
     const yOf = (value: number) => ((value + 1) / 2) * height;
     levels.forEach((level, lane) => {
       const y = Math.floor(yOf(level));
       const drawn = range(0, width).some(
-        (x) => (drawing.pixel(x, y)[lane] ?? 0) > 200,
+        (x) => (drawing.pixel(x, y)[lane] ?? 0) > 200 * overlaidTraceAlpha,
       );
       expect(drawn, `lane ${String(lane)}`).toBe(true);
     });
@@ -1028,6 +1032,13 @@ const laneColor = (lane: number, alpha = 1): Rgba => [
   lane % 2 === 0 ? 1 : 0.25,
   alpha,
 ];
+// A lane's colour as Overlay draws it: translucent, as a whole.
+const overlaid = (color: Rgba): Rgba => [
+  color[0],
+  color[1],
+  color[2],
+  color[3] * overlaidTraceAlpha,
+];
 function expectPixel(
   drawing: Drawing,
   x: number,
@@ -1100,14 +1111,17 @@ describe("lanes layer in order, whatever their channel and target", () => {
   test.each(counts)("%i lanes each draw in their own colour", (count) => {
     const levels = spread(count);
     const colors = levels.map((_, lane) => laneColor(lane));
-    const drawing = draw(flatLanes(levels), { laneColors: colors });
+    const drawing = draw(flatLanes(levels), {
+      laneColors: colors,
+      layout: ViewLayout.overlaid,
+    });
     expect(drawing.error).toBe(0);
     levels.forEach((level, lane) => {
       expectPixel(
         drawing,
         width / 2,
         rowOf(level),
-        over(transparent, colors[lane] ?? laneColor(lane)),
+        over(transparent, overlaid(colors[lane] ?? laneColor(lane))),
         2,
       );
     });
@@ -1121,13 +1135,14 @@ describe("lanes layer in order, whatever their channel and target", () => {
       );
       const drawing = draw(flatLanes(colors.map(() => 0)), {
         laneColors: colors,
+        layout: ViewLayout.overlaid,
       });
       expect(drawing.error).toBe(0);
       expectPixel(
         drawing,
         width / 2,
         rowOf(0),
-        colors.reduce(over, transparent),
+        colors.map(overlaid).reduce(over, transparent),
         count,
       );
     },
@@ -1150,15 +1165,18 @@ describe("lanes layer in order, whatever their channel and target", () => {
     const colors = levels.map((_, lane) =>
       laneColor(lane, paired.has(lane) ? 0.5 : 1),
     );
-    const drawing = draw(flatLanes(levels), { laneColors: colors });
+    const drawing = draw(flatLanes(levels), {
+      laneColors: colors,
+      layout: ViewLayout.overlaid,
+    });
     for (const [first, second] of pairs) {
       expectPixel(
         drawing,
         width / 2,
         rowOf(levels[first] ?? 0),
         over(
-          over(transparent, colors[first] ?? laneColor(first)),
-          colors[second] ?? laneColor(second),
+          over(transparent, overlaid(colors[first] ?? laneColor(first))),
+          overlaid(colors[second] ?? laneColor(second)),
         ),
         2,
       );
@@ -1191,10 +1209,11 @@ describe("lanes layer in order, whatever their channel and target", () => {
     const colors = [0, 1, 2].map((lane) => laneColor(lane, 0.5));
     const options: DrawOptions = {
       laneColors: colors,
+      layout: ViewLayout.overlaid,
     };
     const shade: Rgba = [1, 0, 0, 0.16];
     const shaded = over(transparent, shade);
-    const [first, second, sum] = colors as [Rgba, Rgba, Rgba];
+    const [first, second, sum] = colors.map(overlaid) as [Rgba, Rgba, Rgba];
     // The shading in the sum's lane alone, under the sum; the tracks over no shading, the later
     // over the earlier.
     const places: [number, Pixel][] = [
@@ -1286,12 +1305,17 @@ describe("lanes layer in order, whatever their channel and target", () => {
       for (const [value, expected] of places) {
         expectPixel(drawing, width / 2, row(value), expected, 3);
       }
-      // The tracks are drawn in their own lane: this track's where only it reaches.
+      // The tracks are drawn in their own lane: this track's where only it reaches, translucent
+      // when overlaid, while the difference's parts stay opaque.
+      const mine = colors[0] as Rgba;
       expectPixel(
         drawing,
         width / 2,
         laneRowOf(tracks, 0.375),
-        over(transparent, colors[0] as Rgba),
+        over(
+          transparent,
+          ViewLayout[layout] === ViewLayout.overlaid ? overlaid(mine) : mine,
+        ),
         3,
       );
     },
@@ -1435,6 +1459,7 @@ describe("lanes layer in order, whatever their channel and target", () => {
     });
     const options: DrawOptions = {
       laneColors: [0, 1, 2].map((lane) => laneColor(lane)),
+      layout: ViewLayout.overlaid,
     };
     const shaded = over(transparent, [1, 0, 0, 0.16]);
     // Above every trace in the sum's lane, where only the shading shows.
@@ -1985,5 +2010,91 @@ describe("a trace stays within its lane", () => {
         expect(drawing.pixel(x, y)[0], `${String(x)}, ${String(y)}`).toBe(0);
       }
     }
+  });
+});
+
+// In Overlay every trace is drawn translucent, as a whole, so where two overlap the one behind
+// shows through; a lone overlaid trace too, and Compare's sum in its own lane below the tracks
+// (the layout is Overlay). In Stack nothing lies behind a trace but the screen: it is opaque.
+describe("overlaid traces are translucent, stacked ones opaque", () => {
+  const red: Rgba = [1, 0, 0, 1];
+  const green: Rgba = [0, 1, 0, 1];
+  const atAlpha = (color: Rgba, alpha: number): Rgba => [
+    color[0],
+    color[1],
+    color[2],
+    color[3] * alpha,
+  ];
+  const layouts = (Object.keys(ViewLayout) as (keyof typeof ViewLayout)[]).map(
+    (name) => ({
+      name,
+      layout: ViewLayout[name],
+      alpha: ViewLayout[name] === ViewLayout.overlaid ? overlaidTraceAlpha : 1,
+    }),
+  );
+
+  test.each(layouts)("$name: one trace's line", ({ layout, alpha }) => {
+    const drawing = draw(flatLanes([0.2]), { laneColors: [red], layout });
+    expect(drawing.error).toBe(0);
+    expectPixel(
+      drawing,
+      width / 2,
+      rowOf(0.2),
+      over(transparent, atAlpha(red, alpha)),
+      3,
+    );
+  });
+
+  test("overlaid, two traces on one line: the earlier shows through the later", () => {
+    const drawing = draw(flatLanes([0.2, 0.2]), {
+      laneColors: [red, green],
+      layout: ViewLayout.overlaid,
+    });
+    expect(drawing.error).toBe(0);
+    expectPixel(
+      drawing,
+      width / 2,
+      rowOf(0.2),
+      over(
+        over(transparent, atAlpha(red, overlaidTraceAlpha)),
+        atAlpha(green, overlaidTraceAlpha),
+      ),
+      3,
+    );
+  });
+
+  test("overlaid with Compare, the sum in its own lane is translucent too", () => {
+    const none = { correlation: 0, related: false, offset: 0, inverted: false };
+    const count = 100;
+    const flat = (level: number) =>
+      Array.from({ length: count * 2 }, () => level);
+    const drawing = draw(
+      frameOf({
+        mode: FrameMode.minMax,
+        pointCount: count,
+        viewStart: 0,
+        viewEnd: 1,
+        lanes: [flat(0.3), flat(-0.3), flat(0.5)],
+        comparison: {
+          lane: CompareLane.sum,
+          sumGain: 1,
+          fixedGain: Number.NaN,
+          matches: [none, none],
+        },
+      }),
+      {
+        laneColors: [green, green, red],
+        layout: ViewLayout.overlaid,
+      },
+    );
+    expect(drawing.error).toBe(0);
+    const sum = traceLanes(3, ViewLayout.overlaid, true)[2];
+    expectPixel(
+      drawing,
+      width / 2,
+      laneRowOf(sum, 0.5),
+      over(transparent, atAlpha(red, overlaidTraceAlpha)),
+      3,
+    );
   });
 });

@@ -61,7 +61,7 @@ let style: Required<
   color: [1, 1, 1, 1],
   laneColors: [],
 };
-let view: TraceView = { verticalScaleDb: 0, layout: ViewLayout.overlaid };
+let view: TraceView = { verticalScaleDb: 0, layout: ViewLayout.stacked };
 
 function surface(width: number, height: number): Surface {
   const key = `${String(width)}x${String(height)}`;
@@ -177,7 +177,9 @@ export function drawOn(
   };
   view = {
     verticalScaleDb: options.verticalScaleDb ?? 0,
-    layout: options.layout ?? ViewLayout.overlaid,
+    // Stacked unless asked: one trace lays out as overlaid, and is drawn opaque, as a test of its
+    // shape wants; a test of overlapping traces asks for Overlay.
+    layout: options.layout ?? ViewLayout.stacked,
     ...(options.dim === undefined ? {} : { dim: options.dim }),
     ...(options.view === undefined ? {} : { view: options.view }),
   };

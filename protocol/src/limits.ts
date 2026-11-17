@@ -247,7 +247,7 @@ export const cancellationReachDivisor = 128;
 // What the page and the macOS editor draw fainter than the live picture: while Normal mode waits
 // for a trigger, the last traces and the shading in a colour moved waitingAlpha of the way from the
 // screen's to their own, so the picture reads as old but stays legible, still covering the grid as
-// live traces do.
+// live traces do (in Overlay, as translucently as they do: overlaidTraceAlpha).
 export const waitingAlpha = 0.45;
 // In Compare's difference lane, what this track and the others both cover is filled in this
 // track's colour moved this share of the way from the screen's to its own, opaque (as the Waiting
@@ -263,9 +263,18 @@ export const differenceSharedStrength = 0.4;
 export const filledAreaLineHalf = 0.5;
 // In Beats, right of the playhead, the previous cycle's traces and Compare's shading in a colour
 // moved previousCycleAlpha of the way from the screen's to their own, so the old cycle reads as old
-// beside the new one; they keep their coverage, so they cover the grid as live traces do, and the
-// grid, its zero lines and labels are not dimmed, so the scale stays steady (FR-9.2).
+// beside the new one; they keep their coverage, so they cover the grid as live traces do (in
+// Overlay, as translucently), and the grid, its zero lines and labels are not dimmed, so the scale
+// stays steady (FR-9.2).
 export const previousCycleAlpha = 0.5;
+// In Overlay, every trace is drawn at this opacity, as a whole: where two overlap, the one behind
+// shows through, so each keeps its outline, and a trace's own overlapping pieces are no denser.
+// Bright enough that a lone trace still reads as the trace, faint enough that two overlapping
+// ones both show; it looked right between 0.6 and 0.7, for lines and filled traces alike. Stacked
+// traces stay opaque: nothing lies behind them but the screen. Limit: many traces of a similar
+// level overlaid still turn opaque inside (ten at 0.65 cover 1 − 0.35¹⁰ of a pixel), so the inner
+// ones are not readable at any opacity that leaves one trace bright enough (FR-14.2).
+export const overlaidTraceAlpha = 0.65;
 
 // Musical positions worked out in floating point (a step's multiples, a view's edges) count as
 // whole, or as on an edge, within musicalTolerance quarter notes or steps: far above the rounding
@@ -407,6 +416,7 @@ export const limits: readonly {
   { name: "cancellationDb", value: cancellationDb, kind: "double" },
   { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
   { name: "previousCycleAlpha", value: previousCycleAlpha, kind: "double" },
+  { name: "overlaidTraceAlpha", value: overlaidTraceAlpha, kind: "double" },
   { name: "barcodeDataBits", value: barcodeDataBits, kind: "count" },
   {
     name: "barcodeTicksPerMillisecond",

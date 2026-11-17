@@ -33,6 +33,7 @@ constexpr std::size_t kSlots = 3;
 constexpr float kPlayheadSoftness = 1.5f;
 constexpr auto kWaitingAlpha = static_cast<float>(protocol::kWaitingAlpha);
 constexpr auto kPreviousCycleAlpha = static_cast<float>(protocol::kPreviousCycleAlpha);
+constexpr auto kOverlaidTraceAlpha = static_cast<float>(protocol::kOverlaidTraceAlpha);
 
 // The trace pass's uniforms, laid out as the shaders' TraceUniforms: scalars only, so both sides
 // agree without alignment rules.
@@ -842,6 +843,10 @@ private:
             }
             const Rgba white{1.0f, 1.0f, 1.0f, 1.0f};
             composite.colours[index] = index < colours.size() ? colours[index] : white;
+            // In Overlay each trace is translucent as a whole (trace-renderer.ts).
+            if (view.layout == protocol::ViewLayout::kOverlaid) {
+                composite.colours[index][3] *= kOverlaidTraceAlpha;
+            }
             if (filled && index + 1 == blocks.size()) {
                 continue; // Its target is cleared with the others; nothing of it is drawn.
             }
