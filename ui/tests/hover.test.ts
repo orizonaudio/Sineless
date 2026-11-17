@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   ChannelView,
+  CompareLane,
   FrameMode,
   ViewLayout,
 } from "../../protocol/src/enums.ts";
@@ -326,6 +327,40 @@ describe("hover readout", () => {
       expect(readout?.top).toBe(0);
       expect(readout?.bottom).toBe(1);
     }
+  });
+
+  // Overlay with Compare on gives the tracks the upper half and Compare's lane the lower: the
+  // dotted line and cycle band stay in the half under the pointer, not across the other.
+  test("keeps the hover marks in the half under the pointer with Compare overlaid", () => {
+    const values = sine(480, 4);
+    const comparison = {
+      lane: CompareLane.sum,
+      matches: [],
+    } as unknown as Frame["comparison"];
+    const at = (y: number) =>
+      hoverReadout(
+        {
+          frame: rawFrame(values, { comparison }),
+          traces: [
+            { name: "Kick", values },
+            { name: "Bass", values },
+            { name: "Sum", values },
+          ],
+          overlaid: 0,
+          layout: ViewLayout.overlaid,
+          view: fullView,
+          a4: 440,
+          freeRunning: false,
+        },
+        0.5,
+        y,
+      );
+    const tracks = at(0.25);
+    expect(tracks?.title).toBe("Kick");
+    expect([tracks?.top, tracks?.bottom]).toEqual([0, 0.5]);
+    const compare = at(0.75);
+    expect(compare?.title).toBe("Sum");
+    expect([compare?.top, compare?.bottom]).toEqual([0.5, 1]);
   });
 
   test("times the frame at the rate it carries, not the host's", () => {
