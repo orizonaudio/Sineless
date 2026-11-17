@@ -395,14 +395,16 @@ const scenes: Scene[] = [
   },
   // Waiting dims the shading with the traces, as everything drawn from the stale frame. In Beats,
   // the previous cycle right of the playhead dims them too, and not the screen under them. Beats
-  // never waits for a trigger, so the two never meet.
+  // never waits for a trigger, so the two never meet. Overlaid, the sum and its shading have the
+  // lower half to themselves, under the tracks overlaid (FR-15.1).
   ...[
-    { sweep: false, dim: false },
-    { sweep: false, dim: true },
-    { sweep: true, dim: false },
-  ].map(({ sweep, dim }): Scene => ({
+    { sweep: false, dim: false, layout: "stacked" },
+    { sweep: false, dim: true, layout: "stacked" },
+    { sweep: true, dim: false, layout: "stacked" },
+    { sweep: false, dim: false, layout: "overlaid" },
+  ].map(({ sweep, dim, layout }): Scene => ({
     // Two tracks cancelling in the middle third, a quieter third beside them, and the sum.
-    name: `Compare shading where the tracks cancel${dim ? ", while Waiting" : ""}${sweep ? ", a Beats playhead mid-screen" : ""}`,
+    name: `Compare shading where the tracks cancel${dim ? ", while Waiting" : ""}${sweep ? ", a Beats playhead mid-screen" : ""}${layout === "overlaid" ? ", overlaid" : ""}`,
     width: 300,
     height: 200,
     ratio: 1,
@@ -443,7 +445,7 @@ const scenes: Scene[] = [
     })(),
     view: {
       ...baseView,
-      layout: "stacked",
+      layout,
       dim,
       laneSets: [
         {

@@ -9,7 +9,7 @@ import {
   gridColumnsFine,
   gridColumnsMedium,
 } from "../../../protocol/src/limits.ts";
-import { lanes, type Lane } from "../render/trace-geometry.ts";
+import { screenLanes, type Lane } from "../render/trace-geometry.ts";
 import { dbFraction, levelLines } from "./axis-labels.ts";
 import {
   drawsLines,
@@ -72,7 +72,7 @@ export function gridLines(
     }));
   const lineWidth = Math.max(1, Math.round(pixelRatio));
   const offset = (lineWidth % 2) / 2;
-  const laneList = lanes(laneCount, ViewLayout.stacked);
+  const laneList = screenLanes(laneCount, ViewLayout.stacked, false);
   const rowY = (lane: Lane, fraction: number) =>
     Math.round(
       ((1 - (lane.center + fraction * lane.halfHeight)) / 2) * height,

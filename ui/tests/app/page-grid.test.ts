@@ -9,6 +9,7 @@ import {
   choice,
   inTimeBase,
   press,
+  setCompare,
   settle,
   startApp,
 } from "./harness.ts";
@@ -103,6 +104,30 @@ test("the page draws its grid where the lines belong, in their colours, and clea
     expect(at(3, line.y)[3], `old line at ${String(line.y)}`).toBe(0);
   }
 });
+
+// Overlaid with Compare on, the tracks' lane and Compare's are two lanes of the screen, each with
+// its level lines and zero line (FR-15.1); with Compare off, one lane again.
+test.each(["Sum", "Diff"] as const)(
+  "overlaid with Compare on (%s), the grid has a lane for the tracks and one for Compare",
+  async (shows) => {
+    await startApp();
+    await inTimeBase("Trig");
+    await press(choice("display-mode", "Multi"));
+    await press(choice("layout", "Overlay"));
+    await setCompare(shows);
+    await expect
+      .poll(() => window.orizonDebug?.lastFrame?.comparison !== undefined)
+      .toBe(true);
+    await settle();
+    expectLinesDrawn(2);
+    await setCompare(false);
+    await expect
+      .poll(() => window.orizonDebug?.lastFrame?.comparison === undefined)
+      .toBe(true);
+    await settle();
+    expectLinesDrawn(1);
+  },
+);
 
 // At every display scale each line is crisp: whole device pixels of its colour, as many as its
 // width, and nothing partly covered beside it. A line of even width centred mid-pixel would be

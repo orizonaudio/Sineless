@@ -5,7 +5,7 @@ import { userEvent } from "vitest/browser";
 
 import { ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
-import { lanes } from "../../src/render/trace-geometry.ts";
+import { traceLanes } from "../../src/render/trace-geometry.ts";
 import { extremePositions, zeroCrossings } from "../../src/view/snap.ts";
 import {
   beforeApp,
@@ -80,7 +80,7 @@ describe("time cursors over stacked lanes", () => {
       expect(frame).toBeDefined();
       const shown = traces(frame as Frame);
       expect(shown.length).toBeGreaterThan(1);
-      const laneList = lanes(shown.length, ViewLayout.stacked);
+      const laneList = traceLanes(shown.length, ViewLayout.stacked, false);
       const { width, height } = byId("trace").getBoundingClientRect();
       // Two pixels inside a lane's edge.
       const inset = 2 / height;

@@ -755,7 +755,8 @@ TEST_F(MetalTraceRendererTest, GuardsBeatsFineStepInCssPixels)
 // whatever was asked for), and for a frame with neither (No tempo, which lasts until the host
 // plays) or before any frame, the lanes the page lays out from the views shown. Each case's page
 // count differs from the frame's own, so taking the wrong one draws level lines the page's labels
-// do not match.
+// do not match. A Compare frame's lane is never overlaid on the tracks: overlaid, the screen has
+// two lanes.
 TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
 {
     struct Case
@@ -764,6 +765,7 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
         std::size_t views;
         std::size_t lanes;
         bool noFrame;
+        bool compared;
         protocol::ViewLayout layout;
         std::size_t emptyFrameLanes;
         std::size_t expected;
@@ -774,6 +776,7 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
          .views = 0,
          .lanes = 0,
          .noFrame = false,
+         .compared = false,
          .layout = kStacked,
          .emptyFrameLanes = 3,
          .expected = 3},
@@ -781,6 +784,7 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
          .views = 0,
          .lanes = 0,
          .noFrame = true,
+         .compared = false,
          .layout = kStacked,
          .emptyFrameLanes = 2,
          .expected = 2},
@@ -788,6 +792,7 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
          .views = 0,
          .lanes = 0,
          .noFrame = false,
+         .compared = false,
          .layout = protocol::ViewLayout::kOverlaid,
          .emptyFrameLanes = 1,
          .expected = 1},
@@ -795,6 +800,7 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
          .views = 0,
          .lanes = 3,
          .noFrame = false,
+         .compared = false,
          .layout = protocol::ViewLayout::kOverlaid,
          .emptyFrameLanes = 3,
          .expected = 1},
@@ -802,6 +808,7 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
          .views = 1,
          .lanes = 0,
          .noFrame = false,
+         .compared = false,
          .layout = kStacked,
          .emptyFrameLanes = 2,
          .expected = 1},
@@ -809,6 +816,7 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
          .views = 2,
          .lanes = 0,
          .noFrame = false,
+         .compared = false,
          .layout = kStacked,
          .emptyFrameLanes = 4,
          .expected = 2},
@@ -816,9 +824,28 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
          .views = 0,
          .lanes = 3,
          .noFrame = false,
+         .compared = false,
          .layout = kStacked,
          .emptyFrameLanes = 1,
          .expected = 3},
+        // A Compare frame: overlaid, the tracks share the upper half and Compare's lane has the
+        // lower half (FR-15.1); stacked, a lane each, as any frame's lanes.
+        {.name = "a Compare frame, overlaid",
+         .views = 0,
+         .lanes = 4,
+         .noFrame = false,
+         .compared = true,
+         .layout = protocol::ViewLayout::kOverlaid,
+         .emptyFrameLanes = 1,
+         .expected = 2},
+        {.name = "a Compare frame, stacked",
+         .views = 0,
+         .lanes = 4,
+         .noFrame = false,
+         .compared = true,
+         .layout = kStacked,
+         .emptyFrameLanes = 1,
+         .expected = 4},
     };
     TraceView view = scenes().front().view;
     view.screen = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -844,6 +871,9 @@ TEST_F(MetalTraceRendererTest, LaysTheGridOutInThePagesLanes)
         }
         for (std::size_t index = 0; index < each.lanes; ++index) {
             frame.lanes.emplace_back(values);
+        }
+        if (each.compared) {
+            frame.flags = static_cast<std::uint8_t>(protocol::FrameFlag::kCompared);
         }
         view.layout = each.layout;
         view.emptyFrameLanes = each.emptyFrameLanes;

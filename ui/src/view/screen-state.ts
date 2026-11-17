@@ -43,7 +43,8 @@ export function clampPan(seconds: number, reach: number): number {
   return Math.min(reach, Math.max(0, seconds));
 }
 
-// The lane the trigger level marker sits in. Overlaid, the one lane. Stacked: in the multi-track
+// The trace whose lane (traceLanes) the trigger level marker sits in. Overlaid, the first: every
+// view or track shares its lane (with Compare on, the upper half). Stacked: in the multi-track
 // view the own track's lane (`ownLane`, −1 when not found: the first), as the own track
 // triggers; otherwise the lane of the view the trigger reads, which the frame names and draws (the
 // first lane before a frame says, when the setting is not among those drawn).

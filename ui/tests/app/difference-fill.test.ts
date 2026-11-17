@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { ViewLayout } from "../../../protocol/src/enums.ts";
 import type { Frame } from "../../../protocol/src/frame-decoder.ts";
-import { lanes } from "../../src/render/trace-geometry.ts";
+import { traceLanes } from "../../src/render/trace-geometry.ts";
 import { TraceRenderer } from "../../src/render/trace-renderer.ts";
 import {
   beforeApp,
@@ -66,9 +66,10 @@ function measureDraws(): void {
     const { width, height } = canvas;
     const pixels = new Uint8Array(width * height * 4);
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-    const { center, halfHeight } = lanes(
+    const { center, halfHeight } = traceLanes(
       frame.lanes.length,
       ViewLayout.stacked,
+      true,
     ).at(-1) ?? { center: 0, halfHeight: 1 };
     const bottom = Math.ceil(((center - halfHeight + 1) / 2) * height);
     const top = Math.floor(((center + halfHeight + 1) / 2) * height);

@@ -21,9 +21,11 @@ import {
   coverageSlot,
   coverageTargets,
   fullScale,
-  lanes,
   playheadEdges,
   pointPosition,
+  screenLanes,
+  traceInScreenLane,
+  traceLanes,
   tracesPerPass,
 } from "../src/render/trace-geometry.ts";
 
@@ -115,21 +117,83 @@ describe("trace placement", () => {
     expect(pointPosition(deep, 12)).toBeCloseTo(sample(1.5), 12);
   });
 
-  test("stacks views in equal lanes from the top, or overlays them", () => {
-    expect(lanes(2, ViewLayout.stacked)).toEqual([
-      { center: 0.5, halfHeight: 0.5 },
-      { center: -0.5, halfHeight: 0.5 },
-    ]);
-    expect(lanes(2, ViewLayout.overlaid)).toEqual([
-      { center: 0, halfHeight: 1 },
-      { center: 0, halfHeight: 1 },
-    ]);
-  });
-
   test("maps the vertical scale in dBFS to full scale", () => {
     expect(fullScale(0)).toBe(1);
     expect(fullScale(-6)).toBeCloseTo(0.501, 3);
   });
+});
+
+// Every layout, with and without a Compare frame, at every trace count a frame can carry.
+const laneCases = (Object.keys(ViewLayout) as (keyof typeof ViewLayout)[])
+  .flatMap((layout) => [false, true].map((compared) => ({ layout, compared })))
+  .flatMap((entry) =>
+    Array.from({ length: maxLanes }, (_, index) => ({
+      ...entry,
+      count: index + 1,
+    })),
+  );
+
+describe("lanes", () => {
+  test.each(laneCases)(
+    "$layout, compared $compared, $count traces: the screen's lanes tile it and hold every trace",
+    ({ layout, compared, count }) => {
+      const screen = screenLanes(count, ViewLayout[layout], compared);
+      // From the top down, edge to edge, none overlapping.
+      let top = 1;
+      for (const lane of screen) {
+        expect(lane.center + lane.halfHeight).toBeCloseTo(top, 12);
+        top = lane.center - lane.halfHeight;
+      }
+      expect(top).toBeCloseTo(-1, 12);
+      const traces = traceLanes(count, ViewLayout[layout], compared);
+      expect(traces).toHaveLength(count);
+      for (const lane of traces) {
+        expect(screen).toContainEqual(lane);
+      }
+    },
+  );
+
+  test.each(laneCases)(
+    "$layout, compared $compared, $count traces: stacked traces each get a lane, overlaid tracks share one and Compare's lane is never on them",
+    ({ layout, compared, count }) => {
+      const screen = screenLanes(count, ViewLayout[layout], compared);
+      const traces = traceLanes(count, ViewLayout[layout], compared);
+      if (layout === "stacked") {
+        expect(traces).toEqual(screen);
+      } else if (compared && count > 1) {
+        // The tracks overlaid in the upper half, Compare's lane alone in the lower half.
+        expect(screen).toEqual([
+          { center: 0.5, halfHeight: 0.5 },
+          { center: -0.5, halfHeight: 0.5 },
+        ]);
+        for (const lane of traces.slice(0, -1)) {
+          expect(lane).toEqual(screen[0]);
+        }
+        expect(traces.at(-1)).toEqual(screen[1]);
+      } else {
+        expect(screen).toEqual([{ center: 0, halfHeight: 1 }]);
+      }
+    },
+  );
+
+  test.each(laneCases)(
+    "$layout, compared $compared, $count traces: a lane holding one trace reads it, a shared lane the trace the readouts read",
+    ({ layout, compared, count }) => {
+      const screen = screenLanes(count, ViewLayout[layout], compared);
+      const traces = traceLanes(count, ViewLayout[layout], compared);
+      const read = 0; // This track's lane, among the tracks overlaid.
+      screen.forEach((lane, index) => {
+        const holding = traces.flatMap((trace, at) =>
+          trace.center === lane.center && trace.halfHeight === lane.halfHeight
+            ? [at]
+            : [],
+        );
+        expect(
+          traceInScreenLane(count, ViewLayout[layout], compared, index, read),
+        ).toBe(holding.length === 1 ? holding[0] : read);
+      });
+    },
+  );
 });
 
 // Display scales in use: macOS (1, 2), Windows (1.25, 1.5, 1.75, 3) and browser zoom.
