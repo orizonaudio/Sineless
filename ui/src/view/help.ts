@@ -174,6 +174,7 @@ export function helpTextsFor(mac: boolean) {
       notes: [
         "Several instances on one track are numbered in the order they were added, in shades of its colour.",
         "Off also hides Compare's readouts beside each track; the sum or difference keeps its label.",
+        "Overlaid, resting the pointer on a name brings its trace to the front and dims the others.",
         "Saved with the project.",
       ],
     },
@@ -597,6 +598,7 @@ export function helpTextsFor(mac: boolean) {
       notes: [
         "It shows the position, the level, and the length, frequency and note of the cycle around it.",
         "A dotted line marks the column or point read, and a faint band the cycle measured.",
+        "Overlaid, the trace read is brought to the front and the others dimmed.",
       ],
     },
     readoutSource: {

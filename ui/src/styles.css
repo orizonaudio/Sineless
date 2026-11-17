@@ -774,8 +774,11 @@ button[aria-pressed="true"]:focus-visible {
   color: var(--sl-ink);
 }
 
-/* Each name sits on a chip of the screen's colour, so traces never run through it. */
+/* Each name sits on a chip of the screen's colour, so traces never run through it. The chip takes
+   the pointer, so that resting on it highlights its trace (FR-16.4); a press, a drag, the wheel
+   and a pinch there still reach the screen, as the label's box beside the chips lets them through. */
 .lane-label > span {
+  pointer-events: auto;
   padding: 2px 6px;
   background: color-mix(in srgb, var(--sl-screen) 85%, transparent);
   border-radius: 8px;
@@ -913,11 +916,6 @@ button[aria-pressed="true"]:focus-visible {
 .cut-name > .cut-shown,
 .lane-label .cut-name > .cut-shown {
   display: inline-block;
-}
-
-/* The labels pass the pointer to the screen; a cut name takes it, to roll, as their buttons do. */
-.lane-label .cut-name.cut {
-  pointer-events: auto;
 }
 
 /* Said by a screen reader, not shown (WCAG technique C7's rule). */

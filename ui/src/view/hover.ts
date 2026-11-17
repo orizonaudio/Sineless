@@ -262,6 +262,8 @@ export function cycleAt(
 // (0 to 1, clipped to the screen): the column or point, the cycle measured, if any, and the
 // trace's lane from `top` to `bottom` (the whole screen unless lanes are stacked).
 export interface HoverReadout {
+  // The trace read, an index into the context's traces.
+  readonly trace: number;
   readonly title: string;
   // The trace's number among its track's instances, which the title carries; 0 for none.
   readonly instance: number;
@@ -367,6 +369,7 @@ export function hoverReadout(
   }
   const read = readPosition(frame, position);
   return {
+    trace: index,
     title: trace.name,
     instance: trace.instance ?? 0,
     rows,

@@ -48,6 +48,7 @@ import { streamGap, wheelUnit } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
 import {
   fullScale,
+  highlightOrder,
   screenLaneAt,
   screenLaneOf,
   screenLanes,
@@ -410,6 +411,11 @@ export class OscilloscopeApp {
   private shownFrozen: boolean | undefined;
   // The pointer over the traces, as fractions of the screen, for the hover readout.
   private hover: { x: number; y: number } | undefined;
+  // One overlaid trace highlighted (FR-16.4), by its lane label's id, so it names the same trace in
+  // every frame: the label under the pointer, else the trace the hover readout reads; never saved.
+  private labelUnderPointer: number | undefined;
+  private readoutTrace: number | undefined;
+  private highlight: number | undefined;
   private levelCursors: LevelPair | undefined;
   // The Compare view: the fix preview, and the lane labels' readouts of each compared track (by
   // lane index) and of the sum, updated in place.
@@ -510,6 +516,7 @@ export class OscilloscopeApp {
       traceShape: this.traceShape(),
       dim: this.waiting,
       view: this.view,
+      ...this.highlightIndex(),
     });
     // In native mode the page creates no WebGL context: the editor draws the traces under it.
     this.makeRenderer = () => {
@@ -1535,6 +1542,10 @@ export class OscilloscopeApp {
       return;
     }
     this.laneLabelsKey = key;
+    // The chip under the pointer is gone: no leave event comes from it (Pointer Events 3, 4.1.3),
+    // so its highlight ends here, until the pointer moves again.
+    this.labelUnderPointer = undefined;
+    this.updateHighlight();
     // Labels Off: no track or view is named, nor marked for samples that are not finite (the
     // status chip reports them), and no match shows. Compare's own lane keeps its label, which
     // holds its figure and its switch.
@@ -1559,6 +1570,7 @@ export class OscilloscopeApp {
       const node = document.createElement("span");
       this.laneNameNodes[index] = node;
       node.style.setProperty("--swatch", style.swatch);
+      node.dataset["trace"] = String(style.id);
       node.classList.toggle("own", style.own);
       if (style.id === sumLaneId) {
         // What the lane shows, which the frame says: the sum or the difference (Compare's
@@ -2133,6 +2145,65 @@ export class OscilloscopeApp {
     };
   }
 
+  // The overlaid trace highlighted (FR-16.4), by its label's id: the lane label under the pointer,
+  // else the trace the hover readout reads; none where highlightOrder highlights nothing (Stack,
+  // Compare's lane, a lane of one) and none for a label with no track to name (Compare's, or a lane
+  // whose set has not arrived, which the editor could not find either). Redraws the traces and
+  // tells the editor when it changes, live or frozen.
+  private updateHighlight(): void {
+    const frame = this.lastFrame;
+    const labels = this.labelsOf(frame);
+    const id =
+      this.labelUnderPointer ??
+      (this.readoutTrace === undefined
+        ? undefined
+        : labels[this.readoutTrace]?.id);
+    const index = labels.findIndex((label) => label.id === id);
+    const named = id !== undefined && (id >= 0 || id <= viewLabelId);
+    const highlight =
+      frame !== undefined &&
+      named &&
+      highlightOrder(
+        labels.length,
+        this.layout(),
+        frame.comparison !== undefined,
+        index,
+      ).dimmed.includes(true)
+        ? id
+        : undefined;
+    if (highlight === this.highlight) {
+      return;
+    }
+    this.highlight = highlight;
+    this.loop.invalidate();
+    this.queueTraceView();
+  }
+
+  // The highlighted trace's index in the last frame, as the page's renderer takes it.
+  private highlightIndex(): { highlight?: number } {
+    const index = this.labelsOf(this.lastFrame).findIndex(
+      (label) => label.id === this.highlight,
+    );
+    return this.highlight === undefined || index < 0
+      ? {}
+      : { highlight: index };
+  }
+
+  // The highlighted trace as the editor finds it in a frame: a view's name, or a lane's track id.
+  private highlightNamed(): TraceViewMessage["highlight"] {
+    const id = this.highlight;
+    if (id === undefined) {
+      return null;
+    }
+    if (id <= viewLabelId) {
+      const view = viewOrder.find(
+        (name) => ChannelView[name] === viewLabelId - id,
+      );
+      return view === undefined ? null : { view };
+    }
+    return { lane: id };
+  }
+
   // Shows what lies under the pointer, beside it, with a line at the column or point read and a
   // band over the cycle measured; hidden while a help tooltip shows.
   private updateHover(): void {
@@ -2147,6 +2218,9 @@ export class OscilloscopeApp {
       element("help-tip").hidden
         ? hoverReadout(this.hoverContext(frame), this.hover.x, this.hover.y)
         : undefined;
+    // Shown over the overlaid traces, the readout's trace is highlighted (FR-16.4).
+    this.readoutTrace = readout?.trace;
+    this.updateHighlight();
     if (readout === undefined || this.hover === undefined) {
       node.hidden = true;
       line.hidden = true;
@@ -2307,12 +2381,20 @@ export class OscilloscopeApp {
 
   private listenToScreen(): void {
     // The hover readout follows the pointer over the traces while no button is held.
+    // A lane label under it highlights its trace (FR-16.4); the pointer is on a label or on the
+    // traces, never both.
     this.screen.addEventListener("pointermove", (event) => {
       const point = this.screenPoint(event);
       this.hover =
         event.buttons === 0 && event.target instanceof HTMLCanvasElement
           ? { x: point.x, y: point.y }
           : undefined;
+      const chip =
+        event.buttons === 0 && event.target instanceof Element
+          ? event.target.closest<HTMLElement>(".lane-label > span")
+          : null;
+      const trace = Number(chip?.dataset["trace"]);
+      this.labelUnderPointer = Number.isFinite(trace) ? trace : undefined;
       this.updateHover();
     });
     for (const type of ["pointerleave", "pointerdown", "wheel"] as const) {
@@ -2320,6 +2402,7 @@ export class OscilloscopeApp {
         type,
         () => {
           this.hover = undefined;
+          this.labelUnderPointer = undefined;
           this.updateHover();
         },
         { passive: true },
@@ -2619,7 +2702,7 @@ export class OscilloscopeApp {
         ) ?? "line",
       verticalScaleDb: this.store.number("verticalScale"),
       dim: this.waiting,
-      highlight: null,
+      highlight: this.highlightNamed(),
       lineWidth: style?.lineWidthPixels ?? 1,
       emptyFrameLanes: this.emptyFrameLanes(),
       viewColours: viewOrder.map(
