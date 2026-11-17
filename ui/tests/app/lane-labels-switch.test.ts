@@ -43,6 +43,15 @@ function labelCount(): number {
   return byId("lane-labels").querySelectorAll(".lane-label").length;
 }
 
+// Text placed straight in the label layer rather than in a label or the Compare note: none
+// should be, or it shows on the screen with nothing to say what it is.
+function strayText(): string[] {
+  return [...byId("lane-labels").childNodes]
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent ?? "")
+    .filter((text) => text.trim() !== "");
+}
+
 function matchReadouts(): number {
   return byId("lane-labels").querySelectorAll("[data-help='match']").length;
 }
@@ -125,6 +134,7 @@ describe.each(groups)("with %s", (_, group, names) => {
             byId("lane-labels").querySelector(".compare-note")?.textContent,
           ).toContain("No other track to compare with");
         }
+        expect(strayText()).toEqual([]);
         await setLabels(true);
         await expect
           .poll(() => shownNames().slice(0, names.length))
