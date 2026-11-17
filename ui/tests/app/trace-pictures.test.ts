@@ -611,7 +611,7 @@ const scenes: Scene[] = [
   })),
 ];
 
-// Some of them again with each trace filled to zero (the Layout popover's Style): raw points
+// Some of them again with each trace filled to zero (the Layout popover's Traces row): raw points
 // crossing zero between samples, columns stacked and overlaid, a gap and values past the screen,
 // dotted samples on the area's edge, every coverage target with a Beats playhead dimming them,
 // traces past their lanes, and Compare's sum (filled, as a track) and difference (drawn as with

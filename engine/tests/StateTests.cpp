@@ -434,8 +434,8 @@ constexpr std::array kVersion6CompareDifferenceValues{
     GoldenValue{.id = SettingId::kAlign, .value = asValue(protocol::Toggle::kOff)},
 };
 
-// The version 7 state with how each trace is drawn (the Layout popover's Style), which 0.11 adds:
-// saved by the build that adds it, as the next release saves it.
+// The version 7 state with how each trace is drawn (the Layout popover's Traces row), which 0.11
+// adds: saved by the build that adds it, as the next release saves it.
 constexpr std::array kVersion7TraceShapeValues{
     GoldenValue{.id = SettingId::kTraceShape, .value = asValue(protocol::TraceShape::kFilled)},
 };
