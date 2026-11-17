@@ -267,8 +267,14 @@ describe("native traces: what the page sends", () => {
           ) === "true";
         await press(choice("trace-shape-choice", filled ? "Line" : "Filled"));
       },
+      // The editor draws the style whose button is lit, not merely another one.
       check: (view: TraceViewMessage, before: TraceViewMessage) => {
         expect(view.traceShape).not.toBe(before.traceShape);
+        const filled =
+          choice("trace-shape-choice", "Filled").getAttribute(
+            "aria-pressed",
+          ) === "true";
+        expect(view.traceShape).toBe(filled ? "filled" : "line");
       },
     },
     {
