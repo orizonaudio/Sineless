@@ -90,8 +90,8 @@ export type BeatDivision = (typeof BeatDivision)[keyof typeof BeatDivision];
 export const CompareLane = { sum: 0, difference: 1 } as const;
 export type CompareLane = (typeof CompareLane)[keyof typeof CompareLane];
 
-// How each trace is drawn (the Layout popover's Style): its wave as a line, or the area between
-// the wave and zero.
+// How each trace is drawn (the Layout popover's Traces row): its wave as a line, or the area
+// between the wave and zero.
 export const TraceShape = { line: 0, filled: 1 } as const;
 export type TraceShape = (typeof TraceShape)[keyof typeof TraceShape];
 
