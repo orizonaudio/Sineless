@@ -12,7 +12,9 @@ import {
 } from "../../../protocol/src/limits.ts";
 import {
   columnPosition,
-  lanes,
+  screenLaneAt,
+  traceInScreenLane,
+  traceLanes,
   pointPosition,
 } from "../render/trace-geometry.ts";
 import { noteName, type ReadoutRow } from "./cursors.ts";
@@ -52,22 +54,23 @@ export interface HoverContext {
 // and the note given without cents.
 const minimumColumnsPerCycle = 24;
 
-// The trace under `y` (0 at the top of the screen, 1 at the bottom): the stacked lane there, or
-// the overlaid trace.
+// The trace under `y` (0 at the top of the screen, 1 at the bottom): the one in the screen lane
+// there, or, in a lane the traces share, the overlaid trace, the one the readouts read
+// (traceInScreenLane). `compared`: the frame is a Compare frame, whose lane has its own place.
 export function traceAt(
   count: number,
   layout: ViewLayout,
+  compared: boolean,
   y: number,
   overlaid: number,
 ): number {
-  if (layout !== ViewLayout.stacked || count <= 1) {
-    return Math.min(Math.max(overlaid, 0), Math.max(count - 1, 0));
-  }
-  const clip = 1 - 2 * y;
-  const found = lanes(count, layout).findIndex(
-    (lane) => Math.abs(clip - lane.center) <= lane.halfHeight,
+  return traceInScreenLane(
+    count,
+    layout,
+    compared,
+    screenLaneAt(count, layout, compared, y),
+    overlaid,
   );
-  return found < 0 ? (clip > 0 ? 0 : count - 1) : found;
 }
 
 // Span positions (0 to 1) where `values` rises through its mean level: only after first falling
@@ -306,9 +309,16 @@ export function hoverReadout(
   if (traces.length === 0 || covered <= 0 || sampleRate <= 0) {
     return undefined;
   }
-  const index = traceAt(traces.length, context.layout, y, context.overlaid);
+  const compared = frame.comparison !== undefined;
+  const index = traceAt(
+    traces.length,
+    context.layout,
+    compared,
+    y,
+    context.overlaid,
+  );
   const trace = traces[index];
-  const lane = lanes(traces.length, context.layout)[index];
+  const lane = traceLanes(traces.length, context.layout, compared)[index];
   if (trace === undefined || lane === undefined) {
     return undefined;
   }

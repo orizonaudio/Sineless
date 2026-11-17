@@ -31,18 +31,27 @@ protocol::ViewLayout layoutNamed(const std::string& name)
     return name == "stacked" ? protocol::ViewLayout::kStacked : protocol::ViewLayout::kOverlaid;
 }
 
+// The screen's lanes and each trace's, in every layout, with and without a Compare frame (whose
+// lane has a place of its own when the tracks are overlaid).
 TEST(TraceGeometry, PlacesLanesAsThePageDoes)
 {
-    for (const nlohmann::json& entry : vectors().at("lanes")) {
-        const auto placed =
-            lanes(entry.at("count").get<std::size_t>(), layoutNamed(entry.at("layout")));
-        const nlohmann::json& expected = entry.at("lanes");
+    const auto expectLanes = [](const std::vector<Lane>& placed, const nlohmann::json& expected,
+                                const nlohmann::json& entry) {
         ASSERT_EQ(placed.size(), expected.size()) << entry.dump();
         for (std::size_t index = 0; index < placed.size(); ++index) {
-            EXPECT_NEAR(placed[index].center, expected[index].at("center").get<double>(), 1e-9);
+            EXPECT_NEAR(placed[index].center, expected[index].at("center").get<double>(), 1e-9)
+                << entry.dump();
             EXPECT_NEAR(placed[index].halfHeight, expected[index].at("halfHeight").get<double>(),
-                        1e-9);
+                        1e-9)
+                << entry.dump();
         }
+    };
+    for (const nlohmann::json& entry : vectors().at("lanes")) {
+        const auto count = entry.at("count").get<std::size_t>();
+        const protocol::ViewLayout layout = layoutNamed(entry.at("layout"));
+        const bool compared = entry.at("compared").get<bool>();
+        expectLanes(screenLanes(count, layout, compared), entry.at("screen"), entry);
+        expectLanes(traceLanes(count, layout, compared), entry.at("lanes"), entry);
     }
 }
 

@@ -45,7 +45,15 @@ import { Segmented } from "./components/segmented.ts";
 import { StackedSummary } from "./components/stacked-summary.ts";
 import { streamGap, wheelUnit } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
-import { fullScale, lanes } from "./render/trace-geometry.ts";
+import {
+  fullScale,
+  screenLaneAt,
+  screenLaneOf,
+  screenLanes,
+  traceInScreenLane,
+  traceLanes,
+  type Lane,
+} from "./render/trace-geometry.ts";
 import {
   TraceMemoryError,
   TraceRenderer,
@@ -88,7 +96,6 @@ import {
 import {
   hoverReadout,
   timeAt,
-  traceAt,
   type HoverContext,
   type HoverTrace,
 } from "./view/hover.ts";
@@ -1308,10 +1315,9 @@ export class OscilloscopeApp {
     this.queueTraceView();
   }
 
-  private laneCount(): number {
-    if (this.layout() !== ViewLayout.stacked) {
-      return 1;
-    }
+  // The traces the latest frame draws, which the lanes are laid out for: its lanes, its views, or,
+  // with neither, the lanes an empty frame takes.
+  private traceCount(): number {
     const lanes = this.lastFrame?.lanes.length ?? 0;
     const views = this.lastFrame?.views.size ?? 0;
     return lanes > 0
@@ -1319,6 +1325,20 @@ export class OscilloscopeApp {
       : views > 0
         ? Math.max(1, this.drawnViews().length)
         : this.emptyFrameLanes();
+  }
+
+  // Whether the latest frame is a Compare frame, whose lane has a place of its own (FR-15.1).
+  private compared(): boolean {
+    return this.lastFrame?.comparison !== undefined;
+  }
+
+  // The lanes on the screen (screenLanes), which the grid, level labels and level cursors follow.
+  private screenLaneList(): Lane[] {
+    return screenLanes(this.traceCount(), this.layout(), this.compared());
+  }
+
+  private laneCount(): number {
+    return this.screenLaneList().length;
   }
 
   // The lanes for a frame that carries no views and no lanes (No tempo, before the first frame):
@@ -1576,34 +1596,31 @@ export class OscilloscopeApp {
       node.style.top = `${String(top)}px`;
       return node;
     };
-    if (this.layout() === ViewLayout.stacked) {
-      container.replaceChildren(
-        ...lanes(styles.length, ViewLayout.stacked).flatMap((lane, index) => {
-          const style = styles[index];
-          if (style === undefined || !labelled(style)) {
-            return [];
+    // A label in each lane of the screen, at its top, naming the traces in it: stacked, one each;
+    // overlaid, a legend of the views or tracks, and with Compare on, Compare's label in its own
+    // lane below theirs.
+    const layout = this.layout();
+    container.replaceChildren(
+      ...screenLanes(styles.length, layout, comparing).flatMap((lane, at) => {
+        const node = document.createElement("div");
+        styles.forEach((style, index) => {
+          if (
+            labelled(style) &&
+            screenLaneOf(styles.length, layout, comparing, index) === at
+          ) {
+            node.append(name(style, index));
           }
-          const node = document.createElement("div");
-          node.append(name(style, index));
-          return [
-            place(
-              node,
-              ((1 - (lane.center + lane.halfHeight)) / 2) * height + 3,
-            ),
-          ];
-        }),
-      );
-    } else {
-      const legend = document.createElement("div");
-      styles.forEach((style, index) => {
-        if (labelled(style)) {
-          legend.append(name(style, index));
-        }
-      });
-      container.replaceChildren(
-        ...(legend.childElementCount > 0 ? [place(legend, 3)] : []),
-      );
-    }
+        });
+        return node.childElementCount > 0
+          ? [
+              place(
+                node,
+                ((1 - (lane.center + lane.halfHeight)) / 2) * height + 3,
+              ),
+            ]
+          : [];
+      }),
+    );
     // The Compare view without another track says why.
     if (this.compareMode() && frame?.lanes.length === 1) {
       const note = document.createElement("div");
@@ -1844,7 +1861,6 @@ export class OscilloscopeApp {
       ? amplitudeLabels(
           this.store.number("verticalScale"),
           this.laneCount(),
-          this.layout(),
           height,
           grid.level,
         )
@@ -1890,7 +1906,8 @@ export class OscilloscopeApp {
       triggerX > 1;
   }
 
-  // The level marker sits in the lane of the trigger source when stacked, else on the full height.
+  // The level marker sits in the lane of the trace the trigger reads (traceLanes): stacked, the
+  // trigger source's; overlaid, the views' or tracks' shared lane, the upper half with Compare on.
   // In the multi-track view the own track triggers, so the marker sits in its lane.
   private markerGeometry(): { center: number; halfHeight: number } {
     // The lane of the view the trigger reads, which a Single frame always draws.
@@ -1907,7 +1924,9 @@ export class OscilloscopeApp {
       shown,
       source,
     );
-    const lane = lanes(this.laneCount(), this.layout())[index] ?? {
+    const lane = traceLanes(this.traceCount(), this.layout(), this.compared())[
+      index
+    ] ?? {
       center: 0,
       halfHeight: 1,
     };
@@ -1993,7 +2012,7 @@ export class OscilloscopeApp {
   // lanes changes, so that a drag in progress keeps its element.
   private placeLevelCursors(): void {
     const container = element("level-cursor-lines");
-    const laneList = lanes(this.laneCount(), this.layout());
+    const laneList = this.screenLaneList();
     const wanted = this.levelCursors === undefined ? 0 : laneList.length * 2;
     if (container.children.length !== wanted) {
       const lines: HTMLElement[] = [];
@@ -2030,8 +2049,8 @@ export class OscilloscopeApp {
     }
   }
 
-  // The view whose trace cursors snap to: the one in `lane` when stacked, otherwise the readout
-  // channel when shown, or the first view shown.
+  // The trace cursors snap to in the screen lane `lane` (screenLanes): the lane's own trace, or in
+  // a lane traces share (overlaid), the readout channel when shown, or the first view shown.
   private snapValues(lane?: number): Float32Array | undefined {
     const frame = this.lastFrame;
     if (frame === undefined) {
@@ -2042,8 +2061,17 @@ export class OscilloscopeApp {
         0,
         this.lanesOf(frame).findIndex((style) => style.own),
       );
+      // The lane's own trace, or in the lane the tracks share, this track's (traceInScreenLane).
       return frame.lanes[
-        lane !== undefined && this.layout() === ViewLayout.stacked ? lane : own
+        lane === undefined
+          ? own
+          : traceInScreenLane(
+              frame.lanes.length,
+              this.layout(),
+              frame.comparison !== undefined,
+              lane,
+              own,
+            )
       ];
     }
     const views = [...frame.views.values()];
@@ -2305,11 +2333,15 @@ export class OscilloscopeApp {
             return;
           }
           const point = this.screenPoint(moveEvent);
-          // Stacked, the cursor snaps to the trace in the lane under the pointer.
+          // The cursor snaps to the trace in the screen lane under the pointer: stacked, that
+          // lane's; overlaid, the readout channel, or in Compare's own lane, Compare's.
           const values = this.snapValues(
-            this.layout() === ViewLayout.stacked
-              ? traceAt(this.laneCount(), ViewLayout.stacked, point.y, 0)
-              : undefined,
+            screenLaneAt(
+              this.traceCount(),
+              this.layout(),
+              this.compared(),
+              point.y,
+            ),
           );
           const x = Math.min(1, Math.max(0, point.x));
           let position = toFrame(this.view, x);
@@ -2350,7 +2382,7 @@ export class OscilloscopeApp {
       const laneIndex = Number(line.dataset["lane"]);
       const key = line.dataset["key"] === "first" ? "first" : "second";
       followDrag(line, event, (moveEvent) => {
-        const lane = lanes(this.laneCount(), this.layout())[laneIndex];
+        const lane = this.screenLaneList()[laneIndex];
         if (this.levelCursors === undefined || lane === undefined) {
           return;
         }

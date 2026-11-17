@@ -273,7 +273,7 @@ export function helpTextsFor(mac: boolean) {
       title: "Measure",
       lead: "Which channel Multi reads, and every lane shows: Left, Right, Mid or Side.",
       notes: [
-        "The Meter, the trigger, snapping and Compare read it.",
+        "The Meter, the trigger, snapping and Compare read it; in Compare's own lane, snapping reads that lane.",
         "A mono track shows its one channel whatever the choice.",
         "Chosen while frozen, it redraws this track and leaves the others empty until the display resumes.",
       ],
@@ -475,7 +475,10 @@ export function helpTextsFor(mac: boolean) {
         overlaid: "all views on one screen",
         stacked: "each view in its own lane",
       }),
-      notes: ["Labels, in the same popover, names each lane."],
+      notes: [
+        "With Compare on, Overlay gives the tracks the upper half and the sum or difference the lower.",
+        "Labels, in the same popover, names each lane.",
+      ],
     },
     trigger: {
       title: "Trigger",
@@ -587,7 +590,7 @@ export function helpTextsFor(mac: boolean) {
       lead: "The channel the Meter reads: Left, Right, Mid or Side.",
       actions: [{ gesture: "Click", effect: "choose among the views drawn" }],
       notes: [
-        "With the views overlaid, the hover and the cursors' snapping read it too; stacked, each lane reads its own trace.",
+        "With the views overlaid, the hover and the cursors' snapping read it too; stacked, each lane reads its own trace, as Compare's own lane does.",
         "While the one chosen is hidden, the first view drawn is read.",
         "A mono track has only Left. Multi has a Measure row of its own.",
       ],

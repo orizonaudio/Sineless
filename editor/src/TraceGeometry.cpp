@@ -11,17 +11,48 @@
 
 namespace orizon::editor {
 
-std::vector<Lane> lanes(std::size_t count, protocol::ViewLayout layout)
+namespace {
+
+// `count` equal lanes from the top of the screen.
+std::vector<Lane> equalLanes(std::size_t count)
 {
-    if (layout == protocol::ViewLayout::kOverlaid || count <= 1) {
-        return std::vector<Lane>(count, Lane{});
-    }
     const double halfHeight = 1.0 / static_cast<double>(count);
     std::vector<Lane> out;
     out.reserve(count);
     for (std::size_t index = 0; index < count; ++index) {
         out.push_back({.center = 1.0 - halfHeight * static_cast<double>(2 * index + 1),
                        .halfHeight = halfHeight});
+    }
+    return out;
+}
+
+// Which of screenLanes' lanes the trace at `index` sits in.
+std::size_t screenLaneOf(std::size_t count, protocol::ViewLayout layout, bool compared,
+                         std::size_t index)
+{
+    if (layout == protocol::ViewLayout::kStacked) {
+        return index;
+    }
+    return compared && count > 1 && index + 1 == count ? 1 : 0;
+}
+
+} // namespace
+
+std::vector<Lane> screenLanes(std::size_t count, protocol::ViewLayout layout, bool compared)
+{
+    if (layout == protocol::ViewLayout::kStacked) {
+        return equalLanes(std::max<std::size_t>(count, 1));
+    }
+    return equalLanes(compared && count > 1 ? 2 : 1);
+}
+
+std::vector<Lane> traceLanes(std::size_t count, protocol::ViewLayout layout, bool compared)
+{
+    const std::vector<Lane> screen = screenLanes(count, layout, compared);
+    std::vector<Lane> out;
+    out.reserve(count);
+    for (std::size_t index = 0; index < count; ++index) {
+        out.push_back(screen[screenLaneOf(count, layout, compared, index)]);
     }
     return out;
 }
@@ -245,7 +276,7 @@ std::vector<Band> cancellationBands(const FrameView& frame, protocol::ViewLayout
         }
     }
     const std::size_t count = frame.lanes.size();
-    const Lane lane = lanes(count, layout).back();
+    const Lane lane = traceLanes(count, layout, true).back();
     const auto position = [&](std::size_t point) {
         return frame.mode == protocol::FrameMode::kMinMax
                    ? columnPosition(frame, static_cast<double>(point))
@@ -383,7 +414,8 @@ GridLines gridLines(double width, double height, std::size_t laneCount, double p
     }
     const double offset = std::fmod(lines.lineWidth, 2.0) / 2.0;
     const auto xOf = [&](double position) { return round(width * position) + offset; };
-    const std::vector<Lane> laneList = lanes(laneCount, protocol::ViewLayout::kStacked);
+    const std::vector<Lane> laneList =
+        screenLanes(laneCount, protocol::ViewLayout::kStacked, false);
     const auto rowY = [&](const Lane& lane, double fraction) {
         return round((1.0 - (lane.center + fraction * lane.halfHeight)) / 2.0 * height) + offset;
     };

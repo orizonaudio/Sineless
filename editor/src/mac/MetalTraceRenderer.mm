@@ -629,9 +629,10 @@ public:
                     view.screen[channel] + static_cast<float>(protocol::kDifferenceSharedStrength) *
                                                (shared[channel] - view.screen[channel]);
             }
-            areaComposite = encodeAreaCoverage(buffer, slot, *frame, view, areasFirst,
-                                               lanes(blocks.size(), view.layout).back(),
-                                               {shared, view.lost, view.gained}, width, height);
+            areaComposite =
+                encodeAreaCoverage(buffer, slot, *frame, view, areasFirst,
+                                   traceLanes(blocks.size(), view.layout, frame->compared()).back(),
+                                   {shared, view.lost, view.gained}, width, height);
         }
         composite.fade = fade;
         areaComposite.fade = fade;
@@ -809,7 +810,7 @@ private:
                                      double height, bool filled)
     {
         TraceUniforms uniforms = traceUniforms(frame, view, width, height);
-        const std::vector<Lane> laneList = lanes(blocks.size(), view.layout);
+        const std::vector<Lane> laneList = traceLanes(blocks.size(), view.layout, frame.compared());
         CompositeUniforms composite;
         composite.traces = static_cast<std::int32_t>(blocks.size());
         composite.attachments = static_cast<std::int32_t>((blocks.size() + 3) / 4);
@@ -924,10 +925,13 @@ private:
                         const TraceView& view, std::size_t blocks, double width, double height,
                         double pixelRatio)
     {
-        // A frame with neither views nor lanes (No tempo) is laid out as the page lays it out.
-        const std::size_t laneCount = view.layout != protocol::ViewLayout::kStacked ? 1
-                                      : blocks > 0 ? blocks
-                                                   : view.emptyFrameLanes;
+        // The screen's lanes (screenLanes), as the page lays them out; a frame with neither views
+        // nor lanes (No tempo) takes the lanes the page gives it.
+        const bool compared = frame != nullptr && frame->compared();
+        const std::size_t laneCount = blocks > 0 ? screenLanes(blocks, view.layout, compared).size()
+                                      : view.layout == protocol::ViewLayout::kStacked
+                                          ? view.emptyFrameLanes
+                                          : 1;
         std::vector<VerticalLine> musical;
         const bool synced = frame != nullptr && frame->has(protocol::FrameFlag::kSynced) &&
                             !frame->has(protocol::FrameFlag::kNoTempo);

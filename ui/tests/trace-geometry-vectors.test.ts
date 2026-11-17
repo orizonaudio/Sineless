@@ -44,7 +44,8 @@ import { CompareLane } from "../../protocol/src/enums.ts";
 import {
   cancellationBands,
   differenceAreas,
-  lanes,
+  screenLanes,
+  traceLanes,
 } from "../src/render/trace-geometry.ts";
 
 const file = new URL(
@@ -56,16 +57,21 @@ const round = (value: number) => Math.round(value * 1e9) / 1e9;
 
 function laneCases() {
   const cases = [];
+  const rounded = (lane: { center: number; halfHeight: number }) => ({
+    center: round(lane.center),
+    halfHeight: round(lane.halfHeight),
+  });
   for (const layout of ["overlaid", "stacked"] as const) {
-    for (let count = 1; count <= 16; count++) {
-      cases.push({
-        count,
-        layout,
-        lanes: lanes(count, ViewLayout[layout]).map((lane) => ({
-          center: round(lane.center),
-          halfHeight: round(lane.halfHeight),
-        })),
-      });
+    for (const compared of [false, true]) {
+      for (let count = 1; count <= 16; count++) {
+        cases.push({
+          count,
+          layout,
+          compared,
+          screen: screenLanes(count, ViewLayout[layout], compared).map(rounded),
+          lanes: traceLanes(count, ViewLayout[layout], compared).map(rounded),
+        });
+      }
     }
   }
   return cases;

@@ -35,7 +35,7 @@ import {
   type DifferencePart,
   type Lane,
   fullScale,
-  lanes,
+  traceLanes,
   coverageAttachments,
   coverageSlot,
   coverageTargets,
@@ -879,7 +879,11 @@ export class TraceRenderer implements FrameRenderer {
       this.finish(started);
       return;
     }
-    const blockLanes = lanes(blocks.length, view.layout);
+    const blockLanes = traceLanes(
+      blocks.length,
+      view.layout,
+      frame.comparison !== undefined,
+    );
     // A difference's lane is filled, not traced (differenceAreas): what this track and the
     // others both cover in this track's colour, dulled, so that what only one covers stands out
     // on a track of any colour. The parts go through the traces' own drawing, in a pass of their

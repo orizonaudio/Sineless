@@ -58,21 +58,99 @@ function screenX(frameFraction: number, view: ViewWindow): number {
   return -1 + (2 * (frameFraction - view.start)) / (view.end - view.start);
 }
 
-// Vertical placement of one view: overlaid views share the screen, stacked views get a lane each.
+// Vertical placement of one lane, in clip space.
 export interface Lane {
   readonly center: number; // Clip space.
   readonly halfHeight: number;
 }
 
-export function lanes(count: number, layout: ViewLayout): Lane[] {
-  if (layout === ViewLayout.overlaid || count <= 1) {
-    return Array.from({ length: count }, () => ({ center: 0, halfHeight: 1 }));
-  }
+// `count` equal lanes from the top of the screen.
+function equalLanes(count: number): Lane[] {
   const halfHeight = 1 / count;
   return Array.from({ length: count }, (_, index) => ({
     center: 1 - halfHeight * (2 * index + 1),
     halfHeight,
   }));
+}
+
+// The one place that decides how a frame's `count` traces are laid out (FR-5, FR-14.2,
+// FR-15.1). `compared`: the frame is a Compare frame, whose last trace is Compare's lane.
+//
+// The lanes on screen, from the top: stacked, one per trace; overlaid, one for all, and with a
+// Compare frame a second, below it, for Compare's lane, which is never overlaid on the tracks
+// (FR-15.1), so that the sum is not drawn over them nor the difference's parts under them.
+export function screenLanes(
+  count: number,
+  layout: ViewLayout,
+  compared: boolean,
+): Lane[] {
+  if (layout === ViewLayout.stacked) {
+    return equalLanes(Math.max(count, 1));
+  }
+  return equalLanes(compared && count > 1 ? 2 : 1);
+}
+
+// Which of screenLanes' lanes the trace at `index` sits in.
+export function screenLaneOf(
+  count: number,
+  layout: ViewLayout,
+  compared: boolean,
+  index: number,
+): number {
+  if (layout === ViewLayout.stacked) {
+    return index;
+  }
+  return compared && count > 1 && index === count - 1 ? 1 : 0;
+}
+
+// The lane each of the `count` traces is drawn in, in the frame's order.
+export function traceLanes(
+  count: number,
+  layout: ViewLayout,
+  compared: boolean,
+): Lane[] {
+  const screen = screenLanes(count, layout, compared);
+  return Array.from(
+    { length: count },
+    (_, index) =>
+      screen[screenLaneOf(count, layout, compared, index)] ?? {
+        center: 0,
+        halfHeight: 1,
+      },
+  );
+}
+
+// The screen lane under `y` (0 at the top of the screen, 1 at the bottom); above or below the
+// screen, the nearest.
+export function screenLaneAt(
+  count: number,
+  layout: ViewLayout,
+  compared: boolean,
+  y: number,
+): number {
+  const screen = screenLanes(count, layout, compared);
+  const clip = 1 - 2 * y;
+  const found = screen.findIndex(
+    (lane) => Math.abs(clip - lane.center) <= lane.halfHeight,
+  );
+  return found < 0 ? (clip > 0 ? 0 : screen.length - 1) : found;
+}
+
+// The trace that what is in screen lane `lane` reads (the hover, the cursors' snapping): the one
+// trace a lane holds, or, in a lane the tracks share, `overlaid`, the trace the readouts read.
+export function traceInScreenLane(
+  count: number,
+  layout: ViewLayout,
+  compared: boolean,
+  lane: number,
+  overlaid: number,
+): number {
+  const held = Array.from({ length: count }, (_, index) => index).filter(
+    (index) => screenLaneOf(count, layout, compared, index) === lane,
+  );
+  return held.length === 1
+    ? (held[0] ?? overlaid)
+    : Math.min(Math.max(overlaid, 0), Math.max(count - 1, 0));
 }
 
 export function fullScale(verticalScaleDb: number): number {
@@ -246,7 +324,7 @@ export function cancellationBands(
     }
   }
   const count = frame.lanes.length;
-  const lane = lanes(count, layout.layout)[count - 1] ?? {
+  const lane = traceLanes(count, layout.layout, true)[count - 1] ?? {
     center: 0,
     halfHeight: 1,
   };

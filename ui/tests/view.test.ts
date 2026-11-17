@@ -4,7 +4,6 @@ import {
   ChannelView,
   FrameMode,
   TriggerMode,
-  ViewLayout,
 } from "../../protocol/src/enums.ts";
 import type { Frame } from "../../protocol/src/frame-decoder.ts";
 import { defaultTriggerPosition } from "../../protocol/src/limits.ts";
@@ -284,7 +283,7 @@ describe("axis labels", () => {
     expect(levelLabelSteps(400, "medium")).toEqual([0, 1, 2, 3, 4]);
     expect(levelLabelSteps(400, "fine")).toEqual([0, 1, 2, 3, 4]);
     const texts = (density: GridDensityName) =>
-      amplitudeLabels(0, 1, ViewLayout.overlaid, 800, density)
+      amplitudeLabels(0, 1, 800, density)
         .slice(0, 4)
         .map((label) => label.text);
     expect(texts("coarse")).toEqual([
@@ -303,7 +302,7 @@ describe("axis labels", () => {
   });
 
   test("labels a single lane in dB on both halves", () => {
-    const labels = amplitudeLabels(0, 2, ViewLayout.overlaid, 600);
+    const labels = amplitudeLabels(0, 1, 600);
     expect(labels.map((label) => label.text)).toEqual([
       "0 dB",
       `${minus}3`,
@@ -326,7 +325,7 @@ describe("axis labels", () => {
 
   test("counts down from the top in 3 dB steps", () => {
     const texts = (topDb: number) =>
-      amplitudeLabels(topDb, 1, ViewLayout.overlaid, 600)
+      amplitudeLabels(topDb, 1, 600)
         .slice(0, 5)
         .map((label) => label.text);
     expect(texts(3)).toEqual([
@@ -347,7 +346,7 @@ describe("axis labels", () => {
   });
 
   test("labels every 6 dB on a short screen", () => {
-    const labels = amplitudeLabels(0, 1, ViewLayout.overlaid, 200);
+    const labels = amplitudeLabels(0, 1, 200);
     expect(labels.map((label) => label.text)).toEqual([
       "0 dB",
       `${minus}6`,
@@ -360,7 +359,7 @@ describe("axis labels", () => {
   });
 
   test("labels stacked lanes above their zero line only", () => {
-    const labels = amplitudeLabels(0, 2, ViewLayout.stacked, 400);
+    const labels = amplitudeLabels(0, 2, 400);
     expect(labels.map((label) => label.text)).toEqual([
       "0 dB",
       `${minus}6`,

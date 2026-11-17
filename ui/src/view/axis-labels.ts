@@ -1,6 +1,6 @@
 // Positions and texts of the screen's axis labels. Positions are fractions of the
 // screen: `x` from the left, `y` from the top.
-import { lanes } from "../render/trace-geometry.ts";
+import { screenLanes } from "../render/trace-geometry.ts";
 import { ViewLayout } from "../../../protocol/src/enums.ts";
 import {
   gridCoarseLevelStride,
@@ -139,19 +139,17 @@ export interface AxisLabel {
   readonly detail?: string;
 }
 
-// Level labels in dB at the level lines of each lane: the top carries the unit, the zero line
-// reads minus infinity. Overlaid views share one lane. A single lane is labelled on both halves;
-// stacked lanes only above their zero line, so that labels at a lane boundary never collide.
+// Level labels in dB at the level lines of each of the screen's `laneCount` lanes (screenLanes):
+// the top carries the unit, the zero line reads minus infinity. A single lane is labelled on both
+// halves; several only above their zero line, so that labels at a lane boundary never collide.
 export function amplitudeLabels(
   topDb: number,
   laneCount: number,
-  layout: ViewLayout,
   screenHeight: number,
   density: GridDensityName = "medium",
 ): AxisLabel[] {
   const labels: AxisLabel[] = [];
-  const viewLanes =
-    layout === ViewLayout.stacked ? lanes(laneCount, layout) : lanes(1, layout);
+  const viewLanes = screenLanes(laneCount, ViewLayout.stacked, false);
   for (const lane of viewLanes) {
     const steps = levelLabelSteps(
       (lane.halfHeight * screenHeight) / 2,

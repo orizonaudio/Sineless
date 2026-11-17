@@ -20,14 +20,21 @@ struct ViewWindow
     double end = 1.0;
 };
 
-// One view's or lane's vertical placement in clip space: overlaid views share the screen, stacked
-// ones get a lane each.
+// One lane's vertical placement in clip space.
 struct Lane
 {
     double center = 0.0;
     double halfHeight = 1.0;
 };
-[[nodiscard]] std::vector<Lane> lanes(std::size_t count, protocol::ViewLayout layout);
+// How a frame's `count` traces are laid out, as the page lays them out (trace-geometry.ts):
+// `compared`, the frame is a Compare frame, whose last trace is Compare's lane. The lanes on the
+// screen from the top: stacked, one per trace; overlaid, one for all, and with a Compare frame a
+// second, below it, for Compare's lane, never overlaid on the tracks (FR-15.1).
+[[nodiscard]] std::vector<Lane> screenLanes(std::size_t count, protocol::ViewLayout layout,
+                                            bool compared);
+// The lane each of the `count` traces is drawn in, in the frame's order.
+[[nodiscard]] std::vector<Lane> traceLanes(std::size_t count, protocol::ViewLayout layout,
+                                           bool compared);
 
 // Span positions (0 to 1) of a min/max column edge and of a raw point.
 [[nodiscard]] double columnPosition(const FrameView& frame, double column);

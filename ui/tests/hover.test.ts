@@ -115,10 +115,10 @@ function sine(length: number, cycles: number): Float32Array {
 
 describe("hover readout", () => {
   test("picks the stacked lane under the pointer, or the overlaid trace", () => {
-    expect(traceAt(3, ViewLayout.stacked, 0.1, 0)).toBe(0);
-    expect(traceAt(3, ViewLayout.stacked, 0.5, 0)).toBe(1);
-    expect(traceAt(3, ViewLayout.stacked, 0.9, 0)).toBe(2);
-    expect(traceAt(3, ViewLayout.overlaid, 0.9, 1)).toBe(1);
+    expect(traceAt(3, ViewLayout.stacked, false, 0.1, 0)).toBe(0);
+    expect(traceAt(3, ViewLayout.stacked, false, 0.5, 0)).toBe(1);
+    expect(traceAt(3, ViewLayout.stacked, false, 0.9, 0)).toBe(2);
+    expect(traceAt(3, ViewLayout.overlaid, false, 0.9, 1)).toBe(1);
   });
 
   test("finds cycles around a DC offset, and none in noise or silence", () => {
@@ -514,8 +514,8 @@ describe("hover readout", () => {
 
   test("names a trace even when the overlaid one is no longer drawn", () => {
     // A track removed while it was the one described: the last trace drawn is.
-    expect(traceAt(2, ViewLayout.overlaid, 0.5, 5)).toBe(1);
-    expect(traceAt(1, ViewLayout.stacked, 0.9, 3)).toBe(0);
+    expect(traceAt(2, ViewLayout.overlaid, false, 0.5, 5)).toBe(1);
+    expect(traceAt(1, ViewLayout.stacked, false, 0.9, 3)).toBe(0);
   });
 
   test("measures cycles only above the analysis gate, as the engine does", () => {

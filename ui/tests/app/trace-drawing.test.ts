@@ -16,8 +16,9 @@ import {
 import {
   columnPosition,
   coverageAttachments,
-  lanes,
+  traceLanes,
   pointPosition,
+  type Lane,
 } from "../../src/render/trace-geometry.ts";
 import type { Rgba } from "../../src/render/trace-renderer.ts";
 import type { ViewWindow } from "../../src/view/zoom.ts";
@@ -353,7 +354,7 @@ describe("lanes are drawn apart", () => {
       layout: ViewLayout.stacked,
     });
     const reach = reachOf(3);
-    const placed = lanes(colors.length, ViewLayout.stacked);
+    const placed = traceLanes(colors.length, ViewLayout.stacked, false);
     for (let x = 0; x < width; x++) {
       for (let y = 0; y < height; y++) {
         const pixel = drawing.pixel(x, y);
@@ -1056,6 +1057,18 @@ function flatLanes(levels: readonly number[]): Frame {
   });
 }
 const rowOf = (value: number) => Math.floor(((value + 1) / 2) * height);
+// The row of `value` in `lane`.
+const laneRowOf = (lane: Lane | undefined, value: number) =>
+  Math.floor(
+    (((lane?.center ?? 0) + (lane?.halfHeight ?? 1) * value + 1) / 2) * height,
+  );
+// Overlaid, a Compare frame of two tracks: the tracks share the upper half and the sum has the
+// lower half to itself, with its shading (FR-15.1).
+const [overlaidTracks, , overlaidSum] = traceLanes(
+  3,
+  ViewLayout.overlaid,
+  true,
+);
 // The same pixels everywhere.
 function expectSame(drawing: Drawing, reference: Drawing): void {
   expect(drawing.width).toBe(reference.width);
@@ -1182,10 +1195,14 @@ describe("lanes layer in order, whatever their channel and target", () => {
     const shade: Rgba = [1, 0, 0, 0.16];
     const shaded = over(transparent, shade);
     const [first, second, sum] = colors as [Rgba, Rgba, Rgba];
+    // The shading in the sum's lane alone, under the sum; the tracks over no shading, the later
+    // over the earlier.
     const places: [number, Pixel][] = [
-      [height - 4, shaded],
-      [rowOf(0.45), over(shaded, first)],
-      [rowOf(0), over(over(over(shaded, first), second), sum)],
+      [laneRowOf(overlaidSum, 1) - 4, shaded],
+      [laneRowOf(overlaidSum, 0), over(shaded, sum)],
+      [height - 4, transparent],
+      [laneRowOf(overlaidTracks, 0.45), over(transparent, first)],
+      [laneRowOf(overlaidTracks, 0), over(over(transparent, first), second)],
     ];
     const drawings = [draw(frame, options), draw(frame, options)];
     for (const drawing of drawings) {
@@ -1208,57 +1225,77 @@ describe("lanes layer in order, whatever their channel and target", () => {
   // other from -0.75 to 0.25, so between -0.5 and 0.25 both do (this track's colour, dulled), up
   // to 0.5 only this track does (lost) and down to -0.75 only the other does (gained). Nothing is
   // drawn as the difference's own wave, which lies elsewhere here so that it would show.
-  test("a difference's lane is filled with what is shared, lost and gained", () => {
-    const none = { correlation: 0, related: false, offset: 0, inverted: false };
-    const count = 100;
-    const band = (low: number, high: number) =>
-      Array.from({ length: count * 2 }, (_, k) => (k % 2 === 0 ? low : high));
-    const frame = frameOf({
-      mode: FrameMode.minMax,
-      pointCount: count,
-      viewStart: 0,
-      viewEnd: 1,
-      lanes: [band(-0.5, 0.5), band(-0.75, 0.25), band(0.85, 0.95)],
-      comparison: {
-        lane: CompareLane.difference,
-        sumGain: Number.NaN,
-        fixedGain: Number.NaN,
-        matches: [none, none],
-      },
-    });
-    const colors = [0, 1, 2].map((lane) => laneColor(lane));
-    const drawing = draw(frame, {
-      laneColors: colors,
-      layout: ViewLayout.stacked,
-    });
-    expect(drawing.error).toBe(0);
-    const lane = lanes(3, ViewLayout.stacked)[2] ?? {
-      center: 0,
-      halfHeight: 1,
-    };
-    const row = (value: number) =>
-      Math.floor(((lane.center + lane.halfHeight * value + 1) / 2) * height);
-    // Opaque: this track's colour moved toward the screen's, with nothing showing through.
-    const [r, g, b] = colors[0] as Rgba;
-    const toward = (screen: number, colour: number) =>
-      screen + differenceSharedStrength * (colour - screen);
-    const shared: Pixel = [
-      toward(screenColor[0], r),
-      toward(screenColor[1], g),
-      toward(screenColor[2], b),
-      1,
-    ];
-    const places: [number, Pixel][] = [
-      [0, shared],
-      [0.375, [1, 0, 0, 1]],
-      [-0.625, [0, 1, 0, 1]],
-      [0.9, transparent],
-      [-0.9, transparent],
-    ];
-    for (const [value, expected] of places) {
-      expectPixel(drawing, width / 2, row(value), expected, 3);
-    }
-  });
+  // Stacked, the difference has the last lane; overlaid, the lower half, under the tracks' upper
+  // half (FR-15.1): no track is drawn over its parts, which keep their own colours.
+  test.each(Object.keys(ViewLayout) as (keyof typeof ViewLayout)[])(
+    "%s, a difference's lane is filled with what is shared, lost and gained",
+    (layout) => {
+      const none = {
+        correlation: 0,
+        related: false,
+        offset: 0,
+        inverted: false,
+      };
+      const count = 100;
+      const band = (low: number, high: number) =>
+        Array.from({ length: count * 2 }, (_, k) => (k % 2 === 0 ? low : high));
+      const frame = frameOf({
+        mode: FrameMode.minMax,
+        pointCount: count,
+        viewStart: 0,
+        viewEnd: 1,
+        lanes: [band(-0.5, 0.5), band(-0.75, 0.25), band(0.85, 0.95)],
+        comparison: {
+          lane: CompareLane.difference,
+          sumGain: Number.NaN,
+          fixedGain: Number.NaN,
+          matches: [none, none],
+        },
+      });
+      const colors = [0, 1, 2].map((lane) => laneColor(lane));
+      const drawing = draw(frame, {
+        laneColors: colors,
+        layout: ViewLayout[layout],
+      });
+      expect(drawing.error).toBe(0);
+      const [tracks, , differenceLane] = traceLanes(
+        3,
+        ViewLayout[layout],
+        true,
+      );
+      const lane = differenceLane ?? { center: 0, halfHeight: 1 };
+      const row = (value: number) =>
+        Math.floor(((lane.center + lane.halfHeight * value + 1) / 2) * height);
+      // Opaque: this track's colour moved toward the screen's, with nothing showing through.
+      const [r, g, b] = colors[0] as Rgba;
+      const toward = (screen: number, colour: number) =>
+        screen + differenceSharedStrength * (colour - screen);
+      const shared: Pixel = [
+        toward(screenColor[0], r),
+        toward(screenColor[1], g),
+        toward(screenColor[2], b),
+        1,
+      ];
+      const places: [number, Pixel][] = [
+        [0, shared],
+        [0.375, [1, 0, 0, 1]],
+        [-0.625, [0, 1, 0, 1]],
+        [0.9, transparent],
+        [-0.9, transparent],
+      ];
+      for (const [value, expected] of places) {
+        expectPixel(drawing, width / 2, row(value), expected, 3);
+      }
+      // The tracks are drawn in their own lane: this track's where only it reaches.
+      expectPixel(
+        drawing,
+        width / 2,
+        laneRowOf(tracks, 0.375),
+        over(transparent, colors[0] as Rgba),
+        3,
+      );
+    },
+  );
 
   // Two tracks that all but agree (a compressor's tail, or what lining them up between samples
   // leaves) differ by far less than a pixel: drawn as a hairline at full strength, that would
@@ -1269,7 +1306,7 @@ describe("lanes layer in order, whatever their channel and target", () => {
     const count = 100;
     const band = (low: number, high: number) =>
       Array.from({ length: count * 2 }, (_, k) => (k % 2 === 0 ? low : high));
-    const lane = lanes(3, ViewLayout.stacked)[2] ?? {
+    const lane = traceLanes(3, ViewLayout.stacked, false)[2] ?? {
       center: 0,
       halfHeight: 1,
     };
@@ -1342,7 +1379,7 @@ describe("lanes layer in order, whatever their channel and target", () => {
       },
     );
     expect(drawing.error).toBe(0);
-    const [mine, , difference] = lanes(3, ViewLayout.stacked);
+    const [mine, , difference] = traceLanes(3, ViewLayout.stacked, false);
     const row = (lane: typeof mine, value: number) =>
       Math.floor(
         (((lane?.center ?? 0) + (lane?.halfHeight ?? 1) * value + 1) / 2) *
@@ -1391,7 +1428,8 @@ describe("lanes layer in order, whatever their channel and target", () => {
       lanes: [
         band(() => 0.5),
         band(() => 0.4),
-        band((point) => (point < count / 2 ? 0 : 0.9)),
+        // Not cancelling in the second half, and clear of the lane's top.
+        band((point) => (point < count / 2 ? 0 : 0.6)),
       ],
       comparison: { sumGain: -3, fixedGain: 3, matches: [own, alike, alike] },
     });
@@ -1399,8 +1437,8 @@ describe("lanes layer in order, whatever their channel and target", () => {
       laneColors: [0, 1, 2].map((lane) => laneColor(lane)),
     };
     const shaded = over(transparent, [1, 0, 0, 0.16]);
-    // Above every trace, where only the shading shows.
-    const y = height - 4;
+    // Above every trace in the sum's lane, where only the shading shows.
+    const y = laneRowOf(overlaidSum, 1) - 4;
     const whole = draw(frame, options);
     expectPixel(whole, width / 4, y, shaded, 3);
     expectPixel(whole, (3 * width) / 4, y, transparent, 3);

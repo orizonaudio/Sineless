@@ -83,8 +83,7 @@ function expectClearOfBand(): void {
 function expectedLevelTexts(layout: LayoutName, lanes: number): string[] {
   return amplitudeLabels(
     0,
-    lanes,
-    ViewLayout[layout],
+    layout === "stacked" ? lanes : 1,
     byId("labels").clientHeight,
   ).map((label) => label.text);
 }
