@@ -360,7 +360,9 @@ it, with its reasoning and previews, is in [docs/ui/](ui/README.md).
 #### Style
 
 The colours are tokens (`ui/src/tokens.css`, from `docs/ui/tokens/`), checked for contrast and
-colour blindness in `docs/ui/colour.html`.
+colour blindness in `docs/ui/colour.html`. The contrast bar applies to what is meant to be read;
+where the point is to set something back (a disabled control, a dimmed old picture, overlaid traces
+drawn see-through so that the ones behind still show), it does not.
 
 - Dark theme only: graphite chrome around an inset black screen, its greys one cool hue (red and
   green equal, blue above them, more on the lighter greys), so every surface reads as one material. The case colour is also the

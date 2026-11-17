@@ -269,11 +269,13 @@ export const filledAreaLineHalf = 0.5;
 export const previousCycleAlpha = 0.5;
 // In Overlay, every trace is drawn at this opacity, as a whole: where two overlap, the one behind
 // shows through, so each keeps its outline, and a trace's own overlapping pieces are no denser.
-// Bright enough that a lone trace still reads as the trace, faint enough that two overlapping
-// ones both show; it looked right between 0.6 and 0.7, for lines and filled traces alike. Stacked
-// traces stay opaque: nothing lies behind them but the screen. Limit: many traces of a similar
-// level overlaid still turn opaque inside (ten at 0.65 cover 1 − 0.35¹⁰ of a pixel), so the inner
-// ones are not readable at any opacity that leaves one trace bright enough (FR-14.2).
+// Bright enough that a lone trace still reads as the trace, faint enough that two overlapping ones
+// both show; it looked right between 0.6 and 0.7, for lines and filled traces alike. That takes
+// some trace colours below the 4.5:1 contrast bar for traces, on purpose: docs/ui/colour.html
+// leaves out what is set back so that what is behind it shows. Stacked traces stay opaque: nothing
+// lies behind them but the screen. Limit: many traces of a similar level overlaid still turn opaque
+// inside (ten at 0.65 cover 1 − 0.35¹⁰ of a pixel), so the inner ones are not readable at any
+// opacity that leaves one trace bright enough (FR-14.2).
 export const overlaidTraceAlpha = 0.65;
 
 // Musical positions worked out in floating point (a step's multiples, a view's edges) count as
