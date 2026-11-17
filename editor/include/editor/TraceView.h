@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <variant>
 #include <vector>
 
 namespace orizon::editor {
@@ -27,6 +28,9 @@ struct TraceView
     protocol::TraceShape traceShape = protocol::TraceShape::kLine;
     double verticalScaleDb = 0.0;
     bool dim = false;
+    // The overlaid trace highlighted (FR-16.4): a view in Single, a lane's track id (an id of
+    // `laneSets`) in Multi, or none.
+    std::optional<std::variant<protocol::ChannelView, std::int64_t>> highlight;
     double lineWidth = 1.0;
     // The lanes the page lays out for a frame with no views and no lanes (No tempo).
     std::size_t emptyFrameLanes = 1;
@@ -65,6 +69,10 @@ struct TraceView
     [[nodiscard]] std::vector<Rgba> laneColours(const FrameView& frame) const;
     // Which of a frame's lanes is this track's (the first, when its lane set is not held yet).
     [[nodiscard]] std::size_t ownLane(const FrameView& frame) const;
+    // Which of the frame's traces is highlighted: the view's index among the frame's views, or the
+    // lane whose track id it is in the lane styles the colours come from (the frame's set, else the
+    // newest held); none when those do not match the frame's lanes or name no such trace.
+    [[nodiscard]] std::optional<std::size_t> highlightedTrace(const FrameView& frame) const;
 
     // The message parsed, or nullopt when any field is missing, of the wrong type, not finite or
     // out of range: the editor keeps the last good one (QS-7).

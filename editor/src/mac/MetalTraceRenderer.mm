@@ -843,13 +843,18 @@ private:
     {
         TraceUniforms uniforms = traceUniforms(frame, view, width, height);
         const std::vector<Lane> laneList = traceLanes(blocks.size(), view.layout, frame.compared());
+        // One overlaid trace may be highlighted (trace-renderer.ts): layered last, in front, and
+        // the others of its lane in a colour moved toward the screen's, keeping their coverage.
+        const HighlightOrder highlighted = highlightOrder(
+            blocks.size(), view.layout, frame.compared(), view.highlightedTrace(frame));
         CompositeUniforms composite;
         composite.traces = static_cast<std::int32_t>(blocks.size());
         composite.attachments = static_cast<std::int32_t>((blocks.size() + 3) / 4);
         id<MTLRenderCommandEncoder> encoder = nil;
         std::size_t bound = kCoverageTargets;
-        for (std::size_t index = 0; index < blocks.size(); ++index) {
-            const std::size_t attachment = index / 4;
+        for (std::size_t place = 0; place < blocks.size(); ++place) {
+            const std::size_t index = highlighted.order[place];
+            const std::size_t attachment = place / 4;
             if (attachment != bound) {
                 [encoder endEncoding];
                 MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -862,15 +867,23 @@ private:
                 bound = attachment;
             }
             const Rgba white{1.0f, 1.0f, 1.0f, 1.0f};
-            composite.colours[index] = index < colours.size() ? colours[index] : white;
+            Rgba& colour = composite.colours[place];
+            colour = index < colours.size() ? colours[index] : white;
+            if (highlighted.dimmed[index]) {
+                for (std::size_t channel = 0; channel < 3; ++channel) {
+                    colour[channel] =
+                        view.screen[channel] + static_cast<float>(protocol::kHighlightOthersAlpha) *
+                                                   (colour[channel] - view.screen[channel]);
+                }
+            }
             // In Overlay each trace is translucent as a whole (trace-renderer.ts).
             if (view.layout == protocol::ViewLayout::kOverlaid) {
-                composite.colours[index][3] *= kOverlaidTraceAlpha;
+                colour[3] *= kOverlaidTraceAlpha;
             }
             if (filled && index + 1 == blocks.size()) {
                 continue; // Its target is cleared with the others; nothing of it is drawn.
             }
-            [encoder setRenderPipelineState:tracePipelines[index % 4]];
+            [encoder setRenderPipelineState:tracePipelines[place % 4]];
             uniforms.center = static_cast<float>(laneList[index].center);
             uniforms.halfHeight = static_cast<float>(laneList[index].halfHeight);
             uniforms.first = firsts[index];

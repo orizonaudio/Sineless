@@ -277,6 +277,15 @@ export const previousCycleAlpha = 0.5;
 // inside (ten at 0.65 cover 1 − 0.35¹⁰ of a pixel), so the inner ones are not readable at any
 // opacity that leaves one trace bright enough (FR-14.2).
 export const overlaidTraceAlpha = 0.65;
+// While one overlaid trace is highlighted (its lane label under the pointer, or the trace the Hover
+// readout reads, FR-16.4), every other trace in its lane is drawn in a colour moved this share of
+// the way from the screen's to its own, keeping its coverage, as the previous cycle's is: the
+// highlighted one, drawn in front at full strength, stands out, and the others still show where
+// they are, each in its own hue. Fainter than the previous cycle's dimming, so a highlighted trace
+// stands out more than the new cycle does from the old. The other dimming multiplies on top, so at
+// any point the highlighted trace stays the strongest (right of a Beats playhead 0.5 against
+// 0.175). Tuned by eye, between about 0.25 and 0.45.
+export const highlightOthersAlpha = 0.35;
 
 // Musical positions worked out in floating point (a step's multiples, a view's edges) count as
 // whole, or as on an edge, within musicalTolerance quarter notes or steps: far above the rounding
@@ -419,6 +428,7 @@ export const limits: readonly {
   { name: "waitingAlpha", value: waitingAlpha, kind: "double" },
   { name: "previousCycleAlpha", value: previousCycleAlpha, kind: "double" },
   { name: "overlaidTraceAlpha", value: overlaidTraceAlpha, kind: "double" },
+  { name: "highlightOthersAlpha", value: highlightOthersAlpha, kind: "double" },
   { name: "barcodeDataBits", value: barcodeDataBits, kind: "count" },
   {
     name: "barcodeTicksPerMillisecond",

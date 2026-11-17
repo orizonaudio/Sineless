@@ -66,6 +66,7 @@
     "traceShape": "filled",
     "verticalScaleDb": -6,
     "dim": false,
+    "highlight": { "lane": 5 },
     "lineWidth": 3,
     "emptyFrameLanes": 2,
     "viewColours": [

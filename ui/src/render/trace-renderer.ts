@@ -21,6 +21,7 @@ import {
   barcodeTicksPerMillisecond,
   differenceSharedStrength,
   filledAreaLineHalf,
+  highlightOthersAlpha,
   overlaidTraceAlpha,
   previousCycleAlpha,
   sampleDotRadius,
@@ -37,6 +38,7 @@ import {
   type DifferencePart,
   type Lane,
   fullScale,
+  highlightOrder,
   traceLanes,
   coverageAttachments,
   coverageSlot,
@@ -81,6 +83,9 @@ export interface TraceView {
   readonly dim?: boolean;
   // The part of the frame on screen.
   readonly view?: ViewWindow;
+  // The overlaid trace highlighted (FR-16.4), an index into the frame's lanes or views: drawn in
+  // front, the others of its lane dimmed (highlightOrder).
+  readonly highlight?: number;
 }
 
 // Shared by the trace shaders, in device pixels from the canvas's bottom left. A block (a view
@@ -969,8 +974,20 @@ export class TraceRenderer implements FrameRenderer {
         dimming,
       );
     }
-    // A frame holds at most maxLanes traces, which one pass holds.
+    // A frame holds at most maxLanes traces, which one pass holds. One overlaid trace may be
+    // highlighted: layered last, in front, and the others of its lane in a colour moved toward the
+    // screen's, keeping their coverage (highlightOthersAlpha), under the other dimming.
     const minMax = frame.mode === FrameMode.minMax;
+    const drawn = blocks.slice(0, tracesPerPass);
+    const { order, dimmed } = highlightOrder(
+      drawn.length,
+      view.layout,
+      frame.comparison !== undefined,
+      view.highlight,
+    );
+    const [sr, sg, sb] = this.style.screenColor();
+    const toward = (screen: number, colour: number) =>
+      screen + highlightOthersAlpha * (colour - screen);
     this.drawTraces(
       {
         ...pass,
@@ -980,24 +997,27 @@ export class TraceRenderer implements FrameRenderer {
           ? { lineHalf: filledAreaLineHalf, fill: true }
           : { lineHalf: this.style.lineWidthPixels / 2 }),
       },
-      blocks
-        .slice(0, tracesPerPass)
-        .map(([values], index) => ({
-          values,
+      order
+        .map((index, slot) => ({
+          index,
+          values: drawn[index]?.[0] ?? new Float32Array(),
           lane: blockLanes[index] ?? { center: 0, halfHeight: 1 },
-          slot: index,
+          slot,
         }))
         // The difference's own wave is not drawn: its lane holds the areas.
-        .filter((_, index) => areas === undefined || index + 1 < blocks.length),
+        .filter(
+          ({ index }) => areas === undefined || index + 1 < blocks.length,
+        ),
       // In Overlay each trace is translucent as a whole, so the one behind shows through where
       // they overlap: its colour's alpha, which the composite layers its coverage with.
-      blocks
-        .slice(0, tracesPerPass)
-        .map(([, [r, g, b, a]]): Rgba =>
-          view.layout === ViewLayout.overlaid
-            ? [r, g, b, a * overlaidTraceAlpha]
-            : [r, g, b, a],
-        ),
+      order.map((index): Rgba => {
+        const [r, g, b, a] = drawn[index]?.[1] ?? white;
+        const alpha =
+          view.layout === ViewLayout.overlaid ? a * overlaidTraceAlpha : a;
+        return dimmed[index] === true
+          ? [toward(sr, r), toward(sg, g), toward(sb, b), alpha]
+          : [r, g, b, alpha];
+      }),
       dimming,
     );
     if (sweep !== undefined) {

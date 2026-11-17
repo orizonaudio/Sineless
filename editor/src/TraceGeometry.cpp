@@ -6,6 +6,7 @@
 #include <functional>
 #include <initializer_list>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <ranges>
 
@@ -53,6 +54,32 @@ std::vector<Lane> traceLanes(std::size_t count, protocol::ViewLayout layout, boo
     out.reserve(count);
     for (std::size_t index = 0; index < count; ++index) {
         out.push_back(screen[screenLaneOf(count, layout, compared, index)]);
+    }
+    return out;
+}
+
+HighlightOrder highlightOrder(std::size_t count, protocol::ViewLayout layout, bool compared,
+                              std::optional<std::size_t> trace)
+{
+    HighlightOrder out;
+    out.order.resize(count);
+    std::iota(out.order.begin(), out.order.end(), std::size_t{0});
+    out.dimmed.assign(count, false);
+    if (layout != protocol::ViewLayout::kOverlaid || !trace || *trace >= count) {
+        return out;
+    }
+    const std::size_t lane = screenLaneOf(count, layout, compared, *trace);
+    std::size_t sharing = 0;
+    for (std::size_t index = 0; index < count; ++index) {
+        sharing += screenLaneOf(count, layout, compared, index) == lane ? 1 : 0;
+    }
+    if (sharing < 2) {
+        return out;
+    }
+    std::erase(out.order, *trace);
+    out.order.push_back(*trace);
+    for (std::size_t index = 0; index < count; ++index) {
+        out.dimmed[index] = index != *trace && screenLaneOf(count, layout, compared, index) == lane;
     }
     return out;
 }

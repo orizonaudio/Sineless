@@ -13,8 +13,10 @@ import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 import {
   differenceSharedStrength,
   filledAreaLineHalf,
+  highlightOthersAlpha,
   maxLanes,
   overlaidTraceAlpha,
+  previousCycleAlpha,
   waitingAlpha,
 } from "../../../protocol/src/limits.ts";
 import {
@@ -2481,5 +2483,211 @@ describe("a filled trace", () => {
       [dimmed(0) * a, dimmed(1) * a, dimmed(2) * a, a],
       3,
     );
+  });
+});
+
+// One overlaid trace highlighted (FR-16.4): layered last, in front, at full strength; every other
+// trace in its lane in its colour moved toward the screen's by highlightOthersAlpha, keeping its
+// coverage, and the other dimming on top. Two flat tracks at their own levels, and both at one
+// level where they overlap, and a third that is Compare's.
+describe("one overlaid trace highlighted", () => {
+  const colors = [laneColor(1), laneColor(6)];
+  // A colour moved `keep` of the way from the screen's to its own, its alpha kept.
+  const toward = (color: Rgba, keep: number): Rgba => [
+    screenColor[0] + keep * (color[0] - screenColor[0]),
+    screenColor[1] + keep * (color[1] - screenColor[1]),
+    screenColor[2] + keep * (color[2] - screenColor[2]),
+    color[3],
+  ];
+  const first = colors[0] ?? laneColor(1);
+  const second = colors[1] ?? laneColor(6);
+  const shapes = (["line", "filled"] as const).map((name) => ({
+    name,
+    traceShape: TraceShape[name],
+  }));
+  // A row inside the trace at `level`: on its line, or halfway into its area.
+  const inside = (traceShape: TraceShape, level: number) =>
+    rowOf(traceShape === TraceShape.filled ? level / 2 : level);
+
+  test.each(shapes)(
+    "$name: the highlighted trace is unchanged, the other dimmed toward the screen",
+    ({ traceShape }) => {
+      // Levels far apart, so each pixel read is one trace's; filled, from the zero line out.
+      const drawing = draw(flatLanes([0.6, -0.6]), {
+        laneColors: colors,
+        layout: ViewLayout.overlaid,
+        traceShape,
+        highlight: 0,
+      });
+      expectPixel(
+        drawing,
+        width / 2,
+        inside(traceShape, 0.6),
+        over(transparent, overlaid(first)),
+        2,
+      );
+      expectPixel(
+        drawing,
+        width / 2,
+        inside(traceShape, -0.6),
+        over(transparent, overlaid(toward(second, highlightOthersAlpha))),
+        2,
+      );
+    },
+  );
+
+  test.each(shapes)(
+    "$name: where they overlap, the highlighted trace lies in front of a later one",
+    ({ traceShape }) => {
+      const drawing = draw(flatLanes([0.5, 0.5]), {
+        laneColors: colors,
+        layout: ViewLayout.overlaid,
+        traceShape,
+        highlight: 0,
+      });
+      expectPixel(
+        drawing,
+        width / 2,
+        inside(traceShape, 0.5),
+        over(
+          over(transparent, overlaid(toward(second, highlightOthersAlpha))),
+          overlaid(first),
+        ),
+        2,
+      );
+    },
+  );
+
+  test.each(shapes)(
+    "$name: stacked, a highlight changes nothing",
+    ({ traceShape }) => {
+      const frame = flatLanes([0.5, -0.5]);
+      const options = {
+        laneColors: colors,
+        layout: ViewLayout.stacked,
+        traceShape,
+      };
+      expectSame(
+        draw(frame, { ...options, highlight: 0 }),
+        draw(frame, options),
+      );
+    },
+  );
+
+  test("waiting, and right of a Beats playhead, the other dimming applies on top", () => {
+    const waiting = draw(flatLanes([0.6, -0.6]), {
+      laneColors: colors,
+      layout: ViewLayout.overlaid,
+      dim: true,
+      highlight: 1,
+    });
+    expectPixel(
+      waiting,
+      width / 2,
+      rowOf(0.6),
+      over(
+        transparent,
+        overlaid(toward(first, highlightOthersAlpha * waitingAlpha)),
+      ),
+      2,
+    );
+    expectPixel(
+      waiting,
+      width / 2,
+      rowOf(-0.6),
+      over(transparent, overlaid(toward(second, waitingAlpha))),
+      2,
+    );
+    const count = 100;
+    const swept = frameOf({
+      mode: FrameMode.minMax,
+      pointCount: count,
+      viewStart: 0,
+      viewEnd: 1,
+      synced: true,
+      cursor: 0.5,
+      cycleStart: 0,
+      spanQuarterNotes: 16,
+      barQuarterNotes: 4,
+      lanes: [0.6, -0.6].map((level) =>
+        Array.from({ length: count * 2 }, () => level),
+      ),
+    });
+    const previous = draw(swept, {
+      laneColors: colors,
+      layout: ViewLayout.overlaid,
+      highlight: 1,
+    });
+    const right = Math.floor(width * 0.8);
+    expectPixel(
+      previous,
+      right,
+      rowOf(0.6),
+      over(
+        transparent,
+        overlaid(toward(first, highlightOthersAlpha * previousCycleAlpha)),
+      ),
+      2,
+    );
+    expectPixel(
+      previous,
+      right,
+      rowOf(-0.6),
+      over(transparent, overlaid(toward(second, previousCycleAlpha))),
+      2,
+    );
+  });
+
+  // Compare's lane holds Compare's alone: highlighting a track leaves it as it is, and it cannot
+  // be highlighted itself.
+  test.each([
+    { name: "sum", lane: CompareLane.sum },
+    { name: "difference", lane: CompareLane.difference },
+  ])("Compare's $name lane is left as it is", ({ lane }) => {
+    const count = 100;
+    const level = (value: number) =>
+      Array.from({ length: count * 2 }, () => value);
+    const frame = frameOf({
+      mode: FrameMode.minMax,
+      pointCount: count,
+      viewStart: 0,
+      viewEnd: 1,
+      lanes: [
+        level(0.5),
+        level(-0.3),
+        level(lane === CompareLane.sum ? 0.2 : 0.8),
+      ],
+      comparison: {
+        lane,
+        sumGain: lane === CompareLane.sum ? 1 : Number.NaN,
+        fixedGain: Number.NaN,
+        matches: [
+          { correlation: 1, related: false, offset: 0, inverted: false },
+          { correlation: 1, related: true, offset: 0, inverted: false },
+        ],
+      },
+    });
+    const options = {
+      laneColors: [...colors, laneColor(11)],
+      layout: ViewLayout.overlaid,
+    };
+    const plain = draw(frame, options);
+    // Compare's lane's rows, counted from the bottom, short of the tracks' clip margin above it.
+    const top = rowOf(
+      (overlaidSum?.center ?? 0) + (overlaidSum?.halfHeight ?? 1),
+    );
+    for (const highlight of [0, 1, 2]) {
+      const drawing = draw(frame, { ...options, highlight });
+      for (let y = 0; y < top - 4; y++) {
+        for (let x = 0; x < width; x += 7) {
+          expect(
+            drawing.pixel(x, y),
+            `${String(highlight)}: ${String(x)}, ${String(y)}`,
+          ).toEqual(plain.pixel(x, y));
+        }
+      }
+    }
+    // Compare's lane itself highlighted: nothing is.
+    expectSame(draw(frame, { ...options, highlight: 2 }), plain);
   });
 });

@@ -44,6 +44,7 @@ import { CompareLane } from "../../protocol/src/enums.ts";
 import {
   cancellationBands,
   differenceAreas,
+  highlightOrder,
   screenLanes,
   traceLanes,
 } from "../src/render/trace-geometry.ts";
@@ -71,6 +72,33 @@ function laneCases() {
           screen: screenLanes(count, ViewLayout[layout], compared).map(rounded),
           lanes: traceLanes(count, ViewLayout[layout], compared).map(rounded),
         });
+      }
+    }
+  }
+  return cases;
+}
+
+// What a highlight draws in front and dims, for every trace highlighted and none: a lane of one,
+// two and more traces (the page's own tests cover every count up to a full frame).
+function highlightCases() {
+  const cases = [];
+  for (const layout of ["overlaid", "stacked"] as const) {
+    for (const compared of [false, true]) {
+      for (const count of [1, 2, 3, 5]) {
+        for (let trace = -1; trace <= count; trace++) {
+          cases.push({
+            count,
+            layout,
+            compared,
+            trace,
+            ...highlightOrder(
+              count,
+              ViewLayout[layout],
+              compared,
+              trace < 0 ? undefined : trace,
+            ),
+          });
+        }
       }
     }
   }
@@ -491,6 +519,7 @@ const vectors = {
   grid: gridCases(),
   cancellation: cancellationCases(),
   difference: differenceCases(),
+  highlight: highlightCases(),
 };
 
 test("the page's geometry still gives the shared cases", () => {

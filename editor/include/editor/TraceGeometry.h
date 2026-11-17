@@ -4,6 +4,7 @@
 #include "protocol/Protocol.h"
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -35,6 +36,19 @@ struct Lane
 // The lane each of the `count` traces is drawn in, in the frame's order.
 [[nodiscard]] std::vector<Lane> traceLanes(std::size_t count, protocol::ViewLayout layout,
                                            bool compared);
+
+// The order a frame's `count` traces are layered in, later over earlier, and which are dimmed,
+// with `trace` highlighted (FR-16.4), as the page decides it (trace-geometry.ts, highlightOrder):
+// only overlaid, and only a trace in a lane it shares with another, so never Compare's lane. The
+// highlighted trace last, in front; the others of its lane dimmed; otherwise every trace in order,
+// none dimmed.
+struct HighlightOrder
+{
+    std::vector<std::size_t> order;
+    std::vector<bool> dimmed;
+};
+[[nodiscard]] HighlightOrder highlightOrder(std::size_t count, protocol::ViewLayout layout,
+                                            bool compared, std::optional<std::size_t> trace);
 
 // Span positions (0 to 1) of a min/max column edge and of a raw point.
 [[nodiscard]] double columnPosition(const FrameView& frame, double column);
