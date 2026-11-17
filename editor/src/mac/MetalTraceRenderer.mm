@@ -159,6 +159,15 @@ float pixelY(constant TraceUniforms& u, float value) {
   float limit = u.scale * 1e15 / halfPixels;
   return (u.center + 1.0) * 0.5 * u.canvasY + clamp(value, -limit, limit) / u.scale * halfPixels;
 }
+float2 laneRows(constant TraceUniforms& u) {
+  float margin = u.lineHalf + 1.0 + (u.dotEvery > 0 ? u.dotRadius : 0.0);
+  return float2((u.center - u.halfHeight + 1.0) * 0.5 * u.canvasY - margin,
+                (u.center + u.halfHeight + 1.0) * 0.5 * u.canvasY + margin);
+}
+float inLane(constant TraceUniforms& u, float y) {
+  float2 rows = laneRows(u);
+  return clamp(y, max(rows.x - 0.5, 0.0), min(rows.y + 0.5, u.canvasY));
+}
 float2 clipped(float2 a, float2 b, float bottom, float top) {
   if (a.y > top) {
     return float2(a.x + (top - a.y) / (b.y - a.y) * (b.x - a.x), top);
@@ -221,8 +230,8 @@ vertex TracePiece traceVertex(uint vertexId [[vertex_id]], uint instance [[insta
   float xb = joined ? pixelX(u, float(i + 1) + u.offset) : xa;
   float2 c = float2(0.0);
   if (out.part == 0 && present && joined) {
-    float low = clamp(min(lo, lo2), 0.0, u.canvasY);
-    float high = clamp(max(hi, hi2), 0.0, u.canvasY);
+    float low = inLane(u, min(lo, lo2));
+    float high = inLane(u, max(hi, hi2));
     c = float2(far ? xb + 0.5 : xa - 0.5, upper ? high : low);
     out.line = float4(xa, xb, 0.0, 0.0);
   } else if ((out.part == 1 || out.part == 2) && present && joined) {
@@ -241,8 +250,8 @@ vertex TracePiece traceVertex(uint vertexId [[vertex_id]], uint instance [[insta
       out.line = float4(a2, b2);
     }
   } else if (out.part == 3 && present && !(before && joined)) {
-    float low = clamp(lo - pad, 0.0, u.canvasY);
-    float high = clamp(hi + pad, 0.0, u.canvasY);
+    float low = inLane(u, lo - pad);
+    float high = inLane(u, hi + pad);
     c = float2(far ? xa + pad : xa - pad, upper ? high : low);
     out.line = float4(xa, 0.0, 0.0, 0.0);
   } else if (out.part == 4 && present && u.dotEvery > 0 && i % u.dotEvery == 0) {
@@ -291,6 +300,8 @@ fragment float4 traceFragment(TracePiece in [[stage_in]], constant TraceUniforms
                               : mix(in.here.y - in.here.x, in.next.y - in.next.x, f);
     covered *= clamp(tall, 0.0, 1.0);
   }
+  float2 rows = laneRows(u);
+  covered *= clamp(min(p.y + 0.5, rows.y) - max(p.y - 0.5, rows.x), 0.0, 1.0);
   if (covered <= 0.0) {
     discard_fragment();
   }

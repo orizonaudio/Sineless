@@ -1751,3 +1751,239 @@ describe("every pixel's coverage follows its distance to the trace", () => {
     },
   );
 });
+
+// Each trace is kept within its lane, widened by what a value at the lane's edge draws past it:
+// with the vertical scale raised to read a quiet track, a loud one's band would otherwise paint
+// solid over the lanes beside it (Stack, and Overlay's two lanes with Compare, FR-15.1). The cut
+// is a pixel's overlap with the lane widened by its line's half width and a pixel, so a wave at
+// the edge keeps its whole line and nothing reaches past half a pixel beyond that.
+describe("a trace stays within its lane", () => {
+  const none = { correlation: 0, related: false, offset: 0, inverted: false };
+  const lineWidthPixels = 3;
+  // The lane's edge widened by the line's half width and a pixel (trace-renderer.ts).
+  const margin = lineWidthPixels / 2 + 1;
+  // Lane edges on whole pixels and between them (203 px into three lanes).
+  const heights = [200, 203];
+  const red: Rgba = [1, 0, 0, 1];
+  const quiet: Rgba[] = [
+    [0, 1, 0, 1],
+    [0, 0, 1, 1],
+  ];
+  const layouts = [
+    { name: "stacked", layout: ViewLayout.stacked, compared: false },
+    {
+      name: "overlaid with Compare",
+      layout: ViewLayout.overlaid,
+      compared: true,
+    },
+  ];
+  const cases = layouts.flatMap((layout) =>
+    [FrameMode.raw, FrameMode.minMax].flatMap((mode) =>
+      heights.flatMap((h) =>
+        [0, 2].map((loud) => ({
+          ...layout,
+          mode,
+          modeName: mode === FrameMode.raw ? "raw" : "min/max",
+          h,
+          loud,
+        })),
+      ),
+    ),
+  );
+  // Three lanes (with Compare: two tracks and the sum), the one at `loud` a full-scale sine 20 dB
+  // over the scale, the others silent.
+  function frameFor(mode: FrameMode, loud: number, compared: boolean): Frame {
+    const count = 400;
+    const wave = (point: number) => Math.sin(point / 7);
+    return frameOf({
+      mode,
+      pointCount: count,
+      viewStart: 0,
+      viewEnd: 1,
+      lanes: [0, 1, 2].map((lane) =>
+        Array.from(
+          { length: mode === FrameMode.minMax ? count * 2 : count },
+          (_, k) =>
+            lane !== loud
+              ? 0
+              : mode === FrameMode.minMax
+                ? (k % 2 === 0 ? -1 : 1) * Math.abs(wave(Math.floor(k / 2)))
+                : wave(k),
+        ),
+      ),
+      ...(compared
+        ? {
+            comparison: {
+              lane: CompareLane.sum,
+              sumGain: 1,
+              fixedGain: Number.NaN,
+              matches: [none, none],
+            },
+          }
+        : {}),
+    });
+  }
+
+  test.each(cases)(
+    "$name, $modeName, lane $loud past its lane, $h px: nothing beyond its margin",
+    ({ layout, compared, mode, h, loud }) => {
+      const drawing = draw(frameFor(mode, loud, compared), {
+        height: h,
+        layout,
+        lineWidthPixels,
+        verticalScaleDb: -20,
+        laneColors: [0, 1, 2].map((lane) =>
+          lane === loud ? red : (quiet[lane % 2] ?? red),
+        ),
+      });
+      expect(drawing.error).toBe(0);
+      const lane = traceLanes(3, layout, compared)[loud] ?? {
+        center: 0,
+        halfHeight: 1,
+      };
+      const bottom = ((lane.center - lane.halfHeight + 1) / 2) * h;
+      const top = ((lane.center + lane.halfHeight + 1) / 2) * h;
+      // Only the loud trace is red: where its band spills, red shows.
+      let beyond = 0;
+      for (let y = 0; y < h; y++) {
+        const centre = y + 0.5;
+        if (centre > bottom - margin - 0.5 && centre < top + margin + 0.5) {
+          continue;
+        }
+        beyond++;
+        for (let x = 0; x < width; x += 3) {
+          expect(
+            drawing.pixel(x, y)[0],
+            `${String(x)}, ${String(y)} (lane ${String(bottom)}…${String(top)})`,
+          ).toBe(0);
+        }
+      }
+      // The lane is not the whole screen: there are rows past it to check.
+      expect(beyond).toBeGreaterThan(h / 4);
+    },
+  );
+
+  // A full-scale value lies on the lane's edge: its line, and at a deep zoom its sample's dot, are
+  // drawn whole, each pixel past the edge covered as by the same line on a lane of its own.
+  test.each(
+    [FrameMode.minMax, FrameMode.raw].flatMap((mode) =>
+      heights.map((h) => ({
+        mode,
+        modeName:
+          mode === FrameMode.raw ? "raw, its samples dotted" : "min/max",
+        h,
+      })),
+    ),
+  )(
+    "$modeName, $h px: a wave on the lane's edge keeps its whole line",
+    ({ mode, h }) => {
+      const samples = 8;
+      const pointsPerSample = 16;
+      const count =
+        mode === FrameMode.raw ? samples * pointsPerSample + 1 : 100;
+      const level = (lane: number) => (lane === 1 ? 1 : 0);
+      const frame = frameOf({
+        mode,
+        pointCount: count,
+        viewStart: 0,
+        viewEnd: 1,
+        ...(mode === FrameMode.raw
+          ? { visibleSamples: samples, pointsPerSample }
+          : {}),
+        lanes: [0, 1, 2].map((lane) =>
+          Array.from(
+            { length: mode === FrameMode.minMax ? count * 2 : count },
+            () => level(lane),
+          ),
+        ),
+      });
+      const drawing = draw(frame, {
+        height: h,
+        layout: ViewLayout.stacked,
+        lineWidthPixels,
+        laneColors: [quiet[0] ?? red, red, quiet[1] ?? red],
+      });
+      expect(drawing.error).toBe(0);
+      const lane = traceLanes(3, ViewLayout.stacked, false)[1] ?? {
+        center: 0,
+        halfHeight: 1,
+      };
+      const edge = ((lane.center + lane.halfHeight + 1) / 2) * h;
+      const half = lineWidthPixels / 2;
+      // Coverage of a line at `edge` at a pixel centre `d` away.
+      const covered = (d: number) => Math.min(Math.max(half + 0.5 - d, 0), 1);
+      const columns =
+        mode === FrameMode.raw
+          ? Array.from({ length: samples - 1 }, (_, sample) => ({
+              x: Math.floor(centreX(drawing, (sample + 1) * pointsPerSample)),
+            }))
+          : [{ x: Math.floor(width / 2) }];
+      for (const { x } of columns) {
+        // At a dot the sample is at x's centre only to within half a pixel: take the line between
+        // samples for the exact profile, and at the sample that the dot reaches past the line.
+        const between =
+          mode === FrameMode.raw ? x + Math.floor(width / samples / 2) : x;
+        for (let y = Math.floor(edge); y < Math.ceil(edge + half + 1); y++) {
+          const d = Math.abs(y + 0.5 - edge);
+          expect(
+            Math.abs(drawing.pixel(between, y)[0] - covered(d) * 255),
+            `${String(between)}, ${String(y)}, ${String(d)} past the edge`,
+          ).toBeLessThanOrEqual(3);
+        }
+        if (mode === FrameMode.raw) {
+          // The dot (a line width across) reaches a full pixel past the line's own reach.
+          const y = Math.floor(edge + half + 1);
+          expect(
+            drawing.pixel(x, y)[0],
+            `the dot at ${String(x)}`,
+          ).toBeGreaterThan(covered(y + 0.5 - edge) * 255 + 64);
+        }
+      }
+    },
+  );
+
+  test("a difference's parts stay in their lane", () => {
+    const count = 200;
+    const band = (scale: number) =>
+      Array.from(
+        { length: count * 2 },
+        (_, k) =>
+          (k % 2 === 0 ? -1 : 1) *
+          scale *
+          Math.abs(Math.sin(Math.floor(k / 2) / 9)),
+      );
+    const frame = frameOf({
+      mode: FrameMode.minMax,
+      pointCount: count,
+      viewStart: 0,
+      viewEnd: 1,
+      lanes: [band(1), band(0.1), band(0.9)],
+      comparison: {
+        lane: CompareLane.difference,
+        sumGain: Number.NaN,
+        fixedGain: Number.NaN,
+        matches: [none, none],
+      },
+    });
+    // The tracks in green and blue, so red is only the difference's lost part.
+    const drawing = draw(frame, {
+      layout: ViewLayout.stacked,
+      lineWidthPixels,
+      verticalScaleDb: -20,
+      laneColors: [quiet[0] ?? red, quiet[1] ?? red, red],
+    });
+    expect(drawing.error).toBe(0);
+    const lane = traceLanes(3, ViewLayout.stacked, true)[2] ?? {
+      center: 0,
+      halfHeight: 1,
+    };
+    const top = ((lane.center + lane.halfHeight + 1) / 2) * height;
+    // The areas' soft edge, filledAreaLineHalf, and a pixel.
+    const areaMargin = 0.5 + 1;
+    for (let y = Math.ceil(top + areaMargin + 0.5); y < height; y++) {
+      for (let x = 0; x < width; x += 3) {
+        expect(drawing.pixel(x, y)[0], `${String(x)}, ${String(y)}`).toBe(0);
+      }
+    }
+  });
+});
