@@ -2510,7 +2510,7 @@ describe("one overlaid trace highlighted", () => {
     rowOf(traceShape === TraceShape.filled ? level / 2 : level);
 
   test.each(shapes)(
-    "$name: the highlighted trace is unchanged, the other dimmed toward the screen",
+    "$name: the highlighted trace is opaque, the other dimmed toward the screen",
     ({ traceShape }) => {
       // Levels far apart, so each pixel read is one trace's; filled, from the zero line out.
       const drawing = draw(flatLanes([0.6, -0.6]), {
@@ -2523,7 +2523,7 @@ describe("one overlaid trace highlighted", () => {
         drawing,
         width / 2,
         inside(traceShape, 0.6),
-        over(transparent, overlaid(first)),
+        over(transparent, first),
         2,
       );
       expectPixel(
@@ -2537,7 +2537,7 @@ describe("one overlaid trace highlighted", () => {
   );
 
   test.each(shapes)(
-    "$name: where they overlap, the highlighted trace lies in front of a later one",
+    "$name: where they overlap, the highlighted trace hides a later one",
     ({ traceShape }) => {
       const drawing = draw(flatLanes([0.5, 0.5]), {
         laneColors: colors,
@@ -2551,7 +2551,7 @@ describe("one overlaid trace highlighted", () => {
         inside(traceShape, 0.5),
         over(
           over(transparent, overlaid(toward(second, highlightOthersAlpha))),
-          overlaid(first),
+          first,
         ),
         2,
       );
@@ -2595,7 +2595,7 @@ describe("one overlaid trace highlighted", () => {
       waiting,
       width / 2,
       rowOf(-0.6),
-      over(transparent, overlaid(toward(second, waitingAlpha))),
+      over(transparent, toward(second, waitingAlpha)),
       2,
     );
     const count = 100;
@@ -2633,7 +2633,7 @@ describe("one overlaid trace highlighted", () => {
       previous,
       right,
       rowOf(-0.6),
-      over(transparent, overlaid(toward(second, previousCycleAlpha))),
+      over(transparent, toward(second, previousCycleAlpha)),
       2,
     );
   });

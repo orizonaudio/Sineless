@@ -1009,11 +1009,15 @@ export class TraceRenderer implements FrameRenderer {
           ({ index }) => areas === undefined || index + 1 < blocks.length,
         ),
       // In Overlay each trace is translucent as a whole, so the one behind shows through where
-      // they overlap: its colour's alpha, which the composite layers its coverage with.
-      order.map((index): Rgba => {
+      // they overlap: its colour's alpha, which the composite layers its coverage with. A
+      // highlighted trace, last, is opaque.
+      order.map((index, slot): Rgba => {
         const [r, g, b, a] = drawn[index]?.[1] ?? white;
+        const inFront = slot === order.length - 1 && dimmed.includes(true);
         const alpha =
-          view.layout === ViewLayout.overlaid ? a * overlaidTraceAlpha : a;
+          view.layout === ViewLayout.overlaid && !inFront
+            ? a * overlaidTraceAlpha
+            : a;
         return dimmed[index] === true
           ? [toward(sr, r), toward(sg, g), toward(sb, b), alpha]
           : [r, g, b, alpha];
