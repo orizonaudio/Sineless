@@ -876,8 +876,12 @@ private:
                                                    (colour[channel] - view.screen[channel]);
                 }
             }
-            // In Overlay each trace is translucent as a whole (trace-renderer.ts).
-            if (view.layout == protocol::ViewLayout::kOverlaid) {
+            // In Overlay each trace is translucent as a whole (trace-renderer.ts), except a
+            // highlighted one, last and opaque.
+            const bool inFront = place + 1 == highlighted.order.size() &&
+                                 std::find(highlighted.dimmed.begin(), highlighted.dimmed.end(),
+                                           true) != highlighted.dimmed.end();
+            if (view.layout == protocol::ViewLayout::kOverlaid && !inFront) {
                 colour[3] *= kOverlaidTraceAlpha;
             }
             if (filled && index + 1 == blocks.size()) {

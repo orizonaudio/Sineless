@@ -273,14 +273,15 @@ export const previousCycleAlpha = 0.5;
 // both show; it looked right between 0.6 and 0.7, for lines and filled traces alike. That takes
 // some trace colours below the 4.5:1 contrast bar for traces, on purpose: docs/ui/colour.html
 // leaves out what is set back so that what is behind it shows. Stacked traces stay opaque: nothing
-// lies behind them but the screen. Limit: many traces of a similar level overlaid still turn opaque
+// lies behind them but the screen. So does a highlighted trace (FR-16.4): in front, it is the one
+// to read. Limit: many traces of a similar level overlaid still turn opaque
 // inside (ten at 0.65 cover 1 − 0.35¹⁰ of a pixel), so the inner ones are not readable at any
 // opacity that leaves one trace bright enough (FR-14.2).
 export const overlaidTraceAlpha = 0.65;
 // While one overlaid trace is highlighted (its lane label under the pointer, or the trace the Hover
 // readout reads, FR-16.4), every other trace in its lane is drawn in a colour moved this share of
 // the way from the screen's to its own, keeping its coverage, as the previous cycle's is: the
-// highlighted one, drawn in front at full strength, stands out, and the others still show where
+// highlighted one, drawn in front and opaque, stands out, and the others still show where
 // they are, each in its own hue. Fainter than the previous cycle's dimming, so a highlighted trace
 // stands out more than the new cycle does from the old. The other dimming multiplies on top, so at
 // any point the highlighted trace stays the strongest (right of a Beats playhead 0.5 against
