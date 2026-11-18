@@ -188,6 +188,11 @@ describe.each(cases)(
     });
 
     test("with Hover on, the readout over the overlaid traces highlights the trace it reads", async () => {
+      if (display === "Single") {
+        // A readout reading the second trace, so a highlight of the first one fails.
+        await press(choice("readout-source", "R"));
+        await expect.poll(() => readoutView(frame())).toBe(ChannelView.right);
+      }
       await setPressed(byId("hover-toggle"), true);
       restOnTraces(0.5, compare === "off" ? 0.5 : 0.25);
       await expect.poll(() => byId("hover-readout").hidden).toBe(false);
