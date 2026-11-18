@@ -190,6 +190,10 @@ const maxWheelZoomDelta = 25;
 const sumLaneId = -100;
 // A Single view's label, below any lane's id: this less the view's number.
 const viewLabelId = -200;
+// Each view's name by its number, to name the view a label id stands for.
+const viewByNumber = Object.fromEntries(
+  viewOrder.map((name) => [ChannelView[name], name]),
+) as Record<ChannelView, ViewName>;
 
 // A lane label: a track's lane, or a view of this track, with its swatch's colour as CSS.
 type LabelStyle = LaneStyle & { readonly swatch: string };
@@ -2196,10 +2200,7 @@ export class OscilloscopeApp {
       return null;
     }
     if (id <= viewLabelId) {
-      const view = viewOrder.find(
-        (name) => ChannelView[name] === viewLabelId - id,
-      );
-      return view === undefined ? null : { view };
+      return { view: viewByNumber[(viewLabelId - id) as ChannelView] };
     }
     return { lane: id };
   }
