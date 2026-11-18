@@ -55908,14 +55908,15 @@
       ]
     }
   ],
-  "highlight": [
+  "layering": [
     {
       "count": 1,
       "layout": "overlaid",
       "compared": false,
       "trace": -1,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 1,
@@ -55923,7 +55924,8 @@
       "compared": false,
       "trace": 0,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 1,
@@ -55931,7 +55933,8 @@
       "compared": false,
       "trace": 1,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 2,
@@ -55939,7 +55942,8 @@
       "compared": false,
       "trace": -1,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [true, true]
     },
     {
       "count": 2,
@@ -55947,7 +55951,8 @@
       "compared": false,
       "trace": 0,
       "order": [1, 0],
-      "dimmed": [false, true]
+      "dimmed": [false, true],
+      "translucent": [false, true]
     },
     {
       "count": 2,
@@ -55955,7 +55960,8 @@
       "compared": false,
       "trace": 1,
       "order": [0, 1],
-      "dimmed": [true, false]
+      "dimmed": [true, false],
+      "translucent": [true, false]
     },
     {
       "count": 2,
@@ -55963,7 +55969,8 @@
       "compared": false,
       "trace": 2,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [true, true]
     },
     {
       "count": 3,
@@ -55971,7 +55978,8 @@
       "compared": false,
       "trace": -1,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [true, true, true]
     },
     {
       "count": 3,
@@ -55979,7 +55987,8 @@
       "compared": false,
       "trace": 0,
       "order": [1, 2, 0],
-      "dimmed": [false, true, true]
+      "dimmed": [false, true, true],
+      "translucent": [false, true, true]
     },
     {
       "count": 3,
@@ -55987,7 +55996,8 @@
       "compared": false,
       "trace": 1,
       "order": [0, 2, 1],
-      "dimmed": [true, false, true]
+      "dimmed": [true, false, true],
+      "translucent": [true, false, true]
     },
     {
       "count": 3,
@@ -55995,7 +56005,8 @@
       "compared": false,
       "trace": 2,
       "order": [0, 1, 2],
-      "dimmed": [true, true, false]
+      "dimmed": [true, true, false],
+      "translucent": [true, true, false]
     },
     {
       "count": 3,
@@ -56003,7 +56014,8 @@
       "compared": false,
       "trace": 3,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [true, true, true]
     },
     {
       "count": 5,
@@ -56011,7 +56023,8 @@
       "compared": false,
       "trace": -1,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [true, true, true, true, true]
     },
     {
       "count": 5,
@@ -56019,7 +56032,8 @@
       "compared": false,
       "trace": 0,
       "order": [1, 2, 3, 4, 0],
-      "dimmed": [false, true, true, true, true]
+      "dimmed": [false, true, true, true, true],
+      "translucent": [false, true, true, true, true]
     },
     {
       "count": 5,
@@ -56027,7 +56041,8 @@
       "compared": false,
       "trace": 1,
       "order": [0, 2, 3, 4, 1],
-      "dimmed": [true, false, true, true, true]
+      "dimmed": [true, false, true, true, true],
+      "translucent": [true, false, true, true, true]
     },
     {
       "count": 5,
@@ -56035,7 +56050,8 @@
       "compared": false,
       "trace": 2,
       "order": [0, 1, 3, 4, 2],
-      "dimmed": [true, true, false, true, true]
+      "dimmed": [true, true, false, true, true],
+      "translucent": [true, true, false, true, true]
     },
     {
       "count": 5,
@@ -56043,7 +56059,8 @@
       "compared": false,
       "trace": 3,
       "order": [0, 1, 2, 4, 3],
-      "dimmed": [true, true, true, false, true]
+      "dimmed": [true, true, true, false, true],
+      "translucent": [true, true, true, false, true]
     },
     {
       "count": 5,
@@ -56051,7 +56068,8 @@
       "compared": false,
       "trace": 4,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [true, true, true, true, false]
+      "dimmed": [true, true, true, true, false],
+      "translucent": [true, true, true, true, false]
     },
     {
       "count": 5,
@@ -56059,7 +56077,8 @@
       "compared": false,
       "trace": 5,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [true, true, true, true, true]
     },
     {
       "count": 1,
@@ -56067,7 +56086,8 @@
       "compared": true,
       "trace": -1,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 1,
@@ -56075,7 +56095,8 @@
       "compared": true,
       "trace": 0,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 1,
@@ -56083,7 +56104,8 @@
       "compared": true,
       "trace": 1,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 2,
@@ -56091,7 +56113,8 @@
       "compared": true,
       "trace": -1,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56099,7 +56122,8 @@
       "compared": true,
       "trace": 0,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56107,7 +56131,8 @@
       "compared": true,
       "trace": 1,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56115,7 +56140,8 @@
       "compared": true,
       "trace": 2,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 3,
@@ -56123,7 +56149,8 @@
       "compared": true,
       "trace": -1,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [true, true, false]
     },
     {
       "count": 3,
@@ -56131,7 +56158,8 @@
       "compared": true,
       "trace": 0,
       "order": [1, 2, 0],
-      "dimmed": [false, true, false]
+      "dimmed": [false, true, false],
+      "translucent": [false, true, false]
     },
     {
       "count": 3,
@@ -56139,7 +56167,8 @@
       "compared": true,
       "trace": 1,
       "order": [0, 2, 1],
-      "dimmed": [true, false, false]
+      "dimmed": [true, false, false],
+      "translucent": [true, false, false]
     },
     {
       "count": 3,
@@ -56147,7 +56176,8 @@
       "compared": true,
       "trace": 2,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [true, true, false]
     },
     {
       "count": 3,
@@ -56155,7 +56185,8 @@
       "compared": true,
       "trace": 3,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [true, true, false]
     },
     {
       "count": 5,
@@ -56163,7 +56194,8 @@
       "compared": true,
       "trace": -1,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [true, true, true, true, false]
     },
     {
       "count": 5,
@@ -56171,7 +56203,8 @@
       "compared": true,
       "trace": 0,
       "order": [1, 2, 3, 4, 0],
-      "dimmed": [false, true, true, true, false]
+      "dimmed": [false, true, true, true, false],
+      "translucent": [false, true, true, true, false]
     },
     {
       "count": 5,
@@ -56179,7 +56212,8 @@
       "compared": true,
       "trace": 1,
       "order": [0, 2, 3, 4, 1],
-      "dimmed": [true, false, true, true, false]
+      "dimmed": [true, false, true, true, false],
+      "translucent": [true, false, true, true, false]
     },
     {
       "count": 5,
@@ -56187,7 +56221,8 @@
       "compared": true,
       "trace": 2,
       "order": [0, 1, 3, 4, 2],
-      "dimmed": [true, true, false, true, false]
+      "dimmed": [true, true, false, true, false],
+      "translucent": [true, true, false, true, false]
     },
     {
       "count": 5,
@@ -56195,7 +56230,8 @@
       "compared": true,
       "trace": 3,
       "order": [0, 1, 2, 4, 3],
-      "dimmed": [true, true, true, false, false]
+      "dimmed": [true, true, true, false, false],
+      "translucent": [true, true, true, false, false]
     },
     {
       "count": 5,
@@ -56203,7 +56239,8 @@
       "compared": true,
       "trace": 4,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [true, true, true, true, false]
     },
     {
       "count": 5,
@@ -56211,7 +56248,8 @@
       "compared": true,
       "trace": 5,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [true, true, true, true, false]
     },
     {
       "count": 1,
@@ -56219,7 +56257,8 @@
       "compared": false,
       "trace": -1,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 1,
@@ -56227,7 +56266,8 @@
       "compared": false,
       "trace": 0,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 1,
@@ -56235,7 +56275,8 @@
       "compared": false,
       "trace": 1,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 2,
@@ -56243,7 +56284,8 @@
       "compared": false,
       "trace": -1,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56251,7 +56293,8 @@
       "compared": false,
       "trace": 0,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56259,7 +56302,8 @@
       "compared": false,
       "trace": 1,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56267,7 +56311,8 @@
       "compared": false,
       "trace": 2,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 3,
@@ -56275,7 +56320,8 @@
       "compared": false,
       "trace": -1,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 3,
@@ -56283,7 +56329,8 @@
       "compared": false,
       "trace": 0,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 3,
@@ -56291,7 +56338,8 @@
       "compared": false,
       "trace": 1,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 3,
@@ -56299,7 +56347,8 @@
       "compared": false,
       "trace": 2,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 3,
@@ -56307,7 +56356,8 @@
       "compared": false,
       "trace": 3,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 5,
@@ -56315,7 +56365,8 @@
       "compared": false,
       "trace": -1,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56323,7 +56374,8 @@
       "compared": false,
       "trace": 0,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56331,7 +56383,8 @@
       "compared": false,
       "trace": 1,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56339,7 +56392,8 @@
       "compared": false,
       "trace": 2,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56347,7 +56401,8 @@
       "compared": false,
       "trace": 3,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56355,7 +56410,8 @@
       "compared": false,
       "trace": 4,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56363,7 +56419,8 @@
       "compared": false,
       "trace": 5,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 1,
@@ -56371,7 +56428,8 @@
       "compared": true,
       "trace": -1,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 1,
@@ -56379,7 +56437,8 @@
       "compared": true,
       "trace": 0,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 1,
@@ -56387,7 +56446,8 @@
       "compared": true,
       "trace": 1,
       "order": [0],
-      "dimmed": [false]
+      "dimmed": [false],
+      "translucent": [false]
     },
     {
       "count": 2,
@@ -56395,7 +56455,8 @@
       "compared": true,
       "trace": -1,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56403,7 +56464,8 @@
       "compared": true,
       "trace": 0,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56411,7 +56473,8 @@
       "compared": true,
       "trace": 1,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 2,
@@ -56419,7 +56482,8 @@
       "compared": true,
       "trace": 2,
       "order": [0, 1],
-      "dimmed": [false, false]
+      "dimmed": [false, false],
+      "translucent": [false, false]
     },
     {
       "count": 3,
@@ -56427,7 +56491,8 @@
       "compared": true,
       "trace": -1,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 3,
@@ -56435,7 +56500,8 @@
       "compared": true,
       "trace": 0,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 3,
@@ -56443,7 +56509,8 @@
       "compared": true,
       "trace": 1,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 3,
@@ -56451,7 +56518,8 @@
       "compared": true,
       "trace": 2,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 3,
@@ -56459,7 +56527,8 @@
       "compared": true,
       "trace": 3,
       "order": [0, 1, 2],
-      "dimmed": [false, false, false]
+      "dimmed": [false, false, false],
+      "translucent": [false, false, false]
     },
     {
       "count": 5,
@@ -56467,7 +56536,8 @@
       "compared": true,
       "trace": -1,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56475,7 +56545,8 @@
       "compared": true,
       "trace": 0,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56483,7 +56554,8 @@
       "compared": true,
       "trace": 1,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56491,7 +56563,8 @@
       "compared": true,
       "trace": 2,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56499,7 +56572,8 @@
       "compared": true,
       "trace": 3,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56507,7 +56581,8 @@
       "compared": true,
       "trace": 4,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     },
     {
       "count": 5,
@@ -56515,7 +56590,8 @@
       "compared": true,
       "trace": 5,
       "order": [0, 1, 2, 3, 4],
-      "dimmed": [false, false, false, false, false]
+      "dimmed": [false, false, false, false, false],
+      "translucent": [false, false, false, false, false]
     }
   ]
 }

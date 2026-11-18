@@ -60,14 +60,16 @@ TEST(TraceGeometry, PlacesLanesAsThePageDoes)
 // native picture highlights the trace the page would.
 TEST(TraceGeometry, HighlightsTheTraceThePageDoes)
 {
-    for (const nlohmann::json& entry : vectors().at("highlight")) {
+    for (const nlohmann::json& entry : vectors().at("layering")) {
         const auto count = entry.at("count").get<std::size_t>();
         const auto trace = entry.at("trace").get<std::int64_t>();
-        const HighlightOrder result = highlightOrder(
+        const TraceLayering result = traceLayering(
             count, layoutNamed(entry.at("layout")), entry.at("compared").get<bool>(),
             trace < 0 ? std::nullopt : std::optional<std::size_t>(static_cast<std::size_t>(trace)));
         EXPECT_EQ(result.order, entry.at("order").get<std::vector<std::size_t>>()) << entry.dump();
         EXPECT_EQ(result.dimmed, entry.at("dimmed").get<std::vector<bool>>()) << entry.dump();
+        EXPECT_EQ(result.translucent, entry.at("translucent").get<std::vector<bool>>())
+            << entry.dump();
     }
 }
 

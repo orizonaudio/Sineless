@@ -153,38 +153,48 @@ export function traceInScreenLane(
     : Math.min(Math.max(overlaid, 0), Math.max(count - 1, 0));
 }
 
-// The order the `count` traces are layered in, later over earlier, and which are dimmed, with
-// `trace` highlighted (FR-16.4): only overlaid, and only a trace in a lane it shares with another,
-// so never Compare's lane, which holds Compare's alone. The highlighted trace is drawn last, in
-// front; the others of its lane are dimmed (highlightOthersAlpha); Compare's lane is left as is.
-// Otherwise every trace in order, none dimmed.
-export function highlightOrder(
+// How the `count` traces are layered over the screen (FR-5, FR-16.4): the order, later over
+// earlier; which are dimmed; which are translucent. A trace sharing its lane with another is drawn
+// translucent (overlaidTraceAlpha), so the one behind shows through; one alone in its lane, as
+// every stacked trace and Compare's lane are, has nothing behind it but the screen and is opaque.
+// With `trace` highlighted, only overlaid and only in a lane it shares with another (so never
+// Compare's lane, which holds Compare's alone), it is drawn last, in front and opaque, and the
+// others of its lane are dimmed (highlightOthersAlpha); Compare's lane is left as is. Otherwise
+// every trace in order, none dimmed.
+export function traceLayering(
   count: number,
   layout: ViewLayout,
   compared: boolean,
   trace: number | undefined,
-): { order: number[]; dimmed: boolean[] } {
+): { order: number[]; dimmed: boolean[]; translucent: boolean[] } {
   const indices = Array.from({ length: count }, (_, index) => index);
-  const plain = { order: indices, dimmed: indices.map(() => false) };
+  const laneOf = indices.map((index) =>
+    screenLaneOf(count, layout, compared, index),
+  );
+  const translucent = indices.map(
+    (index) => laneOf.filter((lane) => lane === laneOf[index]).length > 1,
+  );
+  const plain = {
+    order: indices,
+    dimmed: indices.map(() => false),
+    translucent,
+  };
   if (
     layout !== ViewLayout.overlaid ||
     trace === undefined ||
     !Number.isInteger(trace) ||
     trace < 0 ||
-    trace >= count
+    trace >= count ||
+    translucent[trace] !== true
   ) {
-    return plain;
-  }
-  const lane = screenLaneOf(count, layout, compared, trace);
-  const sharing = indices.map(
-    (index) => screenLaneOf(count, layout, compared, index) === lane,
-  );
-  if (sharing.filter(Boolean).length < 2) {
     return plain;
   }
   return {
     order: [...indices.filter((index) => index !== trace), trace],
-    dimmed: indices.map((index) => index !== trace && sharing[index] === true),
+    dimmed: indices.map(
+      (index) => index !== trace && laneOf[index] === laneOf[trace],
+    ),
+    translucent: translucent.map((shares, index) => shares && index !== trace),
   };
 }
 

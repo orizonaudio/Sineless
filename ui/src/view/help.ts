@@ -491,7 +491,7 @@ export function helpTextsFor(mac: boolean) {
       }),
       notes: [
         "In Multi with Compare on, Overlay gives the tracks the upper half and the sum or difference the lower.",
-        "Overlaid traces are see-through, so a trace behind another still shows.",
+        "Overlaid traces sharing a lane are see-through, so a trace behind another still shows.",
         "Labels, in the same popover, names each lane.",
       ],
     },

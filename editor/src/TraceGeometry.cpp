@@ -58,29 +58,31 @@ std::vector<Lane> traceLanes(std::size_t count, protocol::ViewLayout layout, boo
     return out;
 }
 
-HighlightOrder highlightOrder(std::size_t count, protocol::ViewLayout layout, bool compared,
-                              std::optional<std::size_t> trace)
+TraceLayering traceLayering(std::size_t count, protocol::ViewLayout layout, bool compared,
+                            std::optional<std::size_t> trace)
 {
-    HighlightOrder out;
+    TraceLayering out;
     out.order.resize(count);
     std::iota(out.order.begin(), out.order.end(), std::size_t{0});
     out.dimmed.assign(count, false);
-    if (layout != protocol::ViewLayout::kOverlaid || !trace || *trace >= count) {
-        return out;
-    }
-    const std::size_t lane = screenLaneOf(count, layout, compared, *trace);
-    std::size_t sharing = 0;
+    std::vector<std::size_t> laneOf(count);
     for (std::size_t index = 0; index < count; ++index) {
-        sharing += screenLaneOf(count, layout, compared, index) == lane ? 1 : 0;
+        laneOf[index] = screenLaneOf(count, layout, compared, index);
     }
-    if (sharing < 2) {
+    out.translucent.assign(count, false);
+    for (std::size_t index = 0; index < count; ++index) {
+        out.translucent[index] = std::count(laneOf.begin(), laneOf.end(), laneOf[index]) > 1;
+    }
+    if (layout != protocol::ViewLayout::kOverlaid || !trace || *trace >= count ||
+        !out.translucent[*trace]) {
         return out;
     }
     std::erase(out.order, *trace);
     out.order.push_back(*trace);
     for (std::size_t index = 0; index < count; ++index) {
-        out.dimmed[index] = index != *trace && screenLaneOf(count, layout, compared, index) == lane;
+        out.dimmed[index] = index != *trace && laneOf[index] == laneOf[*trace];
     }
+    out.translucent[*trace] = false;
     return out;
 }
 

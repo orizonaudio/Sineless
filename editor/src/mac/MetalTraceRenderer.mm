@@ -845,7 +845,7 @@ private:
         const std::vector<Lane> laneList = traceLanes(blocks.size(), view.layout, frame.compared());
         // One overlaid trace may be highlighted (trace-renderer.ts): layered last, in front, and
         // the others of its lane in a colour moved toward the screen's, keeping their coverage.
-        const HighlightOrder highlighted = highlightOrder(
+        const TraceLayering highlighted = traceLayering(
             blocks.size(), view.layout, frame.compared(), view.highlightedTrace(frame));
         CompositeUniforms composite;
         composite.traces = static_cast<std::int32_t>(blocks.size());
@@ -876,12 +876,8 @@ private:
                                                    (colour[channel] - view.screen[channel]);
                 }
             }
-            // In Overlay each trace is translucent as a whole (trace-renderer.ts), except a
-            // highlighted one, last and opaque.
-            const bool inFront = place + 1 == highlighted.order.size() &&
-                                 std::find(highlighted.dimmed.begin(), highlighted.dimmed.end(),
-                                           true) != highlighted.dimmed.end();
-            if (view.layout == protocol::ViewLayout::kOverlaid && !inFront) {
+            // A trace sharing its lane is translucent as a whole (trace-renderer.ts).
+            if (highlighted.translucent[index]) {
                 colour[3] *= kOverlaidTraceAlpha;
             }
             if (filled && index + 1 == blocks.size()) {

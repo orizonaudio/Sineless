@@ -200,7 +200,7 @@ export interface TraceViewMessage {
   readonly dim: boolean;
   // The overlaid trace highlighted (FR-16.4): a ChannelView name in Single, a lane's track id (an
   // id of `laneSets`) in Multi, or null for none. The editor finds it in the frame it draws and
-  // highlights it only where the page would (trace-geometry.ts, highlightOrder).
+  // highlights it only where the page would (trace-geometry.ts, traceLayering).
   readonly highlight:
     { readonly view: string } | { readonly lane: number } | null;
   // Trace line width in device pixels.
