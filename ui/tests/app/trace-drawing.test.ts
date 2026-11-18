@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 
 import {
+  ChannelView,
   CompareLane,
   FrameMode,
   TraceShape,
@@ -1122,11 +1123,13 @@ describe("lanes layer in order, whatever their channel and target", () => {
     });
     expect(drawing.error).toBe(0);
     levels.forEach((level, lane) => {
+      // Overlaid, a lane alone has nothing behind it and is opaque.
+      const color = colors[lane] ?? laneColor(lane);
       expectPixel(
         drawing,
         width / 2,
         rowOf(level),
-        over(transparent, overlaid(colors[lane] ?? laneColor(lane))),
+        over(transparent, count === 1 ? color : overlaid(color)),
         2,
       );
     });
@@ -1147,7 +1150,7 @@ describe("lanes layer in order, whatever their channel and target", () => {
         drawing,
         width / 2,
         rowOf(0),
-        colors.map(overlaid).reduce(over, transparent),
+        (count === 1 ? colors : colors.map(overlaid)).reduce(over, transparent),
         count,
       );
     },
@@ -1218,7 +1221,9 @@ describe("lanes layer in order, whatever their channel and target", () => {
     };
     const shade: Rgba = [1, 0, 0, 0.16];
     const shaded = over(transparent, shade);
-    const [first, second, sum] = colors.map(overlaid) as [Rgba, Rgba, Rgba];
+    const [first, second] = colors.map(overlaid) as [Rgba, Rgba];
+    // The sum, alone in its lane, opaque.
+    const sum = colors[2] ?? laneColor(2);
     // The shading in the sum's lane alone, under the sum; the tracks over no shading, the later
     // over the earlier.
     const places: [number, Pixel][] = [
@@ -2039,7 +2044,7 @@ describe("a trace stays within its lane", () => {
 // In Overlay every trace is drawn translucent, as a whole, so where two overlap the one behind
 // shows through; a lone overlaid trace too, and Compare's sum in its own lane below the tracks
 // (the layout is Overlay). In Stack nothing lies behind a trace but the screen: it is opaque.
-describe("overlaid traces are translucent, stacked ones opaque", () => {
+describe("overlaid traces sharing a lane are translucent, others opaque", () => {
   const red: Rgba = [1, 0, 0, 1];
   const green: Rgba = [0, 1, 0, 1];
   const atAlpha = (color: Rgba, alpha: number): Rgba => [
@@ -2052,20 +2057,14 @@ describe("overlaid traces are translucent, stacked ones opaque", () => {
     (name) => ({
       name,
       layout: ViewLayout[name],
-      alpha: ViewLayout[name] === ViewLayout.overlaid ? overlaidTraceAlpha : 1,
     }),
   );
 
-  test.each(layouts)("$name: one trace's line", ({ layout, alpha }) => {
+  // Nothing lies behind a trace alone in its lane, overlaid or stacked.
+  test.each(layouts)("$name: one trace's line is opaque", ({ layout }) => {
     const drawing = draw(flatLanes([0.2]), { laneColors: [red], layout });
     expect(drawing.error).toBe(0);
-    expectPixel(
-      drawing,
-      width / 2,
-      rowOf(0.2),
-      over(transparent, atAlpha(red, alpha)),
-      3,
-    );
+    expectPixel(drawing, width / 2, rowOf(0.2), over(transparent, red), 3);
   });
 
   test("overlaid, two traces on one line: the earlier shows through the later", () => {
@@ -2086,7 +2085,7 @@ describe("overlaid traces are translucent, stacked ones opaque", () => {
     );
   });
 
-  test("overlaid with Compare, the sum in its own lane is translucent too", () => {
+  test("overlaid with Compare, the sum alone in its own lane is opaque, the tracks above translucent", () => {
     const none = { correlation: 0, related: false, offset: 0, inverted: false };
     const count = 100;
     const flat = (level: number) =>
@@ -2111,12 +2110,19 @@ describe("overlaid traces are translucent, stacked ones opaque", () => {
       },
     );
     expect(drawing.error).toBe(0);
-    const sum = traceLanes(3, ViewLayout.overlaid, true)[2];
+    const [track, , sum] = traceLanes(3, ViewLayout.overlaid, true);
     expectPixel(
       drawing,
       width / 2,
       laneRowOf(sum, 0.5),
-      over(transparent, atAlpha(red, overlaidTraceAlpha)),
+      over(transparent, red),
+      3,
+    );
+    expectPixel(
+      drawing,
+      width / 2,
+      laneRowOf(track, 0.3),
+      over(transparent, atAlpha(green, overlaidTraceAlpha)),
       3,
     );
   });
@@ -2314,17 +2320,18 @@ describe("a filled trace", () => {
       alpha: ViewLayout[name] === ViewLayout.overlaid ? overlaidTraceAlpha : 1,
     })),
   )(
-    "$name: one filled trace is translucent overlaid and opaque stacked",
+    "$name: of two filled traces, one each side of the zero line, each is translucent overlaid and opaque stacked",
     ({ layout, alpha }) => {
-      const drawing = draw(flatLanes([0.4]), {
+      const drawing = draw(flatLanes([0.4, -0.4]), {
         ...filled,
-        laneColors: [red],
+        laneColors: [red, red],
         layout,
       });
+      const lanes = traceLanes(2, layout, false);
       expectPixel(
         drawing,
         width / 2,
-        rowOf(0.2),
+        laneRowOf(lanes[0], 0.2),
         over(transparent, [red[0], red[1], red[2], red[3] * alpha]),
         3,
       );
@@ -2355,16 +2362,25 @@ describe("a filled trace", () => {
     );
   });
 
-  // Columns a fraction of a pixel apart, their bands overlapping: still one layer.
+  // Columns a fraction of a pixel apart, their bands overlapping: still one layer. A second
+  // view, below the zero line, shares the lane, so the first is translucent.
   test("overlaid, a filled trace's own overlapping pieces are no denser", () => {
-    const frame = spaced(FrameMode.minMax, 600, 0.5, (point) => [
-      0.5 + 0.2 * Math.sin(point / 13),
-      0.6 + 0.2 * Math.sin(point / 13),
-    ]);
+    const band = (point: number) =>
+      [
+        0.5 + 0.2 * Math.sin(point / 13),
+        0.6 + 0.2 * Math.sin(point / 13),
+      ] as const;
+    const points = Array.from({ length: 600 }, (_, point) => band(point));
+    const frame = spaced(FrameMode.minMax, 600, 0.5, band, width, {
+      views: new Map([
+        [ChannelView.left, points.flat()],
+        [ChannelView.right, points.flatMap(([low, high]) => [-high, -low])],
+      ]),
+    });
     const drawing = draw(frame, {
       ...filled,
       layout: ViewLayout.overlaid,
-      color: red,
+      laneColors: [red, red],
     });
     for (const x of interior(drawing, 4)) {
       for (let y = Math.ceil(yPixel(0) + 2); y < yPixel(0.25); y++) {
@@ -2466,9 +2482,10 @@ describe("a filled trace", () => {
   });
 
   test("Waiting dims a filled overlaid trace on top of its translucency", () => {
-    const drawing = draw(flatLanes([0.5]), {
+    // A second trace below the zero line shares the lane, so the first is translucent.
+    const drawing = draw(flatLanes([0.5, -0.5]), {
       ...filled,
-      laneColors: [red],
+      laneColors: [red, red],
       layout: ViewLayout.overlaid,
       dim: true,
     });

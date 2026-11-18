@@ -21,7 +21,7 @@ import {
   coverageSlot,
   coverageTargets,
   fullScale,
-  highlightOrder,
+  traceLayering,
   playheadEdges,
   pointPosition,
   screenLaneOf,
@@ -938,15 +938,26 @@ describe("highlighting one overlaid trace", () => {
       counts.map((count) => ({ layout, compared, count })),
     ),
   );
+  // Which traces share their screen lane with another: overlaid, they are drawn translucent.
+  const sharingALane = (layout: ViewLayout, compared: boolean, count: number) =>
+    identity(count).map(
+      (index) =>
+        identity(count).filter(
+          (other) =>
+            screenLaneOf(count, layout, compared, other) ===
+            screenLaneOf(count, layout, compared, index),
+        ).length > 1,
+    );
 
   test.each(cases)(
     "with nothing highlighted, $layout, compared $compared, $count traces draw in order, none dimmed",
     ({ layout, compared, count }) => {
       expect(
-        highlightOrder(count, ViewLayout[layout], compared, undefined),
+        traceLayering(count, ViewLayout[layout], compared, undefined),
       ).toEqual({
         order: identity(count),
         dimmed: identity(count).map(() => false),
+        translucent: sharingALane(ViewLayout[layout], compared, count),
       });
     },
   );
@@ -956,7 +967,7 @@ describe("highlighting one overlaid trace", () => {
     ({ layout, compared, count }) => {
       const viewLayout = ViewLayout[layout];
       for (const trace of [...identity(count), -1, count, Number.NaN]) {
-        const result = highlightOrder(count, viewLayout, compared, trace);
+        const result = traceLayering(count, viewLayout, compared, trace);
         const inRange = Number.isInteger(trace) && trace >= 0 && trace < count;
         const lane = inRange
           ? screenLaneOf(count, viewLayout, compared, trace)
@@ -969,6 +980,7 @@ describe("highlighting one overlaid trace", () => {
           expect(result).toEqual({
             order: identity(count),
             dimmed: identity(count).map(() => false),
+            translucent: sharingALane(viewLayout, compared, count),
           });
           continue;
         }
@@ -982,17 +994,49 @@ describe("highlighting one overlaid trace", () => {
             (index) => index !== trace && sharing.includes(index),
           ),
         );
+        // Opaque in front; the others as they would be without it.
+        expect(result.translucent).toEqual(
+          sharingALane(viewLayout, compared, count).map(
+            (shares, index) => shares && index !== trace,
+          ),
+        );
       }
+    },
+  );
+
+  // Translucency lets a trace behind another show through; a trace alone in its lane has none
+  // behind it, so it is drawn at full strength, as a stacked one is.
+  test.each(
+    [false, true].flatMap((compared) =>
+      counts.map((count) => ({ compared, count })),
+    ),
+  )(
+    "overlaid, compared $compared, $count traces: a trace alone in its lane is opaque",
+    ({ compared, count }) => {
+      const { translucent } = traceLayering(
+        count,
+        ViewLayout.overlaid,
+        compared,
+        undefined,
+      );
+      expect(translucent.includes(true)).toBe(count > (compared ? 2 : 1));
+      if (compared && count > 1) {
+        expect(translucent.at(-1)).toBe(false);
+      }
+      expect(
+        traceLayering(count, ViewLayout.stacked, compared, undefined)
+          .translucent,
+      ).not.toContain(true);
     },
   );
 
   test("Compare's lane is never highlighted, nor dimmed while a track is", () => {
     for (const count of counts.filter((each) => each > 2)) {
       expect(
-        highlightOrder(count, ViewLayout.overlaid, true, count - 1).dimmed,
+        traceLayering(count, ViewLayout.overlaid, true, count - 1).dimmed,
       ).not.toContain(true);
       expect(
-        highlightOrder(count, ViewLayout.overlaid, true, 0).dimmed.at(-1),
+        traceLayering(count, ViewLayout.overlaid, true, 0).dimmed.at(-1),
       ).toBe(false);
     }
   });

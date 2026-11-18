@@ -48,7 +48,7 @@ import { streamGap, wheelUnit } from "./components/wheel-steps.ts";
 import { RenderLoop } from "./render/render-loop.ts";
 import {
   fullScale,
-  highlightOrder,
+  traceLayering,
   screenLaneAt,
   screenLaneOf,
   screenLanes,
@@ -2146,7 +2146,7 @@ export class OscilloscopeApp {
   }
 
   // The overlaid trace highlighted (FR-16.4), by its label's id: the lane label under the pointer,
-  // else the trace the hover readout reads; none where highlightOrder highlights nothing (Stack,
+  // else the trace the hover readout reads; none where traceLayering highlights nothing (Stack,
   // Compare's lane, a lane of one) and none for a label with no track to name (Compare's, or a lane
   // whose set has not arrived, which the editor could not find either). Redraws the traces and
   // tells the editor when it changes, live or frozen.
@@ -2163,7 +2163,7 @@ export class OscilloscopeApp {
     const highlight =
       frame !== undefined &&
       named &&
-      highlightOrder(
+      traceLayering(
         labels.length,
         this.layout(),
         frame.comparison !== undefined,

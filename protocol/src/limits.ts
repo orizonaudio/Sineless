@@ -247,7 +247,7 @@ export const cancellationReachDivisor = 128;
 // What the page and the macOS editor draw fainter than the live picture: while Normal mode waits
 // for a trigger, the last traces and the shading in a colour moved waitingAlpha of the way from the
 // screen's to their own, so the picture reads as old but stays legible, still covering the grid as
-// live traces do (in Overlay, as translucently as they do: overlaidTraceAlpha).
+// live traces do (sharing a lane, as translucently as they do: overlaidTraceAlpha).
 export const waitingAlpha = 0.45;
 // In Compare's difference lane, what this track and the others both cover is filled in this
 // track's colour moved this share of the way from the screen's to its own, opaque (as the Waiting
@@ -267,16 +267,17 @@ export const filledAreaLineHalf = 0.5;
 // Overlay, as translucently), and the grid, its zero lines and labels are not dimmed, so the scale
 // stays steady (FR-9.2).
 export const previousCycleAlpha = 0.5;
-// In Overlay, every trace is drawn at this opacity, as a whole: where two overlap, the one behind
-// shows through, so each keeps its outline, and a trace's own overlapping pieces are no denser.
-// Bright enough that a lone trace still reads as the trace, faint enough that two overlapping ones
-// both show; it looked right between 0.6 and 0.7, for lines and filled traces alike. That takes
-// some trace colours below the 4.5:1 contrast bar for traces, on purpose: docs/ui/colour.html
-// leaves out what is set back so that what is behind it shows. Stacked traces stay opaque: nothing
-// lies behind them but the screen. So does a highlighted trace (FR-16.4): in front, it is the one
-// to read. Limit: many traces of a similar level overlaid still turn opaque
-// inside (ten at 0.65 cover 1 − 0.35¹⁰ of a pixel), so the inner ones are not readable at any
-// opacity that leaves one trace bright enough (FR-14.2).
+// In Overlay, every trace sharing its lane with another is drawn at this opacity, as a whole: where
+// two overlap, the one behind shows through, so each keeps its outline, and a trace's own
+// overlapping pieces are no denser. Bright enough that each still reads as a trace, faint enough
+// that two overlapping ones both show; it looked right between 0.6 and 0.7, for lines and filled
+// traces alike. That takes some trace colours below the 4.5:1 contrast bar for traces, on purpose:
+// docs/ui/colour.html leaves out what is set back so that what is behind it shows. A trace alone in
+// its lane (a lone overlaid trace, Compare's lane, every stacked trace) stays opaque: nothing lies
+// behind it but the screen. So does a highlighted trace (FR-16.4): in front, it is the one to read.
+// Limit: many traces of a similar level overlaid still turn opaque inside (ten at 0.65 cover
+// 1 − 0.35¹⁰ of a pixel), so the inner ones are not readable at any opacity that leaves one trace
+// bright enough (FR-14.2).
 export const overlaidTraceAlpha = 0.65;
 // While one overlaid trace is highlighted (its lane label under the pointer, or the trace the Hover
 // readout reads, FR-16.4), every other trace in its lane is drawn in a colour moved this share of

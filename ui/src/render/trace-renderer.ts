@@ -6,8 +6,8 @@
 // point its vertical line from min to max), each part a quad of its own. Each pixel measures its
 // distance to its part and writes how much of it the line covers into the trace's channel of its group's offscreen target, keeping the larger where
 // pieces overlap, which is the coverage of the whole trace; one pass then layers the traces over
-// the screen. Edges are smooth at any slope, and a translucent trace blends once, as a group with an
-// opacity is composited. The CPU builds no vertices, so the cost of a frame hardly depends on its
+// the screen. Edges are smooth at any slope, and a translucent trace (an overlaid one sharing its lane)
+// blends once, as a group with an opacity is composited. The CPU builds no vertices, so the cost of a frame hardly depends on its
 // size.
 import {
   FrameMode,
@@ -38,7 +38,7 @@ import {
   type DifferencePart,
   type Lane,
   fullScale,
-  highlightOrder,
+  traceLayering,
   traceLanes,
   coverageAttachments,
   coverageSlot,
@@ -84,7 +84,7 @@ export interface TraceView {
   // The part of the frame on screen.
   readonly view?: ViewWindow;
   // The overlaid trace highlighted (FR-16.4), an index into the frame's lanes or views: drawn in
-  // front, the others of its lane dimmed (highlightOrder).
+  // front, the others of its lane dimmed (traceLayering).
   readonly highlight?: number;
 }
 
@@ -979,7 +979,7 @@ export class TraceRenderer implements FrameRenderer {
     // screen's, keeping their coverage (highlightOthersAlpha), under the other dimming.
     const minMax = frame.mode === FrameMode.minMax;
     const drawn = blocks.slice(0, tracesPerPass);
-    const { order, dimmed } = highlightOrder(
+    const { order, dimmed, translucent } = traceLayering(
       drawn.length,
       view.layout,
       frame.comparison !== undefined,
@@ -1008,16 +1008,11 @@ export class TraceRenderer implements FrameRenderer {
         .filter(
           ({ index }) => areas === undefined || index + 1 < blocks.length,
         ),
-      // In Overlay each trace is translucent as a whole, so the one behind shows through where
-      // they overlap: its colour's alpha, which the composite layers its coverage with. A
-      // highlighted trace, last, is opaque.
-      order.map((index, slot): Rgba => {
+      // A trace sharing its lane is translucent as a whole, so the one behind shows through where
+      // they overlap: its colour's alpha, which the composite layers its coverage with.
+      order.map((index): Rgba => {
         const [r, g, b, a] = drawn[index]?.[1] ?? white;
-        const inFront = slot === order.length - 1 && dimmed.includes(true);
-        const alpha =
-          view.layout === ViewLayout.overlaid && !inFront
-            ? a * overlaidTraceAlpha
-            : a;
+        const alpha = translucent[index] === true ? a * overlaidTraceAlpha : a;
         return dimmed[index] === true
           ? [toward(sr, r), toward(sg, g), toward(sb, b), alpha]
           : [r, g, b, alpha];

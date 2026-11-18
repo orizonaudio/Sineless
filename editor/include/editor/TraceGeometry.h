@@ -37,18 +37,18 @@ struct Lane
 [[nodiscard]] std::vector<Lane> traceLanes(std::size_t count, protocol::ViewLayout layout,
                                            bool compared);
 
-// The order a frame's `count` traces are layered in, later over earlier, and which are dimmed,
-// with `trace` highlighted (FR-16.4), as the page decides it (trace-geometry.ts, highlightOrder):
-// only overlaid, and only a trace in a lane it shares with another, so never Compare's lane. The
-// highlighted trace last, in front; the others of its lane dimmed; otherwise every trace in order,
-// none dimmed.
-struct HighlightOrder
+// How a frame's `count` traces are layered over the screen, as the page decides it
+// (trace-geometry.ts, traceLayering): the order, later over earlier; which are dimmed, with `trace`
+// highlighted (FR-16.4); which are translucent (FR-5): those sharing their lane with another, but
+// not a highlighted one.
+struct TraceLayering
 {
     std::vector<std::size_t> order;
     std::vector<bool> dimmed;
+    std::vector<bool> translucent;
 };
-[[nodiscard]] HighlightOrder highlightOrder(std::size_t count, protocol::ViewLayout layout,
-                                            bool compared, std::optional<std::size_t> trace);
+[[nodiscard]] TraceLayering traceLayering(std::size_t count, protocol::ViewLayout layout,
+                                          bool compared, std::optional<std::size_t> trace);
 
 // Span positions (0 to 1) of a min/max column edge and of a raw point.
 [[nodiscard]] double columnPosition(const FrameView& frame, double column);
