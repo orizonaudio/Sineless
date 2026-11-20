@@ -2,11 +2,12 @@
 # The engine's work per frame in every benchmark scenario (engine/bench/AnalysisBench.cpp),
 # counted under Valgrind's Cachegrind: the instructions of the measured frames, which are the
 # same on every run of one build, so that CI can compare a pull request with its base on shared
-# machines (the engine-work jobs in .github/workflows/ci.yml). The worst case also counts its
-# last-level cache misses, for the memory its sums read, which instructions do not show.
+# machines (the engine-work jobs in .github/workflows/ci.yml, which count both on one machine).
+# The worst case also counts its last-level cache misses, for the memory its sums read, which
+# instructions do not show.
 #
 #   scripts/engine-work.sh [out-dir]                 (default: build/engine-work)
-#   node scripts/engine-work.ts compare BASE HEAD [AGAIN]
+#   node scripts/engine-work.ts compare BASE HEAD
 #
 # Writes <out-dir>/results.json (Bencher Metric Format) and <out-dir>/scenarios.json, and prints a
 # table. Needs Linux with Valgrind 3.22 or later, LLVM 23 (clang-23), CMake, Ninja and Node. Where

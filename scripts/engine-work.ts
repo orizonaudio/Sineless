@@ -1,12 +1,12 @@
 // The engine's work per frame, counted under Cachegrind (scripts/engine-work.sh): the results of
 // one build, and the comparison of a pull request's head with its base that CI judges.
 //   node scripts/engine-work.ts results DIR
-//   node scripts/engine-work.ts compare BASE_DIR HEAD_DIR [AGAIN_DIR] [--accepted]
+//   node scripts/engine-work.ts compare BASE_DIR HEAD_DIR [--accepted]
 //   node scripts/engine-work.ts check RUN.json
 // `results` reads what engine-work.sh left in DIR and writes DIR/results.json (Bencher Metric
 // Format: scenario, then measure, then value) and DIR/scenarios.json. `compare` prints Markdown
 // for the job summary and exits 1 when a gated scenario's instructions per frame rose by more
-// than failAbove (unless --accepted), or when the head counted differently the second time.
+// than failAbove (unless --accepted).
 // `check` reads one run the bench wrote, as `results` would, and exits 1 if it would be refused.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -206,28 +206,10 @@ export interface Comparison {
 export function compare(
   base: Results | undefined,
   head: Results,
-  again: Results | undefined,
   accepted: boolean,
 ): Comparison {
   const lines = ["## Engine work per frame", ""];
   let failed = false;
-
-  // The head counted twice, in two builds on two machines, must count the same.
-  const unsteady = Object.keys(head.metrics).filter((name) => {
-    const second = again?.metrics[name]?.[instructions]?.value;
-    return (
-      again !== undefined &&
-      second !== head.metrics[name]?.[instructions]?.value
-    );
-  });
-  if (unsteady.length > 0) {
-    failed = true;
-    lines.push(
-      `**Not reproducible:** the head counted differently on its second build in ${unsteady.join(", ")}. ` +
-        "The counts are meant to be the same on every run, so this measures the machine or the tools, not the change; it needs fixing before any comparison means anything.",
-      "",
-    );
-  }
 
   if (base === undefined) {
     lines.push(
@@ -347,8 +329,10 @@ function main(argv: readonly string[]): number {
     }
     return 0;
   }
-  if (command === "compare") {
-    const dirs = rest.filter((arg) => !arg.startsWith("--"));
+  const dirs = rest.filter((arg) => !arg.startsWith("--"));
+  // Two folders only: a third is a caller that still expects another comparison, refused at once
+  // rather than ignored.
+  if (command === "compare" && dirs.length <= 2) {
     const head = dirs[1] === undefined ? undefined : loadResults(dirs[1]);
     if (dirs[0] === undefined || head === undefined) {
       console.error(
@@ -356,25 +340,16 @@ function main(argv: readonly string[]): number {
       );
       return 1;
     }
-    const again = dirs[2] === undefined ? undefined : loadResults(dirs[2]);
     const comparison = compare(
       loadResults(dirs[0]),
       head,
-      again,
       rest.includes("--accepted"),
     );
     console.log(comparison.markdown);
-    if (dirs[2] !== undefined && again === undefined) {
-      // Without the second count, a measurement that drifts would go unseen.
-      console.log(
-        "\n**No second count of the head:** its run did not finish, so reproducibility is unchecked.",
-      );
-      return 1;
-    }
     return comparison.failed ? 1 : 0;
   }
   console.error(
-    "Usage: node scripts/engine-work.ts results DIR | compare BASE_DIR HEAD_DIR [AGAIN_DIR] [--accepted] | check RUN.json",
+    "Usage: node scripts/engine-work.ts results DIR | compare BASE_DIR HEAD_DIR [--accepted] | check RUN.json",
   );
   return 2;
 }
