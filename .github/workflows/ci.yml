@@ -1,8 +1,8 @@
 name: CI
 
 # Every pull request, every merge-queue entry and every push to main runs the same checks; the
-# ruleset on main requires the jobs below except "fuzz" and "performance", and the engine-work jobs
-# until their counts have matched exactly for a week. A push to main whose commit the merge queue
+# ruleset on main requires the jobs below except "fuzz", "performance" and "engine-work-count",
+# whose results the "engine-work" check judges. A push to main whose commit the merge queue
 # already tested (the changes job's "tested") only fuzzes and builds what fills main's compiler
 # caches, which no other run saves for main: the queue ran every other required check on it, and the
 # pull request measured performance (reported, never judged on CI). The "linux" check is a gate over
@@ -768,19 +768,17 @@ jobs:
 
   # The engine's work per frame (scripts/engine-work.sh): every benchmark scenario's instructions
   # per frame under Cachegrind, which are the same on every run of one build, so that a pull
-  # request can be judged against its base on these shared machines, where timings cannot. Each
-  # count is a job of its own, in parallel: the base (the merge commit's first parent), the head,
-  # and the head again, which must count exactly the same. See "Engine work" in CONTRIBUTING.md.
+  # request can be judged against its base on these shared machines, where timings cannot. The
+  # head and the base (the merge commit's first parent) are counted one after the other in this
+  # one job, so on one machine: counts can differ between the CPUs GitHub assigns, as glibc picks
+  # its code from the host's CPU even under Valgrind. Each is built with its own toolchain (the
+  # presets name the compiler's version). See "Engine work" in CONTRIBUTING.md.
   engine-work-count:
-    name: engine-work-${{ matrix.build }}
+    name: engine-work-count
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        build: [base, head, again]
+    timeout-minutes: 60
     env:
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -788,13 +786,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2 # The merge commit and its first parent.
-      - if: matrix.build == 'base'
-        run: git checkout --detach HEAD^1
-      # A base from before the benchmark has nothing to count, and the comparison says so.
       - id: bench
         run: echo "present=$([[ -x scripts/engine-work.sh ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - if: steps.bench.outputs.present == 'true'
-        name: Install LLVM 23 and Valgrind
+        name: Install LLVM and Valgrind
         run: |
           tools/linux-checks/install-llvm.sh
           sudo apt-get install -y --no-install-recommends ninja-build valgrind
@@ -808,20 +803,44 @@ jobs:
           save: ${{ env.SAVE_CACHES }}
           key: engine-work
       - if: steps.bench.outputs.present == 'true'
-        run: scripts/engine-work.sh build/engine-work
-      - if: steps.bench.outputs.present == 'true'
+        name: Count the head
+        run: scripts/engine-work.sh build/engine-work-head
+      # Whether or not the head counted, as when each had a job of its own. The build folder goes,
+      # so that no head binary can stand in for a base that does not build; the path stays the
+      # same, so the compiler cache still serves it. The base's own install-llvm.sh installs the
+      # compiler its presets name, beside the head's. A base from before the benchmark has nothing
+      # to count, and the comparison says so.
+      - if: ${{ !cancelled() && steps.bench.outputs.present == 'true' }}
+        name: Count the base
+        run: |
+          rm -rf build/linux-bench
+          git checkout --detach HEAD^1
+          [[ -x scripts/engine-work.sh ]] || exit 0
+          tools/linux-checks/install-llvm.sh
+          sudo apt-get install -y --no-install-recommends ninja-build valgrind
+          scripts/engine-work.sh build/engine-work-base
+      - if: ${{ !cancelled() && steps.bench.outputs.present == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: engine-work-${{ matrix.build }}
+          name: engine-work-head
           path: |
-            build/engine-work/results.json
-            build/engine-work/scenarios.json
+            build/engine-work-head/results.json
+            build/engine-work-head/scenarios.json
+          if-no-files-found: ignore
+      - if: ${{ !cancelled() && steps.bench.outputs.present == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-work-base
+          path: |
+            build/engine-work-base/results.json
+            build/engine-work-base/scenarios.json
+          if-no-files-found: ignore
 
   # The check: the head's counts against the base's (scripts/engine-work.ts). It fails when a
   # gated scenario's instructions per frame rise by more than 1%, unless a maintainer has labelled
-  # the pull request performance-accepted, with a comment saying why, and run this job again; or
-  # when the head counted differently the second time. In the merge queue and on main it passes
-  # at once: the pull request's run compared the same change.
+  # the pull request performance-accepted, with a comment saying why, and run this job again (it
+  # alone, not the counts). In the merge queue and on main it passes at once: the pull request's
+  # run compared the same change.
   engine-work:
     name: engine-work
     needs: [changes, engine-work-count]
@@ -857,7 +876,7 @@ jobs:
           [[ "$accepted" == true ]] && flag=(--accepted)
           results=build/engine-work-results
           node scripts/engine-work.ts compare "$results/engine-work-base" \
-            "$results/engine-work-head" "$results/engine-work-again" "${flag[@]}" |
+            "$results/engine-work-head" "${flag[@]}" |
             tee -a "$GITHUB_STEP_SUMMARY"
 
   # The performance limits (scripts/performance.sh): the leak limits (what reopening the editor

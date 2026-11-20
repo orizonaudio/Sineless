@@ -171,16 +171,15 @@ describe("compare", () => {
     const result = compare(
       results(base),
       results(base * (1 + failAbove * 1.1)),
-      undefined,
       false,
     );
     expect(result.failed).toBe(true);
     expect(result.markdown).toContain("**fails**");
     expect(result.markdown).toContain("performance-accepted");
     // The table shows both counts and the change, as the maintainer judges by them.
-    expect(
-      compare(results(base), results(base * 2), undefined, false).markdown,
-    ).toMatch(/\| compare-15-worst \| 1,000,000 \| 2,000,000 \| \+100\.00% \|/);
+    expect(compare(results(base), results(base * 2), false).markdown).toMatch(
+      /\| compare-15-worst \| 1,000,000 \| 2,000,000 \| \+100\.00% \|/,
+    );
   });
 
   test("passes a rise within the threshold, and names a notable one", () => {
@@ -188,7 +187,6 @@ describe("compare", () => {
     const within = compare(
       results(base),
       results(base * (1 + failAbove * 0.9)),
-      undefined,
       false,
     );
     expect(within.failed).toBe(false);
@@ -196,7 +194,6 @@ describe("compare", () => {
     const notable = compare(
       results(base),
       results(base * (1 + (noteAbove + failAbove) / 2)),
-      undefined,
       false,
     );
     expect(notable.failed).toBe(false);
@@ -204,46 +201,31 @@ describe("compare", () => {
     const tiny = compare(
       results(base),
       results(base * (1 + noteAbove / 2)),
-      undefined,
       false,
     );
     expect(tiny.markdown).not.toMatch(/\| rise/);
   });
 
   test("passes a rise a maintainer accepted, and says so", () => {
-    const result = compare(results(1000), results(2000), undefined, true);
+    const result = compare(results(1000), results(2000), true);
     expect(result.failed).toBe(false);
     expect(result.markdown).toContain("rise accepted");
   });
 
   test("lists a gain, and never fails on one", () => {
-    const result = compare(results(1000), results(500), undefined, false);
+    const result = compare(results(1000), results(500), false);
     expect(result.failed).toBe(false);
     expect(result.markdown).toContain("gain");
   });
 
   test("reports a reported-only scenario's rise without failing", () => {
-    const result = compare(
-      results(1000, 1000),
-      results(1000, 5000),
-      undefined,
-      false,
-    );
+    const result = compare(results(1000, 1000), results(1000, 5000), false);
     expect(result.failed).toBe(false);
     expect(result.markdown).toMatch(/multi-15-zoomed .*reported only, rise/);
   });
 
-  test("fails when the head counts differently a second time, however small the change", () => {
-    const result = compare(results(1000), results(1000), results(1001), false);
-    expect(result.failed).toBe(true);
-    expect(result.markdown).toContain("Not reproducible");
-    expect(
-      compare(results(1000), results(1000), results(1000), false).failed,
-    ).toBe(false);
-  });
-
   test("passes with nothing to compare where the base has no results", () => {
-    const result = compare(undefined, results(1000), results(1000), false);
+    const result = compare(undefined, results(1000), false);
     expect(result.failed).toBe(false);
     expect(result.markdown).toContain("nothing to compare");
   });
@@ -252,7 +234,7 @@ describe("compare", () => {
     const base = results(1000);
     delete base.metrics["multi-15-zoomed"];
     base.metrics["old-scenario"] = { [instructions]: { value: 5 } };
-    const result = compare(base, results(1000), undefined, false);
+    const result = compare(base, results(1000), false);
     expect(result.failed).toBe(false);
     expect(result.markdown).toMatch(/multi-15-zoomed .*new/);
     expect(result.markdown).toMatch(/old-scenario .*removed/);
@@ -306,31 +288,34 @@ describe("the command", () => {
     const root = mkdtempSync(join(tmpdir(), "engine-work-"));
     const base = build(root, "base", 1000);
     const head = build(root, "head", 1100);
-    const again = build(root, "again", 1100);
-    const compared = run("compare", base, head, again);
+    const compared = run("compare", base, head);
     expect(compared.status).toBe(1);
     expect(compared.stdout).toContain("**fails**");
-    expect(run("compare", base, head, again, "--accepted").status).toBe(0);
+    expect(run("compare", base, head, "--accepted").status).toBe(0);
   });
 
   test("passes with nothing to compare where the base left no results", () => {
     const root = mkdtempSync(join(tmpdir(), "engine-work-"));
     const head = build(root, "head", 1000);
-    const again = build(root, "again", 1000);
-    const compared = run("compare", join(root, "base"), head, again);
+    const compared = run("compare", join(root, "base"), head);
     expect(compared.status).toBe(0);
     expect(compared.stdout).toContain("nothing to compare");
   });
 
-  test("fails where the head, or its second count, left no results", () => {
+  test("refuses a third results folder, so a workflow still passing the head's second count fails at once", () => {
     const root = mkdtempSync(join(tmpdir(), "engine-work-"));
     const base = build(root, "base", 1000);
     const head = build(root, "head", 1000);
-    expect(run("compare", base, join(root, "head-missing"), head).status).toBe(
-      1,
-    );
-    const unchecked = run("compare", base, head, join(root, "again-missing"));
-    expect(unchecked.status).toBe(1);
-    expect(unchecked.stdout).toContain("No second count");
+    const refused = run("compare", base, head, build(root, "again", 1000));
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain("Usage");
+  });
+
+  test("fails where the head left no results", () => {
+    const root = mkdtempSync(join(tmpdir(), "engine-work-"));
+    const base = build(root, "base", 1000);
+    const missing = run("compare", base, join(root, "head-missing"));
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("No results for the head");
   });
 });
