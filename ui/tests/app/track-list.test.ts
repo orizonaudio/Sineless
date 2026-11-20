@@ -432,18 +432,12 @@ describe("a long name in the list", () => {
   });
 
   test("stays still for a user who asked for reduced motion, and shows whole in a tip from the keyboard and anywhere on its row", async () => {
-    const reduce = vi
-      .spyOn(window, "matchMedia")
-      .mockImplementation((query) => ({
-        matches: query.includes("prefers-reduced-motion"),
-        media: query,
-        onchange: null,
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-        addListener: () => undefined,
-        removeListener: () => undefined,
-        dispatchEvent: () => false,
-      }));
+    const realMatchMedia = window.matchMedia.bind(window);
+    const reduce = vi.spyOn(window, "matchMedia").mockImplementation((query) =>
+      Object.defineProperty(realMatchMedia(query), "matches", {
+        value: query.includes("prefers-reduced-motion"),
+      }),
+    );
     try {
       await startApp({ names: { 2: long } });
       await openList();

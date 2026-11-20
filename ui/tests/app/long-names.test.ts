@@ -115,18 +115,12 @@ describe("a long track name on a lane label", () => {
   });
 
   test("does not move for a user who asked for reduced motion, and shows whole in a tip", async () => {
-    const reduce = vi
-      .spyOn(window, "matchMedia")
-      .mockImplementation((query) => ({
-        matches: query.includes("prefers-reduced-motion"),
-        media: query,
-        onchange: null,
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-        addListener: () => undefined,
-        removeListener: () => undefined,
-        dispatchEvent: () => false,
-      }));
+    const realMatchMedia = window.matchMedia.bind(window);
+    const reduce = vi.spyOn(window, "matchMedia").mockImplementation((query) =>
+      Object.defineProperty(realMatchMedia(query), "matches", {
+        value: query.includes("prefers-reduced-motion"),
+      }),
+    );
     try {
       await startWithLongNames();
       const name = nameOf(long);
