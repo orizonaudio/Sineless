@@ -1,6 +1,7 @@
 #include "Display.h"
 #include "FrameDecoding.h"
 #include "engine/Analyzer.h"
+#include "engine/Reconstruction.h"
 
 #include <array>
 #include <cmath>
@@ -10,6 +11,7 @@
 #include <limits>
 #include <map>
 #include <numbers>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -3394,6 +3396,50 @@ TEST_F(CompareTest, PreviewsTheFixForALateTrack)
             continue;
         }
         ASSERT_NEAR(sum[i], 2.0f * a[i], 1e-5f) << "lined up, the track doubles this one";
+    }
+}
+
+// With the fix previewed, a part shifted by its match is silent where its shift reads off the
+// sweep, so the sum has no neighbours past the sweep's ends: within a reach of each end its points
+// lie on the line between its samples, not on a wave read from the track's unshifted audio round
+// the wrap. (The playhead's join is left out: it is straight on its own account.)
+TEST_F(CompareTest, DrawsAPreviewedSumStraightAtTheSweepsEnds)
+{
+    joinWith([](std::uint64_t sample) { return sample < 37 ? 0.0f : noiseAt(sample - 37, 1); });
+    play(9600);
+    ASSERT_TRUE(produce());
+    analyzer->setPreviewFix(true);
+    ASSERT_TRUE(produce());
+    const DecodedFrame frame = decode(analyzerBytes);
+    ASSERT_EQ(frame.mode, FrameMode::kRaw);
+    const std::size_t factor = frame.pointsPerSample;
+    ASSERT_GT(factor, 1U);
+    const std::size_t points = frame.pointCount;
+    ASSERT_GE(frame.data.size(), 3 * points) << "two lanes and the sum (then the matches)";
+    const std::span<const float> sum(frame.data.data() + (2 * points), points);
+    const std::size_t samples = ((points - 1) / factor) + 1;
+    const double playhead = frame.cursor * static_cast<double>(samples);
+    const auto straight = [&](std::size_t n) {
+        const float from = sum[n * factor];
+        const float to = sum[(n + 1) * factor];
+        for (std::size_t phase = 1; phase < factor; ++phase) {
+            const float line =
+                from + ((to - from) * static_cast<float>(phase) / static_cast<float>(factor));
+            if (std::abs(sum[(n * factor) + phase] - line) > 1e-5f) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const std::size_t reach = kReconstructionReach - 2;
+    for (std::size_t n = 0; n < reach; ++n) {
+        for (const std::size_t gap : {n, samples - 2 - n}) {
+            if (std::abs((static_cast<double>(gap) + 0.5) - playhead) <
+                static_cast<double>(kReconstructionReach) + 2.0) {
+                continue;
+            }
+            EXPECT_TRUE(straight(gap)) << "gap " << gap << " of " << samples - 1;
+        }
     }
 }
 
