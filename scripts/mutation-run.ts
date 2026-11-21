@@ -83,9 +83,9 @@ const hashOf = (text: string) => createHash("sha1").update(text).digest("hex");
 // mutant its r-th by a hash of the id (not by mutator). Within a round, each file's lines come in
 // the order of a hash of their place, the i-th of a file's n given the key i / n, and the round
 // is sorted by that key, then by the hash of the line (not by file, or files of as many changed
-// lines would alternate and the shares, dealt every n-th, would each get one file): its first
-// places hold a line of every file, and any part of
-// it each file's lines in proportion to the file's. Mull's id is
+// lines would alternate and the shares, dealt every n-th, would each get one file). So the
+// round's first places hold a line of every file, and wherever a run stops in the round, each
+// file has had its lines run in proportion to its changed lines. Mull's id is
 // <mutator>:<file>:<line>:<column>:<end line>:<end column>; one that does not read so is a line of
 // a file of its own.
 export function spreadOrder(ids: string[]): string[] {
