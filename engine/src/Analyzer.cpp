@@ -3244,7 +3244,9 @@ void Analyzer::readSumBlock(const std::vector<SumPart>& parts, std::size_t lengt
         std::ranges::fill(margin, 0.0f);
         for (const SumPart& part : parts) {
             const Lane& lane = *lanes.at(laneOrder[part.lane]);
-            if (part.aligned || lane.image.length() != length) {
+            // Lined up, or shifted by Fix preview (silent where the shift reads off the sweep), or
+            // not on this length: no neighbours past the sweep's ends.
+            if (part.aligned || part.offset != 0 || lane.image.length() != length) {
                 std::ranges::fill(margin, std::numeric_limits<float>::quiet_NaN());
                 return;
             }
@@ -3257,7 +3259,7 @@ void Analyzer::readSumBlock(const std::vector<SumPart>& parts, std::size_t lengt
                                        laneView(lane, laneChannel(frameSettings)), first,
                                        destination, marginScratch);
                 },
-                length, from + part.offset, marginSamples);
+                length, from, marginSamples);
             if (!held) {
                 std::ranges::fill(margin, std::numeric_limits<float>::quiet_NaN());
                 return;
@@ -4171,14 +4173,15 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
                         marginSamples[i] = std::numeric_limits<float>::quiet_NaN();
                     }
                 }
-            } else if (source.none) {
-                // Holds none of this window: no neighbours either.
+            } else if (source.none || part.offset != 0) {
+                // Holds none of this window, or (Fix preview) is shifted, so that the window's
+                // last positions it shifts out of are silent: no neighbours past its ends either.
                 std::ranges::fill(marginSamples, std::numeric_limits<float>::quiet_NaN());
             } else {
                 marginScratch.resize(std::max(marginScratch.size(), into.size()));
                 readViewHeldOrNaN(*source.source, source.channels, channel,
-                                  static_cast<std::int64_t>(source.start) + position + part.offset,
-                                  marginSamples, marginScratch);
+                                  static_cast<std::int64_t>(source.start) + position, marginSamples,
+                                  marginScratch);
                 for (float& sample : marginSamples) {
                     sample *= part.gain;
                 }
