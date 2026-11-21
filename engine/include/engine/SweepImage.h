@@ -83,6 +83,15 @@ public:
         std::uint64_t end = 0;
     };
     [[nodiscard]] const std::vector<Range>& changes() const { return changed; }
+    // The positions a part is shown over (showPart), if one is: its edges join it to the image's
+    // own samples, of another layout.
+    [[nodiscard]] std::optional<Range> shownPart() const
+    {
+        if (partCount == 0) {
+            return std::nullopt;
+        }
+        return Range{.first = partFirst, .end = partFirst + partCount};
+    }
     void clearChanges() { changed.clear(); }
 
     [[nodiscard]] std::uint64_t endIndex() const override { return count; }

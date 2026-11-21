@@ -5403,25 +5403,20 @@ TEST_P(DeepZoom, DrawsTheWaveBetweenTheSamplesUpToTheSpansEnds)
     EXPECT_LE(last, visible + 1.0 + 1e-6);
 
     // Where no audio exists past an end, the points may be drawn straight within a reach of it:
-    // a sweep's ends, and live the newest sample, where Free and Auto drawing untriggered end
-    // (this session is not paced, and the tones ride above the trigger level; past a paced edge
-    // the wave reads on: PacedAnalyzerTests; a triggered trace waits for the audio past it:
-    // SingleTriggerDeepZoom). And within a reach of a sweep's playhead, which joins the newest
-    // pass to the previous one.
+    // live, the newest sample, where Free and Auto drawing untriggered end (this session is not
+    // paced, and the tones ride above the trigger level; past a paced edge the wave reads on:
+    // PacedAnalyzerTests; a triggered trace waits for the audio past it: SingleTriggerDeepZoom).
+    // A sweep's ends read round its wrap, the next pass's audio; within a reach of its playhead,
+    // which joins the newest pass to the previous one, the points are straight.
     const auto reach = static_cast<double>(kReconstructionReach);
-    const bool sweep = c.timeBase == TimeBase::kBeats;
-    const bool startHasNoAudio = sweep;
-    const bool endHasNoAudio = sweep || !c.frozen;
-    const double spanStart =
-        (0.0 - frame->viewStart) / (frame->viewEnd - frame->viewStart) * visible;
+    const bool endHasNoAudio = c.timeBase != TimeBase::kBeats && !c.frozen;
     const double spanEnd = (1.0 - frame->viewStart) / (frame->viewEnd - frame->viewStart) * visible;
     const double playhead =
         frame->cursor >= 0.0f
             ? (frame->cursor - frame->viewStart) / (frame->viewEnd - frame->viewStart) * visible
             : std::numeric_limits<double>::quiet_NaN();
     const auto exempt = [&](double position) {
-        return (startHasNoAudio && position < spanStart + reach + 1.0) ||
-               (endHasNoAudio && position > spanEnd - reach - 1.0) ||
+        return (endHasNoAudio && position > spanEnd - reach - 1.0) ||
                std::abs(position - playhead) < reach + 1.0;
     };
     for (std::size_t index = 0; index < traces; ++index) {
@@ -5740,18 +5735,16 @@ TEST_P(FlatTone, DrawsAFlatTopAtEveryZoom)
         EXPECT_LE(highest - lowest, 2.0 * amplitude * ripple) << "the columns' top ripples";
         // Every column holds a crest (eight samples, at most 4.4 a cycle) and reads it from the
         // wave, at the view's and the span's ends too: its neighbours past the span's ends come
-        // from the audio around it. Only beside the playhead, and where no audio exists past an
-        // end (a sweep's ends, and live the newest sample, where Free and Auto drawing untriggered
-        // end, this session not being paced and the tone riding above the trigger level), the
-        // gaps are straight: a column there reads no higher than the wave and no lower than its
-        // nearest sample to a crest.
-        const bool sweep = c.timeBase == TimeBase::kBeats;
-        const bool startHasNoAudio = sweep && c.place == Place::kStart;
-        const bool endHasNoAudio = (sweep || !c.frozen) && c.place == Place::kEnd;
+        // from the audio around it, a sweep's from round its wrap. Only beside the playhead, and
+        // where no audio exists past an end (live, the newest sample, where Free and Auto drawing
+        // untriggered end, this session not being paced and the tone riding above the trigger
+        // level), the gaps are straight: a column there reads no higher than the wave and no
+        // lower than its nearest sample to a crest.
+        const bool endHasNoAudio =
+            c.timeBase != TimeBase::kBeats && !c.frozen && c.place == Place::kEnd;
         const std::size_t columnCount = values.size() / 2;
         const auto straightThere = [&](std::size_t column) {
-            return (startHasNoAudio && column < 2) ||
-                   (endHasNoAudio && column + 2 >= columnCount) ||
+            return (endHasNoAudio && column + 2 >= columnCount) ||
                    std::abs(static_cast<double>(column) - playhead) < 3.0;
         };
         const double straight = 1.0 - std::cos(std::numbers::pi * c.cycles);
@@ -5817,6 +5810,88 @@ struct SeamCase
     bool croppedFreeze = false;
 };
 
+// Whether the gap after sample n of a raw trace of `factor` points a sample is drawn as a line
+// between its two samples rather than as the wave.
+bool drawnStraight(std::span<const float> values, std::size_t factor, std::size_t n)
+{
+    const float from = values[n * factor];
+    const float to = values[(n + 1) * factor];
+    for (std::size_t phase = 1; phase < factor; ++phase) {
+        const float line =
+            from + ((to - from) * static_cast<float>(phase) / static_cast<float>(factor));
+        if (std::abs(values[(n * factor) + phase] - line) > 1e-5f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The gaps of each raw trace of `frame` within a reach of sample `join` (a position in samples
+// from its first drawn sample) are drawn straight, and most gaps further away are the wave.
+void expectStraightOnlyAround(const DecodedFrame& frame, double join)
+{
+    const std::size_t factor = frame.pointsPerSample;
+    ASSERT_GT(factor, 1U);
+    for (std::size_t index = 0; index < tracesIn(frame); ++index) {
+        SCOPED_TRACE("trace " + std::to_string(index));
+        const std::span<const float> values = trace(frame, index);
+        const std::size_t samples = ((values.size() - 1) / factor) + 1;
+        std::size_t curvedFar = 0;
+        std::size_t far = 0;
+        for (std::size_t n = 0; n + 1 < samples; ++n) {
+            const double distance = std::abs((static_cast<double>(n) + 0.5) - join);
+            if (distance < static_cast<double>(kReconstructionReach) - 2.0) {
+                EXPECT_TRUE(drawnStraight(values, factor, n))
+                    << "gap " << n << ", " << distance << " from the join";
+            } else if (distance > static_cast<double>(kReconstructionReach) + 2.0) {
+                ++far;
+                curvedFar += drawnStraight(values, factor, n) ? 0 : 1;
+            }
+        }
+        EXPECT_GT(curvedFar, far / 2) << "away from the join, the wave";
+    }
+}
+
+class DeepZoomFrozenPart : public ::testing::TestWithParam<Display>
+{
+};
+
+// Frozen while a bar's first pass is still filling in, a shorter beat span is shown rebuilt from
+// the held audio (a part), beside the image's own samples, which are of another layout: no wave
+// across either of the part's edges, at the shorter span's start and end. In every display mode.
+TEST_P(DeepZoomFrozenPart, DrawsStraightAtThePartsEdges)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.frequency = kOwnTone * kRate});
+    session.join({.frequency = kOtherTone * kRate});
+    configure(session.own(), GetParam(), TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    session.play(1.5, protocol::kReadoutIntervalSeconds / 2.0); // Three quarters of the first bar.
+    ASSERT_TRUE(session.produce());
+    session.analyzer().setFrozen(true);
+    ASSERT_TRUE(session.produce());
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no frame at the shorter span";
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double width = 4.0 * protocol::kMinimumViewSamples / spanSamples;
+    for (const bool atStart : {true, false}) {
+        SCOPED_TRACE(atStart ? "the part's start" : "the part's end");
+        session.analyzer().setView(atStart ? 0.0 : 1.0 - width, atStart ? width : 1.0);
+        frame = session.produce();
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->mode, FrameMode::kRaw);
+        const double offset = frame->startFraction;
+        expectStraightOnlyAround(*frame, atStart ? offset : frame->visibleSamples + offset);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, DeepZoomFrozenPart, ::testing::ValuesIn(everyMode()),
+                         [](const ::testing::TestParamInfo<Display>& info) {
+                             return modeName(info.param);
+                         });
+
 class DeepZoomSeam : public ::testing::TestWithParam<SeamCase>
 {
 };
@@ -5863,18 +5938,7 @@ TEST_P(DeepZoomSeam, DrawsStraightAcrossThePlayhead)
         const std::span<const float> values = trace(*frame, index);
         const std::size_t samples = ((values.size() - 1) / factor) + 1;
         ASSERT_LT(playhead, static_cast<double>(samples) - (2.0 * kReconstructionReach));
-        const auto straight = [&](std::size_t n) {
-            const float from = values[n * factor];
-            const float to = values[(n + 1) * factor];
-            for (std::size_t phase = 1; phase < factor; ++phase) {
-                const float line =
-                    from + ((to - from) * static_cast<float>(phase) / static_cast<float>(factor));
-                if (std::abs(values[(n * factor) + phase] - line) > 1e-5f) {
-                    return false;
-                }
-            }
-            return true;
-        };
+        const auto straight = [&](std::size_t n) { return drawnStraight(values, factor, n); };
         std::size_t curvedFar = 0;
         for (std::size_t n = 0; n + 1 < samples; ++n) {
             const double distance = std::abs((static_cast<double>(n) + 0.5) - playhead);
@@ -6298,6 +6362,94 @@ TEST_P(DeepZoomInvalidAtSweepStart, LeavesThePreviousBlockOut)
 
 INSTANTIATE_TEST_SUITE_P(Lanes, DeepZoomInvalidAtSweepStart,
                          ::testing::Values(Display::kMulti, Display::kCompare),
+                         [](const ::testing::TestParamInfo<Display>& info) {
+                             return modeName(info.param);
+                         });
+
+// A sweep's neighbours at its start are read round its wrap, from its last positions: a sample
+// that is not finite 5 samples before the held bar's end (host sample 96,000 starts it, the bar
+// before ends at 95,999 on screen) is read only as a neighbour of a view at the bar's start. The
+// trace is drawn up to it, not through it, and Single's sweep, which flags what the view shows
+// (lanes flag by their 10 ms blocks of levels: DeepZoomInvalidAtSweepStart), is not flagged.
+TEST(DeepZoomInvalidAcrossTheWrap, LeavesItOutOfTheTraceAndTheChip)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.frequency = kOwnTone * kRate, .brokenAt = 96000 - 5});
+    auto frame = frozenSession(session, {.mode = Display::kSingle, .timeBase = TimeBase::kBeats});
+    ASSERT_TRUE(frame);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    ASSERT_EQ(spanSamples, 96000.0) << "a bar";
+    session.analyzer().setView(0.0, protocol::kMinimumViewSamples / spanSamples);
+    frame = session.produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->mode, FrameMode::kRaw);
+    const std::size_t factor = frame->pointsPerSample;
+    ASSERT_GT(factor, 1U);
+    EXPECT_TRUE(noneBroken(*frame)) << "drawn up to it, not through it";
+    EXPECT_EQ(frame->invalidLanes, 0U);
+    EXPECT_EQ(frame->invalidSamples, 0U);
+    for (std::size_t index = 0; index < tracesIn(*frame); ++index) {
+        EXPECT_TRUE(drawnStraight(trace(*frame, index), factor, 0))
+            << "trace " << index << ": its first gap reads the broken neighbour";
+    }
+}
+
+class SweepEdgeAcrossTheWrap : public ::testing::TestWithParam<Display>
+{
+};
+
+// Live in Beats, zoomed in at a bar's end, the trace's last gaps read the next pass's first
+// samples round the wrap. When the playhead crosses into the next pass, those samples change, and
+// the frames built from the columns kept frame to frame draw what a fresh reduction of the same
+// audio draws: not the previous pass's neighbours. On noise, which differs from bar to bar, in
+// every display mode.
+TEST_P(SweepEdgeAcrossTheWrap, FollowsTheNextPassAsAFreshReductionDoes)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 2});
+    configure(session.own(), GetParam(), TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    session.play(1.9, protocol::kReadoutIntervalSeconds / 2.0); // Near the first bar's end.
+    session.play(static_cast<double>(kBlock) / kRate);
+    auto frame = session.produce();
+    ASSERT_TRUE(frame);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double width = 4.0 * protocol::kMinimumViewSamples / spanSamples;
+    session.analyzer().setView(1.0 - width, 1.0);
+    ASSERT_TRUE(session.produce());
+    // Into the next bar, a frame every 10 ms: the view's samples are the first pass's, its
+    // neighbours past the bar's end the second pass's first samples, placed as it begins.
+    session.play(0.3, 0.01);
+    frame = session.produce();
+    if (!frame) {
+        session.play(static_cast<double>(kBlock) / kRate);
+        frame = session.produce();
+    }
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->mode, FrameMode::kRaw);
+    const DecodedFrame kept = *frame;
+    // The same audio reduced afresh: other columns and back, nothing played between.
+    session.analyzer().setColumns(kColumns - 1);
+    ASSERT_TRUE(session.produce());
+    session.analyzer().setColumns(kColumns);
+    const auto fresh = session.produce();
+    ASSERT_TRUE(fresh);
+    ASSERT_EQ(tracesIn(*fresh), tracesIn(kept));
+    for (std::size_t index = 0; index < tracesIn(kept); ++index) {
+        const std::span<const float> was = trace(kept, index);
+        const std::span<const float> now = trace(*fresh, index);
+        ASSERT_EQ(now.size(), was.size()) << "trace " << index;
+        for (std::size_t i = 0; i < was.size(); ++i) {
+            ASSERT_EQ(was[i], now[i])
+                << "trace " << index << ", point " << i << " of " << was.size();
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryMode, SweepEdgeAcrossTheWrap, ::testing::ValuesIn(everyMode()),
                          [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
                          });
