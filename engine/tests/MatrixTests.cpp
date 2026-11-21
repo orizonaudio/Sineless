@@ -5323,12 +5323,12 @@ class DeepZoom : public ::testing::TestWithParam<DeepZoomCase>
 
 // Zoomed to kMinimumViewSamples, a raw trace carries the wave between its samples: every
 // pointsPerSample-th point is a sample, the points between them lie on the tones the tracks play,
-// and the first and last reach just past the view's edges (to them at the span's ends). At the
-// span's ends, where the window holds no neighbours, it may be drawn straight there, and neither
-// shifts nor reads past the window. In every trace: each view, each lane, and Compare's sum. A span
-// of fewer samples than kMinimumViewSamples is not zoomed; a Trig or frozen one holds no neighbours
-// past its ends, so within a reach of them (all of the shortest, 22 samples) it is drawn straight.
-TEST_P(DeepZoom, DrawsTheWaveBetweenTheSamples)
+// and the first and last reach just past the view's edges (to them at the span's ends). The wave
+// reaches the span's ends too, its neighbours read from the audio around the span, live and
+// frozen, even on the shortest Trig span (22 samples at 44.1 kHz, too few to zoom): drawn straight
+// only where no audio exists past an end (a sweep's ends, and Free's newest sample live). In every
+// trace: each view, each lane, and Compare's sum.
+TEST_P(DeepZoom, DrawsTheWaveBetweenTheSamplesUpToTheSpansEnds)
 {
     const DeepZoomCase c = GetParam();
     Session session(c.rate, c.channels);
@@ -5402,10 +5402,16 @@ TEST_P(DeepZoom, DrawsTheWaveBetweenTheSamples)
     EXPECT_GE(last, (frame->viewEnd >= 1.0 ? visible - 2.0 : visible) - 1e-6);
     EXPECT_LE(last, visible + 1.0 + 1e-6);
 
-    // Where the window holds no neighbours, the points may be drawn straight: within a reach of
-    // the span's start, of its end, and of a sweep's playhead, which joins the newest pass to the
-    // previous one. (Live in Free, the paced edge has neighbours past it: PacedAnalyzerTests.)
+    // Where no audio exists past an end, the points may be drawn straight within a reach of it:
+    // a sweep's ends, and live the newest sample, where Free and Auto drawing untriggered end
+    // (this session is not paced, and the tones ride above the trigger level; past a paced edge
+    // the wave reads on: PacedAnalyzerTests; a triggered trace waits for the audio past it:
+    // SingleTriggerDeepZoom). And within a reach of a sweep's playhead, which joins the newest
+    // pass to the previous one.
     const auto reach = static_cast<double>(kReconstructionReach);
+    const bool sweep = c.timeBase == TimeBase::kBeats;
+    const bool startHasNoAudio = sweep;
+    const bool endHasNoAudio = sweep || !c.frozen;
     const double spanStart =
         (0.0 - frame->viewStart) / (frame->viewEnd - frame->viewStart) * visible;
     const double spanEnd = (1.0 - frame->viewStart) / (frame->viewEnd - frame->viewStart) * visible;
@@ -5414,7 +5420,8 @@ TEST_P(DeepZoom, DrawsTheWaveBetweenTheSamples)
             ? (frame->cursor - frame->viewStart) / (frame->viewEnd - frame->viewStart) * visible
             : std::numeric_limits<double>::quiet_NaN();
     const auto exempt = [&](double position) {
-        return position < spanStart + reach + 1.0 || position > spanEnd - reach - 1.0 ||
+        return (startHasNoAudio && position < spanStart + reach + 1.0) ||
+               (endHasNoAudio && position > spanEnd - reach - 1.0) ||
                std::abs(position - playhead) < reach + 1.0;
     };
     for (std::size_t index = 0; index < traces; ++index) {
@@ -5450,6 +5457,62 @@ TEST_P(DeepZoom, DrawsTheWaveBetweenTheSamples)
 INSTANTIATE_TEST_SUITE_P(EdgeRates, DeepZoom, ::testing::ValuesIn(deepZoomCases()),
                          [](const ::testing::TestParamInfo<DeepZoomCase>& info) {
                              return nameOf(info.param);
+                         });
+
+class SingleTriggerDeepZoom : public ::testing::TestWithParam<double>
+{
+};
+
+// Single freezes the trace it triggered on at once: the audio past its span's end that the wave
+// reads there had arrived before the trigger was shown, so the end of a 1 ms span zoomed in is
+// the wave, not lines, for as long as it stays frozen.
+TEST_P(SingleTriggerDeepZoom, FreezesATraceWhoseEndIsTheWave)
+{
+    const double rate = GetParam();
+    Session session(rate, 2);
+    session.join({.frequency = kOwnTone * rate, .offset = 0.0}); // Crossing the trigger level.
+    configure(session.own(), Display::kSingle, TimeBase::kTrigger);
+    setSpan(session.own(), TimeBase::kTrigger, 0.001);
+    session.own().settings().set(SettingId::kTriggerMode,
+                                 static_cast<double>(protocol::TriggerMode::kSingle));
+    session.play(0.5); // No frame asked for while it plays: the next one triggers and freezes.
+    auto frame = session.produce();
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(FrameFlag::kTriggered)) << "Single captured a triggered trace";
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double width = protocol::kMinimumViewSamples / spanSamples;
+    session.analyzer().setView(1.0 - width, 1.0);
+    frame = session.produce();
+    ASSERT_TRUE(frame);
+    ASSERT_TRUE(frame->has(FrameFlag::kFrozen)) << "and froze it";
+    ASSERT_EQ(frame->mode, FrameMode::kRaw);
+    const std::size_t factor = frame->pointsPerSample;
+    ASSERT_GT(factor, 1U);
+    const auto perSample = static_cast<double>(factor);
+    const double first = -frame->startFraction;
+    for (std::size_t index = 0; index < tracesIn(*frame); ++index) {
+        SCOPED_TRACE("trace " + std::to_string(index));
+        const std::span<const float> values = trace(*frame, index);
+        std::vector<double> positions;
+        std::vector<double> samples;
+        for (std::size_t k = 0; k < values.size(); k += factor) {
+            positions.push_back(first + (static_cast<double>(k) / perSample));
+            samples.push_back(values[k]);
+        }
+        const ToneFit fit = ToneFit::of(positions, samples);
+        for (std::size_t k = 0; k < values.size(); ++k) {
+            if (k % factor != 0) {
+                EXPECT_NEAR(values[k], fit.at(first + (static_cast<double>(k) / perSample)), 1e-3)
+                    << "point " << k << " of " << values.size();
+            }
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Rates, SingleTriggerDeepZoom,
+                         ::testing::Values(kSampleRates.front(), kSampleRates.back()),
+                         [](const ::testing::TestParamInfo<double>& info) {
+                             return rateName(info.param);
                          });
 
 class RawCrossing : public ::testing::TestWithParam<DeepZoomCase>
@@ -5675,15 +5738,29 @@ TEST_P(FlatTone, DrawsAFlatTopAtEveryZoom)
             continue; // A sum that cancels, or a silent lane.
         }
         EXPECT_LE(highest - lowest, 2.0 * amplitude * ripple) << "the columns' top ripples";
-        // Every column holds a crest (eight samples, at most 4.4 a cycle): at the view's and the
-        // window's ends too, where neighbours run out and the gaps are straight, a column reads no
-        // higher than the wave and no lower than its nearest sample to a crest.
+        // Every column holds a crest (eight samples, at most 4.4 a cycle) and reads it from the
+        // wave, at the view's and the span's ends too: its neighbours past the span's ends come
+        // from the audio around it. Only beside the playhead, and where no audio exists past an
+        // end (a sweep's ends, and live the newest sample, where Free and Auto drawing untriggered
+        // end, this session not being paced and the tone riding above the trigger level), the
+        // gaps are straight: a column there reads no higher than the wave and no lower than its
+        // nearest sample to a crest.
+        const bool sweep = c.timeBase == TimeBase::kBeats;
+        const bool startHasNoAudio = sweep && c.place == Place::kStart;
+        const bool endHasNoAudio = (sweep || !c.frozen) && c.place == Place::kEnd;
+        const std::size_t columnCount = values.size() / 2;
+        const auto straightThere = [&](std::size_t column) {
+            return (startHasNoAudio && column < 2) ||
+                   (endHasNoAudio && column + 2 >= columnCount) ||
+                   std::abs(static_cast<double>(column) - playhead) < 3.0;
+        };
         const double straight = 1.0 - std::cos(std::numbers::pi * c.cycles);
-        for (std::size_t column = 0; column < values.size() / 2; ++column) {
+        for (std::size_t column = 0; column < columnCount; ++column) {
             const double top = values[column * 2 + 1];
             EXPECT_LE(top, highest + (2.0 * amplitude * ripple)) << "column " << column;
-            EXPECT_GE(top, highest - (amplitude * straight) - (2.0 * amplitude * ripple))
-                << "column " << column;
+            const double under = straightThere(column) ? amplitude * straight : 0.0;
+            EXPECT_GE(top, highest - under - (2.0 * amplitude * ripple))
+                << "column " << column << (straightThere(column) ? "" : ", read from the wave");
         }
         const std::span<const float> points = trace(*rawFrame, index);
         double rawTop = -std::numeric_limits<double>::infinity();
@@ -5857,6 +5934,10 @@ TEST_P(DeepZoomLaggingLanes, DoNotBendTowardsSilence)
     const auto frame = session.produce();
     ASSERT_TRUE(frame);
     ASSERT_GT(frame->pointsPerSample, 1U);
+    // Where a lane holds no audio past the edge, its neighbours there are none: nothing reads as
+    // invalid for it.
+    EXPECT_EQ(frame->invalidLanes, 0U);
+    EXPECT_EQ(frame->invalidSamples, 0U);
     // A lane's Mid rides between 0.1875 and 0.5625 (three quarters of the left channel's 0.5 offset
     // and 0.25 swing; the sum, of two, twice that): a point far below is silence read in.
     for (std::size_t index = 0; index < tracesIn(*frame); ++index) {
@@ -5936,6 +6017,54 @@ class DeepZoomInvalid : public ::testing::TestWithParam<InvalidCase>
 {
 };
 
+bool hasBroken(std::span<const float> values)
+{
+    return std::ranges::any_of(values, [](float v) { return std::isnan(v); });
+}
+
+bool noneBroken(const DecodedFrame& shown)
+{
+    for (std::size_t index = 0; index < tracesIn(shown); ++index) {
+        if (hasBroken(trace(shown, index))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The place in a frozen span (in samples from its start) of a broken sample in its middle: a raw
+// view of 300 samples there, in whichever trace holds one. None if none is found.
+std::optional<double> brokenSampleAt(Session& session, double spanSamples)
+{
+    const double wide = 300.0 / spanSamples;
+    session.analyzer().setView(0.5 - (wide / 2.0), 0.5 + (wide / 2.0));
+    const auto frame = session.produce();
+    if (!frame || frame->mode != FrameMode::kRaw) {
+        return std::nullopt;
+    }
+    std::size_t brokenTrace = 0;
+    while (brokenTrace < tracesIn(*frame) && !hasBroken(trace(*frame, brokenTrace))) {
+        ++brokenTrace;
+    }
+    if (brokenTrace == tracesIn(*frame)) {
+        return std::nullopt;
+    }
+    // The broken sample: every pointsPerSample-th point is a sample (the points between it and its
+    // neighbours are not finite either).
+    const std::span<const float> values = trace(*frame, brokenTrace);
+    const std::size_t factor = frame->pointsPerSample;
+    std::size_t broken = 0;
+    while (broken < values.size() && !std::isnan(values[broken])) {
+        ++broken;
+    }
+    broken = (broken + factor - 1) / factor * factor;
+    if (broken >= values.size() || !std::isnan(values[broken])) {
+        return std::nullopt;
+    }
+    return (frame->viewStart * spanSamples) - frame->startFraction +
+           (static_cast<double>(broken) / static_cast<double>(factor));
+}
+
 TEST_P(DeepZoomInvalid, FlagsOnlyWhatTheViewShows)
 {
     const InvalidCase c = GetParam();
@@ -5951,48 +6080,15 @@ TEST_P(DeepZoomInvalid, FlagsOnlyWhatTheViewShows)
     auto frame = frozenSession(session, path);
     ASSERT_TRUE(frame);
     const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
-    // A raw view of 300 samples in the middle, to find a broken sample in it, in whichever trace.
-    const double wide = 300.0 / spanSamples;
-    session.analyzer().setView(0.5 - (wide / 2.0), 0.5 + (wide / 2.0));
-    frame = session.produce();
-    ASSERT_TRUE(frame);
-    ASSERT_EQ(frame->mode, FrameMode::kRaw);
-    const auto hasBroken = [](std::span<const float> values) {
-        return std::ranges::any_of(values, [](float v) { return std::isnan(v); });
-    };
-    std::size_t brokenTrace = 0;
-    while (brokenTrace < tracesIn(*frame) && !hasBroken(trace(*frame, brokenTrace))) {
-        ++brokenTrace;
-    }
-    ASSERT_LT(brokenTrace, tracesIn(*frame));
-    // The broken sample: every pointsPerSample-th point is a sample (the points between it and its
-    // neighbours are not finite either).
-    const std::span<const float> values = trace(*frame, brokenTrace);
-    const std::size_t factor = frame->pointsPerSample;
-    std::size_t broken = 0;
-    while (broken < values.size() && !std::isnan(values[broken])) {
-        ++broken;
-    }
-    broken = (broken + factor - 1) / factor * factor;
-    ASSERT_LT(broken, values.size());
-    ASSERT_TRUE(std::isnan(values[broken]));
-    // Its place in the span, in samples.
-    const double at = (frame->viewStart * spanSamples) - frame->startFraction +
-                      (static_cast<double>(broken) / static_cast<double>(factor));
+    const std::optional<double> brokenAt = brokenSampleAt(session, spanSamples);
+    ASSERT_TRUE(brokenAt);
+    const double at = *brokenAt;
     const double width = protocol::kMinimumViewSamples / spanSamples;
     const auto viewStartingAt = [&](double start) {
         session.analyzer().setView(start / spanSamples, (start / spanSamples) + width);
         auto shown = session.produce();
         EXPECT_TRUE(shown && shown->pointsPerSample > 1U);
         return shown;
-    };
-    const auto noneBroken = [&](const DecodedFrame& shown) {
-        for (std::size_t index = 0; index < tracesIn(shown); ++index) {
-            if (hasBroken(trace(shown, index))) {
-                return false;
-            }
-        }
-        return true;
     };
     const double samples = protocol::kMinimumViewSamples;
 
@@ -6037,6 +6133,111 @@ std::vector<InvalidCase> invalidCases()
 
 INSTANTIATE_TEST_SUITE_P(Paths, DeepZoomInvalid, ::testing::ValuesIn(invalidCases()),
                          [](const ::testing::TestParamInfo<InvalidCase>& info) {
+                             return nameOf(info.param);
+                         });
+
+// The frozen Trigger and Free paths of every display mode.
+std::vector<DeepPath> frozenWindowPaths()
+{
+    std::vector<DeepPath> paths;
+    for (const TimeBase timeBase : {TimeBase::kTrigger, TimeBase::kFree}) {
+        for (const Display mode : everyMode()) {
+            paths.push_back({.mode = mode, .timeBase = timeBase});
+        }
+    }
+    return paths;
+}
+
+class DeepZoomInvalidPastSpan : public ::testing::TestWithParam<DeepPath>
+{
+};
+
+// A sample that is not finite a few samples past a frozen span's end, or before its start, is read
+// only as a neighbour of the wave at that end: the trace is drawn up to it, not through it, and
+// nothing is flagged, neither the Invalid samples chip's count nor any lane, since the screen does
+// not show it.
+TEST_P(DeepZoomInvalidPastSpan, LeavesItOutOfTheTraceAndTheChip)
+{
+    const DeepPath path = GetParam();
+    constexpr double kRate = 48000.0;
+    constexpr std::int64_t kBrokenEvery = 251;
+    Session session(kRate, 2);
+    session.join({.frequency = kOwnTone * kRate, .brokenEvery = kBrokenEvery});
+    session.join({.frequency = kOtherTone * kRate});
+    auto frame = frozenSession(session, path);
+    ASSERT_TRUE(frame);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const std::optional<double> at = brokenSampleAt(session, spanSamples);
+    ASSERT_TRUE(at);
+    const double width = protocol::kMinimumViewSamples / spanSamples;
+    // Panning back by p samples moves every sample p further into the span: a pan that puts one of
+    // the broken samples (one every kBrokenEvery) at `target`, a few samples past an end.
+    const auto panTo = [&](double target) {
+        const auto every = static_cast<double>(kBrokenEvery);
+        const double pan = std::fmod(std::fmod(target - *at, every) + every, every) + every;
+        session.analyzer().setPan(pan / kRate);
+    };
+    for (const bool pastEnd : {true, false}) {
+        SCOPED_TRACE(pastEnd ? "past the span's end" : "before the span's start");
+        panTo(pastEnd ? spanSamples + 4.5 : -5.5);
+        session.analyzer().setView(pastEnd ? 1.0 - width : 0.0, pastEnd ? 1.0 : width);
+        frame = session.produce();
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->mode, FrameMode::kRaw);
+        ASSERT_GT(frame->pointsPerSample, 1U);
+        EXPECT_TRUE(noneBroken(*frame)) << "drawn up to it, not through it";
+        EXPECT_EQ(frame->invalidLanes, 0U);
+        EXPECT_EQ(frame->invalidSamples, 0U);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Paths, DeepZoomInvalidPastSpan, ::testing::ValuesIn(frozenWindowPaths()),
+                         [](const ::testing::TestParamInfo<DeepPath>& info) {
+                             return nameOf(info.param);
+                         });
+
+class DeepZoomAtTheHoldStart : public ::testing::TestWithParam<DeepPath>
+{
+};
+
+// A frozen view panned back to the oldest audio held, which began with the session: no audio
+// exists before it, so the trace starts straight, not ringing towards silence that was never
+// played, and nothing reads as invalid.
+TEST_P(DeepZoomAtTheHoldStart, StartsStraightWhereNoAudioWasHeld)
+{
+    const DeepPath path = GetParam();
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.frequency = kOwnTone * kRate});
+    session.join({.frequency = kOtherTone * kRate});
+    auto frame = frozenSession(session, path);
+    ASSERT_TRUE(frame);
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    session.analyzer().setPan(10.0); // Further than the 3 s held: as far as the hold reaches.
+    session.analyzer().setView(0.0, protocol::kMinimumViewSamples / spanSamples);
+    frame = session.produce();
+    ASSERT_TRUE(frame);
+    ASSERT_EQ(frame->mode, FrameMode::kRaw);
+    const std::size_t factor = frame->pointsPerSample;
+    ASSERT_GT(factor, 1U);
+    EXPECT_TRUE(noneBroken(*frame));
+    EXPECT_EQ(frame->invalidLanes, 0U);
+    EXPECT_EQ(frame->invalidSamples, 0U);
+    for (std::size_t index = 0; index < tracesIn(*frame); ++index) {
+        SCOPED_TRACE("trace " + std::to_string(index));
+        const std::span<const float> values = trace(*frame, index);
+        ASSERT_GT(values.size(), factor);
+        // The first gap: its points on the line between its two samples.
+        for (std::size_t phase = 1; phase < factor; ++phase) {
+            const float line = values[0] + ((values[factor] - values[0]) *
+                                            static_cast<float>(phase) / static_cast<float>(factor));
+            EXPECT_NEAR(values[phase], line, 1e-5f) << "point " << phase;
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Paths, DeepZoomAtTheHoldStart, ::testing::ValuesIn(frozenWindowPaths()),
+                         [](const ::testing::TestParamInfo<DeepPath>& info) {
                              return nameOf(info.param);
                          });
 
@@ -9011,9 +9212,10 @@ TEST(AlignedView, ReadsAnAlignedTrackBeyondTheWindowShown)
         EXPECT_LE(frame->nullDepth, protocol::kGainFloorDb);
         ASSERT_EQ(frame->mode, FrameMode::kMinMax);
         const LaneFit lane = fitOf(trace(*frame, 1), trace(*frame, 0));
-        // All of them; live, but for the newest column, which in this track's lane still waits
-        // for the samples after it (the wave around a peak), and in the other's has them.
-        EXPECT_GE(lane.same + (frozen ? 0U : 1U), kColumns);
+        // All of them but for the newest column, which in this track's lane has no samples after
+        // it (its newest, live or as held), read for the wave around a peak, and in the other's,
+        // read 220 ms back, has them.
+        EXPECT_GE(lane.same + 1U, kColumns);
         EXPECT_EQ(lane.empty, 0U);
         EXPECT_FALSE(silent(trace(*frame, 0))) << "nothing drawn to compare";
         EXPECT_TRUE(silent(trace(*frame, 2))) << "the difference is not silent";

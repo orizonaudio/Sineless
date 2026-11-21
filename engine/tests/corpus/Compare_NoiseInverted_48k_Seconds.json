@@ -17,13 +17,13 @@
       "nanPoints": 0
     },
     "track0": {
-      "max": 0.7476555,
-      "min": -0.752496,
+      "max": 0.7476554,
+      "min": -0.7524959,
       "nanPoints": 0
     },
     "track1": {
-      "max": 0.752496,
-      "min": -0.7476555,
+      "max": 0.7524959,
+      "min": -0.7476554,
       "nanPoints": 0
     }
   },
@@ -38,7 +38,7 @@
   "pointCount": 500,
   "readouts": {
     "peak": 0.4999783,
-    "rms": 0.2893001
+    "rms": 0.2893315
   },
   "signal": {
     "channels": 2,

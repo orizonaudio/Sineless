@@ -17,19 +17,19 @@
       "nanPoints": 0
     },
     "track0": {
-      "max": 0.7476555,
-      "min": -0.752496,
+      "max": 0.7476554,
+      "min": -0.7524959,
       "nanPoints": 0
     },
     "track1": {
-      "max": 0.7476555,
-      "min": -0.752496,
+      "max": 0.7476554,
+      "min": -0.7524959,
       "nanPoints": 0
     }
   },
   "matches": {
     "track1": {
-      "correlation": 0.004059732,
+      "correlation": 0.004685542,
       "offset": 100,
       "polarity": 1
     }
@@ -38,7 +38,7 @@
   "pointCount": 500,
   "readouts": {
     "peak": 0.4999783,
-    "rms": 0.2893001
+    "rms": 0.2893315
   },
   "signal": {
     "channels": 2,
@@ -48,6 +48,6 @@
     "sampleRate": 48000,
     "timeBase": "trigger"
   },
-  "sumGain": -0.01988854,
+  "sumGain": -0.02007648,
   "visibleSamples": 4800
 }
