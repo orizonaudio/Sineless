@@ -24,6 +24,7 @@
 // with no mutant runs no test: a module with fewer mutants than shares leaves some empty
 // (scripts/mutation-cpp.sh runs each module's share against its own tests).
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   appendFileSync,
   existsSync,
@@ -70,8 +71,71 @@ export function combine(reports: Report[]): Report {
   };
 }
 
+// A fixed hash of `text`, to order by: the same order on every run, unrelated to the names.
+const hashOf = (text: string) => createHash("sha1").update(text).digest("hex");
+
+// The order to run the mutants in, so that a run its budget cuts short has covered the first
+// mutant of every changed line, spread over the files, before a second on any line, and leaves
+// no mutator out wholesale. The dry run sorts the ids by mutator (Mull's id begins with it), so
+// running them in that order ran every line's cxx_add_to_sub before any line's
+// cxx_replace_scalar_call: a pull request whose run reached its deadline left whole mutators, and
+// half its changed lines, untried. Here a line's mutants are taken in rounds, a line's round-r
+// mutant its r-th by a hash of the id (not by mutator). Within a round, each file's lines come in
+// the order of a hash of their place, the i-th of a file's n given the key i / n, and the round
+// is sorted by that key, then by the hash of the line (not by file, or files of as many changed
+// lines would alternate and the shares, dealt every n-th, would each get one file): its first
+// places hold a line of every file, and any part of
+// it each file's lines in proportion to the file's. Mull's id is
+// <mutator>:<file>:<line>:<column>:<end line>:<end column>; one that does not read so is a line of
+// a file of its own.
+export function spreadOrder(ids: string[]): string[] {
+  const lines = new Map<string, { file: string; ids: string[] }>();
+  for (const id of ids) {
+    const parts = id.split(":");
+    const place = parts.slice(-4);
+    const readable =
+      parts.length >= 6 && place.every((part) => /^\d+$/.test(part));
+    const file = readable ? parts.slice(1, -4).join(":") : id;
+    const line = readable ? `${file}:${place[0] ?? ""}` : id;
+    const entry = lines.get(line) ?? { file, ids: [] };
+    entry.ids.push(id);
+    lines.set(line, entry);
+  }
+  const byHash = (a: string, b: string) => {
+    const [ha, hb] = [hashOf(a), hashOf(b)];
+    return ha < hb ? -1 : ha > hb ? 1 : 0;
+  };
+  for (const entry of lines.values()) {
+    entry.ids.sort(byHash);
+  }
+  const order: string[] = [];
+  for (let round = 0; ; round++) {
+    const files = new Map<string, string[]>();
+    for (const [line, entry] of lines) {
+      if (entry.ids.length > round) {
+        files.set(entry.file, [...(files.get(entry.file) ?? []), line]);
+      }
+    }
+    if (files.size === 0) {
+      return order;
+    }
+    const keyed = [...files.values()].flatMap((fileLines) =>
+      fileLines.sort(byHash).map((line, i) => ({
+        key: i / fileLines.length,
+        line,
+        id: lines.get(line)?.ids[round] ?? "",
+      })),
+    );
+    keyed.sort((a, b) =>
+      a.key !== b.key ? a.key - b.key : byHash(a.line, b.line),
+    );
+    order.push(...keyed.map(({ id }) => id));
+  }
+}
+
 // Share `share` of `shares` (from 1): every shares-th mutant, so that each share gets some of
-// every file rather than whole files, and a large file is shared out too.
+// every file rather than whole files, and a large file is shared out too. Dealt from
+// spreadOrder's order, the shares together run one mutant of every line before a second.
 export function shareOf(
   ids: string[],
   share: number,
@@ -531,7 +595,11 @@ if (process.argv[1]?.endsWith("mutation-run.ts") === true) {
     // The first binary holds every mutant's switch. The later ones may not: the component's tests
     // load the component built with the mutants rather than link them.
     const binary = tests[0]?.command ?? "";
-    const ids = shareOf(mutantIds(report), share ?? 0, shares ?? 0);
+    const ids = shareOf(
+      spreadOrder(mutantIds(report)),
+      share ?? 0,
+      shares ?? 0,
+    );
     if (ids.length === 0) {
       writeFileSync(results, "");
       console.log("0 mutants run, 0 not run.");

@@ -23,6 +23,7 @@ import {
   mutantIds,
   run,
   shareOf,
+  spreadOrder,
   baseline,
   limitOf,
   listedTests,
@@ -86,7 +87,12 @@ const parameterised = {
 // A GoogleTest-like binary (fixtures/fake-gtest.mjs) from `spec`, holding every mutant's switch.
 // Node runs it directly, not through a shell: Linux's sh (dash) drops environment variables whose
 // names are not a shell's, as every mutant's switch is ("kill:a1").
-function gtestBinary(dir: string, name: string, spec: object): string {
+function gtestBinary(
+  dir: string,
+  name: string,
+  spec: object,
+  ids = mutantIds(dryRun),
+): string {
   const specPath = join(dir, `${name}.json`);
   writeFileSync(specPath, JSON.stringify(spec));
   const binary = join(dir, name);
@@ -96,12 +102,34 @@ function gtestBinary(dir: string, name: string, spec: object): string {
       `#!${process.execPath}`,
       `process.argv.splice(2, 0, ${JSON.stringify(specPath)});`,
       `void import(${JSON.stringify(pathToFileURL(fakeGtest).href)});`,
-      `// ${mutantIds(dryRun).join("\0")}\0`,
+      `// ${ids.join("\0")}\0`,
       "",
     ].join("\n"),
   );
   chmodSync(binary, 0o755);
   return binary;
+}
+
+// A mutant's id as Mull writes it: its mutator, then its file and where in it.
+const mullId = (mutator: string, file: string, line: number, column = 1) =>
+  `${mutator}:/src/${file}:${String(line)}:${String(column)}:${String(line)}:${String(column + 1)}`;
+
+// Where a Mull id is: its file and line.
+const lineOf = (id: string) => id.split(":").slice(1, -3).join(":");
+const fileOf = (id: string) => id.split(":").slice(1, -4).join(":");
+
+// Mull ids for `lines` lines of each file named, each line with every mutator named, in the sorted
+// order the dry run lists them.
+function mullIds(files: Record<string, number>, mutators: string[]): string[] {
+  return Object.entries(files)
+    .flatMap(([file, lines]) =>
+      Array.from({ length: lines }, (_, line) =>
+        mutators.map((mutator, column) =>
+          mullId(mutator, file, line + 1, column + 1),
+        ),
+      ).flat(),
+    )
+    .sort();
 }
 
 // When a budget of `seconds` from now ends.
@@ -134,6 +162,166 @@ describe("sharing out the mutants", () => {
     [1, 0],
   ])("refuses share %d of %d", (share, shares) => {
     expect(() => shareOf(["x"], share, shares)).toThrow();
+  });
+});
+
+// A run its budget cuts short has covered one mutant of every changed line, spread over the files,
+// before a second on any line; and no mutator is left out wholesale, as it was when the shares ran
+// the mutants in the dry run's order, which sorts them by mutator.
+describe("the order the mutants run in", () => {
+  test("runs one mutant of every line before a second on any line", () => {
+    const ids = [
+      mullId("cxx_add_to_sub", "A.cpp", 1),
+      ...["cxx_add_to_sub", "cxx_eq_to_ne", "cxx_lt_to_le"].map((m, c) =>
+        mullId(m, "A.cpp", 2, c + 1),
+      ),
+      ...[
+        "cxx_add_to_sub",
+        "cxx_div_to_mul",
+        "cxx_eq_to_ne",
+        "cxx_gt_to_ge",
+        "cxx_lt_to_le",
+      ].map((m, c) => mullId(m, "A.cpp", 3, c + 1)),
+    ].sort();
+    const order = spreadOrder(ids);
+    expect([...order].sort()).toEqual(ids);
+    expect(new Set(order.slice(0, 3).map(lineOf)).size).toBe(3);
+    expect(new Set(order.slice(3, 5).map(lineOf)).size).toBe(2);
+  });
+
+  // The shape of a pull request whose run ended partway through its first mutant of each line:
+  // five files of the engine, of 151, 11, 1, 189 and 2 changed lines.
+  const sizes: Record<string, number> = {
+    "engine/src/Analyzer.cpp": 151,
+    "engine/src/BlockStats.cpp": 11,
+    "engine/src/FrameEncoder.cpp": 1,
+    "engine/src/Meter.cpp": 189,
+    "engine/src/SweepImage.cpp": 2,
+  };
+  const total = Object.values(sizes).reduce((a, b) => a + b, 0);
+
+  test("reaches every file at once, rather than the files that sort first", () => {
+    const order = spreadOrder(
+      mullIds(sizes, ["cxx_add_to_sub", "cxx_sub_to_add"]),
+    );
+    expect(new Set(order.slice(0, 5).map(fileOf)).size).toBe(5);
+  });
+
+  test("covers each file in proportion to its changed lines, wherever the run is cut", () => {
+    const order = spreadOrder(
+      mullIds(sizes, ["cxx_add_to_sub", "cxx_sub_to_add"]),
+    );
+    // The first mutant of each line: the first `total` places. A run cut after `taken` of them has
+    // each file's lines whose place in that file, i of n, is below the cut, and perhaps the one at
+    // it: ceil(t * n) or one more, with t the cut's own place in its file.
+    for (const taken of [5, 50, Math.floor(total * 0.61), total - 1]) {
+      const cut = order.slice(0, taken);
+      const last = cut.at(-1) ?? "";
+      const lastFile = fileOf(last);
+      const lastLines = sizes[lastFile.replace("/src/", "")] ?? 0;
+      const lastIndex = cut.filter((id) => fileOf(id) === lastFile).length - 1;
+      for (const [file, lines] of Object.entries(sizes)) {
+        const got = cut.filter((id) => fileOf(id) === `/src/${file}`).length;
+        // t = lastIndex / lastLines; ceil(t * lines) in whole numbers.
+        const product = lastIndex * lines;
+        const ceiling = Math.floor((product + lastLines - 1) / lastLines);
+        const tie = product % lastLines === 0;
+        expect(got).toBeGreaterThanOrEqual(ceiling);
+        expect(got).toBeLessThanOrEqual(ceiling + (tie ? 1 : 0));
+      }
+    }
+  });
+
+  test.each([2, 4])(
+    "leaves no mutator out of the first mutant of each line, with %d mutants a line",
+    (perLine) => {
+      const mutators = ["a_one", "b_two", "c_three", "z_four"].slice(
+        0,
+        perLine,
+      );
+      const ids = mullIds({ "A.cpp": 64, "B.cpp": 64 }, mutators);
+      const order = spreadOrder(ids);
+      const shares = Array.from({ length: 8 }, (_, i) =>
+        shareOf(order, i + 1, 8),
+      );
+      // The first mutant of each line, in each share: its first 128 / 8 places.
+      const firsts = shares.map((share) => share.slice(0, 16));
+      expect(new Set(firsts.flat().map(lineOf)).size).toBe(128);
+      expect(new Set(firsts.flat().map((id) => id.split(":")[0]))).toEqual(
+        new Set(mutators),
+      );
+      // Each share on its own too: the dealing does not hand one share one mutator, nor one of two
+      // files of as many changed lines.
+      for (const first of firsts) {
+        expect(new Set(first.map(fileOf)).size).toBe(2);
+        expect(
+          new Set(first.map((id) => id.split(":")[0])).size,
+        ).toBeGreaterThan(1);
+      }
+    },
+  );
+
+  test("keeps every id it cannot read a place in", () => {
+    const ids = mutantIds(dryRun);
+    expect([...spreadOrder(ids)].sort()).toEqual(ids);
+  });
+
+  test.each([[[]], [[mullId("cxx_add_to_sub", "A.cpp", 1)]]])(
+    "orders %j as it is",
+    (ids) => {
+      expect(spreadOrder(ids)).toEqual(ids);
+    },
+  );
+
+  test("runs a share's mutants one of every line first", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-run-"));
+    // Line 1's mutants all survive and line 2's are all killed: sorted by mutator, as the dry run
+    // lists them, line 2's two would run before any of line 1's.
+    const ids = [
+      mullId("survive", "A.cpp", 1, 1),
+      mullId("survive", "A.cpp", 1, 5),
+      mullId("kill", "A.cpp", 2, 1),
+      mullId("kill", "A.cpp", 2, 5),
+    ];
+    const report: Report = {
+      files: {
+        "/src/A.cpp": {
+          mutants: ids.map((id) => ({
+            ...mutant(id),
+            location: {
+              start: { line: Number(id.split(":").at(-4)), column: 1 },
+            },
+          })),
+        },
+      },
+    };
+    const dry = join(dir, "dry.json");
+    writeFileSync(dry, JSON.stringify(report));
+    const binary = gtestBinary(dir, "engine_tests", passing, ids);
+    const results = join(dir, "results.jsonl");
+    execFileSync(
+      process.execPath,
+      [
+        join(import.meta.dirname, "..", "mutation-run.ts"),
+        "run",
+        dry,
+        "1/1",
+        results,
+        "--budget",
+        "60",
+        "--workers",
+        "1",
+        "--",
+        binary,
+      ],
+      { stdio: "pipe" },
+    );
+    const ran = readFileSync(results, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => (JSON.parse(line) as { id: string }).id);
+    expect(ran).toHaveLength(4);
+    expect(new Set(ran.slice(0, 2).map(lineOf)).size).toBe(2);
   });
 });
 
