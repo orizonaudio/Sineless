@@ -139,11 +139,13 @@ struct AnalysisWork
     std::uint64_t sweepUpdates = 0;
 };
 
-// The part of a window that the screen shows, as sample indices from the window's first sample,
-// with one extra point beyond each edge so a raw trace reaches the screen edges, and `lead` and
-// `trail` more each side read only as neighbours for the wave between the samples (the raw view's
-// reach for raw frames, the columns' for min/max columns); the frame drops them. `startFraction`
-// is where the visible part starts, in samples from `first`.
+// The part of a window that the screen shows, as indices of a block that starts `offset` samples
+// before the window's first sample (index i is window position i - offset), with one extra point
+// beyond each edge so a raw trace reaches the screen edges, and `lead` and `trail` more each side
+// read only as neighbours for the wave between the samples (the raw view's reach for raw frames,
+// the columns' for min/max columns); the frame drops them. With an offset, those neighbours may
+// lie past the window's ends, read from the audio around it, NaN where none is held.
+// `startFraction` is where the visible part starts, in samples from `first`.
 struct Crop
 {
     std::size_t first = 0;
@@ -152,6 +154,7 @@ struct Crop
     double visibleSamples = 0.0;
     std::size_t lead = 0;
     std::size_t trail = 0;
+    std::size_t offset = 0;
 };
 
 // Per-editor-session analysis: turns the capture into display frames. It is
@@ -823,6 +826,9 @@ private:
     std::vector<std::int64_t> lastSumGeometry;
     SumRefresh sumRefresh;
     std::vector<float> sumScratch;
+    // A compared lane's or a sum part's neighbours past a window's ends, and their read.
+    std::vector<float> marginSamples;
+    std::vector<float> marginScratch;
     // The sums' levels per block, and the parts they were measured for.
     BlockStats rawSumStats;
     BlockStats fixedSumStats;

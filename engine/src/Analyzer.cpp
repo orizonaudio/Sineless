@@ -71,8 +71,11 @@ constexpr std::uint8_t flag(FrameFlag value)
 // The part of a window of `count` samples that the screen shows (Crop). The window starts
 // `fraction` of a sample after its first sample. A window of no samples (a failed read, or a
 // free-running span before its first column of audio) shows none. With a `margin`, up to that many
-// more samples each side are read as neighbours for reconstructing the wave between the samples.
-Crop cropOf(double count, double fraction, double cropStart, double cropEnd, std::size_t margin = 0)
+// more samples each side are read as neighbours for reconstructing the wave between the samples:
+// within the window, or with `pastWindow` beyond its ends too, the block then starting `margin`
+// samples before the window (Crop::offset), so its neighbours come from the audio around it.
+Crop cropOf(double count, double fraction, double cropStart, double cropEnd, std::size_t margin = 0,
+            bool pastWindow = false)
 {
     if (count < 1.0) {
         return {};
@@ -83,14 +86,54 @@ Crop cropOf(double count, double fraction, double cropStart, double cropEnd, std
         std::clamp(std::floor(visibleFrom), 0.0, std::max(count - 1.0, 0.0)));
     const auto end = static_cast<std::size_t>(
         std::clamp(std::ceil(visibleTo) + 1.0, static_cast<double>(first) + 1.0, count));
-    const std::size_t lead = std::min(margin, first);
-    const std::size_t trail = std::min(margin, static_cast<std::size_t>(count) - end);
-    return {.first = first - lead,
-            .end = end + trail,
-            .startFraction = visibleFrom - static_cast<double>(first - lead),
+    const std::size_t offset = pastWindow ? margin : 0;
+    const std::size_t lead = std::min(margin, first + offset);
+    const std::size_t trail = std::min(margin, static_cast<std::size_t>(count) - end + offset);
+    const std::size_t blockFirst = first + offset - lead;
+    return {.first = blockFirst,
+            .end = end + offset + trail,
+            .startFraction =
+                visibleFrom + static_cast<double>(offset) - static_cast<double>(blockFirst),
             .visibleSamples = (cropEnd - cropStart) * count,
             .lead = lead,
-            .trail = trail};
+            .trail = trail,
+            .offset = offset};
+}
+
+// Fills `block` with window positions from `position` (a crop's first, less its offset) of a
+// window of `count` samples that starts at `windowStart` in `source`: the window's own positions
+// through `readWindow(from, destination)` (from a window position), and the neighbours past its
+// ends as `source` holds them, NaN where it does not. A source that `holdsNone` of this window (a
+// lane frozen at another rate or channel, placed past its hold) has no neighbours either, though it
+// holds audio there. `scratch` holds at least the block. What `readWindow` returns (true when the
+// block holds none of the window).
+template <typename ReadWindow>
+bool fillBlock(const SampleSource& source, int channels, protocol::ChannelView view,
+               std::int64_t windowStart, std::int64_t count, std::int64_t position,
+               std::span<float> block, std::span<float> scratch, const ReadWindow& readWindow,
+               bool holdsNone = false)
+{
+    const auto size = static_cast<std::int64_t>(block.size());
+    const std::int64_t inFirst = std::clamp<std::int64_t>(-position, 0, size);
+    const std::int64_t inEnd = std::clamp<std::int64_t>(count - position, inFirst, size);
+    const auto readMargin = [&](std::int64_t from, std::span<float> margin) {
+        if (holdsNone) {
+            std::ranges::fill(margin, std::numeric_limits<float>::quiet_NaN());
+        } else {
+            readViewHeldOrNaN(source, channels, view, windowStart + from, margin, scratch);
+        }
+    };
+    if (inFirst > 0) {
+        readMargin(position, block.first(static_cast<std::size_t>(inFirst)));
+    }
+    if (inEnd < size) {
+        readMargin(position + inEnd, block.subspan(static_cast<std::size_t>(inEnd)));
+    }
+    if (inFirst == inEnd) {
+        return true;
+    }
+    return readWindow(position + inFirst, block.subspan(static_cast<std::size_t>(inFirst),
+                                                        static_cast<std::size_t>(inEnd - inFirst)));
 }
 
 // The samples of a block read with `crop`'s margins that the screen shows.
@@ -105,7 +148,8 @@ std::span<const float> shownPart(std::span<const float> block, const Crop& crop)
 // columns, drawn as the wave between them (at least kMinPointsPerSample points a sample, never
 // straight) and read with the raw view's reach of neighbours each side; min/max columns otherwise,
 // read with the columns' reach (kColumnReach) for the wave around their extreme samples. The
-// neighbours decide what is read, never the mode.
+// neighbours decide what is read, never the mode. With `pastWindow`, they are read past the
+// window's ends too (cropOf).
 struct ViewCrop
 {
     Crop crop;
@@ -113,13 +157,14 @@ struct ViewCrop
 };
 
 ViewCrop viewCropOf(double count, double fraction, double cropStart, double cropEnd,
-                    std::size_t columns)
+                    std::size_t columns, bool pastWindow = false)
 {
     const Crop shown = cropOf(count, fraction, cropStart, cropEnd);
     if (shown.end - shown.first > columns) {
-        return {.crop = cropOf(count, fraction, cropStart, cropEnd, kColumnReach), .factor = 1};
+        return {.crop = cropOf(count, fraction, cropStart, cropEnd, kColumnReach, pastWindow),
+                .factor = 1};
     }
-    return {.crop = cropOf(count, fraction, cropStart, cropEnd, kReconstructionReach),
+    return {.crop = cropOf(count, fraction, cropStart, cropEnd, kReconstructionReach, pastWindow),
             .factor = Reconstruction::pointsPerSample(shown.visibleSamples, columns)};
 }
 
@@ -168,7 +213,8 @@ TriggerParameters triggerParameters(const Settings& settings, double sampleRate)
             .hysteresis = settings.value(SettingId::kTriggerHysteresis),
             .slope = settings.enumValue<protocol::TriggerSlope>(SettingId::kTriggerSlope),
             .holdOffSamples = settings.value(SettingId::kTriggerHoldOff) * sampleRate,
-            .position = settings.value(SettingId::kTriggerPosition)};
+            .position = settings.value(SettingId::kTriggerPosition),
+            .followingSamples = static_cast<double>(kReconstructionReach)};
 }
 
 // Samples per block of levels: kStatsBlockSeconds of audio.
@@ -180,10 +226,11 @@ std::size_t statsBlock(double sampleRate)
 
 // The samples of a block read with `crop` that the Meter measures: those whose positions lie in the
 // visible part [visibleFrom, visibleTo), so that two views side by side count each sample once.
-// Positions from the block's first sample (crop.first's own start), within [0, count).
+// Positions from the window's first sample, within [0, count).
 std::pair<std::size_t, std::size_t> meterRange(const Crop& crop, std::size_t count)
 {
-    const double from = static_cast<double>(crop.first) + crop.startFraction;
+    const double from =
+        static_cast<double>(crop.first) - static_cast<double>(crop.offset) + crop.startFraction;
     const double to = from + crop.visibleSamples;
     const auto clamp = [count](double position) {
         return static_cast<std::size_t>(
@@ -939,14 +986,12 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
             const auto wholeStart = static_cast<double>(end - count);
             const double from = wholeStart + command.viewStart * static_cast<double>(count);
             const double to = wholeStart + command.viewEnd * static_cast<double>(count);
-            // Neighbours beyond, for reconstructing the wave between the samples.
-            constexpr auto kReach = static_cast<double>(kReconstructionReach);
-            const double first = std::max(wholeStart, std::floor(from) - 1.0 - kReach);
-            // Past the paced edge too, as far as the capture (or the hold) has the audio. In
-            // Multi, other tracks' lanes hold it as well: the edge trails by more than a block
-            // and the reach (DeepZoomLaggingLanes).
+            // The neighbours for the wave between the samples are read past these, from the
+            // audio around the window, as for any window (cropOf): before the span's start, and
+            // past the paced edge as far as the capture (or the hold) has the audio.
+            const double first = std::max(wholeStart, std::floor(from) - 1.0);
             const std::uint64_t held = std::max(end, source->endIndex());
-            const double last = std::min(static_cast<double>(held), std::ceil(to) + 2.0 + kReach);
+            const double last = std::min(static_cast<double>(held), std::ceil(to) + 2.0);
             sampleCount = static_cast<std::uint64_t>(std::max(0.0, last - first));
             window.start = first;
             if (sampleCount > 0) {
@@ -1084,8 +1129,10 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const auto views = effectiveViews(
         static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)), inputChannels);
 
-    const auto [crop, factor] = viewCropOf(static_cast<double>(sampleCount), window.start - first,
-                                           window.cropStart, window.cropEnd, columns);
+    // A window's neighbours come from the audio around it too; a sweep's stop at its ends.
+    const auto [crop, factor] =
+        viewCropOf(static_cast<double>(sampleCount), window.start - first, window.cropStart,
+                   window.cropEnd, columns, !window.synced);
     const double visibleSamples = crop.visibleSamples;
 
     FrameHeaderValues header{
@@ -1206,14 +1253,26 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
             frameData.insert(frameData.end(), values.begin(), values.end());
             continue;
         }
-        // A window (at most a few seconds) is read whole; a sweep never is.
-        viewSamples.resize(static_cast<std::size_t>(sampleCount));
-        scratch.resize(std::max(scratch.size(), viewSamples.size()));
-        if (!readSamples(source, inputChannels, view, start, viewSamples, scratch)) {
+        // The window's part of the crop, which must all be held, and its neighbours past the
+        // window's ends as the source holds them.
+        if (start < source.beginIndex() || start + sampleCount > source.endIndex()) {
             return false;
         }
-        const std::span<const float> visible =
-            std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
+        viewSamples.resize(crop.end - crop.first);
+        scratch.resize(std::max(scratch.size(), viewSamples.size()));
+        if (!fillBlock(source, inputChannels, view, static_cast<std::int64_t>(start),
+                       static_cast<std::int64_t>(sampleCount),
+                       static_cast<std::int64_t>(crop.first) -
+                           static_cast<std::int64_t>(crop.offset),
+                       viewSamples, scratch, [&](std::int64_t from, std::span<float> destination) {
+                           readScratch.resize(std::max(readScratch.size(), destination.size()));
+                           return readSamples(source, inputChannels, view,
+                                              start + static_cast<std::uint64_t>(from), destination,
+                                              readScratch);
+                       })) {
+            return false;
+        }
+        const std::span<const float> visible = viewSamples;
         header.invalidLanes |= holdsInvalid(shownPart(visible, crop)) ? 1U : 0U;
         workDone.samplesReduced += visible.size();
         header.mode = reduceToColumns(visible, crop.lead, crop.trail, columns, reduced, kNoSeam,
@@ -2384,9 +2443,10 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
     const auto start = static_cast<std::uint64_t>(std::max(first, 0.0));
     const MusicalStamp ownClock = isFrozen ? frozenStamp : engine.timeline().latest();
     const double startQuarterNotes = Timeline::quarterNotesAt(ownClock, start, sampleRate);
+    // Each lane's neighbours past the window's ends come from the audio around it.
     const auto [crop, factor] = viewCropOf(static_cast<double>(sampleCount), window.start - first,
-                                           window.cropStart, window.cropEnd, columns);
-    viewSamples.resize(static_cast<std::size_t>(sampleCount));
+                                           window.cropStart, window.cropEnd, columns, true);
+    viewSamples.resize(crop.end - crop.first);
     scratch.resize(std::max(scratch.size(), viewSamples.size()));
 
     FrameHeaderValues header{
@@ -2492,10 +2552,22 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
             continue;
         }
         lane.roll.clear();
-        // What the lane holds of the window; silence where it does not (yet, or any more).
-        (void)readSamplesHeld(*source, channels, channel, laneStart, viewSamples, scratch);
-        const std::span<const float> visible =
-            std::span(viewSamples).subspan(crop.first, crop.end - crop.first);
+        // What the lane holds of the window, silence where it does not (yet, or any more); past
+        // the window's ends, its neighbours as held, none where it holds nothing.
+        (void)fillBlock(
+            *source, channels, channel, static_cast<std::int64_t>(laneStart),
+            static_cast<std::int64_t>(sampleCount),
+            static_cast<std::int64_t>(crop.first) - static_cast<std::int64_t>(crop.offset),
+            viewSamples, scratch,
+            [&](std::int64_t from, std::span<float> destination) {
+                readScratch.resize(std::max(readScratch.size(), destination.size()));
+                (void)readSamplesHeld(*source, channels, channel,
+                                      laneStart + static_cast<std::uint64_t>(from), destination,
+                                      readScratch);
+                return true;
+            },
+            laneSource.none);
+        const std::span<const float> visible = viewSamples;
         header.invalidLanes |= holdsInvalid(shownPart(visible, crop)) ? laneBit(index) : 0U;
         workDone.samplesReduced += visible.size();
         header.mode = reduceToColumns(visible, crop.lead, crop.trail, columns, reduced, kNoSeam,
@@ -3657,11 +3729,14 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
                              bool rolling, double sampleRate, const Commands& command,
                              std::vector<std::byte>& frame)
 {
-    // The visible part, which the matches and gains measure; the lanes and the sum are drawn over
-    // the crop, their neighbours for reconstruction included.
-    const std::size_t first = crop.first + crop.lead;
-    const std::size_t end = crop.end - crop.trail;
+    // The visible part, in window positions, which the matches and gains measure; the lanes and
+    // the sum are drawn over the crop, their neighbours for reconstruction included, which may lie
+    // past the window's ends (from window position blockPosition).
+    const std::size_t first = crop.first + crop.lead - crop.offset;
+    const std::size_t end = crop.end - crop.trail - crop.offset;
     const std::size_t drawCount = crop.end - crop.first;
+    const std::int64_t blockPosition =
+        static_cast<std::int64_t>(crop.first) - static_cast<std::int64_t>(crop.offset);
     // Waits are measured in the capture's new audio, at its rate now.
     const double liveRate = engine.sampleRate();
     // The lane on show decides the search: the sum's, for a fix within its reach, or the
@@ -3849,6 +3924,17 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         pointCount = header.mode == protocol::FrameMode::kMinMax ? columns : samples.size();
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     };
+    // The block's samples past the window's ends that lie outside `held` (block indices) are no
+    // neighbours: none is held there. Those within the window are left as read.
+    const auto markUnheldMargins = [&](std::span<float> block, Positions held) {
+        for (std::size_t i = 0; i < block.size(); ++i) {
+            const std::int64_t position = blockPosition + static_cast<std::int64_t>(i);
+            const bool pastWindow = position < 0 || std::cmp_greater_equal(position, count);
+            if (pastWindow && (i < held.first || i >= held.end)) {
+                block[i] = std::numeric_limits<float>::quiet_NaN();
+            }
+        }
+    };
     for (std::size_t lane = 0; lane < laneOrder.size(); ++lane) {
         Lane& shown = *lanes.at(laneOrder[lane]);
         RollColumns& roll = shown.roll;
@@ -3884,7 +3970,25 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         }
         roll.clear();
         viewSamples.resize(drawCount);
-        readLane(static_cast<std::int64_t>(crop.first), viewSamples);
+        if (feed.aligned) {
+            // Read as far beyond the window as its audio is held, empty where it is not, and
+            // past the window's ends no neighbours there.
+            std::ranges::fill(viewSamples, 0.0f);
+            const Positions held =
+                addAlignedPart(laneSources[lane], laneStart, feed, blockPosition, viewSamples);
+            markUnheldMargins(viewSamples, held);
+        } else {
+            scratch.resize(std::max(scratch.size(), viewSamples.size()));
+            (void)fillBlock(
+                *laneSources[lane].source, laneSources[lane].channels, channel,
+                static_cast<std::int64_t>(laneStart), static_cast<std::int64_t>(count),
+                blockPosition, viewSamples, scratch,
+                [&](std::int64_t from, std::span<float> destination) {
+                    (void)readLaneWindow(lane, static_cast<std::uint64_t>(from), destination);
+                    return true;
+                },
+                laneSources[lane].none);
+        }
         header.invalidLanes |= holdsInvalid(shownPart(viewSamples, crop)) ? laneBit(lane) : 0U;
         addVisible(viewSamples);
     }
@@ -3930,23 +4034,85 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         }
         return complete;
     };
+    // Positions from `position`, all past the window's ends: the sum of the parts' audio there
+    // as each holds it, NaN wherever one holds none.
+    const auto addSumMargin = [&](std::int64_t position, std::span<float> into) {
+        std::ranges::fill(into, 0.0f);
+        for (const SumPart& part : parts) {
+            const LaneSource& source = laneSources[part.lane];
+            marginSamples.assign(into.size(), 0.0f);
+            if (part.aligned) {
+                const Positions held =
+                    addAlignedPart(source, source.start, part, position, marginSamples);
+                for (std::size_t i = 0; i < marginSamples.size(); ++i) {
+                    if (i < held.first || i >= held.end) {
+                        marginSamples[i] = std::numeric_limits<float>::quiet_NaN();
+                    }
+                }
+            } else if (source.none) {
+                // Holds none of this window: no neighbours either.
+                std::ranges::fill(marginSamples, std::numeric_limits<float>::quiet_NaN());
+            } else {
+                marginScratch.resize(std::max(marginScratch.size(), into.size()));
+                readViewHeldOrNaN(*source.source, source.channels, channel,
+                                  static_cast<std::int64_t>(source.start) + position + part.offset,
+                                  marginSamples, marginScratch);
+                for (float& sample : marginSamples) {
+                    sample *= part.gain;
+                }
+            }
+            for (std::size_t i = 0; i < into.size(); ++i) {
+                into[i] += marginSamples[i];
+            }
+        }
+    };
     if (rolling) {
         addColumns(sumRoll.update(
             start - window.grid.boundary(window.firstColumn), window.firstColumn, window.grid,
             [&](std::uint64_t from, std::span<float> destination) {
-                // The sum is drawn silent beyond its window, but those are not samples it holds:
-                // a column's neighbours there are not held, so it is reduced again once the
-                // window moves on over them.
-                if (from < start || from - start + destination.size() > count) {
-                    return false;
-                }
+                // Within the window, the sum as drawn; past its ends (a column's neighbours), the
+                // parts' audio there as held. Held only if every part holds all of it, so a
+                // column that read a neighbour not held is reduced again once it is.
                 workDone.samplesReduced += destination.size();
-                return readSumWindow(static_cast<std::size_t>(from - start), destination);
+                const std::int64_t position =
+                    static_cast<std::int64_t>(from) - static_cast<std::int64_t>(start);
+                const auto size = static_cast<std::int64_t>(destination.size());
+                const std::int64_t inFirst = std::clamp<std::int64_t>(-position, 0, size);
+                const std::int64_t inEnd = std::clamp<std::int64_t>(
+                    static_cast<std::int64_t>(count) - position, inFirst, size);
+                bool held = true;
+                if (inFirst < inEnd) {
+                    held = readSumWindow(
+                        static_cast<std::size_t>(position + inFirst),
+                        destination.subspan(static_cast<std::size_t>(inFirst),
+                                            static_cast<std::size_t>(inEnd - inFirst)));
+                }
+                const std::span<float> before =
+                    destination.first(static_cast<std::size_t>(inFirst));
+                const std::span<float> after = destination.subspan(static_cast<std::size_t>(inEnd));
+                addSumMargin(position, before);
+                addSumMargin(position + inEnd, after);
+                const auto finite = [](float sample) { return std::isfinite(sample); };
+                return held && std::ranges::all_of(before, finite) &&
+                       std::ranges::all_of(after, finite);
             }));
     } else {
         sumRoll.clear();
         sumSamples.resize(drawCount);
-        readSumWindow(crop.first, sumSamples);
+        // The window's part as the sum reads it, and its neighbours past the window's ends: each
+        // part's audio there as held, none where any part holds none.
+        const auto size = static_cast<std::int64_t>(drawCount);
+        const std::int64_t inFirst = std::clamp<std::int64_t>(-blockPosition, 0, size);
+        const std::int64_t inEnd = std::clamp<std::int64_t>(
+            static_cast<std::int64_t>(count) - blockPosition, inFirst, size);
+        const std::span<float> block = sumSamples;
+        if (inFirst < inEnd) {
+            readSumWindow(static_cast<std::size_t>(blockPosition + inFirst),
+                          block.subspan(static_cast<std::size_t>(inFirst),
+                                        static_cast<std::size_t>(inEnd - inFirst)));
+        }
+        addSumMargin(blockPosition, block.first(static_cast<std::size_t>(inFirst)));
+        addSumMargin(blockPosition + inEnd, block.subspan(static_cast<std::size_t>(inEnd)));
         addVisible(sumSamples);
     }
     header.laneCount = static_cast<std::uint8_t>(laneOrder.size() + 1);

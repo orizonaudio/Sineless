@@ -299,6 +299,38 @@ TEST(PacedWindowsDeepZoom, ReconstructUpToTheEdge)
         << "the newest samples are joined by the wave, not lines";
 }
 
+// Zoomed to the oldest kMinimumViewSamples of a free-running window, the trace is the wave from
+// the span's start: the capture holds the audio before it, which serves as the neighbours there.
+TEST(PacedWindowsDeepZoom, ReconstructFromTheStart)
+{
+    PacedHost host(48000.0, 512);
+    host.signal = [](std::uint64_t index) {
+        return static_cast<float>(
+            0.5 * std::sin(2.0 * std::numbers::pi * 5000.0 * static_cast<double>(index) / 48000.0));
+    };
+    constexpr double kSpan = 0.5;
+    host.runFree(kSpan);
+    host.play(3.0, false); // The clock locks.
+    const double width = protocol::kMinimumViewSamples / (kSpan * host.rate);
+    host.analyzer.setView(0.0, width);
+    host.play(0.5);
+    ASSERT_TRUE(host.last);
+    const DecodedFrame& frame = *host.last;
+    ASSERT_EQ(frame.mode, protocol::FrameMode::kRaw);
+    const std::size_t factor = frame.pointsPerSample;
+    ASSERT_GT(factor, 1U);
+    // The oldest gaps between samples: each drawn as the wave, not as a line between its ends.
+    std::size_t curved = 0;
+    for (std::size_t n = 0; n < kReconstructionReach / 2; ++n) {
+        const float from = frame.data[n * factor];
+        const float to = frame.data[(n + 1) * factor];
+        const float middle = frame.data[(n * factor) + (factor / 2)];
+        curved += std::abs(middle - ((from + to) / 2.0f)) > 1e-3f ? 1 : 0;
+    }
+    EXPECT_GE(curved, kReconstructionReach / 4)
+        << "the oldest samples are joined by the wave, not lines";
+}
+
 // Spans shorter than pacedSpanMinimumSeconds end at the newest sample: their whole trace is new
 // every frame, and pacing would only show it later. Just above, they are paced. Auto drawing
 // untriggered reaches both (Free starts above the minimum).

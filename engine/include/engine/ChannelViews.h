@@ -44,4 +44,11 @@ namespace orizon::engine {
 bool readViewHeld(const SampleSource& source, int inputChannels, protocol::ChannelView view,
                   std::uint64_t start, std::span<float> destination, std::span<float> scratch);
 
+// The same for neighbours read past a window's ends: what `source` holds of the range from `start`
+// (which may lie before its first index), and NaN for the rest, so that the wave drawn beside
+// audio that does not exist is straight rather than ringing towards silence. A part held but
+// overwritten during the copy is NaN too.
+void readViewHeldOrNaN(const SampleSource& source, int inputChannels, protocol::ChannelView view,
+                       std::int64_t start, std::span<float> destination, std::span<float> scratch);
+
 } // namespace orizon::engine

@@ -23,6 +23,10 @@ struct TriggerParameters
     double holdOffSamples = 0.0;
     // Where the trigger point sits, as a fraction of the span from the left edge.
     double position = protocol::kDefaultTriggerPosition;
+    // Samples that must have arrived past the span's end before an edge is shown: the neighbours
+    // the wave between samples reads there (kReconstructionReach), so a triggered trace, and
+    // Single's freeze of it, never ends straight for want of audio that was about to arrive.
+    double followingSamples = 0.0;
 };
 
 // Positions of the edges in `samples` (samples[0] has index `firstIndex`), oldest first.
