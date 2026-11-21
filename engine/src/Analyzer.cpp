@@ -4230,14 +4230,14 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         const std::int64_t inFirst = std::clamp<std::int64_t>(-blockPosition, 0, size);
         const std::int64_t inEnd = std::clamp<std::int64_t>(
             static_cast<std::int64_t>(count) - blockPosition, inFirst, size);
-        const std::span<float> block = sumSamples;
+        const std::span<float> drawn = sumSamples;
         if (inFirst < inEnd) {
             readSumWindow(static_cast<std::size_t>(blockPosition + inFirst),
-                          block.subspan(static_cast<std::size_t>(inFirst),
+                          drawn.subspan(static_cast<std::size_t>(inFirst),
                                         static_cast<std::size_t>(inEnd - inFirst)));
         }
-        addSumMargin(blockPosition, block.first(static_cast<std::size_t>(inFirst)));
-        addSumMargin(blockPosition + inEnd, block.subspan(static_cast<std::size_t>(inEnd)));
+        addSumMargin(blockPosition, drawn.first(static_cast<std::size_t>(inFirst)));
+        addSumMargin(blockPosition + inEnd, drawn.subspan(static_cast<std::size_t>(inEnd)));
         addVisible(sumSamples);
     }
     header.laneCount = static_cast<std::uint8_t>(laneOrder.size() + 1);
