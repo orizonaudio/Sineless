@@ -1,8 +1,10 @@
 #include "engine/CaptureRing.h"
 #include "engine/ChannelViews.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <gtest/gtest.h>
 #include <string>
 #include <utility>
@@ -165,6 +167,23 @@ TEST_F(ChannelViews, ReadsWhatIsHeldAndSilenceForTheRest)
     EXPECT_EQ(destination, (std::vector<float>{-1.0f, 0.0f, 0.0f, 0.0f})) << "held, then silence";
     EXPECT_TRUE(readViewHeld(ring, 2, ChannelView::kLeft, 0, destination, scratch));
     EXPECT_EQ(destination, (std::vector<float>{1.0f, 0.5f, -1.0f, 0.0f}));
+}
+
+// Neighbours read past a window's ends: what is held, and NaN before the first sample held and
+// past the newest, so that the wave beside audio that does not exist is drawn straight.
+TEST_F(ChannelViews, ReadsWhatIsHeldAndNothingForTheRest)
+{
+    const auto unheld = [](float value) { return std::isnan(value); };
+    std::vector<float> destination(8, 9.0f);
+    std::vector<float> scratch(8);
+    readViewHeldOrNaN(ring, 2, ChannelView::kLeft, -2, destination, scratch);
+    EXPECT_TRUE(unheld(destination[0]) && unheld(destination[1])) << "before the first held";
+    EXPECT_EQ(std::vector<float>(destination.begin() + 2, destination.begin() + 6),
+              (std::vector<float>{1.0f, 0.5f, -1.0f, 0.0f}))
+        << "held";
+    EXPECT_TRUE(unheld(destination[6]) && unheld(destination[7])) << "past the newest";
+    readViewHeldOrNaN(ring, 2, ChannelView::kLeft, 10, destination, scratch);
+    EXPECT_TRUE(std::ranges::all_of(destination, unheld)) << "wholly past what is held";
 }
 
 } // namespace
