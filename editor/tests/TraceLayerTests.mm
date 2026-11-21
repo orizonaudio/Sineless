@@ -139,10 +139,28 @@ protected:
 
     void TearDown() override
     {
-        layer.reset();
+        destroyLayer();
         TraceLayer::setOcclusionForTesting(std::nullopt);
         [window orderOut:nil];
         [window close];
+    }
+
+    // How long a shown layer is left before it is destroyed. The render server tells a shown
+    // layer's display link which display it is on, on Core Animation's own queue, some time after
+    // the layer is shown (and possibly after it changes). Below macOS 27, a message handled while
+    // the link is being invalidated reads the link's layer after the invalidation cleared it and
+    // crashes (#445). Nothing signals the message, so the test waits for it.
+    static constexpr auto kSettleBeforeDestroying = 250ms;
+
+    // Destroys the layer once a display message for it has had time to be handled. The pump also
+    // commits a layer change the test made outside a transaction.
+    void destroyLayer()
+    {
+        if (layer == nullptr) {
+            return;
+        }
+        pumpUntil([] { return false; }, kSettleBeforeDestroying);
+        layer.reset();
     }
 
     // The layer shown and drawing: the page up and its trace view sent.
@@ -431,7 +449,7 @@ TEST_F(TraceLayerTest, NumbersEachPictureItDrawsWithTheSwitchOn)
     ASSERT_DISPLAY_WAIT(presents());
     EXPECT_FALSE(layer->statsForTesting().barcode) << "off";
 
-    layer.reset();
+    destroyLayer();
     source.frameBarcode = true;
     source.limit = 1;
     source.takes = 0;
@@ -619,7 +637,7 @@ TEST_F(TraceLayerTest, CallsNothingOnceDestroyed)
     source.always = true;
     show();
     ASSERT_DISPLAY_WAIT(presents());
-    layer.reset();
+    destroyLayer();
     const int requests = source.requests.load();
     const int takes = source.takes.load();
     pumpUntil([] { return false; }, 300ms);
