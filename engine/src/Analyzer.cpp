@@ -168,29 +168,106 @@ ViewCrop viewCropOf(double count, double fraction, double cropStart, double crop
             .factor = Reconstruction::pointsPerSample(shown.visibleSamples, columns)};
 }
 
-// Where a sweep's playhead, at `position` (0 to 1) of an image of `count` samples, falls in a
-// block read with `crop`: the first sample of the previous pass, or kNoSeam outside the block (or
-// with no playhead, at a negative position).
-std::size_t seamOf(double position, double count, const Crop& crop)
+// The image position of a block's first sample, read with `crop` from a sweep image: before the
+// image's first position when its neighbours are read across the wrap (Crop::offset).
+std::int64_t blockStart(const Crop& crop)
 {
-    if (!(position >= 0.0)) {
-        return kNoSeam;
-    }
-    const auto index = static_cast<std::size_t>(std::llround(position * count));
-    return index > crop.first && index < crop.end ? index - crop.first : kNoSeam;
+    return static_cast<std::int64_t>(crop.first) - static_cast<std::int64_t>(crop.offset);
 }
 
-// Adds to `seams` an image's joins (SweepImage::joins) that lie in `crop`, as indices into it. For
-// a lane drawn lined up, each lies `shift` samples before where the image has it: moved first, so
-// that one shifted into the crop from outside it is marked, and one shifted out of it is not.
+// `position` taken round an image of `count` samples, into [0, count).
+std::int64_t wrapped(std::int64_t position, std::int64_t count)
+{
+    const std::int64_t rest = position % count;
+    return rest < 0 ? rest + count : rest;
+}
+
+// Reads image positions from `position` into `into` through `read(first, destination)`, which
+// reads within the image, going round its wrap: a sweep's screen is written cyclically, the
+// position after its last the next sample of the audio (the next pass's first) unless a join lies
+// there, which the seams mark. False if a read fails or the image is empty.
+template <typename Read>
+bool readWrapped(const Read& read, std::uint64_t count, std::int64_t position,
+                 std::span<float> into)
+{
+    if (count == 0) {
+        return into.empty();
+    }
+    std::size_t done = 0;
+    auto from = static_cast<std::uint64_t>(wrapped(position, static_cast<std::int64_t>(count)));
+    while (done < into.size()) {
+        const std::size_t length =
+            std::min<std::size_t>(into.size() - done, static_cast<std::size_t>(count - from));
+        if (!read(from, into.subspan(done, length))) {
+            return false;
+        }
+        done += length;
+        from = 0;
+    }
+    return true;
+}
+
+// Calls `apply(from, end)` with the block indices that image positions [first, end) of an image of
+// `count` samples fall on, in a block of `size` read with `crop`, round the wrap. The positions
+// may reach a little past the image's ends (a change widened by what it reaches).
+template <typename Apply>
+void forEachInBlock(std::int64_t first, std::int64_t end, const Crop& crop, std::size_t size,
+                    std::uint64_t count, const Apply& apply)
+{
+    const auto length = static_cast<std::int64_t>(count);
+    for (const std::int64_t turn : {-length, std::int64_t{0}, length}) {
+        const std::int64_t from = std::max<std::int64_t>(first + turn - blockStart(crop), 0);
+        const std::int64_t to =
+            std::min<std::int64_t>(end + turn - blockStart(crop), static_cast<std::int64_t>(size));
+        if (from < to) {
+            apply(static_cast<std::size_t>(from), static_cast<std::size_t>(to));
+        }
+    }
+}
+
+// Adds to `seams` the block indices that image position `join` (the first after a join) falls on,
+// in a block read with `crop` from an image of `count` samples, round the wrap: a join at a
+// block's first sample has nothing before it to join.
+void addSeam(std::int64_t join, const Crop& crop, std::uint64_t count,
+             std::vector<std::size_t>& seams)
+{
+    if (count == 0) {
+        return;
+    }
+    const auto length = static_cast<std::int64_t>(count);
+    const auto size = static_cast<std::int64_t>(crop.end - crop.first);
+    for (std::int64_t index = wrapped(join - blockStart(crop), length); index < size;
+         index += length) {
+        if (index > 0) {
+            seams.push_back(static_cast<std::size_t>(index));
+        }
+    }
+}
+
+// Adds to `seams` where a sweep's playhead, at `position` (0 to 1) of an image of `count` samples,
+// falls in a block read with `crop`: the first sample of the previous pass. None with no playhead
+// (a negative position).
+void addPlayhead(double position, std::uint64_t count, const Crop& crop,
+                 std::vector<std::size_t>& seams)
+{
+    if (position >= 0.0) {
+        addSeam(std::llround(position * static_cast<double>(count)), crop, count, seams);
+    }
+}
+
+// Adds to `seams` an image's joins (SweepImage::joins) that lie in `crop`, as indices into it,
+// round the wrap; and, while it shows a part (a frozen shorter span rebuilt from the held audio),
+// that part's two edges, beside which the image's own samples are of another layout. For a lane
+// drawn lined up, each lies `shift` samples before where the image has it.
 void addJoins(const SweepImage& image, const Crop& crop, std::vector<std::size_t>& seams,
               std::ptrdiff_t shift = 0)
 {
     for (const std::uint64_t join : image.joins()) {
-        const std::int64_t moved = static_cast<std::int64_t>(join) - shift;
-        if (std::cmp_greater(moved, crop.first) && std::cmp_less(moved, crop.end)) {
-            seams.push_back(static_cast<std::size_t>(moved) - crop.first);
-        }
+        addSeam(static_cast<std::int64_t>(join) - shift, crop, image.length(), seams);
+    }
+    if (const auto part = image.shownPart()) {
+        addSeam(static_cast<std::int64_t>(part->first) - shift, crop, image.length(), seams);
+        addSeam(static_cast<std::int64_t>(part->end) - shift, crop, image.length(), seams);
     }
 }
 
@@ -1129,10 +1206,9 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     const auto views = effectiveViews(
         static_cast<std::uint8_t>(settings.value(SettingId::kChannelViews)), inputChannels);
 
-    // A window's neighbours come from the audio around it too; a sweep's stop at its ends.
-    const auto [crop, factor] =
-        viewCropOf(static_cast<double>(sampleCount), window.start - first, window.cropStart,
-                   window.cropEnd, columns, !window.synced);
+    // A window's neighbours come from the audio around it too, a sweep's from round its wrap.
+    const auto [crop, factor] = viewCropOf(static_cast<double>(sampleCount), window.start - first,
+                                           window.cropStart, window.cropEnd, columns, true);
     const double visibleSamples = crop.visibleSamples;
 
     FrameHeaderValues header{
@@ -1171,14 +1247,12 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
     header.triggerView = triggerViewFor(settings, false);
     const bool rolling = window.freeRunning && window.onGrid && !window.synced &&
                          window.cropStart == 0.0 && window.cropEnd == 1.0;
-    // A sweep's playhead joins the newest pass to the previous one: no curve across it.
-    const std::size_t seam =
-        synced ? seamOf(window.subStart + window.cursor * (window.subEnd - window.subStart),
-                        static_cast<double>(sampleCount), crop)
-               : kNoSeam;
-    // Columns draw no wave across any join in the image: the playhead's, and a transport jump's.
-    viewSeams.assign(1, seam);
+    // A sweep's playhead joins the newest pass to the previous one: no curve across it. Columns
+    // draw no wave across any join in the image: the playhead's, and a transport jump's.
+    viewSeams.clear();
     if (synced) {
+        addPlayhead(window.subStart + window.cursor * (window.subEnd - window.subStart),
+                    sampleCount, crop, viewSeams);
         addJoins(image, crop, viewSeams);
     }
     const std::size_t visibleCount = crop.end - crop.first;
@@ -1204,7 +1278,9 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
         if (synced) {
             ColumnReduction& reduction = viewReductions.at(index);
             const auto readVisible = [&](std::size_t first, std::span<float> destination) {
-                return read(crop.first + first, destination);
+                return readWrapped(read, sampleCount,
+                                   blockStart(crop) + static_cast<std::int64_t>(first),
+                                   destination);
             };
             bool updated = true;
             if (!sameReduction || !reduction.fits(visibleCount, columns, crop.lead, crop.trail)) {
@@ -1217,14 +1293,12 @@ bool Analyzer::render(const SampleSource& source, const Settings& settings, doub
                 updated = reduction.update(0, visibleCount, readVisible, viewSeams);
             } else {
                 for (const SweepImage::Range& range : image.changes()) {
-                    const std::uint64_t from = std::max<std::uint64_t>(range.first, crop.first);
-                    const std::uint64_t to = std::min<std::uint64_t>(range.end, crop.end);
-                    if (from < to) {
-                        updated = reduction.update(static_cast<std::size_t>(from) - crop.first,
-                                                   static_cast<std::size_t>(to) - crop.first,
-                                                   readVisible, viewSeams) &&
-                                  updated;
-                    }
+                    forEachInBlock(
+                        static_cast<std::int64_t>(range.first),
+                        static_cast<std::int64_t>(range.end), crop, visibleCount, sampleCount,
+                        [&](std::size_t from, std::size_t to) {
+                            updated = reduction.update(from, to, readVisible, viewSeams) && updated;
+                        });
                 }
             }
             if (!updated) {
@@ -2099,9 +2173,10 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
     const std::uint64_t count = own.image.length();
     const double shownPart = subEnd - subStart;
     const std::size_t columns = command.columns;
+    // Neighbours past the sweep's ends come from round its wrap.
     const auto [crop, factor] =
         viewCropOf(static_cast<double>(count), 0.0, subStart + command.viewStart * shownPart,
-                   subStart + command.viewEnd * shownPart, columns);
+                   subStart + command.viewEnd * shownPart, columns, true);
     // The rate of the own lane's audio: frozen, the one it was held at.
     const double sampleRate =
         isFrozen && own.hold.held() ? own.hold.sampleRate() : engine.sampleRate();
@@ -2179,14 +2254,20 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
         // reads it.
         const auto read = [&](std::size_t first, std::span<float> destination) {
             workDone.samplesReduced += destination.size();
+            const std::int64_t position = blockStart(crop) + static_cast<std::int64_t>(first);
             if (feed.aligned) {
                 onePart.assign(1, feed);
-                readSum(onePart, static_cast<std::size_t>(count), crop.first + first, destination);
+                readSumBlock(onePart, static_cast<std::size_t>(count), position, destination);
                 return true;
             }
             laneScratch.resize(std::max(laneScratch.size(), destination.size()));
-            return readSamples(lane.image, imageChannels(lane.image, lane.engine->inputChannels()),
-                               channel, crop.first + first, destination, laneScratch);
+            return readWrapped(
+                [&](std::uint64_t from, std::span<float> part) {
+                    return readSamples(lane.image,
+                                       imageChannels(lane.image, lane.engine->inputChannels()),
+                                       channel, from, part, laneScratch);
+                },
+                count, position, destination);
         };
         // Each lane's image joins its newest pass to the one before at its own newest sample, which
         // can lie a block from this track's playhead, and has its own transport jumps: no wave
@@ -2207,16 +2288,13 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                 onePart.assign(1, feed);
                 const Reach reach = feed.aligned ? reachOf(onePart) : Reach{};
                 const auto redo = [&](const SweepImage::Range& range) {
-                    const std::uint64_t first = std::max<std::uint64_t>(
-                        range.first > reach.before ? range.first - reach.before : 0, crop.first);
-                    const std::uint64_t end =
-                        std::min<std::uint64_t>(range.end + reach.after, crop.end);
-                    if (first < end) {
-                        updated = reduction.update(static_cast<std::size_t>(first) - crop.first,
-                                                   static_cast<std::size_t>(end) - crop.first, read,
-                                                   laneSeams) &&
-                                  updated;
-                    }
+                    forEachInBlock(static_cast<std::int64_t>(range.first) -
+                                       static_cast<std::int64_t>(reach.before),
+                                   static_cast<std::int64_t>(range.end + reach.after), crop,
+                                   visibleCount, count, [&](std::size_t from, std::size_t to) {
+                                       updated =
+                                           reduction.update(from, to, read, laneSeams) && updated;
+                                   });
                 };
                 // Aligned, also where this track's audio changed, which moves the playhead the
                 // lane is empty around: the two mostly cover the same positions, drawn once.
@@ -2249,10 +2327,10 @@ bool Analyzer::produceLanes(const Settings& settings, const Commands& command,
                     !lane.meter.fits(static_cast<std::size_t>(count), block, sampleRate, channels),
                     block, sampleRate);
             }
-            header.invalidLanes |=
-                holdsInvalid(lane.stats, crop.first + crop.lead, crop.end - crop.trail)
-                    ? laneBit(laneIndex)
-                    : 0U;
+            header.invalidLanes |= holdsInvalid(lane.stats, crop.first + crop.lead - crop.offset,
+                                                crop.end - crop.trail - crop.offset)
+                                       ? laneBit(laneIndex)
+                                       : 0U;
             partial = partial || !(lane.image.complete() || lane.image.partComplete());
             if (comparing) {
                 frameChanges.insert(frameChanges.end(), lane.image.changes().begin(),
@@ -3146,6 +3224,53 @@ void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, st
     }
 }
 
+void Analyzer::readSumBlock(const std::vector<SumPart>& parts, std::size_t length,
+                            std::int64_t position, std::span<float> into)
+{
+    const auto size = static_cast<std::int64_t>(into.size());
+    const std::int64_t inFirst = std::clamp<std::int64_t>(-position, 0, size);
+    const std::int64_t inEnd =
+        std::clamp<std::int64_t>(static_cast<std::int64_t>(length) - position, inFirst, size);
+    if (inFirst < inEnd) {
+        readSum(parts, length, static_cast<std::size_t>(position + inFirst),
+                into.subspan(static_cast<std::size_t>(inFirst),
+                             static_cast<std::size_t>(inEnd - inFirst)));
+    }
+    // Past the sweep's ends: each part round the wrap, or none.
+    const auto pastEnds = [&](std::int64_t from, std::span<float> margin) {
+        if (margin.empty()) {
+            return;
+        }
+        std::ranges::fill(margin, 0.0f);
+        for (const SumPart& part : parts) {
+            const Lane& lane = *lanes.at(laneOrder[part.lane]);
+            if (part.aligned || lane.image.length() != length) {
+                std::ranges::fill(margin, std::numeric_limits<float>::quiet_NaN());
+                return;
+            }
+            marginSamples.resize(margin.size());
+            marginScratch.resize(std::max(marginScratch.size(), margin.size()));
+            const int channels = imageChannels(lane.image, lane.engine->inputChannels());
+            const bool held = readWrapped(
+                [&](std::uint64_t first, std::span<float> destination) {
+                    return readSamples(lane.image, channels,
+                                       laneView(lane, laneChannel(frameSettings)), first,
+                                       destination, marginScratch);
+                },
+                length, from + part.offset, marginSamples);
+            if (!held) {
+                std::ranges::fill(margin, std::numeric_limits<float>::quiet_NaN());
+                return;
+            }
+            for (std::size_t i = 0; i < margin.size(); ++i) {
+                margin[i] += part.gain * marginSamples[i];
+            }
+        }
+    };
+    pastEnds(position, into.first(static_cast<std::size_t>(inFirst)));
+    pastEnds(position + inEnd, into.subspan(static_cast<std::size_t>(inEnd)));
+}
+
 bool Analyzer::updateSumStats(BlockStats& stats, SumRefresh& refresh,
                               const std::vector<std::int64_t>& key, Kept& kept,
                               const std::vector<SumPart>& parts, Reach reach, std::size_t length,
@@ -3276,10 +3401,11 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
                                 std::size_t columns, bool previewFix, std::size_t playhead,
                                 double sampleRate)
 {
-    // The visible part, which the matches and gains measure; the sum lane is drawn over the crop,
-    // its neighbours for reconstruction included.
-    const std::size_t first = crop.first + crop.lead;
-    const std::size_t end = crop.end - crop.trail;
+    // The visible part, in sweep positions, which the matches and gains measure; the sum lane is
+    // drawn over the crop, its neighbours for reconstruction included, read round the sweep's wrap
+    // from blockStart(crop) (drawFirst and drawEnd are the crop's own indices).
+    const std::size_t first = crop.first + crop.lead - crop.offset;
+    const std::size_t end = crop.end - crop.trail - crop.offset;
     const std::size_t drawFirst = crop.first;
     const std::size_t drawEnd = crop.end;
     // Waits are measured in the capture's new audio, at its rate now.
@@ -3498,16 +3624,14 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
     // The sum lane's columns.
     const auto readVisibleSum = [&](std::size_t from, std::span<float> into) {
         workDone.samplesReduced += into.size();
-        readSum(parts, length, drawFirst + from, into);
+        readSumBlock(parts, length, blockStart(crop) + static_cast<std::int64_t>(from), into);
         return true;
     };
     // The playhead joins the newest pass to the previous one, and each lane's image its own: the
     // sum holds every join, with no wave across any of them. (With Fix preview, a shifted part's
     // join lies its shift away, not marked: DESIGN.md, AD-32.)
     sumSeams.clear();
-    if (playhead > drawFirst && playhead < drawEnd) {
-        sumSeams.push_back(playhead - drawFirst);
-    }
+    addSeam(static_cast<std::int64_t>(playhead), crop, length, sumSeams);
     for (const std::uint64_t serial : laneOrder) {
         addJoins(lanes.at(serial)->image, crop, sumSeams);
     }
@@ -3526,14 +3650,12 @@ void Analyzer::appendComparison(FrameHeaderValues& header, const Crop& crop, std
             sumRefresh.cursor = 0;
         } else {
             for (const SweepImage::Range& range : frameChanges) {
-                const std::uint64_t from = std::max<std::uint64_t>(
-                    range.first > reach.before ? range.first - reach.before : 0, drawFirst);
-                const std::uint64_t to = std::min<std::uint64_t>(range.end + reach.after, drawEnd);
-                if (from < to) {
-                    sumReduction.update(static_cast<std::size_t>(from) - drawFirst,
-                                        static_cast<std::size_t>(to) - drawFirst, readVisibleSum,
-                                        sumSeams);
-                }
+                forEachInBlock(static_cast<std::int64_t>(range.first) -
+                                   static_cast<std::int64_t>(reach.before),
+                               static_cast<std::int64_t>(range.end + reach.after), crop,
+                               visibleCount, length, [&](std::size_t from, std::size_t to) {
+                                   sumReduction.update(from, to, readVisibleSum, sumSeams);
+                               });
             }
         }
         continueRefresh(sumRefresh, visibleCount, refreshStep(weightOf(parts), shares),

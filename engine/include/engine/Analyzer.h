@@ -489,6 +489,12 @@ private:
                        std::span<float> into);
     void readSum(const std::vector<SumPart>& parts, std::size_t length, std::size_t position,
                  std::span<float> into);
+    // The same for a block drawn with its neighbours, from `position`, which may lie before the
+    // sweep's first position or reach past its last: those are read round the wrap from each
+    // part's image, as the sweep's next or previous pass; NaN where a part is lined up (its shift
+    // reads off the sweep there, FR-15.9) or its lane is not on that length.
+    void readSumBlock(const std::vector<SumPart>& parts, std::size_t length, std::int64_t position,
+                      std::span<float> into);
     // Keeps `stats`, the levels of the sum of `parts` per block, in step: where compared tracks
     // changed this frame, widened by `reach` (positions before and after), and when they do not
     // hold `key` as of the frame before (`kept`: other parts, or a frame that left them out), all
