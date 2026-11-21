@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -19,10 +20,11 @@
 namespace orizon::editor {
 
 // The traces drawn natively on macOS (AD-30): a Metal layer below the transparent page, at the
-// page's screen rectangle, presented from a CAMetalDisplayLink on a thread of its own. Each
-// callback steps the display clock (FramePacing), draws the newest frame made for the display with
-// the page's newest trace view when either changed, presents it, and asks for the frame the next
-// shown refresh needs. No step passes through the host's main thread.
+// page's screen rectangle, presented from the view's display link (CADisplayLink) on a thread of
+// its own. Each callback steps the display clock (FramePacing), draws the newest frame made for
+// the display with the page's newest trace view when either changed, into a drawable taken for
+// it, presents it at once, and asks for the frame the next shown refresh needs. No step passes
+// through the host's main thread.
 //
 // Hidden, with its link paused, until the page has sent a trace view, while the page is hidden,
 // while its window is off screen or occluded and while the screen is shorter than the chrome.
@@ -83,6 +85,11 @@ public:
         std::uint64_t submitted = 0;
         // What reached the screen, from Metal's presented times (PresentedCounts).
         PresentedCounts::Totals shown;
+        // From the callback that drew a picture to the screen, in seconds (PresentedDelay's
+        // median); NaN while none has been presented since the link last started.
+        double callbackToScreenSeconds = std::numeric_limits<double>::quiet_NaN();
+        // Callbacks that had a picture to draw and no drawable to draw it into.
+        std::uint64_t refusedDrawables = 0;
         // Refreshes each frame is shown for by design (the pacing's n, AD-12).
         int ticksPerFrame = 1;
         // The size of the drawable last drawn into, in device pixels.
@@ -100,6 +107,9 @@ public:
     virtual void failCommandBuffersForTesting(std::optional<long> code) = 0;
     // The coverage targets' next allocations are refused, as Metal refusing the memory would.
     virtual void refuseCoverageTargetsForTesting() = 0;
+    // The next `count` callbacks with a picture to draw get no drawable, as when the window server
+    // holds them all for a second (CAMetalLayer nextDrawable: nil).
+    virtual void refuseDrawablesForTesting(int count) = 0;
     // While set, the display link's callbacks do nothing and are not counted, as when the display
     // stops calling back (a test machine's idle display), with the link left running.
     virtual void stallForTesting(bool stalled) = 0;

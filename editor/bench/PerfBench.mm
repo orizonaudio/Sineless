@@ -55,6 +55,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <libproc.h>
+#include <limits>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <map>
@@ -441,6 +442,9 @@ struct Snapshot
     double dropped = 0.0;
     double withoutNewFrame = 0.0;
     double ticksPerFrame = 1.0;
+    // Natively: from the callback that drew a picture to the screen, in seconds (the layer's
+    // median over its last pictures); NaN when none was presented.
+    double callbackToScreen = std::numeric_limits<double>::quiet_NaN();
     double resident = 0.0;
 };
 
@@ -459,6 +463,9 @@ struct Interval
     double droppedPerSecond = 0.0;
     // Refreshes each frame is shown for by design (FramePacing's n), at the interval's end.
     double ticksPerFrame = 1.0;
+    // Natively: from the callback that drew a picture to the screen, in seconds (the layer's
+    // median over its last pictures); NaN when none was presented.
+    double callbackToScreen = std::numeric_limits<double>::quiet_NaN();
     double pageFramesPerSecond = 0.0;
     bool native = false;
     double resident = 0.0; // MB at the end.
@@ -638,6 +645,7 @@ int run(const Options& options)
                 snapshot.withoutNewFrame =
                     static_cast<double>(stats.shown.refreshesWithoutNewFrame);
                 snapshot.ticksPerFrame = static_cast<double>(stats.ticksPerFrame);
+                snapshot.callbackToScreen = stats.callbackToScreenSeconds;
             }
             snapshot.threads = threadTimes();
             snapshot.process = processTime();
@@ -680,6 +688,7 @@ int run(const Options& options)
             interval.droppedPerSecond = (to.dropped - from.dropped) / seconds;
             interval.resident = to.resident;
             interval.ticksPerFrame = to.ticksPerFrame;
+            interval.callbackToScreen = to.callbackToScreen;
             return interval;
         };
 
@@ -938,6 +947,15 @@ int run(const Options& options)
                             interval.withoutNewFramePerSecond,
                             interval.presentedPerSecond * (interval.ticksPerFrame - 1.0),
                             interval.droppedPerSecond);
+                // What AD-30 states as the layer's delay: two refreshes, or three after a picture
+                // that missed the window server's deadline.
+                if (std::isnan(interval.callbackToScreen)) {
+                    std::printf("native: — from callback to screen (no picture presented)\n");
+                } else {
+                    std::printf("native: %.1f ms from callback to screen (median of the last "
+                                "pictures)\n",
+                                interval.callbackToScreen * 1000.0);
+                }
             }
             std::printf("page: %.1f frames/s received, %.1f drawn, %.0f KB/frame\n",
                         interval.pageFramesPerSecond, drawn / interval.seconds,

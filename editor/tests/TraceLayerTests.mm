@@ -490,6 +490,69 @@ TEST_F(TraceLayerTest, CountsTheFramesThatReachedTheScreen)
     EXPECT_LE(stats.shown.presented + stats.shown.dropped, stats.submitted);
 }
 
+// A picture reaches the screen two refreshes after the callback that drew it, not three: under two
+// and a half display periods, halfway between, as the delay falls on whole refreshes. One late
+// picture leaves every later one a refresh later until a callback draws nothing (#451), which is
+// not what this test is for: it measures again after giving the layer no frame for a moment, up to
+// three times. A display that reports no presented times is skipped, saying so.
+TEST_F(TraceLayerTest, ShowsEachPictureWithinTwoRefreshesOfDrawingIt)
+{
+    source.always = true;
+    show();
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return submitted() >= 30; }, 3s, "30 pictures"));
+    if (!pumpUntil([&] { return layer->statsForTesting().shown.presented > 0; }, 2s)) {
+        GTEST_SKIP() << "this display reports no presented times";
+    }
+    std::vector<double> periods;
+    for (int measurement = 0; measurement < 3; ++measurement) {
+        // A median over pictures presented since the last measurement only.
+        const auto before = layer->statsForTesting().shown.presented;
+        ASSERT_DISPLAY_WAIT(drawsWithin(
+            [&] {
+                return layer->statsForTesting().shown.presented >=
+                       before + PresentedDelay::kPictures;
+            },
+            4s, "a second of pictures on screen"));
+        const double period = pacing->displayPeriodSeconds();
+        ASSERT_GT(period, 0.0) << "the display's period, measured by then";
+        periods.push_back(layer->statsForTesting().callbackToScreenSeconds / period);
+        if (periods.back() < 2.5) {
+            break;
+        }
+        // No frame for a tenth of a second: callbacks draw nothing, and the pictures waiting are
+        // shown.
+        {
+            const std::scoped_lock lock(source.mutex);
+            source.limit = source.takes.load();
+        }
+        pumpUntil([] { return false; }, 100ms);
+        const std::scoped_lock lock(source.mutex);
+        source.limit.reset();
+    }
+    EXPECT_LT(periods.back(), 2.5)
+        << "display periods from callback to screen, in " << periods.size()
+        << " measurements, the first " << periods.front();
+}
+
+// A callback with a picture to draw and no drawable free (the window server holding them all)
+// presents nothing and is not the end of native drawing: the next callback draws the picture.
+TEST_F(TraceLayerTest, DrawsAgainWhenNoDrawableIsFree)
+{
+    source.limit = 1;
+    show();
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return submitted() >= 1; }, 3s, "the one frame drawn"));
+    pumpUntil([] { return false; }, 200ms); // Any redraw the start asked for lands.
+    const auto before = submitted();
+    layer->refuseDrawablesForTesting(1);
+    [window setContentSize:NSMakeSize(1200, 640)];
+    ASSERT_DISPLAY_WAIT(presentsSince(before, "the picture, drawn by the next callback"));
+    pumpUntil([] { return false; }, 100ms);
+    EXPECT_EQ(layer->statsForTesting().refusedDrawables, 1U);
+    EXPECT_EQ(submitted(), before + 1) << "one picture for the one change";
+    EXPECT_FALSE(layer->lost());
+    EXPECT_EQ(source.losses.load(), 0);
+}
+
 // Each shown refresh asks for its frame, and each frame made is drawn.
 TEST_F(TraceLayerTest, AsksForFramesAndDrawsEachOneMade)
 {

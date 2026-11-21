@@ -1,5 +1,6 @@
 #include "editor/PresentedCounts.h"
 
+#include <cmath>
 #include <gtest/gtest.h>
 #include <vector>
 
@@ -133,6 +134,59 @@ TEST(PresentedCounts, JudgesNoIntervalBackwards)
     counts.add(9.9, 1.0 / 60.0);
     EXPECT_EQ(counts.totals().presented, 3U);
     EXPECT_EQ(counts.totals().refreshesWithoutNewFrame, 0U);
+}
+
+// No picture on screen yet is no value, never a delay of 0.
+TEST(PresentedDelay, HasNoValueBeforeAPictureIsPresented)
+{
+    const PresentedDelay delay;
+    EXPECT_TRUE(std::isnan(delay.medianSeconds()));
+}
+
+// One picture shown a refresh late among steady ones does not move the delay reported.
+TEST(PresentedDelay, ReportsTheMiddleDelayNotALatePictures)
+{
+    PresentedDelay delay;
+    for (int picture = 0; picture < 9; ++picture) {
+        delay.add(picture == 4 ? 0.050 : 0.033);
+    }
+    EXPECT_DOUBLE_EQ(delay.medianSeconds(), 0.033);
+    // An even number: between the middle two.
+    PresentedDelay even;
+    for (const double seconds : {0.030, 0.050, 0.040, 0.020}) {
+        even.add(seconds);
+    }
+    EXPECT_DOUBLE_EQ(even.medianSeconds(), 0.035);
+}
+
+// Once the display shows every picture a refresh later, the delay reported follows within the
+// pictures it keeps: older ones are forgotten.
+TEST(PresentedDelay, FollowsTheNewestPictures)
+{
+    PresentedDelay delay;
+    for (std::size_t picture = 0; picture < PresentedDelay::kPictures; ++picture) {
+        delay.add(0.033);
+    }
+    for (std::size_t picture = 0; picture < PresentedDelay::kPictures / 2 + 1; ++picture) {
+        delay.add(0.050);
+    }
+    EXPECT_DOUBLE_EQ(delay.medianSeconds(), 0.050);
+    for (std::size_t picture = 0; picture < PresentedDelay::kPictures; ++picture) {
+        delay.add(0.033);
+    }
+    EXPECT_DOUBLE_EQ(delay.medianSeconds(), 0.033);
+}
+
+// A pause forgets the pictures before it: none since is no value.
+TEST(PresentedDelay, StartsAgainAfterAPause)
+{
+    PresentedDelay delay;
+    delay.add(0.050);
+    delay.add(0.050);
+    delay.restart();
+    EXPECT_TRUE(std::isnan(delay.medianSeconds()));
+    delay.add(0.033);
+    EXPECT_DOUBLE_EQ(delay.medianSeconds(), 0.033);
 }
 
 } // namespace
