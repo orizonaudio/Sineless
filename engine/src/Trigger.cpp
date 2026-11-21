@@ -28,9 +28,10 @@ TriggerDecision TriggerState::decide(std::span<const float> samples, std::uint64
     const auto end = static_cast<double>(firstIndex + samples.size());
     const double untriggeredStart = end - spanSamples;
 
-    // An edge can be shown once the span before and after it is in the region.
+    // An edge can be shown once the span before and after it is in the region, and the samples
+    // asked to follow the span (the wave's neighbours past its end).
     const double preTrigger = parameters.position * spanSamples;
-    const double latestUsable = end - (spanSamples - preTrigger);
+    const double latestUsable = end - (spanSamples - preTrigger) - parameters.followingSamples;
     const double earliestUsable = static_cast<double>(firstIndex) + preTrigger;
 
     // Follow the hold-off chain forward from the last trigger; the newest accepted edge wins.

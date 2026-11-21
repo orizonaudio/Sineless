@@ -1,3 +1,4 @@
+#include "engine/Reconstruction.h"
 #include "engine/Trigger.h"
 
 #include <algorithm>
@@ -237,17 +238,24 @@ std::vector<float> stepAt(std::size_t count, std::size_t step)
     return samples;
 }
 
-// A trigger Position and a span in samples.
+// The samples the analyzer asks to follow a span before it is shown: the reach of the wave drawn
+// between samples past the span's end.
+constexpr auto kFollowing = static_cast<double>(kReconstructionReach);
+
+// A trigger Position, a span in samples, and the samples that must follow the span before it is
+// shown: none, or kFollowing.
 struct PositionCase
 {
     double position;
     double spanSamples;
+    double followingSamples = 0.0;
 };
 
 std::string nameOf(const PositionCase& c)
 {
     return "At" + std::to_string(std::lround(c.position * 100.0)) + "PercentSpan" +
-           std::to_string(std::lround(c.spanSamples));
+           std::to_string(std::lround(c.spanSamples)) + "Following" +
+           std::to_string(std::lround(c.followingSamples));
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
@@ -261,17 +269,20 @@ class TriggerPlacement : public ::testing::TestWithParam<PositionCase>
 };
 
 // The trigger point sits where the Position setting puts it, and a trace is drawn as soon as the
-// part of the span after the trigger has arrived, not a sample earlier.
-TEST_P(TriggerPlacement, PutsTheEdgeAtThePositionOnceTheSpanAfterItHasArrived)
+// part of the span after the trigger has arrived, and the samples asked to follow it (those the
+// wave between samples reads past the span's end), not a sample earlier.
+TEST_P(TriggerPlacement, PutsTheEdgeAtThePositionOnceTheSpanAndWhatFollowsItHaveArrived)
 {
-    const auto [position, span] = GetParam();
-    const TriggerParameters parameters{.hysteresis = 0.01, .position = position};
+    const auto [position, span, following] = GetParam();
+    const TriggerParameters parameters{
+        .hysteresis = 0.01, .position = position, .followingSamples = following};
     const auto step = static_cast<std::size_t>(std::ceil(span)) + 10;
     const double edge = static_cast<double>(step) - 0.5;
-    // The first end at which the edge has (1 - position) of the span after it, and its crossing
-    // sample has arrived.
+    // The first end at which the edge has (1 - position) of the span and the following samples
+    // after it, and its crossing sample has arrived.
     const auto drawn = std::max<std::size_t>(
-        step + 1, static_cast<std::size_t>(std::ceil(edge + (1.0 - position) * span)));
+        step + 1,
+        static_cast<std::size_t>(std::ceil(edge + ((1.0 - position) * span) + following)));
     const auto decideAt = [&](std::size_t end) {
         TriggerState state;
         return state.decide(stepAt(end, step), 0, span, 0.0, parameters, TriggerMode::kNormal);
@@ -284,20 +295,21 @@ TEST_P(TriggerPlacement, PutsTheEdgeAtThePositionOnceTheSpanAfterItHasArrived)
     EXPECT_NEAR(decision.windowStart, edge - position * span, 1e-9);
 }
 
-INSTANTIATE_TEST_SUITE_P(Positions, TriggerPlacement, ::testing::ValuesIn([] {
-                             std::vector<PositionCase> cases;
-                             for (const double position : {0.0, 0.1, 0.5, 1.0}) {
-                                 // 0.5 ms and 1 s at 44.1 and 384 kHz.
-                                 for (const double span : {0.0005 * 44'100.0, 0.0005 * 384'000.0,
-                                                           44'100.0, 384'000.0}) {
-                                     cases.push_back({.position = position, .spanSamples = span});
-                                 }
-                             }
-                             return cases;
-                         }()),
-                         [](const ::testing::TestParamInfo<PositionCase>& info) {
-                             return nameOf(info.param);
-                         });
+INSTANTIATE_TEST_SUITE_P(
+    Positions, TriggerPlacement, ::testing::ValuesIn([] {
+        std::vector<PositionCase> cases;
+        for (const double position : {0.0, 0.1, 0.5, 1.0}) {
+            // 0.5 ms and 1 s at 44.1 and 384 kHz.
+            for (const double span : {0.0005 * 44'100.0, 0.0005 * 384'000.0, 44'100.0, 384'000.0}) {
+                for (const double following : {0.0, kFollowing}) {
+                    cases.push_back(
+                        {.position = position, .spanSamples = span, .followingSamples = following});
+                }
+            }
+        }
+        return cases;
+    }()),
+    [](const ::testing::TestParamInfo<PositionCase>& info) { return nameOf(info.param); });
 
 class AutoTimeout : public ::testing::TestWithParam<PositionCase>
 {
@@ -309,14 +321,16 @@ class AutoTimeout : public ::testing::TestWithParam<PositionCase>
 TEST_P(AutoTimeout, DrawsUntriggeredOnceNoEdgeWasUsableForTheTimeout)
 {
     constexpr double kTimeout = 150.0;
-    const auto [position, span] = GetParam();
-    const TriggerParameters parameters{.hysteresis = 0.01, .position = position};
+    const auto [position, span, following] = GetParam();
+    const TriggerParameters parameters{
+        .hysteresis = 0.01, .position = position, .followingSamples = following};
     const auto step = static_cast<std::size_t>(std::ceil(span)) + 10;
     const double edge = static_cast<double>(step) - 0.5;
-    const auto untriggered = static_cast<std::size_t>(
-        std::ceil(edge + (1.0 - position) * span + std::max(span, kTimeout)));
+    // An edge is usable once what follows it has arrived: the timeout counts from there.
+    const double usable = edge + ((1.0 - position) * span) + following;
+    const auto untriggered = static_cast<std::size_t>(std::ceil(usable + std::max(span, kTimeout)));
     TriggerState state;
-    const auto triggered = static_cast<std::size_t>(std::ceil(edge + (1.0 - position) * span)) + 1;
+    const auto triggered = static_cast<std::size_t>(std::ceil(usable)) + 1;
     ASSERT_TRUE(
         state.decide(stepAt(triggered, step), 0, span, kTimeout, parameters, TriggerMode::kAuto)
             .triggered);
@@ -334,7 +348,9 @@ TEST_P(AutoTimeout, DrawsUntriggeredOnceNoEdgeWasUsableForTheTimeout)
 
 INSTANTIATE_TEST_SUITE_P(Positions, AutoTimeout,
                          ::testing::Values(PositionCase{0.0, 200.0}, PositionCase{1.0, 200.0},
-                                           PositionCase{0.0, 100.0}, PositionCase{1.0, 100.0}),
+                                           PositionCase{0.0, 100.0}, PositionCase{1.0, 100.0},
+                                           PositionCase{0.0, 200.0, kFollowing},
+                                           PositionCase{1.0, 100.0, kFollowing}),
                          [](const ::testing::TestParamInfo<PositionCase>& info) {
                              return nameOf(info.param);
                          });

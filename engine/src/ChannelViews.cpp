@@ -4,6 +4,8 @@
 #include <bit>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 
 namespace orizon::engine {
 
@@ -81,6 +83,24 @@ bool readViewHeld(const SampleSource& source, int inputChannels, ChannelView vie
         return false;
     }
     return first == start && last == end;
+}
+
+void readViewHeldOrNaN(const SampleSource& source, int inputChannels, ChannelView view,
+                       std::int64_t start, std::span<float> destination, std::span<float> scratch)
+{
+    std::ranges::fill(destination, std::numeric_limits<float>::quiet_NaN());
+    const std::int64_t end = start + static_cast<std::int64_t>(destination.size());
+    const std::int64_t first =
+        std::clamp(static_cast<std::int64_t>(source.beginIndex()), start, end);
+    const std::int64_t last = std::clamp(static_cast<std::int64_t>(source.endIndex()), first, end);
+    if (first >= last) {
+        return;
+    }
+    const std::span<float> held = destination.subspan(static_cast<std::size_t>(first - start),
+                                                      static_cast<std::size_t>(last - first));
+    if (!readView(source, inputChannels, view, static_cast<std::uint64_t>(first), held, scratch)) {
+        std::ranges::fill(held, std::numeric_limits<float>::quiet_NaN());
+    }
 }
 
 } // namespace orizon::engine
