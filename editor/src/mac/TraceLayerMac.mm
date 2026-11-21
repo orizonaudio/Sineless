@@ -57,6 +57,9 @@ struct Shared
     std::atomic<std::uint64_t> callbacks{0};
     std::atomic<std::uint64_t> submitted{0};
     PresentedCounts presentedCounts;
+    PresentedDelay presentedDelay;
+    std::atomic<int> refuseDrawables{0};
+    std::atomic<std::uint64_t> refusedDrawables{0};
     std::atomic<int> ticksPerFrame{1};
     std::atomic<std::size_t> drawnWidth{0};
     std::atomic<std::size_t> drawnHeight{0};
@@ -73,12 +76,16 @@ struct Shared
     // Render thread only.
     id<MTLCommandQueue> queue = nil;
     std::unique_ptr<MetalTraceRenderer> renderer;
-    CAMetalDisplayLink* link = nil;
-    id delegate = nil;
+    // The view's display link and its target, made on the main thread before the render thread
+    // starts and used on the render thread from then on; and the layer it draws into, read there
+    // for its drawables only.
+    CADisplayLink* link = nil;
+    id target = nil;
+    CAMetalLayer* layer = nil;
     bool exit = false;
     bool lostHandled = false;
     // The frame barcode: pictures drawn since the layer was made, and the link's target time, in
-    // host seconds, of the refresh the next picture is drawn for.
+    // host seconds, of the callback the next picture is drawn at.
     std::uint64_t barcodePictures = 0;
     double targetTime = 0.0;
     std::vector<std::byte> frame;
@@ -155,7 +162,7 @@ void completed(const std::shared_ptr<Shared>& shared, id<MTLCommandBuffer> buffe
     shared->redraw.store(true);
 }
 
-void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
+void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable, double callbackTime)
 {
     Shared& s = *shared;
     if (s.refuseTargets.exchange(false)) {
@@ -178,6 +185,8 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
         setLost(shared);
         return;
     }
+    // At once: the window server shows it at the first refresh whose deadline the GPU's work
+    // makes, two refreshes after the callback, or three from a picture that missed it (#451).
     [buffer presentDrawable:drawable];
     const std::weak_ptr<Shared> weak = shared;
     // When it reaches the screen, or 0.0 if dropped: counted against the display's period as it
@@ -187,6 +196,9 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
       handlerRuns(shown);
       if (const auto alive = weak.lock()) {
           alive->presentedCounts.add(shown.presentedTime, period);
+          if (shown.presentedTime > 0.0) {
+              alive->presentedDelay.add(shown.presentedTime - callbackTime);
+          }
       }
     }];
     handlerAdded(drawable);
@@ -210,8 +222,9 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable)
 }
 
 // One display link callback (render thread): the clock steps, the newest frame and trace view are
-// drawn when either changed, and the next shown refresh's frame is asked for.
-void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* update)
+// drawn when either changed, and the next shown refresh's frame is asked for. `target`: the
+// link's target time, the next refresh's.
+void callback(const std::shared_ptr<Shared>& shared, double target)
 {
     Shared& s = *shared;
     const std::scoped_lock lock(s.callbackMutex);
@@ -230,9 +243,9 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
     }
     // When this callback ran, which the request's delay counts from (its drawing below included).
     const CFAbsoluteTime calledAt = CFAbsoluteTimeGetCurrent();
-    const auto decision = s.pacing.callback(update.targetPresentationTimestamp,
-                                            CACurrentMediaTime(), engine::monotonicNanos());
-    s.targetTime = update.targetPresentationTimestamp;
+    const double now = CACurrentMediaTime();
+    const auto decision = s.pacing.callback(target, now, engine::monotonicNanos());
+    s.targetTime = target;
     s.ticksPerFrame.store(s.pacing.ticks());
     bool changed = s.redraw.exchange(false);
     if (s.hooks.takeFrame(s.incoming)) {
@@ -249,7 +262,20 @@ void callback(const std::shared_ptr<Shared>& shared, CAMetalDisplayLinkUpdate* u
         }
     }
     if (changed && s.view) {
-        draw(shared, update.drawable);
+        // A drawable only for a picture. With every one in use the layer waits up to a second and
+        // gives none (a stalled GPU or window server): the next callback draws the picture.
+        id<CAMetalDrawable> drawable = nil;
+        if (s.refuseDrawables.load() > 0) {
+            s.refuseDrawables.fetch_sub(1);
+        } else {
+            drawable = [s.layer nextDrawable];
+        }
+        if (drawable != nil) {
+            draw(shared, drawable, now);
+        } else {
+            s.refusedDrawables.fetch_add(1);
+            s.redraw.store(true);
+        }
     }
     if (decision.requestFrame) {
         // Asked for just before the next callback, which draws it, so the frame is made, and
@@ -310,25 +336,21 @@ void setOwner(id object, void* owner)
                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-void needsUpdate(id self, SEL /*cmd*/, CAMetalDisplayLink* /*link*/,
-                 CAMetalDisplayLinkUpdate* update)
+void step(id self, SEL /*cmd*/, CADisplayLink* link)
 {
-    // The render thread's own reference, held by the thread for as long as the link exists.
+    // The render thread's own reference, held for as long as the link exists.
     if (auto* shared = ownerOf<std::shared_ptr<Shared>>(self)) {
-        callback(*shared, update);
+        callback(*shared, link.targetTimestamp);
     }
 }
 
-Class delegateClass()
+Class targetClass()
 {
     static Class cls = [] {
-        Class created = objc_allocateClassPair([NSObject class],
-                                               uniqueClassName("TraceLinkDelegate").c_str(), 0);
-        Protocol* protocol = @protocol(CAMetalDisplayLinkDelegate);
-        const SEL selector = @selector(metalDisplayLink:needsUpdate:);
-        class_addMethod(created, selector, reinterpret_cast<IMP>(&needsUpdate),
-                        protocol_getMethodDescription(protocol, selector, YES, YES).types);
-        class_addProtocol(created, protocol);
+        Class created =
+            objc_allocateClassPair([NSObject class], uniqueClassName("TraceLinkTarget").c_str(), 0);
+        // void step:(CADisplayLink*)link
+        class_addMethod(created, @selector(step:), reinterpret_cast<IMP>(&step), "v@:@");
         objc_registerClassPair(created);
         return created;
     }();
@@ -358,6 +380,8 @@ public:
         return {.callbacks = shared->callbacks.load(),
                 .submitted = shared->submitted.load(),
                 .shown = shared->presentedCounts.totals(),
+                .callbackToScreenSeconds = shared->presentedDelay.medianSeconds(),
+                .refusedDrawables = shared->refusedDrawables.load(),
                 .ticksPerFrame = shared->ticksPerFrame.load(),
                 .drawnWidth = shared->drawnWidth.load(),
                 .drawnHeight = shared->drawnHeight.load(),
@@ -369,6 +393,7 @@ public:
         shared->failCode.store(code.value_or(-1));
     }
     void refuseCoverageTargetsForTesting() override { shared->refuseTargets.store(true); }
+    void refuseDrawablesForTesting(int count) override { shared->refuseDrawables.store(count); }
     void stallForTesting(bool stalled) override { shared->stalled.store(stalled); }
 
     void windowChanged();
@@ -461,6 +486,11 @@ LayerMac::LayerMac(NSView* container, NSView* above, engine::FramePacing& pacing
     metalLayer.opaque = YES;
     // Presented from the display link's thread, never inside the main thread's transaction.
     metalLayer.presentsWithTransaction = NO;
+    // Three, the default, said because the delay to the screen was measured with it: a picture that
+    // missed the window server's deadline waits behind the one on screen, and every later one is
+    // then shown a refresh later, steadily (AD-30); one more late picture while one waits is held
+    // in nextDrawable for a few milliseconds.
+    metalLayer.maximumDrawableCount = 3;
     CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     metalLayer.colorspace = srgb;
     CGColorSpaceRelease(srgb);
@@ -471,6 +501,15 @@ LayerMac::LayerMac(NSView* container, NSView* above, engine::FramePacing& pacing
     // AppKit tells a subview of its superview's size changes only when it has a mask; the view
     // lays itself out from the screen's rectangle instead (resizeWithOldSuperviewSize:).
     layerView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+    // The view's display link (macOS 14) follows the display the view is on, and calls back on the
+    // run loop it is added to: the render thread's. Its target holds the render thread's
+    // reference to what it draws with, freed as the thread ends.
+    shared->layer = metalLayer;
+    shared->target = [[targetClass() alloc] init];
+    setOwner(shared->target, new std::shared_ptr<Shared>(shared));
+    shared->link = [layerView displayLinkWithTarget:shared->target selector:@selector(step:)];
+    shared->link.paused = YES;
 
     const std::shared_ptr<Shared> state = shared;
     CAMetalLayer* layer = metalLayer;
@@ -492,27 +531,19 @@ LayerMac::LayerMac(NSView* container, NSView* above, engine::FramePacing& pacing
               state->pacing.lose();
               setLost(state);
           } else {
-              state->delegate = [[delegateClass() alloc] init];
-              // The delegate's reference to what it draws with, freed with the thread.
-              auto* reference = new std::shared_ptr<Shared>(state);
-              setOwner(state->delegate, reference);
-              state->link = [[CAMetalDisplayLink alloc] initWithMetalLayer:layer];
-              state->link.delegate = state->delegate;
-              state->link.preferredFrameLatency = 1.0;
-              state->link.paused = YES;
               [state->link addToRunLoop:NSRunLoop.currentRunLoop forMode:NSDefaultRunLoopMode];
           }
       }
       while (!state->exit) {
           [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode beforeDate:NSDate.distantFuture];
       }
+      // The link holds its target until invalidated.
       [state->link invalidate];
       state->link = nil;
-      if (state->delegate != nil) {
-          delete ownerOf<std::shared_ptr<Shared>>(state->delegate);
-          setOwner(state->delegate, nullptr);
-          state->delegate = nil;
-      }
+      delete ownerOf<std::shared_ptr<Shared>>(state->target);
+      setOwner(state->target, nullptr);
+      state->target = nil;
+      state->layer = nil;
       state->renderer.reset(); // Waits for the GPU to finish with its buffers.
       state->queue = nil;
       dispatch_semaphore_signal(state->finished);
@@ -656,6 +687,7 @@ void LayerMac::update()
       } else {
           state.pacing.pause();
           state.presentedCounts.restart();
+          state.presentedDelay.restart();
       }
     });
 }

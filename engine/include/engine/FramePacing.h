@@ -16,7 +16,8 @@ namespace orizon::engine {
 [[nodiscard]] int ticksPerFrame(double rateHertz, std::optional<int> previous = std::nullopt);
 
 // The macOS editor's display clock (AD-30). A display link calls back on its own thread once per
-// refresh with the time that refresh will be shown (its target); from those, FramePacing keeps the
+// refresh with a target time a steady lead ahead (the view's link: the next refresh's time, a
+// refresh or two before the picture drawn is shown); from those, FramePacing keeps the
 // time every frame and every sweep update is placed for (D), decides which refreshes show a new
 // frame, and gives the analysis worker its clock.
 //
