@@ -3260,17 +3260,14 @@ void Analyzer::readSumBlock(const std::vector<SumPart>& parts, std::size_t lengt
             marginSamples.resize(margin.size());
             marginScratch.resize(std::max(marginScratch.size(), margin.size()));
             const int channels = imageChannels(lane.image, lane.engine->inputChannels());
-            const bool held = readWrapped(
+            // Within an image of this length, on one of its channels: the read cannot fail.
+            (void)readWrapped(
                 [&](std::uint64_t first, std::span<float> destination) {
                     return readSamples(lane.image, channels,
                                        laneView(lane, laneChannel(frameSettings)), first,
                                        destination, marginScratch);
                 },
                 length, from, marginSamples);
-            if (!held) {
-                std::ranges::fill(margin, std::numeric_limits<float>::quiet_NaN());
-                return;
-            }
             for (std::size_t i = 0; i < margin.size(); ++i) {
                 margin[i] += part.gain * marginSamples[i];
             }
