@@ -73,6 +73,8 @@ struct Source
     // For each frame taken after a request, how long before the take the request came (seconds).
     std::vector<double> askedBeforeTake;
     std::optional<double> lastRequestAt;
+    // How late the latest request's timer fired at most, since the source was made (seconds).
+    double slowestRequestTimer = 0.0;
 
     TraceLayer::Hooks hooks()
     {
@@ -82,6 +84,8 @@ struct Source
                             pacing->frameMade(lateNanos);
                         }
                         const std::scoped_lock lock(mutex);
+                        slowestRequestTimer =
+                            std::max(slowestRequestTimer, static_cast<double>(lateNanos) / 1e9);
                         ++requests;
                         ready = true;
                         lastRequestAt = CACurrentMediaTime();
@@ -569,6 +573,9 @@ TEST_F(TraceLayerTest, AsksForFramesAndDrawsEachOneMade)
 // well under a callback period before they are taken (asked for at the callback before, a whole
 // period). (When it is asked for, and so how fresh the picture is, is
 // FramePacing's: DisplayClock.PlacesEachFrameWhenItIsMade.)
+// The margin follows the slowest recent timer, by design (FramePacing::frameMade), so on a machine
+// that holds this process's timers back the frames are asked for early and the bound cannot hold:
+// a CI runner fires them in bursts, up to 100 ms late, and the test then skips there, saying so.
 TEST_F(TraceLayerTest, AsksForEachFrameOnTheRenderThreadInTime)
 {
     show();
@@ -595,8 +602,19 @@ TEST_F(TraceLayerTest, AsksForEachFrameOnTheRenderThreadInTime)
     std::nth_element(before.begin(),
                      before.begin() + static_cast<std::ptrdiff_t>(before.size() / 2), before.end());
     const double period = 1.0 / static_cast<double>(window.screen.maximumFramesPerSecond);
-    EXPECT_LT(before[before.size() / 2], 0.75 * period)
-        << "frames asked for a whole callback before they are drawn";
+    const double median = before[before.size() / 2];
+    const double bound = 0.75 * period;
+    // A timer later than this takes the margin, its slack above the timer's lateness, past the
+    // bound for the second of frames it is remembered for.
+    const bool timersInTime =
+        source.slowestRequestTimer < bound - engine::FramePacing::kHandOffSlackSeconds;
+    std::ostringstream message;
+    message << "frames asked for a whole callback before they are drawn: " << median * 1e3
+            << " ms before, at the median; the slowest request timer fired "
+            << source.slowestRequestTimer * 1e3 << " ms late"
+            << (timersInTime ? "" : ": the machine held the timers back");
+    ASSERT_DISPLAY_WAIT((testing::DisplayWait{
+        .met = median < bound, .displayRan = timersInTime, .message = message.str()}));
 }
 
 // A wait through which the running display link did not call back is read as the display
