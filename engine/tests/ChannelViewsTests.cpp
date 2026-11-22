@@ -169,22 +169,35 @@ TEST_F(ChannelViews, ReadsWhatIsHeldAndSilenceForTheRest)
     EXPECT_EQ(destination, (std::vector<float>{1.0f, 0.5f, -1.0f, 0.0f}));
 }
 
-// Neighbours read past a window's ends: what is held, and NaN before the first sample held and
-// past the newest, so that the wave beside audio that does not exist is drawn straight.
-TEST_F(ChannelViews, ReadsWhatIsHeldAndNothingForTheRest)
+// Neighbours read past a window's ends: what is held, as the view reads it, and NaN before the
+// first sample held and past the newest, so that the wave beside audio that does not exist is
+// drawn straight. For every view.
+class HeldOrNothing : public ChannelViews, public ::testing::WithParamInterface<ChannelView>
+{
+};
+
+TEST_P(HeldOrNothing, ReadsWhatIsHeldAndNothingForTheRest)
 {
     const auto unheld = [](float value) { return std::isnan(value); };
     std::vector<float> destination(8, 9.0f);
     std::vector<float> scratch(8);
-    readViewHeldOrNaN(ring, 2, ChannelView::kLeft, -2, destination, scratch);
+    readViewHeldOrNaN(ring, 2, GetParam(), -2, destination, scratch);
     EXPECT_TRUE(unheld(destination[0]) && unheld(destination[1])) << "before the first held";
     EXPECT_EQ(std::vector<float>(destination.begin() + 2, destination.begin() + 6),
-              (std::vector<float>{1.0f, 0.5f, -1.0f, 0.0f}))
+              view(GetParam()))
         << "held";
     EXPECT_TRUE(unheld(destination[6]) && unheld(destination[7])) << "past the newest";
-    readViewHeldOrNaN(ring, 2, ChannelView::kLeft, 10, destination, scratch);
+    readViewHeldOrNaN(ring, 2, GetParam(), 10, destination, scratch);
     EXPECT_TRUE(std::ranges::all_of(destination, unheld)) << "wholly past what is held";
 }
+
+INSTANTIATE_TEST_SUITE_P(EveryView, HeldOrNothing,
+                         ::testing::Values(ChannelView::kLeft, ChannelView::kRight,
+                                           ChannelView::kMid, ChannelView::kSide),
+                         [](const ::testing::TestParamInfo<ChannelView>& info) {
+                             return std::string(protocol::kChannelViewNames.at(
+                                 static_cast<std::size_t>(info.param)));
+                         });
 
 } // namespace
 } // namespace orizon::engine
