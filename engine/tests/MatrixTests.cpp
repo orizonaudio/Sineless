@@ -8041,6 +8041,41 @@ void setAlign(Engine& engine, bool on)
                           static_cast<double>(on ? protocol::Toggle::kOn : protocol::Toggle::kOff));
 }
 
+// Live in Compare in Beats with the fix previewed, a copy 40 samples late is moved by its match:
+// each frame's new audio changes the sum as far as the move reaches past it, so the columns kept
+// frame to frame are redrawn that far on both sides. Otherwise the sum's newest audio, just before
+// the playhead, would keep the previous pass's columns, and keep them once the transport stops.
+TEST(PreviewedSumKept, DrawsTheNewestAudioAsAFreshReductionDoes)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1, .delay = 40});
+    configure(session.own(), Display::kCompare, TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    showLane(session.own(), protocol::CompareLane::kSum);
+    setAlign(session.own(), false);
+    session.analyzer().setShown(othersOf(session));
+    session.analyzer().setPreviewFix(true);
+    // A bar and the match's window, so that the copy is matched and moved.
+    session.play(2.0 + protocol::kMatchWindowSeconds, protocol::kReadoutIntervalSeconds / 2.0);
+    session.play(static_cast<double>(kBlock) / kRate);
+    ASSERT_TRUE(session.produce());
+    // A frame every 10 ms: each frame's new audio redrawn from the columns kept.
+    session.play(0.2, 0.01);
+    auto frame = session.produce();
+    if (!frame) {
+        session.play(static_cast<double>(kBlock) / kRate);
+        frame = session.produce();
+    }
+    ASSERT_TRUE(frame);
+    const std::size_t match =
+        (std::size_t{frame->laneCount} * traceLength(*frame)) + protocol::kMatchValues;
+    ASSERT_LT(match + 1, frame->data.size());
+    ASSERT_EQ(std::abs(frame->data.at(match + 1)), 40.0f) << "matched, so the fix moves it";
+    expectAsAFreshReduction(session, *frame);
+}
+
 // Compare's last lane left and come back to while the music plays (Compare switched off and on,
 // or the lane showing the difference in place of the sum, or the reverse), live or frozen
 // meanwhile: what it shows on coming back is what a session that showed it all along shows, as
