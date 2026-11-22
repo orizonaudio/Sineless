@@ -3224,6 +3224,13 @@ void Analyzer::readSum(const std::vector<SumPart>& parts, std::size_t length, st
     }
 }
 
+// A compared part's neighbours past a window's or a sweep's ends are read the way its samples are
+// read, and are NaN wherever that read holds nothing, so the wave beside them is straight there
+// rather than bending towards audio the part does not show (AD-32). As recorded: the capture or
+// hold in a window (fillBlock, renderCompare's addSumMargin), round the wrap in a sweep (here).
+// Lined up by Align in a window: through its alignment, as far as held (addAlignedPart, then
+// markUnheldMargins and addSumMargin's lined-up branch). Lined up or shifted in a sweep, or shifted
+// by Fix preview in a window: silent off the sweep or window, so none (here, and addSumMargin).
 void Analyzer::readSumBlock(const std::vector<SumPart>& parts, std::size_t length,
                             std::int64_t position, std::span<float> into)
 {
@@ -4049,7 +4056,8 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         frameData.insert(frameData.end(), reduced.begin(), reduced.end());
     };
     // The block's samples past the window's ends that lie outside `held` (block indices) are no
-    // neighbours: none is held there. Those within the window are left as read.
+    // neighbours: none is held there (the rule above readSumBlock). Those within the window are
+    // left as read.
     const auto markUnheldMargins = [&](std::span<float> block, Positions held) {
         for (std::size_t i = 0; i < block.size(); ++i) {
             const std::int64_t position = blockPosition + static_cast<std::int64_t>(i);
@@ -4159,7 +4167,7 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
         return complete;
     };
     // Positions from `position`, all past the window's ends: the sum of the parts' audio there
-    // as each holds it, NaN wherever one holds none.
+    // as each holds it, NaN wherever one holds none (the rule above readSumBlock).
     const auto addSumMargin = [&](std::int64_t position, std::span<float> into) {
         std::ranges::fill(into, 0.0f);
         for (const SumPart& part : parts) {
