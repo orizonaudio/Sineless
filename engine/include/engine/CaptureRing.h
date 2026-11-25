@@ -86,7 +86,8 @@ public:
 
     // Reallocates the buffer for `capacity` samples per channel (a power of two), empty from the
     // newest index on, if it is not that size already. Not real-time safe, and only while the
-    // audio thread does not write: the host's setupProcessing, which comes before processing.
+    // audio thread does not write: where the host prepares processing (VST3 setupProcessing, the
+    // Audio Unit's Initialize), which comes before processing.
     void resize(std::size_t capacity);
 
     // Audio thread. `channels` holds `numChannels` pointers (at most kMaxChannels) to
