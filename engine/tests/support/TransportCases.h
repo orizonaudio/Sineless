@@ -41,6 +41,13 @@ inline std::vector<TransportCase> transportCases()
          .tempo = 90.0,
          .numerator = 3,
          .samplePosition = 176400.0},
+        // A bar counted in eighths: its length depends on the denominator as well.
+        {.name = "PlayingSevenEight",
+         .quarterNotes = 10.5,
+         .tempo = 96.0,
+         .numerator = 7,
+         .denominator = 8,
+         .samplePosition = 264600.0},
         {.name = "Stopped", .playing = false, .quarterNotes = 8.0, .tempo = 100.0},
         {.name = "PreRoll", .quarterNotes = -2.0, .samplePosition = -44100.0},
         {.name = "NoBeatAndTempo",
