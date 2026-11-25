@@ -527,7 +527,7 @@
       },
       "filter": {
         "include": {
-          "name": "^(EditorTest\\.|AudioUnit|ComponentTest\\.|AnalysisBench\\.|PerfBench\\.)"
+          "name": "^(EditorTest\\.|AudioUnit|ComponentTest\\.|AnalysisBench\\.|PerfBench\\.|NativeTracesTest\\.|TraceLayerTest\\.|PersistentErrors/TraceLayerLossTest\\.|MetalTraceRendererTest\\.|DisplayWait\\.|LayoutAcrossSdksTest\\.|Cursors/EditorMouseMoveTest\\.|CursorInBackground\\.|PointerHoldGate\\.|Views/(PointerHoldTest|PublicPointerHidingTest|BackgroundCursorHoldTest|OutOfProcessPointerHoldTest)\\.)"
         }
       }
     },
@@ -662,7 +662,7 @@
       },
       "filter": {
         "include": {
-          "name": "CaptureRing|AnalysisWorker|Timeline|InstanceRegistry"
+          "name": "CaptureRing|AnalysisWorker|Timeline|InstanceRegistry|BlockStamp|FramePacingThreads"
         }
       },
       "environment": {
