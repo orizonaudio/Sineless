@@ -260,13 +260,7 @@ describe.each([1, 1.25, 1.5, 1.75, 2, 3])("playhead at %sx", (pixelRatio) => {
 });
 
 describe("cancellation bands", () => {
-  const layout = {
-    widthPixels: 400,
-    heightPixels: 300,
-    verticalScaleDb: 0,
-    layout: ViewLayout.stacked,
-    lineWidthPixels: 1,
-  };
+  const layout = { layout: ViewLayout.stacked };
   // Each lane's match against this track: this track's own is zeros, never related.
   const own = { correlation: 0, related: false, offset: 0, inverted: false };
   // The last lane a sum, as Compare shows unless asked for the difference.

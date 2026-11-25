@@ -170,8 +170,6 @@ public:
         return static_cast<double>(nanos) - static_cast<double>(arrival) >
                BlockClock::stallNanos(clock.periodSeconds() * 1e9);
     }
-    // Shares another edge's delay (a lane follows the own track's).
-    void followDelay(double samples) { delaySamples = samples; }
 
 private:
     BlockClock clock;

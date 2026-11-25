@@ -406,14 +406,7 @@ function cancellationCases() {
         viewStart: view.start,
         viewEnd: view.end,
         bands: Array.from(
-          cancellationBands(frame, {
-            widthPixels: 1000,
-            heightPixels: 500,
-            verticalScaleDb: 0,
-            layout: ViewLayout[layout],
-            lineWidthPixels: 3,
-            view,
-          }),
+          cancellationBands(frame, { layout: ViewLayout[layout], view }),
           round,
         ),
       });

@@ -905,11 +905,7 @@ export class TraceRenderer implements FrameRenderer {
     }
 
     const layout = {
-      widthPixels: this.canvas.width,
-      heightPixels: this.canvas.height,
-      verticalScaleDb: view.verticalScaleDb,
       layout: view.layout,
-      lineWidthPixels: this.style.lineWidthPixels,
       ...(view.view === undefined ? {} : { view: view.view }),
     };
     // A tempo-synced sweep's playhead, as a fraction of the screen from the left.

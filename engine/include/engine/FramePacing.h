@@ -115,9 +115,6 @@ public:
     // How long after a callback to ask for the frame the next callback draws: a callback period
     // (as measured, n refreshes) less the margin, or none. Display link thread.
     [[nodiscard]] double requestDelaySeconds() const;
-    // The margin in use: how long before the next callback its frame is asked for. Display link
-    // thread.
-    [[nodiscard]] double marginSeconds() const { return margin; }
     // n, frames per refresh. Display link thread.
     [[nodiscard]] int ticks() const { return n.value_or(1); }
     // The refresh rate in use. Display link thread.

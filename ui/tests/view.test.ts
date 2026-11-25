@@ -480,8 +480,8 @@ describe("status chips", () => {
 
   test("shows triggered frames with the mode", () => {
     expect(statusChips(frame({ triggered: true }), "auto", 0, 0)).toEqual([
-      { text: "Trig’d", tone: "ok" },
-      { text: "Auto", tone: "neutral" },
+      { text: "Trig’d" },
+      { text: "Auto" },
     ]);
   });
 
@@ -506,7 +506,7 @@ describe("status chips", () => {
         statusChips(undefined, mode, 0, 0).find(
           (chip) => chip.text === "Waiting",
         ),
-      ).toEqual(waits ? { text: "Waiting", tone: "warn" } : undefined);
+      ).toEqual(waits ? { text: "Waiting" } : undefined);
       expect(texts(undefined, 0).at(-1)).toBe(named(mode));
       expect(
         texts(frame({ triggered: true }), waitingAfterSeconds * 2).includes(
@@ -534,7 +534,7 @@ describe("status chips", () => {
       for (const invalid of [{ invalidSamples: 3 }, { invalidLanes: 0b100 }]) {
         expect(
           statusChips(frame({ ...overrides, ...invalid }), "auto", 0, 0)[0],
-        ).toEqual({ text: "Invalid samples", tone: "warn" });
+        ).toEqual({ text: "Invalid samples" });
       }
       expect(
         statusChips(frame(overrides), "auto", 0, 0).map((chip) => chip.text),
@@ -551,17 +551,14 @@ describe("status chips", () => {
 
   test("shows sync, a shortened span, and a sweep still filling", () => {
     expect(statusChips(frame({ synced: true }), "auto", 0, 0)).toEqual([
-      { text: "Sync", tone: "ok" },
+      { text: "Sync" },
     ]);
     expect(
       statusChips(frame({ synced: true, partial: true }), "auto", 0, 0)[1],
-    ).toEqual({ text: "Filling", tone: "neutral" });
+    ).toEqual({ text: "Filling" });
     expect(
       statusChips(frame({ synced: true, limited: true }), "auto", 0, 0)[1],
-    ).toEqual({
-      text: "Span limited",
-      tone: "warn",
-    });
+    ).toEqual({ text: "Span limited" });
   });
 
   // A span is shortened to what can be kept in every time base: a beat span stepped down, a
@@ -573,7 +570,7 @@ describe("status chips", () => {
   ])("says the span is limited on %s", (_, flags) => {
     expect(
       statusChips(frame({ ...flags, limited: true }), "auto", 0, 0),
-    ).toContainEqual({ text: "Span limited", tone: "warn" });
+    ).toContainEqual({ text: "Span limited" });
     expect(
       statusChips(frame(flags), "auto", 0, 0).map((chip) => chip.text),
     ).not.toContain("Span limited");
@@ -583,7 +580,7 @@ describe("status chips", () => {
   test("says when the host has reported no tempo", () => {
     expect(
       statusChips(frame({ synced: true, noTempo: true }), "auto", 0, 0),
-    ).toEqual([{ text: "No tempo", tone: "warn" }]);
+    ).toEqual([{ text: "No tempo" }]);
     expect(
       statusChips(
         frame({ synced: true, frozen: true, noTempo: true }),
@@ -602,18 +599,18 @@ describe("status chips", () => {
       expect(statusChips(frame({ freeRunning: true }), mode, 5, 0)).toEqual([]);
       expect(
         statusChips(frame({ freeRunning: true, limited: true }), mode, 5, 0),
-      ).toEqual([{ text: "Span limited", tone: "warn" }]);
+      ).toEqual([{ text: "Span limited" }]);
     },
   );
 
   test("shows frozen with the pan offset", () => {
     expect(statusChips(frame({ frozen: true }), "auto", 5, 0.12)).toEqual([
-      { text: "Frozen", tone: "hold" },
-      { text: "−120 ms", tone: "neutral" },
+      { text: "Frozen" },
+      { text: "−120 ms" },
     ]);
     expect(
       statusChips(frame({ frozen: true, partial: true }), "auto", 5, 0)[1],
-    ).toEqual({ text: "Partial", tone: "neutral" });
+    ).toEqual({ text: "Partial" });
   });
 });
 

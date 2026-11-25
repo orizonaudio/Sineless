@@ -681,10 +681,6 @@ button[aria-pressed="true"]:focus-visible {
   --track-name-width: 154px;
 }
 
-.screen.panning {
-  cursor: ew-resize;
-}
-
 .grid,
 .trace {
   position: absolute;

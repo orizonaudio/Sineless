@@ -30,7 +30,6 @@ if(NOT MSVC)
         $<$<CONFIG:Debug>:_GLIBCXX_ASSERTIONS>)
 endif()
 
-# Run-time check: RealtimeSanitizer aborts when a nonblocking function allocates, locks or blocks.
 option(ORIZON_THREAD_SANITIZER "Build with ThreadSanitizer" OFF)
 if(ORIZON_THREAD_SANITIZER)
     if(MSVC)
@@ -61,6 +60,7 @@ elseif(ORIZON_ADDRESS_SANITIZER)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+# Run-time check: RealtimeSanitizer aborts when a nonblocking function allocates, locks or blocks.
 option(ORIZON_REALTIME_SANITIZER "Build with RealtimeSanitizer (needs Clang 20+, not AppleClang)" OFF)
 if(ORIZON_REALTIME_SANITIZER)
     if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 20)

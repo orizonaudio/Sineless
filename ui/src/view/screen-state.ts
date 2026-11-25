@@ -61,17 +61,15 @@ export function markerLane(
   return Math.max(0, multiTrack ? ownLane : drawn.indexOf(triggerSource));
 }
 
-// A view in Single's Channels list: pressed (ticked) when the view is shown; disabled in the
-// multi-track view, where each lane is a track's lane channel, and, on a mono track, for all but
-// Left.
+// A view in Single's Channels list: pressed (ticked) when the view is shown; disabled, on a mono
+// track, for all but Left.
 export function viewToggleState(
   view: ViewName,
   shown: readonly ViewName[],
-  multiTrack: boolean,
   inputChannels: number,
 ): { pressed: boolean; disabled: boolean } {
   return {
     pressed: shown.includes(view),
-    disabled: multiTrack || (inputChannels < 2 && view !== "left"),
+    disabled: inputChannels < 2 && view !== "left",
   };
 }
