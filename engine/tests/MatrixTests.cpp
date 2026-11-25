@@ -9765,6 +9765,68 @@ TEST(AlignedEdges, DrawsALinedUpLaneAsTheWaveWhereItsAudioIsHeld)
     EXPECT_EQ(frame->invalidLanes, 0U);
 }
 
+// Frozen in Beats while four bars' first pass fills in, one bar is shown rebuilt from the held
+// audio (a part), in Compare's difference with a copy 40 samples late lined up. The lined-up lane's
+// edges lie where the shift puts them: drawn straight within a reach of each one in view, and the
+// wave elsewhere in the part. Seen from the track before the effect and from the copy (the shift
+// the other way). On noise, which no gap follows straight by chance.
+TEST(AlignedFrozenPart, DrawsStraightAtTheLinedUpPartsEdges)
+{
+    constexpr double kRate = 48000.0;
+    constexpr double kDelay = 40.0;
+    for (const bool fromCopy : {false, true}) {
+        SCOPED_TRACE(fromCopy ? "from the copy" : "from the track before the effect");
+        const Effect effect{
+            .delaySeconds = kDelay / kRate, .gain = 0.5, .flipped = false, .fromCopy = fromCopy};
+        Session session(kRate, 2);
+        joinCopy(session, kRate, effect);
+        showDifference(session, TimeBase::kBeats);
+        session.own().settings().set(SettingId::kBeatSpan,
+                                     static_cast<double>(BeatSpan::kFourBars));
+        session.play(5.5, 0.05); // Of the first pass's 8 s: into the third bar.
+        session.play(0.01);
+        ASSERT_TRUE(session.produce());
+        session.analyzer().setFrozen(true);
+        ASSERT_TRUE(session.produce());
+        session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+        auto frame = session.produce();
+        if (auto later = settled(session.analyzer())) {
+            frame = std::move(later);
+        }
+        ASSERT_TRUE(frame) << "no frame at the shorter span";
+        const double delay = matchOf(*frame, 1).delay;
+        ASSERT_EQ(std::abs(delay), kDelay) << "lined up";
+        const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+        const double width = 4.0 * protocol::kMinimumViewSamples / spanSamples;
+        std::size_t besideAnEdge = 0; // The shift puts one of the two edges in view.
+        for (const bool atStart : {true, false}) {
+            SCOPED_TRACE(atStart ? "the part's start" : "the part's end");
+            session.analyzer().setView(atStart ? 0.0 : 1.0 - width, atStart ? width : 1.0);
+            frame = session.produce();
+            ASSERT_TRUE(frame);
+            ASSERT_EQ(frame->mode, FrameMode::kRaw);
+            const std::size_t factor = frame->pointsPerSample;
+            ASSERT_GT(factor, 1U);
+            const double firstDrawn = (frame->viewStart * spanSamples) - frame->startFraction;
+            const std::span<const float> lane = trace(*frame, 1);
+            for (std::size_t n = 0; (n + 1) * factor < lane.size(); ++n) {
+                // Into the part from its edge, as the shift moves it: earlier by the delay.
+                const double position = firstDrawn + static_cast<double>(n) + 0.5 + delay;
+                const double inside = atStart ? position : spanSamples - position;
+                if (std::abs(inside) < static_cast<double>(kReconstructionReach) - 2.0) {
+                    ++besideAnEdge;
+                    EXPECT_TRUE(drawnStraight(lane, factor, n))
+                        << "gap " << n << ", " << inside << " from the edge";
+                } else if (inside > static_cast<double>(kReconstructionReach) + 2.0) {
+                    EXPECT_FALSE(drawnStraight(lane, factor, n))
+                        << "gap " << n << ", " << inside << " from the edge";
+                }
+            }
+        }
+        EXPECT_GT(besideAnEdge, kReconstructionReach) << "an edge of the lane in view";
+    }
+}
+
 struct PreviewedEdgeCase
 {
     TimeBase timeBase = TimeBase::kTrigger;
