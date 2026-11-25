@@ -225,21 +225,6 @@
       }
     },
     "opacity": {
-      "dim-previous": {
-        "$type": "number",
-        "$value": 0.35,
-        "$description": "The previous sweep cycle, right of the playhead"
-      },
-      "dim-unchecked": {
-        "$type": "number",
-        "$value": 0.25,
-        "$description": "Unchecked tracks in Compare"
-      },
-      "dim-waiting": {
-        "$type": "number",
-        "$value": 0.5,
-        "$description": "A trace waiting for a trigger"
-      },
       "cancel-fill": {
         "$type": "number",
         "$value": 0.16,

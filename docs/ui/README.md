@@ -157,7 +157,7 @@ From 2026-10-24 and 2026-10-25.
 
 ## 11. Colour and tokens
 
-[tokens/sineless-tokens.json](tokens/sineless-tokens.json) is the source of truth (DTCG format); [tokens/sineless-tokens.css](tokens/sineless-tokens.css) holds the same values as CSS variables, prefix `--sl-`. [colour.html](colour.html) carries a snapshot of them.
+[tokens/sineless-tokens.json](tokens/sineless-tokens.json) is the source of truth (DTCG format); [tokens/sineless-tokens.css](tokens/sineless-tokens.css) holds the same values as CSS variables, prefix `--sl-`. [colour.html](colour.html) carries a snapshot of them. How far a waiting trace and the previous sweep cycle are dimmed is shared by the page's renderer and the macOS editor's native one, so it is defined with the other shared numbers rather than as a token: `waitingAlpha` and `previousCycleAlpha` in `protocol/src/limits.ts`.
 
 - **Rules:** the chrome is greys; colour only in traces; orange (`#FF5F1F`) for Frozen only; yellow (`#FFD23F`) for problems (invalid samples, tracks that cancel when summed); cursors, the playhead, the hover line, the zoom band and the focus ring are white or grey. The current UI's green, blue and pink state colours are retired.
 - **Channel colours:** Left `#5AB0FF`, Right `#FF5C8A`, Mid `#F5F5F7`, Side `#B3F06B`. Side was violet in step 3; with deuteranopia it was nearly the same as Left's blue (CIEDE2000 ΔE 2.5). With lime, the closest pair is ΔE 18.7 or more in normal vision, protanopia, deuteranopia and tritanopia (simulated after Machado 2009).

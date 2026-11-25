@@ -76,9 +76,6 @@
   --sl-track-16: #e28bea;
 
   /* Opacities */
-  --sl-dim-previous: 0.35; /* The previous sweep cycle, right of the playhead */
-  --sl-dim-unchecked: 0.25; /* Unchecked tracks in Compare */
-  --sl-dim-waiting: 0.5; /* A trace waiting for a trigger */
   --sl-cancel-fill: 0.16; /* Warn colour over the sum lane where tracks cancel */
   --sl-zoom-band: 0.1; /* Ink over the region being dragged to zoom */
 
