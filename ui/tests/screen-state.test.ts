@@ -90,25 +90,19 @@ describe("markerLane", () => {
 
 describe.each(viewOrder)("the %s toggle", (view) => {
   test("is pressed when shown, and only then", () => {
-    expect(viewToggleState(view, [view], false, 2).pressed).toBe(true);
+    expect(viewToggleState(view, [view], 2).pressed).toBe(true);
     expect(
       viewToggleState(
         view,
         viewOrder.filter((other) => other !== view),
-        false,
         2,
       ).pressed,
     ).toBe(false);
   });
-  test("is disabled in the multi-track view", () => {
-    expect(viewToggleState(view, [view], true, 2).disabled).toBe(true);
-  });
   test("on a mono track, is enabled only for Left", () => {
-    expect(viewToggleState(view, [view], false, 1).disabled).toBe(
-      view !== "left",
-    );
+    expect(viewToggleState(view, [view], 1).disabled).toBe(view !== "left");
   });
   test("on a stereo track, is enabled", () => {
-    expect(viewToggleState(view, [view], false, 2).disabled).toBe(false);
+    expect(viewToggleState(view, [view], 2).disabled).toBe(false);
   });
 });

@@ -40,9 +40,3 @@ export const choiceLabels: {
   triggerSlope: { rising: "Rising", falling: "Falling" },
   compareLane: { sum: "Sum", difference: "Diff" },
 };
-
-// The lane Compare adds, as the Views field's summary shows it: the mathematical signs.
-export const compareLaneSigns: Labels<typeof CompareLane> = {
-  sum: "Σ",
-  difference: "Δ",
-};

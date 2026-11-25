@@ -385,7 +385,6 @@ export class OscilloscopeApp {
   private readoutChoices: Segmented | undefined;
   // What the Measure row last showed: the view lit and the views enabled.
   private readoutShown: string | undefined;
-  // The Views field's channel read: every channel's letter and "—" in one place, one shown.
   // Freeze's label, "Freeze" or "Frozen", both in one place so freezing resizes nothing (AD-26).
   private freezeLabel: StackedSummary | undefined;
   // The grid's popover: a row per choice, each reading and writing its one setting, in force in
@@ -420,8 +419,7 @@ export class OscilloscopeApp {
   // The Compare view: the fix preview, and the lane labels' readouts of each compared track (by
   // lane index) and of the sum, updated in place.
   private previewFix = false;
-  // Compare's switch in the Views popover (Off, or the lane it adds), and that lane's sign in the
-  // Views field's summary.
+  // Compare's switch in the Views popover (Off, or the lane it adds).
   private compareChoice: Segmented | undefined;
   private matchNodes: (HTMLElement | undefined)[] = [];
   // Each lane's name, marked while the lane shows samples that are not finite.
@@ -716,22 +714,16 @@ export class OscilloscopeApp {
     const segment = (
       name: SettingName,
       host: string,
-      choices: [
-        value: string,
-        label: string,
-        help?: HelpTopic | undefined,
-        badge?: string,
-      ][],
+      choices: [value: string, label: string, help?: HelpTopic | undefined][],
     ) => {
       this.segmented.set(
         name,
         new Segmented(
           element(host),
-          choices.map(([value, label, help, badge]) => ({
+          choices.map(([value, label, help]) => ({
             value,
             label,
             ...(help === undefined ? {} : { help }),
-            ...(badge === undefined ? {} : { badge }),
           })),
           (value) => {
             this.request(name, value);
@@ -1083,7 +1075,7 @@ export class OscilloscopeApp {
     const asked = this.shownViews();
     const states = viewOrder.map((view) => ({
       view,
-      ...viewToggleState(view, asked, false, this.inputChannels),
+      ...viewToggleState(view, asked, this.inputChannels),
     }));
     const ticked = states.filter((state) => state.pressed && !state.disabled);
     this.updateViewSummary();
@@ -1806,7 +1798,6 @@ export class OscilloscopeApp {
     this.placeTriggerMarker(); // It sits in a lane: lanes may have changed.
   }
 
-  // Moves the sweep cursor, and redraws grid and labels when a new cycle starts.
   // Redraws grid and labels when a tempo-synced sweep starts a new cycle. The playhead itself is
   // drawn with the traces.
   private showSweep(frame: Frame): void {
@@ -2922,10 +2913,7 @@ export class OscilloscopeApp {
       this.queueTraceView();
     }
     if (isZoomed(this.view)) {
-      chips.push({
-        text: `Zoom \u00d7${zoomFactor(this.view).toFixed(1)}`,
-        tone: "neutral",
-      });
+      chips.push({ text: `Zoom \u00d7${zoomFactor(this.view).toFixed(1)}` });
     }
     const shown = JSON.stringify(chips);
     if (shown !== this.shownChips) {
@@ -2951,9 +2939,9 @@ export class OscilloscopeApp {
   // The state chips, in the status bar's fixed width. Those that don't fit fold, from the last,
   // into one "+n" chip that lists them on hover or focus; the first always stays shown. Widths
   // are read once per change of the chips, and the fold is worked out from them.
-  private showChips(chips: readonly { text: string; tone: string }[]): void {
+  private showChips(chips: readonly { text: string }[]): void {
     const host = element("chips");
-    const node = (chip: { text: string; tone: string }) => {
+    const node = (chip: { text: string }) => {
       const span = document.createElement("span");
       // Orange marks Frozen alone; yellow, a problem in the audio.
       const kind =

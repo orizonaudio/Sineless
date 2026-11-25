@@ -4,11 +4,8 @@ import type { Frame } from "../../../protocol/src/frame-decoder.ts";
 
 import { formatSeconds } from "./format.ts";
 
-export type Tone = "neutral" | "ok" | "hold" | "warn";
-
 export interface Chip {
   readonly text: string;
-  readonly tone: Tone;
 }
 
 // The trigger modes as the Trigger field and the mode chip name them.
@@ -62,16 +59,16 @@ export function statusChips(
     frame !== undefined &&
     (frame.invalidSamples > 0 || frame.invalidLanes !== 0)
   ) {
-    chips.unshift({ text: "Invalid samples", tone: "warn" });
+    chips.unshift({ text: "Invalid samples" });
   }
   return chips;
 }
 
 // The span was shortened to what can be kept: a beat span stepped down, or a Free span longer
 // than the capture.
-const spanLimited: Chip = { text: "Span limited", tone: "warn" };
+const spanLimited: Chip = { text: "Span limited" };
 // Beats mode before the host has reported a tempo: nothing is placed until it does.
-const noTempo: Chip = { text: "No tempo", tone: "warn" };
+const noTempo: Chip = { text: "No tempo" };
 
 function modeChips(
   frame: Frame | undefined,
@@ -81,9 +78,9 @@ function modeChips(
 ): Chip[] {
   const chips: Chip[] = [];
   if (frame?.frozen === true) {
-    chips.push({ text: "Frozen", tone: "hold" });
+    chips.push({ text: "Frozen" });
     if (panSeconds > 0) {
-      chips.push({ text: `−${formatSeconds(panSeconds)}`, tone: "neutral" });
+      chips.push({ text: `−${formatSeconds(panSeconds)}` });
     }
     if (frame.noTempo) {
       chips.push(noTempo);
@@ -92,7 +89,7 @@ function modeChips(
       chips.push(spanLimited);
     }
     if (frame.partial) {
-      chips.push({ text: "Partial", tone: "neutral" });
+      chips.push({ text: "Partial" });
     }
     return chips;
   }
@@ -100,12 +97,12 @@ function modeChips(
     return [noTempo];
   }
   if (frame?.synced === true) {
-    chips.push({ text: "Sync", tone: "ok" });
+    chips.push({ text: "Sync" });
     if (frame.limited) {
       chips.push(spanLimited);
     }
     if (frame.partial) {
-      chips.push({ text: "Filling", tone: "neutral" });
+      chips.push({ text: "Filling" });
     }
     return chips;
   }
@@ -117,11 +114,11 @@ function modeChips(
     (mode === "normal" || mode === "single") &&
     (frame === undefined || secondsSinceFrame > waitingAfterSeconds);
   if (waiting) {
-    chips.push({ text: "Waiting", tone: "warn" });
+    chips.push({ text: "Waiting" });
   } else if (frame?.triggered === true) {
-    chips.push({ text: "Trig’d", tone: "ok" });
+    chips.push({ text: "Trig’d" });
   }
   // Named as the Trigger field names it: "Auto", not the setting's value "auto".
-  chips.push({ text: triggerModeNames[mode] ?? mode, tone: "neutral" });
+  chips.push({ text: triggerModeNames[mode] ?? mode });
   return chips;
 }

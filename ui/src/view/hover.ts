@@ -277,7 +277,6 @@ export interface HoverReadout {
 
 const clip = (value: number) => Math.min(1, Math.max(0, value));
 
-// The readout at screen position (`x`, `y`), both 0 to 1 from the top left.
 // The time at `position` (a fraction of the frame): the host's clock in a tempo-synced sweep;
 // otherwise from the newest audio at the right edge (Free) or from the trigger (Trig).
 export function timeAt(
@@ -300,6 +299,7 @@ export function timeAt(
   return seconds < 0 ? `−${text}` : `+${text}`;
 }
 
+// The readout at screen position (`x`, `y`), both 0 to 1 from the top left.
 export function hoverReadout(
   context: HoverContext,
   x: number,

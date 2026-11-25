@@ -681,7 +681,6 @@ private:
         bool measuring = false; // The next gain's measurement has begun.
         GainMeasure measure;
         float sumGain = 0.0f;
-        double sampleRate = 0.0; // Of the audio read: positions mean nothing at another.
         std::uint64_t count = 0; // The window's length when they began, and its levels' block.
         std::size_t block = 0;
         // A match ended while it ran: the parts it read are not the newest, so the gains are
@@ -925,8 +924,6 @@ private:
     int streamChannels = 0;
     MeterBlocks spotMeter;
     std::vector<float> meterView;
-    std::vector<float> meterLeft;
-    std::vector<float> meterRight;
     std::vector<std::size_t> meterJoins;
     // Reading a lane's image of two channels as its lane channel, which may be Mid or Side.
     std::vector<float> laneScratch;

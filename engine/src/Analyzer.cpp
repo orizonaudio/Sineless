@@ -769,10 +769,9 @@ bool Analyzer::produceFrame(std::vector<std::byte>& frame)
         const bool multiNow = settings.enumValue<protocol::DisplayMode>(SettingId::kDisplayMode) !=
                               protocol::DisplayMode::kSingle;
         const std::optional<std::uint64_t> placed =
-            synced && !multiNow && !isFrozen
-                ? std::optional(
-                      ownSweepEdge(settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan)))
-                : std::nullopt;
+            synced && !multiNow ? std::optional(ownSweepEdge(
+                                      settings.enumValue<protocol::BeatSpan>(SettingId::kBeatSpan)))
+                                : std::nullopt;
         if (!freeze(liveRate, frozenLength(engine.captureRing(), liveRate, synced), placed)) {
             return false;
         }
@@ -2541,7 +2540,7 @@ bool Analyzer::renderLanes(const SampleSource& ownSource, const Window& window,
         .laneSet = laneSet().id,
         .panReach = static_cast<float>(window.panReach),
         .sampleRate = static_cast<float>(sampleRate),
-        .spanSeconds = window.synced ? 0.0f : static_cast<float>(window.span / sampleRate),
+        .spanSeconds = static_cast<float>(window.span / sampleRate),
         .triggerPosition = triggerPositionOf(window)};
     header.readoutView = ownLaneView(frameSettings);
     header.triggerView = header.readoutView;
@@ -3988,7 +3987,6 @@ void Analyzer::renderCompare(FrameHeaderValues header, const Window& window, std
             const auto [fixedFirst, fixedEnd] = fixedPart(first, end, count, earliest, latest);
             gainJob.active = true;
             gainJob.at = now;
-            gainJob.sampleRate = sampleRate;
             gainJob.count = count;
             gainJob.block = block;
             gainJob.first = first;
