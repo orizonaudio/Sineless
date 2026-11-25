@@ -139,6 +139,7 @@ describe("a track sending samples that are not finite", () => {
     await expect.poll(chips).toContain("Invalid samples");
     const states = chips();
     expect(states[0]).toBe("Invalid samples");
+    expect(states.at(-1)).toMatch(/^Zoom ×\d{2}/);
 
     const host = byId("chips");
     const more = host.querySelector<HTMLElement>(".chip-more");
