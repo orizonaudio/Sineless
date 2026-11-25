@@ -70,7 +70,7 @@ public:
     // string, otherwise with "". For tests.
     virtual void evaluate(std::string_view script, std::function<void(std::string)> done) = 0;
 
-    // macOS 14+: the traces drawn natively under a transparent page (AD-30), from the frames the
+    // macOS: the traces drawn natively under a transparent page (AD-30), from the frames the
     // display asks for, on a thread of its own.
     struct NativeTraces
     {

@@ -235,7 +235,7 @@ export interface MockOptions {
   readonly hostTempo?: boolean;
   // The host's bar, in quarter notes: 6 for 6/4. mockBarQuarterNotes (4/4) by default.
   readonly barQuarterNotes?: number;
-  // Whether the editor draws the traces itself (macOS 14+), as its snapshots then say; not by
+  // Whether the editor draws the traces itself (macOS), as its snapshots then say; not by
   // default, as on Windows.
   readonly nativeTraces?: boolean;
   // Whether the diagnostic switch is on, as its snapshots then say.

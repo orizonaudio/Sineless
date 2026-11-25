@@ -30,7 +30,7 @@ public:
 
     [[nodiscard]] bool started() const { return isStarted; }
 
-    // macOS 14+: the editor draws the traces (AD-30). Snapshots say so, and whether native drawing
+    // macOS: the editor draws the traces (AD-30). Snapshots say so, and whether native drawing
     // has stopped for good; set before the page's hello.
     void setNativeTraces(bool native) { nativeTraces = native; }
     // The diagnostic switch (SINELESS_FRAME_BARCODE=1): snapshots say so, and the page draws the

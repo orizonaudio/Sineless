@@ -65,7 +65,7 @@ unless a step says otherwise. Note anything unexpected in the row's notes.
    a double-click on a value still opens it for typing (where a host loads the Audio Unit in an
    XPC service, the pointer follows the drag instead). In Logic and GarageBand, Logic's own tools
    (knob drags, tool cursors) still behave as before after several such drags.
-   On macOS 14+ the editor draws the traces itself: while resizing, the traces stay inside the
+   On macOS the editor draws the traces itself: while resizing, the traces stay inside the
    screen's border and catch up within a refresh or two; below the minimum width and at the
    shortest height they are clipped or hidden with the page; moving the window to another display
    (Retina and not) keeps one-pixel lines sharp.
