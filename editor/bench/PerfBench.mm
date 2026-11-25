@@ -10,6 +10,7 @@
 //              [--warmup=3] [--duration=10] [--idle] [--jitter]
 //              [--preview-fix] [--view=START,END]
 //              [--soak-interval=SECONDS] [--reopen=COUNT] [--view-changes=COUNT]
+//              [--late-picture=SECONDS]
 //              [--min-fps=N] [--max-total=PERCENT] [--max-analysis=PERCENT]
 //              [--max-memory-growth=MB] [--max-memory-rate=MB_PER_MINUTE]
 //              [--max-view-latency=MS] [--max-late-frames=PERCENT] [--max-p99-frame=MS]
@@ -98,6 +99,10 @@ struct Options
     bool difference = false;
     bool copies = false;
     double soakInterval = 0.0;
+    // Every so many seconds one native picture is committed late, as GPU work past the window
+    // server's deadline: the pictures after it are shown a refresh later until the layer comes
+    // back (DelayReturn). 0: none.
+    double latePicture = 0.0;
     int reopen = 0;
     int viewChanges = 0;
     // Limits; negative means none.
@@ -192,6 +197,8 @@ Options parse(std::span<const char* const> arguments)
             options.previewFix = true;
         } else if (key == "--soak-interval") {
             options.soakInterval = std::stod(value);
+        } else if (key == "--late-picture") {
+            options.latePicture = std::stod(value);
         } else if (key == "--reopen") {
             options.reopen = std::stoi(value);
         } else if (key == "--min-fps") {
@@ -445,6 +452,10 @@ struct Snapshot
     // Natively: from the callback that drew a picture to the screen, in seconds (the layer's
     // median over its last pictures); NaN when none was presented.
     double callbackToScreen = std::numeric_limits<double>::quiet_NaN();
+    // Natively: callbacks that drew nothing to bring the pictures back to the shorter delay, and
+    // how long the later state has to last before the next (DelayReturn).
+    double returns = 0.0;
+    double returnWait = 0.0;
     double resident = 0.0;
 };
 
@@ -466,6 +477,8 @@ struct Interval
     // Natively: from the callback that drew a picture to the screen, in seconds (the layer's
     // median over its last pictures); NaN when none was presented.
     double callbackToScreen = std::numeric_limits<double>::quiet_NaN();
+    double returns = 0.0;
+    double returnWait = 0.0;
     double pageFramesPerSecond = 0.0;
     bool native = false;
     double resident = 0.0; // MB at the end.
@@ -630,6 +643,40 @@ int run(const Options& options)
             pump(options.warmup);
         }
 
+        dispatch_source_t late = nil;
+        if (options.latePicture > 0.0) {
+            // 0.9 of a refresh: past the window server's deadline for the refresh the picture was
+            // drawn for (about 0.65 of one after the callback), and in time for the next.
+            editor::Editor* shown = editor.get();
+            const double hold =
+                0.9 / std::max(30.0, static_cast<double>(window.screen.maximumFramesPerSecond));
+            late =
+                dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+            const auto every = static_cast<std::int64_t>(options.latePicture * 1e9);
+            dispatch_source_set_timer(late, dispatch_time(DISPATCH_TIME_NOW, every),
+                                      static_cast<std::uint64_t>(every), 0);
+            dispatch_source_set_event_handler(late, ^{
+              // No web view while the editor is closed (--reopen).
+              auto* view = shown->webView();
+              if (auto* layer =
+                      view != nullptr ? orizon::editor::traceLayerForTests(*view) : nullptr) {
+                  layer->holdCommitForTesting(hold);
+              }
+            });
+            dispatch_resume(late);
+        }
+        // Stopped before the editor goes.
+        struct Cancel
+        {
+            dispatch_source_t source;
+            ~Cancel()
+            {
+                if (source != nil) {
+                    dispatch_source_cancel(source);
+                }
+            }
+        } const cancelLate{late};
+
         const std::string perfScript = "JSON.stringify(window.orizonDebug?.perf ?? "
                                        "{frameCount: window.orizonDebug?.frameCount ?? 0})";
         const auto take = [&] {
@@ -646,6 +693,8 @@ int run(const Options& options)
                     static_cast<double>(stats.shown.refreshesWithoutNewFrame);
                 snapshot.ticksPerFrame = static_cast<double>(stats.ticksPerFrame);
                 snapshot.callbackToScreen = stats.callbackToScreenSeconds;
+                snapshot.returns = static_cast<double>(stats.returns);
+                snapshot.returnWait = stats.returnWaitSeconds;
             }
             snapshot.threads = threadTimes();
             snapshot.process = processTime();
@@ -689,6 +738,8 @@ int run(const Options& options)
             interval.resident = to.resident;
             interval.ticksPerFrame = to.ticksPerFrame;
             interval.callbackToScreen = to.callbackToScreen;
+            interval.returns = to.returns - from.returns;
+            interval.returnWait = to.returnWait;
             return interval;
         };
 
@@ -839,9 +890,19 @@ int run(const Options& options)
                 const Interval& interval = intervals.back();
                 const double minutes =
                     static_cast<double>(intervals.size()) * options.soakInterval / 60.0;
-                std::printf("%8.1f %8.1f %8.1f %8.1f %9.1f %9.0f\n", minutes,
-                            100.0 * interval.total, 100.0 * interval.webKit,
-                            100.0 * interval.analysis, interval.framesPerSecond, interval.resident);
+                std::printf("%8.1f %8.1f %8.1f %8.1f %9.1f %9.0f", minutes, 100.0 * interval.total,
+                            100.0 * interval.webKit, 100.0 * interval.analysis,
+                            interval.framesPerSecond, interval.resident);
+                if (interval.native) {
+                    // Where the pictures stand: at the shorter delay or a refresh later, the
+                    // refreshes that showed no new one, and what the layer did about it.
+                    std::printf("  %5.1f ms to screen, %.0f without a new frame, %.0f returns, "
+                                "wait %.0f s",
+                                interval.callbackToScreen * 1000.0,
+                                interval.withoutNewFramePerSecond * interval.seconds,
+                                interval.returns, interval.returnWait);
+                }
+                std::printf("\n");
                 std::fflush(stdout);
             }
             if (!intervals.empty()) {
@@ -956,6 +1017,8 @@ int run(const Options& options)
                                 "pictures)\n",
                                 interval.callbackToScreen * 1000.0);
                 }
+                std::printf("native: %.0f returns to the shorter delay; the next waits %.0f s\n",
+                            interval.returns, interval.returnWait);
             }
             std::printf("page: %.1f frames/s received, %.1f drawn, %.0f KB/frame\n",
                         interval.pageFramesPerSecond, drawn / interval.seconds,

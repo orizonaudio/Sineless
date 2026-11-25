@@ -35,6 +35,7 @@ add_custom_command(
 # links editor_core.
 add_library(editor_core STATIC
     src/ChosenSize.cpp
+    src/DelayReturn.cpp
     src/EditorCore.cpp
     src/EmbeddedAssets.cpp
     src/FrameBarcode.cpp
@@ -74,6 +75,7 @@ target_link_libraries(editor PUBLIC editor_core sdk PRIVATE orizon_warnings)
 if(BUILD_TESTING)
     add_executable(editor_tests
         tests/ChosenSizeTests.cpp
+        tests/DelayReturnTests.cpp
         tests/EmbeddedAssetsTests.cpp
         tests/FrameBarcodeTests.cpp
         tests/FrameFlowTests.cpp

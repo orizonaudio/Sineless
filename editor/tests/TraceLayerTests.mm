@@ -1,4 +1,5 @@
 #include "MacPageTesting.h"
+#include "editor/DelayReturn.h"
 #include "engine/MonotonicClock.h"
 #include "mac/TraceLayerMac.h"
 
@@ -13,6 +14,7 @@
 #include <fstream>
 #include <functional>
 #include <gtest/gtest.h>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
@@ -75,6 +77,11 @@ struct Source
     std::optional<double> lastRequestAt;
     // How late the latest request's timer fired at most, since the source was made (seconds).
     double slowestRequestTimer = 0.0;
+    // While set, the display clock each frame was asked at, as the analyzer reads it to place the
+    // frame (this source is then the clock's one reader), for the frames taken, in order.
+    bool noteClocks = false;
+    std::optional<std::uint64_t> askedClock;
+    std::vector<std::uint64_t> takenClocks;
 
     TraceLayer::Hooks hooks()
     {
@@ -88,6 +95,9 @@ struct Source
                             std::max(slowestRequestTimer, static_cast<double>(lateNanos) / 1e9);
                         ++requests;
                         ready = true;
+                        if (noteClocks && pacing != nullptr) {
+                            askedClock = pacing->clock(engine::monotonicNanos());
+                        }
                         lastRequestAt = CACurrentMediaTime();
                         requestsOnRenderThread =
                             requestsOnRenderThread &&
@@ -102,6 +112,10 @@ struct Source
                         ready = false;
                         ++takes;
                         into = frame;
+                        if (askedClock) {
+                            takenClocks.push_back(*askedClock);
+                            askedClock.reset();
+                        }
                         if (lastRequestAt) {
                             askedBeforeTake.push_back(CACurrentMediaTime() - *lastRequestAt);
                             lastRequestAt.reset();
@@ -496,7 +510,8 @@ TEST_F(TraceLayerTest, CountsTheFramesThatReachedTheScreen)
 
 // A picture reaches the screen two refreshes after the callback that drew it, not three: under two
 // and a half display periods, halfway between, as the delay falls on whole refreshes. One late
-// picture leaves every later one a refresh later until a callback draws nothing (#451), which is
+// picture leaves every later one a refresh later until a callback draws nothing (the layer makes
+// one after two seconds: ComesBackToTwoRefreshesAfterALatePicture), which is
 // not what this test is for: it measures again after giving the layer no frame for a moment, up to
 // three times. A display that reports no presented times is skipped, saying so.
 TEST_F(TraceLayerTest, ShowsEachPictureWithinTwoRefreshesOfDrawingIt)
@@ -536,6 +551,141 @@ TEST_F(TraceLayerTest, ShowsEachPictureWithinTwoRefreshesOfDrawingIt)
     EXPECT_LT(periods.back(), 2.5)
         << "display periods from callback to screen, in " << periods.size()
         << " measurements, the first " << periods.front();
+}
+
+// One picture that misses the window server's deadline leaves every later one a refresh later.
+// The layer brings them back: once that has lasted the wait, one callback draws nothing, with no
+// refresh on screen left without a new picture, and the pictures are two refreshes from their
+// callbacks again. Nothing steps: every frame taken is drawn, and each is placed one refresh
+// after the one before, across the return too (a layer that told the display clock too late, or
+// not at all, drops the frame it held and shows two refreshes' worth of motion in one). And the
+// return is seen to have worked: the wait is as it was, not the long one of a return that gained
+// nothing. A late picture of the machine's own during the few seconds this takes spoils the
+// reading, so a spoilt run is made again on a new layer, up to three times; a layer that is
+// wrong is wrong every time. A display that reports no presented times is skipped, saying so.
+TEST_F(TraceLayerTest, ComesBackToTwoRefreshesAfterALatePicture)
+{
+    source.noteClocks = true;
+    show();
+    ASSERT_DISPLAY_WAIT(drawsWithin([&] { return submitted() >= 30; }, 3s, "30 pictures"));
+    if (!pumpUntil([&] { return layer->statsForTesting().shown.presented > 0; }, 2s)) {
+        GTEST_SKIP() << "this display reports no presented times";
+    }
+    const auto periods = [&] {
+        const double period = pacing->displayPeriodSeconds();
+        return period > 0.0 ? layer->statsForTesting().callbackToScreenSeconds / period : 0.0;
+    };
+    const auto settledSince = [&](std::uint64_t presented) {
+        return layer->statsForTesting().shown.presented >= presented + PresentedDelay::kPictures;
+    };
+    // Frames taken less pictures drawn. A callback takes its frame a moment before its picture
+    // is counted, so the least of a few readings is the one between callbacks.
+    const auto takenNotDrawn = [&] {
+        int least = std::numeric_limits<int>::max();
+        for (int reading = 0; reading < 4; ++reading) {
+            least = std::min(least, source.takes.load() - static_cast<int>(submitted()));
+            pumpUntil([] { return false; }, 5ms);
+        }
+        return least;
+    };
+    // One late picture and the return after it: what went wrong, or nothing.
+    const auto lateThenBack = [&]() -> std::string {
+        std::ostringstream wrong;
+        // At the shorter delay to begin with: the layer's own first pictures may have been late.
+        auto presented = layer->statsForTesting().shown.presented;
+        if (!pumpUntil(
+                [&] { return settledSince(presented) && periods() > 0.0 && periods() < 2.5; },
+                8s)) {
+            return "the pictures were not two refreshes from their callbacks to begin with";
+        }
+        // A late picture, until the pictures are a refresh later (a display with room may show
+        // one in time).
+        const double period = pacing->displayPeriodSeconds();
+        bool later = false;
+        for (int held = 0; held < 5 && !later; ++held) {
+            presented = layer->statsForTesting().shown.presented;
+            layer->holdCommitForTesting(0.9 * period);
+            later = pumpUntil([&] { return settledSince(presented) && periods() > 2.5; }, 1500ms);
+        }
+        if (!later) {
+            return "a picture committed 0.9 of a period late left the others in time";
+        }
+        const int heldBefore = takenNotDrawn();
+        const auto before = layer->statsForTesting();
+        const auto takenBefore = static_cast<std::size_t>(source.takes.load());
+        if (!pumpUntil(
+                [&] {
+                    const auto stats = layer->statsForTesting();
+                    return stats.returns > before.returns &&
+                           stats.shown.presented >=
+                               before.shown.presented + PresentedDelay::kPictures &&
+                           periods() < 2.5;
+                },
+                std::chrono::milliseconds(static_cast<int>(1000.0 * before.returnWaitSeconds)) +
+                    4s)) {
+            wrong << "the pictures did not come back to two refreshes from their callbacks ("
+                  << periods() << " display periods, "
+                  << layer->statsForTesting().returns - before.returns << " returns); ";
+        }
+        pumpUntil([] { return false; }, 200ms); // The picture after the return has landed.
+        const auto after = layer->statsForTesting();
+        if (after.returns != before.returns + 1) {
+            wrong << after.returns - before.returns << " returns for the one late picture; ";
+        }
+        if (after.shown.refreshesWithoutNewFrame != before.shown.refreshesWithoutNewFrame) {
+            wrong << after.shown.refreshesWithoutNewFrame - before.shown.refreshesWithoutNewFrame
+                  << " refreshes with no new picture; ";
+        }
+        if (after.returnWaitSeconds != before.returnWaitSeconds) {
+            wrong << "the wait went from " << before.returnWaitSeconds << " to "
+                  << after.returnWaitSeconds
+                  << " s (a return judged by a picture that was not the first drawn after it "
+                     "waits the longest); ";
+        }
+        if (const int held = takenNotDrawn(); held != heldBefore) {
+            wrong << held - heldBefore << " frames taken and never drawn; ";
+        }
+        std::vector<std::uint64_t> clocks;
+        {
+            const std::scoped_lock lock(source.mutex);
+            clocks = source.takenClocks;
+        }
+        for (std::size_t frame = std::max<std::size_t>(takenBefore, 1); frame < clocks.size();
+             ++frame) {
+            const double step = static_cast<double>(clocks[frame] - clocks[frame - 1]) / 1e9;
+            if (std::abs(step - period) > 0.001) {
+                wrong << "frame " << frame - takenBefore << " after the late picture placed "
+                      << step / period << " refreshes after the one before; ";
+            }
+        }
+        return wrong.str();
+    };
+    std::string wrong;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        if (attempt > 0) {
+            // A new layer, with nothing the spoilt run left in it (its wait, a refresh held).
+            destroyLayer();
+            pacing = std::make_unique<engine::FramePacing>(
+                static_cast<double>(window.screen.maximumFramesPerSecond));
+            {
+                const std::scoped_lock lock(source.mutex);
+                source.pacing = pacing.get();
+                source.takes = 0;
+                source.ready = false;
+                source.askedClock.reset();
+                source.takenClocks.clear();
+            }
+            layer = TraceLayer::create(container, above, *pacing, source.hooks());
+            show();
+        }
+        const std::string result = lateThenBack();
+        if (result.empty()) {
+            wrong.clear();
+            break;
+        }
+        wrong += "\n  run " + std::to_string(attempt + 1) + ": " + result;
+    }
+    EXPECT_TRUE(wrong.empty()) << "after a late picture, in each of three runs:" << wrong;
 }
 
 // A callback with a picture to draw and no drawable free (the window server holding them all)

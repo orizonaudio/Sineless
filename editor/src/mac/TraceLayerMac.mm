@@ -3,6 +3,7 @@
 #include "MetalHandoff.h"
 #include "MetalTraceRenderer.h"
 #include "UniqueClassName.h"
+#include "editor/DelayReturn.h"
 #include "engine/MonotonicClock.h"
 
 #import <Metal/Metal.h>
@@ -60,6 +61,12 @@ struct Shared
     PresentedDelay presentedDelay;
     std::atomic<int> refuseDrawables{0};
     std::atomic<std::uint64_t> refusedDrawables{0};
+    // The newest picture presented: its number above its landing (refreshesAfterTarget, at most
+    // kLandingMask); 0 until one has been. Metal's presented handlers write it.
+    std::atomic<std::uint64_t> landed{0};
+    std::atomic<std::uint64_t> returns{0};
+    std::atomic<double> returnWait{DelayReturn::kFirstWaitSeconds};
+    std::atomic<double> holdCommit{0.0};
     std::atomic<int> ticksPerFrame{1};
     std::atomic<std::size_t> drawnWidth{0};
     std::atomic<std::size_t> drawnHeight{0};
@@ -84,6 +91,10 @@ struct Shared
     CAMetalLayer* layer = nil;
     bool exit = false;
     bool lostHandled = false;
+    // When to draw nothing for a callback, so the pictures come a refresh sooner again, and the
+    // pictures drawn so far, numbered from 1.
+    DelayReturn delayReturn;
+    std::uint64_t pictures = 0;
     // The frame barcode: pictures drawn since the layer was made, and the link's target time, in
     // host seconds, of the callback the next picture is drawn at.
     std::uint64_t barcodePictures = 0;
@@ -100,6 +111,31 @@ struct Shared
         }
     }
 };
+
+constexpr unsigned kLandingBits = 8;
+constexpr std::uint64_t kLandingMask = (std::uint64_t{1} << kLandingBits) - 1;
+
+// A picture reached the screen (Metal's thread): the newest one's number and landing are kept.
+void publishLanding(Shared& shared, std::uint64_t picture, int refreshes)
+{
+    const std::uint64_t value =
+        (picture << kLandingBits) |
+        std::min(static_cast<std::uint64_t>(std::max(refreshes, 0)), kLandingMask);
+    std::uint64_t newest = shared.landed.load();
+    while ((newest >> kLandingBits) < picture &&
+           !shared.landed.compare_exchange_weak(newest, value)) {
+    }
+}
+
+std::optional<DelayReturn::Landed> newestLanding(const Shared& shared)
+{
+    const std::uint64_t value = shared.landed.load();
+    if (value == 0) {
+        return std::nullopt;
+    }
+    return DelayReturn::Landed{.picture = value >> kLandingBits,
+                               .refreshes = static_cast<int>(value & kLandingMask)};
+}
 
 // Native drawing stopped for good: reported once, on the main thread, unless the layer is gone.
 // By value: the block captures it, and a block captures a C++ reference as a reference.
@@ -186,18 +222,25 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable, d
         return;
     }
     // At once: the window server shows it at the first refresh whose deadline the GPU's work
-    // makes, two refreshes after the callback, or three from a picture that missed it (#451).
+    // makes, two refreshes after the callback, or three from a picture that missed it, until a
+    // callback draws nothing (DelayReturn).
     [buffer presentDrawable:drawable];
     const std::weak_ptr<Shared> weak = shared;
     // When it reaches the screen, or 0.0 if dropped: counted against the display's period as it
-    // was when drawn (the pacing may be gone by the time the handler runs).
+    // was when drawn (the pacing may be gone by the time the handler runs), and against the
+    // target of the callback that drew it.
     const double period = s.pacing.displayPeriodSeconds();
+    const double target = s.targetTime;
+    const std::uint64_t picture = ++s.pictures;
     [drawable addPresentedHandler:^(id<MTLDrawable> shown) {
       handlerRuns(shown);
       if (const auto alive = weak.lock()) {
           alive->presentedCounts.add(shown.presentedTime, period);
           if (shown.presentedTime > 0.0) {
               alive->presentedDelay.add(shown.presentedTime - callbackTime);
+          }
+          if (const auto refreshes = refreshesAfterTarget(shown.presentedTime, target, period)) {
+              publishLanding(*alive, picture, *refreshes);
           }
       }
     }];
@@ -209,7 +252,14 @@ void draw(const std::shared_ptr<Shared>& shared, id<CAMetalDrawable> drawable, d
       }
     }];
     handlerAdded(buffer);
-    [buffer commit];
+    if (const double hold = s.holdCommit.exchange(0.0); hold > 0.0) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, static_cast<std::int64_t>(hold * 1e9)),
+                       dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+                         [buffer commit];
+                       });
+    } else {
+        [buffer commit];
+    }
     s.drawnWidth.store(drawable.texture.width);
     s.drawnHeight.store(drawable.texture.height);
     if (barcode) {
@@ -244,9 +294,6 @@ void callback(const std::shared_ptr<Shared>& shared, double target)
     // When this callback ran, which the request's delay counts from (its drawing below included).
     const CFAbsoluteTime calledAt = CFAbsoluteTimeGetCurrent();
     const double now = CACurrentMediaTime();
-    const auto decision = s.pacing.callback(target, now, engine::monotonicNanos());
-    s.targetTime = target;
-    s.ticksPerFrame.store(s.pacing.ticks());
     bool changed = s.redraw.exchange(false);
     if (s.hooks.takeFrame(s.incoming)) {
         std::swap(s.frame, s.incoming);
@@ -261,7 +308,25 @@ void callback(const std::shared_ptr<Shared>& shared, double target)
             changed = true;
         }
     }
-    if (changed && s.view) {
+    // Before the clock steps: a return holds the clock back at this very callback, so the frame
+    // just taken, drawn at the next callback, is a refresh's worth on from the last picture shown.
+    const bool drawing = changed && s.view.has_value();
+    const bool comeBack = s.delayReturn.callback({.time = target,
+                                                  .drawing = drawing,
+                                                  .lastPicture = s.pictures,
+                                                  .newest = newestLanding(s)});
+    if (comeBack) {
+        s.pacing.shownSooner();
+    }
+    const auto decision = s.pacing.callback(target, now, engine::monotonicNanos());
+    s.targetTime = target;
+    s.ticksPerFrame.store(s.pacing.ticks());
+    if (comeBack) {
+        // Nothing drawn: the picture waiting in the layer's queue fills this refresh, and the
+        // next callback draws the frame kept here.
+        s.returns.fetch_add(1);
+        s.redraw.store(true);
+    } else if (drawing) {
         // A drawable only for a picture. With every one in use the layer waits up to a second and
         // gives none (a stalled GPU or window server): the next callback draws the picture.
         id<CAMetalDrawable> drawable = nil;
@@ -275,8 +340,10 @@ void callback(const std::shared_ptr<Shared>& shared, double target)
         } else {
             s.refusedDrawables.fetch_add(1);
             s.redraw.store(true);
+            s.delayReturn.drewNothing(s.pictures);
         }
     }
+    s.returnWait.store(s.delayReturn.waitSeconds());
     if (decision.requestFrame) {
         // Asked for just before the next callback, which draws it, so the frame is made, and
         // placed, a refresh later than at this one (FramePacing::Decision::requestAfterSeconds). On
@@ -382,6 +449,8 @@ public:
                 .shown = shared->presentedCounts.totals(),
                 .callbackToScreenSeconds = shared->presentedDelay.medianSeconds(),
                 .refusedDrawables = shared->refusedDrawables.load(),
+                .returns = shared->returns.load(),
+                .returnWaitSeconds = shared->returnWait.load(),
                 .ticksPerFrame = shared->ticksPerFrame.load(),
                 .drawnWidth = shared->drawnWidth.load(),
                 .drawnHeight = shared->drawnHeight.load(),
@@ -394,6 +463,7 @@ public:
     }
     void refuseCoverageTargetsForTesting() override { shared->refuseTargets.store(true); }
     void refuseDrawablesForTesting(int count) override { shared->refuseDrawables.store(count); }
+    void holdCommitForTesting(double seconds) override { shared->holdCommit.store(seconds); }
     void stallForTesting(bool stalled) override { shared->stalled.store(stalled); }
 
     void windowChanged();
@@ -627,6 +697,7 @@ void LayerMac::windowChanged()
         const double rate = static_cast<double>(window.screen.maximumFramesPerSecond);
         perform(shared, ^(Shared& state) {
           state.pacing.setScreenRate(rate);
+          state.delayReturn.displayChanged();
         });
     }
     layout();
@@ -688,6 +759,7 @@ void LayerMac::update()
           state.pacing.pause();
           state.presentedCounts.restart();
           state.presentedDelay.restart();
+          state.delayReturn.pause();
       }
     });
 }
