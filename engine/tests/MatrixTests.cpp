@@ -6642,8 +6642,8 @@ TEST_P(DeepZoomCroppedFreeze, DrawsTheWaveAsAWholeSweepDoes)
 
 // Frozen at six tenths of a bar's second pass, the bar's second half is shown with the playhead a
 // fifth into it. Zoomed in anywhere on it, the wave is drawn in every gap but those within a reach
-// of the playhead (and of the half bar's ends): nothing else joins there. On noise, which no gap
-// follows straight by chance.
+// of the playhead: nothing else joins there, and the held bar's audio goes on past the half bar's
+// ends. On noise, which no gap follows straight by chance.
 TEST_P(DeepZoomCroppedFreeze, DrawsTheWaveEverywhereButAtThePlayhead)
 {
     constexpr double kRate = 48000.0;
@@ -6665,9 +6665,10 @@ TEST_P(DeepZoomCroppedFreeze, DrawsTheWaveEverywhereButAtThePlayhead)
     ASSERT_NEAR(frame->cursor, 0.2, 0.05);
     constexpr double kAway = static_cast<double>(kReconstructionReach) + 2.0;
     const double width = 4.0 * protocol::kMinimumViewSamples / spanSamples;
-    const auto views = static_cast<int>(1.0 / width);
+    const auto views = static_cast<int>(std::ceil(1.0 / width));
     for (int view = 0; view < views; ++view) {
-        session.analyzer().setView(view * width, (view + 1) * width);
+        const double start = std::min(view * width, 1.0 - width);
+        session.analyzer().setView(start, start + width);
         frame = session.produce();
         ASSERT_TRUE(frame);
         ASSERT_EQ(frame->mode, FrameMode::kRaw);
@@ -6678,8 +6679,7 @@ TEST_P(DeepZoomCroppedFreeze, DrawsTheWaveEverywhereButAtThePlayhead)
             const std::span<const float> values = trace(*frame, index);
             for (std::size_t n = 0; (n + 1) * factor < values.size(); ++n) {
                 const double position = first + static_cast<double>(n) + 0.5;
-                if (std::abs(position - playhead) > kAway && position > kAway &&
-                    position < spanSamples - kAway) {
+                if (std::abs(position - playhead) > kAway) {
                     ASSERT_FALSE(drawnStraight(values, factor, n))
                         << "trace " << index << ", " << position << " of " << spanSamples
                         << " samples, the playhead at " << playhead;
