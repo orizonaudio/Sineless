@@ -694,7 +694,7 @@ button[aria-pressed="true"]:focus-visible {
   display: block;
 }
 
-/* macOS 14+: the editor draws the grid and traces under the page (snapshot.nativeTraces), which
+/* macOS: the editor draws the grid and traces under the page (snapshot.nativeTraces), which
    shows through where the screen is. The canvases stay laid out and take the pointer, for hover,
    cursors, the trigger marker and zoom, but show nothing; the toolbar, status bar, popovers and
    messages keep their own backgrounds. */

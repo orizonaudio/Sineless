@@ -1,7 +1,7 @@
 // Performance benchmark: the real editor page in a real WKWebView, showing tracks that play in
 // real time, as in a host. Reports the CPU of this process (by thread) and of the WebKit
 // processes it starts, resident memory, the frames the page receives and draws, and the page's
-// time per frame. Where the editor draws the traces natively (macOS 14+, AD-30), frames/s counts
+// time per frame. Where the editor draws the traces natively (macOS, AD-30), frames/s counts
 // the frames its layer presents, and the page's lines count the copies it receives.
 //
 //   perf_bench [--lanes=7] [--mode=multi|single] [--compare] [--timebase=beats|free|trigger]
