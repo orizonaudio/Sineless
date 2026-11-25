@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <gtest/gtest.h>
+#include <ostream>
 #include <random>
 #include <string>
 #include <tuple>
@@ -219,39 +220,127 @@ TEST(Processor, AcceptsFlushCallWithoutBuffers)
     EXPECT_EQ(processor->process(data), kResultOk);
 }
 
-TEST(Processor, CapturesInputIntoTheRing)
+struct CaptureCase
 {
-    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
-    std::vector<Sample32> left(kBlockSize);
-    std::vector<Sample32> right(kBlockSize);
-    for (size_t i = 0; i < left.size(); ++i) {
-        left[i] = static_cast<float>(i);
-        right[i] = -static_cast<float>(i);
-    }
-    std::array<Sample32*, 2> channels = {left.data(), right.data()};
-    AudioBusBuffers input{};
-    input.numChannels = 2;
-    input.channelBuffers32 = channels.data();
-    AudioBusBuffers output = input;
+    int32 sampleSize = kSample32;
+    int32 channels = 2;
+    double rate = 48000.0;
+    int32 block = kBlockSize;
+    bool lastSilent = false;
+};
 
-    ProcessData data{};
-    data.symbolicSampleSize = kSample32;
-    data.numSamples = kBlockSize;
-    data.numInputs = 1;
-    data.numOutputs = 1;
-    data.inputs = &input;
-    data.outputs = &output;
-    ASSERT_EQ(processor->process(data), kResultOk);
-
-    ASSERT_NE(processor->engine(), nullptr);
-    const engine::CaptureRing* ring = &processor->engine()->captureRing();
-    EXPECT_EQ(ring->writeIndex(), static_cast<uint64>(kBlockSize));
-    std::vector<float> captured(kBlockSize);
-    ASSERT_TRUE(ring->read(0, 0, captured));
-    EXPECT_EQ(captured, left);
-    ASSERT_TRUE(ring->read(1, 0, captured));
-    EXPECT_EQ(captured, right);
+std::string nameOf(const CaptureCase& c)
+{
+    return std::string(c.sampleSize == kSample64 ? "64bit_" : "32bit_") +
+           std::to_string(c.channels) + "ch_" + std::to_string(static_cast<int>(c.rate)) + "Hz_" +
+           std::to_string(c.block) + (c.lastSilent ? "_LastSilent" : "_Sounding");
 }
+
+// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
+void PrintTo(const CaptureCase& c, std::ostream* out)
+{
+    *out << nameOf(c);
+}
+
+// The largest block these tests set up; each case sends blocks of it or of a single sample.
+constexpr int32 kLargestBlock = 4096;
+
+std::vector<CaptureCase> captureCases()
+{
+    std::vector<CaptureCase> cases;
+    for (const int32 sampleSize : {kSample32, kSample64}) {
+        for (const int32 channels : {1, 2}) {
+            for (const double rate : engine::kSampleRates) {
+                for (const int32 block : {1, kLargestBlock}) {
+                    for (const bool lastSilent : {false, true}) {
+                        cases.push_back({.sampleSize = sampleSize,
+                                         .channels = channels,
+                                         .rate = rate,
+                                         .block = block,
+                                         .lastSilent = lastSilent});
+                    }
+                }
+            }
+        }
+    }
+    return cases;
+}
+
+// Processes two blocks of `c` and checks the capture holds them: each channel as the host played
+// it, in the capture's floats; the channel flagged silent as silence.
+template <typename Sample> void expectCaptured(const CaptureCase& c)
+{
+    const SpeakerArrangement arrangement =
+        c.channels == 1 ? SpeakerArr::kMono : SpeakerArr::kStereo;
+    auto processor = makeProcessor(arrangement, c.sampleSize, c.rate, c.block);
+    const auto channelCount = static_cast<size_t>(c.channels);
+    const auto blockLength = static_cast<size_t>(c.block);
+    const uint64 silentChannels = c.lastSilent ? uint64{1} << (channelCount - 1) : 0;
+    std::mt19937 random(static_cast<unsigned>(c.rate)); // Each rate its own samples.
+    std::uniform_real_distribution<Sample> amplitude(-1.0, 1.0);
+    std::vector<std::vector<float>> expected(channelCount);
+
+    for (int index = 0; index < 2; ++index) {
+        std::vector<std::vector<Sample>> buffers(channelCount, std::vector<Sample>(blockLength));
+        std::vector<Sample*> pointers;
+        for (size_t channel = 0; channel < channelCount; ++channel) {
+            const bool silent = ((silentChannels >> channel) & 1U) != 0;
+            for (Sample& sample : buffers[channel]) {
+                // A host flags a channel silent without clearing its buffer.
+                sample = amplitude(random);
+                expected[channel].push_back(silent ? 0.0f : static_cast<float>(sample));
+            }
+            pointers.push_back(buffers[channel].data());
+        }
+        AudioBusBuffers input{};
+        input.numChannels = c.channels;
+        input.silenceFlags = silentChannels;
+        if constexpr (sizeof(Sample) == sizeof(Sample64)) {
+            input.channelBuffers64 = pointers.data();
+        } else {
+            input.channelBuffers32 = pointers.data();
+        }
+        AudioBusBuffers output = input;
+        ProcessData data{};
+        data.processMode = kRealtime;
+        data.symbolicSampleSize = c.sampleSize;
+        data.numSamples = c.block;
+        data.numInputs = 1;
+        data.numOutputs = 1;
+        data.inputs = &input;
+        data.outputs = &output;
+        ASSERT_EQ(processor->process(data), kResultOk);
+    }
+
+    const engine::CaptureRing& ring = processor->engine()->captureRing();
+    ASSERT_EQ(ring.writeIndex(), static_cast<uint64>(2 * blockLength));
+    std::vector<float> captured(2 * blockLength);
+    for (size_t channel = 0; channel < channelCount; ++channel) {
+        ASSERT_TRUE(ring.read(static_cast<int>(channel), 0, captured));
+        EXPECT_EQ(captured, expected[channel]) << "channel " << channel;
+    }
+}
+
+class ProcessorCapture : public ::testing::TestWithParam<CaptureCase>
+{
+};
+
+// What the track plays is what the scope draws: the capture holds the input sample for sample, at
+// either precision a host processes in, mono or stereo, at every rate and block size; a channel the
+// host flags silent is drawn silent, whatever its buffer holds.
+TEST_P(ProcessorCapture, RecordsWhatTheHostPlays)
+{
+    if (GetParam().sampleSize == kSample64) {
+        expectCaptured<Sample64>(GetParam());
+    } else {
+        expectCaptured<Sample32>(GetParam());
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Vst3, ProcessorCapture, ::testing::ValuesIn(captureCases()),
+                         [](const ::testing::TestParamInfo<CaptureCase>& info) {
+                             return nameOf(info.param);
+                         });
 
 // Each block with samples is stamped with when it arrived, which paces free-running windows; only
 // real-time processing is paced: offline and prefetch blocks come at no steady rate. A call with no
@@ -366,8 +455,7 @@ TEST_P(CaptureForRate, IsSizedInSetupProcessing)
     EXPECT_EQ(processor->terminate(), kResultOk);
 }
 
-INSTANTIATE_TEST_SUITE_P(Rates, CaptureForRate,
-                         ::testing::Values(44100.0, 192000.0, 352800.0, 384000.0),
+INSTANTIATE_TEST_SUITE_P(Rates, CaptureForRate, ::testing::ValuesIn(engine::kSampleRates),
                          [](const ::testing::TestParamInfo<double>& info) {
                              return std::to_string(static_cast<int>(info.param)) + "Hz";
                          });
@@ -412,33 +500,6 @@ TEST(Processor, KeepsTheCaptureWhenSetUpWhileActive)
     EXPECT_EQ(ring.capacity(), engine::CaptureRing::kMinimumCapacity);
     EXPECT_EQ(processor->engine()->sampleRate(), 384000.0);
     EXPECT_EQ(ring.beginIndex(), 0u) << "what it held is kept";
-}
-
-TEST(Processor, CapturesSilentChannelsAsZeros)
-{
-    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
-    std::vector<Sample32> garbage(kBlockSize, 0.75f);
-    std::array<Sample32*, 2> channels = {garbage.data(), garbage.data()};
-    AudioBusBuffers input{};
-    input.numChannels = 2;
-    input.silenceFlags = 0b10; // Right channel flagged silent.
-    input.channelBuffers32 = channels.data();
-    AudioBusBuffers output = input;
-
-    ProcessData data{};
-    data.symbolicSampleSize = kSample32;
-    data.numSamples = kBlockSize;
-    data.numInputs = 1;
-    data.numOutputs = 1;
-    data.inputs = &input;
-    data.outputs = &output;
-    ASSERT_EQ(processor->process(data), kResultOk);
-
-    std::vector<float> captured(kBlockSize);
-    ASSERT_TRUE(processor->engine()->captureRing().read(0, 0, captured));
-    EXPECT_EQ(captured, garbage);
-    ASSERT_TRUE(processor->engine()->captureRing().read(1, 0, captured));
-    EXPECT_EQ(captured, std::vector<float>(kBlockSize, 0.0f));
 }
 
 // The process context a VST3 host sends for `c` at `rate`: a flag for each field the host knows,
