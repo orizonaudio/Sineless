@@ -5206,7 +5206,8 @@ struct DeepZoomCase
     bool longest = false; // The time base's longest span, else its shortest.
     Place place = Place::kMiddle;
     int channels = 2;
-    std::optional<protocol::ChannelView> lane; // The lane channel chosen, else the default.
+    // The lane channel chosen, else the default.
+    std::optional<protocol::ChannelView> lane = std::nullopt;
 };
 
 std::string nameOf(const DeepZoomCase& c)
@@ -5254,15 +5255,14 @@ std::vector<DeepZoomCase> deepZoomCases()
         }
     }
     for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
-        for (const protocol::ChannelView lane :
-             {protocol::ChannelView::kLeft, protocol::ChannelView::kRight}) {
+        for (std::size_t lane = 0; lane < protocol::kChannelViewNames.size(); ++lane) {
             for (const bool frozen : {false, true}) {
                 for (const Place place : {Place::kStart, Place::kEnd}) {
                     cases.push_back({.rate = rate,
                                      .mode = Display::kCompare,
                                      .frozen = frozen,
                                      .place = place,
-                                     .lane = lane});
+                                     .lane = static_cast<protocol::ChannelView>(lane)});
                 }
             }
         }
