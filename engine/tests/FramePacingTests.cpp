@@ -205,8 +205,10 @@ struct Asked
     std::uint64_t clock;
 };
 
+// `before`, if given, runs just before each callback, as the layer's own decisions do.
 std::vector<Asked> askAndMake(FramePacing& pacing, Link& link, std::uint64_t count,
-                              const std::function<double(std::uint64_t)>& making)
+                              const std::function<double(std::uint64_t)>& making,
+                              const std::function<void(std::uint64_t)>& before = {})
 {
     std::vector<Asked> asked;
     // Each frame's time is reported when it is ready: one ready after the next callback is
@@ -221,6 +223,9 @@ std::vector<Asked> askAndMake(FramePacing& pacing, Link& link, std::uint64_t cou
             }
             return false;
         });
+        if (before) {
+            before(index);
+        }
         const auto decision = link.call(pacing, index);
         if (!decision.requestFrame) {
             continue;
@@ -403,6 +408,140 @@ TEST(HandOffMotion, PlacesFramesEvenlyWhileTheMarginMoves)
         }
     }
 }
+
+// ----- A refresh regained: the layer's pictures shown a refresh sooner (editor::DelayReturn) -----
+
+// The rates a return happens at: every refresh shows a frame (n = 1), so the layer's queue can
+// stay a picture deeper.
+class RegainedRefresh : public ::testing::TestWithParam<double>
+{
+};
+
+// The refreshes between two consecutive frames on screen, around a return at callback `at`: the
+// frame asked for at a callback is drawn at the next one, except the one the return holds, which
+// is drawn a callback later and shown a refresh sooner after it, as every later one is.
+double refreshesOnScreen(const Asked& earlier, const Asked& later, std::uint64_t at)
+{
+    const auto apart = static_cast<double>(later.index - earlier.index);
+    return earlier.index < at && later.index > at ? apart - 1.0 : apart;
+}
+
+// The layer draws nothing for one callback, so its pictures come a refresh sooner from the next:
+// the picture after the gap holds the frame made before it, and the frame after that is placed a
+// refresh on, so the traces and the playhead keep their pace across it. Asking for a frame at
+// that callback, or placing the next where it would have been, shows two refreshes' worth of
+// motion in one.
+TEST_P(RegainedRefresh, PlacesFramesEvenlyAcrossAReturn)
+{
+    const double rate = GetParam();
+    Link link{.rate = rate};
+    FramePacing pacing(rate);
+    const std::uint64_t at = 400;
+    const auto asked = askAndMake(
+        pacing, link, 800, [](std::uint64_t) { return 0.001; },
+        [&](std::uint64_t index) {
+            if (index == at) {
+                pacing.shownSooner();
+            }
+        });
+    EXPECT_TRUE(std::ranges::none_of(asked, [&](const Asked& frame) { return frame.index == at; }))
+        << "a frame asked for at the return: the frame held is the one the next picture shows";
+    for (std::size_t k = 1; k < asked.size(); ++k) {
+        if (asked[k - 1].index < FramePacing::kLeadCallbacks + 2) {
+            continue; // L is being measured.
+        }
+        const double refreshes = refreshesOnScreen(asked[k - 1], asked[k], at);
+        const double step = static_cast<double>(asked[k].clock - asked[k - 1].clock) / 1e9;
+        EXPECT_GE(step, refreshes / rate - 1e-6) << "at " << asked[k].index;
+        EXPECT_LE(step, refreshes / rate + FramePacing::kRegainSlewSeconds + 1e-6)
+            << "at " << asked[k].index;
+    }
+}
+
+// The refresh held back at a return is closed slowly: every frame stays within QS-14's 1 ms of a
+// whole refresh from the one before, also while the hand-off margin moves, and once it is closed
+// the frames are placed where they would have been with no return: a whole refresh regained, no
+// more and no less.
+TEST_P(RegainedRefresh, ClosesTheRegainedRefreshInsideQs14)
+{
+    const double rate = GetParam();
+    const auto making = [](std::uint64_t i) { return (i / 300) % 2 == 1 ? 0.008 : 0.0005; };
+    // Just as the view turns heavy, and light again: the margin rises, and falls, through it.
+    for (const std::uint64_t at : {std::uint64_t{305}, std::uint64_t{605}}) {
+        SCOPED_TRACE(at);
+        Link link{.rate = rate};
+        FramePacing pacing(rate);
+        const auto asked = askAndMake(pacing, link, 1200, making, [&](std::uint64_t index) {
+            if (index == at) {
+                pacing.shownSooner();
+            }
+        });
+        Link plainLink{.rate = rate};
+        FramePacing plain(rate);
+        const auto unheld = askAndMake(plain, plainLink, 1200, making);
+        for (std::size_t k = 1; k < asked.size(); ++k) {
+            if (asked[k - 1].index < FramePacing::kLeadCallbacks + 2) {
+                continue;
+            }
+            const double refreshes = refreshesOnScreen(asked[k - 1], asked[k], at);
+            const double step = static_cast<double>(asked[k].clock - asked[k - 1].clock) / 1e9;
+            EXPECT_NEAR(step, refreshes / rate, 0.001) << "at " << asked[k].index;
+        }
+        const auto clockAt = [](const std::vector<Asked>& frames, std::uint64_t index) {
+            const auto found = std::ranges::find_if(
+                frames, [&](const Asked& frame) { return frame.index == index; });
+            return found == frames.end() ? std::uint64_t{0} : found->clock;
+        };
+        // Just after the return: a refresh earlier than without it, less the first slew.
+        const double heldBack = static_cast<double>(clockAt(unheld, at + 1)) / 1e9 -
+                                static_cast<double>(clockAt(asked, at + 1)) / 1e9;
+        EXPECT_NEAR(heldBack, 1.0 / rate - FramePacing::kRegainSlewSeconds, 1e-6);
+        // Closed (a refresh at a slew a callback takes under 70 callbacks), and the margin, which
+        // had one frame's time fewer to follow, where it would have been.
+        const std::uint64_t closed = at + 300;
+        for (std::uint64_t index = closed; index < closed + 100; ++index) {
+            EXPECT_EQ(clockAt(asked, index), clockAt(unheld, index)) << "at " << index;
+        }
+    }
+}
+
+// Hidden, or moved to another display, with a regained refresh not yet closed: the clock follows
+// the monotonic time there, and what was held back is forgotten, not carried into the pictures
+// shown afterwards.
+TEST_P(RegainedRefresh, ForgetsTheHeldRefreshWhenPausedOrMoved)
+{
+    const double rate = GetParam();
+    for (const bool moved : {false, true}) {
+        SCOPED_TRACE(moved);
+        Link link{.rate = rate};
+        FramePacing held(rate);
+        FramePacing plain(rate);
+        const auto both = [&](std::uint64_t from, std::uint64_t to) {
+            for (std::uint64_t index = from; index < to; ++index) {
+                link.call(held, index);
+                link.call(plain, index);
+            }
+        };
+        both(0, 300);
+        held.shownSooner();
+        both(300, 310);
+        EXPECT_LT(held.clock(link.engineNowAfter(309, 0.02)),
+                  plain.clock(link.engineNowAfter(309, 0.02)));
+        if (moved) {
+            held.setScreenRate(rate);
+            plain.setScreenRate(rate);
+        } else {
+            held.pause();
+            plain.pause();
+        }
+        const std::uint64_t again = 310 + FramePacing::kLeadCallbacks + 5;
+        both(310, again);
+        EXPECT_EQ(held.clock(link.engineNowAfter(again - 1, 0.02)),
+                  plain.clock(link.engineNowAfter(again - 1, 0.02)));
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Rates, RegainedRefresh, ::testing::Values(60.0, 75.0, 90.0));
 
 // Before L is known the clock follows the engine's time; when it becomes known, it moves by no
 // more than the callbacks' lead spread, and never back.

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <utility>
 
 namespace orizon::engine {
 
@@ -62,6 +63,8 @@ void FramePacing::setScreenRate(double screenRateHertz)
     lastTarget.reset();
     n = ticksPerFrame(rate, n);
     displayPeriod.store(0.0, std::memory_order_relaxed);
+    regain = false;
+    heldBack = 0.0;
     restartLead();
 }
 
@@ -69,6 +72,8 @@ void FramePacing::pause()
 {
     display.store(false, std::memory_order_release);
     lastTarget.reset();
+    regain = false;
+    heldBack = 0.0;
 }
 
 void FramePacing::lose()
@@ -112,6 +117,9 @@ FramePacing::Decision FramePacing::callback(double target, double now, std::uint
         }
     }
     followMaking(callbackPeriodSeconds());
+    // A refresh regained at this callback is held back whole; at every other one, a slew less.
+    const bool regained = std::exchange(regain, false);
+    heldBack = regained ? heldBack + period : std::max(0.0, heldBack - kRegainSlewSeconds);
     double requestAfter = requestDelaySeconds();
     if (lead && !lost) {
         // D on the engine's clock: the target less L, as far from now as it is on the link's, then
@@ -124,7 +132,8 @@ FramePacing::Decision FramePacing::callback(double target, double now, std::uint
         }
         placedFromNow += requestDelaySeconds();
         requestAfter = std::max(0.0, placedFromNow);
-        const auto offset = static_cast<std::int64_t>(std::llround(placedFromNow * 1e9));
+        const auto offset =
+            static_cast<std::int64_t>(std::llround((placedFromNow - heldBack) * 1e9));
         const std::uint64_t placed =
             offset >= 0 ? engineNow + static_cast<std::uint64_t>(offset)
                         : engineNow - std::min(engineNow, static_cast<std::uint64_t>(-offset));
@@ -142,7 +151,7 @@ FramePacing::Decision FramePacing::callback(double target, double now, std::uint
             ? std::max(1L, std::lround(median(callbackSteps, callbackStepCount) / period))
             : 1L;
     frameDue = periodsSinceShown + static_cast<int>(callbackPeriods) >= ticks();
-    return {.requestFrame = frameDue, .requestAfterSeconds = requestAfter};
+    return {.requestFrame = frameDue && !regained, .requestAfterSeconds = requestAfter};
 }
 
 double FramePacing::callbackPeriodSeconds() const

@@ -90,6 +90,11 @@ public:
         double callbackToScreenSeconds = std::numeric_limits<double>::quiet_NaN();
         // Callbacks that had a picture to draw and no drawable to draw it into.
         std::uint64_t refusedDrawables = 0;
+        // Callbacks that drew nothing on purpose, to bring the pictures back to the shorter delay
+        // after a late one, and how long the later state has to last before the next
+        // (DelayReturn).
+        std::uint64_t returns = 0;
+        double returnWaitSeconds = 0.0;
         // Refreshes each frame is shown for by design (the pacing's n, AD-12).
         int ticksPerFrame = 1;
         // The size of the drawable last drawn into, in device pixels.
@@ -110,6 +115,10 @@ public:
     // The next `count` callbacks with a picture to draw get no drawable, as when the window server
     // holds them all for a second (CAMetalLayer nextDrawable: nil).
     virtual void refuseDrawablesForTesting(int count) = 0;
+    // The next picture's command buffer is committed `seconds` late, from another queue, as GPU
+    // work that long: a picture that misses the window server's deadline, with its callback
+    // returning in time.
+    virtual void holdCommitForTesting(double seconds) = 0;
     // While set, the display link's callbacks do nothing and are not counted, as when the display
     // stops calling back (a test machine's idle display), with the link left running.
     virtual void stallForTesting(bool stalled) = 0;

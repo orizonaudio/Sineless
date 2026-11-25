@@ -66,6 +66,11 @@ public:
     // margin, so a change moves the frame's placement by as much. A quarter of QS-14's 1 ms per
     // frame (n callbacks a frame: up to n times this).
     static constexpr double kMarginSlewSeconds = 0.00025;
+    // How far D moves per callback to close a refresh regained by the layer (shownSooner): the
+    // same quarter of QS-14's 1 ms per frame, of its own, so that the margin and a regained
+    // refresh moving at once use half of it.
+    static constexpr double kRegainSlewSeconds = 0.00025;
+    static_assert(kMarginSlewSeconds + kRegainSlewSeconds <= 0.0005);
 
     // `screenRateHertz`: the display's maximum rate (NSScreen.maximumFramesPerSecond).
     explicit FramePacing(double screenRateHertz);
@@ -82,6 +87,15 @@ public:
 
     // One display link callback. Steps D and says whether to ask for the next refresh's frame.
     Decision callback(double target, double now, std::uint64_t engineNow);
+
+    // The layer draws nothing at the callback that follows, so that its pictures reach the screen
+    // a refresh sooner from the next one on (editor::DelayReturn). That callback places D a
+    // refresh earlier, where it was at the callback before, and asks for no frame: the frame made
+    // for it, which the layer keeps, is a refresh's worth on from the last picture shown, and is
+    // shown a refresh after it. The refresh held back is then closed by kRegainSlewSeconds a
+    // callback, so the pictures keep their pace while the traces move up to where they are
+    // shown sooner. Display link thread.
+    void shownSooner() { regain = true; }
 
     // The window moved to another display: its rate, and L measured again.
     void setScreenRate(double screenRateHertz);
@@ -147,6 +161,9 @@ private:
     std::size_t makeCount = 0;
     std::size_t nextMake = 0;
     double margin = kHandOffMarginSeconds;
+    bool regain = false;
+    // How much earlier than its usual place D is, closing a regained refresh.
+    double heldBack = 0.0;
 
     // Shared with the worker.
     std::atomic<std::uint64_t> displayNanos{0};
