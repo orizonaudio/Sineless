@@ -6640,6 +6640,55 @@ TEST_P(DeepZoomCroppedFreeze, DrawsTheWaveAsAWholeSweepDoes)
               Reconstruction::pointsPerSample(frame->visibleSamples, kColumns));
 }
 
+// Frozen at six tenths of a bar's second pass, the bar's second half is shown with the playhead a
+// fifth into it. Zoomed in anywhere on it, the wave is drawn in every gap but those within a reach
+// of the playhead (and of the half bar's ends): nothing else joins there. On noise, which no gap
+// follows straight by chance.
+TEST_P(DeepZoomCroppedFreeze, DrawsTheWaveEverywhereButAtThePlayhead)
+{
+    constexpr double kRate = 48000.0;
+    Session session(kRate, 2);
+    session.join({.kind = Signal::Kind::kNoise, .seed = 1});
+    session.join({.kind = Signal::Kind::kNoise, .seed = 2});
+    configure(session.own(), GetParam(), TimeBase::kBeats);
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kOneBar));
+    session.play(3.2, protocol::kReadoutIntervalSeconds / 2.0);
+    session.play(static_cast<double>(kBlock) / kRate);
+    ASSERT_TRUE(session.produce());
+    session.analyzer().setFrozen(true);
+    ASSERT_TRUE(session.produce());
+    session.own().settings().set(SettingId::kBeatSpan, static_cast<double>(BeatSpan::kHalfBar));
+    auto frame = session.produce();
+    ASSERT_TRUE(frame) << "no frame at the shorter span";
+    const double spanSamples = frame->visibleSamples / (frame->viewEnd - frame->viewStart);
+    const double playhead = frame->cursor * spanSamples;
+    ASSERT_NEAR(frame->cursor, 0.2, 0.05);
+    constexpr double kAway = static_cast<double>(kReconstructionReach) + 2.0;
+    const double width = 4.0 * protocol::kMinimumViewSamples / spanSamples;
+    const auto views = static_cast<int>(1.0 / width);
+    for (int view = 0; view < views; ++view) {
+        session.analyzer().setView(view * width, (view + 1) * width);
+        frame = session.produce();
+        ASSERT_TRUE(frame);
+        ASSERT_EQ(frame->mode, FrameMode::kRaw);
+        const std::size_t factor = frame->pointsPerSample;
+        ASSERT_GT(factor, 1U);
+        const double first = (frame->viewStart * spanSamples) - frame->startFraction;
+        for (std::size_t index = 0; index < tracesIn(*frame); ++index) {
+            const std::span<const float> values = trace(*frame, index);
+            for (std::size_t n = 0; (n + 1) * factor < values.size(); ++n) {
+                const double position = first + static_cast<double>(n) + 0.5;
+                if (std::abs(position - playhead) > kAway && position > kAway &&
+                    position < spanSamples - kAway) {
+                    ASSERT_FALSE(drawnStraight(values, factor, n))
+                        << "trace " << index << ", " << position << " of " << spanSamples
+                        << " samples, the playhead at " << playhead;
+                }
+            }
+        }
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(EveryMode, DeepZoomCroppedFreeze, ::testing::ValuesIn(everyMode()),
                          [](const ::testing::TestParamInfo<Display>& info) {
                              return modeName(info.param);
