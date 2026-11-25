@@ -10,7 +10,8 @@
 
 namespace orizon::engine {
 
-// What the host reports for one block (the VST3 process context), as far as it is valid.
+// What the host reports for one block (the VST3 process context, or the Audio Unit's host
+// callbacks), as far as it is valid.
 struct HostTimeline
 {
     bool playing = false;

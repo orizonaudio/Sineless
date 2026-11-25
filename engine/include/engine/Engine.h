@@ -29,7 +29,8 @@ struct TrackInfo
 };
 
 // Everything one plugin instance shares between its audio thread and its editor.
-// The processor creates it; the controller reaches it through an in-process handle.
+// Each format's glue creates it (the VST3 processor, the Audio Unit); the editor reaches it
+// through an in-process handle (EngineRegistry).
 class Engine
 {
 public:
@@ -79,7 +80,8 @@ public:
     [[nodiscard]] SettingsStore& settings() { return settingsStore; }
     [[nodiscard]] const SettingsStore& settings() const { return settingsStore; }
 
-    // Main input channel count (1 or 2), set by the processor on bus negotiation.
+    // Main input channel count (1 or 2), set by the format's glue when the host settles the
+    // channels (VST3 bus negotiation, the Audio Unit's Initialize).
     void setInputChannels(int count) { inputChannelCount.store(count, std::memory_order_relaxed); }
     [[nodiscard]] int inputChannels() const
     {
@@ -136,8 +138,9 @@ public:
     }
 
     // Sets the sample rate and sizes the capture for it (CaptureRing::capacityFor), emptying the
-    // capture if its size changes. Called by the processor in setupProcessing, before processing
-    // starts: it allocates, so never on the audio thread, nor while it writes.
+    // capture if its size changes. Called where the host prepares processing (VST3 setupProcessing,
+    // the Audio Unit's Initialize), before processing starts: it allocates, so never on the audio
+    // thread, nor while it writes.
     void prepare(double rate)
     {
         ring.resize(CaptureRing::capacityFor(rate));
