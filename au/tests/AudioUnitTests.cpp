@@ -1,6 +1,7 @@
 #include "AllocationCounter.h"
 #include "AudioUnit.h"
 #include "SampleRates.h"
+#include "TransportCases.h"
 #include "engine/CaptureRing.h"
 #include "engine/EngineRegistry.h"
 #include "engine/InstanceRegistry.h"
@@ -14,6 +15,7 @@
 #include <cstring>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <iterator>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -643,19 +645,25 @@ TEST(AudioUnit, ReportsNoLatencyAndNoTail)
 // --- Transport
 // ---------------------------------------------------------------------------------------
 
-struct TransportCase
+// The host's transport, as an Audio Unit's host reports it: each callback a host does not offer
+// fails. One callback reports the beat and the tempo together, so only cases that know both or
+// neither apply.
+Host hostReporting(const engine::TransportCase& c)
 {
-    const char* name = "";
     Host host;
-};
-
-// NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
-void PrintTo(const TransportCase& c, std::ostream* out)
-{
-    *out << c.name;
+    host.beatAndTempo = c.positionKnown ? noErr : -1;
+    host.beat = c.quarterNotes;
+    host.tempo = c.tempo;
+    host.musicalTime = c.timeSignatureKnown ? noErr : -1;
+    host.numerator = static_cast<float>(c.numerator);
+    host.denominator = static_cast<UInt32>(c.denominator);
+    host.transport = c.samplePositionKnown ? noErr : -1;
+    host.playing = c.playing;
+    host.sampleInTimeline = c.samplePosition;
+    return host;
 }
 
-class FollowsTheTransport : public ::testing::TestWithParam<TransportCase>
+class FollowsTheTransport : public ::testing::TestWithParam<engine::TransportCase>
 {
 };
 
@@ -666,7 +674,7 @@ TEST_P(FollowsTheTransport, AsTheHostReportsIt)
 {
     for (const double rate : engine::kSampleRates) {
         SCOPED_TRACE(rate);
-        Host host = GetParam().host;
+        Host host = hostReporting(GetParam());
         Instance instance(host);
         ASSERT_EQ(instance.open(rate, 2, 2), noErr);
         host.input = noise(2, 512, 1);
@@ -697,60 +705,17 @@ TEST_P(FollowsTheTransport, AsTheHostReportsIt)
     }
 }
 
-std::vector<TransportCase> transportCases()
+std::vector<engine::TransportCase> transportCases()
 {
-    const auto make = [](const char* name, const auto& set) {
-        TransportCase c{.name = name, .host = {}};
-        set(c.host);
-        return c;
-    };
-    return {
-        make("Playing44",
-             [](Host& h) {
-                 h.beat = 17.25;
-                 h.tempo = 128.0;
-                 h.sampleInTimeline = 352800.0;
-             }),
-        make("PlayingThreeFour",
-             [](Host& h) {
-                 h.beat = 6.0;
-                 h.tempo = 90.0;
-                 h.numerator = 3.0F;
-                 h.sampleInTimeline = 176400.0;
-             }),
-        make("Stopped",
-             [](Host& h) {
-                 h.beat = 8.0;
-                 h.tempo = 100.0;
-                 h.playing = false;
-             }),
-        make("PreRoll",
-             [](Host& h) {
-                 h.beat = -2.0;
-                 h.sampleInTimeline = -44100.0;
-             }),
-        make("NoBeatAndTempo",
-             [](Host& h) {
-                 h.beatAndTempo = -1;
-                 h.beat = 4.0;
-                 h.tempo = 140.0;
-             }),
-        make("NoMusicalTime",
-             [](Host& h) {
-                 h.musicalTime = -1;
-                 h.numerator = 7.0F;
-                 h.denominator = 8;
-             }),
-        make("NoTransport",
-             [](Host& h) {
-                 h.transport = -1;
-                 h.beat = 3.0;
-             }),
-    };
+    std::vector<engine::TransportCase> cases;
+    std::ranges::copy_if(
+        engine::transportCases(), std::back_inserter(cases),
+        [](const engine::TransportCase& c) { return c.positionKnown == c.tempoKnown; });
+    return cases;
 }
 
 INSTANTIATE_TEST_SUITE_P(AudioUnit, FollowsTheTransport, ::testing::ValuesIn(transportCases()),
-                         [](const ::testing::TestParamInfo<TransportCase>& info) {
+                         [](const ::testing::TestParamInfo<engine::TransportCase>& info) {
                              return std::string(info.param.name);
                          });
 

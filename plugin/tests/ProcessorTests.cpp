@@ -1,6 +1,9 @@
 #include "AllocationCounter.h"
 #include "Controller.h"
 #include "Processor.h"
+#include "SampleRates.h"
+#include "TransportCases.h"
+#include "engine/Timeline.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 
 #include <array>
@@ -21,15 +24,16 @@ using namespace Steinberg::Vst;
 
 constexpr int32 kBlockSize = 512;
 
-IPtr<Processor> makeProcessor(SpeakerArrangement arrangement, int32 sampleSize)
+IPtr<Processor> makeProcessor(SpeakerArrangement arrangement, int32 sampleSize,
+                              double sampleRate = 48000.0, int32 maxSamplesPerBlock = kBlockSize)
 {
     auto processor = owned(new Processor());
     EXPECT_EQ(processor->initialize(nullptr), kResultOk);
     EXPECT_EQ(processor->setBusArrangements(&arrangement, 1, &arrangement, 1), kResultTrue);
     ProcessSetup setup{.processMode = kRealtime,
                        .symbolicSampleSize = sampleSize,
-                       .maxSamplesPerBlock = kBlockSize,
-                       .sampleRate = 48000.0};
+                       .maxSamplesPerBlock = maxSamplesPerBlock,
+                       .sampleRate = sampleRate};
     EXPECT_EQ(processor->setupProcessing(setup), kResultOk);
     EXPECT_EQ(processor->setActive(true), kResultOk);
     // The SDK default returns kNotImplemented, which the VST3 spec allows.
@@ -437,25 +441,36 @@ TEST(Processor, CapturesSilentChannelsAsZeros)
     EXPECT_EQ(captured, std::vector<float>(kBlockSize, 0.0f));
 }
 
-TEST(Processor, AdvancesTheTimelineFromTheProcessContext)
+// The process context a VST3 host sends for `c` at `rate`: a flag for each field the host knows,
+// and every value written whatever its flag, as hosts leave values there. VST3 calls the sample
+// rate always valid; one left at 0 gives no project time in seconds.
+ProcessContext contextFor(const engine::TransportCase& c, double rate)
 {
-    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32);
+    ProcessContext context{};
+    context.state =
+        (c.playing ? static_cast<uint32>(ProcessContext::kPlaying) : 0U) |
+        (c.positionKnown ? static_cast<uint32>(ProcessContext::kProjectTimeMusicValid) : 0U) |
+        (c.tempoKnown ? static_cast<uint32>(ProcessContext::kTempoValid) : 0U) |
+        (c.timeSignatureKnown ? static_cast<uint32>(ProcessContext::kTimeSigValid) : 0U);
+    context.sampleRate = c.samplePositionKnown ? rate : 0.0;
+    context.projectTimeSamples = static_cast<TSamples>(c.samplePosition);
+    context.projectTimeMusic = c.quarterNotes;
+    context.tempo = c.tempo;
+    context.timeSigNumerator = c.numerator;
+    context.timeSigDenominator = c.denominator;
+    return context;
+}
+
+// Where the engine's timeline stands after one block processed with `context` (none: nullptr).
+engine::MusicalStamp afterOneBlock(ProcessContext* context, double rate)
+{
+    auto processor = makeProcessor(SpeakerArr::kStereo, kSample32, rate);
     std::vector<Sample32> silence(kBlockSize, 0.0f);
     std::array<Sample32*, 2> channels = {silence.data(), silence.data()};
     AudioBusBuffers input{};
     input.numChannels = 2;
     input.channelBuffers32 = channels.data();
     AudioBusBuffers output = input;
-    ProcessContext context{};
-    context.state = static_cast<uint32>(ProcessContext::kPlaying) |
-                    static_cast<uint32>(ProcessContext::kProjectTimeMusicValid) |
-                    static_cast<uint32>(ProcessContext::kTempoValid) |
-                    static_cast<uint32>(ProcessContext::kTimeSigValid);
-    context.projectTimeMusic = 32.0;
-    context.tempo = 140.0;
-    context.timeSigNumerator = 7;
-    context.timeSigDenominator = 8;
-
     ProcessData data{};
     data.symbolicSampleSize = kSample32;
     data.numSamples = kBlockSize;
@@ -463,15 +478,71 @@ TEST(Processor, AdvancesTheTimelineFromTheProcessContext)
     data.numOutputs = 1;
     data.inputs = &input;
     data.outputs = &output;
-    data.processContext = &context;
-    ASSERT_EQ(processor->process(data), kResultOk);
+    data.processContext = context;
+    EXPECT_EQ(processor->process(data), kResultOk);
+    return processor->engine()->timeline().latest();
+}
 
-    const engine::MusicalStamp stamp = processor->engine()->timeline().latest();
-    EXPECT_TRUE(stamp.playing);
-    EXPECT_EQ(stamp.quarterNotes, 32.0);
-    EXPECT_EQ(stamp.tempo, 140.0);
-    EXPECT_EQ(stamp.numerator, 7);
-    EXPECT_EQ(stamp.denominator, 8);
+// Where a timeline told `host` for one block stands.
+engine::MusicalStamp referenceAfterOneBlock(const engine::HostTimeline& host, double rate)
+{
+    engine::Timeline reference;
+    reference.advance(host, kBlockSize, rate);
+    return reference.latest();
+}
+
+void expectSameStamp(const engine::MusicalStamp& got, const engine::MusicalStamp& want)
+{
+    EXPECT_EQ(got.playing, want.playing);
+    EXPECT_DOUBLE_EQ(got.quarterNotes, want.quarterNotes);
+    EXPECT_DOUBLE_EQ(got.seconds, want.seconds);
+    EXPECT_DOUBLE_EQ(got.tempo, want.tempo);
+    EXPECT_EQ(got.tempoKnown, want.tempoKnown);
+    EXPECT_EQ(got.numerator, want.numerator);
+    EXPECT_EQ(got.denominator, want.denominator);
+    EXPECT_EQ(got.anchored, want.anchored);
+}
+
+class ProcessorTransport : public ::testing::TestWithParam<engine::TransportCase>
+{
+};
+
+// Beats mode and the multi-track lanes follow the host's position, tempo and time signature as far
+// as its process context marks each valid; a value it does not mark valid is not taken, whatever
+// it holds, so the scope shows no tempo rather than an invented one.
+TEST_P(ProcessorTransport, FollowsTheHostsProcessContext)
+{
+    const engine::TransportCase& c = GetParam();
+    for (const double rate : engine::kSampleRates) {
+        SCOPED_TRACE(rate);
+        ProcessContext context = contextFor(c, rate);
+        const engine::HostTimeline expected{.playing = c.playing,
+                                            .positionValid = c.positionKnown,
+                                            .quarterNotes = c.quarterNotes,
+                                            .tempoValid = c.tempoKnown,
+                                            .tempo = c.tempo,
+                                            .timeSignatureValid = c.timeSignatureKnown,
+                                            .numerator = c.numerator,
+                                            .denominator = c.denominator,
+                                            .secondsValid = c.samplePositionKnown,
+                                            .seconds = c.samplePosition / rate};
+        expectSameStamp(afterOneBlock(&context, rate), referenceAfterOneBlock(expected, rate));
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(Vst3, ProcessorTransport, ::testing::ValuesIn(engine::transportCases()),
+                         [](const ::testing::TestParamInfo<engine::TransportCase>& info) {
+                             return std::string(info.param.name);
+                         });
+
+// VST3 makes the process context optional: a host that sends none reports no position, tempo or
+// time signature, and the scope follows no transport.
+TEST(Processor, KnowsNoTransportWithoutAProcessContext)
+{
+    for (const double rate : engine::kSampleRates) {
+        SCOPED_TRACE(rate);
+        expectSameStamp(afterOneBlock(nullptr, rate), referenceAfterOneBlock({}, rate));
+    }
 }
 
 TEST(Controller, DeclaresNoParameters)
