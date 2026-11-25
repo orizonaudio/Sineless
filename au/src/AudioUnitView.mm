@@ -27,8 +27,8 @@
 namespace {
 
 // How long a size the view gives itself holds against an Auto Layout host's own (Logic's, out of
-// process): long enough for the host's window to catch up, which takes about 0.1 s in Logic, and
-// short enough that the host decides the size again soon after.
+// process): long enough for the host's window to catch up, which takes about 0.1 s in Logic, here
+// ten times that for margin, and short enough that the host decides the size again soon after.
 constexpr double kOwnSizeHoldSeconds = 1.0;
 
 // How firmly the view keeps its intrinsic size: the "minimum" side always, at AppKit's default;
