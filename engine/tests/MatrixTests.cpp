@@ -5206,6 +5206,7 @@ struct DeepZoomCase
     bool longest = false; // The time base's longest span, else its shortest.
     Place place = Place::kMiddle;
     int channels = 2;
+    std::optional<protocol::ChannelView> lane; // The lane channel chosen, else the default.
 };
 
 std::string nameOf(const DeepZoomCase& c)
@@ -5213,7 +5214,11 @@ std::string nameOf(const DeepZoomCase& c)
     constexpr std::array kPlaces{"Start", "Middle", "End"};
     return rateName(c.rate) + "_" + timeBaseName(c.timeBase) + "_" + modeName(c.mode) + "_" +
            (c.frozen ? "Frozen" : "Live") + "_" + (c.longest ? "Longest" : "Shortest") + "_" +
-           kPlaces.at(static_cast<std::size_t>(c.place)) + "_" + channelsName(c.channels);
+           kPlaces.at(static_cast<std::size_t>(c.place)) + "_" + channelsName(c.channels) +
+           (c.lane
+                ? "_Lane" +
+                      capitalised(protocol::kChannelViewNames.at(static_cast<std::size_t>(*c.lane)))
+                : "");
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming): the name GoogleTest looks for.
@@ -5223,7 +5228,8 @@ void PrintTo(const DeepZoomCase& c, std::ostream* out)
 }
 
 // The lowest and highest rates, every time base, display mode, live and frozen, the shortest and
-// longest spans, and the view's place; channels alternate.
+// longest spans, and the view's place; channels alternate. And Compare in Beats with each channel
+// of a stereo lane, at the sweep's ends, where the sum reads other tracks' lanes round the wrap.
 std::vector<DeepZoomCase> deepZoomCases()
 {
     std::vector<DeepZoomCase> cases;
@@ -5243,6 +5249,20 @@ std::vector<DeepZoomCase> deepZoomCases()
                                              .channels = (alternate++ % 2) == 0 ? 2 : 1});
                         }
                     }
+                }
+            }
+        }
+    }
+    for (const double rate : {kSampleRates.front(), kSampleRates.back()}) {
+        for (const protocol::ChannelView lane :
+             {protocol::ChannelView::kLeft, protocol::ChannelView::kRight}) {
+            for (const bool frozen : {false, true}) {
+                for (const Place place : {Place::kStart, Place::kEnd}) {
+                    cases.push_back({.rate = rate,
+                                     .mode = Display::kCompare,
+                                     .frozen = frozen,
+                                     .place = place,
+                                     .lane = lane});
                 }
             }
         }
@@ -5335,6 +5355,9 @@ TEST_P(DeepZoom, DrawsTheWaveBetweenTheSamplesUpToTheSpansEnds)
     session.join({.frequency = kOwnTone * c.rate});
     session.join({.frequency = kOtherTone * c.rate});
     configure(session.own(), c.mode, c.timeBase);
+    if (c.lane) {
+        session.own().settings().set(SettingId::kLaneChannel, static_cast<double>(*c.lane));
+    }
     double played = 0.0;
     if (c.timeBase == TimeBase::kBeats) {
         const auto span = c.longest ? protocol::kBeatSpanCount - 1 : 0;
